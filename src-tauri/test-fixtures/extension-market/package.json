@@ -1,0 +1,41 @@
+{
+  "manifest": {
+    "formatVersion": 3,
+    "apiVersion": 2,
+    "minHostVersion": "0.1.4",
+    "id": "market.registry-fixture",
+    "version": "1.0.0",
+    "name": "市场校验夹具",
+    "author": "Tauri Desktop Starter",
+    "description": "仅用于离线验签和市场安装校验的测试扩展。",
+    "icon": "puzzle",
+    "commands": [
+      {
+        "id": "echo",
+        "title": "回显",
+        "function": "echo",
+        "inputFormat": "text",
+        "resultFormat": "text",
+        "permissions": [
+          "text:read"
+        ]
+      },
+      {
+        "id": "repeat",
+        "title": "重复",
+        "function": "repeat",
+        "inputFormat": "text",
+        "resultFormat": "text",
+        "permissions": [
+          "text:read"
+        ]
+      }
+    ],
+    "permissions": [
+      "text:read"
+    ],
+    "optionalPermissions": [],
+    "network": []
+  },
+  "wasm": "AGFzbQEAAAABBQFgAAF/AwMCAAAHEQIEZWNobwAABnJlcGVhdAABCgsCBABBAAsEAEEACw=="
+}

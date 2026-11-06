@@ -1,0 +1,486 @@
+name: 持续集成
+
+on:
+  pull_request:
+    branches: [develop, main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  changes:
+    name: 判断验证范围
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    permissions:
+      contents: read
+      actions: read
+    outputs:
+      docs_only: ${{ steps.scope.outputs.docs_only }}
+      rust_required: ${{ steps.scope.outputs.rust_required }}
+      sdk_required: ${{ steps.scope.outputs.sdk_required }}
+      tree: ${{ steps.verified.outputs.tree }}
+      reused_run: ${{ steps.verified.outputs.reused_run }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          fetch-depth: 0
+      - name: 查找相同文件树已通过的 CI
+        id: verified
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: node scripts/ci-verified-tree.mjs
+      - name: 按文档、前端与原生输入选择检查
+        id: scope
+        run: node scripts/ci-scope.mjs
+
+  frontend:
+    name: 前端校验
+    needs: changes
+    if: needs.changes.outputs.reused_run == ''
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+
+      # 版本由 package.json 的 packageManager 字段统一维护
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+
+      - name: 前端与工程综合检查
+        run: pnpm verify
+
+      - name: 保留综合检查失败日志
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: frontend-verification-logs
+          path: .cache/verify
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  browser-smoke:
+    name: 浏览器生产构建冒烟与无障碍
+    needs: changes
+    if: needs.changes.outputs.reused_run == '' && needs.changes.outputs.docs_only != 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - name: 构建本次浏览器演示
+        run: pnpm build:web
+      - run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          pnpm exec playwright install --with-deps --only-shell chromium
+      - name: 宿主与隔离 SDK 共享样式对照
+        run: pnpm test:extensions:styles
+      - run: pnpm exec playwright test
+      - name: 保留浏览器截图、性能采样与失败 trace
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: browser-smoke
+          path: artifacts/browser
+          if-no-files-found: ignore
+
+  rust:
+    name: Rust 校验（${{ matrix.platform }}）
+    needs: changes
+    if: needs.changes.outputs.reused_run == '' && needs.changes.outputs.rust_required != 'false'
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+    env:
+      # 无 GUI 的契约与功能检查不需要调试符号，减小链接与缓存开销。
+      # 桌面 E2E 保留其调试信息，失败时仍可读取原生线程栈。
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+    strategy:
+      # 保留其他平台的执行结果，分别定位平台问题
+      fail-fast: false
+      matrix:
+        # 在三端编译验证 cfg 分支、系统库和链接器差异
+        # 避免平台问题延迟到发布阶段才暴露
+        platform: [windows-latest, ubuntu-24.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Linux 系统依赖
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        run: |
+          # runner 默认先尝试 Azure 镜像；直接使用已验证可用的 Ubuntu 官方 HTTPS 源。
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt=(sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          "${apt[@]}" update
+          "${apt[@]}" install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+
+      # tauri::generate_context! 会在编译期读取前端产物，必须先构建 dist
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 安装前端依赖并构建
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vite build
+
+      # 读取 rust-toolchain.toml，工具链与组件只维护一处。
+      - name: 安装 Rust 工具链
+        run: rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+
+      # 格式规则与平台无关，仅在一个平台执行
+      - name: 格式检查
+        if: matrix.platform == 'windows-latest'
+        working-directory: src-tauri
+        run: cargo fmt --all -- --check
+
+      - name: Clippy 静态检查
+        working-directory: src-tauri
+        run: cargo clippy --locked --all-targets -- -D warnings
+
+      - name: 单元测试
+        working-directory: src-tauri
+        run: cargo test --locked
+
+      - name: Wasmtime 缓存补丁压缩往返
+        run: pnpm test:wasmtime-cache
+
+      - name: 扩展 worker 隔离、取消与协议回归（无 GUI）
+        run: pnpm extension:test:worker
+
+      - name: Extism 清单、Rust 示例与未修改的上游模块往返
+        id: extension-roundtrip
+        shell: pwsh
+        run: |
+          $PSNativeCommandUseErrorActionPreference = $true
+          rustup target add wasm32-unknown-unknown
+          cargo fmt --manifest-path examples/extensions/apps/Cargo.toml -- --check
+          if ($IsWindows) {
+            pnpm extension:demos:check --rebuild
+          } else {
+            pnpm extension:demos:check --compile
+          }
+          foreach ($extensionDemoModule in @('resources/extensions/demo-apps.wasm', 'src-tauri/target/extension-apps/wasm32-unknown-unknown/release/starter_extism_apps.wasm')) {
+            pnpm extension:validate --manifest examples/extensions/apps/extension.json --wasm $extensionDemoModule --ui-dir examples/extensions/apps/ui
+            pnpm extension:test --manifest examples/extensions/apps/extension.json --wasm $extensionDemoModule --ui-dir examples/extensions/apps/ui --fixture examples/extensions/apps/smoke.json
+          }
+          cargo fmt --manifest-path examples/extensions/rust/Cargo.toml -- --check
+          cargo build --manifest-path examples/extensions/rust/Cargo.toml --release --locked --target wasm32-unknown-unknown --target-dir src-tauri/target/extension-example
+          pnpm extension:test --manifest examples/extensions/rust/extension.json --wasm src-tauri/target/extension-example/wasm32-unknown-unknown/release/starter_extism_text.wasm --fixture examples/extensions/rust/smoke.json
+          pnpm extension:test --manifest examples/extensions/rust/extension.json --wasm src-tauri/target/extension-example/wasm32-unknown-unknown/release/starter_extism_text.wasm --fixture examples/extensions/rust/summary-smoke.json
+          pnpm extension:pack --manifest examples/extensions/rust/extension.json --wasm src-tauri/target/extension-example/wasm32-unknown-unknown/release/starter_extism_text.wasm --out artifacts/extensions/ci-rust.starter-extension.json
+          $env:STARTER_TEST_EXTENSION_PACKAGE = (Resolve-Path artifacts/extensions/ci-rust.starter-extension.json).Path
+          cargo test --manifest-path src-tauri/Cargo.toml --locked external_extism_package_roundtrip -- --ignored
+          $fixture = Get-Content examples/extensions/upstream/fixture.json -Raw | ConvertFrom-Json
+          Invoke-WebRequest -Uri $fixture.url -OutFile artifacts/extensions/count_vowels.wasm
+          if ((Get-FileHash artifacts/extensions/count_vowels.wasm -Algorithm SHA256).Hash.ToLowerInvariant() -ne $fixture.sha256) { throw 'Upstream Extism module checksum mismatch' }
+          pnpm extension:pack --manifest examples/extensions/upstream/extension.json --wasm artifacts/extensions/count_vowels.wasm --out artifacts/extensions/ci-upstream.starter-extension.json
+          pnpm extension:test --manifest examples/extensions/upstream/extension.json --wasm artifacts/extensions/count_vowels.wasm --fixture examples/extensions/upstream/smoke.json
+          $env:STARTER_TEST_EXTENSION_PACKAGE = (Resolve-Path artifacts/extensions/ci-upstream.starter-extension.json).Path
+          $env:STARTER_TEST_EXTENSION_EXPECT = '"count":2'
+          cargo test --manifest-path src-tauri/Cargo.toml --locked external_extism_package_roundtrip -- --ignored
+
+      - name: 记录内置 Wasm 重建失败的编译器信息
+        if: failure() && steps.extension-roundtrip.outcome == 'failure'
+        shell: pwsh
+        run: |
+          $extensionBuildTarget = 'src-tauri/target/extension-apps'
+          if (Test-Path -LiteralPath "$extensionBuildTarget/wasm32-unknown-unknown/release/starter_extism_apps.wasm") {
+            rustc -vV | Out-File -LiteralPath "$extensionBuildTarget/rustc-version.txt" -Encoding utf8
+            rustc --print sysroot | Out-File -LiteralPath "$extensionBuildTarget/rustc-version.txt" -Encoding utf8 -Append
+          }
+
+      - name: 保留内置 Wasm 重建差异证据
+        if: failure() && steps.extension-roundtrip.outcome == 'failure'
+        uses: actions/upload-artifact@v6
+        with:
+          name: bundled-extension-rebuild-${{ matrix.platform }}
+          path: |
+            resources/extensions/demo-apps.wasm
+            resources/extensions/demo-apps.json
+            src-tauri/target/extension-apps/wasm32-unknown-unknown/release/starter_extism_apps.wasm
+            src-tauri/target/extension-apps/rustc-flags-*.txt
+            src-tauri/target/extension-apps/rustc-version.txt
+          if-no-files-found: ignore
+          retention-days: 7
+
+      - name: 构建优化的 SDK 验收工具并记录来源
+        if: runner.os == 'Linux' && needs.changes.outputs.sdk_required != 'false'
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/extension-sdk-tool
+          git diff --exit-code HEAD
+          cargo build --locked --release --manifest-path src-tauri/Cargo.toml --bin extension-tool --message-format=json-render-diagnostics > .cache/extension-sdk-cargo.jsonl
+          git diff --exit-code HEAD
+          node scripts/ci-extension-sdk.mjs prepare .cache/extension-sdk-cargo.jsonl .cache/extension-sdk-tool
+
+      - name: 保留优化工具供独立 SDK 检查与定向重试
+        if: runner.os == 'Linux' && needs.changes.outputs.sdk_required != 'false'
+        uses: actions/upload-artifact@v6
+        with:
+          name: extension-sdk-tool
+          path: .cache/extension-sdk-tool
+          overwrite: true
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 3
+
+  extension-sdk:
+    name: SDK 冷启动、真实 Wasm 与耗时余量
+    needs: [changes, rust]
+    if: needs.changes.outputs.reused_run == '' && needs.changes.outputs.sdk_required != 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: 安装工具运行时与前端依赖
+        run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt=(sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          "${apt[@]}" update
+          "${apt[@]}" install -y --no-install-recommends libwebkit2gtk-4.1-0 libayatana-appindicator3-1
+          pnpm install --frozen-lockfile
+      - uses: actions/download-artifact@v7
+        with:
+          name: extension-sdk-tool
+          path: .cache/extension-sdk-tool
+      - name: 构建固定版本 SDK 模块
+        shell: bash
+        run: |
+          set -euo pipefail
+          mkdir -p .cache/extension-tools
+          curl --fail --location --retry 2 https://github.com/extism/js-pdk/releases/download/v1.7.0/extism-js-x86_64-linux-v1.7.0.gz -o .cache/extension-tools/extism-js.gz
+          printf '63b72da2f5e88655522dc21477de549f238a2f40546a69ce4e0fce7e78654035  .cache/extension-tools/extism-js.gz\n' | sha256sum --check
+          gzip --decompress --stdout .cache/extension-tools/extism-js.gz > .cache/extension-tools/extism-js
+          chmod +x .cache/extension-tools/extism-js
+          curl --fail --location --retry 2 https://github.com/WebAssembly/binaryen/releases/download/version_133/binaryen-version_133-x86_64-linux.tar.gz -o .cache/extension-tools/binaryen.tar.gz
+          printf '2dc9c7813f5375db93d96ead4b78222fcc3e2677bbb832297af4797782a37489  .cache/extension-tools/binaryen.tar.gz\n' | sha256sum --check
+          tar -xzf .cache/extension-tools/binaryen.tar.gz -C .cache/extension-tools
+          export EXTISM_JS="$PWD/.cache/extension-tools/extism-js"
+          export PATH="$PWD/.cache/extension-tools/binaryen-version_133/bin:$PATH"
+          pnpm --dir examples/extensions install --frozen-lockfile
+          pnpm --dir examples/extensions typecheck
+          pnpm --dir examples/extensions build
+      - name: 核对工具收据并重复冷启动验收
+        run: node scripts/ci-extension-sdk.mjs run .cache/extension-sdk-tool artifacts/extensions/sdk-cold-start.json
+      - name: 保留源码、模块与工具哈希及冷启动耗时
+        if: always()
+        uses: actions/upload-artifact@v6
+        with:
+          name: extension-sdk-cold-start
+          path: artifacts/extensions/sdk-cold-start.json
+          overwrite: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  bindings:
+    name: IPC 绑定校验
+    needs: changes
+    if: needs.changes.outputs.reused_run == '' && needs.changes.outputs.rust_required != 'false'
+    runs-on: ubuntu-24.04
+    timeout-minutes: 20
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+    steps:
+      - uses: actions/checkout@v7
+      - name: 安装 Linux 系统依赖
+        timeout-minutes: 8
+        run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt=(sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          "${apt[@]}" update
+          "${apt[@]}" install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf
+      - uses: pnpm/action-setup@v6
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+      - name: 安装前端依赖并构建
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm exec vite build
+      - name: 安装 Rust 工具链
+        run: rustup toolchain install
+      # 独立 job 使用自己的 runner、target 和缓存，与三端 Rust 校验并行。
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri
+          cache-on-failure: true
+      - name: 验证 Rust 生成的 IPC 类型
+        run: pnpm bindings:check
+
+  desktop-e2e:
+    name: 真实桌面 E2E（${{ matrix.platform }}）
+    needs: changes
+    if: needs.changes.outputs.reused_run == '' && needs.changes.outputs.docs_only != 'true'
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        platform: [windows-latest, ubuntu-22.04, macos-latest]
+    steps:
+      - uses: actions/checkout@v7
+
+      - name: 安装 Linux 桌面依赖
+        if: runner.os == 'Linux'
+        timeout-minutes: 8
+        run: |
+          printf 'https://archive.ubuntu.com/ubuntu/\tpriority:1\nhttps://security.ubuntu.com/ubuntu/\tpriority:2\n' | sudo tee /etc/apt/apt-mirrors.txt >/dev/null
+          apt=(sudo apt-get -o Acquire::Retries=2 -o Acquire::http::Timeout=30 -o Acquire::https::Timeout=30)
+          "${apt[@]}" update
+          "${apt[@]}" install -y libwebkit2gtk-4.1-dev libayatana-appindicator3-dev librsvg2-dev patchelf xvfb dbus-x11 openbox gdb
+
+      - uses: pnpm/action-setup@v6
+
+      - uses: actions/setup-node@v7
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+
+      - name: 安装依赖与 Rust 工具链
+        run: |
+          pnpm install --frozen-lockfile
+          rustup toolchain install
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: src-tauri -> target/e2e
+          key: e2e
+          # 保留已成功编译的依赖缓存，桌面断言失败后仍可复用。
+          cache-on-failure: true
+
+      # 仅 feature=e2e 带内嵌 WebDriver，使用 .e2e 标识及临时用户数据。
+      - name: 构建测试专用桌面应用
+        run: pnpm e2e:build
+
+      - name: 桌面 E2E（Windows / macOS）
+        if: runner.os != 'Linux'
+        run: pnpm test:e2e --interactive --skip-build
+
+      - name: 桌面 E2E（Linux）
+        if: runner.os == 'Linux'
+        env:
+          WEBKIT_DMABUF_RENDERER_FORCE_SHM: "1"
+        run: |
+          mkdir -p artifacts/e2e/crash
+          sudo sysctl -w "kernel.core_pattern=$GITHUB_WORKSPACE/artifacts/e2e/crash/core.%p"
+          ulimit -c unlimited
+          dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/starter-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build'
+
+      - name: 保存 Linux 应用崩溃的原生线程栈
+        if: failure() && runner.os == 'Linux'
+        run: |
+          if [[ ! -f src-tauri/target/e2e/build.json ]]; then
+            echo "本次测试程序尚未构建，没有可读取的应用崩溃栈。"
+            exit 0
+          fi
+          binary="$(node --input-type=module -e 'import { readE2EBuild } from "./e2e/build.mjs"; process.stdout.write(readE2EBuild());')"
+          shopt -s nullglob
+          found=0
+          for native_log in artifacts/e2e/*/native.log; do
+            pid="$(sed -n 's/.*owned-process-exit .* pid=\([0-9][0-9]*\)$/\1/p' "$native_log" | tail -n 1)"
+            [[ "$pid" =~ ^[0-9]+$ ]] || continue
+            core="artifacts/e2e/crash/core.$pid"
+            [[ -f "$core" ]] || continue
+            found=1
+            backtrace="artifacts/e2e/crash/app-$pid.backtrace.txt"
+            if ! timeout --kill-after=5s 60s gdb --batch --quiet "$binary" "$core" \
+              -ex 'set pagination off' -ex 'info threads' -ex 'thread apply all bt' > "$backtrace" 2>&1; then
+              echo "gdb 未完整结束，已保留可取得的线程栈：$backtrace"
+            fi
+            # 只保留文本栈；core 属于本次隔离应用且可能包含大块进程内存。
+            rm -f -- "$core"
+          done
+          if (( found == 0 )); then
+            echo "没有发现本次主程序的 core dump；保留原有进程退出记录。"
+          fi
+
+      - name: 保留 Windows README 原生截图
+        if: success() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v6
+        with:
+          name: readme-previews-windows
+          path: |
+            artifacts/e2e/fresh/desktop-light.png
+            artifacts/e2e/fresh/desktop-dark.png
+            artifacts/e2e/fresh/desktop-skins-dark.png
+          if-no-files-found: error
+          retention-days: 14
+
+      - name: 保留失败截图与测试日志
+        if: failure()
+        uses: actions/upload-artifact@v6
+        with:
+          name: desktop-e2e-${{ runner.os }}
+          path: |
+            artifacts/e2e
+            !artifacts/e2e/crash/core.*
+          if-no-files-found: ignore
+
+  quality-gate:
+    name: 质量门禁
+    if: always()
+    needs:
+      [
+        changes,
+        frontend,
+        browser-smoke,
+        rust,
+        bindings,
+        desktop-e2e,
+        extension-sdk,
+      ]
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - uses: actions/checkout@v7
+      - name: 确认所有检查通过
+        env:
+          CI_NEEDS: ${{ toJSON(needs) }}
+        run: node scripts/ci-quality-gate.mjs
+      - name: 记录本次通过检查的文件树
+        if: needs.changes.outputs.reused_run == ''
+        run: git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/ci-tree.txt"
+      - name: 保留通过记录供相同文件树复用
+        if: needs.changes.outputs.reused_run == ''
+        uses: actions/upload-artifact@v6
+        with:
+          name: ci-tree-v1-${{ needs.changes.outputs.tree }}
+          path: ${{ runner.temp }}/ci-tree.txt
+          overwrite: true
+          if-no-files-found: error
+          retention-days: 30

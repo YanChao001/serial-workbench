@@ -1,0 +1,457 @@
+import { getLocale } from "@/i18n/registry";
+import { useEffect, useLayoutEffect, useMemo, useRef, useState } from "react";
+import { useTheme } from "next-themes";
+import { Button } from "@/components/ui/button";
+import { useI18n } from "@/providers/i18n";
+import { useSettings, type Motion } from "@/providers/settings";
+import { THEME_REVEAL_EVENT, type ThemeReveal } from "@/hooks/use-theme-switch";
+import hostFont from "@fontsource-variable/geist/files/geist-latin-wght-normal.woff2?inline";
+import { nativeErrorText } from "@/lib/native-error";
+import { UI_STYLES, readUiTokens } from "@/lib/ui-theme";
+import {
+  openExtensionUi,
+  closeExtensionUi,
+  type ExtensionInfo,
+  type ExtensionView,
+} from "@/lib/tauri";
+import {
+  ExtensionUiBridge,
+  type ExtensionUiRequest,
+} from "./extension-ui-bridge";
+import { ExtensionLoading } from "./extension-loading";
+import { useExtensionActivity } from "./extension-activity";
+
+type UiFailure =
+  | {
+      kind: "lifecycle";
+      message:
+        | "ext.uiInitializationFailed"
+        | "ext.uiInitializationTimeout"
+        | "ext.uiConnectionTimeout";
+    }
+  | { kind: "diagnostic"; reason: unknown };
+
+function readTheme(motion: Motion) {
+  const styles = getComputedStyle(document.documentElement);
+  const tokens = readUiTokens(styles);
+  return {
+    mode: document.documentElement.classList.contains("dark")
+      ? "dark"
+      : "light",
+    motion,
+    styles: UI_STYLES,
+    font: { family: "Geist Variable", dataUrl: hostFont },
+    tokens,
+  };
+}
+
+export function ExtensionCustomUi({
+  item,
+  commandId,
+  view,
+  fields,
+  checkpoint,
+  busy,
+  dirty,
+  execute,
+}: {
+  item: ExtensionInfo;
+  commandId: string;
+  view: ExtensionView | null;
+  fields: Record<string, string>;
+  checkpoint: string | null;
+  busy: boolean;
+  dirty: boolean;
+  execute: (request: ExtensionUiRequest) => Promise<unknown>;
+}) {
+  const { t, language } = useI18n();
+  const active = useExtensionActivity();
+  const { resolvedTheme } = useTheme();
+  const { settings } = useSettings();
+  const grantsIdentity = [...item.grantedPermissions].sort().join(",");
+  const frame = useRef<HTMLIFrameElement>(null);
+  const [lease, setLease] = useState<{ url: string; token: string } | null>(
+    null,
+  );
+  const [error, setError] = useState<UiFailure | null>(null);
+  const [attempt, setAttempt] = useState(0);
+  const [connected, setConnected] = useState(false);
+  const [handshakeReady, setHandshakeReady] = useState(false);
+  const bridge = useRef<ExtensionUiBridge | null>(null);
+  const run = useRef(execute);
+  const snapshot = useRef<unknown>(null);
+  const hasView = useRef(view !== null);
+  useLayoutEffect(() => {
+    run.current = execute;
+    hasView.current = view !== null;
+  }, [execute, view]);
+  const [palette, setPalette] = useState(0);
+  useEffect(() => {
+    if (!active) return;
+    let scheduled = 0;
+    const schedule = () => {
+      cancelAnimationFrame(scheduled);
+      scheduled = requestAnimationFrame(() => setPalette((value) => value + 1));
+    };
+    const observer = new MutationObserver(schedule);
+    // 只在字号断点或高对比度策略变化时重读，不为同一档内的 resize 重发字体。
+    const media = [
+      "(min-width: 48rem)",
+      "(prefers-contrast: more)",
+      "(forced-colors: active)",
+    ].map((query) => window.matchMedia(query));
+    media.forEach((query) => query.addEventListener("change", schedule));
+    observer.observe(document.documentElement, {
+      attributes: true,
+      attributeFilter: [
+        "class",
+        "style",
+        "data-accent",
+        "data-font",
+        "data-font-size",
+        "data-radius",
+        "data-motion",
+        "data-background",
+        "data-background-intensity",
+      ],
+    });
+    return () => {
+      observer.disconnect();
+      media.forEach((query) => query.removeEventListener("change", schedule));
+      cancelAnimationFrame(scheduled);
+    };
+  }, [active]);
+  const [theme, setTheme] = useState(() => readTheme(settings.motion));
+  // 外部根属性按外观变化同步，普通字段编辑不重新读取整份主题。
+  useLayoutEffect(() => {
+    if (!active) return;
+    const next = readTheme(settings.motion);
+    // 回到缓存页面时重读外观；仅完整快照不变才复用，删除变量与共享规则更新也须发送。
+    setTheme((current) =>
+      current.mode === next.mode &&
+      current.motion === next.motion &&
+      current.styles === next.styles &&
+      current.font.family === next.font.family &&
+      current.font.dataUrl === next.font.dataUrl &&
+      Object.keys(current.tokens).length === Object.keys(next.tokens).length &&
+      Object.entries(next.tokens).every(
+        ([name, value]) => current.tokens[name] === value,
+      )
+        ? current
+        : next,
+    );
+  }, [active, palette, resolvedTheme, settings.motion]);
+  const uiCheckpoint = useMemo(
+    () => (checkpoint === null ? null : (JSON.parse(checkpoint) as unknown)),
+    [checkpoint],
+  );
+  snapshot.current = {
+    type: "state",
+    value: {
+      view,
+      fields,
+      checkpoint: uiCheckpoint,
+      busy,
+      dirty,
+      active,
+      locale: getLocale(language).documentLang,
+      grantedPermissions: item.grantedPermissions,
+      theme,
+    },
+  };
+  useLayoutEffect(() => {
+    bridge.current?.send(snapshot.current);
+  }, [
+    active,
+    view,
+    fields,
+    checkpoint,
+    busy,
+    dirty,
+    language,
+    theme,
+    grantsIdentity,
+  ]);
+  useEffect(() => {
+    const prepare = (event: Event) => {
+      const detail = (event as CustomEvent<ThemeReveal>).detail;
+      if (!active || !detail || !frame.current || settings.motion === "reduced")
+        return;
+      const rectangle = frame.current.getBoundingClientRect();
+      bridge.current?.send({
+        type: "theme-transition",
+        value: {
+          ...detail,
+          x: detail.clientX - rectangle.left,
+          y: detail.clientY - rectangle.top,
+        },
+      });
+    };
+    window.addEventListener(THEME_REVEAL_EVENT, prepare);
+    return () => window.removeEventListener(THEME_REVEAL_EVENT, prepare);
+  }, [active, settings.motion]);
+  useEffect(() => {
+    let disposed = false,
+      token: string | undefined;
+    setLease(null);
+    setError(null);
+    setConnected(false);
+    setHandshakeReady(false);
+    queueMicrotask(() => {
+      if (disposed) return;
+      void openExtensionUi(
+        item.package.manifest.id,
+        commandId,
+        item.package.sha256,
+        item.generation,
+      )
+        .then((next) => {
+          token = next.token;
+          if (disposed) {
+            void closeExtensionUi(next.token).catch(() => {});
+            return;
+          }
+          setLease(next);
+        })
+        .catch((reason: unknown) => {
+          if (!disposed) setError({ kind: "diagnostic", reason });
+        });
+    });
+    return () => {
+      disposed = true;
+      bridge.current?.close();
+      bridge.current = null;
+      if (token) void closeExtensionUi(token).catch(() => {});
+    };
+  }, [
+    item.package.manifest.id,
+    item.package.sha256,
+    item.generation,
+    commandId,
+    attempt,
+  ]);
+  useLayoutEffect(() => {
+    if (!lease) return;
+    let disposed = false,
+      accepted = false;
+    const listener = (event: MessageEvent<unknown>) => {
+      if (
+        event.source !== frame.current?.contentWindow ||
+        event.origin !== "null" ||
+        typeof event.data !== "object" ||
+        event.data === null
+      )
+        return;
+      const data = event.data as Record<string, unknown>;
+      if (
+        Object.keys(data).sort().join(",") !== "type,version" ||
+        (data.type !== "starter:ready" &&
+          data.type !== "starter:failed" &&
+          data.type !== "starter:painted") ||
+        data.version !== 1
+      )
+        return;
+      if (data.type === "starter:failed") {
+        bridge.current?.close();
+        setError({ kind: "lifecycle", message: "ext.uiInitializationFailed" });
+        return;
+      }
+      if (data.type === "starter:painted") {
+        if (accepted && hasView.current) setConnected(true);
+        return;
+      }
+      if (accepted) return;
+      accepted = true;
+      setHandshakeReady(true);
+      const channel = new MessageChannel();
+      bridge.current = new ExtensionUiBridge(
+        channel.port1,
+        (request) => run.current(request),
+        (reason) => {
+          if (!disposed) setError({ kind: "diagnostic", reason });
+        },
+      );
+      frame.current?.contentWindow?.postMessage(
+        { type: "starter:connect", version: 1 },
+        "*",
+        [channel.port2],
+      );
+      bridge.current.send(snapshot.current);
+    };
+    window.addEventListener("message", listener);
+    return () => {
+      disposed = true;
+      window.removeEventListener("message", listener);
+      bridge.current?.close();
+      bridge.current = null;
+    };
+  }, [lease]);
+  const initialViewReady = view !== null;
+  useEffect(() => {
+    if (
+      !active ||
+      !lease ||
+      (handshakeReady && !initialViewReady) ||
+      connected ||
+      error
+    )
+      return;
+    let timer: number | undefined;
+    const visible = () => {
+      const rectangle = frame.current?.getBoundingClientRect();
+      return (
+        document.visibilityState === "visible" &&
+        rectangle &&
+        rectangle.bottom > 0 &&
+        rectangle.right > 0 &&
+        rectangle.top < window.innerHeight &&
+        rectangle.left < window.innerWidth
+      );
+    };
+    const check = () => {
+      if (!visible()) {
+        window.clearTimeout(timer);
+        timer = undefined;
+      } else if (timer === undefined) {
+        // 后台和缓存页面可能暂停文档初始化；重新可见时给握手 / 首绘完整预算。
+        timer = window.setTimeout(
+          () => {
+            timer = undefined;
+            if (visible()) {
+              bridge.current?.close();
+              setError({
+                kind: "lifecycle",
+                message: handshakeReady
+                  ? "ext.uiInitializationTimeout"
+                  : "ext.uiConnectionTimeout",
+              });
+            }
+          },
+          handshakeReady ? 15000 : 10000,
+        );
+      }
+    };
+    const observer =
+      typeof IntersectionObserver === "function"
+        ? new IntersectionObserver(check)
+        : undefined;
+    if (frame.current) observer?.observe(frame.current);
+    document.addEventListener("visibilitychange", check);
+    check();
+    return () => {
+      window.clearTimeout(timer);
+      observer?.disconnect();
+      document.removeEventListener("visibilitychange", check);
+    };
+  }, [active, lease, handshakeReady, initialViewReady, connected, error]);
+  useLayoutEffect(() => {
+    if (!active) return;
+    const node = frame.current;
+    if (!node) return;
+    const region = node.closest<HTMLElement>(".app-main");
+    if (!region) return;
+    let content: HTMLElement = node;
+    while (content.parentElement && content.parentElement !== region)
+      content = content.parentElement;
+    let scheduled = 0;
+    const measure = () => {
+      const rectangle = node.getBoundingClientRect();
+      // 使用实际布局的剩余空间，包含各层内边距、字号变化和后续错误提示。
+      // 加回外层滚动位置，避免收缩前残留的 scrollTop 反过来撑高内容框。
+      const trailing = Math.max(
+        0,
+        content.getBoundingClientRect().bottom - rectangle.bottom,
+      );
+      const height = Math.max(
+        1,
+        Math.floor(
+          region.getBoundingClientRect().top +
+            region.clientTop +
+            region.clientHeight -
+            rectangle.top -
+            region.scrollTop -
+            trailing,
+        ),
+      );
+      if (node.style.height !== `${height}px`)
+        node.style.height = `${height}px`;
+    };
+    const schedule = () => {
+      cancelAnimationFrame(scheduled);
+      scheduled = requestAnimationFrame(measure);
+    };
+    const observer = new ResizeObserver(schedule);
+    observer.observe(content);
+    observer.observe(region);
+    window.addEventListener("resize", schedule);
+    measure();
+    return () => {
+      observer.disconnect();
+      window.removeEventListener("resize", schedule);
+      cancelAnimationFrame(scheduled);
+    };
+  }, [active, lease, connected, error, palette]);
+  return (
+    <div
+      data-extension-custom-ui
+      data-extension-active={active}
+      className="relative min-w-0"
+    >
+      {error ? (
+        <div
+          role="alert"
+          data-surface="solid"
+          className="space-y-3 rounded-lg border p-4"
+        >
+          <p>
+            {t(
+              error.kind === "lifecycle" ? error.message : "ext.uiUnavailable",
+            )}
+          </p>
+          {error.kind === "diagnostic" ? (
+            <p className="text-sm text-muted-foreground">
+              {nativeErrorText(error.reason, t)}
+            </p>
+          ) : null}
+          <Button
+            variant="outline"
+            disabled={busy}
+            onClick={() => setAttempt((value) => value + 1)}
+          >
+            {t("common.retry")}
+          </Button>
+        </div>
+      ) : null}
+      {!error && !connected ? (
+        <div
+          data-extension-loading-layout
+          className={
+            lease ? "pointer-events-none absolute inset-0 z-10" : undefined
+          }
+        >
+          <div className="app-page-content">
+            <ExtensionLoading />
+          </div>
+        </div>
+      ) : null}
+      {lease && !error ? (
+        <iframe
+          key={lease.token}
+          ref={frame}
+          src={lease.url}
+          title={item.package.manifest.name}
+          sandbox="allow-scripts"
+          allow="camera 'none'; microphone 'none'; geolocation 'none'; clipboard-read 'none'; clipboard-write 'none'"
+          referrerPolicy="no-referrer"
+          className="block w-full border-0 bg-transparent"
+          aria-hidden={!connected}
+          tabIndex={connected ? undefined : -1}
+          style={{
+            opacity: connected ? 1 : 0,
+            pointerEvents: connected ? undefined : "none",
+          }}
+        />
+      ) : null}
+    </div>
+  );
+}

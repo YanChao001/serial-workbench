@@ -1,0 +1,387 @@
+import { useCallback, useId, useLayoutEffect, useRef, useState } from "react";
+import { matchPath, NavLink, useLocation } from "react-router-dom";
+import {
+  PanelLeftCloseIcon,
+  PanelLeftOpenIcon,
+  SearchIcon,
+} from "lucide-react";
+import { formatShortcut } from "@/commands/shortcuts";
+import { Button } from "@/components/ui/button";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { isMacOS } from "@/lib/platform";
+import {
+  SIDEBAR_MIN_WIDTH,
+  SIDEBAR_MAX_WIDTH,
+  SIDEBAR_DEFAULT_WIDTH,
+} from "@/lib/settings-model";
+import { useCommands } from "@/providers/commands";
+import { useI18n } from "@/providers/i18n";
+import { useSettings } from "@/providers/settings";
+import { NAVIGATION_GROUPS, type AppNavigationItem } from "@/routes";
+import { ExtensionChromeSlot } from "@/features/extensions/extension-chrome-slot";
+
+export function AppSidebar({
+  routes,
+  onWidthPreview,
+}: {
+  routes: readonly AppNavigationItem[];
+  /** 拖动期间同步内容区留白，最终宽度仍由设置持久化。 */
+  onWidthPreview?: (width: number | null) => void;
+}) {
+  const { t } = useI18n();
+  const { settings, update } = useSettings();
+  const { execute } = useCommands();
+  const { pathname } = useLocation();
+  const navigationId = useId();
+  const drag = useRef<{
+    id: number;
+    x: number;
+    width: number;
+    preview: number;
+  } | null>(null);
+  const [previewWidth, setPreviewWidth] = useState<number | null>(null);
+  const [tooltip, setTooltip] = useState<string | null>(null);
+  const tooltipIntent = useRef<string | null>(null);
+  const tooltipTarget = useRef<{ id: string; element: HTMLElement } | null>(
+    null,
+  );
+  const preloadTimer = useRef<number | null>(null);
+  const cancelPreload = useCallback(() => {
+    if (preloadTimer.current !== null)
+      window.clearTimeout(preloadTimer.current);
+    preloadTimer.current = null;
+  }, []);
+  function schedulePreload(preload: (() => void) | undefined) {
+    cancelPreload();
+    if (preload)
+      preloadTimer.current = window.setTimeout(() => {
+        preloadTimer.current = null;
+        preload();
+      }, 150);
+  }
+  const resizeHandle = useCallback(
+    (node: HTMLDivElement | null) => {
+      if (!node) {
+        drag.current = null;
+        setPreviewWidth(null);
+        onWidthPreview?.(null);
+      }
+    },
+    [onWidthPreview],
+  );
+  const collapsed = settings.sidebarCollapsed;
+  const width = previewWidth ?? settings.sidebarWidth;
+  // 折叠、切页和调宽先清空提示，新的悬停或聚焦再判断标签是否截断。
+  useLayoutEffect(() => {
+    tooltipIntent.current = null;
+    tooltipTarget.current = null;
+    setTooltip(null);
+    return cancelPreload;
+  }, [collapsed, pathname, width, cancelPreload]);
+  const tooltipChanged = (id: string, open: boolean) => {
+    if (open && tooltipIntent.current !== id) return;
+    setTooltip((current) => (open ? id : current === id ? null : current));
+  };
+  const trackTooltip = (id: string, target: HTMLElement) => {
+    // 同一轮指针移动只读取一次布局，完整名称也缓存为无需提示。
+    if (tooltipTarget.current?.id === id) return;
+    tooltipTarget.current = { id, element: target };
+    const label = target.querySelector<HTMLElement>(".app-sidebar-label");
+    tooltipIntent.current =
+      collapsed || (label && label.scrollWidth > label.clientWidth) ? id : null;
+  };
+  const leaveTooltip = (id: string) => {
+    if (tooltipIntent.current === id) tooltipIntent.current = null;
+    if (tooltipTarget.current?.id === id) tooltipTarget.current = null;
+  };
+  const boundedWidth = (value: number) =>
+    Math.round(Math.max(SIDEBAR_MIN_WIDTH, Math.min(SIDEBAR_MAX_WIDTH, value)));
+  const resize = (value: number) => {
+    const next = boundedWidth(value);
+    if (next !== settings.sidebarWidth) update({ sidebarWidth: next });
+  };
+  const preview = (value: number) => {
+    const next = boundedWidth(value);
+    setPreviewWidth(next);
+    onWidthPreview?.(next);
+    return next;
+  };
+  const finishResize = (commit: boolean) => {
+    const state = drag.current;
+    if (!state) return;
+    drag.current = null;
+    setPreviewWidth(null);
+    onWidthPreview?.(null);
+    if (commit) resize(state.preview);
+  };
+  const groups = NAVIGATION_GROUPS.map((group) => ({
+    ...group,
+    routes: routes.filter((route) => route.group === group.id),
+  })).filter((group) => group.routes.length > 0);
+  const firstGroup = groups[0];
+  return (
+    <aside
+      id="app-sidebar"
+      aria-label={t("layout.sidebar")}
+      data-collapsed={collapsed}
+      data-resizing={previewWidth !== null}
+      data-motion={settings.motion}
+      style={{ width: collapsed ? 56 : width }}
+      className="app-sidebar flex shrink-0 flex-col border-r border-sidebar-border text-sidebar-foreground"
+      onTransitionEnd={(event) => {
+        if (
+          event.target !== event.currentTarget ||
+          event.propertyName !== "width" ||
+          collapsed
+        )
+          return;
+        const target = tooltipTarget.current;
+        if (!target) return;
+        // 展开期间的临时截断不应在宽度稳定后继续保留提示。
+        tooltipTarget.current = null;
+        trackTooltip(target.id, target.element);
+        if (tooltipIntent.current !== target.id) setTooltip(null);
+      }}
+    >
+      <div className="app-sidebar-top relative flex shrink-0 items-center">
+        {firstGroup ? (
+          <p
+            id={`${navigationId}-${firstGroup.id}`}
+            className="app-sidebar-group-heading app-sidebar-top-heading min-w-0 flex-1"
+          >
+            <span className="app-sidebar-label min-w-0 truncate">
+              {t(firstGroup.labelKey)}
+            </span>
+          </p>
+        ) : null}
+        <Button
+          className="absolute right-3"
+          variant="ghost"
+          size="icon-sm"
+          aria-label={t(
+            collapsed ? "layout.expandSidebar" : "layout.collapseSidebar",
+          )}
+          aria-controls="app-sidebar-navigation"
+          aria-expanded={!collapsed}
+          onClick={() => void execute("toggle-sidebar")}
+        >
+          {collapsed ? <PanelLeftOpenIcon /> : <PanelLeftCloseIcon />}
+        </Button>
+      </div>
+      <nav
+        id="app-sidebar-navigation"
+        className="app-sidebar-navigation app-scroll-region min-h-0 flex-1 overflow-y-auto"
+        onWheel={() => {
+          tooltipIntent.current = null;
+          tooltipTarget.current = null;
+          setTooltip(null);
+        }}
+        onScroll={() => {
+          tooltipIntent.current = null;
+          tooltipTarget.current = null;
+          setTooltip(null);
+        }}
+      >
+        {groups.map((group) => (
+          <div
+            key={group.id}
+            role="group"
+            aria-labelledby={`${navigationId}-${group.id}`}
+            className="app-sidebar-group"
+          >
+            {group !== firstGroup ? (
+              <p
+                id={`${navigationId}-${group.id}`}
+                className="app-sidebar-group-heading"
+              >
+                <span className="app-sidebar-label">{t(group.labelKey)}</span>
+              </p>
+            ) : null}
+            <div className="space-y-0.5">
+              {group.routes.map(
+                ({ path, labelKey, label, icon: Icon, exact, preload }) => {
+                  const currentExtension =
+                    group.id === "extensions" &&
+                    !!matchPath({ path, end: exact }, pathname);
+                  return (
+                    <div
+                      key={path}
+                      data-sidebar-extension={
+                        currentExtension ? path : undefined
+                      }
+                      className={
+                        currentExtension ? "app-sidebar-extension" : undefined
+                      }
+                    >
+                      <Tooltip
+                        open={tooltip === path}
+                        onOpenChange={(open) => tooltipChanged(path, open)}
+                      >
+                        <TooltipTrigger asChild>
+                          <NavLink
+                            to={path}
+                            end={exact}
+                            className="app-sidebar-link flex h-9 items-center gap-2.5 overflow-hidden rounded-lg px-3 text-sm"
+                            onPointerEnter={() => schedulePreload(preload)}
+                            onPointerMove={(event) =>
+                              trackTooltip(path, event.currentTarget)
+                            }
+                            onFocus={(event) => {
+                              trackTooltip(path, event.currentTarget);
+                              cancelPreload();
+                              preload?.();
+                            }}
+                            onPointerLeave={() => {
+                              cancelPreload();
+                              leaveTooltip(path);
+                            }}
+                            onBlur={() => {
+                              cancelPreload();
+                              leaveTooltip(path);
+                            }}
+                          >
+                            <Icon
+                              className="size-4 shrink-0"
+                              aria-hidden="true"
+                            />
+                            <span className="app-sidebar-label min-w-0 flex-1 truncate">
+                              {label ?? t(labelKey)}
+                            </span>
+                          </NavLink>
+                        </TooltipTrigger>
+                        {tooltip === path ? (
+                          <TooltipContent side="right" className="space-y-0.5">
+                            <p className="text-[10px] opacity-65">
+                              {t(group.labelKey)}
+                            </p>
+                            <p>{label ?? t(labelKey)}</p>
+                          </TooltipContent>
+                        ) : null}
+                      </Tooltip>
+                      {currentExtension ? (
+                        <ExtensionChromeSlot
+                          placement="navigation"
+                          className="app-sidebar-extension-tools"
+                        />
+                      ) : null}
+                    </div>
+                  );
+                },
+              )}
+            </div>
+          </div>
+        ))}
+      </nav>
+      <div className="app-sidebar-tools shrink-0">
+        <Tooltip
+          open={tooltip === "commands"}
+          onOpenChange={(open) => tooltipChanged("commands", open)}
+        >
+          <TooltipTrigger asChild>
+            <button
+              type="button"
+              data-surface="control"
+              className="app-sidebar-command flex w-full items-center gap-2.5 overflow-hidden rounded-lg px-3"
+              aria-label={`${t("navContext.commands")} ${formatShortcut({ key: "k", primary: true })}`}
+              aria-keyshortcuts={isMacOS() ? "Meta+K" : "Control+K"}
+              onClick={() => void execute("command-palette")}
+              onPointerMove={(event) =>
+                trackTooltip("commands", event.currentTarget)
+              }
+              onFocus={(event) => trackTooltip("commands", event.currentTarget)}
+              onPointerLeave={() => leaveTooltip("commands")}
+              onBlur={() => leaveTooltip("commands")}
+            >
+              <SearchIcon className="size-4 shrink-0" aria-hidden="true" />
+              <span className="app-sidebar-label min-w-0 flex-1 truncate text-left">
+                {t("navContext.commands")}
+              </span>{" "}
+              <kbd className="app-sidebar-keycap" aria-hidden="true">
+                {formatShortcut({ key: "k", primary: true })}
+              </kbd>
+            </button>
+          </TooltipTrigger>
+          {tooltip === "commands" ? (
+            <TooltipContent side="right">
+              {t("navContext.commands")} ·{" "}
+              {formatShortcut({ key: "k", primary: true })}
+            </TooltipContent>
+          ) : null}
+        </Tooltip>
+      </div>
+      {!collapsed ? (
+        <div
+          ref={resizeHandle}
+          role="separator"
+          tabIndex={0}
+          aria-orientation="vertical"
+          aria-label={t("layout.resizeSidebar")}
+          aria-controls="app-sidebar"
+          aria-valuemin={SIDEBAR_MIN_WIDTH}
+          aria-valuemax={SIDEBAR_MAX_WIDTH}
+          aria-valuenow={width}
+          aria-valuetext={`${width}px`}
+          title={t("layout.resetSidebarWidth")}
+          className="absolute -right-1 top-0 z-10 h-full w-2 cursor-col-resize touch-none outline-none focus-visible:bg-primary/30"
+          onDoubleClick={() => resize(SIDEBAR_DEFAULT_WIDTH)}
+          onKeyDown={(event) => {
+            if (event.altKey || event.ctrlKey || event.metaKey) return;
+            const step = event.shiftKey ? 32 : 8;
+            const next =
+              event.key === "ArrowLeft"
+                ? width - step
+                : event.key === "ArrowRight"
+                  ? width + step
+                  : event.key === "Home"
+                    ? SIDEBAR_MIN_WIDTH
+                    : event.key === "End"
+                      ? SIDEBAR_MAX_WIDTH
+                      : event.key === "Enter"
+                        ? SIDEBAR_DEFAULT_WIDTH
+                        : null;
+            if (next === null) return;
+            event.preventDefault();
+            resize(next);
+          }}
+          onPointerDown={(event) => {
+            if (event.button !== 0) return;
+            event.preventDefault();
+            event.currentTarget.focus({ preventScroll: true });
+            const renderedWidth =
+              event.currentTarget.parentElement?.getBoundingClientRect().width;
+            const startingWidth =
+              renderedWidth && renderedWidth >= SIDEBAR_MIN_WIDTH
+                ? renderedWidth
+                : width;
+            drag.current = {
+              id: event.pointerId,
+              x: event.clientX,
+              width: startingWidth,
+              preview: preview(startingWidth),
+            };
+            event.currentTarget.setPointerCapture(event.pointerId);
+          }}
+          onPointerMove={(event) => {
+            const state = drag.current;
+            if (state?.id === event.pointerId)
+              state.preview = preview(state.width + event.clientX - state.x);
+          }}
+          onPointerUp={(event) => {
+            if (drag.current?.id !== event.pointerId) return;
+            finishResize(true);
+            if (event.currentTarget.hasPointerCapture(event.pointerId))
+              event.currentTarget.releasePointerCapture(event.pointerId);
+          }}
+          onLostPointerCapture={() => finishResize(true)}
+          onPointerCancel={(event) => {
+            if (drag.current?.id === event.pointerId) finishResize(false);
+          }}
+        />
+      ) : null}
+    </aside>
+  );
+}

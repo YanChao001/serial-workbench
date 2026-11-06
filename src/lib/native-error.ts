@@ -1,0 +1,77 @@
+import type { Translate } from "@/i18n/translate";
+import type { MessageKey } from "@/i18n/zh-CN";
+import { isRecord } from "./settings-model";
+const ERROR_KEYS: Record<string, MessageKey> = {
+  CLIPBOARD_WRITE_FAILED: "nativeError.clipboardWriteFailed",
+  MARKET_NOT_CONFIGURED: "ext.market.notConfigured",
+  MARKET_UNAVAILABLE: "ext.market.unavailable",
+  MARKET_INCOMPATIBLE: "ext.market.incompatible",
+  MARKET_EXPIRED: "ext.market.expired",
+  MARKET_INVALID: "ext.market.invalid",
+  MARKET_CHANGED: "ext.market.changed",
+  EXTENSION_INCOMPATIBLE: "ext.error.incompatible",
+  EXTENSION_RUN_FAILED: "ext.error.failed",
+  EXTENSION_TIMEOUT: "ext.error.timeout",
+  EXTENSION_BUSY: "ext.error.busy",
+  EXTENSION_UNAVAILABLE: "ext.error.unavailable",
+  EXTENSION_NETWORK_BLOCKED: "ext.error.networkBlocked",
+  EXTENSION_IMAGE_REDIRECT: "ext.error.imageRedirect",
+  EXTENSION_IMAGE_SOURCE_REJECTED: "ext.error.imageSourceRejected",
+  EXTENSION_IMAGE_INVALID: "ext.error.imageInvalid",
+  EXTENSION_IMAGE_TOO_LARGE: "ext.error.imageTooLarge",
+  EXTENSION_ATTACHMENT_TOO_LARGE: "ext.error.attachmentTooLarge",
+  EXTENSION_ATTACHMENT_CACHE_FULL: "ext.error.attachmentCacheFull",
+  EXTENSION_TRANSFER_INTERRUPTED: "ext.error.transferInterrupted",
+  INVALID_ARGUMENT: "errors.VALIDATION",
+  USER_CANCELLED: "nativeError.userCancelled",
+  CREDENTIAL_ERROR: "nativeError.credentialError",
+  WORKBENCH_BUSY: "workbench.busy",
+  NAME_REQUIRED: "errors.VALIDATION",
+  INPUT_TOO_LONG: "errors.INPUT_TOO_LONG",
+  STORAGE_IO: "errors.IO",
+  STORAGE_CORRUPT: "errors.IO",
+  DATABASE_ERROR: "errors.DATABASE",
+  PLATFORM_UNAVAILABLE: "errors.UNSUPPORTED",
+  NATIVE_BUSY: "nativeError.busy",
+  HTTP_TIMEOUT: "nativeError.httpTimeout",
+  AUTOSTART_ERROR: "errors.AUTOSTART_ERROR",
+  UPDATE_BUSY: "errors.UPDATE_BUSY",
+  UPDATE_CHECK_FAILED: "errors.UPDATE",
+  UPDATE_CHECK_TIMEOUT: "updates.checkTimeout",
+  UPDATE_FEED_UNAVAILABLE: "updates.feedUnavailable",
+  UPDATE_PLATFORM_UNAVAILABLE: "updates.platformUnavailable",
+  UPDATE_DOWNLOAD_FAILED: "errors.UPDATE",
+  UPDATE_INSTALL_FAILED: "errors.UPDATE",
+  WINDOW_ERROR: "errors.WINDOW_ERROR",
+  VALIDATION: "errors.VALIDATION",
+  CONFLICT: "errors.CONFLICT",
+  SETTINGS_CONFLICT: "errors.SETTINGS_CONFLICT",
+  NOT_FOUND: "errors.NOT_FOUND",
+  DATABASE: "errors.DATABASE",
+  IO: "errors.IO",
+  UPDATE_NOT_CONFIGURED: "errors.UPDATE_NOT_CONFIGURED",
+  UPDATE: "errors.UPDATE",
+  UNSUPPORTED: "errors.UNSUPPORTED",
+  INTERNAL: "errors.INTERNAL",
+};
+export function errorMessage(error: unknown): string {
+  if (isRecord(error) && typeof error.message === "string")
+    return error.message;
+  if (typeof error === "string") return error;
+  return "Unknown error";
+}
+export function nativeErrorText(error: unknown, t: Translate): string {
+  const key =
+    isRecord(error) &&
+    typeof error.code === "string" &&
+    Object.hasOwn(ERROR_KEYS, error.code)
+      ? ERROR_KEYS[error.code]
+      : undefined;
+  if (key) return t(key);
+  if (
+    typeof error === "string" ||
+    (isRecord(error) && typeof error.message === "string")
+  )
+    return t("common.operationFailed", { error: errorMessage(error) });
+  return t("errors.INTERNAL");
+}

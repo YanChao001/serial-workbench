@@ -1,0 +1,157 @@
+import { useState, type FormEvent } from "react";
+import { toast } from "sonner";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
+import { useI18n } from "@/providers/i18n";
+
+const OPTIONS = ["playground.optionDesign", "playground.optionCode"] as const;
+
+export function ControlStates() {
+  const { t } = useI18n();
+  const [title, setTitle] = useState("");
+  const [notes, setNotes] = useState("");
+  const [checked, setChecked] = useState(false);
+  const [selection, setSelection] = useState<readonly boolean[]>([true, false]);
+  const invalid = checked && !title.trim();
+  const all = selection.every(Boolean);
+  function validate(event: FormEvent) {
+    event.preventDefault();
+    setChecked(true);
+    if (title.trim()) toast.success(t("playground.validated"));
+  }
+  return (
+    <div className="control-states">
+      <form className="space-y-4" onSubmit={validate} noValidate>
+        <div className="space-y-2">
+          <div className="flex h-5 min-w-0 items-center gap-2">
+            <Label htmlFor="reference-title" className="shrink-0">
+              {t("playground.requiredTitle")}
+            </Label>
+            {invalid ? (
+              <div role="alert" className="min-w-0 flex-1">
+                <TooltipProvider delayDuration={650} skipDelayDuration={0}>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <button
+                        data-surface="transparent"
+                        data-variant="ghost"
+                        id="reference-title-error"
+                        type="button"
+                        className="block w-full truncate rounded-sm text-right text-xs text-destructive underline decoration-dotted underline-offset-2 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                      >
+                        {t("playground.titleRequired")}
+                      </button>
+                    </TooltipTrigger>
+                    <TooltipContent
+                      side="bottom"
+                      className="max-w-72 leading-relaxed"
+                    >
+                      {t("playground.titleRequired")}
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
+              </div>
+            ) : null}
+          </div>
+          <Input
+            id="reference-title"
+            required
+            maxLength={60}
+            value={title}
+            onChange={(event) => {
+              setTitle(event.target.value);
+              setChecked(false);
+            }}
+            aria-invalid={invalid}
+            aria-describedby={invalid ? "reference-title-error" : undefined}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="reference-notes">{t("playground.notes")}</Label>
+          <Textarea
+            id="reference-notes"
+            rows={3}
+            maxLength={240}
+            value={notes}
+            onChange={(event) => setNotes(event.target.value)}
+            aria-describedby="reference-notes-count"
+          />
+          <p
+            id="reference-notes-count"
+            className="text-xs text-muted-foreground"
+          >
+            {t("playground.characterCount", { count: notes.length, max: 240 })}
+          </p>
+        </div>
+        <Button type="submit" variant="outline">
+          {t("playground.validate")}
+        </Button>
+      </form>
+      <div className="space-y-4">
+        <div className="space-y-2">
+          <Label htmlFor="reference-readonly">{t("playground.readOnly")}</Label>
+          <Input
+            id="reference-readonly"
+            readOnly
+            value={t("playground.sampleValue")}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label htmlFor="reference-disabled">{t("playground.disabled")}</Label>
+          <Input
+            id="reference-disabled"
+            disabled
+            value={t("playground.sampleValue")}
+          />
+        </div>
+        <fieldset className="space-y-3 p-3">
+          <legend className="text-sm font-medium">
+            {t("playground.mixedSelection")}
+          </legend>
+          <Label>
+            <Checkbox
+              checked={
+                all ? true : selection.some(Boolean) ? "indeterminate" : false
+              }
+              onCheckedChange={(value) =>
+                setSelection(OPTIONS.map(() => value === true))
+              }
+            />
+            {t("playground.selectAll")}
+          </Label>
+          <div className="space-y-3 pl-6">
+            {OPTIONS.map((option, index) => (
+              <Label key={option}>
+                <Checkbox
+                  checked={selection[index]}
+                  onCheckedChange={(value) =>
+                    setSelection((current) =>
+                      current.map((item, at) =>
+                        at === index ? value === true : item,
+                      ),
+                    )
+                  }
+                />
+                {t(option)}
+              </Label>
+            ))}
+          </div>
+          <Label>
+            <Checkbox disabled />
+            {t("playground.disabledChoice")}
+          </Label>
+        </fieldset>
+        <Button disabled>{t("playground.disabledAction")}</Button>
+      </div>
+    </div>
+  );
+}

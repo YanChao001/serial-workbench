@@ -1,0 +1,32 @@
+{
+  "$schema": "../gen/schemas/desktop-schema.json",
+  "identifier": "default",
+  "description": "主 / 次窗口的 Tauri 核心与插件能力声明；自定义命令由各 Rust 入口校验",
+  "windows": ["main", "secondary"],
+  "permissions": [
+    "core:app:allow-version",
+    "core:app:allow-tauri-version",
+    "core:event:allow-listen",
+    "core:event:allow-unlisten",
+    "core:window:allow-show",
+    "core:window:allow-set-focus",
+    "core:window:allow-minimize",
+    "core:window:allow-toggle-maximize",
+    "core:window:allow-is-maximized",
+    "core:window:allow-is-fullscreen",
+    "core:window:allow-set-fullscreen",
+    "core:window:allow-close",
+    "core:window:allow-start-dragging",
+    "notification:allow-is-permission-granted",
+    "notification:allow-request-permission",
+    "notification:allow-notify",
+    "notification:allow-register-listener",
+    "notification:allow-remove-listener",
+    "clipboard-manager:allow-read-text",
+    "clipboard-manager:allow-write-text",
+    {
+      "identifier": "opener:allow-open-url",
+      "allow": [{ "url": "http://*" }, { "url": "https://*" }]
+    }
+  ]
+}

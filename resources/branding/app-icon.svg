@@ -1,0 +1,53 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="256"
+  height="256"
+  viewBox="0 0 256 256"
+  fill="none"
+>
+  <defs>
+    <clipPath id="tile">
+      <rect x="12" y="12" width="232" height="232" rx="54" />
+    </clipPath>
+  </defs>
+  <rect x="12" y="12" width="232" height="232" rx="54" fill="#BCEBDD" />
+  <g clip-path="url(#tile)">
+    <g
+      transform="translate(-3.6 7.68) scale(0.94)"
+      stroke="#4C3630"
+      stroke-width="4.6"
+      stroke-linecap="round"
+      stroke-linejoin="round"
+    >
+      <path d="M43 110C50 83 70 53 91 36c6-5 10-4 16 1l22 25Z" fill="#080A09" />
+      <path
+        d="M173 66c24-2 49-1 65 10 9 6 11 12 8 27-5 27-16 48-33 61l-8-57Z"
+        fill="#080A09"
+      />
+      <path d="M209 99c13-5 25-11 37-9-1 25-13 52-33 70Z" fill="#B0D998" />
+      <path d="M108 207c0 15-2 33-4 51h103c-4-21-14-42-29-55Z" fill="#080A09" />
+      <path
+        d="M108 216c-37-2-65-14-73-42-7-24-4-57 12-81 19-29 49-41 82-41 44-2 69 15 82 41 15 29 20 59 8 85-8 18-22 29-42 35"
+        fill="#080A09"
+      />
+      <path
+        d="m40 128 66 2c4 0 5 5 5 10v21c-1 23-11 39-32 39-25 0-41-17-42-42 0-12 1-21 3-30Z"
+        fill="#FFFFD0"
+      />
+      <path
+        d="m49 129 45 1-1 26c-1 17-8 28-21 28-16-1-25-13-25-31Z"
+        fill="#080A09"
+      />
+      <path
+        d="m123 131 75-4c8-1 10 2 11 10l1 22c0 28-16 48-43 48-26-1-46-17-48-44l-1-21c0-6 1-9 5-11Z"
+        fill="#FFFFD0"
+      />
+      <path
+        d="m134 131 59-3 1 23c0 21-9 35-27 36-20 0-32-13-34-32Z"
+        fill="#080A09"
+      />
+      <path d="M179 89c-2 8-3 20 4 23 10 4 15-7 11-23" stroke-width="4.2" />
+      <path d="m137 240 2 16m36-14 2 14" stroke-width="4" />
+    </g>
+  </g>
+</svg>

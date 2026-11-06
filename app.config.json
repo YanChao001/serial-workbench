@@ -1,0 +1,26 @@
+{
+  "schemaVersion": 1,
+  "name": "Serial Workbench",
+  "shortName": "Serial Workbench",
+  "packageName": "serial-workbench",
+  "identifier": "io.github.yanchao001.serialworkbench",
+  "description": "A cross-platform serial workbench",
+  "author": "YanChao",
+  "repositoryUrl": "https://github.com/YanChao001/serial-workbench",
+  "docsUrl": "https://github.com/YanChao001/serial-workbench/blob/develop/docs/README.md",
+  "homepageUrl": "https://github.com/YanChao001/serial-workbench",
+  "browserStorageNamespace": "serial-workbench",
+  "integration": {
+    "deepLinkScheme": "serial-workbench",
+    "fileExtension": "swbench"
+  },
+  "defaultMode": "demo",
+  "updates": {
+    "endpoint": "",
+    "publicKey": ""
+  },
+  "extensionMarket": {
+    "repository": "",
+    "publicKey": ""
+  }
+}

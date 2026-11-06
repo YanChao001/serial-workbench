@@ -1,0 +1,13 @@
+<svg
+  xmlns="http://www.w3.org/2000/svg"
+  width="150"
+  height="57"
+  viewBox="0 0 150 57"
+  fill="none"
+>
+  <path fill="#FFFFFF" d="M0 0h150v57H0z" />
+  <path d="M-12 57C14 21 44 25 68 45s49 18 82-3v15H-12Z" fill="#E4F8EF" />
+  <path d="M-12 59C17 33 39 32 62 49" stroke="#A6E5CE" />
+  <circle cx="79" cy="17" r="3" fill="#B5EED6" />
+  <image href="app-icon.svg" x="100" y="5" width="46" height="46" />
+</svg>
