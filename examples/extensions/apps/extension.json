@@ -4,7 +4,7 @@
   "id": "starter.extension-lab",
   "version": "2.4.2",
   "name": "本地工作台",
-  "author": "Tauri Desktop Starter",
+  "author": "Serial Workbench",
   "description": "组织创意画布、探索数据图表和模拟处理流程，支持草稿恢复与成果导出。",
   "icon": "notebook",
   "commands": [
@@ -23,7 +23,7 @@
     }
   ],
   "permissions": [],
-  "minHostVersion": "0.1.5",
+  "minHostVersion": "0.1.0",
   "optionalPermissions": [],
   "network": []
 }

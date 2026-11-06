@@ -7,6 +7,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -154,7 +155,7 @@ describe("TitleBar 窗口订阅", () => {
     expect(isWindowMaximized).toHaveBeenCalledOnce();
   });
 
-  it("keeps close-window separate from explicit application quit", async () => {
+  it("keeps only Settings and Quit in File and separates application quit from closing the window", async () => {
     vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
     vi.mocked(isWindowMaximized).mockResolvedValue(false);
     renderTitleBar();
@@ -164,10 +165,33 @@ describe("TitleBar 窗口订阅", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "title.file" }), {
       key: "ArrowDown",
     });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "title.quit" }),
-    );
+    const menu = await screen.findByRole("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveAccessibleName(/^title.settings/);
+    expect(items[1]).toHaveAccessibleName("title.quit");
+    expect(within(menu).queryByRole("separator")).not.toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "title.quit" }));
     expect(quitApp).toHaveBeenCalledOnce();
+  });
+
+  it("keeps File, View and Help menus without the unused Edit menu", () => {
+    vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
+    renderTitleBar();
+    const menuBar = screen.getByRole("navigation", { name: APP_CONFIG.name });
+    expect(within(menuBar).getAllByRole("button")).toHaveLength(3);
+    expect(
+      within(menuBar).getByRole("button", { name: "title.file" }),
+    ).toBeVisible();
+    expect(
+      within(menuBar).getByRole("button", { name: "title.view" }),
+    ).toBeVisible();
+    expect(
+      within(menuBar).getByRole("button", { name: "title.help" }),
+    ).toBeVisible();
+    expect(
+      within(menuBar).queryByRole("button", { name: "title.edit" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the shared brand icon without repeating the application name as title text", () => {
@@ -181,7 +205,7 @@ describe("TitleBar 窗口订阅", () => {
     expect(screen.getByRole("button", { name: "title.file" })).toBeVisible();
   });
 
-  it("keeps language, theme and native controls without host navigation in a standalone window", () => {
+  it("keeps theme and native controls without host navigation in a standalone window", () => {
     vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
     renderTitleBar(true);
     expect(
@@ -193,8 +217,8 @@ describe("TitleBar 窗口订阅", () => {
       screen.getByRole("button", { name: "title.toggleTheme" }),
     ).toBeVisible();
     expect(
-      screen.getByRole("combobox", { name: "common.language" }),
-    ).toBeVisible();
+      screen.queryByRole("combobox", { name: "common.language" }),
+    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: "title.toggleTheme" }));
     expect(theme.toggle).toHaveBeenCalledOnce();
     fireEvent.click(screen.getByRole("button", { name: "title.minimize" }));

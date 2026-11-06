@@ -25,22 +25,41 @@ describe("路由配置与匹配", () => {
     expect(matchRoute("/desktop-tools").path).toBe("/");
     expect(matchRoute("/unknown").path).toBe("/");
   });
-  it("诊断与恢复只有一个可见导航，同时保留旧恢复路径", () => {
+  it("只展示首页、插件与设置，诊断和恢复保留为设置内入口", () => {
+    expect(
+      APP_ROUTES.filter((route) => !route.hidden).map((route) => route.path),
+    ).toEqual(["/", "/extensions", "/settings"]);
     expect(
       APP_ROUTES.filter(
-        (route) =>
-          !route.hidden && ["/diagnostics", "/recovery"].includes(route.path),
+        (route) => !route.hidden && route.navigationPlacement !== "footer",
       ).map((route) => route.path),
-    ).toEqual(["/diagnostics"]);
+    ).toEqual(["/", "/extensions"]);
+    expect(
+      APP_ROUTES.filter(
+        (route) => !route.hidden && route.navigationPlacement === "footer",
+      ).map((route) => route.path),
+    ).toEqual(["/settings"]);
+    expect(matchRoute("/diagnostics")).toMatchObject({ hidden: true });
     expect(matchRoute("/recovery")).toMatchObject({
       path: "/recovery",
       hidden: true,
     });
   });
-  it("动效、功能导览和简单通信示例不重复占用主导航", () => {
-    for (const path of ["/motion", "/catalog", "/bridge"])
-      expect(matchRoute(path)).toMatchObject({ path, hidden: true });
-    expect(matchRoute("/components").hidden).not.toBe(true);
+  it("移除演示路由，旧链接回到首页", () => {
+    for (const path of [
+      "/motion",
+      "/catalog",
+      "/bridge",
+      "/components",
+      "/database",
+      "/tasks",
+      "/workbench",
+      "/system",
+      "/network",
+      "/data-studio",
+      "/media",
+    ])
+      expect(matchRoute(path).path).toBe("/");
   });
   it("按命令类型、侧栏声明和可选授权过滤扩展入口", () => {
     const item: ExtensionInfo = {

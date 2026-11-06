@@ -4,6 +4,7 @@ import AxeBuilder from "@axe-core/playwright";
 import appConfig from "../../app.config.json" with { type: "json" };
 import type {
   DesktopStatus,
+  DiagnosticsReport,
   UpdateProgress,
   UpdateStatus,
   Wallpaper,
@@ -111,6 +112,18 @@ async function seedUpdateFixture(
     autostartSupported: true,
     runInBackground: false,
   };
+  const diagnostics: DiagnosticsReport = {
+    appVersion: status.currentVersion,
+    tauriVersion: "2.0.0",
+    platform: "browser-fixture",
+    architecture: "test",
+    windowLabel: "main",
+    settingsRevision: 1,
+    desktop: desktopStatus,
+    autostartEnabled: false,
+    updaterConfigured: status.configured,
+    recentLogs: "",
+  };
   const viewport = page.viewportSize();
   const geometry: WindowGeometry = {
     width: viewport?.width ?? 1120,
@@ -131,6 +144,7 @@ async function seedUpdateFixture(
       updateSnapshot,
       appVersion,
       desktop,
+      diagnosticsReport,
       windowGeometry,
       images,
     }) => {
@@ -183,6 +197,8 @@ async function seedUpdateFixture(
                 return { revision: 1, settings };
               case "get_desktop_status":
                 return desktop;
+              case "get_diagnostics_report":
+                return diagnosticsReport;
               case "get_window_geometry":
                 return windowGeometry;
               case "list_wallpapers":
@@ -191,17 +207,13 @@ async function seedUpdateFixture(
                 return {
                   active: false,
                   reason: null,
-                  restored: false,
                   pending: false,
-                  notes: 0,
                   archiveId: null,
                 };
               case "get_workspace":
                 return { routes: {}, secondaryOpen: false };
               case "activation_snapshot":
                 return [];
-              case "workbench_task_snapshot":
-                return { revision: 0, tasks: [], active: 0, queued: 0 };
               case "get_update_snapshot":
                 return updateSnapshot;
               case "extension_snapshot":
@@ -233,6 +245,7 @@ async function seedUpdateFixture(
       updateSnapshot: snapshot,
       appVersion: status.currentVersion,
       desktop: desktopStatus,
+      diagnosticsReport: diagnostics,
       windowGeometry: geometry,
       images: wallpapers,
     },

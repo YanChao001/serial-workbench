@@ -2,11 +2,11 @@
   "manifest": {
     "formatVersion": 3,
     "apiVersion": 2,
-    "minHostVersion": "0.1.4",
+    "minHostVersion": "0.1.0",
     "id": "market.registry-fixture",
     "version": "1.0.0",
     "name": "市场校验夹具",
-    "author": "Tauri Desktop Starter",
+    "author": "Serial Workbench",
     "description": "仅用于离线验签和市场安装校验的测试扩展。",
     "icon": "puzzle",
     "commands": [

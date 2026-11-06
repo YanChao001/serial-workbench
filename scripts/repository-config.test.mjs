@@ -120,6 +120,42 @@ test("unknown templates stop synchronization before changing a managed file", (t
   assert.equal(readFileSync(join(root, "README.md"), "utf8"), before);
 });
 
+test("a single main branch produces one CI target and remains synchronized", (t) => {
+  const { root, write, config } = fixture(t);
+  config.hosting.defaultBranch = "main";
+  config.hosting.releaseBranch = "main";
+  write("repository.config.json", config);
+  const result = run(root, "sync");
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    readFileSync(join(root, ".github/workflows/ci.yml"), "utf8"),
+    /branches: \[main\]/,
+  );
+  assert.equal(run(root, "check").status, 0);
+  assert.match(run(root, "sync").stdout, /already synchronized/i);
+});
+
+for (const path of [
+  ".github/workflows/pages.yml",
+  ".github/workflows-disabled/pages.yml",
+]) {
+  test(`Pages branch settings remain managed at ${path}`, (t) => {
+    const { root, write, config } = fixture(t);
+    write(
+      path,
+      "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: github.ref == 'refs/heads/develop'\n",
+    );
+    config.hosting.defaultBranch = "integration";
+    write("repository.config.json", config);
+    const result = run(root, "sync");
+    assert.equal(result.status, 0, result.stderr);
+    const content = readFileSync(join(root, path), "utf8");
+    assert.match(content, /branches: \[integration\]/);
+    assert.match(content, /if: github\.ref == 'refs\/heads\/integration'/);
+    assert.equal(run(root, "check").status, 0);
+  });
+}
+
 test("release asset parsing rejects control characters rather than publishing their encoded names", () => {
   assert.throws(() =>
     releaseAssetFromUrl(
@@ -170,6 +206,11 @@ for (const [name, path, content] of [
   [
     "Pages condition structure drift",
     ".github/workflows/pages.yml",
+    "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: ${{ github.ref == 'refs/heads/stale-branch' }}\n",
+  ],
+  [
+    "Disabled Pages condition structure drift",
+    ".github/workflows-disabled/pages.yml",
     "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: ${{ github.ref == 'refs/heads/stale-branch' }}\n",
   ],
   [

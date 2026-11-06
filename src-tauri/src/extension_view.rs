@@ -692,94 +692,9 @@ mod tests {
         assert!(ExtensionView::parse(&script.to_string()).is_err());
     }
 
-    fn wasm_request(request: serde_json::Value) -> NativeResult<ExtensionView> {
-        let output = crate::extension_runtime::run(
-            include_bytes!("../../resources/extensions/demo-apps.wasm"),
-            "lab",
-            &serde_json::to_vec(&request).unwrap(),
-            std::sync::Arc::new(std::sync::atomic::AtomicBool::new(false)),
-        )?;
-        ExtensionView::parse(&output)
-    }
-    #[test]
-    fn bundled_workspace_exports_unicode_json_and_safe_csv_in_real_wasm() {
-        let workspace = serde_json::json!({
-            "schema": 1,
-            "name": "工作成果",
-            "columns": ["label", "value"],
-            "rows": [["Hello 世界, \"draft\"\nnext", "=1+1"]],
-        });
-        let source = workspace.to_string();
-        for format in ["json", "csv"] {
-            let view = wasm_request(serde_json::json!({
-                "version": 2, "state": "", "locale": "zh-CN",
-                "action": "workspace-export",
-                "fields": {"workspace": source, "workspace-format": format},
-            }))
-            .unwrap();
-            assert!(view.errors.is_empty());
-            assert!(view.effects.is_empty());
-            assert_eq!(view.artifacts.len(), 1);
-            let artifact = &view.artifacts[0];
-            assert_eq!(artifact.name, format!("workspace.{format}"));
-            let content = validate_artifact(artifact).unwrap();
-            if format == "json" {
-                assert_eq!(
-                    serde_json::from_slice::<serde_json::Value>(&content).unwrap(),
-                    workspace,
-                );
-            } else {
-                assert_eq!(
-                    String::from_utf8(content).unwrap(),
-                    "\"label\",\"value\"\r\n\"Hello 世界, \"\"draft\"\"\nnext\",\"'=1+1\"",
-                );
-            }
-            assert_eq!(
-                view.fields
-                    .iter()
-                    .find(|field| field.id == "workspace")
-                    .unwrap()
-                    .value,
-                source,
-            );
-        }
-    }
-    #[test]
-    fn bundled_workspace_renders_and_restores_in_both_languages() {
-        for locale in ["zh-CN", "en"] {
-            let initial = wasm_request(serde_json::json!({
-                "version": 2, "state": "", "action": null, "fields": {}, "locale": locale,
-            }))
-            .unwrap();
-            assert_eq!(
-                initial.display,
-                if locale == "en" {
-                    "Interactive studio"
-                } else {
-                    "交互工作台"
-                },
-            );
-            assert!(initial.tabs.is_empty());
-            assert!(initial.effects.is_empty());
-            assert!(initial.artifacts.is_empty());
-            assert_eq!(initial.fields.len(), 2);
-            assert_eq!(initial.groups[0].actions[0].id, "workspace-export");
-            let restored = wasm_request(serde_json::json!({
-                "version": 2, "state": initial.state, "action": null, "locale": locale,
-                "fields": {"workspace": "{ unfinished draft", "workspace-format": "csv"},
-            }))
-            .unwrap();
-            assert_eq!(restored.state, initial.state);
-            assert_eq!(restored.display, initial.display);
-            assert!(restored.effects.is_empty());
-            assert!(restored.artifacts.is_empty());
-            assert_eq!(restored.fields[0].value, "{ unfinished draft");
-            assert_eq!(restored.fields[1].value, "csv");
-        }
-    }
     #[test]
     fn rich_views_reject_invalid_tabs_tables_and_select_values() {
-        // 宿主协议校验使用独立样本，不依赖内置工作台当前展示哪些控件。
+        // 宿主协议校验使用独立样本，覆盖隔离界面的通用控件。
         let base = serde_json::json!({
             "version": 2, "state": "", "display": "Protocol fixture", "description": "",
             "groups": [],
@@ -888,52 +803,6 @@ mod tests {
                 ExtensionView::parse(&view.to_string()).is_ok(),
                 ["true", "false"].contains(&value),
                 "{value}"
-            );
-        }
-    }
-    #[test]
-    fn bundled_workspace_preserves_invalid_export_input_for_repair() {
-        let initial = wasm_request(serde_json::json!({
-            "version": 2, "state": "", "fields": {}, "locale": "en", "action": null,
-        }))
-        .unwrap();
-        for source in [
-            "{ unfinished draft",
-            r#"{"schema":1,"name":"Draft","columns":["a"],"rows":[["keep","extra"]]}"#,
-        ] {
-            let rejected = wasm_request(serde_json::json!({
-                "version": 2, "state": initial.state, "locale": "en",
-                "action": "workspace-export", "fields": {"workspace": source, "workspace-format": "json"},
-            }))
-            .unwrap();
-            assert!(rejected.errors.contains_key("workspace"));
-            assert!(rejected.effects.is_empty());
-            assert!(rejected.artifacts.is_empty());
-            assert_eq!(rejected.state, initial.state);
-            assert_eq!(rejected.fields[0].value, source);
-        }
-    }
-    #[test]
-    fn bundled_workspace_rejects_unknown_actions_fields_and_sessions() {
-        let base = serde_json::json!({
-            "version": 2, "state": "", "fields": {}, "locale": "en", "action": null,
-        });
-        for (key, value) in [
-            ("action", serde_json::json!("fetch-todo")),
-            ("fields", serde_json::json!({"todo": "retained input"})),
-            ("fields", serde_json::json!({"workspace-format": "exe"})),
-            ("state", serde_json::json!(r#"{"schema":99}"#)),
-            (
-                "state",
-                serde_json::json!(r#"{"schema":4,"unexpected":true}"#),
-            ),
-        ] {
-            let mut request = base.clone();
-            request[key] = value;
-            assert_eq!(
-                wasm_request(request).unwrap_err().code,
-                ErrorCode::ExtensionRunFailed,
-                "{key}",
             );
         }
     }

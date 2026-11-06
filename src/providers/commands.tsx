@@ -12,11 +12,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpenIcon,
   AppWindowIcon,
-  CheckIcon,
   Code2Icon,
   CommandIcon,
-  CopyIcon,
-  DatabaseIcon,
   DownloadIcon,
   ExpandIcon,
   InfoIcon,
@@ -28,7 +25,6 @@ import {
   MoonIcon,
   PanelLeftIcon,
   PanelTopIcon,
-  RefreshCwIcon,
   SettingsIcon,
   SunIcon,
   SunMoonIcon,
@@ -46,7 +42,6 @@ import { SETTINGS_SEARCH_ENTRIES } from "@/commands/settings-search";
 import { useLatestTranslator } from "@/hooks/use-latest-translator";
 import { useThemeSwitch } from "@/hooks/use-theme-switch";
 import { useFullscreen } from "@/hooks/use-fullscreen";
-import { copyText } from "@/lib/clipboard";
 import { nativeErrorText } from "@/lib/native-error";
 import {
   closeWindow,
@@ -68,9 +63,6 @@ const STANDALONE_COMMANDS = new Set([
   "minimize-window",
   "toggle-maximize",
   "close-window",
-  "reload",
-  "copy-link",
-  "select-all",
 ]);
 
 export function CommandsProvider({ children }: { children: ReactNode }) {
@@ -95,10 +87,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const builtins = useMemo<AppCommand[]>(
     () => [
       ...APP_ROUTES.filter(
-        (route) =>
-          route.path !== "/settings" &&
-          !route.hidden &&
-          (settings.appMode !== "minimal" || !route.demoOnly),
+        (route) => route.path !== "/settings" && !route.hidden,
       ).map((route) => ({
         id: `navigate:${route.path}`,
         labelKey: route.labelKey,
@@ -130,7 +119,10 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         group: "navigation",
         icon: SettingsIcon,
         shortcuts: [{ key: ",", primary: true }],
-        run: () => navigate("/settings"),
+        run: () =>
+          navigate("/settings?focus=search", {
+            replace: pathname === "/settings",
+          }),
       },
       {
         id: "toggle-sidebar",
@@ -188,14 +180,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         run: () => setTheme(theme),
       })),
       {
-        id: "reload",
-        labelKey: "title.reload",
-        group: "window",
-        icon: RefreshCwIcon,
-        shortcuts: [{ key: "r", primary: true }],
-        run: () => window.location.reload(),
-      },
-      {
         id: "minimize-window",
         labelKey: "title.minimize",
         group: "window",
@@ -226,31 +210,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         icon: LogOutIcon,
         available: isTauri,
         run: quitApp,
-      },
-      {
-        id: "copy-link",
-        labelKey: "title.copyLink",
-        group: "help",
-        icon: CopyIcon,
-        run: async () => {
-          await copyText(window.location.href);
-          toast.success(t("common.copied"));
-        },
-      },
-      {
-        id: "select-all",
-        labelKey: "title.selectAll",
-        group: "help",
-        icon: CheckIcon,
-        run: () => {
-          const active = document.activeElement;
-          if (
-            active instanceof HTMLInputElement ||
-            active instanceof HTMLTextAreaElement
-          )
-            active.select();
-          else document.execCommand("selectAll");
-        },
       },
       {
         id: "open-docs",
@@ -288,13 +247,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         run: () => navigate("/settings?focus=windows"),
       },
       {
-        id: "open-database",
-        labelKey: "commands.openDatabase",
-        group: "tools",
-        icon: DatabaseIcon,
-        run: () => navigate("/database"),
-      },
-      {
         id: "check-updates",
         labelKey: "commands.checkUpdates",
         group: "tools",
@@ -304,14 +256,13 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     ],
     [
       navigate,
+      pathname,
       fullscreen,
       changeFullscreen,
       resolvedTheme,
       setTheme,
-      settings.appMode,
       settings.menuBar,
       settings.sidebarCollapsed,
-      t,
       update,
     ],
   );

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
-  ExternalLinkIcon,
   MonitorIcon,
   MoonIcon,
   RotateCcwIcon,
@@ -13,7 +12,6 @@ import {
   ALargeSmallIcon,
   ActivityIcon,
   MenuIcon,
-  LayersIcon,
   PanelLeftCloseIcon,
   MoveHorizontalIcon,
   LocateIcon,
@@ -28,7 +26,6 @@ import { SettingsPersistence } from "@/components/settings-persistence";
 import { DesktopSettings } from "@/components/desktop-settings";
 import { UpdateSettings } from "@/components/update-settings";
 import { SettingLabel, SettingRow } from "@/components/setting-row";
-import { ExternalLink } from "@/components/external-link";
 import { useThemeSwitch } from "@/hooks/use-theme-switch";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -76,6 +73,7 @@ import {
 } from "@/lib/tauri";
 import { nativeErrorText } from "@/lib/native-error";
 import { cn } from "@/lib/utils";
+import { DiagnosticsContent } from "./diagnostics";
 
 const THEMES = [
   { value: "light", labelKey: "title.light", icon: SunIcon },
@@ -90,19 +88,12 @@ const FONT_OPTIONS = [
   { value: "mono", labelKey: "settings.fontMono" },
 ] as const;
 
-const LINKS = [
-  { label: "Tauri", url: "https://v2.tauri.app/" },
-  { label: "shadcn/ui", url: "https://ui.shadcn.com/" },
-  { label: "Tailwind CSS", url: "https://tailwindcss.com/" },
-];
-
 export default function Settings() {
   const { t } = useI18n();
   const translateLatest = useLatestTranslator();
   const { theme, setTheme } = useThemeSwitch();
   const { settings, update, reset } = useSettings();
   const [version, setVersion] = useState("—");
-  const [tauriVersion, setTauriVersion] = useState("—");
   const [confirmReset, setConfirmReset] = useState(false);
   const [windowGeometry, setGeometry] = useState<WindowGeometry | null>(null);
   const [windowError, setWindowError] = useState<unknown>(null);
@@ -278,7 +269,6 @@ export default function Settings() {
         const info = await getAppInfo();
         if (cancelled) return;
         setVersion(info.version);
-        setTauriVersion(info.tauriVersion);
       } catch (error) {
         console.error("读取版本信息失败", error);
       }
@@ -290,10 +280,7 @@ export default function Settings() {
 
   return (
     <div className="studio-page settings-studio">
-      <div className="studio-intro">
-        <h2>{t("settings.title")}</h2>
-        <p>{t("settings.subtitle")}</p>
-      </div>
+      <h1 className="sr-only">{t("settings.title")}</h1>
 
       <SettingsSearch />
       <SettingsPersistence />
@@ -473,29 +460,6 @@ export default function Settings() {
               onCheckedChange={(checked) => update({ menuBar: checked })}
               aria-label={t("settings.menuBar")}
             />
-          </SettingRow>
-          <SettingRow
-            id="settings-appMode"
-            icon={LayersIcon}
-            label={t("settings.appMode")}
-            hint={t("settings.appModeDescription")}
-          >
-            <ToggleGroup
-              type="single"
-              aria-label={t("settings.appMode")}
-              value={settings.appMode}
-              onValueChange={(value) => {
-                if (value === "demo" || value === "minimal")
-                  update({ appMode: value });
-              }}
-            >
-              <ToggleGroupItem value="demo">
-                {t("settings.modeDemo")}
-              </ToggleGroupItem>
-              <ToggleGroupItem value="minimal">
-                {t("settings.modeMinimal")}
-              </ToggleGroupItem>
-            </ToggleGroup>
           </SettingRow>
           <SettingRow
             icon={PanelLeftCloseIcon}
@@ -745,9 +709,6 @@ export default function Settings() {
               <SettingRow label={t("settings.appVersion")}>
                 <span className="font-mono text-xs">{version}</span>
               </SettingRow>
-              <SettingRow label={t("settings.tauriVersion")}>
-                <span className="font-mono text-xs">{tauriVersion}</span>
-              </SettingRow>
               <SettingRow label={t("settings.environment")}>
                 <Badge variant="outline" className="font-normal">
                   {isTauri() ? t("app.native") : t("app.preview")}
@@ -755,32 +716,28 @@ export default function Settings() {
               </SettingRow>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader>
-              <CardTitle className="text-sm">{t("settings.links")}</CardTitle>
-            </CardHeader>
-            <CardContent className="space-y-1">
-              {LINKS.map((link) => (
-                <ExternalLink
-                  key={link.url}
-                  href={link.url}
-                  className="flex w-full flex-wrap items-center justify-between gap-x-3 gap-y-1 rounded-md px-2 py-1.5 text-sm transition-colors hover:bg-(--surface-state-hover) focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-                >
-                  <span>{link.label}</span>{" "}
-                  <span className="flex min-w-0 items-center gap-1.5 break-all font-mono text-xs text-muted-foreground">
-                    {new URL(link.url).host}
-                    <ExternalLinkIcon
-                      className="size-3 shrink-0"
-                      aria-hidden="true"
-                    />
-                  </span>
-                </ExternalLink>
-              ))}
-            </CardContent>
-          </Card>
         </div>
       </details>
+
+      <fieldset
+        data-surface="panel"
+        id="settings-recovery"
+        tabIndex={-1}
+        className="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <legend className="text-sm font-medium">
+          {t("shell.diagnostics")}
+        </legend>
+        <div className="space-y-3">
+          {native ? (
+            <DiagnosticsContent />
+          ) : (
+            <p className="text-sm text-muted-foreground">
+              {t("native.description")}
+            </p>
+          )}
+        </div>
+      </fieldset>
 
       <Card className="flex-row items-center justify-between gap-4 px-4 py-3">
         <p className="min-w-0 text-sm">{t("common.reset")}</p>

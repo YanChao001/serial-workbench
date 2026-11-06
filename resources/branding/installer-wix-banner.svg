@@ -6,7 +6,6 @@
   fill="none"
 >
   <path fill="#FFFFFF" d="M0 0h370v44H0z" />
-  <path d="M322 44c15-15 32-18 48-10v10H322Z" fill="#E4F8EF" />
-  <path d="M0 43.5h370" stroke="#CDEDE0" />
+  <path d="M0 43.5h370" stroke="#D6E4EC" />
   <image href="app-icon.svg" x="332" y="4" width="35" height="35" />
 </svg>

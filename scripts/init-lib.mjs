@@ -21,7 +21,6 @@ const FIELDS = new Set([
   "homepageUrl",
   "browserStorageNamespace",
   "integration",
-  "defaultMode",
   "updates",
   "extensionMarket",
 ]);
@@ -88,8 +87,6 @@ export function validateAppConfig(config) {
     config.identifier.length > 200
   )
     throw new Error("identifier 必须是至少三段的反向域名标识符");
-  if (!["demo", "minimal"].includes(config.defaultMode))
-    throw new Error("defaultMode 必须是 demo 或 minimal");
   https(config.repositoryUrl, "repositoryUrl");
   https(config.docsUrl, "docsUrl");
   https(config.homepageUrl, "homepageUrl");
@@ -102,12 +99,10 @@ export function validateAppConfig(config) {
     );
   if (
     !object(config.integration) ||
-    Object.keys(config.integration).some(
-      (key) => !["deepLinkScheme", "fileExtension"].includes(key),
-    )
+    Object.keys(config.integration).some((key) => key !== "deepLinkScheme")
   )
-    throw new Error("integration 仅允许 deepLinkScheme 与 fileExtension");
-  for (const key of ["deepLinkScheme", "fileExtension"])
+    throw new Error("integration 仅允许 deepLinkScheme");
+  for (const key of ["deepLinkScheme"])
     if (
       typeof config.integration[key] !== "string" ||
       !/^[a-z][a-z0-9-]{0,63}$/.test(config.integration[key])
@@ -135,41 +130,6 @@ export function validateAppConfig(config) {
     ].includes(config.integration.deepLinkScheme)
   )
     throw new Error("integration.deepLinkScheme 不能占用系统或 WebView 协议");
-  if (
-    [
-      "exe",
-      "com",
-      "bat",
-      "cmd",
-      "msi",
-      "ps1",
-      "lnk",
-      "url",
-      "txt",
-      "json",
-      "md",
-      "markdown",
-      "log",
-      "csv",
-      "png",
-      "jpg",
-      "jpeg",
-      "gif",
-      "webp",
-      "svg",
-      "pdf",
-      "html",
-      "tsv",
-      "rs",
-      "ts",
-      "js",
-      "css",
-      "toml",
-      "yaml",
-      "yml",
-    ].includes(config.integration.fileExtension)
-  )
-    throw new Error("integration.fileExtension 必须使用应用专用扩展名");
   if (
     !object(config.updates) ||
     Object.keys(config.updates).some(
@@ -350,33 +310,6 @@ function nativeMetadata(config, file, current, next) {
       ],
     };
   }
-  if (file === "tauri.conf.json" || config.bundle?.fileAssociations) {
-    config.bundle ??= {};
-    const associations = config.bundle.fileAssociations ?? [];
-    const previous = associations.find((entry) =>
-      entry.ext?.includes(current.integration.fileExtension),
-    );
-    const association = {
-      ...previous,
-      ext: [
-        ...new Set([
-          ...(previous?.ext ?? []).map((extension) =>
-            extension === current.integration.fileExtension
-              ? next.integration.fileExtension
-              : extension,
-          ),
-          next.integration.fileExtension,
-        ]),
-      ],
-      name: `${next.name} Document`,
-      description: `UTF-8 ${next.name} document`,
-      role: "Editor",
-      mimeType: `application/x-${next.integration.fileExtension}`,
-    };
-    config.bundle.fileAssociations = previous
-      ? associations.map((entry) => (entry === previous ? association : entry))
-      : [...associations, association];
-  }
   if (Array.isArray(config.app?.windows))
     for (const window of config.app.windows)
       if (window.label === "main") window.title = next.name;
@@ -473,10 +406,10 @@ function updateLaunch(content, next) {
 
 const ENTRY_POINTS = [
   ["src-tauri/src/main.rs", "run("],
+  ["src-tauri/src/main.rs", "extension_runtime::worker_main("],
   ["src-tauri/src/bin/export-bindings.rs", "bindings::export("],
   ["src-tauri/src/bin/verify-updater.rs", "update_signature::verify_manifest("],
   ["src-tauri/src/bin/extension-tool.rs", "{"],
-  ["src-tauri/src/bin/device_tool.rs", "{"],
 ];
 const libraryReference = (library, suffix) =>
   new RegExp(
@@ -577,11 +510,7 @@ export function checkInitialization(root) {
 }
 
 /** 先解析、校验所有目标，再生成有限位置的变更；不会全局替换源码。 */
-export function prepareInitialization(
-  root,
-  patch = {},
-  { minimal = false } = {},
-) {
+export function prepareInitialization(root, patch = {}) {
   root = realpathSync(root);
   if (!object(patch)) throw new Error("--config 必须是 JSON 对象");
   for (const key of Object.keys(patch))
@@ -626,9 +555,7 @@ export function prepareInitialization(
     ...patch,
     integration: {
       ...current.integration,
-      ...(identityChanged
-        ? { deepLinkScheme: derivedName, fileExtension: derivedName }
-        : {}),
+      ...(identityChanged ? { deepLinkScheme: derivedName } : {}),
       ...patch.integration,
     },
     updates: {
@@ -647,7 +574,6 @@ export function prepareInitialization(
       ...(marketRepositoryChanged ? { publicKey: "" } : {}),
       ...patch.extensionMarket,
     },
-    ...(minimal ? { defaultMode: "minimal" } : {}),
   });
   const outputs = new Map([["app.config.json", json(next)]]);
   const pkg = JSON.parse(read("package.json"));
@@ -701,7 +627,7 @@ export function prepareInitialization(
   for (const [path, suffix] of ENTRY_POINTS) {
     if (path !== "src-tauri/src/main.rs" && !existsSync(join(root, path)))
       continue;
-    const content = read(path);
+    const content = outputs.get(path) ?? read(path);
     const reference = libraryReference(oldLib, suffix);
     if ([...content.matchAll(reference)].length !== 1)
       throw new Error(`${path} 必须恰有一个当前库的 ${suffix} 入口`);

@@ -139,30 +139,35 @@ export function prepareRepositorySync(root) {
     return content.replace(
       pattern,
       (_, prefix) =>
-        `${prefix}[${config.hosting.defaultBranch}, ${config.hosting.releaseBranch}]`,
+        `${prefix}[${[...new Set([config.hosting.defaultBranch, config.hosting.releaseBranch])].join(", ")}]`,
     );
   });
-  edit(".github/workflows/pages.yml", (content) => {
-    const branches = /^(\s*branches: )\[[^\r\n]*\]$/gm;
-    const condition = /(^\s*if: github\.ref == ')refs\/heads\/[^'\r\n]+(')/gm;
-    if (
-      [...content.matchAll(branches)].length !== 1 ||
-      [...content.matchAll(condition)].length !== 1
-    )
-      throw new Error(
-        "Pages branch filter and deployment condition must remain managed",
-      );
-    return content
-      .replace(
-        branches,
-        (_, prefix) => `${prefix}[${config.hosting.defaultBranch}]`,
+  for (const workflowPath of [
+    ".github/workflows/pages.yml",
+    ".github/workflows-disabled/pages.yml",
+  ]) {
+    edit(workflowPath, (content) => {
+      const branches = /^(\s*branches: )\[[^\r\n]*\]$/gm;
+      const condition = /(^\s*if: github\.ref == ')refs\/heads\/[^'\r\n]+(')/gm;
+      if (
+        [...content.matchAll(branches)].length !== 1 ||
+        [...content.matchAll(condition)].length !== 1
       )
-      .replace(
-        condition,
-        (_, prefix, suffix) =>
-          `${prefix}refs/heads/${config.hosting.defaultBranch}${suffix}`,
-      );
-  });
+        throw new Error(
+          "Pages branch filter and deployment condition must remain managed",
+        );
+      return content
+        .replace(
+          branches,
+          (_, prefix) => `${prefix}[${config.hosting.defaultBranch}]`,
+        )
+        .replace(
+          condition,
+          (_, prefix, suffix) =>
+            `${prefix}refs/heads/${config.hosting.defaultBranch}${suffix}`,
+        );
+    });
+  }
   edit(".github/dependabot.yml", (content) => {
     const pattern = /^(\s*target-branch: )[^\r\n]+/gm;
     const count = [...content.matchAll(/^ {2}- package-ecosystem: /gm)].length;

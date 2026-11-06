@@ -10,44 +10,92 @@
       <rect x="12" y="12" width="232" height="232" rx="54" />
     </clipPath>
   </defs>
-  <rect x="12" y="12" width="232" height="232" rx="54" fill="#BCEBDD" />
-  <g clip-path="url(#tile)">
-    <g
-      transform="translate(-3.6 7.68) scale(0.94)"
-      stroke="#4C3630"
-      stroke-width="4.6"
-      stroke-linecap="round"
-      stroke-linejoin="round"
-    >
-      <path d="M43 110C50 83 70 53 91 36c6-5 10-4 16 1l22 25Z" fill="#080A09" />
+  <rect x="12" y="12" width="232" height="232" rx="54" fill="#C9EEDF" />
+  <g
+    clip-path="url(#tile)"
+    stroke="#4C3D36"
+    stroke-linecap="round"
+    stroke-linejoin="round"
+  >
+    <path d="M184 214c24 15 48 2 48-18 0-11-7-18-16-17" stroke-width="11" />
+    <path
+      d="M184 214c24 15 48 2 48-18 0-11-7-18-16-17"
+      stroke="#79BCAA"
+      stroke-width="5"
+    />
+    <g transform="rotate(-18 216 178)" stroke-width="3.2">
+      <rect x="210" y="152" width="12" height="12" rx="1.5" fill="#FFF5D2" />
+      <path d="M214 156v3m4-3v3" stroke-width="1.8" />
+      <rect x="207" y="162" width="18" height="21" rx="5" fill="#E9AE9E" />
+      <path d="M213 173h6" stroke-width="2.4" />
+    </g>
+    <g transform="translate(18 -2) scale(.84)" stroke-width="4.6">
+      <path d="M43 110C50 83 70 53 91 36c6-5 10-4 16 1l22 25Z" fill="#17312D" />
+      <path d="m65 78 28-31 14 16" fill="#E9AE9E" stroke="none" />
       <path
         d="M173 66c24-2 49-1 65 10 9 6 11 12 8 27-5 27-16 48-33 61l-8-57Z"
-        fill="#080A09"
+        fill="#17312D"
       />
-      <path d="M209 99c13-5 25-11 37-9-1 25-13 52-33 70Z" fill="#B0D998" />
-      <path d="M108 207c0 15-2 33-4 51h103c-4-21-14-42-29-55Z" fill="#080A09" />
+      <path d="M209 99c13-5 25-11 37-9-1 25-13 52-33 70Z" fill="#A9D8AB" />
+      <path d="M108 207c0 15-2 33-4 51h103c-4-21-14-42-29-55Z" fill="#17312D" />
       <path
         d="M108 216c-37-2-65-14-73-42-7-24-4-57 12-81 19-29 49-41 82-41 44-2 69 15 82 41 15 29 20 59 8 85-8 18-22 29-42 35"
-        fill="#080A09"
+        fill="#17312D"
       />
       <path
         d="m40 128 66 2c4 0 5 5 5 10v21c-1 23-11 39-32 39-25 0-41-17-42-42 0-12 1-21 3-30Z"
-        fill="#FFFFD0"
+        fill="#FFF5D2"
       />
       <path
         d="m49 129 45 1-1 26c-1 17-8 28-21 28-16-1-25-13-25-31Z"
-        fill="#080A09"
+        fill="#17312D"
       />
       <path
         d="m123 131 75-4c8-1 10 2 11 10l1 22c0 28-16 48-43 48-26-1-46-17-48-44l-1-21c0-6 1-9 5-11Z"
-        fill="#FFFFD0"
+        fill="#FFF5D2"
       />
       <path
         d="m134 131 59-3 1 23c0 21-9 35-27 36-20 0-32-13-34-32Z"
-        fill="#080A09"
+        fill="#17312D"
       />
       <path d="M179 89c-2 8-3 20 4 23 10 4 15-7 11-23" stroke-width="4.2" />
-      <path d="m137 240 2 16m36-14 2 14" stroke-width="4" />
     </g>
+    <path
+      d="m60 146 8 2m-6 5 8 1m111-7 8-2m-7 8 8-1"
+      stroke="#E8AC9E"
+      stroke-width="3.4"
+    />
+    <path
+      d="M68 178c-14-9-24-6-25 5-1 10 9 16 22 15m118-20c13-9 24-6 25 5 1 10-9 16-22 15"
+      fill="#17312D"
+      stroke-width="4.6"
+    />
+    <path
+      d="M74 174h108c11 0 19 8 17 19l-5 20c-2 9-10 15-19 15H81c-9 0-17-6-19-15l-5-20c-2-11 6-19 17-19Z"
+      fill="#FFF5D2"
+      stroke-width="4.6"
+    />
+    <path
+      d="M85 182h86c8 0 12 5 10 12l-3 14c-1 5-5 9-11 9H89c-6 0-10-4-11-9l-3-14c-2-7 2-12 10-12Z"
+      fill="#579C8F"
+      stroke-width="3.5"
+    />
+    <g fill="#FFF5D2" stroke="none">
+      <circle cx="91" cy="192" r="3.7" />
+      <circle cx="109" cy="192" r="3.7" />
+      <circle cx="127" cy="192" r="3.7" />
+      <circle cx="145" cy="192" r="3.7" />
+      <circle cx="163" cy="192" r="3.7" />
+      <circle cx="100" cy="206" r="3.7" />
+      <circle cx="118" cy="206" r="3.7" />
+      <circle cx="136" cy="206" r="3.7" />
+      <circle cx="154" cy="206" r="3.7" />
+    </g>
+    <path
+      d="M219 39c0 7-4 11-10 12 6 0 10 4 10 10 0-6 4-10 10-10-6-1-10-5-10-12Z"
+      fill="#FFF5D2"
+      stroke="#579C8F"
+      stroke-width="2.5"
+    />
   </g>
 </svg>

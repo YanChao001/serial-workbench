@@ -41,19 +41,6 @@ describe("native error presentation", () => {
       expect(nativeErrorText({ code }, t)).toBe(en["errors.INTERNAL"]);
     },
   );
-  it("presents retry guidance for native HTTP timeouts in both languages", () => {
-    const error = {
-      code: "HTTP_TIMEOUT",
-      message: "native details",
-      retryable: true,
-    };
-    expect(nativeErrorText(error, createTranslator(en))).toBe(
-      en["nativeError.httpTimeout"],
-    );
-    expect(nativeErrorText(error, createTranslator(zhCN))).toBe(
-      zhCN["nativeError.httpTimeout"],
-    );
-  });
   it.each([
     ["NATIVE_BUSY", "nativeError.busy"],
     ["MARKET_INCOMPATIBLE", "ext.market.incompatible"],

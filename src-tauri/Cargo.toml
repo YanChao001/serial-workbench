@@ -1,9 +1,9 @@
 [package]
 name = "serial-workbench"
-version = "0.1.12"
-description = "A cross-platform serial workbench"
+version = "0.1.0"
+description = "Cross-platform serial port workbench built with Tauri and Rust; Wasm plugin host available, serial communication in development."
 authors = ["YanChao"]
-license = "MIT"
+license = "Apache-2.0"
 edition = "2024"
 default-run = "serial-workbench"
 
@@ -27,7 +27,6 @@ tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
-tauri-plugin-global-shortcut = "2"
 tauri-plugin-deep-link = "2"
 tauri-plugin-http = { version = "2", features = ["gzip"] }
 tauri-plugin-window-state = "2"
@@ -40,7 +39,6 @@ serde_json = { version = "1", features = ["raw_value"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
-rusqlite = { version = "0.40.2", features = ["bundled"] }
 tempfile = "3"
 url = "2"
 regex = "1"
@@ -95,10 +93,6 @@ required-features = ["bindings"]
 [[bin]]
 name = "extension-tool"
 path = "src/bin/extension-tool.rs"
-
-[[bin]]
-name = "device-tool"
-path = "src/bin/device_tool.rs"
 
 # 图片重采样和编解码需要优化，避免开发模式下逐像素循环拖慢图库和预览。
 # 业务代码仍沿用默认 dev 配置，保留增量编译和调试体验。

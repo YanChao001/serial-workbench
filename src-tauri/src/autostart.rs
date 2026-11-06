@@ -157,8 +157,8 @@ mod tests {
     #[test]
     fn startup_commands_quote_paths_and_reject_embedded_quotes() {
         assert_eq!(
-            quoted_command(r"C:\Program Files\Starter App.exe").unwrap(),
-            r#""C:\Program Files\Starter App.exe""#
+            quoted_command(r"C:\Program Files\Serial Workbench.exe").unwrap(),
+            r#""C:\Program Files\Serial Workbench.exe""#
         );
         assert!(quoted_command("bad\"path").is_err());
         assert!(approved(&[2, 0, 0, 0]));

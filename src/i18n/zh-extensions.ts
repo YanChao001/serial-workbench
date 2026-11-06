@@ -19,7 +19,7 @@ export const zhExtensions = {
   "ext.recovery.checkHint": "检查是否为可归档的开发期旧存档，不会修改数据。",
   "ext.recovery.checkAgain": "重新检查",
   "ext.recovery.legacy":
-    "发现 {count} 条旧版安装记录。可先归档，再初始化内置扩展。",
+    "发现 {count} 条旧版安装记录。可先归档，再建立新的安装记录。",
   "ext.recovery.current": "存档版本受支持，无需归档。请刷新列表并检查扩展包。",
   "ext.recovery.future": "存档来自更高版本，请升级应用。原存档已保留。",
   "ext.recovery.invalid": "无法识别存档，不能自动归档。请保留原目录以便恢复。",
@@ -28,17 +28,17 @@ export const zhExtensions = {
   "ext.recovery.archive": "归档并重建",
   "ext.recovery.confirmTitle": "归档旧版扩展安装？",
   "ext.recovery.confirmHint":
-    "将旧扩展目录完整移到归档位置，再重新加载当前内置扩展，默认保持禁用。应用设置、笔记和插件私有数据会保留。旧扩展会话仍需使用原包版本恢复。完成后会显示归档位置。",
+    "将旧扩展目录完整移到归档位置，随后重新建立安装记录。应用设置和插件私有数据保留。旧扩展会话仍需使用原包版本恢复。完成后会显示归档位置。",
   "ext.recovery.confirm": "归档并重建",
   "ext.recovery.archiving": "正在归档…",
   "ext.recovery.archived": "旧扩展目录已完整归档。",
   "ext.recovery.archiveLocation": "归档位置：",
   "ext.recovery.afterArchive":
-    "扩展列表将重新加载。若仍有错误，请保留归档并刷新；内置扩展需审阅授权后启用。",
+    "扩展列表将重新加载。若仍有错误，请保留归档并刷新；按需重新安装兼容且可信的插件包。",
   "ext.market.discover": "发现插件",
   "ext.market.title": "插件市场",
   "ext.market.hint":
-    "内置插件随应用提供，在线插件由市场维护者审核上架。首次安装需审阅权限；同来源、同权限更新无需再次确认。",
+    "在线插件由市场维护者审核上架，也可安装可信的本地插件包。首次安装需审阅权限；同来源、同权限更新无需再次确认。",
   "ext.market.repository": "市场源码",
   "ext.market.refresh": "刷新",
   "ext.market.loading": "正在加载市场…",
@@ -51,9 +51,7 @@ export const zhExtensions = {
   "ext.market.category.data": "数据处理",
   "ext.market.category.tools": "实用工具",
   "ext.market.category.games": "游戏",
-  "ext.market.bundled": "内置",
   "ext.market.currentVersion": "本机 {version}",
-
   "ext.market.download": "安装",
   "ext.market.hostRequired": "需要应用 {version} 或更高版本",
   "ext.market.preparing": "准备中…",
@@ -77,9 +75,8 @@ export const zhExtensions = {
   "ext.market.changed": "此版本已变更或下架，请刷新后重选。",
   "ext.fieldInvalid": "请修正此字段后运行。",
   "ext.fieldLimit": "每个字段最多 {bytes} 个 UTF-8 字节。",
-  "nav.extensions": "扩展中心",
-  "catalog.extensions": "安装工具与应用，管理插件权限。",
-  "ext.title": "扩展中心",
+  "nav.extensions": "插件中心",
+  "ext.title": "插件中心",
   "ext.description": "安装、管理和使用插件。",
   "ext.dataBoundary": "权限与数据说明",
   "ext.installed": "已安装",
@@ -127,7 +124,7 @@ export const zhExtensions = {
     "支持 .starter-extension.json，最多 24 MiB。安装前审阅权限；预览、安装和启用不执行插件。",
   "ext.docs": "开发文档",
   "ext.host": "运行框架",
-  "ext.empty": "尚无扩展。可恢复内置工作台，或安装可信的本地扩展包。",
+  "ext.empty": "尚未安装插件。请在“发现插件”中安装兼容且可信的插件包。",
   "ext.review": "安装扩展",
   "ext.author": "作者",
   "ext.version": "版本",
@@ -183,29 +180,10 @@ export const zhExtensions = {
   "ext.packageError": "无法读取扩展包，请检查 UTF-8 格式及 24 MiB 大小限制。",
   "ext.packageVersionMustIncrease":
     "包版本 {version} 必须高于已安装版本 {installedVersion}。",
-  "experience.extensions": "使用扩展",
-  "experience.extensionsHint": "审阅权限、安装运行，再按需停用或卸载。",
-  "experience.extensions.1": "检查内置工作台",
-  "experience.extensions.1Hint":
-    "查看工作台的功能与权限，或导入第三方 Wasm 包。安装不会执行插件。",
-  "experience.extensions.2": "授权启用",
-  "experience.extensions.2Hint":
-    "审阅后点击“安装”授权启用。首次预置的内置工作台需单独启用，命令随后加入快捷操作。",
-  "experience.extensions.3": "运行扩展",
-  "experience.extensions.3Hint":
-    "从侧栏打开工作台，处理文本、CSV / JSON 和待办；主动发送文件或请求网络数据，也可另开窗口或导出会话。",
-  "experience.extensions.4": "禁用或卸载",
-  "experience.extensions.4Hint":
-    "禁用会撤回宿主数据访问并停止当前运行；卸载只清理应用管理的安装记录和 Wasm 模块。",
-  "experience.preview.extensions.1": "审阅本地 Wasm 扩展包与导出命令",
-  "experience.preview.extensions.2": "授权启用后，主动选择本次输入",
-  "experience.preview.extensions.3": "运行、停止、禁用与卸载 Extism 插件",
   "ext.inputFormat": "输入格式",
   "ext.resultFormat": "结果格式",
   "ext.commands": "扩展命令",
   "ext.permission.text:read": "读取提交的文字",
-  "ext.bundledHint":
-    "内置工作台已安装，启用后可从侧栏或新窗口打开。卸载后不自动重装。",
   "ext.hostData": "发送宿主数据",
   "ext.hostDataHint":
     "仅在点击“发送数据”后交付所选内容。插件仍可使用另行授权的网络与存储能力。",

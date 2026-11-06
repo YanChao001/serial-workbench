@@ -4,10 +4,13 @@ import appConfig from "../../app.config.json" with { type: "json" };
 
 async function expectContinuousSurface(page: Page, tooltip: Locator) {
   const bounds = (await tooltip.boundingBox())!;
+  const arrow = (await tooltip
+    .locator('[data-slot="tooltip-arrow"]')
+    .boundingBox())!;
   const side = await tooltip.getAttribute("data-side");
   const screenshot = await page.screenshot({ animations: "disabled" });
   const pixels = await page.evaluate(
-    async ({ encoded, bounds, side }) => {
+    async ({ encoded, bounds, arrow, side }) => {
       const image = new Image();
       image.src = `data:image/png;base64,${encoded}`;
       await image.decode();
@@ -18,8 +21,9 @@ async function expectContinuousSurface(page: Page, tooltip: Locator) {
       context.drawImage(image, 0, 0);
       const horizontal = side === "right";
       const edge = Math.round(horizontal ? bounds.x : bounds.y);
+      // 视口碰撞会让箭头偏离正文中心，采样跟随实际箭头的位置。
       const center = Math.floor(
-        horizontal ? bounds.y + bounds.height / 2 : bounds.x + bounds.width / 2,
+        horizontal ? arrow.y + arrow.height / 2 : arrow.x + arrow.width / 2,
       );
       const pixel = (offset: number) => {
         const x = horizontal ? edge + offset : center;
@@ -31,7 +35,7 @@ async function expectContinuousSurface(page: Page, tooltip: Locator) {
         junction: [-3, -2, -1, 0, 1, 2, 3, 4, 5].map(pixel),
       };
     },
-    { encoded: screenshot.toString("base64"), bounds, side },
+    { encoded: screenshot.toString("base64"), bounds, arrow, side },
   );
   for (const pixel of pixels.junction) {
     expect(
@@ -65,7 +69,7 @@ for (const theme of ["light", "dark"] as const) {
         ),
       { key: `${appConfig.browserStorageNamespace}:settings`, theme },
     );
-    await page.goto("./#/catalog");
+    await page.goto("./#/settings");
     // 统一两侧的背景，像素差只反映箭头与正文的材质合成。
     await page.evaluate(() => {
       const backdrop = document.createElement("div");

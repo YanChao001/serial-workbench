@@ -13,7 +13,7 @@ test("verification bounds parallel groups and builds only after all checks pass"
         assert.equal(pending.size, 0);
         assert.ok(completed.includes("typecheck"));
         assert.ok(completed.includes("test:scripts"));
-        assert.ok(completed.includes("extension:demos:check"));
+        assert.ok(completed.includes("extension:sdk:check"));
       }
       if (name === "test:scripts") assert.ok(!pending.has("test"));
       pending.add(name);

@@ -2,7 +2,7 @@
 <Wix xmlns="http://schemas.microsoft.com/wix/2006/wi">
   <Fragment>
     <!-- Tauri 没有 UIRef 配置入口，通过组引用将本片段链接进安装包；不新增组件。 -->
-    <ComponentGroup Id="StarterInstallerUI" />
+    <ComponentGroup Id="SerialWorkbenchInstallerUI" />
     <UI>
       <InstallUISequence>
         <!-- 保留准备工作，跳过短暂的准备窗口，避免切到欢迎页时先消失再出现。 -->

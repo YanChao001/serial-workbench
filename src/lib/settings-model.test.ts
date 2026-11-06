@@ -31,6 +31,15 @@ describe("versioned settings model", () => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue(["zh-CN"]);
   });
   afterEach(() => vi.restoreAllMocks());
+  it.each(["demo", "minimal"])(
+    "drops the retired %s presentation mode without restoring an entry",
+    (appMode) => {
+      const migrated = migrateSettings({ language: "en", appMode });
+      expect(migrated.language).toBe("en");
+      expect(migrated).not.toHaveProperty("appMode");
+      expect(settingsDocument(migrated)).not.toHaveProperty("appMode");
+    },
+  );
   it("扩展主题色可往返保存，旧偏好补齐自定义颜色而不改原预设", () => {
     for (const accent of ACCENTS) {
       const settings = { ...DEFAULT_SETTINGS, accent, customAccent: "#123ABC" };

@@ -40,7 +40,8 @@ export async function extensionAppsRemapRules(packages, sysroot, rustcCommit) {
     throw new Error("无法识别固定 Rust 编译器提交");
   const rules = new Map();
   function add(from, to) {
-    if (/[\r\n]/.test(from)) throw new Error("内置插件构建路径不能包含换行");
+    if (/[\r\n]/.test(from))
+      throw new Error("SDK 测试扩展构建路径不能包含换行");
     rules.set(from, to);
   }
   for (const pkg of packages) {
@@ -84,7 +85,7 @@ export async function extensionAppsRemapRules(packages, sysroot, rustcCommit) {
     .map(([from, to]) => `--remap-path-prefix=${from}=${to}`);
 }
 
-export async function compileDemo(root, { referenceOnly = false } = {}) {
+export async function compileFixture(root, { referenceOnly = false } = {}) {
   const { toolchain } = parseToml(
     await readFile(join(root, "rust-toolchain.toml"), "utf8"),
   );
@@ -110,7 +111,7 @@ export async function compileDemo(root, { referenceOnly = false } = {}) {
     version.match(/^host: (.+)$/m)?.[1].trim() !== extensionAppsReferenceHost
   )
     throw new Error(
-      `内置分发资源与逐字节重建需要参考构建平台 ${extensionAppsReferenceHost}；其他平台使用 --check --compile`,
+      `SDK 测试资源与逐字节重建需要参考构建平台 ${extensionAppsReferenceHost}；其他平台运行 pnpm extension:fixtures:check --compile`,
     );
   const commit = version.match(/^commit-hash: ([a-f0-9]{40})$/m)?.[1];
   const metadata = JSON.parse(
@@ -136,7 +137,9 @@ export async function compileDemo(root, { referenceOnly = false } = {}) {
   } catch (error) {
     if (error.code !== "EEXIST") throw error;
     if ((await readFile(responseFile, "utf8")) !== rules)
-      throw new Error("固定的内置插件编译规则文件内容不一致", { cause: error });
+      throw new Error("固定的 SDK 测试扩展编译规则文件内容不一致", {
+        cause: error,
+      });
   }
   const result = spawnSync(
     "cargo",
@@ -161,7 +164,9 @@ export async function compileDemo(root, { referenceOnly = false } = {}) {
   );
   if (result.error) throw result.error;
   if (result.status !== 0)
-    throw new Error("内置插件构建失败，请先安装 wasm32-unknown-unknown 目标");
+    throw new Error(
+      "SDK 测试扩展构建失败，请先安装 wasm32-unknown-unknown 目标",
+    );
   return readFile(
     join(
       root,

@@ -11,7 +11,6 @@ import {
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Badge } from "@/components/ui/badge";
 import {
   Tooltip,
   TooltipContent,
@@ -28,11 +27,10 @@ import {
 import { ResourceError } from "@/components/native-page";
 import { ExternalLink } from "@/components/external-link";
 import { APP_CONFIG } from "@/config/app";
-import { repositoryFileUrl } from "@/features/catalog/model";
+import { repositoryFileUrl } from "@/config/repository";
 import { useI18n } from "@/providers/i18n";
 import type {
   ExtensionInfo,
-  BundledExtensionCatalog,
   MarketDownloadProgress,
   MarketEntry,
   MarketSnapshot,
@@ -41,16 +39,12 @@ import { ExtensionIcon } from "./extension-icon";
 import {
   compareExtensionVersions,
   extensionCatalogEntries,
-  type ExtensionCatalogEntry,
 } from "./market-model";
 import { ExtensionHelp } from "./extension-help";
 import { nativeErrorText } from "@/lib/native-error";
 
 export function ExtensionMarket({
   snapshot,
-  bundled = null,
-  bundledLoading = false,
-  bundledError = null,
   loading,
   error,
   busy,
@@ -60,13 +54,9 @@ export function ExtensionMarket({
   installed,
   onRefresh,
   onDownload,
-  onInstallBundled,
   installActions,
 }: {
   snapshot: MarketSnapshot | null;
-  bundled?: BundledExtensionCatalog | null;
-  bundledLoading?: boolean;
-  bundledError?: unknown;
   loading: boolean;
   error: unknown;
   busy: boolean;
@@ -76,9 +66,6 @@ export function ExtensionMarket({
   installed: readonly ExtensionInfo[];
   onRefresh: () => void;
   onDownload: (entry: MarketEntry) => void;
-  onInstallBundled: (
-    entry: ExtensionCatalogEntry & { kind: "bundled" },
-  ) => void;
   installActions?: ReactNode;
 }) {
   const { t } = useI18n();
@@ -97,7 +84,7 @@ export function ExtensionMarket({
       });
   }, [snapshot, error, t, id]);
   const needle = query.trim().toLocaleLowerCase();
-  const catalog = extensionCatalogEntries(bundled, snapshot);
+  const catalog = extensionCatalogEntries(snapshot);
   const entries = catalog.filter(
     (entry) =>
       (category === "all" || entry.category === category) &&
@@ -115,16 +102,15 @@ export function ExtensionMarket({
         text.toLocaleLowerCase().includes(needle),
       ),
   );
-  const statusMessage =
-    loading || bundledLoading
-      ? t("ext.market.loading")
-      : snapshot && (snapshot.stale || error)
-        ? t("ext.market.stale")
-        : "";
+  const statusMessage = loading
+    ? t("ext.market.loading")
+    : snapshot && (snapshot.stale || error)
+      ? t("ext.market.stale")
+      : "";
   return (
     <section
       aria-label={t("ext.market.title")}
-      aria-busy={loading || bundledLoading}
+      aria-busy={loading}
       className="@container/market space-y-4"
     >
       <div className="space-y-3 rounded-xl border app-surface p-3">
@@ -183,7 +169,7 @@ export function ExtensionMarket({
                     variant="ghost"
                     size="icon"
                     aria-label={t("ext.market.refresh")}
-                    disabled={loading || bundledLoading || busy}
+                    disabled={loading || busy}
                     onClick={onRefresh}
                   >
                     <RefreshCwIcon aria-hidden="true" />
@@ -197,7 +183,6 @@ export function ExtensionMarket({
           </div>
         </div>
         <ResourceError error={!snapshot ? error : null} retry={onRefresh} />
-        <ResourceError error={bundledError} retry={onRefresh} />
         <div
           className={cn(
             "grid gap-2",
@@ -257,10 +242,7 @@ export function ExtensionMarket({
       <div className="extension-card-grid">
         {entries.map((entry) => {
           const manifest = entry.package.manifest;
-          const hostVersion =
-            entry.kind === "bundled"
-              ? bundled?.hostVersion
-              : snapshot?.hostVersion;
+          const hostVersion = snapshot?.hostVersion;
           const compatible =
             compareExtensionVersions(
               hostVersion ?? "0.0.0",
@@ -310,7 +292,7 @@ export function ExtensionMarket({
               : (percent ?? 0);
           return (
             <article
-              key={`${entry.kind}:${manifest.id}`}
+              key={manifest.id}
               tabIndex={-1}
               className="row-span-3 grid min-w-0 grid-rows-subgrid gap-4 rounded-xl border app-surface p-4"
             >
@@ -326,9 +308,6 @@ export function ExtensionMarket({
                     {manifest.description}
                   </p>
                 </div>
-                {entry.kind === "bundled" ? (
-                  <Badge variant="secondary">{t("ext.market.bundled")}</Badge>
-                ) : null}
               </div>
               <div className="flex min-w-0 flex-wrap items-start gap-2 self-start text-xs wrap-anywhere text-muted-foreground">
                 <span>v{manifest.version}</span>
@@ -357,11 +336,7 @@ export function ExtensionMarket({
                     active &&
                       "bg-primary/10 text-foreground disabled:opacity-100",
                   )}
-                  onClick={() =>
-                    entry.kind === "bundled"
-                      ? onInstallBundled(entry)
-                      : onDownload(entry)
-                  }
+                  onClick={() => onDownload(entry)}
                 >
                   {active ? (
                     <span
@@ -438,9 +413,8 @@ export function ExtensionMarket({
           </article>
         ))}
       </div>
-      {(snapshot || bundled) &&
+      {snapshot &&
       !loading &&
-      !bundledLoading &&
       entries.length === 0 &&
       incompatibleEntries.length === 0 ? (
         <p className="rounded-xl border border-dashed p-6 text-sm text-muted-foreground">

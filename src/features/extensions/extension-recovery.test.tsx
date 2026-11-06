@@ -127,7 +127,7 @@ it("requires explicit confirmation, restores cancellation focus, and retains the
   const dialog = await screen.findByRole("dialog");
   expect(dialog).toHaveAccessibleDescription(
     expect.stringContaining(
-      "App settings, notes, and plugin private data are retained",
+      "Application settings and plugin private data are preserved",
     ),
   );
   expect(native.archiveLegacyExtensions).not.toHaveBeenCalled();

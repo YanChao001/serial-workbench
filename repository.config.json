@@ -3,7 +3,7 @@
   "hosting": {
     "provider": "github",
     "repositoryUrlTemplate": "https://github.com/{repository}",
-    "defaultBranch": "develop",
+    "defaultBranch": "main",
     "releaseBranch": "main",
     "links": {
       "file": "{repositoryUrl}/blob/{ref}/{path}",

@@ -40,12 +40,9 @@ import {
   extensionCatalogEntries,
   marketUpdate,
 } from "@/features/extensions/market-model";
-import { useNativeResource } from "@/hooks/use-native-resource";
 import {
   previewExtension,
   downloadMarketExtension,
-  bundledExtensionPackage,
-  bundledExtensionCatalog,
   installExtension,
   installMarketExtension,
   rollbackExtension,
@@ -59,7 +56,6 @@ import {
   type ExtensionInfo,
   type ExtensionPermission,
   type ExtensionPreview,
-  type BundledExtension,
 } from "@/lib/tauri";
 
 type Review = {
@@ -81,10 +77,8 @@ export default function Extensions() {
   const [search, setSearch] = useSearchParams();
   const { data, loading, error, reload } = useExtensions();
   const market = useExtensionMarket();
-  const bundled = useNativeResource(bundledExtensionCatalog);
-  const catalog = extensionCatalogEntries(bundled.data, market.data);
-  const hostVersion =
-    bundled.data?.hostVersion ?? market.data?.hostVersion ?? "0.0.0";
+  const catalog = extensionCatalogEntries(market.data);
+  const hostVersion = market.data?.hostVersion ?? "0.0.0";
   const navigate = useNavigate();
   const [actionError, setActionError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
@@ -216,71 +210,48 @@ export default function Extensions() {
       if (alive.current) setInstallingId(null);
     }
   }
-  async function inspect(source: File | BundledExtension) {
+  async function inspect(file: File) {
     if (!data) return;
-    const file = source instanceof File ? source : null;
-    rememberDialogTrigger(
-      file
-        ? packageTrigger.current
-        : document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null,
-    );
+    rememberDialogTrigger(packageTrigger.current);
     const snapshot = data;
     await act(async () => {
-      let content: string = "";
-      if (file) {
-        if (file.size > 24 * 1024 * 1024)
-          throw new Error(t("ext.packageError"));
-        try {
-          content = new TextDecoder("utf-8", { fatal: true }).decode(
-            await file.arrayBuffer(),
-          );
-        } catch {
-          throw new Error(t("ext.packageError"));
-        }
+      if (file.size > 24 * 1024 * 1024) throw new Error(t("ext.packageError"));
+      let content: string;
+      try {
+        content = new TextDecoder("utf-8", { fatal: true }).decode(
+          await file.arrayBuffer(),
+        );
+      } catch {
+        throw new Error(t("ext.packageError"));
       }
-      if (!(source instanceof File))
-        content = await bundledExtensionPackage(source.package.manifest.id);
       if (!alive.current) return;
       const preview = await previewExtension(content);
       if (!alive.current) return;
       const installed = snapshot.items.find(
         (item) => item.package.manifest.id === preview.manifest.id,
       );
-      if (installed) {
-        const order = compareExtensionVersions(
+      if (
+        installed &&
+        compareExtensionVersions(
           preview.manifest.version,
           installed.package.manifest.version,
+        ) <= 0
+      ) {
+        toast.info(
+          latest("ext.packageVersionMustIncrease", {
+            version: preview.manifest.version,
+            installedVersion: installed.package.manifest.version,
+          }),
         );
-        if (order <= 0) {
-          if (file) {
-            toast.info(
-              latest("ext.packageVersionMustIncrease", {
-                version: preview.manifest.version,
-                installedVersion: installed.package.manifest.version,
-              }),
-            );
-            return;
-          }
-          toast.info(
-            latest(
-              order < 0 ? "ext.market.newerInstalled" : "ext.market.installed",
-            ),
-          );
-          return;
-        }
+        return;
       }
-      const value: Review = {
+      reviewPackage({
         preview,
         content,
         revision: snapshot.revision,
         previous: installed?.package.manifest.version ?? null,
-        origin: file ? { kind: "local" } : { kind: "bundled" },
-      };
-      if (!file && canUpdateWithoutReview(installed, preview, value.origin))
-        await installPackage(value);
-      else reviewPackage(value);
+        origin: { kind: "local" },
+      });
     });
   }
   function decide(item: ExtensionInfo, action: Decision["action"]) {
@@ -382,7 +353,7 @@ export default function Extensions() {
   const disabledPermissions =
     decision?.action === "permissions" && !decision.item.enabled;
   return (
-    <NativePage title={t("ext.title")} description={t("ext.description")}>
+    <NativePage title={t("ext.title")} compact>
       <ResourceError error={error} retry={() => void reload()} />
       <ExtensionRecovery error={error} reload={reload} />
       <Tabs
@@ -448,13 +419,8 @@ export default function Extensions() {
           <div className="extension-card-grid">
             {data?.items
               .slice()
-              .sort(
-                (a, b) =>
-                  Number(b.origin.kind === "bundled") -
-                    Number(a.origin.kind === "bundled") ||
-                  a.package.manifest.name.localeCompare(
-                    b.package.manifest.name,
-                  ),
+              .sort((a, b) =>
+                a.package.manifest.name.localeCompare(b.package.manifest.name),
               )
               .map((item) => (
                 <ExtensionCard
@@ -479,10 +445,7 @@ export default function Extensions() {
                   onRollback={() => decide(item, "rollback")}
                   onUpdate={() => {
                     const update = marketUpdate(catalog, item, hostVersion);
-                    if (update) {
-                      if (update.kind === "bundled") void inspect(update);
-                      else void inspectMarket(update);
-                    }
+                    if (update) void inspectMarket(update);
                   }}
                   onDisable={() =>
                     void act(async () => {
@@ -584,9 +547,6 @@ export default function Extensions() {
               </>
             }
             snapshot={market.data}
-            bundled={bundled.data}
-            bundledLoading={bundled.loading}
-            bundledError={bundled.error}
             loading={market.loading}
             error={market.error}
             busy={busy || !data}
@@ -596,10 +556,8 @@ export default function Extensions() {
             installed={data?.items ?? []}
             onRefresh={() => {
               void market.reload();
-              void bundled.reload();
             }}
             onDownload={(entry) => void inspectMarket(entry)}
-            onInstallBundled={(entry) => void inspect(entry)}
           />
         </TabsContent>
       </Tabs>

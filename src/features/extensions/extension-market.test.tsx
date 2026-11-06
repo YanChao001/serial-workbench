@@ -74,8 +74,6 @@ const emptySnapshot: native.MarketSnapshot = {
 
 function Market({
   data = null,
-  bundled = null,
-  bundledError = null,
   error = null,
   loading = false,
   busy = false,
@@ -85,11 +83,8 @@ function Market({
   installed = [],
   onRefresh = vi.fn(),
   onDownload = vi.fn(),
-  onInstallBundled = vi.fn(),
 }: {
   data?: native.MarketSnapshot | null;
-  bundled?: native.BundledExtensionCatalog | null;
-  bundledError?: unknown;
   error?: unknown;
   loading?: boolean;
   busy?: boolean;
@@ -99,13 +94,10 @@ function Market({
   installed?: readonly native.ExtensionInfo[];
   onRefresh?: () => void;
   onDownload?: (entry: native.MarketEntry) => void;
-  onInstallBundled?: (entry: native.BundledExtension) => void;
 }) {
   return (
     <ExtensionMarket
       snapshot={data}
-      bundled={bundled}
-      bundledError={bundledError}
       error={error}
       loading={loading}
       busy={busy}
@@ -115,7 +107,6 @@ function Market({
       installed={installed}
       onRefresh={onRefresh}
       onDownload={onDownload}
-      onInstallBundled={onInstallBundled}
     />
   );
 }
@@ -134,7 +125,6 @@ function LiveMarket() {
       installed={[]}
       onRefresh={() => void market.reload()}
       onDownload={vi.fn()}
-      onInstallBundled={vi.fn()}
     />
   );
 }
@@ -144,38 +134,31 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 
-const bundled: native.BundledExtensionCatalog = {
-  hostVersion: "0.1.8",
-  entries: [
-    {
-      package: {
-        ...entry.package,
-        manifest: {
-          ...entry.package.manifest,
-          id: "starter.bundled",
-          name: "Z Built-in tools",
-        },
+it("searches and filters verified market entries", () => {
+  const second: native.MarketEntry = {
+    ...entry,
+    category: "tools",
+    package: {
+      ...entry.package,
+      manifest: {
+        ...entry.package.manifest,
+        id: "example.utilities",
+        name: "Utilities",
       },
-      category: "tools",
     },
-  ],
-};
-
-it("lists bundled plugins before online plugins and searches and filters both sources together", () => {
-  render(<Market data={snapshot} bundled={bundled} />);
-  expect(
-    screen
-      .getAllByRole("heading", { level: 4 })
-      .map((heading) => heading.textContent),
-  ).toEqual(["Z Built-in tools", "Word Lab"]);
-  expect(screen.getAllByText("Built-in")).toHaveLength(1);
-  expect(screen.queryByText("Featured")).not.toBeInTheDocument();
+  };
+  render(
+    <Market
+      data={{
+        ...snapshot,
+        catalog: { ...snapshot.catalog, entries: [entry, second] },
+      }}
+    />,
+  );
   fireEvent.change(screen.getByRole("searchbox"), {
-    target: { value: "built-in" },
+    target: { value: "Utilities" },
   });
-  expect(
-    screen.getByRole("heading", { name: "Z Built-in tools" }),
-  ).toBeVisible();
+  expect(screen.getByRole("heading", { name: "Utilities" })).toBeVisible();
   expect(
     screen.queryByRole("heading", { name: "Word Lab" }),
   ).not.toBeInTheDocument();
@@ -186,48 +169,8 @@ it("lists bundled plugins before online plugins and searches and filters both so
   );
   expect(screen.getByRole("heading", { name: "Word Lab" })).toBeVisible();
   expect(
-    screen.queryByRole("heading", { name: "Z Built-in tools" }),
+    screen.queryByRole("heading", { name: "Utilities" }),
   ).not.toBeInTheDocument();
-});
-
-it("keeps bundled installs available when the online market fails and uses their own source", () => {
-  const install = vi.fn();
-  const download = vi.fn();
-  render(
-    <Market
-      bundled={bundled}
-      error={{ code: "MARKET_UNAVAILABLE" }}
-      onInstallBundled={install}
-      onDownload={download}
-    />,
-  );
-  const button = screen.getByRole("button", { name: "Install" });
-  expect(button).toBeEnabled();
-  fireEvent.click(button);
-  expect(install).toHaveBeenCalledWith(
-    expect.objectContaining({
-      kind: "bundled",
-      package: bundled.entries[0]?.package,
-    }),
-  );
-  expect(download).not.toHaveBeenCalled();
-  expect(screen.queryByText(en["ext.market.empty"])).not.toBeInTheDocument();
-});
-
-it("keeps online entries available when the bundled catalog fails", () => {
-  const download = vi.fn();
-  render(
-    <Market
-      data={snapshot}
-      bundledError={{ code: "IO_ERROR" }}
-      onDownload={download}
-    />,
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Install" }));
-  expect(download).toHaveBeenCalledExactlyOnceWith(
-    expect.objectContaining(entry),
-  );
-  expect(screen.getByRole("alert")).toBeVisible();
 });
 
 it("shows received download percentages on the active button, then verifies and restores the download action", () => {

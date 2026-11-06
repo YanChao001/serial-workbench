@@ -4,17 +4,15 @@
   "shortName": "Serial Workbench",
   "packageName": "serial-workbench",
   "identifier": "io.github.yanchao001.serialworkbench",
-  "description": "A cross-platform serial workbench",
+  "description": "Cross-platform serial port workbench built with Tauri and Rust; Wasm plugin host available, serial communication in development.",
   "author": "YanChao",
   "repositoryUrl": "https://github.com/YanChao001/serial-workbench",
-  "docsUrl": "https://github.com/YanChao001/serial-workbench/blob/develop/docs/README.md",
+  "docsUrl": "https://github.com/YanChao001/serial-workbench/blob/main/docs/README.md",
   "homepageUrl": "https://github.com/YanChao001/serial-workbench",
   "browserStorageNamespace": "serial-workbench",
   "integration": {
-    "deepLinkScheme": "serial-workbench",
-    "fileExtension": "swbench"
+    "deepLinkScheme": "serial-workbench"
   },
-  "defaultMode": "demo",
   "updates": {
     "endpoint": "",
     "publicKey": ""

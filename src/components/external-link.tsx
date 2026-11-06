@@ -2,7 +2,7 @@ import type { ComponentProps, MouseEvent } from "react";
 import { useOpenExternal } from "@/hooks/use-external-links";
 import { isTauri } from "@/lib/tauri";
 
-/** 原生窗口由链接自身打开系统浏览器，浏览器演示保留标准链接行为。 */
+/** 原生窗口由链接自身打开系统浏览器，浏览器预览保留标准链接行为。 */
 export function ExternalLink({
   href,
   target = "_blank",

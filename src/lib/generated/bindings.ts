@@ -66,14 +66,6 @@ export const commands = {
     typedError<ExtensionPreview_Serialize, NativeError>(
       __TAURI_INVOKE("preview_extension", { content }),
     ),
-  bundledExtensionPackage: (id: string) =>
-    typedError<string, NativeError>(
-      __TAURI_INVOKE("bundled_extension_package", { id }),
-    ),
-  bundledExtensionCatalog: () =>
-    typedError<BundledExtensionCatalog_Serialize, NativeError>(
-      __TAURI_INVOKE("bundled_extension_catalog"),
-    ),
   installExtension: (
     content: string,
     expectedRevision: number,
@@ -276,22 +268,6 @@ export const commands = {
     typedError<null, NativeError>(
       __TAURI_INVOKE("close_extension_ui", { token }),
     ),
-  greet: (name: string, language: string | null) =>
-    typedError<string, NativeError>(
-      __TAURI_INVOKE("greet", { name, language }),
-    ),
-  requestDemoHttp: (
-    requestId: string,
-    input: HttpDemoRequest_Deserialize,
-    onStarted: Channel<null>,
-  ) =>
-    typedError<HttpDemoResponse, NativeError>(
-      __TAURI_INVOKE("request_demo_http", { requestId, input, onStarted }),
-    ),
-  cancelDemoHttp: (requestId: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("cancel_demo_http", { requestId }),
-    ),
   listWallpapers: (
     legacy: {
       name: string;
@@ -332,10 +308,6 @@ export const commands = {
     typedError<SettingsSnapshot, NativeError>(
       __TAURI_INVOKE("reset_settings_snapshot", { settings, expectedRevision }),
     ),
-  createNote: (input: NoteInput) =>
-    typedError<Note, NativeError>(__TAURI_INVOKE("create_note", { input })),
-  updateNote: (input: NoteUpdate) =>
-    typedError<Note, NativeError>(__TAURI_INVOKE("update_note", { input })),
   openSecondaryWindow: () =>
     typedError<null, NativeError>(__TAURI_INVOKE("open_secondary_window")),
   completeFrontendStartup: () =>
@@ -399,141 +371,6 @@ export const commands = {
     typedError<null, NativeError>(
       __TAURI_INVOKE("respond_lifecycle", { id, approved }),
     ),
-  queryNotes: (query: NoteQuery) =>
-    typedError<NotePage, NativeError>(__TAURI_INVOKE("query_notes", { query })),
-  getNote: (id: number) =>
-    typedError<Note, NativeError>(__TAURI_INVOKE("get_note", { id })),
-  changeNotes: (items: NoteVersion[], action: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("change_notes", { items, action }),
-    ),
-  loadNoteDraft: () =>
-    typedError<
-      {
-        noteId: number | null;
-        title: string;
-        body: string;
-        expectedVersion: number | null;
-        originalTitle: string;
-        originalBody: string;
-      } | null,
-      NativeError
-    >(__TAURI_INVOKE("load_note_draft")),
-  saveNoteDraft: (
-    draft: {
-      noteId: number | null;
-      title: string;
-      body: string;
-      expectedVersion: number | null;
-      originalTitle: string;
-      originalBody: string;
-    } | null,
-  ) =>
-    typedError<null, NativeError>(__TAURI_INVOKE("save_note_draft", { draft })),
-  createDataBackup: () =>
-    typedError<BackupInfo, NativeError>(__TAURI_INVOKE("create_data_backup")),
-  listDataBackups: () =>
-    typedError<BackupInfo[], NativeError>(__TAURI_INVOKE("list_data_backups")),
-  previewDataBackup: (id: string) =>
-    typedError<BackupPreview, NativeError>(
-      __TAURI_INVOKE("preview_data_backup", { id }),
-    ),
-  restoreDataBackup: (id: string) =>
-    typedError<RestoreResult, NativeError>(
-      __TAURI_INVOKE("restore_data_backup", { id }),
-    ),
-  exportDataBackup: (id: string) =>
-    typedError<string, NativeError>(
-      __TAURI_INVOKE("export_data_backup", { id }),
-    ),
-  importDataBackup: (contents: string) =>
-    typedError<BackupPreview, NativeError>(
-      __TAURI_INVOKE("import_data_backup", { contents }),
-    ),
-  pickDataBackup: () =>
-    typedError<
-      {
-        info: BackupInfo;
-        schemaVersion: number;
-        sampleTitles: string[];
-      } | null,
-      NativeError
-    >(__TAURI_INVOKE("pick_data_backup")),
-  saveDataBackup: (id: string) =>
-    typedError<boolean, NativeError>(
-      __TAURI_INVOKE("save_data_backup", { id }),
-    ),
-  pickWorkbenchFiles: () =>
-    typedError<WorkbenchDocument[], NativeError>(
-      __TAURI_INVOKE("pick_workbench_files"),
-    ),
-  pickWorkbenchDirectory: () =>
-    typedError<
-      {
-        id: string;
-        name: string;
-        path: string;
-      } | null,
-      NativeError
-    >(__TAURI_INVOKE("pick_workbench_directory")),
-  loadWorkbenchDocument: (id: string) =>
-    typedError<WorkbenchDocument, NativeError>(
-      __TAURI_INVOKE("load_workbench_document", { id }),
-    ),
-  saveWorkbenchDocument: (
-    id: string,
-    content: string,
-    expectedRevision: string,
-  ) =>
-    typedError<WorkbenchDocument, NativeError>(
-      __TAURI_INVOKE("save_workbench_document", {
-        id,
-        content,
-        expectedRevision,
-      }),
-    ),
-  saveWorkbenchAs: (name: string, content: string) =>
-    typedError<
-      {
-        id: string;
-        name: string;
-        path: string;
-        kind: WorkbenchFileKind;
-        content: string | null;
-        previewUrl: string | null;
-        revision: string;
-        bytes: number | null;
-      } | null,
-      NativeError
-    >(__TAURI_INVOKE("save_workbench_as", { name, content })),
-  recentWorkbenchFiles: () =>
-    typedError<RecentWorkbenchFile[], NativeError>(
-      __TAURI_INVOKE("recent_workbench_files"),
-    ),
-  revealWorkbenchFile: (id: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("reveal_workbench_file", { id }),
-    ),
-  startWorkbenchTask: (kind: WorkbenchTaskKind, directoryId: string) =>
-    typedError<WorkbenchTask_Serialize, NativeError>(
-      __TAURI_INVOKE("start_workbench_task", { kind, directoryId }),
-    ),
-  workbenchTaskSnapshot: () =>
-    typedError<WorkbenchTaskSnapshot_Serialize, NativeError>(
-      __TAURI_INVOKE("workbench_task_snapshot"),
-    ),
-  cancelWorkbenchTask: (taskId: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("cancel_workbench_task", { taskId }),
-    ),
-  retryWorkbenchTask: (taskId: string) =>
-    typedError<WorkbenchTask_Serialize, NativeError>(
-      __TAURI_INVOKE("retry_workbench_task", { taskId }),
-    ),
-  exportWorkbenchTask: (taskId: string) =>
-    typedError<string | null, NativeError>(
-      __TAURI_INVOKE("export_workbench_task", { taskId }),
-    ),
   activationSnapshot: () =>
     typedError<Activation[], NativeError>(
       __TAURI_INVOKE("activation_snapshot"),
@@ -544,61 +381,14 @@ export const commands = {
     typedError<null, NativeError>(
       __TAURI_INVOKE("save_workspace_route", { route }),
     ),
-  openNotesWindow: () =>
-    typedError<null, NativeError>(__TAURI_INVOKE("open_notes_window")),
   restoreWorkspace: () =>
     typedError<null, NativeError>(__TAURI_INVOKE("restore_workspace")),
   activateMain: () =>
     typedError<null, NativeError>(__TAURI_INVOKE("activate_main")),
-  setDemoCredential: (value: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("set_demo_credential", { value }),
-    ),
-  getDemoCredential: () =>
-    typedError<string | null, NativeError>(
-      __TAURI_INVOKE("get_demo_credential"),
-    ),
-  deleteDemoCredential: () =>
-    typedError<null, NativeError>(__TAURI_INVOKE("delete_demo_credential")),
-  registerDemoShortcut: (shortcut: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("register_demo_shortcut", { shortcut }),
-    ),
-  unregisterDemoShortcut: (shortcut: string) =>
-    typedError<null, NativeError>(
-      __TAURI_INVOKE("unregister_demo_shortcut", { shortcut }),
-    ),
-  runDemoSidecar: (input: string) =>
-    typedError<DemoWorkerOutput, NativeError>(
-      __TAURI_INVOKE("run_demo_sidecar", { input }),
-    ),
   recoveryStatus: () =>
     typedError<RecoveryStatus, NativeError>(__TAURI_INVOKE("recovery_status")),
-  listRecoveryBackups: () =>
-    typedError<BackupInfo[], NativeError>(
-      __TAURI_INVOKE("list_recovery_backups"),
-    ),
-  pickRecoveryBackup: () =>
-    typedError<
-      {
-        info: BackupInfo;
-        schemaVersion: number;
-        sampleTitles: string[];
-      } | null,
-      NativeError
-    >(__TAURI_INVOKE("pick_recovery_backup")),
-  previewRecoveryBackup: (id: string) =>
-    typedError<BackupPreview, NativeError>(
-      __TAURI_INVOKE("preview_recovery_backup", { id }),
-    ),
-  restoreRecoveryBackup: (id: string) =>
-    typedError<RecoveryStatus, NativeError>(
-      __TAURI_INVOKE("restore_recovery_backup", { id }),
-    ),
-  stageRecovery: (resetSettings: boolean) =>
-    typedError<RecoveryStatus, NativeError>(
-      __TAURI_INVOKE("stage_recovery", { resetSettings }),
-    ),
+  stageRecovery: () =>
+    typedError<RecoveryStatus, NativeError>(__TAURI_INVOKE("stage_recovery")),
 };
 
 /* Types */
@@ -606,56 +396,6 @@ export type Activation = {
   id: number;
   source: string;
   route: string | null;
-  files: string[];
-  resourceIds: string[];
-  errors: string[];
-};
-
-export type BackupInfo = {
-  id: string;
-  createdAt: string;
-  notes: number;
-  trashed: number;
-  drafts: number;
-  bytes: number | null;
-};
-
-export type BackupPreview = {
-  info: BackupInfo;
-  schemaVersion: number;
-  sampleTitles: string[];
-};
-
-export type BundledExtension =
-  BundledExtension_Serialize | BundledExtension_Deserialize;
-
-export type BundledExtensionCatalog =
-  BundledExtensionCatalog_Serialize | BundledExtensionCatalog_Deserialize;
-
-export type BundledExtensionCatalog_Deserialize = {
-  hostVersion: string;
-  entries: BundledExtension_Deserialize[];
-};
-
-export type BundledExtensionCatalog_Serialize = {
-  hostVersion: string;
-  entries: BundledExtension_Serialize[];
-};
-
-export type BundledExtension_Deserialize = {
-  package: ExtensionPreview_Deserialize;
-  category: MarketCategory;
-};
-
-export type BundledExtension_Serialize = {
-  package: ExtensionPreview_Serialize;
-  category: MarketCategory;
-};
-
-export type DemoWorkerOutput = {
-  stdout: string;
-  stderr: string;
-  exitCode: number;
 };
 
 export type DesktopStatus = {
@@ -672,7 +412,6 @@ export type DiagnosticsReport = {
   architecture: string;
   windowLabel: string;
   settingsRevision: number;
-  databaseVersion: number;
   desktop: DesktopStatus;
   autostartEnabled: boolean | null;
   updaterConfigured: boolean;
@@ -683,17 +422,14 @@ export type ErrorCode =
   | "INVALID_ARGUMENT"
   | "USER_CANCELLED"
   | "CREDENTIAL_ERROR"
-  | "NAME_REQUIRED"
   | "INPUT_TOO_LONG"
   | "STORAGE_IO"
   | "STORAGE_CORRUPT"
   | "SETTINGS_CONFLICT"
-  | "DATABASE_ERROR"
   | "NOT_FOUND"
   | "CONFLICT"
   | "PLATFORM_UNAVAILABLE"
   | "NATIVE_BUSY"
-  | "HTTP_TIMEOUT"
   | "AUTOSTART_ERROR"
   | "UPDATE_NOT_CONFIGURED"
   | "UPDATE_BUSY"
@@ -1187,33 +923,6 @@ export type FrontendError = {
   componentStack: string | null;
 };
 
-export type HttpDemoMethod = "GET" | "POST";
-
-export type HttpDemoRequest =
-  HttpDemoRequest_Serialize | HttpDemoRequest_Deserialize;
-
-export type HttpDemoRequest_Deserialize = {
-  url: string;
-  method: HttpDemoMethod;
-  headers?: { [key in string]: string } | null;
-  body?: string | null;
-  timeoutMs?: number | null;
-};
-
-export type HttpDemoRequest_Serialize = {
-  url: string;
-  method: HttpDemoMethod;
-  headers?: { [key in string]: string } | null;
-  body?: string | null;
-  timeoutMs?: number | null;
-};
-
-export type HttpDemoResponse = {
-  status: number;
-  headers: { [key in string]: string };
-  body: string;
-};
-
 /**
  *  具名递归类型使 Rust 与 TypeScript 的 JSON 契约保持有限定义。
  *  serde_json::Number 保留传输过程中的整数值。
@@ -1339,74 +1048,11 @@ export type NativeError = {
   retryable: boolean;
 };
 
-export type Note = {
-  id: number;
-  title: string;
-  body: string;
-  updatedAt: string;
-  version: number;
-};
-
-export type NoteDraft = {
-  noteId: number | null;
-  title: string;
-  body: string;
-  expectedVersion: number | null;
-  originalTitle: string;
-  originalBody: string;
-};
-
-export type NoteInput = {
-  title: string;
-  body: string;
-};
-
-export type NotePage = {
-  items: Note[];
-  total: number;
-  offset: number;
-  limit: number;
-};
-
-export type NoteQuery = {
-  search: string;
-  offset: number;
-  limit: number;
-  sort: string;
-  trash: boolean;
-};
-
-export type NoteUpdate = {
-  id: number;
-  title: string;
-  body: string;
-  expectedVersion: number;
-};
-
-export type NoteVersion = {
-  id: number;
-  expectedVersion: number;
-};
-
-export type RecentWorkbenchFile = {
-  id: string;
-  name: string;
-  path: string;
-  directory: boolean;
-};
-
 export type RecoveryStatus = {
   active: boolean;
   reason: string | null;
-  restored: boolean;
   pending: boolean;
-  notes: number;
   archiveId: string | null;
-};
-
-export type RestoreResult = {
-  restored: number;
-  safetyBackup: BackupInfo;
 };
 
 export type SettingsSnapshot = {
@@ -1496,119 +1142,6 @@ export type WindowGeometry = {
   maxHeight: number;
   defaultWidth: number;
   defaultHeight: number;
-};
-
-export type WorkbenchDirectory = {
-  id: string;
-  name: string;
-  path: string;
-};
-
-export type WorkbenchDocument = {
-  id: string;
-  name: string;
-  path: string;
-  kind: WorkbenchFileKind;
-  content: string | null;
-  previewUrl: string | null;
-  revision: string;
-  bytes: number | null;
-};
-
-export type WorkbenchDrop = {
-  files: WorkbenchDocument[];
-  errors: string[];
-};
-
-export type WorkbenchFileKind = "text" | "json" | "markdown" | "image";
-
-export type WorkbenchTask = WorkbenchTask_Serialize | WorkbenchTask_Deserialize;
-
-export type WorkbenchTaskEntry =
-  WorkbenchTaskEntry_Serialize | WorkbenchTaskEntry_Deserialize;
-
-export type WorkbenchTaskEntry_Deserialize = {
-  path: string;
-  bytes: number | null;
-  sha256: string | null;
-  error: string | null;
-  failure?: NativeError | null;
-};
-
-export type WorkbenchTaskEntry_Serialize = {
-  path: string;
-  bytes: number | null;
-  sha256: string | null;
-  error: string | null;
-  failure?: NativeError | null;
-};
-
-export type WorkbenchTaskKind = "scan" | "sha256";
-
-export type WorkbenchTaskSnapshot =
-  WorkbenchTaskSnapshot_Serialize | WorkbenchTaskSnapshot_Deserialize;
-
-export type WorkbenchTaskSnapshot_Deserialize = {
-  revision: number;
-  tasks: WorkbenchTask_Deserialize[];
-  active: number;
-  queued: number;
-};
-
-export type WorkbenchTaskSnapshot_Serialize = {
-  revision: number;
-  tasks: WorkbenchTask_Serialize[];
-  active: number;
-  queued: number;
-};
-
-export type WorkbenchTaskStatus =
-  | "queued"
-  | "running"
-  | "cancelling"
-  | "completed"
-  | "cancelled"
-  | "failed"
-  | "interrupted";
-
-export type WorkbenchTask_Deserialize = {
-  id: string;
-  directoryId: string;
-  directoryName: string;
-  kind: WorkbenchTaskKind;
-  status: WorkbenchTaskStatus;
-  processed: number;
-  total: number;
-  bytes: number | null;
-  startedAt: string;
-  finishedAt: string | null;
-  message: string | null;
-  failure?: NativeError | null;
-  unreadableEntries?: number;
-  reportUnavailable?: boolean;
-  results: WorkbenchTaskEntry_Deserialize[];
-  truncated: boolean;
-  attemptOf: string | null;
-};
-
-export type WorkbenchTask_Serialize = {
-  id: string;
-  directoryId: string;
-  directoryName: string;
-  kind: WorkbenchTaskKind;
-  status: WorkbenchTaskStatus;
-  processed: number;
-  total: number;
-  bytes: number | null;
-  startedAt: string;
-  finishedAt: string | null;
-  message: string | null;
-  failure?: NativeError | null;
-  unreadableEntries?: number;
-  reportUnavailable?: boolean;
-  results: WorkbenchTaskEntry_Serialize[];
-  truncated: boolean;
-  attemptOf: string | null;
 };
 
 export type Workspace = {

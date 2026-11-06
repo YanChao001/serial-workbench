@@ -1,0 +1,149 @@
+import type { zhShell } from "./zh-shell";
+
+export const enShell = {
+  "errors.INPUT_TOO_LONG": "Input too long. Shorten it and retry.",
+  "errors.AUTOSTART_ERROR":
+    "Could not change launch-at-login settings. Check system permissions.",
+  "errors.UPDATE_BUSY": "An update is running. Try again later.",
+  "errors.WINDOW_ERROR": "Window operation failed. Retry.",
+  "updates.restartDescription":
+    "Restarting closes all windows. Save unfinished work first.",
+  "commands.title": "Quick actions",
+  "commands.description":
+    "Search pages and actions; use arrow keys to select and Enter to run.",
+  "commands.empty": "No matching actions",
+  "commands.open": "Quick actions",
+  "commands.groupNavigation": "Pages",
+  "commands.groupAppearance": "Appearance",
+  "commands.groupWindow": "Window",
+  "commands.groupHelp": "Help",
+  "commands.groupTools": "Tools",
+  "commands.openDesktop": "Windows & startup",
+  "commands.openWindow": "New window",
+  "commands.checkUpdates": "Check for updates",
+  "commands.copyDiagnostics": "Copy diagnostics",
+  "layout.sidebar": "Navigation",
+  "layout.toggleSidebar": "Toggle sidebar",
+  "layout.expandSidebar": "Expand sidebar",
+  "layout.collapseSidebar": "Collapse sidebar",
+  "layout.resizeSidebar": "Resize sidebar",
+  "layout.resetSidebarWidth": "Reset sidebar width",
+  "desktop.title": "Desktop integration",
+  "desktop.settingsTitle": "Windows & startup",
+  "desktop.browserOnly":
+    "Window sizes and system integration can only be changed in the desktop app.",
+  "desktop.description":
+    "Manage launch at login, background behavior and windows.",
+  "desktop.autostart": "Launch at login",
+  "desktop.autostartDescription":
+    "Start the app when the current user signs in",
+  "desktop.background": "Run in background after closing",
+  "desktop.backgroundDescription":
+    "With a tray available, closing hides the window. Reopen or quit from the tray.",
+  "desktop.tray": "System tray",
+  "desktop.trayUnavailable":
+    "Tray is unavailable. Closing the window exits normally.",
+  "desktop.windows": "Multiple windows",
+  "desktop.windowsDescription":
+    "The second window syncs language, theme, skin and layout preferences.",
+  "desktop.openWindow": "New window",
+  "diagnostics.title": "Diagnostics & recovery",
+  "diagnostics.description":
+    "View runtime status and diagnostic reports, or resolve startup settings problems. Reports are not uploaded automatically, and recovery preserves the original files.",
+  "diagnostics.details": "Report and logs",
+  "diagnostics.copy": "Copy diagnostics",
+  "diagnostics.copied": "Diagnostics copied",
+  "diagnostics.refresh": "Refresh diagnostics",
+  "diagnostics.preview": "Diagnostics preview",
+  "diagnostics.logs":
+    "Logs stay in the local application log directory. Copied reports exclude complete settings and user paths.",
+  "updates.title": "Application updates",
+  "updates.browserOnly":
+    "Checking, installing and automatic checks require the desktop app; the browser can show version history.",
+  "updates.description":
+    "Check for new versions and choose when to download and install.",
+  "updates.installConfirmTitle": "Save before installing",
+  "updates.installConfirmDescription":
+    "Installation rechecks unsaved work in all windows. The Windows installer closes the app and may restart it; portable apps become installed apps. Download from releases to stay portable.",
+  "updates.check": "Check for updates",
+  "updates.checking": "Checking…",
+  "updates.latest": "Up to date",
+  "updates.available": "Version {version} is available",
+  "updates.current": "Current version: {version}",
+  "updates.install": "Download and install",
+  "updates.downloading": "Downloading {progress}",
+  "updates.installing": "Installing…",
+  "updates.installed": "Update installed. Restart to apply it.",
+  "updates.restart": "Restart app",
+  "updates.releaseNotes": "Release notes",
+  "updates.releaseNotesTitle": "Release notes · {version}",
+  "updates.noReleaseNotes": "No notes for this version.",
+  "updates.notConfigured":
+    "In-app updates unavailable. Check version history for new versions.",
+  "updates.configuration": "Update preferences",
+  "updates.autoCheck": "Check for updates on startup",
+  "updates.autoCheckHint":
+    "Check in the background after startup and notify you of new versions; downloading and installing still need confirmation.",
+  "updates.viewUpdate": "View update",
+  "updates.releases": "Version history",
+  "updates.lastChecked": "Last successful check: {time}",
+  "updates.idle": "Updates not checked yet",
+  "updates.checkTimeout":
+    "Check timed out. Check your connection and retry, or download from version history.",
+  "updates.feedUnavailable":
+    "No update information yet. Retry later or find installers in version history.",
+  "updates.platformUnavailable":
+    "No package for your system and installation type. Check version history.",
+  "updates.endpoint": "Update source",
+  "updates.endpointDisabled": "Automatic updates not enabled",
+  "updates.keyMissing": "Update verification not configured",
+  "errors.VALIDATION": "Invalid input. Check and retry.",
+  "errors.CONFLICT":
+    "Another window changed this data. Refresh and merge your changes.",
+  "errors.SETTINGS_CONFLICT": "Another window updated settings. Retry.",
+  "errors.NOT_FOUND": "Data no longer exists",
+  "errors.IO": "Could not read or write application data",
+  "errors.UPDATE_NOT_CONFIGURED":
+    "Automatic updates not enabled. Check releases for new versions.",
+  "errors.UPDATE": "Update operation failed",
+  "errors.UNSUPPORTED": "Unavailable on this platform",
+  "errors.INTERNAL": "Application error. See diagnostics.",
+  "navGroup.experience": "Workspace",
+  "navGroup.capabilities": "Plugins",
+  "navGroup.system": "System",
+  "navContext.browse": "Navigation",
+  "navContext.location": "Current location",
+  "navContext.commands": "Quick actions",
+  "nativeError.clipboardWriteFailed": "Could not copy. Try again.",
+  "nativeError.busy": "Too many operations are running. Try again shortly.",
+  "lifecycle.title": "Save unfinished work",
+  "lifecycle.description":
+    "Save or finish your work first. All {count} windows must be ready to continue.",
+  "lifecycle.save": "Save and continue",
+  "lifecycle.discard": "Discard and continue",
+  "lifecycle.saving": "Saving…",
+  "lifecycle.executing": "All windows are ready. Running the action…",
+  "lifecycle.waiting":
+    "This window is ready. Waiting for the others; you can still cancel the action.",
+  "nativeError.userCancelled": "Cancelled. Your unsaved work is preserved.",
+  "nativeError.credentialError":
+    "Cannot access system credentials. Unlock the keychain or check the credential service, then retry.",
+  "nav.diagnostics": "Diagnostics & recovery",
+  "studio.settingsWorkspace": "Window & workspace",
+  "studio.settingsAbout": "About & resources",
+  "shell.title": "Serial Workbench",
+  "shell.description": "Your workspace is ready.",
+  "shell.empty": "Workspace features have not been added yet.",
+  "shell.diagnostics": "Diagnostics and recovery",
+  "shell.diagnosticsDescription":
+    "View runtime status, application logs and settings recovery tools.",
+  "native.required": "This feature requires the desktop app",
+  "native.description": "Use this feature in the Serial Workbench desktop app.",
+  "markdown.table": "Markdown table",
+  "markdown.blockedImage": "External image blocked",
+  "markdown.taskCompleted": "Completed Markdown task",
+  "markdown.taskPending": "Incomplete Markdown task",
+  "common.pageCount": "{from}–{to} of {total}",
+  "common.previous": "Previous",
+  "common.next": "Next",
+} satisfies Record<keyof typeof zhShell, string>;

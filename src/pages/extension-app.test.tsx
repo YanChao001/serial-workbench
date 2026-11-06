@@ -54,7 +54,6 @@ vi.mock("next-themes", () => ({
 vi.mock("@/providers/settings", () => ({
   useSettings: () => ({
     settings: {
-      appMode: "minimal",
       sidebarWidth: 224,
       sidebarCollapsed: false,
       motion: false,

@@ -1,7 +1,7 @@
 {
   "formatVersion": 3,
   "apiVersion": 2,
-  "minHostVersion": "0.1.4",
+  "minHostVersion": "0.1.0",
   "id": "tests.runtime-fixture",
   "version": "1.0.0",
   "name": "Runtime fixture",

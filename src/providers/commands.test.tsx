@@ -44,12 +44,11 @@ vi.mock("@/routes", () => ({
   APP_ROUTES: [
     { path: "/", labelKey: "nav.overview", icon: () => null },
     {
-      path: "/components",
-      labelKey: "nav.components",
+      path: "/diagnostics",
+      labelKey: "nav.diagnostics",
       icon: () => null,
-      demoOnly: true,
+      hidden: true,
     },
-    { path: "/diagnostics", labelKey: "nav.diagnostics", icon: () => null },
     {
       path: "/recovery",
       labelKey: "recovery.title",
@@ -84,6 +83,9 @@ function Probe() {
         Light
       </button>
       <button onClick={() => void commands.execute("navigate:/")}>Home</button>
+      <button onClick={() => void commands.execute("open-settings")}>
+        Open settings
+      </button>
       <button onClick={() => void commands.execute("open-desktop")}>
         Window settings
       </button>
@@ -94,7 +96,6 @@ function Probe() {
         Update settings
       </button>
       <button onClick={() => update({ language: "en" })}>English</button>
-      <button onClick={() => update({ appMode: "minimal" })}>Minimal</button>
       <button onClick={() => commands.setPaletteOpen(true)}>Palette</button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -236,16 +237,6 @@ describe("unified application commands", () => {
     expect(toast.error).toHaveBeenCalledWith("Operation failed: offline");
   });
 
-  it("updates visible navigation when the app switches to minimal mode", async () => {
-    render(<Harness />);
-    fireEvent.click(screen.getByText("Minimal"));
-    fireEvent.click(screen.getByText("Palette"));
-    await screen.findByRole("dialog");
-    expect(
-      screen.queryByRole("option", { name: "交互体验" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "创意展厅" })).toBeVisible();
-  });
   it("opens shared settings from desktop and browser window commands", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("Window settings"));
@@ -261,6 +252,22 @@ describe("unified application commands", () => {
       "/settings?section=updates",
     );
   });
+  it("opens settings at its search field and omits browser page commands", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("Open settings"));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/settings?focus=search",
+    );
+    fireEvent.click(screen.getByText("Palette"));
+    for (const label of ["重新加载", "复制地址", "全选"]) {
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: label },
+      });
+      expect(
+        screen.queryByRole("option", { name: new RegExp(label) }),
+      ).not.toBeInTheDocument();
+    }
+  });
   it("finds the combined recovery destination without exposing the legacy recovery command", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("Palette"));
@@ -273,7 +280,9 @@ describe("unified application commands", () => {
       screen.queryByRole("option", { name: "启动故障恢复" }),
     ).not.toBeInTheDocument();
     fireEvent.click(destination);
-    expect(screen.getByTestId("location")).toHaveTextContent("/diagnostics");
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/settings?focus=recovery",
+    );
   });
 
   it("keeps standalone extension sessions out of host navigation and its shortcuts", () => {

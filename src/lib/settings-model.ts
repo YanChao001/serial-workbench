@@ -41,12 +41,12 @@ export const FONTS = ["geist", "system", "serif", "mono"] as const;
 export const FONT_SIZES = ["sm", "md", "lg"] as const;
 export const MOTIONS = ["full", "reduced"] as const;
 export const THEMES = ["light", "dark", "system"] as const;
-export const APP_MODES = ["demo", "minimal"] as const;
 export const WINDOW_POSITIONS = ["remember", "center"] as const;
 export const NETWORK_MODES = ["system", "direct"] as const;
 export const SIDEBAR_MIN_WIDTH = 180;
 export const SIDEBAR_MAX_WIDTH = 360;
 export const SIDEBAR_DEFAULT_WIDTH = 224;
+export const SIDEBAR_COLLAPSED_WIDTH = 48;
 export const SETTINGS_VERSION = 7;
 export const STORAGE_KEY = `${APP_CONFIG.browserStorageNamespace}:settings`;
 export const THEME_STORAGE_KEY = `${APP_CONFIG.browserStorageNamespace}:theme`;
@@ -71,7 +71,6 @@ export type AppSettings = {
   menuBar: boolean;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
-  appMode: "demo" | "minimal";
   runInBackground: boolean;
   autoCheckUpdates: boolean;
   windowPosition: WindowPosition;
@@ -92,7 +91,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   menuBar: true,
   sidebarCollapsed: false,
   sidebarWidth: SIDEBAR_DEFAULT_WIDTH,
-  appMode: APP_CONFIG.defaultMode,
   runInBackground: false,
   autoCheckUpdates: true,
   windowPosition: "remember",
@@ -197,7 +195,6 @@ export function migrateSettings(raw: unknown): AppSettings {
             ),
           )
         : DEFAULT_SETTINGS.sidebarWidth,
-    appMode: pick(APP_MODES, source.appMode, DEFAULT_SETTINGS.appMode),
     theme: pick(THEMES, source.theme, DEFAULT_SETTINGS.theme),
   };
 }

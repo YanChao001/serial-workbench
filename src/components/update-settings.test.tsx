@@ -8,7 +8,15 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import {
+  afterEach,
+  beforeAll,
+  beforeEach,
+  describe,
+  expect,
+  it,
+  vi,
+} from "vitest";
 import { toast } from "sonner";
 import type { UpdateStatus, UpdateProgress } from "@/lib/tauri";
 import { openExternal, relaunchApp } from "@/lib/tauri";
@@ -89,6 +97,10 @@ const available: UpdateStatus = {
   date: null,
 };
 describe("updater controls", () => {
+  beforeAll(async () => {
+    // 交互断言使用真实 Markdown；产物冷加载另由浏览器回归覆盖。
+    await import("@/components/safe-markdown");
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(ui, {

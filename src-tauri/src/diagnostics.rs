@@ -10,7 +10,6 @@ use specta::Type;
 use tauri::Manager;
 
 use crate::{
-    database::Database,
     desktop::{self, DesktopStatus},
     error::{ErrorCode, NativeError, NativeResult, bounded_text},
     redaction::redact,
@@ -42,7 +41,6 @@ pub struct DiagnosticsReport {
     pub architecture: String,
     pub window_label: String,
     pub settings_revision: i32,
-    pub database_version: i32,
     pub desktop: DesktopStatus,
     pub autostart_enabled: Option<bool>,
     pub updater_configured: bool,
@@ -112,7 +110,6 @@ pub fn report(app: &tauri::AppHandle, label: &str) -> NativeResult<DiagnosticsRe
         architecture: std::env::consts::ARCH.into(),
         window_label: label.into(),
         settings_revision: app.state::<SettingsStore>().snapshot()?.revision,
-        database_version: app.state::<Database>().version()?,
         desktop: desktop::status(app),
         autostart_enabled: desktop::get_autostart(app).ok(),
         updater_configured: updater::load_policy(&paths).is_ok_and(|value| value.is_some()),

@@ -903,7 +903,7 @@ async fn fetch(
         .https_only(true)
         .connect_timeout(Duration::from_secs(10))
         .timeout(Duration::from_secs(60))
-        .user_agent("Tauri-Starter-Extension-Market/1")
+        .user_agent("Serial-Workbench-Extension-Market/1")
         .redirect(Policy::custom(move |attempt| {
             if attempt.previous().len() < 5 && allowed_url(attempt.url(), &repository) {
                 attempt.follow()
@@ -1178,7 +1178,7 @@ mod tests {
     }
     fn config() -> MarketConfig {
         MarketConfig {
-            repository: "YanChao001/tauri-desktop-starter-extensions".into(),
+            repository: "YanChao001/serial-workbench-plugins".into(),
             public_key: include_str!("../test-fixtures/extension-market/public-key.txt")
                 .trim()
                 .into(),

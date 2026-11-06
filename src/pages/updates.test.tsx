@@ -27,14 +27,14 @@ it("replaces old update links with the settings section while retaining a specif
   render(
     <MemoryRouter
       initialEntries={[
-        "/catalog",
+        "/extensions",
         "/updates?focus=autoUpdates&keep=1&section=old",
       ]}
     >
       <Routes>
         <Route path="/updates" element={<Updates />} />
         <Route path="/settings" element={<Destination />} />
-        <Route path="/catalog" element={<Destination />} />
+        <Route path="/extensions" element={<Destination />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -44,5 +44,5 @@ it("replaces old update links with the settings section while retaining a specif
     ),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
-  expect(screen.getByText("/catalog")).toBeInTheDocument();
+  expect(screen.getByText("/extensions")).toBeInTheDocument();
 });

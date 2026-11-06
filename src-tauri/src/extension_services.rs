@@ -517,7 +517,7 @@ mod tests {
 
     fn item(id: &str, grants: &[ExtensionPermission]) -> ExtensionInfo {
         let manifest: ExtensionManifest = serde_json::from_value(json!({
-            "formatVersion": 3, "apiVersion": 2, "minHostVersion": "0.1.4",
+            "formatVersion": 3, "apiVersion": 2, "minHostVersion": "0.1.0",
             "id": id, "version": "1.0.0", "name": "Service fixture", "author": "Test",
             "description": "Service boundary regression", "permissions": [],
             "optionalPermissions": ["messaging:lan", "wallpapers:manage", "network:images", "network:system-proxy", "links:open", "window:control"], "network": [],
@@ -553,7 +553,7 @@ mod tests {
         let mut content: serde_json::Value =
             serde_json::from_str(&crate::extension_test_support::package()).unwrap();
         content["manifest"]["id"] = "test.services".into();
-        content["manifest"]["minHostVersion"] = "0.1.7".into();
+        content["manifest"]["minHostVersion"] = "0.1.0".into();
         content["manifest"]["optionalPermissions"] = json!(["messaging:lan"]);
         let content = content.to_string();
         let preview = preview_package(&content).unwrap();

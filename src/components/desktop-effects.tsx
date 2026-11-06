@@ -16,11 +16,9 @@ import { attachUpdateEvents, checkUpdates } from "@/lib/updates-store";
 import type { AppCommand } from "@/commands/types";
 import { SettingsPersistence } from "@/components/settings-persistence";
 import { useWorkspace } from "@/hooks/use-workspace";
-import { useTaskNotifications } from "@/hooks/use-task-notifications";
 import { useStartupUpdates } from "@/hooks/use-startup-updates";
 export function DesktopEffects() {
   useWorkspace();
-  useTaskNotifications();
   useStartupUpdates();
   const { persistence, persistenceError } = useSettings();
   const navigate = useNavigate();

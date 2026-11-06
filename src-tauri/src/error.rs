@@ -7,17 +7,14 @@ pub enum ErrorCode {
     InvalidArgument,
     UserCancelled,
     CredentialError,
-    NameRequired,
     InputTooLong,
     StorageIo,
     StorageCorrupt,
     SettingsConflict,
-    DatabaseError,
     NotFound,
     Conflict,
     PlatformUnavailable,
     NativeBusy,
-    HttpTimeout,
     AutostartError,
     UpdateNotConfigured,
     UpdateBusy,
@@ -66,7 +63,6 @@ impl NativeError {
             retryable: matches!(
                 code,
                 ErrorCode::NativeBusy
-                    | ErrorCode::HttpTimeout
                     | ErrorCode::UpdateBusy
                     | ErrorCode::UpdateCheckFailed
                     | ErrorCode::UpdateCheckTimeout
@@ -135,7 +131,6 @@ mod tests {
         }
         for code in [
             ErrorCode::NativeBusy,
-            ErrorCode::HttpTimeout,
             ErrorCode::ExtensionBusy,
             ErrorCode::UpdateCheckTimeout,
             ErrorCode::MarketUnavailable,

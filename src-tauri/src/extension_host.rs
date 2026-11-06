@@ -876,7 +876,7 @@ mod tests {
         );
     }
     fn manifest(id: &str) -> ExtensionManifest {
-        serde_json::from_value(serde_json::json!({"formatVersion":3,"apiVersion":2,"minHostVersion":"0.1.4",
+        serde_json::from_value(serde_json::json!({"formatVersion":3,"apiVersion":2,"minHostVersion":"0.1.0",
             "id":id,"version":"1.0.0","name":"Host test","author":"Tests","description":"Host effects test",
             "commands":[{"id":"main","title":"Main","function":"main","inputFormat":"json","resultFormat":"view","permissions":[]}],
             "permissions":[],"optionalPermissions":["storage","network:https"],

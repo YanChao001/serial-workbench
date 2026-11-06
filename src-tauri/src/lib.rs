@@ -11,13 +11,8 @@ mod app_config;
 mod autostart;
 pub mod bindings;
 mod blocking;
-pub mod capture;
 mod commands;
-mod data_commands;
-mod database;
-mod demo_http;
 mod desktop;
-pub mod device;
 mod diagnostics;
 mod error;
 mod extension_commands;
@@ -39,10 +34,10 @@ mod extension_wallpaper;
 mod extension_windows;
 mod extension_worker;
 pub mod extensions;
+mod file_access;
 mod file_commands;
 mod lifecycle;
 mod network;
-mod network_commands;
 mod recovery;
 mod redaction;
 mod repository_config;
@@ -54,8 +49,6 @@ mod wallpaper_commands;
 mod wallpaper_video;
 mod wallpapers;
 mod window_geometry;
-mod workbench;
-mod workbench_commands;
 
 use tauri::Manager;
 use tauri_plugin_deep_link::DeepLinkExt;
@@ -127,7 +120,7 @@ pub fn run() {
     };
     let builder = tauri::Builder::default()
         .manage(desktop::DesktopState::default())
-        .manage(demo_http::DemoHttpState::default())
+        .manage(file_access::FileAccess::default())
         .manage(extension_windows::ExtensionWindows::default())
         .manage(extensions::ui::ExtensionUiStore::default())
         .manage(lifecycle::LifecycleState::default())
@@ -137,8 +130,8 @@ pub fn run() {
 
     // 单实例必须最先注册，让重复启动在初始化日志等共享资源前退出。
     #[cfg(desktop)]
-    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, cwd| {
-        system_commands::activate(app, args, &cwd, "single-instance");
+    let builder = builder.plugin(tauri_plugin_single_instance::init(|app, args, _cwd| {
+        system_commands::activate(app, args, "single-instance");
         desktop::request_show_main(app);
     }));
 
@@ -157,7 +150,6 @@ pub fn run() {
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_notification::init())
         .plugin(tauri_plugin_clipboard_manager::init())
-        .plugin(tauri_plugin_global_shortcut::Builder::new().build())
         .plugin(tauri_plugin_deep_link::init())
         .plugin(tauri_plugin_http::init())
         .plugin(tauri_plugin_updater::Builder::new().build());
@@ -182,7 +174,6 @@ pub fn run() {
             );
         }
         let initialized = recovery::initialize(&paths)?;
-        let workbench = workbench::WorkbenchState::open(initialized.recovery.workbench_root())?;
         let system = system_commands::SystemState::open(paths.config.join("workspace.json"));
         app.manage(extensions::ExtensionStore::new(
             paths.data.join("extensions"),
@@ -211,8 +202,6 @@ pub fn run() {
         app.manage(paths);
         app.manage(initialized.recovery);
         app.manage(initialized.settings);
-        app.manage(initialized.database);
-        app.manage(workbench);
         app.manage(system);
         system_commands::drain_activations(app.handle());
         app.manage(diagnostics::DiagnosticsState::default());
@@ -222,7 +211,6 @@ pub fn run() {
             system_commands::activate(
                 &handle,
                 event.urls().iter().map(ToString::to_string).collect(),
-                "",
                 "deep-link",
             );
         });
@@ -230,19 +218,11 @@ pub fn run() {
         let has_link = arguments
             .iter()
             .any(|argument| system_commands::deep_link_route(argument).is_some());
-        system_commands::activate(
-            app.handle(),
-            arguments,
-            &std::env::current_dir()
-                .unwrap_or_default()
-                .to_string_lossy(),
-            "startup",
-        );
+        system_commands::activate(app.handle(), arguments, "startup");
         if !has_link && let Ok(Some(urls)) = app.deep_link().get_current() {
             system_commands::activate(
                 app.handle(),
                 urls.iter().map(ToString::to_string).collect(),
-                "",
                 "deep-link-startup",
             );
         }
@@ -292,14 +272,7 @@ pub fn run() {
                     );
                 }
             }
-            if let tauri::WindowEvent::DragDrop(tauri::DragDropEvent::Drop { paths, .. }) = event {
-                workbench::handle_drop(window.app_handle(), window.label(), paths.clone());
-            }
             if let tauri::WindowEvent::Destroyed = event {
-                window
-                    .app_handle()
-                    .state::<demo_http::DemoHttpState>()
-                    .cancel_window(window.label());
                 window
                     .app_handle()
                     .state::<extensions::ui::ExtensionUiStore>()

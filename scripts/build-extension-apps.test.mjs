@@ -21,7 +21,7 @@ import {
 const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
 async function fixture(t, modules = { "src/lib.rs": "fn main() {}\n" }) {
-  const root = await mkdtemp(join(tmpdir(), "starter-demo-receipt-"));
+  const root = await mkdtemp(join(tmpdir(), "serial-workbench-sdk-receipt-"));
   t.after(() => rm(root, { recursive: true, force: true }));
   const sources = {};
   for (const [name, path, content] of [
@@ -114,7 +114,7 @@ test("入口脚本的 CLI、检查与报告文案变更不要求重建模块", a
   await buildExtensionApps(root, { check: true });
 });
 
-test("递归跟踪 Rust 子模块，新增、删除或修改模块都使分发资源过期", async (t) => {
+test("递归跟踪 Rust 子模块，新增、删除或修改模块都使测试资源过期", async (t) => {
   const root = await fixture(t, {
     "src/lib.rs": "mod games;\n",
     "src/games/mod.rs": "mod puzzle;\n",
@@ -137,7 +137,7 @@ test("递归跟踪 Rust 子模块，新增、删除或修改模块都使分发�
   await buildExtensionApps(root, { check: true });
 });
 
-test("构建或重建期间界面文档变化时保留原分发资源与回执", async (t) => {
+test("构建或重建期间界面文档变化时保留原测试资源与回执", async (t) => {
   const root = await fixture(t),
     ui = join(root, "examples/extensions/apps/ui/main.html"),
     output = join(root, "resources/extensions/demo-apps.wasm"),
@@ -207,7 +207,7 @@ test("构建回执按路径稳定排序，重建检查比较实际编译结果�
   assert.equal(await readFile(receipt, "utf8"), committed);
 });
 
-test("构建或重建期间子模块变化时保留原分发资源与回执", async (t) => {
+test("构建或重建期间子模块变化时保留原测试资源与回执", async (t) => {
   const root = await fixture(t);
   const output = join(root, "resources/extensions/demo-apps.wasm");
   const receipt = join(root, "resources/extensions/demo-apps.json");
@@ -232,7 +232,9 @@ test("构建或重建期间子模块变化时保留原分发资源与回执", as
 
 test("源码子目录和祖先目录中的链接均被拒绝，不读取树外 Rust 文件", async (t) => {
   const root = await fixture(t);
-  const outside = await mkdtemp(join(tmpdir(), "starter-demo-outside-"));
+  const outside = await mkdtemp(
+    join(tmpdir(), "serial-workbench-sdk-outside-"),
+  );
   t.after(() => rm(outside, { recursive: true, force: true }));
   await writeFile(join(outside, "external.rs"), "pub fn external() {}\n");
   const src = join(root, "examples/extensions/apps/src");

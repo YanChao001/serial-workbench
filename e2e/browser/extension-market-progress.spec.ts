@@ -9,7 +9,6 @@ import {
 import AxeBuilder from "@axe-core/playwright";
 import appConfig from "../../app.config.json" with { type: "json" };
 import type {
-  BundledExtension,
   ExtensionConsent,
   ExtensionInfo,
   ExtensionSnapshot,
@@ -107,7 +106,6 @@ async function seedNativeFixture(
     fontSize?: "md" | "lg";
     item?: MarketEntry;
     entries?: MarketEntry[];
-    bundled?: BundledExtension[];
     installed?: ExtensionInfo[];
     delayedReload?: boolean;
   } = {},
@@ -118,7 +116,6 @@ async function seedNativeFixture(
       namespace,
       settings,
       catalog,
-      bundled,
       item,
       receipt,
       initialItems,
@@ -243,17 +240,13 @@ async function seedNativeFixture(
                 return {
                   active: false,
                   reason: null,
-                  restored: false,
                   pending: false,
-                  notes: 0,
                   archiveId: null,
                 };
               case "get_workspace":
                 return { routes: {}, secondaryOpen: false };
               case "activation_snapshot":
                 return [];
-              case "workbench_task_snapshot":
-                return { revision: 0, tasks: [], active: 0, queued: 0 };
               case "get_update_snapshot":
                 return null;
               case "extension_snapshot":
@@ -267,8 +260,6 @@ async function seedNativeFixture(
                 return snapshot();
               case "extension_market_snapshot":
                 return catalog;
-              case "bundled_extension_catalog":
-                return { hostVersion: catalog.hostVersion, entries: bundled };
               case "download_market_extension": {
                 const channel = args.onProgress as { id: number };
                 progressCallback = channel.id;
@@ -328,7 +319,6 @@ async function seedNativeFixture(
         packageSha256: (options.item ?? entry).packageSha256,
       },
       initialItems: options.installed ?? [],
-      bundled: options.bundled ?? [],
       delayedReload: options.delayedReload ?? false,
     },
   );
@@ -374,11 +364,11 @@ const reviewedEntry: MarketEntry = {
 const wallpaperManifest: MarketEntry["package"]["manifest"] = {
   formatVersion: 3,
   apiVersion: 2,
-  minHostVersion: "0.1.8",
+  minHostVersion: "0.1.0",
   id: "market.wallpaper-browser",
   version: "1.2.5",
   name: "壁纸库",
-  author: "Tauri Desktop Starter",
+  author: "Serial Workbench",
   description: "浏览在线壁纸，管理本机图库并设置应用背景。",
   icon: "image",
   commands: [
@@ -636,78 +626,6 @@ async function checkReviewLayout(
   await settledFrames(page);
   await review.screenshot({
     path: testInfo.outputPath("review-technical.png"),
-  });
-}
-
-// 原生外壳保留侧栏，整页布局按应用支持的最小窗口宽度验收。
-for (const width of [880, 1440]) {
-  test(`built-in plugins share the market catalog and appear first at ${width}px`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ width, height: 1000 });
-    const builtIn: BundledExtension = {
-      package: {
-        ...entry.package,
-        manifest: {
-          ...entry.package.manifest,
-          id: "starter.fixture",
-          name: "Z Built-in workbench",
-          description:
-            "Bundled workbench, managed together with online plugins.",
-          icon: "notebook",
-        },
-      },
-      category: "tools",
-    };
-    await seedNativeFixture(page, "dark", {
-      bundled: [builtIn],
-      fontSize: width === 880 ? "lg" : "md",
-    });
-    await page.goto("./#/extensions?tab=discover");
-    const market = page.getByRole("region", {
-      name: "Plugin market",
-      exact: true,
-    });
-    const cards = market.getByRole("article");
-    await expect(cards).toHaveCount(3);
-    await expect(cards.first()).toContainText("Z Built-in workbench");
-    await expect(
-      cards.first().getByText("Built-in", { exact: true }),
-    ).toBeVisible();
-    await expect(
-      cards.first().getByRole("button", { name: "Install", exact: true }),
-    ).toBeEnabled();
-    await expect(market.getByText("Featured", { exact: true })).toHaveCount(0);
-    await expect(
-      page.getByRole("button", {
-        name: /Built-in updates|Restore bundled workbench/,
-      }),
-    ).toHaveCount(0);
-    await expect
-      .poll(() =>
-        page
-          .locator("main")
-          .evaluate((node) => node.scrollWidth - node.clientWidth),
-      )
-      .toBeLessThanOrEqual(1);
-    await page.screenshot({
-      path: testInfo.outputPath("unified-plugin-catalog.png"),
-      animations: "disabled",
-    });
-    const search = market.getByRole("searchbox");
-    await search.fill("Built-in workbench");
-    await expect(cards).toHaveCount(1);
-    await search.fill("Neighbor fixture");
-    await expect(cards).toHaveCount(1);
-    await expect(cards.first()).toContainText("Neighbor fixture");
-    await expect(
-      cards.first().getByText("Built-in", { exact: true }),
-    ).toHaveCount(0);
-    expect(
-      await page.evaluate(
-        () => window.marketProgressFixture.unexpectedCommands,
-      ),
-    ).toEqual([]);
   });
 }
 

@@ -6,19 +6,7 @@ fn main() {
         if std::env::args_os().len() != 2 {
             std::process::exit(2);
         }
-        std::process::exit(tauri_desktop_starter_lib::extension_runtime::worker_main());
-    }
-    // 固定子进程协议在初始化 Tauri/单实例之前处理，不执行用户提供的命令。
-    if std::env::args().nth(1).as_deref() == Some("--demo-worker") {
-        let input = std::env::args().nth(2).unwrap_or_default();
-        if input.len() > 1000 || input.contains('\0') {
-            std::process::exit(2);
-        }
-        println!(
-            "{}",
-            serde_json::json!({ "input": input, "characters": input.chars().count(), "uppercase": input.to_uppercase() })
-        );
-        return;
+        std::process::exit(serial_workbench_lib::extension_runtime::worker_main());
     }
     serial_workbench_lib::run();
 }

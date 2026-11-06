@@ -54,10 +54,7 @@ describe("Centered window startup", () => {
     assert.ok(
       Math.abs(moved.x - after.x) <= 2 && Math.abs(moved.y - after.y) <= 2,
     );
-    assert.equal(
-      (await invoke("greet", { name: "Position", language: "en" })).ok,
-      true,
-    );
+    assert.equal((await invoke("load_settings_snapshot")).ok, true);
   });
 });
 /* global describe, it */

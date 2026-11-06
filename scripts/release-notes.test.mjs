@@ -62,20 +62,50 @@ const options = {
 };
 const pull = {
   base: { ref: "main" },
-  head: { ref: "release/1.2.3" },
+  head: { ref: "chore/prepare-1.2.3" },
   merge_commit_sha: options.commit,
   merged_at: "2026-10-05T00:00:00Z",
   body: "## 变更内容\n\n修复导航等待。\n\n## 验证结果\n\n通过。\n\n## 影响范围\n\n未完成跨版本安装验收。",
 };
 
-test("notes use the published stable base and release PR, classifying real commits", () => {
+test("an ordinary version PR supplies the public summary without a release branch", () => {
+  const notes = generateReleaseNotes(
+    options,
+    () => [[{ ...pull, head: { ref: "chore/prepare-1.2.3" } }]],
+    history(["feat(ui): 添加导航", "chore(release): 更新版本"]),
+  );
+  assert.match(notes, /修复导航等待/);
+  assert.match(notes, /未完成跨版本安装验收/);
+  assert.match(notes, /添加导航/);
+});
+
+test("first publication reads an ordinary PR without requiring a historical tag", () => {
+  const commands = [];
+  const notes = generateReleaseNotes(
+    { ...options, releases: [] },
+    () => [[{ ...pull, head: { ref: "feature/initial-demo" } }]],
+    history(["feat: 初始版本"], commands),
+  );
+  assert.match(notes, /首次公开发布/);
+  assert.match(notes, /修复导航等待/);
+  assert.match(notes, /未完成跨版本安装验收/);
+  assert.ok(notes.includes(`/commits/${sourceSha}`));
+  assert.ok(
+    !commands.some((args) => args.some((arg) => arg.startsWith("refs/tags/"))),
+  );
+});
+
+test("notes use the published stable base and merged PR, classifying real commits", () => {
   const commands = [];
   const notes = generateReleaseNotes(
     options,
     (args) => {
       assert.ok(args[0].includes(`/commits/${sourceSha}/pulls?`));
       return [
-        [{ ...pull, base: { ref: "develop" }, body: "错误的回流说明" }, pull],
+        [
+          { ...pull, base: { ref: "other-base" }, body: "错误的目标分支说明" },
+          pull,
+        ],
       ];
     },
     history(
@@ -104,7 +134,7 @@ test("notes use the published stable base and release PR, classifying real commi
   assert.match(notes, /尚未声明经安装验收的统一最低系统版本/);
   assert.doesNotMatch(
     notes,
-    /chore\(release\)|错误的回流说明|通过。|What's Changed/,
+    /chore\(release\)|错误的目标分支说明|通过。|What's Changed/,
   );
 });
 
@@ -115,7 +145,7 @@ test("explicit release sections take priority and fenced headings do not end the
       [
         {
           ...pull,
-          head: { ref: "hotfix/1.2.3" },
+          head: { ref: "fix/navigation" },
           body: "## 变更内容\n内部实现。\n### 变更摘要\n用户可见修复。\n```md\n## 示例标题\n```\n## 影响范围\n内部权限说明。\n### 升级与限制\n<!-- 填写真实情况 -->\n需手动安装。\n## 验证结果\n内部测试。",
         },
       ],
@@ -149,7 +179,7 @@ test("missing PR, wrong source and empty template sections stop before creating 
           },
           history(),
         ),
-      /填写/,
+      /发布提交.*PR.*变更内容.*影响范围/,
     );
   }
 });

@@ -202,18 +202,6 @@ pub struct ExtensionPreview {
     #[specta(optional)]
     pub ui_documents: Vec<ExtensionUiDocument>,
 }
-#[derive(Debug, Clone, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct BundledExtension {
-    pub package: ExtensionPreview,
-    pub category: crate::extension_market::MarketCategory,
-}
-#[derive(Debug, Clone, Serialize, Type)]
-#[serde(rename_all = "camelCase")]
-pub struct BundledExtensionCatalog {
-    pub host_version: String,
-    pub entries: Vec<BundledExtension>,
-}
 #[derive(Debug, Clone, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ExtensionInfo {
@@ -231,6 +219,7 @@ pub struct ExtensionInfo {
 #[serde(tag = "kind", rename_all = "kebab-case", deny_unknown_fields)]
 pub enum ExtensionOrigin {
     Local,
+    // 已安装存档中的来源标记；当前应用不再分发或自动安装内置包。
     Bundled,
     Market {
         source: crate::extension_market::MarketSource,
@@ -342,6 +331,7 @@ struct Registry {
     schema_version: u32,
     revision: i32,
     extensions: Vec<ExtensionInfo>,
+    // 保留现有注册表字段，读取快照不再触发默认安装。
     #[serde(default)]
     bundled_initialized: bool,
 }
@@ -643,17 +633,17 @@ impl ExtensionManifest {
                     | ExtensionPermission::NetworkSystemProxy
                     | ExtensionPermission::LinksOpen
             )
-        }) && version(&self.min_host_version)? < (0, 1, 6)
+        }) && version(&self.min_host_version)? < (0, 1, 0)
         {
             return Err(invalid(
-                "Image resources, external links and system proxies require minHostVersion 0.1.6 or newer",
+                "Image resources, external links and system proxies require minHostVersion 0.1.0 or newer",
             ));
         }
         if declared.contains(&ExtensionPermission::WindowControl)
-            && version(&self.min_host_version)? < (0, 1, 7)
+            && version(&self.min_host_version)? < (0, 1, 0)
         {
             return Err(invalid(
-                "Own-window controls require minHostVersion 0.1.7 or newer",
+                "Own-window controls require minHostVersion 0.1.0 or newer",
             ));
         }
         if self.commands.is_empty() || self.commands.len() > 32 {
@@ -662,10 +652,10 @@ impl ExtensionManifest {
         let mut ids = HashSet::new();
         for command in &self.commands {
             if command.execution_budget == ExtensionExecutionBudget::Compute
-                && version(&self.min_host_version)? < (0, 1, 7)
+                && version(&self.min_host_version)? < (0, 1, 0)
             {
                 return Err(invalid(
-                    "Compute execution budgets require minHostVersion 0.1.7 or newer",
+                    "Compute execution budgets require minHostVersion 0.1.0 or newer",
                 ));
             }
             if command.id.is_empty()
@@ -728,9 +718,9 @@ impl ExtensionManifest {
                         "UI window sizes require a window entry, width 360–1920 and height 480–1440 logical pixels",
                     ));
                 }
-                if version(&self.min_host_version)? < (0, 1, 7) {
+                if version(&self.min_host_version)? < (0, 1, 0) {
                     return Err(invalid(
-                        "UI window sizes require minHostVersion 0.1.7 or newer",
+                        "UI window sizes require minHostVersion 0.1.0 or newer",
                     ));
                 }
             }
@@ -951,53 +941,6 @@ pub(crate) fn package(content: &str) -> NativeResult<Bundle> {
 pub fn preview_package(content: &str) -> NativeResult<ExtensionPreview> {
     Ok(package(content)?.preview)
 }
-pub fn bundled_package(id: &str) -> NativeResult<String> {
-    let manifest = match id {
-        "starter.extension-lab" => include_str!("../../examples/extensions/apps/extension.json"),
-        _ => return Err(invalid("Unknown bundled extension")),
-    };
-    Ok(serde_json::json!({
-        "manifest": serde_json::from_str::<serde_json::Value>(manifest).map_err(|_| invalid("Bundled manifest is invalid"))?,
-        "wasm": STANDARD.encode(include_bytes!("../../resources/extensions/demo-apps.wasm")),
-        "uiDocuments": {"main": include_str!("../../examples/extensions/apps/ui/main.html")},
-    }).to_string())
-}
-
-/// 内置目录独立于安装记录和在线市场，读取不会登记、启用或重装插件。
-pub fn bundled_catalog() -> NativeResult<BundledExtensionCatalog> {
-    use crate::extension_market::MarketCategory;
-    Ok(BundledExtensionCatalog {
-        host_version: env!("CARGO_PKG_VERSION").to_owned(),
-        entries: vec![BundledExtension {
-            package: preview_package(&bundled_package("starter.extension-lab")?)?,
-            category: MarketCategory::Tools,
-        }],
-    })
-}
-
-pub(crate) fn verified_package_origin(bundle: &Bundle) -> NativeResult<ExtensionOrigin> {
-    let Ok(content) = bundled_package(&bundle.preview.manifest.id) else {
-        return Ok(ExtensionOrigin::Local);
-    };
-    let bundled: Package =
-        serde_json::from_str(&content).map_err(|_| invalid("Bundled package is invalid"))?;
-    // ID 或模块哈希都不足以证明来源；清单和界面文档也必须来自当前随包资源。
-    let manifest = serde_json::to_value(&bundle.preview.manifest)
-        .map_err(|error| io("Cannot verify bundled manifest", error))?;
-    let trusted_manifest = serde_json::to_value(&bundled.manifest)
-        .map_err(|error| io("Cannot verify bundled manifest", error))?;
-    Ok(
-        if manifest == trusted_manifest
-            && STANDARD.encode(&bundle.binary) == bundled.wasm
-            && bundle.ui_documents == bundled.ui_documents
-        {
-            ExtensionOrigin::Bundled
-        } else {
-            ExtensionOrigin::Local
-        },
-    )
-}
-
 impl ExtensionStore {
     // Called while holding `writing`: identity checks and admission are atomic with revoke.
     fn compilation_lease(&self, id: &str, hash: &str, background: bool) -> NativeResult<RunLease> {
@@ -1575,71 +1518,6 @@ impl ExtensionStore {
             }
             atomic_write(&path, &bundle.binary)?;
         }
-        Ok(())
-    }
-    /// Default packages are recorded once, without trusting or replacing user packages.
-    pub fn initialize_bundled(&self) -> NativeResult<()> {
-        // Preflight and compile before taking the registry mutation lock.
-        if self
-            .snapshot()?
-            .items
-            .iter()
-            .any(|item| item.package.manifest.id == "starter.extension-lab")
-        {
-            let _guard = self
-                .0
-                .writing
-                .lock()
-                .map_err(|_| io("Extension registry unavailable", "lock poisoned"))?;
-            let mut registry = self.read()?;
-            if !registry.bundled_initialized {
-                registry.bundled_initialized = true;
-                self.write(&mut registry)?;
-            }
-            return Ok(());
-        }
-        {
-            let _guard = self
-                .0
-                .writing
-                .lock()
-                .map_err(|_| io("Extension registry unavailable", "lock poisoned"))?;
-            let registry = self.read()?;
-            if registry.bundled_initialized || registry.extensions.len() >= MAX_EXTENSIONS {
-                return Ok(());
-            }
-        }
-        let bundle = package(&bundled_package("starter.extension-lab")?)?;
-        let _guard = self
-            .0
-            .writing
-            .lock()
-            .map_err(|_| io("Extension registry unavailable", "lock poisoned"))?;
-        let mut registry = self.read()?;
-        if registry.bundled_initialized {
-            return Ok(());
-        }
-        if !registry
-            .extensions
-            .iter()
-            .any(|item| item.package.manifest.id == "starter.extension-lab")
-        {
-            if registry.extensions.len() >= MAX_EXTENSIONS {
-                return Ok(());
-            }
-            self.cache_bundle(&bundle, &registry)?;
-            registry.extensions.push(ExtensionInfo {
-                package: bundle.preview,
-                generation: registry.revision.checked_add(1).ok_or_else(conflict)?,
-                enabled: false,
-                granted_permissions: vec![],
-                origin: ExtensionOrigin::Bundled,
-                previous_package: None,
-                previous_origin: None,
-            });
-        }
-        registry.bundled_initialized = true;
-        self.write(&mut registry)?;
         Ok(())
     }
     pub fn current_entry(
@@ -3449,52 +3327,6 @@ mod tests {
     }
 
     #[test]
-    fn bundled_catalog_describes_the_actual_shipped_packages() {
-        let catalog = bundled_catalog().unwrap();
-        assert_eq!(catalog.host_version, env!("CARGO_PKG_VERSION"));
-        let mut ids = HashSet::new();
-        for entry in catalog.entries {
-            let id = &entry.package.manifest.id;
-            assert!(ids.insert(id.clone()));
-            let actual = preview_package(&bundled_package(id).unwrap()).unwrap();
-            assert_eq!(
-                serde_json::to_value(entry.package).unwrap(),
-                serde_json::to_value(actual).unwrap()
-            );
-        }
-        assert!(ids.contains("starter.extension-lab"));
-    }
-
-    #[test]
-    fn bundled_origin_requires_the_complete_shipped_package() {
-        let content = bundled_package("starter.extension-lab").unwrap();
-        let value: serde_json::Value = serde_json::from_str(&content).unwrap();
-        let mut bundle = package(&serde_json::to_string_pretty(&value).unwrap()).unwrap();
-        assert!(matches!(
-            verified_package_origin(&bundle).unwrap(),
-            ExtensionOrigin::Bundled
-        ));
-        bundle.preview.manifest.description.push_str(" changed");
-        assert!(matches!(
-            verified_package_origin(&bundle).unwrap(),
-            ExtensionOrigin::Local
-        ));
-        bundle = package(&content).unwrap();
-        bundle.binary.push(0);
-        assert!(matches!(
-            verified_package_origin(&bundle).unwrap(),
-            ExtensionOrigin::Local
-        ));
-        bundle = package(&content).unwrap();
-        bundle
-            .ui_documents
-            .insert("main".into(), "Changed UI".into());
-        assert!(matches!(
-            verified_package_origin(&bundle).unwrap(),
-            ExtensionOrigin::Local
-        ));
-    }
-    #[test]
     fn market_trust_uses_repository_and_key_identity() {
         let source = |repository: &str, key: &str, revision| ExtensionOrigin::Market {
             source: crate::extension_market::MarketSource {
@@ -3748,6 +3580,65 @@ mod tests {
         }
     }
     #[test]
+    fn initial_product_version_supports_all_existing_extension_capabilities() {
+        let package: serde_json::Value = serde_json::from_str(&test_package()).unwrap();
+        let mut manifest: ExtensionManifest =
+            serde_json::from_value(package["manifest"].clone()).unwrap();
+        manifest.min_host_version = "0.1.0".into();
+        manifest.optional_permissions = vec![
+            ExtensionPermission::FilesRead,
+            ExtensionPermission::NetworkHttps,
+            ExtensionPermission::NetworkLocal,
+            ExtensionPermission::NetworkImages,
+            ExtensionPermission::NetworkSystemProxy,
+            ExtensionPermission::LinksOpen,
+            ExtensionPermission::WindowControl,
+            ExtensionPermission::Storage,
+            ExtensionPermission::MessagingLan,
+            ExtensionPermission::WallpapersManage,
+        ];
+        manifest.network = vec![
+            ExtensionNetworkRule {
+                origin: "https://api.example.com".into(),
+                methods: vec!["GET".into()],
+            },
+            ExtensionNetworkRule {
+                origin: "http://localhost:11434".into(),
+                methods: vec!["POST".into()],
+            },
+        ];
+        manifest.commands[0].input_format = ExtensionInputFormat::Json;
+        manifest.commands[0].result_format = ExtensionResultFormat::View;
+        manifest.commands[0].execution_budget = ExtensionExecutionBudget::Compute;
+        manifest.commands[0].permissions = manifest
+            .permissions
+            .iter()
+            .chain(&manifest.optional_permissions)
+            .copied()
+            .collect();
+        manifest.commands[0].ui = Some(ExtensionUi {
+            sidebar: true,
+            window: true,
+            document: Some("main".into()),
+            window_size: Some(ExtensionWindowSize {
+                width: 1100,
+                height: 820,
+            }),
+        });
+        manifest.validate().unwrap();
+        manifest.min_host_version = "0.0.9".into();
+        assert_eq!(
+            manifest.validate().unwrap_err().code,
+            ErrorCode::InvalidArgument
+        );
+        manifest.min_host_version = "9.9.9".into();
+        assert_eq!(
+            manifest.validate().unwrap_err().code,
+            ErrorCode::ExtensionIncompatible
+        );
+    }
+
+    #[test]
     fn command_execution_budgets_default_safely_and_gate_compute_on_the_host_version() {
         let mut manifest = preview_package(&test_package()).unwrap().manifest;
         assert_eq!(
@@ -3759,11 +3650,11 @@ mod tests {
                 .get("executionBudget")
                 .is_none()
         );
-        manifest.min_host_version = "0.1.6".into();
+        manifest.min_host_version = "0.0.9".into();
         manifest.validate().unwrap();
         manifest.commands[0].execution_budget = ExtensionExecutionBudget::Compute;
         assert!(manifest.validate().is_err());
-        manifest.min_host_version = "0.1.7".into();
+        manifest.min_host_version = "0.1.0".into();
         manifest.validate().unwrap();
         let encoded = serde_json::to_value(&manifest).unwrap();
         assert_eq!(encoded["commands"][0]["executionBudget"], "compute");
@@ -3793,16 +3684,16 @@ mod tests {
         manifest
             .optional_permissions
             .push(ExtensionPermission::WindowControl);
-        manifest.min_host_version = "0.1.6".into();
+        manifest.min_host_version = "0.0.9".into();
         assert!(manifest.validate().is_err());
-        manifest.min_host_version = "0.1.7".into();
+        manifest.min_host_version = "0.1.0".into();
         manifest.validate().unwrap();
     }
 
     #[test]
     fn window_size_is_bounded_and_requires_a_declared_window_and_current_host() {
         let mut manifest = preview_package(&test_package()).unwrap().manifest;
-        manifest.min_host_version = "0.1.7".into();
+        manifest.min_host_version = "0.1.0".into();
         manifest.commands[0].input_format = ExtensionInputFormat::Json;
         manifest.commands[0].result_format = ExtensionResultFormat::View;
         manifest.commands[0].ui = Some(ExtensionUi {
@@ -3834,7 +3725,7 @@ mod tests {
         manifest.commands[0].ui.as_mut().unwrap().window = false;
         assert!(manifest.validate().is_err());
         manifest.commands[0].ui.as_mut().unwrap().window = true;
-        manifest.min_host_version = "0.1.6".into();
+        manifest.min_host_version = "0.0.9".into();
         assert!(manifest.validate().is_err());
         let encoded = serde_json::to_value(&manifest).unwrap();
         let mut fractional = encoded.clone();
@@ -3899,7 +3790,7 @@ mod tests {
         let mut manifest = preview_package(&test_package()).unwrap().manifest;
         manifest.optional_permissions = vec![ExtensionPermission::NetworkSystemProxy];
         assert!(manifest.validate().is_err());
-        manifest.min_host_version = "0.1.6".into();
+        manifest.min_host_version = "0.1.0".into();
         assert!(manifest.validate().is_err());
         manifest
             .optional_permissions
@@ -3920,87 +3811,25 @@ mod tests {
         assert!(manifest.validate().is_err(), "文本命令不能接收网络资源请求");
     }
     #[test]
-    fn defaults_install_once_disabled_and_never_overwrite_or_resurrect() {
-        let (_dir, store) = store();
-        store.initialize_bundled().unwrap();
-        let snapshot = store.snapshot().unwrap();
-        assert_eq!(snapshot.items.len(), 1);
-        let item = &snapshot.items[0];
-        assert_eq!(item.package.manifest.id, "starter.extension-lab");
-        assert!(!item.enabled && item.granted_permissions.is_empty());
-        store.initialize_bundled().unwrap();
-        assert_eq!(store.snapshot().unwrap().revision, snapshot.revision);
-        assert!(
-            store
-                .window_entry(
-                    "starter.extension-lab",
-                    "open",
-                    &item.package.sha256,
-                    item.generation
-                )
-                .is_err()
-        );
-        let enabled = enable(&store, &snapshot);
-        assert!(
-            store
-                .window_entry(
-                    "starter.extension-lab",
-                    "open",
-                    &item.package.sha256,
-                    item.generation
-                )
-                .is_ok()
-        );
-        assert!(
-            store
-                .window_entry(
-                    "starter.extension-lab",
-                    "missing",
-                    &item.package.sha256,
-                    item.generation
-                )
-                .is_err()
-        );
-        store
-            .uninstall("starter.extension-lab", enabled.revision)
-            .unwrap();
-        store.initialize_bundled().unwrap();
-        assert!(store.snapshot().unwrap().items.is_empty());
-
-        let (_dir, store) = self::store();
-        let mut content: serde_json::Value =
-            serde_json::from_str(&bundled_package("starter.extension-lab").unwrap()).unwrap();
-        content["manifest"]["name"] = serde_json::json!("User package, same ID");
-        let content = content.to_string();
-        let hash = preview_package(&content).unwrap().sha256;
-        store.install(&content, 0, false, &hash).unwrap();
-        store.initialize_bundled().unwrap();
-        assert_eq!(
-            store.snapshot().unwrap().items[0].package.manifest.name,
-            "User package, same ID"
-        );
-    }
-    #[test]
-    fn a_full_existing_registry_records_defaults_without_resurrecting_a_manual_uninstall() {
-        let (_dir, store) = store();
-        let content = bundled_package("starter.extension-lab").unwrap();
-        let preview = preview_package(&content).unwrap();
-        let mut snapshot = store.install(&content, 0, false, &preview.sha256).unwrap();
-        // Capacity and default registration do not depend on each filler carrying the lab UI.
-        let filler = test_package();
-        let filler_hash = preview_package(&filler).unwrap().sha256;
-        for index in 1..MAX_EXTENSIONS {
-            let mut value: serde_json::Value = serde_json::from_str(&filler).unwrap();
-            value["manifest"]["id"] = serde_json::json!(format!("example.plugin-{index}"));
-            snapshot = store
-                .install(&value.to_string(), snapshot.revision, false, &filler_hash)
-                .unwrap();
+    fn a_new_registry_stays_empty_until_the_user_installs_a_package() {
+        let (directory, store) = store();
+        for _ in 0..2 {
+            let snapshot = store.snapshot().unwrap();
+            assert_eq!(snapshot.revision, 0);
+            assert!(snapshot.items.is_empty());
+            assert!(snapshot.runs.is_empty());
         }
-        store.initialize_bundled().unwrap();
-        let revision = store.snapshot().unwrap().revision;
-        store.uninstall("starter.extension-lab", revision).unwrap();
-        store.initialize_bundled().unwrap();
-        assert_eq!(store.snapshot().unwrap().items.len(), MAX_EXTENSIONS - 1);
+        assert_eq!(fs::read_dir(directory.path()).unwrap().count(), 0);
+        let installed = install(&store);
+        let id = &installed.items[0].package.manifest.id;
+        let removed = store.uninstall(id, installed.revision).unwrap();
+        assert!(removed.items.is_empty());
+        let revision = removed.revision;
+        for _ in 0..2 {
+            let snapshot = store.snapshot().unwrap();
+            assert_eq!(snapshot.revision, revision);
+            assert!(snapshot.items.is_empty());
+        }
     }
     #[test]
     fn stop_requests_cannot_cancel_another_windows_run() {
@@ -4259,7 +4088,6 @@ mod tests {
                 through_link.snapshot().unwrap_err().code,
                 ErrorCode::InvalidArgument
             );
-            assert!(through_link.initialize_bundled().is_err());
             assert!(
                 through_link
                     .uninstall(&snapshot.items[0].package.manifest.id, snapshot.revision)

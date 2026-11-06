@@ -14,7 +14,7 @@ import { copyText } from "@/lib/clipboard";
 import { nativeErrorText } from "@/lib/native-error";
 import { CodeBlock } from "@/components/code-block";
 import { RecoveryContent } from "./recovery";
-export default function Diagnostics() {
+export function DiagnosticsContent() {
   const { t } = useI18n();
   const { search } = useLocation();
   const recovery = useRef<HTMLElement>(null);
@@ -58,10 +58,7 @@ export default function Diagnostics() {
     }
   }
   return (
-    <NativePage
-      title={t("diagnostics.title")}
-      description={t("diagnostics.description")}
-    >
+    <>
       <section
         id="diagnostics-recovery"
         ref={recovery}
@@ -115,6 +112,18 @@ export default function Diagnostics() {
           </details>
         </CardContent>
       </Card>
+    </>
+  );
+}
+
+export default function Diagnostics() {
+  const { t } = useI18n();
+  return (
+    <NativePage
+      title={t("diagnostics.title")}
+      description={t("diagnostics.description")}
+    >
+      <DiagnosticsContent />
     </NativePage>
   );
 }

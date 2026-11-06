@@ -2,7 +2,7 @@
 use crate::{
     blocking,
     error::{ErrorCode, NativeError, NativeResult},
-    workbench,
+    file_access,
 };
 
 #[tauri::command]
@@ -13,7 +13,7 @@ pub async fn save_text_export(
     content: String,
 ) -> NativeResult<Option<String>> {
     validate_export_name(&name)?;
-    blocking::run(move || workbench::save_text_content(&app, &name, &content, 8 * 1024 * 1024))
+    blocking::run(move || file_access::save_text_content(&app, &name, &content, 8 * 1024 * 1024))
         .await
 }
 

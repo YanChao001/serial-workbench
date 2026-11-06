@@ -11,10 +11,10 @@ fn legacy(schema: u32) -> Value {
                 "manifest": {
                     "formatVersion": schema,
                     "apiVersion": 1,
-                    "id": "starter.extension-lab",
+                    "id": "legacy.preserved-package",
                     "version": "1.0.0",
                     "name": "Legacy lab",
-                    "author": "Starter",
+                    "author": "Fixture",
                     "description": "A preserved development package",
                     "inputFormat": "json",
                     "resultFormat": "view",
@@ -56,7 +56,7 @@ fn exact_legacy_formats_are_eligible_without_reading_or_running_modules() {
 }
 
 #[test]
-fn archiving_preserves_the_complete_original_and_rebuilds_disabled_defaults() {
+fn archiving_preserves_the_complete_original_and_starts_with_an_empty_registry() {
     let (directory, store, bytes) = fixture(&legacy(2));
     let package = store.0.root.join("packages").join(digest(b"legacy module"));
     fs::create_dir_all(&package).unwrap();
@@ -90,17 +90,13 @@ fn archiving_preserves_the_complete_original_and_rebuilds_disabled_defaults() {
         fs::read(private_data.join("keep.json")).unwrap(),
         b"private data"
     );
-    assert_eq!(store.snapshot().unwrap().revision, 0);
-    store.initialize_bundled().unwrap();
-    let snapshot = store.snapshot().unwrap();
-    assert!(!snapshot.items.is_empty());
-    for item in snapshot.items {
-        assert!(!item.enabled);
-        assert!(item.granted_permissions.is_empty());
-        assert_eq!(item.package.manifest.format_version, 3);
-        assert_eq!(item.package.manifest.api_version, 2);
-        assert!(item.generation > 0);
+    for _ in 0..2 {
+        let snapshot = store.snapshot().unwrap();
+        assert_eq!(snapshot.revision, 0);
+        assert!(snapshot.items.is_empty());
+        assert!(snapshot.runs.is_empty());
     }
+    assert!(!store.0.root.exists());
     assert_eq!(fs::read(archive.join("registry.json")).unwrap(), bytes);
 }
 
@@ -235,7 +231,7 @@ fn execution_pause_shutdown_and_startup_isolation_prevent_archive_mutation() {
     let fingerprint = digest(&original);
     let stop = Arc::new(AtomicBool::new(false));
     store.0.runs.lock().unwrap().push_back(ActiveRun {
-        id: "starter.extension-lab".into(),
+        id: "legacy.preserved-package".into(),
         owner: "main".into(),
         digest: digest(b"legacy module"),
         stop: stop.clone(),

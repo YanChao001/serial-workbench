@@ -21,7 +21,6 @@ import { CommandPalette } from "@/components/command-palette";
 import { DesktopEffects } from "@/components/desktop-effects";
 import { APP_ROUTES, WINDOW_ROUTES } from "@/routes";
 import { ExtensionsProvider } from "@/features/extensions/extensions-provider";
-import { DemoMotion } from "@/components/demo-motion";
 import { UnsavedWorkProvider } from "@/providers/unsaved-work";
 import { RecoveryGate } from "@/components/recovery-gate";
 import { DEFAULT_SETTINGS, THEME_STORAGE_KEY } from "@/lib/settings-model";
@@ -68,56 +67,49 @@ export default function App() {
             scriptProps={{ type: "text/plain" }}
           >
             <ThemeEffects />
-            <DemoMotion>
-              <TooltipProvider delayDuration={200}>
-                {/* HashRouter：生产构建下用的是自定义协议，hash 路由不会出现刷新 404 */}
-                <HashRouter>
-                  <CommandsProvider>
-                    <ExtensionsProvider>
-                      <WorkspaceIntegration />
-                      <Routes>
-                        {WINDOW_ROUTES.map(({ path, component: Page }) => (
-                          <Route
-                            key={path}
-                            path={path}
-                            element={
-                              <RecoveryGate>
-                                <Suspense fallback={<PageLoading />}>
-                                  <Page />
-                                </Suspense>
-                              </RecoveryGate>
-                            }
-                          />
-                        ))}
+            <TooltipProvider delayDuration={200}>
+              {/* HashRouter：生产构建下用的是自定义协议，hash 路由不会出现刷新 404 */}
+              <HashRouter>
+                <CommandsProvider>
+                  <ExtensionsProvider>
+                    <WorkspaceIntegration />
+                    <Routes>
+                      {WINDOW_ROUTES.map(({ path, component: Page }) => (
                         <Route
+                          key={path}
+                          path={path}
                           element={
                             <RecoveryGate>
-                              <AppShell />
+                              <Suspense fallback={<PageLoading />}>
+                                <Page />
+                              </Suspense>
                             </RecoveryGate>
                           }
-                        >
-                          {APP_ROUTES.map(
-                            ({ path, component: Page, index }) => (
-                              <Route
-                                key={path}
-                                index={index}
-                                path={index ? undefined : path}
-                                element={<Page />}
-                              />
-                            ),
-                          )}
+                        />
+                      ))}
+                      <Route
+                        element={
+                          <RecoveryGate>
+                            <AppShell />
+                          </RecoveryGate>
+                        }
+                      >
+                        {APP_ROUTES.map(({ path, component: Page, index }) => (
                           <Route
-                            path="*"
-                            element={<Navigate to="/" replace />}
+                            key={path}
+                            index={index}
+                            path={index ? undefined : path}
+                            element={<Page />}
                           />
-                        </Route>
-                      </Routes>
-                    </ExtensionsProvider>
-                  </CommandsProvider>
-                </HashRouter>
-                <Toaster position="bottom-right" />
-              </TooltipProvider>
-            </DemoMotion>
+                        ))}
+                        <Route path="*" element={<Navigate to="/" replace />} />
+                      </Route>
+                    </Routes>
+                  </ExtensionsProvider>
+                </CommandsProvider>
+              </HashRouter>
+              <Toaster position="bottom-right" />
+            </TooltipProvider>
           </ThemeProvider>
         </UnsavedWorkProvider>
       </I18nProvider>

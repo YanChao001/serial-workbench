@@ -308,7 +308,7 @@ mod tests {
 
     fn service_item() -> ExtensionInfo {
         let manifest: ExtensionManifest = serde_json::from_value(json!({
-            "formatVersion": 3, "apiVersion": 2, "minHostVersion": "0.1.7",
+            "formatVersion": 3, "apiVersion": 2, "minHostVersion": "0.1.0",
             "id": "test.window", "version": "1.0.0", "name": "Own window", "author": "Test",
             "description": "Own-window boundary", "permissions": [],
             "optionalPermissions": ["window:control"], "network": [],

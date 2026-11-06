@@ -1,12 +1,8 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 import {
-  BlocksIcon,
   LayoutDashboardIcon,
   SettingsIcon,
-  SparklesIcon,
-  TerminalIcon,
   MonitorIcon,
-  DatabaseIcon,
   ActivityIcon,
   DownloadIcon,
   PuzzleIcon,
@@ -51,12 +47,19 @@ export type AppRoute = {
   index?: boolean;
   /** 导航高亮是否精确匹配。父级路径（如 "/settings"）通常不需要 */
   exact?: boolean;
-  demoOnly?: boolean;
   hidden?: boolean;
+  /** 固定在侧栏底部的全局入口，默认随主导航分组展示。 */
+  navigationPlacement?: "footer";
 };
 export type AppNavigationItem = Pick<
   AppRoute,
-  "path" | "labelKey" | "group" | "icon" | "exact" | "preload"
+  | "path"
+  | "labelKey"
+  | "group"
+  | "icon"
+  | "exact"
+  | "preload"
+  | "navigationPlacement"
 > & { label?: string };
 
 export function extensionPath(id: string, command: string) {
@@ -128,41 +131,12 @@ export const APP_ROUTES: AppRoute[] = [
     exact: true,
   },
   {
-    path: "/catalog",
-    labelKey: "nav.catalog",
-    group: "experience",
-    icon: BlocksIcon,
-    ...lazyPage(() => import("@/pages/catalog")),
-    hidden: true,
-  },
-  {
     path: "/recovery",
     labelKey: "nav.diagnostics",
     group: "system",
     icon: ActivityIcon,
     ...lazyPage(() => import("@/pages/recovery")),
     hidden: true,
-  },
-  {
-    path: "/workbench",
-    labelKey: "nav.workbench",
-    group: "capabilities",
-    icon: BlocksIcon,
-    ...lazyPage(() => import("@/pages/workbench")),
-  },
-  {
-    path: "/tasks",
-    labelKey: "nav.tasks",
-    group: "capabilities",
-    icon: ActivityIcon,
-    ...lazyPage(() => import("@/pages/tasks")),
-  },
-  {
-    path: "/system",
-    labelKey: "nav.system",
-    group: "capabilities",
-    icon: MonitorIcon,
-    ...lazyPage(() => import("@/pages/system")),
   },
   {
     path: "/extensions",
@@ -181,46 +155,6 @@ export const APP_ROUTES: AppRoute[] = [
     hidden: true,
   },
   {
-    path: "/network",
-    labelKey: "nav.network",
-    group: "capabilities",
-    icon: TerminalIcon,
-    ...lazyPage(() => import("@/pages/network")),
-  },
-  {
-    path: "/data-studio",
-    labelKey: "nav.dataStudio",
-    group: "experience",
-    icon: DatabaseIcon,
-    ...lazyPage(() => import("@/pages/data-studio")),
-    demoOnly: true,
-  },
-  {
-    path: "/media",
-    labelKey: "nav.media",
-    group: "experience",
-    icon: SparklesIcon,
-    ...lazyPage(() => import("@/pages/media")),
-    demoOnly: true,
-  },
-  {
-    path: "/components",
-    labelKey: "nav.components",
-    group: "experience",
-    icon: BlocksIcon,
-    ...lazyPage(() => import("@/pages/components")),
-    demoOnly: true,
-  },
-  {
-    path: "/motion",
-    labelKey: "nav.motion",
-    group: "experience",
-    icon: SparklesIcon,
-    ...lazyPage(() => import("@/pages/motion")),
-    demoOnly: true,
-    hidden: true,
-  },
-  {
     path: "/desktop",
     labelKey: "nav.settings",
     group: "capabilities",
@@ -229,23 +163,8 @@ export const APP_ROUTES: AppRoute[] = [
     hidden: true,
   },
   {
-    path: "/database",
-    labelKey: "nav.database",
-    group: "capabilities",
-    icon: DatabaseIcon,
-    ...lazyPage(() => import("@/pages/database")),
-  },
-  {
-    path: "/bridge",
-    labelKey: "nav.bridge",
-    group: "capabilities",
-    icon: TerminalIcon,
-    ...lazyPage(() => import("@/pages/bridge")),
-    demoOnly: true,
-    hidden: true,
-  },
-  {
     path: "/diagnostics",
+    hidden: true,
     labelKey: "nav.diagnostics",
     group: "system",
     icon: ActivityIcon,
@@ -263,12 +182,13 @@ export const APP_ROUTES: AppRoute[] = [
     path: "/settings",
     labelKey: "nav.settings",
     group: "system",
+    navigationPlacement: "footer",
     icon: SettingsIcon,
     ...lazyPage(() => import("@/pages/settings")),
   },
 ];
 
-/** 按当前路径找对应路由，用于面包屑与导航高亮。 */
+/** 按当前路径读取页面元数据。 */
 export function matchRoute(pathname: string): AppRoute {
   const matched = APP_ROUTES.find((route) =>
     route.path.includes(":")

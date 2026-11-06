@@ -308,7 +308,6 @@ describe("settings provider persistence", () => {
     expect(result.current.settings).toMatchObject({
       language: "en",
       sidebarWidth: 180,
-      appMode: DEFAULT_SETTINGS.appMode,
     });
     expect(result.current.persistence).toBe("error");
     expect(localStorage.getItem(STORAGE_KEY)).toBe(cached);

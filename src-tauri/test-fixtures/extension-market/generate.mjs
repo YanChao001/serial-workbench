@@ -26,11 +26,11 @@ const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 const manifest = {
   formatVersion: 3,
   apiVersion: 2,
-  minHostVersion: "0.1.4",
+  minHostVersion: "0.1.0",
   id: "market.registry-fixture",
   version: "1.0.0",
   name: "市场校验夹具",
-  author: "Tauri Desktop Starter",
+  author: "Serial Workbench",
   description: "仅用于离线验签和市场安装校验的测试扩展。",
   icon: "puzzle",
   commands: [
@@ -77,7 +77,7 @@ const pkg = Buffer.from(
 const catalog = {
   schemaVersion: 2,
   revision: 1,
-  repository: "YanChao001/tauri-desktop-starter-extensions",
+  repository: "YanChao001/serial-workbench-plugins",
   issuedAt: 1800000000,
   expiresAt: 1800003600,
   entries: [
@@ -179,7 +179,7 @@ const changed = {
 };
 const duplicate = JSON.stringify(mixed).replace(
   '"minHostVersion":"65535.0.0"',
-  '"minHostVersion":"0.1.4","minHostVersion":"65535.0.0"',
+  '"minHostVersion":"0.1.0","minHostVersion":"65535.0.0"',
 );
 for (const [filename, value] of [
   ["catalog.json", catalog],

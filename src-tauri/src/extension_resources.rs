@@ -950,7 +950,7 @@ mod tests {
                 manifest: ExtensionManifest {
                     format_version: 3,
                     api_version: 2,
-                    min_host_version: "0.1.6".into(),
+                    min_host_version: "0.1.0".into(),
                     id: identity.id,
                     version: "1.0.0".into(),
                     name: "Image resources".into(),

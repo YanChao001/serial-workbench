@@ -52,7 +52,7 @@ describe("LanguageSwitch", () => {
     else Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   });
 
-  it("标题栏和设置页即时同步翻译、文档语言与存档，重开仍保留选择", () => {
+  it("完整和紧凑选择器即时同步翻译、文档语言与存档，重开仍保留选择", () => {
     const { unmount } = renderSwitches();
     const selectors = screen.getAllByRole("combobox", { name: "语言" });
     expect(selectors[0]).toHaveTextContent("简体中文");

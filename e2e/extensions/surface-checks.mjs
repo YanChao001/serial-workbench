@@ -265,7 +265,7 @@ export async function checkChrome(page, profile, manifest) {
   const collapsedSidebar = await sidebar.boundingBox();
   const collapsedLink = await link.boundingBox();
   const collapsedTool = await tools.boundingBox();
-  expect(collapsedSidebar.width).toBe(56);
+  expect(collapsedSidebar.width).toBe(48);
   expect(collapsedLink.y + collapsedLink.height).toBeLessThanOrEqual(
     collapsedTool.y + 1,
   );

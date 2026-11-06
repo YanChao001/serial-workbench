@@ -36,7 +36,7 @@ labels: ["bug"]
 
 ## 日志
 
-<!-- 粘贴相关日志并移除用户名、令牌等敏感信息。日志路径见 docs/troubleshooting.md，发布版默认不开放 DevTools。 -->
+<!-- 粘贴脱敏后的相关日志，采集方式和日志路径见 docs/troubleshooting.md。 -->
 
 ```text
 

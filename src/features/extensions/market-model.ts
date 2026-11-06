@@ -1,31 +1,10 @@
-import type {
-  BundledExtension,
-  BundledExtensionCatalog,
-  ExtensionInfo,
-  MarketEntry,
-  MarketSnapshot,
-} from "@/lib/tauri";
-
-export type ExtensionCatalogEntry =
-  (BundledExtension & { kind: "bundled" }) | (MarketEntry & { kind: "market" });
+import type { ExtensionInfo, MarketEntry, MarketSnapshot } from "@/lib/tauri";
 
 export function extensionCatalogEntries(
-  bundled: BundledExtensionCatalog | null,
   market: MarketSnapshot | null,
-): ExtensionCatalogEntry[] {
-  return [
-    ...(bundled?.entries ?? []).map((entry) => ({
-      ...entry,
-      kind: "bundled" as const,
-    })),
-    ...(market?.catalog.entries ?? []).map((entry) => ({
-      ...entry,
-      kind: "market" as const,
-    })),
-  ].sort(
-    (a, b) =>
-      Number(b.kind === "bundled") - Number(a.kind === "bundled") ||
-      a.package.manifest.name.localeCompare(b.package.manifest.name),
+): MarketEntry[] {
+  return [...(market?.catalog.entries ?? [])].sort((a, b) =>
+    a.package.manifest.name.localeCompare(b.package.manifest.name),
   );
 }
 

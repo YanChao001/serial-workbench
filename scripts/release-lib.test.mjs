@@ -38,7 +38,7 @@ const updaterReleasePlan = (options) => updaterPlan(withHosting(options));
 const uploadReleaseAsset = (file, release, repository, request) =>
   uploadAsset(file, release, repository, request, githubConfig);
 
-const repository = "owner/starter";
+const repository = "owner/serial-workbench";
 const version = "1.2.3";
 const brand = {
   updates: {
@@ -52,7 +52,7 @@ test("updater publication uses the configured repository and latest asset layout
     brand: {
       updates: {
         endpoint:
-          "https://code.example/owner/starter/downloads/latest/latest.json",
+          "https://code.example/owner/serial-workbench/downloads/latest/latest.json",
         publicKey: "public-key",
       },
     },
@@ -70,7 +70,7 @@ test("updater publication uses the configured repository and latest asset layout
   });
   assert.equal(
     plan.overlay.plugins.updater.endpoints[0],
-    "https://code.example/owner/starter/downloads/latest/latest.json",
+    "https://code.example/owner/serial-workbench/downloads/latest/latest.json",
   );
 });
 
@@ -168,34 +168,34 @@ test("updater release requires a complete key pair, matching repository and comp
 
 test("requested upload names preserve spaces and include the macOS version and architecture", () => {
   const common = {
-    productName: "Tauri Desktop Starter",
+    productName: "Serial Workbench",
     version,
     target: "aarch64-apple-darwin",
   };
   assert.equal(
-    releaseAssetName("/bundle/macos/Tauri Desktop Starter.app.tar.gz", common),
-    "Tauri Desktop Starter_1.2.3_aarch64.app.tar.gz",
+    releaseAssetName("/bundle/macos/Serial Workbench.app.tar.gz", common),
+    "Serial Workbench_1.2.3_aarch64.app.tar.gz",
   );
   assert.equal(
-    releaseAssetName("/bundle/macos/Tauri Desktop Starter.app.tar.gz.sig", {
+    releaseAssetName("/bundle/macos/Serial Workbench.app.tar.gz.sig", {
       ...common,
       target: "x86_64-apple-darwin",
     }),
-    "Tauri Desktop Starter_1.2.3_x64.app.tar.gz.sig",
+    "Serial Workbench_1.2.3_x64.app.tar.gz.sig",
   );
   assert.equal(
     releaseAssetName(
-      "C:\\bundle\\nsis\\Tauri Desktop Starter_1.2.3_x64-setup.exe",
+      "C:\\bundle\\nsis\\Serial Workbench_1.2.3_x64-setup.exe",
       common,
     ),
-    "Tauri Desktop Starter_1.2.3_x64-setup.exe",
+    "Serial Workbench_1.2.3_x64-setup.exe",
   );
 });
 
 function draftRelease() {
   const prefix = `https://github.com/${repository}/releases/download/v${version}/`;
-  const app = "Tauri Desktop Starter_1.2.3_aarch64.app.tar.gz";
-  const setup = "Tauri Desktop Starter_1.2.3_x64-setup.exe";
+  const app = "Serial Workbench_1.2.3_aarch64.app.tar.gz";
+  const setup = "Serial Workbench_1.2.3_x64-setup.exe";
   const files = [
     [app, app],
     [setup, setup.replaceAll(" ", ".")],
@@ -240,11 +240,11 @@ test("draft assets resolve by upload label or name into published URLs without g
   });
   assert.equal(
     resolved.platforms["darwin-aarch64"].url,
-    prefix + "Tauri%20Desktop%20Starter_1.2.3_aarch64.app.tar.gz",
+    prefix + "Serial%20Workbench_1.2.3_aarch64.app.tar.gz",
   );
   assert.equal(
     resolved.platforms["windows-x86_64"].url,
-    prefix + "Tauri.Desktop.Starter_1.2.3_x64-setup.exe",
+    prefix + "Serial.Workbench_1.2.3_x64-setup.exe",
   );
   assert.equal(
     resolved.platforms["windows-x86_64"].signature,
@@ -286,7 +286,7 @@ test("manifest publication rejects missing signatures, unfinished or ambiguous a
 });
 
 function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), "starter-release-test-"));
+  const root = mkdtempSync(join(tmpdir(), "serial-workbench-release-test-"));
   t.after(() => rmSync(root, { recursive: true, force: true }));
   return (path) => {
     const file = join(root, "bundle", path);
@@ -299,15 +299,15 @@ function fixture(t) {
 
 test("only explicit current artifact paths are used and Windows defaults to NSIS while preserving MSI", (t) => {
   const make = fixture(t);
-  const msi = make("msi/Starter_1.2.3_x64_en-US.msi");
-  const nsis = make("nsis/Starter_1.2.3_x64-setup.exe");
+  const msi = make("msi/SerialWorkbench_1.2.3_x64_en-US.msi");
+  const nsis = make("nsis/SerialWorkbench_1.2.3_x64-setup.exe");
   make("msi/stale_0.9.0_x64_en-US.msi");
   const result = collectUpdaterMetadata({
     paths: [...msi, ...nsis],
     target: "x86_64-pc-windows-msvc",
     repository,
     version,
-    productName: "Starter",
+    productName: "SerialWorkbench",
   });
   assert.equal(result.verification.length, 2);
   assert.equal(Object.keys(result.metadata.platforms).length, 3);
@@ -345,10 +345,13 @@ test("only explicit current artifact paths are used and Windows defaults to NSIS
 test("a single manifest requires all four targets and rejects stale, duplicate or redirected metadata", (t) => {
   const make = fixture(t);
   const inputs = [
-    ["x86_64-pc-windows-msvc", "nsis/Starter_1.2.3_x64-setup.exe"],
-    ["aarch64-apple-darwin", "macos/Starter.app.tar.gz"],
-    ["x86_64-apple-darwin", "macos/Starter.app.tar.gz"],
-    ["x86_64-unknown-linux-gnu", "appimage/Starter_1.2.3_amd64.AppImage"],
+    ["x86_64-pc-windows-msvc", "nsis/SerialWorkbench_1.2.3_x64-setup.exe"],
+    ["aarch64-apple-darwin", "macos/SerialWorkbench.app.tar.gz"],
+    ["x86_64-apple-darwin", "macos/SerialWorkbench.app.tar.gz"],
+    [
+      "x86_64-unknown-linux-gnu",
+      "appimage/SerialWorkbench_1.2.3_amd64.AppImage",
+    ],
   ];
   const records = inputs.map(
     ([target, path]) =>
@@ -357,7 +360,7 @@ test("a single manifest requires all four targets and rejects stale, duplicate o
         target,
         repository,
         version,
-        productName: "Starter",
+        productName: "SerialWorkbench",
       }).metadata,
   );
   const manifest = mergeUpdaterMetadata(records, {
@@ -410,16 +413,16 @@ test("a single manifest requires all four targets and rejects stale, duplicate o
 test("Linux update metadata preserves deb/rpm installer types and uses AppImage for the generic target", (t) => {
   const make = fixture(t);
   const paths = [
-    ...make("deb/Starter_1.2.3_amd64.deb"),
-    ...make("rpm/Starter_1.2.3_x86_64.rpm"),
-    ...make("appimage/Starter_1.2.3_amd64.AppImage"),
+    ...make("deb/SerialWorkbench_1.2.3_amd64.deb"),
+    ...make("rpm/SerialWorkbench_1.2.3_x86_64.rpm"),
+    ...make("appimage/SerialWorkbench_1.2.3_amd64.AppImage"),
   ];
   const { metadata, verification } = collectUpdaterMetadata({
     paths,
     target: "x86_64-unknown-linux-gnu",
     repository,
     version,
-    productName: "Starter",
+    productName: "SerialWorkbench",
   });
   assert.equal(verification.length, 3);
   assert.equal(Object.keys(metadata.platforms).length, 4);

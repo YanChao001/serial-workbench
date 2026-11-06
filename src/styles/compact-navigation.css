@@ -31,11 +31,4 @@
   .app-shell-browser .app-page-content {
     padding: 1rem 0.9rem 2rem;
   }
-  .app-shell-browser .studio-native-preview {
-    padding: 1.1rem;
-  }
-  .app-shell-browser .studio-native-note {
-    align-items: flex-start;
-    text-align: center;
-  }
 }

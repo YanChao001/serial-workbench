@@ -13,7 +13,7 @@ use crate::{
         ExtensionInputFormat, ExtensionNetworkResponse, ExtensionPermission, ExtensionRequest,
         ExtensionResultFormat, ExtensionRunInput, ExtensionStore, PreparedRun, TEXT_LIMIT,
     },
-    workbench::WorkbenchState,
+    file_access::FileAccess,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
 use std::{
@@ -157,9 +157,7 @@ async fn collect_data(
                     "Extension stopped",
                 ));
             }
-            let (name, bytes) = handle
-                .state::<WorkbenchState>()
-                .read_extension_resource(&id)?;
+            let (name, bytes) = handle.state::<FileAccess>().read_extension_resource(&id)?;
             total = total
                 .checked_add(bytes.len())
                 .ok_or_else(|| invalid("Selected files exceed 2 MiB"))?;

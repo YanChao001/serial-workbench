@@ -16,7 +16,7 @@ fn storage_run() -> (
     let mut content: Value =
         serde_json::from_str(&crate::extension_test_support::package()).unwrap();
     content["manifest"] = json!({
-        "formatVersion":3,"apiVersion":2,"minHostVersion":"0.1.4",
+        "formatVersion":3,"apiVersion":2,"minHostVersion":"0.1.0",
         "id":"tests.effect-driver","version":"1.0.0","name":"Effect driver",
         "author":"Tests","description":"Exercises the host effect protocol",
         "commands":[{"id":"fixture","title":"Fixture","function":"echo",

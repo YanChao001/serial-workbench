@@ -16,7 +16,7 @@ vi.mock("@/lib/tauri", () => ({ isTauri: () => false }));
 function Content() {
   const navigate = useNavigate();
   return (
-    <>
+    <main>
       <SettingsSearch />
       <section id="settings-theme" tabIndex={-1}>
         Theme target
@@ -36,7 +36,12 @@ function Content() {
       <button onClick={() => navigate("/settings?focus=theme")}>
         Locate again
       </button>
-    </>
+      <button
+        onClick={() => navigate("/settings?focus=search", { replace: true })}
+      >
+        Open settings again
+      </button>
+    </main>
   );
 }
 function search(initial = "/settings") {
@@ -114,6 +119,18 @@ describe("settings search", () => {
     screen.getByRole("searchbox").focus();
     fireEvent.click(screen.getByText("Locate again"));
     expect(target).toHaveFocus();
+  });
+  it("returns to the top and focuses search on every settings request", () => {
+    search("/settings?focus=search");
+    const input = screen.getByRole("searchbox", { name: "搜索设置" });
+    expect(input).toHaveFocus();
+    const main = screen.getByRole("main");
+    main.scrollTop = 400;
+    fireEvent.change(input, { target: { value: "dark" } });
+    fireEvent.click(screen.getByText("Open settings again"));
+    expect(main.scrollTop).toBe(0);
+    expect(input).toHaveFocus();
+    expect(input).toHaveValue("");
   });
   it("locates the desktop section and gives a specific valid focus target priority", () => {
     const view = search("/settings?section=desktop");

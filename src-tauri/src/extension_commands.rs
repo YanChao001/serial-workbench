@@ -7,12 +7,11 @@ use crate::{
     extension_market::{ExtensionMarket, MarketSource},
     extension_view::{ExtensionArtifact, ExtensionView, ExtensionViewInput, validate_artifact},
     extensions::{
-        self, BundledExtensionCatalog, ExtensionArchivePreview, ExtensionArchiveResult,
-        ExtensionConsent, ExtensionFileChoice, ExtensionOrigin, ExtensionPermission,
-        ExtensionPreview, ExtensionRunInput, ExtensionRunStatus, ExtensionSnapshot, ExtensionStore,
-        InstallCondition,
+        self, ExtensionArchivePreview, ExtensionArchiveResult, ExtensionConsent, ExtensionFileChoice,
+        ExtensionOrigin, ExtensionPermission, ExtensionPreview, ExtensionRunInput, ExtensionRunStatus,
+        ExtensionSnapshot, ExtensionStore, InstallCondition,
     },
-    workbench,
+    file_access,
 };
 use tauri::{Emitter, Manager};
 
@@ -32,7 +31,7 @@ pub async fn save_extension_session(
 ) -> NativeResult<Option<String>> {
     // 会话包含输入和结果的 JSON 转义；专用额度不扩大普通文本导出范围。
     validate_session_export(&name, &content)?;
-    blocking::run(move || workbench::save_text_content(&app, &name, &content, SESSION_EXPORT_BYTES))
+    blocking::run(move || file_access::save_text_content(&app, &name, &content, SESSION_EXPORT_BYTES))
         .await
 }
 
@@ -73,11 +72,7 @@ async fn mutate_extension(
 #[specta::specta]
 pub async fn extension_snapshot(app: tauri::AppHandle) -> NativeResult<ExtensionSnapshot> {
     let store = app.state::<ExtensionStore>().inner().clone();
-    blocking::run(move || {
-        store.initialize_bundled()?;
-        store.snapshot()
-    })
-    .await
+    blocking::run(move || store.snapshot()).await
 }
 #[tauri::command]
 #[specta::specta]
@@ -120,16 +115,6 @@ pub async fn preview_extension(content: String) -> NativeResult<ExtensionPreview
 }
 #[tauri::command]
 #[specta::specta]
-pub async fn bundled_extension_package(id: String) -> NativeResult<String> {
-    extensions::bundled_package(&id)
-}
-#[tauri::command]
-#[specta::specta]
-pub async fn bundled_extension_catalog() -> NativeResult<BundledExtensionCatalog> {
-    blocking::run(extensions::bundled_catalog).await
-}
-#[tauri::command]
-#[specta::specta]
 pub async fn install_extension(
     app: tauri::AppHandle,
     content: String,
@@ -138,12 +123,7 @@ pub async fn install_extension(
     expected_sha256: String,
     consent: Option<ExtensionConsent>,
 ) -> NativeResult<ExtensionSnapshot> {
-    let (bundle, origin) = blocking::run(move || {
-        let bundle = extensions::package(&content)?;
-        let origin = extensions::verified_package_origin(&bundle)?;
-        Ok((bundle, origin))
-    })
-    .await?;
+    let bundle = blocking::run(move || extensions::package(&content)).await?;
     let id = bundle.preview.manifest.id.clone();
     mutate_extension(app, id, move |store, host| {
         store.install_prepared(
@@ -153,7 +133,7 @@ pub async fn install_extension(
                 replace: replace_existing,
                 sha256: &expected_sha256,
             },
-            origin,
+            ExtensionOrigin::Local,
             consent,
             |old, next| {
                 if !old.origin.same_trusted_source(next) {
@@ -301,7 +281,7 @@ pub async fn validate_extension_view(content: String) -> NativeResult<ExtensionV
 #[tauri::command]
 #[specta::specta]
 pub async fn pick_extension_files(app: tauri::AppHandle) -> NativeResult<Vec<ExtensionFileChoice>> {
-    blocking::run(move || workbench::pick_extension_resources(&app)).await
+    blocking::run(move || file_access::pick_extension_resources(&app)).await
 }
 #[tauri::command]
 #[specta::specta]
@@ -316,7 +296,7 @@ pub async fn save_extension_artifact(
         app.state::<ExtensionStore>()
             .current_entry(&id, &expected_sha256, expected_generation)?;
         let bytes = validate_artifact(&artifact)?;
-        workbench::save_binary_content(&app, &artifact.name, &bytes)
+        file_access::save_binary_content(&app, &artifact.name, &bytes)
     })
     .await
 }
@@ -455,7 +435,7 @@ mod tests {
         let temporary = tempfile::tempdir().unwrap();
         let path = temporary.path().join("extension-session.json");
         let saved =
-            workbench::save_text_content_with_picker(&content, SESSION_EXPORT_BYTES, || {
+            file_access::save_text_content_with_picker(&content, SESSION_EXPORT_BYTES, || {
                 Ok(Some(path.clone()))
             })
             .unwrap();
@@ -466,7 +446,7 @@ mod tests {
         );
         assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
         assert!(
-            workbench::save_text_content_with_picker(&content, 8 * 1024 * 1024, || {
+            file_access::save_text_content_with_picker(&content, 8 * 1024 * 1024, || {
                 panic!("Oversized ordinary exports must fail before opening the save dialog")
             })
             .is_err()
@@ -481,7 +461,7 @@ mod tests {
         let oversized = "x".repeat(SESSION_EXPORT_BYTES + 1);
         assert!(validate_session_export("session.json", &oversized).is_err());
         assert!(
-            workbench::save_text_content_with_picker(&oversized, SESSION_EXPORT_BYTES, || {
+            file_access::save_text_content_with_picker(&oversized, SESSION_EXPORT_BYTES, || {
                 panic!("Oversized sessions must fail before opening the save dialog")
             })
             .is_err()

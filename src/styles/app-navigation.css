@@ -117,44 +117,11 @@
 }
 
 .app-sidebar-tools {
-  padding: 0.65rem 0.5rem 0.8rem;
+  padding: 0.5rem;
   border-top: 1px solid var(--sidebar-border);
 }
 
-.app-sidebar-command {
-  min-height: 36px;
-  border: 1px solid var(--sidebar-border);
-  background: var(--control-background);
-  color: var(--muted-foreground);
-  font-size: 0.72rem;
-  transition:
-    background-color 150ms ease,
-    color 150ms ease;
-}
-
-.app-sidebar-command:hover {
-  background: var(--surface-state-hover);
-  color: var(--sidebar-foreground);
-}
-
-.app-sidebar-keycap {
-  max-width: 3rem;
-  flex-shrink: 0;
-  overflow: hidden;
-  border: 1px solid var(--sidebar-border);
-  border-radius: 4px;
-  padding: 0.1rem 0.25rem;
-  font-family: var(--font-mono);
-  font-size: 0.55rem;
-  line-height: 1.2;
-  white-space: nowrap;
-  transition:
-    max-width 180ms ease,
-    opacity 120ms ease;
-}
-
-.app-sidebar-link:focus-visible,
-.app-sidebar-command:focus-visible {
+.app-sidebar-link:focus-visible {
   outline: 2px solid var(--ring);
   outline-offset: -2px;
 }
@@ -164,19 +131,36 @@
 }
 
 .app-sidebar[data-collapsed="true"] .app-sidebar-navigation {
+  padding-inline: 4px;
   scrollbar-gutter: auto;
   scrollbar-width: none;
 }
 
-.app-sidebar[data-collapsed="true"] .app-sidebar-navigation::-webkit-scrollbar {
-  display: none;
+.app-sidebar[data-collapsed="true"] .app-sidebar-navigation .app-sidebar-link {
+  padding-inline: calc(
+    (var(--app-sidebar-collapsed-width) - 1px - 8px - 1rem) / 2
+  );
 }
 
-.app-sidebar[data-collapsed="true"] .app-sidebar-keycap {
-  max-width: 0;
-  border-width: 0;
-  padding-inline: 0;
-  opacity: 0;
+.app-sidebar[data-collapsed="true"] .app-sidebar-top-heading {
+  padding-inline-end: 0;
+}
+
+.app-sidebar[data-collapsed="true"] .app-sidebar-top > button {
+  right: calc((var(--app-sidebar-collapsed-width) - 1px - 1.75rem) / 2);
+}
+
+.app-sidebar[data-collapsed="true"] .app-sidebar-tools {
+  padding-inline: 4px;
+}
+
+.app-sidebar[data-collapsed="true"] .app-sidebar-tools .app-sidebar-link {
+  width: calc(var(--app-sidebar-collapsed-width) - 1px - 8px);
+  max-width: 100%;
+}
+
+.app-sidebar[data-collapsed="true"] .app-sidebar-navigation::-webkit-scrollbar {
+  display: none;
 }
 
 .app-page-content,
@@ -202,54 +186,6 @@
   max-width: none;
   margin: 0;
   padding: 0;
-}
-
-.app-route-context {
-  margin-bottom: 0.75rem;
-  color: var(--muted-foreground);
-  font-size: 0.75rem;
-  line-height: 1.5;
-}
-
-.app-route-context ol {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.5rem;
-}
-
-.app-route-context li {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  gap: 0.4rem;
-}
-
-.app-route-context li[aria-current="page"] {
-  display: block;
-  overflow: hidden;
-  color: var(--foreground);
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.app-route-context svg {
-  width: 0.7rem;
-  height: 0.7rem;
-  flex-shrink: 0;
-  opacity: 0.55;
-}
-
-.app-route-context-group {
-  flex-shrink: 0;
-}
-
-.app-route-context-dot {
-  width: 0.3rem;
-  height: 0.3rem;
-  border-radius: 50%;
-  background: var(--primary);
-  opacity: 0.65;
 }
 
 .app-title-menu-trigger {
@@ -433,9 +369,6 @@
   color: var(--primary-foreground);
 }
 
-.app-shell-immersive .app-route-context {
-  display: none;
-}
 .app-shell.app-shell-immersive {
   --app-content-inset: 0;
 }
@@ -448,7 +381,7 @@
     transform 220ms cubic-bezier(0.22, 1, 0.36, 1),
     opacity 160ms ease,
     visibility 0s linear 220ms,
-    width 240ms cubic-bezier(0.22, 1, 0.36, 1);
+    width var(--app-sidebar-transition);
 }
 .app-shell-immersive .app-chrome {
   transform: translateY(-100%);
@@ -556,9 +489,7 @@ html[data-motion="reduced"]
 }
 
 .app-sidebar[data-motion="reduced"] .app-sidebar-group-heading::before,
-.app-sidebar[data-motion="reduced"] .app-sidebar-keycap,
-.app-sidebar[data-motion="reduced"] .app-sidebar-link,
-.app-sidebar[data-motion="reduced"] .app-sidebar-command {
+.app-sidebar[data-motion="reduced"] .app-sidebar-link {
   transition: none;
 }
 
@@ -571,9 +502,7 @@ html[data-motion="reduced"]
 
 @media (prefers-reduced-motion: reduce) {
   .app-sidebar-group-heading::before,
-  .app-sidebar-keycap,
-  .app-sidebar-link,
-  .app-sidebar-command {
+  .app-sidebar-link {
     transition: none;
   }
 }
@@ -584,8 +513,7 @@ html[data-motion="reduced"]
     outline-offset: -1px;
   }
 
-  .app-sidebar-link[aria-current="page"]::before,
-  .app-route-context-dot {
+  .app-sidebar-link[aria-current="page"]::before {
     background: Highlight;
   }
 }

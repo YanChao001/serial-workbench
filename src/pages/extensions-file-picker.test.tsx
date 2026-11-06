@@ -44,9 +44,6 @@ vi.mock("@/providers/i18n", async () => {
 vi.mock("@/lib/tauri", async (original) => ({
   ...(await original<typeof native>()),
   isTauri: () => true,
-  bundledExtensionCatalog: vi
-    .fn()
-    .mockResolvedValue({ hostVersion: "0.1.8", entries: [] }),
   previewExtension: vi.fn(),
   installExtension: vi.fn(),
 }));

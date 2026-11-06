@@ -81,7 +81,7 @@ function ViewTable({
       {pages > 1 ? (
         <div className="flex flex-wrap items-center justify-end gap-3">
           <span className="text-xs text-muted-foreground" aria-live="polite">
-            {t("data.pageCount", {
+            {t("common.pageCount", {
               from: page * 50 + 1,
               to: Math.min((page + 1) * 50, rows.length),
               total: rows.length,
@@ -93,7 +93,7 @@ function ViewTable({
             disabled={page === 0}
             onClick={() => setPage(page - 1)}
           >
-            {t("data.previous")}
+            {t("common.previous")}
           </Button>
           <Button
             variant="outline"
@@ -101,7 +101,7 @@ function ViewTable({
             disabled={page === pages - 1}
             onClick={() => setPage(page + 1)}
           >
-            {t("data.next")}
+            {t("common.next")}
           </Button>
         </div>
       ) : null}

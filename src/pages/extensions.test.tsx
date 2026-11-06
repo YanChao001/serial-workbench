@@ -24,8 +24,6 @@ vi.mock("@/lib/tauri", async (original) => ({
   isTauri: () => true,
   extensionSnapshot: vi.fn(),
   prepareEnabledExtensions: vi.fn().mockResolvedValue(undefined),
-  bundledExtensionPackage: vi.fn(),
-  bundledExtensionCatalog: vi.fn(),
   previewExtension: vi.fn(),
   previewExtensionArchive: vi.fn(),
   installExtension: vi.fn(),
@@ -84,11 +82,6 @@ beforeEach(() => {
     fingerprint: null,
     installedCount: 0,
   });
-  vi.mocked(native.bundledExtensionPackage).mockResolvedValue("demo-package");
-  vi.mocked(native.bundledExtensionCatalog).mockResolvedValue({
-    hostVersion: "0.1.8",
-    entries: [],
-  });
   vi.mocked(native.onExtensionsChanged).mockResolvedValue(vi.fn());
   vi.mocked(native.extensionMarketSnapshot).mockResolvedValue({
     catalog: {
@@ -106,6 +99,17 @@ beforeEach(() => {
   });
 });
 afterEach(cleanup);
+
+it("keeps a fresh installation empty without offering bundled demo recovery", async () => {
+  marketPage();
+  expect(await screen.findByText(en["ext.empty"])).toBeVisible();
+  expect(screen.queryByText(/bundled|built-in|demo/i)).not.toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: /restore/i }),
+  ).not.toBeInTheDocument();
+  expect(native.installExtension).not.toHaveBeenCalled();
+  expect(native.viewExtension).not.toHaveBeenCalled();
+});
 
 it.each([
   {
@@ -294,11 +298,11 @@ it("reviews permissions once and installs enabled without a separate activation 
   marketPage("discover");
   const input = await screen.findByLabelText("Choose package");
   await waitFor(() => expect(input).toBeEnabled());
-  const file = new File(["demo-package"], "example.starter-extension.json", {
+  const file = new File(["local-package"], "example.starter-extension.json", {
     type: "application/json",
   });
   file.arrayBuffer = async () =>
-    new TextEncoder().encode("demo-package").buffer;
+    new TextEncoder().encode("local-package").buffer;
   fireEvent.change(input, { target: { files: [file] } });
   const review = await screen.findByRole("dialog");
   expect(within(review).queryByText(preview.sha256)).not.toBeInTheDocument();
@@ -315,7 +319,7 @@ it("reviews permissions once and installs enabled without a separate activation 
   fireEvent.click(within(review).getByRole("button", { name: "Install" }));
   await waitFor(() =>
     expect(native.installExtension).toHaveBeenCalledWith(
-      "demo-package",
+      "local-package",
       0,
       false,
       preview.sha256,
@@ -884,7 +888,7 @@ it("keeps installation unavailable for an incompatible registry and recovers aft
   );
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
 });
-it("shows a bundled app once in the installed list and opens a normal route without executing or reinstalling", async () => {
+it("opens an installed view plugin without executing or reinstalling it", async () => {
   const user = userEvent.setup();
   snapshot.items = [
     {
@@ -894,8 +898,8 @@ it("shows a bundled app once in the installed list and opens a normal route with
         ...preview,
         manifest: {
           ...preview.manifest,
-          name: "Extension Lab",
-          id: "starter.extension-lab",
+          name: "Test View",
+          id: "test.view",
           commands: preview.manifest.commands.map((command) => ({
             ...command,
             inputFormat: "json",
@@ -917,17 +921,16 @@ it("shows a bundled app once in the installed list and opens a normal route with
     </MemoryRouter>,
   );
   const more = await screen.findByRole("button", {
-    name: "Actions for Extension Lab",
+    name: "Actions for Test View",
   });
   expect(screen.getAllByRole("article")).toHaveLength(1);
-  expect(screen.queryByText("Bundled app examples")).not.toBeInTheDocument();
   expect(
     screen.queryByRole("heading", { name: "Run a tool" }),
   ).not.toBeInTheDocument();
   await user.click(more);
   await user.click(screen.getByRole("menuitem", { name: "Open" }));
   expect(screen.getByTestId("location")).toHaveTextContent(
-    "/extensions/app/starter.extension-lab/run",
+    "/extensions/app/test.view/run",
   );
   expect(native.installExtension).not.toHaveBeenCalled();
   expect(native.setExtensionEnabled).not.toHaveBeenCalled();
@@ -1039,170 +1042,4 @@ it("enables offline commands without optional networking and allows grants to ch
       true,
     ),
   );
-});
-
-const bundledLab: native.ExtensionPreview = {
-  ...preview,
-  manifest: {
-    ...preview.manifest,
-    id: "starter.extension-lab",
-    name: "Extension Lab",
-    version: "2.0.0",
-  },
-};
-
-function bundledCatalog() {
-  vi.mocked(native.bundledExtensionCatalog).mockResolvedValue({
-    hostVersion: "0.1.8",
-    entries: [{ package: bundledLab, category: "tools" }],
-  });
-}
-
-async function bundledCard() {
-  const heading = await screen.findByRole("heading", {
-    name: "Extension Lab",
-    level: 4,
-  });
-  const card = heading.closest("article");
-  if (!card) throw new Error("内置插件卡片未显示");
-  return within(card);
-}
-
-it("shows an installed bundled lab in the catalog without a separate update button or a same-version upgrade", async () => {
-  snapshot.items = [
-    {
-      generation: 1,
-      origin: { kind: "bundled" },
-      package: bundledLab,
-      enabled: false,
-      grantedPermissions: [],
-    },
-  ];
-  bundledCatalog();
-  marketPage("discover");
-  const card = await bundledCard();
-  expect(card.getByText("Built-in")).toBeVisible();
-  await waitFor(() =>
-    expect(card.getByRole("button", { name: "Installed" })).toBeDisabled(),
-  );
-  expect(
-    screen.queryByRole("button", { name: "Built-in updates" }),
-  ).not.toBeInTheDocument();
-  expect(native.bundledExtensionPackage).not.toHaveBeenCalled();
-  expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-  expect(native.installExtension).not.toHaveBeenCalled();
-});
-
-it.each(["discover", "installed"] as const)(
-  "updates a bundled lab from %s without repeated consent using the captured revision",
-  async (tab) => {
-    snapshot.revision = 23;
-    snapshot.items = [
-      {
-        generation: 3,
-        origin: { kind: "bundled" },
-        package: {
-          ...bundledLab,
-          sha256: "a".repeat(64),
-          manifest: { ...bundledLab.manifest, version: "1.0.0" },
-        },
-        enabled: false,
-        grantedPermissions: [],
-      },
-    ];
-    vi.mocked(native.previewExtension).mockResolvedValue(bundledLab);
-    vi.mocked(native.installExtension).mockResolvedValue(snapshot);
-    bundledCatalog();
-    marketPage(tab);
-    if (tab === "discover") {
-      const card = await bundledCard();
-      const update = await card.findByRole("button", { name: "Update" });
-      await waitFor(() => expect(update).toBeEnabled());
-      fireEvent.click(update);
-    } else {
-      const user = userEvent.setup();
-      await user.click(
-        await screen.findByRole("button", {
-          name: "Actions for Extension Lab",
-        }),
-      );
-      await user.click(
-        await screen.findByRole("menuitem", { name: "Update to 2.0.0" }),
-      );
-    }
-    await waitFor(() =>
-      expect(native.installExtension).toHaveBeenCalledWith(
-        "demo-package",
-        23,
-        true,
-        bundledLab.sha256,
-        undefined,
-      ),
-    );
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(native.setExtensionEnabled).not.toHaveBeenCalled();
-    expect(native.bundledExtensionPackage).toHaveBeenCalledExactlyOnceWith(
-      "starter.extension-lab",
-    );
-    expect(native.downloadMarketExtension).not.toHaveBeenCalled();
-  },
-);
-
-it.each([
-  ["3.0.0", bundledLab.sha256, en["ext.market.newerInstalled"]],
-  ["2.0.0", "a".repeat(64), en["ext.market.installed"]],
-])(
-  "retains an installed lab at %s when a bundled replacement cannot upgrade it",
-  async (version, sha256, text) => {
-    snapshot.items = [
-      {
-        generation: 1,
-        origin: { kind: "local" },
-        package: {
-          ...bundledLab,
-          sha256,
-          manifest: { ...bundledLab.manifest, version },
-        },
-        enabled: false,
-        grantedPermissions: [],
-      },
-    ];
-    vi.mocked(native.previewExtension).mockResolvedValue(bundledLab);
-    bundledCatalog();
-    marketPage("discover");
-    const card = await bundledCard();
-    expect(await card.findByRole("button", { name: text })).toBeDisabled();
-    expect(native.bundledExtensionPackage).not.toHaveBeenCalled();
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(native.installExtension).not.toHaveBeenCalled();
-  },
-);
-
-it("reinstalls a missing bundled plugin from its offline catalog with the normal permission review", async () => {
-  bundledCatalog();
-  vi.mocked(native.extensionMarketSnapshot).mockRejectedValue({
-    code: "MARKET_UNAVAILABLE",
-  });
-  vi.mocked(native.previewExtension).mockResolvedValue(bundledLab);
-  vi.mocked(native.installExtension).mockResolvedValue(snapshot);
-  marketPage("discover");
-  const card = await bundledCard();
-  const install = card.getByRole("button", { name: "Install" });
-  await waitFor(() => expect(install).toBeEnabled());
-  fireEvent.click(install);
-  const review = await screen.findByRole("dialog");
-  expect(within(review).getByText(en["ext.source.bundled"])).toBeVisible();
-  expect(native.installExtension).not.toHaveBeenCalled();
-  fireEvent.click(within(review).getByRole("button", { name: "Install" }));
-  await waitFor(() =>
-    expect(native.installExtension).toHaveBeenCalledWith(
-      "demo-package",
-      0,
-      false,
-      bundledLab.sha256,
-      { trusted: true, grantedPermissions: ["text:read"] },
-    ),
-  );
-  expect(native.downloadMarketExtension).not.toHaveBeenCalled();
-  expect(native.installMarketExtension).not.toHaveBeenCalled();
 });

@@ -17,7 +17,7 @@
     }
   ],
   "permissions": ["text:read"],
-  "minHostVersion": "0.1.4",
+  "minHostVersion": "0.1.0",
   "optionalPermissions": [],
   "network": []
 }

@@ -13,7 +13,6 @@ import { APP_CONFIG } from "@/config/app";
 import appIcon from "../../resources/branding/app-icon.svg";
 import { CommandMenuItem } from "@/components/command-menu-item";
 import { Button } from "@/components/ui/button";
-import { LanguageSwitch } from "@/components/language-switch";
 import { CompactNavigation } from "@/components/compact-navigation";
 import {
   Dialog,
@@ -183,26 +182,7 @@ export function TitleBar({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
                 <CommandMenuItem id="open-settings" />
-                <DropdownMenuSeparator />
-                <CommandMenuItem id="reload" />
                 <CommandMenuItem id="quit" />
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  data-surface="transparent"
-                  type="button"
-                  data-variant="ghost"
-                  className="app-title-menu-trigger"
-                >
-                  {t("title.edit")}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <CommandMenuItem id="copy-link" />
-                <CommandMenuItem id="select-all" />
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -300,7 +280,6 @@ export function TitleBar({
             </TooltipContent>
           </Tooltip>
         ) : null}
-        <LanguageSwitch compact className="my-auto" />
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>
             <Button
@@ -416,27 +395,8 @@ export function TitleBar({
             <DialogTitle>
               {t("title.about")} {APP_CONFIG.name}
             </DialogTitle>
-            <DialogDescription>
-              {settings.appMode === "demo"
-                ? t("title.aboutBody")
-                : APP_CONFIG.name}
-            </DialogDescription>
+            <DialogDescription>{t("title.aboutBody")}</DialogDescription>
           </DialogHeader>
-          {settings.appMode === "demo" ? (
-            <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-              {[
-                "Tauri 2",
-                "React 19",
-                "TypeScript 6",
-                "Tailwind 4",
-                "shadcn/ui",
-              ].map((item) => (
-                <span key={item} className="rounded-full border px-2 py-0.5">
-                  {item}
-                </span>
-              ))}
-            </div>
-          ) : null}
           <DialogFooter>
             <Button onClick={() => setAboutOpen(false)}>
               {t("common.close")}

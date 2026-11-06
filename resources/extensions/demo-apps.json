@@ -2,9 +2,9 @@
   "referenceHost": "x86_64-pc-windows-msvc",
   "sources": {
     "Cargo.lock": "5841a26c1234fb9923ad55a529ccd3861692fc99d89ecb4a1e75673cbbd54797",
-    "Cargo.toml": "358cf8edd1a61304cd7b9870a38e22a33bfcffd54b07c28f9f67bbef544072fb",
-    "extension-apps-recipe.mjs": "dbffa848b3d3a1b136f2680f7b20e206728f4bb03c5512481878a0d9ab6dd436",
-    "extension.json": "d853db9b7ba4a8a600f80ac08bb79cbf5172f4a94ef03cbd4ba28b5798bb33c2",
+    "Cargo.toml": "cae1eff3b8f401a8fefd7b2ef744d570f76151ae1076083dce12cd726fef4189",
+    "extension-apps-recipe.mjs": "f5a4c05a4f161b95c6a963fcc6b0ba7faf090a7713db2a8a3839a882f6699be0",
+    "extension.json": "6a32ed472008d2e7ac8167c697975cef002879c4b0b56691cc7369bda3f5dfc8",
     "rust-toolchain.toml": "9db2eec5f7af9912a40a4d86b4b19edfa4d26f844fb4e4122df174b4018e4ebe",
     "src/app.rs": "90cc1eb9ad3246fbe8955e732c6e482eb465697f9e4671bc3924b606c46e7161",
     "src/lib.rs": "f970c8f48a86acd8781a96b33522ce4528a36dbcf15ca57cb90adf7970ad61c1",

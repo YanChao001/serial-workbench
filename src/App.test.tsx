@@ -21,9 +21,6 @@ vi.mock("@/providers/unsaved-work", () => ({
 vi.mock("@/components/recovery-gate", () => ({
   RecoveryGate: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("@/components/demo-motion", () => ({
-  DemoMotion: ({ children }: { children: ReactNode }) => children,
-}));
 vi.mock("@/layouts/app-shell", () => ({
   AppShell: () => <Outlet />,
 }));

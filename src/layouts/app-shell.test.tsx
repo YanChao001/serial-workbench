@@ -18,7 +18,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import type { AppRoute } from "@/routes";
 import { AppShell } from "./app-shell";
 
-const state = vi.hoisted(() => ({ appMode: "demo" }));
+const shellSettings = vi.hoisted(() => ({
+  sidebarWidth: 224,
+  sidebarCollapsed: false,
+}));
+
 vi.mock("@/features/extensions/extensions-provider", () => ({
   useExtensions: () => ({ data: null }),
 }));
@@ -27,11 +31,7 @@ vi.mock("@/providers/commands", () => ({
 }));
 vi.mock("@/providers/settings", () => ({
   useSettings: () => ({
-    settings: {
-      appMode: state.appMode,
-      sidebarWidth: 224,
-      sidebarCollapsed: false,
-    },
+    settings: shellSettings,
   }),
 }));
 vi.mock("@/providers/i18n", () => ({
@@ -108,7 +108,7 @@ describe("应用内容导航", () => {
   let resizeHeader: () => void;
   const disconnect = vi.fn();
   beforeEach(() => {
-    state.appMode = "demo";
+    shellSettings.sidebarCollapsed = false;
     disconnect.mockClear();
     vi.spyOn(window, "scrollTo").mockImplementation(() => {});
     vi.stubGlobal(
@@ -144,8 +144,8 @@ describe("应用内容导航", () => {
     expect(settings).toHaveFocus();
     expect(screen.getAllByRole("heading", { level: 1 })).toHaveLength(1);
     expect(
-      screen.getByRole("navigation", { name: "navContext.location" }),
-    ).toHaveTextContent("navGroup.systemnav.settings");
+      screen.queryByRole("navigation", { name: "navContext.location" }),
+    ).not.toBeInTheDocument();
   });
 
   it("同页查询参数变化时保留设置定位和滚动", () => {
@@ -173,14 +173,23 @@ describe("应用内容导航", () => {
     expect(shell).toHaveStyle({ "--app-sidebar-width": "224px" });
   });
 
-  it("扩展正文不显示导航标识行，普通页面保留位置上下文", () => {
+  it("折叠为图标栏预留48逻辑像素，并保留展开宽度", () => {
+    shellSettings.sidebarCollapsed = true;
+    renderShell();
+    const shell = screen.getByRole("main").closest(".app-shell");
+    expect(shell).toHaveStyle({ "--app-sidebar-width": "48px" });
+    expect(shellSettings.sidebarWidth).toBe(224);
+  });
+
+  it("页面切换直接显示内容，保留页面标题语义", () => {
     renderShell("/extensions/app/example.lab/open");
     expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
     expect(document.querySelector(".app-route-context")).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "/settings" }));
     expect(
-      screen.getByRole("navigation", { name: "navContext.location" }),
-    ).toHaveTextContent("nav.settings");
+      screen.queryByRole("navigation", { name: "navContext.location" }),
+    ).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
   });
 
   it("目标页模块未就绪时显示预布局骨架，加载后立即切换", async () => {
@@ -218,27 +227,7 @@ describe("应用内容导航", () => {
     expect(
       screen.queryByRole("status", { name: "common.loading" }),
     ).not.toBeInTheDocument();
-    expect(
-      screen.getByRole("navigation", { name: "navContext.location" }),
-    ).toHaveTextContent("nav.settings");
-  });
-
-  it("精简模式按路由配置隐藏演示入口", () => {
-    state.appMode = "minimal";
-    renderShell();
-    expect(
-      screen.queryByRole("link", { name: "/components" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "/motion" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "/bridge" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("link", { name: "/desktop" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "/settings" })).toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
   });
 
   it("顶部说明栏换行后更新布局空间，卸载时清理观察器", () => {

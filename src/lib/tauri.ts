@@ -1,4 +1,3 @@
-import type { Language } from "@/i18n/registry";
 import type { settingsDocument } from "./settings-model";
 import type {
   DesktopStatus,
@@ -12,7 +11,6 @@ import type {
   ExtensionArchivePreview,
   ExtensionArchiveResult,
   ExtensionPreview,
-  BundledExtensionCatalog,
   ExtensionRunInput,
   ExtensionRunStatus,
   ExtensionSnapshot,
@@ -24,9 +22,6 @@ import type {
   MarketSnapshot,
   MarketSource,
   NativeError as NativeFailure,
-  Note,
-  NoteInput,
-  NoteUpdate,
   SettingsSnapshot,
   UpdateProgress,
   UpdateStatus,
@@ -38,8 +33,6 @@ import type {
 } from "./generated/bindings";
 
 export type {
-  BundledExtension,
-  BundledExtensionCatalog,
   ExtensionConsent,
   ExtensionOrigin,
   ExtensionArchivePreview,
@@ -78,9 +71,6 @@ export type {
   DesktopStatus,
   DiagnosticsReport,
   FrontendError,
-  Note,
-  NoteInput,
-  NoteUpdate,
   SettingsSnapshot,
   UpdateProgress,
   UpdateStatus,
@@ -137,12 +127,6 @@ export async function downloadMarketExtension(
 }
 export function previewExtension(content: string): Promise<ExtensionPreview> {
   return callNative((commands) => commands.previewExtension(content));
-}
-export function bundledExtensionPackage(id: string): Promise<string> {
-  return callNative((commands) => commands.bundledExtensionPackage(id));
-}
-export function bundledExtensionCatalog(): Promise<BundledExtensionCatalog> {
-  return callNative((commands) => commands.bundledExtensionCatalog());
 }
 export function viewExtension(
   input: ExtensionViewInput,
@@ -605,26 +589,6 @@ export function resetWindowGeometry(center = false): Promise<WindowGeometry> {
   return callNative((commands) => commands.resetWindowGeometry(center));
 }
 
-/**
- * 调用 Rust 侧的 greet 命令。
- *
- * 空名称由 Rust 侧返回 Err，前端拿到的就是一个 reject——
- * 这是模板刻意示范的错误链路：校验放在边界，错误由调用方展示。
- */
-export async function invokeGreet(
-  name: string,
-  language: Language = "zh",
-): Promise<string> {
-  if (!isTauri()) {
-    throw new Error(
-      language === "en"
-        ? "Unavailable in browser preview. Start the desktop app with pnpm app:dev."
-        : "浏览器预览模式下无法调用，请用 pnpm app:dev 启动",
-    );
-  }
-  return callNative((commands) => commands.greet(name, language));
-}
-
 export type AppInfo = {
   /** 应用版本，来源是 tauri.conf.json */
   version: string;
@@ -691,22 +655,10 @@ export function onSettingsChanged(
   return onNativeEvent("app://settings-changed", handler);
 }
 
-export function onNotesChanged(handler: () => void): Promise<() => void> {
-  return onNativeEvent("app://notes-changed", handler);
-}
-
 export function onUpdateProgress(
   handler: (progress: UpdateProgress) => void,
 ): Promise<() => void> {
   return onNativeEvent("app://update-progress", handler);
-}
-
-export function createNote(input: NoteInput): Promise<Note> {
-  return callNative((commands) => commands.createNote(input));
-}
-
-export function updateNote(input: NoteUpdate): Promise<Note> {
-  return callNative((commands) => commands.updateNote(input));
 }
 
 export async function openSecondaryWindow(): Promise<void> {
@@ -783,22 +735,6 @@ export type {
   LifecycleRequest,
   Activation,
   Workspace,
-  DemoWorkerOutput,
-  NoteQuery,
-  NotePage,
-  NoteVersion,
-  NoteDraft,
-  BackupInfo,
-  BackupPreview,
-  RestoreResult,
-  WorkbenchDocument,
-  WorkbenchDirectory,
-  WorkbenchTask,
-  WorkbenchTaskKind,
-  WorkbenchTaskStatus,
-  WorkbenchTaskSnapshot,
-  WorkbenchDrop,
-  RecentWorkbenchFile,
 } from "./generated/bindings";
 
 export async function setWindowWorkState(names: string[]): Promise<void> {
@@ -825,140 +761,6 @@ export function onLifecycleExecuting(
 ): Promise<() => void> {
   return onNativeEvent("app://lifecycle-executing", handler);
 }
-export function queryNotes(
-  query: import("./generated/bindings").NoteQuery,
-): Promise<import("./generated/bindings").NotePage> {
-  return callNative((c) => c.queryNotes(query));
-}
-export function getNote(id: number): Promise<Note> {
-  return callNative((c) => c.getNote(id));
-}
-export async function changeNotes(
-  items: import("./generated/bindings").NoteVersion[],
-  action: "trash" | "restore" | "purge",
-): Promise<void> {
-  await callNative((c) => c.changeNotes(items, action));
-}
-export function loadNoteDraft(): Promise<
-  import("./generated/bindings").NoteDraft | null
-> {
-  return callNative((c) => c.loadNoteDraft());
-}
-export async function saveNoteDraft(
-  draft: import("./generated/bindings").NoteDraft | null,
-): Promise<void> {
-  await callNative((c) => c.saveNoteDraft(draft));
-}
-export function createDataBackup(): Promise<
-  import("./generated/bindings").BackupInfo
-> {
-  return callNative((c) => c.createDataBackup());
-}
-export function listDataBackups(): Promise<
-  import("./generated/bindings").BackupInfo[]
-> {
-  return callNative((c) => c.listDataBackups());
-}
-export function previewDataBackup(
-  id: string,
-): Promise<import("./generated/bindings").BackupPreview> {
-  return callNative((c) => c.previewDataBackup(id));
-}
-export function restoreDataBackup(
-  id: string,
-): Promise<import("./generated/bindings").RestoreResult> {
-  return callNative((c) => c.restoreDataBackup(id));
-}
-export function exportDataBackup(id: string): Promise<string> {
-  return callNative((c) => c.exportDataBackup(id));
-}
-export function importDataBackup(
-  contents: string,
-): Promise<import("./generated/bindings").BackupPreview> {
-  return callNative((c) => c.importDataBackup(contents));
-}
-export function pickDataBackup(): Promise<
-  import("./generated/bindings").BackupPreview | null
-> {
-  return callNative((c) => c.pickDataBackup());
-}
-export function saveDataBackup(id: string): Promise<boolean> {
-  return callNative((c) => c.saveDataBackup(id));
-}
-
-export function pickWorkbenchFiles(): Promise<
-  import("./generated/bindings").WorkbenchDocument[]
-> {
-  return callNative((c) => c.pickWorkbenchFiles());
-}
-export function pickWorkbenchDirectory(): Promise<
-  import("./generated/bindings").WorkbenchDirectory | null
-> {
-  return callNative((c) => c.pickWorkbenchDirectory());
-}
-export function loadWorkbenchDocument(
-  id: string,
-): Promise<import("./generated/bindings").WorkbenchDocument> {
-  return callNative((c) => c.loadWorkbenchDocument(id));
-}
-export function saveWorkbenchDocument(
-  id: string,
-  content: string,
-  expectedRevision: string,
-): Promise<import("./generated/bindings").WorkbenchDocument> {
-  return callNative((c) =>
-    c.saveWorkbenchDocument(id, content, expectedRevision),
-  );
-}
-export function saveWorkbenchAs(
-  name: string,
-  content: string,
-): Promise<import("./generated/bindings").WorkbenchDocument | null> {
-  return callNative((c) => c.saveWorkbenchAs(name, content));
-}
-export function recentWorkbenchFiles(): Promise<
-  import("./generated/bindings").RecentWorkbenchFile[]
-> {
-  return callNative((c) => c.recentWorkbenchFiles());
-}
-export async function revealWorkbenchFile(id: string): Promise<void> {
-  await callNative((c) => c.revealWorkbenchFile(id));
-}
-export function startWorkbenchTask(
-  kind: import("./generated/bindings").WorkbenchTaskKind,
-  directoryId: string,
-): Promise<import("./generated/bindings").WorkbenchTask> {
-  return callNative((c) => c.startWorkbenchTask(kind, directoryId));
-}
-export function getWorkbenchTaskSnapshot(): Promise<
-  import("./generated/bindings").WorkbenchTaskSnapshot
-> {
-  return callNative((c) => c.workbenchTaskSnapshot());
-}
-export async function cancelWorkbenchTask(taskId: string): Promise<void> {
-  await callNative((c) => c.cancelWorkbenchTask(taskId));
-}
-export function retryWorkbenchTask(
-  taskId: string,
-): Promise<import("./generated/bindings").WorkbenchTask> {
-  return callNative((c) => c.retryWorkbenchTask(taskId));
-}
-export function exportWorkbenchTask(taskId: string): Promise<string | null> {
-  return callNative((c) => c.exportWorkbenchTask(taskId));
-}
-export function onWorkbenchDrop(
-  handler: (drop: import("./generated/bindings").WorkbenchDrop) => void,
-): Promise<() => void> {
-  return onNativeEvent("app://workbench-drop", handler);
-}
-export function onWorkbenchTasksChanged(
-  handler: (
-    snapshot: import("./generated/bindings").WorkbenchTaskSnapshot,
-  ) => void,
-): Promise<() => void> {
-  return onNativeEvent("app://workbench-tasks", handler);
-}
-
 export function getActivationSnapshot(): Promise<
   import("./generated/bindings").Activation[]
 > {
@@ -985,24 +787,6 @@ export async function saveWorkspaceRoute(route: string): Promise<void> {
 export async function restoreWorkspace(): Promise<void> {
   await callNative((c) => c.restoreWorkspace());
 }
-export async function openNotesWindow(): Promise<void> {
-  await callNative((c) => c.openNotesWindow());
-}
-export async function setDemoCredential(value: string): Promise<void> {
-  await callNative((c) => c.setDemoCredential(value));
-}
-export function getDemoCredential(): Promise<string | null> {
-  return callNative((c) => c.getDemoCredential());
-}
-export async function deleteDemoCredential(): Promise<void> {
-  await callNative((c) => c.deleteDemoCredential());
-}
-export function runDemoSidecar(
-  input: string,
-): Promise<import("./generated/bindings").DemoWorkerOutput> {
-  return callNative((c) => c.runDemoSidecar(input));
-}
-
 function requireDesktop(): void {
   if (!isTauri())
     throw new NativeBridgeError({
@@ -1018,30 +802,10 @@ export function recoveryStatus(): Promise<
 > {
   return callNative((c) => c.recoveryStatus());
 }
-export function listRecoveryBackups(): Promise<
-  import("./generated/bindings").BackupInfo[]
+export function stageRecovery(): Promise<
+  import("./generated/bindings").RecoveryStatus
 > {
-  return callNative((c) => c.listRecoveryBackups());
-}
-export function pickRecoveryBackup(): Promise<
-  import("./generated/bindings").BackupPreview | null
-> {
-  return callNative((c) => c.pickRecoveryBackup());
-}
-export function previewRecoveryBackup(
-  id: string,
-): Promise<import("./generated/bindings").BackupPreview> {
-  return callNative((c) => c.previewRecoveryBackup(id));
-}
-export function restoreRecoveryBackup(
-  id: string,
-): Promise<import("./generated/bindings").RecoveryStatus> {
-  return callNative((c) => c.restoreRecoveryBackup(id));
-}
-export function stageRecovery(
-  resetSettings: boolean,
-): Promise<import("./generated/bindings").RecoveryStatus> {
-  return callNative((c) => c.stageRecovery(resetSettings));
+  return callNative((c) => c.stageRecovery());
 }
 export async function writeSystemClipboard(text: string): Promise<void> {
   requireDesktop();
@@ -1075,236 +839,4 @@ export async function onSystemNotification(
   return () => {
     void listener.unregister();
   };
-}
-export async function registerGlobalShortcut(
-  shortcut: string,
-): Promise<() => Promise<void>> {
-  requireDesktop();
-  await callNative((commands) => commands.registerDemoShortcut(shortcut));
-  return async () => {
-    await callNative((commands) => commands.unregisterDemoShortcut(shortcut));
-  };
-}
-
-export type HttpDemoRequest = import("./generated/bindings").HttpDemoRequest;
-export type HttpDemoResponse = import("./generated/bindings").HttpDemoResponse;
-
-async function desktopHttpRequest(
-  input: HttpDemoRequest,
-  signal: AbortSignal,
-): Promise<HttpDemoResponse> {
-  const { Channel } = await import("@tauri-apps/api/core");
-  signal.throwIfAborted();
-  const requestId = crypto.randomUUID();
-  let registered = false;
-  let cancellationSent = false;
-  const cancel = () => {
-    if (!registered || cancellationSent) return;
-    cancellationSent = true;
-    void callNative((commands) => commands.cancelDemoHttp(requestId)).catch(
-      console.error,
-    );
-  };
-  const onStarted = new Channel<null>(() => {
-    registered = true;
-    if (signal.aborted) cancel();
-  });
-  signal.addEventListener("abort", cancel, { once: true });
-  try {
-    const response = await callNative((commands) => {
-      // 动态导入期间可能已取消；已发送请求则等原生注册 ACK 后再取消。
-      signal.throwIfAborted();
-      return commands.requestDemoHttp(requestId, input, onStarted);
-    });
-    signal.throwIfAborted();
-    return response;
-  } catch (error) {
-    if (signal.aborted) throw signal.reason;
-    if (error instanceof NativeBridgeError && error.code === "HTTP_TIMEOUT")
-      throw new DOMException(error.message, "TimeoutError");
-    throw error;
-  } finally {
-    signal.removeEventListener("abort", cancel);
-    onStarted.onmessage = () => {};
-  }
-}
-
-export async function nativeHttpRequest(
-  input: HttpDemoRequest,
-  signal?: AbortSignal,
-): Promise<HttpDemoResponse> {
-  const url = new URL(input.url);
-  if (
-    url.protocol !== "https:" ||
-    !["httpbin.org", "jsonplaceholder.typicode.com"].includes(url.hostname) ||
-    url.username ||
-    url.password ||
-    url.port
-  )
-    throw new Error("Choose one of the allowed HTTPS demo endpoints");
-  if (
-    !["GET", "POST"].includes(input.method) ||
-    new TextEncoder().encode(input.body ?? "").byteLength > 65536
-  )
-    throw new Error("Unsupported request method or body size");
-  const controller = new AbortController();
-  const abort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) abort();
-  else signal?.addEventListener("abort", abort, { once: true });
-  const timer = window.setTimeout(
-    () =>
-      controller.abort(new DOMException("Request timed out", "TimeoutError")),
-    Math.min(30000, Math.max(100, input.timeoutMs ?? 10000)),
-  );
-  try {
-    if (isTauri())
-      return await desktopHttpRequest(
-        {
-          ...input,
-          url: url.href,
-          timeoutMs: Math.trunc(
-            Math.min(30000, Math.max(100, input.timeoutMs ?? 10000)),
-          ),
-        },
-        controller.signal,
-      );
-    const response = await window.fetch(url.href, {
-      method: input.method,
-      headers: input.headers ?? undefined,
-      body: input.method === "POST" ? input.body : undefined,
-      signal: controller.signal,
-      credentials: "omit",
-      redirect: "error",
-    });
-    const reader = response.body?.getReader();
-    const decoder = new TextDecoder();
-    let body = "";
-    let bytes = 0;
-    if (reader) {
-      try {
-        for (;;) {
-          const part = await reader.read();
-          if (part.done) break;
-          bytes += part.value.byteLength;
-          if (bytes > 2 * 1024 * 1024) {
-            controller.abort();
-            throw new Error("Response exceeds 2 MiB");
-          }
-          body += decoder.decode(part.value, { stream: true });
-        }
-        body += decoder.decode();
-      } finally {
-        reader.releaseLock();
-      }
-    }
-    return {
-      status: response.status,
-      headers: Object.fromEntries(response.headers.entries()),
-      body,
-    };
-  } finally {
-    clearTimeout(timer);
-    signal?.removeEventListener("abort", abort);
-  }
-}
-
-type WebSocketErrorCode =
-  | "WEBSOCKET_ENDPOINT"
-  | "WEBSOCKET_TIMEOUT"
-  | "WEBSOCKET_CONNECTION"
-  | "WEBSOCKET_SEND";
-
-/** 浏览器传输错误独立于 Rust IPC 错误契约。 */
-class WebSocketError extends Error {
-  constructor(
-    readonly code: WebSocketErrorCode,
-    message: string,
-    readonly retryable: boolean,
-  ) {
-    super(message);
-    this.name = "WebSocketError";
-  }
-}
-
-/** WSS 使用标准 WebSocket，并由 CSP 限制端点；浏览器与桌面共享同一行为。 */
-export async function websocketConnect(
-  url: string,
-  onMessage: (text: string) => void,
-  onClose?: () => void,
-): Promise<{
-  send: (text: string) => Promise<void>;
-  close: () => Promise<void>;
-}> {
-  const target = new URL(url);
-  if (
-    target.protocol !== "wss:" ||
-    target.hostname !== "echo.websocket.events" ||
-    target.port ||
-    target.username ||
-    target.password
-  )
-    throw new WebSocketError(
-      "WEBSOCKET_ENDPOINT",
-      "Choose the allowed WSS demo endpoint",
-      false,
-    );
-  return new Promise((resolve, reject) => {
-    const socket = new WebSocket(target.href);
-    let opened = false;
-    const timer = window.setTimeout(() => {
-      socket.close();
-      reject(
-        new WebSocketError(
-          "WEBSOCKET_TIMEOUT",
-          "WebSocket connection timed out",
-          true,
-        ),
-      );
-    }, 10000);
-    socket.onmessage = (event) => {
-      if (typeof event.data === "string" && event.data.length <= 65536)
-        onMessage(event.data);
-      else socket.close(1009, "Demo message limit");
-    };
-    socket.onerror = () => {
-      clearTimeout(timer);
-      reject(
-        new WebSocketError(
-          "WEBSOCKET_CONNECTION",
-          "WebSocket connection failed. Retry or use the local demo.",
-          true,
-        ),
-      );
-    };
-    socket.onclose = () => {
-      clearTimeout(timer);
-      if (!opened)
-        reject(
-          new WebSocketError(
-            "WEBSOCKET_CONNECTION",
-            "WebSocket closed before the connection was established",
-            true,
-          ),
-        );
-      onClose?.();
-    };
-    socket.onopen = () => {
-      opened = true;
-      clearTimeout(timer);
-      resolve({
-        send: async (text) => {
-          if (socket.readyState !== WebSocket.OPEN || text.length > 65536)
-            throw new WebSocketError(
-              "WEBSOCKET_SEND",
-              "Socket closed or message exceeds the demo limit",
-              false,
-            );
-          socket.send(text);
-        },
-        close: async () => {
-          socket.close(1000);
-        },
-      });
-    };
-  });
 }

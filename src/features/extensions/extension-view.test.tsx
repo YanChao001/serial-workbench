@@ -361,7 +361,7 @@ it("paginates large contributed tables and exposes progress semantics", async ()
   expect(
     screen.getByRole("progressbar", { name: "Completed" }),
   ).toHaveAttribute("value", "3");
-  await user.click(screen.getByRole("button", { name: "data.next" }));
+  await user.click(screen.getByRole("button", { name: "common.next" }));
   expect(screen.getByText("Task 51")).toBeVisible();
   expect(screen.queryByText("Task 1")).toBeNull();
   const shorter = {

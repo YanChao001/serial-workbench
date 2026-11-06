@@ -1,7 +1,6 @@
 import { useLocation, useNavigate } from "react-router-dom";
 import { isTauri } from "@/lib/tauri";
 import { useI18n } from "@/providers/i18n";
-import { useSettings } from "@/providers/settings";
 import { APP_ROUTES, NAVIGATION_GROUPS, matchRoute } from "@/routes";
 import {
   Select,
@@ -17,14 +16,10 @@ import "@/styles/compact-navigation.css";
 /** 窄屏把页面选择放在标题栏内，浏览器始终呈现完整桌面画布。 */
 export function CompactNavigation() {
   const { t } = useI18n();
-  const { settings } = useSettings();
   const { pathname } = useLocation();
   const navigate = useNavigate();
   if (isTauri()) return null;
-  const routes = APP_ROUTES.filter(
-    (route) =>
-      !route.hidden && (settings.appMode !== "minimal" || !route.demoOnly),
-  );
+  const routes = APP_ROUTES.filter((route) => !route.hidden);
   const current = matchRoute(pathname);
   const currentVisible = routes.some((route) => route.path === current.path);
   return (
@@ -34,7 +29,7 @@ export function CompactNavigation() {
     >
       <SelectTrigger
         className="app-compact-navigation"
-        aria-label={t("browserDemo.navigation")}
+        aria-label={t("browserPreview.navigation")}
       >
         <SelectValue placeholder={t(current.labelKey)} />
       </SelectTrigger>

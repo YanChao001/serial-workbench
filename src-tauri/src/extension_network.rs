@@ -598,7 +598,7 @@ fn image_user_agent(config: &str) -> String {
     let config = serde_json::from_str::<AppConfig>(config)
         .expect("app.config.json must contain an application repository URL");
     format!(
-        "TauriDesktopStarter/{} ({})",
+        "SerialWorkbench/{} ({})",
         env!("CARGO_PKG_VERSION"),
         config.repository_url
     )
@@ -882,7 +882,7 @@ mod tests {
     use super::*;
 
     fn manifest(origin: &str, local: bool) -> ExtensionManifest {
-        serde_json::from_value(serde_json::json!({"formatVersion":3,"apiVersion":2,"minHostVersion":"0.1.4",
+        serde_json::from_value(serde_json::json!({"formatVersion":3,"apiVersion":2,"minHostVersion":"0.1.0",
             "id":"tests.network","version":"1.0.0","name":"Network test","author":"Tests","description":"Network broker test",
             "commands":[{"id":"main","title":"Main","function":"main","inputFormat":"json","resultFormat":"view","permissions":[]}],
             "permissions":[],"optionalPermissions":[if local { "network:local" } else { "network:https" }],
@@ -1781,7 +1781,7 @@ mod tests {
         assert_eq!(
             configured,
             format!(
-                "TauriDesktopStarter/{} (https://code.example.com/apps/custom-desktop)",
+                "SerialWorkbench/{} (https://code.example.com/apps/custom-desktop)",
                 env!("CARGO_PKG_VERSION")
             )
         );

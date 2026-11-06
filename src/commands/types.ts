@@ -3,7 +3,7 @@ import type { MessageKey as DictKey } from "@/i18n/zh-CN";
 import type { Shortcut } from "./shortcuts";
 
 export type CommandGroup =
-  "navigation" | "appearance" | "window" | "help" | "tools" | "content";
+  "navigation" | "appearance" | "window" | "help" | "tools";
 export type CommandInvocation = {
   point?: { clientX: number; clientY: number };
 };
@@ -11,7 +11,7 @@ export type CommandInvocation = {
 export type AppCommand = {
   id: string;
   labelKey: DictKey;
-  /** 内容检索等动态命令的纯文本标题；固定命令继续使用词典键。 */
+  /** 动态命令的纯文本标题；固定命令继续使用词典键。 */
   label?: string;
   description?: string;
   group: CommandGroup;

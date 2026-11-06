@@ -21,18 +21,17 @@ import { checkVersions } from "./version.mjs";
 
 const config = {
   schemaVersion: 1,
-  name: "Starter",
+  name: "Sample App",
   shortName: "Start",
   packageName: "old-app",
-  identifier: "com.example.starter",
+  identifier: "com.example.sample",
   description: "An app",
   author: "Example",
   repositoryUrl: "https://github.com/example/app",
   docsUrl: "https://example.com/docs",
   homepageUrl: "https://example.com",
-  browserStorageNamespace: "starter",
-  integration: { deepLinkScheme: "old-app", fileExtension: "old-app" },
-  defaultMode: "demo",
+  browserStorageNamespace: "sample",
+  integration: { deepLinkScheme: "old-app" },
   updates: { endpoint: "", publicKey: "" },
   extensionMarket: { repository: "", publicKey: "" },
 };
@@ -48,7 +47,22 @@ const MARKET_KEY = readFileSync(
   ),
   "utf8",
 ).trim();
-test("derived applications clear inherited market trust and reject untrusted market configuration", (t) => {
+
+test("product configuration rejects retired display modes and document associations", () => {
+  assert.throws(
+    () => validateAppConfig({ ...config, defaultMode: "demo" }),
+    /未知品牌字段/,
+  );
+  assert.throws(
+    () =>
+      validateAppConfig({
+        ...config,
+        integration: { ...config.integration, fileExtension: "sample" },
+      }),
+    /integration/,
+  );
+});
+test("identity changes clear inherited market trust and reject untrusted market configuration", (t) => {
   const { root } = fixture(t);
   writeFileSync(
     join(root, "app.config.json"),
@@ -102,7 +116,7 @@ test("derived applications clear inherited market trust and reject untrusted mar
   }
 });
 
-test("a derived identity does not inherit the template's update signing trust", (t) => {
+test("a derived identity does not inherit previous update signing trust", (t) => {
   for (const patch of [
     { identifier: "com.example.new-app" },
     { repositoryUrl: "https://github.com/example/derived" },
@@ -126,7 +140,7 @@ test("a derived identity does not inherit the template's update signing trust", 
   }
 });
 
-test("an explicitly supplied update public key is preserved during derivation", (t) => {
+test("an explicitly supplied update public key is preserved during an identity change", (t) => {
   const { root } = fixture(t);
   applyInitialization(
     prepareInitialization(root, {
@@ -145,10 +159,10 @@ test("an explicitly supplied update public key is preserved during derivation", 
 });
 
 function fixture(t) {
-  const root = mkdtempSync(join(tmpdir(), "starter-init-test-"));
+  const root = mkdtempSync(join(tmpdir(), "serial-workbench-config-test-"));
   t.after(() => {
     assert.equal(dirname(root), tmpdir());
-    assert.match(root, /starter-init-test-/);
+    assert.match(root, /serial-workbench-config-test-/);
     rmSync(root, { recursive: true, force: true });
   });
   mkdirSync(join(root, "src-tauri", "src"), { recursive: true });
@@ -163,16 +177,16 @@ function fixture(t) {
       scripts: { build: "vite build" },
     }),
     "src-tauri/tauri.conf.json": JSON.stringify({
-      productName: "Starter",
+      productName: "Sample App",
       identifier: config.identifier,
       version: "0.1.0",
-      app: { windows: [{ label: "main", title: "Starter" }] },
+      app: { windows: [{ label: "main", title: "Sample App" }] },
       bundle: { active: false },
       plugins: { updater: { pubkey: "keep-me" } },
     }),
     "src-tauri/tauri.macos.conf.json": JSON.stringify({
       app: {
-        windows: [{ label: "main", title: "Starter", decorations: true }],
+        windows: [{ label: "main", title: "Sample App", decorations: true }],
       },
     }),
     "src-tauri/tauri.e2e.conf.json": JSON.stringify({
@@ -183,22 +197,20 @@ function fixture(t) {
     "src-tauri/Cargo.lock":
       'version = 4\n\n[[package]]\nname = "old-app"\nversion = "0.1.0"\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
     "src-tauri/src/main.rs":
-      "fn main() { old_app_lib::run() }\n// old-app is a historical example\n",
+      'fn main() { if std::env::args().nth(1).as_deref() == Some("--extension-worker") { std::process::exit(old_app_lib::extension_runtime::worker_main()); } old_app_lib::run() }\n// old-app is a historical example\n',
     "src-tauri/src/bin/export-bindings.rs":
       "fn main() { old_app_lib::bindings::export() }\n",
     "src-tauri/src/bin/verify-updater.rs":
       "fn main() { old_app_lib::update_signature::verify_manifest() }\n",
     "src-tauri/src/bin/extension-tool.rs":
       "use old_app_lib::{extension_runtime, extensions::ExtensionManifest};\nfn main() {}\n",
-    "src-tauri/src/bin/device_tool.rs":
-      "use old_app_lib::{capture::CaptureReader, device::DeviceEngine};\nfn main() {}\n",
-    "index.html": "<html><head><title>Starter</title></head></html>\n",
+    "index.html": "<html><head><title>Sample App</title></head></html>\n",
     "README.md":
-      "# Starter\n\n[主页](https://example.com) · [文档](https://example.com/docs) · [发行记录](https://github.com/example/app/releases)\n",
+      "# Sample App\n\n[主页](https://example.com) · [文档](https://example.com/docs) · [发行记录](https://github.com/example/app/releases)\n",
     "README.en.md":
-      "# Starter\n\n[Releases](https://github.com/example/app/releases)\n",
+      "# Sample App\n\n[Releases](https://github.com/example/app/releases)\n",
     ".signpath/artifact-configuration.xml":
-      '<pe-file product-name="Starter" />\n',
+      '<pe-file product-name="Sample App" />\n',
     ".vscode/launch.json": JSON.stringify({
       version: "0.2.0",
       configurations: [
@@ -218,23 +230,23 @@ function fixture(t) {
 
 test("dry-run plans consistent identities without writing or changing version/signing", (t) => {
   const { root, files } = fixture(t);
-  const plan = prepareInitialization(
-    root,
-    {
-      name: "Acme & Desk",
-      packageName: "acme-desk",
-      description: 'A "quoted" description with \\ paths',
-      identifier: "io.acme.desk",
-    },
-    { minimal: true },
-  );
+  const plan = prepareInitialization(root, {
+    name: "Acme & Desk",
+    packageName: "acme-desk",
+    description: 'A "quoted" description with \\ paths',
+    identifier: "io.acme.desk",
+  });
   assert.match(initializationDiff(plan), /--- a\/app.config.json/);
   for (const [path, content] of Object.entries(files))
     assert.equal(readFileSync(join(root, path), "utf8"), content);
   applyInitialization(plan);
   const read = (path) => readFileSync(join(root, path), "utf8");
-  assert.equal(JSON.parse(read("app.config.json")).defaultMode, "minimal");
+  assert.equal("defaultMode" in JSON.parse(read("app.config.json")), false);
   assert.match(read("src-tauri/src/main.rs"), /acme_desk_lib::run\(\)/);
+  assert.match(
+    read("src-tauri/src/main.rs"),
+    /acme_desk_lib::extension_runtime::worker_main\(\)/,
+  );
   assert.match(read("src-tauri/Cargo.toml"), /default-run = "acme-desk"/);
   assert.match(
     read("src-tauri/src/bin/export-bindings.rs"),
@@ -246,10 +258,6 @@ test("dry-run plans consistent identities without writing or changing version/si
   );
   assert.match(
     read("src-tauri/src/bin/extension-tool.rs"),
-    /use acme_desk_lib::\{/,
-  );
-  assert.match(
-    read("src-tauri/src/bin/device_tool.rs"),
     /use acme_desk_lib::\{/,
   );
   const launches = JSON.parse(read(".vscode/launch.json")).configurations;
@@ -277,16 +285,28 @@ test("dry-run plans consistent identities without writing or changing version/si
   assert.equal(brand.browserStorageNamespace, "io.acme.desk");
   assert.deepEqual(brand.integration, {
     deepLinkScheme: "acme-desk",
-    fileExtension: "acme-desk",
   });
   const native = JSON.parse(read("src-tauri/tauri.conf.json"));
   assert.deepEqual(native.plugins["deep-link"].desktop.schemes, ["acme-desk"]);
-  assert.equal(
-    native.bundle.fileAssociations[0].mimeType,
-    "application/x-acme-desk",
-  );
+  assert.equal(native.bundle.fileAssociations, undefined);
   assert.equal(checkVersions(root), "0.1.0");
   assert.equal(prepareInitialization(root).changes.length, 0);
+});
+
+test("configuration checks detect a stale extension worker library reference", (t) => {
+  const { root } = fixture(t);
+  applyInitialization(prepareInitialization(root));
+  assert.deepEqual(checkInitialization(root), []);
+  const path = "src-tauri/src/main.rs";
+  const valid = readFileSync(join(root, path), "utf8");
+  writeFileSync(
+    join(root, path),
+    valid.replace(
+      "old_app_lib::extension_runtime::worker_main",
+      "stale_app_lib::extension_runtime::worker_main",
+    ),
+  );
+  assert.deepEqual(checkInitialization(root), [path]);
 });
 
 test("configuration checks detect stale imports in each renamed native tool", (t) => {
@@ -294,10 +314,7 @@ test("configuration checks detect stale imports in each renamed native tool", (t
   applyInitialization(
     prepareInitialization(root, { packageName: "acme-desk" }),
   );
-  for (const path of [
-    "src-tauri/src/bin/extension-tool.rs",
-    "src-tauri/src/bin/device_tool.rs",
-  ]) {
+  for (const path of ["src-tauri/src/bin/extension-tool.rs"]) {
     assert.deepEqual(checkInitialization(root), []);
     const valid = readFileSync(join(root, path), "utf8");
     writeFileSync(
@@ -449,7 +466,7 @@ test("brand names keep dollar replacement sequences literal in generated text", 
   for (const path of ["README.md", "README.en.md"])
     assert.equal(
       read(path),
-      `# ${name}${files[path].slice("# Starter".length)}`,
+      `# ${name}${files[path].slice("# Sample App".length)}`,
     );
   assert.equal(
     read("index.html"),
@@ -462,23 +479,21 @@ test("brand names keep dollar replacement sequences literal in generated text", 
   assert.equal(prepareInitialization(root).changes.length, 0);
 });
 
-test("identity-only derivation isolates browser data and system registrations", (t) => {
+test("identity-only changes isolates browser data and system registrations", (t) => {
   const { root } = fixture(t);
   const plan = prepareInitialization(root, { identifier: "io.acme.desk" });
   assert.equal(plan.config.browserStorageNamespace, "io.acme.desk");
   assert.deepEqual(plan.config.integration, {
     deepLinkScheme: "io-acme-desk",
-    fileExtension: "io-acme-desk",
   });
   const explicit = prepareInitialization(root, {
     identifier: "io.acme.desk",
     browserStorageNamespace: "existing-product",
-    integration: { deepLinkScheme: "acme", fileExtension: "acme-doc" },
+    integration: { deepLinkScheme: "acme" },
   });
   assert.equal(explicit.config.browserStorageNamespace, "existing-product");
   assert.deepEqual(explicit.config.integration, {
     deepLinkScheme: "acme",
-    fileExtension: "acme-doc",
   });
 });
 
@@ -595,7 +610,7 @@ test("invalid or conflicting integration names fail before changing files", (t) 
     assert.equal(readFileSync(join(root, path), "utf8"), content);
 });
 
-test("derivation preserves extra registrations and updates inherited platform identities", (t) => {
+test("configuration sync preserves extra registrations and updates inherited platform identities", (t) => {
   const { root } = fixture(t);
   const path = join(root, "src-tauri/tauri.macos.conf.json");
   writeFileSync(
@@ -638,7 +653,7 @@ test("derivation preserves extra registrations and updates inherited platform id
     name: "Unrelated format",
   });
   assert.deepEqual(native.bundle.fileAssociations[1].ext, [
-    "acme-desk",
+    "old-app",
     "existing-doc",
   ]);
   assert.equal(prepareInitialization(root).changes.length, 0);
@@ -784,7 +799,9 @@ test("an encoded secret-key-shaped value aborts initialization before any write"
 
 test("directory junctions cannot redirect initialization outside the project", (t) => {
   const { root } = fixture(t);
-  const outside = mkdtempSync(join(tmpdir(), "starter-init-outside-"));
+  const outside = mkdtempSync(
+    join(tmpdir(), "serial-workbench-config-outside-"),
+  );
   t.after(() => {
     assert.equal(dirname(outside), tmpdir());
     rmSync(outside, { recursive: true, force: true });

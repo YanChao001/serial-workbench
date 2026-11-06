@@ -1,8 +1,17 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  existsSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
+import { portableArtifactEntries } from "./portable.mjs";
+import { publishArtifacts } from "./artifact-lib.mjs";
 import {
   loadPortableBuild,
   portableFileName,
@@ -34,6 +43,46 @@ function fixture(t) {
   };
   return { root, plan, built };
 }
+
+test("portable distribution includes complete project licenses and existing third-party notices", (t) => {
+  const { root, plan, built } = fixture(t);
+  const projectRoot = resolve(import.meta.dirname, "..");
+  const entries = portableArtifactEntries(projectRoot, {
+    executable: built.executable,
+    executableName: "Serial Workbench.exe",
+    readme: "Portable distribution fixture\n",
+  });
+  const output = publishArtifacts(root, {
+    version: plan.version,
+    target: built.target,
+    kind: "portable",
+    entries,
+  });
+  for (const path of ["LICENSE", "NOTICE"]) {
+    assert.ok(
+      existsSync(join(output, path)),
+      `Portable package omitted ${path}`,
+    );
+    assert.deepEqual(
+      readFileSync(join(output, path)),
+      readFileSync(join(projectRoot, path)),
+    );
+  }
+  assert.equal(existsSync(join(output, "LICENSES")), false);
+  assert.deepEqual(
+    readFileSync(join(output, "third-party/extism.LICENSE")),
+    readFileSync(join(projectRoot, "resources/third-party/extism.LICENSE")),
+  );
+  const manifest = JSON.parse(
+    readFileSync(join(output, "manifest.json"), "utf8"),
+  );
+  for (const path of ["LICENSE", "NOTICE"]) {
+    assert.ok(
+      manifest.files.some((file) => file.path === path),
+      `Manifest omitted ${path}`,
+    );
+  }
+});
 
 test("portable receipt follows the actual Cargo output without forcing a second target cache", (t) => {
   const { plan, built } = fixture(t);

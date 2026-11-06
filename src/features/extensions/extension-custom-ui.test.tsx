@@ -239,7 +239,7 @@ const item: native.ExtensionInfo = {
     manifest: {
       formatVersion: 3,
       apiVersion: 2,
-      minHostVersion: "0.1.4",
+      minHostVersion: "0.1.0",
       id: "test.surface",
       version: "1.0.0",
       name: "Surface",

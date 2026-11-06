@@ -8,14 +8,7 @@ import { spawnOwned, stopOwned, waitOwned } from "../e2e/process.mjs";
 const groups = [
   ["test", "test:scripts"],
   ["format:check", "lint", "typecheck"],
-  [
-    "config:check",
-    "branding:check",
-    "docs:previews:check",
-    "extension:sdk:check",
-    "version:check",
-    "extension:demos:check",
-  ],
+  ["config:check", "branding:check", "extension:sdk:check", "version:check"],
 ];
 const defaultJobs = Math.min(groups.length, availableParallelism());
 

@@ -1,3 +1,5 @@
+import type { zhExtensions } from "./zh-extensions";
+
 export const enExtensions = {
   "ext.error.networkBlocked":
     "The destination is a protected address. Check network settings and proxy permission.",
@@ -29,7 +31,7 @@ export const enExtensions = {
     "Check for an archivable development-era registry without changing data.",
   "ext.recovery.checkAgain": "Check again",
   "ext.recovery.legacy":
-    "Found {count} older installation records. Archive them to initialize the bundled extension.",
+    "Found {count} legacy installation records. Archive them before creating new installation records.",
   "ext.recovery.current":
     "Registry version supported; no archiving needed. Refresh the list and check the package.",
   "ext.recovery.future":
@@ -41,17 +43,17 @@ export const enExtensions = {
   "ext.recovery.archive": "Archive and rebuild",
   "ext.recovery.confirmTitle": "Archive old extension installations?",
   "ext.recovery.confirmHint":
-    "Move the complete old extension directory to an archive and reload the current bundled extension, disabled by default. App settings, notes, and plugin private data are retained. Old extension sessions require their original package version. The archive location will be shown after completion.",
+    "Move the entire old extension directory to an archive, then create new installation records. Application settings and plugin private data are preserved. Old sessions still require the original package version. The archive location is shown when finished.",
   "ext.recovery.confirm": "Archive and rebuild",
   "ext.recovery.archiving": "Archiving…",
   "ext.recovery.archived": "The old extension directory was archived.",
   "ext.recovery.archiveLocation": "Archive location:",
   "ext.recovery.afterArchive":
-    "The extension list will reload. Keep the archive if errors persist and refresh. Review and authorize bundled extensions to enable them.",
+    "The extension list will reload. If errors remain, keep the archive and refresh. Reinstall compatible, trusted packages as needed.",
   "ext.market.discover": "Discover plugins",
   "ext.market.title": "Plugin market",
   "ext.market.hint":
-    "Built-in plugins come with the app; online plugins are reviewed by the market maintainer. First installs require permission review; updates from the same source with unchanged permissions do not.",
+    "Online plugins are reviewed by market maintainers. You can also install trusted local packages. Review permissions on first installation; updates from the same source with the same permissions need no further confirmation.",
   "ext.market.repository": "Market source",
   "ext.market.refresh": "Refresh",
   "ext.market.loading": "Loading market…",
@@ -65,9 +67,7 @@ export const enExtensions = {
   "ext.market.category.data": "Data",
   "ext.market.category.tools": "Utilities",
   "ext.market.category.games": "Games",
-  "ext.market.bundled": "Built-in",
   "ext.market.currentVersion": "Installed {version}",
-
   "ext.market.download": "Install",
   "ext.market.hostRequired": "Requires app {version} or newer",
   "ext.market.preparing": "Preparing…",
@@ -133,10 +133,8 @@ export const enExtensions = {
     "Clear this session and exit without disabling or uninstalling the extension.",
   "ext.fieldLimit": "Each field accepts up to {bytes} UTF-8 bytes.",
   "ext.fieldInvalid": "Correct this field before running.",
-  "nav.extensions": "Extensions",
-  "catalog.extensions":
-    "Install tools and apps, and manage plugin permissions.",
-  "ext.title": "Extensions",
+  "nav.extensions": "Plugin center",
+  "ext.title": "Plugin center",
   "ext.description": "Install, manage and use plugins.",
   "ext.dataBoundary": "Permissions and data",
   "ext.boundary":
@@ -148,7 +146,7 @@ export const enExtensions = {
   "ext.docs": "Developer docs",
   "ext.host": "Runtime",
   "ext.empty":
-    "No extensions yet. Restore the built-in workbench or install a trusted local package.",
+    "No plugins are installed. Open Discover plugins to install a compatible, trusted package.",
   "ext.review": "Install extension",
   "ext.author": "Author",
   "ext.version": "Version",
@@ -214,33 +212,10 @@ export const enExtensions = {
     "Cannot read the extension package. Check UTF-8 encoding and the 24 MiB limit.",
   "ext.packageVersionMustIncrease":
     "Package version {version} must be higher than the installed version {installedVersion}.",
-  "experience.extensions": "Use extensions",
-  "experience.extensionsHint":
-    "Review permissions, install and run, then disable or uninstall as needed.",
-  "experience.extensions.1": "Inspect the bundled workbench",
-  "experience.extensions.1Hint":
-    "Inspect the installed workbench’s features and permissions, or import a third-party Wasm package. Installation does not execute the plugin.",
-  "experience.extensions.2": "Authorize and enable",
-  "experience.extensions.2Hint":
-    "Choose Install after review to authorize and enable. Enable the initially bundled workbench separately; its commands then appear in Quick actions.",
-  "experience.extensions.3": "Run extensions",
-  "experience.extensions.3Hint":
-    "Open the workbench from the sidebar for text, CSV / JSON and tasks. Explicitly send files or request network data, open a native window or export the session.",
-  "experience.extensions.4": "Disable or uninstall",
-  "experience.extensions.4Hint":
-    "Disabling revokes host data access and stops execution. Uninstalling removes only managed records and Wasm modules.",
-  "experience.preview.extensions.1":
-    "Review a local Wasm package and its exported commands",
-  "experience.preview.extensions.2":
-    "Authorize and enable, then explicitly select inputs",
-  "experience.preview.extensions.3":
-    "Run, stop, disable and uninstall Extism plugins",
   "ext.inputFormat": "Input format",
   "ext.resultFormat": "Result format",
   "ext.commands": "Extension commands",
   "ext.permission.text:read": "Read submitted text",
-  "ext.bundledHint":
-    "The built-in workbench is installed. Enable it to open from the sidebar or a new window. Uninstalling does not trigger reinstallation.",
   "ext.hostData": "Share host data",
   "ext.hostDataHint":
     "Selected content is shared only when you choose Send data. Separately authorized networking and storage remain available.",
@@ -347,4 +322,4 @@ export const enExtensions = {
     "Opens public HTTPS pages in your default browser.",
   "ext.permissionDescription.window:control":
     "Reads or changes the always-on-top state of this extension’s own separate window.",
-} as const;
+} satisfies Record<keyof typeof zhExtensions, string>;

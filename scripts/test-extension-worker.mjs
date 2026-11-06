@@ -337,7 +337,7 @@ await test("CLI 取消回收宿主 worker 并核验错误，不继承 WASI 输�
         executionBudget: "compute",
       },
     ];
-    manifest.minHostVersion = "0.1.7";
+    manifest.minHostVersion = "0.1.0";
     const manifestPath = join(directory, "extension.json");
     const modulePath = join(directory, "plugin.wasm");
     const fixturePath = join(directory, "fixture.json");
