@@ -6,7 +6,7 @@
 
 JSON 字段统一 camelCase。`U64` 是 `0|[1-9][0-9]*` 的十进制字符串，范围 `0` 至 `18446744073709551615`；禁止符号、小数、指数、前导零和 JSON number。所有计数、长度、offset、序号、revision、epoch、时间间隔和单调时间均使用 U64。接收端先按字符串校验再转整数；JavaScript 可用 BigInt 计算，再以字符串序列化。溢出返回 `COUNTER_EXHAUSTED`，不回绕。`Timestamp` 是 UTC RFC3339 字符串；仅用于展示/审计，不能代替单调时钟判定期限。
 
-Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句柄共享时钟域。异步等待最多每 20ms 复查单调期限，期间只读取时钟。启动无法初始化时钟返回 `CLOCK_UNAVAILABLE`；运行期失去可信计时则终止 Host，下一次启动按持久接纳和 dispatch 证据恢复。平台来源与换算见[时钟实现](../../crates/host/src/clock.rs)。
+Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句柄共享时钟域。异步等待最多每 20ms 复查单调期限，期间只读取时钟。启动无法初始化时钟返回 `CLOCK_UNAVAILABLE`；运行期失去可信计时则终止 Host，下一次启动按持久接纳、dispatch 和清线证据恢复。平台来源与换算见[时钟实现](../../crates/host/src/clock.rs)。
 
 `Id` 为非空、最长 128 个 ASCII 字符的不可解释标识，允许 `[A-Za-z0-9._:-]`；Host 生成的实体 ID 用小写 UUID，调用者生成的 `requestId` 也用小写 UUID。`Digest` 是小写 64 位十六进制 SHA-256。字节用标准带 padding Base64；二进制传输可替换载荷编码，但保留相同长度与摘要。缺失表示未提供，`null` 只在字段明确允许时使用。
 
@@ -46,6 +46,7 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 | `action.invokeChild` | ChildCall 信封，仅供 Host 已派发任务的执行 owner                                                                                                         | `operation: Operation`                                                                                                 | `OPERATION_NOT_RUNNING`、`REQUEST_CONFLICT`、`RESULT_EXPIRED`                                     |
 | `operation.get`      | Query 信封，params 选择 `operationId,requestContext?`、`actorId,requestId,requestContext` 或 `parentOperationId,childKey` 之一                           | `operation: Operation`                                                                                                 | `NOT_FOUND`、`RESULT_EXPIRED`                                                                     |
 | `operation.cancel`   | Call 信封，target 为 operation；params 为 `reason: user\|revoked\|takeover\|shutdown`                                                                    | 取消请求自身的 operation，结果引用被取消 operation                                                                     | `PERMISSION_DENIED`；已终态时返回现有终态，不改写                                                 |
+| `host.shutdown`      | Call 信封，target 为 host；params 为空对象                                                                                                               | 停止请求自身的 operation，结果为 `ShutdownRequested={instanceEpoch: U64}`                                              | `PERMISSION_DENIED`；仅本地用户控制身份的 `auth.manage` 可调用                                    |
 | `state.snapshot`     | Query 信封，params 为 `scopeId`                                                                                                                          | `hostId,instanceEpoch,revision,cursor,state`                                                                           | `NOT_FOUND`                                                                                       |
 | `state.subscribe`    | Query 信封，params 为 `scopeId,after: Cursor`                                                                                                            | `subscriptionId: Id`，之后增量事件                                                                                     | `CURSOR_EXPIRED`、`EPOCH_MISMATCH`、`PERMISSION_DENIED`                                           |
 | `subscription.close` | Query 信封，params 为 `subscriptionId`                                                                                                                   | `closed: true`                                                                                                         | 未存在也返回 closed，不停止业务任务                                                               |
@@ -56,6 +57,10 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 目录项必含 `actionId,kind,inputSchema,outputSchema,targetKinds,executionLocation,permissions,stateScopes,eventTypes,cancellation,revealTarget`。`kind=query|action`；`executionLocation=resource_host|client`；`cancellation=none|cooperative`。各 schema 是 JSON Schema 对象，由生成契约/插件注册校验，不能用任意代码字符串替代领域动作。排序按 actionId 字节序；pageToken 是绑定 catalogVersion、actorId、授权版本和过滤条件的不透明字符串；翻页中注册或授权变化返回 `CATALOG_CHANGED`，重取第一页。未安装/停用或未授权的功能不出现在可调用清单中。已知 actionId 的直接调用仍重新校验。
 
 目录 `outputSchema` 描述领域结果；`action.query` 的 `QueryResult` 另加 `kind/value` 判别包装，专用查询 RPC 直接返回领域结果。适配器按真实返回层级声明输出，不能用领域 schema 校验整个包装。`Operation.result` 使用生成的 `ActionResult={kind,value}`；没有任意 JSON 成功兜底。目录摘要变化时在 Host 存储事务内递增唯一 catalogVersion，attach 读取当前版本；相同目录重启不递增。
+
+本地控制连接第一次 `catalog.list` 在读取目录前建立该连接唯一的变化监听：先监听授权变化，再计算当前 actor 经授权过滤、按 actionId 排序后的真实 ActionSpec 摘要。后续仅可见摘要或目录版本变化时投递 `{type:"catalogChanged",catalogVersion,visibilityToken: Digest}`，不携带 actor、授权规则或资源正文；授权变化不递增 catalogVersion。监听同时等待原授权的最早有效单调期限，到期重算；已过期期限不重复触发。通知使用有界单槽合并最新值，连接关闭即结束。MCP 初始化先真实读取目录建立监听，再将该通知转为工具列表变化通知。
+
+`host.shutdown` 在完成持久接纳、派发和 `shutdown_requested` 结果结算后才请求停止接纳，并依次等待可归属任务、设备 owner 与数据库检查点完成，最后释放实例锁。回执表示已持久请求停止，不表示实例已经退出。CLI 等待原 hostId/instanceEpoch 实际结束后才报告该实例停止；已认证请求后的断连不能导致重发。原 profile 的 OS 锁释放可确认停止，发现新 epoch 也可确认旧实例结束，但新实例仍运行时不能报告整个服务关闭。
 
 ## 调用、结果与错误
 
@@ -135,6 +140,8 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 客户端忽略 cursor 已处理的重复事件，遇到 previousCursor 不匹配停止应用并重新取快照；不可把后到的旧 epoch 消息混入当前状态。历史不足返回 CURSOR_EXPIRED，details 提供 `scopeId,oldestCursor,snapshotRequired:true` 和已授权的 `captureRef?`；快照重新建立状态，录制补读用于原始数据完整性。原始流的真实缺口使用 Gap，见 [事件模型](./stream-and-operations-v0.md#原始事件与独立-reader)。
 
 每个 subscriptionId 独立队列与限额。投递后再撤权的历史记录不能撤回；服务端立即停止后续敏感输出，清空未投递队列并结束订阅为 PERMISSION_DENIED。重建订阅与引用读取均复核授权。多资源快照只有显式同 scope 的提交才原子，不提供跨 Host 全局顺序。
+
+`session:<sessionId>` 状态 scope 在会话重新打开后保持 ID 和递增 revision。新 sessionEpoch 的 Target、状态与 revision 在一次提交中更新；旧订阅清空并以 `EPOCH_MISMATCH` 结束，早于这次提交的游标返回 `CURSOR_EXPIRED`。客户端重新取得快照后接续，新代次授权不能读取旧代次历史。
 
 本地增量消息为 `{type:"delta",subscriptionId,delta:Delta}`。错误终止使用 `{type:"subscriptionEnded",subscriptionId,error}`；错误只含稳定 code 与固定说明，不含正文、引用或 details。终止通道只允许本连接已登记的订阅，即使正文权限已撤销也能报告终止；若连接队列连终止通知也无法容纳，则关闭连接，客户端重新附着并取快照。显式 `subscription.close` 返回 `closed:true`，不存在时同样返回；它不停止 Host 业务。队列和历史同时按条数、字节限制，溢出清空该订阅正文并通过独立终止槽报告 `CURSOR_EXPIRED`，不静默跳过增量。
 

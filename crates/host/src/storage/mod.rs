@@ -145,6 +145,15 @@ impl Store {
         let (actor, call, digest) = (actor.clone(), call.clone(), digest.clone());
         self.request(move |database| database.accept(&actor, &call, &digest))
     }
+    pub(crate) fn lookup_call(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+    ) -> HostResult<Option<Operation>> {
+        let (actor, call, digest) = (actor.clone(), call.clone(), digest.clone());
+        self.request(move |database| database.lookup_call(&actor, &call, &digest))
+    }
     pub fn mark_dispatch(&self, id: &Id) -> HostResult<()> {
         let id = id.clone();
         self.request(move |database| database.mark_dispatch(&id))
@@ -163,6 +172,20 @@ impl Store {
     pub fn get(&self, actor: &AuthenticatedActor, id: &Id) -> HostResult<Operation> {
         let (actor, id) = (actor.clone(), id.clone());
         self.request(move |database| database.get(&actor, &id))
+    }
+    pub(crate) fn operation_state(&self, id: &Id) -> HostResult<OperationState> {
+        let id = id.clone();
+        self.request(move |database| database.operation_state(&id))
+    }
+    pub(crate) fn boundary_operations(
+        &self,
+        target: &Target,
+        through: &Id,
+        owners: Vec<Id>,
+    ) -> HostResult<Vec<Id>> {
+        let target = target.clone();
+        let through = through.clone();
+        self.request(move |database| database.boundary_operations(&target, &through, owners))
     }
     pub fn prune(&self) -> HostResult<()> {
         self.request(Database::prune)

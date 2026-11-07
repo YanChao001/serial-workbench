@@ -90,6 +90,11 @@ pub struct CancellationResult {
     pub state: OperationState,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShutdownRequested {
+    pub instance_epoch: U64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(
     tag = "kind",
     content = "value",
@@ -97,6 +102,12 @@ pub struct CancellationResult {
     deny_unknown_fields
 )]
 pub enum QueryResult {
+    StreamRead(StreamReadResult),
+    StreamSubscribe(StreamSubscribeResult),
+    StreamCredit(StreamCreditResult),
+    Devices(DeviceList),
+    Session(SessionSnapshot),
+    Queue(QueueStatus),
     Catalog(CatalogListResult),
     Operation(Box<OperationResult>),
     Snapshot(Snapshot),

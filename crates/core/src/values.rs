@@ -26,7 +26,7 @@ pub enum SchemaValue {
     Number(
         #[schemars(schema_with = "schema_number")]
         #[specta(type=specta_typescript::Number)]
-        f64,
+        serde_json::Number,
     ),
     String(String),
     Array(Vec<SchemaValue>),

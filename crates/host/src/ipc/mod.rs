@@ -3,14 +3,14 @@ mod connection;
 mod protocol;
 mod server;
 use serial_workbench_core::{HostError, HostResult};
-pub use server::{ConnectionContext, HandlerFuture, HostServer, RequestHandler};
+pub use server::{ConnectionContext, HandlerFuture, HandlerReply, HostServer, RequestHandler};
 use std::{
-    fs::{self, File, OpenOptions, TryLockError},
+    fs,
     path::{Path, PathBuf},
 };
 
 pub struct InstanceGuard {
-    _file: File,
+    _lock: serial_workbench_ipc::PrivateFileLock,
     profile: PathBuf,
     namespace: PathBuf,
 }
@@ -25,28 +25,18 @@ impl InstanceGuard {
         };
         let namespace = profile.join("host-v0");
         serial_workbench_ipc::prepare_private_directory(&namespace)?;
-        let lock_path = namespace.join("instance.lock");
+        let lock_path = namespace.join(serial_workbench_ipc::INSTANCE_LOCK_NAME);
         match fs::symlink_metadata(&lock_path) {
             Ok(metadata) if !metadata.file_type().is_file() => return Err(unavailable()),
             Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(unavailable()),
             _ => {}
         }
-        let mut options = OpenOptions::new();
-        options.read(true).write(true).create(true).truncate(false);
-        #[cfg(unix)]
-        {
-            use std::os::unix::fs::OpenOptionsExt;
-            options.mode(0o600);
-        }
-        let file = options.open(lock_path).map_err(|_| unavailable())?;
-        file.try_lock().map_err(|error| match error {
-            TryLockError::WouldBlock => {
-                HostError::new("HOST_BUSY", "This profile already has a running Host")
-            }
-            TryLockError::Error(_) => unavailable(),
+        // 新锁原子指定当前用户 owner 和私有权限；已有未知对象只验证，不修复。
+        let file = serial_workbench_ipc::try_lock_private_file(&lock_path)?.ok_or_else(|| {
+            HostError::new("HOST_BUSY", "This profile already has a running Host")
         })?;
         Ok(Self {
-            _file: file,
+            _lock: file,
             profile,
             namespace,
         })

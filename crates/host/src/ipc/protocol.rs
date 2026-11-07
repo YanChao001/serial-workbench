@@ -132,10 +132,12 @@ pub(super) fn validate_request(
     target.validate()
 }
 pub(super) fn is_urgent(request: &RpcRequest) -> bool {
-    matches!(
-        request,
-        RpcRequest::OperationCancel(_) | RpcRequest::SubscriptionClose(_)
-    ) || matches!(request, RpcRequest::Invoke(call) if call.action_id.as_str() == "host.shutdown")
+    let action = match request {
+        RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => call.action_id.as_str(),
+        RpcRequest::Query(query) | RpcRequest::SubscriptionClose(query) => query.action_id.as_str(),
+        _ => return false,
+    };
+    crate::limits::is_stop(action)
 }
 pub(super) async fn blocking<T: Send + 'static>(
     work: impl FnOnce() -> HostResult<T> + Send + 'static,

@@ -6,7 +6,7 @@
 
 设备使用 `{hostId,deviceId}` 命名空间，Host 对实际物理设备建立一个持口锁和一个 sessionId。系统串口句柄由 Rust 持有；插件 TransportProvider 可持自身后端句柄，但逻辑连接、租约、TX 和关闭责任仍归 Host。两个客户端同时 `device.open`，Host 在同一锁下检查并打开一次：相同配置附着既有会话；不同配置返回 `CONFIGURATION_CONFLICT` 和可读的当前 revision，不能静默重配。标签克隆复制视图配置，同端口复用同一会话；仅脱离视图不会关闭连接。
 
-Session 投影包含 `sessionId,deviceId,sessionEpoch,revision,state,configuration,txGate,controlState,capabilities`。`state=closed|opening|open|disconnected|closing`；打开成功进入 open 并发布新 sessionEpoch，失败回 closed/disconnected 且保存稳定错误。连接重开先完成上代关闭/清线结算，再递增代次，不自动重放旧队列。`txGate=ready|configuration_pending|control_unknown|closing|disconnected`；gate 非 ready 拒绝新 TX。capabilities 按真实后端声明字段配置、信号、队列、drain、purge、有限 BREAK、流控、时间精度与报文语义；不支持的能力返回 UNSUPPORTED_CAPABILITY，不伪造成功。
+Session 投影包含 `sessionId,deviceId,sessionEpoch,revision,configurationRevision,state,configuration,readOnly,txGate,controlState,capabilities,lease?`。`state=closed|opening|open|disconnected|closing`；打开成功进入 open 并发布新 sessionEpoch，失败回 closed/disconnected 且保存稳定错误。连接重开先完成上代关闭/清线结算，再递增代次，不自动重放旧队列。`txGate=ready|configuration_pending|control_unknown|closing|disconnected`；gate 非 ready 拒绝新 TX。capabilities 按真实后端声明字段配置、信号、队列、drain、purge、有限 BREAK、流控、时间精度与报文语义；不支持的能力返回 UNSUPPORTED_CAPABILITY，不伪造成功。
 
 普通发送也经过仲裁，但无需独占持有整个观察会话。Host 为单次普通动作创建内部 `ordinary` 调度占用，确保一次 TX 提交的字节不与其他发送穿插；其余调用者只能观察/排队。显式租约类型为 `transaction`（发出至响应/超时全过程）和 `exclusive`（传输/工具任务全过程）；两者互斥且阻止普通 TX、配置和控制线插入。观察者和 reader 不获得写权。
 
@@ -14,12 +14,14 @@ Session 投影包含 `sessionId,deviceId,sessionEpoch,revision,state,configurati
 
 | 动作 ID            | params                                    | 结果/语义                                                                       |
 | ------------------ | ----------------------------------------- | ------------------------------------------------------------------------------- |
-| `device.open`      | `configuration`（由后端 schema 定义）     | `sessionId,sessionEpoch,revision,reused: boolean`；相同资源/config 并发只开一次 |
+| `device.open`      | `configuration: SerialConfiguration`      | `sessionId,sessionEpoch,revision,reused: boolean`；相同资源/config 并发只开一次 |
 | `session.close`    | 空对象                                    | 等待句柄、在途写入及清线结算后返回最终 session 状态                             |
 | `lease.acquire`    | `kind: transaction\|exclusive,ttlMs: U64` | Lease；需要 device.modify；目标 epoch 与 txGate 检查                            |
 | `lease.renew`      | `leaseId,ttlMs`                           | 当前 Lease；只允许同 actor/owner 与 active 租约，不能续活已失效租约             |
 | `lease.release`    | `leaseId`                                 | 先结算在途工作，再 released；未完成清线不释放为可写                             |
-| `session.takeover` | `reason: user`                            | 由有控制管理权限的用户操作，撤销目标远端/AI 控制并返回结算状态                  |
+| `session.takeover` | `actorId,reason: user`                    | 由有控制管理权限的用户操作，撤销指定 actor 对该会话的修改权并返回结算状态       |
+
+接管只撤销指定 actor 对该 session 的 `device.modify`，取消并等待其排队、执行和持租操作真实结算；其他 actor 的任务继续。接管不以 clientKind 推定身份。明确重新授权只允许新请求，旧授权代次下的排队操作不会复活。
 
 显式 acquire 自身 operation 成为 ownerOperationId，并在持租期间 running；释放/过期完成后才结算。普通动作 operation 为自己的 owner。独立任务 handler 可在内部申请租约，ownerOperationId 固定任务 ID。租约 TTL 与操作 deadline 分别控制控制权和业务时限。续租 TTL 必须受 Host 协商上限约束，租约既在入队也在真正提交后端前检查，权限/epoch 同时复核。
 
@@ -50,29 +52,35 @@ Host 重启核对持久接纳/dispatch/回执记录，把未完成任务标 inte
 
 `TransportSemantics=stream|message`。stream 后端读块只是采集块，不是协议帧/文本行；message 保留后端消息边界及类型。消息发生拆分时使用 `messageId,fragmentOffset,messageLength,messageType`，前三项分别 Id/U64/U64，messageType 为后端 schema 枚举；WebSocket 文本/二进制与 UDP 报文不能在传输中被混成无边界流。
 
-`RawEvent={hostId,instanceEpoch,sessionId,sessionEpoch,eventSeq,configurationRevision,kind,time,payload}`。eventSeq 在 sessionEpoch 内从 `"1"` 连续递增；kind 的全部 v0 值为 `rx|tx|gap|configuration_boundary|lifecycle|control`。configurationRevision 指该事件采集/提交时确认的配置 revision；配置不确定期间仍保留最后确认 revision，并在 boundary 中标明 uncertain。
+`RawEvent={hostId,instanceEpoch,sessionId,sessionEpoch,eventSeq,configurationRevision,kind,time,payload}`。eventSeq 在 sessionEpoch 内从 `"1"` 连续递增；kind 的全部 v0 值为 `rx|tx_intent|tx|gap|configuration_boundary|lifecycle|control`。configurationRevision 指该事件采集/提交时最近完成的配置尝试 revision；即使结果不确定也推进，并在 boundary 中标明 uncertain。Session.configuration 保留最后完整确认的值，不把该对象冒充为不确定期间的实际配置。
 
 `time={clockId,sourceMonoNs,sourceWallTime?,receivedWallTime,precision}`；clockId 为源 Host 的 instanceEpoch 时钟域 Id，sourceMonoNs 为 U64，sourceWallTime/receivedWallTime 为 Timestamp。precision 含 `source: host_read|device|line_capture|sample_clock,resolutionNs: U64,syncMethod: string`；可选 `offsetEstimateNs` 为有符号十进制字符串、`offsetErrorNs,rttNs` 为 U64。源/接收墙钟仅用于展示，顺序由源 eventSeq 决定；A 转发 B 事件不替换其源时间，可在副本元数据追加本机接收时间。离线波形另带 `sampleClockId,sampleStart,sampleEnd,sampleRateHz`，sampleRateHz 为 schema 校验的正十进制字符串，不伪装成主机读块精度。
 
-RX payload 为 `{bytesBase64,byteStart,byteEnd,message?}`，区间是当前 sessionEpoch、RX 方向的逻辑字节流位置，按完整后端接收长度推进。TX payload 为 [发送回执](#发送回执)；TX 的 byteStart/byteEnd 按提交意图中的最终字节分配，故接受范围可能只是其子集，未知范围不伪装成已发送。方向各自计数，不跨 RX/TX 混用 offset。
+RX payload 为 `{bytesBase64,byteStart,byteEnd,message?}`，区间是当前 sessionEpoch、RX 方向的逻辑字节流位置，按完整后端接收长度推进。采集块拆为至多 16 KiB 的 RX 记录，完整保留尾部和 message 分片位置。
+
+TX 意图 `tx_intent` 的 payload 为 `{operationId,bytesBase64,byteStart,byteEnd}`。Host 在持久接纳 New 前预留发送队列、最终字节及结算元数据容量，预留不占 eventSeq 或 TX offset；仅 New 后立即提交最终意图。合法预留遇到源终止仍保存不可变意图与最终审计回执，但不能恢复源、旧 epoch 或 I/O 权限；失败或重复请求释放预留。只有意图按完整字节长度推进 TX 方向 offset。最终 `tx` 的 payload 为 [发送回执](#发送回执)，按 operationId 关联意图，保留同一最终字节和区间并取得自己的后续 eventSeq；它不再次推进 offset 或重复计入发送字节。接受范围可以是意图的子集，未知范围不伪装成已发送。意图和回执均为不可变源事件，晚到回执不覆盖原序号，未结算意图不阻塞后续 RX。方向各自计数，不跨 RX/TX 混用 offset。
 
 RawEvent 的源端 gap payload 为 `{reason,missingEventRange?,missingByteRange?,direction?,knownExtent}`。reason 为 `network_loss|backend_loss|purge|source_unknown`，表示源 Host 观察到的后端缺失或清空；range 均为 `{start,end}`，byte range 还带 `direction: rx|tx`；knownExtent 为 boolean。可确定范围必须填写；设备只报告溢出但丢失量不可知时 knownExtent=false，不捏造序号/字节数。这条 gap 自身拥有正常的源 eventSeq，不为未观察到的后端字节虚构 RawEvent。
 
-读者丢失使用独立 `ReaderGap={hostId,instanceEpoch,sessionId,sessionEpoch,reason,missingEventRange,missingByteRanges?}`，reason 为 `reader_overflow|capture_overflow|network_loss`，描述该 reader/capture/转发副本未得到的源事件；missingEventRange 必填且精确，missingByteRanges 如已知则为 `{direction: rx|tx,start,end}[]`。省略字节范围表示无法确定完整字节损失，空数组表示已知没有丢失 RX/TX 字节。ReaderGap 不含 eventSeq、配置 revision 或虚构源时间，不写入其他 reader 或源权威流。源端 RawEvent gap 与 ReaderGap 都要求解析器重置连续帧状态，不跨缺口拼帧。
+读者丢失使用独立 `ReaderGap={hostId,instanceEpoch,sessionId,sessionEpoch,reason,missingEventRange,missingByteRanges?}`，reason 为 `reader_overflow|capture_overflow|network_loss`，描述该 reader/capture/转发副本未得到的源事件；missingEventRange 必填且精确，missingByteRanges 如已知则为 `{direction: rx|tx,start,end}[]`。TX 字节损失归属于丢失的意图；仅缺少最终回执时记录事件缺口，不重复记录意图字节损失。省略字节范围表示无法确定完整字节损失，空数组表示已知没有丢失 RX/TX 字节。ReaderGap 不含 eventSeq、配置 revision 或虚构源时间，不写入其他 reader 或源权威流。源端 RawEvent gap 与 ReaderGap 都要求解析器重置连续帧状态，不跨缺口拼帧。
 
 派生来源 `SourceRange={hostId,sessionId,sessionEpoch,eventStart,eventEnd,byteStart?,byteEnd?,direction?}`；字节范围存在时 direction 必填。`DerivedProvenance={sources: SourceRange[],parserId,parserVersion,configurationDigest,quality,unit?}`；quality 为 schema 注册的字符串数组，基座标记 `complete|gap|partial|unknown|transformed`。数字采样派生另携 sample clock 与区间。任何降采样/过滤/脱敏保留来源与变换标记，显示降采样不等于源缺口。
 
 `stream.read` 使用 Query，params=`sessionId,sessionEpoch,startEventSeq,maxEvents,maxBytes`；结果=`events: RawEvent[],nextEventSeq,hasMore`，两个最大值 U64，hasMore 为 boolean。读取范围已不在保留历史时返回 CURSOR_EXPIRED 与可用的 captureRef，不把读者缺失伪装成源 RawEvent。`stream.subscribe` params=`scopeId,after: Cursor,queueBytes: U64,initialCreditBytes: U64,overflowPolicy: drop_with_gap|stop|flow_control`，返回 subscriptionId；沿用快照/游标规则与 Host maxReaderQueueBytes/maxBatchBytes。flow_control 只有后端支持且用户明确允许时启用，失败转 stop 并发布错误。每个 reader 的队列、游标、投递进度独立；一个 reader 丢弃不能推进另一 reader。GUI 通常 drop_with_gap，协议/capture 可 stop 或受许可流控。原始录制有独立写盘队列，慢视图不反压设备。控制、批量原始流、派生输出分别设有界队列，停止/状态通道保留独立容量，不能被原始流队列挤死。
 
-推送批为 `RawBatch={subscriptionId,cursor,previousCursor,items: StreamItem[]}`，items 非空；`StreamItem` 是判别联合 `{kind:"source",event: RawEvent}` 或 `{kind:"reader_gap",gap: ReaderGap}`。原始流 scope 固定同一源 Host/sessionEpoch，Cursor.position 是该 reader 已覆盖到的最后一个源 eventSeq，初始为 `"0"`；一个 source 项覆盖该序号，一个 reader_gap 项覆盖 missingEventRange。投递项按源范围连续递增、不重叠，缺失范围必须先投递 reader_gap 才能继续后续 source 项。previousCursor 为上一次已发送批的 cursor（首批为订阅 after），cursor 为本批最后覆盖的源序号；只含 gap 的批也有可确认游标。例如 after=99 丢失 `[100,151)` 时，gap 批 cursor=150，后续源 151 的批 previousCursor=150、cursor=151。源端 RawEvent 的 eventSeq 始终不变。
+推送批为 `RawBatch={subscriptionId,cursor,previousCursor,items: StreamItem[]}`，items 非空；`StreamItem` 是判别联合 `{kind:"source",event: RawEvent}` 或 `{kind:"reader_gap",gap: ReaderGap}`。原始流 scopeId 为 `raw:<sessionId>:<sessionEpoch>`，固定同一源 Host/sessionEpoch，Cursor 仍绑定 hostId/instanceEpoch，与状态 `session:<id>` scope 分开。客户端使用 Host 签发的 sessionId/sessionEpoch 构造初始 after 游标。Cursor.position 是该 reader 已覆盖到的最后一个源 eventSeq，初始为 `"0"`；一个 source 项覆盖该序号，一个 reader_gap 项覆盖 missingEventRange。投递项按源范围连续递增、不重叠，缺失范围必须先投递 reader_gap 才能继续后续 source 项。previousCursor 为上一次已发送批的 cursor（首批为订阅 after），cursor 为本批最后覆盖的源序号；只含 gap 的批也有可确认游标。例如 after=99 丢失 `[100,151)` 时，gap 批 cursor=150，后续源 151 的批 previousCursor=150、cursor=151。源端 RawEvent 的 eventSeq 始终不变。
 
 单批 UTF-8 JSON 序列化的实际字节数不超过 maxBatchBytes，source 和 reader_gap 的全部载荷及批信封一并计费，不按缺失字节数收费；不计传输帧/TLS 开销，其他编码须先协商计费规则。initialCreditBytes 是初始可投递额度，可为 `"0"`；不得超过 queueBytes，queueBytes 不得超过 maxReaderQueueBytes。单个完整项连同批信封超过预算时停止并返回 LIMIT_EXCEEDED，不能截断原字节。待投递 Gap 也占队列预算，相邻未投递缺失范围可合并；已投递的批不可改写。连一条缺口说明也无法有界保留时，以独立控制通道停止为 READER_OVERFLOW，不静默省略 Gap，不绕过数据 credit 发送。
 
-`stream.credit` 是订阅控制 Query，params=`subscriptionId,ackCursor,grantedBytesTotal`；ackCursor 是本 reader 已完整处理的最后一批游标，grantedBytesTotal 为自创建以来累计批准投递字节数（包括 initialCreditBytes），均不得回退。服务端记录 `sentBytesTotal`（累计已投递 U64）与 `acknowledgedBytesTotal`（根据已确认批边界累计的 U64），只在本批字节数不超过 `grantedBytesTotal-sentBytesTotal` 时发送；结果返回 `ackCursor,grantedBytesTotal,sentBytesTotal,acknowledgedBytesTotal`。包含 reader_gap 的批按相同边界 ACK，确认代表客户端已处理缺口说明，不宣称收到了缺失原字节。相同 subscriptionId/cursor 的同批重投保持内容不变，不重复增加 sentBytesTotal；客户端只应用一次，并可重复发送相同累计确认，不让重投或确认重试加倍额度。始终要求 `grantedBytesTotal-acknowledgedBytesTotal<=queueBytes`，包含未确认的在途数据，不能靠不确认却不断补额度制造无界队列；ackCursor 必须是订阅初始 after 游标或已发送完整批的边界，且不得回退或超过已发送游标。初始 after 的已确认字节数为 `"0"`，允许 initialCreditBytes=0 时先据此授予首批额度；旧/超前或批中游标拒绝 INVALID_ARGUMENT。credit 仅控制当前订阅投递，不能替代原始流读取授权或暂停设备采集。余额耗尽时保持有界排队，达到队列上限按 overflowPolicy 排入 ReaderGap/停止/授权流控；订阅重建后信用与计数重新开始，旧 subscriptionId 的确认不影响新订阅。
+`stream.credit` 是订阅控制 Query，params=`subscriptionId,ackCursor,grantedBytesTotal`；ackCursor 是本 reader 已完整处理的最后一批游标，grantedBytesTotal 为自创建以来累计批准投递字节数（包括 initialCreditBytes），均不得回退。服务端仅在 writer 完成整帧写入后推进 `sentBytesTotal` 与可 ACK 的完整批边界，进入 IPC 队列不算已发送。服务端记录 `sentBytesTotal`（累计已投递 U64）与 `acknowledgedBytesTotal`（根据已确认批边界累计的 U64），只在本批字节数不超过 `grantedBytesTotal-sentBytesTotal` 时发送；结果返回 `ackCursor,grantedBytesTotal,sentBytesTotal,acknowledgedBytesTotal`。包含 reader_gap 的批按相同边界 ACK，确认代表客户端已处理缺口说明，不宣称收到了缺失原字节。相同 subscriptionId/cursor 的同批重投保持内容不变，不重复增加 sentBytesTotal；客户端只应用一次，并可重复发送相同累计确认，不让重投或确认重试加倍额度。始终要求 `grantedBytesTotal-acknowledgedBytesTotal<=queueBytes`，包含未确认的在途数据，不能靠不确认却不断补额度制造无界队列；ackCursor 必须是订阅初始 after 游标或已发送完整批的边界，且不得回退或超过已发送游标。初始 after 的已确认字节数为 `"0"`，允许 initialCreditBytes=0 时先据此授予首批额度；旧/超前或批中游标拒绝 INVALID_ARGUMENT。credit 仅控制当前订阅投递，不能替代原始流读取授权或暂停设备采集。余额耗尽时保持有界排队，达到队列上限按 overflowPolicy 排入 ReaderGap/停止/授权流控；订阅重建后信用与计数重新开始，旧 subscriptionId 的确认不影响新订阅。
+
+M1a Host 的源环预算为每会话 16 MiB、全 Host 128 MiB；reader 为每个最多 4 MiB、合计 128 MiB，最多 64 个，单批最多 256 KiB，RX 单条最多 16 KiB。内存预算包含载荷、元数据、待确认批、IPC 排队和编码暂存；共享字节在最后一个 Host 所有者释放时归还，重投共享同批内容。`stream.read` 的结果和暂存也使用同一 reader 总预算，预算随内部回包移交，写完、拒绝或断连时释放。内存预算与按 RawBatch 实际 JSON 字节计费的 credit 分开计算；队列连自身元数据也容纳不下时返回 LIMIT_EXCEEDED。
+
+订阅保存创建时的授权代次和生命周期标记。撤权后再授权不能复活旧批，session epoch 改变后须重新取得游标并订阅；旧批尚未开始写入时丢弃，已开始写入时终止该物理连接，避免残帧与下一帧拼接。raw 连接依附自己的控制连接；只断 raw 不结束状态订阅，断控制连接会清理其 raw reader，同 actor 的其他连接独立。
 
 ## 发送回执
 
-`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64`。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。Host 解码并验证长度后冻结最终字节及摘要；回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
+`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64`。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..16384，Host 解码并验证长度后冻结最终字节及摘要；回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
 
 TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,byteStart,byteEnd,acceptedRanges,unknownRanges,backendError?,peerAcknowledged}`。outcome=`accepted|partial|rejected|unknown`；各 range 为相对于本次 bytes 的 `{start,end}` U64 区间，互不相交且不超长度。accepted 表示整个字节序列已被后端接受；partial 表示仅部分已接受、其余确定未接受；rejected 表示全未接受；unknown 表示至少一段无法判断，保留已知接受区间。peerAcknowledged 固定 false，只有上层协议另出应答证据可确认对端；驱动接受不表示线路已发完。
 
@@ -94,7 +102,7 @@ TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,
 
 ## 配置、控制线与队列
 
-`session.configure` params=`requested`（完整配置对象），Call 必带 expectedRevision。Host 在持口端仲裁，保存请求值与逐字段结果：`ConfigReceipt={requested,fields,readback,revision,boundaryEventSeq,txGate}`。fields 项为 `{field,status: applied|rejected|unknown,actual?}`；readback 是实际可读回字段对象，未支持读回的值不得填成请求值。配置只有部分字段 applied 或任一字段 unknown 时进入 configuration_pending，停止新 TX 和发送任务；不静默“回滚成功”。操作已知部分应用可 succeeded 且 txGate=configuration_pending，无法确认则 unknown。完成显式完整配置并核实全部必要字段后才恢复 ready。revision 在发布该结果时推进，boundaryEventSeq 指 `configuration_boundary` 原始事件，payload 含 `revision,certainty: confirmed|uncertain,receiptRef`，receiptRef 为 ObjectRef。不能回溯改写此前数据的配置。
+`SerialConfiguration={baudRate,dataBits,parity,stopBits,flowControl,readWaitMs,writeWaitMs,reconnectBackoffMs}` 是完整配置，所有字段必填；baudRate 为正 U64，枚举及正时限按生成 schema 校验。`session.configure` params=`requested: SerialConfiguration`，回执 requested 也保持同一完整类型，Call 必带 expectedRevision。Host 在持口端仲裁，保存请求值与逐字段结果：`ConfigReceipt={requested,fields,readback,revision,boundaryEventSeq,txGate}`。fields 项为 `{field,status: applied|rejected|unknown,actual?}`；actual 有值时必须是真实字段值，不接受 null，无法读回时省略；readback 是实际可读回字段对象，未支持读回的值不得填成请求值。配置只有部分字段 applied 或任一字段 unknown 时进入 configuration_pending，停止新 TX 和发送任务；不静默“回滚成功”。操作已知部分应用可 succeeded 且 txGate=configuration_pending，无法确认则 unknown。完成显式完整配置并核实全部必要字段后才恢复 ready。每次配置尝试的 confirmed、partial 或 unknown 结果都推进 configurationRevision，并用于随后的 RX；configuration 对象仅在完整确认时更新。owner 在配置结果返回后暂停 RX，直到该 receipt、边界和状态发布完成；失败保持 configuration_pending 并终止该源，不能放行未描述的新 RX。revision 在发布该结果时推进，boundaryEventSeq 指 `configuration_boundary` 原始事件，payload 含 `revision,certainty: confirmed|uncertain,receiptRef`，receiptRef 为 ObjectRef。不能回溯改写此前数据的配置。
 
 `session.break` params=`durationMs`，由持口端单调计时执行有限 BREAK。controlState=`clear|asserting|asserted|clearing|unknown`；先持久登记清线责任，再 assert。到期、取消、错误、撤权和断连均进入 clearing；assert 和 clear 各有 `status: confirmed|failed|unknown,at: Timestamp,error?`，共同构成 BreakReceipt。clear confirmed 后才允许释放隔离并 ready；clear failed/unknown 时暂停 TX 与自动重连，保留清线责任和操作结果。手动恢复动作必须在源端确认线已清或已释放设备，不允许前端定时器假设成功。
 
@@ -115,7 +123,7 @@ purge 中 ranges 是带 direction 的字节区间，unknownExtent 为 boolean。
 
 新录制格式 `formatVersion="0.1"`，M1 定义其容器编码与生成 schema；这是新体系首版，不承诺旧软件录制、插件包或缓存格式的读取/迁移。格式版本独立于协议版本；读取未来格式返回 FUTURE_FORMAT，文件只读保留。M0 先固定以下逻辑结构与验证语义，容器选型不得削弱它们。
 
-Capture 包含 `captureId,formatVersion,mode,sourceHosts,streams,volumes,index,state,watermarks`。mode=`raw|redacted`，redacted 明确记录变换摘要，未经用户选择不另存原始副本。streams 固定源 host/session/epoch/配置及时间精度；原始事件保留源序号、最终 TX 与实际回执、源 Gap、控制和生命周期事件。捕获某 reader/转发副本时，ReaderGap 作为独立记录保存，只有捕获 recordOrdinal，不虚构源 eventSeq；完整性报告将其覆盖源范围计为不连续。B 的原始录制为来源权威，A 的副本必须标网络缺口，不能改造源序号制造完整性。
+Capture 包含 `captureId,formatVersion,mode,sourceHosts,streams,volumes,index,state,watermarks`。mode=`raw|redacted`，redacted 明确记录变换摘要，未经用户选择不另存原始副本。streams 固定源 host/session/epoch/配置及时间精度；原始事件保留源序号、最终 TX 意图与实际回执、源 Gap、控制和生命周期事件。TX 意图和回执按 operationId 关联为一次发送，完整性报告区分尚无最终回执的意图，视图更新该发送的结果而不重复显示字节。捕获某 reader/转发副本时，ReaderGap 作为独立记录保存，只有捕获 recordOrdinal，不虚构源 eventSeq；完整性报告将其覆盖源范围计为不连续。B 的原始录制为来源权威，A 的副本必须标网络缺口，不能改造源序号制造完整性。
 
 volume 项包含 `volumeId,ordinal,recordStart,recordEnd,length,digest`，ordinal/recordStart/recordEnd/length 为 U64；manifest/index 固定分卷顺序、哈希、事件区间与前后关联。每个写盘记录分配独立 `recordOrdinal`，从 `"1"` 起；多源交错以捕获序号记录，源顺序仍由其 eventSeq 决定。watermarks 为 `{written,flushed,synced,verified}`，均表示所有分卷的连续、完整 recordOrdinal 前缀，初值 `"0"`，关系 `verified<=synced<=flushed<=written`。索引/manifest 的持久状态也须计入水位，不能仅看 payload 文件长度。
 

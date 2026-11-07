@@ -25,6 +25,32 @@ fn roundtrip<T: DeserializeOwned + Serialize>(value: Value) {
     assert_eq!(serde_json::to_value(decoded).unwrap(), value);
 }
 
+#[test]
+fn catalog_change_notice_is_strict_and_carries_only_visibility_identity() {
+    let body = json!({"type":"catalogChanged","catalogVersion":"9007199254740993","visibilityToken":"a".repeat(64)});
+    roundtrip::<IpcMessage>(body.clone());
+    roundtrip::<WireFrame>(frame(body.clone()));
+    for field in ["type", "catalogVersion", "visibilityToken"] {
+        let mut missing = body.clone();
+        missing.as_object_mut().unwrap().remove(field);
+        assert!(serde_json::from_value::<IpcMessage>(missing).is_err());
+        let mut null = body.clone();
+        null[field] = Value::Null;
+        assert!(serde_json::from_value::<IpcMessage>(null).is_err());
+    }
+    for field in ["actorId", "credential", "permissions", "unknown"] {
+        let mut unknown = body.clone();
+        unknown[field] = json!("forbidden");
+        assert!(serde_json::from_value::<IpcMessage>(unknown).is_err());
+    }
+    let mut numeric = body.clone();
+    numeric["catalogVersion"] = json!(1);
+    assert!(serde_json::from_value::<IpcMessage>(numeric).is_err());
+    let mut invalid_digest = body;
+    invalid_digest["visibilityToken"] = json!("token");
+    assert!(serde_json::from_value::<IpcMessage>(invalid_digest).is_err());
+}
+
 fn frame(body: Value) -> Value {
     json!({"requestId":"33333333-3333-4333-8333-333333333333","channel":"control","body":body})
 }

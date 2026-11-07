@@ -147,8 +147,12 @@ jobs:
       - name: Clippy 静态检查
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
+      - name: 构建 Host 与真实适配器测试入口
+        run: cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+
       - name: 单元测试
-        run: cargo test --locked --workspace
+        # 收集全部测试程序的失败；任一失败仍使该步骤失败。
+        run: cargo test --locked --workspace --no-fail-fast
 
       - name: 构建未签名原生程序（不打包、不发布）
         run: pnpm app:build --no-bundle --target ${{ matrix.target }} --optimize speed

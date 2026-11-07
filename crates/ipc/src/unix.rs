@@ -49,9 +49,14 @@ impl LocalListener {
     }
 
     pub async fn accept(&mut self) -> HostResult<LocalStream> {
-        let (stream, _) = self.listener.accept().await.map_err(io_error)?;
-        verify_peer(&stream)?;
-        Ok(stream)
+        loop {
+            let (stream, _) = self.listener.accept().await.map_err(io_error)?;
+            // 对端可能在 accept 前关闭，Darwin 此时无法读取 peer PID。
+            // 验证失败只丢弃该连接；监听器本身的 OS 错误仍向调用方返回。
+            if verify_peer(&stream).is_ok() {
+                return Ok(stream);
+            }
+        }
     }
 }
 
@@ -114,6 +119,47 @@ pub fn read_secret(path: &Path) -> HostResult<Option<Vec<u8>>> {
         .map_err(io_error)?;
     check_secret_length(bytes.len() as u64)?;
     Ok(Some(bytes))
+}
+
+pub(crate) fn open_existing_instance_lock(namespace: &Path) -> HostResult<Option<File>> {
+    validate_local_path(namespace)?;
+    let mut current = PathBuf::new();
+    for component in namespace.components() {
+        current.push(component.as_os_str());
+        match fs::symlink_metadata(&current) {
+            Ok(metadata) if metadata.file_type().is_dir() => {}
+            Ok(_) => return Err(permission_error()),
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(error) => return Err(io_error(error)),
+        }
+    }
+    let _directory = open_private_directory(namespace)?;
+    open_private_file(&namespace.join(crate::INSTANCE_LOCK_NAME))
+}
+
+pub(crate) fn open_private_lock_file(path: &Path) -> HostResult<File> {
+    let _directory = open_file_parent(path)?;
+    if let Some(file) = open_private_file(path)? {
+        return Ok(file);
+    }
+    let file = match OpenOptions::new()
+        .read(true)
+        .write(true)
+        .create_new(true)
+        .mode(0o600)
+        .custom_flags(libc::O_NOFOLLOW | libc::O_CLOEXEC | libc::O_NONBLOCK)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::AlreadyExists => {
+            return open_private_file(path)?.ok_or_else(|| io_error(error));
+        }
+        Err(error) => return Err(io_error(error)),
+    };
+    file.set_permissions(fs::Permissions::from_mode(0o600))
+        .map_err(io_error)?;
+    check_private_file(&file.metadata().map_err(io_error)?)?;
+    Ok(file)
 }
 
 /// create_new 失败时保留原件；写入失败时保留已创建的文件供诊断。
@@ -481,6 +527,26 @@ mod tests {
         );
         let _client = connect(first.endpoint()).await.unwrap();
         let _server = first.accept().await.unwrap();
+    }
+
+    #[cfg(target_os = "macos")]
+    #[tokio::test]
+    async fn disconnected_peer_does_not_stop_accepting_verified_connections() {
+        use tokio::io::{AsyncReadExt, AsyncWriteExt};
+        let root = private_directory();
+        let mut listener = LocalListener::bind(root.path(), "disconnected").unwrap();
+        // 在 accept 之前关闭，确定触发 Darwin LOCAL_PEEREPID 的 ENOTCONN 分支。
+        drop(StdUnixStream::connect(listener.endpoint()).unwrap());
+        let mut client = connect(listener.endpoint()).await.unwrap();
+        client.write_all(b"live").await.unwrap();
+        let mut server = tokio::time::timeout(std::time::Duration::from_secs(3), listener.accept())
+            .await
+            .unwrap()
+            .unwrap();
+        verify_peer(&server).unwrap();
+        let mut bytes = [0; 4];
+        server.read_exact(&mut bytes).await.unwrap();
+        assert_eq!(&bytes, b"live");
     }
 
     #[tokio::test]

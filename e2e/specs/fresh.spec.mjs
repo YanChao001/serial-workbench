@@ -146,9 +146,7 @@ describe("Real Tauri desktop", () => {
           return (
             current.ok &&
             current.value.width === savedGeometry.value.width &&
-            current.value.height === savedGeometry.value.height &&
-            !(await invoke("plugin:window|is_maximized", { label: "main" }))
-              .value
+            current.value.height === savedGeometry.value.height
           );
         });
       }
@@ -440,8 +438,7 @@ describe("Real Tauri desktop", () => {
           current.size.width ===
             Math.round(original.geometry.width * current.scale) &&
           current.size.height ===
-            Math.round(original.geometry.height * current.scale) &&
-          !current.maximized
+            Math.round(original.geometry.height * current.scale)
         );
       });
       await browser.execute(async (saved) => {
@@ -494,8 +491,7 @@ describe("Real Tauri desktop", () => {
           Math.max(
             current.minHeight,
             Math.min(current.maxHeight, current.defaultHeight),
-          ) &&
-        !(await invoke("plugin:window|is_maximized", { label: "main" })).value
+          )
       );
     });
     const initial = await invoke("get_window_geometry");

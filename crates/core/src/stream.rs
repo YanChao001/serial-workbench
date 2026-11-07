@@ -159,6 +159,14 @@ pub struct ConfigurationBoundary {
     pub receipt_ref: ObjectRef,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TxIntent {
+    pub operation_id: Id,
+    pub bytes_base64: Bytes,
+    pub byte_start: U64,
+    pub byte_end: U64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(
     tag = "kind",
     content = "payload",
@@ -167,6 +175,7 @@ pub struct ConfigurationBoundary {
 )]
 pub enum RawPayload {
     Rx(RxPayload),
+    TxIntent(TxIntent),
     Tx(Box<TxReceipt>),
     Gap(SourceGap),
     ConfigurationBoundary(ConfigurationBoundary),

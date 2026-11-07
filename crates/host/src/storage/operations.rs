@@ -10,6 +10,27 @@ use crate::auth::{AuthenticatedActor, add_wall_seconds, hash};
 const RETENTION_NS: u64 = 604_800_000_000_000;
 const MAX_IN_FLIGHT: i64 = 256;
 
+fn find_existing(
+    connection: &rusqlite::Connection,
+    actor: &AuthenticatedActor,
+    context: &Digest,
+    request: &RequestId,
+    digest: &Digest,
+) -> HostResult<Option<Operation>> {
+    let previous:Option<(String,String)>=connection.query_row("SELECT digest,operation_json FROM operations WHERE actor_id=?1 AND context_digest=?2 AND request_id=?3",params![actor.id().as_str(),context.as_str(),request.as_str()],|row|Ok((row.get(0)?,row.get(1)?))).optional().map_err(|_|unavailable())?;
+    previous
+        .map(|(stored, json)| {
+            if stored != digest.as_str() {
+                return Err(HostError::new(
+                    "REQUEST_CONFLICT",
+                    "Request identity is already bound to another intent",
+                ));
+            }
+            decode(&json)
+        })
+        .transpose()
+}
+
 #[derive(Debug)]
 pub enum Acceptance {
     New(Operation),
@@ -73,12 +94,12 @@ fn write_canonical(value: &serde_json::Value, output: &mut Vec<u8>) -> HostResul
 }
 
 impl Database {
-    pub fn accept(
-        &mut self,
+    fn validate_call(
+        &self,
         actor: &AuthenticatedActor,
         call: &Call,
         digest: &Digest,
-    ) -> HostResult<Acceptance> {
+    ) -> HostResult<(crate::auth::HostIdentity, Vec<u8>)> {
         let identity = self.identity()?;
         if actor.id() != &call.actor_id {
             return Err(HostError::new(
@@ -106,6 +127,35 @@ impl Database {
                 "Request digest does not match normalized input",
             ));
         }
+        Ok((identity, input))
+    }
+    pub(crate) fn lookup_call(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+    ) -> HostResult<Option<Operation>> {
+        let (identity, _) = self.validate_call(actor, call, digest)?;
+        let context =
+            self.signer
+                .validate(&call.request_context, actor, &identity, self.clock.as_ref())?;
+        find_existing(
+            &self.connection,
+            actor,
+            &context.digest,
+            &call.request_id,
+            digest,
+        )?
+        .map(|operation| self.get(actor, &operation.operation_id))
+        .transpose()
+    }
+    pub fn accept(
+        &mut self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+    ) -> HostResult<Acceptance> {
+        let (identity, input) = self.validate_call(actor, call, digest)?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -113,19 +163,17 @@ impl Database {
         let context =
             self.signer
                 .validate(&call.request_context, actor, &identity, self.clock.as_ref())?;
-        let previous: Option<(String, String)> = transaction.query_row(
-            "SELECT digest,operation_json FROM operations WHERE actor_id=?1 AND context_digest=?2 AND request_id=?3",
-            params![actor.id().as_str(), context.digest.as_str(), call.request_id.as_str()],
-            |row| Ok((row.get(0)?, row.get(1)?)),
-        ).optional().map_err(|_| unavailable())?;
-        if let Some((previous_digest, json)) = previous {
-            if previous_digest != digest.as_str() {
-                return Err(HostError::new(
-                    "REQUEST_CONFLICT",
-                    "Request identity is already bound to another intent",
-                ));
-            }
-            return Ok(Acceptance::Existing(decode(&json)?));
+        if let Some(previous) = find_existing(
+            &transaction,
+            actor,
+            &context.digest,
+            &call.request_id,
+            digest,
+        )? {
+            drop(transaction);
+            return self
+                .get(actor, &previous.operation_id)
+                .map(Acceptance::Existing);
         }
         let in_flight: i64 = transaction
             .query_row(
@@ -337,6 +385,52 @@ impl Database {
         }
         Ok(operation)
     }
+    pub(crate) fn operation_state(&self, id: &Id) -> HostResult<OperationState> {
+        load(&self.connection, id).map(|operation| operation.state)
+    }
+    pub(crate) fn boundary_operations(
+        &mut self,
+        target: &Target,
+        through: &Id,
+        owners: Vec<Id>,
+    ) -> HostResult<Vec<Id>> {
+        let transaction = self.connection.transaction().map_err(|_| unavailable())?;
+        let anchor = load(&transaction, through)?;
+        if anchor.target != *target {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Boundary operation belongs to another session or epoch",
+            ));
+        }
+        if !queued_action(anchor.action_id.as_str()) {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Boundary requires an application queue operation",
+            ));
+        }
+        let row: i64 = transaction
+            .query_row(
+                "SELECT rowid FROM operations WHERE operation_id=?1",
+                [through.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(|_| unavailable())?;
+        let owners = serde_json::to_string(&owners).map_err(|_| unavailable())?;
+        let mut statement = transaction
+            .prepare("SELECT operation_json FROM operations WHERE rowid<=?1 AND (terminal=0 OR operation_id IN (SELECT value FROM json_each(?2))) ORDER BY rowid")
+            .map_err(|_| unavailable())?;
+        let rows = statement
+            .query_map(params![row, owners], |row| row.get::<_, String>(0))
+            .map_err(|_| unavailable())?;
+        let mut ids = vec![];
+        for value in rows {
+            let operation = decode(&value.map_err(|_| unavailable())?)?;
+            if operation.target == *target && queued_action(operation.action_id.as_str()) {
+                ids.push(operation.operation_id);
+            }
+        }
+        Ok(ids)
+    }
 
     pub fn prune(&mut self) -> HostResult<()> {
         let now = self.retention_now()?;
@@ -465,6 +559,17 @@ fn is_terminal(state: OperationState) -> bool {
             | OperationState::Cancelled
             | OperationState::Interrupted
             | OperationState::Unknown
+    )
+}
+fn queued_action(action: &str) -> bool {
+    matches!(
+        action,
+        "session.tx"
+            | "session.configure"
+            | "session.control"
+            | "session.break"
+            | "session.setReadOnly"
+            | "tx.drain"
     )
 }
 fn finish(operation: &mut Operation, wall: Timestamp) -> HostResult<()> {

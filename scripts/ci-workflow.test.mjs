@@ -58,7 +58,7 @@ test("both native matrices cover all four targets without scope or tree reuse", 
     assert.doesNotMatch(job(name), /^ {4}if:/m, name);
   }
   assert.match(job("rust"), /cargo clippy --locked --workspace --all-targets/);
-  assert.match(job("rust"), /cargo test --locked --workspace/);
+  assert.match(job("rust"), /cargo test --locked --workspace --no-fail-fast/);
   assert.match(job("rust"), /pnpm app:build --no-bundle --target/);
   assert.match(job("bindings"), /pnpm bindings:check/);
 });

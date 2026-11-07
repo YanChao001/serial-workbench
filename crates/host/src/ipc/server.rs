@@ -24,7 +24,19 @@ use std::{
 use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
 use tokio::task::JoinSet;
 
-pub type HandlerFuture = Pin<Box<dyn Future<Output = HostResult<RpcReply>> + Send>>;
+pub struct HandlerReply {
+    pub wire_reply: RpcReply,
+    pub raw_output_lease: Option<crate::stream::RawOutputLease>,
+}
+impl From<RpcReply> for HandlerReply {
+    fn from(wire_reply: RpcReply) -> Self {
+        Self {
+            wire_reply,
+            raw_output_lease: None,
+        }
+    }
+}
+pub type HandlerFuture = Pin<Box<dyn Future<Output = HostResult<HandlerReply>> + Send>>;
 #[derive(Clone)]
 pub struct ConnectionContext {
     pub connection_id: Id,
@@ -34,15 +46,50 @@ pub struct ConnectionContext {
     pub(super) event_budget: Arc<Semaphore>,
     pub(super) subscriptions: Arc<Mutex<HashSet<Id>>>,
     pub(super) failed: Arc<tokio::sync::Notify>,
+    pub(super) catalog_changed: tokio::sync::watch::Sender<Option<WireFrame>>,
 }
 pub(super) struct AuthorizedEvent {
-    pub frame: WireFrame,
+    pub frame: EventFrame,
     pub grant: Option<(String, Target)>,
     pub _budget: OwnedSemaphorePermit,
     pub subscriptions: Arc<Mutex<HashSet<Id>>>,
     pub stamp: Option<GrantStamp>,
+    pub delivery_liveness: Option<tokio::sync::watch::Receiver<bool>>,
+}
+pub(super) enum EventFrame {
+    State(WireFrame),
+    Raw {
+        _slot: crate::stream::RawMemoryLease,
+        batch: Arc<crate::stream::PreparedRawBatch>,
+    },
+}
+impl EventFrame {
+    pub fn frame(&self) -> &WireFrame {
+        match self {
+            Self::State(frame) => frame,
+            Self::Raw { batch, .. } => batch.frame(),
+        }
+    }
 }
 impl ConnectionContext {
+    pub(crate) fn emit_catalog_changed(
+        &self,
+        catalog_version: U64,
+        visibility_token: Digest,
+    ) -> HostResult<()> {
+        if self.channel != IpcChannel::Control || self.is_closed() {
+            return Err(invalid());
+        }
+        self.catalog_changed.send_replace(Some(WireFrame {
+            request_id: new_request_id(),
+            channel: IpcChannel::Control,
+            body: IpcMessage::CatalogChanged {
+                catalog_version,
+                visibility_token,
+            },
+        }));
+        Ok(())
+    }
     pub fn is_closed(&self) -> bool {
         self.events.is_closed()
     }
@@ -79,6 +126,16 @@ impl ConnectionContext {
             "PERMISSION_DENIED" => {
                 HostError::new("PERMISSION_DENIED", "Subscription authorization ended")
             }
+            "READER_OVERFLOW" => {
+                HostError::new("READER_OVERFLOW", "Raw reader exceeded its queue budget")
+            }
+            "LIMIT_EXCEEDED" => {
+                HostError::new("LIMIT_EXCEEDED", "Raw batch exceeded its byte budget")
+            }
+            "EPOCH_MISMATCH" => HostError::new("EPOCH_MISMATCH", "Subscription source epoch ended"),
+            "BACKEND_DISCONNECTED" => {
+                HostError::new("BACKEND_DISCONNECTED", "Stream backend disconnected")
+            }
             _ => HostError::new(
                 "CURSOR_EXPIRED",
                 "Subscription ended; request a new snapshot",
@@ -105,11 +162,12 @@ impl ConnectionContext {
                 .map_err(|_| busy())?;
             self.events
                 .try_send(AuthorizedEvent {
-                    frame,
+                    frame: EventFrame::State(frame),
                     grant: None,
                     _budget: budget,
                     subscriptions: self.subscriptions.clone(),
                     stamp: None,
+                    delivery_liveness: None,
                 })
                 .map_err(|_| busy())
         })();
@@ -119,7 +177,7 @@ impl ConnectionContext {
     }
     /// 入队不意味着已投递；writer 在实际输出前重新校验当前授权。
     pub fn emit(&self, frame: WireFrame, permission: &str, target: Target) -> HostResult<()> {
-        self.emit_with_stamp(frame, permission, target, None)
+        self.emit_with_stamp(frame, permission, target, None, None)
     }
     pub(crate) fn emit_with_stamp(
         &self,
@@ -127,17 +185,14 @@ impl ConnectionContext {
         permission: &str,
         target: Target,
         stamp: Option<GrantStamp>,
+        delivery_liveness: Option<tokio::sync::watch::Receiver<bool>>,
     ) -> HostResult<()> {
-        if matches!(frame.body, IpcMessage::RawBatch { .. }) && permission != "content.read" {
+        if matches!(frame.body, IpcMessage::RawBatch { .. }) {
             return Err(invalid());
         }
         if !matches!(
             (&frame.body, self.channel, frame.channel),
             (
-                IpcMessage::RawBatch { .. },
-                IpcChannel::Raw,
-                IpcChannel::Raw
-            ) | (
                 IpcMessage::Delta { .. },
                 IpcChannel::Control,
                 IpcChannel::State
@@ -153,11 +208,46 @@ impl ConnectionContext {
             .map_err(|_| busy())?;
         self.events
             .try_send(AuthorizedEvent {
-                frame,
+                frame: EventFrame::State(frame),
                 grant: Some((permission.into(), target)),
                 _budget: budget,
                 subscriptions: self.subscriptions.clone(),
                 stamp,
+                delivery_liveness,
+            })
+            .map_err(|_| busy())
+    }
+    pub(crate) fn emit_raw(
+        &self,
+        batch: Arc<crate::stream::PreparedRawBatch>,
+        target: Target,
+    ) -> HostResult<()> {
+        if self.channel != IpcChannel::Raw
+            || !self
+                .subscriptions
+                .lock()
+                .map_err(|_| busy())?
+                .contains(&batch.batch().subscription_id)
+        {
+            return Err(invalid());
+        }
+        // 正文与其原始授权代次随 Arc 传递，排队槽位单独计费。
+        let budget = self
+            .event_budget
+            .clone()
+            .try_acquire_many_owned(1024)
+            .map_err(|_| busy())?;
+        let stamp = batch.stamp.clone();
+        let delivery_liveness = Some(batch.delivery_liveness());
+        let slot = batch.queue_lease()?;
+        self.events
+            .try_send(AuthorizedEvent {
+                frame: EventFrame::Raw { _slot: slot, batch },
+                grant: Some(("content.read".into(), target)),
+                _budget: budget,
+                subscriptions: self.subscriptions.clone(),
+                stamp,
+                delivery_liveness,
             })
             .map_err(|_| busy())
     }
@@ -166,6 +256,9 @@ pub trait RequestHandler: Send + Sync + 'static {
     /// Future 负责查询或持久接纳；已接纳业务的执行生命周期归 Host 服务所有。
     fn handle(&self, connection: ConnectionContext, request: RpcRequest) -> HandlerFuture;
     fn disconnected(&self, _connection: &ConnectionContext) {}
+    fn stop_requested(&self) -> Pin<Box<dyn Future<Output = ()> + Send>> {
+        Box::pin(std::future::pending())
+    }
     fn shutdown(&self) -> Pin<Box<dyn Future<Output = HostResult<()>> + Send>> {
         Box::pin(async { Ok(()) })
     }
@@ -257,8 +350,8 @@ impl HostServer {
             control,
             auth,
             sessions: Arc::new(Mutex::new(HashMap::new())),
-            normal: Arc::new(Semaphore::new(224)),
-            urgent: Arc::new(Semaphore::new(32)),
+            normal: Arc::new(Semaphore::new(crate::limits::NORMAL_OPERATIONS)),
+            urgent: Arc::new(Semaphore::new(crate::limits::STOP_OPERATIONS)),
         })
     }
     pub fn auth(&self) -> AuthService {
@@ -279,12 +372,15 @@ impl HostServer {
         shutdown: F,
     ) -> HostResult<()> {
         tokio::pin!(shutdown);
+        let stop_requested = handler.stop_requested();
+        tokio::pin!(stop_requested);
         let connections = Arc::new(Semaphore::new(128));
         let mut tasks = JoinSet::new();
         let mut failure = None;
         loop {
             tokio::select! {
                 _ = &mut shutdown => break,
+                _ = &mut stop_requested => break,
                 Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
                 stream = async {
                     #[cfg(test)]
@@ -376,13 +472,17 @@ mod shutdown_tests {
     use super::*;
     use std::sync::atomic::{AtomicUsize, Ordering};
 
-    struct FailingShutdown(Arc<AtomicUsize>);
+    struct FailingShutdown {
+        count: Arc<AtomicUsize>,
+        profile: PathBuf,
+    }
     impl RequestHandler for FailingShutdown {
         fn handle(&self, _: ConnectionContext, _: RpcRequest) -> HandlerFuture {
             Box::pin(async { Err(HostError::new("UNSUPPORTED_CAPABILITY", "No test handler")) })
         }
         fn shutdown(&self) -> Pin<Box<dyn Future<Output = HostResult<()>> + Send>> {
-            self.0.fetch_add(1, Ordering::SeqCst);
+            assert!(local::profile_has_running_host(&self.profile).unwrap());
+            self.count.fetch_add(1, Ordering::SeqCst);
             Box::pin(async {
                 Err(HostError::new(
                     "TEST_SHUTDOWN_ERROR",
@@ -395,7 +495,8 @@ mod shutdown_tests {
     #[tokio::test]
     async fn cleanup_error_does_not_skip_checkpoint_or_replace_accept_error() {
         for accept_error in [false, true] {
-            let directory = tempfile::tempdir().unwrap();
+            let directory =
+                tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
             let mut server = HostServer::bind(directory.path()).await.unwrap();
             let database =
                 rusqlite::Connection::open(directory.path().join("host-v0/state.sqlite3")).unwrap();
@@ -408,11 +509,17 @@ mod shutdown_tests {
             }
             let shutdown_count = Arc::new(AtomicUsize::new(0));
             let result = server
-                .serve_until(Arc::new(FailingShutdown(shutdown_count.clone())), async {
-                    if accept_error {
-                        std::future::pending::<()>().await;
-                    }
-                })
+                .serve_until(
+                    Arc::new(FailingShutdown {
+                        count: shutdown_count.clone(),
+                        profile: directory.path().into(),
+                    }),
+                    async {
+                        if accept_error {
+                            std::future::pending::<()>().await;
+                        }
+                    },
+                )
                 .await;
             let checkpoints: i64 = database
                 .query_row("SELECT count(*) FROM cleanup_audit", [], |row| row.get(0))
@@ -430,6 +537,9 @@ mod shutdown_tests {
                     "TEST_SHUTDOWN_ERROR"
                 }
             );
+            assert!(local::profile_has_running_host(directory.path()).unwrap());
+            drop(server);
+            assert!(!local::profile_has_running_host(directory.path()).unwrap());
         }
     }
 }

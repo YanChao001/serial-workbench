@@ -19,6 +19,7 @@ use specta::Type;
 use tauri::{
     Manager, PhysicalPosition, PhysicalSize, RunEvent, Window, WindowEvent, plugin::TauriPlugin,
 };
+use tauri_plugin_window_state::AppHandleExt;
 
 use crate::{
     error::{ErrorCode, NativeError, NativeResult},
@@ -258,6 +259,16 @@ struct SavedGeometry {
     windows: HashMap<String, LogicalSize>,
 }
 
+// 只读当前 window-state 插件的位置字段；尺寸仍由逻辑几何存档管理。
+#[derive(Deserialize)]
+struct SavedPosition {
+    x: i32,
+    y: i32,
+    prev_x: i32,
+    prev_y: i32,
+    maximized: bool,
+}
+
 fn read_json<T: serde::de::DeserializeOwned>(path: &std::path::Path) -> Option<T> {
     let mut bytes = Vec::new();
     File::open(path)
@@ -445,6 +456,32 @@ struct Cache {
 }
 
 impl Cache {
+    fn load(path: &std::path::Path, positions_path: &std::path::Path) -> (Self, bool) {
+        let (saved, writable) = load_saved_geometry(path);
+        // 插件先恢复位置，原生系统可能按尚未缩小的默认外框夹紧坐标。
+        // 在任何窗口创建前保留存档目标，交给尺寸适配后的重放和确认流程。
+        let positions = read_json::<HashMap<String, SavedPosition>>(positions_path)
+            .unwrap_or_default()
+            .into_iter()
+            .map(|(label, saved)| {
+                let position = if saved.maximized {
+                    PhysicalPosition::new(saved.prev_x, saved.prev_y)
+                } else {
+                    PhysicalPosition::new(saved.x, saved.y)
+                };
+                (label, position)
+            })
+            .collect();
+        (
+            Self {
+                saved,
+                positions,
+                entries: HashMap::new(),
+            },
+            writable,
+        )
+    }
+
     fn observe_position(&mut self, label: &str, position: PhysicalPosition<i32>, normal: bool) {
         if normal
             && self
@@ -1190,14 +1227,10 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
         .setup(|app, _| {
             let paths = DataPaths::resolve(app)?;
             let path = paths.config.join("window-geometry.json");
-            let (saved, writable) = load_saved_geometry(&path);
+            let (cache, writable) = Cache::load(&path, &paths.config.join(app.filename()));
             let state = Arc::new(GeometryState {
                 path,
-                cache: Mutex::new(Cache {
-                    saved,
-                    positions: HashMap::new(),
-                    entries: HashMap::new(),
-                }),
+                cache: Mutex::new(cache),
                 writing: Mutex::new(()),
                 operations: Mutex::new(()),
                 writable: AtomicBool::new(writable),
@@ -1902,15 +1935,31 @@ mod tests {
     }
 
     #[test]
-    fn saved_position_survives_async_restore_with_a_larger_initial_window() {
+    fn restart_position_survives_async_restore_with_a_larger_initial_window() {
+        let directory = tempfile::tempdir().unwrap();
+        let geometry_path = directory.path().join("window-geometry.json");
+        let positions_path = directory.path().join("window-state.json");
+        std::fs::write(
+            &geometry_path,
+            r#"{"schemaVersion":1,"windows":{"main":{"width":1000,"height":680}}}"#,
+        )
+        .unwrap();
+        std::fs::write(
+            &positions_path,
+            r#"{"main":{"width":0,"height":0,"x":24,"y":29,"prev_x":0,"prev_y":25,"maximized":false,"visible":true,"decorated":true,"fullscreen":false}}"#,
+        )
+        .unwrap();
+        let (cache, _) = Cache::load(&geometry_path, &positions_path);
         let mut entry = starting_entry();
-        entry.preferred = size(1000.0, 677.0);
+        entry.preferred = cache.saved.windows["main"];
         entry.initial_position = Some(WindowPosition::Remember);
-        entry.initial_origin = Some(PhysicalPosition::new(24, 31));
-        let monitors = [display(0.0, 31.0, 1024.0, 677.0, 1.0)];
+        entry.initial_origin = cache.positions.get("main").copied();
+        let monitors = [display(0.0, 25.0, 1024.0, 684.0, 1.0)];
+        // 重放初始大窗口、系统夹紧、缩小后复核和重复准备；存档目标不能丢失。
         for current in [
-            rect(0.0, 0.0, 1120.0, 740.0),
-            rect(0.0, 31.0, 1000.0, 677.0),
+            rect(0.0, 25.0, 1120.0, 740.0),
+            rect(0.0, 25.0, 1000.0, 680.0),
+            rect(24.0, 29.0, 1000.0, 680.0),
         ] {
             let placement = fit_window(
                 entry.initial_rect(current),
@@ -1921,8 +1970,8 @@ mod tests {
                 true,
             )
             .unwrap();
-            assert_eq!(placement.size, PhysicalSize::new(1000, 677));
-            assert_eq!(placement.position, PhysicalPosition::new(24, 31));
+            assert_eq!(placement.size, PhysicalSize::new(1000, 680));
+            assert_eq!(placement.position, PhysicalPosition::new(24, 29));
             entry.initial_target = Some(InitialTarget {
                 size: placement.size,
                 outer: placement.size,
@@ -1931,21 +1980,63 @@ mod tests {
         }
         entry.observe_initial(
             true,
-            PhysicalSize::new(1000, 677),
-            PhysicalSize::new(1000, 677),
-            PhysicalPosition::new(0, 31),
+            PhysicalSize::new(1000, 680),
+            PhysicalSize::new(1000, 680),
+            PhysicalPosition::new(0, 25),
         );
         assert_eq!(entry.initial_position, Some(WindowPosition::Remember));
         entry.observe_initial(
             true,
-            PhysicalSize::new(1000, 677),
-            PhysicalSize::new(1000, 677),
-            PhysicalPosition::new(24, 31),
+            PhysicalSize::new(1000, 680),
+            PhysicalSize::new(1000, 680),
+            PhysicalPosition::new(24, 29),
         );
         assert_eq!(entry.initial_position, None);
         assert_eq!(entry.initial_origin, None);
-        let moved = rect(5.0, 31.0, 1000.0, 677.0);
+        let moved = rect(5.0, 25.0, 1000.0, 680.0);
         assert_eq!(entry.initial_rect(moved), moved);
+    }
+
+    #[test]
+    fn restart_restores_maximized_windows_from_their_normal_position() {
+        let directory = tempfile::tempdir().unwrap();
+        let positions_path = directory.path().join("custom-window-state.json");
+        std::fs::write(
+            &positions_path,
+            r#"{"secondary":{"width":0,"height":0,"x":0,"y":25,"prev_x":-1200,"prev_y":80,"maximized":true,"visible":true,"decorated":true,"fullscreen":false}}"#,
+        )
+        .unwrap();
+        let (cache, _) = Cache::load(
+            &directory.path().join("window-geometry.json"),
+            &positions_path,
+        );
+        assert_eq!(
+            cache.positions.get("secondary"),
+            Some(&PhysicalPosition::new(-1200, 80))
+        );
+        assert!(!cache.positions.contains_key("main"));
+    }
+
+    #[test]
+    fn unavailable_restart_positions_leave_geometry_and_original_files_intact() {
+        let directory = tempfile::tempdir().unwrap();
+        let geometry_path = directory.path().join("window-geometry.json");
+        let positions_path = directory.path().join("window-state.json");
+        let geometry = r#"{"schemaVersion":1,"windows":{"main":{"width":1000,"height":680}}}"#;
+        std::fs::write(&geometry_path, geometry).unwrap();
+        let (cache, writable) = Cache::load(&geometry_path, &positions_path);
+        assert!(writable);
+        assert!(cache.positions.is_empty());
+        assert_eq!(cache.saved.windows["main"], size(1000.0, 680.0));
+        for original in ["{damaged", r#"{"main":{"x":"invalid","y":29}}"#] {
+            std::fs::write(&positions_path, original).unwrap();
+            let (cache, writable) = Cache::load(&geometry_path, &positions_path);
+            assert!(writable);
+            assert!(cache.positions.is_empty());
+            assert_eq!(cache.saved.windows["main"], size(1000.0, 680.0));
+            assert_eq!(std::fs::read_to_string(&positions_path).unwrap(), original);
+            assert_eq!(std::fs::read_to_string(&geometry_path).unwrap(), geometry);
+        }
     }
 
     #[test]

@@ -1,6 +1,12 @@
 ﻿# 产品范围
 
-Serial Workbench 当前处于基础框架重构阶段，提供空白工作区、设置、诊断恢复和系统窗口能力。独立 Host 已建立生成契约、持久操作、本机 IPC、授权和状态投影基础；设备收发、CLI/MCP、录制回放、桌面 Host 接入与 Node 插件体系继续按 [M1 计划](./superpowers/plans/2026-11-07-m1-host-and-workspace.md) 实施。
+Serial Workbench 正按 [M1 计划](./superpowers/plans/2026-11-07-m1-host-and-workspace.md) 重构。桌面提供空白工作区、设置、诊断恢复和系统窗口能力；独立 Rust Host 提供 Virtual 设备、持久操作、本机 IPC、授权、状态投影和原始字节流，CLI 与官方 MCP SDK 共用 Host 的目录与业务处理。系统串口、PTY、录制回放、桌面工作区与 Node 插件体系继续开发。
+
+## 独立 Host 与自动化入口
+
+Host、CLI 与 MCP 可在没有桌面窗口时运行，构建和调用见[开发指南](./development.md#独立-hostcli-与-mcp)。当前后端为 Virtual；收发保留原始字节、会话 epoch、配置 revision 和最终 TX 回执。各客户端使用独立认证身份，默认只有元数据权限，授权与撤权通过明确的本地用户操作完成。
+
+CLI 使用显式上下文文件复用请求身份；MCP 工具由同一 Host 目录生成，长操作返回 Operation。关闭适配器不会停止 Host，取消等待与取消操作分别处理。真实串口、硬件线路、实际 Codex 客户端交互和三平台长稳仍按各阶段验收。
 
 ## 可见入口
 

@@ -1,6 +1,6 @@
 use super::{
     protocol::*,
-    server::{AuthorizedEvent, ConnectionContext, RequestHandler},
+    server::{AuthorizedEvent, ConnectionContext, EventFrame, RequestHandler},
 };
 use crate::{
     auth::{AuthService, AuthenticatedActor, GrantStamp, HostIdentity},
@@ -46,16 +46,18 @@ impl Drop for ConnectionGuard {
             if let Ok(mut sessions) = self.sessions.lock() {
                 sessions.remove(token);
             }
-        } else {
-            self.session.raw_attached.store(false, Ordering::Release);
         }
         self.handler.disconnected(&self.context);
+        if self.token.is_none() {
+            self.session.raw_attached.store(false, Ordering::Release);
+        }
     }
 }
 struct PendingReply {
     frame: WireFrame,
     _permit: Option<OwnedSemaphorePermit>,
     stamp: Option<GrantStamp>,
+    _raw_output_lease: Option<crate::stream::RawOutputLease>,
 }
 pub(super) struct ConnectionState {
     pub store: Store,
@@ -75,6 +77,7 @@ impl ConnectionState {
                 .map_err(|_| unauthenticated())??;
         let (replies_tx, replies_rx) = mpsc::channel(256);
         let (events_tx, events_rx) = mpsc::channel(256);
+        let (catalog_changed, catalog_rx) = watch::channel(None);
         let context = ConnectionContext {
             connection_id: session.connection_id.clone(),
             actor: session.actor.clone(),
@@ -83,6 +86,7 @@ impl ConnectionState {
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
             failed: Arc::new(tokio::sync::Notify::new()),
+            catalog_changed,
         };
         let guard = ConnectionGuard {
             context: context.clone(),
@@ -101,6 +105,7 @@ impl ConnectionState {
             write,
             replies_rx,
             events_rx,
+            catalog_rx,
             self.auth.clone(),
             context.actor.clone(),
         ));
@@ -136,6 +141,7 @@ impl ConnectionState {
                             frame: error_frame(frame.request_id, channel, busy()),
                             _permit: None,
                             stamp: None,
+                            _raw_output_lease: None,
                         })
                         .is_err()
                     {
@@ -163,21 +169,22 @@ impl ConnectionState {
                     Err,
                 );
                 let reply = match validation {
-                    Err(error) => failure(error),
+                    Err(error) => failure(error).into(),
                     Ok(()) => match *request {
                         RpcRequest::Attach(params) => {
                             match attach(&store, &identity, &context.actor, params).await {
                                 Ok(result) => RpcReply::Success {
                                     ok: True,
                                     result: Box::new(RpcResult::Attach(result)),
-                                },
-                                Err(error) => failure(error),
+                                }
+                                .into(),
+                                Err(error) => failure(error).into(),
                             }
                         }
                         request => handler
                             .handle(context, request)
                             .await
-                            .unwrap_or_else(failure),
+                            .unwrap_or_else(|error| failure(error).into()),
                     },
                 };
                 let _ = sender
@@ -186,11 +193,12 @@ impl ConnectionState {
                             request_id,
                             channel,
                             body: IpcMessage::Reply {
-                                reply: Box::new(reply),
+                                reply: Box::new(reply.wire_reply),
                             },
                         },
                         _permit: Some(permit),
                         stamp,
+                        _raw_output_lease: reply.raw_output_lease,
                     })
                     .await;
             });
@@ -358,6 +366,7 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
     mut writer: W,
     mut replies: mpsc::Receiver<PendingReply>,
     mut events: mpsc::Receiver<AuthorizedEvent>,
+    mut catalog_changed: watch::Receiver<Option<WireFrame>>,
     auth: AuthService,
     actor: AuthenticatedActor,
 ) -> HostResult<()> {
@@ -366,13 +375,22 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
             biased;
             reply = replies.recv() => match reply {
                 Some(mut reply) => {
-                    if let Some(stamp) = reply.stamp.take() {
+                    let changes = auth.subscribe_changes();
+                    if let Some(stamp) = reply.stamp.clone() {
                         let check = auth.clone();
                         if let Err(error) = blocking(move || check.validate_grants(&stamp)).await {
                             reply.frame.body = IpcMessage::Reply { reply: Box::new(failure(error)) };
+                            reply._raw_output_lease = None;
                         }
                     }
-                    let result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())?;
+                    let result = if reply.frame.channel == IpcChannel::Raw {
+                        tokio::select! {
+                            result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)) => result.map_err(|_| busy())?,
+                            _ = wait_raw_revocation(auth.clone(), reply.stamp.clone(), changes) => return Err(unauthenticated()),
+                        }
+                    } else {
+                        tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())?
+                    };
                     if let Err(error) = result {
                         if error.code != "LIMIT_EXCEEDED" { return Err(error); }
                         let rejected = error_frame(reply.frame.request_id.clone(), reply.frame.channel, error);
@@ -382,69 +400,141 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                 },
                 None => break,
             },
+            changed = catalog_changed.changed() => {
+                if changed.is_err() { break; }
+                let latest = catalog_changed.borrow_and_update().clone();
+                if let Some(frame) = latest {
+                    tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())??;
+                }
+                continue;
+            },
             event = events.recv() => match event { Some(event) => event, None => break },
         };
-        let check = auth.clone();
-        let actor = actor.clone();
-        if let IpcMessage::Delta {
-            ref subscription_id,
-            ..
-        } = event.frame.body
-            && !event
-                .subscriptions
-                .lock()
-                .map_err(|_| busy())?
-                .contains(subscription_id)
+        let frame = event.frame.frame();
+        let subscription = match &frame.body {
+            IpcMessage::Delta {
+                subscription_id, ..
+            } => Some(subscription_id.clone()),
+            IpcMessage::RawBatch { batch } => Some(batch.subscription_id.clone()),
+            _ => None,
+        };
+        if let Some(id) = &subscription
+            && !event.subscriptions.lock().map_err(|_| busy())?.contains(id)
         {
             continue;
         }
-        let frame = if let Some((permission, target)) = event.grant {
-            let stamp = event.stamp;
-            match blocking(move || {
-                check.require(&actor, &permission, &target)?;
+        // 先订阅 watch 再复核，覆盖检查和开始写入之间的授权变化。
+        let changes = auth.subscribe_changes();
+        if let Some((permission, target)) = &event.grant {
+            let check = auth.clone();
+            let check_actor = actor.clone();
+            let permission = permission.clone();
+            let target = target.clone();
+            let stamp = event.stamp.clone();
+            if blocking(move || {
+                check.require(&check_actor, &permission, &target)?;
                 if let Some(stamp) = stamp {
                     check.validate_grants(&stamp)?;
                 }
                 Ok(())
             })
             .await
+            .is_err()
             {
-                Ok(()) => event.frame,
-                Err(error) => match event.frame.body {
-                    IpcMessage::Delta {
-                        subscription_id, ..
-                    } => {
-                        event
-                            .subscriptions
-                            .lock()
-                            .map_err(|_| busy())?
-                            .remove(&subscription_id);
-                        WireFrame {
-                            request_id: event.frame.request_id,
-                            channel: event.frame.channel,
-                            body: IpcMessage::SubscriptionEnded {
-                                subscription_id,
-                                error: HostError::new(
-                                    "PERMISSION_DENIED",
-                                    "Subscription authorization ended",
-                                ),
-                            },
-                        }
-                    }
-                    _ => error_frame(event.frame.request_id.clone(), event.frame.channel, error),
-                },
+                let Some(subscription_id) = subscription else {
+                    return Err(unauthenticated());
+                };
+                event
+                    .subscriptions
+                    .lock()
+                    .map_err(|_| busy())?
+                    .remove(&subscription_id);
+                let ended = WireFrame {
+                    request_id: frame.request_id.clone(),
+                    channel: frame.channel,
+                    body: IpcMessage::SubscriptionEnded {
+                        subscription_id,
+                        error: HostError::new(
+                            "PERMISSION_DENIED",
+                            "Subscription authorization ended",
+                        ),
+                    },
+                };
+                drop(event);
+                tokio::time::timeout(
+                    Duration::from_secs(5),
+                    write_frame(&mut writer, &ended, MAX_FRAME_BYTES),
+                )
+                .await
+                .map_err(|_| busy())??;
+                continue;
+            }
+        }
+        if event
+            .delivery_liveness
+            .as_ref()
+            .is_some_and(|guard| !*guard.borrow())
+        {
+            continue;
+        }
+        let encoding = match &event.frame {
+            EventFrame::Raw { batch, .. } => Some(batch.encoding_lease()?),
+            EventFrame::State(_) => None,
+        };
+        if event.grant.is_some() {
+            let revoked = wait_raw_revocation(auth.clone(), event.stamp.clone(), changes);
+            tokio::select! {
+                biased;
+                _=wait_delivery_end(event.delivery_liveness.clone())=>return Err(HostError::new("EPOCH_MISMATCH","Subscription delivery ended")),
+                _=revoked=>return Err(unauthenticated()),
+                result=tokio::time::timeout(Duration::from_secs(5),write_frame(&mut writer,frame,MAX_FRAME_BYTES))=>result.map_err(|_|busy())??,
             }
         } else {
-            event.frame
-        };
-        tokio::time::timeout(
-            Duration::from_secs(5),
-            write_frame(&mut writer, &frame, MAX_FRAME_BYTES),
-        )
-        .await
-        .map_err(|_| busy())??;
+            tokio::time::timeout(
+                Duration::from_secs(5),
+                write_frame(&mut writer, frame, MAX_FRAME_BYTES),
+            )
+            .await
+            .map_err(|_| busy())??;
+        }
+        drop(encoding);
+        if let EventFrame::Raw { batch, .. } = &event.frame {
+            batch.mark_written()?;
+        }
     }
     Ok(())
+}
+async fn wait_delivery_end(guard: Option<watch::Receiver<bool>>) {
+    let Some(mut guard) = guard else {
+        std::future::pending::<()>().await;
+        return;
+    };
+    loop {
+        if !*guard.borrow() || guard.changed().await.is_err() {
+            return;
+        }
+    }
+}
+async fn wait_raw_revocation(
+    auth: AuthService,
+    stamp: Option<GrantStamp>,
+    mut changes: watch::Receiver<U64>,
+) {
+    loop {
+        tokio::select! {
+            result=changes.changed()=>{if result.is_err(){return}},
+            _=auth.wait_grant_expiry(stamp.as_ref())=>{},
+        }
+        if let Some(stamp) = stamp.clone() {
+            let auth = auth.clone();
+            if blocking(move || auth.validate_grants(&stamp))
+                .await
+                .is_err()
+            {
+                return;
+            }
+        }
+    }
 }
 
 #[cfg(test)]
@@ -452,6 +542,548 @@ mod tests {
     use super::*;
     fn id(value: &str) -> Id {
         Id::try_from(value).unwrap()
+    }
+    struct RawTest {
+        _dir: tempfile::TempDir,
+        hub: crate::stream::StreamHub,
+        source: crate::stream::StreamSource,
+        auth: AuthService,
+        actor: AuthenticatedActor,
+        operator: AuthenticatedActor,
+        target: Target,
+        context: ConnectionContext,
+        replies: mpsc::Sender<PendingReply>,
+        replies_rx: Option<mpsc::Receiver<PendingReply>>,
+        events_rx: Option<mpsc::Receiver<AuthorizedEvent>>,
+    }
+    impl RawTest {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let store = Store::open(dir.path()).unwrap();
+            let identity = store.begin_instance().unwrap();
+            let secret = ContextToken::try_from("raw-control").unwrap();
+            let auth = AuthService::new(store, secret.clone());
+            let actor = auth.authenticate(&id("raw-reader"), None).unwrap().actor;
+            let operator = auth
+                .authenticate_user_control(&id("raw-operator"), &secret)
+                .unwrap();
+            let target = Target {
+                host_id: identity.host_id.clone(),
+                kind: ResourceKind::try_from("session").unwrap(),
+                id: id("raw-session"),
+                session_id: Some(id("raw-session")),
+                session_epoch: Some(1.into()),
+            };
+            auth.authorize(
+                &operator,
+                AuthorizeParams {
+                    client_id: actor.client_id().clone(),
+                    permissions: vec!["content.read".into()],
+                    targets: vec![target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+            let hub = crate::stream::StreamHub::new(
+                identity,
+                auth.clone(),
+                crate::stream::StreamLimits::default(),
+            );
+            let source = hub
+                .register_source(
+                    crate::stream::StreamKey {
+                        session_id: id("raw-session"),
+                        session_epoch: 1.into(),
+                    },
+                    target.clone(),
+                )
+                .unwrap();
+            let time:EventTime=serde_json::from_value(serde_json::json!({"clockId":"clock","sourceMonoNs":"0","receivedWallTime":"2026-11-07T00:00:00Z","precision":{"source":"host_read","resolutionNs":"1","syncMethod":"host"}})).unwrap();
+            source
+                .append_rx(
+                    crate::stream::SourceMeta {
+                        configuration_revision: 1.into(),
+                        time,
+                    },
+                    Arc::from(vec![81u8; 16384]),
+                    None,
+                )
+                .unwrap();
+            let (events, events_rx) = mpsc::channel(16);
+            let (replies, replies_rx) = mpsc::channel(16);
+            let context = ConnectionContext {
+                connection_id: id("raw-connection"),
+                actor: actor.clone(),
+                channel: IpcChannel::Raw,
+                events,
+                event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
+                subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
+                failed: Arc::new(tokio::sync::Notify::new()),
+                catalog_changed: watch::channel(None).0,
+            };
+            Self {
+                _dir: dir,
+                hub,
+                source,
+                auth,
+                actor,
+                operator,
+                target,
+                context,
+                replies,
+                replies_rx: Some(replies_rx),
+                events_rx: Some(events_rx),
+            }
+        }
+        fn revoke(&self) {
+            self.auth
+                .revoke(
+                    &self.operator,
+                    RevokeParams {
+                        actor_id: self.actor.id().clone(),
+                        permissions: vec!["content.read".into()],
+                        targets: vec![self.target.clone()],
+                    },
+                )
+                .unwrap();
+        }
+        fn writer(
+            &mut self,
+            capacity: usize,
+        ) -> (
+            tokio::task::JoinHandle<HostResult<()>>,
+            tokio::io::DuplexStream,
+        ) {
+            let (output, reader) = tokio::io::duplex(capacity);
+            (
+                tokio::spawn(output_writer(
+                    output,
+                    self.replies_rx.take().unwrap(),
+                    self.events_rx.take().unwrap(),
+                    self.context.catalog_changed.subscribe(),
+                    self.auth.clone(),
+                    self.actor.clone(),
+                )),
+                reader,
+            )
+        }
+    }
+    #[tokio::test]
+    async fn state_epoch_rebind_invalidates_queued_and_started_frames_under_unchanged_host_grant() {
+        state_epoch_writer(false).await;
+    }
+    #[tokio::test]
+    async fn state_epoch_rebind_interrupts_partial_frame_under_unchanged_host_grant() {
+        state_epoch_writer(true).await;
+    }
+    async fn state_epoch_writer(started: bool) {
+        use crate::state::{ProjectionLimits, ProjectionStore};
+        use tokio::io::AsyncReadExt;
+        {
+            let mut f = RawTest::new();
+            f.context.channel = IpcChannel::Control;
+            let cursor = f.source.initial_cursor();
+            let host_target = Target {
+                host_id: cursor.host_id.clone(),
+                kind: ResourceKind::try_from("host").unwrap(),
+                id: cursor.host_id.clone(),
+                session_id: None,
+                session_epoch: None,
+            };
+            f.auth
+                .authorize(
+                    &f.operator,
+                    AuthorizeParams {
+                        client_id: f.actor.client_id().clone(),
+                        permissions: vec!["content.read".into()],
+                        targets: vec![host_target],
+                        expires_at: None,
+                    },
+                )
+                .unwrap();
+            let projections = ProjectionStore::new(
+                HostIdentity {
+                    host_id: cursor.host_id,
+                    instance_epoch: cursor.instance_epoch,
+                    catalog_version: 1.into(),
+                },
+                f.auth.clone(),
+                ProjectionLimits::default(),
+            );
+            let scope = id("session:raw-session");
+            projections
+                .register_scope(
+                    scope.clone(),
+                    f.target.clone(),
+                    "content.read".into(),
+                    JsonObject::new(),
+                )
+                .unwrap();
+            let snapshot = projections.snapshot(&f.actor, &scope).await.unwrap();
+            let mut subscription = projections
+                .subscribe(&f.actor, &scope, &snapshot.cursor)
+                .await
+                .unwrap();
+            let guard = subscription.delivery_liveness();
+            f.context
+                .register_subscription(subscription.id().clone())
+                .unwrap();
+            let payload: JsonObject =
+                serde_json::from_value(serde_json::json!({"secret":"old-epoch"})).unwrap();
+            projections
+                .commit(&scope, id("session.changed"), payload.clone(), payload)
+                .unwrap();
+            f.context
+                .emit_with_stamp(
+                    WireFrame {
+                        request_id: new_request_id(),
+                        channel: IpcChannel::State,
+                        body: IpcMessage::Delta {
+                            subscription_id: subscription.id().clone(),
+                            delta: Box::new(subscription.next().await.unwrap().unwrap()),
+                        },
+                    },
+                    "content.read",
+                    f.target.clone(),
+                    subscription.grant_stamp(),
+                    Some(guard),
+                )
+                .unwrap();
+            let mut running = if started { Some(f.writer(1)) } else { None };
+            if let Some((_, input)) = &mut running {
+                input.read_u8().await.unwrap();
+            }
+            let mut reopened = f.target.clone();
+            reopened.session_epoch = Some(2.into());
+            projections
+                .commit_for_target(
+                    &scope,
+                    reopened.clone(),
+                    id("session.opened"),
+                    JsonObject::new(),
+                    JsonObject::new(),
+                )
+                .unwrap();
+            f.auth.require(&f.actor, "content.read", &reopened).unwrap();
+            let fresh_snapshot = projections.snapshot(&f.actor, &scope).await.unwrap();
+            let mut fresh = projections
+                .subscribe(&f.actor, &scope, &fresh_snapshot.cursor)
+                .await
+                .unwrap();
+            projections
+                .commit(
+                    &scope,
+                    id("session.changed"),
+                    JsonObject::new(),
+                    JsonObject::new(),
+                )
+                .unwrap();
+            assert_eq!(fresh.next().await.unwrap().unwrap().revision.get(), 3);
+            if let Some((mut writing, _)) = running {
+                let result = tokio::time::timeout(Duration::from_secs(2), &mut writing).await;
+                if result.is_err() {
+                    writing.abort();
+                }
+                assert!(
+                    result
+                        .expect("old epoch must interrupt a partial frame")
+                        .unwrap()
+                        .is_err()
+                );
+            } else {
+                // A registered termination marker makes the next observable frame unambiguous.
+                let marker = id("marker");
+                f.context.register_subscription(marker.clone()).unwrap();
+                f.context
+                    .end_subscription(new_request_id(), &marker, "EPOCH_MISMATCH");
+                let (writing, mut input) = f.writer(65536);
+                let frame = read_frame(&mut input, MAX_FRAME_BYTES)
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert!(
+                    matches!(frame.body,IpcMessage::SubscriptionEnded {error,..} if error.code=="EPOCH_MISMATCH")
+                );
+                drop(f.replies);
+                writing.await.unwrap().unwrap();
+            }
+        }
+    }
+    #[tokio::test]
+    async fn raw_queued_batch_keeps_original_grant_and_shared_budget_until_drop() {
+        let mut f = RawTest::new();
+        let after = f.source.initial_cursor();
+        let sub = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: (4 * 1024 * 1024).into(),
+                    initial_credit_bytes: (4 * 1024 * 1024).into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        f.context.register_subscription(sub.id().clone()).unwrap();
+        let batch = sub.try_next().await.unwrap().unwrap();
+        sub.deliver(&f.context, &batch).unwrap();
+        drop(batch);
+        f.revoke();
+        f.auth
+            .authorize(
+                &f.operator,
+                AuthorizeParams {
+                    client_id: f.actor.client_id().clone(),
+                    permissions: vec!["content.read".into()],
+                    targets: vec![f.target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        sub.close();
+        drop(sub);
+        assert!(f.hub.memory_usage().reader_bytes > 0);
+        let (writing, mut input) = f.writer(65536);
+        let frame = tokio::time::timeout(
+            Duration::from_secs(2),
+            read_frame(&mut input, MAX_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert!(
+            matches!(frame.body,IpcMessage::SubscriptionEnded {error,..} if error.code=="PERMISSION_DENIED")
+        );
+        drop(f.replies);
+        writing.await.unwrap().unwrap();
+        assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+    }
+    #[tokio::test]
+    async fn raw_cannot_bypass_shared_budget_via_plain_emit() {
+        let f = RawTest::new();
+        let after = f.source.initial_cursor();
+        let sub = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: (4 * 1024 * 1024).into(),
+                    initial_credit_bytes: (4 * 1024 * 1024).into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        f.context.register_subscription(sub.id().clone()).unwrap();
+        let batch = sub.try_next().await.unwrap().unwrap();
+        assert!(
+            f.context
+                .emit(batch.frame().clone(), "content.read", f.target.clone())
+                .is_err()
+        );
+    }
+    #[tokio::test]
+    async fn raw_ack_rejects_a_batch_queued_but_not_completely_written() {
+        let mut f = RawTest::new();
+        let after = f.source.initial_cursor();
+        let sub = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: (4 * 1024 * 1024).into(),
+                    initial_credit_bytes: (4 * 1024 * 1024).into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        f.context.register_subscription(sub.id().clone()).unwrap();
+        let batch = sub.try_next().await.unwrap().unwrap();
+        sub.deliver(&f.context, &batch).unwrap();
+        let params = StreamCreditParams {
+            subscription_id: sub.id().clone(),
+            ack_cursor: batch.batch().cursor.clone(),
+            granted_bytes_total: (4 * 1024 * 1024).into(),
+        };
+        assert_eq!(
+            f.hub
+                .credit(&f.actor, params.clone())
+                .await
+                .expect_err("Queued bytes are not a sent batch boundary")
+                .code,
+            "INVALID_ARGUMENT"
+        );
+        let (writing, mut input) = f.writer(65536);
+        let frame = read_frame(&mut input, MAX_FRAME_BYTES)
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame.body, IpcMessage::RawBatch { .. }));
+        let credited = f.hub.credit(&f.actor, params).await.unwrap();
+        assert_eq!(
+            credited.acknowledged_bytes_total.get(),
+            serde_json::to_vec(batch.batch()).unwrap().len() as u64
+        );
+        sub.close();
+        drop(batch);
+        drop(f.replies);
+        writing.await.unwrap().unwrap();
+        assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+    }
+    #[tokio::test]
+    async fn raw_reattach_is_not_admitted_until_old_subscription_cleanup_finishes() {
+        struct DuringCleanup(Arc<ControlSession>);
+        impl RequestHandler for DuringCleanup {
+            fn handle(
+                &self,
+                _: ConnectionContext,
+                _: RpcRequest,
+            ) -> super::super::server::HandlerFuture {
+                Box::pin(async { Err(invalid()) })
+            }
+            fn disconnected(&self, _: &ConnectionContext) {
+                // This is the same admission operation used by the real raw handshake.
+                assert!(
+                    self.0.raw_attached.swap(true, Ordering::AcqRel),
+                    "A replacement raw connection entered before old reader cleanup"
+                );
+            }
+        }
+        let f = RawTest::new();
+        let session = Arc::new(ControlSession {
+            connection_id: f.context.connection_id.clone(),
+            actor: f.actor.clone(),
+            alive: watch::channel(true).0,
+            raw_attached: AtomicBool::new(true),
+        });
+        drop(ConnectionGuard {
+            context: f.context,
+            session: session.clone(),
+            token: None,
+            sessions: Arc::new(Mutex::new(HashMap::new())),
+            handler: Arc::new(DuringCleanup(session.clone())),
+        });
+        assert!(
+            !session.raw_attached.load(Ordering::Acquire),
+            "The next raw attachment must be allowed after cleanup"
+        );
+    }
+    #[tokio::test]
+    async fn slow_raw_control_reply_does_not_retain_revoked_queued_plaintext() {
+        use tokio::io::AsyncReadExt;
+        let mut f = RawTest::new();
+        let after = f.source.initial_cursor();
+        let sub = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: (4 * 1024 * 1024).into(),
+                    initial_credit_bytes: (4 * 1024 * 1024).into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        f.context.register_subscription(sub.id().clone()).unwrap();
+        let batch = sub.try_next().await.unwrap().unwrap();
+        sub.deliver(&f.context, &batch).unwrap();
+        drop(batch);
+        f.replies
+            .send(PendingReply {
+                frame: WireFrame {
+                    request_id: new_request_id(),
+                    channel: IpcChannel::Raw,
+                    body: IpcMessage::Reply {
+                        reply: Box::new(RpcReply::Success {
+                            ok: True,
+                            result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
+                        }),
+                    },
+                },
+                _permit: None,
+                stamp: f.auth.capture_grants(&f.actor).unwrap(),
+                _raw_output_lease: None,
+            })
+            .await
+            .unwrap();
+        let (mut writing, mut input) = f.writer(1);
+        input.read_u8().await.unwrap();
+        f.revoke();
+        sub.close();
+        let result = tokio::time::timeout(Duration::from_secs(2), &mut writing).await;
+        if result.is_err() {
+            writing.abort();
+        }
+        assert!(
+            result
+                .expect("Raw reply must not delay queued revocation cleanup")
+                .unwrap()
+                .is_err()
+        );
+        assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+    }
+    #[tokio::test]
+    async fn slow_raw_pull_writer_releases_reply_lease_on_revocation() {
+        use tokio::io::AsyncReadExt;
+        let mut f = RawTest::new();
+        let prepared = f
+            .hub
+            .read_prepared(
+                &f.actor,
+                StreamReadParams {
+                    session_id: id("raw-session"),
+                    session_epoch: 1.into(),
+                    start_event_seq: 1.into(),
+                    max_events: 100.into(),
+                    max_bytes: (256 * 1024).into(),
+                },
+            )
+            .await
+            .unwrap();
+        let (result, lease) = prepared.into_parts();
+        f.replies
+            .send(PendingReply {
+                frame: WireFrame {
+                    request_id: RequestId::try_from("11111111-1111-4111-8111-111111111111")
+                        .unwrap(),
+                    channel: IpcChannel::Raw,
+                    body: IpcMessage::Reply {
+                        reply: Box::new(RpcReply::Success {
+                            ok: True,
+                            result: Box::new(RpcResult::StreamRead(result)),
+                        }),
+                    },
+                },
+                _permit: None,
+                stamp: f.auth.capture_grants(&f.actor).unwrap(),
+                _raw_output_lease: Some(lease),
+            })
+            .await
+            .unwrap();
+        let (writing, mut input) = f.writer(1);
+        input.read_u8().await.unwrap();
+        assert!(f.hub.memory_usage().reader_bytes > 0);
+        f.revoke();
+        assert!(
+            tokio::time::timeout(Duration::from_secs(2), writing)
+                .await
+                .unwrap()
+                .unwrap()
+                .is_err()
+        );
+        assert_eq!(f.hub.memory_usage().reader_bytes, 0);
     }
     #[tokio::test]
     async fn queued_delta_cannot_revive_after_revoke_and_reauthorize_before_writer_runs() {
@@ -489,6 +1121,7 @@ mod tests {
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
             failed: Arc::new(tokio::sync::Notify::new()),
+            catalog_changed: watch::channel(None).0,
         };
         context.register_subscription(id("subscription")).unwrap();
         let cursor = Cursor {
@@ -520,6 +1153,7 @@ mod tests {
                 "content.read",
                 target.clone(),
                 original_stamp,
+                None,
             )
             .unwrap();
         // 在writer真正开始前完成两次持久权限提交，排队正文只持旧代次。
@@ -535,7 +1169,14 @@ mod tests {
         auth.authorize(&operator, grant).unwrap();
         auth.require(&actor, "content.read", &target).unwrap();
         let (output, mut reader) = tokio::io::duplex(65536);
-        let writing = tokio::spawn(output_writer(output, replies_rx, events_rx, auth, actor));
+        let writing = tokio::spawn(output_writer(
+            output,
+            replies_rx,
+            events_rx,
+            context.catalog_changed.subscribe(),
+            auth,
+            actor,
+        ));
         let frame = tokio::time::timeout(
             Duration::from_secs(3),
             read_frame(&mut reader, MAX_FRAME_BYTES),

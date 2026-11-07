@@ -57,11 +57,11 @@ struct ProjectionInner {
 }
 struct Scope {
     id: Id,
-    target: Target,
     permission: String,
     state: Mutex<ScopeState>,
 }
 struct ScopeState {
+    target: Target,
     revision: U64,
     value: JsonObject,
     history: VecDeque<Arc<Entry>>,
@@ -75,6 +75,7 @@ struct Entry {
 struct Reader {
     state: Mutex<ReaderState>,
     notify: Notify,
+    delivery: watch::Sender<bool>,
 }
 struct ReaderState {
     queue: VecDeque<Arc<Entry>>,
@@ -83,11 +84,12 @@ struct ReaderState {
     closed: bool,
 }
 impl ReaderState {
-    fn end(&mut self, error: Option<HostError>) {
+    fn end(&mut self, error: Option<HostError>, delivery: &watch::Sender<bool>) {
         self.queue.clear();
         self.bytes = 0;
         self.closed = true;
         self.terminal = error;
+        delivery.send_replace(false);
     }
 }
 
@@ -156,9 +158,9 @@ impl ProjectionStore {
             scope_id.clone(),
             Arc::new(Scope {
                 id: scope_id,
-                target,
                 permission,
                 state: Mutex::new(ScopeState {
+                    target,
                     revision: 0.into(),
                     value: initial_state,
                     history: VecDeque::new(),
@@ -176,7 +178,37 @@ impl ProjectionStore {
         state: JsonObject,
         payload: JsonObject,
     ) -> HostResult<Delta> {
+        self.commit_with_target(scope_id, None, event_type, state, payload)
+    }
+    /// 同一 session scope 重开：epoch 严格前进，旧 reader/history 同次提交失效。
+    pub fn commit_for_target(
+        &self,
+        scope_id: &Id,
+        target: Target,
+        event_type: Id,
+        state: JsonObject,
+        payload: JsonObject,
+    ) -> HostResult<Delta> {
+        self.commit_with_target(scope_id, Some(target), event_type, state, payload)
+    }
+    fn commit_with_target(
+        &self,
+        scope_id: &Id,
+        target: Option<Target>,
+        event_type: Id,
+        state: JsonObject,
+        payload: JsonObject,
+    ) -> HostResult<Delta> {
         let scope = self.scope(scope_id)?;
+        if let Some(target) = &target {
+            target.validate()?;
+            if target.host_id != self.inner.identity.host_id {
+                return Err(HostError::new(
+                    "HOST_ID_MISMATCH",
+                    "Scope belongs to a different Host",
+                ));
+            }
+        }
         let limits = self.inner.limits;
         encoded_length(&state, limits.history_bytes)?;
         // 计数序列化在锁外完成；持锁时只补十进制水位宽度，不分配序列化副本。
@@ -190,13 +222,35 @@ impl ProjectionStore {
         };
         let base_bytes = encoded_length(&delta, limits.history_bytes.min(limits.queue_bytes))?;
         let mut current = lock(&scope.state)?;
+        if let Some(target) = &target {
+            let previous = &current.target;
+            if previous.kind.as_str() != "session"
+                || target.kind != previous.kind
+                || target.host_id != previous.host_id
+                || target.id != previous.id
+                || target.session_id != previous.session_id
+                || target.session_epoch.is_none()
+            {
+                return Err(HostError::new(
+                    "INVALID_ARGUMENT",
+                    "Retarget requires the same session identity",
+                ));
+            }
+            if target.session_epoch <= previous.session_epoch {
+                return Err(epoch_changed());
+            }
+        }
         let next = current.revision.checked_next()?;
         let extra = 2 * (digits(next) - 1) + digits(current.revision) - 1;
         let bytes = base_bytes.checked_add(extra).ok_or_else(limit)?;
         if bytes > limits.history_bytes || bytes > limits.queue_bytes {
             return Err(limit());
         }
-        let history_bytes = current.history_bytes.checked_add(bytes).ok_or_else(limit)?;
+        let history_bytes = if target.is_some() {
+            0
+        } else {
+            current.history_bytes.checked_add(bytes).ok_or_else(limit)?
+        };
         delta.previous_cursor.position = current.revision;
         delta.cursor.position = next;
         delta.revision = next;
@@ -206,6 +260,22 @@ impl ProjectionStore {
         });
         current.value = state;
         current.revision = next;
+        if let Some(target) = target {
+            current.target = target;
+            // 重开提交成为新 snapshot 起点；旧 cursor 不能补读跨 epoch 的边界事件。
+            current.history.clear();
+            current.history_bytes = 0;
+            for weak in current.readers.values() {
+                if let Some(reader) = weak.upgrade() {
+                    if let Ok(mut pending) = reader.state.lock() {
+                        pending.end(Some(epoch_changed()), &reader.delivery);
+                    }
+                    reader.notify.notify_one();
+                }
+            }
+            current.readers.clear();
+            return Ok(delta);
+        }
         current.history.push_back(entry.clone());
         current.history_bytes = history_bytes;
         while current.history.len() > limits.history_items
@@ -231,7 +301,7 @@ impl ProjectionStore {
                     .checked_add(bytes)
                     .is_none_or(|total| total > limits.queue_bytes)
             {
-                pending.end(Some(expired(&scope.id, oldest.clone())));
+                pending.end(Some(expired(&scope.id, oldest.clone())), &reader.delivery);
                 reader.notify.notify_one();
                 return false;
             }
@@ -248,9 +318,11 @@ impl ProjectionStore {
         scope_id: &Id,
     ) -> HostResult<Snapshot> {
         let scope = self.scope(scope_id)?;
-        let stamp = check(&self.inner.auth, actor, &scope).await?;
+        let target = lock(&scope.state)?.target.clone();
+        let stamp = check(&self.inner.auth, actor, &target, &scope.permission).await?;
         let snapshot = {
             let current = lock(&scope.state)?;
+            same_target(&current, &target)?;
             Snapshot {
                 host_id: self.inner.identity.host_id.clone(),
                 instance_epoch: self.inner.identity.instance_epoch,
@@ -259,7 +331,8 @@ impl ProjectionStore {
                 state: current.value.clone(),
             }
         };
-        recheck(&self.inner.auth, actor, &scope, stamp).await?;
+        recheck(&self.inner.auth, actor, &target, &scope.permission, stamp).await?;
+        same_target(&*lock(&scope.state)?, &target)?;
         Ok(snapshot)
     }
     pub async fn subscribe(
@@ -269,9 +342,10 @@ impl ProjectionStore {
         after: &Cursor,
     ) -> HostResult<Subscription> {
         let scope = self.scope(scope_id)?;
+        let target = lock(&scope.state)?.target.clone();
         // 先订阅变更再读授权，不能漏掉 check 与等待之间发生的撤权。
         let changes = self.inner.auth.subscribe_changes();
-        let stamp = check(&self.inner.auth, actor, &scope).await?;
+        let stamp = check(&self.inner.auth, actor, &target, &scope.permission).await?;
         if after.host_id != self.inner.identity.host_id {
             return Err(HostError::new(
                 "HOST_ID_MISMATCH",
@@ -293,6 +367,7 @@ impl ProjectionStore {
         let subscription_id = Id::try_from(uuid::Uuid::new_v4().to_string().as_str())?;
         let reader = {
             let mut current = lock(&scope.state)?;
+            same_target(&current, &target)?;
             if after.position > current.revision {
                 return Err(HostError::new(
                     "INVALID_ARGUMENT",
@@ -326,6 +401,7 @@ impl ProjectionStore {
                     closed: false,
                 }),
                 notify: Notify::new(),
+                delivery: watch::channel(true).0,
             });
             current
                 .readers
@@ -334,7 +410,7 @@ impl ProjectionStore {
         };
         let subscription = Subscription {
             id: subscription_id,
-            target: scope.target.clone(),
+            target: target.clone(),
             permission: scope.permission.clone(),
             actor: actor.clone(),
             auth: self.inner.auth.clone(),
@@ -343,7 +419,8 @@ impl ProjectionStore {
             changes,
             grant_stamp: stamp.clone(),
         };
-        recheck(&self.inner.auth, actor, &scope, stamp).await?;
+        recheck(&self.inner.auth, actor, &target, &scope.permission, stamp).await?;
+        same_target(&*lock(&scope.state)?, &target)?;
         Ok(subscription)
     }
     pub fn reader_count(&self) -> usize {
@@ -396,26 +473,43 @@ impl Subscription {
     pub(crate) fn grant_stamp(&self) -> Option<GrantStamp> {
         self.grant_stamp.clone()
     }
+    pub(crate) fn delivery_liveness(&self) -> watch::Receiver<bool> {
+        self.reader.delivery.subscribe()
+    }
     /// 取消等待不消费队列头；正文只在最终授权复核之后移出队列。
     pub async fn next(&mut self) -> HostResult<Option<Delta>> {
         loop {
             if let Some(result) = self.ended()? {
                 return result;
             }
-            let Some(scope) = self.scope.upgrade() else {
+            let Some(_scope) = self.scope.upgrade() else {
                 self.close();
                 return Ok(None);
             };
             self.changes.borrow_and_update();
             // 授权变更的 watch 可合并；始终验证创建代次，不能用重授权复活旧队列。
-            if let Err(error) = recheck(&self.auth, &self.actor, &scope, self.grant_stamp()).await {
+            if let Err(error) = recheck(
+                &self.auth,
+                &self.actor,
+                &self.target,
+                &self.permission,
+                self.grant_stamp(),
+            )
+            .await
+            {
                 return self.fail(error);
             }
             let notified = self.reader.notify.notified();
             let candidate = lock(&self.reader.state)?.queue.front().cloned();
             if candidate.is_some() {
-                if let Err(error) =
-                    recheck(&self.auth, &self.actor, &scope, self.grant_stamp()).await
+                if let Err(error) = recheck(
+                    &self.auth,
+                    &self.actor,
+                    &self.target,
+                    &self.permission,
+                    self.grant_stamp(),
+                )
+                .await
                 {
                     return self.fail(error);
                 }
@@ -443,7 +537,7 @@ impl Subscription {
     }
     pub fn close(&mut self) {
         if let Ok(mut pending) = self.reader.state.lock() {
-            pending.end(None);
+            pending.end(None, &self.reader.delivery);
         }
         self.detach();
         self.reader.notify.notify_one();
@@ -463,7 +557,7 @@ impl Subscription {
         Ok(pending.closed.then_some(Ok(None)))
     }
     fn fail(&self, error: HostError) -> HostResult<Option<Delta>> {
-        lock(&self.reader.state)?.end(None);
+        lock(&self.reader.state)?.end(None, &self.reader.delivery);
         self.detach();
         Err(error)
     }
@@ -477,12 +571,13 @@ impl Drop for Subscription {
 async fn check(
     auth: &AuthService,
     actor: &AuthenticatedActor,
-    scope: &Scope,
+    target: &Target,
+    permission: &str,
 ) -> HostResult<Option<GrantStamp>> {
     let auth = auth.clone();
     let actor = actor.clone();
-    let target = scope.target.clone();
-    let permission = scope.permission.clone();
+    let target = target.clone();
+    let permission = permission.to_owned();
     tokio::task::spawn_blocking(move || {
         let stamp = auth.capture_grants(&actor)?;
         auth.require(&actor, &permission, &target)?;
@@ -497,13 +592,14 @@ async fn check(
 async fn recheck(
     auth: &AuthService,
     actor: &AuthenticatedActor,
-    scope: &Scope,
+    target: &Target,
+    permission: &str,
     stamp: Option<GrantStamp>,
 ) -> HostResult<()> {
     let auth = auth.clone();
     let actor = actor.clone();
-    let target = scope.target.clone();
-    let permission = scope.permission.clone();
+    let target = target.clone();
+    let permission = permission.to_owned();
     tokio::task::spawn_blocking(move || {
         if let Some(stamp) = &stamp {
             auth.validate_grants(stamp)?;
@@ -521,6 +617,19 @@ fn oldest_cursor(current: &ScopeState, fallback: &Cursor) -> Cursor {
     current.history.front().map_or_else(
         || fallback.clone(),
         |entry| entry.delta.previous_cursor.clone(),
+    )
+}
+fn same_target(current: &ScopeState, target: &Target) -> HostResult<()> {
+    if &current.target == target {
+        Ok(())
+    } else {
+        Err(epoch_changed())
+    }
+}
+fn epoch_changed() -> HostError {
+    HostError::new(
+        "EPOCH_MISMATCH",
+        "Session projection changed epoch; a new snapshot is required",
     )
 }
 fn expired(scope: &Id, oldest: Cursor) -> HostError {
@@ -607,6 +716,140 @@ mod tests {
     use std::time::Duration;
     fn id(value: &str) -> Id {
         Id::try_from(value).unwrap()
+    }
+    fn delivery_fixture() -> (
+        tempfile::TempDir,
+        ProjectionStore,
+        AuthService,
+        AuthenticatedActor,
+        Target,
+    ) {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let identity = store.begin_instance().unwrap();
+        let auth = AuthService::new(
+            store,
+            ContextToken::try_from("delivery-user-control").unwrap(),
+        );
+        let actor = auth
+            .authenticate(&id("delivery-reader"), None)
+            .unwrap()
+            .actor;
+        let target = Target {
+            host_id: identity.host_id.clone(),
+            kind: ResourceKind::try_from("session").unwrap(),
+            id: id("delivery-session"),
+            session_id: Some(id("delivery-session")),
+            session_epoch: Some(1.into()),
+        };
+        let projections = ProjectionStore::new(
+            identity,
+            auth.clone(),
+            ProjectionLimits {
+                queue_items: 1,
+                ..ProjectionLimits::default()
+            },
+        );
+        projections
+            .register_scope(
+                id("session:delivery-session"),
+                target.clone(),
+                "metadata.read".into(),
+                JsonObject::new(),
+            )
+            .unwrap();
+        (directory, projections, auth, actor, target)
+    }
+    #[tokio::test]
+    async fn delivery_liveness_rebind_invalidates_old_guard_before_next_and_new_reader_is_live() {
+        let (_directory, projections, _auth, actor, mut target) = delivery_fixture();
+        let scope = id("session:delivery-session");
+        let cursor = projections.snapshot(&actor, &scope).await.unwrap().cursor;
+        let mut old = projections
+            .subscribe(&actor, &scope, &cursor)
+            .await
+            .unwrap();
+        let old_guard = old.delivery_liveness();
+        assert!(*old_guard.borrow());
+        target.session_epoch = Some(2.into());
+        projections
+            .commit_for_target(
+                &scope,
+                target,
+                id("session.opened"),
+                JsonObject::new(),
+                JsonObject::new(),
+            )
+            .unwrap();
+        assert!(!*old_guard.borrow());
+        assert_eq!(old.next().await.unwrap_err().code, "EPOCH_MISMATCH");
+        let cursor = projections.snapshot(&actor, &scope).await.unwrap().cursor;
+        let fresh = projections
+            .subscribe(&actor, &scope, &cursor)
+            .await
+            .unwrap();
+        let fresh_guard = fresh.delivery_liveness();
+        assert!(*fresh_guard.borrow());
+        assert!(!*old_guard.borrow());
+        drop(fresh);
+        assert!(!*fresh_guard.borrow());
+    }
+    #[tokio::test]
+    async fn delivery_liveness_is_sticky_false_on_close_drop_overflow_and_authorization_failure() {
+        for reason in ["close", "drop", "overflow", "revoke"] {
+            let (_directory, projections, auth, actor, target) = delivery_fixture();
+            let scope = id("session:delivery-session");
+            let cursor = projections.snapshot(&actor, &scope).await.unwrap().cursor;
+            let mut reader = projections
+                .subscribe(&actor, &scope, &cursor)
+                .await
+                .unwrap();
+            let guard = reader.delivery_liveness();
+            assert!(*guard.borrow());
+            match reason {
+                "close" => reader.close(),
+                "drop" => {
+                    drop(reader);
+                    assert!(!*guard.borrow());
+                    continue;
+                }
+                "overflow" => {
+                    for _ in 0..2 {
+                        projections
+                            .commit(
+                                &scope,
+                                id("session.changed"),
+                                JsonObject::new(),
+                                JsonObject::new(),
+                            )
+                            .unwrap();
+                    }
+                    assert!(!*guard.borrow());
+                    assert_eq!(reader.next().await.unwrap_err().code, "CURSOR_EXPIRED");
+                }
+                _ => {
+                    let control = auth
+                        .authenticate_user_control(
+                            &id("delivery-control"),
+                            &ContextToken::try_from("delivery-user-control").unwrap(),
+                        )
+                        .unwrap();
+                    auth.revoke(
+                        &control,
+                        RevokeParams {
+                            actor_id: actor.id().clone(),
+                            permissions: vec!["metadata.read".into()],
+                            targets: vec![target],
+                        },
+                    )
+                    .unwrap();
+                    assert_eq!(reader.next().await.unwrap_err().code, "PERMISSION_DENIED");
+                }
+            }
+            assert!(!*guard.borrow());
+            assert!(reader.next().await.unwrap().is_none());
+            assert!(!*guard.borrow());
+        }
     }
     #[test]
     fn exhausted_commit_preserves_revision_and_rejects_wraparound() {

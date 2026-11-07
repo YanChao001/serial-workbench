@@ -70,6 +70,9 @@ impl RpcConnection {
                     IpcMessage::Delta { .. }
                         if channel == IpcChannel::Control && frame.channel == IpcChannel::State => {
                     }
+                    IpcMessage::CatalogChanged { .. }
+                        if channel == IpcChannel::Control
+                            && frame.channel == IpcChannel::Control => {}
                     IpcMessage::RawBatch { .. }
                         if channel == IpcChannel::Raw && frame.channel == IpcChannel::Raw => {}
                     IpcMessage::SubscriptionEnded { .. }

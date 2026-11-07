@@ -148,6 +148,9 @@ export async function language(locale) {
       locale === "en" ? "en" : "zh-CN",
     ),
   );
+  // Select 退出后会自动还焦；等这一轮完成再交给后续控件。
+  await $("[role=listbox]").waitForExist({ reverse: true });
+  await browser.waitUntil(() => trigger.isFocused());
 }
 
 export function appearance() {
