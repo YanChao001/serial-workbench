@@ -63,7 +63,7 @@ jobs:
 
       - name: 保留综合检查失败日志
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: frontend-verification-logs
           path: .cache/verify
@@ -93,7 +93,7 @@ jobs:
       - run: pnpm exec playwright test
       - name: 保留浏览器截图与失败 trace
         if: always()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: browser-smoke
           path: artifacts/browser
@@ -291,7 +291,7 @@ jobs:
 
       - name: 保留失败截图与测试日志
         if: failure()
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: desktop-e2e-${{ runner.os }}
           path: |
@@ -316,7 +316,7 @@ jobs:
         run: git rev-parse 'HEAD^{tree}' > "$RUNNER_TEMP/ci-tree.txt"
       - name: 保留通过记录供相同文件树复用
         if: needs.changes.outputs.reused_run == ''
-        uses: actions/upload-artifact@v6
+        uses: actions/upload-artifact@v7
         with:
           name: ci-tree-v1-${{ needs.changes.outputs.tree }}
           path: ${{ runner.temp }}/ci-tree.txt
