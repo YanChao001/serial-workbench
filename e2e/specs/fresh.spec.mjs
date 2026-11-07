@@ -9,7 +9,6 @@ import {
   appearance,
   invoke,
   language,
-  navigate,
   openDeepLink,
   ready,
   placeNearWorkAreaCorner,
@@ -45,8 +44,7 @@ describe("Real Tauri desktop", () => {
     await $("#root main").waitForDisplayed();
   });
 
-  it("switches both languages through the native title bar and saves preferences", async () => {
-    await navigate("/settings");
+  it("switches both languages through settings and saves preferences", async () => {
     for (const locale of ["zh", "en"]) {
       await language(locale);
       await browser.waitUntil(
@@ -55,7 +53,7 @@ describe("Real Tauri desktop", () => {
           locale,
       );
       assert.equal(
-        await $("main h2").getText(),
+        await $("main h1").getText(),
         locale === "zh" ? "\u8bbe\u7f6e" : "Settings",
       );
     }
@@ -64,6 +62,7 @@ describe("Real Tauri desktop", () => {
   desktopUiChecks();
 
   it("uses the actual native window maximize, restore and minimize controls", async () => {
+    await language("en");
     // 小工作区先建立与最大化尺寸不同的正常窗口，保证原生缩放有明确的还原目标。
     const savedGeometry =
       process.platform === "darwin"
@@ -142,6 +141,16 @@ describe("Real Tauri desktop", () => {
           height: savedGeometry.value.height,
         });
         assert.equal(restored.ok, true);
+        await browser.waitUntil(async () => {
+          const current = await invoke("get_window_geometry");
+          return (
+            current.ok &&
+            current.value.width === savedGeometry.value.width &&
+            current.value.height === savedGeometry.value.height &&
+            !(await invoke("plugin:window|is_maximized", { label: "main" }))
+              .value
+          );
+        });
       }
     }
   });
@@ -350,15 +359,34 @@ describe("Real Tauri desktop", () => {
   );
 
   it("recovers an oversized off-screen window into an available work area", async () => {
-    const original = await browser.execute(async () => {
-      const win = window.__TAURI__.window.getCurrentWindow();
-      const maximized = await win.isMaximized();
-      return {
-        size: await win.innerSize(),
-        position: await win.outerPosition(),
-        maximized,
-      };
-    });
+    const measure = () =>
+      browser.execute(async () => {
+        const win = window.__TAURI__.window.getCurrentWindow();
+        return {
+          size: await win.innerSize(),
+          outerSize: await win.outerSize(),
+          position: await win.outerPosition(),
+          maximized: await win.isMaximized(),
+          scale: await win.scaleFactor(),
+        };
+      });
+    const geometry = await invoke("get_window_geometry");
+    assert.equal(geometry.ok, true);
+    const original = { ...(await measure()), geometry: geometry.value };
+    const failures = [];
+    const recordFailure = async (checkpoint) => {
+      try {
+        recordWindowPlacement(checkpoint, {
+          saved: original,
+          current: {
+            ...(await measure()),
+            geometry: await invoke("get_window_geometry"),
+          },
+        });
+      } catch (error) {
+        failures.push(error);
+      }
+    };
     try {
       await browser.execute(async () => {
         const win = window.__TAURI__.window.getCurrentWindow();
@@ -395,35 +423,81 @@ describe("Real Tauri desktop", () => {
           timeoutMsg: "Window did not recover into a monitor work area",
         },
       );
-    } finally {
+    } catch (error) {
+      failures.push(error);
+      await recordFailure("offscreen-recovery-failed");
+    }
+    try {
+      // 通过尺寸契约同时恢复 preferred，避免旧 resize 事件覆盖清理目标。
+      const restored = await invoke("set_window_size", {
+        width: original.geometry.width,
+        height: original.geometry.height,
+      });
+      assert.equal(restored.ok, true);
+      await browser.waitUntil(async () => {
+        const current = await measure();
+        return (
+          current.size.width ===
+            Math.round(original.geometry.width * current.scale) &&
+          current.size.height ===
+            Math.round(original.geometry.height * current.scale) &&
+          !current.maximized
+        );
+      });
       await browser.execute(async (saved) => {
         const win = window.__TAURI__.window.getCurrentWindow();
-        const { PhysicalSize, PhysicalPosition } = window.__TAURI__.dpi;
-        await win.setSize(
-          new PhysicalSize(saved.size.width, saved.size.height),
-        );
         await win.setPosition(
-          new PhysicalPosition(saved.position.x, saved.position.y),
+          new window.__TAURI__.dpi.PhysicalPosition(
+            saved.position.x,
+            saved.position.y,
+          ),
         );
-        if (saved.maximized && !(await win.isMaximized()))
+        if ((await win.isMaximized()) !== saved.maximized)
           await win.toggleMaximize();
       }, original);
-      await browser.waitUntil(() =>
-        browser.execute(async (saved) => {
-          const win = window.__TAURI__.window.getCurrentWindow();
-          const size = await win.innerSize();
-          return (
-            size.width === saved.size.width &&
-            size.height === saved.size.height &&
-            (await win.isMaximized()) === saved.maximized
-          );
-        }, original),
-      );
+      await browser.waitUntil(async () => {
+        const current = await measure();
+        return (
+          current.size.width === original.size.width &&
+          current.size.height === original.size.height &&
+          current.maximized === original.maximized
+        );
+      });
+    } catch (error) {
+      failures.push(error);
+      await recordFailure("offscreen-cleanup-failed");
     }
+    if (failures.length === 1) throw failures[0];
+    if (failures.length > 1)
+      throw new AggregateError(
+        failures,
+        "Off-screen recovery, cleanup or diagnostic capture failed",
+        { cause: failures[0] },
+      );
   });
 
   it("applies size presets and restores default preferences without moving the window", async () => {
-    await navigate("/settings");
+    await language("en");
+    const prepared = await invoke("reset_window_geometry", { center: false });
+    assert.equal(prepared.ok, true);
+    await browser.waitUntil(async () => {
+      const result = await invoke("get_window_geometry");
+      if (!result.ok) return false;
+      const current = result.value;
+      return (
+        current.width ===
+          Math.max(
+            current.minWidth,
+            Math.min(current.maxWidth, current.defaultWidth),
+          ) &&
+        current.height ===
+          Math.max(
+            current.minHeight,
+            Math.min(current.maxHeight, current.defaultHeight),
+          ) &&
+        !(await invoke("plugin:window|is_maximized", { label: "main" })).value
+      );
+    });
     const initial = await invoke("get_window_geometry");
     assert.equal(initial.ok, true);
     const bounds = initial.value;
@@ -639,7 +713,7 @@ describe("Real Tauri desktop", () => {
   });
 
   it("persists language and illustration settings for a separate app process", async () => {
-    await navigate("/settings");
+    await language("en");
     await $("label:has(input[name='background-skin'][value='sakura'])").click();
     const intensity = await $(
       '[role="slider"][aria-labelledby="skin-intensity-heading"]',

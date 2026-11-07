@@ -135,7 +135,11 @@ export async function openDeepLink(path) {
 }
 
 export async function language(locale) {
-  const trigger = await $("button[aria-description][role=combobox]");
+  await navigate("/settings");
+  const trigger = await $(
+    "#settings-language button[aria-description][role=combobox]",
+  );
+  await trigger.waitForExist();
   await trigger.click();
   await $(`[role=option][lang="${locale === "en" ? "en" : "zh-CN"}"]`).click();
   await browser.waitUntil(() =>

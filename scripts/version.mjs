@@ -1,4 +1,4 @@
-import { readFileSync } from "node:fs";
+import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { applyFileChanges, projectFile } from "./fs-utils.mjs";
@@ -65,9 +65,12 @@ export function validateVersion(version, config) {
 
 function tomlValue(content, key, label) {
   const match = content.match(
-    new RegExp(`^\\s*${key}\\s*=\\s*"([^"\\r\\n]+)"\\s*(?:#.*)?$`, "m"),
+    new RegExp(
+      "^\\s*" + key + "\\s*=\\s*[\"']([^\"'\\r\\n]+)[\"']\\s*(?:#.*)?$",
+      "m",
+    ),
   );
-  if (!match) throw new Error(`${key} was not found in ${label}`);
+  if (!match) throw new Error(key + " was not found in " + label);
   return match[1];
 }
 
@@ -80,17 +83,35 @@ export function readVersionFiles(root) {
   };
   const packagePath = "package.json";
   const configPath = "src-tauri/tauri.conf.json";
-  const manifestPath = "src-tauri/Cargo.toml";
-  const lockPath = "src-tauri/Cargo.lock";
+  const manifestPath = "Cargo.toml";
+  const lockPath = "Cargo.lock";
   const packageJson = JSON.parse(read(packagePath));
   const config = JSON.parse(read(configPath));
   const manifest = read(manifestPath);
-  const packageSection = manifest.match(
-    /^\[package\][^\S\r\n]*(?:#.*)?\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/m,
+  const sharedSection = manifest.match(
+    /^\[workspace\.package\][^\S\r\n]*(?:#.*)?\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/m,
   );
-  if (!packageSection) throw new Error("[package] was not found in Cargo.toml");
-  const packageName = tomlValue(packageSection[1], "name", manifestPath);
-  const cargoVersion = tomlValue(packageSection[1], "version", manifestPath);
+  if (!sharedSection)
+    throw new Error("[workspace.package] was not found in Cargo.toml");
+  const cargoVersion = tomlValue(sharedSection[1], "version", manifestPath);
+  const members = manifest.match(/^\s*members\s*=\s*\[([^\]]*)\]/m);
+  if (!members)
+    throw new Error("workspace members were not found in Cargo.toml");
+  const packageNames = [...members[1].matchAll(/["']([^"']+)["']/g)].map(
+    (match) => {
+      const path = match[1] + "/Cargo.toml";
+      const member = read(path);
+      const section = member.match(
+        /^\[package\][^\S\r\n]*(?:#.*)?\r?\n([\s\S]*?)(?=^\[|(?![\s\S]))/m,
+      );
+      if (
+        !section ||
+        !/^\s*version\.workspace\s*=\s*true\s*(?:#.*)?$/m.test(section[1])
+      )
+        throw new Error(path + " must use version.workspace = true");
+      return tomlValue(section[1], "name", path);
+    },
+  );
   const files = [
     { path: packagePath, version: packageJson.version, json: packageJson },
     { path: configPath, version: config.version, json: config },
@@ -98,29 +119,41 @@ export function readVersionFiles(root) {
       path: manifestPath,
       version: cargoVersion,
       content: manifest,
-      section: packageSection[0],
+      section: sharedSection[0],
     },
   ];
-  const lock = read(lockPath);
-  const sections = lock.matchAll(
-    /^\[\[package\]\][^\S\r\n]*\r?\n([\s\S]*?)(?=^\[\[|(?![\s\S]))/gm,
-  );
-  const ownPackages = [...sections].filter(
-    (section) =>
-      tomlValue(section[1], "name", lockPath) === packageName &&
-      !/^\s*source\s*=/m.test(section[1]),
-  );
-  if (ownPackages.length !== 1) {
-    throw new Error(
-      `Cargo.lock must contain exactly one local package named ${packageName}`,
-    );
+  const packages = join(root, "packages");
+  if (existsSync(packages)) {
+    for (const entry of readdirSync(packages, { withFileTypes: true })) {
+      const path = `packages/${entry.name}/package.json`;
+      if (!entry.isDirectory() || !existsSync(join(root, path))) continue;
+      const json = JSON.parse(read(path));
+      files.push({ path, version: json.version, json });
+    }
   }
-  files.push({
-    path: lockPath,
-    version: tomlValue(ownPackages[0][1], "version", lockPath),
-    content: lock,
-    section: ownPackages[0][0],
-  });
+  const lock = read(lockPath);
+  const sections = [
+    ...lock.matchAll(
+      /^\[\[package\]\][^\S\r\n]*\r?\n([\s\S]*?)(?=^\[\[|(?![\s\S]))/gm,
+    ),
+  ];
+  for (const name of packageNames) {
+    const own = sections.filter(
+      (section) =>
+        tomlValue(section[1], "name", lockPath) === name &&
+        !/^\s*source\s*=/m.test(section[1]),
+    );
+    if (own.length !== 1)
+      throw new Error(
+        "Cargo.lock must contain exactly one local package named " + name,
+      );
+    files.push({
+      path: lockPath,
+      version: tomlValue(own[0][1], "version", lockPath),
+      content: lock,
+      section: own[0][0],
+    });
+  }
   for (const file of files) file.before = originals.get(file.path);
   return { config, files };
 }
@@ -150,23 +183,26 @@ export function prepareVersionUpdates(root, next) {
   // 写入前先解析所有文件，并校验 Windows 安装包版本。
   const { config, files } = readVersionFiles(root);
   validateVersion(next, config);
-  return files.map((file) => {
+  const updates = new Map();
+  for (const file of files) {
+    const current = updates.get(file.path)?.content ?? file.content;
     const content = file.json
-      ? `${JSON.stringify({ ...file.json, version: next }, null, 2)}\n`
-      : file.content.replace(
+      ? JSON.stringify({ ...file.json, version: next }, null, 2) + "\n"
+      : current.replace(
           file.section,
           file.section.replace(
-            /^(\s*version\s*=\s*")[^"\r\n]+(")/m,
-            (_, prefix, suffix) => `${prefix}${next}${suffix}`,
+            /^(\s*version\s*=\s*)(["'])[^"'\r\n]+\2/m,
+            (_, prefix, quote) => prefix + quote + next + quote,
           ),
         );
-    return {
+    updates.set(file.path, {
       path: file.path,
       before: file.before,
       content,
       previous: file.version,
-    };
-  });
+    });
+  }
+  return [...updates.values()];
 }
 
 async function runCli(args) {

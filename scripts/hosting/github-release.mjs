@@ -14,6 +14,7 @@ import { basename, join, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import {
   buildEnvironment,
+  desktopCargoArgs,
   effectiveConfig,
   parseBuildArgs,
 } from "../build-lib.mjs";
@@ -496,8 +497,7 @@ export function runRelease() {
         "cargo",
         [
           "run",
-          "--manifest-path",
-          "src-tauri/Cargo.toml",
+          ...desktopCargoArgs(root),
           "--locked",
           "--features",
           "bindings",

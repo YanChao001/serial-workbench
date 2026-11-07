@@ -35,3 +35,47 @@ test("application modules reject imports after executable declarations", async (
     ),
   );
 });
+
+test("handwritten workspace packages enforce the native facade boundary", async () => {
+  for (const source of [
+    'import { invoke } from "@tauri-apps/api/core";\nexport const probe = invoke;',
+    'export async function probe() { return import("@tauri-apps/api/core"); }',
+  ]) {
+    const [result] = await eslint.lintText(source, {
+      filePath: "packages/host-client/src/boundary-probe.ts",
+    });
+    assert.equal(result.fatalErrorCount, 0);
+    assert.ok(
+      result.messages.some((message) =>
+        ["no-restricted-imports", "no-restricted-syntax"].includes(
+          message.ruleId,
+        ),
+      ),
+    );
+  }
+});
+
+test("handwritten workspace packages reject any and enum", async () => {
+  const [result] = await eslint.lintText(
+    "export enum Probe { Ready }\nexport const value: any = null;",
+    { filePath: "packages/contracts/src/type-probe.ts" },
+  );
+  assert.equal(result.fatalErrorCount, 0);
+  assert.ok(
+    result.messages.some(
+      (message) => message.ruleId === "@typescript-eslint/no-explicit-any",
+    ),
+  );
+  assert.ok(
+    result.messages.some(
+      (message) => message.ruleId === "no-restricted-syntax",
+    ),
+  );
+});
+
+test("Rust-generated workspace contracts are ignored by ESLint", async () => {
+  assert.equal(
+    await eslint.isPathIgnored("packages/contracts/src/generated/types.ts"),
+    true,
+  );
+});

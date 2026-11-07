@@ -6,6 +6,8 @@
 
 JSON 字段统一 camelCase。`U64` 是 `0|[1-9][0-9]*` 的十进制字符串，范围 `0` 至 `18446744073709551615`；禁止符号、小数、指数、前导零和 JSON number。所有计数、长度、offset、序号、revision、epoch、时间间隔和单调时间均使用 U64。接收端先按字符串校验再转整数；JavaScript 可用 BigInt 计算，再以字符串序列化。溢出返回 `COUNTER_EXHAUSTED`，不回绕。`Timestamp` 是 UTC RFC3339 字符串；仅用于展示/审计，不能代替单调时钟判定期限。
 
+Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句柄共享时钟域。异步等待最多每 20ms 复查单调期限，期间只读取时钟。启动无法初始化时钟返回 `CLOCK_UNAVAILABLE`；运行期失去可信计时则终止 Host，下一次启动按持久接纳和 dispatch 证据恢复。平台来源与换算见[时钟实现](../../crates/host/src/clock.rs)。
+
 `Id` 为非空、最长 128 个 ASCII 字符的不可解释标识，允许 `[A-Za-z0-9._:-]`；Host 生成的实体 ID 用小写 UUID，调用者生成的 `requestId` 也用小写 UUID。`Digest` 是小写 64 位十六进制 SHA-256。字节用标准带 padding Base64；二进制传输可替换载荷编码，但保留相同长度与摘要。缺失表示未提供，`null` 只在字段明确允许时使用。
 
 | 字段              | wire 与作用域                                         | 生命周期                                                                                    |
@@ -39,6 +41,7 @@ JSON 字段统一 camelCase。`U64` 是 `0|[1-9][0-9]*` 的十进制字符串，
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `host.attach`        | `supportedProtocolVersions: string[]`、`clientKind: desktop\|browser\|cli\|mcp\|node\|peer`、`clientId: Id`、可选 `expectedHostId: Id`；认证凭据在传输层 | `hostId,instanceEpoch,protocolVersion,catalogVersion,actorId,clientId,limits,requestContext,requestContextAcceptUntil` | `UNAUTHENTICATED`、`HOST_ID_MISMATCH`、`PROTOCOL_UNSUPPORTED`；后者含允许公开的支持版本与升级目标 |
 | `catalog.list`       | Query 信封，params 为 `pageSize: U64,pageToken?: string,catalogVersion?: U64`                                                                            | `catalogVersion,items,nextPageToken?`                                                                                  | `CATALOG_CHANGED`、`INVALID_PAGE_TOKEN`                                                           |
+| `action.query`       | Query 信封，以 actionId 选择已经登记的 query                                                                                                             | `QueryResult={kind,value}`，value 为该动作的具体领域结果                                                               | 动作 kind、参数、目标或权限不符时拒绝                                                             |
 | `action.invoke`      | Call 信封                                                                                                                                                | `operation: Operation`                                                                                                 | 接纳前稳定错误；接纳后通过 Operation 发布结果                                                     |
 | `action.invokeChild` | ChildCall 信封，仅供 Host 已派发任务的执行 owner                                                                                                         | `operation: Operation`                                                                                                 | `OPERATION_NOT_RUNNING`、`REQUEST_CONFLICT`、`RESULT_EXPIRED`                                     |
 | `operation.get`      | Query 信封，params 选择 `operationId,requestContext?`、`actorId,requestId,requestContext` 或 `parentOperationId,childKey` 之一                           | `operation: Operation`                                                                                                 | `NOT_FOUND`、`RESULT_EXPIRED`                                                                     |
@@ -51,6 +54,8 @@ JSON 字段统一 camelCase。`U64` 是 `0|[1-9][0-9]*` 的十进制字符串，
 `limits` 必含 `maxRequestBytes,maxPageItems,maxBatchBytes,maxReaderQueueBytes,resultRetentionMs,maxLeaseTtlMs`（均 U64），在 attach 前也对握手限流限长；具体容量由 M1 实测配置并在 handshake 返回。maxLeaseTtlMs 不得超过 `"2147483647"`，时限单位、范围与计时器转换见 [发送回执](./stream-and-operations-v0.md#发送回执)。v0 `resultRetentionMs` 最小值为 `"604800000"`（终态后七天），在途 operation 不因保留期淘汰。超出接纳容量返回 `HOST_BUSY`/`LIMIT_EXCEEDED`，不能先执行再丢去重记录。
 
 目录项必含 `actionId,kind,inputSchema,outputSchema,targetKinds,executionLocation,permissions,stateScopes,eventTypes,cancellation,revealTarget`。`kind=query|action`；`executionLocation=resource_host|client`；`cancellation=none|cooperative`。各 schema 是 JSON Schema 对象，由生成契约/插件注册校验，不能用任意代码字符串替代领域动作。排序按 actionId 字节序；pageToken 是绑定 catalogVersion、actorId、授权版本和过滤条件的不透明字符串；翻页中注册或授权变化返回 `CATALOG_CHANGED`，重取第一页。未安装/停用或未授权的功能不出现在可调用清单中。已知 actionId 的直接调用仍重新校验。
+
+目录 `outputSchema` 描述领域结果；`action.query` 的 `QueryResult` 另加 `kind/value` 判别包装，专用查询 RPC 直接返回领域结果。适配器按真实返回层级声明输出，不能用领域 schema 校验整个包装。`Operation.result` 使用生成的 `ActionResult={kind,value}`；没有任意 JSON 成功兜底。目录摘要变化时在 Host 存储事务内递增唯一 catalogVersion，attach 读取当前版本；相同目录重启不递增。
 
 ## 调用、结果与错误
 
@@ -131,9 +136,27 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 每个 subscriptionId 独立队列与限额。投递后再撤权的历史记录不能撤回；服务端立即停止后续敏感输出，清空未投递队列并结束订阅为 PERMISSION_DENIED。重建订阅与引用读取均复核授权。多资源快照只有显式同 scope 的提交才原子，不提供跨 Host 全局顺序。
 
+本地增量消息为 `{type:"delta",subscriptionId,delta:Delta}`。错误终止使用 `{type:"subscriptionEnded",subscriptionId,error}`；错误只含稳定 code 与固定说明，不含正文、引用或 details。终止通道只允许本连接已登记的订阅，即使正文权限已撤销也能报告终止；若连接队列连终止通知也无法容纳，则关闭连接，客户端重新附着并取快照。显式 `subscription.close` 返回 `closed:true`，不存在时同样返回；它不停止 Host 业务。队列和历史同时按条数、字节限制，溢出清空该订阅正文并通过独立终止槽报告 `CURSOR_EXPIRED`，不静默跳过增量。
+
+`host.activity` 与 `host.operations` 的公共投影仅发布明确元数据，禁止携带 Call.params、credential、完整 Operation.result 或 error.details。查询活动按 actorId/requestId 复用，当前 Host 保留最多 1024 条最近活动；操作投影从持久 Store 读取最多 256 条在途优先的近期记录，完整保留结果仍通过 operation.get 按当前原始资源权限查询。
+
+## 本地 IPC 与用户控制
+
+本机传输使用四字节大端长度和 UTF-8 JSON，帧体为 `WireFrame {requestId,channel,body}`。`channel` 为 `control/raw/state`，`body.type` 选择生成的消息类型；先检查 1 MiB 长度上限再读取正文。只有完整帧边界的 EOF 表示正常关闭，半帧、非法 UTF-8/JSON 或未知字段均拒绝。公共类型由 core 导出，平台连接、受保护秘密与有界帧 IO 由共享 IPC crate 实现。
+
+Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID；Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。实例锁覆盖整个 Host 生命周期；PID、文件年龄和发现记录不能代替锁。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录，记录包含身份、epoch、endpoint、PID 和协议版本，不包含秘密。
+
+客户端先发送 nonce，验证绑定协议版本、hostId、epoch 和双方 nonce 的 Host proof，再提交自己的凭据。身份 pin 从受保护本地存储取得，不能从发现记录自建信任。新外部客户端只注册元数据身份；已有 clientId 的错误或缺失凭据不能覆盖原授权。控制连接与原始流连接分开，raw attach token 绑定活控制连接、actor 和 epoch；控制连接结束后 token 失效。Host 分配的 connectionId 只用于连接资源和投递归属，不进入 Call 或去重身份。同 actor 的另一连接退出不能清除本连接订阅，也不能停止 Host 业务任务。
+
+`authenticate` 使用普通客户端凭据，`authenticateUserControl` 使用独立的本地用户控制 capability；选择消息类型或声明 desktop/CLI kind 都不授予权限。Host pin、普通凭据和用户控制 capability 相互独立。用户控制 capability 只从明确的本地用户入口取得，不由普通 IPC 领取；内部启动通过专用继承 stdout pipe 传递四字节大端长度和 1—2048 字节 capability，常规启动不输出 capability。秘密不进入 argv、URL 或日志；Windows 用 current-user DPAPI，Unix 用当前用户私有文件保存。
+
+通用 action.query 与专用 RPC 共用 actionId 到物理通道的映射：stream.read/subscribe/credit 只能走 raw 连接，其他控制请求不能经 raw 执行；专用 method 与信封 actionId 必须一致。state 订阅按 connectionId/channel 归属，连接关闭后才完成的订阅创建也必须立即释放。Host 持有从持久接纳开始的任务；关闭时停止连接并等待这些任务结算后才释放实例锁。
+
 ## 权限、客户端与 LAN
 
 授权由用户控制入口建立，作用域包含执行 Host、workspace/资源、actor、有效期及具体能力。初始外部客户端仅有 `metadata.read`（元数据/限量脱敏摘要）；`content.read`（原始流、日志/文件正文）、`device.modify`（已登记设备操作）、`code.execute`（任意 JS/TS/外部命令）、`plugins.manage` 各自授予；工作区/设置修改用目录独立权限 `workspace.modify`/`settings.modify`。普通设备授权不能运行自由代码，可信插件的 OS 执行信任也不替代代理调用者的 API 权限。
+
+`auth.manage` 仅供本地用户控制身份使用，不能授予普通 API actor。本地用户授予的 `expiresAt` 在当前实例转换为单调截止点，墙钟回拨不延长授权。有限期授权不跨 instanceEpoch 续租，Host 重启后需重新明确授权；未设置期限的授权保留并逐次复核。授权和撤销持久提交成功后再更新可用范围，旧 actor、引用和排队事件不能保留已撤销的权限。
 
 结果、快照、progress、事件、错误 details、ObjectRef 与导出内容统一按当前授权过滤；引用读取逐次复核。导入/生成/打开项目只准备数据，不自动执行。秘密只显示 Secret 引用；设备内容、终端序列、导入文件和插件输出带来源标记，不能建立授权。注册动作预先声明权限，handler 在接纳与实际副作用前复核。
 

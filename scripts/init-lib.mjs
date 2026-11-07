@@ -5,7 +5,7 @@ import { createRequire } from "node:module";
 import { isDeepStrictEqual } from "node:util";
 import { parse as parseToml } from "smol-toml";
 import ts from "typescript";
-import { checkVersionValues, checkVersions } from "./version.mjs";
+import { checkVersions } from "./version.mjs";
 import { applyFileChanges, projectFile } from "./fs-utils.mjs";
 
 const FIELDS = new Set([
@@ -406,12 +406,6 @@ export function checkInitialization(root) {
   const pkg = JSON.parse(read("package.json"));
   compare("package.json", pkg, packageMetadata(structuredClone(pkg), brand));
   const manifest = parseToml(read("src-tauri/Cargo.toml"));
-  const lock = parseToml(read("src-tauri/Cargo.lock"));
-  const own = (lock.package ?? []).filter(
-    (entry) =>
-      entry.name === manifest.package?.name && entry.source === undefined,
-  );
-  if (own.length !== 1) throw new Error("Cargo.lock 必须恰有一个本地应用包");
   const nextLib = `${brand.packageName.replaceAll("-", "_")}_lib`;
   compare(
     "src-tauri/Cargo.toml",
@@ -434,13 +428,7 @@ export function checkInitialization(root) {
       JSON.parse(read(`src-tauri/${file}`)),
     ]),
   );
-  const config = configs.get("tauri.conf.json");
-  checkVersionValues(config, [
-    { path: "package.json", version: pkg.version },
-    { path: "src-tauri/tauri.conf.json", version: config.version },
-    { path: "src-tauri/Cargo.toml", version: manifest.package?.version },
-    { path: "src-tauri/Cargo.lock", version: own[0].version },
-  ]);
+  checkVersions(root);
   for (const [file, value] of configs)
     compare(
       `src-tauri/${file}`,
@@ -568,7 +556,7 @@ export function prepareInitialization(root, patch = {}) {
       .replace(packageSection, packageOutput)
       .replace(libSection, replaceField(libSection, "name", nextLib)),
   );
-  const lock = read("src-tauri/Cargo.lock");
+  const lock = read("Cargo.lock");
   parseToml(lock);
   const own = [
     ...lock.matchAll(
@@ -581,7 +569,7 @@ export function prepareInitialization(root, patch = {}) {
   );
   if (own.length !== 1) throw new Error("Cargo.lock 必须恰有一个本地应用包");
   outputs.set(
-    "src-tauri/Cargo.lock",
+    "Cargo.lock",
     lock.replace(own[0][0], replaceField(own[0][0], "name", next.packageName)),
   );
   for (const [path, suffix] of ENTRY_POINTS) {

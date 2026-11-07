@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { format } from "prettier";
-import { buildEnvironment } from "./build-lib.mjs";
+import { buildEnvironment, desktopCargoArgs } from "./build-lib.mjs";
 
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== "--check") || args.length > 1) {
@@ -20,8 +20,7 @@ try {
     "cargo",
     [
       "run",
-      "--manifest-path",
-      join(root, "src-tauri/Cargo.toml"),
+      ...desktopCargoArgs(root),
       "--locked",
       "--features",
       "bindings",

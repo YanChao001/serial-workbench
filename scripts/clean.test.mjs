@@ -20,6 +20,7 @@ import {
   assertNoRunningPrograms,
   cleanupTargets,
   getWindowsProcesses,
+  validateCleanupTarget,
 } from "./clean-lib.mjs";
 import { removeProjectPath } from "./fs-utils.mjs";
 
@@ -63,6 +64,28 @@ function put(root, path, contents = "fixture data") {
   writeFileSync(target, contents);
   return target;
 }
+
+test("root workspace keeps manifests, lock and shared Cargo cache during outputs cleanup", (t) => {
+  const { root } = fixture(t);
+  const retained = [
+    "Cargo.toml",
+    "Cargo.lock",
+    ".cargo/config.toml",
+    "crates/core/src/lib.rs",
+    "packages/contracts/src/index.ts",
+    "src-tauri/target/debug/deps/cache",
+  ];
+  for (const path of retained) put(root, path, "retained workspace data");
+  for (const [path] of cleanupTargets(root, "outputs")) {
+    const target = validateCleanupTarget(root, path, { allowFile: true });
+    if (target) removeProjectPath(root, path);
+  }
+  for (const path of retained)
+    assert.equal(
+      readFileSync(join(root, path), "utf8"),
+      "retained workspace data",
+    );
+});
 
 function snapshot(root) {
   const entries = [];

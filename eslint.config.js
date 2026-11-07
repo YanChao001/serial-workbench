@@ -13,10 +13,8 @@ export default tseslint.config(
       ".claude/worktrees/**",
       "node_modules/**",
       "marketplace/**",
-      "examples/extensions/node_modules/**",
-      "examples/extensions/dist/**",
-      "examples/extensions/**/target/**",
       "src-tauri/**",
+      "packages/*/src/generated/**",
     ],
   },
   {
@@ -49,7 +47,7 @@ export default tseslint.config(
   },
   {
     // 应用源码是浏览器环境：误用 process、Buffer 这类 Node API 会直接报错
-    files: ["src/**/*.{ts,tsx}", "sdk/*.{js,ts}"],
+    files: ["src/**/*.{ts,tsx}", "packages/*/src/**/*.{ts,tsx}"],
     languageOptions: { globals: globals.browser },
   },
   {
@@ -57,29 +55,36 @@ export default tseslint.config(
     files: [
       "*.config.{js,ts}",
       "scripts/**/*.mjs",
-      "examples/extensions/*.mjs",
       "e2e/**/*.mjs",
       "wdio*.mjs",
     ],
     languageOptions: { globals: globals.node },
   },
   {
-    files: [
-      "examples/extensions/javascript/*.js",
-      "examples/extensions/typescript/*.ts",
-    ],
-    languageOptions: { globals: { Host: "readonly", I32: "readonly" } },
+    files: ["src/**/*.{ts,tsx}", "packages/*/src/**/*.{ts,tsx}"],
+    ignores: ["src/components/ui/**", "src/lib/generated/**"],
+    rules: {
+      "no-restricted-syntax": [
+        "error",
+        {
+          selector: "TSEnumDeclaration",
+          message: "手写 TypeScript 使用字面量联合类型，不使用 enum。",
+        },
+      ],
+    },
   },
   {
     // 架构约束：系统能力只能从 lib/tauri.ts 出去。
     // 将 architecture.md 中的模块边界要求落实为静态检查。
-    files: ["src/**/*.{ts,tsx}"],
+    files: ["src/**/*.{ts,tsx}", "packages/*/src/**/*.{ts,tsx}"],
     // 测试文件需要直接 mock @tauri-apps 模块，属于规则的有效例外
     ignores: [
       "src/lib/tauri.ts",
       "src/lib/generated/**",
       "src/**/*.test.{ts,tsx}",
       "src/**/*.spec.{ts,tsx}",
+      "packages/*/src/**/*.test.{ts,tsx}",
+      "packages/*/src/**/*.spec.{ts,tsx}",
     ],
     rules: {
       "no-restricted-imports": [
@@ -97,6 +102,10 @@ export default tseslint.config(
       // no-restricted-imports 只检查静态导入，动态 import() 需单独约束。
       "no-restricted-syntax": [
         "error",
+        {
+          selector: "TSEnumDeclaration",
+          message: "手写 TypeScript 使用字面量联合类型，不使用 enum。",
+        },
         {
           selector:
             "Program > :not(ImportDeclaration):not(ExpressionStatement[directive]) ~ ImportDeclaration",

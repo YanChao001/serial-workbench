@@ -42,4 +42,4 @@ jobs:
         run: cargo install cargo-audit --locked
 
       - name: 审计 Rust 依赖
-        run: cargo audit --file src-tauri/Cargo.lock
+        run: cargo audit --file Cargo.lock

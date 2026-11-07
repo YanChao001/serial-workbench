@@ -74,15 +74,17 @@ pnpm lint
 
 ## Rust 测试
 
-先准备 `dist/`，然后按改动运行相关原生测试：
+无头 crate 可直接从根运行定向测试，例如 `cargo test --locked -p serial-workbench-core`。桌面 crate 先准备 `dist/`，再选择包运行相关测试：
 
 ```sh
 pnpm build
-cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
-cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
+cargo test --locked -p serial-workbench --lib
+cargo fmt --all -- --check
 ```
 
 IPC 契约变化后依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，并提交生成结果。绑定任务与共用 target 的 Cargo 检查顺序执行。
+
+Host DTO 变化后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`；Rust 与 TypeScript 共用导出的正负 fixture。schema 验证结构，跨字段身份、权限和资源语义由 Host 入口继续核验。里程碑检查使用 `cargo test --locked --workspace` 与 `cargo clippy --locked --workspace --all-targets -- -D warnings`。
 
 涉及进程的 Rust 测试需核对临时目录和进程回收。
 

@@ -9,16 +9,21 @@ export default defineConfig({
     pool: "vmThreads",
     setupFiles: ["./src/test/setup.ts"],
     // 不开启 globals：测试文件显式 import describe/it/expect，类型来源更清楚
-    include: ["src/**/*.{test,spec}.{ts,tsx}"],
+    include: [
+      "src/**/*.{test,spec}.{ts,tsx}",
+      "packages/*/src/**/*.{test,spec}.{ts,tsx}",
+    ],
     // 限制并发，避免与原生构建争抢内存。
     maxWorkers: 4,
     coverage: {
       provider: "v8",
-      include: ["src/**/*.{ts,tsx}"],
+      include: ["src/**/*.{ts,tsx}", "packages/*/src/**/*.{ts,tsx}"],
       exclude: [
         "src/components/ui/**",
         "src/**/*.test.{ts,tsx}",
         "src/test/**",
+        "packages/*/src/generated/**",
+        "packages/*/src/**/*.{test,spec}.{ts,tsx}",
       ],
     },
   },

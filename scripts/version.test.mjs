@@ -50,15 +50,24 @@ function fixture(t, { config = {}, manifest, lock, dependencies = true } = {}) {
     join(root, "src-tauri/tauri.conf.json"),
     JSON.stringify({ version: "1.0.0", bundle: { targets: "all" }, ...config }),
   );
+  mkdirSync(join(root, "crates/core"), { recursive: true });
+  writeFileSync(
+    join(root, "Cargo.toml"),
+    '[workspace]\nmembers = ["src-tauri", "crates/core"]\n\n[workspace.package]\nversion = "1.0.0" # retain comment\n',
+  );
+  writeFileSync(
+    join(root, "crates/core/Cargo.toml"),
+    '[package]\nname = "rust-core"\nversion.workspace = true\n',
+  );
   writeFileSync(
     join(root, "src-tauri/Cargo.toml"),
     manifest ??
-      '[package]\r\nname = "rust-name"\r\nversion = "1.0.0" # retain comment\r\n\r\n[dependencies]\r\nother = "1.0.0"\r\n',
+      '[package]\r\nname = "rust-name"\r\nversion.workspace = true\r\n\r\n[dependencies]\r\nother = "1.0.0"\r\n',
   );
   writeFileSync(
-    join(root, "src-tauri/Cargo.lock"),
+    join(root, "Cargo.lock"),
     lock ??
-      'version = 4\n\n[[package]]\nname = "rust-name"\nversion = "9.0.0"\nsource = "registry+https://example.com"\n\n[[package]]\nname = "rust-name"\nversion = "1.0.0"\n',
+      'version = 4\n\n[[package]]\nname = "rust-name"\nversion = "9.0.0"\nsource = "registry+https://example.com"\n\n[[package]]\nname = "rust-name"\nversion = "1.0.0"\n\n[[package]]\nname = "rust-core"\nversion = "1.0.0"\n',
   );
   return root;
 }
@@ -82,8 +91,10 @@ function versionContents(root) {
   return [
     "package.json",
     "src-tauri/tauri.conf.json",
+    "Cargo.toml",
     "src-tauri/Cargo.toml",
-    "src-tauri/Cargo.lock",
+    "crates/core/Cargo.toml",
+    "Cargo.lock",
   ].map((path) => readFileSync(join(root, path), "utf8"));
 }
 
@@ -149,7 +160,7 @@ test("invalid CLI arguments leave version files and CI outputs unchanged", (t) =
 
 test("help and importing the version module perform no CLI I/O", (t) => {
   const root = fixture(t, { dependencies: false });
-  rmSync(join(root, "src-tauri/Cargo.lock"));
+  rmSync(join(root, "Cargo.lock"));
   const output = join(root, "github-output");
   writeFileSync(output, "keep output\n");
   const env = { GITHUB_REF: "refs/tags/v9.0.0", GITHUB_OUTPUT: output };
@@ -172,7 +183,7 @@ test("help and importing the version module perform no CLI I/O", (t) => {
   assert.equal(result.stdout, "");
   assert.equal(result.stderr, "");
   assert.equal(readFileSync(output, "utf8"), "keep output\n");
-  assert.equal(existsSync(join(root, "src-tauri/Cargo.lock")), false);
+  assert.equal(existsSync(join(root, "Cargo.lock")), false);
 });
 
 test("version:set synchronizes the Rust package even when the npm name differs", (t) => {
@@ -180,10 +191,13 @@ test("version:set synchronizes the Rust package even when the npm name differs",
   const result = setVersion(root, "2.3.4");
   assert.equal(result.status, 0, result.stderr);
   assert.equal(checkVersions(root, "v2.3.4"), "2.3.4");
-  const manifest = readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8");
-  assert.match(manifest, /version = "2\.3\.4" # retain comment\r\n/);
-  assert.match(manifest, /other = "1\.0\.0"/);
-  const lock = readFileSync(join(root, "src-tauri/Cargo.lock"), "utf8");
+  const manifest = readFileSync(join(root, "Cargo.toml"), "utf8");
+  assert.match(manifest, /version = "2\.3\.4" # retain comment\n/);
+  assert.match(
+    readFileSync(join(root, "src-tauri/Cargo.toml"), "utf8"),
+    /other = "1\.0\.0"/,
+  );
+  const lock = readFileSync(join(root, "Cargo.lock"), "utf8");
   assert.match(lock, /version = "9\.0\.0"\nsource = "registry/);
 });
 
@@ -217,7 +231,7 @@ test("invalid manifest or missing local lock package leaves every file unchanged
       "package.json",
       "src-tauri/tauri.conf.json",
       "src-tauri/Cargo.toml",
-      "src-tauri/Cargo.lock",
+      "Cargo.lock",
     ];
     const before = files.map((file) => readFileSync(join(root, file), "utf8"));
     assert.equal(setVersion(root, "2.0.0").status, 1);
@@ -296,8 +310,8 @@ test("release validation rejects tag mismatches and drift in any manifest", (t) 
   assert.throws(() => checkVersions(root, "v9.0.0"), /tag/);
   for (const path of [
     "src-tauri/tauri.conf.json",
-    "src-tauri/Cargo.toml",
-    "src-tauri/Cargo.lock",
+    "Cargo.toml",
+    "Cargo.lock",
   ]) {
     const file = join(root, path);
     const previous = readFileSync(file, "utf8");
@@ -330,7 +344,7 @@ test("release outputs distinguish prereleases from build metadata", (t) => {
 
 test("missing tracked Cargo.lock fails validation and leaves version files unchanged", (t) => {
   const root = fixture(t);
-  rmSync(join(root, "src-tauri/Cargo.lock"));
+  rmSync(join(root, "Cargo.lock"));
   assert.throws(() => checkVersions(root), /ENOENT/);
   assert.equal(setVersion(root, "2.0.0").status, 1);
   assert.equal(
@@ -365,4 +379,74 @@ test("an explicit MSI version is validated before any version file is written", 
       windows: { wix: { version: "255.255.65535.65535" } },
     },
   });
+});
+
+test("workspace versions update every local member in the root lock", (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, "packages/contracts"), { recursive: true });
+  writeFileSync(
+    join(root, "packages/contracts/package.json"),
+    JSON.stringify({
+      name: "@serial-workbench/contracts",
+      private: true,
+      version: "1.0.0",
+    }),
+  );
+  assert.equal(checkVersions(root), "1.0.0");
+  const result = setVersion(root, "2.3.4");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(checkVersions(root), "2.3.4");
+  assert.equal(
+    JSON.parse(
+      readFileSync(join(root, "packages/contracts/package.json"), "utf8"),
+    ).version,
+    "2.3.4",
+  );
+  assert.match(
+    readFileSync(join(root, "Cargo.lock"), "utf8"),
+    /name = "rust-core"\nversion = "2\.3\.4"/,
+  );
+  const lockPath = join(root, "Cargo.lock");
+  const updatedLock = readFileSync(lockPath, "utf8");
+  writeFileSync(
+    lockPath,
+    updatedLock.replace(
+      'name = "rust-core"\nversion = "2.3.4"',
+      'name = "rust-core"\nversion = "2.3.5"',
+    ),
+  );
+  assert.throws(() => checkVersions(root), /does not match/);
+  writeFileSync(
+    lockPath,
+    updatedLock.replace('name = "rust-core"', 'name = "missing-core"'),
+  );
+  assert.throws(() => checkVersions(root), /rust-core/);
+  writeFileSync(lockPath, updatedLock);
+  writeFileSync(
+    join(root, "packages/contracts/package.json"),
+    JSON.stringify({
+      name: "@serial-workbench/contracts",
+      private: true,
+      version: "2.3.5",
+    }),
+  );
+  assert.throws(() => checkVersions(root), /packages\/contracts\/package.json/);
+  writeFileSync(
+    join(root, "crates/core/Cargo.toml"),
+    '[package]\nname = "rust-core"\nversion = "2.3.4"\n',
+  );
+  assert.throws(() => checkVersions(root), /version.workspace/);
+});
+
+test("shared version updates preserve literal TOML quoting", (t) => {
+  const root = fixture(t);
+  for (const path of ["Cargo.toml", "Cargo.lock"])
+    writeFileSync(
+      join(root, path),
+      readFileSync(join(root, path), "utf8").replaceAll('"', "'"),
+    );
+  assert.equal(checkVersions(root), "1.0.0");
+  const result = setVersion(root, "2.3.4");
+  assert.equal(result.status, 0, result.stderr);
+  assert.equal(checkVersions(root), "2.3.4");
 });

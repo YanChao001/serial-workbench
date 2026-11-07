@@ -1,6 +1,6 @@
 # Serial Workbench
 
-Serial Workbench (`serial-workbench`) is a cross-platform serial port workbench for embedded development and device debugging, built with Tauri 2, Rust, React 19 and TypeScript. The current version provides an empty workspace, settings, diagnostics, recovery and desktop window controls. Serial communication, recording and replay, an independent Host and Node extensions are planned.
+Serial Workbench (`serial-workbench`) is a cross-platform serial port workbench for embedded development and device debugging, built with Tauri 2, Rust, React 19 and TypeScript. The current version provides an empty workspace, settings, diagnostics, recovery and desktop window controls, plus the independent Host foundation for contracts, durable operations and local IPC. Device communication, CLI/MCP, recording and replay, desktop Host integration and Node extensions remain in development.
 
 Developers exploring serial tools such as Serial Studio (`serial-studio`) can review the [product scope](./docs/product-scope.md) for the current capabilities and development stage.
 

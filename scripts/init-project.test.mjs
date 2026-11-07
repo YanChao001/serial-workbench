@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
@@ -92,7 +93,12 @@ function fixture(t) {
   mkdirSync(join(root, "src-tauri", "src", "bin"));
   mkdirSync(join(root, ".signpath"));
   mkdirSync(join(root, ".vscode"));
+  mkdirSync(join(root, "crates/core"), { recursive: true });
   const files = {
+    "Cargo.toml":
+      '[workspace]\nmembers = ["src-tauri", "crates/core"]\n\n[workspace.package]\nversion = "0.1.0"\n',
+    "crates/core/Cargo.toml":
+      '[package]\nname = "serial-workbench-core"\nversion.workspace = true\n',
     "app.config.json": JSON.stringify(config),
     "package.json": JSON.stringify({
       name: "old-app",
@@ -116,9 +122,9 @@ function fixture(t) {
       identifier: `${config.identifier}.e2e`,
     }),
     "src-tauri/Cargo.toml":
-      '[package]\nname = "old-app"\ndefault-run = "old-app"\nversion = "0.1.0"\ndescription = "An app"\nauthors = ["Example"]\n\n[lib]\nname = "old_app_lib"\ncrate-type = ["rlib"]\n\n[dependencies]\nserde = "1"\n',
-    "src-tauri/Cargo.lock":
-      'version = 4\n\n[[package]]\nname = "old-app"\nversion = "0.1.0"\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
+      '[package]\nname = "old-app"\ndefault-run = "old-app"\nversion.workspace = true\ndescription = "An app"\nauthors = ["Example"]\n\n[lib]\nname = "old_app_lib"\ncrate-type = ["rlib"]\n\n[dependencies]\nserde = "1"\n',
+    "Cargo.lock":
+      'version = 4\n\n[[package]]\nname = "old-app"\nversion = "0.1.0"\n\n[[package]]\nname = "serial-workbench-core"\nversion = "0.1.0"\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
     "src-tauri/src/main.rs":
       "fn main() { old_app_lib::run() }\n// old-app is a historical example\n",
     "src-tauri/src/bin/export-bindings.rs":
@@ -427,7 +433,7 @@ test("configuration checks compare TOML and JSON values without rewriting valid 
     .replace('description = "An app"', "description = '''An app'''")
     .replace('version = "0.1.0"', "version = '0.1.0'");
   writeFileSync(manifestPath, manifest);
-  const lockPath = join(root, "src-tauri/Cargo.lock");
+  const lockPath = join(root, "Cargo.lock");
   const lock = readFileSync(lockPath, "utf8").replace(/"([^"]*)"/g, "'$1'");
   writeFileSync(lockPath, lock);
   const pkgPath = join(root, "package.json");
@@ -704,5 +710,58 @@ test("shell configuration accepts only current product fields", () => {
   assert.throws(
     () => validateAppConfig({ ...config, unknownField: {} }),
     /\u672a\u77e5\u54c1\u724c\u5b57\u6bb5/,
+  );
+});
+
+test("desktop renames retain shared workspace and headless package identity", (t) => {
+  const { root, files } = fixture(t);
+  applyInitialization(
+    prepareInitialization(root, { packageName: "acme-desk" }),
+  );
+  assert.equal(checkVersions(root), "0.1.0");
+  for (const path of ["Cargo.toml", "crates/core/Cargo.toml"])
+    assert.equal(readFileSync(join(root, path), "utf8"), files[path]);
+  assert.match(
+    readFileSync(join(root, "Cargo.lock"), "utf8"),
+    /name = "serial-workbench-core"\nversion = "0.1.0"/,
+  );
+});
+
+test("release template builds the desktop package after initialization renames it", (t) => {
+  const { root, files } = fixture(t);
+  applyInitialization(
+    prepareInitialization(root, { packageName: "acme-desk" }),
+  );
+  const workflow = readFileSync(
+    new URL("../.github/workflows-disabled/release.yml", import.meta.url),
+    "utf8",
+  );
+  const outputCommand = workflow.match(
+    /node --input-type=module -e "([^\r\n]+)"/,
+  );
+  const output = join(root, "github-output");
+  writeFileSync(output, "");
+  if (outputCommand) {
+    const result = spawnSync(
+      process.execPath,
+      ["--input-type=module", "-e", outputCommand[1]],
+      {
+        cwd: root,
+        encoding: "utf8",
+        env: { ...process.env, GITHUB_OUTPUT: output },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+  }
+  const packageName = readFileSync(output, "utf8").match(
+    /^package=(.+)$/m,
+  )?.[1];
+  const args = workflow
+    .match(/^ {10}args: (.+)$/m)?.[1]
+    ?.replace("${{ steps.version.outputs.package }}", packageName ?? "");
+  assert.equal(args?.match(/--package\s+(\S+)/)?.[1], "acme-desk");
+  assert.equal(
+    readFileSync(join(root, "crates/core/Cargo.toml"), "utf8"),
+    files["crates/core/Cargo.toml"],
   );
 });

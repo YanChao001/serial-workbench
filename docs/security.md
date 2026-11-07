@@ -53,7 +53,7 @@ CSP 变更后核对生产构建的启动、导航和对应资源，按被拦截�
 
 ```sh
 pnpm audit
-cargo audit --file src-tauri/Cargo.lock
+cargo audit --file Cargo.lock
 ```
 
 保留 [audit.yml](../.github/workflows/audit.yml) 手动依赖审计，没有每周定时任务；请求失败时记录审计未完成，结合完整输出处理审计告警。自动依赖升级 PR 配置已移除，需要的升级由维护者集中评估、验证，并按 [Git 协作规范](./conventions/git-workflow.md) 提交中文里程碑 PR。实际审计结果在 PR 或里程碑验收中记录。

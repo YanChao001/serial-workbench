@@ -1,6 +1,6 @@
 ﻿# 产品范围
 
-Serial Workbench 当前处于基础框架重构阶段，提供空白工作区、设置、诊断恢复和系统窗口能力。串口连接与收发、录制回放、独立 Host 和 Node 插件体系尚未实现。
+Serial Workbench 当前处于基础框架重构阶段，提供空白工作区、设置、诊断恢复和系统窗口能力。独立 Host 已建立生成契约、持久操作、本机 IPC、授权和状态投影基础；设备收发、CLI/MCP、录制回放、桌面 Host 接入与 Node 插件体系继续按 [M1 计划](./superpowers/plans/2026-11-07-m1-host-and-workspace.md) 实施。
 
 ## 可见入口
 

@@ -13,7 +13,7 @@ pnpm version:set 1.2.0
 pnpm version:check
 ```
 
-脚本同步 `package.json`、`src-tauri/tauri.conf.json`、`src-tauri/Cargo.toml` 和 `src-tauri/Cargo.lock` 的自身包版本；写入失败回滚，并发冲突保留用户内容与备份。`version:check` 核对版本一致性，发布模板还会核对 `v<version>` tag。
+脚本同步根 `package.json`、workspace 包、`src-tauri/tauri.conf.json`、根 `Cargo.toml` 的共享版本与 `Cargo.lock` 的全部自有包版本；各 Rust 成员继承共享版本。写入失败回滚，并发冲突保留用户内容与备份。`version:check` 核对版本一致性，发布模板还会核对 `v<version>` tag。
 
 版本号更新与其他改动一样，从 `main` 创建短期分支，经普通 PR 合入 `main`。在该 PR 准备本次版本的公开摘要与升级限制，合入后完成验收，再从已确认的 `main` 提交打 tag；具体步骤见 [Git 发布流程](./conventions/git-workflow.md#发布流程)。
 
