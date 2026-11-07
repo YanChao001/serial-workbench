@@ -1,0 +1,27 @@
+//! 独立 Host 的公共领域模型与 wire 契约，不依赖运行时或系统能力。
+pub mod auth;
+pub mod catalog;
+pub mod clock;
+pub mod dispatch;
+pub mod error;
+pub mod identity;
+pub mod ipc;
+pub mod operation;
+pub mod session;
+pub mod stream;
+pub mod target;
+pub mod values;
+pub mod wire;
+pub use auth::*;
+pub use catalog::*;
+pub use clock::*;
+pub use dispatch::*;
+pub use error::*;
+pub use identity::*;
+pub use ipc::*;
+pub use operation::*;
+pub use session::*;
+pub use stream::*;
+pub use target::*;
+pub use values::*;
+pub use wire::*;

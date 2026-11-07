@@ -1,6 +1,6 @@
 [package]
 name = "serial-workbench"
-version = "0.1.0"
+version.workspace = true
 description = "Cross-platform serial port workbench built with Tauri and Rust."
 authors = ["YanChao"]
 license = "Apache-2.0"
@@ -74,22 +74,3 @@ required-features = ["bindings"]
 name = "verify-updater"
 path = "src/bin/verify-updater.rs"
 required-features = ["bindings"]
-
-# 图片重采样和编解码需要优化，避免开发模式下逐像素循环拖慢图库和预览。
-# 业务代码仍沿用默认 dev 配置，保留增量编译和调试体验。
-[profile.dev.package.image]
-opt-level = 3
-
-[profile.dev.package.image-webp]
-opt-level = 3
-
-[profile.dev.package.zune-jpeg]
-opt-level = 3
-
-# 默认优先程序体积；安装包与便携版可用 --optimize speed 切换为编译速度优先。
-[profile.release]
-codegen-units = 1
-lto = true
-opt-level = "s"
-panic = "abort"
-strip = true

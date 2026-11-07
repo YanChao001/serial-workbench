@@ -13,6 +13,7 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { parse as parseToml } from "smol-toml";
+import * as buildTools from "./build-lib.mjs";
 import {
   cargoBuildArgs,
   cargoExecutable,
@@ -32,11 +33,42 @@ function fixture(t) {
   return root;
 }
 
+test("desktop Cargo builds select the application instead of headless default members", () => {
+  assert.deepEqual(cargoBuildArgs(parseBuildArgs([]), "renamed-desktop"), [
+    "--package",
+    "renamed-desktop",
+    "--message-format=json",
+  ]);
+});
+
+test("native helpers select the desktop manifest and its current package name", (t) => {
+  const root = fixture(t);
+  mkdirSync(join(root, "src-tauri"));
+  writeFileSync(
+    join(root, "Cargo.toml"),
+    '[workspace]\ndefault-members = ["crates/core"]\n',
+  );
+  writeFileSync(
+    join(root, "src-tauri/Cargo.toml"),
+    '[package]\nname = "renamed-desktop"\nversion.workspace = true\n',
+  );
+  assert.deepEqual(buildTools.desktopCargoArgs(root), [
+    "--manifest-path",
+    join(root, "src-tauri/Cargo.toml"),
+    "--package",
+    "renamed-desktop",
+  ]);
+});
+
 test("release builds default to size and accept both explicit optimization forms", () => {
   const common = ["--features", "one", "two", "--ci"];
   const defaults = parseBuildArgs(common);
   assert.equal(defaults.optimize, "size");
-  assert.deepEqual(cargoBuildArgs(defaults), ["--message-format=json"]);
+  assert.deepEqual(cargoBuildArgs(defaults), [
+    "--package",
+    "serial-workbench",
+    "--message-format=json",
+  ]);
   for (const selection of [["--optimize", "size"], ["--optimize=size"]]) {
     const explicit = parseBuildArgs([...selection, ...common]);
     assert.deepEqual(explicit, defaults);
@@ -51,6 +83,8 @@ test("speed optimization supplies valid Cargo release overrides without leaking 
     assert.equal(options.optimize, "speed");
     assert.deepEqual(options.common, common);
     const args = cargoBuildArgs(options);
+    assert.equal(args.shift(), "--package");
+    assert.equal(args.shift(), "serial-workbench");
     assert.equal(args.shift(), "--message-format=json");
     const overrides = [];
     while (args.length) {
@@ -71,6 +105,8 @@ test("speed optimization supplies valid Cargo release overrides without leaking 
     args.push("changed");
     assert.equal(cargoBuildArgs(options).includes("changed"), false);
     assert.deepEqual(cargoBuildArgs(parseBuildArgs([])), [
+      "--package",
+      "serial-workbench",
       "--message-format=json",
     ]);
   }

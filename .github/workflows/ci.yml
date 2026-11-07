@@ -31,6 +31,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
 
       - name: 安装依赖
         run: pnpm install --frozen-lockfile
@@ -59,6 +62,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
       - run: pnpm install --frozen-lockfile
       - name: 构建本次浏览器预览
         run: pnpm build:web
@@ -114,6 +120,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
 
       - name: 安装前端依赖并构建
         run: |
@@ -126,22 +135,19 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: src-tauri
+          workspaces: . -> src-tauri/target
           key: native-${{ matrix.target }}
           cache-on-failure: true
 
       # 格式规则与平台无关，仅在一个平台执行
       - name: 格式检查
         if: matrix.platform == 'windows-2022'
-        working-directory: src-tauri
         run: cargo fmt --all -- --check
 
       - name: Clippy 静态检查
-        working-directory: src-tauri
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
       - name: 单元测试
-        working-directory: src-tauri
         run: cargo test --locked --workspace
 
       - name: 构建未签名原生程序（不打包、不发布）
@@ -166,6 +172,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
       - name: 安装前端依赖并构建
         run: |
           pnpm install --frozen-lockfile
@@ -175,11 +184,13 @@ jobs:
       # 独立 job 使用自己的 runner、target 和缓存，与四目标 Rust 校验并行。
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: src-tauri
+          workspaces: . -> src-tauri/target
           key: bindings-linux-x64
           cache-on-failure: true
-      - name: 验证 Rust 生成的 IPC 类型
-        run: pnpm bindings:check
+      - name: 验证 Rust 生成的 Host 契约与 IPC 类型
+        run: |
+          pnpm contracts:check
+          pnpm bindings:check
 
   desktop-e2e:
     if: inputs.desktop_e2e
@@ -217,6 +228,9 @@ jobs:
         with:
           node-version-file: .nvmrc
           cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
 
       - name: 安装依赖与 Rust 工具链
         run: |
@@ -225,7 +239,7 @@ jobs:
 
       - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
         with:
-          workspaces: src-tauri -> target/e2e
+          workspaces: . -> src-tauri/target/e2e
           key: e2e-${{ matrix.target }}
           # 保留已成功编译的依赖缓存，桌面断言失败后仍可复用。
           cache-on-failure: true

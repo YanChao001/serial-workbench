@@ -1,0 +1,2378 @@
+{
+  "invalid": [
+    {
+      "name": "leading-zero",
+      "schema": "U64",
+      "value": "01"
+    },
+    {
+      "name": "plus",
+      "schema": "U64",
+      "value": "+1"
+    },
+    {
+      "name": "exponent-string",
+      "schema": "U64",
+      "value": "1e3"
+    },
+    {
+      "name": "json-number",
+      "schema": "U64",
+      "value": 1
+    },
+    {
+      "name": "u64-overflow",
+      "schema": "U64",
+      "value": "18446744073709551616"
+    },
+    {
+      "name": "empty-counter",
+      "schema": "U64",
+      "value": ""
+    },
+    {
+      "name": "counter-null",
+      "schema": "U64",
+      "value": null
+    },
+    {
+      "name": "base64-no-padding",
+      "schema": "Bytes",
+      "value": "DQo"
+    },
+    {
+      "name": "base64-invalid-pad-bits",
+      "schema": "Bytes",
+      "value": "AB=="
+    },
+    {
+      "name": "base64-url-alphabet",
+      "schema": "Bytes",
+      "value": "_w=="
+    },
+    {
+      "name": "utc-not-leap",
+      "schema": "Timestamp",
+      "value": "2100-02-29T00:00:00Z"
+    },
+    {
+      "name": "utc-impossible-date",
+      "schema": "Timestamp",
+      "value": "2026-02-31T00:00:00Z"
+    },
+    {
+      "name": "utc-month-30",
+      "schema": "Timestamp",
+      "value": "2026-04-31T00:00:00Z"
+    },
+    {
+      "name": "utc-leap-wrong-day",
+      "schema": "Timestamp",
+      "value": "2016-12-30T23:59:60Z"
+    },
+    {
+      "name": "utc-leap-wrong-hour",
+      "schema": "Timestamp",
+      "value": "2016-12-31T12:59:60Z"
+    },
+    {
+      "name": "utc-leap-february-not-month-end",
+      "schema": "Timestamp",
+      "value": "2000-02-28T23:59:60Z"
+    },
+    {
+      "name": "utc-nonzero-offset",
+      "schema": "Timestamp",
+      "value": "2026-11-07T00:00:00+08:00"
+    },
+    {
+      "name": "utc-unknown-local-offset",
+      "schema": "Timestamp",
+      "value": "2026-11-07T00:00:00-00:00"
+    },
+    {
+      "name": "unsafe-number",
+      "schema": "JsonValue",
+      "value": 9007199254740992
+    },
+    {
+      "name": "fractional-number",
+      "schema": "JsonValue",
+      "value": 1.5
+    },
+    {
+      "name": "query-result-unknown-kind",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "future",
+        "value": {}
+      }
+    },
+    {
+      "name": "action-result-unknown-fields",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "authorization_changed",
+        "value": {
+          "grantRevision": "1",
+          "secret": "forbidden"
+        }
+      }
+    },
+    {
+      "name": "call-missing-requestContext",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "call-missing-instanceEpoch",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "call-missing-revealTarget",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "call-null-expectedRevision",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "expectedRevision": null,
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "call-null-leaseId",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "leaseId": null,
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "call-null-executionMode",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "executionMode": null,
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "target-missing-sessionId",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993"
+        }
+      }
+    },
+    {
+      "name": "target-missing-sessionEpoch",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "child-forbidden-requestId",
+      "schema": "ChildCall",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childKey": "1",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "parentOperationId": "parent",
+        "protocolVersion": "0.1",
+        "requestId": "forbidden",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        },
+        "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "child-forbidden-requestContext",
+      "schema": "ChildCall",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childKey": "1",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "parentOperationId": "parent",
+        "protocolVersion": "0.1",
+        "requestContext": "forbidden",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        },
+        "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "child-forbidden-executionMode",
+      "schema": "ChildCall",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childKey": "1",
+        "executionMode": "forbidden",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "parentOperationId": "parent",
+        "protocolVersion": "0.1",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        },
+        "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "child-forbidden-rootOperationId",
+      "schema": "ChildCall",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childKey": "1",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "parentOperationId": "parent",
+        "protocolVersion": "0.1",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "rootOperationId": "forbidden",
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        },
+        "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "child-zero-key",
+      "schema": "ChildCall",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childKey": "0",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "parentOperationId": "parent",
+        "protocolVersion": "0.1",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        },
+        "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "partial-is-not-state",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "partial",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "operation-missing-admission",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childHighWatermark": "0",
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "operation-missing-rootOperationId",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "operation-missing-childHighWatermark",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "reply-wrong-discriminant",
+      "schema": "RpcReply",
+      "value": {
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Missing",
+          "retryable": false
+        },
+        "ok": true
+      }
+    },
+    {
+      "name": "reply-unknown-success",
+      "schema": "RpcReply",
+      "value": {
+        "ok": true,
+        "result": {
+          "unknown": true
+        }
+      }
+    },
+    {
+      "name": "rpc-unknown-method",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "unknown",
+        "params": {}
+      }
+    },
+    {
+      "name": "duration-zero",
+      "schema": "DurationMs",
+      "value": "0"
+    },
+    {
+      "name": "duration-overflow",
+      "schema": "DurationMs",
+      "value": "2147483648"
+    },
+    {
+      "name": "retention-too-short",
+      "schema": "RetentionMs",
+      "value": "604799999"
+    },
+    {
+      "name": "raw-empty-batch",
+      "schema": "RawBatch",
+      "value": {
+        "cursor": {
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "position": "9007199254740993",
+          "scopeId": "scope"
+        },
+        "items": [],
+        "previousCursor": {
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "position": "9007199254740992",
+          "scopeId": "scope"
+        },
+        "subscriptionId": "subscription"
+      }
+    },
+    {
+      "name": "reader-gap-no-source-seq",
+      "schema": "ReaderGap",
+      "value": {
+        "eventSeq": "100",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "missingByteRanges": [],
+        "missingEventRange": {
+          "end": "151",
+          "start": "100"
+        },
+        "reason": "reader_overflow",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "tx-no-peer-proof",
+      "schema": "TxReceipt",
+      "value": {
+        "acceptedRanges": [
+          {
+            "end": "1",
+            "start": "0"
+          }
+        ],
+        "byteEnd": "2",
+        "byteStart": "0",
+        "bytesBase64": "DQo=",
+        "operationId": "op",
+        "outcome": "partial",
+        "peerAcknowledged": true,
+        "sessionEpoch": "2",
+        "sessionId": "session",
+        "unknownRanges": []
+      }
+    },
+    {
+      "name": "ipc-clientHello-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "clientNonce": "nonce",
+        "supportedProtocolVersions": ["0.1"],
+        "type": "clientHello",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-clientHello-missing-clientNonce",
+      "schema": "IpcMessage",
+      "value": {
+        "supportedProtocolVersions": ["0.1"],
+        "type": "clientHello"
+      }
+    },
+    {
+      "name": "ipc-clientHello-missing-supportedProtocolVersions",
+      "schema": "IpcMessage",
+      "value": {
+        "clientNonce": "nonce",
+        "type": "clientHello"
+      }
+    },
+    {
+      "name": "ipc-clientHello-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "clientNonce": "nonce",
+        "supportedProtocolVersions": ["0.1"]
+      }
+    },
+    {
+      "name": "ipc-hostHello-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce",
+        "type": "hostHello",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-hostHello-missing-hostId",
+      "schema": "IpcMessage",
+      "value": {
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-hostHello-missing-instanceEpoch",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-hostHello-missing-proof",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-hostHello-missing-protocolVersion",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-hostHello-missing-serverNonce",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-hostHello-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce"
+      }
+    },
+    {
+      "name": "ipc-authenticate-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "type": "authenticate",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-authenticate-missing-clientId",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "authenticate"
+      }
+    },
+    {
+      "name": "ipc-authenticate-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client"
+      }
+    },
+    {
+      "name": "ipc-authenticated-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "rawAttachToken": "token",
+        "type": "authenticated",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-authenticated-missing-rawAttachToken",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "authenticated"
+      }
+    },
+    {
+      "name": "ipc-authenticated-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "rawAttachToken": "token"
+      }
+    },
+    {
+      "name": "ipc-authenticateUserControl-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "credential": "control-capability",
+        "type": "authenticateUserControl",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-authenticateUserControl-missing-clientId",
+      "schema": "IpcMessage",
+      "value": {
+        "credential": "control-capability",
+        "type": "authenticateUserControl"
+      }
+    },
+    {
+      "name": "ipc-authenticateUserControl-missing-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "type": "authenticateUserControl"
+      }
+    },
+    {
+      "name": "ipc-authenticateUserControl-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "credential": "control-capability"
+      }
+    },
+    {
+      "name": "ipc-rawAttach-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "token": "token",
+        "type": "rawAttach",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-rawAttach-missing-token",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "rawAttach"
+      }
+    },
+    {
+      "name": "ipc-rawAttach-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "token": "token"
+      }
+    },
+    {
+      "name": "ipc-rawAttached-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "rawAttached",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-rawAttached-missing-type",
+      "schema": "IpcMessage",
+      "value": {}
+    },
+    {
+      "name": "ipc-request-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "clientId": "client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        },
+        "type": "request",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-request-missing-request",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "request"
+      }
+    },
+    {
+      "name": "ipc-request-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "clientId": "client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        }
+      }
+    },
+    {
+      "name": "ipc-reply-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "reply": {
+          "ok": true,
+          "result": {
+            "closed": true
+          }
+        },
+        "type": "reply",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-reply-missing-reply",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "reply"
+      }
+    },
+    {
+      "name": "ipc-reply-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "reply": {
+          "ok": true,
+          "result": {
+            "closed": true
+          }
+        }
+      }
+    },
+    {
+      "name": "ipc-error-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Missing",
+          "retryable": false
+        },
+        "type": "error",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-error-missing-error",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "error"
+      }
+    },
+    {
+      "name": "ipc-error-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Missing",
+          "retryable": false
+        }
+      }
+    },
+    {
+      "name": "ipc-rawBatch-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "batch": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "items": [
+            {
+              "gap": {
+                "hostId": "host",
+                "instanceEpoch": "7",
+                "missingByteRanges": [],
+                "missingEventRange": {
+                  "end": "2",
+                  "start": "1"
+                },
+                "reason": "reader_overflow",
+                "sessionEpoch": "2",
+                "sessionId": "session"
+              },
+              "kind": "reader_gap"
+            }
+          ],
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "subscriptionId": "subscription"
+        },
+        "type": "rawBatch",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-rawBatch-missing-batch",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "rawBatch"
+      }
+    },
+    {
+      "name": "ipc-rawBatch-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "batch": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "items": [
+            {
+              "gap": {
+                "hostId": "host",
+                "instanceEpoch": "7",
+                "missingByteRanges": [],
+                "missingEventRange": {
+                  "end": "2",
+                  "start": "1"
+                },
+                "reason": "reader_overflow",
+                "sessionEpoch": "2",
+                "sessionId": "session"
+              },
+              "kind": "reader_gap"
+            }
+          ],
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "subscriptionId": "subscription"
+        }
+      }
+    },
+    {
+      "name": "ipc-delta-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "delta": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "eventType": "changed",
+          "payload": {},
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "revision": "1"
+        },
+        "subscriptionId": "subscription",
+        "type": "delta",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-delta-missing-delta",
+      "schema": "IpcMessage",
+      "value": {
+        "subscriptionId": "subscription",
+        "type": "delta"
+      }
+    },
+    {
+      "name": "ipc-delta-missing-subscriptionId",
+      "schema": "IpcMessage",
+      "value": {
+        "delta": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "eventType": "changed",
+          "payload": {},
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "revision": "1"
+        },
+        "type": "delta"
+      }
+    },
+    {
+      "name": "ipc-delta-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "delta": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "eventType": "changed",
+          "payload": {},
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "revision": "1"
+        },
+        "subscriptionId": "subscription"
+      }
+    },
+    {
+      "name": "ipc-subscriptionEnded-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "CURSOR_EXPIRED",
+          "message": "New snapshot required",
+          "retryable": false
+        },
+        "subscriptionId": "subscription",
+        "type": "subscriptionEnded",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-subscriptionEnded-missing-error",
+      "schema": "IpcMessage",
+      "value": {
+        "subscriptionId": "subscription",
+        "type": "subscriptionEnded"
+      }
+    },
+    {
+      "name": "ipc-subscriptionEnded-missing-subscriptionId",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "CURSOR_EXPIRED",
+          "message": "New snapshot required",
+          "retryable": false
+        },
+        "type": "subscriptionEnded"
+      }
+    },
+    {
+      "name": "ipc-subscriptionEnded-missing-type",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "CURSOR_EXPIRED",
+          "message": "New snapshot required",
+          "retryable": false
+        },
+        "subscriptionId": "subscription"
+      }
+    },
+    {
+      "name": "ipc-clientHello-null-expectedHostId",
+      "schema": "IpcMessage",
+      "value": {
+        "clientNonce": "nonce",
+        "expectedHostId": null,
+        "supportedProtocolVersions": ["0.1"],
+        "type": "clientHello"
+      }
+    },
+    {
+      "name": "ipc-authenticate-null-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "credential": null,
+        "type": "authenticate"
+      }
+    },
+    {
+      "name": "ipc-authenticated-null-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "credential": null,
+        "rawAttachToken": "token",
+        "type": "authenticated"
+      }
+    },
+    {
+      "name": "ipc-user-control-null-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "credential": null,
+        "type": "authenticateUserControl"
+      }
+    },
+    {
+      "name": "ipc-channel-unknown",
+      "schema": "IpcChannel",
+      "value": "unknown"
+    },
+    {
+      "name": "ipc-frame-missing-requestId",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "channel": "control"
+      }
+    },
+    {
+      "name": "ipc-frame-missing-channel",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
+      "name": "ipc-frame-missing-body",
+      "schema": "WireFrame",
+      "value": {
+        "channel": "control",
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
+      "name": "ipc-frame-unknown-channel",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "channel": "unknown",
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
+      "name": "ipc-frame-unknown-field",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "channel": "control",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "unknown": true
+      }
+    },
+    {
+      "name": "ipc-unknown-tag",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "unknown"
+      }
+    },
+    {
+      "name": "ipc-epoch-number",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": 7,
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-host-unknown-protocol",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "protocolVersion": "0.2",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-request-nested-actorId",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "actorId": "forged",
+            "clientId": "client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        },
+        "type": "request"
+      }
+    },
+    {
+      "name": "ipc-request-nested-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "clientId": "client",
+            "clientKind": "cli",
+            "credential": "forged",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        },
+        "type": "request"
+      }
+    },
+    {
+      "name": "ipc-request-nested-unknown",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "clientId": "client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"],
+            "unknown": "forged"
+          }
+        },
+        "type": "request"
+      }
+    },
+    {
+      "name": "ipc-request-old-actor",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "actorId": "forged",
+          "method": "host.attach",
+          "params": {
+            "clientId": "client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        },
+        "type": "request"
+      }
+    },
+    {
+      "name": "ipc-reply-unknown-result",
+      "schema": "IpcMessage",
+      "value": {
+        "reply": {
+          "ok": true,
+          "result": {
+            "closed": true,
+            "unknown": true
+          }
+        },
+        "type": "reply"
+      }
+    },
+    {
+      "name": "authorize-missing-clientId",
+      "schema": "AuthorizeParams",
+      "value": {
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authorize-missing-permissions",
+      "schema": "AuthorizeParams",
+      "value": {
+        "clientId": "client",
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authorize-missing-targets",
+      "schema": "AuthorizeParams",
+      "value": {
+        "clientId": "client",
+        "permissions": ["content.read"]
+      }
+    },
+    {
+      "name": "revoke-missing-actorId",
+      "schema": "RevokeParams",
+      "value": {
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "revoke-missing-permissions",
+      "schema": "RevokeParams",
+      "value": {
+        "actorId": "actor",
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "revoke-missing-targets",
+      "schema": "RevokeParams",
+      "value": {
+        "actorId": "actor",
+        "permissions": ["content.read"]
+      }
+    },
+    {
+      "name": "authorize-null-expiry",
+      "schema": "AuthorizeParams",
+      "value": {
+        "clientId": "client",
+        "expiresAt": null,
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authorize-unknown-kind",
+      "schema": "AuthorizeParams",
+      "value": {
+        "clientId": "client",
+        "clientKind": "desktop",
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "revoke-unknown-client",
+      "schema": "RevokeParams",
+      "value": {
+        "actorId": "actor",
+        "clientId": "client",
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    }
+  ],
+  "schemaVersion": 1,
+  "valid": [
+    {
+      "name": "zero",
+      "schema": "U64",
+      "value": "0"
+    },
+    {
+      "name": "beyond-js-precision",
+      "schema": "U64",
+      "value": "9007199254740993"
+    },
+    {
+      "name": "u64-max",
+      "schema": "U64",
+      "value": "18446744073709551615"
+    },
+    {
+      "name": "base64-empty",
+      "schema": "Bytes",
+      "value": ""
+    },
+    {
+      "name": "base64-padded",
+      "schema": "Bytes",
+      "value": "DQo="
+    },
+    {
+      "name": "base64-one-byte",
+      "schema": "Bytes",
+      "value": "AA=="
+    },
+    {
+      "name": "utc-leap-day",
+      "schema": "Timestamp",
+      "value": "2000-02-29T00:00:00.123Z"
+    },
+    {
+      "name": "utc-normal",
+      "schema": "Timestamp",
+      "value": "2026-11-07T00:00:00Z"
+    },
+    {
+      "name": "utc-lowercase",
+      "schema": "Timestamp",
+      "value": "2026-11-07t00:00:00z"
+    },
+    {
+      "name": "utc-explicit-offset",
+      "schema": "Timestamp",
+      "value": "2026-11-07T00:00:00+00:00"
+    },
+    {
+      "name": "utc-leap-second",
+      "schema": "Timestamp",
+      "value": "2016-12-31T23:59:60Z"
+    },
+    {
+      "name": "safe-number",
+      "schema": "JsonValue",
+      "value": 9007199254740991
+    },
+    {
+      "name": "safe-number-negative",
+      "schema": "JsonValue",
+      "value": -9007199254740991
+    },
+    {
+      "name": "json-null",
+      "schema": "JsonValue",
+      "value": null
+    },
+    {
+      "name": "json-recursive",
+      "schema": "JsonValue",
+      "value": {
+        "a": [null, true, "1", 1]
+      }
+    },
+    {
+      "name": "root-call",
+      "schema": "Call",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "protocolVersion": "0.1",
+        "requestContext": "dG9rZW4",
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        }
+      }
+    },
+    {
+      "name": "generic-query",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "action.query",
+        "params": {
+          "actionId": "catalog.list",
+          "actorId": "actor",
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "params": {
+            "pageSize": "100"
+          },
+          "protocolVersion": "0.1",
+          "requestId": "33333333-3333-4333-8333-333333333333",
+          "revealTarget": {
+            "pageId": "workbench"
+          },
+          "target": {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        }
+      }
+    },
+    {
+      "name": "query-catalog-result",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "catalog",
+        "value": {
+          "catalogVersion": "1",
+          "items": []
+        }
+      }
+    },
+    {
+      "name": "authorization-result",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "authorization_changed",
+        "value": {
+          "grantRevision": "9007199254740993"
+        }
+      }
+    },
+    {
+      "name": "child-call",
+      "schema": "ChildCall",
+      "value": {
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "childKey": "1",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "params": {
+          "bytesBase64": "DQo=",
+          "writeWaitMs": "1000"
+        },
+        "parentOperationId": "parent",
+        "protocolVersion": "0.1",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "target": {
+          "hostId": "host",
+          "id": "session",
+          "kind": "session",
+          "sessionEpoch": "9007199254740993",
+          "sessionId": "session"
+        },
+        "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "root-operation",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "child-operation",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "childKey": "1",
+          "kind": "child",
+          "parentOperationId": "parent",
+          "taskContextDigest": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb"
+        },
+        "childHighWatermark": "0",
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "reply-operation",
+      "schema": "RpcReply",
+      "value": {
+        "ok": true,
+        "result": {
+          "operation": {
+            "acceptedAt": "2026-11-07T00:00:00Z",
+            "actionId": "session.tx",
+            "actorId": "actor",
+            "admission": {
+              "kind": "request",
+              "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+            },
+            "childHighWatermark": "0",
+            "executionHostId": "host",
+            "executionMode": "interactive",
+            "operationId": "op",
+            "owner": {
+              "id": "host",
+              "kind": "host"
+            },
+            "requestId": "33333333-3333-4333-8333-333333333333",
+            "revealTarget": {
+              "pageId": "workbench"
+            },
+            "revision": "1",
+            "rootOperationId": "op",
+            "state": "queued",
+            "target": {
+              "hostId": "host",
+              "id": "host",
+              "kind": "host"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "reply-error",
+      "schema": "RpcReply",
+      "value": {
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Missing",
+          "retryable": false
+        },
+        "ok": false
+      }
+    },
+    {
+      "name": "rpc-attach",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "host.attach",
+        "params": {
+          "clientId": "cli",
+          "clientKind": "cli",
+          "supportedProtocolVersions": ["0.1"]
+        }
+      }
+    },
+    {
+      "name": "duration-min",
+      "schema": "DurationMs",
+      "value": "1"
+    },
+    {
+      "name": "duration-max",
+      "schema": "DurationMs",
+      "value": "2147483647"
+    },
+    {
+      "name": "retention-seven-days",
+      "schema": "RetentionMs",
+      "value": "604800000"
+    },
+    {
+      "name": "raw-rx",
+      "schema": "RawEvent",
+      "value": {
+        "configurationRevision": "1",
+        "eventSeq": "9007199254740993",
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "kind": "rx",
+        "payload": {
+          "byteEnd": "2",
+          "byteStart": "0",
+          "bytesBase64": "DQo="
+        },
+        "sessionEpoch": "2",
+        "sessionId": "session",
+        "time": {
+          "clockId": "clock",
+          "precision": {
+            "resolutionNs": "1000000",
+            "source": "host_read",
+            "syncMethod": "none"
+          },
+          "receivedWallTime": "2026-11-07T00:00:00Z",
+          "sourceMonoNs": "1"
+        }
+      }
+    },
+    {
+      "name": "raw-source-batch",
+      "schema": "RawBatch",
+      "value": {
+        "cursor": {
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "position": "9007199254740993",
+          "scopeId": "scope"
+        },
+        "items": [
+          {
+            "event": {
+              "configurationRevision": "1",
+              "eventSeq": "9007199254740993",
+              "hostId": "host",
+              "instanceEpoch": "7",
+              "kind": "rx",
+              "payload": {
+                "byteEnd": "2",
+                "byteStart": "0",
+                "bytesBase64": "DQo="
+              },
+              "sessionEpoch": "2",
+              "sessionId": "session",
+              "time": {
+                "clockId": "clock",
+                "precision": {
+                  "resolutionNs": "1000000",
+                  "source": "host_read",
+                  "syncMethod": "none"
+                },
+                "receivedWallTime": "2026-11-07T00:00:00Z",
+                "sourceMonoNs": "1"
+              }
+            },
+            "kind": "source"
+          }
+        ],
+        "previousCursor": {
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "position": "9007199254740992",
+          "scopeId": "scope"
+        },
+        "subscriptionId": "subscription"
+      }
+    },
+    {
+      "name": "reader-gap-known-no-byte-loss",
+      "schema": "ReaderGap",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "7",
+        "missingByteRanges": [],
+        "missingEventRange": {
+          "end": "151",
+          "start": "100"
+        },
+        "reason": "reader_overflow",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "raw-reader-gap-batch",
+      "schema": "RawBatch",
+      "value": {
+        "cursor": {
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "position": "9007199254740993",
+          "scopeId": "scope"
+        },
+        "items": [
+          {
+            "gap": {
+              "hostId": "host",
+              "instanceEpoch": "7",
+              "missingByteRanges": [],
+              "missingEventRange": {
+                "end": "151",
+                "start": "100"
+              },
+              "reason": "reader_overflow",
+              "sessionEpoch": "2",
+              "sessionId": "session"
+            },
+            "kind": "reader_gap"
+          }
+        ],
+        "previousCursor": {
+          "hostId": "host",
+          "instanceEpoch": "7",
+          "position": "9007199254740992",
+          "scopeId": "scope"
+        },
+        "subscriptionId": "subscription"
+      }
+    },
+    {
+      "name": "partial-tx",
+      "schema": "TxReceipt",
+      "value": {
+        "acceptedRanges": [
+          {
+            "end": "1",
+            "start": "0"
+          }
+        ],
+        "byteEnd": "2",
+        "byteStart": "0",
+        "bytesBase64": "DQo=",
+        "operationId": "op",
+        "outcome": "partial",
+        "peerAcknowledged": false,
+        "sessionEpoch": "2",
+        "sessionId": "session",
+        "unknownRanges": []
+      }
+    },
+    {
+      "name": "ipc-clientHello",
+      "schema": "IpcMessage",
+      "value": {
+        "clientNonce": "nonce",
+        "supportedProtocolVersions": ["0.1"],
+        "type": "clientHello"
+      }
+    },
+    {
+      "name": "ipc-hostHello",
+      "schema": "IpcMessage",
+      "value": {
+        "hostId": "host",
+        "instanceEpoch": "9007199254740993",
+        "proof": "proof",
+        "protocolVersion": "0.1",
+        "serverNonce": "nonce",
+        "type": "hostHello"
+      }
+    },
+    {
+      "name": "ipc-authenticate",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "type": "authenticate"
+      }
+    },
+    {
+      "name": "ipc-authenticated",
+      "schema": "IpcMessage",
+      "value": {
+        "rawAttachToken": "token",
+        "type": "authenticated"
+      }
+    },
+    {
+      "name": "ipc-authenticateUserControl",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "credential": "control-capability",
+        "type": "authenticateUserControl"
+      }
+    },
+    {
+      "name": "ipc-rawAttach",
+      "schema": "IpcMessage",
+      "value": {
+        "token": "token",
+        "type": "rawAttach"
+      }
+    },
+    {
+      "name": "ipc-rawAttached",
+      "schema": "IpcMessage",
+      "value": {
+        "type": "rawAttached"
+      }
+    },
+    {
+      "name": "ipc-request",
+      "schema": "IpcMessage",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "clientId": "client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        },
+        "type": "request"
+      }
+    },
+    {
+      "name": "ipc-reply",
+      "schema": "IpcMessage",
+      "value": {
+        "reply": {
+          "ok": true,
+          "result": {
+            "closed": true
+          }
+        },
+        "type": "reply"
+      }
+    },
+    {
+      "name": "ipc-error",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "NOT_FOUND",
+          "message": "Missing",
+          "retryable": false
+        },
+        "type": "error"
+      }
+    },
+    {
+      "name": "ipc-rawBatch",
+      "schema": "IpcMessage",
+      "value": {
+        "batch": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "items": [
+            {
+              "gap": {
+                "hostId": "host",
+                "instanceEpoch": "7",
+                "missingByteRanges": [],
+                "missingEventRange": {
+                  "end": "2",
+                  "start": "1"
+                },
+                "reason": "reader_overflow",
+                "sessionEpoch": "2",
+                "sessionId": "session"
+              },
+              "kind": "reader_gap"
+            }
+          ],
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "subscriptionId": "subscription"
+        },
+        "type": "rawBatch"
+      }
+    },
+    {
+      "name": "ipc-delta",
+      "schema": "IpcMessage",
+      "value": {
+        "delta": {
+          "cursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "eventType": "changed",
+          "payload": {},
+          "previousCursor": {
+            "hostId": "host",
+            "instanceEpoch": "7",
+            "position": "1",
+            "scopeId": "scope"
+          },
+          "revision": "1"
+        },
+        "subscriptionId": "subscription",
+        "type": "delta"
+      }
+    },
+    {
+      "name": "ipc-subscriptionEnded",
+      "schema": "IpcMessage",
+      "value": {
+        "error": {
+          "code": "CURSOR_EXPIRED",
+          "message": "New snapshot required",
+          "retryable": false
+        },
+        "subscriptionId": "subscription",
+        "type": "subscriptionEnded"
+      }
+    },
+    {
+      "name": "ipc-clientHello-with-expectedHostId",
+      "schema": "IpcMessage",
+      "value": {
+        "clientNonce": "nonce",
+        "expectedHostId": "host",
+        "supportedProtocolVersions": ["0.1"],
+        "type": "clientHello"
+      }
+    },
+    {
+      "name": "ipc-authenticate-with-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "clientId": "client",
+        "credential": "credential",
+        "type": "authenticate"
+      }
+    },
+    {
+      "name": "ipc-authenticated-with-credential",
+      "schema": "IpcMessage",
+      "value": {
+        "credential": "credential",
+        "rawAttachToken": "token",
+        "type": "authenticated"
+      }
+    },
+    {
+      "name": "ipc-channel-control",
+      "schema": "IpcChannel",
+      "value": "control"
+    },
+    {
+      "name": "ipc-frame-control",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "channel": "control",
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
+      "name": "ipc-channel-raw",
+      "schema": "IpcChannel",
+      "value": "raw"
+    },
+    {
+      "name": "ipc-frame-raw",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "channel": "raw",
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
+      "name": "ipc-channel-state",
+      "schema": "IpcChannel",
+      "value": "state"
+    },
+    {
+      "name": "ipc-frame-state",
+      "schema": "WireFrame",
+      "value": {
+        "body": {
+          "clientNonce": "nonce",
+          "supportedProtocolVersions": ["0.1"],
+          "type": "clientHello"
+        },
+        "channel": "state",
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
+      "name": "ipc-failure-reply",
+      "schema": "IpcMessage",
+      "value": {
+        "reply": {
+          "error": {
+            "code": "DENIED",
+            "message": "Denied",
+            "retryable": false
+          },
+          "ok": false
+        },
+        "type": "reply"
+      }
+    },
+    {
+      "name": "authorize",
+      "schema": "AuthorizeParams",
+      "value": {
+        "clientId": "client",
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "revoke",
+      "schema": "RevokeParams",
+      "value": {
+        "actorId": "actor",
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    },
+    {
+      "name": "authorize-expiring",
+      "schema": "AuthorizeParams",
+      "value": {
+        "clientId": "client",
+        "expiresAt": "2026-11-07T00:00:00Z",
+        "permissions": ["content.read"],
+        "targets": [
+          {
+            "hostId": "host",
+            "id": "host",
+            "kind": "host"
+          }
+        ]
+      }
+    }
+  ]
+}

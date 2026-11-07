@@ -17,6 +17,23 @@ export const root = resolve(import.meta.dirname, "..");
 const targetDirectory = join(root, "src-tauri", "target", "e2e");
 const receiptPath = join(targetDirectory, "build.json");
 
+export function e2eBuildArgs(target, packageName) {
+  return [
+    "build",
+    "--debug",
+    "--no-bundle",
+    "--target",
+    target,
+    "--features",
+    "e2e",
+    "--config",
+    "src-tauri/tauri.e2e.conf.json",
+    "--",
+    "--package",
+    packageName,
+  ];
+}
+
 /** 平台配置与 E2E 覆盖都可能重命名程序，不能只猜 Cargo package 的名称。 */
 export function e2eExecutable(projectRoot, target, pkg) {
   const platform = target.includes("-windows-")
@@ -61,7 +78,7 @@ export async function buildE2E() {
       "cargo",
       ["metadata", "--no-deps", "--format-version", "1", "--locked"],
       {
-        cwd: join(root, "src-tauri"),
+        cwd: root,
         env,
         encoding: "utf8",
         windowsHide: true,
@@ -79,15 +96,7 @@ export async function buildE2E() {
       process.execPath,
       [
         require.resolve("@tauri-apps/cli/tauri.js"),
-        "build",
-        "--debug",
-        "--no-bundle",
-        "--target",
-        host,
-        "--features",
-        "e2e",
-        "--config",
-        "src-tauri/tauri.e2e.conf.json",
+        ...e2eBuildArgs(host, pkg.name),
       ],
       { cwd: root, env, stdio: "inherit", windowsHide: true },
     );

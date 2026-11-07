@@ -19,9 +19,20 @@
 - Host 协议精确 `"0.1"`，新 capture 格式 `"0.1"`；U64 为十进制字符串，requestContext 由执行 Host 签发；actor 由认证绑定；所有调用包含 epoch 和 revealTarget。
 - resultRetentionMs 至少 `"604800000"`；requestContext 接纳窗口 `"86400000"` ms；时限 `"1"`—`"2147483647"` ms，只有明确的立即检查允许 `"0"`。
 - 手写 TS 不使用 any/enum，原生交互经过 `src/lib/tauri.ts`；Rust DTO 生成公共类型/schema；HashRouter、中英词典、语义 token、useUnsavedWork 沿用。
-- M0 清理/合同独立审阅通过并 squash 合入 main 后开始；M0 是前置条件，不是产品完成。M1a/M1b 各集中为一个里程碑提交与 PR；实现、测试、审阅修正和配套文档合并，不逐任务或一两行修改提交。全部分支线性，同步只用 rebase/fast-forward，短名分支完成即删除，提交主题/正文与 PR 文案使用中文。
+- M0 清理/合同独立审阅通过并 squash 合入 main 后开始；M0 是前置条件，不是产品完成。M1a 按下文的基础、功能闭环两个可独立验证的里程碑交付，M1b 集中交付；各里程碑的实现、测试、审阅修正和配套文档合为一个提交，不逐任务或一两行修改提交。全部分支线性，同步只用 rebase/fast-forward，短名分支完成即删除，提交主题/正文与 PR 文案使用中文。
 - 软件验证使用 Virtual、独立软件对端、PTY、进程级 IPC 和无头 UI；真实窗口、硬件、驱动与最低系统验收单列，按 M6 或已安排独立环境执行。
 - 用户已要求现在启用 CI/CD：日常主要本机验证、兼顾各平台；积累到 M0/M1 等大节点手动触发完整三平台 CI。独立 CI runner 可执行真实桌面，本机仍不擅自弹窗；不恢复每次提交/PR自动运行。
+
+## 交付边界调整
+
+用户指出已完成内容连续五小时没有后续提交，因此将原 M1a 的单次出口拆为两个完整里程碑，功能范围和验收要求保持原计划：
+
+| 里程碑       | 内容                                                                                                       | 出口                                                                     |
+| ------------ | ---------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------ |
+| M1a 基础     | Task1—4：生成契约、持久接纳与恢复、本机 IPC 与授权、统一目录与状态投影；期限统一使用包含系统休眠的原生时钟 | 独立 Rust/TS/工程检查与审阅通过后集中提交，经 PR squash 合入             |
+| M1a 功能闭环 | Task5—7：Virtual、发送与原始流、CLI/MCP                                                                    | 基础里程碑之上完成原 M1a 软件场景、手动四目标 CI，再集中提交与 PR squash |
+
+基础里程碑不创建 CLI/MCP 空程序；Task7 实现后再将两个包加入 workspace。已完成且可独立验收的边界应及时交付，不把等待后续功能作为长期积压修改的理由。
 
 ## Review Focus
 
@@ -40,6 +51,7 @@
 | `crates/core/src/{wire,identity,error,catalog,operation,session,stream,settings,workspace,capture}.rs` | DTO、值约束、状态机、静态目录定义；无 OS/async runtime/桌面依赖             |
 | `crates/core/src/{transport,clock}.rs`                                                                 | 同步后端边界、可控单调时钟；Host 将阻塞 IO 放专有线程                       |
 | `crates/core/src/bin/export-contracts.rs`                                                              | 从 DTO/动作类型导出 TS、draft-07 schema、目录和正负 fixture                 |
+| `crates/ipc/src/{lib,frame,identity,discovery,windows,unix}.rs`                                        | 共享本机传输、身份证明、运行文件与受保护秘密；不承载业务授权                |
 | `crates/host/src/{lib,main,dispatch,registry,limits,state,shutdown}.rs`                                | 业务组装、同一 handler、预算、状态历史、退出                                |
 | `crates/host/src/{storage,auth,ipc,device,transmission,capture,files,settings,workspace}/`             | 各领域服务；每目录 `mod.rs` 仅入口，按下文文件分工                          |
 | `crates/client/src/{lib,connection,discovery}.rs`                                                      | Rust IPC 客户端；不持设备句柄、不复制业务规则                               |
@@ -52,7 +64,7 @@
 
 ### 已作出的工程选择
 
-1. 建根 `Cargo.toml` workspace，members 为 `src-tauri,crates/core,crates/host,crates/client,crates/cli,crates/mcp`，resolver=`3`；default-members 为五个无头 crate。包名固定 `serial-workbench-{core,host,client,cli,mcp}`。根 `Cargo.lock` 唯一；将现有 `src-tauri/Cargo.lock` 移至根后由协调者更新，release/dev profiles 也移至根。新 `.cargo/config.toml` 设置 `target-dir="src-tauri/target"` 保留缓存。Cargo workspace 的锁、target 与 profile 规则见[官方说明](https://doc.rust-lang.org/cargo/reference/workspaces.html)。
+1. 基础里程碑建立根 `Cargo.toml` workspace，members 为 `src-tauri,crates/core,crates/ipc,crates/host,crates/client`，resolver=`3`；default-members 为四个无头 crate。Task7 实现 CLI/MCP 时再加入 `crates/cli,crates/mcp`。包名固定 `serial-workbench-{core,ipc,host,client,cli,mcp}`。根 `Cargo.lock` 唯一；将现有 `src-tauri/Cargo.lock` 移至根后由协调者更新，release/dev profiles 也移至根。新 `.cargo/config.toml` 设置 `target-dir="src-tauri/target"` 保留缓存。Cargo workspace 的锁、target 与 profile 规则见[官方说明](https://doc.rust-lang.org/cargo/reference/workspaces.html)。
 2. Task 1 同步 `scripts/init-lib.mjs`、`scripts/init-project.test.mjs`、`scripts/version.mjs`、`scripts/version.test.mjs`、`scripts/build-lib.mjs`、`scripts/build.test.mjs`、`scripts/generate-bindings.mjs`、`.github/workflows/{ci,audit}.yml`、`e2e/build.mjs`/测试和文档的锁路径/包选择。`scripts/hosting/github-release.mjs` 继续读桌面 manifest，但显式选桌面包；不把 core 当默认发布包。`scripts/clean-lib.mjs` 保留 target 行为，测试根 workspace 不扩散删除范围。被禁用的 release workflow 在启用前同步其路径，不能留错误模板。以并行 CI 基线 PR 合入后的文件为准：ci.yml 的 rust/bindings 缓存 `workspaces: . -> src-tauri/target`，desktop-e2e 为 `. -> src-tauri/target/e2e`；删除这些步骤的 `working-directory: src-tauri`，根执行 `cargo test --locked --workspace` / `cargo clippy --locked --workspace --all-targets -- -D warnings`。audit.yml 使用 `cargo audit --file Cargo.lock`；pnpm cache覆盖根及packages锁输入。手动触发跑完整累计改动，不再依赖已删除的ci-scope/ci-verified-tree脚本。quality-gate测试按CI基线实际保留入口更新，不能重新加入旧helper。
 3. core 用现有 Serde/Specta 加 Schemars；Host 添加 rusqlite（bundled，唯一数据库写线程）、uuid(v4)、hmac 与随机数来源（复用 uuid/getrandom 已锁依赖）、Tokio net/io/process/runtime。MCP 使用 `rmcp = "=3.9.0"` 的 server/transport-io，测试加 client/transport-child-process；不手写 MCP JSON-RPC。TS 加 Ajv 8 作为生成阶段依赖，输出 standalone validator 避免浏览器 eval；Schemars 生成 draft-07，所有格式/范围自定义校验由 core 导出正负向量。新增依赖在任务 PR 记录用途、许可、最低平台与替代评估；精确解析版本提交锁，不在此猜测未检索包 patch。
 4. Host 用 `host-v0/state.sqlite3`（新命名空间）保存身份、epoch、授权、接纳/dispatch/回执、CAS 文档与文件引用。SQLite `journal_mode=DELETE,synchronous=FULL,foreign_keys=ON`，事务串行，检查点不阻采集；控制请求有专用队列。不得把 SQL signed INTEGER 用于 U64：存规范十进制 TEXT，在 Rust 检查加法/排序。配置导出为规范 JSON，导入须明确操作；无旧软件格式迁入。SQLite 原子性依赖实际 fsync/设备，测试注入存储失败，真实断电留 M6，见[原子提交](https://www.sqlite.org/atomiccommit.html)。
@@ -68,39 +80,39 @@ CI 基线已确认保留 `scripts/ci-quality-gate.mjs`、`scripts/ci-quality-gat
 
 ### Task 1：公共 DTO、生成契约与 workspace
 
-**Files:** Create 根 `Cargo.toml`、`.cargo/config.toml`、`crates/core/Cargo.toml`、上述 core DTO 文件、`crates/core/tests/wire_contract.rs`、`scripts/generate-host-contracts.mjs`、`packages/contracts/package.json`/`src/index.ts`；Modify 工程选择 1/2 的文件、`package.json`、`pnpm-workspace.yaml`、`vitest.config.ts`、`tsconfig.json`、`eslint.config.js`、`scripts/eslint-boundaries.test.mjs`、锁文件；新增其余成员 manifest/lib 仅为使 workspace 可解析。
+**Files:** Create 根 `Cargo.toml`、`.cargo/config.toml`、`crates/core/Cargo.toml`、上述 core DTO 文件、`crates/core/tests/wire_contract.rs`、`scripts/generate-host-contracts.mjs`、`packages/contracts/package.json`/`src/index.ts`；Modify 工程选择 1/2 的文件、`package.json`、`pnpm-workspace.yaml`、`vitest.config.ts`、`tsconfig.json`、`eslint.config.js`、`scripts/eslint-boundaries.test.mjs`、锁文件；其他成员随实际实现加入 workspace。
 
 **Interfaces:** Consumes M0 Host/Stream 定义。Produces `pub struct U64(u64)`（私有字段），`impl TryFrom<&str> for U64`、`impl From<u64> for U64`；`pub fn checked_next(&self)->Result<U64,HostError>`；`pub type HostResult<T>=Result<T,HostError>`；`Call,ChildCall,Query,Target,ObjectRef,RevealTarget,Operation,RawEvent,StreamItem,ReaderGap,RawBatch,StreamReadParams,StreamReadResult,StreamSubscribeParams,StreamSubscribeResult,StreamCreditParams,StreamCreditResult,TxReceipt,ConfigReceipt,BreakReceipt,Cursor,Snapshot,Delta,Limits` 精确按合同。`RpcRequest` 为方法名 tagged union；业务 `params` 边界为受限 JsonValue，registry 解为具名 DTO。`ActionSpec::of<I: JsonSchema,O: JsonSchema>(...)` 生成 schema；`pub fn builtin_catalog()->Vec<ActionSpec>`。后续任务添加 DTO 必经本生成链。Operation 的 admission/rootOperationId/childHighWatermark 按修订合同生成，M1 根任务初始化对应字段；ChildCall 的插件执行入口在 M2 实现，M1 不注册尚未实现的子调用能力。
 
-- [ ] **Step 1：写 red 测试。** `wire_contract.rs` 断言 `"9007199254740993"` roundtrip，`"18446744073709551615".checked_next()` 为 COUNTER_EXHAUSTED，`01/+1/1e3/JSON number` 拒绝；Call 缺 requestContext/epoch/revealTarget 拒绝；Operation 拒绝 state=`partial`。脚本测试断言根 lock/package 身份和 target 缓存位置。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-core --test wire_contract`；新 crate/未实现 API 失败后才实现。初次加依赖由协调者先生成审阅锁，再恢复 `--locked`；不把缺锁红灯当行为红灯。
-- [ ] **Step 3：实现 DTO 与导出。** `export-contracts` 只写参数指定目录；生成 `types.ts,schemas.json,catalog.json,fixtures.json`；脚本用 Ajv standalone 生成 validators。`parseReply(value: unknown): RpcReply` 在 contracts index 使用生成验证器，错误为 ContractValidationError；禁止第二份手写 DTO。新 package workspace 包 `@serial-workbench/contracts`/`@serial-workbench/host-client`。新增 `pnpm contracts:generate`/`:check`；保留原 `bindings:*` 用于 Tauri 本地命令。Vitest include/coverage加入 `packages/*/src/**/*.{test,spec}.{ts,tsx}` / `packages/*/src/**/*.{ts,tsx}`，TS include加入packages源码，ESLint对手写packages启用同样unknown/no-any/边界规则而排除generated；防止定向测试实际零匹配。根workspace.package.version与所有成员version.workspace对齐；init/version脚本改为从根读写共享版本，桌面name/default-run仍从src-tauri维护，锁文件逐个核对全部自有包版本，不再假设只有一个本地包。
-- [ ] **Step 4：执行 green。** 上述 Rust 测试；`node --test scripts/version.test.mjs scripts/init-project.test.mjs scripts/build.test.mjs`；`pnpm contracts:generate` 后 `pnpm contracts:check`；`pnpm version:check`/`pnpm config:check`。TS 运行同 fixture，U64/bytes/nullable 一致；检查 core 的依赖树无 tauri/node。
-- [ ] **Step 5：纳入M1a交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1a出口统一提交，不创建单独的中间提交。
+- [x] **Step 1：写 red 测试。** `wire_contract.rs` 断言 `"9007199254740993"` roundtrip，`"18446744073709551615".checked_next()` 为 COUNTER_EXHAUSTED，`01/+1/1e3/JSON number` 拒绝；Call 缺 requestContext/epoch/revealTarget 拒绝；Operation 拒绝 state=`partial`。脚本测试断言根 lock/package 身份和 target 缓存位置。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-core --test wire_contract`；新 crate/未实现 API 失败后才实现。初次加依赖由协调者先生成审阅锁，再恢复 `--locked`；不把缺锁红灯当行为红灯。
+- [x] **Step 3：实现 DTO 与导出。** `export-contracts` 只写参数指定目录；生成 `types.ts,schemas.json,catalog.json,fixtures.json`；脚本用 Ajv standalone 生成 validators。`parseReply(value: unknown): RpcReply` 在 contracts index 使用生成验证器，错误为 ContractValidationError；禁止第二份手写 DTO。新 package workspace 包 `@serial-workbench/contracts`/`@serial-workbench/host-client`。新增 `pnpm contracts:generate`/`:check`；保留原 `bindings:*` 用于 Tauri 本地命令。Vitest include/coverage加入 `packages/*/src/**/*.{test,spec}.{ts,tsx}` / `packages/*/src/**/*.{ts,tsx}`，TS include加入packages源码，ESLint对手写packages启用同样unknown/no-any/边界规则而排除generated；防止定向测试实际零匹配。根workspace.package.version与所有成员version.workspace对齐；init/version脚本改为从根读写共享版本，桌面name/default-run仍从src-tauri维护，锁文件逐个核对全部自有包版本，不再假设只有一个本地包。
+- [x] **Step 4：执行 green。** 上述 Rust 测试；`node --test scripts/version.test.mjs scripts/init-project.test.mjs scripts/build.test.mjs`；`pnpm contracts:generate` 后 `pnpm contracts:check`；`pnpm version:check`/`pnpm config:check`。TS 运行同 fixture，U64/bytes/nullable 一致；检查 core 的依赖树无 tauri/node。
+- [x] **Step 5：纳入 M1a 基础里程碑。** 本任务与 Task1—4 的实现、测试、审阅修正和配套文档集中交付。
 
 ### Task 2：持久身份、操作去重与恢复
 
-**Files:** Create `crates/host/src/storage/{mod,db,operations,documents}.rs`、`crates/host/src/auth/{context,identity}.rs`、`crates/host/tests/operation_recovery.rs`、`crates/core/src/clock.rs`。
+**Files:** Create `crates/host/src/storage/{mod,db,operations,documents}.rs`、`crates/host/src/auth/{context,identity}.rs`、`crates/host/src/storage/operation_recovery_tests.rs`、`crates/core/src/clock.rs`。
 
-**Interfaces:** Consumes Task1 DTO。Produces `Store::open(path:&Path)->HostResult<Store>`；`Store::begin_instance()->HostResult<HostIdentity>`；`Store::accept(actor:&AuthenticatedActor,call:&Call,digest:&Digest)->HostResult<Acceptance>`，`Acceptance=New(Operation)|Existing(Operation)`；`Store::mark_dispatch(id:&Id)->HostResult<()>`；`Store::settle(id:&Id,outcome:Settlement)->HostResult<Operation>`；`Store::recover()->HostResult<Vec<Operation>>`。`Clock: Send+Sync { fn mono_ns(&self)->u64; fn wall_time(&self)->Timestamp; }`，`ContextSigner::issue/validate` 接收 `&AuthenticatedActor,&HostIdentity,&dyn Clock`，返回 `RequestContext`/`HostResult<ValidatedContext>`。新类型由所属模块定义再导出。
+**Interfaces:** Consumes Task1 DTO。Produces `Store::open(path:&Path)->HostResult<Store>`；`Store::begin_instance()->HostResult<HostIdentity>`；`Store::accept(actor:&AuthenticatedActor,call:&Call,digest:&Digest)->HostResult<Acceptance>`，`Acceptance=New(Operation)|Existing(Operation)`；`Store::mark_dispatch(id:&Id)->HostResult<()>`；`Store::settle(id:&Id,outcome:Settlement)->HostResult<Operation>`；`Store::record_result_evidence(id:&Id,value:&OperationValue)->HostResult<Operation>` 保存运行中已确认结果并推进 revision，恢复时保留证据；`Store::recover()->HostResult<Vec<Operation>>`。`Clock: Send+Sync { fn mono_ns(&self)->u64; fn wall_time(&self)->Timestamp; }`，`ContextSigner::issue/validate` 接收 `&AuthenticatedActor,&HostIdentity,&dyn Clock`，返回 `RequestContext`/`HostResult<ValidatedContext>`。新类型由所属模块定义再导出。
 
-- [ ] **Step 1：写 red。** H02/H03/H04/H11：并发同参只一接纳；异参 REQUEST_CONFLICT；墙钟倒拨48h不延长24h窗口；重启 epoch+1，原 invoke 拒绝但 get 可查；dispatch 前后 kill 分别 interrupted/unknown。`assert_eq!(backend.write_count(),1)` 独立于 Operation 状态；存储拒写时计数0。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test operation_recovery`。
-- [ ] **Step 3：实现。** 接纳/唯一键事务先于副作用；canonical digest 按合同包含执行模式/revision/lease，排除 revealTarget。保留期7天、在途不淘汰、到期 context 不复活。签发 HMAC-SHA256 随机keyId上下文，固定长度解析与恒时验证；未知 keyId RESULT_EXPIRED。恢复只结算，不自动重开/重发。SQLite 通过有界 writer 线程，发送线程不等待数据库锁而阻 RX。
-- [ ] **Step 4：执行 green。** 同命令，增加完整 U64 TEXT 保存/读回和未来 DB user_version 拒写/原件 hash 不变。进程级 crash fixture 使用专属 temp profile，故障点仅测试构建启用。
-- [ ] **Step 5：纳入M1a交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1a出口统一提交，不创建单独的中间提交。
+- [x] **Step 1：写 red。** H02/H03/H04/H11：并发同参只一接纳；异参 REQUEST_CONFLICT；墙钟倒拨48h不延长24h窗口；重启 epoch+1，原 invoke 拒绝但 get 可查；dispatch 前后 kill 分别 interrupted/unknown。`assert_eq!(backend.write_count(),1)` 独立于 Operation 状态；存储拒写时计数0。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --lib storage::operation_recovery_tests`。
+- [x] **Step 3：实现。** 接纳/唯一键事务先于副作用；canonical digest 按合同包含执行模式/revision/lease，排除 revealTarget。保留期7天、在途不淘汰、到期 context 不复活。签发 HMAC-SHA256 随机keyId上下文，固定长度解析与恒时验证；未知 keyId RESULT_EXPIRED。恢复只结算，不自动重开/重发。SQLite 通过有界 writer 线程，发送线程不等待数据库锁而阻 RX。
+- [x] **Step 4：执行 green。** 同命令，增加完整 U64 TEXT 保存/读回和未来 DB user_version 拒写/原件 hash 不变。进程级 crash fixture 使用专属 temp profile，故障点仅测试构建启用。
+- [x] **Step 5：纳入 M1a 基础里程碑。** 本任务与 Task1—4 的实现、测试、审阅修正和配套文档集中交付。
 
 ### Task 3：当前用户 IPC、单实例与授权
 
-**Files:** Create `crates/host/src/ipc/{mod,frame,windows,unix,server}.rs`、`crates/host/src/auth/{mod,grants}.rs`、`crates/client/src/{lib,connection,discovery}.rs`、`crates/host/tests/{instance_lock,ipc_security}.rs`；Modify `crates/host/src/main.rs`。
+**Files:** Create `crates/ipc/src/{lib,frame,identity,windows,unix}.rs`、`crates/core/src/{ipc,auth}.rs`、`crates/core/tests/ipc_contract.rs`、`crates/host/src/ipc/{mod,instance,server}.rs`、`crates/host/src/auth/{mod,grants}.rs`、`crates/client/src/{lib,connection,discovery}.rs`、`crates/host/tests/{instance_lock,ipc_security}.rs`；Modify `crates/host/src/main.rs`。
 
 **Interfaces:** Consumes Store/HostIdentity/ContextSigner。Produces `InstanceGuard::acquire(profile:&Path)->HostResult<InstanceGuard>`；`HostClient::connect(options:ConnectOptions)->HostResult<HostClient>`（async），`HostClient::request(&self,request:RpcRequest)->HostResult<RpcReply>`（async）；`AuthenticatedActor { actor_id:Id,client_id:Id,grant_revision:U64 }` 仅由 auth 构造。`AuthorizeParams { client_id,permissions,targets,expires_at? }`、`RevokeParams { actor_id,permissions,targets }` 生成目录；`AuthService::require(&AuthenticatedActor,permission:&str,target:&Target)->HostResult<()>`。
 
-- [ ] **Step 1：写 red。** 同 profile 启动20进程仅1持锁；活锁忙返回 HOST_BUSY；stale PID 不抢锁；发现伪造 hostId 拒绝。错误SID/UID、超长帧、半帧断开、伪 actor、旧 token 均零副作用。新 MCP actor只能 metadata；获得 content 后撤销，旧引用拒绝。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test instance_lock --test ipc_security`。
-- [ ] **Step 3：实现。** Host 二进制支持 `--profile <dir>` 与受限内部启动管道；生产默认从平台应用数据目录生成独立 host-v0 profile。CLI `authorize` 是用户明确控制入口，不因 clientKind 或声明 desktop 提权；桌面授权提示显示 actor/范围，可信启动凭据经继承句柄交接，不允许外部 MCP伪造。去重按执行 hostId，设备 ID 不接受裸路径或其他 Host ID。连接中断只释放 reader/客户端控制，不退出 Host。
-- [ ] **Step 4：执行 green。** 同命令；Windows 检查真实 pipe DACL，Unix 检查 socket/目录mode与peer credential。未运行平台标待验，不用条件跳过冒充通过；父测试停止其持有 PID，禁止杀同名全局进程。
-- [ ] **Step 5：纳入M1a交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1a出口统一提交，不创建单独的中间提交。
+- [x] **Step 1：写 red。** 同 profile 启动20进程仅1持锁；活锁忙返回 HOST_BUSY；stale PID 不抢锁；发现伪造 hostId 拒绝。错误SID/UID、超长帧、半帧断开、伪 actor、旧 token 均零副作用。新 MCP actor只能 metadata；获得 content 后撤销，旧引用拒绝。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test instance_lock --test ipc_security`。
+- [x] **Step 3：实现。** 共享帧、平台连接/peer 与受保护秘密存储归独立 `crates/ipc`，Host/Client 均依赖它；core 只提供生成 DTO。普通 Authenticate 与 AuthenticateUserControl 使用独立凭据，选消息类型或 clientKind 不授予权限；用户控制 cap 只由明确的本地用户入口取得，启动时通过专用继承 stdout pipe 交接（u32 BE 长度 + 1—2048 字节），常规启动不输出 cap。有限期 grant 在签发实例用单调期限，重启后保守失效；永久 grant 按持久授权复用。 Host 二进制支持 `--profile <dir>` 与受限内部启动管道；生产默认从平台应用数据目录生成独立 host-v0 profile。CLI `authorize` 是用户明确控制入口，不因 clientKind 或声明 desktop 提权；桌面授权提示显示 actor/范围，可信启动凭据经继承句柄交接，不允许外部 MCP伪造。去重按执行 hostId，设备 ID 不接受裸路径或其他 Host ID。连接中断只释放 reader/客户端控制，不退出 Host。
+- [x] **Step 4：执行 green。** 同命令；Windows 检查真实 pipe DACL，Unix 检查 socket/目录mode与peer credential。未运行平台标待验，不用条件跳过冒充通过；父测试停止其持有 PID，禁止杀同名全局进程。
+- [x] **Step 5：纳入 M1a 基础里程碑。** 本任务与 Task1—4 的实现、测试、审阅修正和配套文档集中交付。
 
 ### Task 4：统一目录、dispatcher、快照与活动
 
@@ -108,11 +120,11 @@ CI 基线已确认保留 `scripts/ci-quality-gate.mjs`、`scripts/ci-quality-gat
 
 **Interfaces:** Consumes Task1—3。Produces `Host::query(actor:&AuthenticatedActor,query:Query)->HostResult<QueryResult>`、`Host::invoke(actor:&AuthenticatedActor,call:Call)->HostResult<Operation>`（均 async）；`Registry::list(actor:&AuthenticatedActor,params:CatalogListParams)->HostResult<CatalogPage>`；`ProjectionStore::snapshot(scope:&Id)->HostResult<Snapshot>`、`subscribe(scope:&Id,after:&Cursor)->HostResult<Subscription>`。`QueryResult`/`ActionResult` 是生成 tagged union；没有 `unknown` 成功载荷。每个 handler 的 actionId、schema、授权、state scope、取消和 reveal 映射注册一次。
 
-- [ ] **Step 1：写 red。** H05/H06/H08：快照10后提交11/12再订阅均收到；旧cursor返回 CURSOR_EXPIRED；撤权清空未投递正文；换权限后旧pageToken CATALOG_CHANGED。错误 target.id/sessionId 拒绝。所有目录项都有合法 pageId，查询也产生活动但轮询复用原记录。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test catalog --test projections`。
-- [ ] **Step 3：实现。** dispatcher 顺序为认证/权限/epoch/规范化参数/容量/去重/持久接纳/调度，真正副作用前复查授权/epoch/lease。内部 QueryContext 绑定活动ID；状态 scope 独立 revision和ring历史。`host.activity`、`host.operations`、`host.devices`、`workspace:<id>`、`session:<id>` 为固定scope规则。状态队列耗尽结束订阅并要求新快照，不丢增量继续假装连续。
-- [ ] **Step 4：执行 green。** 同命令与 `pnpm contracts:generate`/`:check` 顺序运行。验证未授权动作不被发现、直接invoke仍拒绝；已授权错误详情不包含路径/secret。
-- [ ] **Step 5：纳入M1a交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1a出口统一提交，不创建单独的中间提交。
+- [x] **Step 1：写 red。** H05/H06/H08：快照10后提交11/12再订阅均收到；旧cursor返回 CURSOR_EXPIRED；撤权清空未投递正文；换权限后旧pageToken CATALOG_CHANGED。错误 target.id/sessionId 拒绝。所有目录项都有合法 pageId，查询也产生活动但轮询复用原记录。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test catalog --test projections`。
+- [x] **Step 3：实现。** dispatcher 顺序为认证/权限/epoch/规范化参数/容量/去重/持久接纳/调度，真正副作用前复查授权/epoch/lease。内部 QueryContext 绑定活动ID；状态 scope 独立 revision和ring历史。`host.activity`、`host.operations`、`host.devices`、`workspace:<id>`、`session:<id>` 为固定scope规则。状态队列耗尽结束订阅并要求新快照，不丢增量继续假装连续。
+- [x] **Step 4：执行 green。** 同命令与 `pnpm contracts:generate`/`:check` 顺序运行。验证未授权动作不被发现、直接invoke仍拒绝；已授权错误详情不包含路径/secret。
+- [x] **Step 5：纳入 M1a 基础里程碑。** 本任务与 Task1—4 的实现、测试、审阅修正和配套文档集中交付。
 
 ### Task 5：Virtual 会话、发送仲裁与控制状态机
 
@@ -148,7 +160,7 @@ CI 基线已确认保留 `scripts/ci-quality-gate.mjs`、`scripts/ci-quality-gat
 - [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-mcp --test stdio_roundtrip`，再 `cargo test --locked -p serial-workbench-host --test client_parity`。
 - [ ] **Step 3：实现。** 每个actionId对应独立工具，工具名为 `swb_`+actionId逐字节转义（仅ASCII字母/数字保留，其余包括下划线为 `_xHH_`）；目录验证长度/唯一。工具输入是该动作参数加target/expectedRevision/lease/executionMode；actor/context/epoch由已认证client填充，保留调用者requestId映射。长任务即时返回Operation，取消必须显式operation.cancel，MCP取消通知只取消适配器等待。订阅内容不塞进无限工具返回。使用[官方 Rust SDK](https://docs.rs/rmcp/3.9.0/rmcp/)；动态列表实现SDK trait，不保留旧六工具协议。
 - [ ] **Step 4：执行 green。** 上述命令；对每个M1目录项做schema可发现/adapter可调用表驱动测试，业务结果由领域测试负责。Host重启后适配器重attach并查旧O，不换ID自动重试；无GUI时client目标动作返回CLIENT_REQUIRED。实际Codex客户端交互验收单列，不把SDK对端冒充真实产品客户端。
-- [ ] **Step 5：M1a 里程碑提交与集成。** Task1—7 实现、测试、审阅修正和文档全部通过后，统一提交 `feat(host): 完成M1a共享Host与CLI和MCP闭环`，PR 自审后 squash 合入 main 并删除分支；账本只标对应软件切片，继续 M1b。
+- [ ] **Step 5：M1a 功能闭环提交与集成。** 已交付的基础里程碑之上，Task5—7 实现、测试、审阅修正和文档全部通过后，统一提交 `feat(host): 完成M1a共享Host与CLI和MCP闭环`，PR 自审后 squash 合入 main 并删除分支；账本只标对应软件切片，继续 M1b。
 
 ## M1b：真实串口、录制与桌面工作区
 

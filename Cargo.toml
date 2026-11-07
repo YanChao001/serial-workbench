@@ -1,0 +1,26 @@
+[workspace]
+members = ["src-tauri", "crates/core", "crates/ipc", "crates/host", "crates/client"]
+default-members = ["crates/core", "crates/ipc", "crates/host", "crates/client"]
+resolver = "3"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2024"
+license = "Apache-2.0"
+
+# 图片解码沿用现有优化，继续复用 src-tauri/target 缓存。
+[profile.dev.package.image]
+opt-level = 3
+
+[profile.dev.package.image-webp]
+opt-level = 3
+
+[profile.dev.package.zune-jpeg]
+opt-level = 3
+
+[profile.release]
+codegen-units = 1
+lto = true
+opt-level = "s"
+panic = "abort"
+strip = true

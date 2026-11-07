@@ -1,0 +1,1564 @@
+{
+  "actions": [
+    {
+      "actionId": "catalog.list",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "catalogVersion": {
+            "$ref": "#/definitions/U64"
+          },
+          "pageSize": {
+            "$ref": "#/definitions/U64"
+          },
+          "pageToken": {
+            "type": "string"
+          }
+        },
+        "required": ["pageSize"],
+        "title": "CatalogListParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ActionKind": {
+            "enum": ["query", "action"],
+            "type": "string"
+          },
+          "ActionSpec": {
+            "additionalProperties": false,
+            "properties": {
+              "actionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "cancellation": {
+                "$ref": "#/definitions/Cancellation"
+              },
+              "eventTypes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "executionLocation": {
+                "$ref": "#/definitions/ExecutionLocation"
+              },
+              "inputSchema": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/SchemaValue"
+                },
+                "type": "object"
+              },
+              "kind": {
+                "$ref": "#/definitions/ActionKind"
+              },
+              "outputSchema": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/SchemaValue"
+                },
+                "type": "object"
+              },
+              "permissions": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              },
+              "stateScopes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              },
+              "targetKinds": {
+                "items": {
+                  "$ref": "#/definitions/ResourceKind"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "actionId",
+              "kind",
+              "inputSchema",
+              "outputSchema",
+              "targetKinds",
+              "executionLocation",
+              "permissions",
+              "stateScopes",
+              "eventTypes",
+              "cancellation",
+              "revealTarget"
+            ],
+            "type": "object"
+          },
+          "Cancellation": {
+            "enum": ["none", "cooperative"],
+            "type": "string"
+          },
+          "ExecutionLocation": {
+            "enum": ["resource_host", "client"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "RevealTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "pageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "panelId": {
+                "$ref": "#/definitions/Id"
+              },
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "workspaceId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["pageId"],
+            "type": "object"
+          },
+          "SchemaValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/SchemaValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/SchemaValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "catalogVersion": {
+            "$ref": "#/definitions/U64"
+          },
+          "items": {
+            "items": {
+              "$ref": "#/definitions/ActionSpec"
+            },
+            "type": "array"
+          },
+          "nextPageToken": {
+            "type": "string"
+          }
+        },
+        "required": ["catalogVersion", "items"],
+        "title": "CatalogListResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "operation.get",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "anyOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "requestContext": {
+                "$ref": "#/definitions/ContextToken"
+              }
+            },
+            "required": ["operationId"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "actorId": {
+                "$ref": "#/definitions/Id"
+              },
+              "requestContext": {
+                "$ref": "#/definitions/ContextToken"
+              },
+              "requestId": {
+                "$ref": "#/definitions/RequestId"
+              }
+            },
+            "required": ["actorId", "requestId", "requestContext"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "childKey": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "parentOperationId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["parentOperationId", "childKey"],
+            "type": "object"
+          }
+        ],
+        "definitions": {
+          "ContextToken": {
+            "pattern": "^[A-Za-z0-9_-]{1,2048}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "RequestId": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          }
+        },
+        "title": "OperationGetParams"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ActionResult": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "tx",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/TxReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "configuration",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/ConfigReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "break",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/BreakReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "reference",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/ResultReference"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "authorization_changed",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/AuthorizationResult"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "cancellation_requested",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/CancellationResult"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              }
+            ]
+          },
+          "Admission": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "request",
+                    "type": "string"
+                  },
+                  "requestContextDigest": {
+                    "$ref": "#/definitions/Digest"
+                  }
+                },
+                "required": ["kind", "requestContextDigest"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "childKey": {
+                    "$ref": "#/definitions/PositiveU64"
+                  },
+                  "kind": {
+                    "const": "child",
+                    "type": "string"
+                  },
+                  "parentOperationId": {
+                    "$ref": "#/definitions/Id"
+                  },
+                  "taskContextDigest": {
+                    "$ref": "#/definitions/Digest"
+                  }
+                },
+                "required": [
+                  "kind",
+                  "taskContextDigest",
+                  "parentOperationId",
+                  "childKey"
+                ],
+                "type": "object"
+              }
+            ]
+          },
+          "AuthorizationResult": {
+            "additionalProperties": false,
+            "properties": {
+              "grantRevision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["grantRevision"],
+            "type": "object"
+          },
+          "BreakReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "assert": {
+                "$ref": "#/definitions/ControlTransition"
+              },
+              "clear": {
+                "$ref": "#/definitions/ControlTransition"
+              }
+            },
+            "required": ["assert", "clear"],
+            "type": "object"
+          },
+          "ByteRange": {
+            "additionalProperties": false,
+            "properties": {
+              "end": {
+                "$ref": "#/definitions/U64"
+              },
+              "start": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["start", "end"],
+            "type": "object"
+          },
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "CancellationResult": {
+            "additionalProperties": false,
+            "properties": {
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "state": {
+                "$ref": "#/definitions/OperationState"
+              }
+            },
+            "required": ["operationId", "state"],
+            "type": "object"
+          },
+          "ConfigField": {
+            "additionalProperties": false,
+            "properties": {
+              "actual": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "field": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/definitions/FieldStatus"
+              }
+            },
+            "required": ["field", "status"],
+            "type": "object"
+          },
+          "ConfigReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "boundaryEventSeq": {
+                "$ref": "#/definitions/U64"
+              },
+              "fields": {
+                "items": {
+                  "$ref": "#/definitions/ConfigField"
+                },
+                "type": "array"
+              },
+              "readback": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "requested": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              },
+              "txGate": {
+                "$ref": "#/definitions/TxGate"
+              }
+            },
+            "required": [
+              "requested",
+              "fields",
+              "readback",
+              "revision",
+              "boundaryEventSeq",
+              "txGate"
+            ],
+            "type": "object"
+          },
+          "ControlStatus": {
+            "enum": ["confirmed", "failed", "unknown"],
+            "type": "string"
+          },
+          "ControlTransition": {
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "error": {
+                "$ref": "#/definitions/HostError"
+              },
+              "status": {
+                "$ref": "#/definitions/ControlStatus"
+              }
+            },
+            "required": ["status", "at"],
+            "type": "object"
+          },
+          "Dependency": {
+            "additionalProperties": false,
+            "properties": {
+              "digest": {
+                "$ref": "#/definitions/Digest"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "version", "digest"],
+            "type": "object"
+          },
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "False": {
+            "const": false,
+            "type": "boolean"
+          },
+          "FieldStatus": {
+            "enum": ["applied", "rejected", "unknown"],
+            "type": "string"
+          },
+          "HostError": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              }
+            },
+            "required": ["code", "message", "retryable"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "Operation": {
+            "additionalProperties": false,
+            "properties": {
+              "acceptedAt": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "actionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "actorId": {
+                "$ref": "#/definitions/Id"
+              },
+              "admission": {
+                "$ref": "#/definitions/Admission"
+              },
+              "childHighWatermark": {
+                "$ref": "#/definitions/U64"
+              },
+              "dependencies": {
+                "items": {
+                  "$ref": "#/definitions/Dependency"
+                },
+                "type": "array"
+              },
+              "error": {
+                "$ref": "#/definitions/HostError"
+              },
+              "executionHostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "executionMode": {
+                "$ref": "#/definitions/ExecutionMode"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "owner": {
+                "$ref": "#/definitions/Owner"
+              },
+              "progress": {
+                "$ref": "#/definitions/Progress"
+              },
+              "requestId": {
+                "$ref": "#/definitions/RequestId"
+              },
+              "result": {
+                "$ref": "#/definitions/ActionResult"
+              },
+              "resultExpiresAt": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              },
+              "rootOperationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "settledAt": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "startedAt": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "state": {
+                "$ref": "#/definitions/OperationState"
+              },
+              "target": {
+                "$ref": "#/definitions/Target"
+              }
+            },
+            "required": [
+              "operationId",
+              "executionHostId",
+              "actorId",
+              "requestId",
+              "admission",
+              "rootOperationId",
+              "childHighWatermark",
+              "actionId",
+              "target",
+              "executionMode",
+              "state",
+              "revision",
+              "revealTarget",
+              "acceptedAt",
+              "owner"
+            ],
+            "type": "object"
+          },
+          "OperationState": {
+            "enum": [
+              "queued",
+              "running",
+              "cancel_requested",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown"
+            ],
+            "type": "string"
+          },
+          "Owner": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/OwnerKind"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["kind", "id"],
+            "type": "object"
+          },
+          "OwnerKind": {
+            "enum": ["host", "plugin"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "Progress": {
+            "additionalProperties": false,
+            "properties": {
+              "completed": {
+                "$ref": "#/definitions/U64"
+              },
+              "total": {
+                "$ref": "#/definitions/U64"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": ["completed", "unit"],
+            "type": "object"
+          },
+          "RequestId": {
+            "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+            "type": "string"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "ResultReference": {
+            "additionalProperties": false,
+            "properties": {
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              }
+            },
+            "required": ["resultRef"],
+            "type": "object"
+          },
+          "RevealTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "pageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "panelId": {
+                "$ref": "#/definitions/Id"
+              },
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "workspaceId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["pageId"],
+            "type": "object"
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "type": "integer"
+          },
+          "Target": {
+            "additionalProperties": false,
+            "dependencies": {
+              "sessionEpoch": ["sessionId"],
+              "sessionId": ["sessionEpoch"]
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "session"
+                }
+              },
+              "required": ["kind"]
+            },
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "sessionEpoch": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "default": null
+              },
+              "sessionId": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/Id"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "then": {
+              "required": ["sessionId", "sessionEpoch"]
+            },
+            "type": "object"
+          },
+          "Timestamp": {
+            "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+            "type": "string"
+          },
+          "TxGate": {
+            "enum": [
+              "ready",
+              "configuration_pending",
+              "control_unknown",
+              "closing",
+              "disconnected"
+            ],
+            "type": "string"
+          },
+          "TxOutcome": {
+            "enum": ["accepted", "partial", "rejected", "unknown"],
+            "type": "string"
+          },
+          "TxReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "acceptedRanges": {
+                "items": {
+                  "$ref": "#/definitions/ByteRange"
+                },
+                "type": "array"
+              },
+              "backendError": {
+                "$ref": "#/definitions/HostError"
+              },
+              "byteEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "byteStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "bytesBase64": {
+                "$ref": "#/definitions/Bytes"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "outcome": {
+                "$ref": "#/definitions/TxOutcome"
+              },
+              "peerAcknowledged": {
+                "$ref": "#/definitions/False"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "unknownRanges": {
+                "items": {
+                  "$ref": "#/definitions/ByteRange"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "operationId",
+              "sessionId",
+              "sessionEpoch",
+              "outcome",
+              "bytesBase64",
+              "byteStart",
+              "byteEnd",
+              "acceptedRanges",
+              "unknownRanges",
+              "peerAcknowledged"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "operation": {
+            "$ref": "#/definitions/Operation"
+          }
+        },
+        "required": ["operation"],
+        "title": "OperationResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host", "operation"]
+    },
+    {
+      "actionId": "operation.cancel",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "CancelReason": {
+            "enum": ["user", "revoked", "takeover", "shutdown"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "reason": {
+            "$ref": "#/definitions/CancelReason"
+          }
+        },
+        "required": ["reason"],
+        "title": "OperationCancelParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "OperationState": {
+            "enum": [
+              "queued",
+              "running",
+              "cancel_requested",
+              "succeeded",
+              "failed",
+              "cancelled",
+              "interrupted",
+              "unknown"
+            ],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "operationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/OperationState"
+          }
+        },
+        "required": ["operationId", "state"],
+        "title": "CancellationResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["operation"]
+    },
+    {
+      "actionId": "state.snapshot",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "scopeId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["scopeId"],
+        "title": "StateSnapshotParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Cursor": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "position": {
+                "$ref": "#/definitions/U64"
+              },
+              "scopeId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["hostId", "instanceEpoch", "scopeId", "position"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991.0,
+            "minimum": -9007199254740991.0,
+            "type": "integer"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "cursor": {
+            "$ref": "#/definitions/Cursor"
+          },
+          "hostId": {
+            "$ref": "#/definitions/Id"
+          },
+          "instanceEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "state": {
+            "additionalProperties": {
+              "$ref": "#/definitions/JsonValue"
+            },
+            "type": "object"
+          }
+        },
+        "required": ["hostId", "instanceEpoch", "revision", "cursor", "state"],
+        "title": "Snapshot",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host", "workspace", "session"]
+    },
+    {
+      "actionId": "state.subscribe",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Cursor": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "position": {
+                "$ref": "#/definitions/U64"
+              },
+              "scopeId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["hostId", "instanceEpoch", "scopeId", "position"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "after": {
+            "$ref": "#/definitions/Cursor"
+          },
+          "scopeId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["scopeId", "after"],
+        "title": "StateSubscribeParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "subscriptionId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["subscriptionId"],
+        "title": "SubscriptionResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host", "workspace", "session"]
+    },
+    {
+      "actionId": "subscription.close",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "subscriptionId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["subscriptionId"],
+        "title": "SubscriptionCloseParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "True": {
+            "const": true,
+            "type": "boolean"
+          }
+        },
+        "properties": {
+          "closed": {
+            "$ref": "#/definitions/True"
+          }
+        },
+        "required": ["closed"],
+        "title": "ClosedResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "auth.authorize",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "Target": {
+            "additionalProperties": false,
+            "dependencies": {
+              "sessionEpoch": ["sessionId"],
+              "sessionId": ["sessionEpoch"]
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "session"
+                }
+              },
+              "required": ["kind"]
+            },
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "sessionEpoch": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "default": null
+              },
+              "sessionId": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/Id"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "then": {
+              "required": ["sessionId", "sessionEpoch"]
+            },
+            "type": "object"
+          },
+          "Timestamp": {
+            "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "clientId": {
+            "$ref": "#/definitions/Id"
+          },
+          "expiresAt": {
+            "$ref": "#/definitions/Timestamp"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/definitions/Target"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["clientId", "permissions", "targets"],
+        "title": "AuthorizeParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "grantRevision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["grantRevision"],
+        "title": "AuthorizationResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "auth.revoke",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "Target": {
+            "additionalProperties": false,
+            "dependencies": {
+              "sessionEpoch": ["sessionId"],
+              "sessionId": ["sessionEpoch"]
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "session"
+                }
+              },
+              "required": ["kind"]
+            },
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "sessionEpoch": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "default": null
+              },
+              "sessionId": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/Id"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "then": {
+              "required": ["sessionId", "sessionEpoch"]
+            },
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "actorId": {
+            "$ref": "#/definitions/Id"
+          },
+          "permissions": {
+            "items": {
+              "type": "string"
+            },
+            "type": "array"
+          },
+          "targets": {
+            "items": {
+              "$ref": "#/definitions/Target"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["actorId", "permissions", "targets"],
+        "title": "RevokeParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "grantRevision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["grantRevision"],
+        "title": "AuthorizationResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    }
+  ],
+  "protocolVersion": "0.1",
+  "schemaVersion": 1
+}

@@ -54,7 +54,7 @@ Task 2、Task 3/4 和 Task 5 可在 Task 1 的开发基线完成后并行，分�
 - [x] **Step 2：准备本地工具。** 使用 `.nvmrc` 指定 Node 和 `packageManager` 指定 pnpm；优先工作区内的已验证工具缓存，缺少时从上游获取并核 hash，避免改变系统全局安装。运行 `node scripts/doctor.mjs`，必要项应通过；未安装依赖才执行 `pnpm install --frozen-lockfile`。脚本入口使用 `pnpm run doctor` 或直接 Node，避免与 pnpm 自身 `doctor` 命令混淆。
 - [x] **Step 3：保存规划并隔离基线集成。** 来源提交已完整备份；从 main 隔离清理基座，实际交付见 [主库基座 PR #1](https://github.com/YanChao001/serial-workbench/pull/1)。原来源分支迁入后删除，不长期保留。
 - [x] **Step 4：完成干净基座并验证。** 先按[清理切片](./2026-11-07-m0-clean-foundation.md)并行删除旧栈，配置/锁/绑定串行集成。 运行 `pnpm verify`、`pnpm test:ui`；随后串行运行 `cargo test --locked --manifest-path src-tauri/Cargo.toml --lib`、Cargo fmt/clippy、`cargo check --locked --manifest-path src-tauri/Cargo.toml` 和 `pnpm bindings:check`。已有 `dist/` 后执行 Rust，Cargo/绑定串行。Rust 测试筛选核对是否启动真实 GUI；原生窗口留独立环境。失败先定位并修复相关问题，结果及必要未测范围写 PR。
-- [ ] **Step 5：完成基线与 M0 PR。** [市场基座 #1](https://github.com/YanChao001/serial-workbench-plugins/pull/1) 和主库基座 #1 已分别 squash 合入，gitlink 使用市场实际主线 SHA。规划迁入 `docs/m0`，同本阶段账本与合同集中审阅后经一个 M0 PR squash 合入。来源已迁入并校验后备份删除，不保留零散规划提交。
+- [x] **Step 5：完成基线与 M0 PR。** [市场基座 #1](https://github.com/YanChao001/serial-workbench-plugins/pull/1) 和主库基座 #1 已分别 squash 合入，gitlink 使用市场实际主线 SHA。规划、账本与合同经 [M0 PR #32](https://github.com/YanChao001/serial-workbench/pull/32) 集中审阅后 squash 合入；来源和已完成的本地/远端分支、工作树已备份校验并删除。
 
 完成条件：市场、公共壳与规划切片各有 PR，`main` 无新 merge commit；开始后续任务时工作区与实际基线清楚。现有分支不因改名、强推或 reset 丢失来源。
 
@@ -131,8 +131,8 @@ Task 2、Task 3/4 和 Task 5 可在 Task 1 的开发基线完成后并行，分�
 - [x] **Step 1：交叉审查。** 逐节对照设计和矩阵：每一合同有实际负责人；插件/浏览器/LAN 复用同一操作和数据授权；错误、epoch、revision、cursor、request/operation 不互相替代；M3 冻结检查各有后续验证任务。补齐遗漏后由协调者更新索引。
 - [x] **Step 2：写 M1 实施计划。** 逐项指定 `crates/core/`、`crates/host/`、桌面适配器、工作区、CLI/MCP 与新类型生成的准确文件和签名。旧库 `device/transport/domain/capture` 只按许可选择性复用合理职责与算法，按新合同实现和测试；`serial_desktop` 的旧视图/API/格式兼容不迁入。每项列失败测试、红灯命令、最小实现、绿灯命令、提交点及依赖；独立后端、录制和客户端任务再安排并行。
 - [x] **Step 3：运行本阶段检查。** `node --test scripts/check-feature-status.test.mjs`、`pnpm planning:check`、修改文件的 Prettier 检查、本地文件/标题链接检查及事实核对。脚本注册变化补 `pnpm test:scripts`。不因纯文档变动重跑未受影响的整套 Rust/GUI 检查。
-- [ ] **Step 4：提交并合并。** 按实际差异提交 `docs(planning): 完成M0集成并细化M1纵向闭环`，PR 说明合同影响、runtime/许可、执行的检查及待验平台；自审后 squash merge，并核对主线无新 merge commit。
-- [ ] **Step 5：进入 M1。** M0 出口通过后，将下一项指向 M1 计划；未具备外部平台/硬件条件只阻塞相应验收，继续不依赖它的实现。新的产品范围歧义向用户澄清，普通实现选择由计划和验证解决。
+- [x] **Step 4：提交并合并。** [M0 PR #32](https://github.com/YanChao001/serial-workbench/pull/32) 以 `docs(planning): 完成M0集成并细化M1纵向闭环` squash 合入，主线提交 `c983b0b12ef8aecefe33e023b6abacbf18d1faa2`；已核对全部可达分支无 merge commit。
+- [x] **Step 5：进入 M1。** 用户已批准按 [M1a/M1b 计划](./2026-11-07-m1-host-and-workspace.md) 实施，`feature/host` 从更新后的 main 开始。外部平台、硬件与长稳结果仍分别验收；M0 不代表产品或最终验收通过。
 
 ## 计划自审
 

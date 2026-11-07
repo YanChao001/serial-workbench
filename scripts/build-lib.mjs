@@ -26,6 +26,7 @@ import {
 } from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
+import { parse as parseToml } from "smol-toml";
 import { checkVersions } from "./version.mjs";
 
 const require = createRequire(import.meta.url);
@@ -143,8 +144,8 @@ export function parseBuildArgs(args) {
 }
 
 /** 保持 Tauri 的 release 输出布局，通过 Cargo 覆盖选择编译速度策略。 */
-export function cargoBuildArgs(options) {
-  const args = ["--message-format=json"];
+export function cargoBuildArgs(options, packageName = "serial-workbench") {
+  const args = ["--package", packageName, "--message-format=json"];
   if (options.optimize === "speed") {
     for (const setting of [
       "codegen-units=256",
@@ -157,6 +158,15 @@ export function cargoBuildArgs(options) {
     }
   }
   return args;
+}
+
+/** 根 workspace 的默认成员是无头程序；原生辅助程序始终指向桌面包。 */
+export function desktopCargoArgs(root) {
+  const manifest = join(root, "src-tauri/Cargo.toml");
+  const name = parseToml(readFileSync(manifest, "utf8")).package?.name;
+  if (typeof name !== "string" || !name)
+    throw new Error("Desktop Cargo package name was not found");
+  return ["--manifest-path", manifest, "--package", name];
 }
 
 function object(value) {
@@ -252,7 +262,7 @@ export function prepareBuild(
       "cargo",
       ["metadata", "--no-deps", "--locked", "--format-version", "1"],
       {
-        cwd: tauriDir,
+        cwd: root,
         env,
         encoding: "utf8",
       },
@@ -290,7 +300,7 @@ export function prepareBuild(
       ...options.common,
       "--no-bundle",
       "--",
-      ...cargoBuildArgs(options),
+      ...cargoBuildArgs(options, pkg.name),
     ],
     bundleArgs: options.common,
   };

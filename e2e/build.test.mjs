@@ -12,6 +12,27 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { effectiveConfig, parseBuildArgs } from "../scripts/build-lib.mjs";
 import { e2eExecutable, root as projectRoot } from "./build.mjs";
+import * as e2eBuild from "./build.mjs";
+
+test("E2E build selects the desktop package alongside its isolated configuration", () => {
+  assert.deepEqual(
+    e2eBuild.e2eBuildArgs("x86_64-pc-windows-msvc", "desktop-app"),
+    [
+      "build",
+      "--debug",
+      "--no-bundle",
+      "--target",
+      "x86_64-pc-windows-msvc",
+      "--features",
+      "e2e",
+      "--config",
+      "src-tauri/tauri.e2e.conf.json",
+      "--",
+      "--package",
+      "desktop-app",
+    ],
+  );
+});
 
 test("all desktop E2E profiles resolve named capabilities and retain the driver", () => {
   const version = JSON.parse(

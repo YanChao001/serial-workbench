@@ -27,6 +27,14 @@ pnpm app:dev
 
 日常流程见 [贡献指南](../CONTRIBUTING.md)，模块职责见 [架构](./architecture.md)。跨模块、数据兼容、权限、窗口生命周期或发布恢复变化，先按 [设计门槛](./engineering-at-scale.md#设计评审与-adr-门槛) 说明影响。
 
+### Rust workspace 与公共契约
+
+根 [Cargo.toml](../Cargo.toml) 管理桌面与六个无头 crate；[Cargo.lock](../Cargo.lock) 是唯一 Rust 锁文件。版本在 `workspace.package.version` 维护，各成员使用 `version.workspace`；版本变更仍使用 `pnpm version:set`。默认成员为 core、IPC、Host、client、CLI 和 MCP，桌面命令显式选择 `-p serial-workbench`。
+
+[target 配置](../.cargo/config.toml) 保留 `src-tauri/target` 缓存。共享 target 的 Cargo 与绑定/契约生成命令依次执行。仅检查无头 crate 不需要构建前端；桌面检查先准备 `dist/`，见 [Rust 测试](./testing.md#rust-测试)。
+
+Host 公共 DTO 在 `crates/core` 维护。修改 wire 类型后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`，提交 `packages/contracts/src/generated/` 的结果。生成器从 Rust 导出类型、draft-07 schema、目录和正负 fixture，再生成浏览器 ESM 校验器。手写 TypeScript 从 contracts 包使用类型与 `parseReply`，未知输入先校验；Tauri 本地命令继续使用原有 `bindings:*` 流程。
+
 ## 产品身份配置
 
 名称、包名、标识符、深链 scheme、浏览器存储命名空间及更新信任集中在 [app.config.json](../app.config.json)。
