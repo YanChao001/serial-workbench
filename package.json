@@ -19,6 +19,7 @@
     "config:check": "node scripts/init-project.mjs --check && node scripts/repository-config.mjs check",
     "repository:sync": "node scripts/repository-config.mjs sync",
     "repository:check": "node scripts/repository-config.mjs check",
+    "planning:check": "node scripts/check-feature-status.mjs",
     "bindings:generate": "node scripts/generate-bindings.mjs",
     "bindings:check": "node scripts/generate-bindings.mjs --check",
     "branding:generate": "node scripts/branding.mjs",

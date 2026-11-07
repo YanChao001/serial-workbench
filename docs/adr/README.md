@@ -38,11 +38,12 @@ ADR 记录问题、选择、代价与复查条件，不复制协议、实施清�
 
 ## 索引
 
-| 编号                                         | 当前决策                     | 状态   |
-| -------------------------------------------- | ---------------------------- | ------ |
-| [0001](./0001-desktop-shell-tauri.md)        | Tauri 桌面外壳与 Web 界面    | 已采纳 |
-| [0004](./0004-wallpaper-library.md)          | 图库与当前背景设置分离       | 已采纳 |
-| [0020](./0020-pin-updater-trust-root.md)     | 更新信任根固定在安装包内     | 已采纳 |
-| [0021](./0021-managed-video-wallpapers.md)   | 应用管理视频壁纸副本         | 已采纳 |
-| [0025](./0025-github-flow.md)                | 单主分支与 squash merge      | 已采纳 |
-| [0026](./0026-independent-shell-boundary.md) | 公共桌面壳与业务入口移除边界 | 已采纳 |
+| 编号                                              | 当前决策                     | 状态   |
+| ------------------------------------------------- | ---------------------------- | ------ |
+| [0001](./0001-desktop-shell-tauri.md)             | Tauri 桌面外壳与 Web 界面    | 已采纳 |
+| [0004](./0004-wallpaper-library.md)               | 图库与当前背景设置分离       | 已采纳 |
+| [0020](./0020-pin-updater-trust-root.md)          | 更新信任根固定在安装包内     | 已采纳 |
+| [0021](./0021-managed-video-wallpapers.md)        | 应用管理视频壁纸副本         | 已采纳 |
+| [0025](./0025-github-flow.md)                     | 单主分支与 squash merge      | 已采纳 |
+| [0026](./0026-independent-shell-boundary.md)      | 公共桌面壳与业务入口移除边界 | 已采纳 |
+| [0027](./0027-shared-host-and-node-extensions.md) | 独立 Host 与可信 Node 扩展   | 已采纳 |

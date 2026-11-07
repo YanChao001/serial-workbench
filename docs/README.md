@@ -2,6 +2,12 @@
 
 按任务选择阅读入口。当前功能与开发阶段见 [产品范围](./product-scope.md)。
 
+下一阶段重构见 [设计草案](./superpowers/specs/2026-11-07-serial-workbench-design.md) 和 [逐项功能矩阵](./superpowers/specs/2026-11-07-serial-workbench-feature-matrix.md)。
+
+实施拆分见 [M0—M6 推进计划](./superpowers/plans/2026-11-07-serial-workbench-roadmap.md)，首阶段见 [M0 契约与执行基线](./superpowers/plans/2026-11-07-m0-contracts-and-baseline.md)。
+
+实施规范见 [Host 与 Node 契约](./contracts/README.md)，需求进度见 [247 项状态账本](./superpowers/acceptance/feature-status.json)；下一阶段按 [M1 Host 与工作区计划](./superpowers/plans/2026-11-07-m1-host-and-workspace.md) 推进。
+
 | 任务                           | 权威文档                                                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |
 | 介绍、启动与贡献               | [README](../README.md)、[English](../README.en.md)、[贡献指南](../CONTRIBUTING.md)                                       |
