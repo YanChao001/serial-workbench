@@ -15,7 +15,7 @@ Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/l
 | 模块             | 职责                                                          |
 | ---------------- | ------------------------------------------------------------- |
 | 路由、布局和命令 | 工作区与设置入口、键盘与菜单、加载与错误边界                  |
-| 设置模型和同步器 | 偏好规范化、迁移、revision合并、在途写入与跨窗口事件          |
+| 设置模型和同步器 | 当前扁平格式归一化、revision合并、在途写入与跨窗口事件        |
 | 窗口和生命周期   | 主 / 次窗口、托盘、几何恢复、首帧显示、关闭 / 退出 / 重启协商 |
 | 文件授权         | 用户明确选择位置后的文本导出                                  |
 | 诊断和恢复       | 脱敏系统报告、设置故障隔离、确认后的默认设置暂存与启动安装    |
@@ -33,13 +33,13 @@ Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/l
 
 Rust 命令和 DTO 是 IPC 类型来源，统一在 `bindings.rs` 注册。签名、DTO 或注册变化时生成并检查 [bindings.ts](../src/lib/generated/bindings.ts)，步骤见 [页面到 IPC 流程](./development.md#新增页面到-ipc-与测试)。
 
-门面负责环境检查和错误归一化，命令返回 `NativeResult<T>`，错误含稳定 `code`、`message`、`retryable`。前端按 `code` 处理，Rust 提交边界校验身份、大小、路径和权限。阻塞 I/O 移入有界阻塞池，普通任务满额返回 `NATIVE_BUSY`，已承诺的生命周期收尾等待名额；已开始的同步任务保持占用直至真实完成。
+门面负责环境检查和错误归一化，命令返回 `NativeResult<T>`，错误含稳定 `code`、`message`、`retryable`。前端按 `code` 处理，Rust 提交边界校验身份、大小、路径和权限。阻塞 I/O 移入有界阻塞池，任务满额返回 `NATIVE_BUSY`；已开始的同步任务保持占用直至真实完成。
 
 订阅先建立再读快照，按revision与操作ID过滤旧消息。事件不是持久消息队列，写入结果以命令返回为准。异步订阅处理卸载、StrictMode重建及取消函数晚到，避免旧回调更新新界面。
 
-## 状态管理与设置迁移
+## 状态管理与当前扁平格式归一化
 
-页面状态留在组件；跨页偏好由 `SettingsProvider` 管理，命令由 `CommandsProvider` 管理。设置 schema、迁移和默认值以 [settings-model.ts](../src/lib/settings-model.ts) 为准。
+页面状态留在组件；跨页偏好由 `SettingsProvider` 管理，命令由 `CommandsProvider` 管理。设置 schema、当前扁平格式归一化和默认值以 [settings-model.ts](../src/lib/settings-model.ts) 为准。
 
 桌面 `settings.json` 是权威快照，Rust 使用原子替换与 revision CAS。前端同步器分离未提交与在途字段，冲突后重读并有限重试，失败保留修改；跨窗口只接受更新 revision。主题、语言、字体、皮肤和壁纸引用共用该模型。
 
