@@ -3,6 +3,7 @@
 - 状态：已采纳
 - 日期：2026-11-06；2026-11-07 按重构清理后的实现收敛
 - 相关：[产品范围](../product-scope.md)、[架构说明](../architecture.md)、[测试规范](../testing.md)
+- 业务演进：[ADR 0027](./0027-shared-host-and-node-extensions.md) 定义独立 Host 与可信 Node 的后续架构，本记录保留公共壳及当前入口边界。
 
 ## 背景与取舍
 

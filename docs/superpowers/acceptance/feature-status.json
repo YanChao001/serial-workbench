@@ -1,0 +1,4204 @@
+{
+  "schemaVersion": 1,
+  "features": [
+    {
+      "id": "CONN-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-17",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "TERM-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-17",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "IO-18",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-17",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-18",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-19",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DISP-20",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-17",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-18",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-15",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-02",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-03",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-04",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-05",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-06",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-08",
+      "scope": "included",
+      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：本轮浏览器作为独立 Host 的共享 GUI 客户端；零安装 Web Serial 为后续专项。",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "FUT-10",
+      "scope": "excluded",
+      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：本轮排除移动端；原编号保留。",
+      "software": {
+        "status": "not-applicable",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-applicable",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-applicable",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-18",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "CONN-19",
+      "scope": "excluded",
+      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：随 FUT-10 排除移动端连接生命周期。",
+      "software": {
+        "status": "not-applicable",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-applicable",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-applicable",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LINE-17",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-13",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LOG-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-19",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PROTO-20",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "VIZ-16",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "XFER-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-17",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-18",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "AUTO-19",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "NET-13",
+      "scope": "deferred",
+      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：浏览器逐站点设备授权随零安装 Web Serial 后续专项。",
+      "software": {
+        "status": "not-applicable",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-applicable",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-applicable",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SESS-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "UX-14",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "PERF-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-09",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-10",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-11",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "SEC-12",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-07",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "DIAG-08",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    },
+    {
+      "id": "LAN-01",
+      "scope": "included",
+      "scopeNote": "",
+      "software": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "hardware": {
+        "status": "not-started",
+        "evidence": []
+      },
+      "release": {
+        "status": "not-started",
+        "evidence": []
+      }
+    }
+  ]
+}
