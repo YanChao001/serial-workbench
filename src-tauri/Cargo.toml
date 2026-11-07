@@ -60,7 +60,7 @@ windows-registry = "0.6"
 windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
 # Reuse Tauri/Wry's locked COM bindings to separate pinch input from page zoom.
 webview2-com = "=0.39.1"
-windows-core = "=0.62.2"
+windows-core = "=0.100.0"
 
 [target.'cfg(any(target_os = "macos", target_os = "linux"))'.dependencies]
 tauri-plugin-autostart = "2"
