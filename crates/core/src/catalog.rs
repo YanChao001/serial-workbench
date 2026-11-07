@@ -106,9 +106,30 @@ pub enum BuiltinAction {
     SubscriptionClose,
     Authorize,
     Revoke,
+    DeviceList,
+    DeviceOpen,
+    SessionGet,
+    SessionClose,
+    SessionTx,
+    SessionConfigure,
+    SessionControl,
+    SessionBreak,
+    SessionSetReadOnly,
+    SessionTakeover,
+    LeaseAcquire,
+    LeaseRenew,
+    LeaseRelease,
+    TxWaitBoundary,
+    TxQueueStatus,
+    TxDrain,
+    SessionPurge,
+    StreamRead,
+    StreamSubscribe,
+    StreamCredit,
+    HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 8] = [
+    pub const ALL: [Self; 29] = [
         Self::CatalogList,
         Self::OperationGet,
         Self::OperationCancel,
@@ -117,6 +138,27 @@ impl BuiltinAction {
         Self::SubscriptionClose,
         Self::Authorize,
         Self::Revoke,
+        Self::DeviceList,
+        Self::DeviceOpen,
+        Self::SessionGet,
+        Self::SessionClose,
+        Self::SessionTx,
+        Self::SessionConfigure,
+        Self::SessionControl,
+        Self::SessionBreak,
+        Self::SessionSetReadOnly,
+        Self::SessionTakeover,
+        Self::LeaseAcquire,
+        Self::LeaseRenew,
+        Self::LeaseRelease,
+        Self::TxWaitBoundary,
+        Self::TxQueueStatus,
+        Self::TxDrain,
+        Self::SessionPurge,
+        Self::StreamRead,
+        Self::StreamSubscribe,
+        Self::StreamCredit,
+        Self::HostShutdown,
     ];
     pub fn action_id(self) -> &'static str {
         match self {
@@ -128,6 +170,27 @@ impl BuiltinAction {
             Self::SubscriptionClose => "subscription.close",
             Self::Authorize => "auth.authorize",
             Self::Revoke => "auth.revoke",
+            Self::DeviceList => "device.list",
+            Self::DeviceOpen => "device.open",
+            Self::SessionGet => "session.get",
+            Self::SessionClose => "session.close",
+            Self::SessionTx => "session.tx",
+            Self::SessionConfigure => "session.configure",
+            Self::SessionControl => "session.control",
+            Self::SessionBreak => "session.break",
+            Self::SessionSetReadOnly => "session.setReadOnly",
+            Self::SessionTakeover => "session.takeover",
+            Self::LeaseAcquire => "lease.acquire",
+            Self::LeaseRenew => "lease.renew",
+            Self::LeaseRelease => "lease.release",
+            Self::TxWaitBoundary => "tx.waitBoundary",
+            Self::TxQueueStatus => "tx.queueStatus",
+            Self::TxDrain => "tx.drain",
+            Self::SessionPurge => "session.purge",
+            Self::StreamRead => "stream.read",
+            Self::StreamSubscribe => "stream.subscribe",
+            Self::StreamCredit => "stream.credit",
+            Self::HostShutdown => "host.shutdown",
         }
     }
     pub fn find(id: &str) -> HostResult<Self> {
@@ -137,6 +200,25 @@ impl BuiltinAction {
             .ok_or_else(|| {
                 HostError::new("UNSUPPORTED_CAPABILITY", "Action handler is not registered")
             })
+    }
+    pub fn is_device_action(self) -> bool {
+        matches!(
+            self,
+            Self::DeviceOpen
+                | Self::SessionClose
+                | Self::SessionTx
+                | Self::SessionConfigure
+                | Self::SessionControl
+                | Self::SessionBreak
+                | Self::SessionSetReadOnly
+                | Self::SessionTakeover
+                | Self::LeaseAcquire
+                | Self::LeaseRenew
+                | Self::LeaseRelease
+                | Self::TxWaitBoundary
+                | Self::TxDrain
+                | Self::SessionPurge
+        )
     }
     pub fn spec(self) -> ActionSpec {
         static SPECS: std::sync::LazyLock<Vec<ActionSpec>> = std::sync::LazyLock::new(|| {
@@ -159,11 +241,36 @@ impl BuiltinAction {
         }
     }
     fn build_spec(self, dialect: SchemaDialect) -> ActionSpec {
-        let action = matches!(self, Self::OperationCancel | Self::Authorize | Self::Revoke);
-        let auth = matches!(self, Self::Authorize | Self::Revoke);
+        let action = self.is_device_action()
+            || matches!(
+                self,
+                Self::OperationCancel | Self::Authorize | Self::Revoke | Self::HostShutdown
+            );
+        let auth = matches!(self, Self::Authorize | Self::Revoke | Self::HostShutdown);
         let kinds: &[&str] = match self {
+            Self::DeviceOpen => &["device"],
+            Self::SessionGet
+            | Self::SessionClose
+            | Self::SessionTx
+            | Self::SessionConfigure
+            | Self::SessionControl
+            | Self::SessionBreak
+            | Self::SessionSetReadOnly
+            | Self::SessionTakeover
+            | Self::LeaseAcquire
+            | Self::LeaseRenew
+            | Self::LeaseRelease
+            | Self::TxWaitBoundary
+            | Self::TxQueueStatus
+            | Self::TxDrain
+            | Self::SessionPurge
+            | Self::StreamRead
+            | Self::StreamSubscribe
+            | Self::StreamCredit => &["session"],
             Self::OperationCancel => &["operation"],
-            Self::StateSnapshot | Self::StateSubscribe => &["host", "workspace", "session"],
+            Self::StateSnapshot | Self::StateSubscribe | Self::SubscriptionClose => {
+                &["host", "workspace", "session"]
+            }
             Self::OperationGet => &["host", "operation"],
             _ => &["host"],
         };
@@ -179,7 +286,21 @@ impl BuiltinAction {
                 .map(|kind| ResourceKind::try_from(*kind).expect("builtin kind"))
                 .collect(),
             execution_location: ExecutionLocation::ResourceHost,
-            permissions: vec![if auth { "auth.manage" } else { "metadata.read" }.into()],
+            permissions: vec![
+                if auth || self == Self::SessionTakeover {
+                    "auth.manage"
+                } else if self.is_device_action() {
+                    "device.modify"
+                } else if matches!(
+                    self,
+                    Self::StreamRead | Self::StreamSubscribe | Self::StreamCredit
+                ) {
+                    "content.read"
+                } else {
+                    "metadata.read"
+                }
+                .into(),
+            ],
             state_scopes: vec![
                 if action {
                     "host.operations"
@@ -196,7 +317,11 @@ impl BuiltinAction {
                 }
                 .into(),
             ],
-            cancellation: Cancellation::None,
+            cancellation: if self.is_device_action() {
+                Cancellation::Cooperative
+            } else {
+                Cancellation::None
+            },
             reveal_target: RevealTarget {
                 page_id: Id::try_from("workbench").expect("page"),
                 workspace_id: None,
@@ -206,6 +331,66 @@ impl BuiltinAction {
             },
         };
         match self {
+            Self::HostShutdown => {
+                ActionSpec::of_with_dialect::<EmptyParams, ShutdownRequested>(meta, dialect)
+            }
+            Self::StreamRead => {
+                ActionSpec::of_with_dialect::<StreamReadParams, StreamReadResult>(meta, dialect)
+            }
+            Self::StreamSubscribe => ActionSpec::of_with_dialect::<
+                StreamSubscribeParams,
+                StreamSubscribeResult,
+            >(meta, dialect),
+            Self::StreamCredit => {
+                ActionSpec::of_with_dialect::<StreamCreditParams, StreamCreditResult>(meta, dialect)
+            }
+            Self::DeviceList => {
+                ActionSpec::of_with_dialect::<EmptyParams, DeviceList>(meta, dialect)
+            }
+            Self::DeviceOpen => {
+                ActionSpec::of_with_dialect::<OpenParams, OpenResult>(meta, dialect)
+            }
+            Self::SessionGet | Self::SessionClose => {
+                ActionSpec::of_with_dialect::<EmptyParams, SessionSnapshot>(meta, dialect)
+            }
+            Self::SessionTx => ActionSpec::of_with_dialect::<TxParams, TxReceipt>(meta, dialect),
+            Self::SessionConfigure => {
+                ActionSpec::of_with_dialect::<ConfigureParams, ConfigReceipt>(meta, dialect)
+            }
+            Self::SessionControl => {
+                ActionSpec::of_with_dialect::<ControlParams, ControlReceipt>(meta, dialect)
+            }
+            Self::SessionBreak => {
+                ActionSpec::of_with_dialect::<BreakParams, BreakReceipt>(meta, dialect)
+            }
+            Self::SessionSetReadOnly => {
+                ActionSpec::of_with_dialect::<SetReadOnlyParams, SessionSnapshot>(meta, dialect)
+            }
+            Self::SessionTakeover => {
+                ActionSpec::of_with_dialect::<TakeoverParams, TakeoverReceipt>(meta, dialect)
+            }
+            Self::LeaseAcquire => {
+                ActionSpec::of_with_dialect::<LeaseAcquireParams, Lease>(meta, dialect)
+            }
+            Self::LeaseRenew => {
+                ActionSpec::of_with_dialect::<LeaseRenewParams, Lease>(meta, dialect)
+            }
+            Self::LeaseRelease => {
+                ActionSpec::of_with_dialect::<LeaseReleaseParams, Lease>(meta, dialect)
+            }
+            Self::TxWaitBoundary => ActionSpec::of_with_dialect::<
+                WaitBoundaryParams,
+                WaitBoundaryReceipt,
+            >(meta, dialect),
+            Self::TxQueueStatus => {
+                ActionSpec::of_with_dialect::<EmptyParams, QueueStatus>(meta, dialect)
+            }
+            Self::TxDrain => {
+                ActionSpec::of_with_dialect::<DrainParams, DrainReceipt>(meta, dialect)
+            }
+            Self::SessionPurge => {
+                ActionSpec::of_with_dialect::<PurgeParams, PurgeReceipt>(meta, dialect)
+            }
             Self::CatalogList => {
                 ActionSpec::of_with_dialect::<CatalogListParams, CatalogListResult>(meta, dialect)
             }

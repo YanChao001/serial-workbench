@@ -18,7 +18,8 @@ impl RequestHandler for CountingHandler {
             Ok(RpcReply::Success {
                 ok: True,
                 result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
-            })
+            }
+            .into())
         })
     }
 }
@@ -183,7 +184,8 @@ async fn two_connections_of_one_actor_have_independent_cleanup() {
                 Ok(RpcReply::Success {
                     ok: True,
                     result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
-                })
+                }
+                .into())
             })
         }
         fn disconnected(&self, context: &ConnectionContext) {
@@ -251,7 +253,8 @@ async fn raw_is_a_separate_connection_and_old_attach_token_is_rejected() {
                 Ok(RpcReply::Success {
                     ok: True,
                     result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
-                })
+                }
+                .into())
             })
         }
         fn disconnected(&self, context: &ConnectionContext) {
@@ -381,11 +384,15 @@ async fn fake_endpoint_cannot_obtain_client_credential_by_echoing_host_id() {
     let host = HostServer::bind(directory.path()).await.unwrap();
     let path = directory.path().join("host-v0/discovery.json");
     let mut discovery = DiscoveryRecord::read(&path).unwrap();
-    let mut fake = LocalListener::bind(
-        &directory.path().join("host-v0"),
-        &uuid::Uuid::new_v4().to_string(),
-    )
-    .unwrap();
+    // 复用 Host 已检查的 runtime；macOS 的长 profile 路径会使用短 socket 目录。
+    #[cfg(unix)]
+    let runtime = std::path::Path::new(&discovery.endpoint)
+        .parent()
+        .unwrap()
+        .to_path_buf();
+    #[cfg(windows)]
+    let runtime = directory.path().join("host-v0");
+    let mut fake = LocalListener::bind(&runtime, &uuid::Uuid::new_v4().to_string()).unwrap();
     discovery.endpoint = fake.endpoint().into();
     discovery.write(&path).unwrap();
     let fake_host_id = discovery.host_id.clone();
@@ -494,7 +501,8 @@ async fn queued_sensitive_event_is_denied_after_revoke_before_delivery() {
                 Ok(RpcReply::Success {
                     ok: True,
                     result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
-                })
+                }
+                .into())
             })
         }
     }
@@ -572,7 +580,8 @@ async fn saturated_normal_requests_leave_reserved_cancel_capacity() {
                 Ok(RpcReply::Success {
                     ok: True,
                     result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
-                })
+                }
+                .into())
             })
         }
     }
@@ -763,7 +772,8 @@ async fn another_actors_registration_and_grant_change_do_not_discard_reply() {
                 Ok(RpcReply::Success {
                     ok: True,
                     result: Box::new(RpcResult::Closed(ClosedResult { closed: True })),
-                })
+                }
+                .into())
             })
         }
     }

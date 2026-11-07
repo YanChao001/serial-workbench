@@ -132,10 +132,10 @@ CI 基线已确认保留 `scripts/ci-quality-gate.mjs`、`scripts/ci-quality-gat
 
 **Interfaces:** Consumes Host/Store/Clock。Produces `trait Transport: Send { fn capabilities(&self)->TransportCapabilities; fn read(&mut self,limit:usize,wait:Duration)->BackendResult<ReadBlock>; fn write(&mut self,bytes:&[u8],wait:Duration)->BackendResult<BackendWrite>; fn configure(&mut self,config:&SerialConfiguration)->BackendResult<ConfigApplication>; fn control(&mut self,command:ControlCommand)->BackendResult<ControlResult>; fn close(&mut self)->BackendResult<()>; }`。`BackendWrite { accepted_ranges,unknown_ranges,error }` 不把错误丢失前缀；`ReadBlock` 保存stream/message语义。`DeviceService::open(target:&Target,params:OpenParams)->HostResult<OpenResult>`、`TransmissionService::submit(operation:&Operation,params:TxParams)->HostResult<TxReceipt>`（async）；其余 handler 名为 `configure/control/break_signal/purge/wait_boundary/drain/queue_status`，输入输出使用对应生成 Params/Receipt。
 
-- [ ] **Step 1：写 red。** S01—S06/S11：同设备两 open只一次；不同配置冲突；5字节只接受3返回 partial；dispatch无回执unknown；旧epoch排队写0次；部分配置gate关闭；BREAK清线失败隔离且重连0次；purge不改既有TX；lease过期不续活。Clock fake验证queueWait/writeWait/ttl独立起算。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test session_tx --test control_state`。
-- [ ] **Step 3：实现。** Virtual 正式可选设备，默认 deterministic echo，可配置脚本化独立对端fixture。会话ID在Host命名空间、同资源单owner，open/reopen持久推进epoch。完整配置模型：baudRate U64、dataBits `5|6|7|8`、parity `none|even|odd|mark|space`、stopBits `one|onePointFive|two`、flowControl `none|rtsCts|xonXoff|dsrDtr`、读/写/重连时限；wire dataBits 用字符串枚举避免含混计数。readOnly 从 Host gate 检查全部 TX/config/control，观察仍可进行；`session.setReadOnly` 用 `{readOnly:bool}`、expectedRevision和device.modify，解除只读必须是独立明确操作，不在TX中自动解除。注册 session.close/tx/configure/control/break、lease三动作、takeover、队列四动作和连接查询。
-- [ ] **Step 4：执行 green。** 同命令；两个session一方阻塞不阻另一方、actor公平性和取消结算测试。人工接管停止目标actor新写、终结旧队列，恢复跟随不恢复权限/队列。
+- [x] **Step 1：写 red。** S01—S06/S11：同设备两 open只一次；不同配置冲突；5字节只接受3返回 partial；dispatch无回执unknown；旧epoch排队写0次；部分配置gate关闭；BREAK清线失败隔离且重连0次；purge不改既有TX；lease过期不续活。Clock fake验证queueWait/writeWait/ttl独立起算。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test session_tx --test control_state`。
+- [x] **Step 3：实现。** Virtual 正式可选设备，默认 deterministic echo，可配置脚本化独立对端fixture。会话ID在Host命名空间、同资源单owner，open/reopen持久推进epoch。完整配置模型：baudRate U64、dataBits `5|6|7|8`、parity `none|even|odd|mark|space`、stopBits `one|onePointFive|two`、flowControl `none|rtsCts|xonXoff|dsrDtr`、读/写/重连时限；wire dataBits 用字符串枚举避免含混计数。readOnly 从 Host gate 检查全部 TX/config/control，观察仍可进行；`session.setReadOnly` 用 `{readOnly:bool}`、expectedRevision和device.modify，解除只读必须是独立明确操作，不在TX中自动解除。注册 session.close/tx/configure/control/break、lease三动作、takeover、队列四动作和连接查询。
+- [x] **Step 4：执行 green。** 同命令；两个session一方阻塞不阻另一方、actor公平性和取消结算测试。人工接管停止目标actor新写、终结旧队列，恢复跟随不恢复权限/队列。
 - [ ] **Step 5：纳入M1a交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1a出口统一提交，不创建单独的中间提交。
 
 ### Task 6：原始流与有界独立 reader
@@ -144,21 +144,21 @@ CI 基线已确认保留 `scripts/ci-quality-gate.mjs`、`scripts/ci-quality-gat
 
 **Interfaces:** Consumes RawEvent/Transport/Snapshot。Produces `StreamHub::append(event:RawEvent)->HostResult<()>`；`StreamHub::read(params:StreamReadParams)->HostResult<StreamReadResult>`；`StreamHub::subscribe(actor:&AuthenticatedActor,params:StreamSubscribeParams)->HostResult<StreamSubscribeResult>`；`StreamHub::credit(actor:&AuthenticatedActor,params:StreamCreditParams)->HostResult<StreamCreditResult>`。事件内存载荷为Arc字节，wire编码只在边界；保存最终TX意图并关联结算回执，不用晚到TX覆盖事件序号。
 
-- [ ] **Step 1：写 red。** S07/S19/S20/S21：快reader与capture hash相同、慢GUI准确reader_gap；批次items明确区分source与reader_gap，投影缺口没有eventSeq且不改源序号；initialCreditBytes=0可用初始after游标授首批额度；重复累计grant不加倍；超前/非批边界ack拒绝；无ack不能无限credit。缺口/epoch变化重置UTF-8消费。任何超大单事件在采集处拆为≤16KiB记录，不能通过overflow丢尾。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test stream_budget`。
-- [ ] **Step 3：实现。** RX方向offset按后端实际完整长度，TX按意图长度，eventSeq单调；原始源缺口与reader投影缺口分开。JSON实长扣credit；队列和全局配额都计载荷+元数据/编码缓冲，不只计payload。GUI drop_with_gap，capture默认stop；flow_control只有后端声明且用户明确许可。保留控制通道；正文撤权即时释放待投递缓存。
-- [ ] **Step 4：执行 green。** 同命令，注入8MiB输入、4MiB reader配额，观测peak不超过声明上限加一个批次的固定编码暂存；停止请求在fake慢reader情况下有响应，测试不要求真实时钟精度。
+- [x] **Step 1：写 red。** S07/S19/S20/S21：快reader与capture hash相同、慢GUI准确reader_gap；批次items明确区分source与reader_gap，投影缺口没有eventSeq且不改源序号；initialCreditBytes=0可用初始after游标授首批额度；重复累计grant不加倍；超前/非批边界ack拒绝；无ack不能无限credit。缺口/epoch变化重置UTF-8消费。任何超大单事件在采集处拆为≤16KiB记录，不能通过overflow丢尾。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test stream_budget`。
+- [x] **Step 3：实现。** RX方向offset按后端实际完整长度，TX按意图长度，eventSeq单调；原始源缺口与reader投影缺口分开。JSON实长扣credit；队列和全局配额都计载荷+元数据/编码缓冲，不只计payload。GUI drop_with_gap，capture默认stop；flow_control只有后端声明且用户明确许可。保留控制通道；正文撤权即时释放待投递缓存。
+- [x] **Step 4：执行 green。** 同命令，注入8MiB输入、4MiB reader配额，观测peak不超过声明上限加一个批次的固定编码暂存；停止请求在fake慢reader情况下有响应，测试不要求真实时钟精度。
 - [ ] **Step 5：纳入M1a交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1a出口统一提交，不创建单独的中间提交。
 
 ### Task 7：CLI 与官方 MCP 的同 handler 闭环
 
 **Files:** Create `crates/cli/src/{main,args,output}.rs`、`crates/mcp/src/{main,server,catalog}.rs`、`crates/mcp/tests/stdio_roundtrip.rs`、`crates/host/tests/client_parity.rs`；Modify registry/生成物由协调者独占。
 
-**Interfaces:** Consumes HostClient、generated CatalogPage/Call/Query。Produces CLI `serial-workbench-cli catalog --json`、`query <actionId> --target-json <file> --params-json <file> --json`、`invoke <actionId> ... --request-id <uuid> --json`、`operation get/cancel <id> --json`、`authorize/revoke`、`host stop`；所有命令接受 `--profile <dir>`。MCP `serial-workbench-mcp --profile <dir>` STDIO；`McpBridge::new(client:HostClient)->Self`，官方 `ServerHandler::list_tools/call_tool` 转发目录和调用。
+**Interfaces:** Consumes HostClient、generated CatalogPage/Call/Query。Produces CLI `serial-workbench-cli catalog --json`、`context --out <file> --json`、`query <actionId> --target-json <file> --params-json <file> --json`、`invoke <actionId> ... --request-id <uuid> --request-context-json <file> --json`、`operation get/cancel <id> --json`、`operation get --request-id <uuid> --request-context-json <file> --json`、`authorize/revoke`、`host stop`；所有命令接受 `--profile <dir>`。用户已确认采用显式 Host 签发上下文文件，调用和重试复用同一文件，不自动管理跨进程上下文缓存。MCP `serial-workbench-mcp --profile <dir>` STDIO；`McpBridge::new(client:HostClient)->Self`，官方 `ServerHandler::list_tools/call_tool` 转发目录和调用。操作示例见[开发指南](../../development.md#独立-hostcli-与-mcp)。
 
-- [ ] **Step 1：写 red。** SDK client启动MCP子进程，initialize/list_tools/call_tool，Virtual open→TX→读流→operation.get→close；CLI/HostClient/MCP三路径取得相同sessionId/epoch/回执。无授权仅元数据工具，授予后通知tools/list_changed；分页token和业务错误结构可读。stdout仅协议/机器结果，日志stderr。
-- [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-mcp --test stdio_roundtrip`，再 `cargo test --locked -p serial-workbench-host --test client_parity`。
-- [ ] **Step 3：实现。** 每个actionId对应独立工具，工具名为 `swb_`+actionId逐字节转义（仅ASCII字母/数字保留，其余包括下划线为 `_xHH_`）；目录验证长度/唯一。工具输入是该动作参数加target/expectedRevision/lease/executionMode；actor/context/epoch由已认证client填充，保留调用者requestId映射。长任务即时返回Operation，取消必须显式operation.cancel，MCP取消通知只取消适配器等待。订阅内容不塞进无限工具返回。使用[官方 Rust SDK](https://docs.rs/rmcp/3.9.0/rmcp/)；动态列表实现SDK trait，不保留旧六工具协议。
+- [x] **Step 1：写 red。** SDK client启动MCP子进程，initialize/list_tools/call_tool，Virtual open→TX→读流→operation.get→close；CLI/HostClient/MCP三路径取得相同sessionId/epoch/回执。无授权仅元数据工具，授予后通知tools/list_changed；分页token和业务错误结构可读。stdout仅协议/机器结果，日志stderr。
+- [x] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-mcp --test stdio_roundtrip`，再 `cargo test --locked -p serial-workbench-host --test client_parity`。
+- [x] **Step 3：实现。** 每个actionId对应独立工具，工具名为 `swb_`+actionId逐字节转义（仅ASCII字母/数字保留，其余包括下划线为 `_xHH_`）；目录验证长度/唯一。工具输入是该动作参数加target/expectedRevision/lease/executionMode；actor/context/epoch由已认证client填充，保留调用者requestId映射。长任务即时返回Operation，取消必须显式operation.cancel，MCP取消通知只取消适配器等待。订阅内容不塞进无限工具返回。使用[官方 Rust SDK](https://docs.rs/rmcp/3.9.0/rmcp/)；动态列表实现SDK trait，不保留旧六工具协议。
 - [ ] **Step 4：执行 green。** 上述命令；对每个M1目录项做schema可发现/adapter可调用表驱动测试，业务结果由领域测试负责。Host重启后适配器重attach并查旧O，不换ID自动重试；无GUI时client目标动作返回CLIENT_REQUIRED。实际Codex客户端交互验收单列，不把SDK对端冒充真实产品客户端。
 - [ ] **Step 5：M1a 功能闭环提交与集成。** 已交付的基础里程碑之上，Task5—7 实现、测试、审阅修正和文档全部通过后，统一提交 `feat(host): 完成M1a共享Host与CLI和MCP闭环`，PR 自审后 squash 合入 main 并删除分支；账本只标对应软件切片，继续 M1b。
 

@@ -12,6 +12,22 @@ fn temporary_profile() -> TempDir {
     tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap()
 }
 
+#[test]
+fn newly_created_instance_lock_is_private_and_can_be_reopened_without_repair() {
+    let profile = temporary_profile();
+    let owner = InstanceGuard::acquire(profile.path()).unwrap();
+    assert!(serial_workbench_ipc::profile_has_running_host(profile.path()).unwrap());
+    drop(owner);
+    let path = profile.path().join("host-v0/instance.lock");
+    let reopened = serial_workbench_ipc::try_lock_private_file(&path)
+        .unwrap()
+        .unwrap();
+    assert!(serial_workbench_ipc::profile_has_running_host(profile.path()).unwrap());
+    drop(reopened);
+    assert!(!serial_workbench_ipc::profile_has_running_host(profile.path()).unwrap());
+    assert!(InstanceGuard::acquire(profile.path()).is_ok());
+}
+
 // 每个测试只停止自己创建且仍持有句柄的子进程。
 struct Children(Vec<Child>);
 impl Drop for Children {
@@ -131,5 +147,6 @@ fn stale_discovery_pid_cannot_steal_a_live_lock() {
     fs::write(profile.path().join("release"), b"").unwrap();
     assert!(children.0[0].wait().unwrap().success());
     drop(owner);
-    assert!(InstanceGuard::acquire(profile.path()).is_ok());
+    InstanceGuard::acquire(profile.path())
+        .unwrap_or_else(|error| panic!("released instance lock remains unavailable: {error:?}"));
 }

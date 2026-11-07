@@ -56,7 +56,7 @@ fn success(reply: RpcReply) -> RpcResult {
 
 #[tokio::test]
 async fn live_attach_catalog_generic_query_and_subscription_are_real() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut server = HostServer::bind(dir.path()).await.unwrap();
     let host = Host::new(server.store(), server.auth()).await.unwrap();
     let store = server.store();
@@ -192,7 +192,7 @@ impl RequestHandler for DelayedSubscribe {
 }
 #[tokio::test]
 async fn disconnected_before_subscribe_finishes_never_leaks_reader() {
-    let dir = tempfile::tempdir().unwrap();
+    let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut server = HostServer::bind(dir.path()).await.unwrap();
     let host = Host::new(server.store(), server.auth()).await.unwrap();
     let entered = Arc::new(Notify::new());

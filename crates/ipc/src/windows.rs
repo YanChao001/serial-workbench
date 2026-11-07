@@ -263,6 +263,32 @@ fn validate_path(path: &Path) -> HostResult<()> {
     }
     Ok(())
 }
+
+fn validate_instance_lock_owner(handle: HANDLE, expected_owner: &UserSid) -> HostResult<()> {
+    let mut owner = null_mut();
+    let mut descriptor = null_mut();
+    // Instance locks may inherit the private directory ACL; only the leaf's actual owner is checked here.
+    if unsafe {
+        GetSecurityInfo(
+            handle,
+            SE_FILE_OBJECT,
+            OWNER_SECURITY_INFORMATION,
+            &mut owner,
+            null_mut(),
+            null_mut(),
+            null_mut(),
+            &mut descriptor,
+        )
+    } != 0
+    {
+        return Err(denied());
+    }
+    let _allocation = LocalMemory(descriptor);
+    if owner.is_null() || unsafe { EqualSid(owner, expected_owner.as_ptr()) } == 0 {
+        return Err(denied());
+    }
+    Ok(())
+}
 fn open_existing(path: &Path, directory: bool) -> io::Result<File> {
     let name = wide(path.as_os_str()).map_err(io::Error::other)?;
     let flags = FILE_FLAG_OPEN_REPARSE_POINT
@@ -333,6 +359,72 @@ fn create_private_file(path: &Path) -> HostResult<File> {
         return Err(storage_error());
     }
     let file = unsafe { File::from_raw_handle(handle) };
+    validate_file(&file, false)?;
+    Ok(file)
+}
+
+pub(crate) fn open_existing_instance_lock(namespace: &Path) -> HostResult<Option<File>> {
+    use std::os::windows::fs::OpenOptionsExt;
+    validate_path(namespace)?;
+    match fs::symlink_metadata(namespace) {
+        Ok(metadata) if metadata.is_dir() => {}
+        Ok(_) => return Err(denied()),
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(storage_error()),
+    }
+    let directory = open_existing(namespace, true).map_err(|_| storage_error())?;
+    validate_file(&directory, true)?;
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(namespace.join(crate::INSTANCE_LOCK_NAME))
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(storage_error()),
+    };
+    let metadata = file.metadata().map_err(|_| storage_error())?;
+    // 只读探测允许当前用户所有且继承私有 namespace ACL 的普通锁。
+    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(denied());
+    }
+    validate_instance_lock_owner(file.as_raw_handle(), &UserSid::current()?)?;
+    Ok(Some(file))
+}
+
+pub(crate) fn open_private_lock_file(path: &Path) -> HostResult<File> {
+    use std::os::windows::fs::OpenOptionsExt;
+    let _directory = private_parent(path)?;
+    let security = descriptor(&UserSid::current()?.text()?, false)?;
+    let attrs = attributes(&security);
+    let name = wide(path.as_os_str())?;
+    let handle = unsafe {
+        CreateFileW(
+            name.as_ptr(),
+            GENERIC_READ | GENERIC_WRITE,
+            FILE_SHARE_READ | FILE_SHARE_WRITE,
+            &attrs,
+            CREATE_NEW,
+            FILE_FLAG_OPEN_REPARSE_POINT,
+            null_mut(),
+        )
+    };
+    let file = if handle == INVALID_HANDLE_VALUE {
+        if io::Error::last_os_error().kind() != io::ErrorKind::AlreadyExists {
+            return Err(storage_error());
+        }
+        fs::OpenOptions::new()
+            .read(true)
+            .write(true)
+            .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE)
+            .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+            .open(path)
+            .map_err(|_| storage_error())?
+    } else {
+        // The newly-created handle is transferred exactly once to File.
+        unsafe { File::from_raw_handle(handle) }
+    };
     validate_file(&file, false)?;
     Ok(file)
 }
@@ -703,6 +795,62 @@ mod tests {
         let path = temp.path().join("private");
         prepare_private_directory(&path).unwrap();
         (temp, path)
+    }
+    #[test]
+    fn instance_lock_owner_checks_the_open_handle_without_requiring_a_protected_dacl() {
+        let (_temp, namespace) = directory();
+        let path = namespace.join(crate::INSTANCE_LOCK_NAME);
+        let sid = UserSid::current().unwrap();
+        // 显式 owner 避免管理员 token 的默认 owner 为组；DACL 仍从父目录继承。
+        let owner_sddl = wide(OsStr::new(&format!("O:{}", sid.text().unwrap()))).unwrap();
+        let mut security = null_mut();
+        assert_ne!(
+            unsafe {
+                ConvertStringSecurityDescriptorToSecurityDescriptorW(
+                    owner_sddl.as_ptr(),
+                    SDDL_REVISION_1,
+                    &mut security,
+                    null_mut(),
+                )
+            },
+            0
+        );
+        let security = LocalMemory(security);
+        let attrs = attributes(&security);
+        let name = wide(path.as_os_str()).unwrap();
+        let handle = unsafe {
+            CreateFileW(
+                name.as_ptr(),
+                GENERIC_READ | GENERIC_WRITE,
+                FILE_SHARE_READ | FILE_SHARE_WRITE,
+                &attrs,
+                CREATE_NEW,
+                FILE_FLAG_OPEN_REPARSE_POINT,
+                null_mut(),
+            )
+        };
+        assert_ne!(handle, INVALID_HANDLE_VALUE);
+        let file = unsafe { File::from_raw_handle(handle) };
+        // 只读 probe 仍允许当前用户所有、继承私有目录 ACL 的普通锁。
+        assert!(validate_file(&file, false).is_err());
+        assert!(open_existing_instance_lock(&namespace).unwrap().is_some());
+        validate_instance_lock_owner(file.as_raw_handle(), &sid).unwrap();
+        let security_before = dacl_text(file.as_raw_handle());
+        assert_eq!(
+            open_private_lock_file(&path).unwrap_err().code,
+            "PERMISSION_DENIED"
+        );
+        assert_eq!(dacl_text(file.as_raw_handle()), security_before);
+        let mut other_sid = UserSid(sid.0.clone());
+        *other_sid.0.last_mut().unwrap() ^= 1;
+        assert_ne!(unsafe { IsValidSid(other_sid.as_ptr()) }, 0);
+        assert_eq!(unsafe { EqualSid(sid.as_ptr(), other_sid.as_ptr()) }, 0);
+        assert_eq!(
+            validate_instance_lock_owner(file.as_raw_handle(), &other_sid)
+                .unwrap_err()
+                .code,
+            "PERMISSION_DENIED"
+        );
     }
     #[test]
     fn private_directory_has_protected_single_user_dacl_and_rejects_inherited_directory() {

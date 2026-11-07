@@ -236,5 +236,7 @@ fn valid_timestamp(v: &str) -> bool {
 pub fn non_null_option<'de, D: Deserializer<'de>, T: Deserialize<'de>>(
     d: D,
 ) -> Result<Option<T>, D::Error> {
-    T::deserialize(d).map(Some)
+    Option::<T>::deserialize(d)?
+        .map(Some)
+        .ok_or_else(|| serde::de::Error::custom("Explicit null is not allowed"))
 }

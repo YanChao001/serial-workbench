@@ -29,11 +29,43 @@ pnpm app:dev
 
 ### Rust workspace 与公共契约
 
-根 [Cargo.toml](../Cargo.toml) 管理桌面与六个无头 crate；[Cargo.lock](../Cargo.lock) 是唯一 Rust 锁文件。版本在 `workspace.package.version` 维护，各成员使用 `version.workspace`；版本变更仍使用 `pnpm version:set`。默认成员为 core、IPC、Host、client、CLI 和 MCP，桌面命令显式选择 `-p serial-workbench`。
+根 [Cargo.toml](../Cargo.toml) 管理桌面与无头 crate，当前成员和默认检查范围以 `members` / `default-members` 为准；[Cargo.lock](../Cargo.lock) 是唯一 Rust 锁文件。版本在 `workspace.package.version` 维护，各成员使用 `version.workspace`；版本变更仍使用 `pnpm version:set`。桌面命令显式选择 `-p serial-workbench`。
 
 [target 配置](../.cargo/config.toml) 保留 `src-tauri/target` 缓存。共享 target 的 Cargo 与绑定/契约生成命令依次执行。仅检查无头 crate 不需要构建前端；桌面检查先准备 `dist/`，见 [Rust 测试](./testing.md#rust-测试)。
 
 Host 公共 DTO 在 `crates/core` 维护。修改 wire 类型后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`，提交 `packages/contracts/src/generated/` 的结果。生成器从 Rust 导出类型、draft-07 schema、目录和正负 fixture，再生成浏览器 ESM 校验器。手写 TypeScript 从 contracts 包使用类型与 `parseReply`，未知输入先校验；Tauri 本地命令继续使用原有 `bindings:*` 流程。
+
+### 独立 Host、CLI 与 MCP
+
+从仓库根目录构建三个入口：
+
+```sh
+cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+```
+
+程序位于 Cargo target 的 `debug/`，默认是 `src-tauri/target/debug/`；Windows 文件名带 `.exe`。CLI 和 MCP 先认证附着同 profile 的 Host，首次使用会启动同目录的 Host 程序。三个程序应放在一起。Windows 的工具或 IDE 若通过 Job 禁止子进程脱离，会返回 `HOST_START_FAILED`；此时先在独立终端运行 `serial-workbench-host --profile <绝对目录>`，再让客户端连接同一 profile。
+
+CLI 的完整参数与退出码见 `serial-workbench-cli --help` 和[参数入口](../crates/cli/src/args.rs)。结果写成单个 JSON 到 stdout，诊断写 stderr。首次认证仅有元数据权限，`authorize` / `revoke` 是明确的本地用户控制入口；参数使用 [Core 授权类型](../crates/core/src/auth.rs)，普通查询和调用不自动读取用户控制凭据。
+
+每个要重试的请求先保存 Host 签发的上下文：
+
+```sh
+serial-workbench-cli --profile <绝对目录> catalog --json
+serial-workbench-cli --profile <绝对目录> context --out request-context.json --json
+serial-workbench-cli --profile <绝对目录> invoke <actionId> --target-json target.json --params-json params.json --request-id <uuid> --request-context-json request-context.json --json
+```
+
+`context --out` 以新建方式写入 UTF-8 JSON，不覆盖已有文件。文件使用 Core `AttachResult`，绑定 Host、actor、客户端与实例。重试继续使用相同文件、requestId 和参数；异参由 Host 返回 `REQUEST_CONFLICT`。新任务可显式签发新文件，旧请求不会自动换上下文续期或重发。
+
+正常调用返回真实接纳 Operation，使用 `operation get <operationId>` 查询结果。Host 重启后，旧实例的 invoke 被拒绝；按原请求身份查询持久结果：
+
+```sh
+serial-workbench-cli --profile <绝对目录> operation get --request-id <原uuid> --request-context-json request-context.json --json
+```
+
+退出 CLI 保留 Host 及已接纳任务；`operation cancel <operationId>` 才请求合作取消。`host stop` 等待原实例实际结束后返回确认，回执中的接纳成功与实例停止分开判断；另一客户端随后可以启动新实例。
+
+MCP 入口为 `serial-workbench-mcp --profile <绝对目录>`，stdio 只承载官方 SDK 协议。工具来自同一 Host 目录及当前 actor 权限；普通 MCP 不自动取得用户控制权限。取消工具等待只结束适配器等待，业务取消仍通过明确的 `operation.cancel`。原始读取使用独立 raw 连接，语义见 [Host 契约](./contracts/host-v0.md) 与[流和操作契约](./contracts/stream-and-operations-v0.md)。
 
 ## 产品身份配置
 

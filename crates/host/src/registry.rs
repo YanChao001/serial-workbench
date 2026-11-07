@@ -18,6 +18,11 @@ struct Page {
     size: U64,
     offset: usize,
 }
+pub(crate) struct CatalogVisibility {
+    pub version: U64,
+    pub token: Digest,
+    pub stamp: Option<GrantStamp>,
+}
 impl Registry {
     pub fn new(store: Store, auth: AuthService) -> HostResult<Self> {
         let bytes = serde_json::to_vec(&builtin_catalog()).map_err(|_| invalid())?;
@@ -66,19 +71,7 @@ impl Registry {
         } else {
             0
         };
-        let mut items = Vec::new();
-        for spec in builtin_catalog() {
-            let mut visible = true;
-            for permission in &spec.permissions {
-                visible &= self
-                    .auth
-                    .can_discover(actor, permission, &spec.target_kinds)?;
-            }
-            if visible {
-                items.push(spec);
-            }
-        }
-        items.sort_by(|left, right| left.action_id.as_str().cmp(right.action_id.as_str()));
+        let items = self.visible_actions(actor)?;
         let has_more = items.len() > offset.saturating_add(size);
         let items = items.into_iter().skip(offset).take(size).collect();
         if let Some(stamp) = &stamp {
@@ -109,6 +102,36 @@ impl Registry {
             catalog_version: version,
             items,
             next_page_token,
+        })
+    }
+    fn visible_actions(&self, actor: &AuthenticatedActor) -> HostResult<Vec<ActionSpec>> {
+        let mut items = Vec::new();
+        for spec in builtin_catalog() {
+            let mut visible = true;
+            for permission in &spec.permissions {
+                visible &= self
+                    .auth
+                    .can_discover(actor, permission, &spec.target_kinds)?;
+            }
+            if visible {
+                items.push(spec);
+            }
+        }
+        items.sort_by(|left, right| left.action_id.as_str().cmp(right.action_id.as_str()));
+        Ok(items)
+    }
+    pub(crate) fn visibility(&self, actor: &AuthenticatedActor) -> HostResult<CatalogVisibility> {
+        let stamp = self.auth.capture_grants(actor)?;
+        let version = self.store.identity()?.catalog_version;
+        let items = self.visible_actions(actor)?;
+        if let Some(stamp) = &stamp {
+            self.auth.validate_grants(stamp).map_err(|_| changed())?;
+        }
+        let bytes = serde_json::to_vec(&items).map_err(|_| invalid())?;
+        Ok(CatalogVisibility {
+            version,
+            token: hash(&bytes),
+            stamp,
         })
     }
 }

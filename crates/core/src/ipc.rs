@@ -96,4 +96,8 @@ pub enum IpcMessage {
         subscription_id: Id,
         error: HostError,
     },
+    CatalogChanged {
+        catalog_version: U64,
+        visibility_token: Digest,
+    },
 }

@@ -4,6 +4,15 @@ export type ActionKind = "query" | "action";
 export type ActionResult = ActionResult_Serialize | ActionResult_Deserialize;
 
 export type ActionResult_Deserialize =
+  | { kind: "shutdown_requested"; value: ShutdownRequested }
+  | { kind: "opened"; value: OpenResult }
+  | { kind: "session"; value: SessionSnapshot_Deserialize }
+  | { kind: "control"; value: ControlReceipt_Deserialize }
+  | { kind: "lease"; value: Lease }
+  | { kind: "takeover"; value: TakeoverReceipt }
+  | { kind: "boundary"; value: WaitBoundaryReceipt }
+  | { kind: "drained"; value: DrainReceipt }
+  | { kind: "purged"; value: PurgeReceipt }
   | { kind: "tx"; value: TxReceipt_Deserialize }
   | { kind: "configuration"; value: ConfigReceipt_Deserialize }
   | { kind: "break"; value: BreakReceipt_Deserialize }
@@ -12,6 +21,15 @@ export type ActionResult_Deserialize =
   | { kind: "cancellation_requested"; value: CancellationResult };
 
 export type ActionResult_Serialize =
+  | { kind: "shutdown_requested"; value: ShutdownRequested }
+  | { kind: "opened"; value: OpenResult }
+  | { kind: "session"; value: SessionSnapshot_Serialize }
+  | { kind: "control"; value: ControlReceipt_Serialize }
+  | { kind: "lease"; value: Lease }
+  | { kind: "takeover"; value: TakeoverReceipt }
+  | { kind: "boundary"; value: WaitBoundaryReceipt }
+  | { kind: "drained"; value: DrainReceipt }
+  | { kind: "purged"; value: PurgeReceipt }
   | { kind: "tx"; value: TxReceipt_Serialize }
   | { kind: "configuration"; value: ConfigReceipt_Serialize }
   | { kind: "break"; value: BreakReceipt_Serialize }
@@ -105,6 +123,10 @@ export type AuthorizeParams_Serialize = {
   permissions: string[];
   targets: Target_Serialize[];
   expiresAt?: Timestamp;
+};
+
+export type BreakParams = {
+  durationMs: DurationMs;
 };
 
 export type BreakReceipt = BreakReceipt_Serialize | BreakReceipt_Deserialize;
@@ -247,19 +269,19 @@ export type ConfigField = ConfigField_Serialize | ConfigField_Deserialize;
 export type ConfigField_Deserialize = {
   field: string;
   status: FieldStatus;
-  actual?: JsonValue;
+  actual?: Exclude<JsonValue, null>;
 };
 
 export type ConfigField_Serialize = {
   field: string;
   status: FieldStatus;
-  actual?: JsonValue;
+  actual?: Exclude<JsonValue, null>;
 };
 
 export type ConfigReceipt = ConfigReceipt_Serialize | ConfigReceipt_Deserialize;
 
 export type ConfigReceipt_Deserialize = {
-  requested: { [key in string]: JsonValue };
+  requested: SerialConfiguration;
   fields: ConfigField_Deserialize[];
   readback: { [key in string]: JsonValue };
   revision: U64;
@@ -268,7 +290,7 @@ export type ConfigReceipt_Deserialize = {
 };
 
 export type ConfigReceipt_Serialize = {
-  requested: { [key in string]: JsonValue };
+  requested: SerialConfiguration;
   fields: ConfigField_Serialize[];
   readback: { [key in string]: JsonValue };
   revision: U64;
@@ -291,7 +313,38 @@ export type ConfigurationBoundary_Serialize = {
   receiptRef: ObjectRef_Serialize;
 };
 
+export type ConfigureParams = {
+  requested: SerialConfiguration;
+};
+
 export type ContextToken = string;
+
+export type ControlLine = "dtr" | "rts";
+
+export type ControlParams = {
+  line: ControlLine;
+  value: boolean;
+};
+
+export type ControlReceipt =
+  ControlReceipt_Serialize | ControlReceipt_Deserialize;
+
+export type ControlReceipt_Deserialize = {
+  line: ControlLine;
+  requested: boolean;
+  status: ControlStatus;
+  actual?: boolean;
+};
+
+export type ControlReceipt_Serialize = {
+  line: ControlLine;
+  requested: boolean;
+  status: ControlStatus;
+  actual?: boolean;
+};
+
+export type ControlState =
+  "clear" | "asserting" | "asserted" | "clearing" | "unknown";
 
 export type ControlStatus = "confirmed" | "failed" | "unknown";
 
@@ -317,6 +370,8 @@ export type Cursor = {
   position: U64;
 };
 
+export type DataBits = "5" | "6" | "7" | "8";
+
 export type Delta = {
   cursor: Cursor;
   previousCursor: Cursor;
@@ -331,6 +386,15 @@ export type Dependency = {
   digest: Digest;
 };
 
+export type DeviceDescriptor = {
+  deviceId: Id;
+  name: string;
+};
+
+export type DeviceList = {
+  devices: DeviceDescriptor[];
+};
+
 export type Digest = string;
 
 export type Direction = "rx" | "tx";
@@ -341,7 +405,17 @@ export type DirectionalRange = {
   end: U64;
 };
 
+export type DrainParams = {
+  writeWaitMs: DurationMs;
+};
+
+export type DrainReceipt = {
+  status: ControlStatus;
+};
+
 export type DurationMs = U64;
+
+export type EmptyParams = Record<string, never>;
 
 export type EventTime = EventTime_Serialize | EventTime_Deserialize;
 
@@ -365,7 +439,11 @@ export type ExecutionLocation = "resource_host" | "client";
 
 export type ExecutionMode = "interactive" | "independent";
 
+export type ExplicitLeaseKind = "transaction" | "exclusive";
+
 export type FieldStatus = "applied" | "rejected" | "unknown";
+
+export type FlowControl = "none" | "rtsCts" | "xonXoff" | "dsrDtr";
 
 export type HostError = HostError_Serialize | HostError_Deserialize;
 
@@ -401,6 +479,7 @@ export type IpcMessage_Deserialize =
       expectedHostId?: Id;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       credential?: never;
       delta?: never;
@@ -415,6 +494,7 @@ export type IpcMessage_Deserialize =
       serverNonce?: never;
       subscriptionId?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "hostHello";
@@ -425,6 +505,7 @@ export type IpcMessage_Deserialize =
       proof: ContextToken;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -437,9 +518,11 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "authenticate"; clientId: Id; credential?: ContextToken } & {
       batch?: never;
+      catalogVersion?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -455,6 +538,7 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "authenticateUserControl";
@@ -462,6 +546,7 @@ export type IpcMessage_Deserialize =
       credential: ContextToken;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -477,6 +562,7 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "authenticated";
@@ -484,6 +570,7 @@ export type IpcMessage_Deserialize =
       rawAttachToken: ContextToken;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       delta?: never;
@@ -499,9 +586,11 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "rawAttach"; token: ContextToken } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -518,9 +607,11 @@ export type IpcMessage_Deserialize =
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
+      visibilityToken?: never;
     })
   | ({ type: "rawAttached" } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -538,9 +629,11 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "request"; request: RpcRequest_Deserialize } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -557,9 +650,11 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "reply"; reply: RpcReply_Deserialize } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -576,9 +671,11 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "error"; error: HostError_Deserialize } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -595,8 +692,10 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "rawBatch"; batch: RawBatch_Deserialize } & {
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -614,9 +713,11 @@ export type IpcMessage_Deserialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "delta"; subscriptionId: Id; delta: Delta } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -632,6 +733,7 @@ export type IpcMessage_Deserialize =
       serverNonce?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "subscriptionEnded";
@@ -639,6 +741,7 @@ export type IpcMessage_Deserialize =
       error: HostError_Deserialize;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -652,6 +755,31 @@ export type IpcMessage_Deserialize =
       reply?: never;
       request?: never;
       serverNonce?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({
+      type: "catalogChanged";
+      catalogVersion: U64;
+      visibilityToken: Digest;
+    } & {
+      batch?: never;
+      clientId?: never;
+      clientNonce?: never;
+      credential?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      hostId?: never;
+      instanceEpoch?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reply?: never;
+      request?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
     });
@@ -664,6 +792,7 @@ export type IpcMessage_Serialize =
       expectedHostId?: Id;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       credential?: never;
       delta?: never;
@@ -678,6 +807,7 @@ export type IpcMessage_Serialize =
       serverNonce?: never;
       subscriptionId?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "hostHello";
@@ -688,6 +818,7 @@ export type IpcMessage_Serialize =
       proof: ContextToken;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -700,9 +831,11 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "authenticate"; clientId: Id; credential?: ContextToken } & {
       batch?: never;
+      catalogVersion?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -718,6 +851,7 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "authenticateUserControl";
@@ -725,6 +859,7 @@ export type IpcMessage_Serialize =
       credential: ContextToken;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -740,6 +875,7 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "authenticated";
@@ -747,6 +883,7 @@ export type IpcMessage_Serialize =
       rawAttachToken: ContextToken;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       delta?: never;
@@ -762,9 +899,11 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "rawAttach"; token: ContextToken } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -781,9 +920,11 @@ export type IpcMessage_Serialize =
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
+      visibilityToken?: never;
     })
   | ({ type: "rawAttached" } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -801,9 +942,11 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "request"; request: RpcRequest_Serialize } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -820,9 +963,11 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "reply"; reply: RpcReply_Serialize } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -839,9 +984,11 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "error"; error: HostError_Serialize } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -858,8 +1005,10 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "rawBatch"; batch: RawBatch_Serialize } & {
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -877,9 +1026,11 @@ export type IpcMessage_Serialize =
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({ type: "delta"; subscriptionId: Id; delta: Delta } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -895,6 +1046,7 @@ export type IpcMessage_Serialize =
       serverNonce?: never;
       supportedProtocolVersions?: never;
       token?: never;
+      visibilityToken?: never;
     })
   | ({
       type: "subscriptionEnded";
@@ -902,6 +1054,7 @@ export type IpcMessage_Serialize =
       error: HostError_Serialize;
     } & {
       batch?: never;
+      catalogVersion?: never;
       clientId?: never;
       clientNonce?: never;
       credential?: never;
@@ -915,6 +1068,31 @@ export type IpcMessage_Serialize =
       reply?: never;
       request?: never;
       serverNonce?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({
+      type: "catalogChanged";
+      catalogVersion: U64;
+      visibilityToken: Digest;
+    } & {
+      batch?: never;
+      clientId?: never;
+      clientNonce?: never;
+      credential?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      hostId?: never;
+      instanceEpoch?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reply?: never;
+      request?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
     });
@@ -926,6 +1104,36 @@ export type JsonValue =
   | string
   | JsonValue[]
   | { [key in string]: JsonValue };
+
+export type Lease = {
+  leaseId: Id;
+  sessionId: Id;
+  sessionEpoch: U64;
+  actorId: Id;
+  ownerOperationId: Id;
+  kind: LeaseKind;
+  state: LeaseState;
+  executionMode: ExecutionMode;
+  expiresAtMonoNs: U64;
+};
+
+export type LeaseAcquireParams = {
+  kind: ExplicitLeaseKind;
+  ttlMs: DurationMs;
+};
+
+export type LeaseKind = "ordinary" | "transaction" | "exclusive";
+
+export type LeaseReleaseParams = {
+  leaseId: Id;
+};
+
+export type LeaseRenewParams = {
+  leaseId: Id;
+  ttlMs: DurationMs;
+};
+
+export type LeaseState = "active" | "revoking" | "released" | "expired";
 
 export type Limits = {
   maxRequestBytes: U64;
@@ -974,6 +1182,17 @@ export type ObjectRef_Serialize = {
   kind: ResourceKind;
   id: Id;
   revision?: U64;
+};
+
+export type OpenParams = {
+  configuration: SerialConfiguration;
+};
+
+export type OpenResult = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  revision: U64;
+  reused: boolean;
 };
 
 export type Operation = Operation_Serialize | Operation_Deserialize;
@@ -1112,6 +1331,8 @@ export type Owner_Serialize = {
   version?: string;
 };
 
+export type Parity = "none" | "even" | "odd" | "mark" | "space";
+
 export type PositiveU64 = U64;
 
 export type Progress = Progress_Serialize | Progress_Deserialize;
@@ -1130,11 +1351,37 @@ export type Progress_Serialize = {
 
 export type ProtocolVersion = "0.1";
 
+export type PurgeDirection = "rx" | "tx" | "both";
+
+export type PurgeOutcome = "completed" | "partial" | "unknown";
+
+export type PurgeParams = {
+  direction: PurgeDirection;
+  scope: PurgeScope;
+};
+
+export type PurgeReceipt = {
+  direction: PurgeDirection;
+  scope: PurgeScope;
+  outcome: PurgeOutcome;
+  affectedOperationIds: Id[];
+  ranges: DirectionalRange[];
+  unknownExtent: boolean;
+};
+
+export type PurgeScope = "application" | "driver" | "both";
+
 export type Query = Query_Serialize | Query_Deserialize;
 
 export type QueryResult = QueryResult_Serialize | QueryResult_Deserialize;
 
 export type QueryResult_Deserialize =
+  | { kind: "stream_read"; value: StreamReadResult_Deserialize }
+  | { kind: "stream_subscribe"; value: StreamSubscribeResult }
+  | { kind: "stream_credit"; value: StreamCreditResult }
+  | { kind: "devices"; value: DeviceList }
+  | { kind: "session"; value: SessionSnapshot_Deserialize }
+  | { kind: "queue"; value: QueueStatus }
   | { kind: "catalog"; value: CatalogListResult_Deserialize }
   | { kind: "operation"; value: OperationResult_Deserialize }
   | { kind: "snapshot"; value: Snapshot }
@@ -1142,6 +1389,12 @@ export type QueryResult_Deserialize =
   | { kind: "closed"; value: ClosedResult };
 
 export type QueryResult_Serialize =
+  | { kind: "stream_read"; value: StreamReadResult_Serialize }
+  | { kind: "stream_subscribe"; value: StreamSubscribeResult }
+  | { kind: "stream_credit"; value: StreamCreditResult }
+  | { kind: "devices"; value: DeviceList }
+  | { kind: "session"; value: SessionSnapshot_Serialize }
+  | { kind: "queue"; value: QueueStatus }
   | { kind: "catalog"; value: CatalogListResult_Serialize }
   | { kind: "operation"; value: OperationResult_Serialize }
   | { kind: "snapshot"; value: Snapshot }
@@ -1170,6 +1423,11 @@ export type Query_Serialize = {
   target: Target_Serialize;
   params: { [key in string]: JsonValue };
   revealTarget: RevealTarget_Serialize;
+};
+
+export type QueueStatus = {
+  pendingBytes: U64;
+  observedAt: Timestamp;
 };
 
 export type RawBatch = RawBatch_Serialize | RawBatch_Deserialize;
@@ -1214,6 +1472,7 @@ export type RawPayload = RawPayload_Serialize | RawPayload_Deserialize;
 
 export type RawPayload_Deserialize =
   | { kind: "rx"; payload: RxPayload_Deserialize }
+  | { kind: "tx_intent"; payload: TxIntent }
   | { kind: "tx"; payload: TxReceipt_Deserialize }
   | { kind: "gap"; payload: SourceGap_Deserialize }
   | {
@@ -1225,6 +1484,7 @@ export type RawPayload_Deserialize =
 
 export type RawPayload_Serialize =
   | { kind: "rx"; payload: RxPayload_Serialize }
+  | { kind: "tx_intent"; payload: TxIntent }
   | { kind: "tx"; payload: TxReceipt_Serialize }
   | { kind: "gap"; payload: SourceGap_Serialize }
   | { kind: "configuration_boundary"; payload: ConfigurationBoundary_Serialize }
@@ -1401,6 +1661,61 @@ export type SchemaValue =
   | SchemaValue[]
   | { [key in string]: SchemaValue };
 
+export type SerialConfiguration = {
+  baudRate: PositiveU64;
+  dataBits: DataBits;
+  parity: Parity;
+  stopBits: StopBits;
+  flowControl: FlowControl;
+  readWaitMs: DurationMs;
+  writeWaitMs: DurationMs;
+  reconnectBackoffMs: DurationMs;
+};
+
+export type SessionSnapshot =
+  SessionSnapshot_Serialize | SessionSnapshot_Deserialize;
+
+export type SessionSnapshot_Deserialize = {
+  sessionId: Id;
+  deviceId: Id;
+  sessionEpoch: U64;
+  revision: U64;
+  configurationRevision: U64;
+  state: SessionState;
+  configuration: SerialConfiguration;
+  readOnly: boolean;
+  txGate: TxGate;
+  controlState: ControlState;
+  capabilities: TransportCapabilities;
+  lease?: Lease;
+};
+
+export type SessionSnapshot_Serialize = {
+  sessionId: Id;
+  deviceId: Id;
+  sessionEpoch: U64;
+  revision: U64;
+  configurationRevision: U64;
+  state: SessionState;
+  configuration: SerialConfiguration;
+  readOnly: boolean;
+  txGate: TxGate;
+  controlState: ControlState;
+  capabilities: TransportCapabilities;
+  lease?: Lease;
+};
+
+export type SessionState =
+  "closed" | "opening" | "open" | "disconnected" | "closing";
+
+export type SetReadOnlyParams = {
+  readOnly: boolean;
+};
+
+export type ShutdownRequested = {
+  instanceEpoch: U64;
+};
+
 export type SignedDecimal = string;
 
 export type Snapshot = {
@@ -1440,6 +1755,8 @@ export type StateSubscribeParams = {
   scopeId: Id;
   after: Cursor;
 };
+
+export type StopBits = "one" | "onePointFive" | "two";
 
 export type StreamCreditParams = {
   subscriptionId: Id;
@@ -1507,6 +1824,17 @@ export type SubscriptionResult = {
   subscriptionId: Id;
 };
 
+export type TakeoverParams = {
+  actorId: Id;
+  reason: TakeoverReason;
+};
+
+export type TakeoverReason = "user";
+
+export type TakeoverReceipt = {
+  affectedOperationIds: Id[];
+};
+
 export type Target = Target_Serialize | Target_Deserialize;
 
 export type Target_Deserialize = {
@@ -1550,6 +1878,26 @@ export type TimeSource =
 
 export type Timestamp = string;
 
+export type TransformReference = {
+  id: Id;
+  version: string;
+  configurationDigest: Digest;
+};
+
+export type TransportCapabilities = {
+  semantics: TransportSemantics;
+  configuration: boolean;
+  dtr: boolean;
+  rts: boolean;
+  finiteBreak: boolean;
+  queueStatus: boolean;
+  drain: boolean;
+  purgeRx: boolean;
+  purgeTx: boolean;
+};
+
+export type TransportSemantics = "stream" | "message";
+
 export type TxGate =
   | "ready"
   | "configuration_pending"
@@ -1557,7 +1905,32 @@ export type TxGate =
   | "closing"
   | "disconnected";
 
+export type TxIntent = {
+  operationId: Id;
+  bytesBase64: Bytes;
+  byteStart: U64;
+  byteEnd: U64;
+};
+
 export type TxOutcome = "accepted" | "partial" | "rejected" | "unknown";
+
+export type TxParams = TxParams_Serialize | TxParams_Deserialize;
+
+export type TxParams_Deserialize = {
+  bytesBase64: Bytes;
+  writeWaitMs: DurationMs;
+  queueWaitMs?: DurationMs;
+  sourceInputRef?: ObjectRef_Deserialize;
+  transforms?: TransformReference[];
+};
+
+export type TxParams_Serialize = {
+  bytesBase64: Bytes;
+  writeWaitMs: DurationMs;
+  queueWaitMs?: DurationMs;
+  sourceInputRef?: ObjectRef_Serialize;
+  transforms?: TransformReference[];
+};
 
 export type TxReceipt = TxReceipt_Serialize | TxReceipt_Deserialize;
 
@@ -1590,6 +1963,15 @@ export type TxReceipt_Serialize = {
 };
 
 export type U64 = string;
+
+export type WaitBoundaryParams = {
+  throughOperationId: Id;
+  queueWaitMs: DurationMs;
+};
+
+export type WaitBoundaryReceipt = {
+  throughOperationId: Id;
+};
 
 export type WireFrame = WireFrame_Serialize | WireFrame_Deserialize;
 

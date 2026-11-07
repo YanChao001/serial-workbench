@@ -308,6 +308,132 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "shutdown_requested",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/ShutdownRequested"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "opened",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/OpenResult"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "session",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/SessionSnapshot"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "control",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/ControlReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lease",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/Lease"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "takeover",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/TakeoverReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "boundary",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/WaitBoundaryReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "drained",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/DrainReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "purged",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/PurgeReceipt"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "tx",
                     "type": "string"
                   },
@@ -490,7 +616,16 @@
             "additionalProperties": false,
             "properties": {
               "actual": {
-                "$ref": "#/definitions/JsonValue"
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/JsonValue"
+                  },
+                  {
+                    "not": {
+                      "type": "null"
+                    }
+                  }
+                ]
               },
               "field": {
                 "type": "string"
@@ -521,10 +656,7 @@
                 "type": "object"
               },
               "requested": {
-                "additionalProperties": {
-                  "$ref": "#/definitions/JsonValue"
-                },
-                "type": "object"
+                "$ref": "#/definitions/SerialConfiguration"
               },
               "revision": {
                 "$ref": "#/definitions/U64"
@@ -542,6 +674,33 @@
               "txGate"
             ],
             "type": "object"
+          },
+          "ControlLine": {
+            "enum": ["dtr", "rts"],
+            "type": "string"
+          },
+          "ControlReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "actual": {
+                "type": "boolean"
+              },
+              "line": {
+                "$ref": "#/definitions/ControlLine"
+              },
+              "requested": {
+                "type": "boolean"
+              },
+              "status": {
+                "$ref": "#/definitions/ControlStatus"
+              }
+            },
+            "required": ["line", "requested", "status"],
+            "type": "object"
+          },
+          "ControlState": {
+            "enum": ["clear", "asserting", "asserted", "clearing", "unknown"],
+            "type": "string"
           },
           "ControlStatus": {
             "enum": ["confirmed", "failed", "unknown"],
@@ -563,6 +722,10 @@
             "required": ["status", "at"],
             "type": "object"
           },
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
           "Dependency": {
             "additionalProperties": false,
             "properties": {
@@ -583,6 +746,43 @@
             "pattern": "^[0-9a-f]{64}$",
             "type": "string"
           },
+          "Direction": {
+            "enum": ["rx", "tx"],
+            "type": "string"
+          },
+          "DirectionalRange": {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "$ref": "#/definitions/Direction"
+              },
+              "end": {
+                "$ref": "#/definitions/U64"
+              },
+              "start": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["direction", "start", "end"],
+            "type": "object"
+          },
+          "DrainReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "status": {
+                "$ref": "#/definitions/ControlStatus"
+              }
+            },
+            "required": ["status"],
+            "type": "object"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
           "ExecutionMode": {
             "enum": ["interactive", "independent"],
             "type": "string"
@@ -593,6 +793,10 @@
           },
           "FieldStatus": {
             "enum": ["applied", "rejected", "unknown"],
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
             "type": "string"
           },
           "HostError": {
@@ -655,6 +859,58 @@
               }
             ]
           },
+          "Lease": {
+            "additionalProperties": false,
+            "properties": {
+              "actorId": {
+                "$ref": "#/definitions/Id"
+              },
+              "executionMode": {
+                "$ref": "#/definitions/ExecutionMode"
+              },
+              "expiresAtMonoNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "kind": {
+                "$ref": "#/definitions/LeaseKind"
+              },
+              "leaseId": {
+                "$ref": "#/definitions/Id"
+              },
+              "ownerOperationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "state": {
+                "$ref": "#/definitions/LeaseState"
+              }
+            },
+            "required": [
+              "leaseId",
+              "sessionId",
+              "sessionEpoch",
+              "actorId",
+              "ownerOperationId",
+              "kind",
+              "state",
+              "executionMode",
+              "expiresAtMonoNs"
+            ],
+            "type": "object"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
           "ObjectRef": {
             "additionalProperties": false,
             "properties": {
@@ -672,6 +928,25 @@
               }
             },
             "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "OpenResult": {
+            "additionalProperties": false,
+            "properties": {
+              "reused": {
+                "type": "boolean"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["sessionId", "sessionEpoch", "revision", "reused"],
             "type": "object"
           },
           "Operation": {
@@ -799,6 +1074,10 @@
             "enum": ["host", "plugin"],
             "type": "string"
           },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
           "PositiveU64": {
             "not": {
               "pattern": "^(?:0|0)$"
@@ -821,6 +1100,56 @@
             },
             "required": ["completed", "unit"],
             "type": "object"
+          },
+          "PurgeDirection": {
+            "enum": ["rx", "tx", "both"],
+            "type": "string"
+          },
+          "PurgeOutcome": {
+            "enum": ["completed", "partial", "unknown"],
+            "type": "string"
+          },
+          "PurgeReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "affectedOperationIds": {
+                "items": {
+                  "$ref": "#/definitions/Id"
+                },
+                "type": "array"
+              },
+              "direction": {
+                "$ref": "#/definitions/PurgeDirection"
+              },
+              "outcome": {
+                "$ref": "#/definitions/PurgeOutcome"
+              },
+              "ranges": {
+                "items": {
+                  "$ref": "#/definitions/DirectionalRange"
+                },
+                "type": "array"
+              },
+              "scope": {
+                "$ref": "#/definitions/PurgeScope"
+              },
+              "unknownExtent": {
+                "type": "boolean"
+              }
+            },
+            "required": [
+              "direction",
+              "scope",
+              "outcome",
+              "affectedOperationIds",
+              "ranges",
+              "unknownExtent"
+            ],
+            "type": "object"
+          },
+          "PurgeScope": {
+            "enum": ["application", "driver", "both"],
+            "type": "string"
           },
           "RequestId": {
             "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
@@ -863,9 +1192,135 @@
             "type": "object"
           },
           "SafeInteger": {
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
             "type": "integer"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "SessionSnapshot": {
+            "additionalProperties": false,
+            "properties": {
+              "capabilities": {
+                "$ref": "#/definitions/TransportCapabilities"
+              },
+              "configuration": {
+                "$ref": "#/definitions/SerialConfiguration"
+              },
+              "configurationRevision": {
+                "$ref": "#/definitions/U64"
+              },
+              "controlState": {
+                "$ref": "#/definitions/ControlState"
+              },
+              "deviceId": {
+                "$ref": "#/definitions/Id"
+              },
+              "lease": {
+                "$ref": "#/definitions/Lease"
+              },
+              "readOnly": {
+                "type": "boolean"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "state": {
+                "$ref": "#/definitions/SessionState"
+              },
+              "txGate": {
+                "$ref": "#/definitions/TxGate"
+              }
+            },
+            "required": [
+              "sessionId",
+              "deviceId",
+              "sessionEpoch",
+              "revision",
+              "configurationRevision",
+              "state",
+              "configuration",
+              "readOnly",
+              "txGate",
+              "controlState",
+              "capabilities"
+            ],
+            "type": "object"
+          },
+          "SessionState": {
+            "enum": ["closed", "opening", "open", "disconnected", "closing"],
+            "type": "string"
+          },
+          "ShutdownRequested": {
+            "additionalProperties": false,
+            "properties": {
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["instanceEpoch"],
+            "type": "object"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          },
+          "TakeoverReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "affectedOperationIds": {
+                "items": {
+                  "$ref": "#/definitions/Id"
+                },
+                "type": "array"
+              }
+            },
+            "required": ["affectedOperationIds"],
+            "type": "object"
           },
           "Target": {
             "additionalProperties": false,
@@ -916,6 +1371,54 @@
           },
           "Timestamp": {
             "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+            "type": "string"
+          },
+          "TransportCapabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "configuration": {
+                "type": "boolean"
+              },
+              "drain": {
+                "type": "boolean"
+              },
+              "dtr": {
+                "type": "boolean"
+              },
+              "finiteBreak": {
+                "type": "boolean"
+              },
+              "purgeRx": {
+                "type": "boolean"
+              },
+              "purgeTx": {
+                "type": "boolean"
+              },
+              "queueStatus": {
+                "type": "boolean"
+              },
+              "rts": {
+                "type": "boolean"
+              },
+              "semantics": {
+                "$ref": "#/definitions/TransportSemantics"
+              }
+            },
+            "required": [
+              "semantics",
+              "configuration",
+              "dtr",
+              "rts",
+              "finiteBreak",
+              "queueStatus",
+              "drain",
+              "purgeRx",
+              "purgeTx"
+            ],
+            "type": "object"
+          },
+          "TransportSemantics": {
+            "enum": ["stream", "message"],
             "type": "string"
           },
           "TxGate": {
@@ -992,6 +1495,16 @@
           "U64": {
             "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
             "type": "string"
+          },
+          "WaitBoundaryReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "throughOperationId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["throughOperationId"],
+            "type": "object"
           }
         },
         "properties": {
@@ -1155,8 +1668,8 @@
             ]
           },
           "SafeInteger": {
-            "maximum": 9007199254740991.0,
-            "minimum": -9007199254740991.0,
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
             "type": "integer"
           },
           "U64": {
@@ -1317,7 +1830,7 @@
         "pageId": "workbench"
       },
       "stateScopes": ["host.activity"],
-      "targetKinds": ["host"]
+      "targetKinds": ["host", "workspace", "session"]
     },
     {
       "actionId": "auth.authorize",
@@ -1549,6 +2062,3387 @@
         },
         "required": ["grantRevision"],
         "title": "AuthorizationResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "device.list",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "title": "EmptyParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DeviceDescriptor": {
+            "additionalProperties": false,
+            "properties": {
+              "deviceId": {
+                "$ref": "#/definitions/Id"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["deviceId", "name"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "devices": {
+            "items": {
+              "$ref": "#/definitions/DeviceDescriptor"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["devices"],
+        "title": "DeviceList",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "device.open",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+            "type": "string"
+          },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "configuration": {
+            "$ref": "#/definitions/SerialConfiguration"
+          }
+        },
+        "required": ["configuration"],
+        "title": "OpenParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "reused": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["sessionId", "sessionEpoch", "revision", "reused"],
+        "title": "OpenResult",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["device"]
+    },
+    {
+      "actionId": "session.get",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "title": "EmptyParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlState": {
+            "enum": ["clear", "asserting", "asserted", "clearing", "unknown"],
+            "type": "string"
+          },
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "Lease": {
+            "additionalProperties": false,
+            "properties": {
+              "actorId": {
+                "$ref": "#/definitions/Id"
+              },
+              "executionMode": {
+                "$ref": "#/definitions/ExecutionMode"
+              },
+              "expiresAtMonoNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "kind": {
+                "$ref": "#/definitions/LeaseKind"
+              },
+              "leaseId": {
+                "$ref": "#/definitions/Id"
+              },
+              "ownerOperationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "state": {
+                "$ref": "#/definitions/LeaseState"
+              }
+            },
+            "required": [
+              "leaseId",
+              "sessionId",
+              "sessionEpoch",
+              "actorId",
+              "ownerOperationId",
+              "kind",
+              "state",
+              "executionMode",
+              "expiresAtMonoNs"
+            ],
+            "type": "object"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "SessionState": {
+            "enum": ["closed", "opening", "open", "disconnected", "closing"],
+            "type": "string"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          },
+          "TransportCapabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "configuration": {
+                "type": "boolean"
+              },
+              "drain": {
+                "type": "boolean"
+              },
+              "dtr": {
+                "type": "boolean"
+              },
+              "finiteBreak": {
+                "type": "boolean"
+              },
+              "purgeRx": {
+                "type": "boolean"
+              },
+              "purgeTx": {
+                "type": "boolean"
+              },
+              "queueStatus": {
+                "type": "boolean"
+              },
+              "rts": {
+                "type": "boolean"
+              },
+              "semantics": {
+                "$ref": "#/definitions/TransportSemantics"
+              }
+            },
+            "required": [
+              "semantics",
+              "configuration",
+              "dtr",
+              "rts",
+              "finiteBreak",
+              "queueStatus",
+              "drain",
+              "purgeRx",
+              "purgeTx"
+            ],
+            "type": "object"
+          },
+          "TransportSemantics": {
+            "enum": ["stream", "message"],
+            "type": "string"
+          },
+          "TxGate": {
+            "enum": [
+              "ready",
+              "configuration_pending",
+              "control_unknown",
+              "closing",
+              "disconnected"
+            ],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "capabilities": {
+            "$ref": "#/definitions/TransportCapabilities"
+          },
+          "configuration": {
+            "$ref": "#/definitions/SerialConfiguration"
+          },
+          "configurationRevision": {
+            "$ref": "#/definitions/U64"
+          },
+          "controlState": {
+            "$ref": "#/definitions/ControlState"
+          },
+          "deviceId": {
+            "$ref": "#/definitions/Id"
+          },
+          "lease": {
+            "$ref": "#/definitions/Lease"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/SessionState"
+          },
+          "txGate": {
+            "$ref": "#/definitions/TxGate"
+          }
+        },
+        "required": [
+          "sessionId",
+          "deviceId",
+          "sessionEpoch",
+          "revision",
+          "configurationRevision",
+          "state",
+          "configuration",
+          "readOnly",
+          "txGate",
+          "controlState",
+          "capabilities"
+        ],
+        "title": "SessionSnapshot",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.close",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "title": "EmptyParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlState": {
+            "enum": ["clear", "asserting", "asserted", "clearing", "unknown"],
+            "type": "string"
+          },
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "Lease": {
+            "additionalProperties": false,
+            "properties": {
+              "actorId": {
+                "$ref": "#/definitions/Id"
+              },
+              "executionMode": {
+                "$ref": "#/definitions/ExecutionMode"
+              },
+              "expiresAtMonoNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "kind": {
+                "$ref": "#/definitions/LeaseKind"
+              },
+              "leaseId": {
+                "$ref": "#/definitions/Id"
+              },
+              "ownerOperationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "state": {
+                "$ref": "#/definitions/LeaseState"
+              }
+            },
+            "required": [
+              "leaseId",
+              "sessionId",
+              "sessionEpoch",
+              "actorId",
+              "ownerOperationId",
+              "kind",
+              "state",
+              "executionMode",
+              "expiresAtMonoNs"
+            ],
+            "type": "object"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "SessionState": {
+            "enum": ["closed", "opening", "open", "disconnected", "closing"],
+            "type": "string"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          },
+          "TransportCapabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "configuration": {
+                "type": "boolean"
+              },
+              "drain": {
+                "type": "boolean"
+              },
+              "dtr": {
+                "type": "boolean"
+              },
+              "finiteBreak": {
+                "type": "boolean"
+              },
+              "purgeRx": {
+                "type": "boolean"
+              },
+              "purgeTx": {
+                "type": "boolean"
+              },
+              "queueStatus": {
+                "type": "boolean"
+              },
+              "rts": {
+                "type": "boolean"
+              },
+              "semantics": {
+                "$ref": "#/definitions/TransportSemantics"
+              }
+            },
+            "required": [
+              "semantics",
+              "configuration",
+              "dtr",
+              "rts",
+              "finiteBreak",
+              "queueStatus",
+              "drain",
+              "purgeRx",
+              "purgeTx"
+            ],
+            "type": "object"
+          },
+          "TransportSemantics": {
+            "enum": ["stream", "message"],
+            "type": "string"
+          },
+          "TxGate": {
+            "enum": [
+              "ready",
+              "configuration_pending",
+              "control_unknown",
+              "closing",
+              "disconnected"
+            ],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "capabilities": {
+            "$ref": "#/definitions/TransportCapabilities"
+          },
+          "configuration": {
+            "$ref": "#/definitions/SerialConfiguration"
+          },
+          "configurationRevision": {
+            "$ref": "#/definitions/U64"
+          },
+          "controlState": {
+            "$ref": "#/definitions/ControlState"
+          },
+          "deviceId": {
+            "$ref": "#/definitions/Id"
+          },
+          "lease": {
+            "$ref": "#/definitions/Lease"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/SessionState"
+          },
+          "txGate": {
+            "$ref": "#/definitions/TxGate"
+          }
+        },
+        "required": [
+          "sessionId",
+          "deviceId",
+          "sessionEpoch",
+          "revision",
+          "configurationRevision",
+          "state",
+          "configuration",
+          "readOnly",
+          "txGate",
+          "controlState",
+          "capabilities"
+        ],
+        "title": "SessionSnapshot",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.tx",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "TransformReference": {
+            "additionalProperties": false,
+            "properties": {
+              "configurationDigest": {
+                "$ref": "#/definitions/Digest"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "version", "configurationDigest"],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "bytesBase64": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/Bytes"
+              },
+              {
+                "anyOf": [
+                  {
+                    "maxLength": 21844,
+                    "type": "string"
+                  },
+                  {
+                    "maxLength": 21848,
+                    "pattern": "==$",
+                    "type": "string"
+                  }
+                ],
+                "minLength": 4,
+                "type": "string"
+              }
+            ]
+          },
+          "queueWaitMs": {
+            "$ref": "#/definitions/DurationMs"
+          },
+          "sourceInputRef": {
+            "$ref": "#/definitions/ObjectRef"
+          },
+          "transforms": {
+            "items": {
+              "$ref": "#/definitions/TransformReference"
+            },
+            "type": "array"
+          },
+          "writeWaitMs": {
+            "$ref": "#/definitions/DurationMs"
+          }
+        },
+        "required": ["bytesBase64", "writeWaitMs"],
+        "title": "TxParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ByteRange": {
+            "additionalProperties": false,
+            "properties": {
+              "end": {
+                "$ref": "#/definitions/U64"
+              },
+              "start": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["start", "end"],
+            "type": "object"
+          },
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "False": {
+            "const": false,
+            "type": "boolean"
+          },
+          "HostError": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              }
+            },
+            "required": ["code", "message", "retryable"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "RevealTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "pageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "panelId": {
+                "$ref": "#/definitions/Id"
+              },
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "workspaceId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["pageId"],
+            "type": "object"
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "TxOutcome": {
+            "enum": ["accepted", "partial", "rejected", "unknown"],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "acceptedRanges": {
+            "items": {
+              "$ref": "#/definitions/ByteRange"
+            },
+            "type": "array"
+          },
+          "backendError": {
+            "$ref": "#/definitions/HostError"
+          },
+          "byteEnd": {
+            "$ref": "#/definitions/U64"
+          },
+          "byteStart": {
+            "$ref": "#/definitions/U64"
+          },
+          "bytesBase64": {
+            "$ref": "#/definitions/Bytes"
+          },
+          "operationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "outcome": {
+            "$ref": "#/definitions/TxOutcome"
+          },
+          "peerAcknowledged": {
+            "$ref": "#/definitions/False"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "unknownRanges": {
+            "items": {
+              "$ref": "#/definitions/ByteRange"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "operationId",
+          "sessionId",
+          "sessionEpoch",
+          "outcome",
+          "bytesBase64",
+          "byteStart",
+          "byteEnd",
+          "acceptedRanges",
+          "unknownRanges",
+          "peerAcknowledged"
+        ],
+        "title": "TxReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.configure",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+            "type": "string"
+          },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "requested": {
+            "$ref": "#/definitions/SerialConfiguration"
+          }
+        },
+        "required": ["requested"],
+        "title": "ConfigureParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ConfigField": {
+            "additionalProperties": false,
+            "properties": {
+              "actual": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/JsonValue"
+                  },
+                  {
+                    "not": {
+                      "type": "null"
+                    }
+                  }
+                ]
+              },
+              "field": {
+                "type": "string"
+              },
+              "status": {
+                "$ref": "#/definitions/FieldStatus"
+              }
+            },
+            "required": ["field", "status"],
+            "type": "object"
+          },
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "FieldStatus": {
+            "enum": ["applied", "rejected", "unknown"],
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          },
+          "TxGate": {
+            "enum": [
+              "ready",
+              "configuration_pending",
+              "control_unknown",
+              "closing",
+              "disconnected"
+            ],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "boundaryEventSeq": {
+            "$ref": "#/definitions/U64"
+          },
+          "fields": {
+            "items": {
+              "$ref": "#/definitions/ConfigField"
+            },
+            "type": "array"
+          },
+          "readback": {
+            "additionalProperties": {
+              "$ref": "#/definitions/JsonValue"
+            },
+            "type": "object"
+          },
+          "requested": {
+            "$ref": "#/definitions/SerialConfiguration"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "txGate": {
+            "$ref": "#/definitions/TxGate"
+          }
+        },
+        "required": [
+          "requested",
+          "fields",
+          "readback",
+          "revision",
+          "boundaryEventSeq",
+          "txGate"
+        ],
+        "title": "ConfigReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.control",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlLine": {
+            "enum": ["dtr", "rts"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "line": {
+            "$ref": "#/definitions/ControlLine"
+          },
+          "value": {
+            "type": "boolean"
+          }
+        },
+        "required": ["line", "value"],
+        "title": "ControlParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlLine": {
+            "enum": ["dtr", "rts"],
+            "type": "string"
+          },
+          "ControlStatus": {
+            "enum": ["confirmed", "failed", "unknown"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "actual": {
+            "type": "boolean"
+          },
+          "line": {
+            "$ref": "#/definitions/ControlLine"
+          },
+          "requested": {
+            "type": "boolean"
+          },
+          "status": {
+            "$ref": "#/definitions/ControlStatus"
+          }
+        },
+        "required": ["line", "requested", "status"],
+        "title": "ControlReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.break",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "durationMs": {
+            "$ref": "#/definitions/DurationMs"
+          }
+        },
+        "required": ["durationMs"],
+        "title": "BreakParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlStatus": {
+            "enum": ["confirmed", "failed", "unknown"],
+            "type": "string"
+          },
+          "ControlTransition": {
+            "additionalProperties": false,
+            "properties": {
+              "at": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "error": {
+                "$ref": "#/definitions/HostError"
+              },
+              "status": {
+                "$ref": "#/definitions/ControlStatus"
+              }
+            },
+            "required": ["status", "at"],
+            "type": "object"
+          },
+          "HostError": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              }
+            },
+            "required": ["code", "message", "retryable"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "RevealTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "pageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "panelId": {
+                "$ref": "#/definitions/Id"
+              },
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "workspaceId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["pageId"],
+            "type": "object"
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "Timestamp": {
+            "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "assert": {
+            "$ref": "#/definitions/ControlTransition"
+          },
+          "clear": {
+            "$ref": "#/definitions/ControlTransition"
+          }
+        },
+        "required": ["assert", "clear"],
+        "title": "BreakReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.setReadOnly",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "properties": {
+          "readOnly": {
+            "type": "boolean"
+          }
+        },
+        "required": ["readOnly"],
+        "title": "SetReadOnlyParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlState": {
+            "enum": ["clear", "asserting", "asserted", "clearing", "unknown"],
+            "type": "string"
+          },
+          "DataBits": {
+            "enum": ["5", "6", "7", "8"],
+            "type": "string"
+          },
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "FlowControl": {
+            "enum": ["none", "rtsCts", "xonXoff", "dsrDtr"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "Lease": {
+            "additionalProperties": false,
+            "properties": {
+              "actorId": {
+                "$ref": "#/definitions/Id"
+              },
+              "executionMode": {
+                "$ref": "#/definitions/ExecutionMode"
+              },
+              "expiresAtMonoNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "kind": {
+                "$ref": "#/definitions/LeaseKind"
+              },
+              "leaseId": {
+                "$ref": "#/definitions/Id"
+              },
+              "ownerOperationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "state": {
+                "$ref": "#/definitions/LeaseState"
+              }
+            },
+            "required": [
+              "leaseId",
+              "sessionId",
+              "sessionEpoch",
+              "actorId",
+              "ownerOperationId",
+              "kind",
+              "state",
+              "executionMode",
+              "expiresAtMonoNs"
+            ],
+            "type": "object"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
+          "Parity": {
+            "enum": ["none", "even", "odd", "mark", "space"],
+            "type": "string"
+          },
+          "PositiveU64": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          },
+          "SerialConfiguration": {
+            "additionalProperties": false,
+            "properties": {
+              "baudRate": {
+                "$ref": "#/definitions/PositiveU64"
+              },
+              "dataBits": {
+                "$ref": "#/definitions/DataBits"
+              },
+              "flowControl": {
+                "$ref": "#/definitions/FlowControl"
+              },
+              "parity": {
+                "$ref": "#/definitions/Parity"
+              },
+              "readWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "reconnectBackoffMs": {
+                "$ref": "#/definitions/DurationMs"
+              },
+              "stopBits": {
+                "$ref": "#/definitions/StopBits"
+              },
+              "writeWaitMs": {
+                "$ref": "#/definitions/DurationMs"
+              }
+            },
+            "required": [
+              "baudRate",
+              "dataBits",
+              "parity",
+              "stopBits",
+              "flowControl",
+              "readWaitMs",
+              "writeWaitMs",
+              "reconnectBackoffMs"
+            ],
+            "type": "object"
+          },
+          "SessionState": {
+            "enum": ["closed", "opening", "open", "disconnected", "closing"],
+            "type": "string"
+          },
+          "StopBits": {
+            "enum": ["one", "onePointFive", "two"],
+            "type": "string"
+          },
+          "TransportCapabilities": {
+            "additionalProperties": false,
+            "properties": {
+              "configuration": {
+                "type": "boolean"
+              },
+              "drain": {
+                "type": "boolean"
+              },
+              "dtr": {
+                "type": "boolean"
+              },
+              "finiteBreak": {
+                "type": "boolean"
+              },
+              "purgeRx": {
+                "type": "boolean"
+              },
+              "purgeTx": {
+                "type": "boolean"
+              },
+              "queueStatus": {
+                "type": "boolean"
+              },
+              "rts": {
+                "type": "boolean"
+              },
+              "semantics": {
+                "$ref": "#/definitions/TransportSemantics"
+              }
+            },
+            "required": [
+              "semantics",
+              "configuration",
+              "dtr",
+              "rts",
+              "finiteBreak",
+              "queueStatus",
+              "drain",
+              "purgeRx",
+              "purgeTx"
+            ],
+            "type": "object"
+          },
+          "TransportSemantics": {
+            "enum": ["stream", "message"],
+            "type": "string"
+          },
+          "TxGate": {
+            "enum": [
+              "ready",
+              "configuration_pending",
+              "control_unknown",
+              "closing",
+              "disconnected"
+            ],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "capabilities": {
+            "$ref": "#/definitions/TransportCapabilities"
+          },
+          "configuration": {
+            "$ref": "#/definitions/SerialConfiguration"
+          },
+          "configurationRevision": {
+            "$ref": "#/definitions/U64"
+          },
+          "controlState": {
+            "$ref": "#/definitions/ControlState"
+          },
+          "deviceId": {
+            "$ref": "#/definitions/Id"
+          },
+          "lease": {
+            "$ref": "#/definitions/Lease"
+          },
+          "readOnly": {
+            "type": "boolean"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/SessionState"
+          },
+          "txGate": {
+            "$ref": "#/definitions/TxGate"
+          }
+        },
+        "required": [
+          "sessionId",
+          "deviceId",
+          "sessionEpoch",
+          "revision",
+          "configurationRevision",
+          "state",
+          "configuration",
+          "readOnly",
+          "txGate",
+          "controlState",
+          "capabilities"
+        ],
+        "title": "SessionSnapshot",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.takeover",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "TakeoverReason": {
+            "enum": ["user"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "actorId": {
+            "$ref": "#/definitions/Id"
+          },
+          "reason": {
+            "$ref": "#/definitions/TakeoverReason"
+          }
+        },
+        "required": ["actorId", "reason"],
+        "title": "TakeoverParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "affectedOperationIds": {
+            "items": {
+              "$ref": "#/definitions/Id"
+            },
+            "type": "array"
+          }
+        },
+        "required": ["affectedOperationIds"],
+        "title": "TakeoverReceipt",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "lease.acquire",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "ExplicitLeaseKind": {
+            "enum": ["transaction", "exclusive"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "kind": {
+            "$ref": "#/definitions/ExplicitLeaseKind"
+          },
+          "ttlMs": {
+            "$ref": "#/definitions/DurationMs"
+          }
+        },
+        "required": ["kind", "ttlMs"],
+        "title": "LeaseAcquireParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "actorId": {
+            "$ref": "#/definitions/Id"
+          },
+          "executionMode": {
+            "$ref": "#/definitions/ExecutionMode"
+          },
+          "expiresAtMonoNs": {
+            "$ref": "#/definitions/U64"
+          },
+          "kind": {
+            "$ref": "#/definitions/LeaseKind"
+          },
+          "leaseId": {
+            "$ref": "#/definitions/Id"
+          },
+          "ownerOperationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/LeaseState"
+          }
+        },
+        "required": [
+          "leaseId",
+          "sessionId",
+          "sessionEpoch",
+          "actorId",
+          "ownerOperationId",
+          "kind",
+          "state",
+          "executionMode",
+          "expiresAtMonoNs"
+        ],
+        "title": "Lease",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "lease.renew",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "leaseId": {
+            "$ref": "#/definitions/Id"
+          },
+          "ttlMs": {
+            "$ref": "#/definitions/DurationMs"
+          }
+        },
+        "required": ["leaseId", "ttlMs"],
+        "title": "LeaseRenewParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "actorId": {
+            "$ref": "#/definitions/Id"
+          },
+          "executionMode": {
+            "$ref": "#/definitions/ExecutionMode"
+          },
+          "expiresAtMonoNs": {
+            "$ref": "#/definitions/U64"
+          },
+          "kind": {
+            "$ref": "#/definitions/LeaseKind"
+          },
+          "leaseId": {
+            "$ref": "#/definitions/Id"
+          },
+          "ownerOperationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/LeaseState"
+          }
+        },
+        "required": [
+          "leaseId",
+          "sessionId",
+          "sessionEpoch",
+          "actorId",
+          "ownerOperationId",
+          "kind",
+          "state",
+          "executionMode",
+          "expiresAtMonoNs"
+        ],
+        "title": "Lease",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "lease.release",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "leaseId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["leaseId"],
+        "title": "LeaseReleaseParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ExecutionMode": {
+            "enum": ["interactive", "independent"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "LeaseKind": {
+            "enum": ["ordinary", "transaction", "exclusive"],
+            "type": "string"
+          },
+          "LeaseState": {
+            "enum": ["active", "revoking", "released", "expired"],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "actorId": {
+            "$ref": "#/definitions/Id"
+          },
+          "executionMode": {
+            "$ref": "#/definitions/ExecutionMode"
+          },
+          "expiresAtMonoNs": {
+            "$ref": "#/definitions/U64"
+          },
+          "kind": {
+            "$ref": "#/definitions/LeaseKind"
+          },
+          "leaseId": {
+            "$ref": "#/definitions/Id"
+          },
+          "ownerOperationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "state": {
+            "$ref": "#/definitions/LeaseState"
+          }
+        },
+        "required": [
+          "leaseId",
+          "sessionId",
+          "sessionEpoch",
+          "actorId",
+          "ownerOperationId",
+          "kind",
+          "state",
+          "executionMode",
+          "expiresAtMonoNs"
+        ],
+        "title": "Lease",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "tx.waitBoundary",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "queueWaitMs": {
+            "$ref": "#/definitions/DurationMs"
+          },
+          "throughOperationId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["throughOperationId", "queueWaitMs"],
+        "title": "WaitBoundaryParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "throughOperationId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["throughOperationId"],
+        "title": "WaitBoundaryReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "tx.queueStatus",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "title": "EmptyParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Timestamp": {
+            "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "observedAt": {
+            "$ref": "#/definitions/Timestamp"
+          },
+          "pendingBytes": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["pendingBytes", "observedAt"],
+        "title": "QueueStatus",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "tx.drain",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DurationMs": {
+            "not": {
+              "pattern": "^(?:0|0)$"
+            },
+            "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "writeWaitMs": {
+            "$ref": "#/definitions/DurationMs"
+          }
+        },
+        "required": ["writeWaitMs"],
+        "title": "DrainParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ControlStatus": {
+            "enum": ["confirmed", "failed", "unknown"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "status": {
+            "$ref": "#/definitions/ControlStatus"
+          }
+        },
+        "required": ["status"],
+        "title": "DrainReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "session.purge",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "PurgeDirection": {
+            "enum": ["rx", "tx", "both"],
+            "type": "string"
+          },
+          "PurgeScope": {
+            "enum": ["application", "driver", "both"],
+            "type": "string"
+          }
+        },
+        "properties": {
+          "direction": {
+            "$ref": "#/definitions/PurgeDirection"
+          },
+          "scope": {
+            "$ref": "#/definitions/PurgeScope"
+          }
+        },
+        "required": ["direction", "scope"],
+        "title": "PurgeParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Direction": {
+            "enum": ["rx", "tx"],
+            "type": "string"
+          },
+          "DirectionalRange": {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "$ref": "#/definitions/Direction"
+              },
+              "end": {
+                "$ref": "#/definitions/U64"
+              },
+              "start": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["direction", "start", "end"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "PurgeDirection": {
+            "enum": ["rx", "tx", "both"],
+            "type": "string"
+          },
+          "PurgeOutcome": {
+            "enum": ["completed", "partial", "unknown"],
+            "type": "string"
+          },
+          "PurgeScope": {
+            "enum": ["application", "driver", "both"],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "affectedOperationIds": {
+            "items": {
+              "$ref": "#/definitions/Id"
+            },
+            "type": "array"
+          },
+          "direction": {
+            "$ref": "#/definitions/PurgeDirection"
+          },
+          "outcome": {
+            "$ref": "#/definitions/PurgeOutcome"
+          },
+          "ranges": {
+            "items": {
+              "$ref": "#/definitions/DirectionalRange"
+            },
+            "type": "array"
+          },
+          "scope": {
+            "$ref": "#/definitions/PurgeScope"
+          },
+          "unknownExtent": {
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "direction",
+          "scope",
+          "outcome",
+          "affectedOperationIds",
+          "ranges",
+          "unknownExtent"
+        ],
+        "title": "PurgeReceipt",
+        "type": "object"
+      },
+      "permissions": ["device.modify"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "stream.read",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "maxBytes": {
+            "$ref": "#/definitions/U64"
+          },
+          "maxEvents": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "sessionId": {
+            "$ref": "#/definitions/Id"
+          },
+          "startEventSeq": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": [
+          "sessionId",
+          "sessionEpoch",
+          "startEventSeq",
+          "maxEvents",
+          "maxBytes"
+        ],
+        "title": "StreamReadParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "ByteRange": {
+            "additionalProperties": false,
+            "properties": {
+              "end": {
+                "$ref": "#/definitions/U64"
+              },
+              "start": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["start", "end"],
+            "type": "object"
+          },
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "Certainty": {
+            "enum": ["confirmed", "uncertain"],
+            "type": "string"
+          },
+          "ConfigurationBoundary": {
+            "additionalProperties": false,
+            "properties": {
+              "certainty": {
+                "$ref": "#/definitions/Certainty"
+              },
+              "receiptRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["revision", "certainty", "receiptRef"],
+            "type": "object"
+          },
+          "Direction": {
+            "enum": ["rx", "tx"],
+            "type": "string"
+          },
+          "DirectionalRange": {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "$ref": "#/definitions/Direction"
+              },
+              "end": {
+                "$ref": "#/definitions/U64"
+              },
+              "start": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["direction", "start", "end"],
+            "type": "object"
+          },
+          "EventTime": {
+            "additionalProperties": false,
+            "properties": {
+              "clockId": {
+                "$ref": "#/definitions/Id"
+              },
+              "precision": {
+                "$ref": "#/definitions/TimePrecision"
+              },
+              "receivedWallTime": {
+                "$ref": "#/definitions/Timestamp"
+              },
+              "sourceMonoNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "sourceWallTime": {
+                "$ref": "#/definitions/Timestamp"
+              }
+            },
+            "required": [
+              "clockId",
+              "sourceMonoNs",
+              "receivedWallTime",
+              "precision"
+            ],
+            "type": "object"
+          },
+          "False": {
+            "const": false,
+            "type": "boolean"
+          },
+          "HostError": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              }
+            },
+            "required": ["code", "message", "retryable"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "MessageFragment": {
+            "additionalProperties": false,
+            "properties": {
+              "fragmentOffset": {
+                "$ref": "#/definitions/U64"
+              },
+              "messageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "messageLength": {
+                "$ref": "#/definitions/U64"
+              },
+              "messageType": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "messageId",
+              "fragmentOffset",
+              "messageLength",
+              "messageType"
+            ],
+            "type": "object"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "RawEvent": {
+            "additionalProperties": false,
+            "oneOf": [
+              {
+                "properties": {
+                  "kind": {
+                    "const": "rx",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "$ref": "#/definitions/RxPayload"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "tx_intent",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "$ref": "#/definitions/TxIntent"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "tx",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "$ref": "#/definitions/TxReceipt"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "gap",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "$ref": "#/definitions/SourceGap"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "configuration_boundary",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "$ref": "#/definitions/ConfigurationBoundary"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "lifecycle",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/JsonValue"
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              },
+              {
+                "properties": {
+                  "kind": {
+                    "const": "control",
+                    "type": "string"
+                  },
+                  "payload": {
+                    "additionalProperties": {
+                      "$ref": "#/definitions/JsonValue"
+                    },
+                    "type": "object"
+                  }
+                },
+                "required": ["kind", "payload"],
+                "type": "object"
+              }
+            ],
+            "properties": {
+              "configurationRevision": {
+                "$ref": "#/definitions/U64"
+              },
+              "eventSeq": {
+                "$ref": "#/definitions/U64"
+              },
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "kind": true,
+              "payload": true,
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "time": {
+                "$ref": "#/definitions/EventTime"
+              }
+            },
+            "required": [
+              "hostId",
+              "instanceEpoch",
+              "sessionId",
+              "sessionEpoch",
+              "eventSeq",
+              "configurationRevision",
+              "time"
+            ],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "RevealTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "pageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "panelId": {
+                "$ref": "#/definitions/Id"
+              },
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "workspaceId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["pageId"],
+            "type": "object"
+          },
+          "RxPayload": {
+            "additionalProperties": false,
+            "properties": {
+              "byteEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "byteStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "bytesBase64": {
+                "$ref": "#/definitions/Bytes"
+              },
+              "message": {
+                "$ref": "#/definitions/MessageFragment"
+              }
+            },
+            "required": ["bytesBase64", "byteStart", "byteEnd"],
+            "type": "object"
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "SignedDecimal": {
+            "pattern": "^(?:0|-?[1-9][0-9]*)$",
+            "type": "string"
+          },
+          "SourceGap": {
+            "additionalProperties": false,
+            "properties": {
+              "direction": {
+                "$ref": "#/definitions/Direction"
+              },
+              "knownExtent": {
+                "type": "boolean"
+              },
+              "missingByteRange": {
+                "$ref": "#/definitions/DirectionalRange"
+              },
+              "missingEventRange": {
+                "$ref": "#/definitions/ByteRange"
+              },
+              "reason": {
+                "$ref": "#/definitions/SourceGapReason"
+              }
+            },
+            "required": ["reason", "knownExtent"],
+            "type": "object"
+          },
+          "SourceGapReason": {
+            "enum": ["network_loss", "backend_loss", "purge", "source_unknown"],
+            "type": "string"
+          },
+          "TimePrecision": {
+            "additionalProperties": false,
+            "properties": {
+              "offsetErrorNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "offsetEstimateNs": {
+                "$ref": "#/definitions/SignedDecimal"
+              },
+              "resolutionNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "rttNs": {
+                "$ref": "#/definitions/U64"
+              },
+              "source": {
+                "$ref": "#/definitions/TimeSource"
+              },
+              "syncMethod": {
+                "type": "string"
+              }
+            },
+            "required": ["source", "resolutionNs", "syncMethod"],
+            "type": "object"
+          },
+          "TimeSource": {
+            "enum": ["host_read", "device", "line_capture", "sample_clock"],
+            "type": "string"
+          },
+          "Timestamp": {
+            "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+            "type": "string"
+          },
+          "TxIntent": {
+            "additionalProperties": false,
+            "properties": {
+              "byteEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "byteStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "bytesBase64": {
+                "$ref": "#/definitions/Bytes"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["operationId", "bytesBase64", "byteStart", "byteEnd"],
+            "type": "object"
+          },
+          "TxOutcome": {
+            "enum": ["accepted", "partial", "rejected", "unknown"],
+            "type": "string"
+          },
+          "TxReceipt": {
+            "additionalProperties": false,
+            "properties": {
+              "acceptedRanges": {
+                "items": {
+                  "$ref": "#/definitions/ByteRange"
+                },
+                "type": "array"
+              },
+              "backendError": {
+                "$ref": "#/definitions/HostError"
+              },
+              "byteEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "byteStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "bytesBase64": {
+                "$ref": "#/definitions/Bytes"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "outcome": {
+                "$ref": "#/definitions/TxOutcome"
+              },
+              "peerAcknowledged": {
+                "$ref": "#/definitions/False"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "unknownRanges": {
+                "items": {
+                  "$ref": "#/definitions/ByteRange"
+                },
+                "type": "array"
+              }
+            },
+            "required": [
+              "operationId",
+              "sessionId",
+              "sessionEpoch",
+              "outcome",
+              "bytesBase64",
+              "byteStart",
+              "byteEnd",
+              "acceptedRanges",
+              "unknownRanges",
+              "peerAcknowledged"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "events": {
+            "items": {
+              "$ref": "#/definitions/RawEvent"
+            },
+            "type": "array"
+          },
+          "hasMore": {
+            "type": "boolean"
+          },
+          "nextEventSeq": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["events", "nextEventSeq", "hasMore"],
+        "title": "StreamReadResult",
+        "type": "object"
+      },
+      "permissions": ["content.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "stream.subscribe",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Cursor": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "position": {
+                "$ref": "#/definitions/U64"
+              },
+              "scopeId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["hostId", "instanceEpoch", "scopeId", "position"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "OverflowPolicy": {
+            "enum": ["drop_with_gap", "stop", "flow_control"],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "after": {
+            "$ref": "#/definitions/Cursor"
+          },
+          "initialCreditBytes": {
+            "$ref": "#/definitions/U64"
+          },
+          "overflowPolicy": {
+            "$ref": "#/definitions/OverflowPolicy"
+          },
+          "queueBytes": {
+            "$ref": "#/definitions/U64"
+          },
+          "scopeId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": [
+          "scopeId",
+          "after",
+          "queueBytes",
+          "initialCreditBytes",
+          "overflowPolicy"
+        ],
+        "title": "StreamSubscribeParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "subscriptionId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["subscriptionId"],
+        "title": "StreamSubscribeResult",
+        "type": "object"
+      },
+      "permissions": ["content.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "stream.credit",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Cursor": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "position": {
+                "$ref": "#/definitions/U64"
+              },
+              "scopeId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["hostId", "instanceEpoch", "scopeId", "position"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "ackCursor": {
+            "$ref": "#/definitions/Cursor"
+          },
+          "grantedBytesTotal": {
+            "$ref": "#/definitions/U64"
+          },
+          "subscriptionId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["subscriptionId", "ackCursor", "grantedBytesTotal"],
+        "title": "StreamCreditParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Cursor": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "instanceEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "position": {
+                "$ref": "#/definitions/U64"
+              },
+              "scopeId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["hostId", "instanceEpoch", "scopeId", "position"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "ackCursor": {
+            "$ref": "#/definitions/Cursor"
+          },
+          "acknowledgedBytesTotal": {
+            "$ref": "#/definitions/U64"
+          },
+          "grantedBytesTotal": {
+            "$ref": "#/definitions/U64"
+          },
+          "sentBytesTotal": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": [
+          "ackCursor",
+          "grantedBytesTotal",
+          "sentBytesTotal",
+          "acknowledgedBytesTotal"
+        ],
+        "title": "StreamCreditResult",
+        "type": "object"
+      },
+      "permissions": ["content.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "host.shutdown",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "title": "EmptyParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "instanceEpoch": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["instanceEpoch"],
+        "title": "ShutdownRequested",
         "type": "object"
       },
       "permissions": ["auth.manage"],

@@ -80,6 +80,15 @@ pub enum Admission {
     deny_unknown_fields
 )]
 pub enum ActionResult {
+    ShutdownRequested(ShutdownRequested),
+    Opened(OpenResult),
+    Session(SessionSnapshot),
+    Control(ControlReceipt),
+    Lease(Lease),
+    Takeover(TakeoverReceipt),
+    Boundary(WaitBoundaryReceipt),
+    Drained(DrainReceipt),
+    Purged(PurgeReceipt),
     Tx(TxReceipt),
     Configuration(ConfigReceipt),
     Break(BreakReceipt),

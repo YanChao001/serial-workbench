@@ -86,6 +86,15 @@ IPC 契约变化后依次运行 `pnpm bindings:generate`、`pnpm bindings:check`
 
 Host DTO 变化后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`；Rust 与 TypeScript 共用导出的正负 fixture。schema 验证结构，跨字段身份、权限和资源语义由 Host 入口继续核验。里程碑检查使用 `cargo test --locked --workspace` 与 `cargo clippy --locked --workspace --all-targets -- -D warnings`。
 
+CLI、MCP 与 HostClient 的交叉验收会启动真实适配器程序。先构建同一 target 的三个入口，再运行测试；CI 同样执行此前置构建：
+
+```sh
+cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+cargo test --locked -p serial-workbench-host --test client_parity
+```
+
+交叉测试默认读取测试程序所在 target 目录的 CLI/MCP；需要检验独立构建时，可分别设置 `SWB_TEST_CLI_BIN`、`SWB_TEST_MCP_BIN` 为程序绝对路径。测试比较同一会话的原始事件与 TX 回执，同时验证跨 actor 的 Operation 查询限制。
+
 涉及进程的 Rust 测试需核对临时目录和进程回收。
 
 ## 数据与恢复验证

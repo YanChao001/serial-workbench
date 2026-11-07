@@ -28,6 +28,7 @@ impl ConnectOptions {
     }
 }
 pub struct HostClient {
+    options: ConnectOptions,
     connection: RpcConnection,
     attachment: AttachResult,
     raw: RawAttachment,
@@ -43,14 +44,27 @@ pub struct RawConnection {
 }
 impl HostClient {
     pub async fn connect(options: ConnectOptions) -> HostResult<Self> {
+        Self::connect_inner(options, true).await
+    }
+    pub(crate) async fn connect_for_startup(options: ConnectOptions) -> HostResult<Self> {
+        // The startup loop reloads discovery between attempts; do not wait on a stale endpoint.
+        Self::connect_inner(options, false).await
+    }
+    async fn connect_inner(options: ConnectOptions, wait_for_endpoint: bool) -> HostResult<Self> {
+        let mut registration = registration_lock(&options).await?;
         let to_load = options.clone();
         let loaded = tokio::task::spawn_blocking(move || discovery::load(&to_load))
             .await
             .map_err(|_| disconnected())??;
-        let mut stream =
-            verified_connection(&loaded.discovery, &loaded.pin, IpcChannel::Control).await?;
+        let mut stream = verified_connection(
+            &loaded.discovery,
+            &loaded.pin,
+            IpcChannel::Control,
+            wait_for_endpoint,
+        )
+        .await?;
         let id = new_request_id();
-        let body = match options.user_control_credential {
+        let body = match options.user_control_credential.clone() {
             Some(credential) => IpcMessage::AuthenticateUserControl {
                 client_id: options.client_id.clone(),
                 credential,
@@ -85,7 +99,10 @@ impl HostClient {
             let path = loaded.credential_path.ok_or_else(invalid)?;
             let host_id = loaded.pin.host_id.clone();
             let client_id = options.client_id.clone();
+            let registration = registration.take();
             tokio::task::spawn_blocking(move || {
+                // Cancellation stops the waiter, not this write: retain the OS lock until sync ends.
+                let _registration = registration;
                 discovery::save(&path, host_id, client_id, credential)
             })
             .await
@@ -93,6 +110,7 @@ impl HostClient {
         } else if loaded.credential.is_none() && loaded.credential_path.is_some() {
             return Err(invalid());
         }
+        drop(registration);
         let connection = RpcConnection::new(stream, IpcChannel::Control);
         let attached = connection
             .request(RpcRequest::Attach(AttachParams {
@@ -116,6 +134,7 @@ impl HostClient {
             return Err(invalid());
         }
         Ok(Self {
+            options,
             connection,
             attachment,
             raw: RawAttachment {
@@ -127,6 +146,10 @@ impl HostClient {
     }
     pub fn attachment(&self) -> &AttachResult {
         &self.attachment
+    }
+    /// Reattach using the same private identity. Never start a Host or replay a business request.
+    pub async fn reconnect(&self) -> HostResult<Self> {
+        Self::connect(self.options.clone()).await
     }
     pub async fn request(&self, request: RpcRequest) -> HostResult<RpcReply> {
         self.connection.request(request).await
@@ -141,10 +164,54 @@ impl HostClient {
         RawConnection::connect(self.raw.clone()).await
     }
 }
+
+async fn registration_lock(options: &ConnectOptions) -> HostResult<Option<local::PrivateFileLock>> {
+    let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
+    let preparing = options.clone();
+    let path = tokio::time::timeout_at(
+        deadline,
+        tokio::task::spawn_blocking(move || discovery::registration_path(&preparing)),
+    )
+    .await
+    .map_err(|_| registration_busy())?
+    .map_err(|_| disconnected())??;
+    let Some(path) = path else {
+        return Ok(None);
+    };
+    loop {
+        let attempt = path.clone();
+        let guard = tokio::time::timeout_at(
+            deadline,
+            tokio::task::spawn_blocking(move || local::try_lock_private_file(&attempt)),
+        )
+        .await
+        .map_err(|_| registration_busy())?
+        .map_err(|_| disconnected())??;
+        if let Some(guard) = guard {
+            return Ok(Some(guard));
+        }
+        if tokio::time::Instant::now() >= deadline {
+            return Err(registration_busy());
+        }
+        tokio::time::sleep(Duration::from_millis(10)).await;
+    }
+}
+
+fn registration_busy() -> HostError {
+    HostError::new(
+        "HOST_BUSY",
+        "Another connection is initializing this client identity",
+    )
+}
 impl RawConnection {
     pub async fn connect(attachment: RawAttachment) -> HostResult<Self> {
-        let mut stream =
-            verified_connection(&attachment.discovery, &attachment.pin, IpcChannel::Raw).await?;
+        let mut stream = verified_connection(
+            &attachment.discovery,
+            &attachment.pin,
+            IpcChannel::Raw,
+            true,
+        )
+        .await?;
         let id = new_request_id();
         write_frame(
             &mut stream,
@@ -179,12 +246,17 @@ async fn verified_connection(
     discovery: &DiscoveryRecord,
     pin: &IdentityPin,
     channel: IpcChannel,
+    wait_for_endpoint: bool,
 ) -> HostResult<LocalStream> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
     let mut stream = loop {
         match local::connect(&discovery.endpoint).await {
             Ok(stream) => break stream,
-            Err(error) if error.code == "HOST_BUSY" && tokio::time::Instant::now() < deadline => {
+            Err(error)
+                if wait_for_endpoint
+                    && error.code == "HOST_BUSY"
+                    && tokio::time::Instant::now() < deadline =>
+            {
                 tokio::time::sleep(Duration::from_millis(10)).await
             }
             Err(error) => return Err(error),

@@ -118,6 +118,324 @@ impl Fixture {
             )
             .unwrap();
     }
+    fn session_target(&self, epoch: u64) -> Target {
+        Target {
+            host_id: self.target.host_id.clone(),
+            kind: ResourceKind::try_from("session").unwrap(),
+            id: id("stable-session"),
+            session_id: Some(id("stable-session")),
+            session_epoch: Some(epoch.into()),
+        }
+    }
+    fn register_session(&self) -> Id {
+        let scope = id("session:stable-session");
+        self.projections
+            .register_scope(
+                scope.clone(),
+                self.session_target(1),
+                "content.read".into(),
+                object(0),
+            )
+            .unwrap();
+        scope
+    }
+}
+
+#[tokio::test]
+async fn reopened_session_ends_old_readers_and_requires_new_snapshot_with_monotonic_revision() {
+    let f = Fixture::new(ProjectionLimits::default(), "content.read");
+    let scope = f.register_session();
+    let first = f
+        .projections
+        .commit(&scope, id("session.changed"), object(1), object(1))
+        .unwrap();
+    let mut old = f
+        .projections
+        .subscribe(&f.actor, &scope, &first.cursor)
+        .await
+        .unwrap();
+    f.projections
+        .commit(&scope, id("session.changed"), secret(32), secret(32))
+        .unwrap();
+    let reopened = f
+        .projections
+        .commit_for_target(
+            &scope,
+            f.session_target(2),
+            id("session.opened"),
+            object(3),
+            object(3),
+        )
+        .unwrap();
+    assert_eq!(reopened.revision.get(), 3);
+    assert_eq!(reopened.cursor.position.get(), 3);
+    assert_eq!(old.next().await.unwrap_err().code, "EPOCH_MISMATCH");
+    assert_eq!(f.projections.reader_count(), 0);
+    assert!(old.next().await.unwrap().is_none());
+    let error = f
+        .projections
+        .subscribe(&f.actor, &scope, &first.cursor)
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(error.code, "CURSOR_EXPIRED");
+    assert_eq!(
+        serde_json::to_value(error.details.unwrap()).unwrap()["oldestCursor"]["position"],
+        "3"
+    );
+    let snapshot = f.projections.snapshot(&f.actor, &scope).await.unwrap();
+    assert_eq!(snapshot.state, object(3));
+    assert_eq!(snapshot.revision.get(), 3);
+    let mut fresh = f
+        .projections
+        .subscribe(&f.actor, &scope, &snapshot.cursor)
+        .await
+        .unwrap();
+    f.projections
+        .commit(&scope, id("session.changed"), object(4), object(4))
+        .unwrap();
+    let live = fresh.next().await.unwrap().unwrap();
+    assert_eq!(live.previous_cursor.position.get(), 3);
+    assert_eq!(live.cursor.position.get(), 4);
+    f.projections
+        .commit_for_target(
+            &scope,
+            f.session_target(3),
+            id("session.opened"),
+            object(5),
+            object(5),
+        )
+        .unwrap();
+    assert_eq!(fresh.next().await.unwrap_err().code, "EPOCH_MISMATCH");
+    assert_eq!(
+        f.projections
+            .snapshot(&f.actor, &scope)
+            .await
+            .unwrap()
+            .revision
+            .get(),
+        5
+    );
+}
+
+#[tokio::test]
+async fn new_epoch_only_grant_cannot_replay_old_epoch_history() {
+    let f = Fixture::new(ProjectionLimits::default(), "content.read");
+    let scope = f.register_session();
+    let old = f
+        .projections
+        .commit(&scope, id("session.changed"), secret(32), secret(32))
+        .unwrap();
+    let actor = f
+        .auth
+        .authenticate(&id("new-epoch-reader"), None)
+        .unwrap()
+        .actor;
+    f.auth
+        .authorize(
+            &f.control,
+            AuthorizeParams {
+                client_id: id("new-epoch-reader"),
+                permissions: vec!["content.read".into()],
+                targets: vec![f.session_target(2)],
+                expires_at: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        f.projections
+            .snapshot(&actor, &scope)
+            .await
+            .unwrap_err()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    f.projections
+        .commit_for_target(
+            &scope,
+            f.session_target(2),
+            id("session.opened"),
+            object(2),
+            object(2),
+        )
+        .unwrap();
+    let snapshot = f.projections.snapshot(&actor, &scope).await.unwrap();
+    assert_eq!(snapshot.state, object(2));
+    assert_eq!(
+        f.projections
+            .subscribe(&actor, &scope, &old.cursor)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "CURSOR_EXPIRED"
+    );
+    let mut reader = f
+        .projections
+        .subscribe(&actor, &scope, &snapshot.cursor)
+        .await
+        .unwrap();
+    f.projections
+        .commit(&scope, id("session.changed"), object(3), object(3))
+        .unwrap();
+    assert_eq!(reader.next().await.unwrap().unwrap().payload, object(3));
+}
+
+#[tokio::test]
+async fn retarget_rejects_identity_epoch_and_capacity_failures_without_changing_state() {
+    let f = Fixture::new(ProjectionLimits::default(), "content.read");
+    let scope = f.register_session();
+    let before = f.projections.snapshot(&f.actor, &scope).await.unwrap();
+    let mut wrong_host = f.session_target(2);
+    wrong_host.host_id = id("another-host");
+    let mut wrong_session = f.session_target(2);
+    wrong_session.id = id("other-session");
+    wrong_session.session_id = Some(id("other-session"));
+    for (target, code) in [
+        (f.session_target(1), "EPOCH_MISMATCH"),
+        (f.session_target(0), "EPOCH_MISMATCH"),
+        (wrong_host, "HOST_ID_MISMATCH"),
+        (wrong_session, "INVALID_ARGUMENT"),
+        (f.target.clone(), "INVALID_ARGUMENT"),
+    ] {
+        assert_eq!(
+            f.projections
+                .commit_for_target(&scope, target, id("session.opened"), object(1), object(1))
+                .unwrap_err()
+                .code,
+            code
+        );
+        assert_eq!(
+            f.projections.snapshot(&f.actor, &scope).await.unwrap(),
+            before
+        );
+    }
+    assert_eq!(
+        f.projections
+            .commit_for_target(
+                &scope,
+                f.session_target(2),
+                id("session.opened"),
+                secret(4 * 1024 * 1024),
+                object(1)
+            )
+            .unwrap_err()
+            .code,
+        "LIMIT_EXCEEDED"
+    );
+    assert_eq!(
+        f.projections.snapshot(&f.actor, &scope).await.unwrap(),
+        before
+    );
+    f.projections
+        .commit_for_target(
+            &scope,
+            f.session_target(2),
+            id("session.opened"),
+            object(1),
+            object(1),
+        )
+        .unwrap();
+    assert_eq!(
+        f.projections
+            .snapshot(&f.actor, &scope)
+            .await
+            .unwrap()
+            .revision
+            .get(),
+        1
+    );
+}
+
+struct AuthGateClock {
+    armed: AtomicBool,
+    entered: Notify,
+    released: std::sync::Mutex<bool>,
+    release: std::sync::Condvar,
+}
+impl AuthGateClock {
+    fn new() -> Self {
+        Self {
+            armed: AtomicBool::new(false),
+            entered: Notify::new(),
+            released: std::sync::Mutex::new(false),
+            release: std::sync::Condvar::new(),
+        }
+    }
+    fn release(&self) {
+        *self.released.lock().unwrap() = true;
+        self.release.notify_one();
+    }
+}
+impl Clock for AuthGateClock {
+    fn mono_ns(&self) -> u64 {
+        if self.armed.swap(false, Ordering::SeqCst) {
+            self.entered.notify_one();
+            let mut released = self.released.lock().unwrap();
+            while !*released {
+                released = self.release.wait(released).unwrap();
+            }
+        }
+        0
+    }
+    fn wall_time(&self) -> Timestamp {
+        Timestamp::try_from("2026-11-07T00:00:00Z").unwrap()
+    }
+}
+
+#[tokio::test]
+async fn retarget_during_slow_auth_check_rejects_snapshot_and_subscription() {
+    for subscribing in [false, true] {
+        let clock = Arc::new(AuthGateClock::new());
+        let f = Fixture::with_clock(ProjectionLimits::default(), "content.read", clock.clone());
+        let scope = f.register_session();
+        let cursor = f
+            .projections
+            .commit(&scope, id("session.changed"), object(1), object(1))
+            .unwrap()
+            .cursor;
+        let reading_store = f.projections.clone();
+        let actor = f.actor.clone();
+        let reading_scope = scope.clone();
+        clock.armed.store(true, Ordering::SeqCst);
+        let reading = tokio::spawn(async move {
+            if subscribing {
+                reading_store
+                    .subscribe(&actor, &reading_scope, &cursor)
+                    .await
+                    .map(|_| ())
+            } else {
+                reading_store
+                    .snapshot(&actor, &reading_scope)
+                    .await
+                    .map(|_| ())
+            }
+        });
+        let entered = tokio::time::timeout(Duration::from_secs(2), clock.entered.notified()).await;
+        if entered.is_err() {
+            clock.release();
+        }
+        entered.unwrap();
+        let committed = f.projections.commit_for_target(
+            &scope,
+            f.session_target(2),
+            id("session.opened"),
+            object(2),
+            object(2),
+        );
+        clock.release();
+        committed.unwrap();
+        assert_eq!(reading.await.unwrap().unwrap_err().code, "EPOCH_MISMATCH");
+        assert_eq!(f.projections.reader_count(), 0);
+        assert_eq!(
+            f.projections
+                .snapshot(&f.actor, &scope)
+                .await
+                .unwrap()
+                .state,
+            object(2)
+        );
+    }
 }
 
 #[tokio::test]
@@ -368,7 +686,14 @@ async fn oversized_commit_preserves_state_revision_and_cursor() {
 #[tokio::test]
 async fn exact_delta_byte_limit_accounts_for_decimal_cursor_growth() {
     let baseline = Fixture::new(ProjectionLimits::default(), "metadata.read");
-    let bytes = serde_json::to_vec(&baseline.commit(1)).unwrap().len();
+    for _ in 1..9 {
+        baseline.commit(1);
+    }
+    let nine = baseline.commit(1);
+    let ten = baseline.commit(1);
+    let bytes = serde_json::to_vec(&nine).unwrap().len();
+    assert_eq!(nine.payload, ten.payload);
+    assert_eq!(serde_json::to_vec(&ten).unwrap().len(), bytes + 2);
     let f = Fixture::new(
         ProjectionLimits {
             history_bytes: bytes,
@@ -377,13 +702,13 @@ async fn exact_delta_byte_limit_accounts_for_decimal_cursor_growth() {
         },
         "metadata.read",
     );
-    for n in 1..=9 {
-        f.commit(n);
+    for _ in 1..=9 {
+        f.commit(1);
     }
     let before = f.projections.snapshot(&f.actor, &f.scope).await.unwrap();
     assert_eq!(
         f.projections
-            .commit(&f.scope, id("devices.changed"), object(10), object(10))
+            .commit(&f.scope, id("devices.changed"), object(1), object(1))
             .unwrap_err()
             .code,
         "LIMIT_EXCEEDED"
@@ -495,7 +820,7 @@ impl IdleClock {
 }
 impl Clock for IdleClock {
     fn mono_ns(&self) -> u64 {
-        // 期限等待在 current-thread 的分支调用时钟；Auth 检查在 blocking 线程。
+        // grant_remaining 在 current-thread 的等待分支调用时钟；Auth 检查在 blocking 线程。
         // 发信号到 select 之间没有 await，同线程测试只有在 next 真正 Pending 后才继续。
         if std::thread::current().id() == self.runtime_thread
             && self.armed.swap(false, Ordering::SeqCst)

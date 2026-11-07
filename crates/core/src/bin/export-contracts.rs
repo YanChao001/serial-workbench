@@ -246,11 +246,13 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
     bad["peerAcknowledged"] = json!(true);
     f.add::<TxReceipt>("tx-no-peer-proof", bad, false)?;
     ipc_fixtures(&mut f)?;
+    m1_fixtures(&mut f, &op)?;
     Ok(f)
 }
 
 fn ipc_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
     let cursor = json!({"hostId":"host","instanceEpoch":"7","scopeId":"scope","position":"1"});
+    let catalog_changed = json!({"type":"catalogChanged","catalogVersion":"9007199254740993","visibilityToken":"a".repeat(64)});
     let bodies = [
         json!({"type":"clientHello","supportedProtocolVersions":["0.1"],"clientNonce":"nonce"}),
         json!({"type":"hostHello","protocolVersion":"0.1","hostId":"host","instanceEpoch":"9007199254740993","serverNonce":"nonce","proof":"proof"}),
@@ -265,6 +267,7 @@ fn ipc_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
         json!({"type":"rawBatch","batch":{"subscriptionId":"subscription","cursor":cursor,"previousCursor":cursor,"items":[{"kind":"reader_gap","gap":{"hostId":"host","instanceEpoch":"7","sessionId":"session","sessionEpoch":"2","reason":"reader_overflow","missingEventRange":{"start":"1","end":"2"},"missingByteRanges":[]}}]}}),
         json!({"type":"delta","subscriptionId":"subscription","delta":{"cursor":cursor,"previousCursor":cursor,"revision":"1","eventType":"changed","payload":{}}}),
         json!({"type":"subscriptionEnded","subscriptionId":"subscription","error":{"code":"CURSOR_EXPIRED","message":"New snapshot required","retryable":false}}),
+        catalog_changed.clone(),
     ];
     for body in &bodies {
         let name = body["type"].as_str().unwrap();
@@ -278,6 +281,21 @@ fn ipc_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
             f.add::<IpcMessage>(&format!("ipc-{name}-missing-{key}"), missing, false)?;
         }
     }
+    for field in ["catalogVersion", "visibilityToken"] {
+        let mut null = catalog_changed.clone();
+        null[field] = Value::Null;
+        f.add::<IpcMessage>(&format!("ipc-catalogChanged-null-{field}"), null, false)?;
+    }
+    let mut numeric = catalog_changed.clone();
+    numeric["catalogVersion"] = json!(1);
+    f.add::<IpcMessage>("ipc-catalogChanged-number-version", numeric, false)?;
+    let mut invalid_digest = catalog_changed.clone();
+    invalid_digest["visibilityToken"] = json!("not-a-digest");
+    f.add::<IpcMessage>(
+        "ipc-catalogChanged-invalid-visibility-token",
+        invalid_digest,
+        false,
+    )?;
     for (index, key, value) in [
         (0, "expectedHostId", "host"),
         (2, "credential", "credential"),
@@ -359,6 +377,333 @@ fn ipc_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
     f.add::<RevokeParams>("revoke-unknown-client", unknown, false)?;
     Ok(())
 }
+impl Fixtures {
+    fn object<T: DeserializeOwned + JsonSchema>(
+        &mut self,
+        name: &str,
+        value: Value,
+        optional: &[&str],
+    ) -> Result<(), Box<dyn Error>> {
+        self.add::<T>(name, value.clone(), true)?;
+        let mut unknown = value.clone();
+        unknown["unknown"] = json!(true);
+        self.add::<T>(&format!("{name}-unknown-field"), unknown, false)?;
+        for field in value.as_object().unwrap().keys() {
+            if !optional.contains(&field.as_str()) {
+                let mut missing = value.clone();
+                missing.as_object_mut().unwrap().remove(field);
+                self.add::<T>(&format!("{name}-missing-{field}"), missing, false)?;
+            }
+        }
+        for field in optional {
+            let mut null = value.clone();
+            null[field] = Value::Null;
+            self.add::<T>(&format!("{name}-null-{field}"), null, false)?;
+        }
+        Ok(())
+    }
+    fn enumeration<T: DeserializeOwned + JsonSchema>(
+        &mut self,
+        name: &str,
+        values: &[&str],
+    ) -> Result<(), Box<dyn Error>> {
+        for value in values {
+            self.add::<T>(&format!("{name}-{value}"), json!(value), true)?;
+        }
+        self.add::<T>(&format!("{name}-unregistered"), json!("future"), false)?;
+        self.add::<T>(&format!("{name}-null"), Value::Null, false)?;
+        Ok(())
+    }
+}
+
+fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>> {
+    let shutdown_requested = json!({"instanceEpoch":"9007199254740993"});
+    f.object::<ShutdownRequested>("shutdown-requested", shutdown_requested.clone(), &[])?;
+    f.add::<ShutdownRequested>(
+        "shutdown-requested-null-epoch",
+        json!({"instanceEpoch":null}),
+        false,
+    )?;
+    f.add::<ShutdownRequested>(
+        "shutdown-requested-number-epoch",
+        json!({"instanceEpoch":1}),
+        false,
+    )?;
+    f.object::<ActionResult>(
+        "action-shutdown-requested",
+        json!({"kind":"shutdown_requested","value":shutdown_requested}),
+        &[],
+    )?;
+    f.enumeration::<DataBits>("serial-data-bits", &["5", "6", "7", "8"])?;
+    f.add::<DataBits>("serial-data-bits-number", json!(8), false)?;
+    f.enumeration::<Parity>("serial-parity", &["none", "even", "odd", "mark", "space"])?;
+    f.enumeration::<StopBits>("serial-stop-bits", &["one", "onePointFive", "two"])?;
+    f.enumeration::<FlowControl>(
+        "serial-flow-control",
+        &["none", "rtsCts", "xonXoff", "dsrDtr"],
+    )?;
+    f.add::<StopBits>(
+        "serial-stop-bits-snake-case",
+        json!("one_point_five"),
+        false,
+    )?;
+    f.add::<FlowControl>("serial-flow-control-snake-case", json!("rts_cts"), false)?;
+    f.enumeration::<TransportSemantics>("transport-semantics", &["stream", "message"])?;
+    f.enumeration::<SessionState>(
+        "session-state",
+        &["closed", "opening", "open", "disconnected", "closing"],
+    )?;
+    f.enumeration::<ControlState>(
+        "control-state",
+        &["clear", "asserting", "asserted", "clearing", "unknown"],
+    )?;
+    f.enumeration::<ControlLine>("control-line", &["dtr", "rts"])?;
+    f.enumeration::<PurgeDirection>("purge-direction", &["rx", "tx", "both"])?;
+    f.enumeration::<PurgeScope>("purge-scope", &["application", "driver", "both"])?;
+    f.enumeration::<PurgeOutcome>("purge-outcome", &["completed", "partial", "unknown"])?;
+    f.enumeration::<LeaseKind>("lease-kind", &["ordinary", "transaction", "exclusive"])?;
+    f.enumeration::<ExplicitLeaseKind>("explicit-lease-kind", &["transaction", "exclusive"])?;
+    f.add::<ExplicitLeaseKind>("ordinary-is-not-explicit-lease", json!("ordinary"), false)?;
+    f.enumeration::<LeaseState>(
+        "lease-state",
+        &["active", "revoking", "released", "expired"],
+    )?;
+    f.enumeration::<TakeoverReason>("takeover-reason", &["user"])?;
+    let configuration = json!({"baudRate":"9600","dataBits":"8","parity":"none","stopBits":"one","flowControl":"none","readWaitMs":"1","writeWaitMs":"1000","reconnectBackoffMs":"2147483647"});
+    f.object::<SerialConfiguration>("serial-configuration", configuration.clone(), &[])?;
+    for field in configuration.as_object().unwrap().keys() {
+        let mut null = configuration.clone();
+        null[field] = Value::Null;
+        f.add::<SerialConfiguration>(&format!("serial-configuration-null-{field}"), null, false)?;
+    }
+    for field in ["readWaitMs", "writeWaitMs", "reconnectBackoffMs"] {
+        for (name, value) in [
+            ("zero", json!("0")),
+            ("overflow", json!("2147483648")),
+            ("number", json!(1)),
+        ] {
+            let mut bad = configuration.clone();
+            bad[field] = value;
+            f.add::<SerialConfiguration>(
+                &format!("serial-configuration-{field}-{name}"),
+                bad,
+                false,
+            )?;
+        }
+    }
+    let mut maximum = configuration.clone();
+    maximum["baudRate"] = json!("18446744073709551615");
+    f.add::<SerialConfiguration>("serial-baud-u64-max", maximum, true)?;
+    let mut zero = configuration.clone();
+    zero["baudRate"] = json!("0");
+    f.add::<SerialConfiguration>("serial-baud-zero", zero, false)?;
+    let capabilities = json!({"semantics":"stream","configuration":true,"dtr":true,"rts":true,"finiteBreak":true,"queueStatus":true,"drain":true,"purgeRx":true,"purgeTx":true});
+    f.object::<TransportCapabilities>("transport-capabilities", capabilities.clone(), &[])?;
+    let snapshot = json!({"sessionId":"session","deviceId":"virtual.echo","sessionEpoch":"9007199254740993","revision":"1","configurationRevision":"1","state":"open","configuration":configuration,"readOnly":false,"txGate":"ready","controlState":"clear","capabilities":capabilities});
+    f.object::<SessionSnapshot>("session-snapshot", snapshot.clone(), &["lease"])?;
+    let lease = json!({"leaseId":"lease","sessionId":"session","sessionEpoch":"9007199254740993","actorId":"actor","ownerOperationId":"op","kind":"exclusive","state":"active","executionMode":"interactive","expiresAtMonoNs":"18446744073709551615"});
+    f.object::<Lease>("lease", lease.clone(), &[])?;
+    let mut leased_snapshot = snapshot.clone();
+    leased_snapshot["lease"] = lease.clone();
+    f.add::<SessionSnapshot>("session-snapshot-with-lease", leased_snapshot, true)?;
+    f.object::<EmptyParams>("empty-params", json!({}), &[])?;
+    let device = json!({"deviceId":"virtual.echo","name":"Virtual Echo"});
+    let devices = json!({"devices":[device]});
+    f.object::<DeviceDescriptor>("virtual-device", device, &[])?;
+    f.object::<DeviceList>("device-list", devices.clone(), &[])?;
+    f.object::<OpenParams>("open-params", json!({"configuration":configuration}), &[])?;
+    let opened = json!({"sessionId":"session","sessionEpoch":"9007199254740993","revision":"1","reused":false});
+    f.object::<OpenResult>("open-result", opened.clone(), &[])?;
+    let transform =
+        json!({"id":"terminal.crlf","version":"1","configurationDigest":"a".repeat(64)});
+    f.object::<TransformReference>("transform-reference", transform.clone(), &[])?;
+    f.object::<TxParams>("tx-params", json!({"bytesBase64":"DQo=","writeWaitMs":"1","queueWaitMs":"2147483647","sourceInputRef":{"hostId":"host","kind":"file","id":"input"},"transforms":[transform]}), &["queueWaitMs", "sourceInputRef", "transforms"])?;
+    for (name, bytes, valid) in [
+        (
+            "tx-limit-16384",
+            format!("{}AA==", "AAAA".repeat(5461)),
+            true,
+        ),
+        (
+            "tx-limit-16385",
+            format!("{}AAA=", "AAAA".repeat(5461)),
+            false,
+        ),
+        ("tx-limit-16386", "AAAA".repeat(5462), false),
+        ("tx-empty", String::new(), false),
+    ] {
+        f.add::<TxParams>(name, json!({"bytesBase64":bytes,"writeWaitMs":"1"}), valid)?;
+    }
+    f.object::<ConfigureParams>("configure-params", json!({"requested":configuration}), &[])?;
+    let config_receipt = json!({"requested":configuration,"fields":[{"field":"baudRate","status":"applied","actual":"9600"}],"readback":{"baudRate":"9600"},"revision":"2","boundaryEventSeq":"3","txGate":"configuration_pending"});
+    f.object::<ConfigReceipt>("configuration-receipt", config_receipt.clone(), &[])?;
+    for field in configuration.as_object().unwrap().keys() {
+        let mut bad = config_receipt.clone();
+        bad["requested"].as_object_mut().unwrap().remove(field);
+        f.add::<ConfigReceipt>(
+            &format!("configuration-receipt-requested-missing-{field}"),
+            bad,
+            false,
+        )?;
+    }
+    f.object::<ConfigField>(
+        "configuration-field",
+        json!({"field":"parity","status":"unknown"}),
+        &["actual"],
+    )?;
+    f.object::<ControlParams>("control-params", json!({"line":"rts","value":true}), &[])?;
+    let control = json!({"line":"rts","requested":true,"status":"unknown"});
+    f.object::<ControlReceipt>("control-receipt", control.clone(), &["actual"])?;
+    f.add::<ControlReceipt>(
+        "control-receipt-confirmed",
+        json!({"line":"dtr","requested":false,"status":"confirmed","actual":false}),
+        true,
+    )?;
+    f.object::<BreakParams>("break-params", json!({"durationMs":"1"}), &[])?;
+    let transition = json!({"status":"confirmed","at":"2026-11-07T00:00:00Z"});
+    f.object::<ControlTransition>("control-transition", transition.clone(), &["error"])?;
+    let break_receipt = json!({"assert":transition,"clear":transition});
+    f.object::<BreakReceipt>("break-receipt", break_receipt.clone(), &[])?;
+    f.object::<SetReadOnlyParams>("set-read-only", json!({"readOnly":true}), &[])?;
+    for (name, value, valid) in [
+        ("minimum", "1", true),
+        ("maximum", "2147483647", true),
+        ("zero", "0", false),
+        ("overflow", "2147483648", false),
+    ] {
+        f.add::<LeaseAcquireParams>(
+            &format!("lease-acquire-ttl-{name}"),
+            json!({"kind":"transaction","ttlMs":value}),
+            valid,
+        )?;
+        f.add::<LeaseRenewParams>(
+            &format!("lease-renew-ttl-{name}"),
+            json!({"leaseId":"lease","ttlMs":value}),
+            valid,
+        )?;
+    }
+    f.object::<LeaseAcquireParams>(
+        "lease-acquire",
+        json!({"kind":"exclusive","ttlMs":"30000"}),
+        &[],
+    )?;
+    f.object::<LeaseRenewParams>(
+        "lease-renew",
+        json!({"leaseId":"lease","ttlMs":"30000"}),
+        &[],
+    )?;
+    f.object::<LeaseReleaseParams>("lease-release", json!({"leaseId":"lease"}), &[])?;
+    f.object::<TakeoverParams>("takeover", json!({"actorId":"actor","reason":"user"}), &[])?;
+    let takeover = json!({"affectedOperationIds":["op"]});
+    f.object::<TakeoverReceipt>("takeover-receipt", takeover.clone(), &[])?;
+    f.object::<WaitBoundaryParams>(
+        "wait-boundary",
+        json!({"throughOperationId":"op","queueWaitMs":"1"}),
+        &[],
+    )?;
+    let boundary = json!({"throughOperationId":"op"});
+    f.object::<WaitBoundaryReceipt>("wait-boundary-receipt", boundary.clone(), &[])?;
+    let queue = json!({"pendingBytes":"9007199254740993","observedAt":"2026-11-07T00:00:00Z"});
+    f.object::<QueueStatus>("queue-status", queue.clone(), &[])?;
+    f.object::<DrainParams>("drain-params", json!({"writeWaitMs":"1"}), &[])?;
+    let drained = json!({"status":"unknown"});
+    f.object::<DrainReceipt>("drain-receipt", drained.clone(), &[])?;
+    f.object::<PurgeParams>(
+        "purge-params",
+        json!({"direction":"both","scope":"application"}),
+        &[],
+    )?;
+    let purged = json!({"direction":"tx","scope":"driver","outcome":"unknown","affectedOperationIds":[],"ranges":[],"unknownExtent":true});
+    f.object::<PurgeReceipt>("purge-receipt", purged.clone(), &[])?;
+    let intent = json!({"operationId":"op","bytesBase64":"DQo=","byteStart":"0","byteEnd":"2"});
+    f.object::<TxIntent>("tx-intent", intent.clone(), &[])?;
+    let receipt = json!({"operationId":"op","sessionId":"session","sessionEpoch":"2","outcome":"unknown","bytesBase64":"DQo=","byteStart":"0","byteEnd":"2","acceptedRanges":[{"start":"0","end":"1"}],"unknownRanges":[{"start":"1","end":"2"}],"peerAcknowledged":false,"backendError":{"code":"WRITE_INTERRUPTED","message":"Write result unavailable","retryable":false}});
+    f.object::<TxReceipt>("unknown-tx-receipt", receipt.clone(), &["backendError"])?;
+    let mut event = json!({"hostId":"host","instanceEpoch":"7","sessionId":"session","sessionEpoch":"2","eventSeq":"1","configurationRevision":"1","kind":"tx_intent","time":{"clockId":"clock","sourceMonoNs":"1","receivedWallTime":"2026-11-07T00:00:00Z","precision":{"source":"host_read","resolutionNs":"1","syncMethod":"none"}},"payload":intent});
+    f.object::<RawEvent>("raw-tx-intent", event.clone(), &[])?;
+    event["eventSeq"] = json!("2");
+    event["kind"] = json!("tx");
+    event["payload"] = receipt.clone();
+    f.object::<RawEvent>("raw-tx-final", event.clone(), &[])?;
+    let cursor = json!({"hostId":"host","instanceEpoch":"7","scopeId":"scope","position":"0"});
+    f.object::<Cursor>("stream-cursor", cursor.clone(), &[])?;
+    f.object::<StreamReadParams>("stream-read-params", json!({"sessionId":"session","sessionEpoch":"2","startEventSeq":"1","maxEvents":"100","maxBytes":"16384"}), &[])?;
+    let read_result = json!({"events":[event],"nextEventSeq":"3","hasMore":false});
+    f.object::<StreamReadResult>("stream-read-result", read_result.clone(), &[])?;
+    f.object::<StreamSubscribeParams>("stream-zero-credit", json!({"scopeId":"scope","after":cursor,"queueBytes":"4194304","initialCreditBytes":"0","overflowPolicy":"drop_with_gap"}), &[])?;
+    let subscribed = json!({"subscriptionId":"subscription"});
+    f.object::<StreamSubscribeResult>("stream-subscribe-result", subscribed.clone(), &[])?;
+    f.object::<StreamCreditParams>(
+        "stream-credit-params",
+        json!({"subscriptionId":"subscription","ackCursor":cursor,"grantedBytesTotal":"256"}),
+        &[],
+    )?;
+    let credited = json!({"ackCursor":cursor,"grantedBytesTotal":"256","sentBytesTotal":"0","acknowledgedBytesTotal":"0"});
+    f.object::<StreamCreditResult>("stream-credit-result", credited.clone(), &[])?;
+    f.object::<ReaderGap>("reader-gap-unknown-bytes", json!({"hostId":"host","instanceEpoch":"7","sessionId":"session","sessionEpoch":"2","reason":"reader_overflow","missingEventRange":{"start":"1","end":"2"}}), &["missingByteRanges"])?;
+    for (name, kind, value) in [
+        ("opened", "opened", opened),
+        ("session", "session", snapshot.clone()),
+        ("control", "control", control),
+        ("lease", "lease", lease),
+        ("takeover", "takeover", takeover),
+        ("boundary", "boundary", boundary),
+        ("drained", "drained", drained),
+        ("purged", "purged", purged),
+        ("tx", "tx", receipt),
+        ("configuration", "configuration", config_receipt),
+        ("break", "break", break_receipt),
+        (
+            "reference",
+            "reference",
+            json!({"resultRef":{"hostId":"host","kind":"file","id":"result"}}),
+        ),
+        (
+            "cancellation",
+            "cancellation_requested",
+            json!({"operationId":"op","state":"cancelled"}),
+        ),
+    ] {
+        f.object::<ActionResult>(
+            &format!("action-{name}"),
+            json!({"kind":kind,"value":value}),
+            &[],
+        )?;
+    }
+    f.add::<ActionResult>(
+        "action-result-unknown-kind",
+        json!({"kind":"future","value":{}}),
+        false,
+    )?;
+    for (name, kind, value) in [
+        ("devices", "devices", devices),
+        ("session", "session", snapshot),
+        ("queue", "queue", queue),
+        ("stream-read", "stream_read", read_result),
+        ("stream-subscribe", "stream_subscribe", subscribed),
+        ("stream-credit", "stream_credit", credited),
+        ("operation", "operation", json!({"operation":operation})),
+        (
+            "snapshot",
+            "snapshot",
+            json!({"hostId":"host","instanceEpoch":"7","revision":"1","cursor":cursor,"state":{}}),
+        ),
+        (
+            "subscription",
+            "subscription",
+            json!({"subscriptionId":"subscription"}),
+        ),
+        ("closed", "closed", json!({"closed":true})),
+    ] {
+        f.object::<QueryResult>(
+            &format!("query-{name}"),
+            json!({"kind":kind,"value":value}),
+            &[],
+        )?;
+    }
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     if args.len() != 2 || args[0] != "--out" {
@@ -417,6 +762,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         SubscriptionCloseParams,
         AuthorizationResult,
         CancellationResult,
+        ShutdownRequested,
         QueryResult,
         RpcRequest,
         RpcResult,
@@ -431,6 +777,49 @@ fn main() -> Result<(), Box<dyn Error>> {
         ActionResult,
         ResultReference,
         Operation,
+        DataBits,
+        Parity,
+        StopBits,
+        FlowControl,
+        TransportSemantics,
+        SessionState,
+        ControlState,
+        ControlLine,
+        PurgeDirection,
+        PurgeScope,
+        PurgeOutcome,
+        LeaseKind,
+        ExplicitLeaseKind,
+        LeaseState,
+        TakeoverReason,
+        SerialConfiguration,
+        TransportCapabilities,
+        SessionSnapshot,
+        OpenParams,
+        OpenResult,
+        TransformReference,
+        TxParams,
+        ConfigureParams,
+        ControlParams,
+        ControlReceipt,
+        BreakParams,
+        SetReadOnlyParams,
+        Lease,
+        LeaseAcquireParams,
+        LeaseRenewParams,
+        LeaseReleaseParams,
+        TakeoverParams,
+        TakeoverReceipt,
+        WaitBoundaryParams,
+        WaitBoundaryReceipt,
+        QueueStatus,
+        DrainParams,
+        DrainReceipt,
+        PurgeParams,
+        PurgeReceipt,
+        DeviceDescriptor,
+        DeviceList,
+        EmptyParams,
         TxOutcome,
         TxGate,
         FieldStatus,
@@ -451,6 +840,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         EventTime,
         MessageFragment,
         RxPayload,
+        TxIntent,
         DirectionalRange,
         SourceGap,
         ConfigurationBoundary,
