@@ -116,6 +116,12 @@ pnpm test:e2e --interactive --skip-build
 
 ## 持续集成检查
 
-当前远端 GitHub Actions 停用。[ci.yml](../.github/workflows/ci.yml) 保留前端、浏览器、Rust、绑定与桌面检查配置和 job 条件。
+日常使用本机定向验证和无头 `pnpm test:ui`。积累到大节点里程碑时，在 Actions 手动运行 [ci.yml](../.github/workflows/ci.yml)，选择待验收 ref；不在每次 push、PR 或定时任务上启动 CI。每次手动运行完整执行前端 / 工程脚本、无头浏览器、Rust fmt / Clippy / workspace 测试、生成 IPC 绑定比对及未签名原生程序构建，不按最后一次提交或旧文件树记录跳过检查。
+
+原生构建和桌面 E2E 覆盖 Windows x64、Ubuntu 22.04 x64、macOS ARM64 / x64。宿主分别为 Windows Server 2022、Ubuntu 22.04、macOS 15 ARM64 / Intel；macOS 构建指定 `MACOSX_DEPLOYMENT_TARGET=14.0`，macOS 14 运行验收另行安排。
+
+手动输入 `desktop_e2e` 默认开启，真实窗口只在独立 GitHub runner 执行。显式关闭时，质量门禁只允许桌面 job 跳过，并在运行摘要记录选择；其余 job 的失败、取消、缺失或跳过均使门禁失败。构建日志记录本次 SHA 与四目标结果，浏览器报告及桌面失败日志按 job 上传。四平台全量运行成功是里程碑 CI 验收；真串口硬件、72 小时稳定性、正式安装包、签名与公开发布使用各自验收流程。
+
+[依赖审计](../.github/workflows/audit.yml) 同样手动运行。Dependabot 可继续创建升级 PR，沿用本机验证与里程碑手动检查。
 
 发布与 Pages 模板的状态、审查和启用步骤见 [停用目录说明](../.github/workflows-disabled/README.md)。

@@ -1,6 +1,6 @@
 # 构建与发布
 
-当前交付应用空壳，应用更新端点与公钥为空，代码签名和公开发布待配置。GitHub Actions 停用，[release.yml](../.github/workflows-disabled/release.yml) 保存在 [模板归档](../.github/workflows-disabled/README.md) 中。本文的自动化流程供恢复发布时使用。
+当前交付应用空壳，应用更新端点与公钥为空，代码签名和公开发布待配置。里程碑 CI 采用手动检查；正式发布工作流仍停用，[release.yml](../.github/workflows-disabled/release.yml) 保存在 [模板归档](../.github/workflows-disabled/README.md) 中。本文的自动化流程供恢复发布时使用。
 
 按交付的平台、格式和通道选择相应章节，命令从仓库根目录执行。普通 PR 使用 [日常验证范围](./testing.md#日常验证范围)；签名资格与范围见 [代码签名策略](./code-signing-policy.md)，运行时信任边界见 [安全规范](./security.md)。
 
@@ -232,7 +232,7 @@ Rust 发布缓存按 `matrix.target` 区分，为 macOS ARM64 与 x86_64 分别�
 
 流程如下：
 
-1. `validate` 用冻结锁文件安装依赖，优先复用 [相同文件树已成功的 CI](./testing.md#持续集成检查)；无可用记录或手动运行时执行 `pnpm verify`。校验发布来源、版本和草稿基线后，创建 / 复用唯一同版本 draft，将 Release ID 传给后续任务；发现多个草稿或已公开版本时停止。
+1. `validate` 用冻结锁文件安装依赖并执行 `pnpm verify`；里程碑 [CI](./testing.md#持续集成检查) 的结果随本次发布验收记录，不复用旧文件树标记跳过检查。校验发布来源、版本和草稿基线后，创建 / 复用唯一同版本 draft，将 Release ID 传给后续任务；发现多个草稿或已公开版本时停止。
 2. `build` 构建 Windows x64（NSIS / MSI）、macOS arm64 与 x64（DMG / app）、Linux x64（DEB / RPM / AppImage），按 ID 上传；配置 PFX 时校验实际 NSIS / MSI 签名。Linux 系统依赖由 workflow 安装，本地环境见 [开发指南](./development.md#环境要求)。
 3. 已启用的 `publish-updater` 汇总清单；`sign-windows` 完成 SignPath 签名与验证。两者成功或因未启用而跳过后，才公开同一 Release。必要任务失败、取消或意外跳过时保留草稿。
 

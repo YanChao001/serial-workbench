@@ -8,6 +8,8 @@
 
 分支名全小写，单词用连字符；按用途使用 `feature/`、`fix/`、`docs/` 或 `chore/`，有 issue 时可带编号，如 `feature/42-command-palette`、`fix/57-window-flash`、`chore/version-1.2.0`。
 
+使用能表达任务的短名，如 `chore/ci`、`docs/m0`、`feature/host`。
+
 ## 日常开发流程
 
 ```bash
@@ -77,11 +79,11 @@ GitHub 服务端按以下目标配置：
 | 合并方式 | 仅启用 squash merge，关闭 merge commit 与 rebase merge |
 | 合并后   | 自动删除已合并短期分支                                 |
 
-必需检查应对应当前可运行的 CI；Actions 恢复并验收后再启用。默认分支、保护规则与合并方式由服务端维护，本地配置同步的范围见 [仓库托管配置](../repository-hosting.md)。
+日常 PR 记录适用本机检查；里程碑 CI 由维护者手动运行，不设置为每个 PR 的必需自动检查。默认分支、保护规则与合并方式由服务端维护，本地配置同步的范围见 [仓库托管配置](../repository-hosting.md)。
 
 ## 自动化工作流
 
-当前 GitHub Actions 停用，PR 记录实际执行的本地检查。CI、依赖审计和 Dependabot 配置位于 [`.github/`](../../.github/)，检查范围见 [测试规范](../testing.md#持续集成检查)。Pages 与发布工作流保留为 [未启用模板](../../.github/workflows-disabled/README.md)，启用步骤见 [构建与发布](../build-release.md)。
+日常 PR 记录实际执行的本地检查，积累到大节点里程碑时手动运行 GitHub Actions；CI 和依赖审计均无 push、PR 或定时触发。CI、依赖审计和 Dependabot 配置位于 [`.github/`](../../.github/)，检查范围见 [测试规范](../testing.md#持续集成检查)。Pages 与发布工作流保留为 [未启用模板](../../.github/workflows-disabled/README.md)，启用步骤见 [构建与发布](../build-release.md)。
 
 ## 冲突处理
 

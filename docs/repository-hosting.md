@@ -20,7 +20,7 @@ pnpm repository:sync
 pnpm config:check
 ```
 
-`repository:sync` 更新根目录及 docs 的已知项目链接、`.gitmodules` 子模块地址、GitHub CI/Pages/Dependabot 分支配置和同步状态。归档的 Pages 模板同样接受分支同步与结构检查。固定第三方来源、许可证和测试样本保留原值。
+`repository:sync` 更新根目录及 docs 的已知项目链接、`.gitmodules` 子模块地址、GitHub Pages/Dependabot 分支配置和同步状态。里程碑 CI 只手动触发，无分支过滤，不由仓库同步器改写触发策略。归档的 Pages 模板同样接受分支同步与结构检查。固定第三方来源、许可证和测试样本保留原值。
 
 同步后运行 `config:check`，检查配置漂移及可执行自有源码中的项目仓库 URL 字面量；单独检查托管配置可用 `repository:check`。这些检查已纳入 `verify`，重复同步应无变化。
 
