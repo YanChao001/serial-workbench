@@ -1,4 +1,4 @@
-/* 宿主、隔离插件文档和显式接入的 ShadowRoot 共用；只使用浏览器原生 CSS。 */
+/* 应用控件样式，只使用浏览器原生 CSS。 */
 :where(:root) {
   --ui-outline-background: var(--control-background);
   --ui-outline-hover: var(--surface-state-hover);
@@ -23,35 +23,13 @@
   --ui-invalid-border: var(--destructive);
   --ui-invalid-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
 }
-:where(body, :host) {
+:where(body) {
   --muted-foreground: var(--glass-muted-foreground);
-}
-:where(html[data-starter-ui]) {
-  box-sizing: border-box;
-  font-family: var(--host-font-family, system-ui, sans-serif);
-  font-size: var(--host-font-size, 16px);
-  line-height: 1.5;
-  color: var(--foreground, CanvasText);
-  background: transparent;
 }
 
 :where(*, *::before, *::after) {
   box-sizing: border-box;
   border-color: var(--surface-border, var(--border, currentColor));
-}
-:host {
-  font-family: var(--host-font-family, system-ui, sans-serif);
-  font-size: var(--host-font-size, 16px);
-  line-height: 1.5;
-  color: var(--foreground, CanvasText);
-}
-:where(html[data-starter-ui] body) {
-  margin: 0;
-  min-width: 0;
-  padding: 1rem;
-  font: inherit;
-  color: inherit;
-  background: transparent;
 }
 :where(
   button:not([data-slot]):not([role]):not([data-surface]),

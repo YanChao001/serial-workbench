@@ -26,15 +26,12 @@ afterEach(cleanup);
 it("replaces old update links with the settings section while retaining a specific focus and other parameters", async () => {
   render(
     <MemoryRouter
-      initialEntries={[
-        "/extensions",
-        "/updates?focus=autoUpdates&keep=1&section=old",
-      ]}
+      initialEntries={["/", "/updates?focus=autoUpdates&keep=1&section=old"]}
     >
       <Routes>
         <Route path="/updates" element={<Updates />} />
         <Route path="/settings" element={<Destination />} />
-        <Route path="/extensions" element={<Destination />} />
+        <Route path="/" element={<Destination />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -44,5 +41,5 @@ it("replaces old update links with the settings section while retaining a specif
     ),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
-  expect(screen.getByText("/extensions")).toBeInTheDocument();
+  expect(screen.getByText("/")).toBeInTheDocument();
 });

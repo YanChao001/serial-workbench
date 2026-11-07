@@ -4,7 +4,7 @@ import {
   applySettings,
   DEFAULT_SETTINGS,
   loadSettings,
-  migrateSettings,
+  normalizeSettings,
   normalizeSettingsPatch,
   readInitialSettings,
   SETTINGS_VERSION,
@@ -34,23 +34,22 @@ describe("versioned settings model", () => {
   it.each(["demo", "minimal"])(
     "drops the retired %s presentation mode without restoring an entry",
     (appMode) => {
-      const migrated = migrateSettings({ language: "en", appMode });
-      expect(migrated.language).toBe("en");
-      expect(migrated).not.toHaveProperty("appMode");
-      expect(settingsDocument(migrated)).not.toHaveProperty("appMode");
+      const normalized = normalizeSettings({ language: "en", appMode });
+      expect(normalized.language).toBe("en");
+      expect(normalized).not.toHaveProperty("appMode");
+      expect(settingsDocument(normalized)).not.toHaveProperty("appMode");
     },
   );
-  it("扩展主题色可往返保存，旧偏好补齐自定义颜色而不改原预设", () => {
+  it("主题色可往返保存，缺省字段补齐自定义颜色", () => {
     for (const accent of ACCENTS) {
       const settings = { ...DEFAULT_SETTINGS, accent, customAccent: "#123ABC" };
-      expect(migrateSettings(settingsDocument(settings))).toEqual(settings);
+      expect(normalizeSettings(settingsDocument(settings))).toEqual(settings);
     }
     for (const document of [
       { accent: "blue" },
-      { schemaVersion: 1, settings: { accent: "blue" } },
       { schemaVersion: 5, accent: "blue" },
     ])
-      expect(migrateSettings(document)).toMatchObject({
+      expect(normalizeSettings(document)).toMatchObject({
         accent: "blue",
         customAccent: DEFAULT_SETTINGS.customAccent,
       });
@@ -58,7 +57,7 @@ describe("versioned settings model", () => {
   });
 
   it("自定义颜色在存档与补丁边界规范化，切换预设保留已选颜色", () => {
-    const custom = migrateSettings({
+    const custom = normalizeSettings({
       accent: "custom",
       customAccent: " #aBc ",
     });
@@ -72,11 +71,11 @@ describe("versioned settings model", () => {
     expect(normalizeSettingsPatch(custom, { accent: "teal" })).toEqual({
       accent: "teal",
     });
-    expect(migrateSettings({ ...custom, accent: "teal" }).customAccent).toBe(
+    expect(normalizeSettings({ ...custom, accent: "teal" }).customAccent).toBe(
       "#AABBCC",
     );
     expect(
-      migrateSettings({
+      normalizeSettings({
         accent: "custom",
         customAccent: "url(https://example.com)",
       }),
@@ -85,12 +84,12 @@ describe("versioned settings model", () => {
       customAccent: DEFAULT_SETTINGS.customAccent,
     });
   });
-  it("defaults legacy startup update checks on and preserves an explicit opt-out", () => {
+  it("defaults startup update checks on and preserves an explicit opt-out", () => {
     expect(
-      migrateSettings({ schemaVersion: 3, language: "en" }).autoCheckUpdates,
+      normalizeSettings({ schemaVersion: 3, language: "en" }).autoCheckUpdates,
     ).toBe(true);
     expect(
-      migrateSettings({ schemaVersion: 3, autoCheckUpdates: false })
+      normalizeSettings({ schemaVersion: 3, autoCheckUpdates: false })
         .autoCheckUpdates,
     ).toBe(false);
     expect(
@@ -98,17 +97,11 @@ describe("versioned settings model", () => {
     ).toEqual({ autoCheckUpdates: false });
   });
 
-  it("旧存档默认跟随系统代理，连接方式在保存和补丁中保留", () => {
-    expect(migrateSettings({ schemaVersion: 3 }).networkMode).toBe("system");
-    expect(
-      migrateSettings({
-        schemaVersion: 1,
-        settings: { networkMode: "direct" },
-      }).networkMode,
-    ).toBe("direct");
+  it("网络默认跟随系统代理，连接方式在保存和补丁中保留", () => {
+    expect(normalizeSettings({ schemaVersion: 3 }).networkMode).toBe("system");
     for (const networkMode of ["system", "direct"] as const) {
       const settings = { ...DEFAULT_SETTINGS, networkMode };
-      expect(migrateSettings(settingsDocument(settings)).networkMode).toBe(
+      expect(normalizeSettings(settingsDocument(settings)).networkMode).toBe(
         networkMode,
       );
       expect(normalizeSettingsPatch(DEFAULT_SETTINGS, { networkMode })).toEqual(
@@ -122,35 +115,27 @@ describe("versioned settings model", () => {
   it.each(["proxy", "auto", "", true, 1, null, { mode: "direct" }])(
     "非法连接方式 %j 回落到系统代理",
     (networkMode) => {
-      expect(migrateSettings({ networkMode }).networkMode).toBe("system");
+      expect(normalizeSettings({ networkMode }).networkMode).toBe("system");
     },
   );
 
-  it("migrates legacy flat and v1 wrapped documents to the current complete shape", () => {
-    expect(migrateSettings({ language: "en", background: "gradient" })).toEqual(
-      { ...DEFAULT_SETTINGS, language: "en", background: "cloudscape" },
-    );
+  it("ignores retired wrappers and background aliases while preserving current fields", () => {
     expect(
-      migrateSettings({
+      normalizeSettings({
         schemaVersion: 1,
-        settings: { font: "mono", theme: "dark", sidebarWidth: 300 },
+        settings: { accent: "blue", sidebarWidth: 300 },
       }),
-    ).toEqual({
-      ...DEFAULT_SETTINGS,
-      font: "mono",
-      theme: "dark",
-      sidebarWidth: 300,
-    });
-    expect(migrateSettings(settingsDocument(DEFAULT_SETTINGS))).toEqual(
-      DEFAULT_SETTINGS,
+    ).toEqual(DEFAULT_SETTINGS);
+    expect(normalizeSettings({ background: "gradient" }).background).toBe(
+      DEFAULT_SETTINGS.background,
     );
-    expect(settingsDocument(DEFAULT_SETTINGS).schemaVersion).toBe(
-      SETTINGS_VERSION,
+    expect(normalizeSettings(settingsDocument(DEFAULT_SETTINGS))).toEqual(
+      DEFAULT_SETTINGS,
     );
   });
 
-  it("schema 2 升级保留偏好，导入图片随当前 schema 存档并可移除", () => {
-    const old = migrateSettings({
+  it("设置规范化保留偏好，导入图片随当前 schema 存档并可移除", () => {
+    const old = normalizeSettings({
       schemaVersion: 2,
       language: "en",
       background: "sakura",
@@ -169,19 +154,19 @@ describe("versioned settings model", () => {
       dataUrl: "data:image/webp;base64," + btoa("RIFF0000WEBP"),
       fit: "cover" as const,
     };
-    const custom = migrateSettings({
+    const custom = normalizeSettings({
       ...old,
       background: "custom",
       customBackground,
     });
-    expect(migrateSettings(settingsDocument(custom))).toEqual(custom);
+    expect(normalizeSettings(settingsDocument(custom))).toEqual(custom);
     expect(settingsDocument(custom).schemaVersion).toBe(SETTINGS_VERSION);
     expect(normalizeSettingsPatch(custom, { customBackground: null })).toEqual({
       customBackground: null,
       background: "plain",
     });
     expect(
-      migrateSettings({
+      normalizeSettings({
         background: "custom",
         customBackground: {
           name: "remote",
@@ -194,18 +179,18 @@ describe("versioned settings model", () => {
   it.each([null, [], "invalid", 5, { settings: [] }])(
     "normalizes malformed document %j",
     (raw) => {
-      expect(migrateSettings(raw)).toEqual(DEFAULT_SETTINGS);
+      expect(normalizeSettings(raw)).toEqual(DEFAULT_SETTINGS);
     },
   );
 
   it("clamps finite sidebar widths and rejects invalid enums and boolean coercion", () => {
-    expect(migrateSettings({ sidebarWidth: 180.8 }).sidebarWidth).toBe(181);
-    expect(migrateSettings({ sidebarWidth: -1 }).sidebarWidth).toBe(180);
-    expect(migrateSettings({ sidebarWidth: 999 }).sidebarWidth).toBe(360);
+    expect(normalizeSettings({ sidebarWidth: 180.8 }).sidebarWidth).toBe(181);
+    expect(normalizeSettings({ sidebarWidth: -1 }).sidebarWidth).toBe(180);
+    expect(normalizeSettings({ sidebarWidth: 999 }).sidebarWidth).toBe(360);
     for (const sidebarWidth of [NaN, Infinity, -Infinity, "300", null])
-      expect(migrateSettings({ sidebarWidth }).sidebarWidth).toBe(224);
+      expect(normalizeSettings({ sidebarWidth }).sidebarWidth).toBe(224);
     expect(
-      migrateSettings({
+      normalizeSettings({
         theme: "pink",
         appMode: "unknown",
         sidebarCollapsed: "true",
@@ -221,7 +206,7 @@ describe("versioned settings model", () => {
       feature: { new: true },
     });
     localStorage.setItem(STORAGE_KEY, raw);
-    expect(() => migrateSettings(JSON.parse(raw))).toThrow(
+    expect(() => normalizeSettings(JSON.parse(raw))).toThrow(
       SettingsVersionError,
     );
     expect(readInitialSettings()).toEqual({
@@ -231,19 +216,13 @@ describe("versioned settings model", () => {
     expect(localStorage.getItem(STORAGE_KEY)).toBe(raw);
   });
 
-  it("兼容旧存档并仅接受已知的启动位置偏好", () => {
-    expect(migrateSettings({}).windowPosition).toBe("remember");
-    expect(
-      migrateSettings({
-        schemaVersion: 1,
-        settings: { windowPosition: "center" },
-      }).windowPosition,
-    ).toBe("center");
-    expect(migrateSettings({ windowPosition: "center" }).windowPosition).toBe(
+  it("仅接受已知的启动位置偏好", () => {
+    expect(normalizeSettings({}).windowPosition).toBe("remember");
+    expect(normalizeSettings({ windowPosition: "center" }).windowPosition).toBe(
       "center",
     );
     for (const windowPosition of ["top-left", true, null, 1]) {
-      expect(migrateSettings({ windowPosition }).windowPosition).toBe(
+      expect(normalizeSettings({ windowPosition }).windowPosition).toBe(
         "remember",
       );
     }
@@ -252,16 +231,9 @@ describe("versioned settings model", () => {
     ).toEqual({ windowPosition: "center" });
   });
 
-  it("migrates the old theme key only when no explicit theme exists in the document source", () => {
-    localStorage.setItem("theme", "dark");
-    expect(readInitialSettings().settings.theme).toBe("dark");
-    localStorage.setItem(
-      STORAGE_KEY,
-      JSON.stringify({ schemaVersion: 1, settings: { theme: "light" } }),
-    );
-    expect(readInitialSettings().settings.theme).toBe("light");
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ theme: "invalid" }));
-    expect(readInitialSettings().settings.theme).toBe("dark");
+  it("ignores the shared theme key and preserves the namespaced current theme", () => {
+    localStorage.setItem("theme", "light");
+    expect(readInitialSettings().settings.theme).toBe(DEFAULT_SETTINGS.theme);
   });
 
   it("reports read failures without throwing and retains the detected language", () => {
@@ -316,12 +288,12 @@ describe("loadSettings", () => {
     expect(loadSettings()).toEqual(DEFAULT_SETTINGS);
   });
 
-  it("首次使用默认内置首图，旧皮肤与用户图片的显式选择仍被保留", () => {
+  it("首次使用默认内置首图，皮肤与用户图片的显式选择被保留", () => {
     expect(loadSettings()).toMatchObject({
       background: "bundled:001-秋日花饰少女.jpg",
       customBackground: null,
     });
-    const selected = migrateSettings({
+    const selected = normalizeSettings({
       schemaVersion: 7,
       background: "bundled:001-秋日花饰少女.jpg",
     });
@@ -330,13 +302,13 @@ describe("loadSettings", () => {
       "bundled:001-秋日花饰少女.jpg",
     );
     expect(
-      migrateSettings({ schemaVersion: 6, background: "plain" }).background,
+      normalizeSettings({ schemaVersion: 6, background: "plain" }).background,
     ).toBe("plain");
     expect(
-      migrateSettings({ schemaVersion: 6, background: "sakura" }).background,
+      normalizeSettings({ schemaVersion: 6, background: "sakura" }).background,
     ).toBe("sakura");
     expect(
-      migrateSettings({ background: "bundled:missing.jpg" }).background,
+      normalizeSettings({ background: "bundled:missing.jpg" }).background,
     ).toBe(DEFAULT_SETTINGS.background);
   });
 
@@ -367,7 +339,7 @@ describe("loadSettings", () => {
     expect(loadSettings().language).toBe("zh");
   });
 
-  it.each(["zh", "en"])("旧存档语言 %s 优先于系统偏好", (language) => {
+  it.each(["zh", "en"])("存档语言 %s 优先于系统偏好", (language) => {
     vi.spyOn(navigator, "languages", "get").mockReturnValue([
       language === "zh" ? "en-US" : "zh-CN",
     ]);
@@ -375,22 +347,10 @@ describe("loadSettings", () => {
     expect(loadSettings().language).toBe(language);
   });
 
-  it.each([
-    ["gradient", "cloudscape"],
-    ["grid", "starlight"],
-    ["dots", "starlight"],
-    ["contour", "starlight"],
-    ["orbits", "starlight"],
-    ["waves", "cloudscape"],
-  ])("旧背景 %s 迁移到 %s", (background, expected) => {
-    window.localStorage.setItem(STORAGE_KEY, JSON.stringify({ background }));
-    expect(loadSettings().background).toBe(expected);
-  });
-
-  it("背景强度兼容旧存档并校验新取值", () => {
+  it("背景强度校验当前取值", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ background: "moonlit", backgroundIntensity: "strong" }),
+      JSON.stringify({ background: "moonlit", backgroundIntensity: 70 }),
     );
     expect(loadSettings()).toMatchObject({
       background: "moonlit",
@@ -403,9 +363,9 @@ describe("loadSettings", () => {
     expect(loadSettings().backgroundIntensity).toBe(50);
   });
   it.each([
-    ["subtle", 30],
+    ["subtle", 50],
     ["balanced", 50],
-    ["strong", 70],
+    ["strong", 50],
     [0, 0],
     [100, 100],
     [34, 30],
@@ -416,10 +376,10 @@ describe("loadSettings", () => {
     [Infinity, 50],
     ["90", 50],
   ] as const)(
-    "强度 %s 迁移或规范化为 %s，保留其他偏好",
+    "强度 %s 规范化为 %s，保留其他偏好",
     (backgroundIntensity, expected) => {
       expect(
-        migrateSettings({
+        normalizeSettings({
           schemaVersion: 3,
           backgroundIntensity,
           accent: "rose",

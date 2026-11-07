@@ -1,10 +1,8 @@
-import { zhExtensions } from "./zh-extensions";
 import { zhRecovery } from "./zh-recovery";
 import { zhShell } from "./zh-shell";
 
 /** 默认语言也是词条键的唯一来源。 */
 export const zhCN = {
-  ...zhExtensions,
   ...zhRecovery,
   ...zhShell,
   "settings.search": "搜索设置",
@@ -50,7 +48,7 @@ export const zhCN = {
   "title.restore": "还原",
   "title.close": "关闭",
   "title.toggleTheme": "切换主题",
-  "title.aboutBody": "Serial Workbench 工作区，可管理插件与应用设置。",
+  "title.aboutBody": "Serial Workbench 工作区与应用设置。",
   "common.copied": "已复制",
   "common.openFailed": "无法打开链接，请复制地址到浏览器",
   "common.reset": "重置偏好",
@@ -66,8 +64,7 @@ export const zhCN = {
   "settings.networkMode": "网络连接",
   "settings.networkModeSystem": "系统代理",
   "settings.networkModeDirect": "直接连接",
-  "settings.networkModeHint":
-    "保存后用于后续请求，插件使用系统代理仍需单独授权。",
+  "settings.networkModeHint": "保存后用于后续请求。",
   "settings.networkModeBrowserHint":
     "浏览器自行管理连接方式，仅桌面版可修改此项。",
   "settings.appearance": "外观",

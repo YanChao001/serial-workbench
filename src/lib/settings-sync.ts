@@ -1,6 +1,6 @@
 import {
   isRecord,
-  migrateSettings,
+  normalizeSettings,
   normalizeSettingsPatch,
   settingsDocument,
   type AppSettings,
@@ -93,7 +93,7 @@ export class SettingsSync {
     const first = this.revision < 0;
     let next: AppSettings;
     try {
-      next = migrateSettings(snapshot.settings);
+      next = normalizeSettings(snapshot.settings);
     } catch (error) {
       // 保留版本号，确保显式重置可以安全替换更高版本的结构。
       if (codeOf(error) === "FUTURE_SETTINGS_VERSION")
@@ -186,7 +186,7 @@ export class SettingsSync {
     });
     this.blocked = false;
     this.error = null;
-    this.pending = migrateSettings(settings);
+    this.pending = normalizeSettings(settings);
     this.resetPending = true;
     if (this.revision >= 0 && this.unlisten) this.ready = true;
     this.emit();

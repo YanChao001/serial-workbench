@@ -38,21 +38,11 @@ ADR 记录问题、选择、代价与复查条件，不复制协议、实施清�
 
 ## 索引
 
-| 编号                                                 | 当前决策                     | 状态   |
-| ---------------------------------------------------- | ---------------------------- | ------ |
-| [0001](./0001-desktop-shell-tauri.md)                | Tauri 桌面外壳与 Web 界面    | 已采纳 |
-| [0004](./0004-wallpaper-library.md)                  | 图库与当前背景设置分离       | 已采纳 |
-| [0011](./0011-capability-extension-host.md)          | Wasm 能力宿主与受控效果      | 已采纳 |
-| [0012](./0012-extension-ui-surfaces.md)              | 区分通用视图与隔离自定义界面 | 已采纳 |
-| [0013](./0013-extension-desktop-services.md)         | 插件通过固定服务访问桌面能力 | 已采纳 |
-| [0015](./0015-plugin-media-capabilities.md)          | 图片供应商由插件实现         | 已采纳 |
-| [0016](./0016-retain-extension-surfaces.md)          | 有界保留插件界面             | 已采纳 |
-| [0017](./0017-precompile-enabled-extensions.md)      | 预编译与独立执行实例         | 已采纳 |
-| [0018](./0018-lan-attachments-and-loopback.md)       | 受控局域网服务与附件         | 已采纳 |
-| [0019](./0019-bounded-extension-compute.md)          | 清单声明有界计算预算         | 已采纳 |
-| [0020](./0020-pin-updater-trust-root.md)             | 更新信任根固定在安装包内     | 已采纳 |
-| [0021](./0021-managed-video-wallpapers.md)           | 应用管理视频壁纸副本         | 已采纳 |
-| [0022](./0022-shared-control-materials.md)           | 宿主与插件共享控件样式来源   | 已采纳 |
-| [0023](./0023-preserve-extension-upgrade-consent.md) | 可信升级按严格条件继承授权   | 已采纳 |
-| [0025](./0025-github-flow.md)                        | 单主分支与 squash merge      | 已采纳 |
-| [0026](./0026-independent-shell-boundary.md)         | 独立产品空壳与实际移除边界   | 已采纳 |
+| 编号                                         | 当前决策                     | 状态   |
+| -------------------------------------------- | ---------------------------- | ------ |
+| [0001](./0001-desktop-shell-tauri.md)        | Tauri 桌面外壳与 Web 界面    | 已采纳 |
+| [0004](./0004-wallpaper-library.md)          | 图库与当前背景设置分离       | 已采纳 |
+| [0020](./0020-pin-updater-trust-root.md)     | 更新信任根固定在安装包内     | 已采纳 |
+| [0021](./0021-managed-video-wallpapers.md)   | 应用管理视频壁纸副本         | 已采纳 |
+| [0025](./0025-github-flow.md)                | 单主分支与 squash merge      | 已采纳 |
+| [0026](./0026-independent-shell-boundary.md) | 公共桌面壳与业务入口移除边界 | 已采纳 |

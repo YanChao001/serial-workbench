@@ -1,11 +1,9 @@
 import type { Messages } from "./zh-CN";
-import { enExtensions } from "./en-extensions";
 import { enRecovery } from "./en-recovery";
 import { enShell } from "./en-shell";
 
 /** 与默认语言保持相同词条；缺词或拼错键会在类型检查中报错。 */
 export const en = {
-  ...enExtensions,
   ...enRecovery,
   ...enShell,
   "settings.search": "Search settings",
@@ -52,8 +50,7 @@ export const en = {
   "title.restore": "Restore",
   "title.close": "Close",
   "title.toggleTheme": "Toggle theme",
-  "title.aboutBody":
-    "The Serial Workbench workspace for managing plugins and application settings.",
+  "title.aboutBody": "The Serial Workbench workspace and application settings.",
   "common.copied": "Copied",
   "common.openFailed":
     "Cannot open the link. Copy the address into your browser.",
@@ -70,8 +67,7 @@ export const en = {
   "settings.networkMode": "Network connection",
   "settings.networkModeSystem": "System proxy",
   "settings.networkModeDirect": "Direct connection",
-  "settings.networkModeHint":
-    "Applies to later requests after saving; plugins still need separate system proxy permission.",
+  "settings.networkModeHint": "Applies to later requests after saving.",
   "settings.networkModeBrowserHint":
     "The browser controls connections; only the desktop app can change this setting.",
   "settings.appearance": "Appearance",

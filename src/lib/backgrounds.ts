@@ -48,9 +48,6 @@ export function normalizeBackgroundIntensity(
     );
     return BACKGROUND_INTENSITIES[index]!;
   }
-  if (value === "subtle") return 30;
-  if (value === "balanced") return 50;
-  if (value === "strong") return 70;
   return DEFAULT_BACKGROUND_INTENSITY;
 }
 

@@ -70,8 +70,8 @@ test("portable distribution includes complete project licenses and existing thir
   }
   assert.equal(existsSync(join(output, "LICENSES")), false);
   assert.deepEqual(
-    readFileSync(join(output, "third-party/extism.LICENSE")),
-    readFileSync(join(projectRoot, "resources/third-party/extism.LICENSE")),
+    readFileSync(join(output, "third-party/tauri.LICENSE")),
+    readFileSync(join(projectRoot, "resources/third-party/tauri.LICENSE")),
   );
   const manifest = JSON.parse(
     readFileSync(join(output, "manifest.json"), "utf8"),

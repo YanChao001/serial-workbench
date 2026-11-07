@@ -183,7 +183,6 @@ async function seedUpdateFixture(
               case "complete_frontend_startup":
               case "set_window_work_state":
               case "save_workspace_route":
-              case "prepare_enabled_extensions":
                 return null;
               case "plugin:window|is_maximized":
               case "plugin:window|is_fullscreen":
@@ -216,8 +215,6 @@ async function seedUpdateFixture(
                 return [];
               case "get_update_snapshot":
                 return updateSnapshot;
-              case "extension_snapshot":
-                return { revision: 0, runs: [], items: [] };
               case "plugin:opener|open_url":
                 if (typeof args.url !== "string")
                   throw new Error("Expected an external URL string");

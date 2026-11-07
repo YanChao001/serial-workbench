@@ -26,14 +26,11 @@
       }
     ],
     "security": {
-      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src extension-ui: http://extension-ui.localhost https://extension-ui.localhost; media-src 'self' blob: wallpaper-media: http://wallpaper-media.localhost https://wallpaper-media.localhost; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'self' ipc: http://ipc.localhost",
+      "csp": "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; frame-src 'none'; media-src 'self' blob: wallpaper-media: http://wallpaper-media.localhost https://wallpaper-media.localhost; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; connect-src 'self' ipc: http://ipc.localhost",
       "devCsp": null
     }
   },
   "plugins": {
-    "http": {
-      "scopeRedirects": true
-    },
     "deep-link": {
       "desktop": {
         "schemes": ["serial-workbench"]
@@ -51,18 +48,15 @@
     "resources": {
       "../LICENSE": "LICENSE",
       "../NOTICE": "NOTICE",
-      "../resources/third-party/extism.LICENSE": "third-party/extism.LICENSE",
-      "../resources/third-party/wasmtime.LICENSE": "third-party/wasmtime.LICENSE",
       "../resources/third-party/tauri.LICENSE": "third-party/tauri.LICENSE",
       "../resources/third-party/webview2-com.LICENSE": "third-party/webview2-com.LICENSE",
       "../resources/third-party/windows-core.LICENSE": "third-party/windows-core.LICENSE",
-      "../resources/third-party/async-compression.LICENSE": "third-party/async-compression.LICENSE",
-      "../resources/third-party/if-addrs.LICENSE": "third-party/if-addrs.LICENSE"
+      "../resources/third-party/tauri-desktop-starter.LICENSE": "third-party/tauri-desktop-starter.LICENSE"
     },
     "active": true,
     "targets": "all",
     "category": "Productivity",
-    "shortDescription": "Cross-platform serial port workbench built with Tauri and Rust; Wasm plugin host available, serial communication in development.",
+    "shortDescription": "Cross-platform serial port workbench built with Tauri and Rust.",
     "copyright": "© 2026 YanChao",
     "icon": [
       "icons/32x32.png",

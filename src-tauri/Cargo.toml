@@ -1,7 +1,7 @@
 [package]
 name = "serial-workbench"
 version = "0.1.0"
-description = "Cross-platform serial port workbench built with Tauri and Rust; Wasm plugin host available, serial communication in development."
+description = "Cross-platform serial port workbench built with Tauri and Rust."
 authors = ["YanChao"]
 license = "Apache-2.0"
 edition = "2024"
@@ -18,9 +18,6 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2", features = [] }
 
-[dev-dependencies]
-wat = "=1.258.3"
-
 [dependencies]
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
@@ -28,31 +25,23 @@ tauri-plugin-dialog = "2"
 tauri-plugin-notification = "2"
 tauri-plugin-clipboard-manager = "2"
 tauri-plugin-deep-link = "2"
-tauri-plugin-http = { version = "2", features = ["gzip"] }
 tauri-plugin-window-state = "2"
 # 正式构建默认不显示控制台，文件日志用于定位运行问题
 tauri-plugin-log = "2"
 log = "0.4"
 # 原生命令、持久化快照和生成的 IPC 契约共享 serde 数据模型。
 serde = { version = "1", features = ["derive"] }
-serde_json = { version = "1", features = ["raw_value"] }
+serde_json = "1"
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
 tempfile = "3"
 url = "2"
 regex = "1"
-extism = { version = "=1.41.0", default-features = false }
-wasmtime = { version = "=49.0.4", default-features = false }
 base64 = "0.22"
 minisign-verify = "0.3"
-walkdir = "2"
 sha2 = "0.10"
-keyring = "4.2"
 tokio = { version = "1", features = ["sync", "time"] }
-getrandom = "0.3"
-# 跨平台枚举 LAN 接口，避免 VPN 的非私有默认路由隐藏可用局域网。
-if-addrs = "=0.15.0"
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
 
 # 单实例只在桌面端有意义，移动端不编译这个 crate
@@ -65,10 +54,6 @@ tauri-plugin-wdio-webdriver = { version = "1.5", optional = true }
 default = []
 e2e = ["dep:tauri-plugin-wdio-webdriver"]
 bindings = []
-
-# 仅替换缓存 crate 的压缩依赖约束；来源、差异与撤销条件见补丁目录 README。
-[patch.crates-io]
-wasmtime-internal-cache = { path = "vendor/wasmtime-internal-cache" }
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
@@ -89,10 +74,6 @@ required-features = ["bindings"]
 name = "verify-updater"
 path = "src/bin/verify-updater.rs"
 required-features = ["bindings"]
-
-[[bin]]
-name = "extension-tool"
-path = "src/bin/extension-tool.rs"
 
 # 图片重采样和编解码需要优化，避免开发模式下逐像素循环拖慢图库和预览。
 # 业务代码仍沿用默认 dev 配置，保留增量编译和调试体验。

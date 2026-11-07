@@ -10,10 +10,11 @@
 
 ## 实现约束
 
+- 按独立新体系重构：复用职责合理的现有实现，不合理的接口与状态模型直接重设计。旧软件的 API、数据格式和插件体系不提供兼容或迁入；删除功能时连同依赖、SDK、桥接、专属测试和失效指南一并清理。
 - 手写 TypeScript 统一通过 `src/lib/tauri.ts` 使用系统能力。Rust 命令 / DTO 是契约来源；签名、DTO 或绑定注册变化后，按 [IPC 流程](./docs/development.md#新增页面到-ipc-与测试) 生成、检查并提交绑定。
-- 页面状态留在组件，公共偏好复用设置 Provider、模型与同步器。存储保留原子写入、revision 冲突、迁移和未来格式处理；异步订阅处理卸载、StrictMode 与晚到结果，职责见 [架构](./docs/architecture.md)。
+- 页面状态留在组件，公共偏好复用设置 Provider、模型与同步器。存储保留原子写入、revision 冲突和未来格式保护，恢复保留用户原件；异步订阅处理卸载、StrictMode 与晚到结果，职责见 [架构](./docs/architecture.md)。
 - 未保存工作登记 `useUnsavedWork`，沿用离页协商和 AbortSignal。原生工作使用有界队列与合作取消，停止等待不代表已停止或回滚。恢复保留原件、归档和失败证据。
-- 保留 HashRouter，原生门面检查运行环境；浏览器偏好与原生存档分开。测试 fixture 用于契约验证，插件通过用户安装接入产品。
+- 保留 HashRouter，原生门面检查运行环境；浏览器偏好与原生存档分开。测试 fixture 用于契约验证，新插件按统一 Node 契约接入。
 - 手写 TypeScript 使用 `unknown` 收窄未知输入，不使用 `any` / `enum`；原生错误按稳定 `code` 处理。命名、Rust 分层和抽象规则见 [代码风格](./docs/conventions/code-style.md)。
 - 界面复用语义 token 和控件，维护焦点、键盘与无障碍语义，文案同步中英词典。持续动效消费现有活动状态并清理，见 [界面规范](./docs/conventions/ui-guidelines.md)。`src/components/ui/` 保留上游兼容与本地修复，`src/styles/shadcn.css` 保持上游原文。
 

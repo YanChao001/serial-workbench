@@ -97,14 +97,6 @@ export const DEFAULT_SETTINGS: AppSettings = {
   networkMode: "system",
   theme: "dark",
 };
-const LEGACY_BACKGROUNDS: Record<string, string> = {
-  gradient: "cloudscape",
-  grid: "starlight",
-  dots: "starlight",
-  contour: "starlight",
-  orbits: "starlight",
-  waves: "cloudscape",
-};
 export function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
@@ -123,24 +115,16 @@ export class SettingsVersionError extends Error {
     super("Settings were created by a newer application version.");
   }
 }
-function settingsSource(document: Record<string, unknown>) {
-  return document.schemaVersion === 1 && isRecord(document.settings)
-    ? document.settings
-    : document;
-}
-/** v0 为扁平存档；v1 为包装格式；v2 加入布局与桌面行为；v3 支持本机图片；v4 使用百分比强度；v5 支持视频；v6 扩展预设与自定义主题色；v7 支持内置图片身份。 */
-export function migrateSettings(raw: unknown): AppSettings {
+/** 规范化当前扁平设置文档，未来格式保留并拒绝覆盖。 */
+export function normalizeSettings(raw: unknown): AppSettings {
   const document = isRecord(raw) ? raw : {};
   if (
     typeof document.schemaVersion === "number" &&
     document.schemaVersion > SETTINGS_VERSION
   )
     throw new SettingsVersionError();
-  const source = settingsSource(document);
-  const rawBackground =
-    typeof source.background === "string"
-      ? (LEGACY_BACKGROUNDS[source.background] ?? source.background)
-      : source.background;
+  const source = document;
+  const rawBackground = source.background;
   const customBackground = normalizeBackgroundImage(source.customBackground);
   const background =
     getBundledWallpaper(rawBackground)?.id ??
@@ -208,7 +192,7 @@ export function normalizeSettingsPatch(
     Object.hasOwn(patch, key),
   ) as Array<keyof AppSettings>;
   const selected = Object.fromEntries(keys.map((key) => [key, patch[key]]));
-  const normalized = migrateSettings({ ...current, ...selected });
+  const normalized = normalizeSettings({ ...current, ...selected });
   if (
     keys.includes("customBackground") &&
     !keys.includes("background") &&
@@ -229,14 +213,11 @@ export function readInitialSettings(): {
     const document: unknown = raw === null ? {} : JSON.parse(raw);
     // 缺少存档可以初始化；损坏的根结构须保留原件，不能被默认值覆盖。
     if (!isRecord(document)) throw new Error("Invalid settings document");
-    const settings = migrateSettings(document);
-    if (!Object.hasOwn(settingsSource(document), "theme"))
+    const settings = normalizeSettings(document);
+    if (!Object.hasOwn(document, "theme"))
       settings.theme = pick(
         THEMES,
-        window.localStorage.getItem(THEME_STORAGE_KEY) ??
-          (APP_CONFIG.browserStorageNamespace === "tauri-starter"
-            ? window.localStorage.getItem("theme")
-            : null),
+        window.localStorage.getItem(THEME_STORAGE_KEY),
         DEFAULT_SETTINGS.theme,
       );
     return { settings, error: null };

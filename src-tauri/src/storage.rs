@@ -672,7 +672,7 @@ mod tests {
     }
 
     #[test]
-    fn network_mode_defaults_migrates_and_reloads_without_losing_settings() {
+    fn network_mode_defaults_and_reloads_without_losing_settings() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("settings.json");
         let store = SettingsStore::open(path.clone()).unwrap();
@@ -915,7 +915,7 @@ mod tests {
     }
 
     #[test]
-    fn window_position_is_backward_compatible_and_persists_the_selected_policy() {
+    fn window_position_defaults_and_persists_the_selected_policy() {
         let temp = tempfile::tempdir().unwrap();
         let path = temp.path().join("settings.json");
         let store = SettingsStore::open(path.clone()).unwrap();

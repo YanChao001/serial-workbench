@@ -22,9 +22,9 @@ const commands: AppCommand[] = [
     run: () => {},
   },
   {
-    id: "extension-command",
-    labelKey: "ext.title",
-    label: "Plugin action",
+    id: "registered-command",
+    labelKey: "common.save",
+    label: "Registered action",
     group: "tools",
     run: () => {},
   },
@@ -69,14 +69,14 @@ it("filters registered application actions", () => {
   expect(screen.getByRole("option", { name: "Settings" })).toBeVisible();
 });
 
-it("executes plugin commands and closes the palette while excluding unavailable actions", async () => {
+it("executes registered commands and closes the palette while excluding unavailable actions", async () => {
   const user = userEvent.setup();
   render(<Palette />);
   expect(
     screen.queryByRole("option", { name: "Unavailable action" }),
   ).not.toBeInTheDocument();
-  await user.click(screen.getByRole("option", { name: "Plugin action" }));
-  expect(execute).toHaveBeenCalledExactlyOnceWith("extension-command");
+  await user.click(screen.getByRole("option", { name: "Registered action" }));
+  expect(execute).toHaveBeenCalledExactlyOnceWith("registered-command");
   expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
 });
 

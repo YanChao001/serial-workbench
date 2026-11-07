@@ -1,4 +1,4 @@
-/* 设置、插件及诊断页面共用的容器样式。 */
+/* 设置及诊断页面共用的容器样式。 */
 :root {
   --studio-surface: var(--surface-card);
   --studio-edge: color-mix(in oklch, var(--border) 78%, transparent);
@@ -12,11 +12,6 @@
 /* legend 跨在边框上，不参与 Tailwind space-y 的正文间距。 */
 :where(fieldset > legend) {
   margin-block: 0;
-}
-.extension-card-grid {
-  display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 24rem), 1fr));
-  gap: 1rem;
 }
 .studio-page :where([data-slot="card"]) {
   --card-spacing: 0.75rem;

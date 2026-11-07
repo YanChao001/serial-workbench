@@ -142,7 +142,7 @@ function switchThemeWithReveal(
   return cancel;
 }
 
-/** 主窗口和独立插件窗口共享同步入口，不向原生回写远端设置。 */
+/** 应用窗口共享同步入口，不向原生回写远端设置。 */
 export function useSynchronizedTheme() {
   const { theme, resolvedTheme, setTheme } = useTheme();
   const { settings, persistence } = useSettings();

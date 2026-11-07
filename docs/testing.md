@@ -7,8 +7,8 @@
 | Vitest 纯逻辑 | 设置迁移、同步、命令、快捷键、翻译和错误                     |
 | 组件          | 路由、未保存工作、输入保留、键盘、焦点和无障碍               |
 | Node 工程脚本 | 配置、版本、生成资源、归档、进程和文件边界                   |
-| Rust          | 入参、权限、原子存储、revision、插件生命周期、恢复和更新策略 |
-| IPC 与 SDK    | 生成契约一致性和必要的真实命令调用                           |
+| Rust          | 入参、权限、原子存储、revision、窗口生命周期、恢复和更新策略 |
+| IPC           | 生成契约一致性和必要的真实命令调用                           |
 | Playwright    | 浏览器生产资源、子路径、导航、偏好和自动无障碍扫描           |
 | 真实桌面      | 原生启动、IPC、窗口、系统服务与进程重启                      |
 | 正式安装版    | 安装、身份、签名、卸载、升级和平台集成                       |
@@ -35,7 +35,7 @@ node --test scripts/clean.test.mjs
 pnpm exec prettier --check docs/testing.md
 ```
 
-`pnpm verify` 运行前端 / 脚本测试、格式、lint、类型、配置、品牌、SDK 类型与版本检查，最后构建桌面前端；步骤见 [verify.mjs](../scripts/verify.mjs)。Rust、IPC 绑定导出、Playwright 和真实桌面验收按下文单独执行。
+`pnpm verify` 运行前端 / 脚本测试、格式、lint、类型、配置、品牌与版本检查，最后构建桌面前端；步骤见 [verify.mjs](../scripts/verify.mjs)。Rust、IPC 绑定导出、Playwright 和真实桌面验收按下文单独执行。
 
 ### 并行与耗时
 
@@ -72,12 +72,6 @@ pnpm lint
 
 按 [界面规范](./conventions/ui-guidelines.md) 检查受影响入口、焦点、键盘、动效及输入 / 滚动保留。
 
-## 自定义扩展界面
-
-按改动检查打包 HTML、消息桥、草稿、活动状态、主题和隔离负例。`pnpm test:extensions:styles` 检查宿主 / 插件样式对照，`pnpm test:extensions:ui` 运行无头界面集成；所需插件、构建产物和定向参数见 [runner](../e2e/extension-ui.mjs)。
-
-这组检查使用浏览器与离线 Wasm；系统 keyring、原生对话框、音频设备、多机 LAN / 防火墙及平台 WebView 在目标环境验收。协议见 [扩展指南](./extensions.md#自定义界面)。
-
 ## Rust 测试
 
 先准备 `dist/`，然后按改动运行相关原生测试：
@@ -88,15 +82,15 @@ cargo test --locked --manifest-path src-tauri/Cargo.toml --lib
 cargo fmt --manifest-path src-tauri/Cargo.toml -- --check
 ```
 
-IPC 契约变化后依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，两者同时生成 / 检查 SDK 公共类型，并提交生成结果。只修改 SDK 类型导出时使用 `pnpm extension:sdk:generate`、`pnpm extension:sdk:check`。绑定任务与共用 target 的 Cargo 检查顺序执行。
+IPC 契约变化后依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，并提交生成结果。绑定任务与共用 target 的 Cargo 检查顺序执行。
 
-插件 worker 改动使用 `pnpm extension:test:worker`，Wasm 缓存补丁按 [补丁说明](../src-tauri/vendor/wasmtime-internal-cache/README.md) 验证。涉及进程的 Rust 测试需核对其临时目录和进程回收。
+涉及进程的 Rust 测试需核对临时目录和进程回收。
 
 ## 数据与恢复验证
 
-设置验证覆盖原子写入、revision 冲突、损坏备份、读取失败保留，以及普通保存拒绝未来 schema、用户确认重置后替换未来设置。隔离恢复另测默认候选校验、未来格式保护、原件归档、安装日志、失败回滚及旧数据库恢复元数据拒绝。
+设置验证覆盖原子写入、revision 冲突、损坏备份、读取失败保留，以及普通保存拒绝未来 schema、用户确认重置后替换未来设置。隔离恢复另测默认候选校验、未来格式保护、原件归档、安装日志、失败回滚及未知恢复元数据拒绝。
 
-插件注册表、KV、市场信任和壁纸图库按各自格式与生命周期验证；默认设置恢复应保留这些数据和旧数据库文件，归属见 [数据存储](./architecture.md#数据存储)。
+壁纸图库按自身格式与生命周期验证；默认设置恢复应保留图库和其他用户文件，归属见 [数据存储](./architecture.md#数据存储)。
 
 ## 浏览器生产构建冒烟
 
@@ -105,7 +99,7 @@ pnpm exec playwright install --only-shell chromium
 pnpm test:ui
 ```
 
-测试生产 `dist-web/` 的 `/serial-workbench/` 子路径，冒烟覆盖三项主入口、设置刷新、偏好保存、键盘和无障碍，并将资源加载、运行时和 CSP 错误记为失败；场景见 [smoke.spec.ts](../e2e/browser/smoke.spec.ts)。其它界面回归与其一起运行。
+测试生产 `dist-web/` 的 `/serial-workbench/` 子路径，冒烟覆盖工作区与设置入口、设置刷新、偏好保存、键盘和无障碍，并将资源加载、运行时和 CSP 错误记为失败；场景见 [smoke.spec.ts](../e2e/browser/smoke.spec.ts)。其它界面回归与其一起运行。
 
 ## 真实桌面 E2E
 
@@ -114,14 +108,14 @@ pnpm e2e:build
 pnpm test:e2e --interactive --skip-build
 ```
 
-按 [桌面边界](#避免干扰本机桌面) 安排执行。测试使用独立应用标识、临时目录和测试 WebDriver，并禁用真实自启动和系统凭据操作；场景与构建读取见 [runner](../e2e/run.mjs)。
+按 [桌面边界](#避免干扰本机桌面) 安排执行。测试使用独立应用标识、临时目录和测试 WebDriver，并禁用真实自启动；场景与构建读取见 [runner](../e2e/run.mjs)。
 
 ## 安装版与启动验收
 
-按目标平台验证首次启动、窗口恢复、深链允许范围、单实例、签名、卸载登记及已配置的更新通道。插件 JIT、keyring 和操作系统服务分别记录实际结果，便携版同时核对 WebView2 与用户数据位置，见 [发布检查清单](./build-release.md#发布检查清单)。
+按目标平台验证首次启动、窗口恢复、深链允许范围、单实例、签名、卸载登记及已配置的更新通道。操作系统服务分别记录实际结果，便携版同时核对 WebView2 与用户数据位置，见 [发布检查清单](./build-release.md#发布检查清单)。
 
 ## 持续集成检查
 
-当前远端 GitHub Actions 停用。[ci.yml](../.github/workflows/ci.yml) 保留前端、浏览器、Rust、绑定、SDK 与桌面检查配置和 job 条件。
+当前远端 GitHub Actions 停用。[ci.yml](../.github/workflows/ci.yml) 保留前端、浏览器、Rust、绑定与桌面检查配置和 job 条件。
 
 发布与 Pages 模板的状态、审查和启用步骤见 [停用目录说明](../.github/workflows-disabled/README.md)。

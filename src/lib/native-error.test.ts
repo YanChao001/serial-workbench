@@ -41,21 +41,8 @@ describe("native error presentation", () => {
       expect(nativeErrorText({ code }, t)).toBe(en["errors.INTERNAL"]);
     },
   );
-  it.each([
-    ["NATIVE_BUSY", "nativeError.busy"],
-    ["MARKET_INCOMPATIBLE", "ext.market.incompatible"],
-    ["MARKET_EXPIRED", "ext.market.expired"],
-    ["MARKET_INVALID", "ext.market.invalid"],
-    ["EXTENSION_NETWORK_BLOCKED", "ext.error.networkBlocked"],
-    ["EXTENSION_IMAGE_REDIRECT", "ext.error.imageRedirect"],
-    ["EXTENSION_IMAGE_SOURCE_REJECTED", "ext.error.imageSourceRejected"],
-    ["EXTENSION_IMAGE_INVALID", "ext.error.imageInvalid"],
-    ["EXTENSION_IMAGE_TOO_LARGE", "ext.error.imageTooLarge"],
-    ["EXTENSION_ATTACHMENT_TOO_LARGE", "ext.error.attachmentTooLarge"],
-    ["EXTENSION_ATTACHMENT_CACHE_FULL", "ext.error.attachmentCacheFull"],
-    ["EXTENSION_TRANSFER_INTERRUPTED", "ext.error.transferInterrupted"],
-  ] as const)(
-    "presents %s without exposing catalog or package contents",
+  it.each([["NATIVE_BUSY", "nativeError.busy"]] as const)(
+    "presents %s with its stable localized message",
     (code, key) => {
       const error = { code, message: "unverified payload details" };
       expect(nativeErrorText(error, createTranslator(en))).toBe(en[key]);

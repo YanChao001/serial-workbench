@@ -49,7 +49,7 @@ test("the empty workspace and HashRouter load below the product subpath", async 
   await expect(page.locator("main h1")).toHaveText("Serial Workbench");
   await expect(page.locator("main").getByRole("button")).toHaveCount(0);
   const sidebar = page.locator("#app-sidebar-navigation");
-  await expect(sidebar.getByRole("link")).toHaveCount(2);
+  await expect(sidebar.getByRole("link")).toHaveCount(1);
   await expect(
     page.locator(".app-sidebar-tools").getByRole("link", {
       name: "Settings",
@@ -62,20 +62,6 @@ test("the empty workspace and HashRouter load below the product subpath", async 
   await page.reload();
   await expect(page).toHaveURL(/\/serial-workbench\/#\/settings$/);
   await expect(page.locator("#settings-theme")).toBeVisible();
-});
-
-test("plugins preserve the desktop boundary in the browser preview", async ({
-  page,
-}) => {
-  await page.goto("./#/extensions");
-  await expect(page.locator("main")).toContainText(
-    "This feature requires the desktop app",
-  );
-  await expect(page.locator("#extension-package")).toHaveCount(0);
-  await expect(page.locator("html")).not.toHaveAttribute(
-    "data-runtime",
-    "tauri",
-  );
 });
 
 test("theme and language preferences survive a real browser reload", async ({
@@ -125,13 +111,7 @@ test("keyboard opens the command palette and restores trigger focus", async ({
   await expect(trigger).toBeFocused();
 });
 
-for (const route of [
-  "/",
-  "/extensions",
-  "/settings",
-  "/diagnostics",
-  "/recovery",
-]) {
+for (const route of ["/", "/settings", "/diagnostics", "/recovery"]) {
   test(`${route} has no detected WCAG A/AA violations`, async ({
     page,
   }, testInfo) => {
@@ -142,7 +122,7 @@ for (const route of [
       await expect(page).toHaveURL(/#\/settings\?section=recovery$/);
       await expect(page.locator("#settings-recovery")).toBeFocused();
       await expect(page.locator("main h1")).toBeVisible();
-    } else if (route === "/settings" || route === "/extensions")
+    } else if (route === "/settings")
       await expect(page.locator("main h1")).toBeVisible();
     else await expect(page.locator("main h2").first()).toBeVisible();
     const result = await new AxeBuilder({ page })

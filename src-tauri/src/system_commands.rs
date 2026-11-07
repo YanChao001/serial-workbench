@@ -57,10 +57,7 @@ pub fn drain_activations(app: &tauri::AppHandle) {
 }
 
 pub fn allowed_route(route: &str) -> bool {
-    matches!(
-        route,
-        "/" | "/extensions" | "/settings" | "/diagnostics" | "/recovery"
-    )
+    matches!(route, "/" | "/settings" | "/diagnostics" | "/recovery")
 }
 
 impl SystemState {
@@ -283,7 +280,7 @@ mod tests {
             "/network",
             "/components",
             "/updates",
-            "/extension-window/example/open",
+            "/unknown-window/example/open",
         ] {
             assert!(!allowed_route(route));
             assert!(deep_link_route(&format!("{scheme}://open?route={route}")).is_none());
@@ -319,13 +316,10 @@ mod tests {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("workspace.json");
         let state = SystemState::open(path.clone());
-        state.set_route("secondary", "/extensions").unwrap();
+        state.set_route("secondary", "/").unwrap();
         assert!(state.set_route("main", "https://external.example").is_err());
         let reopened = SystemState::open(path);
-        assert_eq!(
-            reopened.workspace.lock().unwrap().routes["secondary"],
-            "/extensions"
-        );
+        assert_eq!(reopened.workspace.lock().unwrap().routes["secondary"], "/");
         assert!(reopened.workspace.lock().unwrap().secondary_open);
     }
 
@@ -339,7 +333,7 @@ mod tests {
         std::fs::remove_file(&path).unwrap();
         std::fs::create_dir(&path).unwrap();
 
-        assert!(state.set_route("secondary", "/extensions").is_err());
+        assert!(state.set_route("secondary", "/").is_err());
         {
             let workspace = state.workspace.lock().unwrap();
             assert_eq!(workspace.routes.len(), 1);
@@ -349,13 +343,10 @@ mod tests {
 
         std::fs::remove_dir(&path).unwrap();
         std::fs::write(&path, committed).unwrap();
-        state.set_route("secondary", "/extensions").unwrap();
+        state.set_route("secondary", "/").unwrap();
         let reopened = SystemState::open(path.clone());
         assert!(reopened.workspace.lock().unwrap().secondary_open);
-        assert_eq!(
-            reopened.workspace.lock().unwrap().routes["secondary"],
-            "/extensions"
-        );
+        assert_eq!(reopened.workspace.lock().unwrap().routes["secondary"], "/");
         std::fs::remove_file(&path).unwrap();
         std::fs::create_dir(&path).unwrap();
         reopened.secondary_closed();

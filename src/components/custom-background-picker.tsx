@@ -131,9 +131,7 @@ export function CustomBackgroundPicker() {
       if (cancelled) return;
       const request = ++readGeneration.current;
       try {
-        const loaded = await listWallpaperLibrary(
-          latest.current.customBackground,
-        );
+        const loaded = await listWallpaperLibrary();
         if (!cancelled && request === readGeneration.current) {
           setImages(loaded);
           setLoadFailed(false);

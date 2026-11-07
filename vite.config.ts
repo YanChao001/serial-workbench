@@ -16,11 +16,18 @@ export default defineConfig(({ mode }) => ({
       name: "project-license-files",
       apply: "build",
       generateBundle() {
-        for (const fileName of ["LICENSE", "NOTICE"]) {
+        for (const [fileName, source] of [
+          ["LICENSE", "LICENSE"],
+          ["NOTICE", "NOTICE"],
+          [
+            "third-party/tauri-desktop-starter.LICENSE",
+            "resources/third-party/tauri-desktop-starter.LICENSE",
+          ],
+        ] as const) {
           this.emitFile({
             type: "asset",
             fileName,
-            source: readFileSync(path.resolve(import.meta.dirname, fileName)),
+            source: readFileSync(path.resolve(import.meta.dirname, source)),
           });
         }
       },

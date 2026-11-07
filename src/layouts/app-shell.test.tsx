@@ -23,9 +23,6 @@ const shellSettings = vi.hoisted(() => ({
   sidebarCollapsed: false,
 }));
 
-vi.mock("@/features/extensions/extensions-provider", () => ({
-  useExtensions: () => ({ data: null }),
-}));
 vi.mock("@/providers/commands", () => ({
   useCommands: () => ({ fullscreen: false, execute: vi.fn() }),
 }));
@@ -94,10 +91,6 @@ function renderShell(initial = "/") {
         <Route element={<AppShell />}>
           <Route index element={<Page />} />
           <Route path="settings" element={<Page />} />
-          <Route
-            path="extensions/app/:extensionId/:commandId"
-            element={<Page />}
-          />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -182,7 +175,7 @@ describe("应用内容导航", () => {
   });
 
   it("页面切换直接显示内容，保留页面标题语义", () => {
-    renderShell("/extensions/app/example.lab/open");
+    renderShell("/");
     expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
     expect(document.querySelector(".app-route-context")).toBeNull();
     fireEvent.click(screen.getByRole("link", { name: "/settings" }));

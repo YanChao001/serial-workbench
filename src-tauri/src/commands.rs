@@ -225,14 +225,14 @@ pub fn quit_app(app: tauri::AppHandle, window: tauri::WebviewWindow) -> NativeRe
 mod tests {
     use super::*;
     #[test]
-    fn host_management_rejects_extension_and_unknown_windows() {
+    fn host_management_rejects_unknown_windows() {
         for label in ["main", "secondary"] {
             assert!(require_host_window(label).is_ok());
         }
         for label in [
             "",
-            "extension-main",
-            "extension-123",
+            "unknown-main",
+            "unknown-123",
             "main-1",
             "https://remote",
         ] {

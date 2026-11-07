@@ -33,88 +33,11 @@ const config = {
   browserStorageNamespace: "sample",
   integration: { deepLinkScheme: "old-app" },
   updates: { endpoint: "", publicKey: "" },
-  extensionMarket: { repository: "", publicKey: "" },
 };
 
 // 与 src-tauri/src/update_signature.rs 共用公开测试样本，不保存私钥。
 const PUBLIC_KEY =
   "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDExMjgyNEJFMDZDREQ3QjAKUldTdzE4MEd2aVFvRVJNSlV1SVZldmFLWHlhMjdWSW9Sb3Rkdm10WklRYmFLbUtnWmhwcmJXSUMK";
-
-const MARKET_KEY = readFileSync(
-  new URL(
-    "../src-tauri/test-fixtures/extension-market/public-key.txt",
-    import.meta.url,
-  ),
-  "utf8",
-).trim();
-
-test("product configuration rejects retired display modes and document associations", () => {
-  assert.throws(
-    () => validateAppConfig({ ...config, defaultMode: "demo" }),
-    /未知品牌字段/,
-  );
-  assert.throws(
-    () =>
-      validateAppConfig({
-        ...config,
-        integration: { ...config.integration, fileExtension: "sample" },
-      }),
-    /integration/,
-  );
-});
-test("identity changes clear inherited market trust and reject untrusted market configuration", (t) => {
-  const { root } = fixture(t);
-  writeFileSync(
-    join(root, "app.config.json"),
-    JSON.stringify({
-      ...config,
-      extensionMarket: { repository: "owner/market", publicKey: MARKET_KEY },
-    }),
-  );
-  const plan = prepareInitialization(root, {
-    identifier: "com.example.new-app",
-  });
-  assert.deepEqual(plan.config.extensionMarket, {
-    repository: "",
-    publicKey: "",
-  });
-  const configured = prepareInitialization(root, {
-    identifier: "com.example.new-app",
-    extensionMarket: { repository: "new-owner/market", publicKey: MARKET_KEY },
-  });
-  assert.equal(configured.config.extensionMarket.publicKey, MARKET_KEY);
-  assert.throws(
-    () =>
-      prepareInitialization(root, {
-        extensionMarket: { repository: "new-owner/market" },
-      }),
-    /extensionMarket/,
-  );
-  const moved = prepareInitialization(root, {
-    extensionMarket: { repository: "new-owner/market", publicKey: MARKET_KEY },
-  });
-  assert.equal(moved.config.extensionMarket.publicKey, MARKET_KEY);
-  const disabled = prepareInitialization(root, {
-    extensionMarket: { repository: "" },
-  });
-  assert.deepEqual(disabled.config.extensionMarket, {
-    repository: "",
-    publicKey: "",
-  });
-  for (const extensionMarket of [
-    { repository: "../outside", publicKey: MARKET_KEY },
-    { repository: "owner/.", publicKey: MARKET_KEY },
-    { repository: "owner/..", publicKey: MARKET_KEY },
-    { repository: "owner_name/market", publicKey: MARKET_KEY },
-    { repository: "owner/market", publicKey: "private-key" },
-    { repository: "owner/market", publicKey: MARKET_KEY, token: "secret" },
-  ]) {
-    assert.throws(
-      () => validateAppConfig({ ...config, extensionMarket }),
-      /extensionMarket/,
-    );
-  }
-});
 
 test("a derived identity does not inherit previous update signing trust", (t) => {
   for (const patch of [
@@ -197,13 +120,11 @@ function fixture(t) {
     "src-tauri/Cargo.lock":
       'version = 4\n\n[[package]]\nname = "old-app"\nversion = "0.1.0"\n\n[[package]]\nname = "serde"\nversion = "1.0.0"\nsource = "registry+https://github.com/rust-lang/crates.io-index"\n',
     "src-tauri/src/main.rs":
-      'fn main() { if std::env::args().nth(1).as_deref() == Some("--extension-worker") { std::process::exit(old_app_lib::extension_runtime::worker_main()); } old_app_lib::run() }\n// old-app is a historical example\n',
+      "fn main() { old_app_lib::run() }\n// old-app is a historical example\n",
     "src-tauri/src/bin/export-bindings.rs":
       "fn main() { old_app_lib::bindings::export() }\n",
     "src-tauri/src/bin/verify-updater.rs":
       "fn main() { old_app_lib::update_signature::verify_manifest() }\n",
-    "src-tauri/src/bin/extension-tool.rs":
-      "use old_app_lib::{extension_runtime, extensions::ExtensionManifest};\nfn main() {}\n",
     "index.html": "<html><head><title>Sample App</title></head></html>\n",
     "README.md":
       "# Sample App\n\n[主页](https://example.com) · [文档](https://example.com/docs) · [发行记录](https://github.com/example/app/releases)\n",
@@ -243,10 +164,6 @@ test("dry-run plans consistent identities without writing or changing version/si
   const read = (path) => readFileSync(join(root, path), "utf8");
   assert.equal("defaultMode" in JSON.parse(read("app.config.json")), false);
   assert.match(read("src-tauri/src/main.rs"), /acme_desk_lib::run\(\)/);
-  assert.match(
-    read("src-tauri/src/main.rs"),
-    /acme_desk_lib::extension_runtime::worker_main\(\)/,
-  );
   assert.match(read("src-tauri/Cargo.toml"), /default-run = "acme-desk"/);
   assert.match(
     read("src-tauri/src/bin/export-bindings.rs"),
@@ -255,10 +172,6 @@ test("dry-run plans consistent identities without writing or changing version/si
   assert.match(
     read("src-tauri/src/bin/verify-updater.rs"),
     /acme_desk_lib::update_signature::verify_manifest\(\)/,
-  );
-  assert.match(
-    read("src-tauri/src/bin/extension-tool.rs"),
-    /use acme_desk_lib::\{/,
   );
   const launches = JSON.parse(read(".vscode/launch.json")).configurations;
   assert.deepEqual(launches[0].cargo.args, ["build", "--bin", "acme-desk"]);
@@ -293,41 +206,6 @@ test("dry-run plans consistent identities without writing or changing version/si
   assert.equal(prepareInitialization(root).changes.length, 0);
 });
 
-test("configuration checks detect a stale extension worker library reference", (t) => {
-  const { root } = fixture(t);
-  applyInitialization(prepareInitialization(root));
-  assert.deepEqual(checkInitialization(root), []);
-  const path = "src-tauri/src/main.rs";
-  const valid = readFileSync(join(root, path), "utf8");
-  writeFileSync(
-    join(root, path),
-    valid.replace(
-      "old_app_lib::extension_runtime::worker_main",
-      "stale_app_lib::extension_runtime::worker_main",
-    ),
-  );
-  assert.deepEqual(checkInitialization(root), [path]);
-});
-
-test("configuration checks detect stale imports in each renamed native tool", (t) => {
-  const { root } = fixture(t);
-  applyInitialization(
-    prepareInitialization(root, { packageName: "acme-desk" }),
-  );
-  for (const path of ["src-tauri/src/bin/extension-tool.rs"]) {
-    assert.deepEqual(checkInitialization(root), []);
-    const valid = readFileSync(join(root, path), "utf8");
-    writeFileSync(
-      join(root, path),
-      valid.replace("acme_desk_lib::", "old_app_lib::"),
-    );
-    assert.deepEqual(checkInitialization(root), [path]);
-    writeFileSync(join(root, path), valid);
-    assert.deepEqual(checkInitialization(root), []);
-  }
-  assert.equal(prepareInitialization(root).changes.length, 0);
-});
-
 test("configuration checks detect and repair an ambiguous desktop debug target", (t) => {
   const { root } = fixture(t);
   applyInitialization(
@@ -358,8 +236,8 @@ test("configuration checks detect and repair an ambiguous desktop debug target",
     );
   }
   for (const args of [
-    ["build", "--bin", "acme-desk", "--bin=extension-tool"],
-    ["build", "--bin=acme-desk", "--bin", "extension-tool"],
+    ["build", "--bin", "acme-desk", "--bin=helper-tool"],
+    ["build", "--bin=acme-desk", "--bin", "helper-tool"],
   ]) {
     launch.configurations[0].cargo.args = args;
     const original = JSON.stringify(launch);
@@ -598,8 +476,6 @@ test("invalid or conflicting integration names fail before changing files", (t) 
     { integration: { unknown: "x" } },
     { integration: { deepLinkScheme: "https" } },
     { integration: { deepLinkScheme: "MixedCase" } },
-    { integration: { fileExtension: "../escape" } },
-    { integration: { fileExtension: "json" } },
     { browserStorageNamespace: "shared:key" },
     { homepageUrl: "http://example.com" },
     { packageName: "con" },
@@ -820,5 +696,13 @@ test("directory junctions cannot redirect initialization outside the project", (
   assert.throws(
     () => prepareInitialization(root),
     /ENOENT|outside the project/,
+  );
+});
+
+test("shell configuration accepts only current product fields", () => {
+  assert.equal(validateAppConfig(config), config);
+  assert.throws(
+    () => validateAppConfig({ ...config, unknownField: {} }),
+    /\u672a\u77e5\u54c1\u724c\u5b57\u6bb5/,
   );
 });

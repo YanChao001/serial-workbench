@@ -6,7 +6,6 @@ updates:
   - package-ecosystem: "npm"
     directories:
       - "/"
-      - "/examples/extensions"
     target-branch: "main"
     schedule:
       interval: "weekly"
@@ -18,8 +17,6 @@ updates:
   - package-ecosystem: "cargo"
     directories:
       - "/src-tauri"
-      - "/examples/extensions/apps"
-      - "/examples/extensions/rust"
     target-branch: "main"
     schedule:
       interval: "weekly"

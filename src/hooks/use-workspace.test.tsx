@@ -69,13 +69,13 @@ beforeEach(() => {
 });
 afterEach(cleanup);
 describe("workspace navigation", () => {
-  it("persists product pages while excluding dynamic plugin sessions and hidden recovery pages", async () => {
+  it("persists product pages while excluding unknown routes and hidden recovery pages", async () => {
     const view = renderHook(useWorkspace);
     await waitFor(() =>
       expect(native.saveWorkspaceRoute).toHaveBeenCalledWith("/"),
     );
     vi.mocked(native.saveWorkspaceRoute).mockClear();
-    router.pathname = "/extensions/app/example.plugin/open";
+    router.pathname = "/unknown/page";
     view.rerender();
     await act(async () => {});
     expect(native.saveWorkspaceRoute).not.toHaveBeenCalled();
@@ -113,21 +113,21 @@ describe("workspace navigation", () => {
     vi.mocked(native.getWorkspace).mockReturnValue(initial.promise);
     renderHook(useWorkspace);
     await waitFor(() => expect(native.getWorkspace).toHaveBeenCalled());
-    act(() => activation?.(deepLink(2, "/extensions")));
+    act(() => activation?.(deepLink(2, "/")));
     await act(async () =>
       initial.resolve({ routes: { main: "/settings" }, secondaryOpen: false }),
     );
-    expect(router.navigate).toHaveBeenCalledExactlyOnceWith("/extensions");
+    expect(router.navigate).toHaveBeenCalledExactlyOnceWith("/");
   });
   it("does not override navigation made while startup data is loading", async () => {
     const initial = deferred<Workspace>();
     vi.mocked(native.getWorkspace).mockReturnValue(initial.promise);
     const view = renderHook(useWorkspace);
     await waitFor(() => expect(native.getWorkspace).toHaveBeenCalled());
-    router.pathname = "/extensions";
+    router.pathname = "/settings";
     view.rerender();
     await act(async () =>
-      initial.resolve({ routes: { main: "/settings" }, secondaryOpen: false }),
+      initial.resolve({ routes: { main: "/" }, secondaryOpen: false }),
     );
     expect(router.navigate).not.toHaveBeenCalled();
   });

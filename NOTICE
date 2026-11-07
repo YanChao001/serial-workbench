@@ -6,3 +6,10 @@ See LICENSE for the full license text.
 
 Third-party components retain their own licenses and notices, as provided
 with the corresponding source files and distribution resources.
+
+This project derives from Tauri Desktop Starter.
+The inherited starter material is provided under the MIT License.
+Copyright (c) 2026 Tauri Desktop Starter contributors
+The full copyright, permission and disclaimer text is included at:
+Source: resources/third-party/tauri-desktop-starter.LICENSE
+Distributions: third-party/tauri-desktop-starter.LICENSE

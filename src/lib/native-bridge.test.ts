@@ -6,8 +6,6 @@ import {
   NativeBridgeError,
   getDesktopStatus,
   loadSettingsSnapshot,
-  installExtension,
-  installMarketExtension,
   onSettingsChanged,
   recordFrontendError,
   saveSettingsSnapshot,
@@ -46,50 +44,6 @@ describe("generated native bridge", () => {
       message: "reload",
       retryable: true,
     });
-  });
-
-  it("keeps upgrade consent absent for native inheritance and forwards explicit reviewed consent", async () => {
-    const source = {
-      repository: "owner/market",
-      publicKeyFingerprint: "b".repeat(64),
-      catalogRevision: 3,
-      packageSha256: "c".repeat(64),
-    };
-    const snapshot = { revision: 9, items: [], runs: [] };
-    vi.mocked(invoke).mockResolvedValue(snapshot);
-    for (const consent of [
-      undefined,
-      { trusted: true, grantedPermissions: ["storage" as const] },
-    ]) {
-      await expect(
-        installExtension("package", 8, true, "module-hash", consent),
-      ).resolves.toEqual(snapshot);
-      expect(invoke).toHaveBeenLastCalledWith("install_extension", {
-        content: "package",
-        expectedRevision: 8,
-        replaceExisting: true,
-        expectedSha256: "module-hash",
-        consent: consent ?? null,
-      });
-      await expect(
-        installMarketExtension(
-          "package",
-          8,
-          true,
-          "module-hash",
-          source,
-          consent,
-        ),
-      ).resolves.toEqual(snapshot);
-      expect(invoke).toHaveBeenLastCalledWith("install_market_extension", {
-        content: "package",
-        expectedRevision: 8,
-        replaceExisting: true,
-        expectedSha256: "module-hash",
-        source,
-        consent: consent ?? null,
-      });
-    }
   });
 
   it.each([

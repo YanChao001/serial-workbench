@@ -1,12 +1,12 @@
 # 架构说明
 
-当前产品范围见 [产品范围](./product-scope.md)。本文维护公共框架的职责、数据归属和生命周期；插件协议细节由 [扩展指南](./extensions.md) 维护。
+当前产品范围见 [产品范围](./product-scope.md)。本文维护当前公共框架的职责、数据归属和生命周期。
 
 ## 运行时结构
 
-前端从 `main.tsx` 挂载 React，`App.tsx` 组装 Provider、HashRouter 和路由边界。主导航由 [routes.tsx](../src/routes.tsx) 提供空白首页、插件中心和设置；已安装插件的视图与独立窗口使用受控动态路由。诊断恢复归入设置，启动隔离使用独立受保护页面。
+前端从 `main.tsx` 挂载 React，`App.tsx` 组装 Provider、HashRouter 和路由边界。主导航由 [routes.tsx](../src/routes.tsx) 提供空白工作区和设置。诊断恢复归入设置，启动隔离使用独立受保护页面。
 
-Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/lib.rs)。Rust 组装窗口、设置、插件、恢复和更新服务，持有原生资源及持久化权威。页面、组件和 Hook 通过 [tauri.ts](../src/lib/tauri.ts) 门面调用原生能力。
+Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/lib.rs)。Rust 组装窗口、设置、恢复和更新服务，持有原生资源及持久化权威。页面、组件和 Hook 通过 [tauri.ts](../src/lib/tauri.ts) 门面调用原生能力。
 
 浏览器共用界面源码和 HashRouter，提供外观、导航与偏好预览，使用独立的浏览器存储；原生调用由门面检查桌面环境。
 
@@ -14,15 +14,12 @@ Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/l
 
 | 模块             | 职责                                                          |
 | ---------------- | ------------------------------------------------------------- |
-| 路由、布局和命令 | 三个主入口、插件动态入口、键盘与菜单、加载与错误边界          |
+| 路由、布局和命令 | 工作区与设置入口、键盘与菜单、加载与错误边界                  |
 | 设置模型和同步器 | 偏好规范化、迁移、revision合并、在途写入与跨窗口事件          |
 | 窗口和生命周期   | 主 / 次窗口、托盘、几何恢复、首帧显示、关闭 / 退出 / 重启协商 |
-| 插件宿主         | 包与来源校验、授权、Wasm worker、隔离界面、受控服务和会话     |
-| 文件授权         | 用户显式选择的有界文件读取，以及插件会话和成果的另存          |
+| 文件授权         | 用户明确选择位置后的文本导出                                  |
 | 诊断和恢复       | 脱敏系统报告、设置故障隔离、确认后的默认设置暂存与启动安装    |
 | 更新框架         | 固定信任策略、检查 / 下载快照、验签及安装前生命周期协商       |
-
-插件中心管理用户明确安装的包，默认目录为空；开发 fixture 与测试替身只用于验证。
 
 ## 命令与桌面交互
 
@@ -30,7 +27,7 @@ Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/l
 
 应用身份和深链 scheme 来自 [app.config.json](../app.config.json)。深链只用于允许路由的导航，单实例激活与次窗口恢复沿用原生窗口所有权。
 
-未保存工作由调用方登记 `useUnsavedWork`，保存、放弃和取消参加离页与退出协商。插件窗口、原生维护、下载和其他在途操作按真实结束释放占用；停止前端等待不等于原生回滚。次窗口和独立插件窗口的关闭行为由各自生命周期管理，不能绕过全应用退出协商。
+未保存工作由调用方登记 `useUnsavedWork`，保存、放弃和取消参加离页与退出协商。原生维护、下载和其他在途操作按真实结束释放占用；停止前端等待不等于原生回滚。次窗口的关闭行为由窗口生命周期管理，不能绕过全应用退出协商。
 
 ## 通信机制
 
@@ -38,7 +35,7 @@ Rust 命令和 DTO 是 IPC 类型来源，统一在 `bindings.rs` 注册。签�
 
 门面负责环境检查和错误归一化，命令返回 `NativeResult<T>`，错误含稳定 `code`、`message`、`retryable`。前端按 `code` 处理，Rust 提交边界校验身份、大小、路径和权限。阻塞 I/O 移入有界阻塞池，普通任务满额返回 `NATIVE_BUSY`，已承诺的生命周期收尾等待名额；已开始的同步任务保持占用直至真实完成。
 
-订阅先建立再读快照，按revision、操作ID或安装身份过滤旧消息。事件不是持久消息队列，写入结果以命令返回为准。异步订阅处理卸载、StrictMode重建及取消函数晚到，避免旧回调更新新界面。
+订阅先建立再读快照，按revision与操作ID过滤旧消息。事件不是持久消息队列，写入结果以命令返回为准。异步订阅处理卸载、StrictMode重建及取消函数晚到，避免旧回调更新新界面。
 
 ## 状态管理与设置迁移
 
@@ -50,24 +47,21 @@ Rust 命令和 DTO 是 IPC 类型来源，统一在 `bindings.rs` 注册。签�
 
 浏览器使用独立localStorage与IndexedDB。读取失败保留原存档，修改暂留内存；重试先读成功再合并明确修改的字段。命名空间隔离同源产品数据，不构成脚本安全边界。
 
-宿主网络偏好选择后续原生HTTP的直连或系统代理，供市场、更新和获授权插件请求使用；不修改进程代理环境或已开始操作。来源、方法、DNS、TLS、签名及插件独立授权继续生效，见 [来源与授权](./extensions.md#来源与授权)。
+网络偏好选择后续原生 HTTP 的直连或系统代理，供更新请求使用；不修改进程代理环境或已开始操作，更新端点与验签规则继续生效。
 
 ## 数据存储
 
-| 数据                  | 位置与边界                                                                 |
-| --------------------- | -------------------------------------------------------------------------- |
-| 设置                  | `appConfigDir/settings.json`；原子写入、revision、损坏备份及未来格式保护   |
-| 窗口与路由恢复        | `appConfigDir/workspace.json`；主 / 次窗口的允许路由与次窗口打开状态       |
-| 壁纸图库              | `appDataDir/wallpapers.json`；浏览器使用独立IndexedDB                      |
-| 壁纸视频              | 图库同级 `wallpaper-media/` 管理副本；浏览器保存Blob，设置只保存引用和封面 |
-| 插件安装和市场信任    | `appDataDir/extensions/` 与 `extension-market/`                            |
-| 插件私有数据和LAN历史 | `appDataDir/extension-data/`；KV、凭据别名和LAN历史分别管理                |
-| 用户凭据              | 系统keyring，按插件、origin和别名隔离；普通JSON不存秘密                    |
-| 日志与缓存            | `appLogDir`轮换日志，缓存只用于呈现和可再生内容                            |
+| 数据           | 位置与边界                                                                 |
+| -------------- | -------------------------------------------------------------------------- |
+| 设置           | `appConfigDir/settings.json`；原子写入、revision、损坏备份及未来格式保护   |
+| 窗口与路由恢复 | `appConfigDir/workspace.json`；主 / 次窗口的允许路由与次窗口打开状态       |
+| 壁纸图库       | `appDataDir/wallpapers.json`；浏览器使用独立IndexedDB                      |
+| 壁纸视频       | 图库同级 `wallpaper-media/` 管理副本；浏览器保存Blob，设置只保存引用和封面 |
+| 日志与缓存     | `appLogDir`轮换日志，缓存只用于呈现和可再生内容                            |
 
-原生目录由 Tauri 路径 API 决定。默认设置恢复只替换设置，保留插件数据、图库、凭据、日志和旧数据库文件。
+原生目录由 Tauri 路径 API 决定。默认设置恢复只替换设置，保留图库、日志及其他用户文件。
 
-图库与当前背景分开保存，删除条目不立即删除媒体。视频保存受控内容副本，播放期间复核窗口与内容ID；独立插件窗口只显示封面。垃圾回收只处理确定无引用且过了导入保护期的副本，损坏、未来存档或引用读取失败时拒绝清理。具体预算与格式见 [wallpapers.rs](../src-tauri/src/wallpapers.rs)、[wallpaper_video.rs](../src-tauri/src/wallpaper_video.rs) 和 [video-wallpaper.ts](../src/lib/video-wallpaper.ts)。
+图库与当前背景分开保存，删除条目不立即删除媒体。视频保存受控内容副本，播放期间复核窗口与内容ID。垃圾回收只处理确定无引用且过了导入保护期的副本，损坏、未来存档或引用读取失败时拒绝清理。具体预算与格式见 [wallpapers.rs](../src-tauri/src/wallpapers.rs)、[wallpaper_video.rs](../src-tauri/src/wallpaper_video.rs) 和 [video-wallpaper.ts](../src/lib/video-wallpaper.ts)。
 
 内置图片由 [resources/wallpapers](../resources/wallpapers/README.md) 自动收录，设置使用稳定相对身份，不保存构建URL。皮肤资源与用户图库分开，规则见 [皮肤资源](../resources/skins/README.md)。
 
@@ -77,12 +71,12 @@ Rust 命令和 DTO 是 IPC 类型来源，统一在 `bindings.rs` 注册。签�
 
 启动时，可读且未超限的损坏设置文件先备份为 `settings-corrupt-*.json`，再写入默认快照；读取、超限或备份失败保留原件。设置打开或恢复准备失败时，应用使用临时设置与临时图库隔离正式数据。
 
-用户确认后暂存默认设置候选和待处理元数据，再由用户明确重启。下次启动验证候选与原件的未来格式保护，将正式 `settings.json` 原件重命名至 `recovery-archive-{token}/settings.json`，按恢复日志安装新设置；失败回滚或保留待处理证据。旧数据库恢复元数据拒绝并保留供人工复核。
+用户确认后暂存默认设置候选和待处理元数据，再由用户明确重启。下次启动验证候选与原件的未来格式保护，将正式 `settings.json` 原件重命名至 `recovery-archive-{token}/settings.json`，按恢复日志安装新设置；失败回滚或保留待处理证据。未知恢复元数据拒绝处理并保留原件供人工复核。
 
 更新由Rust持有检查、下载和安装句柄，各窗口订阅快照。当前端点和公钥为空，框架停用且不联网。配置齐备后，安装前仍需重读策略、验证签名并重新协商全部窗口，细节见 [自动更新](./build-release.md#自动更新)。
 
 ## 安全边界
 
-主 / 次窗口与插件宿主窗口均加载可信本地界面。插件HTML使用独立sandbox与消息桥，不获得宿主DOM、通用IPC或系统路径。Tauri capability与自定义命令校验是不同机制，规则见 [安全规范](./security.md)。
+主 / 次窗口加载可信本地界面。Tauri capability与自定义命令校验是不同机制，规则见 [安全规范](./security.md)。
 
 新增业务复用现有路由、命令、设置和门面；跨层契约、权限和窗口生命周期变化先完成 [影响分析](./engineering-at-scale.md#设计评审与-adr-门槛)，长期取舍记入 [ADR](./adr/README.md)。

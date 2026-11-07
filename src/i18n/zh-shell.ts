@@ -94,7 +94,6 @@ export const zhShell = {
   "errors.UNSUPPORTED": "此平台暂不支持该操作",
   "errors.INTERNAL": "应用发生错误，请查看诊断信息",
   "navGroup.experience": "工作区",
-  "navGroup.capabilities": "插件",
   "navGroup.system": "系统",
   "navContext.browse": "导航",
   "navContext.location": "当前位置",
@@ -110,8 +109,6 @@ export const zhShell = {
   "lifecycle.executing": "所有窗口已就绪，正在执行…",
   "lifecycle.waiting": "此窗口已就绪，等待其他窗口；仍可取消整个操作。",
   "nativeError.userCancelled": "已取消，未保存的工作仍保留。",
-  "nativeError.credentialError":
-    "无法访问系统凭据库。解锁钥匙串或检查凭据服务后重试。",
   "nav.diagnostics": "诊断与恢复",
   "studio.settingsWorkspace": "窗口与工作区",
   "studio.settingsAbout": "关于与资源",

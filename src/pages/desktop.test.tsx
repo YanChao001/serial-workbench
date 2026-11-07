@@ -26,15 +26,12 @@ afterEach(cleanup);
 it("replaces old desktop links with settings while preserving focus and other query parameters", async () => {
   render(
     <MemoryRouter
-      initialEntries={[
-        "/extensions",
-        "/desktop?focus=background&keep=1&section=old",
-      ]}
+      initialEntries={["/", "/desktop?focus=background&keep=1&section=old"]}
     >
       <Routes>
         <Route path="/desktop" element={<Desktop />} />
         <Route path="/settings" element={<Destination />} />
-        <Route path="/extensions" element={<Destination />} />
+        <Route path="/" element={<Destination />} />
       </Routes>
     </MemoryRouter>,
   );
@@ -44,5 +41,5 @@ it("replaces old desktop links with settings while preserving focus and other qu
     ),
   ).toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Back" }));
-  expect(screen.getByText("/extensions")).toBeInTheDocument();
+  expect(screen.getByText("/")).toBeInTheDocument();
 });

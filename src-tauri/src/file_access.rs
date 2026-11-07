@@ -1,31 +1,14 @@
-//! 用户主动选择的文件授权与导出；授权仅保留在当前应用进程，路径不暴露给插件。
+//! 用户主动导出文本；保存路径只由原生对话框授权。
 
 use std::{
-    fs::{self, File},
-    io::{Read, Write},
+    fs,
+    io::Write,
     path::{Path, PathBuf},
-    sync::{
-        Mutex,
-        atomic::{AtomicU64, Ordering},
-    },
 };
 
-use tauri::Manager;
 use tauri_plugin_dialog::DialogExt;
 
 use crate::error::{ErrorCode, NativeError, NativeResult, bounded_text};
-
-const FILE_BYTES: usize = 2 * 1024 * 1024;
-const MAX_GRANTED_FILES: usize = 100;
-static NEXT_ID: AtomicU64 = AtomicU64::new(1);
-
-struct GrantedFile {
-    id: String,
-    path: PathBuf,
-}
-
-#[derive(Default)]
-pub struct FileAccess(Mutex<Vec<GrantedFile>>);
 
 fn io_error(error: impl std::fmt::Display) -> NativeError {
     NativeError::operation(
@@ -39,55 +22,6 @@ fn invalid(message: &str) -> NativeError {
     NativeError::new(ErrorCode::InvalidArgument, message)
 }
 
-fn name(path: &Path) -> String {
-    path.file_name()
-        .unwrap_or(path.as_os_str())
-        .to_string_lossy()
-        .into_owned()
-}
-
-impl FileAccess {
-    fn grant(&self, path: &Path) -> NativeResult<String> {
-        let path = checked_file(path)?;
-        let mut grants = self
-            .0
-            .lock()
-            .map_err(|_| invalid("Selected file grants are unavailable"))?;
-        let id = grants
-            .iter()
-            .find(|entry| entry.path == path)
-            .map(|entry| entry.id.clone())
-            .unwrap_or_else(|| format!("resource-{}", NEXT_ID.fetch_add(1, Ordering::Relaxed)));
-        grants.retain(|entry| entry.path != path);
-        grants.insert(
-            0,
-            GrantedFile {
-                id: id.clone(),
-                path,
-            },
-        );
-        grants.truncate(MAX_GRANTED_FILES);
-        Ok(id)
-    }
-
-    /// 扩展只读取用户已授权资源的有界字节，不获得磁盘路径或目录能力。
-    pub fn read_extension_resource(&self, id: &str) -> NativeResult<(String, Vec<u8>)> {
-        bounded_text(id, 160, "Resource ID")?;
-        let path = self
-            .0
-            .lock()
-            .map_err(|_| invalid("Selected file grants are unavailable"))?
-            .iter()
-            .find(|entry| entry.id == id)
-            .map(|entry| entry.path.clone())
-            .ok_or_else(|| NativeError::new(ErrorCode::NotFound, "Select this file again"))?;
-        if checked_file(&path)? != path {
-            return Err(invalid("The resource path changed; select it again"));
-        }
-        Ok((name(&path), read_bounded(&path, FILE_BYTES)?))
-    }
-}
-
 fn checked_file(path: &Path) -> NativeResult<PathBuf> {
     let info = fs::symlink_metadata(path).map_err(io_error)?;
     if info.file_type().is_symlink() || !info.is_file() {
@@ -96,23 +30,6 @@ fn checked_file(path: &Path) -> NativeResult<PathBuf> {
         ));
     }
     fs::canonicalize(path).map_err(io_error)
-}
-
-fn read_bounded(path: &Path, limit: usize) -> NativeResult<Vec<u8>> {
-    checked_file(path)?;
-    let mut bytes = Vec::new();
-    File::open(path)
-        .map_err(io_error)?
-        .take(limit as u64 + 1)
-        .read_to_end(&mut bytes)
-        .map_err(io_error)?;
-    if bytes.len() > limit {
-        return Err(NativeError::new(
-            ErrorCode::InputTooLong,
-            "The selected file exceeds the supported size",
-        ));
-    }
-    Ok(bytes)
 }
 
 fn atomic_save(path: &Path, bytes: &[u8]) -> NativeResult<()> {
@@ -169,57 +86,6 @@ pub(crate) fn save_text_content_with_picker(
     Ok(Some(path.to_string_lossy().into_owned()))
 }
 
-pub fn save_binary_content(
-    app: &tauri::AppHandle,
-    default_name: &str,
-    content: &[u8],
-) -> NativeResult<Option<String>> {
-    if content.len() > FILE_BYTES {
-        return Err(invalid("Extension artifact exceeds 2 MiB"));
-    }
-    let Some(path) = pick_save_path(app, default_name)? else {
-        return Ok(None);
-    };
-    atomic_save(&path, content)?;
-    Ok(Some(path.to_string_lossy().into_owned()))
-}
-
-pub fn pick_extension_resources(
-    app: &tauri::AppHandle,
-) -> NativeResult<Vec<crate::extensions::ExtensionFileChoice>> {
-    let Some(paths) = app.dialog().file().blocking_pick_files() else {
-        return Ok(Vec::new());
-    };
-    if paths.len() > 16 {
-        return Err(invalid("Select at most 16 extension input files"));
-    }
-    let mut selected = Vec::new();
-    let mut total = 0_u64;
-    for path in paths {
-        let path = checked_file(&path.into_path().map_err(io_error)?)?;
-        let bytes = fs::metadata(&path).map_err(io_error)?.len();
-        total = total
-            .checked_add(bytes)
-            .ok_or_else(|| invalid("Selected files exceed 2 MiB"))?;
-        if total > FILE_BYTES as u64 {
-            return Err(invalid("Selected files exceed 2 MiB in total"));
-        }
-        selected.push((path, bytes));
-    }
-    let state = app.state::<FileAccess>();
-    selected
-        .into_iter()
-        .map(|(path, bytes)| {
-            Ok(crate::extensions::ExtensionFileChoice {
-                id: state.grant(&path)?,
-                name: name(&path),
-                bytes: bytes as f64,
-                media_type: "application/octet-stream".into(),
-            })
-        })
-        .collect()
-}
-
 fn pick_save_path(app: &tauri::AppHandle, default_name: &str) -> NativeResult<Option<PathBuf>> {
     bounded_text(default_name, 200, "File name")?;
     if default_name.contains(['/', '\\']) {
@@ -241,49 +107,13 @@ mod tests {
     use super::*;
 
     #[test]
-    fn file_grants_are_bounded_and_do_not_survive_the_owning_state() {
+    fn export_cancellation_does_not_write() {
         let directory = tempfile::tempdir().unwrap();
-        let state = FileAccess::default();
-        let first = directory.path().join("first.bin");
-        fs::write(&first, [0, 0xff, 0xfe]).unwrap();
-        let id = state.grant(&first).unwrap();
+        let path = directory.path().join("report.json");
+        let content = "original";
+        fs::write(&path, content).unwrap();
         assert_eq!(
-            state.read_extension_resource(&id).unwrap(),
-            ("first.bin".into(), vec![0, 0xff, 0xfe])
-        );
-        assert_eq!(
-            FileAccess::default()
-                .read_extension_resource(&id)
-                .unwrap_err()
-                .code,
-            ErrorCode::NotFound
-        );
-        for index in 0..MAX_GRANTED_FILES {
-            let path = directory.path().join(format!("{index}.bin"));
-            fs::write(&path, b"file").unwrap();
-            state.grant(&path).unwrap();
-        }
-        assert_eq!(
-            state.read_extension_resource(&id).unwrap_err().code,
-            ErrorCode::NotFound
-        );
-        assert_eq!(state.0.lock().unwrap().len(), MAX_GRANTED_FILES);
-    }
-
-    #[test]
-    fn reading_selected_files_remains_bounded_and_export_cancellation_does_not_write() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("large-session.json");
-        let content = "x".repeat(FILE_BYTES + 1);
-        fs::write(&path, &content).unwrap();
-        let state = FileAccess::default();
-        let id = state.grant(&path).unwrap();
-        assert_eq!(
-            state.read_extension_resource(&id).unwrap_err().code,
-            ErrorCode::InputTooLong
-        );
-        assert_eq!(
-            save_text_content_with_picker(&content, 32 * 1024 * 1024, || Ok(None)).unwrap(),
+            save_text_content_with_picker(content, 8 * 1024 * 1024, || Ok(None)).unwrap(),
             None
         );
         assert_eq!(fs::read_to_string(&path).unwrap(), content);

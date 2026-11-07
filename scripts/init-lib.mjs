@@ -22,7 +22,6 @@ const FIELDS = new Set([
   "browserStorageNamespace",
   "integration",
   "updates",
-  "extensionMarket",
 ]);
 
 function object(value) {
@@ -176,30 +175,6 @@ export function validateAppConfig(config) {
         "updates.publicKey 必须是 Tauri 生成的 Base64 minisign 公钥，不能是私钥或无效文本",
       );
     }
-  }
-  const market = config.extensionMarket;
-  if (
-    !object(market) ||
-    Object.keys(market).some(
-      (key) => !["repository", "publicKey"].includes(key),
-    ) ||
-    typeof market.repository !== "string" ||
-    typeof market.publicKey !== "string"
-  )
-    throw new Error("extensionMarket 需要 repository 与 publicKey");
-  if (market.repository || market.publicKey) {
-    const key = Buffer.from(market.publicKey, "base64");
-    if (
-      !/^[A-Za-z0-9-]+\/[A-Za-z0-9._-]+$/.test(market.repository) ||
-      [".", ".."].includes(market.repository.split("/")[1]) ||
-      market.repository.length > 200 ||
-      key.length !== 42 ||
-      key.toString("base64") !== market.publicKey ||
-      key.subarray(0, 2).toString() !== "Ed"
-    )
-      throw new Error(
-        "extensionMarket 需要 GitHub owner/repo 与 minisign 公钥",
-      );
   }
   return config;
 }
@@ -406,10 +381,8 @@ function updateLaunch(content, next) {
 
 const ENTRY_POINTS = [
   ["src-tauri/src/main.rs", "run("],
-  ["src-tauri/src/main.rs", "extension_runtime::worker_main("],
   ["src-tauri/src/bin/export-bindings.rs", "bindings::export("],
   ["src-tauri/src/bin/verify-updater.rs", "update_signature::verify_manifest("],
-  ["src-tauri/src/bin/extension-tool.rs", "{"],
 ];
 const libraryReference = (library, suffix) =>
   new RegExp(
@@ -527,8 +500,6 @@ export function prepareInitialization(root, patch = {}) {
     throw new Error("updates 必须是对象");
   if (patch.integration !== undefined && !object(patch.integration))
     throw new Error("integration 必须是对象");
-  if (patch.extensionMarket !== undefined && !object(patch.extensionMarket))
-    throw new Error("extensionMarket 必须是对象");
   const identityChanged =
     patch.identifier !== undefined && patch.identifier !== current.identifier;
   const repositoryChanged =
@@ -537,9 +508,6 @@ export function prepareInitialization(root, patch = {}) {
   const endpointChanged =
     patch.updates?.endpoint !== undefined &&
     patch.updates.endpoint !== current.updates.endpoint;
-  const marketRepositoryChanged =
-    patch.extensionMarket?.repository !== undefined &&
-    patch.extensionMarket.repository !== current.extensionMarket.repository;
   const derivedName =
     patch.packageName && patch.packageName !== current.packageName
       ? patch.packageName
@@ -565,14 +533,6 @@ export function prepareInitialization(root, patch = {}) {
         : {}),
       ...(endpointChanged ? { publicKey: "" } : {}),
       ...patch.updates,
-    },
-    extensionMarket: {
-      ...current.extensionMarket,
-      ...(identityChanged || repositoryChanged
-        ? { repository: "", publicKey: "" }
-        : {}),
-      ...(marketRepositoryChanged ? { publicKey: "" } : {}),
-      ...patch.extensionMarket,
     },
   });
   const outputs = new Map([["app.config.json", json(next)]]);

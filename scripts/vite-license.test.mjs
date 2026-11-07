@@ -45,11 +45,18 @@ for (const mode of ["production", "web-preview"]) {
         rolldownOptions: { input: entry },
       },
     });
-    for (const path of ["LICENSE", "NOTICE"]) {
-      assert.ok(existsSync(join(output, path)), `Vite omitted ${path}`);
+    for (const [fileName, source] of [
+      ["LICENSE", "LICENSE"],
+      ["NOTICE", "NOTICE"],
+      [
+        "third-party/tauri-desktop-starter.LICENSE",
+        "resources/third-party/tauri-desktop-starter.LICENSE",
+      ],
+    ]) {
+      assert.ok(existsSync(join(output, fileName)), `Vite omitted ${fileName}`);
       assert.deepEqual(
-        readFileSync(join(output, path)),
-        readFileSync(join(root, path)),
+        readFileSync(join(output, fileName)),
+        readFileSync(join(root, source)),
       );
     }
     assert.equal(existsSync(join(output, "LICENSES")), false);

@@ -24,9 +24,6 @@ const OUTPUTS = [
   ...BUILD_OUTPUT.filter(
     ([path]) => path !== "artifacts" && path !== "src-tauri/target",
   ),
-  ["examples/extensions/dist", "Extension example packages"],
-  ["marketplace/artifacts", "Marketplace packages"],
-  ["marketplace/dist", "Legacy marketplace packages"],
   ["src-tauri/target/release/bundle", "Installer staging output"],
 ];
 const MODES = ["--all", "--artifacts", "--temporary", "--outputs"];
@@ -83,8 +80,6 @@ export function validateCleanupTarget(root, path, { allowFile = false } = {}) {
 function disposableOutput(root, path, label) {
   const absolute = validateCleanupTarget(root, path, { allowFile: true });
   if (!absolute) return { retained: false, targets: [[path, label]] };
-  if (path === join(".cache", "extension-tools"))
-    return { retained: true, targets: [] };
   if (!lstatSync(absolute).isDirectory())
     return { retained: false, targets: [[path, label]] };
   const entries = readdirSync(absolute, { withFileTypes: true });

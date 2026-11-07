@@ -136,7 +136,7 @@ for (const profile of [
   });
 }
 
-const routes = ["/", "/extensions", "/diagnostics", "/recovery", "/settings"];
+const routes = ["/", "/diagnostics", "/recovery", "/settings"];
 async function seed(page: Page, settings: Record<string, unknown> = {}) {
   await page.addInitScript(
     ({ key, value }) => {
@@ -163,7 +163,7 @@ async function expectRouteReady(page: Page, route: string) {
     await expect(page).toHaveURL(/#\/settings\?section=recovery$/);
     await expect(page.locator("#settings-recovery")).toBeFocused();
     await expect(page.locator("main h1")).toBeVisible();
-  } else if (route === "/settings" || route === "/extensions")
+  } else if (route === "/settings")
     await expect(page.locator("main h1")).toBeVisible();
   else await expect(page.locator("main h2").first()).toBeVisible();
 }
@@ -1401,10 +1401,8 @@ test("the browser fills the viewport with the desktop and keeps narrow navigatio
   const navigation = page.locator(".app-title-bar .app-compact-navigation");
   await expect(navigation).toBeVisible();
   await navigation.click();
-  await page
-    .getByRole("option", { name: "Plugin center", exact: true })
-    .click();
-  await expect(page).toHaveURL(/#\/extensions$/);
+  await page.getByRole("option", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/#\/$/);
   expect((await page.locator(".app-chrome").boundingBox())?.height).toBe(40);
 });
 
@@ -1425,7 +1423,7 @@ for (const theme of ["light", "dark"] as const) {
     await expect(settings).toHaveAttribute("aria-current", "page");
     await expect(settings).toHaveText("");
     await expect(settings.locator("svg")).toHaveCount(1);
-    await expect(navigation.getByRole("link")).toHaveCount(2);
+    await expect(navigation.getByRole("link")).toHaveCount(1);
     await expect(navigation.locator('a[href="#/settings"]')).toHaveCount(0);
     await expect(navigation.getByText("System", { exact: true })).toHaveCount(
       0,
@@ -1521,8 +1519,8 @@ for (const theme of ["light", "dark"] as const) {
     await expect(tooltip).toBeVisible();
     await expect(tooltip).toHaveText("设置");
 
-    await navigation.locator('a[href="#/extensions"]').click();
-    await expect(page).toHaveURL(/#\/extensions$/);
+    await navigation.locator('a[href="#/"]').click();
+    await expect(page).toHaveURL(/#\/$/);
     await expect(translatedSettings).not.toHaveAttribute(
       "aria-current",
       "page",
@@ -2217,12 +2215,12 @@ test("immersive edges animate over the content and keep portalled menus usable",
   ).toContain("transform");
   expect(await layout()).toEqual(before);
   await page.screenshot({ path: testInfo.outputPath("immersive-left.png") });
-  // 插件文档有独立事件树；直接移入 iframe 后也要能收起宿主导航。
+  // iframe 有独立事件树；直接移入后也要能收起应用导航。
   await main.evaluate((node) => {
     const frame = document.createElement("iframe");
     frame.dataset.immersiveProbe = "";
-    frame.title = "Extension pointer boundary";
-    frame.srcdoc = "<p>Extension content</p>";
+    frame.title = "Embedded pointer boundary";
+    frame.srcdoc = "<p>Embedded content</p>";
     frame.style.cssText =
       "position:fixed;top:300px;right:60px;width:300px;height:150px;border:0";
     node.append(frame);
@@ -2348,15 +2346,15 @@ test("immersive title bar stays open on the topmost pixel across WebView boundar
   await page.locator("main").evaluate((node) => {
     const frame = document.createElement("iframe");
     frame.dataset.immersiveProbe = "";
-    frame.title = "Extension pointer boundary";
-    frame.srcdoc = "<p>Extension content</p>";
+    frame.title = "Embedded pointer boundary";
+    frame.srcdoc = "<p>Embedded content</p>";
     frame.style.cssText =
       "position:fixed;top:300px;right:60px;width:300px;height:150px;border:0";
     node.append(frame);
   });
   await page
     .frameLocator("[data-immersive-probe]")
-    .getByText("Extension content")
+    .getByText("Embedded content")
     .waitFor();
   await page.mouse.move(1000, 350);
   await expect(chrome).toBeHidden();

@@ -68,7 +68,7 @@ pnpm app:portable --optimize speed
 
 仅支持 Windows 宿主和 Windows 目标，参数见 `pnpm app:portable --help`；安装包使用 `app:build`。`--skip-build` 校验先前便携构建收据的版本、配置、参数、策略与 exe SHA-256；源码变化需由维护者核对，修改后重建。复用 `speed` 构建时同时传入 `--optimize speed --skip-build`。
 
-- 目标机器需要 WebView2，安装入口见随包说明。数据写当前用户目录，不随 exe 移动；设置、插件数据、壁纸和日志均不在便携包中。
+- 目标机器需要 WebView2，安装入口见随包说明。数据写当前用户目录，不随 exe 移动；设置、壁纸和日志均不在便携包中。
 - 应用内更新默认启动 NSIS 安装器并转为安装版；保留免安装形态时，从发行页手动下载新版 portable。
 - 便携构建使用 `--no-bundle`，需对最终 exe 单独进行 Authenticode 签名，例如 `signtool sign /sha1 <指纹> /fd sha256 <exe>`；签名后更新清单 SHA-256 并验签。重新收集会整体替换便携目录。
 - Linux 使用 AppImage，macOS 分发 `.app` / DMG。
@@ -167,8 +167,6 @@ spctl --assess --type exec --verbose=3 "/path/to/My App.app"
 
 `.app` 用执行评估，`--type install` 用于 `.pkg`；说明见 [Apple 公证排障](https://developer.apple.com/documentation/security/resolving-common-notarization-issues)。还须实际下载、挂载、拖拽安装和首次启动。
 
-Extism 使用 Wasmtime JIT，Hardened Runtime 下须验证可执行内存权限与扩展运行，再配置所需 entitlement。参见 [Apple JIT](https://developer.apple.com/documentation/apple-silicon/porting-just-in-time-compilers-to-apple-silicon) 和 [Wasmtime 跟踪](https://github.com/bytecodealliance/wasmtime/issues/11989)。macOS 签名安装版的扩展验收待完成。
-
 ### Linux
 
 当前未配置独立发行包签名，提供文件哈希；软件源有额外要求时按渠道配置。更新签名独立执行。
@@ -210,7 +208,7 @@ Rust updater 通过 [`src/lib/tauri.ts`](../src/lib/tauri.ts) 提供检查、下
 
 默认策略编译自 `app.config.json`。受控部署可在 `appConfigDir/deployment.json` 写 `{ "updates": { "endpoint": "https://mirror.example/latest.json" } }` 覆盖镜像，或将 `endpoint` 设为空字符串禁用更新。公钥固定、部署校验与策略变化后的重新检查规则见 [更新通道](./security.md#更新通道)。
 
-检查、下载句柄与进度由 Rust 管理并跨窗口同步。下载验签后、实际安装前统一协商所有窗口的未保存插件会话和原生在途工作；保存失败或取消则保留工作，安装期间冻结窗口。见 [更新与恢复架构](./architecture.md#恢复诊断与更新)。
+检查、下载句柄与进度由 Rust 管理并跨窗口同步。下载验签后、实际安装前统一协商所有窗口的未保存工作和原生在途工作；保存失败或取消则保留工作，安装期间冻结窗口。见 [更新与恢复架构](./architecture.md#恢复诊断与更新)。
 
 更新弹窗展示 Release 的 Markdown 正文，复用安全渲染与受控外链；没有正文不影响下载安装。
 
@@ -260,7 +258,7 @@ pnpm release:notes # 需已登录 gh，输出 artifacts/<version>/release-notes.
 先确定本次交付的平台、架构、安装格式与更新通道，再选择以下验收。版本更新 PR / Release 记录版本、commit、环境、产物哈希、实际结果、待验证范围和支持 / 恢复负责人，据此声明可交付目标。
 
 - [ ] 按 [Git 发布流程](./conventions/git-workflow.md#发布流程) 从 `main` 创建短期分支，同步版本、核对提交范围并完成适用检查；通过普通 PR 合入 `main`，正文写清本次版本的摘要与升级限制。
-- [ ] 对本次交付的平台 / 格式按 [安装验收](./testing.md#安装版与启动验收) 检查最终包、签名 / 公证和插件运行。品牌、关联、自启动等变化时补对应验收。
+- [ ] 对本次交付的平台 / 格式按 [安装验收](./testing.md#安装版与启动验收) 检查最终包、签名 / 公证和原生系统服务。品牌、关联、自启动等变化时补对应验收。
 - [ ] 提供自动更新时，按 [安装与升级验收](./testing.md#安装版与启动验收) 验证旧版到本次版本的发现、下载、验签与安装；存储格式、迁移或恢复链路变化时，按 [恢复验证](./testing.md#数据与恢复验证) 选择受影响历史数据和失败场景。
 - [ ] 合入 `main` 后预览发布正文，完成上述适用验收，在已确认提交打 `vX.Y.Z`；发布流程获准启用后，等待全部必要发布 job 成功。
 - [ ] 自动公开后核对版本、公开资产、哈希、签名及启用的更新清单 / Latest 状态，向使用方同步说明。
@@ -276,6 +274,6 @@ pnpm release:notes # 需已登录 gh，输出 artifacts/<version>/release-notes.
 ## 回滚
 
 - 代码使用 `git revert` 恢复后，以新 tag 和更高版本发布，沿用正常升级。默认更新只接受更高版本；确需降级时单独处理 Rust 版本比较和安装器限制，或指导用户手动重装。
-- 存档迁移在发布前设计兼容与恢复。重新安装旧二进制前，核对旧版能否读取现有设置与插件数据，并保留原件。
+- 存档迁移在发布前设计兼容与恢复。重新安装旧二进制前，核对旧版能否读取现有设置与图库数据，并保留原件。
 
-涉及存储格式、迁移或恢复链路的发布，按 [数据与恢复验证](./testing.md#数据与恢复验证) 演练旧数据升级、失败与修复版恢复。应用的默认设置恢复只处理设置存档；插件数据、图库、凭据、日志与外部文件按各自范围备份和恢复，位置见 [数据存储](./architecture.md#数据存储)。保留原件归档，并记录恢复范围与可能丢失内容。
+涉及存储格式、迁移或恢复链路的发布，按 [数据与恢复验证](./testing.md#数据与恢复验证) 演练旧数据升级、失败与修复版恢复。应用的默认设置恢复只处理设置存档；图库、日志与外部文件按各自范围备份和恢复，位置见 [数据存储](./architecture.md#数据存储)。保留原件归档，并记录恢复范围与可能丢失内容。

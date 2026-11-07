@@ -21,14 +21,11 @@ import { desktopUiChecks } from "./desktop-ui.mjs";
 const execute = promisify(execFile);
 
 describe("Real Tauri desktop", () => {
-  it("reveals the main window with native settings and an empty plugin host", async () => {
+  it("reveals the main window with native settings and the workspace shell", async () => {
     await ready();
     const settings = await invoke("load_settings_snapshot");
     assert.equal(settings.ok, true);
     assert.equal(typeof settings.value.revision, "number");
-    const extensions = await invoke("extension_snapshot");
-    assert.equal(extensions.ok, true);
-    assert.deepEqual(extensions.value.items, []);
     await $("[data-testid=serial-workbench-shell]").waitForExist();
     await $("main").waitForDisplayed();
   });

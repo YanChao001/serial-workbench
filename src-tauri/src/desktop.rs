@@ -213,8 +213,6 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> NativeResult<()> {
             .store(false, Ordering::Release);
         log_startup(app, "window-create-start");
     }
-    app.state::<crate::extensions::ExtensionStore>()
-        .reopen_window(label)?;
     let builder = WebviewWindowBuilder::from_config(app, &config).map_err(|e| {
         NativeError::operation(ErrorCode::WindowError, "Cannot configure window", e)
     })?;

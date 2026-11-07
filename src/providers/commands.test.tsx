@@ -58,7 +58,7 @@ vi.mock("@/routes", () => ({
   ],
 }));
 
-function Extensions({ items }: { items: readonly AppCommand[] }) {
+function RegisteredActions({ items }: { items: readonly AppCommand[] }) {
   useRegisterCommands(items);
   return null;
 }
@@ -76,9 +76,7 @@ function Probe() {
         {search}
       </output>
       <input aria-label="Editor" />
-      <button onClick={() => void commands.execute("test")}>
-        Run extension
-      </button>
+      <button onClick={() => void commands.execute("test")}>Run action</button>
       <button onClick={() => void commands.execute("theme-light")}>
         Light
       </button>
@@ -199,13 +197,13 @@ describe("unified application commands", () => {
     ];
     const view = render(
       <Harness>
-        <Extensions items={items} />
+        <RegisteredActions items={items} />
       </Harness>,
     );
     fireEvent.click(screen.getByText("Light"));
     expect(override).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByText("Run extension"));
-    fireEvent.click(screen.getByText("Run extension"));
+    fireEvent.click(screen.getByText("Run action"));
+    fireEvent.click(screen.getByText("Run action"));
     expect(run).toHaveBeenCalledOnce();
     await act(async () => resolve());
     view.rerender(<Harness />);
@@ -228,10 +226,10 @@ describe("unified application commands", () => {
     ];
     render(
       <Harness>
-        <Extensions items={items} />
+        <RegisteredActions items={items} />
       </Harness>,
     );
-    fireEvent.click(screen.getByText("Run extension"));
+    fireEvent.click(screen.getByText("Run action"));
     fireEvent.click(screen.getByText("English"));
     await act(async () => reject(new Error("offline")));
     expect(toast.error).toHaveBeenCalledWith("Operation failed: offline");
@@ -285,20 +283,6 @@ describe("unified application commands", () => {
     );
   });
 
-  it("keeps standalone extension sessions out of host navigation and its shortcuts", () => {
-    const path = "/extension-window/starter.apps/calculator";
-    render(<Harness initialPath={path} />);
-    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
-    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
-    fireEvent.keyDown(document.body, { key: "b", ctrlKey: true });
-    fireEvent.click(screen.getByText("Home"));
-    expect(screen.getByTestId("location")).toHaveTextContent(path);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByTestId("collapsed")).toHaveTextContent("false");
-    fireEvent.click(screen.getByText("Light"));
-    expect(theme.setTheme).toHaveBeenCalledWith("light");
-  });
-
   it("dispatches registered commands from menus with the same availability", async () => {
     const run = vi.fn();
     const items: AppCommand[] = [
@@ -312,7 +296,7 @@ describe("unified application commands", () => {
     ];
     render(
       <Harness>
-        <Extensions items={items} />
+        <RegisteredActions items={items} />
       </Harness>,
     );
     fireEvent.keyDown(screen.getByText("Actions menu"), { key: "ArrowDown" });

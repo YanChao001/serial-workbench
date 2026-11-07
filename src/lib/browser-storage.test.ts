@@ -74,7 +74,7 @@ describe("derived applications sharing a browser origin", () => {
         onmessage: (() => void) | null = null;
       },
     );
-    await expect(listWallpaperLibrary(null)).rejects.toThrow();
+    await expect(listWallpaperLibrary()).rejects.toThrow();
     expect(open).toHaveBeenCalledExactlyOnceWith(
       "com.example.migrated:wallpapers",
       1,

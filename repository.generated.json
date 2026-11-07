@@ -26,14 +26,7 @@
       "uploadBaseUrl": "https://uploads.github.com"
     },
     "marketplace": {
-      "gitUrl": "https://github.com/YanChao001/serial-workbench-plugins.git",
-      "catalogUrlTemplate": "{repositoryUrl}/releases/latest/download/catalog.json",
-      "packageUrlTemplate": "{repositoryUrl}/releases/download/{tag}/{asset}",
-      "downloadUrlPrefixes": [
-        "{repositoryUrl}/releases/",
-        "https://release-assets.githubusercontent.com/",
-        "https://objects.githubusercontent.com/"
-      ]
+      "gitUrl": "https://github.com/YanChao001/serial-workbench-plugins.git"
     }
   }
 }

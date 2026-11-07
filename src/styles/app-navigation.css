@@ -81,41 +81,6 @@
   content: "";
 }
 
-.app-sidebar-extension {
-  display: flex;
-  min-width: 0;
-  align-items: center;
-  border-radius: var(--radius-lg);
-  background: var(--surface-state-selected);
-}
-
-.app-sidebar-extension .app-sidebar-link {
-  min-width: 0;
-  flex: 1;
-  background: transparent;
-}
-
-.app-sidebar-extension-tools {
-  display: flex;
-  flex-shrink: 0;
-  align-items: center;
-  justify-content: center;
-  padding-inline-end: 0.25rem;
-}
-
-.app-sidebar[data-collapsed="true"] .app-sidebar-extension {
-  flex-direction: column;
-}
-
-.app-sidebar[data-collapsed="true"] .app-sidebar-extension .app-sidebar-link {
-  width: 100%;
-  flex: none;
-}
-
-.app-sidebar[data-collapsed="true"] .app-sidebar-extension-tools {
-  padding: 0 0 0.25rem;
-}
-
 .app-sidebar-tools {
   padding: 0.5rem;
   border-top: 1px solid var(--sidebar-border);
@@ -163,29 +128,11 @@
   display: none;
 }
 
-.app-page-content,
-.app-extension-window-content:has([data-extension-loading]) {
+.app-page-content {
   width: 100%;
   max-width: 1180px;
   margin-inline: auto;
   padding: 1rem 1.5rem 1.5rem;
-}
-
-/* 加载占位保留普通页面滚动槽；隔离文档就绪后使用完整内容区的滚动宽度。 */
-.app-main:has([data-extension-custom-ui][data-extension-active="true"]):not(
-    :has(
-      [data-extension-custom-ui][data-extension-active="true"]
-        [data-extension-loading-layout]
-    )
-  ) {
-  scrollbar-gutter: auto;
-}
-
-.app-main:has([data-extension-custom-ui][data-extension-active="true"])
-  > :is(.app-page-content, .app-extension-window-content) {
-  max-width: none;
-  margin: 0;
-  padding: 0;
 }
 
 .app-title-menu-trigger {
@@ -217,40 +164,6 @@
   height: 32px;
 }
 
-@media (max-width: 480px) {
-  .app-title-bar[data-standalone="true"] [data-extension-window-identity] {
-    gap: 6px;
-    padding-right: 4px;
-  }
-
-  .app-title-bar[data-standalone="true"]
-    [data-extension-window-identity]:not([data-native-traffic-lights]) {
-    padding-left: 8px;
-  }
-
-  .app-title-bar[data-standalone="true"] [data-extension-window-icon],
-  .app-title-bar[data-standalone="true"] [data-extension-window-icon] svg {
-    width: 20px;
-    height: 20px;
-  }
-
-  .app-title-bar[data-standalone="true"] .app-title-language {
-    width: 72px;
-    min-width: 0;
-    padding-inline: 6px;
-  }
-
-  .app-title-bar[data-standalone="true"]
-    :is([data-theme-control], [data-extension-chrome] [data-slot="button"]) {
-    width: 36px;
-    height: 40px;
-  }
-
-  .app-title-bar[data-standalone="true"] [data-window-control] {
-    width: 40px;
-    flex-shrink: 0;
-  }
-}
 .settings-studio {
   container: settings / inline-size;
 }
@@ -494,8 +407,7 @@ html[data-motion="reduced"]
 }
 
 @media (max-width: 1050px) {
-  .app-page-content,
-  .app-extension-window-content:has([data-extension-loading]) {
+  .app-page-content {
     padding: 1rem 1.25rem 1.5rem;
   }
 }

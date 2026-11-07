@@ -1,8 +1,8 @@
 # Serial Workbench
 
-Serial Workbench（`serial-workbench`）是面向嵌入式开发与设备调试的跨平台串口工作台，使用 Tauri 2、Rust、React 19 与 TypeScript 开发。当前版本提供桌面框架、设置和 Wasm 插件宿主，串口监视器（serial monitor）与串口终端（serial terminal）是后续开发目标。
+Serial Workbench（`serial-workbench`）是面向嵌入式开发与设备调试的跨平台串口工作台，使用 Tauri 2、Rust、React 19 与 TypeScript 开发。当前版本提供空白工作区、设置、诊断恢复与系统窗口能力。串口收发、录制回放、独立 Host 和 Node 插件体系处于后续开发阶段。
 
-关注 Serial Studio（`serial-studio`）等串口工具的开发者，可从 [产品范围](./docs/product-scope.md) 了解本项目的当前能力与开发阶段，或从 [插件市场](./marketplace/README.md) 开始编写扩展。
+关注 Serial Studio（`serial-studio`）等串口工具的开发者，可从 [产品范围](./docs/product-scope.md) 了解本项目的当前能力与开发阶段。
 
 [English](./README.en.md) · [文档索引](./docs/README.md) · [贡献指南](./CONTRIBUTING.md) · [安全报告](./SECURITY.md)
 
@@ -17,7 +17,7 @@ pnpm doctor
 pnpm app:dev
 ```
 
-`pnpm dev` 在 `http://localhost:1420` 提供浏览器界面预览。浏览器与桌面共用 HashRouter 和界面源码，原生插件执行与系统服务需要桌面环境。未安装依赖时，也可运行 `node scripts/doctor.mjs` 诊断环境。
+`pnpm dev` 在 `http://localhost:1420` 提供浏览器界面预览。浏览器与桌面共用 HashRouter 和界面源码，系统服务需要桌面环境。未安装依赖时，也可运行 `node scripts/doctor.mjs` 诊断环境。
 
 ## 验证与构建
 

@@ -109,7 +109,6 @@ export const enShell = {
   "errors.UNSUPPORTED": "Unavailable on this platform",
   "errors.INTERNAL": "Application error. See diagnostics.",
   "navGroup.experience": "Workspace",
-  "navGroup.capabilities": "Plugins",
   "navGroup.system": "System",
   "navContext.browse": "Navigation",
   "navContext.location": "Current location",
@@ -126,8 +125,6 @@ export const enShell = {
   "lifecycle.waiting":
     "This window is ready. Waiting for the others; you can still cancel the action.",
   "nativeError.userCancelled": "Cancelled. Your unsaved work is preserved.",
-  "nativeError.credentialError":
-    "Cannot access system credentials. Unlock the keychain or check the credential service, then retry.",
   "nav.diagnostics": "Diagnostics & recovery",
   "studio.settingsWorkspace": "Window & workspace",
   "studio.settingsAbout": "About & resources",

@@ -28,11 +28,11 @@ test("reselecting settings preserves its controls and keyboard navigation keeps 
       await theme.evaluate((element, node) => element === node, original),
     ).toBe(true);
   }
-  await sidebar.locator('a[href="#/extensions"]').focus();
+  await sidebar.locator('a[href="#/"]').focus();
   await page.keyboard.press("Enter");
-  await expect(page).toHaveURL(/#\/extensions$/);
-  await expect(sidebar.locator('a[href="#/extensions"]')).toBeFocused();
-  await expect(sidebar.locator('a[href="#/extensions"]')).toHaveAttribute(
+  await expect(page).toHaveURL(/#\/$/);
+  await expect(sidebar.locator('a[href="#/"]')).toBeFocused();
+  await expect(sidebar.locator('a[href="#/"]')).toHaveAttribute(
     "aria-current",
     "page",
   );

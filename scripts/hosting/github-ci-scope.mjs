@@ -1,7 +1,7 @@
 import { execFileSync } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 
-const full = { docsOnly: false, rustRequired: true, sdkRequired: true };
+const full = { docsOnly: false, rustRequired: true };
 
 function isDocumentation(path) {
   return (
@@ -9,28 +9,6 @@ function isDocumentation(path) {
     path === "LICENSE" ||
     /^docs\/.+\.md$/.test(path) ||
     /^docs\/assets\/.+\.(?:png|jpe?g|svg|webp)$/.test(path)
-  );
-}
-
-function isSdkInput(path) {
-  return (
-    /^examples\/extensions\/(?:javascript\/|typescript\/|sdk\.ts$|build\.mjs$|package\.json$|pnpm-(?:lock\.yaml|workspace\.yaml)$)/.test(
-      path,
-    ) ||
-    /^src-tauri\/src\/(?:bin\/extension-tool\.rs$|extensions?[_./]|lib\.rs$|error\.rs$)/.test(
-      path,
-    ) ||
-    /^src-tauri\/(?:Cargo\.(?:toml|lock)$|build\.rs$|vendor\/|\.cargo\/)/.test(
-      path,
-    ) ||
-    /^\.cargo\//.test(path) ||
-    /^(?:package\.json|pnpm-lock\.yaml|pnpm-workspace\.yaml|rust-toolchain\.toml|\.nvmrc)$/.test(
-      path,
-    ) ||
-    /^scripts\/(?:ci-extension-sdk|extension-package|extension-ui-resources|build-lib)\.mjs$/.test(
-      path,
-    ) ||
-    path === ".github/workflows/ci.yml"
   );
 }
 
@@ -51,7 +29,6 @@ export function classifyChanges(paths) {
   return {
     docsOnly,
     rustRequired: !frontendOnly,
-    sdkRequired: paths.some(isSdkInput),
   };
 }
 
@@ -99,7 +76,7 @@ export function runScope() {
   const scope = detectChanges(process.env.GITHUB_EVENT_NAME, event);
   appendFileSync(
     process.env.GITHUB_OUTPUT,
-    `docs_only=${scope.docsOnly}\nrust_required=${scope.rustRequired}\nsdk_required=${scope.sdkRequired}\n`,
+    `docs_only=${scope.docsOnly}\nrust_required=${scope.rustRequired}\n`,
   );
   console.log(JSON.stringify(scope));
 }

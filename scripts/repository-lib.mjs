@@ -129,46 +129,8 @@ export function validateRepositoryConfig(config) {
   }
   for (const key of ["apiBaseUrl", "uploadBaseUrl"])
     formatRepositoryLink(hosting[key], "");
-  const source = repositoryUrl("example/market", config);
-  const marketValues = { ...values, repository: "example/market" };
   const market = config.marketplace;
-  fields(
-    market,
-    [
-      "gitUrl",
-      "catalogUrlTemplate",
-      "packageUrlTemplate",
-      "downloadUrlPrefixes",
-    ],
-    "marketplace",
-  );
-  formatRepositoryLink(market.catalogUrlTemplate, source, marketValues);
-  if (
-    !["tag", "asset"].every((key) =>
-      market.packageUrlTemplate?.includes(`{${key}}`),
-    )
-  )
-    throw new Error("Market package URL requires tag and asset placeholders");
-  formatRepositoryLink(market.packageUrlTemplate, source, marketValues);
-  if (
-    !Array.isArray(market.downloadUrlPrefixes) ||
-    !market.downloadUrlPrefixes.length ||
-    market.downloadUrlPrefixes.length > 16
-  )
-    throw new Error("Market download URL prefixes are required");
-  for (const template of market.downloadUrlPrefixes) {
-    const value = formatRepositoryLink(template, source, marketValues);
-    const url = new URL(value);
-    if (
-      !value.endsWith("/") ||
-      url.search ||
-      url.hash ||
-      (url.port && url.port !== "443")
-    )
-      throw new Error(
-        "Market download prefixes require an HTTPS directory URL",
-      );
-  }
+  fields(market, ["gitUrl"], "marketplace");
   if (
     typeof market.gitUrl !== "string" ||
     !market.gitUrl.trim() ||

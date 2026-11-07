@@ -366,7 +366,8 @@ impl RecoveryState {
         })
     }
 
-    pub fn is_isolated(&self) -> bool {
+    #[cfg(test)]
+    fn is_isolated(&self) -> bool {
         self.temporary.is_some()
     }
 
@@ -637,38 +638,13 @@ mod tests {
     }
 
     #[test]
-    fn legacy_database_files_never_trigger_recovery_or_change_during_settings_reset() {
-        let (_root, paths) = fixture();
-        for name in [
-            "starter.sqlite3",
-            "starter.sqlite3-wal",
-            "starter.sqlite3-shm",
-        ] {
-            fs::write(paths.data.join(name), name.as_bytes()).unwrap();
-        }
-        assert!(!initialize(&paths).unwrap().recovery.is_isolated());
-        let initialized = isolated(&paths);
-        stage(&initialized.recovery).unwrap();
-        drop(initialized);
-        assert!(!initialize(&paths).unwrap().recovery.is_isolated());
-        for name in [
-            "starter.sqlite3",
-            "starter.sqlite3-wal",
-            "starter.sqlite3-shm",
-        ] {
-            assert_eq!(fs::read(paths.data.join(name)).unwrap(), name.as_bytes());
-        }
-    }
-
-    #[test]
-    fn legacy_or_malformed_recovery_requests_remain_untouched_for_review() {
+    fn malformed_recovery_requests_remain_untouched_for_review() {
         for request in [
             serde_json::json!({"token": "../../outside"}),
-            serde_json::json!({"token": "legacy", "resetSettings": true}),
+            serde_json::json!({"token": "invalid", "unknown": true}),
         ] {
             let (_root, paths) = fixture();
             fs::write(paths.config.join("settings.json"), b"original settings").unwrap();
-            fs::write(paths.data.join("starter.sqlite3"), b"original database").unwrap();
             write_json(&paths.data.join(PENDING), &request).unwrap();
             let pending = fs::read(paths.data.join(PENDING)).unwrap();
             let initialized = initialize(&paths).unwrap();
@@ -678,10 +654,6 @@ mod tests {
             assert_eq!(
                 fs::read(paths.config.join("settings.json")).unwrap(),
                 b"original settings"
-            );
-            assert_eq!(
-                fs::read(paths.data.join("starter.sqlite3")).unwrap(),
-                b"original database"
             );
         }
     }

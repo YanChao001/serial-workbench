@@ -8,8 +8,7 @@
 | 产品入口与业务边界             | [产品范围](./product-scope.md)                                                                                           |
 | 运行结构、数据与恢复           | [架构说明](./architecture.md)                                                                                            |
 | 环境、身份配置、新增页面与 IPC | [开发指南](./development.md)                                                                                             |
-| 插件安装、权限、执行与隔离     | [扩展指南](./extensions.md)、[界面 SDK](../sdk/README.md)                                                                |
-| 独立市场收录与发布             | [市场文档索引](../marketplace/docs/README.md)                                                                            |
+| 独立市场建设                   | [市场仓库](../marketplace/README.md)                                                                                     |
 | 仓库链接与下载来源             | [仓库托管配置](./repository-hosting.md)                                                                                  |
 | 本地检查、无头界面与原生验收   | [测试规范](./testing.md)                                                                                                 |
 | 版本、构建、签名与发布         | [构建与发布](./build-release.md)、[代码签名策略](./code-signing-policy.md)                                               |
@@ -21,7 +20,7 @@
 | 设计影响与长期取舍             | [设计门槛](./engineering-at-scale.md#设计评审与-adr-门槛)、[提案模板](./design-template.md)、[ADR 索引](./adr/README.md) |
 | 编码智能体工作入口             | [AGENTS](../AGENTS.md)                                                                                                   |
 
-`marketplace/` 是独立仓库：宿主文档维护运行协议和授权，市场文档维护插件收录、构建和发布。
+`marketplace/` 是独立仓库，按其 README 和 AGENTS 维护市场建设与协作。
 
 ## 维护规则
 

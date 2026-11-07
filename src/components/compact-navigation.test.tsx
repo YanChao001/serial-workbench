@@ -37,9 +37,9 @@ describe("浏览器导航", () => {
     renderBar();
     const navigation = screen.getByRole("combobox", { name: "切换页面" });
     fireEvent.keyDown(navigation, { key: "Enter" });
-    fireEvent.click(screen.getByRole("option", { name: "插件中心" }));
-    expect(screen.getByLabelText("当前路由")).toHaveTextContent("/extensions");
-    expect(navigation).toHaveTextContent("插件中心");
+    fireEvent.click(screen.getByRole("option", { name: "设置" }));
+    expect(screen.getByLabelText("当前路由")).toHaveTextContent("/settings");
+    expect(navigation).toHaveTextContent("设置");
   });
   it("原生窗口不显示浏览器入口", () => {
     state.native = true;

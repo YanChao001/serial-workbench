@@ -15,23 +15,6 @@ pub async fn run<T: Send + 'static>(
     run_limited(&TASKS, task).await
 }
 
-/// 已承诺的生命周期收尾等待现有名额，不能因普通容量满而丢弃。
-pub async fn run_cleanup<T: Send + 'static>(
-    task: impl FnOnce() -> NativeResult<T> + Send + 'static,
-) -> NativeResult<T> {
-    run_cleanup_limited(&TASKS, task).await
-}
-
-async fn run_cleanup_limited<T: Send + 'static>(
-    tasks: &Arc<Semaphore>,
-    task: impl FnOnce() -> NativeResult<T> + Send + 'static,
-) -> NativeResult<T> {
-    let permit = tasks.clone().acquire_owned().await.map_err(|_| {
-        NativeError::new(ErrorCode::NativeBusy, "Native cleanup queue is unavailable")
-    })?;
-    run_with_permit(permit, task).await
-}
-
 pub(crate) async fn run_limited<T: Send + 'static>(
     tasks: &Arc<Semaphore>,
     task: impl FnOnce() -> NativeResult<T> + Send + 'static,
@@ -67,45 +50,6 @@ mod tests {
         sync::mpsc,
         time::{Duration, Instant},
     };
-
-    #[test]
-    fn window_cleanup_waits_for_capacity_and_retains_it_after_waiter_cancellation() {
-        let tasks = Arc::new(Semaphore::new(1));
-        let occupied = tasks.clone().try_acquire_owned().unwrap();
-        let worker_tasks = tasks.clone();
-        let (started_tx, started_rx) = mpsc::channel();
-        let (finish_tx, finish_rx) = mpsc::channel();
-        let (done_tx, done_rx) = mpsc::channel();
-        let waiter = tauri::async_runtime::spawn(async move {
-            let result = run_cleanup_limited(&worker_tasks, move || {
-                started_tx.send(()).unwrap();
-                finish_rx.recv().unwrap();
-                Ok(())
-            })
-            .await;
-            let _ = done_tx.send(());
-            result
-        });
-        assert!(started_rx.recv_timeout(Duration::from_millis(30)).is_err());
-        assert!(
-            matches!(
-                done_rx.recv_timeout(Duration::from_millis(30)),
-                Err(mpsc::RecvTimeoutError::Timeout)
-            ),
-            "Window cleanup must wait instead of being discarded when native capacity is full"
-        );
-        drop(occupied);
-        started_rx.recv_timeout(Duration::from_secs(5)).unwrap();
-        waiter.abort();
-        let reject = || tauri::async_runtime::block_on(run_limited(&tasks, || Ok(())));
-        assert_eq!(reject().unwrap_err().code, ErrorCode::NativeBusy);
-        finish_tx.send(()).unwrap();
-        let deadline = Instant::now() + Duration::from_secs(5);
-        while tasks.available_permits() == 0 && Instant::now() < deadline {
-            std::thread::sleep(Duration::from_millis(1));
-        }
-        reject().unwrap();
-    }
 
     #[test]
     fn rejects_excess_work_and_keeps_the_slot_after_the_waiter_is_cancelled() {

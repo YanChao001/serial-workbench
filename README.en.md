@@ -1,8 +1,8 @@
 # Serial Workbench
 
-Serial Workbench (`serial-workbench`) is a cross-platform serial port workbench for embedded development and device debugging, built with Tauri 2, Rust, React 19 and TypeScript. The current version provides the desktop framework, settings and a Wasm plugin host. A serial monitor and serial terminal are planned.
+Serial Workbench (`serial-workbench`) is a cross-platform serial port workbench for embedded development and device debugging, built with Tauri 2, Rust, React 19 and TypeScript. The current version provides an empty workspace, settings, diagnostics, recovery and desktop window controls. Serial communication, recording and replay, an independent Host and Node extensions are planned.
 
-Developers exploring serial tools such as Serial Studio (`serial-studio`) can review the [product scope](./docs/product-scope.md) for the current capabilities and development stage, or start building extensions with the [plugin marketplace](./marketplace/README.md).
+Developers exploring serial tools such as Serial Studio (`serial-studio`) can review the [product scope](./docs/product-scope.md) for the current capabilities and development stage.
 
 [中文](./README.md) · [Documentation](./docs/README.md) · [Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md)
 
@@ -17,7 +17,7 @@ pnpm doctor
 pnpm app:dev
 ```
 
-For a browser preview, run `pnpm dev` and open `http://localhost:1420`. Browser and desktop builds share the React source and HashRouter. Native plugin execution and system services require the desktop app. `node scripts/doctor.mjs` also works before dependencies are installed.
+For a browser preview, run `pnpm dev` and open `http://localhost:1420`. Browser and desktop builds share the React source and HashRouter. System services require the desktop app. `node scripts/doctor.mjs` also works before dependencies are installed.
 
 ## Verify and build
 

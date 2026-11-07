@@ -20,30 +20,14 @@ vi.mock("@/providers/settings", () => ({
 afterEach(cleanup);
 
 describe("窗口插画", () => {
-  it("内置壁纸从构建资源加载，完整窗口与独立插件窗口共用图片", () => {
+  it("内置壁纸从构建资源加载，使用构建资源图片", () => {
     appearance.background = "bundled:001-秋日花饰少女.jpg";
-    const view = render(<WindowBackground videoPlayback={false} />);
+    const view = render(<WindowBackground />);
     const image = view.container.querySelector("[data-bundled-wallpaper]");
     expect(image).toHaveAttribute("src", expect.stringContaining("001-"));
     expect(image).toHaveAttribute("aria-hidden", "true");
     expect(view.container.querySelector("[data-custom-background]")).toBeNull();
     expect(view.container.querySelector("video")).toBeNull();
-  });
-  it("独立插件窗口使用视频封面，不请求受主窗口限制的媒体协议", () => {
-    appearance.background = "custom";
-    appearance.customBackground = {
-      name: "video.webm",
-      dataUrl: "data:image/webp;base64," + btoa("RIFF0000WEBP"),
-      fit: "cover",
-      video: { id: "a".repeat(64), mime: "video/webm" },
-    };
-    const { container } = render(<WindowBackground videoPlayback={false} />);
-    expect(container.querySelector("video")).toBeNull();
-    expect(container.querySelector("[data-custom-background]")).toHaveAttribute(
-      "src",
-      appearance.customBackground.dataUrl,
-    );
-    appearance.customBackground = null;
   });
   it("预览与实际背景加载相同的独立 SVG，装饰不进入阅读和焦点顺序", () => {
     const { container } = render(

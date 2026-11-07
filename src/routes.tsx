@@ -5,21 +5,14 @@ import {
   MonitorIcon,
   ActivityIcon,
   DownloadIcon,
-  PuzzleIcon,
   type LucideIcon,
 } from "lucide-react";
 import type { MessageKey as DictKey } from "@/i18n/zh-CN";
-import type { ExtensionInfo } from "@/lib/tauri";
-import { canRunExtensionCommand } from "@/features/extensions/extension-model";
-import { resolveExtensionIcon } from "@/features/extensions/extension-icon";
-import { matchPath } from "react-router-dom";
 
 type PageComponent = ComponentType | LazyExoticComponent<ComponentType>;
 
 export const NAVIGATION_GROUPS = [
   { id: "experience", labelKey: "navGroup.experience" },
-  { id: "capabilities", labelKey: "navGroup.capabilities" },
-  { id: "extensions", labelKey: "ext.installed" },
   { id: "system", labelKey: "navGroup.system" },
 ] as const satisfies readonly { id: string; labelKey: DictKey }[];
 
@@ -62,54 +55,6 @@ export type AppNavigationItem = Pick<
   | "navigationPlacement"
 > & { label?: string };
 
-export function extensionPath(id: string, command: string) {
-  return `/extensions/app/${encodeURIComponent(id)}/${encodeURIComponent(command)}`;
-}
-function loadExtensionPage() {
-  return import("@/pages/extension-app");
-}
-export function extensionNavigation(
-  items: readonly ExtensionInfo[],
-  currentPath?: string,
-): AppNavigationItem[] {
-  return items.flatMap((item) => {
-    const manifest = item.package.manifest;
-    return manifest.commands
-      .filter(
-        (command) =>
-          canRunExtensionCommand(item, command) &&
-          (command.ui?.sidebar ||
-            (currentPath &&
-              matchPath(
-                { path: extensionPath(manifest.id, command.id), end: true },
-                currentPath,
-              ))) &&
-          command.resultFormat === "view",
-      )
-      .map((command) => ({
-        path: extensionPath(manifest.id, command.id),
-        labelKey: "ext.title" as const,
-        label:
-          command.ui?.sidebar &&
-          manifest.commands.filter((entry) => entry.ui?.sidebar).length === 1
-            ? manifest.name
-            : `${manifest.name}: ${command.title}`,
-        icon: resolveExtensionIcon(manifest.icon),
-        group: "extensions" as const,
-        exact: true,
-        preload: () => {
-          void loadExtensionPage().catch(() => {});
-        },
-      }));
-  });
-}
-export const WINDOW_ROUTES = [
-  {
-    path: "/extension-window/:extensionId/:commandId",
-    ...lazyPage(() => import("@/pages/extension-window")),
-  },
-];
-
 function lazyPage(load: () => Promise<{ default: ComponentType }>) {
   return {
     component: lazy(load),
@@ -139,25 +84,9 @@ export const APP_ROUTES: AppRoute[] = [
     hidden: true,
   },
   {
-    path: "/extensions",
-    labelKey: "nav.extensions",
-    group: "capabilities",
-    icon: PuzzleIcon,
-    ...lazyPage(() => import("@/pages/extensions")),
-    exact: true,
-  },
-  {
-    path: "/extensions/app/:extensionId/:commandId",
-    labelKey: "ext.title",
-    group: "extensions",
-    icon: PuzzleIcon,
-    ...lazyPage(loadExtensionPage),
-    hidden: true,
-  },
-  {
     path: "/desktop",
     labelKey: "nav.settings",
-    group: "capabilities",
+    group: "system",
     icon: MonitorIcon,
     ...lazyPage(() => import("@/pages/desktop")),
     hidden: true,
@@ -191,11 +120,9 @@ export const APP_ROUTES: AppRoute[] = [
 /** 按当前路径读取页面元数据。 */
 export function matchRoute(pathname: string): AppRoute {
   const matched = APP_ROUTES.find((route) =>
-    route.path.includes(":")
-      ? matchPath({ path: route.path, end: true }, pathname) !== null
-      : route.exact
-        ? pathname === route.path
-        : pathname === route.path || pathname.startsWith(`${route.path}/`),
+    route.exact
+      ? pathname === route.path
+      : pathname === route.path || pathname.startsWith(`${route.path}/`),
   );
   if (matched) return matched;
 

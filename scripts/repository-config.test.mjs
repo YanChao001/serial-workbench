@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
+  existsSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -175,7 +176,7 @@ test("a removed workflow branch filter is reported rather than silently left unm
   assert.match(result.stderr, /branch/i);
 });
 
-test("the root command also synchronizes and checks an initialized marketplace", (t) => {
+test("the root command keeps independent marketplace scripts untouched", (t) => {
   const { root, write } = fixture(t);
   write(
     "marketplace/scripts/repository-config.mjs",
@@ -187,13 +188,10 @@ test("the root command also synchronizes and checks an initialized marketplace",
     else if (!existsSync(marker)) { console.error("market configuration drift"); process.exitCode=1; }
   `,
   );
-  assert.notEqual(run(root, "check").status, 0);
+  assert.equal(run(root, "check").status, 0);
   const result = run(root, "sync");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(
-    readFileSync(join(root, "marketplace/synchronized"), "utf8"),
-    "ready",
-  );
+  assert.equal(existsSync(join(root, "marketplace/synchronized")), false);
   assert.equal(run(root, "check").status, 0);
 });
 
@@ -237,19 +235,4 @@ test("a missing marketplace URL never rewrites a following third-party submodule
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /marketplace.*URL|submodule.*URL/i);
   assert.equal(readFileSync(join(root, ".gitmodules"), "utf8"), content);
-});
-
-test("market transport templates accept the repository placeholder consistently with the native client", (t) => {
-  const { root, write, config } = fixture(t);
-  config.marketplace.catalogUrlTemplate =
-    "https://downloads.example/market/{repository}/catalog.json";
-  config.marketplace.packageUrlTemplate =
-    "https://downloads.example/market/{repository}/{tag}/{asset}";
-  config.marketplace.downloadUrlPrefixes = [
-    "https://downloads.example/market/{repository}/",
-  ];
-  write("repository.config.json", config);
-  const result = run(root, "sync");
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(run(root, "check").status, 0);
 });

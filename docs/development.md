@@ -21,7 +21,7 @@ pnpm doctor
 pnpm app:dev
 ```
 
-首次桌面启动编译 Rust 依赖，后续复用缓存；前端由 Vite 热更新。`pnpm dev` 在 `http://localhost:1420` 启动浏览器预览，原生插件执行和系统服务使用桌面环境。当前能力见 [产品范围](./product-scope.md)。
+首次桌面启动编译 Rust 依赖，后续复用缓存；前端由 Vite 热更新。`pnpm dev` 在 `http://localhost:1420` 启动浏览器预览，系统服务使用桌面环境。当前能力见 [产品范围](./product-scope.md)。
 
 ## 开发流程
 
@@ -29,7 +29,7 @@ pnpm app:dev
 
 ## 产品身份配置
 
-名称、包名、标识符、深链 scheme、浏览器存储命名空间及更新 / 市场信任集中在 [app.config.json](../app.config.json)。
+名称、包名、标识符、深链 scheme、浏览器存储命名空间及更新信任集中在 [app.config.json](../app.config.json)。
 
 修改身份使用产品配置同步入口，先检查差异：
 
@@ -41,7 +41,7 @@ pnpm config:check
 
 `--config` 文件是现有配置的字段补丁，字段与校验见 [init-lib.mjs](../scripts/init-lib.mjs)。同步器更新 npm / Cargo 身份、平台配置、测试身份和品牌链接。标识符与存储命名空间变化会改变数据位置，同步器保留原有用户数据；正式交付后的身份迁移须单独设计。
 
-仓库链接、分支和市场下载规则由 [repository.config.json](../repository.config.json) 维护，修改后运行 `pnpm repository:sync` 和 `pnpm repository:check`。生成同步状态与配置一起审查，具体范围见 [仓库托管配置](./repository-hosting.md)。
+仓库链接、分支和市场子模块地址由 [repository.config.json](../repository.config.json) 维护，修改后运行 `pnpm repository:sync` 和 `pnpm repository:check`。生成同步状态与配置一起审查，具体范围见 [仓库托管配置](./repository-hosting.md)。
 
 图标与安装器视觉源在 `resources/branding/`，修改后运行 `pnpm branding:generate` 并提交生成结果，见 [安装器外观](./build-release.md#安装器外观)。版本使用 `pnpm version:set x.y.z`；签名和发布配置见 [构建与发布](./build-release.md)。
 
@@ -51,7 +51,7 @@ pnpm config:check
 2. 在 `src/routes.tsx` 统一注册路由、懒加载、预载和导航。菜单、命令面板及快捷键复用 `src/commands/`；窗口与原生深链白名单同步核对。
 3. 文案同步中英文词典，局部状态留在组件，跨页偏好进入现有设置模型和同步器。涉及未保存内容时登记 `useUnsavedWork`。
 4. 原生能力由 Rust 服务实现，命令层负责边界适配；手写前端通过 `src/lib/tauri.ts` 门面调用。组件和 Hook 不直接导入 Tauri 插件或调用 `invoke`，Rust 在提交边界校验身份、路径、配额和权限。
-5. 在 `src-tauri/src/bindings.rs` 注册命令 / DTO，按 [Rust 测试](./testing.md#rust-测试) 准备 `dist/`，依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，提交 IPC 绑定和 SDK 公共类型。
+5. 在 `src-tauri/src/bindings.rs` 注册命令 / DTO，按 [Rust 测试](./testing.md#rust-测试) 准备 `dist/`，依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，提交 IPC 绑定。
 6. 按 [日常验证范围](./testing.md#日常验证范围) 检查规则与入口接线；原生窗口和系统服务按 [桌面验收](./testing.md#真实桌面-e2e) 安排。删除能力时一并清理路由、命令、权限、专属依赖、资源、测试与文档。
 
 ## 环境诊断
@@ -71,13 +71,13 @@ node scripts/doctor.mjs --json
 pnpm clean:outputs --dry-run
 ```
 
-| 命令                   | 删除范围                                                                                                   |
-| ---------------------- | ---------------------------------------------------------------------------------------------------------- |
-| `pnpm clean:outputs`   | 构建输出、报告、插件包，以及 `artifacts/` 和 `.cache/` 中的生成内容；保留识别出的 Cargo 缓存和扩展构建工具 |
-| `pnpm clean:artifacts` | 整个 `artifacts/`                                                                                          |
-| `pnpm clean:temporary` | 临时报告、构建输出、默认 Rust 缓存和旧便携备份；保留正式版本归档                                           |
-| `pnpm clean`           | 默认构建输出、整个 `artifacts/` 和默认 Rust 缓存                                                           |
-| `pnpm clean:all`       | `clean` 的范围及 `node_modules/`                                                                           |
+| 命令                   | 删除范围                                                                             |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `pnpm clean:outputs`   | 构建输出、报告，以及 `artifacts/` 和 `.cache/` 中的生成内容；保留识别出的 Cargo 缓存 |
+| `pnpm clean:artifacts` | 整个 `artifacts/`                                                                    |
+| `pnpm clean:temporary` | 临时报告、构建输出、默认 Rust 缓存和旧便携备份；保留正式版本归档                     |
+| `pnpm clean`           | 默认构建输出、整个 `artifacts/` 和默认 Rust 缓存                                     |
+| `pnpm clean:all`       | `clean` 的范围及 `node_modules/`                                                     |
 
 `clean:outputs`、`clean:artifacts`、`clean` 和 `clean:all` 都会删除正式分发文件。各模式的精确路径与缓存识别规则见 [clean-lib.mjs](../scripts/clean-lib.mjs)，自定义 Cargo target 由设置者管理。先停止自己启动的开发或测试进程，再按预览结果清理；正常编译等待可保留缓存。
 
@@ -93,7 +93,7 @@ VS Code 的 [launch.json](../.vscode/launch.json) 和 [tasks.json](../.vscode/ta
 
 ## 热更新边界
 
-前端 TSX / CSS 由 Vite 更新；Rust、capability、平台配置和编译进 Rust 的 SDK 运行时变化后，重新构建并重启原生进程。依赖变更后重新安装并审查锁文件；生成文件通过对应脚本更新。
+前端 TSX / CSS 由 Vite 更新；Rust、capability、平台配置变化后，重新构建并重启原生进程。依赖变更后重新安装并审查锁文件；生成文件通过对应脚本更新。
 
 ## 端口被占用
 
