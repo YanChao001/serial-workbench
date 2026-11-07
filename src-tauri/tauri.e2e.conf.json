@@ -7,7 +7,6 @@
     "security": {
       "capabilities": [
         "default",
-        "extensions",
         {
           "identifier": "e2e-driver",
           "windows": ["main", "secondary"],

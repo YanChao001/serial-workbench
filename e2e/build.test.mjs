@@ -1,9 +1,58 @@
 import assert from "node:assert/strict";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  readdirSync,
+  rmSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { e2eExecutable } from "./build.mjs";
+import { effectiveConfig, parseBuildArgs } from "../scripts/build-lib.mjs";
+import { e2eExecutable, root as projectRoot } from "./build.mjs";
+
+test("all desktop E2E profiles resolve named capabilities and retain the driver", () => {
+  const version = JSON.parse(
+    readFileSync(join(projectRoot, "package.json"), "utf8"),
+  ).version;
+  const capabilityDirectory = join(projectRoot, "src-tauri/capabilities");
+  const identifiers = new Set(
+    readdirSync(capabilityDirectory)
+      .filter((name) => name.endsWith(".json"))
+      .map(
+        (name) =>
+          JSON.parse(readFileSync(join(capabilityDirectory, name), "utf8"))
+            .identifier,
+      ),
+  );
+  const options = parseBuildArgs(["--config", "src-tauri/tauri.e2e.conf.json"]);
+  for (const platform of ["windows", "macos", "linux"]) {
+    const capabilities = effectiveConfig(
+      projectRoot,
+      options,
+      version,
+      platform,
+    ).app.security.capabilities;
+    for (const capability of capabilities) {
+      if (typeof capability === "string")
+        assert.ok(
+          identifiers.has(capability),
+          `${platform}: missing named capability ${capability}`,
+        );
+    }
+    assert.ok(
+      capabilities.some(
+        (capability) =>
+          typeof capability === "object" &&
+          capability?.identifier === "e2e-driver" &&
+          capability.permissions.includes("wdio-webdriver:default"),
+      ),
+      `${platform}: E2E driver capability must remain enabled`,
+    );
+  }
+});
 
 function fixture(t) {
   const root = mkdtempSync(join(tmpdir(), "tauri-e2e-build-"));
