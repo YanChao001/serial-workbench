@@ -21,9 +21,7 @@ vi.mock("@/providers/i18n", async () => {
 const healthy: native.RecoveryStatus = {
   active: false,
   reason: null,
-  restored: false,
   pending: false,
-  notes: 0,
   archiveId: null,
 };
 function view() {

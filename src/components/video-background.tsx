@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { useDemoMotion } from "@/hooks/use-demo-motion";
+import { useMotionActivity } from "@/hooks/use-motion-activity";
 import { useLatestTranslator } from "@/hooks/use-latest-translator";
 import type { CustomBackground } from "@/lib/background-image";
 import { resolveWallpaperVideo } from "@/lib/video-wallpaper";
@@ -18,7 +18,7 @@ export function VideoBackground({ background, enabled }: VideoBackgroundProps) {
   const reported = useRef(false);
   const [playing, setPlaying] = useState(false);
   const [failed, setFailed] = useState(false);
-  const { active } = useDemoMotion(surface, enabled);
+  const { active } = useMotionActivity(surface, enabled);
   const translateLatest = useLatestTranslator();
   const videoId = background.video?.id;
   const videoMime = background.video?.mime;

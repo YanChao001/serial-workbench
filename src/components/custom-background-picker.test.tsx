@@ -222,11 +222,11 @@ describe("多图壁纸图库", () => {
     );
     expect(state.update).not.toHaveBeenCalled();
   });
-  it("先持久化图库，再应用成功导入的图片；旧图片传给图库作首次纳入", async () => {
+  it("先持久化图库，再应用成功导入的图片", async () => {
     state.settings.customBackground = image;
     render(<CustomBackgroundPicker />);
     await loaded();
-    expect(library.listWallpaperLibrary).toHaveBeenCalledWith(image);
+    expect(library.listWallpaperLibrary).toHaveBeenCalledWith();
     let finish!: (entry: Wallpaper) => void;
     library.addLibraryWallpaper.mockImplementation(
       () =>

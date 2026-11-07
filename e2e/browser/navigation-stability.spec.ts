@@ -2,58 +2,43 @@
 import { expect, test } from "@playwright/test";
 import appConfig from "../../app.config.json" with { type: "json" };
 
-test("repeated sidebar navigation preserves the current page controls and draft", async ({
+test("reselecting settings preserves its controls and keyboard navigation keeps focus", async ({
   page,
 }) => {
   await page.addInitScript((key) => {
     localStorage.setItem(
       key,
-      JSON.stringify({
-        schemaVersion: 3,
-        language: "en",
-        motion: "reduced",
-      }),
+      JSON.stringify({ schemaVersion: 7, language: "en", motion: "reduced" }),
     );
   }, `${appConfig.browserStorageNamespace}:settings`);
-  await page.goto("./#/components");
-
-  const title = page.getByRole("textbox", {
-    name: "Title (required)",
-    exact: true,
-  });
-  const draft = "Keep this draft while selecting the current page";
-  await title.fill(draft);
-  const original = await title.evaluateHandle((element) => element);
+  await page.goto("./#/settings");
+  const theme = page.locator("#settings-theme");
+  const original = (await theme.elementHandle())!;
   const sidebar = page.locator("#app-sidebar-navigation");
-  const current = sidebar.getByRole("link", {
-    name: "Interaction",
-    exact: true,
-  });
-
+  const settings = page
+    .locator(".app-sidebar-tools")
+    .getByRole("link", { name: "Settings", exact: true });
   for (let repeat = 0; repeat < 3; repeat++) {
-    await current.click();
-    await expect(title).toHaveValue(draft);
+    await settings.click();
     expect(
-      await title.evaluate((element, node) => element === node, original),
+      await theme.evaluate((element, node) => element === node, original),
     ).toBe(true);
-
-    await current.press("Enter");
-    await expect(title).toHaveValue(draft);
+    await settings.press("Enter");
     expect(
-      await title.evaluate((element, node) => element === node, original),
+      await theme.evaluate((element, node) => element === node, original),
     ).toBe(true);
   }
-
-  await sidebar.getByRole("link", { name: "Settings", exact: true }).click();
-  await expect(page).toHaveURL(/#\/settings$/);
-  await expect(title).toHaveCount(0);
+  await sidebar.locator('a[href="#/"]').focus();
+  await page.keyboard.press("Enter");
+  await expect(page).toHaveURL(/#\/$/);
+  await expect(sidebar.locator('a[href="#/"]')).toBeFocused();
+  await expect(sidebar.locator('a[href="#/"]')).toHaveAttribute(
+    "aria-current",
+    "page",
+  );
   expect(await original.evaluate((element) => element.isConnected)).toBe(false);
-
-  // 普通页面的局部演示状态只在当前页面保留，离页后再次进入重新初始化。
-  await current.click();
-  await expect(title).toHaveValue("");
-  expect(
-    await title.evaluate((element, node) => element === node, original),
-  ).toBe(false);
+  await sidebar.locator('a[href="#/"]').click();
+  await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
+  await expect(page.locator("main")).toBeVisible();
   await original.dispose();
 });

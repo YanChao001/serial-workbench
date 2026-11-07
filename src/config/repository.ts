@@ -17,3 +17,17 @@ export function repositoryLink(
     parameters,
   );
 }
+
+export function repositoryFileUrl(
+  repository: string,
+  file: string,
+  hosting: {
+    defaultBranch: string;
+    links: { file: string };
+  } = REPOSITORY_CONFIG.hosting,
+): string {
+  return formatRepositoryLink(hosting.links.file, repository, {
+    ref: hosting.defaultBranch,
+    path: file,
+  });
+}

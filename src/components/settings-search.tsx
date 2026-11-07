@@ -28,10 +28,18 @@ export function SettingsSearch() {
   const requested = params.get("focus");
   const section = params.get("section");
   useEffect(() => {
+    if (requested === "search") {
+      setQuery("");
+      const main = input.current?.closest("main");
+      if (main) main.scrollTop = 0;
+      input.current?.focus({ preventScroll: true });
+      return;
+    }
     const entry = SETTINGS_SEARCH_ENTRIES.find((item) => item.id === requested);
     if (entry) focusSetting(entry.anchor);
     else if (section === "desktop") focusSetting("settings-desktop");
     else if (section === "updates") focusSetting("settings-updates");
+    else if (section === "recovery") focusSetting("settings-recovery");
   }, [requested, section, locationKey]);
   function chooseSetting(target: string) {
     focusSetting(target);

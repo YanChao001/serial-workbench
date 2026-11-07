@@ -486,7 +486,7 @@ mod tests {
         for origin in [
             "null",
             "https://example.test",
-            "http://extension-ui.localhost",
+            "http://untrusted-frame.localhost",
             "http://localhost:1420",
             "http://tauri.localhost.example.test",
         ] {

@@ -1,58 +1,46 @@
-import { zhExperience } from "./zh-experience";
-import { zhWorkflows } from "./zh-workflows";
-import { zhFeatures } from "./zh-features";
-import { zhShowroom } from "./zh-showroom";
-import { zhComponents } from "./zh-components";
-import { zhNavigation } from "./zh-navigation";
-import { zhMotion } from "./zh-motion";
-import { zhSystem } from "./zh-system";
-import { zhData } from "./zh-data";
-import { zhWorkbench } from "./zh-workbench";
-import { zhLabs } from "./zh-labs";
-import { zhCatalog } from "./zh-catalog";
 import { zhRecovery } from "./zh-recovery";
+import { zhShell } from "./zh-shell";
+
 /** 默认语言也是词条键的唯一来源。 */
 export const zhCN = {
-  ...zhWorkflows,
-  ...zhFeatures,
-  ...zhShowroom,
-  ...zhComponents,
-  ...zhNavigation,
-  ...zhMotion,
-  ...zhSystem,
-  ...zhData,
-  ...zhWorkbench,
-  ...zhLabs,
-  ...zhCatalog,
   ...zhRecovery,
-  ...zhExperience,
-  "nav.overview": "创意展厅",
-  "nav.components": "交互体验",
-  "nav.motion": "动效实验室",
-  "nav.bridge": "应用通信",
+  ...zhShell,
+  "settings.search": "搜索设置",
+  "settings.searchPlaceholder": "语言、主题、字体…",
+  "settings.searchEmpty": "没有匹配的设置",
+  "settings.searchResults": "{count} 项设置",
+  "settings.sidebarWidth": "侧栏宽度",
+  "settings.sidebarCollapsed": "折叠侧栏",
+  "settings.layout": "布局与导航",
+  "settings.persistenceLoading": "同步设置…",
+  "settings.persistenceSaving": "保存中…",
+  "settings.persistenceSaved": "设置已保存",
+  "settings.persistenceError": "设置未保存，仅本次会话生效，请重试。",
+  "settings.persistenceFuture":
+    "设置来自更新版本，原存档已保留；请升级应用或明确重置偏好。",
+  "common.backHome": "返回首页",
+  "common.loading": "加载中…",
+  "common.retry": "重试",
+  "common.save": "保存",
+  "common.delete": "删除",
+  "common.refresh": "刷新",
+  "common.operationFailed": "操作失败：{error}",
+  "common.open": "打开",
+  "nav.overview": "首页",
   "nav.settings": "设置",
   "app.native": "桌面应用",
   "app.preview": "浏览器预览",
-  "browserDemo.title": "浏览器演示",
-  "browserDemo.description":
-    "体验界面、主题与动效；文件、笔记和系统工具需用桌面版。",
-  "browserDemo.source": "源码",
-  "browserDemo.download": "下载桌面版",
-  "browserDemo.navigation": "切换页面",
+  "browserPreview.navigation": "切换页面",
   "title.file": "文件",
-  "title.edit": "编辑",
   "title.view": "视图",
   "title.help": "帮助",
-  "title.settings": "设置…",
-  "title.reload": "重新加载",
+  "title.settings": "设置",
   "title.quit": "退出",
-  "title.copyLink": "复制地址",
-  "title.selectAll": "全选",
   "title.light": "浅色",
   "title.dark": "深色",
   "title.system": "跟随系统",
   "title.toggleMenu": "显示菜单栏",
-  "title.docs": "Tauri 文档",
+  "title.docs": "产品文档",
   "title.repo": "源码仓库",
   "title.about": "关于",
   "title.minimize": "最小化",
@@ -60,7 +48,7 @@ export const zhCN = {
   "title.restore": "还原",
   "title.close": "关闭",
   "title.toggleTheme": "切换主题",
-  "title.aboutBody": "集中管理文件、笔记、任务与桌面工具，外观和布局可自定义。",
+  "title.aboutBody": "Serial Workbench 工作区与应用设置。",
   "common.copied": "已复制",
   "common.openFailed": "无法打开链接，请复制地址到浏览器",
   "common.reset": "重置偏好",
@@ -76,12 +64,9 @@ export const zhCN = {
   "settings.networkMode": "网络连接",
   "settings.networkModeSystem": "系统代理",
   "settings.networkModeDirect": "直接连接",
-  "settings.networkModeHint":
-    "保存后用于后续请求，插件使用系统代理仍需单独授权。",
+  "settings.networkModeHint": "保存后用于后续请求。",
   "settings.networkModeBrowserHint":
     "浏览器自行管理连接方式，仅桌面版可修改此项。",
-  "settings.subtitle":
-    "偏好保存在本机；外观、布局和尺寸即时生效，启动位置下次开窗生效。",
   "settings.appearance": "外观",
   "settings.appearanceHint": "主题、主题色、圆角、字体与背景",
   "settings.theme": "主题",
@@ -125,11 +110,11 @@ export const zhCN = {
   "settings.background": "背景",
   "settings.bgPlain": "纯色",
   "settings.motion": "动效",
-  "settings.motionHint": "精简模式减少过渡与动画",
+  "settings.motionHint": "减少过渡与动画",
   "settings.motionFull": "完整",
   "settings.motionReduced": "精简",
   "settings.menuBar": "显示菜单栏",
-  "settings.menuBarHint": "标题栏中的文件 / 编辑 / 视图 / 帮助",
+  "settings.menuBarHint": "标题栏中的文件 / 视图 / 帮助",
   "settings.runtime": "应用信息",
   "settings.runtimeHint": "应用与设备信息仅桌面版可用。",
   "settings.appVersion": "应用版本",
@@ -139,7 +124,7 @@ export const zhCN = {
   "settings.linksHint": "用系统默认浏览器打开",
   "settings.resetConfirmTitle": "恢复默认偏好？",
   "settings.resetConfirmDescription":
-    "重置外观、布局、所有窗口大小及后台偏好；网络恢复系统代理，启动位置恢复为记住上次位置，当前窗口位置不变。保留语言、笔记和系统自启动设置；更新版本的偏好存档也会被替换。",
+    "重置外观、布局、所有窗口大小及后台偏好；网络恢复系统代理，启动位置恢复为记住上次位置，当前窗口位置不变。保留语言和系统自启动设置；更新版本的偏好存档也会被替换。",
   "settings.windowSize": "窗口大小",
   "settings.windowSizeHint":
     "所选尺寸立即应用并保存，最大化窗口会先还原；也可拖动窗口边缘调整。",
@@ -156,22 +141,6 @@ export const zhCN = {
   "settings.windowPositionRemember": "记住上次位置",
   "settings.windowPositionCenter": "居中",
   "settings.windowPositionHint": "下次打开窗口时生效，当前窗口位置不变。",
-  "bridge.title": "应用通信",
-  "bridge.subtitle": "输入名字，在本机处理并返回问候，仅桌面版可用。",
-  "bridge.demo": "发送问候",
-  "bridge.demoHint": "填写名字后发送问候，空白时会提醒；名字仅在本机处理。",
-  "bridge.name": "名称",
-  "bridge.namePlaceholder": "输入名字",
-  "bridge.call": "发送问候",
-  "bridge.result": "回应",
-  "bridge.notCalled": "填写名字后发送问候",
-  "bridge.success": "已收到回应",
-  "bridge.failed": "调用失败：{error}",
-  "bridge.browserOnly": "仅桌面版可用。",
-  "bridge.developerDetails": "开发者资料",
-  "bridge.frontend": "前端调用",
-  "bridge.note":
-    "新增命令需在 bindings.rs 中注册，再运行 pnpm bindings:generate 更新前端调用契约。",
   "settings.bgPlainDescription": "简洁纯色背景",
   "settings.bgAurora": "猫咪涂鸦",
   "settings.bgAuroraDescription": "小猫与爪印线稿",

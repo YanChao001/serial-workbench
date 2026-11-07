@@ -59,8 +59,8 @@ describe("词条回退与插值", () => {
 
   it("占位符只替换一次，错误文本中的模板或美元符号保持原样", () => {
     const t = createTranslator(LOCALES.en.messages);
-    expect(t("bridge.failed", { error: "{index} $&", index: 5 })).toBe(
-      "Call failed: {index} $&",
+    expect(t("common.operationFailed", { error: "{index} $&", index: 5 })).toBe(
+      "Operation failed: {index} $&",
     );
   });
 });

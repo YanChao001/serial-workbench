@@ -57,7 +57,7 @@ async function browserVideoReferences(): Promise<Set<string> | null> {
   const current = readInitialSettings();
   if (current.error) return null;
   try {
-    const wallpapers = await listWallpaperLibrary(null);
+    const wallpapers = await listWallpaperLibrary();
     const references = new Set(
       wallpapers.flatMap((wallpaper) =>
         wallpaper.video ? [wallpaper.video.id] : [],

@@ -13,7 +13,6 @@ import { APP_CONFIG } from "@/config/app";
 import appIcon from "../../resources/branding/app-icon.svg";
 import { CommandMenuItem } from "@/components/command-menu-item";
 import { Button } from "@/components/ui/button";
-import { LanguageSwitch } from "@/components/language-switch";
 import { CompactNavigation } from "@/components/compact-navigation";
 import {
   Dialog,
@@ -44,14 +43,7 @@ import { isMacOS } from "@/lib/platform";
 import { useSettings } from "@/providers/settings";
 import { useCommands } from "@/providers/commands";
 import { formatShortcut } from "@/commands/shortcuts";
-import {
-  isTauri,
-  isWindowMaximized,
-  onWindowResized,
-  type ExtensionInfo,
-} from "@/lib/tauri";
-import { ExtensionIcon } from "@/features/extensions/extension-icon";
-import { ExtensionChromeSlot } from "@/features/extensions/extension-chrome-slot";
+import { isTauri, isWindowMaximized, onWindowResized } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
 /**
@@ -60,13 +52,7 @@ import { cn } from "@/lib/utils";
  * Windows / Linux 用右侧的自绘按钮；macOS 由平台配置保留系统红绿灯，
  * 这里只负责给红绿灯让出位置（见 src-tauri/tauri.macos.conf.json）。
  */
-export function TitleBar({
-  standalone = false,
-  extension,
-}: {
-  standalone?: boolean;
-  extension?: Pick<ExtensionInfo["package"]["manifest"], "name" | "icon">;
-}) {
+export function TitleBar() {
   const { t } = useI18n();
   const { settings } = useSettings();
   const { theme } = useThemeSwitch();
@@ -120,52 +106,26 @@ export function TitleBar({
   return (
     <div
       data-tauri-drag-region
-      data-standalone={standalone}
       className="app-title-bar flex h-10 shrink-0 select-none items-stretch border-b"
     >
       <div
-        data-extension-window-identity={standalone ? "" : undefined}
         data-native-traffic-lights={native && mac ? "" : undefined}
-        data-tauri-drag-region={standalone ? "" : undefined}
         className={cn(
           "flex min-w-0 items-center gap-2 pl-3",
-          standalone && "flex-1 pr-2",
           native && mac && "pl-[78px]",
         )}
       >
-        {!standalone ? (
-          <img
-            src={appIcon}
-            alt={APP_CONFIG.name}
-            width={24}
-            height={24}
-            draggable={false}
-            data-tauri-drag-region
-            className="size-6 shrink-0"
-          />
-        ) : (
-          <>
-            <span
-              role="img"
-              aria-label={extension?.name ?? t("ext.title")}
-              data-extension-window-icon
-              data-tauri-drag-region
-              className="flex size-6 shrink-0 items-center justify-center"
-            >
-              <ExtensionIcon name={extension?.icon} className="size-5" />
-            </span>
-            <span
-              data-extension-window-title
-              data-tauri-drag-region
-              title={extension?.name ?? t("ext.title")}
-              className="min-w-0 truncate text-sm font-medium"
-            >
-              {extension?.name ?? t("ext.title")}
-            </span>
-          </>
-        )}
+        <img
+          src={appIcon}
+          alt={APP_CONFIG.name}
+          width={24}
+          height={24}
+          draggable={false}
+          data-tauri-drag-region
+          className="size-6 shrink-0"
+        />
 
-        {settings.menuBar && !standalone ? (
+        {settings.menuBar ? (
           <nav
             className="ml-1 flex items-center gap-0.5"
             aria-label={APP_CONFIG.name}
@@ -183,26 +143,7 @@ export function TitleBar({
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
                 <CommandMenuItem id="open-settings" />
-                <DropdownMenuSeparator />
-                <CommandMenuItem id="reload" />
                 <CommandMenuItem id="quit" />
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  data-surface="transparent"
-                  type="button"
-                  data-variant="ghost"
-                  className="app-title-menu-trigger"
-                >
-                  {t("title.edit")}
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <CommandMenuItem id="copy-link" />
-                <CommandMenuItem id="select-all" />
               </DropdownMenuContent>
             </DropdownMenu>
 
@@ -273,34 +214,29 @@ export function TitleBar({
         ) : null}
       </div>
 
-      {!native && !standalone ? <CompactNavigation /> : null}
-      {!standalone ? (
-        <div data-tauri-drag-region className="min-w-2 flex-1" />
-      ) : null}
+      {!native ? <CompactNavigation /> : null}
+      <div data-tauri-drag-region className="min-w-2 flex-1" />
 
       <div className="flex shrink-0 items-stretch">
-        {!standalone ? (
-          <Tooltip disableHoverableContent>
-            <TooltipTrigger asChild>
-              <Button
-                variant="ghost"
-                size="icon"
-                className="size-10 rounded-none"
-                aria-label={t("commands.open")}
-                onClick={() => void execute("command-palette")}
-              >
-                <SearchIcon className="size-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent side="bottom">
-              {t("commands.open")}
-              <kbd className="font-mono opacity-75">
-                {formatShortcut({ key: "k", primary: true })}
-              </kbd>
-            </TooltipContent>
-          </Tooltip>
-        ) : null}
-        <LanguageSwitch compact className="my-auto" />
+        <Tooltip disableHoverableContent>
+          <TooltipTrigger asChild>
+            <Button
+              variant="ghost"
+              size="icon"
+              className="size-10 rounded-none"
+              aria-label={t("commands.open")}
+              onClick={() => void execute("command-palette")}
+            >
+              <SearchIcon className="size-4" />
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent side="bottom">
+            {t("commands.open")}
+            <kbd className="font-mono opacity-75">
+              {formatShortcut({ key: "k", primary: true })}
+            </kbd>
+          </TooltipContent>
+        </Tooltip>
         <Tooltip disableHoverableContent>
           <TooltipTrigger asChild>
             <Button
@@ -324,7 +260,7 @@ export function TitleBar({
           </TooltipContent>
         </Tooltip>
 
-        {fullscreen && !standalone ? (
+        {fullscreen ? (
           <Tooltip disableHoverableContent>
             <TooltipTrigger asChild>
               <Button
@@ -342,12 +278,6 @@ export function TitleBar({
               {t("title.fullscreenHint")}
             </TooltipContent>
           </Tooltip>
-        ) : null}
-        {standalone ? (
-          <ExtensionChromeSlot
-            placement="titlebar"
-            className="flex items-stretch"
-          />
         ) : null}
 
         {native && !mac ? (
@@ -416,27 +346,8 @@ export function TitleBar({
             <DialogTitle>
               {t("title.about")} {APP_CONFIG.name}
             </DialogTitle>
-            <DialogDescription>
-              {settings.appMode === "demo"
-                ? t("title.aboutBody")
-                : APP_CONFIG.name}
-            </DialogDescription>
+            <DialogDescription>{t("title.aboutBody")}</DialogDescription>
           </DialogHeader>
-          {settings.appMode === "demo" ? (
-            <div className="flex flex-wrap gap-1.5 text-xs text-muted-foreground">
-              {[
-                "Tauri 2",
-                "React 19",
-                "TypeScript 6",
-                "Tailwind 4",
-                "shadcn/ui",
-              ].map((item) => (
-                <span key={item} className="rounded-full border px-2 py-0.5">
-                  {item}
-                </span>
-              ))}
-            </div>
-          ) : null}
           <DialogFooter>
             <Button onClick={() => setAboutOpen(false)}>
               {t("common.close")}

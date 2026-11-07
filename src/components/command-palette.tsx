@@ -1,9 +1,6 @@
 import { Command } from "cmdk";
-import { useEffect, useRef, useState } from "react";
-import { toast } from "sonner";
-import { useContentSearch } from "@/features/content-search/use-content-search";
+import { useState } from "react";
 import { SearchIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import {
   Dialog,
   DialogContent,
@@ -17,7 +14,6 @@ import { useCommands } from "@/providers/commands";
 import { useI18n, type DictKey } from "@/providers/i18n";
 
 const GROUPS: Array<{ id: CommandGroup; labelKey: DictKey }> = [
-  { id: "content", labelKey: "search.content" },
   { id: "navigation", labelKey: "commands.groupNavigation" },
   { id: "appearance", labelKey: "commands.groupAppearance" },
   { id: "window", labelKey: "commands.groupWindow" },
@@ -29,29 +25,6 @@ export function CommandPalette() {
   const { t } = useI18n();
   const { commands, execute, paletteOpen, setPaletteOpen } = useCommands();
   const [query, setQuery] = useState("");
-  const inputRef = useRef<HTMLInputElement>(null);
-  const content = useContentSearch(query, paletteOpen);
-  const { failed, retry } = content;
-  const notifiedFailure = useRef(false);
-  useEffect(() => {
-    if (!paletteOpen || !failed) {
-      notifiedFailure.current = false;
-      return;
-    }
-    if (notifiedFailure.current) return;
-    notifiedFailure.current = true;
-    toast.error(t("search.failed"), {
-      id: "command-palette-search",
-      action: {
-        label: t("common.retry"),
-        onClick: () => {
-          setPaletteOpen(true);
-          setQuery(query);
-          retry();
-        },
-      },
-    });
-  }, [paletteOpen, failed, retry, query, setPaletteOpen, t]);
   return (
     <Dialog
       open={paletteOpen}
@@ -76,7 +49,6 @@ export function CommandPalette() {
                 aria-hidden="true"
               />
               <Command.Input
-                ref={inputRef}
                 value={query}
                 onValueChange={setQuery}
                 data-surface="transparent"
@@ -85,55 +57,18 @@ export function CommandPalette() {
               />
             </div>
           </div>
-          <p
-            className="mx-4 flex h-5 items-center gap-2 overflow-auto text-xs text-muted-foreground"
-            role="status"
-            tabIndex={content.tooLong ? 0 : undefined}
-          >
-            {content.tooLong ? (
-              t("search.limit")
-            ) : content.loading ? (
-              t("search.loading")
-            ) : failed ? (
-              <>
-                <span className="min-w-0 overflow-auto whitespace-nowrap">
-                  {t("search.failed")}
-                </span>
-                <Button
-                  type="button"
-                  variant="link"
-                  size="xs"
-                  className="h-5 shrink-0 px-1 py-0"
-                  onKeyDown={(event) => {
-                    if (event.key === "Enter") event.stopPropagation();
-                  }}
-                  onClick={() => {
-                    inputRef.current?.focus();
-                    retry();
-                  }}
-                >
-                  {t("common.retry")}
-                </Button>
-              </>
-            ) : (
-              ""
-            )}
-          </p>
           <Command.List
             data-surface="transparent"
             className="h-[min(60vh,24rem)] overflow-y-auto p-2"
           >
-            {!failed ? (
-              <Command.Empty className="px-4 py-8 text-center text-sm text-muted-foreground">
-                {t("commands.empty")}
-              </Command.Empty>
-            ) : null}
+            <Command.Empty className="px-4 py-8 text-center text-sm text-muted-foreground">
+              {t("commands.empty")}
+            </Command.Empty>
             {GROUPS.map((group) => {
               const items = commands.filter(
                 (command) =>
                   command.id !== "command-palette" &&
                   command.group === group.id &&
-                  (group.id !== "content" || content.ids.has(command.id)) &&
                   commandAvailable(command),
               );
               if (!items.length) return null;

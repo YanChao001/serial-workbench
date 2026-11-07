@@ -95,7 +95,7 @@ test("NSIS preserves artwork proportions and keeps the sidebar mark visible with
   const context = nsisFixture(t);
   if (!context) return;
   const { compiler, fixture } = context;
-  const macro = productionMacro("StarterFitBitmap");
+  const macro = productionMacro("SerialWorkbenchFitBitmap");
   const cases = [
     [150, 57, 450, 171],
     [200, 72, 450, 171],
@@ -139,7 +139,7 @@ ${macro}
 Var ResultFile
 Section
   FileOpen $ResultFile "${quote(results)}" w
-${cases.map(([width, height, sourceWidth, sourceHeight, mode = "contain"]) => `  StrCpy $0 101\n  StrCpy $2 ${width}\n  StrCpy $3 ${height}\n  StrCpy $5 ${sourceWidth}\n  StrCpy $6 ${sourceHeight}\n  !insertmacro StarterFitBitmap $2 $3 $5 $6 ${mode}\n  FileWrite $ResultFile "$R7,$R8,$R9,$4,$0$\\r$\\n"`).join("\n")}
+${cases.map(([width, height, sourceWidth, sourceHeight, mode = "contain"]) => `  StrCpy $0 101\n  StrCpy $2 ${width}\n  StrCpy $3 ${height}\n  StrCpy $5 ${sourceWidth}\n  StrCpy $6 ${sourceHeight}\n  !insertmacro SerialWorkbenchFitBitmap $2 $3 $5 $6 ${mode}\n  FileWrite $ResultFile "$R7,$R8,$R9,$4,$0$\\r$\\n"`).join("\n")}
   FileClose $ResultFile
 SectionEnd
 `,
@@ -220,8 +220,8 @@ ManifestDPIAware true
 !include LogicLib.nsh
 !include WinMessages.nsh
 !include nsDialogs.nsh
-${productionMacro("StarterFitBitmap")}
-${productionMacro("StarterSetSharpBitmap")}
+${productionMacro("SerialWorkbenchFitBitmap")}
+${productionMacro("SerialWorkbenchSetSharpBitmap")}
 Var ResultFile
 Var Control
 Var Image
@@ -244,7 +244,7 @@ ${cases
     return `  System::Call 'USER32::CreateWindowEx(i0,t "STATIC",t "",i0x5000010E,i0,i0,i${width},i${height},p-3,p0,p0,p0)p.s'
   Pop $Control
   \${NSD_SetStretchedImage} $Control "${path}" $Image
-  !insertmacro StarterSetSharpBitmap $Control "${path}" $Image ${mode}
+  !insertmacro SerialWorkbenchSetSharpBitmap $Control "${path}" $Image ${mode}
   SendMessage $Control \${STM_GETIMAGE} \${IMAGE_BITMAP} 0 $Assigned
   System::Call '*(i0,i0,i0,i0,i0,p0)p.r0'
   System::Call 'GDI32::GetObject(p $Assigned,i24,pr0)i.r1'
@@ -274,7 +274,7 @@ ${Array.from({ length: 9 }, (_, y) =>
   System::Call 'GDI32::GetPixel(p $SourceDC,i${Math.floor(width / 2)},i0)i.r0'
   System::Call 'GDI32::GetPixel(p $SourceDC,i${Math.floor(width / 2)},i${height - 1})i.r1'
   FileWrite $ResultFile "edge,${index},$0,$1$\\r$\\n"
-  !insertmacro StarterSetSharpBitmap $Control "${quote(join(fixture, "missing.bmp"))}" $Image ${mode}
+  !insertmacro SerialWorkbenchSetSharpBitmap $Control "${quote(join(fixture, "missing.bmp"))}" $Image ${mode}
   SendMessage $Control \${STM_GETIMAGE} \${IMAGE_BITMAP} 0 $0
   FileWrite $ResultFile "fallback,${index},$Image,$0$\\r$\\n"
   System::Call 'GDI32::SelectObject(p $SourceDC,p $SourcePrevious)'

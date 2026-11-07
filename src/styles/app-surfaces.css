@@ -1,0 +1,84 @@
+/* 设置及诊断页面共用的容器样式。 */
+:root {
+  --studio-surface: var(--surface-card);
+  --studio-edge: color-mix(in oklch, var(--border) 78%, transparent);
+}
+.studio-page {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+  min-width: 0;
+}
+/* legend 跨在边框上，不参与 Tailwind space-y 的正文间距。 */
+:where(fieldset > legend) {
+  margin-block: 0;
+}
+.studio-page :where([data-slot="card"]) {
+  --card-spacing: 0.75rem;
+  border-color: var(--studio-edge);
+  box-shadow: none;
+}
+.settings-about > summary {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0.75rem;
+  cursor: pointer;
+  font-size: 0.875rem;
+  font-weight: 500;
+  list-style: none;
+}
+.settings-about > summary::-webkit-details-marker {
+  display: none;
+}
+.settings-about > summary:focus-visible {
+  outline: 2px solid var(--ring);
+  outline-offset: 3px;
+}
+.settings-about[open] > summary svg {
+  transform: rotate(180deg);
+}
+.settings-about-content {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 18rem), 1fr));
+  gap: 1rem;
+  padding: 0 1rem 1rem;
+}
+.settings-about-content [data-slot="card"] {
+  border: none;
+  background: transparent;
+}
+.settings-about-content [data-slot="card-header"] {
+  padding-inline: 0.25rem;
+}
+.settings-about-content [data-slot="card-content"] {
+  padding-inline: 0.25rem;
+}
+.studio-intro {
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+}
+.studio-intro h2 {
+  font-size: clamp(1.6rem, 2.7vw, 2.35rem);
+  font-weight: 650;
+  line-height: 1.2;
+  letter-spacing: -0.045em;
+}
+.studio-intro > p {
+  max-width: 44rem;
+  font-size: 0.875rem;
+  line-height: 1.65;
+  color: var(--muted-foreground);
+}
+.studio-panel {
+  border: 1px solid var(--studio-edge);
+  border-radius: var(--radius-xl);
+  background: var(--studio-surface);
+}
+@media (forced-colors: active) {
+  .studio-panel {
+    background: Canvas;
+    border-color: CanvasText;
+  }
+}

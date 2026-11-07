@@ -15,6 +15,13 @@ export type SettingsSearchEntry = {
 /** 设置搜索与应用命令面板共用的搜索入口 */
 export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
   {
+    id: "recovery",
+    anchor: "settings-recovery",
+    labelKey: "shell.diagnostics",
+    descriptionKey: "shell.diagnosticsDescription",
+    keywords: ["diagnostics", "recovery", "logs", "诊断", "恢复", "日志"],
+  },
+  {
     id: "language",
     anchor: "settings-language",
     labelKey: "common.language",
@@ -144,13 +151,6 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     anchor: "settings-layout",
     labelKey: "settings.layout",
     keywords: ["sidebar", "layout", "width", "侧栏", "布局", "宽度"],
-  },
-  {
-    id: "appMode",
-    anchor: "settings-appMode",
-    labelKey: "settings.appMode",
-    descriptionKey: "settings.appModeDescription",
-    keywords: ["demo", "minimal", "mode", "演示", "精简", "模式"],
   },
   {
     id: "networkMode",

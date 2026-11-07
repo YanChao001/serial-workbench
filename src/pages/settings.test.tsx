@@ -24,6 +24,10 @@ function SettingsView({ initial = "/settings" }: { initial?: string }) {
   );
 }
 
+vi.mock("@/pages/diagnostics", () => ({
+  DiagnosticsContent: () => <div data-testid="settings-diagnostics" />,
+}));
+
 vi.mock("next-themes", () => ({
   useTheme: () => ({ theme: "system", setTheme: vi.fn() }),
 }));
@@ -121,17 +125,20 @@ describe("设置页", () => {
     vi.restoreAllMocks();
     Reflect.deleteProperty(Element.prototype, "scrollIntoView");
   });
-  it("关于资源保留真实链接地址与浏览器新标签页语义", () => {
-    render(<SettingsView />);
-    fireEvent.click(screen.getByText("关于与资源"));
-    const link = screen.getByRole("link", { name: /^Tauri / });
-    expect(link).toHaveAttribute("href", "https://v2.tauri.app/");
-    expect(link).toHaveAttribute("target", "_blank");
-    expect(link).toHaveAttribute("rel", "noopener noreferrer");
+  it("诊断恢复使用可聚焦的设置分组，并保留浏览器提示", () => {
+    render(<SettingsView initial="/settings?section=recovery" />);
+    const recovery = screen.getByRole("group", { name: "诊断与恢复" });
+    expect(recovery).toHaveAttribute("id", "settings-recovery");
+    expect(recovery).toHaveFocus();
     expect(
-      screen.getByRole("link", { name: /^Tailwind CSS / }),
-    ).toHaveAttribute("href", "https://tailwindcss.com/");
-    expect(desktop.openExternal).not.toHaveBeenCalled();
+      within(recovery).getByText(
+        "请在 Serial Workbench 桌面应用中使用此功能。",
+      ),
+    ).toBeVisible();
+    expect(
+      screen.queryByRole("link", { name: /Tauri|Tailwind|shadcn/ }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("应用模式")).not.toBeInTheDocument();
   });
   it("网络位于设置末段并提供连接深链，浏览器禁用修改且按需说明连接由浏览器控制", async () => {
     render(<SettingsView initial="/settings?focus=networkMode" />);

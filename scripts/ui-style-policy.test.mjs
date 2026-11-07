@@ -3,7 +3,6 @@ import { readFile, readdir } from "node:fs/promises";
 import { resolve } from "node:path";
 import test from "node:test";
 import { fileURLToPath } from "node:url";
-import vm from "node:vm";
 import ts from "typescript";
 
 const root = fileURLToPath(new URL("../", import.meta.url));
@@ -367,114 +366,6 @@ function nativeRule(tag, selectors) {
   const pattern = new RegExp(`(?:^|[\\s(:,])${tag}(?=[\\s[.:),>+~]|$)`);
   return selectors.some((selector) => pattern.test(withoutNegation(selector)));
 }
-
-test("host and extension default styles load the same complete CSS sources", async () => {
-  const [index, moduleSource, sdk, ...css] = await Promise.all([
-    read("src/index.css"),
-    read("src/lib/ui-theme.ts"),
-    read("sdk/extension-ui.js"),
-    ...stylesheetPaths.map(read),
-  ]);
-  const liveIndex = index.replace(/\/\*[\s\S]*?\*\//g, "");
-  const imports = new Set(
-    [...liveIndex.matchAll(/(?:^|[;\n])\s*@import\s+(["'])([^"']+)\1/g)].map(
-      (match) => match[2],
-    ),
-  );
-  for (const path of stylesheetPaths) {
-    assert.ok(
-      imports.has(`./${path.slice("src/".length)}`),
-      `宿主未导入共享样式：${path}`,
-    );
-  }
-  const layer =
-    liveIndex
-      .match(/@layer\s+([^;{}]+);/)?.[1]
-      .split(",")
-      .map((value) => value.trim()) ?? [];
-  assert.ok(
-    ["base", "starter-defaults", "utilities"].every((name) =>
-      layer.includes(name),
-    ) &&
-      layer.indexOf("base") < layer.indexOf("starter-defaults") &&
-      layer.indexOf("starter-defaults") < layer.indexOf("utilities"),
-    "共享默认层应高于 reset、低于调用方 utilities，保留显式定制",
-  );
-  const cssByPath = new Map(
-    stylesheetPaths.map((path, index) => [
-      resolve(root, path),
-      `${css[index]}\n:root { --ui-source-probe-${index}: shared; }`,
-    ]),
-  );
-  const loaded = [];
-  const exports = {};
-  for (const source of css)
-    assert.doesNotMatch(
-      source.replace(/\/\*[\s\S]*?\*\//g, ""),
-      /@(import|apply|theme|source|custom-variant)\b/,
-      "共享 CSS 原文必须能在隔离文档中直接运行，不能依赖宿主构建指令或相对网络导入",
-    );
-  vm.runInNewContext(
-    ts.transpileModule(moduleSource, {
-      compilerOptions: {
-        module: ts.ModuleKind.CommonJS,
-        target: ts.ScriptTarget.ES2022,
-        esModuleInterop: true,
-      },
-    }).outputText,
-    {
-      exports,
-      require(specifier) {
-        assert.ok(
-          specifier.endsWith(".css?raw"),
-          `主题样式装配引入未知依赖：${specifier}`,
-        );
-        const path = specifier.startsWith("@/")
-          ? resolve(root, "src", specifier.slice(2, -4))
-          : resolve(root, "src/lib", specifier.slice(0, -4));
-        assert.ok(cssByPath.has(path), `插件未使用约定共享样式：${path}`);
-        loaded.push(path);
-        return { __esModule: true, default: cssByPath.get(path) };
-      },
-    },
-  );
-  assert.equal(typeof exports.UI_STYLES, "string");
-  assert.deepEqual([...new Set(loaded)].sort(), [...cssByPath.keys()].sort());
-  for (const text of cssByPath.values())
-    assert.equal(
-      exports.UI_STYLES.split(text).length - 1,
-      1,
-      "插件快照必须传完整共享样式，不能按当前控件裁剪或维护拷贝",
-    );
-
-  let consumesThemeStyles = false;
-  const duplicateCss = [];
-  walk(parse(sdk, "extension-ui.js"), (node) => {
-    if (
-      ts.isPropertyAccessExpression(node) &&
-      node.name.text === "styles" &&
-      ts.isPropertyAccessExpression(node.expression) &&
-      node.expression.name.text === "theme"
-    )
-      consumesThemeStyles = true;
-    const text =
-      ts.isStringLiteral(node) || ts.isNoSubstitutionTemplateLiteral(node)
-        ? node.text
-        : ts.isTemplateExpression(node)
-          ? node.head.text +
-            node.templateSpans.map((span) => span.literal.text).join("")
-          : "";
-    if (
-      /\{[^}]*\b(?:background|border|padding|font)\s*:/.test(text) &&
-      /\b(?:button|input|textarea|select|kbd|output|table|progress|meter)\b/.test(
-        text,
-      )
-    )
-      duplicateCss.push(text.slice(0, 80));
-  });
-  assert.ok(consumesThemeStyles, "SDK 应消费当前宿主的 theme.styles");
-  assert.deepEqual(duplicateCss, [], "SDK 不应再次硬编码基础控件 CSS");
-});
 
 test("new UI slots need a shared style rule or an explicit material role", async () => {
   const selectors = selectorsIn(

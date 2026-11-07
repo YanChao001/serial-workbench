@@ -1,4 +1,4 @@
-//! 安装注册与原生运行时共用品牌集成标识，派生项目不再修改 Rust 字面量。
+//! 安装注册与原生运行时共用应用深链标识。
 
 use serde::Deserialize;
 use std::sync::LazyLock;
@@ -7,7 +7,6 @@ use std::sync::LazyLock;
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct Integration {
     pub deep_link_scheme: String,
-    pub file_extension: String,
 }
 
 impl Integration {
@@ -20,7 +19,7 @@ impl Integration {
                     .bytes()
                     .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
         };
-        if !identifier(&self.deep_link_scheme) || !identifier(&self.file_extension) {
+        if !identifier(&self.deep_link_scheme) {
             return Err(
                 "Integration identifiers require 1–64 lowercase letters, digits or hyphens, starting with a letter",
             );
@@ -44,41 +43,6 @@ impl Integration {
                 | "blob"
         ) {
             return Err("Deep links must use an application-specific scheme");
-        }
-        if matches!(
-            self.file_extension.as_str(),
-            "exe"
-                | "com"
-                | "bat"
-                | "cmd"
-                | "msi"
-                | "ps1"
-                | "lnk"
-                | "url"
-                | "txt"
-                | "json"
-                | "md"
-                | "markdown"
-                | "log"
-                | "csv"
-                | "tsv"
-                | "rs"
-                | "ts"
-                | "js"
-                | "css"
-                | "toml"
-                | "yaml"
-                | "yml"
-                | "png"
-                | "jpg"
-                | "jpeg"
-                | "gif"
-                | "webp"
-                | "svg"
-                | "pdf"
-                | "html"
-        ) {
-            return Err("File associations must use an application-specific extension");
         }
         Ok(())
     }
@@ -114,19 +78,7 @@ mod tests {
                 .iter()
                 .any(|scheme| scheme.as_str() == Some(INTEGRATION.deep_link_scheme.as_str())),
         );
-        assert!(
-            config["bundle"]["fileAssociations"]
-                .as_array()
-                .unwrap()
-                .iter()
-                .any(
-                    |association| association["ext"].as_array().is_some_and(|extensions| {
-                        extensions.iter().any(|extension| {
-                            extension.as_str() == Some(INTEGRATION.file_extension.as_str())
-                        })
-                    })
-                ),
-        );
+        assert!(config["bundle"]["fileAssociations"].is_null());
     }
 
     #[test]
@@ -134,23 +86,16 @@ mod tests {
         for value in ["", "WrongCase", "1app", "app.name", "app/name", "app name"] {
             let invalid = Integration {
                 deep_link_scheme: value.into(),
-                file_extension: "example-doc".into(),
             };
             assert!(invalid.validate().is_err(), "accepted {value}");
         }
         let mut config = Integration {
             deep_link_scheme: "a".repeat(64),
-            file_extension: "example-doc".into(),
         };
         assert!(config.validate().is_ok());
         config.deep_link_scheme.push('a');
         assert!(config.validate().is_err());
         config.deep_link_scheme = "https".into();
         assert!(config.validate().is_err());
-        config.deep_link_scheme = "example-app".into();
-        for extension in ["json", "exe", "jpg", "../outside", "APP"] {
-            config.file_extension = extension.into();
-            assert!(config.validate().is_err(), "accepted {extension}");
-        }
     }
 }

@@ -1,6 +1,6 @@
 import { defineConfig, devices } from "@playwright/test";
 
-const baseURL = "http://127.0.0.1:1435/desktop-demo/";
+const baseURL = "http://127.0.0.1:1435/serial-workbench/";
 
 export default defineConfig({
   testDir: "./e2e/browser",
@@ -27,7 +27,7 @@ export default defineConfig({
   webServer: {
     // 预先运行 build:web；这里预览真实产物，并刻意挂在项目子路径下。
     command:
-      "node node_modules/vite/bin/vite.js preview --outDir dist-web --base /desktop-demo/ --host 127.0.0.1 --port 1435 --strictPort",
+      "node node_modules/vite/bin/vite.js preview --outDir dist-web --base /serial-workbench/ --host 127.0.0.1 --port 1435 --strictPort",
     url: baseURL,
     reuseExistingServer: false,
     timeout: 30000,

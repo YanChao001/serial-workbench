@@ -19,7 +19,6 @@ use specta::Type;
 use tauri::{
     Manager, PhysicalPosition, PhysicalSize, RunEvent, Window, WindowEvent, plugin::TauriPlugin,
 };
-use tauri_plugin_window_state::AppHandleExt;
 
 use crate::{
     error::{ErrorCode, NativeError, NativeResult},
@@ -290,29 +289,6 @@ fn load_saved_geometry(path: &std::path::Path) -> (SavedGeometry, bool) {
     )
 }
 
-#[derive(Default, Deserialize)]
-struct PluginWindowState {
-    width: u32,
-    height: u32,
-    x: Option<i32>,
-    y: Option<i32>,
-    prev_x: Option<i32>,
-    prev_y: Option<i32>,
-    #[serde(default)]
-    maximized: bool,
-}
-
-impl PluginWindowState {
-    fn position(&self) -> Option<PhysicalPosition<i32>> {
-        let position = if self.maximized {
-            self.prev_x.zip(self.prev_y)
-        } else {
-            self.x.zip(self.y)
-        };
-        position.map(|(x, y)| PhysicalPosition::new(x, y))
-    }
-}
-
 #[derive(Clone, Copy)]
 struct Pending {
     due: Instant,
@@ -464,7 +440,6 @@ impl Entry {
 
 struct Cache {
     saved: SavedGeometry,
-    legacy: HashMap<String, PluginWindowState>,
     positions: HashMap<String, PhysicalPosition<i32>>,
     entries: HashMap<String, Entry>,
 }
@@ -492,12 +467,6 @@ impl Cache {
                 false
             }
         });
-        for label in self.legacy.keys() {
-            if let Some(size) = default(label) {
-                self.saved.windows.insert(label.clone(), size);
-            }
-        }
-        self.legacy.clear();
     }
 }
 
@@ -580,13 +549,6 @@ fn window_error(error: tauri::Error) -> NativeError {
 }
 
 fn configured(app: &tauri::AppHandle, label: &str) -> (LogicalSize, Limits) {
-    let extension = label.starts_with("extension-");
-    let extension_size = extension
-        .then(|| {
-            app.try_state::<crate::extension_windows::ExtensionWindows>()
-                .and_then(|state| state.default_size(label))
-        })
-        .flatten();
     let config = app
         .config()
         .app
@@ -596,27 +558,13 @@ fn configured(app: &tauri::AppHandle, label: &str) -> (LogicalSize, Limits) {
         .or_else(|| app.config().app.windows.first());
     (
         LogicalSize {
-            width: extension_size.map_or_else(
-                || config.map_or(1120.0, |config| config.width),
-                |size| f64::from(size.width),
-            ),
-            height: extension_size.map_or_else(
-                || config.map_or(740.0, |config| config.height),
-                |size| f64::from(size.height),
-            ),
+            width: config.map_or(1120.0, |config| config.width),
+            height: config.map_or(740.0, |config| config.height),
         },
         Limits {
             min: LogicalSize {
-                width: if extension {
-                    360.0
-                } else {
-                    config.and_then(|config| config.min_width).unwrap_or(1.0)
-                },
-                height: if extension {
-                    480.0
-                } else {
-                    config.and_then(|config| config.min_height).unwrap_or(1.0)
-                },
+                width: config.and_then(|config| config.min_width).unwrap_or(1.0),
+                height: config.and_then(|config| config.min_height).unwrap_or(1.0),
             },
             max_width: config.and_then(|config| config.max_width),
             max_height: config.and_then(|config| config.max_height),
@@ -839,9 +787,8 @@ pub fn reset(window: tauri::WebviewWindow, center: bool) -> NativeResult<WindowG
             apply_preferred(&native, &copy, default, center)?;
         }
         let mut cache = copy.cache.lock().map_err(|_| geometry_unavailable())?;
-        // 动态扩展未必在本次进程打开过；清除尺寸，让下次创建读取其当前清单默认。
         cache.reset_saved(|label| {
-            (!label.starts_with("extension-")).then(|| configured(&handle, label).0)
+            matches!(label, "main" | "secondary").then(|| configured(&handle, label).0)
         });
         drop(cache);
         describe(&window.as_ref().window(), &copy)
@@ -1157,12 +1104,6 @@ fn track(window: Window) {
             .windows
             .get(window.label())
             .copied()
-            .or_else(|| {
-                cache.legacy.get(window.label()).map(|legacy| LogicalSize {
-                    width: f64::from(legacy.width) / scale,
-                    height: f64::from(legacy.height) / scale,
-                })
-            })
             .filter(|size| size.valid())
             .unwrap_or(default);
         let initial_origin = cache.positions.get(window.label()).copied();
@@ -1250,22 +1191,11 @@ pub fn init() -> TauriPlugin<tauri::Wry> {
             let paths = DataPaths::resolve(app)?;
             let path = paths.config.join("window-geometry.json");
             let (saved, writable) = load_saved_geometry(&path);
-            // 旧插件未保存 DPI，仅在缺少逻辑存档时迁移物理尺寸，并按当前工作区约束。
-            let legacy: HashMap<String, PluginWindowState> =
-                read_json(&app.path().app_config_dir()?.join(app.filename())).unwrap_or_default();
-            // 位置沿用插件格式；在首次变更前捕获，避免异步恢复期间的移动污染目标。
-            let positions = legacy
-                .iter()
-                .filter_map(|(label, state)| {
-                    state.position().map(|position| (label.clone(), position))
-                })
-                .collect();
             let state = Arc::new(GeometryState {
                 path,
                 cache: Mutex::new(Cache {
                     saved,
-                    legacy,
-                    positions,
+                    positions: HashMap::new(),
                     entries: HashMap::new(),
                 }),
                 writing: Mutex::new(()),
@@ -1686,7 +1616,6 @@ mod tests {
             path,
             cache: Mutex::new(Cache {
                 saved,
-                legacy: HashMap::new(),
                 positions: HashMap::new(),
                 entries: HashMap::new(),
             }),
@@ -2020,28 +1949,9 @@ mod tests {
     }
 
     #[test]
-    fn plugin_positions_restore_normal_bounds_and_allow_missing_legacy_coordinates() {
-        let normal: PluginWindowState = serde_json::from_value(serde_json::json!({
-            "width": 0, "height": 0, "x": 24, "y": 31,
-            "prev_x": 0, "prev_y": 31, "maximized": false
-        }))
-        .unwrap();
-        assert_eq!(normal.position(), Some(PhysicalPosition::new(24, 31)));
-        let maximized = PluginWindowState {
-            maximized: true,
-            ..normal
-        };
-        assert_eq!(maximized.position(), Some(PhysicalPosition::new(0, 31)));
-        let legacy: PluginWindowState =
-            serde_json::from_str(r#"{"width":1120,"height":740}"#).unwrap();
-        assert_eq!(legacy.position(), None);
-    }
-
-    #[test]
     fn recreated_windows_use_the_latest_confirmed_normal_position() {
         let mut cache = Cache {
             saved: SavedGeometry::default(),
-            legacy: HashMap::new(),
             positions: HashMap::from([("secondary".into(), PhysicalPosition::new(24, 31))]),
             entries: HashMap::from([("secondary".into(), starting_entry())]),
         };
@@ -2055,44 +1965,30 @@ mod tests {
     }
 
     #[test]
-    fn reset_includes_closed_windows_and_prevents_legacy_sizes_from_returning() {
+    fn reset_includes_closed_windows_and_removes_unknown_labels() {
         let mut cache = Cache {
             saved: SavedGeometry {
                 schema_version: 1,
                 windows: HashMap::from([
                     ("main".into(), size(1400.0, 900.0)),
-                    ("closed".into(), size(1600.0, 1000.0)),
-                    ("extension-game".into(), size(1500.0, 1100.0)),
+                    ("secondary".into(), size(1600.0, 1000.0)),
+                    ("unknown".into(), size(1500.0, 1100.0)),
                 ]),
             },
-            legacy: HashMap::from([
-                (
-                    "legacy".into(),
-                    PluginWindowState {
-                        width: 2000,
-                        height: 1200,
-                        ..Default::default()
-                    },
-                ),
-                ("extension-legacy".into(), PluginWindowState::default()),
-            ]),
             positions: HashMap::new(),
             entries: HashMap::new(),
         };
         cache.reset_saved(|label| {
-            if label.starts_with("extension-") {
-                None
-            } else if label == "closed" {
+            if label == "secondary" {
                 Some(size(960.0, 640.0))
-            } else {
+            } else if label == "main" {
                 Some(size(1120.0, 740.0))
+            } else {
+                None
             }
         });
         assert_eq!(cache.saved.windows["main"], size(1120.0, 740.0));
-        assert_eq!(cache.saved.windows["closed"], size(960.0, 640.0));
-        assert_eq!(cache.saved.windows["legacy"], size(1120.0, 740.0));
-        assert!(!cache.saved.windows.contains_key("extension-game"));
-        assert!(!cache.saved.windows.contains_key("extension-legacy"));
-        assert!(cache.legacy.is_empty());
+        assert_eq!(cache.saved.windows["secondary"], size(960.0, 640.0));
+        assert!(!cache.saved.windows.contains_key("unknown"));
     }
 }

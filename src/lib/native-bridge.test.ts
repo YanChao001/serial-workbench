@@ -4,17 +4,12 @@ import { invoke } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import {
   NativeBridgeError,
-  createNote,
   getDesktopStatus,
   loadSettingsSnapshot,
-  installExtension,
-  installMarketExtension,
-  onNotesChanged,
   onSettingsChanged,
   recordFrontendError,
   saveSettingsSnapshot,
   resetSettingsSnapshot,
-  updateNote,
 } from "./tauri";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -51,69 +46,6 @@ describe("generated native bridge", () => {
     });
   });
 
-  it("uses Rust-generated command payloads for notes and optimistic versions", async () => {
-    const note = {
-      id: 1,
-      title: "A",
-      body: "B",
-      updatedAt: "2026-01-01",
-      version: 1,
-    };
-    vi.mocked(invoke).mockResolvedValue(note);
-    await expect(createNote({ title: "A", body: "B" })).resolves.toEqual(note);
-    expect(invoke).toHaveBeenLastCalledWith("create_note", {
-      input: { title: "A", body: "B" },
-    });
-    await updateNote({ id: 1, title: "C", body: "D", expectedVersion: 1 });
-    expect(invoke).toHaveBeenLastCalledWith("update_note", {
-      input: { id: 1, title: "C", body: "D", expectedVersion: 1 },
-    });
-  });
-
-  it("keeps upgrade consent absent for native inheritance and forwards explicit reviewed consent", async () => {
-    const source = {
-      repository: "owner/market",
-      publicKeyFingerprint: "b".repeat(64),
-      catalogRevision: 3,
-      packageSha256: "c".repeat(64),
-    };
-    const snapshot = { revision: 9, items: [], runs: [] };
-    vi.mocked(invoke).mockResolvedValue(snapshot);
-    for (const consent of [
-      undefined,
-      { trusted: true, grantedPermissions: ["storage" as const] },
-    ]) {
-      await expect(
-        installExtension("package", 8, true, "module-hash", consent),
-      ).resolves.toEqual(snapshot);
-      expect(invoke).toHaveBeenLastCalledWith("install_extension", {
-        content: "package",
-        expectedRevision: 8,
-        replaceExisting: true,
-        expectedSha256: "module-hash",
-        consent: consent ?? null,
-      });
-      await expect(
-        installMarketExtension(
-          "package",
-          8,
-          true,
-          "module-hash",
-          source,
-          consent,
-        ),
-      ).resolves.toEqual(snapshot);
-      expect(invoke).toHaveBeenLastCalledWith("install_market_extension", {
-        content: "package",
-        expectedRevision: 8,
-        replaceExisting: true,
-        expectedSha256: "module-hash",
-        source,
-        consent: consent ?? null,
-      });
-    }
-  });
-
   it.each([
     ["save", saveSettingsSnapshot, "save_settings_snapshot"],
     ["reset", resetSettingsSnapshot, "reset_settings_snapshot"],
@@ -139,7 +71,7 @@ describe("generated native bridge", () => {
     },
   );
 
-  it("subscribes to shared settings and notes events and returns cleanup", async () => {
+  it("subscribes to shared settings events and returns cleanup", async () => {
     const stop = vi.fn();
     vi.mocked(listen).mockResolvedValue(stop);
     const changed = vi.fn();
@@ -160,12 +92,6 @@ describe("generated native bridge", () => {
       revision: 3,
       settings: { language: "en" },
     });
-    expect(await onNotesChanged(changed)).toBe(stop);
-    expect(listen).toHaveBeenLastCalledWith(
-      "app://notes-changed",
-      expect.any(Function),
-      { target: { kind: "WebviewWindow", label: "secondary" } },
-    );
   });
 
   it("bounds error logs without splitting Unicode characters", async () => {

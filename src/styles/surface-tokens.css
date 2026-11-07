@@ -1,4 +1,4 @@
-/* 材质配置的唯一入口：宿主与插件共用此文件，不在业务页面另定透明比例。 */
+/* 材质配置的唯一入口，不在业务页面另定透明比例。 */
 :root {
   --skin-exposure: 0.5;
   --ui-page-reveal-at-half: 0.25;
@@ -135,7 +135,7 @@
   );
   --control-select-hover-background: var(--surface-state-hover);
 
-  /* 阅读材质中的语法色也参与同一主题快照，避免插件另抄一份调色板。 */
+  /* 阅读材质中的语法色也参与同一主题快照。 */
   --code-property: #4338ca;
   --code-string: #065f46;
   --code-number: #92400e;

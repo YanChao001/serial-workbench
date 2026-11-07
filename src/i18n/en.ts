@@ -1,60 +1,48 @@
-import { enExperience } from "./en-experience";
-import { enWorkflows } from "./en-workflows";
 import type { Messages } from "./zh-CN";
-import { enFeatures } from "./en-features";
-import { enShowroom } from "./en-showroom";
-import { enComponents } from "./en-components";
-import { enNavigation } from "./en-navigation";
-import { enMotion } from "./en-motion";
-import { enSystem } from "./en-system";
-import { enData } from "./en-data";
-import { enWorkbench } from "./en-workbench";
-import { enLabs } from "./en-labs";
-import { enCatalog } from "./en-catalog";
 import { enRecovery } from "./en-recovery";
+import { enShell } from "./en-shell";
 
 /** 与默认语言保持相同词条；缺词或拼错键会在类型检查中报错。 */
 export const en = {
-  ...enWorkflows,
-  ...enFeatures,
-  ...enShowroom,
-  ...enComponents,
-  ...enNavigation,
-  ...enMotion,
-  ...enSystem,
-  ...enData,
-  ...enWorkbench,
-  ...enLabs,
-  ...enCatalog,
   ...enRecovery,
-  ...enExperience,
-  "nav.overview": "Showroom",
-  "nav.components": "Interaction",
-  "nav.motion": "Motion lab",
-  "nav.bridge": "App communication",
+  ...enShell,
+  "settings.search": "Search settings",
+  "settings.searchPlaceholder": "Language, theme, fonts…",
+  "settings.searchEmpty": "No matching settings",
+  "settings.searchResults": "{count} settings",
+  "settings.sidebarWidth": "Sidebar width",
+  "settings.sidebarCollapsed": "Collapse sidebar",
+  "settings.layout": "Layout and navigation",
+  "settings.persistenceLoading": "Syncing settings…",
+  "settings.persistenceSaving": "Saving…",
+  "settings.persistenceSaved": "Settings saved",
+  "settings.persistenceError":
+    "Settings not saved; changes apply to this session only. Retry.",
+  "settings.persistenceFuture":
+    "Settings are from a newer version; originals are preserved. Update the app or explicitly reset preferences.",
+  "common.backHome": "Back home",
+  "common.loading": "Loading…",
+  "common.retry": "Retry",
+  "common.save": "Save",
+  "common.delete": "Delete",
+  "common.refresh": "Refresh",
+  "common.operationFailed": "Operation failed: {error}",
+  "common.open": "Open",
+  "nav.overview": "Home",
   "nav.settings": "Settings",
   "app.native": "Desktop app",
   "app.preview": "Browser preview",
-  "browserDemo.title": "Browser demo",
-  "browserDemo.description":
-    "Explore the interface, themes and motion; files, notes and system tools need the desktop app.",
-  "browserDemo.source": "Source",
-  "browserDemo.download": "Download desktop",
-  "browserDemo.navigation": "Choose a page",
+  "browserPreview.navigation": "Choose a page",
   "title.file": "File",
-  "title.edit": "Edit",
   "title.view": "View",
   "title.help": "Help",
-  "title.settings": "Settings…",
-  "title.reload": "Reload",
+  "title.settings": "Settings",
   "title.quit": "Quit",
-  "title.copyLink": "Copy URL",
-  "title.selectAll": "Select all",
   "title.light": "Light",
   "title.dark": "Dark",
   "title.system": "System",
   "title.toggleMenu": "Show menu bar",
-  "title.docs": "Tauri docs",
+  "title.docs": "Product documentation",
   "title.repo": "Source repository",
   "title.about": "About",
   "title.minimize": "Minimize",
@@ -62,8 +50,7 @@ export const en = {
   "title.restore": "Restore",
   "title.close": "Close",
   "title.toggleTheme": "Toggle theme",
-  "title.aboutBody":
-    "Manage files, notes, tasks and desktop tools in one workspace, with custom appearance and layout.",
+  "title.aboutBody": "The Serial Workbench workspace and application settings.",
   "common.copied": "Copied",
   "common.openFailed":
     "Cannot open the link. Copy the address into your browser.",
@@ -80,12 +67,9 @@ export const en = {
   "settings.networkMode": "Network connection",
   "settings.networkModeSystem": "System proxy",
   "settings.networkModeDirect": "Direct connection",
-  "settings.networkModeHint":
-    "Applies to later requests after saving; plugins still need separate system proxy permission.",
+  "settings.networkModeHint": "Applies to later requests after saving.",
   "settings.networkModeBrowserHint":
     "The browser controls connections; only the desktop app can change this setting.",
-  "settings.subtitle":
-    "Preferences stay local; appearance, layout and size apply instantly, startup position on the next window opening.",
   "settings.appearance": "Appearance",
   "settings.appearanceHint": "Theme, accent, radius, font and background",
   "settings.theme": "Theme",
@@ -133,7 +117,7 @@ export const en = {
   "settings.motionFull": "Full",
   "settings.motionReduced": "Reduced",
   "settings.menuBar": "Show menu bar",
-  "settings.menuBarHint": "File / Edit / View / Help in the title bar",
+  "settings.menuBarHint": "File / View / Help in the title bar",
   "settings.runtime": "App information",
   "settings.runtimeHint":
     "App and device information requires the desktop app.",
@@ -144,7 +128,7 @@ export const en = {
   "settings.linksHint": "Opens in your default browser",
   "settings.resetConfirmTitle": "Restore default preferences?",
   "settings.resetConfirmDescription":
-    "Reset appearance, layout, all window sizes and background preferences. Restore the system proxy and remember the last startup position; open windows stay in place. Keep language, notes and system startup settings. Newer-version preferences are also replaced.",
+    "Reset appearance, layout, all window sizes and background preferences. Network connections return to the system proxy; startup position returns to Remember last position without moving the current window. Keep the language and system autostart setting. Preferences from a newer version will also be replaced.",
   "settings.windowSize": "Window size",
   "settings.windowSizeHint":
     "Apply and save a size immediately, restoring maximized windows first; or drag the window edges to resize.",
@@ -163,26 +147,7 @@ export const en = {
   "settings.windowPositionCenter": "Center",
   "settings.windowPositionHint":
     "Applies to the next window opening; open windows stay in place.",
-  "bridge.title": "App communication",
-  "bridge.subtitle":
-    "Enter a name for a locally processed greeting; desktop app required.",
-  "bridge.demo": "Send a greeting",
-  "bridge.demoHint":
-    "Send a greeting with a name; blank names show a reminder. Names stay on this device.",
-  "bridge.name": "Name",
-  "bridge.namePlaceholder": "Enter a name",
-  "bridge.call": "Send greeting",
-  "bridge.result": "Response",
-  "bridge.notCalled": "Enter a name and send a greeting",
-  "bridge.success": "Response received",
-  "bridge.failed": "Call failed: {error}",
-  "bridge.browserOnly": "Desktop app required.",
-  "bridge.developerDetails": "Developer resources",
-  "bridge.frontend": "Frontend call",
-  "bridge.note":
-    "Register new commands in bindings.rs, then run pnpm bindings:generate to update the frontend contract.",
   "settings.bgPlainDescription": "A plain background",
-  "settings.bgStarlight": "Star notes",
   "settings.bgAurora": "Cat doodles",
   "settings.bgAuroraDescription": "Cat and paw-print line drawings",
   "settings.bgDune": "Coffee break",
@@ -216,6 +181,7 @@ export const en = {
     "Image too large. Choose one under 64MB and 100 million pixels.",
   "settings.imageDecodeError":
     "Cannot read the image. Check the file or choose another.",
+  "settings.bgStarlight": "Star notes",
   "settings.bgStarlightDescription": "Hand-drawn star watermark",
   "settings.bgSakura": "Cloud notes",
   "settings.bgSakuraDescription": "Cloud and sun line drawings",

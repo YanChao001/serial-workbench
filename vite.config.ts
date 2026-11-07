@@ -1,5 +1,6 @@
 import path from "node:path";
 import process from "node:process";
+import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
@@ -11,10 +12,30 @@ export default defineConfig(({ mode }) => ({
   plugins: [
     react(),
     tailwindcss(),
-    ...(mode === "web-demo"
+    {
+      name: "project-license-files",
+      apply: "build",
+      generateBundle() {
+        for (const [fileName, source] of [
+          ["LICENSE", "LICENSE"],
+          ["NOTICE", "NOTICE"],
+          [
+            "third-party/tauri-desktop-starter.LICENSE",
+            "resources/third-party/tauri-desktop-starter.LICENSE",
+          ],
+        ] as const) {
+          this.emitFile({
+            type: "asset",
+            fileName,
+            source: readFileSync(path.resolve(import.meta.dirname, source)),
+          });
+        }
+      },
+    },
+    ...(mode === "web-preview"
       ? [
           {
-            name: "browser-demo-csp",
+            name: "browser-preview-csp",
             transformIndexHtml() {
               return [
                 {
@@ -22,7 +43,7 @@ export default defineConfig(({ mode }) => ({
                   attrs: {
                     "http-equiv": "Content-Security-Policy",
                     content:
-                      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' https://httpbin.org https://jsonplaceholder.typicode.com wss://echo.websocket.events; object-src 'none'; base-uri 'self'",
+                      "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self'; object-src 'none'; base-uri 'self'",
                   },
                   injectTo: "head-prepend" as const,
                 },
@@ -35,9 +56,9 @@ export default defineConfig(({ mode }) => ({
 
   resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
 
-  // 演示与桌面共用入口；相对资源地址同时适用于 Pages 项目子路径和独立域名。
-  base: mode === "web-demo" ? "./" : "/",
-  build: { outDir: mode === "web-demo" ? "dist-web" : "dist" },
+  // 浏览器预览与桌面共用入口；相对地址支持项目子路径和独立域名。
+  base: mode === "web-preview" ? "./" : "/",
+  build: { outDir: mode === "web-preview" ? "dist-web" : "dist" },
 
   // 保留终端输出，便于查看 Tauri 开发与构建过程中的 Rust 错误。
   clearScreen: false,

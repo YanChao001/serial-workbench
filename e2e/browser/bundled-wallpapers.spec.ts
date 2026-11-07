@@ -43,7 +43,9 @@ for (const theme of ["dark", "light"] as const) {
       },
     );
     expect(original).toMatchObject({ width: 3840, height: 2160 });
-    expect(new URL(original.src).pathname).toMatch(/^\/desktop-demo\/assets\//);
+    expect(new URL(original.src).pathname).toMatch(
+      /^\/serial-workbench\/assets\//,
+    );
     const response = await page.request.get(original.src);
     expect(response.ok()).toBe(true);
     expect(digest(await response.body())).toBe(digest(source));

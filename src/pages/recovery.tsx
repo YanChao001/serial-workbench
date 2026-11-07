@@ -1,11 +1,9 @@
-import { getLocale } from "@/i18n/registry";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Navigate, useLocation } from "react-router-dom";
 import { toast } from "sonner";
 import { NativePage, ResourceError } from "@/components/native-page";
 import { HelpTooltip } from "@/components/help-tooltip";
 import { Button } from "@/components/ui/button";
-import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent } from "@/components/ui/card";
 import {
   Dialog,
@@ -23,22 +21,17 @@ import { isRecord } from "@/lib/settings-model";
 import { copyText } from "@/lib/clipboard";
 import {
   recoveryStatus,
-  listRecoveryBackups,
-  pickRecoveryBackup,
-  previewRecoveryBackup,
-  restoreRecoveryBackup,
   stageRecovery,
   relaunchApp,
   getDiagnosticsReport,
   isTauri,
-  type BackupPreview,
 } from "@/lib/tauri";
 
 function RecoveryRedirect() {
   const { search } = useLocation();
   const params = new URLSearchParams(search);
   params.set("section", "recovery");
-  return <Navigate to={`/diagnostics?${params.toString()}`} replace />;
+  return <Navigate to={`/settings?${params.toString()}`} replace />;
 }
 
 export function RecoveryContent({
@@ -46,29 +39,19 @@ export function RecoveryContent({
 }: {
   standalone?: boolean;
 }) {
-  const { t, language } = useI18n();
+  const { t } = useI18n();
   const latest = useLatestTranslator();
   const load = useCallback(() => recoveryStatus(), []);
   const { data: status, error: statusError, reload } = useNativeResource(load);
-  const loadBackups = useCallback(
-    () => (status?.active ? listRecoveryBackups() : Promise.resolve(null)),
-    [status?.active],
-  );
-  const {
-    data: backups,
-    error: backupsError,
-    loading: backupsLoading,
-    reload: reloadBackups,
-  } = useNativeResource(loadBackups);
-  const [preview, setPreview] = useState<BackupPreview | null>(null);
   const [error, setError] = useState<unknown>(null);
   const [recoveryError, setRecoveryError] = useState<unknown>(null);
   const [busy, setBusy] = useState(false);
-  const [resetSettings, setResetSettings] = useState(false);
+  const [scheduled, setScheduled] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const running = useRef(false);
   const mounted = useRef(false);
   const notifiedStatusError = useRef<unknown>(null);
+  const pending = status?.pending || scheduled;
   const reportError = useCallback(
     (reason: unknown) => {
       setError(reason);
@@ -180,204 +163,47 @@ export function RecoveryContent({
         </Card>
       ) : null}
       {status?.active ? (
-        <>
-          <Card>
-            <CardContent className="space-y-3">
-              <h3 className="flex items-center gap-2 font-semibold">
-                {t("recovery.choose")}
-                <HelpTooltip
-                  label={`${t("recovery.choose")} · ${t("title.help")}`}
-                >
-                  {t("recovery.chooseHint")}
-                </HelpTooltip>
-              </h3>
-              <Button
-                disabled={busy || status.pending}
-                onClick={() =>
-                  void run(async () => {
-                    const value = await pickRecoveryBackup();
-                    if (mounted.current && value) {
-                      setPreview(value);
-                      setRecoveryError(null);
-                    }
-                  })
-                }
+        <fieldset
+          data-surface="panel"
+          className="min-w-0 space-y-3"
+          aria-label={t("recovery.schedule")}
+        >
+          <legend className="max-w-full text-sm font-medium">
+            <h3 className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
+              {t("recovery.schedule")}
+              <HelpTooltip
+                label={`${t("recovery.schedule")} · ${t("title.help")}`}
               >
-                {t("recovery.import")}
-              </Button>
-              <div
-                className="min-h-20 space-y-2"
-                role="region"
-                aria-label={t("recovery.backups")}
-                aria-busy={backupsLoading || (!backups && !backupsError)}
+                {t("recovery.scheduleHint")}
+              </HelpTooltip>
+            </h3>
+          </legend>
+          {pending ? (
+            <>
+              <p
+                role="status"
+                tabIndex={0}
+                className="min-w-0 overflow-auto text-sm"
               >
-                <ResourceError
-                  error={backupsError}
-                  retry={() => void reloadBackups()}
-                />
-                {!backups && !backupsError ? (
-                  <p
-                    role="status"
-                    className="py-3 text-sm text-muted-foreground"
-                  >
-                    {t("recovery.backupsLoading")}
-                  </p>
-                ) : backups?.length ? (
-                  <ul className="max-h-72 space-y-2 overflow-y-auto">
-                    {backups.map((backup) => (
-                      <li
-                        key={backup.id}
-                        data-surface="control"
-                        className="flex flex-wrap items-center justify-between gap-2 rounded-lg p-3"
-                      >
-                        <div className="min-w-0 text-sm">
-                          <p>
-                            {new Date(backup.createdAt).toLocaleString(
-                              getLocale(language).documentLang,
-                            )}
-                          </p>
-                          <p className="text-xs break-all text-muted-foreground">
-                            {backup.id}
-                          </p>
-                          <p className="text-xs text-muted-foreground">
-                            {t("data.backupCount", {
-                              notes: backup.notes,
-                              trashed: backup.trashed,
-                              drafts: backup.drafts,
-                            })}
-                          </p>
-                        </div>
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          disabled={busy || status.pending}
-                          onClick={() =>
-                            void run(async () => {
-                              const value = await previewRecoveryBackup(
-                                backup.id,
-                              );
-                              if (mounted.current) {
-                                setPreview(value);
-                                setRecoveryError(null);
-                              }
-                            })
-                          }
-                        >
-                          {t("recovery.preview")}
-                        </Button>
-                      </li>
-                    ))}
-                  </ul>
-                ) : backups && !backupsError ? (
-                  <p className="py-3 text-sm text-muted-foreground">
-                    {t("recovery.backupsEmpty")}
-                  </p>
-                ) : null}
-                {backupsLoading && backups ? (
-                  <p role="status" className="sr-only">
-                    {t("recovery.backupsLoading")}
-                  </p>
-                ) : null}
-              </div>
-              {preview ? (
-                <section
-                  className="space-y-3 rounded-lg border p-3"
-                  aria-label={t("recovery.preview")}
-                >
-                  <p className="text-sm break-all">{preview.info.id}</p>
-                  <p className="text-sm">
-                    {t("data.backupCount", {
-                      notes: preview.info.notes,
-                      trashed: preview.info.trashed,
-                      drafts: preview.info.drafts,
-                    })}
-                  </p>
-                  <ul
-                    tabIndex={0}
-                    aria-label={t("recovery.preview")}
-                    className="max-h-40 list-inside list-disc overflow-y-auto text-sm break-words"
-                  >
-                    {preview.sampleTitles.map((title, index) => (
-                      <li key={index}>{title}</li>
-                    ))}
-                  </ul>
-                  <Button
-                    disabled={busy || status.pending}
-                    onClick={() =>
-                      void run(async () => {
-                        await restoreRecoveryBackup(preview.info.id);
-                        await reload();
-                        if (mounted.current) {
-                          setRecoveryError(null);
-                          toast.success(latest("recovery.validated"));
-                        }
-                      })
-                    }
-                  >
-                    {t("recovery.testRestore")}
-                  </Button>
-                </section>
-              ) : null}
-            </CardContent>
-          </Card>
-          <fieldset
-            data-surface="panel"
-            className="min-w-0 space-y-3"
-            aria-label={t("recovery.schedule")}
-          >
-            <legend className="max-w-full text-sm font-medium">
-              <h3 className="inline-flex min-w-0 items-center gap-2 text-sm font-medium">
-                {t("recovery.schedule")}
-                <HelpTooltip
-                  label={`${t("recovery.schedule")} · ${t("title.help")}`}
-                >
-                  {t("recovery.scheduleHint")}
-                </HelpTooltip>
-              </h3>
-            </legend>
-            <p
-              role="status"
-              tabIndex={status.restored || status.pending ? 0 : undefined}
-              className="min-w-0 overflow-auto text-sm empty:hidden"
-            >
-              {[
-                status.restored
-                  ? t("recovery.recordCount", { count: status.notes })
-                  : null,
-                status.pending ? t("recovery.pending") : null,
-              ]
-                .filter(Boolean)
-                .join(" · ")}
-            </p>
-            <label className="flex items-start gap-3 text-sm">
-              <Checkbox
-                className="mt-1"
-                checked={resetSettings}
-                disabled={busy || status.pending}
-                onCheckedChange={(checked) =>
-                  setResetSettings(checked === true)
-                }
-              />
-              <span>{t("recovery.resetSettings")}</span>
-            </label>
-            {status.pending ? (
+                {t("recovery.pending")}
+              </p>
               <Button
                 disabled={busy}
                 onClick={() => void run(() => relaunchApp())}
               >
                 {t("recovery.restart")}
               </Button>
-            ) : (
-              <Button
-                variant="destructive"
-                disabled={busy || !status.restored}
-                onClick={() => setConfirm(true)}
-              >
-                {t("recovery.schedule")}
-              </Button>
-            )}
-          </fieldset>
-        </>
+            </>
+          ) : (
+            <Button
+              variant="destructive"
+              disabled={busy}
+              onClick={() => setConfirm(true)}
+            >
+              {t("recovery.schedule")}
+            </Button>
+          )}
+        </fieldset>
       ) : null}
       {error && error !== recoveryError && !confirm ? (
         <p role="alert" className="sr-only">
@@ -394,11 +220,7 @@ export function RecoveryContent({
           <DialogHeader>
             <DialogTitle>{t("recovery.confirmTitle")}</DialogTitle>
             <DialogDescription>
-              {t(
-                resetSettings
-                  ? "recovery.confirmWithSettings"
-                  : "recovery.confirmDatabase",
-              )}
+              {t("recovery.confirmWithSettings")}
             </DialogDescription>
           </DialogHeader>
           {error ? (
@@ -419,9 +241,9 @@ export function RecoveryContent({
               disabled={busy}
               onClick={() =>
                 void run(async () => {
-                  await stageRecovery(resetSettings);
-                  await reload();
+                  await stageRecovery();
                   if (mounted.current) {
+                    setScheduled(true);
                     setRecoveryError(null);
                     setConfirm(false);
                   }
@@ -437,8 +259,8 @@ export function RecoveryContent({
   );
   return standalone ? (
     <NativePage
-      title={t("diagnostics.title")}
-      description={t("diagnostics.description")}
+      title={t("recovery.title")}
+      description={t("recovery.description")}
     >
       {content}
     </NativePage>

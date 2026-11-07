@@ -2,7 +2,7 @@
   "schemaVersion": 1,
   "app": {
     "repositoryUrl": "https://github.com/YanChao001/serial-workbench",
-    "docsUrl": "https://github.com/YanChao001/serial-workbench/blob/develop/docs/README.md",
+    "docsUrl": "https://github.com/YanChao001/serial-workbench/blob/main/docs/README.md",
     "homepageUrl": "https://github.com/YanChao001/serial-workbench"
   },
   "config": {
@@ -10,7 +10,7 @@
     "hosting": {
       "provider": "github",
       "repositoryUrlTemplate": "https://github.com/{repository}",
-      "defaultBranch": "develop",
+      "defaultBranch": "main",
       "releaseBranch": "main",
       "links": {
         "file": "{repositoryUrl}/blob/{ref}/{path}",
@@ -26,14 +26,7 @@
       "uploadBaseUrl": "https://uploads.github.com"
     },
     "marketplace": {
-      "gitUrl": "https://github.com/YanChao001/serial-workbench-plugins.git",
-      "catalogUrlTemplate": "{repositoryUrl}/releases/latest/download/catalog.json",
-      "packageUrlTemplate": "{repositoryUrl}/releases/download/{tag}/{asset}",
-      "downloadUrlPrefixes": [
-        "{repositoryUrl}/releases/",
-        "https://release-assets.githubusercontent.com/",
-        "https://objects.githubusercontent.com/"
-      ]
+      "gitUrl": "https://github.com/YanChao001/serial-workbench-plugins.git"
     }
   }
 }

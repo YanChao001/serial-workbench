@@ -41,7 +41,7 @@ pub async fn choose_wallpaper_video(
         })?;
         app.state::<WallpaperVideoStore>()
             .import(&path, || {
-                let images = app.state::<WallpaperStore>().list(None)?;
+                let images = app.state::<WallpaperStore>().list()?;
                 let references = settings
                     .wallpaper_media_cleanup_settings()
                     .ok()
@@ -67,35 +67,8 @@ pub async fn choose_wallpaper_video(
 
 #[tauri::command]
 #[specta::specta]
-pub async fn list_wallpapers(
-    app: tauri::AppHandle,
-    window: tauri::WebviewWindow,
-    legacy: Option<WallpaperInput>,
-) -> NativeResult<Vec<Wallpaper>> {
-    let video = legacy.as_ref().and_then(|input| input.video.clone());
-    if video.is_some() {
-        crate::commands::require_host_window(window.label())?;
-    }
-    blocking::run(move || {
-        app.state::<WallpaperVideoStore>()
-            .with_video(video.as_ref(), || {
-                app.state::<WallpaperStore>()
-                    .list_with_validation(legacy, |input| {
-                        if input
-                            .video
-                            .as_ref()
-                            .is_some_and(|video| !app.state::<WallpaperVideoStore>().exists(video))
-                        {
-                            return Err(crate::error::NativeError::new(
-                                crate::error::ErrorCode::NotFound,
-                                "Wallpaper video is unavailable",
-                            ));
-                        }
-                        Ok(())
-                    })
-            })
-    })
-    .await
+pub async fn list_wallpapers(app: tauri::AppHandle) -> NativeResult<Vec<Wallpaper>> {
+    blocking::run(move || app.state::<WallpaperStore>().list()).await
 }
 
 #[tauri::command]

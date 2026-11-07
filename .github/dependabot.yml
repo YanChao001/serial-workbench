@@ -4,8 +4,9 @@ version: 2
 # 依赖升级需验证构建及 WebView 兼容性，不自动合并
 updates:
   - package-ecosystem: "npm"
-    directory: "/"
-    target-branch: "develop"
+    directories:
+      - "/"
+    target-branch: "main"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -14,8 +15,9 @@ updates:
       prefix: "chore(deps)"
 
   - package-ecosystem: "cargo"
-    directory: "/src-tauri"
-    target-branch: "develop"
+    directories:
+      - "/src-tauri"
+    target-branch: "main"
     schedule:
       interval: "weekly"
       day: "monday"
@@ -25,7 +27,7 @@ updates:
 
   - package-ecosystem: "github-actions"
     directory: "/"
-    target-branch: "develop"
+    target-branch: "main"
     schedule:
       interval: "monthly"
     commit-message:

@@ -2,6 +2,7 @@ import { CheckIcon } from "lucide-react";
 import { PatternArtwork } from "@/components/window-background";
 import { CustomBackgroundPicker } from "@/components/custom-background-picker";
 import { WallpaperThumbnail } from "@/components/wallpaper-thumbnail";
+import { SettingRow } from "@/components/setting-row";
 import { BUNDLED_WALLPAPERS } from "@/lib/bundled-wallpapers";
 import { Label } from "@/components/ui/label";
 import { Slider } from "@/components/ui/slider";
@@ -156,62 +157,62 @@ export function SkinPicker() {
 
         <CustomBackgroundPicker />
 
-        <div
-          id="settings-backgroundIntensity"
-          tabIndex={-1}
-          className="flex min-w-0 flex-wrap items-center justify-between gap-3 border-t pt-3"
-        >
-          <div className="flex min-w-0 items-center gap-1.5">
-            <Label id="skin-intensity-heading" className="text-xs">
-              {t("settings.backgroundIntensity")}
-            </Label>
-          </div>
-          <div className="ml-auto w-full max-w-80 space-y-1">
-            <div
-              className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
-              aria-hidden="true"
-            >
-              <span>{t("settings.intensityCovered")}</span>
-              <output
-                data-surface="transparent"
-                className="inline overflow-visible p-0 text-foreground tabular-nums"
+        <div className="border-t pt-3">
+          <SettingRow
+            id="settings-backgroundIntensity"
+            label={
+              <Label id="skin-intensity-heading">
+                {t("settings.backgroundIntensity")}
+              </Label>
+            }
+          >
+            <div className="w-80 max-w-full space-y-1">
+              <div
+                className="flex items-center justify-between gap-2 text-xs text-muted-foreground"
+                aria-hidden="true"
               >
-                {settings.backgroundIntensity}%
-              </output>
-              <span>{t("settings.intensityTransparent")}</span>
+                <span>{t("settings.intensityCovered")}</span>
+                <output
+                  data-surface="transparent"
+                  className="inline overflow-visible p-0 text-foreground tabular-nums"
+                >
+                  {settings.backgroundIntensity}%
+                </output>
+                <span>{t("settings.intensityTransparent")}</span>
+              </div>
+              <Slider
+                min={0}
+                max={100}
+                step={10}
+                value={[settings.backgroundIntensity]}
+                disabled={settings.background === "plain"}
+                aria-labelledby="skin-intensity-heading"
+                aria-valuetext={t("settings.intensityValue", {
+                  value: settings.backgroundIntensity,
+                  level: settings.backgroundIntensity / 10 + 1,
+                })}
+                onValueChange={([value]) => {
+                  if (value !== undefined)
+                    update({
+                      backgroundIntensity: normalizeBackgroundIntensity(value),
+                    });
+                }}
+                className="min-h-5"
+              />
+              <div className="flex justify-between px-1.5" aria-hidden="true">
+                {BACKGROUND_INTENSITIES.map((intensity) => (
+                  <span
+                    key={intensity}
+                    className={cn(
+                      "h-1 w-px bg-muted-foreground/40",
+                      intensity === DEFAULT_BACKGROUND_INTENSITY &&
+                        "h-2 bg-primary",
+                    )}
+                  />
+                ))}
+              </div>
             </div>
-            <Slider
-              min={0}
-              max={100}
-              step={10}
-              value={[settings.backgroundIntensity]}
-              disabled={settings.background === "plain"}
-              aria-labelledby="skin-intensity-heading"
-              aria-valuetext={t("settings.intensityValue", {
-                value: settings.backgroundIntensity,
-                level: settings.backgroundIntensity / 10 + 1,
-              })}
-              onValueChange={([value]) => {
-                if (value !== undefined)
-                  update({
-                    backgroundIntensity: normalizeBackgroundIntensity(value),
-                  });
-              }}
-              className="min-h-5"
-            />
-            <div className="flex justify-between px-1.5" aria-hidden="true">
-              {BACKGROUND_INTENSITIES.map((intensity) => (
-                <span
-                  key={intensity}
-                  className={cn(
-                    "h-1 w-px bg-muted-foreground/40",
-                    intensity === DEFAULT_BACKGROUND_INTENSITY &&
-                      "h-2 bg-primary",
-                  )}
-                />
-              ))}
-            </div>
-          </div>
+          </SettingRow>
         </div>
       </div>
     </fieldset>

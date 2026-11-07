@@ -1,6 +1,6 @@
 # 设计提案模板
 
-这是 [高影响设计](./engineering-at-scale.md#设计评审与-adr-门槛) 的写作提纲，可直接用于 issue / PR。只保留实际涉及的章节；普通局部改动使用 PR 模板即可。需要跨会话维护的方案再按 [文档层级](./engineering-at-scale.md#文档层级与维护职责) 保存为计划，长期取舍记录到 [ADR](./adr/README.md)。
+这是 [高影响设计](./engineering-at-scale.md#设计评审与-adr-门槛) 的写作提纲，可直接用于 issue / PR。保留实际涉及的章节；普通局部改动使用 PR 模板，长期取舍记录到 [ADR](./adr/README.md)。
 
 ```markdown
 # 设计：要解决的问题

@@ -1,5 +1,4 @@
 import { StrictMode } from "react";
-import { createPortal } from "react-dom";
 import {
   act,
   cleanup,
@@ -7,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -19,14 +19,8 @@ import {
   isWindowMaximized,
   closeWindow,
   quitApp,
-  minimizeWindow,
-  toggleMaximizeWindow,
 } from "@/lib/tauri";
 import { TitleBar } from "./title-bar";
-import {
-  ExtensionChromeProvider,
-  useExtensionChromeTarget,
-} from "@/features/extensions/extension-chrome-slot";
 
 vi.mock("@/routes", () => ({ APP_ROUTES: [] }));
 vi.mock("@/hooks/use-fullscreen", () => ({
@@ -57,29 +51,13 @@ vi.mock("@/hooks/use-theme-switch", () => ({
   }),
 }));
 
-function TestTools() {
-  const target = useExtensionChromeTarget();
-  return target
-    ? createPortal(<button>Extension tools</button>, target.node)
-    : null;
-}
-function renderTitleBar(
-  standalone = false,
-  extension?: { name: string; icon: "calculator" },
-) {
+function renderTitleBar() {
   return render(
     <StrictMode>
-      <MemoryRouter
-        initialEntries={[standalone ? "/extension-window/test/open" : "/"]}
-      >
+      <MemoryRouter>
         <TooltipProvider>
           <CommandsProvider>
-            <ExtensionChromeProvider
-              scope={standalone ? "/extension-window/test/open" : "/"}
-            >
-              <TitleBar standalone={standalone} extension={extension} />
-              {extension ? <TestTools /> : null}
-            </ExtensionChromeProvider>
+            <TitleBar />
           </CommandsProvider>
         </TooltipProvider>
       </MemoryRouter>
@@ -154,7 +132,7 @@ describe("TitleBar 窗口订阅", () => {
     expect(isWindowMaximized).toHaveBeenCalledOnce();
   });
 
-  it("keeps close-window separate from explicit application quit", async () => {
+  it("keeps only Settings and Quit in File and separates application quit from closing the window", async () => {
     vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
     vi.mocked(isWindowMaximized).mockResolvedValue(false);
     renderTitleBar();
@@ -164,10 +142,33 @@ describe("TitleBar 窗口订阅", () => {
     fireEvent.keyDown(screen.getByRole("button", { name: "title.file" }), {
       key: "ArrowDown",
     });
-    fireEvent.click(
-      await screen.findByRole("menuitem", { name: "title.quit" }),
-    );
+    const menu = await screen.findByRole("menu");
+    const items = within(menu).getAllByRole("menuitem");
+    expect(items).toHaveLength(2);
+    expect(items[0]).toHaveAccessibleName(/^title.settings/);
+    expect(items[1]).toHaveAccessibleName("title.quit");
+    expect(within(menu).queryByRole("separator")).not.toBeInTheDocument();
+    fireEvent.click(within(menu).getByRole("menuitem", { name: "title.quit" }));
     expect(quitApp).toHaveBeenCalledOnce();
+  });
+
+  it("keeps File, View and Help menus without the unused Edit menu", () => {
+    vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
+    renderTitleBar();
+    const menuBar = screen.getByRole("navigation", { name: APP_CONFIG.name });
+    expect(within(menuBar).getAllByRole("button")).toHaveLength(3);
+    expect(
+      within(menuBar).getByRole("button", { name: "title.file" }),
+    ).toBeVisible();
+    expect(
+      within(menuBar).getByRole("button", { name: "title.view" }),
+    ).toBeVisible();
+    expect(
+      within(menuBar).getByRole("button", { name: "title.help" }),
+    ).toBeVisible();
+    expect(
+      within(menuBar).queryByRole("button", { name: "title.edit" }),
+    ).not.toBeInTheDocument();
   });
 
   it("shows the shared brand icon without repeating the application name as title text", () => {
@@ -179,57 +180,5 @@ describe("TitleBar 窗口订阅", () => {
     expect(icon).toHaveAttribute("width", "24");
     expect(screen.queryByText(APP_CONFIG.name)).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "title.file" })).toBeVisible();
-  });
-
-  it("keeps language, theme and native controls without host navigation in a standalone window", () => {
-    vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
-    renderTitleBar(true);
-    expect(
-      document.querySelector("[data-extension-window-title]"),
-    ).toHaveTextContent("ext.title");
-    expect(screen.queryByRole("button", { name: "title.file" })).toBeNull();
-    expect(screen.queryByRole("button", { name: "commands.open" })).toBeNull();
-    expect(
-      screen.getByRole("button", { name: "title.toggleTheme" }),
-    ).toBeVisible();
-    expect(
-      screen.getByRole("combobox", { name: "common.language" }),
-    ).toBeVisible();
-    fireEvent.click(screen.getByRole("button", { name: "title.toggleTheme" }));
-    expect(theme.toggle).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByRole("button", { name: "title.minimize" }));
-    fireEvent.click(screen.getByRole("button", { name: "title.maximize" }));
-    fireEvent.click(screen.getByRole("button", { name: "title.close" }));
-    expect(minimizeWindow).toHaveBeenCalledOnce();
-    expect(toggleMaximizeWindow).toHaveBeenCalledOnce();
-    expect(closeWindow).toHaveBeenCalledOnce();
-    expect(quitApp).not.toHaveBeenCalled();
-  });
-
-  it("uses the extension identity and places its tools between theme and native window controls", () => {
-    vi.mocked(onWindowResized).mockResolvedValue(vi.fn());
-    renderTitleBar(true, { name: "Scientific calculator", icon: "calculator" });
-    const icon = screen.getByRole("img", { name: "Scientific calculator" });
-    expect(icon.querySelector("svg")).toHaveClass("lucide-calculator");
-    expect(
-      screen.queryByRole("img", { name: APP_CONFIG.name }),
-    ).not.toBeInTheDocument();
-    const buttons = screen.getAllByRole("button");
-    const themeIndex = buttons.indexOf(
-      screen.getByRole("button", { name: "title.toggleTheme" }),
-    );
-    const toolsIndex = buttons.indexOf(
-      screen.getByRole("button", { name: "Extension tools" }),
-    );
-    const minimizeIndex = buttons.indexOf(
-      screen.getByRole("button", { name: "title.minimize" }),
-    );
-    expect(themeIndex).toBeLessThan(toolsIndex);
-    expect(toolsIndex).toBeLessThan(minimizeIndex);
-    const title = screen.getByText("Scientific calculator");
-    expect(title).toHaveAttribute("data-extension-window-title");
-    expect(title).toHaveAttribute("title", "Scientific calculator");
-    expect(title).toHaveAttribute("data-tauri-drag-region");
-    expect(title).toHaveClass("truncate");
   });
 });

@@ -2,7 +2,6 @@ import { existsSync, readFileSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
-import { spawnSync } from "node:child_process";
 import { applyFileChanges, projectFile } from "./fs-utils.mjs";
 import { validateRepositoryConfig } from "./repository-lib.mjs";
 import { formatRepositoryLink } from "../src/config/repository-links.mjs";
@@ -139,30 +138,35 @@ export function prepareRepositorySync(root) {
     return content.replace(
       pattern,
       (_, prefix) =>
-        `${prefix}[${config.hosting.defaultBranch}, ${config.hosting.releaseBranch}]`,
+        `${prefix}[${[...new Set([config.hosting.defaultBranch, config.hosting.releaseBranch])].join(", ")}]`,
     );
   });
-  edit(".github/workflows/pages.yml", (content) => {
-    const branches = /^(\s*branches: )\[[^\r\n]*\]$/gm;
-    const condition = /(^\s*if: github\.ref == ')refs\/heads\/[^'\r\n]+(')/gm;
-    if (
-      [...content.matchAll(branches)].length !== 1 ||
-      [...content.matchAll(condition)].length !== 1
-    )
-      throw new Error(
-        "Pages branch filter and deployment condition must remain managed",
-      );
-    return content
-      .replace(
-        branches,
-        (_, prefix) => `${prefix}[${config.hosting.defaultBranch}]`,
+  for (const workflowPath of [
+    ".github/workflows/pages.yml",
+    ".github/workflows-disabled/pages.yml",
+  ]) {
+    edit(workflowPath, (content) => {
+      const branches = /^(\s*branches: )\[[^\r\n]*\]$/gm;
+      const condition = /(^\s*if: github\.ref == ')refs\/heads\/[^'\r\n]+(')/gm;
+      if (
+        [...content.matchAll(branches)].length !== 1 ||
+        [...content.matchAll(condition)].length !== 1
       )
-      .replace(
-        condition,
-        (_, prefix, suffix) =>
-          `${prefix}refs/heads/${config.hosting.defaultBranch}${suffix}`,
-      );
-  });
+        throw new Error(
+          "Pages branch filter and deployment condition must remain managed",
+        );
+      return content
+        .replace(
+          branches,
+          (_, prefix) => `${prefix}[${config.hosting.defaultBranch}]`,
+        )
+        .replace(
+          condition,
+          (_, prefix, suffix) =>
+            `${prefix}refs/heads/${config.hosting.defaultBranch}${suffix}`,
+        );
+    });
+  }
   edit(".github/dependabot.yml", (content) => {
     const pattern = /^(\s*target-branch: )[^\r\n]+/gm;
     const count = [...content.matchAll(/^ {2}- package-ecosystem: /gm)].length;
@@ -189,15 +193,7 @@ export function prepareRepositorySync(root) {
 /** 只检查可执行的自有源码，第三方来源、文档和固定测试样本由各自契约维护。 */
 export function repositoryLiteralViolations(root) {
   const app = JSON.parse(readFileSync(join(root, "app.config.json"), "utf8"));
-  const config = JSON.parse(
-    readFileSync(join(root, "repository.config.json"), "utf8"),
-  );
-  const marketUrl = formatRepositoryLink(
-    config.hosting.repositoryUrlTemplate,
-    "",
-    { repository: app.extensionMarket?.repository || "disabled/market" },
-  );
-  const urls = [app.repositoryUrl, marketUrl];
+  const urls = [app.repositoryUrl];
   const names = ["src", "scripts", "e2e", "src-tauri/src"].flatMap(
     (directory) =>
       filesUnder(
@@ -247,25 +243,6 @@ if (
         `Synchronized repository configuration: ${plan.changes.map((change) => change.path).join(", ")}`,
       );
     } else console.log("Repository configuration is already synchronized.");
-    const marketScript = "marketplace/scripts/repository-config.mjs";
-    if (existsSync(join(root, marketScript))) {
-      const result = spawnSync(
-        process.execPath,
-        [
-          projectFile(root, marketScript),
-          mode,
-          "--root",
-          join(root, "marketplace"),
-        ],
-        { encoding: "utf8", windowsHide: true },
-      );
-      if (result.error) throw result.error;
-      if (result.status !== 0)
-        throw new Error(
-          `Marketplace repository configuration check failed: ${result.stderr.trim()}`,
-        );
-      if (result.stdout.trim()) console.log(result.stdout.trim());
-    }
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;

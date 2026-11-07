@@ -12,11 +12,8 @@ import { useLocation, useNavigate } from "react-router-dom";
 import {
   BookOpenIcon,
   AppWindowIcon,
-  CheckIcon,
   Code2Icon,
   CommandIcon,
-  CopyIcon,
-  DatabaseIcon,
   DownloadIcon,
   ExpandIcon,
   InfoIcon,
@@ -28,7 +25,6 @@ import {
   MoonIcon,
   PanelLeftIcon,
   PanelTopIcon,
-  RefreshCwIcon,
   SettingsIcon,
   SunIcon,
   SunMoonIcon,
@@ -46,7 +42,6 @@ import { SETTINGS_SEARCH_ENTRIES } from "@/commands/settings-search";
 import { useLatestTranslator } from "@/hooks/use-latest-translator";
 import { useThemeSwitch } from "@/hooks/use-theme-switch";
 import { useFullscreen } from "@/hooks/use-fullscreen";
-import { copyText } from "@/lib/clipboard";
 import { nativeErrorText } from "@/lib/native-error";
 import {
   closeWindow,
@@ -60,23 +55,9 @@ import { useSettings } from "@/providers/settings";
 import { APP_ROUTES } from "@/routes";
 import { CommandsContext } from "./commands-context";
 
-const STANDALONE_COMMANDS = new Set([
-  "toggle-theme",
-  "theme-light",
-  "theme-dark",
-  "theme-system",
-  "minimize-window",
-  "toggle-maximize",
-  "close-window",
-  "reload",
-  "copy-link",
-  "select-all",
-]);
-
 export function CommandsProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
-  const standalone = pathname.startsWith("/extension-window/");
   const { settings, update } = useSettings();
   const { resolvedTheme, setTheme, toggle } = useThemeSwitch();
   const themeToggle = useRef(toggle);
@@ -87,7 +68,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const { fullscreen, change: changeFullscreen } = useFullscreen();
   const [paletteOpen, setPaletteOpen] = useState(false);
   const [aboutOpen, setAboutOpen] = useState(false);
-  const [extensions, setExtensions] = useState<
+  const [registrations, setRegistrations] = useState<
     Map<symbol, readonly AppCommand[]>
   >(() => new Map());
   const running = useRef(new Set<string>());
@@ -95,10 +76,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   const builtins = useMemo<AppCommand[]>(
     () => [
       ...APP_ROUTES.filter(
-        (route) =>
-          route.path !== "/settings" &&
-          !route.hidden &&
-          (settings.appMode !== "minimal" || !route.demoOnly),
+        (route) => route.path !== "/settings" && !route.hidden,
       ).map((route) => ({
         id: `navigate:${route.path}`,
         labelKey: route.labelKey,
@@ -130,7 +108,10 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         group: "navigation",
         icon: SettingsIcon,
         shortcuts: [{ key: ",", primary: true }],
-        run: () => navigate("/settings"),
+        run: () =>
+          navigate("/settings?focus=search", {
+            replace: pathname === "/settings",
+          }),
       },
       {
         id: "toggle-sidebar",
@@ -188,14 +169,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         run: () => setTheme(theme),
       })),
       {
-        id: "reload",
-        labelKey: "title.reload",
-        group: "window",
-        icon: RefreshCwIcon,
-        shortcuts: [{ key: "r", primary: true }],
-        run: () => window.location.reload(),
-      },
-      {
         id: "minimize-window",
         labelKey: "title.minimize",
         group: "window",
@@ -226,31 +199,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         icon: LogOutIcon,
         available: isTauri,
         run: quitApp,
-      },
-      {
-        id: "copy-link",
-        labelKey: "title.copyLink",
-        group: "help",
-        icon: CopyIcon,
-        run: async () => {
-          await copyText(window.location.href);
-          toast.success(t("common.copied"));
-        },
-      },
-      {
-        id: "select-all",
-        labelKey: "title.selectAll",
-        group: "help",
-        icon: CheckIcon,
-        run: () => {
-          const active = document.activeElement;
-          if (
-            active instanceof HTMLInputElement ||
-            active instanceof HTMLTextAreaElement
-          )
-            active.select();
-          else document.execCommand("selectAll");
-        },
       },
       {
         id: "open-docs",
@@ -288,13 +236,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         run: () => navigate("/settings?focus=windows"),
       },
       {
-        id: "open-database",
-        labelKey: "commands.openDatabase",
-        group: "tools",
-        icon: DatabaseIcon,
-        run: () => navigate("/database"),
-      },
-      {
         id: "check-updates",
         labelKey: "commands.checkUpdates",
         group: "tools",
@@ -304,33 +245,29 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     ],
     [
       navigate,
+      pathname,
       fullscreen,
       changeFullscreen,
       resolvedTheme,
       setTheme,
-      settings.appMode,
       settings.menuBar,
       settings.sidebarCollapsed,
-      t,
       update,
     ],
   );
 
   const commands = useMemo(() => {
     const result = new Map(builtins.map((command) => [command.id, command]));
-    for (const registration of extensions.values())
+    for (const registration of registrations.values())
       for (const command of registration) result.set(command.id, command);
-    // 独立会话只保留基础窗口操作，避免快捷键改变宿主偏好或导航到宿主页面。
-    return [...result.values()].filter(
-      (command) => !standalone || STANDALONE_COMMANDS.has(command.id),
-    );
-  }, [builtins, extensions, standalone]);
+    return [...result.values()];
+  }, [builtins, registrations]);
 
   const register = useCallback((items: readonly AppCommand[]) => {
     const token = Symbol("commands");
-    setExtensions((current) => new Map(current).set(token, items));
+    setRegistrations((current) => new Map(current).set(token, items));
     return () => {
-      setExtensions((current) => {
+      setRegistrations((current) => {
         const next = new Map(current);
         next.delete(token);
         return next;

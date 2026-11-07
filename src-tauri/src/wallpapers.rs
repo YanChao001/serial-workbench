@@ -86,26 +86,21 @@ mod tests {
     }
 
     #[test]
-    fn legacy_deduplication_rename_delete_and_restart_preserve_current_format() {
+    fn deduplication_rename_delete_and_restart_preserve_current_format() {
         let directory = tempfile::tempdir().unwrap();
         let path = directory.path().join("wallpapers.json");
         let store = WallpaperStore::new(path.clone());
-        let legacy = store.list(Some(input(0))).unwrap().remove(0);
-        assert_eq!(store.add(input(0)).unwrap(), legacy);
-        assert_eq!(store.list(None).unwrap().len(), 1);
-        let renamed = store.rename(&legacy.id, "旅行照片".into()).unwrap();
+        let entry = store.add(input(0)).unwrap();
+        assert_eq!(store.add(input(0)).unwrap(), entry);
+        assert_eq!(store.list().unwrap().len(), 1);
+        let renamed = store.rename(&entry.id, "旅行照片".into()).unwrap();
         assert_eq!(
-            WallpaperStore::new(path.clone()).list(None).unwrap(),
+            WallpaperStore::new(path.clone()).list().unwrap(),
             vec![renamed]
         );
-        store.remove(&legacy.id).unwrap();
-        store.remove(&legacy.id).unwrap();
-        assert!(
-            WallpaperStore::new(path)
-                .list(Some(input(0)))
-                .unwrap()
-                .is_empty()
-        );
+        store.remove(&entry.id).unwrap();
+        store.remove(&entry.id).unwrap();
+        assert!(WallpaperStore::new(path).list().unwrap().is_empty());
     }
 
     #[test]
@@ -132,7 +127,7 @@ mod tests {
         }
         assert!(
             store
-                .rename(&store.list(None).unwrap()[0].id, "bad\0name".into())
+                .rename(&store.list().unwrap()[0].id, "bad\0name".into())
                 .is_err()
         );
         assert_eq!(fs::read(&path).unwrap(), original);
@@ -146,36 +141,11 @@ mod tests {
         let store = WallpaperStore::new(path.clone());
         for source in ["{broken", r#"{"version":3,"images":[],"future":true}"#] {
             fs::write(&path, source).unwrap();
-            assert!(store.list(Some(input(1))).is_err());
+            assert!(store.list().is_err());
             assert!(store.add(input(1)).is_err());
             assert!(store.remove("id").is_err());
             assert_eq!(fs::read_to_string(&path).unwrap(), source);
         }
-    }
-
-    #[test]
-    fn legacy_media_validation_precedes_initial_write_and_does_not_block_an_existing_library() {
-        let directory = tempfile::tempdir().unwrap();
-        let path = directory.path().join("wallpapers.json");
-        let store = WallpaperStore::new(path.clone());
-        assert!(
-            store
-                .list_with_validation(Some(input(0)), |_| Err(NativeError::new(
-                    ErrorCode::NotFound,
-                    "Media unavailable"
-                )))
-                .is_err()
-        );
-        assert!(!path.exists());
-        let entry = store.add(input(1)).unwrap();
-        assert_eq!(
-            store
-                .list_with_validation(Some(input(0)), |_| panic!(
-                    "Existing libraries do not initialize legacy media"
-                ))
-                .unwrap(),
-            vec![entry]
-        );
     }
 
     #[test]
@@ -199,7 +169,7 @@ mod tests {
         for thread in threads {
             thread.join().unwrap();
         }
-        let entries = store.list(None).unwrap();
+        let entries = store.list().unwrap();
         assert_eq!(entries.len(), 6);
         assert!(
             entries
@@ -288,7 +258,7 @@ impl WallpaperStore {
         }
         let library: Library = serde_json::from_slice(&bytes)
             .map_err(|_| invalid("Cannot decode wallpaper library"))?;
-        if !matches!(library.version, 1 | 2) || library.images.len() > MAX_IMAGES {
+        if library.version != 2 || library.images.len() > MAX_IMAGES {
             return Err(invalid("Unsupported wallpaper library format"));
         }
         let mut ids = std::collections::HashSet::new();
@@ -317,15 +287,7 @@ impl WallpaperStore {
         atomic_write(&self.path, &bytes)
     }
 
-    pub fn list(&self, legacy: Option<WallpaperInput>) -> NativeResult<Vec<Wallpaper>> {
-        self.list_with_validation(legacy, |_| Ok(()))
-    }
-
-    pub(crate) fn list_with_validation(
-        &self,
-        legacy: Option<WallpaperInput>,
-        validate: impl FnOnce(&WallpaperInput) -> NativeResult<()>,
-    ) -> NativeResult<Vec<Wallpaper>> {
+    pub fn list(&self) -> NativeResult<Vec<Wallpaper>> {
         let _guard = self
             .writing
             .lock()
@@ -333,12 +295,9 @@ impl WallpaperStore {
         if let Some(library) = self.read()? {
             return Ok(library.images);
         }
-        if let Some(input) = &legacy {
-            validate(input)?;
-        }
         let library = Library {
-            version: 1,
-            images: legacy.map(image).transpose()?.into_iter().collect(),
+            version: 2,
+            images: vec![],
         };
         self.write(&library)?;
         Ok(library.images)
@@ -351,7 +310,7 @@ impl WallpaperStore {
             .lock()
             .map_err(|_| invalid("Wallpaper library is unavailable"))?;
         let mut library = self.read()?.unwrap_or(Library {
-            version: 1,
+            version: 2,
             images: vec![],
         });
         if let Some(existing) = library.images.iter().find(|item| item.id == entry.id) {

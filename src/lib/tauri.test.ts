@@ -4,7 +4,6 @@ import { invoke } from "@tauri-apps/api/core";
 import {
   getAppInfo,
   getWindowGeometry,
-  invokeGreet,
   onLifecycleRequest,
   onLifecycleFinished,
   openExternal,
@@ -13,7 +12,6 @@ import {
   setWindowSize,
   isWindowFullscreen,
   setWindowFullscreen,
-  saveExtensionSession,
 } from "./tauri";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -38,38 +36,6 @@ vi.mock("@tauri-apps/api/window", () => ({
     setFullscreen: events.setFullscreen,
   }),
 }));
-
-describe("扩展会话保存门面", () => {
-  afterEach(() => {
-    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
-    vi.clearAllMocks();
-  });
-
-  it("使用会话专用原生命令并保留取消及失败语义", async () => {
-    Object.defineProperty(window, "__TAURI_INTERNALS__", {
-      value: {},
-      configurable: true,
-    });
-    vi.mocked(invoke).mockResolvedValueOnce(null);
-    expect(
-      await saveExtensionSession("extension-session.json", "{}"),
-    ).toBeNull();
-    expect(invoke).toHaveBeenCalledWith("save_extension_session", {
-      name: "extension-session.json",
-      content: "{}",
-    });
-    vi.mocked(invoke).mockRejectedValueOnce({
-      code: "STORAGE_IO",
-      message: "Cannot save session",
-      retryable: true,
-    });
-    await expect(
-      saveExtensionSession("extension-session.json", "{}"),
-    ).rejects.toMatchObject({
-      code: "STORAGE_IO",
-    });
-  });
-});
 
 describe("全屏门面", () => {
   afterEach(() => {
@@ -203,9 +169,6 @@ describe("openExternal", () => {
 
 describe("浏览器预览模式的守卫", () => {
   // jsdom 不是 Tauri 环境，invokeGreet / getAppInfo 应当在触碰 IPC 前就拦下
-  it("invokeGreet 给出可操作的提示，而不是晦涩的 IPC 报错", async () => {
-    await expect(invokeGreet("超哥")).rejects.toThrow("pnpm app:dev");
-  });
 
   it("getAppInfo 同样拒绝", async () => {
     await expect(getAppInfo()).rejects.toThrow("浏览器预览模式");
@@ -213,38 +176,6 @@ describe("浏览器预览模式的守卫", () => {
 
   it("revealWindow 静默返回，不抛错", async () => {
     await expect(revealWindow()).resolves.toBeUndefined();
-  });
-});
-
-describe("greet 语言参数", () => {
-  afterEach(() => {
-    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
-    vi.resetAllMocks();
-  });
-
-  it("将当前语言传给 Rust，并保留省略语言时的中文默认值", async () => {
-    Object.defineProperty(window, "__TAURI_INTERNALS__", {
-      value: {},
-      configurable: true,
-    });
-    vi.mocked(invoke).mockResolvedValue("greeting");
-    await expect(invokeGreet("Ada", "en")).resolves.toBe("greeting");
-    expect(invoke).toHaveBeenLastCalledWith("greet", {
-      name: "Ada",
-      language: "en",
-    });
-    await invokeGreet("世界");
-    expect(invoke).toHaveBeenLastCalledWith("greet", {
-      name: "世界",
-      language: "zh",
-    });
-  });
-
-  it("英文浏览器预览给出同语言的启动提示", async () => {
-    await expect(invokeGreet("Ada", "en")).rejects.toThrow(
-      "Start the desktop app with pnpm app:dev",
-    );
-    expect(invoke).not.toHaveBeenCalled();
   });
 });
 

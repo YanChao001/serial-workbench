@@ -380,9 +380,9 @@ for (const theme of ["light", "dark"] as const) {
       for (const token of tokens) expect(token).toMatch(/^#[\dA-F]{6}$/i);
       expect(tokens[0]).not.toBe(tokens[1]);
       await expectNoPageOverflow(page);
-      await page.goto("./#/components");
+      await page.goto("./#/settings");
       const primary = page.getByRole("button", {
-        name: "Remix",
+        name: "Reset preferences",
         exact: true,
       });
       await expect(primary).toBeVisible();

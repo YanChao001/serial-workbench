@@ -4,9 +4,6 @@ import { writeFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import appConfig from "../../app.config.json" with { type: "json" };
-import repositoryConfig from "../../repository.config.json" with { type: "json" };
-import { formatRepositoryLink } from "../../src/config/repository-links.mjs";
-import { PRESET_ACCENTS } from "../../src/lib/accent-colors";
 
 const KEY = `${appConfig.browserStorageNamespace}:settings`;
 
@@ -40,26 +37,106 @@ test("settings search opens over the page without moving settings or stealing in
   ).toHaveCount(0);
   expect(await layout()).toEqual(before);
 });
-const routes = [
-  "/",
-  "/catalog",
-  "/components",
-  "/motion",
-  "/workbench",
-  "/tasks",
-  "/system",
-  "/extensions",
-  "/network",
-  "/data-studio",
-  "/media",
-  "/desktop",
-  "/database",
-  "/bridge",
-  "/diagnostics",
-  "/updates",
-  "/recovery",
-  "/settings",
-];
+
+for (const profile of [
+  {
+    language: "en",
+    file: "File",
+    edit: "Edit",
+    settings: "Settings",
+    quit: "Quit",
+    search: "Search settings",
+  },
+  {
+    language: "zh",
+    file: "文件",
+    edit: "编辑",
+    settings: "设置",
+    quit: "退出",
+    search: "搜索设置",
+  },
+] as const) {
+  test(`File settings commands clear the search, return to the top and keep keyboard focus: ${profile.language}`, async ({
+    page,
+  }) => {
+    await seed(page, { language: profile.language });
+    await page.goto("./#/");
+    await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
+    const chrome = page.locator(".app-title-bar");
+    const file = chrome.getByRole("button", {
+      name: profile.file,
+      exact: true,
+    });
+    await expect(
+      chrome.getByRole("button", { name: profile.edit, exact: true }),
+    ).toHaveCount(0);
+    const menu = page.getByRole("menu");
+    const search = page.getByRole("searchbox", {
+      name: profile.search,
+      exact: true,
+    });
+    const main = page.locator("main");
+    const selectSettings = async () => {
+      await file.click();
+      const items = menu.getByRole("menuitem");
+      await expect(items).toHaveCount(2);
+      await expect(items.nth(0).locator("span")).toHaveText(profile.settings);
+      await expect(items.nth(1).locator("span")).toHaveText(profile.quit);
+      await expect(menu).not.toContainText(/…|\.\.\./);
+      await items.nth(0).click();
+    };
+    const expectSearchReady = async () => {
+      await expect(page).toHaveURL(/#\/settings\?focus=search$/);
+      await expect(menu).toHaveCount(0);
+      // 等菜单卸载后的绘制，确保关闭菜单的晚到还焦点没有覆盖搜索位置。
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+          ),
+      );
+      await expect(search).toHaveValue("");
+      await expect(search).toBeFocused();
+      await expect
+        .poll(() => main.evaluate((element) => element.scrollTop))
+        .toBe(0);
+      await expect(
+        page.getByRole("dialog", { name: profile.search, exact: true }),
+      ).toHaveCount(0);
+    };
+    const prepareScrolledSearch = async () => {
+      await search.fill("theme");
+      await expect(
+        page.getByRole("dialog", { name: profile.search, exact: true }),
+      ).toBeVisible();
+      await main.evaluate((element) => {
+        element.scrollTop = 300;
+      });
+      expect(await main.evaluate((element) => element.scrollTop)).toBe(300);
+      await expect(search).toHaveValue("theme");
+    };
+
+    await selectSettings();
+    await expectSearchReady();
+    await page.keyboard.type("font");
+    await expect(search).toHaveValue("font");
+    // URL 已是 focus=search，再次执行相同命令仍需产生完整反馈。
+    for (let repeat = 0; repeat < 2; repeat++) {
+      await prepareScrolledSearch();
+      await selectSettings();
+      await expectSearchReady();
+    }
+    await prepareScrolledSearch();
+    await main.focus();
+    expect(await main.evaluate((element) => element.scrollTop)).toBe(300);
+    await page.keyboard.press("Control+,");
+    await expectSearchReady();
+    await page.keyboard.type("radius");
+    await expect(search).toHaveValue("radius");
+  });
+}
+
+const routes = ["/", "/diagnostics", "/recovery", "/settings"];
 async function seed(page: Page, settings: Record<string, unknown> = {}) {
   await page.addInitScript(
     ({ key, value }) => {
@@ -77,6 +154,18 @@ async function seed(page: Page, settings: Record<string, unknown> = {}) {
     },
     { key: KEY, value: settings },
   );
+}
+
+async function expectRouteReady(page: Page, route: string) {
+  if (route === "/")
+    await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
+  else if (route === "/recovery") {
+    await expect(page).toHaveURL(/#\/settings\?section=recovery$/);
+    await expect(page.locator("#settings-recovery")).toBeFocused();
+    await expect(page.locator("main h1")).toBeVisible();
+  } else if (route === "/settings")
+    await expect(page.locator("main h1")).toBeVisible();
+  else await expect(page.locator("main h2").first()).toBeVisible();
 }
 
 async function renderedControlPixel(page: Page, locator: Locator) {
@@ -899,7 +988,7 @@ for (const theme of ["light", "dark"]) {
     await seed(page, { theme, background: "aurora" });
     for (const route of routes) {
       await page.goto("./#" + route);
-      await expect(page.locator("main h2").first()).toBeVisible();
+      await expectRouteReady(page, route);
       for (const exposure of [0, 0.5, 1]) {
         const failures = () =>
           page.evaluate((value) => {
@@ -1274,330 +1363,6 @@ for (const theme of ["light", "dark"]) {
     await page.keyboard.press("Escape");
   });
 
-  test(`100% wallpaper keeps shared materials readable and translucent: ${theme}`, async ({
-    page,
-  }, testInfo) => {
-    test.setTimeout(120_000);
-    await seed(page, { theme, backgroundIntensity: 100 });
-    const pixels = new Map<string, number[][]>();
-    const measurements: {
-      wallpaper: string;
-      label: string;
-      contrast: number;
-      background: number[];
-      foreground: number[];
-      sample: { x: number; y: number };
-    }[] = [];
-    let wallpaper = "";
-    const check = async (
-      label: string,
-      locator: Locator,
-      placeholder = false,
-      translucent = false,
-    ) => {
-      const result = await renderedTextContrast(page, locator, placeholder);
-      measurements.push({
-        wallpaper,
-        label,
-        contrast: result.contrast,
-        background: result.background,
-        foreground: result.foreground,
-        sample: result.sample,
-      });
-      expect(
-        result.contrast,
-        `${theme} ${wallpaper} ${label}: background=${JSON.stringify(result.background)}, foreground=${JSON.stringify(result.foreground)}`,
-      ).toBeGreaterThanOrEqual(4.5);
-      if (translucent)
-        pixels.set(label, [...(pixels.get(label) ?? []), result.background]);
-    };
-    for (const background of ["black", "white"]) {
-      wallpaper = background;
-      await page.goto("./#/settings");
-      const source = await page.evaluate((color) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 16;
-        const context = canvas.getContext("2d")!;
-        context.fillStyle = color;
-        context.fillRect(0, 0, 16, 16);
-        return canvas.toDataURL("image/png").split(",")[1]!;
-      }, background);
-      await page.locator('input[type="file"]').setInputFiles({
-        name: `material-${background}.png`,
-        mimeType: "image/png",
-        buffer: Buffer.from(source, "base64"),
-      });
-      const image = page.locator("[data-custom-background]");
-      await expect
-        .poll(() =>
-          image.evaluate(async (element) => {
-            const bitmap = element as HTMLImageElement;
-            await bitmap.decode();
-            const canvas = document.createElement("canvas");
-            canvas.width = canvas.height = 1;
-            const context = canvas.getContext("2d")!;
-            context.drawImage(bitmap, 0, 0, 1, 1);
-            return context.getImageData(0, 0, 1, 1).data[0];
-          }),
-        )
-        .toBe(background === "black" ? 0 : 255);
-      await expect(image).toHaveCSS("opacity", "1");
-      await expect(
-        page.getByRole("slider", {
-          name: "Background transparency",
-          exact: true,
-        }),
-      ).toHaveAttribute("aria-valuenow", "100");
-      await check(
-        "input placeholder",
-        page.getByRole("searchbox", { name: "Search settings", exact: true }),
-        true,
-        true,
-      );
-      const selectedToggle = page.locator(
-        '#settings-appMode [data-slot="toggle-group-item"][data-state="on"]',
-      );
-      await expect(selectedToggle).toHaveText("Full showcase");
-      await check("selected toggle", selectedToggle);
-
-      await page.goto("./#/");
-      await check(
-        "bare introductory copy",
-        page.locator(".showroom-lede"),
-        false,
-        true,
-      );
-      await check(
-        "navigation",
-        page.locator('#app-sidebar a[href="#/workbench"]'),
-        false,
-        true,
-      );
-      await check(
-        "shortcut key",
-        page.locator(".showroom-command-link kbd"),
-        false,
-        true,
-      );
-      await page.screenshot({
-        path: testInfo.outputPath(
-          `materials-100-${theme}-${background}-overview.png`,
-        ),
-      });
-
-      await page.goto("./#/media");
-      await page
-        .getByRole("textbox", { name: "Markdown content", exact: true })
-        .fill(
-          [
-            "# Reading material",
-            "",
-            "[Reference](https://example.com)",
-            "",
-            "```json",
-            '{ "label": "clear text", "count": 42, "active": true, "missing": null }',
-            "```",
-          ].join("\n"),
-        );
-      const preview = page.getByRole("region", {
-        name: "Preview",
-        exact: true,
-      });
-      const code = preview.locator(".code-block");
-      await expect(code).toBeVisible();
-      await check(
-        "reading link",
-        preview.getByRole("link", { name: "Reference", exact: true }),
-      );
-      for (const kind of [
-        "property",
-        "string",
-        "number",
-        "boolean",
-        "null",
-        "punctuation",
-      ])
-        await check(
-          `syntax ${kind}`,
-          code.locator(`[data-token="${kind}"]`).first(),
-          false,
-          kind === "property",
-        );
-      await page.screenshot({
-        path: testInfo.outputPath(
-          `materials-100-${theme}-${background}-code.png`,
-        ),
-      });
-
-      await page.goto("./#/data-studio");
-      const selectedTab = page.getByRole("tab", {
-        name: "Records",
-        exact: true,
-      });
-      await expect(selectedTab).toHaveAttribute("aria-selected", "true");
-      await check("selected tab", selectedTab);
-      const records = page.getByRole("region", {
-        name: "Demo records",
-        exact: true,
-      });
-      await records.evaluate((element) => element.scrollTo(0, 180));
-      expect(
-        await records.evaluate((element) => element.scrollTop),
-      ).toBeGreaterThan(0);
-      const heading = records
-        .getByRole("columnheader", { name: /^Name\b/ })
-        .locator("button")
-        .first();
-      await check("sticky table heading", heading, false, true);
-      await expect(records.locator("thead")).toHaveCSS("position", "sticky");
-      await page.screenshot({
-        path: testInfo.outputPath(
-          `materials-100-${theme}-${background}-table.png`,
-        ),
-      });
-
-      await page.goto("./#/media");
-      await page
-        .getByRole("tab", { name: "Live connections", exact: true })
-        .click();
-      await check(
-        "message output",
-        page
-          .getByRole("list", { name: "Message log", exact: true })
-          .locator("li")
-          .first(),
-        false,
-        true,
-      );
-    }
-    await testInfo.attach("material-contrast-pixels", {
-      body: JSON.stringify(measurements, null, 2),
-      contentType: "application/json",
-    });
-    for (const [label, [black, white]] of pixels) {
-      expect(black, `${label} black wallpaper sample`).toBeDefined();
-      expect(white, `${label} white wallpaper sample`).toBeDefined();
-      // 同一控件的实际底色必须仍随壁纸变化，防止退回不透明的固定色块。
-      expect(
-        Math.max(
-          ...white!.map((value, channel) => Math.abs(value - black![channel]!)),
-        ),
-        `${label} transmits wallpaper color: black=${JSON.stringify(black)}, white=${JSON.stringify(white)}`,
-      ).toBeGreaterThan(1);
-    }
-  });
-
-  test(
-    "controls keep readable normal, hover and mixed states across accents: " +
-      theme,
-    async ({ page }) => {
-      await seed(page, { theme, background: "plain" });
-      await page.goto("./#/components");
-      await expect(page.locator("html")).toHaveCSS("color-scheme", theme);
-      const primary = page.getByRole("button", {
-        name: "Remix",
-        exact: true,
-      });
-      const reference = page.getByRole("region", {
-        name: "Control reference",
-        exact: true,
-      });
-      const all = reference
-        .getByRole("group", {
-          name: "Partial selection & select all",
-          exact: true,
-        })
-        .getByRole("checkbox", { name: "Select all", exact: true });
-      await expect(all).toHaveAttribute("aria-checked", "mixed");
-      await expect(all.locator(".lucide-minus")).toBeVisible();
-      await expect(all.locator(".lucide-check")).toBeHidden();
-      for (const accent of PRESET_ACCENTS) {
-        await page.evaluate((value) => {
-          document.documentElement.dataset.accent = value;
-        }, accent);
-        for (const hover of [false, true]) {
-          if (hover) await primary.hover();
-          else await page.mouse.move(0, 0);
-          const ratio = await primary.evaluate((element) => {
-            const style = getComputedStyle(element);
-            const canvas = document.createElement("canvas");
-            canvas.width = canvas.height = 1;
-            const context = canvas.getContext("2d")!;
-            const luminance = (color: string) => {
-              context.fillStyle = color;
-              context.fillRect(0, 0, 1, 1);
-              return [...context.getImageData(0, 0, 1, 1).data]
-                .slice(0, 3)
-                .reduce((sum, value, index) => {
-                  const channel = value / 255;
-                  return (
-                    sum +
-                    (channel <= 0.04045
-                      ? channel / 12.92
-                      : ((channel + 0.055) / 1.055) ** 2.4) *
-                      [0.2126, 0.7152, 0.0722][index]!
-                  );
-                }, 0);
-            };
-            const text = luminance(style.color);
-            const background = luminance(style.backgroundColor);
-            return (
-              (Math.max(text, background) + 0.05) /
-              (Math.min(text, background) + 0.05)
-            );
-          });
-          expect(
-            ratio,
-            `${theme} ${accent} hover=${hover}`,
-          ).toBeGreaterThanOrEqual(4.5);
-        }
-        const colors = await all.evaluate((element) => ({
-          mixed: getComputedStyle(element).backgroundColor,
-          checked: getComputedStyle(
-            document
-              .querySelector("#reference-title")!
-              .closest(".control-states")!
-              .querySelector('[aria-checked="true"]')!,
-          ).backgroundColor,
-        }));
-        expect(colors.mixed).toBe(colors.checked);
-      }
-      const title = reference.getByRole("textbox", {
-        name: "Title (required)",
-        exact: true,
-      });
-      await reference
-        .getByRole("button", { name: "Validate", exact: true })
-        .click();
-      await expect(title).toHaveAttribute("aria-invalid", "true");
-      await title.fill("A local draft");
-      await reference
-        .getByRole("button", { name: "Validate", exact: true })
-        .click();
-      await expect(
-        page.locator("[data-sonner-toast]").filter({
-          hasText: "Valid input; content stays on this page.",
-        }),
-      ).toBeVisible();
-      await reference
-        .getByRole("button", { name: "Buttons & badges", exact: true })
-        .click();
-      const warning = reference.getByRole("button", {
-        name: "Warning",
-        exact: true,
-      });
-      for (const hover of [false, true]) {
-        if (hover) await warning.hover();
-        else await page.mouse.move(0, 0);
-        const scan = await new AxeBuilder({ page })
-          .include(".playground-reference")
-          .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-          .analyze();
-        expect(scan.violations, `${theme} warning hover=${hover}`).toEqual([]);
-      }
-    },
-  );
-
   test(
     "all routes pass the automated WCAG scan with a tinted theme: " + theme,
     async ({ page }) => {
@@ -1605,32 +1370,12 @@ for (const theme of ["light", "dark"]) {
       await seed(page, { theme, accent: "violet", background: "plain" });
       for (const route of routes) {
         await page.goto("./#" + route);
-        if (route === "/desktop") {
-          await expect(page).toHaveURL(/#\/settings\?section=desktop$/);
-          await expect(page.locator("#settings-desktop")).toBeVisible();
-          await expect(page.locator('nav a[href="#/desktop"]')).toHaveCount(0);
-        }
-        if (route === "/updates") {
-          await expect(page).toHaveURL(/#\/settings\?section=updates$/);
-          await expect(page.locator("#settings-updates")).toBeVisible();
-          await expect(page.locator('nav a[href="#/updates"]')).toHaveCount(0);
-        }
-        await expect(page.locator("main h2").first()).toBeVisible();
+        await expectRouteReady(page, route);
         const result = await new AxeBuilder({ page })
           .include("main")
           .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
           .analyze();
         expect(result.violations, theme + " " + route).toEqual([]);
-        if (route === "/components") {
-          for (const stage of ["Overlays & feedback", "Resource collection"]) {
-            await page.getByRole("tab", { name: new RegExp(stage) }).click();
-            const scene = await new AxeBuilder({ page })
-              .include("main")
-              .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-              .analyze();
-            expect(scene.violations, theme + " " + stage).toEqual([]);
-          }
-        }
       }
     },
   );
@@ -1642,7 +1387,9 @@ test("the browser fills the viewport with the desktop and keeps narrow navigatio
   await page.setViewportSize({ width: 1280, height: 820 });
   await seed(page);
   await page.goto("./#/settings");
-  await expect(page.locator("main h2")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
+  ).toBeVisible();
   await expect(
     page.locator(".browser-demo-bar, .browser-preview-badge"),
   ).toHaveCount(0);
@@ -1654,331 +1401,328 @@ test("the browser fills the viewport with the desktop and keeps narrow navigatio
   const navigation = page.locator(".app-title-bar .app-compact-navigation");
   await expect(navigation).toBeVisible();
   await navigation.click();
-  await page.getByRole("option", { name: "Interaction", exact: true }).click();
-  await expect(page).toHaveURL(/#\/components$/);
+  await page.getByRole("option", { name: "Home", exact: true }).click();
+  await expect(page).toHaveURL(/#\/$/);
   expect((await page.locator(".app-chrome").boundingBox())?.height).toBe(40);
 });
 
-for (const language of ["en", "zh"] as const) {
-  for (const theme of ["light", "dark"] as const) {
-    test(`shared dropdowns and title bar tooltips: ${language} ${theme}`, async ({
-      page,
-    }) => {
-      await page.setViewportSize({ width: 1120, height: 740 });
-      await seed(page, { language, theme });
-      await page.goto("./#/catalog");
-      const chinese = language === "zh";
-      const filter = page.getByRole("combobox", {
-        name: chinese ? "使用条件" : "Requirements",
-        exact: true,
-      });
-      await filter.click();
-      await expect(page.getByRole("listbox")).toBeVisible();
-      await expect(page.getByRole("option")).toHaveCount(4);
-      await page.screenshot({ path: test.info().outputPath("dropdown.png") });
-      await page.keyboard.press("Home");
-      await expect(
-        page.getByRole("option", {
-          name: chinese ? "全部功能" : "All features",
-          exact: true,
-        }),
-      ).toBeFocused();
-      await page.keyboard.press("ArrowDown");
-      await expect(
-        page.getByRole("option", {
-          name: chinese ? "浏览器可体验" : "Try in the browser",
-          exact: true,
-        }),
-      ).toBeFocused();
-      await page.keyboard.press("Enter");
-      await expect(filter).toContainText(
-        chinese ? "浏览器可体验" : "Try in the browser",
-      );
-      await expect(filter).toBeFocused();
-      await expect(
-        page.locator('main [data-slot="card-title"]').filter({
-          hasText: chinese ? /^文件工作台$/ : /^File workbench$/,
-        }),
-      ).toHaveCount(0);
-      await filter.click();
-      await page.keyboard.press("Escape");
-      await expect(page.getByRole("listbox")).toBeHidden();
-      await expect(filter).toBeFocused();
-
-      const bar = page.locator(".app-title-bar");
-      const searchName = chinese ? "快速操作" : "Quick actions";
-      const search = bar.getByRole("button", {
-        name: searchName,
-        exact: true,
-      });
-      const languageSwitch = bar.getByRole("combobox", {
-        name: chinese ? "语言" : "Language",
-      });
-      const tooltip = page.locator('[data-slot="tooltip-content"]');
-      for (const trigger of [search, languageSwitch]) {
-        await expect(trigger).not.toHaveAttribute("title");
-      }
-      const appearance = () =>
-        tooltip.evaluate((element) => {
-          const style = getComputedStyle(element);
-          return [
-            style.backgroundColor,
-            style.color,
-            style.borderRadius,
-            style.fontSize,
-            style.padding,
-          ];
-        });
-      await search.hover();
-      await expect(tooltip).toContainText(searchName);
-      await expect(tooltip).toHaveAttribute("data-side", "bottom");
-      const searchStyle = await appearance();
-      await page.mouse.move(700, 140);
-      await expect(tooltip).toBeHidden();
-      await languageSwitch.hover();
-      await expect(tooltip).toContainText(chinese ? "简体中文" : "English");
-      await expect(tooltip).toHaveAttribute("data-side", "bottom");
-      expect(await appearance()).toEqual(searchStyle);
-      await languageSwitch.click();
-      await expect(page.getByRole("listbox")).toBeVisible();
-      await expect(tooltip).toBeHidden();
-      await page.keyboard.press("Escape");
-      await expect(languageSwitch).toBeFocused();
-    });
-  }
-}
-
-test("shared selects retain form validation, disabled choices and pagination", async ({
-  page,
-}) => {
-  await seed(page);
-  await page.goto("./#/network");
-  await page.getByRole("combobox", { name: "Request source" }).click();
-  await expect(
-    page.getByRole("option", { name: "Online test" }),
-  ).toBeDisabled();
-  await page.keyboard.press("Escape");
-  await page.goto("./#/data-studio");
-  await page.getByRole("combobox", { name: "Rows per page" }).click();
-  await page.getByRole("option", { name: "50", exact: true }).click();
-  await expect(page.getByRole("table").getByRole("row")).toHaveCount(51);
-  await page
-    .getByRole("tab", { name: "Conditional form", exact: true })
-    .click();
-  const kind = page.getByRole("combobox", { name: "Request type" });
-  await kind.click();
-  await page.getByRole("option", { name: "Business", exact: true }).click();
-  await expect(page.getByLabel("Company name", { exact: true })).toBeVisible();
-  await page.getByRole("button", { name: "Submit demo request" }).click();
-  await expect(
-    page.getByLabel("Company name", { exact: true }),
-  ).toHaveAttribute("aria-invalid", "true");
-  await expect(page.locator("#order-company-error")).toContainText(
-    "Business requests require a company name",
-  );
-  await kind.click();
-  await page.getByRole("option", { name: "Personal", exact: true }).click();
-  await expect(page.getByLabel("Company name", { exact: true })).toHaveCount(0);
-  await expect(page.locator("#order-company-error")).toHaveCount(0);
-});
-
-for (const theme of ["light", "dark"]) {
-  for (const [language, keyword, source] of [
-    ["rust", "pub", "pub fn greet"],
-    ["typescript", "export", 'invokeGreet("Ada", language)'],
-  ] as const) {
-    test(
-      "the displayed " +
-        language +
-        " IPC example has real syntax colors: " +
-        theme,
-      async ({ page }) => {
-        await seed(page, { theme });
-        await page.goto("./#/bridge");
-        await page.getByText("Developer resources", { exact: true }).click();
-        const code = page.locator('code[data-language="' + language + '"]');
-        await expect(code).toContainText(source);
-        await expect(code.locator('[data-token="keyword"]').first()).toHaveText(
-          keyword,
-        );
-        const colors = await code.evaluate((element) => ({
-          text: getComputedStyle(element).color,
-          keyword: getComputedStyle(
-            element.querySelector('[data-token="keyword"]')!,
-          ).color,
-        }));
-        expect(colors.keyword).not.toBe(colors.text);
-      },
-    );
-  }
-}
-
-for (const language of ["en", "zh"] as const) {
-  test(`catalog document links open separate tabs and preserve the app: ${language}`, async ({
+for (const theme of ["light", "dark"] as const) {
+  test(`compact shell keeps settings at the sidebar foot and starts content with search: ${theme}`, async ({
     page,
-    context,
   }) => {
-    await seed(page, {
-      language,
-      theme: language === "zh" ? "dark" : "light",
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await seed(page, { theme });
+    await page.goto("./#/settings");
+    const sidebar = page.locator("#app-sidebar");
+    const navigation = page.locator("#app-sidebar-navigation");
+    const footer = page.locator(".app-sidebar-tools");
+    const settings = footer.getByRole("link", {
+      name: "Settings",
+      exact: true,
     });
-    await page.goto("./#/catalog");
-    await context.route(
-      (url) => url.protocol === "https:",
-      (route) =>
-        route.fulfill({
-          contentType: "text/html",
-          body: "<title>Document</title>",
-        }),
+    await expect(settings).toHaveAttribute("aria-current", "page");
+    await expect(settings).toHaveText("");
+    await expect(settings.locator("svg")).toHaveCount(1);
+    await expect(navigation.getByRole("link")).toHaveCount(1);
+    await expect(navigation.locator('a[href="#/settings"]')).toHaveCount(0);
+    await expect(navigation.getByText("System", { exact: true })).toHaveCount(
+      0,
     );
-    const appUrl = page.url();
-    await page
-      .getByText(language === "zh" ? "开发者资料" : "Developer resources", {
+    await expect(footer.getByRole("button")).toHaveCount(0);
+    await expect(
+      page.locator(".app-title-bar").getByRole("combobox", {
+        name: "Language",
         exact: true,
-      })
-      .click();
-    const links: readonly (readonly [string, string])[] =
-      language === "zh"
-        ? [
-            ["开发指南", "development.md"],
-            ["架构与边界", "architecture.md"],
-            ["验证范围", "testing.md"],
-          ]
-        : [
-            ["Development guide", "development.md"],
-            ["Architecture & boundaries", "architecture.md"],
-            ["Validation scope", "testing.md"],
-          ];
-    for (const [label, file] of links) {
-      const link = page.getByRole("link", { name: label, exact: true });
-      await expect(link).toHaveAttribute(
-        "href",
-        formatRepositoryLink(
-          repositoryConfig.hosting.links.file,
-          appConfig.repositoryUrl,
-          {
-            ref: repositoryConfig.hosting.defaultBranch,
-            path: `docs/${file}`,
-          },
+      }),
+    ).toHaveCount(0);
+    await expect(page.locator(".app-route-context")).toHaveCount(0);
+    await expect(
+      page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
+    ).toHaveClass("sr-only");
+    const mainBounds = (await page.locator("main").boundingBox())!;
+    const searchBounds = (await page
+      .getByRole("searchbox", { name: "Search settings", exact: true })
+      .boundingBox())!;
+    expect(searchBounds.y - mainBounds.y).toBeGreaterThanOrEqual(0);
+    expect(searchBounds.y - mainBounds.y).toBeLessThanOrEqual(32);
+    const footerBounds = (await footer.boundingBox())!;
+    const settingsBounds = (await settings.boundingBox())!;
+    const sidebarBounds = (await sidebar.boundingBox())!;
+    expect(
+      sidebarBounds.y +
+        sidebarBounds.height -
+        settingsBounds.y -
+        settingsBounds.height,
+    ).toBeLessThanOrEqual(12);
+    await page.locator("main").evaluate((element) => {
+      element.scrollTop = element.scrollHeight;
+    });
+    expect(await footer.boundingBox()).toEqual(footerBounds);
+
+    await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    await expect(sidebar).toHaveCSS("width", "48px");
+    const compactGeometry = await sidebar.evaluate((element) => {
+      const bounds = element.getBoundingClientRect();
+      const controls = element.querySelectorAll<HTMLElement>("a, button");
+      return {
+        left: bounds.left,
+        right: bounds.right,
+        scrollWidth: element.scrollWidth,
+        width: element.clientWidth,
+        controls: [...controls].map((control) => {
+          const icon = control.querySelector("svg")!.getBoundingClientRect();
+          const box = control.getBoundingClientRect();
+          return {
+            left: box.left,
+            right: box.right,
+            center: icon.left + icon.width / 2,
+          };
+        }),
+      };
+    });
+    expect(compactGeometry.scrollWidth).toBeLessThanOrEqual(
+      compactGeometry.width,
+    );
+    for (const control of compactGeometry.controls) {
+      expect(control.left).toBeGreaterThanOrEqual(compactGeometry.left);
+      expect(control.right).toBeLessThanOrEqual(compactGeometry.right);
+      expect(
+        Math.abs(
+          control.center - (compactGeometry.left + compactGeometry.right) / 2,
         ),
-      );
-      const href = await link.getAttribute("href");
-      if (!href) throw new Error("Document link has no URL");
-      const opened = context.waitForEvent("page");
-      if (file === "testing.md") {
-        await link.focus();
-        await link.press("Enter");
-      } else {
-        await link.click();
-      }
-      const popup = await opened;
-      await expect(popup).toHaveURL(href);
-      await popup.waitForLoadState("domcontentloaded");
-      await expect(page).toHaveURL(appUrl);
-      await popup.close();
+      ).toBeLessThanOrEqual(1);
     }
+    await settings.focus();
+    const tooltip = page.locator('[data-slot="tooltip-content"]');
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toHaveText("Settings");
+    await expect(tooltip).toHaveAttribute("data-side", "right");
+    await settings.press("Enter");
+    await expect(page).toHaveURL(/#\/settings$/);
+    await expect(settings).toBeFocused();
+
+    await page
+      .locator("#settings-language")
+      .getByRole("combobox", { name: "Language", exact: true })
+      .click();
+    await page.getByRole("option", { name: "简体中文", exact: true }).click();
+    await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
+    const translatedSettings = footer.getByRole("link", {
+      name: "设置",
+      exact: true,
+    });
+    await expect(translatedSettings).toHaveAttribute("aria-current", "page");
+    await expect(translatedSettings).toHaveText("");
+    await expect(sidebar).toHaveAttribute("data-collapsed", "true");
+    await translatedSettings.focus();
+    await expect(tooltip).toBeVisible();
+    await expect(tooltip).toHaveText("设置");
+
+    await navigation.locator('a[href="#/"]').click();
+    await expect(page).toHaveURL(/#\/$/);
+    await expect(translatedSettings).not.toHaveAttribute(
+      "aria-current",
+      "page",
+    );
+    await expect(
+      page.locator(".app-route-context, main .studio-intro"),
+    ).toHaveCount(0);
+    await expect(page.locator("main h1")).toHaveClass("sr-only");
   });
+}
+
+async function sidebarEdges(page: Page) {
+  return page.evaluate(() => {
+    const sidebar = document
+      .querySelector("#app-sidebar")!
+      .getBoundingClientRect();
+    return {
+      width: sidebar.width,
+      sidebarRight: sidebar.right,
+      mainLeft: document.querySelector("main")!.getBoundingClientRect().left,
+      readingLeft: document
+        .querySelector("[data-window-reading-surface]")!
+        .getBoundingClientRect().left,
+    };
+  });
+}
+
+function expectSidebarEdgesAligned(
+  frame: Awaited<ReturnType<typeof sidebarEdges>>,
+) {
+  expect(
+    Math.abs(frame.readingLeft - frame.mainLeft),
+    JSON.stringify(frame),
+  ).toBeLessThanOrEqual(1);
+  expect(
+    Math.abs(frame.sidebarRight - frame.mainLeft),
+    JSON.stringify(frame),
+  ).toBeLessThanOrEqual(1);
 }
 
 for (const theme of ["light", "dark"] as const) {
-  const language = theme === "light" ? "zh" : "en";
-  test(`catalog tutorial highlights both languages: ${language}, ${theme}`, async ({
+  test(`sidebar motion keeps the reading surface aligned during collapse, expansion and drag: ${theme}`, async ({
     page,
   }, testInfo) => {
-    await seed(page, { theme, language });
-    await page.goto("./#/catalog");
-    await expect(page.locator('code[data-language="rust"]')).toBeHidden();
-    const developerResources = page.getByText(
-      language === "zh" ? "开发者资料" : "Developer resources",
-      { exact: true },
-    );
-    await developerResources.focus();
-    await page.keyboard.press("Enter");
-    for (const [grammar, name] of [
-      ["rust", "lab_echo"],
-      ["typescript", "labEcho"],
-    ] as const) {
-      const code = page.locator(`code[data-language="${grammar}"]`);
-      await expect(code).toContainText(name);
-      await expect(code.locator('[data-token="function"]').first()).toHaveText(
-        name,
-      );
-      const colors = await code.evaluate((element) => ({
-        text: getComputedStyle(element).color,
-        keyword: getComputedStyle(
-          element.querySelector('[data-token="keyword"]')!,
-        ).color,
-      }));
-      expect(colors.keyword).not.toBe(colors.text);
-      const source = await code.textContent();
-      const selected = await code.evaluate((element) => {
-        const selection = window.getSelection()!;
-        selection.selectAllChildren(element);
-        const text = selection.toString();
-        selection.removeAllRanges();
-        return text;
-      });
-      expect(selected).toBe(source);
-      await code.locator("..").screenshot({
-        path: testInfo.outputPath(`${grammar}.png`),
-        animations: "disabled",
-      });
-    }
-  });
-
-  test(`media Markdown fences show syntax colors: ${theme}`, async ({
-    page,
-  }, testInfo) => {
-    await seed(page, { theme });
-    await page.goto("./#/media");
-    const examples = [
-      [
-        "RS filename=main.rs",
-        "rust",
-        'pub fn echo() { println!("Hello"); }',
-        "keyword",
-      ],
-      [
-        "TypeScript",
-        "typescript",
-        'export const message: string = "Hello";',
-        "keyword",
-      ],
-      ["json", "json", '{ "safe": true }', "property"],
-    ] as const;
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    await page.setViewportSize({ width: 1280, height: 820 });
+    await seed(page, { theme, motion: "full", sidebarWidth: 224 });
+    await page.goto("./#/settings");
+    await expect(page.locator("#settings-language")).toBeVisible();
     await page
-      .locator("#markdown-source")
-      .fill(
-        examples
-          .map(([info, , source]) => "```" + info + "\n" + source + "\n```")
-          .join("\n\n"),
+      .locator("[data-bundled-wallpaper]")
+      .evaluate((node) => (node as HTMLImageElement).decode());
+    await page.evaluate(async () => {
+      await document.fonts.ready;
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
       );
-    const preview = page
-      .locator("section")
-      .filter({ has: page.locator('code[data-language="rust"]') });
-    for (const [, grammar, source, token] of examples) {
-      const code = preview.locator(`code[data-language="${grammar}"]`);
-      await expect(code).toHaveText(source);
-      await expect(
-        code.locator(`[data-token="${token}"]`).first(),
-      ).toBeVisible();
-      const colors = await code.evaluate(
-        (element, kind) => [
-          getComputedStyle(element).color,
-          getComputedStyle(element.querySelector(`[data-token="${kind}"]`)!)
-            .color,
-        ],
-        token,
-      );
-      expect(colors[0]).not.toBe(colors[1]);
-    }
-    await expect(preview.locator("pre pre")).toHaveCount(0);
-    await preview.screenshot({
-      path: testInfo.outputPath("markdown.png"),
-      animations: "disabled",
     });
+    for (const [action, target] of [
+      ["collapse", 48],
+      ["expand", 224],
+    ] as const) {
+      const frames = await page.evaluate(async () => {
+        const sidebar = document.querySelector<HTMLElement>("#app-sidebar")!;
+        const main = document.querySelector<HTMLElement>("main")!;
+        const reading = document.querySelector<HTMLElement>(
+          "[data-window-reading-surface]",
+        )!;
+        const measure = () => {
+          const bounds = sidebar.getBoundingClientRect();
+          return {
+            width: bounds.width,
+            sidebarRight: bounds.right,
+            mainLeft: main.getBoundingClientRect().left,
+            readingLeft: reading.getBoundingClientRect().left,
+          };
+        };
+        const frames = [measure()];
+        sidebar
+          .querySelector<HTMLButtonElement>("button[aria-expanded]")!
+          .click();
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => resolve()),
+        );
+        const animations = [sidebar, main, reading].flatMap((node) =>
+          node.getAnimations(),
+        );
+        let finished = false;
+        const sampled = new Promise<void>((resolve) => {
+          const sample = () => {
+            frames.push(measure());
+            if (finished) resolve();
+            else requestAnimationFrame(sample);
+          };
+          requestAnimationFrame(sample);
+        });
+        await Promise.all(animations.map((animation) => animation.finished));
+        finished = true;
+        await sampled;
+        return frames;
+      });
+      await testInfo.attach(`${action}-geometry-${theme}`, {
+        body: JSON.stringify(frames, null, 2),
+        contentType: "application/json",
+      });
+      const intermediate = frames.filter(
+        (frame) =>
+          Math.abs(frame.width - frames[0]!.width) > 1 &&
+          Math.abs(frame.width - target) > 1,
+      );
+      expect(
+        intermediate.length,
+        `${action} must include an animated intermediate frame`,
+      ).toBeGreaterThan(0);
+      for (const frame of frames) expectSidebarEdgesAligned(frame);
+      expect(frames.at(-1)!.width).toBe(target);
+    }
+
+    // 减少动效与拖动都应在下一帧直接跟随目标，不遗留遮罩过渡。
+    await page.emulateMedia({ reducedMotion: "reduce" });
+    for (const target of [48, 224]) {
+      await page
+        .locator("#app-sidebar button[aria-expanded]")
+        .evaluate((button) => (button as HTMLButtonElement).click());
+      await page.evaluate(
+        () =>
+          new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve()),
+          ),
+      );
+      const frame = await sidebarEdges(page);
+      expect(frame.width).toBe(target);
+      expectSidebarEdgesAligned(frame);
+    }
+    await page.emulateMedia({ reducedMotion: "no-preference" });
+    const handle = page.locator(
+      '[role="separator"][aria-controls="app-sidebar"]',
+    );
+    const bounds = (await handle.boundingBox())!;
+    const x = bounds.x + bounds.width / 2;
+    const y = bounds.y + 100;
+    await page.mouse.move(x, y);
+    await page.mouse.down();
+    try {
+      for (const delta of [24, 48, 72]) {
+        await page.mouse.move(x + delta, y);
+        await expect(page.locator("#app-sidebar")).toHaveAttribute(
+          "data-resizing",
+          "true",
+        );
+        const frame = await sidebarEdges(page);
+        expect(frame.width).toBe(224 + delta);
+        expectSidebarEdgesAligned(frame);
+      }
+    } finally {
+      await page.mouse.up();
+    }
+    await expect(page.locator("#app-sidebar")).toHaveAttribute(
+      "data-resizing",
+      "false",
+    );
+    expectSidebarEdgesAligned(await sidebarEdges(page));
   });
 }
+
+test("settings transparency uses regular label typography and recovery remains a reachable group", async ({
+  page,
+}) => {
+  await seed(page);
+  await page.goto("./#/settings");
+  const intensity = page.locator("#skin-intensity-heading");
+  const font = page
+    .locator("#settings-font")
+    .getByText("Font", { exact: true });
+  expect(
+    await intensity.evaluate((node) => getComputedStyle(node).fontSize),
+  ).toBe(await font.evaluate((node) => getComputedStyle(node).fontSize));
+  const slider = page.getByRole("slider", {
+    name: "Background transparency",
+    exact: true,
+  });
+  await expect(slider).toHaveAttribute(
+    "aria-labelledby",
+    "skin-intensity-heading",
+  );
+  const recovery = page.getByRole("group", {
+    name: "Diagnostics and recovery",
+    exact: true,
+  });
+  await expect(recovery).toHaveAttribute("id", "settings-recovery");
+  await expect(recovery).toHaveAttribute("data-surface", "panel");
+  await expect(recovery.locator("legend")).toHaveText(
+    "Diagnostics and recovery",
+  );
+  await expect(recovery.getByRole("heading")).toHaveCount(0);
+  await page.goto("./#/settings?section=recovery");
+  await expect(recovery).toBeFocused();
+  await expect(recovery).toBeInViewport();
+  await expect(recovery).toContainText(
+    "Use this feature in the Serial Workbench desktop app.",
+  );
+});
 
 test("native scrolling stays responsive without scripted edge motion", async ({
   page,
@@ -1987,7 +1731,9 @@ test("native scrolling stays responsive without scripted edge motion", async ({
   await page.setViewportSize({ width: 1120, height: 640 });
   await seed(page, { motion: "full" });
   await page.goto("./#/settings");
-  await expect(page.locator("main h2")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
+  ).toBeVisible();
   const chrome = await page.locator(".app-chrome").boundingBox();
   const background = await page
     .locator("[data-window-background]")
@@ -1997,13 +1743,15 @@ test("native scrolling stays responsive without scripted edge motion", async ({
     await expect(viewport).toHaveCSS("overscroll-behavior-y", "contain");
     const box = (await viewport.boundingBox())!;
     await page.mouse.move(box.x + box.width / 2, box.y + 30);
-    await viewport.evaluate((element) => {
-      element.scrollTop = 0;
-    });
-    await page.mouse.wheel(0, 120);
-    await expect
-      .poll(() => viewport.evaluate((element) => element.scrollTop))
-      .toBeGreaterThan(0);
+    if (selector === "main") {
+      await viewport.evaluate((element) => {
+        element.scrollTop = 0;
+      });
+      await page.mouse.wheel(0, 120);
+      await expect
+        .poll(() => viewport.evaluate((element) => element.scrollTop))
+        .toBeGreaterThan(0);
+    }
     for (const direction of [-1, 1]) {
       await viewport.evaluate((element, sign) => {
         element.scrollTop = sign < 0 ? 0 : element.scrollHeight;
@@ -2131,53 +1879,15 @@ async function layout(page: Page) {
   });
 }
 
-for (const motion of ["full", "reduced"]) {
-  test(
-    "collapsing the sidebar never reveals stale tooltips: " + motion,
-    async ({ page }) => {
-      await page.setViewportSize({ width: 1120, height: 740 });
-      await seed(page, { motion });
-      await page.goto("./#/settings");
-      const sidebar = page.locator("#app-sidebar");
-      const tips = page.locator('[data-slot="tooltip-content"]');
-      const first = sidebar.locator('a[href="#/"]');
-      const second = sidebar.locator('a[href="#/data-studio"]');
-      const firstLabel = await first.innerText();
-      const secondLabel = await second.innerText();
-      await first.focus();
-      await second.focus();
-      await expect(tips).toHaveCount(0);
-      for (let iteration = 0; iteration < 3; iteration++) {
-        await page.mouse.move(900, 200);
-        await page.keyboard.press("Control+b");
-        await expect(sidebar).toHaveAttribute("data-collapsed", "true");
-        await expect(tips).toHaveCount(0);
-        await first.focus();
-        await expect(tips).toHaveCount(1);
-        await expect(page.getByRole("tooltip")).toContainText(firstLabel);
-        await second.focus();
-        await expect(tips).toHaveCount(1);
-        await expect(page.getByRole("tooltip")).toContainText(secondLabel);
-        await second.click();
-        await expect(page).toHaveURL(/#\/data-studio$/);
-        await expect(tips).toHaveCount(0);
-        await sidebar
-          .getByRole("button", { name: "Expand sidebar", exact: true })
-          .click();
-        await expect(tips).toHaveCount(0);
-        await page.mouse.move(900, 200);
-      }
-    },
-  );
-}
-
 test("menus and language selection preserve content geometry and scroll position", async ({
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 820 });
   await seed(page, { background: "aurora" });
   await page.goto("./#/settings");
-  await expect(page.locator("main h2")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
+  ).toBeVisible();
   const presetColumns = () =>
     page
       .locator("#settings-window [data-window-preset]")
@@ -2216,8 +1926,12 @@ test("menus and language selection preserve content geometry and scroll position
   await page.locator("main").evaluate((element) => {
     element.scrollTop = 180;
   });
+  const language = page
+    .locator("#settings-language")
+    .getByRole("combobox", { name: "Language", exact: true });
+  await language.scrollIntoViewIfNeeded();
   const initial = await layout(page);
-  for (const name of ["File", "Edit", "View", "Help"]) {
+  for (const name of ["File", "View", "Help"]) {
     await page
       .locator(".app-title-bar")
       .getByRole("button", { name, exact: true })
@@ -2228,7 +1942,7 @@ test("menus and language selection preserve content geometry and scroll position
     await expect(page.getByRole("menu")).toBeHidden();
     expect(await layout(page)).toEqual(initial);
   }
-  await page.locator(".app-title-language").click();
+  await language.click();
   await expect(page.getByRole("listbox")).toBeVisible();
   expect(await layout(page)).toEqual(initial);
   await page.getByRole("option", { name: "简体中文", exact: true }).click();
@@ -2238,33 +1952,14 @@ test("menus and language selection preserve content geometry and scroll position
   expect(translated.content.x).toBe(initial.content.x);
   expect(translated.content.width).toBe(initial.content.width);
   expect(translated.background).toEqual(initial.background);
+  expect(translated.mainScrollTop).toBe(initial.mainScrollTop);
+  await expect(
+    page.locator("#settings-language").getByRole("combobox", {
+      name: "语言",
+      exact: true,
+    }),
+  ).toBeFocused();
   await expect(page.getByText("设置已保存", { exact: true })).toHaveCount(0);
-});
-
-test("the main scrollbar stays below chrome and route navigation leaves sidebar and artwork in place", async ({
-  page,
-}) => {
-  await page.setViewportSize({ width: 1120, height: 740 });
-  await seed(page, { background: "dune" });
-  await page.goto("./#/settings");
-  await expect(page.locator("main h2")).toBeVisible();
-  await page.locator("main").evaluate((element) => {
-    element.scrollTop = 800;
-  });
-  await page.locator(".app-sidebar-navigation").evaluate((element) => {
-    element.scrollTop = 70;
-  });
-  const before = await layout(page);
-  expect(before.main.y).toBe(before.chrome.height);
-  expect(before.rootScrollTop).toBe(0);
-  await page.locator('#app-sidebar a[href="#/network"]').click();
-  await expect(page).toHaveURL(/#\/network$/);
-  await expect(page.locator("main h2")).toBeVisible();
-  const after = await layout(page);
-  expect(after.mainScrollTop).toBe(0);
-  expect(after.navigationScrollTop).toBe(before.navigationScrollTop);
-  expect(after.background).toEqual(before.background);
-  expect(after.main).toEqual(before.main);
 });
 
 test("both scrollbars use thin arrowless tracks and fade after the pointer leaves", async ({
@@ -2275,7 +1970,9 @@ test("both scrollbars use thin arrowless tracks and fade after the pointer leave
   await page.goto("./#/settings");
   const navigation = page.locator(".app-sidebar-navigation");
   const main = page.locator("main");
-  await expect(page.locator("main h2")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
+  ).toBeVisible();
   for (const region of [navigation, main]) {
     const style = await region.evaluate((element) => ({
       width: getComputedStyle(element, "::-webkit-scrollbar").width,
@@ -2481,67 +2178,6 @@ test("full screen menu and F11 share real fullscreen state and restore the sideb
   await expect(page.locator(".app-chrome")).toBeVisible();
 });
 
-for (const theme of ["light", "dark"]) {
-  test(`full screen automatic focus handoff avoids a content frame in ${theme} theme`, async ({
-    page,
-  }) => {
-    await seed(page, { theme });
-    await page.goto("./#/data-studio");
-    const main = page.getByRole("main");
-    const view = page.getByRole("button", { name: "View", exact: true });
-    await view.focus();
-    await page.keyboard.press("F11");
-    await expect(page.locator(".app-shell")).toHaveClass(/app-shell-immersive/);
-    await expect(main).toBeFocused();
-    await expect(main).toHaveCSS("box-shadow", "none");
-    await expect(main).toHaveCSS("outline-style", "none");
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".app-shell")).not.toHaveClass(
-      /app-shell-immersive/,
-    );
-    await expect(main).toHaveCSS("box-shadow", "none");
-
-    // 菜单关闭后的延迟焦点恢复也应保持正文无框。
-    await view.click();
-    await page.getByRole("menuitem", { name: /Immersive fullscreen/ }).focus();
-    await page.keyboard.press("Enter");
-    await expect(page.locator(".app-chrome")).toBeHidden();
-    await expect(main).toHaveCSS("box-shadow", "none");
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".app-shell")).not.toHaveClass(
-      /app-shell-immersive/,
-    );
-    await expect(main).toHaveCSS("box-shadow", "none");
-
-    await main.focus();
-    await page.keyboard.press("Control+k");
-    await page
-      .getByRole("combobox", { name: "Quick actions", exact: true })
-      .fill("fullscreen");
-    await page.getByRole("option", { name: /Immersive fullscreen/ }).click();
-    await expect(page.getByRole("dialog")).toHaveCount(0);
-    await expect(page.locator(".app-shell")).toHaveClass(/app-shell-immersive/);
-    await expect(main).toHaveCSS("box-shadow", "none");
-    await page.keyboard.press("Escape");
-    await expect(page.locator(".app-shell")).not.toHaveClass(
-      /app-shell-immersive/,
-    );
-    await expect(main).toHaveCSS("box-shadow", "none");
-
-    // 真正用 Tab 进入滚动区时，仍须显示可见焦点并允许键盘滚动。
-    await main.focus();
-    await page.keyboard.press("Tab");
-    await expect(main).not.toBeFocused();
-    await page.keyboard.press("Shift+Tab");
-    await expect(main).toBeFocused();
-    await expect(main).not.toHaveCSS("box-shadow", "none");
-    await page.keyboard.press("PageDown");
-    await expect
-      .poll(() => main.evaluate((node) => node.scrollTop))
-      .toBeGreaterThan(0);
-  });
-}
-
 test("immersive edges animate over the content and keep portalled menus usable", async ({
   page,
 }, testInfo) => {
@@ -2579,12 +2215,12 @@ test("immersive edges animate over the content and keep portalled menus usable",
   ).toContain("transform");
   expect(await layout()).toEqual(before);
   await page.screenshot({ path: testInfo.outputPath("immersive-left.png") });
-  // 插件文档有独立事件树；直接移入 iframe 后也要能收起宿主导航。
+  // iframe 有独立事件树；直接移入后也要能收起应用导航。
   await main.evaluate((node) => {
     const frame = document.createElement("iframe");
     frame.dataset.immersiveProbe = "";
-    frame.title = "Extension pointer boundary";
-    frame.srcdoc = "<p>Extension content</p>";
+    frame.title = "Embedded pointer boundary";
+    frame.srcdoc = "<p>Embedded content</p>";
     frame.style.cssText =
       "position:fixed;top:300px;right:60px;width:300px;height:150px;border:0";
     node.append(frame);
@@ -2609,11 +2245,18 @@ test("immersive edges animate over the content and keep portalled menus usable",
   await page.keyboard.press("Escape");
   await expect(menu).toHaveCount(0);
   await expect(page.locator(".app-shell")).toHaveClass(/app-shell-immersive/);
-  await chrome.getByRole("combobox", { name: "Language", exact: true }).click();
-  await page.getByRole("option", { name: "English", exact: true }).hover();
+  const help = chrome.getByRole("button", {
+    name: "Help",
+    exact: true,
+  });
+  await help.focus();
+  await page.keyboard.press("Enter");
+  await expect(menu).toBeVisible();
+  await menu.getByRole("menuitem", { name: /About/ }).hover();
   await expect(chrome).toHaveCSS("opacity", "1");
   await page.keyboard.press("Escape");
-  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(menu).toHaveCount(0);
+  await expect(help).toBeFocused();
   await expect(page.locator(".app-shell")).toHaveClass(/app-shell-immersive/);
   await main.focus();
   await page.mouse.move(640, 400);
@@ -2703,15 +2346,15 @@ test("immersive title bar stays open on the topmost pixel across WebView boundar
   await page.locator("main").evaluate((node) => {
     const frame = document.createElement("iframe");
     frame.dataset.immersiveProbe = "";
-    frame.title = "Extension pointer boundary";
-    frame.srcdoc = "<p>Extension content</p>";
+    frame.title = "Embedded pointer boundary";
+    frame.srcdoc = "<p>Embedded content</p>";
     frame.style.cssText =
       "position:fixed;top:300px;right:60px;width:300px;height:150px;border:0";
     node.append(frame);
   });
   await page
     .frameLocator("[data-immersive-probe]")
-    .getByText("Extension content")
+    .getByText("Embedded content")
     .waitFor();
   await page.mouse.move(1000, 350);
   await expect(chrome).toBeHidden();
@@ -3276,86 +2919,6 @@ for (const theme of ["light", "dark"]) {
       await page.screenshot({
         path: testInfo.outputPath("window-" + theme + ".png"),
       });
-      await page.locator('#app-sidebar a[href="#/"]').click();
-      if (theme === "dark")
-        await expect(page.locator(".showroom-scene-aura")).toBeHidden();
-    },
-  );
-
-  test(
-    "secondary copy stays readable over an extreme custom background: " + theme,
-    async ({ page }) => {
-      await seed(page, { theme, backgroundIntensity: 50 });
-      await page.goto("./#/settings");
-      const source = await page.evaluate((value) => {
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 16;
-        const context = canvas.getContext("2d")!;
-        context.fillStyle = value === "light" ? "#000" : "#fff";
-        context.fillRect(0, 0, 16, 16);
-        return canvas.toDataURL("image/png").split(",")[1]!;
-      }, theme);
-      await expect(
-        page.getByRole("button", { name: "Add wallpapers", exact: true }),
-      ).toBeEnabled();
-      await page.locator('input[type="file"]').setInputFiles({
-        name: "contrast.png",
-        mimeType: "image/png",
-        buffer: Buffer.from(source, "base64"),
-      });
-      await expect(page.locator("html")).toHaveAttribute(
-        "data-background",
-        "custom",
-      );
-      await page.locator('#app-sidebar a[href="#/"]').click();
-      await expect(page.locator(".showroom-lede")).toBeVisible();
-      const contrast = await page.evaluate(async () => {
-        const image = document.querySelector<HTMLImageElement>(
-          "[data-custom-background]",
-        )!;
-        await image.decode();
-        const canvas = document.createElement("canvas");
-        canvas.width = canvas.height = 1;
-        const context = canvas.getContext("2d")!;
-        context.drawImage(image, 0, 0, 1, 1);
-        const pixel = [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
-        const rgb = (color: string) => {
-          context.clearRect(0, 0, 1, 1);
-          context.fillStyle = color;
-          context.fillRect(0, 0, 1, 1);
-          return [...context.getImageData(0, 0, 1, 1).data].slice(0, 3);
-        };
-        const surface = rgb(
-          getComputedStyle(image.parentElement!).backgroundColor,
-        );
-        // 主体与导航各自保留阅读表面，计算实际叠加后的图片强度。
-        context.clearRect(0, 0, 1, 1);
-        context.fillStyle = getComputedStyle(
-          document.querySelector("[data-window-reading-surface]")!,
-        ).backgroundColor;
-        context.fillRect(0, 0, 1, 1);
-        const surfaceAlpha = context.getImageData(0, 0, 1, 1).data[3]! / 255;
-        const alpha =
-          Number(getComputedStyle(image).opacity) * (1 - surfaceAlpha);
-        const background = surface.map(
-          (value, index) => value * (1 - alpha) + pixel[index]! * alpha,
-        );
-        const foreground = rgb(
-          getComputedStyle(document.querySelector(".showroom-lede")!).color,
-        );
-        const luminance = (color: number[]) =>
-          color.reduce((total, value, index) => {
-            const channel = value / 255;
-            const linear =
-              channel <= 0.04045
-                ? channel / 12.92
-                : ((channel + 0.055) / 1.055) ** 2.4;
-            return total + linear * [0.2126, 0.7152, 0.0722][index]!;
-          }, 0);
-        const values = [luminance(background), luminance(foreground)];
-        return (Math.max(...values) + 0.05) / (Math.min(...values) + 0.05);
-      });
-      expect(contrast).toBeGreaterThanOrEqual(4.5);
     },
   );
 }
@@ -3365,7 +2928,9 @@ test("the settings gallery and background controls have no detected WCAG A/AA vi
 }) => {
   await seed(page, { background: "aurora" });
   await page.goto("./#/settings");
-  await expect(page.locator("main h2")).toBeVisible();
+  await expect(
+    page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
+  ).toBeVisible();
   const scan = await new AxeBuilder({ page })
     .include("main")
     .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
@@ -3426,7 +2991,7 @@ for (const profile of [
       page.on("pageerror", (error) => errors.push(error.message));
       for (const route of routes) {
         await page.goto("./#" + route);
-        await expect(page.locator("main h2").first()).toBeVisible();
+        await expectRouteReady(page, route);
         const dimensions = await page.locator("main").evaluate((element) => ({
           viewport: element.clientWidth,
           content: element.scrollWidth,
@@ -3439,19 +3004,10 @@ for (const profile of [
         ).toBeLessThanOrEqual(dimensions.viewport + 1);
         expect(dimensions.height).toBeGreaterThan(250);
         expect(dimensions.documentScroll).toBe(0);
-        if (
-          [
-            "/",
-            "/settings",
-            "/components",
-            "/data-studio",
-            "/media",
-            "/motion",
-          ].includes(route)
-        ) {
+        if (["/", "/settings"].includes(route)) {
           await page.screenshot({
             path: testInfo.outputPath(
-              (route === "/" ? "showroom" : route.slice(1)) + ".png",
+              (route === "/" ? "home" : route.slice(1)) + ".png",
             ),
           });
         }

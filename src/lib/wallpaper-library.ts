@@ -22,7 +22,7 @@ function readLibrary(raw: unknown): Library {
     throw new WallpaperLibraryError("invalid");
   const value = raw as Record<string, unknown>;
   if (
-    (value.version !== 1 && value.version !== 2) ||
+    value.version !== 2 ||
     !Array.isArray(value.images) ||
     value.images.length > MAX_WALLPAPERS
   )
@@ -76,8 +76,8 @@ async function browserImage(input: WallpaperInput): Promise<Wallpaper> {
 
 /** 一次事务内读取和修改，避免多个浏览器窗口覆盖彼此的图库。 */
 function transact<T>(
-  change: (library: Library, fresh: boolean) => T,
-  write: boolean | "initialize",
+  change: (library: Library) => T,
+  write: boolean,
 ): Promise<T> {
   return new Promise((resolve, reject) => {
     const open = indexedDB.open(DATABASE, 1);
@@ -110,12 +110,8 @@ function transact<T>(
       request.onsuccess = () => {
         try {
           const library = readLibrary(request.result);
-          result = change(library, request.result === undefined);
-          if (
-            write === true ||
-            (write === "initialize" && request.result === undefined)
-          )
-            store.put(library, "snapshot");
+          result = change(library);
+          if (write) store.put(library, "snapshot");
         } catch (error) {
           failure = error;
           transaction.abort();
@@ -142,15 +138,9 @@ function notify() {
   channel.close();
 }
 
-export async function listWallpaperLibrary(
-  legacy: WallpaperInput | null,
-): Promise<Wallpaper[]> {
-  if (desktop.isTauri()) return desktop.listWallpapers(legacy);
-  const previous = legacy ? await browserImage(legacy) : null;
-  return transact((library, fresh) => {
-    if (fresh && previous) library.images.push(previous);
-    return library.images;
-  }, "initialize");
+export async function listWallpaperLibrary(): Promise<Wallpaper[]> {
+  if (desktop.isTauri()) return desktop.listWallpapers();
+  return transact((library) => library.images, false);
 }
 
 export async function addLibraryWallpaper(

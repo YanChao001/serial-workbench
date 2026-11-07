@@ -84,7 +84,7 @@ function conventionalChanges(commits, repository, config) {
     const match = /^([a-z]+)(?:\(([^)\r\n]+)\))?(!)?:[ \t]+(.+)$/.exec(subject);
     const footer = /(?:^|\n)BREAKING[ -]CHANGE:[ \t]*([\s\S]+)/.exec(message);
     const isBreaking = match?.[3] || footer;
-    // 只过滤纯升版 / 回流维护提交，不隐藏 fix(release) 或声明破坏性的提交。
+    // 只过滤纯升版维护提交，不隐藏 fix(release) 或声明破坏性的提交。
     if (match?.[1] === "chore" && match[2] === "release" && !isBreaking)
       continue;
     const type = match && headings.has(match[1]) ? match[1] : "other";
@@ -168,10 +168,7 @@ export function generateReleaseNotes(
     (item) =>
       item.merged_at &&
       item.base.ref === config.hosting.releaseBranch &&
-      item.merge_commit_sha === commit &&
-      ["release", "hotfix"].some(
-        (prefix) => item.head.ref === `${prefix}/${version}`,
-      ),
+      item.merge_commit_sha === commit,
   );
   let summary = section(pull?.body, ["变更摘要", "变更内容"]);
   let limitations = section(pull?.body, ["升级与限制", "影响范围"]);
@@ -181,7 +178,7 @@ export function generateReleaseNotes(
       "首次发布没有可验证的历史版本升级路径，安装与签名状态请按发布验收结果确认。";
   } else if (!summary || !limitations) {
     throw new Error(
-      `请在合入 ${config.hosting.releaseBranch} 的 release/${version} 或 hotfix/${version} PR 中填写“变更内容”和“影响范围”（或“变更摘要”和“升级与限制”），再重跑发布；不得用模板注释代替说明`,
+      `请在发布提交所对应、已合入 ${config.hosting.releaseBranch} 的 PR 中填写“变更内容”和“影响范围”（或“变更摘要”和“升级与限制”），再重跑发布；不得用模板注释代替说明`,
     );
   }
   const { changes, breaking } = conventionalChanges(

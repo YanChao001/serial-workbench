@@ -14,7 +14,7 @@ const MARKDOWN_COMPONENTS: Components = {
     return (
       <div
         role="region"
-        aria-label={t("labs.media.table")}
+        aria-label={t("markdown.table")}
         tabIndex={0}
         className="min-w-0 max-w-full overflow-auto rounded-md border focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
       >
@@ -57,7 +57,7 @@ const MARKDOWN_COMPONENTS: Components = {
         disabled
         checked={checked}
         aria-label={t(
-          checked ? "labs.media.taskCompleted" : "labs.media.taskPending",
+          checked ? "markdown.taskCompleted" : "markdown.taskPending",
         )}
       />
     );
@@ -76,7 +76,7 @@ const MARKDOWN_COMPONENTS: Components = {
     const { t } = useI18n();
     return (
       <span className="text-muted-foreground">
-        [{t("labs.media.blockedImage")}
+        [{t("markdown.blockedImage")}
         {alt ? `: ${alt}` : ""}]
       </span>
     );

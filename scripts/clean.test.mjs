@@ -16,7 +16,11 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import test from "node:test";
-import { assertNoRunningPrograms, getWindowsProcesses } from "./clean-lib.mjs";
+import {
+  assertNoRunningPrograms,
+  cleanupTargets,
+  getWindowsProcesses,
+} from "./clean-lib.mjs";
 import { removeProjectPath } from "./fs-utils.mjs";
 
 function fixture(t) {
@@ -233,24 +237,16 @@ test("outputs cleanup removes generated reports and packages while retaining com
     "artifacts/nested/old-report.txt",
     ".cache/old-fixture/input.json",
     ".cache/nested/trace.zip",
-    "marketplace/dist/market-123/catalog.json",
-    "marketplace/artifacts/market-456/plugin.starter-extension.json",
-    "examples/extensions/dist/plugin.starter-extension.json",
     "src-tauri/target/release/bundle/nsis/setup.exe",
     "src-tauri/gen/schemas/desktop.json",
   ];
   const retained = [
     "src-tauri/target/debug/deps/native.rlib",
-    "marketplace/target/calculator/release/plugin.wasm",
-    "marketplace/plugins/calculator/target/debug/cache.rlib",
-    "examples/extensions/apps/target/release/example.wasm",
+    "marketplace/dist/catalog.json",
     "node_modules/.vite/deps/chunk.js",
-    "examples/extensions/node_modules/dependency/index.js",
     ".pnpm-store/package/cache",
-    ".cache/extension-tools/extism-js.exe",
     "docs/assets/preview-light.png",
     "src/example.test.ts",
-    "marketplace/plugins/calculator/ui.test.mjs",
     "src-tauri/gen/keep.txt",
   ];
   // 任意名称、任意深度的历史 Cargo 缓存也保留，目录名本身不是保留依据。
@@ -305,9 +301,10 @@ test("outputs cleanup rejects linked output ancestors before removing anything",
   const { base, root } = fixture(t);
   const outside = join(base, "outside");
   put(outside, "artifacts/keep.txt", "outside data");
+  mkdirSync(join(root, "src-tauri/target/release"), { recursive: true });
   symlinkSync(
     outside,
-    join(root, "marketplace"),
+    join(root, "src-tauri/target/release/bundle"),
     process.platform === "win32" ? "junction" : "dir",
   );
   const result = runCleanup(root, "--outputs");
@@ -484,5 +481,18 @@ test("running program protection uses Windows case-insensitive directory boundar
         { ProcessId: 4242, ExecutablePath: "c:\\FIXTURE\\artifacts\\tool.exe" },
       ]),
     /4242/,
+  );
+});
+
+test("output plans stay within the host workspace and preserve standalone repositories", (t) => {
+  const { root } = fixture(t);
+  const paths = cleanupTargets(root, "outputs").map(([path]) =>
+    path.replaceAll("\\", "/"),
+  );
+  assert.deepEqual(
+    paths.filter(
+      (path) => path.startsWith("marketplace/") || path.startsWith("examples/"),
+    ),
+    [],
   );
 });

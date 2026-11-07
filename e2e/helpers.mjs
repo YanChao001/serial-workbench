@@ -121,7 +121,7 @@ export async function navigate(path) {
   );
 }
 
-/** 保留但不出现在侧栏的演示页，显式从 HashRouter 深链进入。 */
+/** 保留但不出现在侧栏的诊断与恢复页，显式从 HashRouter 深链进入。 */
 export async function openDeepLink(path) {
   await browser.execute((target) => {
     globalThis.location.hash = `#${target}`;

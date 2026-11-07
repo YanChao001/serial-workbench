@@ -5,11 +5,8 @@ import { createTranslator } from "@/i18n/translate";
 import { zhCN } from "@/i18n/zh-CN";
 import { CompactNavigation } from "./compact-navigation";
 
-const state = vi.hoisted(() => ({ native: false, appMode: "demo" }));
+const state = vi.hoisted(() => ({ native: false }));
 vi.mock("@/lib/tauri", () => ({ isTauri: () => state.native }));
-vi.mock("@/providers/settings", () => ({
-  useSettings: () => ({ settings: { appMode: state.appMode } }),
-}));
 vi.mock("@/providers/i18n", () => ({
   useI18n: () => ({ t: createTranslator(zhCN) }),
 }));
@@ -25,10 +22,9 @@ function renderBar(path = "/") {
     </MemoryRouter>,
   );
 }
-describe("同源浏览器演示入口", () => {
+describe("浏览器导航", () => {
   beforeEach(() => {
     state.native = false;
-    state.appMode = "demo";
   });
   afterEach(cleanup);
   it("仅提供标题栏页面选择，不添加演示说明或下载外壳", () => {
@@ -41,21 +37,9 @@ describe("同源浏览器演示入口", () => {
     renderBar();
     const navigation = screen.getByRole("combobox", { name: "切换页面" });
     fireEvent.keyDown(navigation, { key: "Enter" });
-    fireEvent.click(screen.getByRole("option", { name: "交互体验" }));
-    expect(screen.getByLabelText("当前路由")).toHaveTextContent("/components");
-    expect(navigation).toHaveTextContent("交互体验");
-  });
-  it("精简模式保持相同导航可见性，直接访问隐藏路由仍能切换离开", () => {
-    state.appMode = "minimal";
-    renderBar("/components");
-    const navigation = screen.getByRole("combobox", { name: "切换页面" });
-    expect(navigation).toHaveTextContent("交互体验");
-    fireEvent.keyDown(navigation, { key: "Enter" });
-    expect(
-      screen.queryByRole("option", { name: "动效实验室" }),
-    ).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("option", { name: "设置" }));
     expect(screen.getByLabelText("当前路由")).toHaveTextContent("/settings");
+    expect(navigation).toHaveTextContent("设置");
   });
   it("原生窗口不显示浏览器入口", () => {
     state.native = true;

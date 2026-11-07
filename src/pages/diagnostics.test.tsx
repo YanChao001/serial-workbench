@@ -43,7 +43,6 @@ const report: DiagnosticsReport = {
   architecture: "x86_64",
   platform: "windows",
   windowLabel: "main",
-  databaseVersion: 1,
   settingsRevision: 4,
   desktop: {
     trayAvailable: true,
@@ -80,9 +79,7 @@ describe("diagnostics actions", () => {
     vi.mocked(recoveryStatus).mockResolvedValue({
       active: false,
       reason: null,
-      restored: false,
       pending: false,
-      notes: 0,
       archiveId: null,
     });
   });

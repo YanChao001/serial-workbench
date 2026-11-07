@@ -4,10 +4,9 @@ use tauri::{Emitter, Manager, State};
 
 use crate::{
     blocking,
-    database::{Database, Note, NoteInput, NoteUpdate},
     desktop::{self, DesktopStatus},
     diagnostics::{self, DiagnosticsReport, DiagnosticsState, FrontendError},
-    error::{ErrorCode, NativeError, NativeResult, bounded_text},
+    error::{ErrorCode, NativeError, NativeResult},
     storage::{JsonValue, SETTINGS_EVENT, SettingsSnapshot, SettingsStore},
     updater::{UpdateManager, UpdateProgress, UpdateStatus},
     window_geometry::{self, WindowGeometry},
@@ -22,38 +21,6 @@ pub(crate) fn require_host_window(label: &str) -> NativeResult<()> {
             "This operation is available only in the main and secondary windows",
         ))
     }
-}
-
-#[tauri::command]
-#[specta::specta]
-pub fn greet(name: &str, language: Option<&str>) -> NativeResult<String> {
-    bounded_text(name, 800, "Name")?;
-    if name.chars().count() > 200 {
-        return Err(NativeError::new(
-            ErrorCode::InputTooLong,
-            "Name exceeds 200 characters",
-        ));
-    }
-    if let Some(language) = language {
-        bounded_text(language, 32, "Language")?;
-    }
-    let name = name.trim();
-    let english = language == Some("en");
-    if name.is_empty() {
-        return Err(NativeError::new(
-            ErrorCode::NameRequired,
-            if english {
-                "Name cannot be empty"
-            } else {
-                "名称不能为空"
-            },
-        ));
-    }
-    Ok(if english {
-        format!("Hello, {name}! This message comes from Rust.")
-    } else {
-        format!("你好，{name}！这条消息来自 Rust。")
-    })
 }
 
 #[tauri::command]
@@ -122,28 +89,6 @@ async fn persist_settings_snapshot(
             );
         }
         Ok(snapshot)
-    })
-    .await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn create_note(app: tauri::AppHandle, input: NoteInput) -> NativeResult<Note> {
-    blocking::run(move || {
-        let note = app.state::<Database>().create(input)?;
-        let _ = app.emit("app://notes-changed", ());
-        Ok(note)
-    })
-    .await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn update_note(app: tauri::AppHandle, input: NoteUpdate) -> NativeResult<Note> {
-    blocking::run(move || {
-        let note = app.state::<Database>().update(input)?;
-        let _ = app.emit("app://notes-changed", ());
-        Ok(note)
     })
     .await
 }
@@ -280,14 +225,14 @@ pub fn quit_app(app: tauri::AppHandle, window: tauri::WebviewWindow) -> NativeRe
 mod tests {
     use super::*;
     #[test]
-    fn host_management_rejects_extension_and_unknown_windows() {
+    fn host_management_rejects_unknown_windows() {
         for label in ["main", "secondary"] {
             assert!(require_host_window(label).is_ok());
         }
         for label in [
             "",
-            "extension-main",
-            "extension-123",
+            "unknown-main",
+            "unknown-123",
             "main-1",
             "https://remote",
         ] {
@@ -296,29 +241,5 @@ mod tests {
                 ErrorCode::PlatformUnavailable
             );
         }
-    }
-    #[test]
-    fn greet_contract_validates_trim_language_and_size() {
-        assert_eq!(
-            greet(" Ada ", Some("en")).unwrap(),
-            "Hello, Ada! This message comes from Rust."
-        );
-        assert_eq!(
-            greet(" 世界 ", None).unwrap(),
-            "你好，世界！这条消息来自 Rust。"
-        );
-        assert_eq!(
-            greet("   ", Some("en")).unwrap_err().code,
-            ErrorCode::NameRequired
-        );
-        assert_eq!(greet("", None).unwrap_err().message, "名称不能为空");
-        assert_eq!(
-            greet(&"a".repeat(201), None).unwrap_err().code,
-            ErrorCode::InputTooLong
-        );
-        assert_eq!(
-            greet("Ada", Some("unknown")).unwrap(),
-            greet("Ada", None).unwrap()
-        );
     }
 }

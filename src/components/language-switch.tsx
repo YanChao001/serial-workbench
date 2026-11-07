@@ -21,7 +21,7 @@ type LanguageSwitchProps = {
   className?: string;
 };
 
-/** 标题栏与设置页共用注册表和持久化入口。 */
+/** 设置中的语言选择复用注册表和持久化入口。 */
 export function LanguageSwitch({
   compact = false,
   className,

@@ -5,7 +5,6 @@ import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { format } from "prettier";
 import { buildEnvironment } from "./build-lib.mjs";
-import { generateExtensionSdkTypes } from "./generate-extension-sdk-types.mjs";
 
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== "--check") || args.length > 1) {
@@ -53,14 +52,12 @@ try {
         process.exitCode = 1;
       } else {
         console.log("Rust IPC bindings are current.");
-        console.log(await generateExtensionSdkTypes(root, { check: true }));
       }
     } else {
       writeFileSync(target, generated, "utf8");
       console.log(
         "Generated src/lib/generated/bindings.ts from Rust commands.",
       );
-      console.log(await generateExtensionSdkTypes(root));
     }
   }
 } finally {

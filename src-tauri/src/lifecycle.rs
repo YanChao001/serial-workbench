@@ -328,9 +328,7 @@ pub async fn authorize(
         windows = app
             .webview_windows()
             .into_keys()
-            .filter(|label| {
-                matches!(label.as_str(), "main" | "secondary") || label.starts_with("extension-")
-            })
+            .filter(|label| matches!(label.as_str(), "main" | "secondary"))
             .collect();
     }
     if windows.is_empty() {
@@ -398,31 +396,10 @@ pub fn request_action(app: &tauri::AppHandle, action: LifecycleAction, label: Op
         };
         match action {
             LifecycleAction::Close => {
-                if let Some(window) = label.and_then(|label| app.get_webview_window(&label)) {
-                    let store = app
-                        .state::<crate::extensions::ExtensionStore>()
-                        .inner()
-                        .clone();
-                    let owner = window.label().to_owned();
-                    let closing_store = store.clone();
-                    let closing_owner = owner.clone();
-                    if let Err(error) = crate::blocking::run(move || {
-                        closing_store.begin_window_close(&closing_owner)?;
-                        closing_store.wait_window_stopped(&closing_owner);
-                        Ok(())
-                    })
-                    .await
-                    {
-                        log::warn!("Cannot stop closing window extensions: {error}");
-                        return;
-                    }
-                    if let Err(error) = window.destroy() {
-                        // 销毁失败时窗口仍可继续工作，恢复其运行入口。
-                        if let Err(reopen_error) = store.reopen_window(&owner) {
-                            log::warn!("Cannot restore window extension entry: {reopen_error}");
-                        }
-                        log::warn!("Cannot close window: {error}");
-                    }
+                if let Some(window) = label.and_then(|label| app.get_webview_window(&label))
+                    && let Err(error) = window.destroy()
+                {
+                    log::warn!("Cannot close window: {error}");
                 }
             }
             LifecycleAction::Quit => {
@@ -432,21 +409,6 @@ pub fn request_action(app: &tauri::AppHandle, action: LifecycleAction, label: Op
                 app.exit(0);
             }
             LifecycleAction::Restart => {
-                let extensions = app
-                    .state::<crate::extensions::ExtensionStore>()
-                    .inner()
-                    .clone();
-                if crate::blocking::run(move || {
-                    // 先获得阻塞执行名额；队列满时不能提前永久关闭扩展入口。
-                    extensions.begin_shutdown();
-                    extensions.wait_stopped();
-                    Ok(())
-                })
-                .await
-                .is_err()
-                {
-                    return;
-                }
                 app.state::<LifecycleState>()
                     .approved_exit
                     .store(true, Ordering::Release);
@@ -589,7 +551,7 @@ mod tests {
     fn window_creation_and_lifecycle_authorization_cannot_overtake_each_other() {
         let state = LifecycleState::default();
         let main = state.begin_window_creation().unwrap();
-        let extension = state.begin_window_creation().unwrap();
+        let secondary = state.begin_window_creation().unwrap();
         assert!(state.creating_windows());
         // 查询会重新加锁；创建租约不能将锁一直持有至原生 build 返回。
         assert!(state.active_action().is_none());
@@ -598,7 +560,7 @@ mod tests {
         }
         drop(main);
         assert!(state.begin(LifecycleAction::Restart).is_err());
-        drop(extension);
+        drop(secondary);
         assert!(!state.creating_windows());
         let update = state.begin(LifecycleAction::InstallUpdate).unwrap();
         assert_eq!(
@@ -631,7 +593,7 @@ mod tests {
         state.reserve_exit().unwrap().unwrap().commit().unwrap();
         assert!(state.begin_window_creation().is_err());
         assert!(state.begin(LifecycleAction::Restart).is_err());
-        // 等实际 Wasm 停止后重新收到 ExitRequested 时，仍可完成同一次退出。
+        // 再次收到 ExitRequested 时，仍可完成同一次退出。
         let retry = state.reserve_exit().unwrap().unwrap();
         drop(retry);
         assert!(state.begin_window_creation().is_err());

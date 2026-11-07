@@ -7,9 +7,7 @@ import { getBundledWallpaper } from "@/lib/bundled-wallpapers";
 export { PatternArtwork } from "@/components/skin-artwork";
 
 /** 装饰固定铺满窗口，不参与滚动、点击、拖拽或键盘焦点。 */
-export function WindowBackground({
-  videoPlayback = true,
-}: { videoPlayback?: boolean } = {}) {
+export function WindowBackground() {
   const { settings } = useSettings();
   const bundled = getBundledWallpaper(settings.background);
   return (
@@ -30,7 +28,7 @@ export function WindowBackground({
         />
       ) : settings.background === "custom" ? (
         settings.customBackground ? (
-          settings.customBackground.video && videoPlayback ? (
+          settings.customBackground.video ? (
             <VideoBackground
               key={settings.customBackground.video.id}
               background={settings.customBackground}

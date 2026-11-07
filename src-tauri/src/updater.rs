@@ -356,13 +356,10 @@ impl UpdateManager {
         )
         .await?;
         self.event(app, operation_id, UpdateStage::Installing, None, None);
-        let extensions = app.state::<crate::extensions::ExtensionStore>().pause();
         let paths = app.state::<DataPaths>().inner().clone();
         blocking::run(move || {
             // 停止等待不会取消阻塞安装；占用必须随真实安装任务完成后再释放。
             let _authorization = authorization;
-            extensions.wait_stopped();
-            let _extensions = extensions;
             // 下载与退出协商可能耗时数分钟；提交安装前重新确认部署仍允许此次更新。
             require_unchanged_policy(load_policy(&paths)?, &policy)?;
             update.install(bytes).map_err(|e| {

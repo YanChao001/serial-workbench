@@ -6,16 +6,13 @@ import {
   getWorkspace,
   isTauri,
   onActivation,
-  onSystemNotification,
   onWorkspaceRoute,
   saveWorkspaceRoute,
   recoveryStatus,
-  loadWorkbenchDocument,
   type Activation,
 } from "@/lib/tauri";
 import { APP_ROUTES } from "@/routes";
 import { reportClientError } from "@/lib/report-error";
-import { workbenchEditor } from "@/components/workbench/editor-store";
 
 export function useWorkspace() {
   const { pathname } = useLocation();
@@ -56,11 +53,6 @@ export function useWorkspace() {
         if (stopped) stop();
         else stops.push(stop);
       });
-    const openActivation = (value: Activation) => {
-      void workbenchEditor
-        .openActivation(value, loadWorkbenchDocument)
-        .catch(reportClientError);
-    };
     const drainActivations = () => {
       if (stopped || !mainReady) return;
       const values = [...queuedActivations.current.values()].sort(
@@ -72,7 +64,6 @@ export function useWorkspace() {
         newest && newest.value.id > latestActivation.current;
       for (const { value } of values) {
         latestActivation.current = Math.max(latestActivation.current, value.id);
-        openActivation(value);
       }
       if (
         shouldNavigate &&
@@ -108,9 +99,6 @@ export function useWorkspace() {
         })
         .catch(reportClientError);
       const routesReady = attach(onWorkspaceRoute(visit));
-      void attach(onSystemNotification(() => visit("/tasks"))).catch(
-        reportClientError,
-      );
       void Promise.all([activationsReady, routesReady])
         .then(async () => {
           const [[label, recovery], workspace, activations] = await Promise.all(
@@ -124,7 +112,10 @@ export function useWorkspace() {
           const ordered = [...activations].sort((a, b) => a.id - b.id);
           const newest = ordered.at(-1);
           const activationRoute =
-            label === "main" && newest && newest.id >= latestActivation.current
+            label === "main" &&
+            newest &&
+            newest.id >= latestActivation.current &&
+            APP_ROUTES.some((route) => route.path === newest.route)
               ? newest.route
               : null;
           if (label === "main")
@@ -133,7 +124,6 @@ export function useWorkspace() {
                 latestActivation.current,
                 value.id,
               );
-              openActivation(value);
             }
           const route = activationRoute ?? workspace.routes[label];
           if (route && baseline === navigation.current.generation) visit(route);

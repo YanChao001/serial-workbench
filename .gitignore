@@ -11,7 +11,6 @@ node_modules
 dist
 dist-web
 artifacts
-/examples/extensions/**/target/
 *.local
 
 # 测试覆盖率报告

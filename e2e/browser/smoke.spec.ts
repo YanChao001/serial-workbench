@@ -1,15 +1,19 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import { writeFile } from "node:fs/promises";
 import appConfig from "../../app.config.json" with { type: "json" };
 
 const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:settings`;
 const browserFailures = new WeakMap<Page, string[]>();
-test.beforeEach(({ page }) => {
+
+test.beforeEach(async ({ page }) => {
   const failures: string[] = [];
   browserFailures.set(page, failures);
   page.on("pageerror", (error) => failures.push(error.message));
+  page.on("response", (response) => {
+    if (response.url().includes("/assets/") && response.status() >= 400)
+      failures.push(`${response.status()} ${response.url()}`);
+  });
   page.on("console", (message) => {
     if (
       message.type() === "error" &&
@@ -17,42 +21,50 @@ test.beforeEach(({ page }) => {
     )
       failures.push(message.text());
   });
+  await page.addInitScript((key) => {
+    if (!localStorage.getItem(key))
+      localStorage.setItem(
+        key,
+        JSON.stringify({ schemaVersion: 7, language: "en", motion: "reduced" }),
+      );
+  }, SETTINGS_KEY);
 });
+
 test.afterEach(async ({ page }, testInfo) => {
   const failures = browserFailures.get(page) ?? [];
   if (failures.length)
-    await testInfo.attach("browser-runtime-or-csp-errors", {
+    await testInfo.attach("browser-runtime-or-asset-errors", {
       body: JSON.stringify(failures, null, 2),
       contentType: "application/json",
     });
   expect(failures).toEqual([]);
 });
 
-test("production assets and HashRouter pages work below a project subpath", async ({
+test("the empty workspace and HashRouter load below the product subpath", async ({
   page,
 }) => {
-  const failures: string[] = [];
-  page.on("pageerror", (error) => failures.push(error.message));
-  page.on("response", (response) => {
-    if (response.url().includes("/assets/") && response.status() >= 400)
-      failures.push(`${response.status()} ${response.url()}`);
-  });
-  await page.goto("./#/components");
+  await page.goto("./#/");
+  await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
   await expect(page.locator("main")).toBeVisible();
-  await expect(page.locator("main h2").first()).toBeVisible();
+  await expect(page.locator("main h1")).toHaveText("Serial Workbench");
+  await expect(page.locator("main").getByRole("button")).toHaveCount(0);
+  const sidebar = page.locator("#app-sidebar-navigation");
+  await expect(sidebar.getByRole("link")).toHaveCount(1);
+  await expect(
+    page.locator(".app-sidebar-tools").getByRole("link", {
+      name: "Settings",
+      exact: true,
+    }),
+  ).toBeVisible();
+  await expect(sidebar.locator('a[href="#/diagnostics"]')).toHaveCount(0);
+  await expect(sidebar.locator('a[href="#/recovery"]')).toHaveCount(0);
+  await page.goto("./#/settings");
   await page.reload();
-  await expect(page).toHaveURL(/\/desktop-demo\/#\/components$/);
-  await expect(page.locator("main h2").first()).toBeVisible();
-  await page.goto("./#/database");
-  await expect(page.locator("main")).toContainText("Desktop app required");
-  await expect(page.locator("html")).not.toHaveAttribute(
-    "data-runtime",
-    "tauri",
-  );
-  expect(failures).toEqual([]);
+  await expect(page).toHaveURL(/\/serial-workbench\/#\/settings$/);
+  await expect(page.locator("#settings-theme")).toBeVisible();
 });
 
-test("browser preferences survive a real page reload in localStorage", async ({
+test("theme and language preferences survive a real browser reload", async ({
   page,
 }) => {
   await page.goto("./#/settings");
@@ -61,193 +73,58 @@ test("browser preferences survive a real page reload in localStorage", async ({
     .getByRole("button", { name: "Dark", exact: true })
     .click();
   await expect(page.locator("html")).toHaveClass(/dark/);
+  await page
+    .locator("#settings-language")
+    .getByRole("combobox", { name: "Language", exact: true })
+    .click();
+  await page.locator('[role="option"][lang="zh-CN"]').click();
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
   await expect
     .poll(() =>
       page.evaluate((key) => {
-        const raw = globalThis.localStorage.getItem(key);
-        return raw ? (JSON.parse(raw).theme as unknown) : null;
+        const raw = localStorage.getItem(key);
+        return raw
+          ? (JSON.parse(raw) as { theme: string; language: string })
+          : null;
       }, SETTINGS_KEY),
     )
-    .toBe("dark");
+    .toMatchObject({ theme: "dark", language: "zh" });
   await page.reload();
   await expect(page.locator("html")).toHaveClass(/dark/);
-  await expect(
-    page
-      .locator("#settings-theme")
-      .getByRole("button", { name: "Dark", exact: true }),
-  ).toHaveAttribute("aria-pressed", "true");
+  await expect(page.locator("html")).toHaveAttribute("lang", "zh-CN");
 });
 
-test("the local network fixture supports GET, keyboard POST, cache and offline state without remote traffic", async ({
+test("keyboard opens the command palette and restores trigger focus", async ({
   page,
 }) => {
-  const external: string[] = [];
-  page.on("request", (request) => {
-    if (
-      /https:\/\/(httpbin\.org|jsonplaceholder\.typicode\.com)/.test(
-        request.url(),
-      )
-    )
-      external.push(request.url());
-  });
-  await page.goto("./#/network");
-  await page.getByRole("button", { name: "Get content", exact: true }).click();
-  const result = page.getByRole("region", { name: "Returned content" });
-  await expect(result).toContainText('"source": "fixture"');
-  const json = result.locator('code[data-language="json"]');
-  await expect(
-    json.locator('[data-token="property"]').filter({ hasText: /^"source"$/ }),
-  ).toBeVisible();
-  await expect(
-    json.locator('[data-token="string"]').filter({ hasText: /^"fixture"$/ }),
-  ).toBeVisible();
-  await page.getByRole("button", { name: "Load result", exact: true }).click();
-  await expect(
-    page
-      .locator("[data-sonner-toast]")
-      .filter({ hasText: "Showing the cached result; no new request." }),
-  ).toBeVisible();
-  const message = page.getByRole("textbox", { name: "Content to send" });
-  await message.fill("Keyboard fixture request");
-  await message.press("Enter");
-  await expect(result).toContainText("Keyboard fixture request");
-  await page.getByRole("checkbox", { name: "Simulate offline" }).check();
-  await expect(
-    page.getByRole("button", { name: "Get content", exact: true }),
-  ).toBeDisabled();
-  await page.getByRole("button", { name: "Load result", exact: true }).click();
-  await expect(result).toContainText('"method": "GET"');
-  await expect(
-    page.locator("[data-sonner-toast]").filter({
-      hasText: "Showing the last result. It may be out of date.",
-    }),
-  ).toBeVisible();
-  expect(external).toEqual([]);
-});
-
-test("keyboard opens and dismisses the command palette", async ({ page }) => {
-  await page.goto("./#/network");
-  await page.locator("main h2").focus();
+  await page.goto("./#/settings");
+  const trigger = page
+    .locator(".app-title-bar")
+    .getByRole("button", { name: "Quick actions", exact: true });
+  await trigger.focus();
   await page.keyboard.press("Control+k");
   const dialog = page.getByRole("dialog");
   await expect(dialog).toBeVisible();
   await expect(dialog.getByRole("combobox")).toBeFocused();
   await page.keyboard.press("Escape");
   await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
 });
 
-test("virtual scrolling reaches the last of 10,000 records with a bounded DOM and resets on filtering", async ({
-  page,
-}) => {
-  await page.goto("./#/data-studio");
-  await page.getByText("Continuous scrolling", { exact: true }).click();
-  await expect(
-    page.getByRole("checkbox", { name: "Continuous scrolling" }),
-  ).toBeChecked();
-  const table = page.getByRole("region", { name: "Demo records" });
-  await expect(table.getByRole("table")).toHaveAttribute(
-    "aria-rowcount",
-    "10001",
-  );
-  await table.evaluate((element) => {
-    element.scrollTop = element.scrollHeight;
-  });
-  await expect(table.getByText("Demo 10000", { exact: true })).toBeVisible();
-  expect(await table.locator("tbody tr").count()).toBeLessThan(100);
-  await page
-    .getByRole("searchbox", { name: "Filter by name, email or team" })
-    .fill("Demo 00007");
-  await expect(table.getByText("Demo 00007", { exact: true })).toBeVisible();
-  await expect(table.getByRole("table")).toHaveAttribute("aria-rowcount", "2");
-});
-
-test("records a reproducible production navigation and table performance sample", async ({
-  page,
-}, testInfo) => {
-  await page.setViewportSize({ width: 1280, height: 900 });
-  await page.goto("./#/data-studio");
-  await expect(page.locator("main h2").first()).toBeVisible();
-  const firstContent = await page.evaluate(() => ({
-    observedAtMs: performance.now(),
-    navigation: performance
-      .getEntriesByType("navigation")
-      .map((entry) => entry.toJSON()),
-    paint: performance.getEntriesByType("paint").map((entry) => entry.toJSON()),
-    userAgent: navigator.userAgent,
-    viewport: { width: innerWidth, height: innerHeight, devicePixelRatio },
-  }));
-  const table = page.getByRole("region", { name: "Demo records" });
-  const name = table.getByRole("button", { name: "Name", exact: true });
-  await name.click();
-  const sortStart = await page.evaluate(() => performance.now());
-  await name.click();
-  await expect(table.locator("tbody tr").first()).toContainText("Demo 10000");
-  const sortEnd = await page.evaluate(
-    () =>
-      new Promise<number>((resolve) => {
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => resolve(performance.now())),
-        );
-      }),
-  );
-  await page.getByRole("checkbox", { name: "Continuous scrolling" }).check();
-  const scrollStart = await table.evaluate((element) => {
-    const start = performance.now();
-    element.scrollTop = element.scrollHeight;
-    return start;
-  });
-  await expect(table.getByText("Demo 00001", { exact: true })).toBeVisible();
-  const scrollEnd = await page.evaluate(
-    () =>
-      new Promise<number>((resolve) => {
-        requestAnimationFrame(() =>
-          requestAnimationFrame(() => resolve(performance.now())),
-        );
-      }),
-  );
-  const sample = {
-    capturedAt: new Date().toISOString(),
-    mode: "production dist-web, headless Chromium, project subpath /desktop-demo/, local fixture",
-    records: 10000,
-    browser: testInfo.project.name,
-    ...firstContent,
-    sortDescendingObservedMs: sortEnd - sortStart,
-    scrollToFinalRowObservedMs: scrollEnd - scrollStart,
-    renderedBodyRowsAfterScroll: await table.locator("tbody tr").count(),
-    methodology: {
-      clock:
-        "Browser performance.now(), milliseconds relative to document navigation; navigation/paint use PerformanceEntry.toJSON().",
-      firstContent:
-        "Observed after Playwright confirms the route heading is visible. Includes test-harness scheduling and is not a universal startup benchmark.",
-      sort: "From before Playwright clicks descending Name sort across 10,000 rows to the expected first row being visible plus two animation frames.",
-      scroll:
-        "From assigning scrollTop=scrollHeight to the final virtualized record being visible plus two animation frames.",
-      interpretation:
-        "One environment-specific sample, with no machine-independent timing threshold. Compare repeated samples on the same hardware/build when investigating regressions.",
-    },
-  };
-  const path = testInfo.outputPath("performance.json");
-  await writeFile(path, JSON.stringify(sample, null, 2));
-  await testInfo.attach("production-performance-sample", {
-    path,
-    contentType: "application/json",
-  });
-});
-
-for (const route of ["network", "data-studio", "media", "catalog"]) {
-  test(`${route} has no detected WCAG A/AA accessibility violations`, async ({
+for (const route of ["/", "/settings", "/diagnostics", "/recovery"]) {
+  test(`${route} has no detected WCAG A/AA violations`, async ({
     page,
   }, testInfo) => {
-    await page.goto(`./#/${route}`);
-    await expect(page.locator("main h2").first()).toBeVisible();
-    if (route === "media") {
-      await page
-        .getByRole("tab", { name: "Data visualization", exact: true })
-        .click();
-      await expect(
-        page.getByRole("img", { name: /One week of demo metrics/ }),
-      ).toBeVisible();
-    }
+    await page.goto(`./#${route}`);
+    if (route === "/")
+      await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
+    else if (route === "/recovery") {
+      await expect(page).toHaveURL(/#\/settings\?section=recovery$/);
+      await expect(page.locator("#settings-recovery")).toBeFocused();
+      await expect(page.locator("main h1")).toBeVisible();
+    } else if (route === "/settings")
+      await expect(page.locator("main h1")).toBeVisible();
+    else await expect(page.locator("main h2").first()).toBeVisible();
     const result = await new AxeBuilder({ page })
       .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
       .analyze();
@@ -257,95 +134,5 @@ for (const route of ["network", "data-studio", "media", "catalog"]) {
         contentType: "application/json",
       });
     expect(result.violations).toEqual([]);
-  });
-}
-
-for (const profile of [
-  {
-    name: "light-wide",
-    width: 1280,
-    theme: "light",
-    sidebarWidth: 224,
-    sidebarCollapsed: false,
-    language: "en",
-  },
-  {
-    name: "dark-wide",
-    width: 1280,
-    theme: "dark",
-    sidebarWidth: 224,
-    sidebarCollapsed: false,
-    language: "en",
-  },
-  {
-    name: "light-880-sidebar-360",
-    width: 880,
-    theme: "light",
-    sidebarWidth: 360,
-    sidebarCollapsed: false,
-    language: "zh",
-  },
-  {
-    name: "dark-narrow",
-    width: 560,
-    theme: "dark",
-    sidebarWidth: 224,
-    sidebarCollapsed: true,
-    language: "zh",
-  },
-] as const) {
-  test(`lab pages remain usable in ${profile.name}`, async ({
-    page,
-  }, testInfo) => {
-    await page.setViewportSize({ width: profile.width, height: 900 });
-    await page.addInitScript(
-      ({ key, settings }) => {
-        globalThis.localStorage.setItem(
-          key,
-          JSON.stringify({ schemaVersion: 2, motion: "reduced", ...settings }),
-        );
-      },
-      { key: SETTINGS_KEY, settings: profile },
-    );
-    for (const route of ["catalog", "network", "data-studio", "media"]) {
-      await page.goto(`./#/${route}`);
-      await expect(page.locator("main h2").first()).toBeVisible();
-      if (route === "media") {
-        await page
-          .getByRole("tab", { name: /Data visualization|数据可视化/ })
-          .click();
-        await expect(
-          page.getByRole("img", {
-            name: /One week of demo metrics|一周演示指标/,
-          }),
-        ).toBeVisible();
-      }
-      await expect
-        .poll(() =>
-          page
-            .locator("main")
-            .evaluate((element) => element.scrollWidth - element.clientWidth),
-        )
-        .toBeLessThanOrEqual(1);
-      await page.screenshot({
-        path: testInfo.outputPath(`${route}-${profile.name}.png`),
-        animations: "disabled",
-      });
-      if (route === "media" || route === "data-studio") {
-        await page
-          .getByRole("tab", {
-            name:
-              route === "media"
-                ? /Live connections|实时通信/
-                : /Conditional form|条件表单/,
-          })
-          .click();
-        await page.locator("main form").last().scrollIntoViewIfNeeded();
-        await page.screenshot({
-          path: testInfo.outputPath(`${route}-${profile.name}-details.png`),
-          animations: "disabled",
-        });
-      }
-    }
   });
 }

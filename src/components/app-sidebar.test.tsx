@@ -6,21 +6,16 @@ import {
   screen,
   within,
 } from "@testing-library/react";
-import { createPortal } from "react-dom";
-import { MemoryRouter, useLocation } from "react-router-dom";
+import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { HomeIcon } from "lucide-react";
+import { HomeIcon, SettingsIcon } from "lucide-react";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { I18nProvider } from "@/providers/i18n";
 import { CommandsProvider, useCommands } from "@/providers/commands";
 import { zhCN } from "@/i18n/zh-CN";
 import { SettingsProvider, STORAGE_KEY } from "@/providers/settings";
 import type { AppNavigationItem, AppRoute } from "@/routes";
-import {
-  ExtensionChromeProvider,
-  useExtensionChromeTarget,
-} from "@/features/extensions/extension-chrome-slot";
 import { AppSidebar } from "./app-sidebar";
 
 vi.mock("@/routes", async (importOriginal) => ({
@@ -53,25 +48,16 @@ const routes: AppRoute[] = [
     exact: true,
   },
 ];
+const footerRoute: AppNavigationItem = {
+  path: "/preferences",
+  labelKey: "nav.settings",
+  group: "system",
+  icon: SettingsIcon,
+  navigationPlacement: "footer",
+};
 function PaletteState() {
   const { paletteOpen } = useCommands();
   return <output data-testid="palette-state">{String(paletteOpen)}</output>;
-}
-
-function SidebarChrome({ children }: { children: ReactNode }) {
-  const { pathname } = useLocation();
-  return (
-    <ExtensionChromeProvider scope={pathname}>
-      {children}
-    </ExtensionChromeProvider>
-  );
-}
-
-function SessionTools() {
-  const target = useExtensionChromeTarget();
-  return target
-    ? createPortal(<button>Extension tools</button>, target.node)
-    : null;
 }
 
 function renderSidebar(
@@ -85,11 +71,9 @@ function renderSidebar(
         <I18nProvider>
           <CommandsProvider>
             <TooltipProvider>
-              <SidebarChrome>
-                <AppSidebar routes={entries} />
-                <PaletteState />
-                {children}
-              </SidebarChrome>
+              <AppSidebar routes={entries} />
+              <PaletteState />
+              {children}
             </TooltipProvider>
           </CommandsProvider>
         </I18nProvider>
@@ -116,67 +100,6 @@ describe("persisted application sidebar", () => {
     expect(link.className).not.toContain("=>");
   });
 
-  it("places tools beside the active extension link, preserves the destination when collapsed and removes it on navigation", async () => {
-    const extension: AppNavigationItem = {
-      path: "/extensions/app/example.lab/open",
-      group: "extensions",
-      labelKey: "ext.title",
-      label: "Lab app",
-      icon: HomeIcon,
-      exact: true,
-    };
-    renderSidebar(
-      [
-        routes[0]!,
-        extension,
-        {
-          ...extension,
-          path: "/extensions/app/other/open",
-          label: "Other app",
-        },
-      ],
-      extension.path,
-      <SessionTools />,
-    );
-    const link = screen.getByRole("link", { name: "Lab app" });
-    const tools = screen.getByRole("button", { name: "Extension tools" });
-    const slot = tools.parentElement;
-    expect(tools.closest("a")).toBeNull();
-    expect(slot?.parentElement).toBe(link.parentElement);
-    expect(document.querySelectorAll("[data-extension-chrome]")).toHaveLength(
-      1,
-    );
-    fireEvent.click(tools);
-    expect(link).toHaveAttribute("aria-current", "page");
-    fireEvent.click(screen.getByRole("button", { name: "折叠侧栏" }));
-    expect(screen.getByRole("button", { name: "Extension tools" })).toBe(tools);
-    expect(tools.parentElement).toBe(slot);
-    tools.focus();
-    expect(tools).toHaveFocus();
-    fireEvent.click(screen.getByRole("button", { name: "展开侧栏" }));
-    expect(tools.parentElement).toBe(slot);
-    await act(async () =>
-      fireEvent.click(screen.getByRole("link", { name: "Other app" })),
-    );
-    expect(screen.getByRole("button", { name: "Extension tools" })).not.toBe(
-      tools,
-    );
-    expect(document.querySelectorAll("[data-extension-chrome]")).toHaveLength(
-      1,
-    );
-    expect(
-      screen
-        .getByRole("button", { name: "Extension tools" })
-        .closest("[data-sidebar-extension]"),
-    ).toBe(screen.getByRole("link", { name: "Other app" }).parentElement);
-    await act(async () =>
-      fireEvent.click(screen.getByRole("link", { name: zhCN["nav.overview"] })),
-    );
-    expect(
-      screen.queryByRole("button", { name: "Extension tools" }),
-    ).not.toBeInTheDocument();
-    expect(document.querySelector("[data-extension-chrome]")).toBeNull();
-  });
   it("adjusts width by keyboard within bounds and persists it", () => {
     renderSidebar();
     const separator = screen.getByRole("separator", { name: "调整侧栏宽度" });
@@ -199,41 +122,55 @@ describe("persisted application sidebar", () => {
     );
     write.mockRestore();
   });
-  it("waits for hover intent, cancels fly-by entry and preloads keyboard focus without navigating", () => {
-    vi.useFakeTimers();
-    const preload = vi.fn();
-    renderSidebar([
-      routes[0]!,
-      { ...routes[0]!, path: "/desktop", labelKey: "nav.desktop", preload },
-    ]);
-    const link = screen.getByRole("link", { name: zhCN["nav.desktop"] });
-    expect(preload).not.toHaveBeenCalled();
-    fireEvent.pointerEnter(link);
-    expect(preload).not.toHaveBeenCalled();
-    fireEvent.pointerLeave(link);
-    act(() => vi.advanceTimersByTime(200));
-    expect(preload).not.toHaveBeenCalled();
-    fireEvent.pointerEnter(link);
-    act(() => vi.advanceTimersByTime(150));
-    expect(preload).toHaveBeenCalledOnce();
-    fireEvent.focus(link);
-    expect(preload).toHaveBeenCalledTimes(2);
-    expect(link).not.toHaveAttribute("aria-current");
-    expect(
-      screen.getByRole("link", { name: zhCN["nav.overview"] }),
-    ).toHaveAttribute("aria-current", "page");
-  });
-  it("cancels pending route preloads when the sidebar unmounts", () => {
-    vi.useFakeTimers();
-    const preload = vi.fn();
-    const view = renderSidebar([{ ...routes[0]!, preload }]);
-    fireEvent.pointerEnter(
-      screen.getByRole("link", { name: zhCN["nav.overview"] }),
-    );
-    view.unmount();
-    act(() => vi.advanceTimersByTime(200));
-    expect(preload).not.toHaveBeenCalled();
-  });
+  it.each([undefined, "footer"] as const)(
+    "waits for hover intent, cancels fly-by entry and preloads keyboard focus without navigating for %s placement",
+    (navigationPlacement) => {
+      vi.useFakeTimers();
+      const preload = vi.fn();
+      renderSidebar([
+        routes[0]!,
+        {
+          ...routes[0]!,
+          path: "/desktop",
+          labelKey: "nav.settings",
+          preload,
+          navigationPlacement,
+        },
+      ]);
+      const link = screen.getByRole("link", { name: zhCN["nav.settings"] });
+      expect(preload).not.toHaveBeenCalled();
+      fireEvent.pointerEnter(link);
+      expect(preload).not.toHaveBeenCalled();
+      fireEvent.pointerLeave(link);
+      act(() => vi.advanceTimersByTime(200));
+      expect(preload).not.toHaveBeenCalled();
+      fireEvent.pointerEnter(link);
+      act(() => vi.advanceTimersByTime(150));
+      expect(preload).toHaveBeenCalledOnce();
+      fireEvent.focus(link);
+      expect(preload).toHaveBeenCalledTimes(2);
+      expect(link).not.toHaveAttribute("aria-current");
+      expect(
+        screen.getByRole("link", { name: zhCN["nav.overview"] }),
+      ).toHaveAttribute("aria-current", "page");
+    },
+  );
+  it.each([undefined, "footer"] as const)(
+    "cancels pending route preloads for %s placement when the sidebar unmounts",
+    (navigationPlacement) => {
+      vi.useFakeTimers();
+      const preload = vi.fn();
+      const view = renderSidebar([
+        { ...routes[0]!, preload, navigationPlacement },
+      ]);
+      fireEvent.pointerEnter(
+        screen.getByRole("link", { name: zhCN["nav.overview"] }),
+      );
+      view.unmount();
+      act(() => vi.advanceTimersByTime(200));
+      expect(preload).not.toHaveBeenCalled();
+    },
+  );
   it("keeps collapsed navigation named and restores the saved width", () => {
     const view = renderSidebar();
     fireEvent.keyDown(screen.getByRole("separator"), {
@@ -241,6 +178,7 @@ describe("persisted application sidebar", () => {
       shiftKey: true,
     });
     fireEvent.click(screen.getByRole("button", { name: "折叠侧栏" }));
+    expect(screen.getByRole("complementary")).toHaveStyle({ width: "48px" });
     expect(
       screen.getByRole("link", { name: zhCN["nav.overview"] }),
     ).toBeInTheDocument();
@@ -275,12 +213,12 @@ describe("persisted application sidebar", () => {
       {
         ...routes[0]!,
         path: "/desktop",
-        labelKey: "nav.desktop",
-        group: "capabilities",
+        labelKey: "nav.settings",
+        group: "system",
       },
     ]);
     const first = screen.getByRole("link", { name: zhCN["nav.overview"] });
-    const second = screen.getByRole("link", { name: zhCN["nav.desktop"] });
+    const second = screen.getByRole("link", { name: zhCN["nav.settings"] });
     fireEvent.focus(first);
     expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "折叠侧栏" }));
@@ -291,7 +229,7 @@ describe("persisted application sidebar", () => {
     );
     fireEvent.focus(second);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      zhCN["nav.desktop"],
+      zhCN["nav.settings"],
     );
     // 上一项晚到的关闭不能清除当前项；切页则立即卸载提示，防止退出动画残留。
     fireEvent.blur(first);
@@ -303,44 +241,34 @@ describe("persisted application sidebar", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
-  it.each(["navigation", "commands"] as const)(
-    "展开时为截断的 %s 名称提供鼠标和键盘可达的全文提示",
-    async (target) => {
-      vi.stubGlobal(
-        "ResizeObserver",
-        class {
-          observe() {}
-          unobserve() {}
-          disconnect() {}
-        },
-      );
-      renderSidebar();
-      const control =
-        target === "navigation"
-          ? screen.getByRole("link", { name: zhCN["nav.overview"] })
-          : screen.getByRole("button", {
-              name: new RegExp(zhCN["navContext.commands"]),
-            });
-      const label = control.querySelector(".app-sidebar-label")!;
-      Object.defineProperties(label, {
-        clientWidth: { configurable: true, value: 101 },
-        scrollWidth: { configurable: true, value: 155 },
-      });
+  it("展开时为截断的导航名称提供鼠标和键盘可达的全文提示", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    renderSidebar();
+    const control = screen.getByRole("link", { name: zhCN["nav.overview"] });
+    const label = control.querySelector(".app-sidebar-label")!;
+    Object.defineProperties(label, {
+      clientWidth: { configurable: true, value: 101 },
+      scrollWidth: { configurable: true, value: 155 },
+    });
 
-      fireEvent.pointerEnter(control);
-      fireEvent.pointerMove(control, { pointerType: "mouse" });
-      expect(await screen.findByRole("tooltip")).toHaveTextContent(
-        zhCN[target === "navigation" ? "nav.overview" : "navContext.commands"],
-      );
-      fireEvent.pointerLeave(control);
-      fireEvent.focus(control);
-      expect(screen.getAllByRole("tooltip")).toHaveLength(1);
-      expect(screen.getByRole("tooltip")).toHaveTextContent(
-        zhCN[target === "navigation" ? "nav.overview" : "navContext.commands"],
-      );
-      expect(control).not.toHaveAttribute("title");
-    },
-  );
+    fireEvent.pointerEnter(control);
+    fireEvent.pointerMove(control, { pointerType: "mouse" });
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      zhCN["nav.overview"],
+    );
+    fireEvent.pointerLeave(control);
+    fireEvent.focus(control);
+    expect(screen.getAllByRole("tooltip")).toHaveLength(1);
+    expect(screen.getByRole("tooltip")).toHaveTextContent(zhCN["nav.overview"]);
+    expect(control).not.toHaveAttribute("title");
+  });
 
   it("展开时不为完整名称显示提示，滚动和调宽会清除旧的截断判断", async () => {
     vi.stubGlobal(
@@ -532,46 +460,93 @@ describe("persisted application sidebar", () => {
     ).not.toBeInTheDocument();
     view.unmount();
     renderSidebar([
-      {
-        ...routes[0]!,
-        path: "/settings",
-        labelKey: "nav.settings",
-        group: "system",
-      },
+      footerRoute,
       routes[0]!,
       {
         ...routes[0]!,
         path: "/desktop",
-        labelKey: "nav.desktop",
-        group: "capabilities",
+        labelKey: "nav.settings",
+        group: "system",
       },
     ]);
     expect(
       screen
         .getAllByRole("group")
         .map((group) => group.getAttribute("aria-labelledby")),
-    ).toHaveLength(3);
+    ).toHaveLength(2);
+    expect(
+      screen.getByRole("group", { name: zhCN["navGroup.system"] }),
+    ).toBeInTheDocument();
+    expect(
+      within(screen.getByRole("navigation"))
+        .getAllByRole("link")
+        .map((link) => link.getAttribute("href")),
+    ).toEqual(["/", "/desktop"]);
     expect(
       screen.getAllByRole("link").map((link) => link.getAttribute("href")),
-    ).toEqual(["/", "/desktop", "/settings"]);
+    ).toEqual(["/", "/desktop", "/preferences"]);
   });
 
-  it("opens the real command palette state from the footer even when collapsed", async () => {
+  it("keeps footer routes icon-only, named and active with a keyboard tooltip in both sidebar states", async () => {
+    vi.stubGlobal(
+      "ResizeObserver",
+      class {
+        observe() {}
+        unobserve() {}
+        disconnect() {}
+      },
+    );
+    renderSidebar([routes[0]!, footerRoute], "/preferences/general");
+    const link = screen.getByRole("link", { name: zhCN["nav.settings"] });
+    expect(link).toHaveAttribute("href", "/preferences");
+    expect(link).toHaveAttribute("aria-label", zhCN["nav.settings"]);
+    expect(link).toHaveAttribute("aria-current", "page");
+    expect(link.textContent).toBe("");
+    expect(
+      within(screen.getByRole("navigation")).queryByRole("link", {
+        name: zhCN["nav.settings"],
+      }),
+    ).not.toBeInTheDocument();
+    fireEvent.focus(link);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      zhCN["nav.settings"],
+    );
+    fireEvent.click(screen.getByRole("button", { name: "折叠侧栏" }));
+    expect(screen.queryByRole("tooltip")).toBeNull();
+    expect(screen.getByRole("link", { name: zhCN["nav.settings"] })).toBe(link);
+    expect(link.textContent).toBe("");
+    fireEvent.focus(link);
+    expect(await screen.findByRole("tooltip")).toHaveTextContent(
+      zhCN["nav.settings"],
+    );
+    await act(async () =>
+      fireEvent.click(screen.getByRole("link", { name: zhCN["nav.overview"] })),
+    );
+    expect(link).not.toHaveAttribute("aria-current");
+    expect(screen.queryByRole("tooltip")).toBeNull();
+  });
+
+  it("opens the real command palette with Ctrl+K in either sidebar state without a footer action", async () => {
     renderSidebar();
-    const commands = screen.getByRole("button", {
-      name: new RegExp(`^${zhCN["navContext.commands"]}`),
-    });
-    expect(commands).toHaveAttribute("aria-keyshortcuts", "Control+K");
+    expect(
+      screen.queryByRole("button", {
+        name: new RegExp(`^${zhCN["navContext.commands"]}`),
+      }),
+    ).not.toBeInTheDocument();
     expect(screen.getByTestId("palette-state")).toHaveTextContent("false");
-    await act(async () => fireEvent.click(commands));
+    await act(async () =>
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true }),
+    );
     expect(screen.getByTestId("palette-state")).toHaveTextContent("true");
     fireEvent.click(screen.getByRole("button", { name: "折叠侧栏" }));
     expect(
-      screen.getByRole("button", {
+      screen.queryByRole("button", {
         name: new RegExp(`^${zhCN["navContext.commands"]}`),
       }),
-    ).toBe(commands);
-    await act(async () => fireEvent.click(commands));
+    ).not.toBeInTheDocument();
+    await act(async () =>
+      fireEvent.keyDown(document, { key: "k", ctrlKey: true }),
+    );
     expect(screen.getByTestId("palette-state")).toHaveTextContent("false");
     expect(screen.queryByText("Tauri 2 · React 19")).not.toBeInTheDocument();
   });

@@ -44,12 +44,11 @@ vi.mock("@/routes", () => ({
   APP_ROUTES: [
     { path: "/", labelKey: "nav.overview", icon: () => null },
     {
-      path: "/components",
-      labelKey: "nav.components",
+      path: "/diagnostics",
+      labelKey: "nav.diagnostics",
       icon: () => null,
-      demoOnly: true,
+      hidden: true,
     },
-    { path: "/diagnostics", labelKey: "nav.diagnostics", icon: () => null },
     {
       path: "/recovery",
       labelKey: "recovery.title",
@@ -59,7 +58,7 @@ vi.mock("@/routes", () => ({
   ],
 }));
 
-function Extensions({ items }: { items: readonly AppCommand[] }) {
+function RegisteredActions({ items }: { items: readonly AppCommand[] }) {
   useRegisterCommands(items);
   return null;
 }
@@ -77,13 +76,14 @@ function Probe() {
         {search}
       </output>
       <input aria-label="Editor" />
-      <button onClick={() => void commands.execute("test")}>
-        Run extension
-      </button>
+      <button onClick={() => void commands.execute("test")}>Run action</button>
       <button onClick={() => void commands.execute("theme-light")}>
         Light
       </button>
       <button onClick={() => void commands.execute("navigate:/")}>Home</button>
+      <button onClick={() => void commands.execute("open-settings")}>
+        Open settings
+      </button>
       <button onClick={() => void commands.execute("open-desktop")}>
         Window settings
       </button>
@@ -94,7 +94,6 @@ function Probe() {
         Update settings
       </button>
       <button onClick={() => update({ language: "en" })}>English</button>
-      <button onClick={() => update({ appMode: "minimal" })}>Minimal</button>
       <button onClick={() => commands.setPaletteOpen(true)}>Palette</button>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
@@ -198,13 +197,13 @@ describe("unified application commands", () => {
     ];
     const view = render(
       <Harness>
-        <Extensions items={items} />
+        <RegisteredActions items={items} />
       </Harness>,
     );
     fireEvent.click(screen.getByText("Light"));
     expect(override).toHaveBeenCalledOnce();
-    fireEvent.click(screen.getByText("Run extension"));
-    fireEvent.click(screen.getByText("Run extension"));
+    fireEvent.click(screen.getByText("Run action"));
+    fireEvent.click(screen.getByText("Run action"));
     expect(run).toHaveBeenCalledOnce();
     await act(async () => resolve());
     view.rerender(<Harness />);
@@ -227,25 +226,15 @@ describe("unified application commands", () => {
     ];
     render(
       <Harness>
-        <Extensions items={items} />
+        <RegisteredActions items={items} />
       </Harness>,
     );
-    fireEvent.click(screen.getByText("Run extension"));
+    fireEvent.click(screen.getByText("Run action"));
     fireEvent.click(screen.getByText("English"));
     await act(async () => reject(new Error("offline")));
     expect(toast.error).toHaveBeenCalledWith("Operation failed: offline");
   });
 
-  it("updates visible navigation when the app switches to minimal mode", async () => {
-    render(<Harness />);
-    fireEvent.click(screen.getByText("Minimal"));
-    fireEvent.click(screen.getByText("Palette"));
-    await screen.findByRole("dialog");
-    expect(
-      screen.queryByRole("option", { name: "交互体验" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("option", { name: "创意展厅" })).toBeVisible();
-  });
   it("opens shared settings from desktop and browser window commands", () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("Window settings"));
@@ -261,6 +250,22 @@ describe("unified application commands", () => {
       "/settings?section=updates",
     );
   });
+  it("opens settings at its search field and omits browser page commands", () => {
+    render(<Harness />);
+    fireEvent.click(screen.getByText("Open settings"));
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/settings?focus=search",
+    );
+    fireEvent.click(screen.getByText("Palette"));
+    for (const label of ["重新加载", "复制地址", "全选"]) {
+      fireEvent.change(screen.getByRole("combobox"), {
+        target: { value: label },
+      });
+      expect(
+        screen.queryByRole("option", { name: new RegExp(label) }),
+      ).not.toBeInTheDocument();
+    }
+  });
   it("finds the combined recovery destination without exposing the legacy recovery command", async () => {
     render(<Harness />);
     fireEvent.click(screen.getByText("Palette"));
@@ -273,21 +278,9 @@ describe("unified application commands", () => {
       screen.queryByRole("option", { name: "启动故障恢复" }),
     ).not.toBeInTheDocument();
     fireEvent.click(destination);
-    expect(screen.getByTestId("location")).toHaveTextContent("/diagnostics");
-  });
-
-  it("keeps standalone extension sessions out of host navigation and its shortcuts", () => {
-    const path = "/extension-window/starter.apps/calculator";
-    render(<Harness initialPath={path} />);
-    fireEvent.keyDown(document.body, { key: ",", ctrlKey: true });
-    fireEvent.keyDown(document.body, { key: "k", ctrlKey: true });
-    fireEvent.keyDown(document.body, { key: "b", ctrlKey: true });
-    fireEvent.click(screen.getByText("Home"));
-    expect(screen.getByTestId("location")).toHaveTextContent(path);
-    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
-    expect(screen.getByTestId("collapsed")).toHaveTextContent("false");
-    fireEvent.click(screen.getByText("Light"));
-    expect(theme.setTheme).toHaveBeenCalledWith("light");
+    expect(screen.getByTestId("location")).toHaveTextContent(
+      "/settings?focus=recovery",
+    );
   });
 
   it("dispatches registered commands from menus with the same availability", async () => {
@@ -303,7 +296,7 @@ describe("unified application commands", () => {
     ];
     render(
       <Harness>
-        <Extensions items={items} />
+        <RegisteredActions items={items} />
       </Harness>,
     );
     fireEvent.keyDown(screen.getByText("Actions menu"), { key: "ArrowDown" });

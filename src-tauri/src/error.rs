@@ -6,18 +6,14 @@ use specta::Type;
 pub enum ErrorCode {
     InvalidArgument,
     UserCancelled,
-    CredentialError,
-    NameRequired,
     InputTooLong,
     StorageIo,
     StorageCorrupt,
     SettingsConflict,
-    DatabaseError,
     NotFound,
     Conflict,
     PlatformUnavailable,
     NativeBusy,
-    HttpTimeout,
     AutostartError,
     UpdateNotConfigured,
     UpdateBusy,
@@ -28,25 +24,6 @@ pub enum ErrorCode {
     UpdateDownloadFailed,
     UpdateInstallFailed,
     WindowError,
-    ExtensionIncompatible,
-    ExtensionRunFailed,
-    ExtensionTimeout,
-    ExtensionBusy,
-    ExtensionUnavailable,
-    ExtensionNetworkBlocked,
-    ExtensionImageRedirect,
-    ExtensionImageSourceRejected,
-    ExtensionImageInvalid,
-    ExtensionImageTooLarge,
-    ExtensionAttachmentTooLarge,
-    ExtensionAttachmentCacheFull,
-    ExtensionTransferInterrupted,
-    MarketNotConfigured,
-    MarketUnavailable,
-    MarketIncompatible,
-    MarketExpired,
-    MarketInvalid,
-    MarketChanged,
     Internal,
 }
 
@@ -66,17 +43,12 @@ impl NativeError {
             retryable: matches!(
                 code,
                 ErrorCode::NativeBusy
-                    | ErrorCode::HttpTimeout
                     | ErrorCode::UpdateBusy
                     | ErrorCode::UpdateCheckFailed
                     | ErrorCode::UpdateCheckTimeout
                     | ErrorCode::UpdateFeedUnavailable
                     | ErrorCode::UpdatePlatformUnavailable
                     | ErrorCode::UpdateDownloadFailed
-                    | ErrorCode::ExtensionBusy
-                    | ErrorCode::ExtensionTimeout
-                    | ErrorCode::MarketUnavailable
-                    | ErrorCode::MarketChanged
             ),
         }
     }
@@ -133,13 +105,7 @@ mod tests {
             assert!(!NativeError::new(code, "Failure").retryable);
             assert!(!NativeError::operation(code, "Failure", "detail").retryable);
         }
-        for code in [
-            ErrorCode::NativeBusy,
-            ErrorCode::HttpTimeout,
-            ErrorCode::ExtensionBusy,
-            ErrorCode::UpdateCheckTimeout,
-            ErrorCode::MarketUnavailable,
-        ] {
+        for code in [ErrorCode::NativeBusy, ErrorCode::UpdateCheckTimeout] {
             assert!(NativeError::new(code, "Failure").retryable);
             assert!(NativeError::operation(code, "Failure", "detail").retryable);
         }

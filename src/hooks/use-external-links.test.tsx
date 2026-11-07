@@ -55,7 +55,7 @@ describe("useExternalLinks", () => {
     expect(openExternal).toHaveBeenCalledWith("https://example.com/docs");
   });
 
-  it("浏览器演示保留普通链接行为，不调用原生外链门面", () => {
+  it("浏览器预览保留普通链接行为，不调用原生外链门面", () => {
     vi.mocked(isTauri).mockReturnValue(false);
     renderHook(() => useExternalLinks());
     document.body.innerHTML =

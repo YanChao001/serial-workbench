@@ -76,7 +76,7 @@ Var UpdateMode
 Var NoShortcutMode
 Var WixMode
 Var OldMainBinaryName
-Var StarterHeaderBitmap
+Var SerialWorkbenchHeaderBitmap
 
 Name "${PRODUCTNAME}"
 BrandingText "${COPYRIGHT}"
@@ -88,8 +88,8 @@ BrandingText "${COPYRIGHT}"
 !define MUI_HEADERIMAGE_RIGHT
 !define MUI_HEADER_TRANSPARENT_TEXT
 !define MUI_INSTFILESPAGE_COLORS "36544A F4FBF7"
-!define MUI_CUSTOMFUNCTION_GUIINIT StarterGuiInit
-!define MUI_CUSTOMFUNCTION_UNGUIINIT un.StarterGuiInit
+!define MUI_CUSTOMFUNCTION_GUIINIT SerialWorkbenchGuiInit
+!define MUI_CUSTOMFUNCTION_UNGUIINIT un.SerialWorkbenchGuiInit
 ; 品牌定制结束
 OutFile "${OUTFILE}"
 
@@ -180,7 +180,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; 安装器页面按显示顺序声明
 ; 页眉完整显示，侧栏铺满控件；字体与 DPI 改变字段比例时仍保持等比。
 ; 输出为绘制宽、高、居中坐标；MulDiv 避免先除法造成的精度损失。
-!macro StarterFitBitmap WIDTH HEIGHT SOURCEWIDTH SOURCEHEIGHT MODE
+!macro SerialWorkbenchFitBitmap WIDTH HEIGHT SOURCEWIDTH SOURCEHEIGHT MODE
   StrCpy $R7 ${WIDTH}
   System::Call 'KERNEL32::MulDiv(i ${WIDTH},i ${SOURCEHEIGHT},i ${SOURCEWIDTH})i.R8'
   !if "${MODE}" == "cover"
@@ -208,7 +208,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; 使用 GDI HALFTONE 等比缩放原图，侧栏居中裁切装饰边缘以消除上下白边。
 ; 目标明确使用 24 位 DIB，避免主题控件把 32 位 DDB 的未定义 alpha 当作透明图片。
 ; 保持 MUI 的布局和图片生命周期；加载失败时保留 MUI 已设置的图片。
-!macro StarterSetSharpBitmap CONTROL PATH RESULT MODE
+!macro SerialWorkbenchSetSharpBitmap CONTROL PATH RESULT MODE
   System::Store "S"
   StrCpy $0 ${CONTROL}
   System::Call 'USER32::LoadImage(p0,t "${PATH}",i0,i0,i0,i0x2010)p.r1'
@@ -253,7 +253,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
         ${AndIf} $R0 P<> -1
         ${AndIf} $R1 P<> 0
         ${AndIf} $R1 P<> -1
-          !insertmacro StarterFitBitmap $2 $3 $5 $6 ${MODE}
+          !insertmacro SerialWorkbenchFitBitmap $2 $3 $5 $6 ${MODE}
           System::Call 'GDI32::PatBlt(pr8,i0,i0,ir2,ir3,i0x00FF0062)i.R5'
           System::Call 'GDI32::SetStretchBltMode(pr8,i4)i.R6'
           ${If} $R5 <> 0
@@ -286,15 +286,15 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
 ; 以当前语言字体和 DPI 的对话框单位收紧页脚，保留各内容页的原生布局。
 ; 标准 MUI 页脚为 29du；按钮上移 5du、窗口缩短 9du，得到 20du 页脚。
 ; 14du 按钮上下各保留 3du，内容页与分隔线的位置不变。
-!macro StarterCompactFooter
+!macro SerialWorkbenchCompactFooter
   System::Store "S"
   System::Call '*(i0,i5,i0,i9)p.r0'
   System::Call 'USER32::MapDialogRect(p $HWNDPARENT,pr0)i.r1'
   ${If} $1 <> 0
     System::Call '*$0(i,i.r8,i,i.r9)'
-    !insertmacro StarterMoveFooterButton 1
-    !insertmacro StarterMoveFooterButton 2
-    !insertmacro StarterMoveFooterButton 3
+    !insertmacro SerialWorkbenchMoveFooterButton 1
+    !insertmacro SerialWorkbenchMoveFooterButton 2
+    !insertmacro SerialWorkbenchMoveFooterButton 3
     System::Call 'USER32::GetWindowRect(p $HWNDPARENT,pr0)i.r1'
     ${If} $1 <> 0
       System::Call '*$0(i.r2,i.r3,i.r4,i.r5)'
@@ -308,7 +308,7 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   System::Store "L"
 !macroend
 
-!macro StarterMoveFooterButton ID
+!macro SerialWorkbenchMoveFooterButton ID
   GetDlgItem $6 $HWNDPARENT ${ID}
   System::Call 'USER32::GetWindowRect(pr6,pr0)i.r1'
   ${If} $1 <> 0
@@ -319,48 +319,48 @@ VIAddVersionKey "ProductVersion" "${VERSION}"
   ${EndIf}
 !macroend
 
-Function StarterGuiInit
-  !insertmacro StarterCompactFooter
+Function SerialWorkbenchGuiInit
+  !insertmacro SerialWorkbenchCompactFooter
   !ifdef MUI_HEADERIMAGE
-    !insertmacro StarterSetSharpBitmap $mui.Header.Image "$PLUGINSDIR\modern-header.bmp" $StarterHeaderBitmap contain
+    !insertmacro SerialWorkbenchSetSharpBitmap $mui.Header.Image "$PLUGINSDIR\modern-header.bmp" $SerialWorkbenchHeaderBitmap contain
   !endif
 FunctionEnd
 
-Function un.StarterGuiInit
-  !insertmacro StarterCompactFooter
+Function un.SerialWorkbenchGuiInit
+  !insertmacro SerialWorkbenchCompactFooter
   !ifdef MUI_HEADERIMAGE
-    !insertmacro StarterSetSharpBitmap $mui.Header.Image "$PLUGINSDIR\modern-header.bmp" $StarterHeaderBitmap contain
+    !insertmacro SerialWorkbenchSetSharpBitmap $mui.Header.Image "$PLUGINSDIR\modern-header.bmp" $SerialWorkbenchHeaderBitmap contain
   !endif
 FunctionEnd
 
 ; 页眉跨页面复用，在界面销毁时释放；侧栏仍由 MUI 按页面释放。
 Function .onGUIEnd
   SendMessage $mui.Header.Image ${STM_SETIMAGE} ${IMAGE_BITMAP} 0
-  System::Call 'GDI32::DeleteObject(p $StarterHeaderBitmap)'
-  StrCpy $StarterHeaderBitmap 0
+  System::Call 'GDI32::DeleteObject(p $SerialWorkbenchHeaderBitmap)'
+  StrCpy $SerialWorkbenchHeaderBitmap 0
 FunctionEnd
 
 Function un.onGUIEnd
   SendMessage $mui.Header.Image ${STM_SETIMAGE} ${IMAGE_BITMAP} 0
-  System::Call 'GDI32::DeleteObject(p $StarterHeaderBitmap)'
-  StrCpy $StarterHeaderBitmap 0
+  System::Call 'GDI32::DeleteObject(p $SerialWorkbenchHeaderBitmap)'
+  StrCpy $SerialWorkbenchHeaderBitmap 0
 FunctionEnd
 
 ; 1. 欢迎页面
 ; 品牌定制开始
-!define MUI_WELCOMEPAGE_TITLE "$(StarterWelcomeTitle)"
-!define MUI_WELCOMEPAGE_TEXT "$(StarterWelcomeText)"
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW StarterWelcomeShow
+!define MUI_WELCOMEPAGE_TITLE "$(SerialWorkbenchWelcomeTitle)"
+!define MUI_WELCOMEPAGE_TEXT "$(SerialWorkbenchWelcomeText)"
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW SerialWorkbenchWelcomeShow
 ; 品牌定制结束
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_WELCOME
 
 ; 对话框沿用标准安装器字体的紧凑度量，标题独立使用现代字体。
 ; 图片在最终控件尺寸内等比铺满，只裁切装饰边缘。
-Function StarterWelcomeShow
-  !insertmacro StarterSetSharpBitmap $mui.WelcomePage.Image "$PLUGINSDIR\modern-wizard.bmp" $mui.WelcomePage.Image.Bitmap cover
+Function SerialWorkbenchWelcomeShow
+  !insertmacro SerialWorkbenchSetSharpBitmap $mui.WelcomePage.Image "$PLUGINSDIR\modern-wizard.bmp" $mui.WelcomePage.Image.Bitmap cover
   System::Call 'gdi32::DeleteObject(p $mui.WelcomePage.Title.Font)'
-  CreateFont $mui.WelcomePage.Title.Font "$(StarterTitleFont)" "13" "600"
+  CreateFont $mui.WelcomePage.Title.Font "$(SerialWorkbenchTitleFont)" "13" "600"
   SendMessage $mui.WelcomePage.Title ${WM_SETFONT} $mui.WelcomePage.Title.Font 1
   ; nsDialogs 标签不会继承主对话框按语言设置的字体
   Push $0
@@ -614,9 +614,9 @@ Var AppStartMenuFolder
 ; 8. 完成页面
 ;
 ; 品牌定制开始
-!define MUI_FINISHPAGE_TITLE "$(StarterFinishTitle)"
-!define MUI_FINISHPAGE_TEXT "$(StarterFinishText)"
-!define MUI_PAGE_CUSTOMFUNCTION_SHOW StarterFinishShow
+!define MUI_FINISHPAGE_TITLE "$(SerialWorkbenchFinishTitle)"
+!define MUI_FINISHPAGE_TEXT "$(SerialWorkbenchFinishText)"
+!define MUI_PAGE_CUSTOMFUNCTION_SHOW SerialWorkbenchFinishShow
 ; 品牌定制结束
 ; 安装完成后不自动跳转到完成页面，
 ; 保留安装进度页中的记录以便定位安装问题
@@ -631,10 +631,10 @@ Var AppStartMenuFolder
 !define MUI_PAGE_CUSTOMFUNCTION_PRE SkipIfPassive
 !insertmacro MUI_PAGE_FINISH
 
-Function StarterFinishShow
-  !insertmacro StarterSetSharpBitmap $mui.FinishPage.Image "$PLUGINSDIR\modern-wizard.bmp" $mui.FinishPage.Image.Bitmap cover
+Function SerialWorkbenchFinishShow
+  !insertmacro SerialWorkbenchSetSharpBitmap $mui.FinishPage.Image "$PLUGINSDIR\modern-wizard.bmp" $mui.FinishPage.Image.Bitmap cover
   System::Call 'gdi32::DeleteObject(p $mui.FinishPage.Title.Font)'
-  CreateFont $mui.FinishPage.Title.Font "$(StarterTitleFont)" "13" "600"
+  CreateFont $mui.FinishPage.Title.Font "$(SerialWorkbenchTitleFont)" "13" "600"
   SendMessage $mui.FinishPage.Title ${WM_SETFONT} $mui.FinishPage.Title.Font 1
   Push $0
   SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $0
@@ -709,20 +709,20 @@ FunctionEnd
 ; SetFont 决定整套对话框的尺寸；采用 NSIS 标准字体，避免微软雅黑行高拉高窗口。
 !ifdef LANG_SIMPCHINESE
   SetFont /LANG=${LANG_SIMPCHINESE} "SimSun" 9
-  LangString StarterTitleFont ${LANG_SIMPCHINESE} "Microsoft YaHei UI"
-  LangString StarterWelcomeTitle ${LANG_SIMPCHINESE} "开始安装"
-  LangString StarterWelcomeText ${LANG_SIMPCHINESE} "${PRODUCTNAME}$\r$\n版本 ${VERSION}$\r$\n$\r$\n接下来选择安装位置，即可将应用添加到这台电脑。$\r$\n$\r$\n$_CLICK"
-  LangString StarterFinishTitle ${LANG_SIMPCHINESE} "安装完成"
-  LangString StarterFinishText ${LANG_SIMPCHINESE} "${PRODUCTNAME} 已准备就绪。$\r$\n$\r$\n你可以立即运行，也可以稍后再启动。选择下方选项后，点击 [完成] 关闭向导。"
+  LangString SerialWorkbenchTitleFont ${LANG_SIMPCHINESE} "Microsoft YaHei UI"
+  LangString SerialWorkbenchWelcomeTitle ${LANG_SIMPCHINESE} "开始安装"
+  LangString SerialWorkbenchWelcomeText ${LANG_SIMPCHINESE} "${PRODUCTNAME}$\r$\n版本 ${VERSION}$\r$\n$\r$\n接下来选择安装位置，即可将应用添加到这台电脑。$\r$\n$\r$\n$_CLICK"
+  LangString SerialWorkbenchFinishTitle ${LANG_SIMPCHINESE} "安装完成"
+  LangString SerialWorkbenchFinishText ${LANG_SIMPCHINESE} "${PRODUCTNAME} 已准备就绪。$\r$\n$\r$\n你可以立即运行，也可以稍后再启动。选择下方选项后，点击 [完成] 关闭向导。"
 !endif
 
 !ifdef LANG_ENGLISH
   SetFont /LANG=${LANG_ENGLISH} "MS Shell Dlg" 8
-  LangString StarterTitleFont ${LANG_ENGLISH} "Segoe UI"
-  LangString StarterWelcomeTitle ${LANG_ENGLISH} "Ready to install"
-  LangString StarterWelcomeText ${LANG_ENGLISH} "${PRODUCTNAME}$\r$\nVersion ${VERSION}$\r$\n$\r$\nChoose where to install the app on this computer.$\r$\n$\r$\n$_CLICK"
-  LangString StarterFinishTitle ${LANG_ENGLISH} "Installation complete"
-  LangString StarterFinishText ${LANG_ENGLISH} "${PRODUCTNAME} is ready.$\r$\n$\r$\nLaunch it now or come back later. Choose the options below, then click Finish to close this wizard."
+  LangString SerialWorkbenchTitleFont ${LANG_ENGLISH} "Segoe UI"
+  LangString SerialWorkbenchWelcomeTitle ${LANG_ENGLISH} "Ready to install"
+  LangString SerialWorkbenchWelcomeText ${LANG_ENGLISH} "${PRODUCTNAME}$\r$\nVersion ${VERSION}$\r$\n$\r$\nChoose where to install the app on this computer.$\r$\n$\r$\n$_CLICK"
+  LangString SerialWorkbenchFinishTitle ${LANG_ENGLISH} "Installation complete"
+  LangString SerialWorkbenchFinishText ${LANG_ENGLISH} "${PRODUCTNAME} is ready.$\r$\n$\r$\nLaunch it now or come back later. Choose the options below, then click Finish to close this wizard."
 !endif
 ; 品牌定制结束
 

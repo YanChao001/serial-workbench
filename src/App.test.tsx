@@ -12,23 +12,16 @@ vi.mock("@/providers/commands", () => ({
 vi.mock("@/components/command-palette", () => ({ CommandPalette: () => null }));
 vi.mock("@/components/desktop-effects", () => ({ DesktopEffects: () => null }));
 vi.mock("@/components/theme-effects", () => ({ ThemeEffects: () => null }));
-vi.mock("@/features/extensions/extension-commands", () => ({
-  ExtensionCommands: () => null,
-}));
 vi.mock("@/providers/unsaved-work", () => ({
   UnsavedWorkProvider: ({ children }: { children: ReactNode }) => children,
 }));
 vi.mock("@/components/recovery-gate", () => ({
   RecoveryGate: ({ children }: { children: ReactNode }) => children,
 }));
-vi.mock("@/components/demo-motion", () => ({
-  DemoMotion: ({ children }: { children: ReactNode }) => children,
-}));
 vi.mock("@/layouts/app-shell", () => ({
   AppShell: () => <Outlet />,
 }));
 vi.mock("@/routes", () => ({
-  WINDOW_ROUTES: [],
   APP_ROUTES: [{ path: "/", index: true, component: () => <p>Home page</p> }],
 }));
 vi.mock("@/providers/settings", () => ({

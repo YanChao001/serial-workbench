@@ -20,8 +20,8 @@ import { resolveWallpaperVideo } from "@/lib/video-wallpaper";
 import { VideoBackground } from "./video-background";
 
 const motion = vi.hoisted(() => ({ active: true }));
-vi.mock("@/hooks/use-demo-motion", () => ({
-  useDemoMotion: (_ref: unknown, enabled: boolean) => ({
+vi.mock("@/hooks/use-motion-activity", () => ({
+  useMotionActivity: (_ref: unknown, enabled: boolean) => ({
     active: enabled && motion.active,
   }),
 }));

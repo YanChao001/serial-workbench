@@ -3,6 +3,7 @@ import { spawnSync } from "node:child_process";
 import {
   mkdtempSync,
   mkdirSync,
+  existsSync,
   readFileSync,
   rmSync,
   writeFileSync,
@@ -120,6 +121,42 @@ test("unknown templates stop synchronization before changing a managed file", (t
   assert.equal(readFileSync(join(root, "README.md"), "utf8"), before);
 });
 
+test("a single main branch produces one CI target and remains synchronized", (t) => {
+  const { root, write, config } = fixture(t);
+  config.hosting.defaultBranch = "main";
+  config.hosting.releaseBranch = "main";
+  write("repository.config.json", config);
+  const result = run(root, "sync");
+  assert.equal(result.status, 0, result.stderr);
+  assert.match(
+    readFileSync(join(root, ".github/workflows/ci.yml"), "utf8"),
+    /branches: \[main\]/,
+  );
+  assert.equal(run(root, "check").status, 0);
+  assert.match(run(root, "sync").stdout, /already synchronized/i);
+});
+
+for (const path of [
+  ".github/workflows/pages.yml",
+  ".github/workflows-disabled/pages.yml",
+]) {
+  test(`Pages branch settings remain managed at ${path}`, (t) => {
+    const { root, write, config } = fixture(t);
+    write(
+      path,
+      "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: github.ref == 'refs/heads/develop'\n",
+    );
+    config.hosting.defaultBranch = "integration";
+    write("repository.config.json", config);
+    const result = run(root, "sync");
+    assert.equal(result.status, 0, result.stderr);
+    const content = readFileSync(join(root, path), "utf8");
+    assert.match(content, /branches: \[integration\]/);
+    assert.match(content, /if: github\.ref == 'refs\/heads\/integration'/);
+    assert.equal(run(root, "check").status, 0);
+  });
+}
+
 test("release asset parsing rejects control characters rather than publishing their encoded names", () => {
   assert.throws(() =>
     releaseAssetFromUrl(
@@ -139,7 +176,7 @@ test("a removed workflow branch filter is reported rather than silently left unm
   assert.match(result.stderr, /branch/i);
 });
 
-test("the root command also synchronizes and checks an initialized marketplace", (t) => {
+test("the root command keeps independent marketplace scripts untouched", (t) => {
   const { root, write } = fixture(t);
   write(
     "marketplace/scripts/repository-config.mjs",
@@ -151,13 +188,10 @@ test("the root command also synchronizes and checks an initialized marketplace",
     else if (!existsSync(marker)) { console.error("market configuration drift"); process.exitCode=1; }
   `,
   );
-  assert.notEqual(run(root, "check").status, 0);
+  assert.equal(run(root, "check").status, 0);
   const result = run(root, "sync");
   assert.equal(result.status, 0, result.stderr);
-  assert.equal(
-    readFileSync(join(root, "marketplace/synchronized"), "utf8"),
-    "ready",
-  );
+  assert.equal(existsSync(join(root, "marketplace/synchronized")), false);
   assert.equal(run(root, "check").status, 0);
 });
 
@@ -170,6 +204,11 @@ for (const [name, path, content] of [
   [
     "Pages condition structure drift",
     ".github/workflows/pages.yml",
+    "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: ${{ github.ref == 'refs/heads/stale-branch' }}\n",
+  ],
+  [
+    "Disabled Pages condition structure drift",
+    ".github/workflows-disabled/pages.yml",
     "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: ${{ github.ref == 'refs/heads/stale-branch' }}\n",
   ],
   [
@@ -196,19 +235,4 @@ test("a missing marketplace URL never rewrites a following third-party submodule
   assert.notEqual(result.status, 0);
   assert.match(result.stderr, /marketplace.*URL|submodule.*URL/i);
   assert.equal(readFileSync(join(root, ".gitmodules"), "utf8"), content);
-});
-
-test("market transport templates accept the repository placeholder consistently with the native client", (t) => {
-  const { root, write, config } = fixture(t);
-  config.marketplace.catalogUrlTemplate =
-    "https://downloads.example/market/{repository}/catalog.json";
-  config.marketplace.packageUrlTemplate =
-    "https://downloads.example/market/{repository}/{tag}/{asset}";
-  config.marketplace.downloadUrlPrefixes = [
-    "https://downloads.example/market/{repository}/",
-  ];
-  write("repository.config.json", config);
-  const result = run(root, "sync");
-  assert.equal(result.status, 0, result.stderr);
-  assert.equal(run(root, "check").status, 0);
 });
