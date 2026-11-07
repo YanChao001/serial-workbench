@@ -131,16 +131,6 @@ export function prepareRepositorySync(root) {
       content.slice(section.index + section[0].length)
     );
   });
-  edit(".github/workflows/ci.yml", (content) => {
-    const pattern = /^(\s*branches: )\[[^\r\n]*\]$/gm;
-    if ([...content.matchAll(pattern)].length !== 1)
-      throw new Error("CI pull request branch filter must remain managed");
-    return content.replace(
-      pattern,
-      (_, prefix) =>
-        `${prefix}[${[...new Set([config.hosting.defaultBranch, config.hosting.releaseBranch])].join(", ")}]`,
-    );
-  });
   for (const workflowPath of [
     ".github/workflows/pages.yml",
     ".github/workflows-disabled/pages.yml",

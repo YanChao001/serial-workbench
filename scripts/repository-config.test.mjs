@@ -48,10 +48,7 @@ function fixture(t) {
     ".gitmodules",
     '[submodule "marketplace"]\n\tpath = marketplace\n\turl = https://github.com/example/market.git\n',
   );
-  write(
-    ".github/workflows/ci.yml",
-    "on:\n  pull_request:\n    branches: [develop, main]\n",
-  );
+  write(".github/workflows/ci.yml", "on:\n  workflow_dispatch:\n");
   return { root, write, app, config };
 }
 
@@ -71,7 +68,7 @@ function run(root, mode) {
   );
 }
 
-test("one sync updates managed links, branches and submodule and then becomes idempotent", (t) => {
+test("one sync updates managed links and submodule while preserving manual CI and becomes idempotent", (t) => {
   const { root, write, app, config } = fixture(t);
   config.hosting.defaultBranch = "integration";
   config.hosting.links.releases = "{repositoryUrl}/-/releases";
@@ -100,9 +97,9 @@ test("one sync updates managed links, branches and submodule and then becomes id
     readFileSync(join(root, ".gitmodules"), "utf8"),
     /https:\/\/code\.example\/acme\/market\.git/,
   );
-  assert.match(
+  assert.equal(
     readFileSync(join(root, ".github/workflows/ci.yml"), "utf8"),
-    /branches: \[integration, main\]/,
+    "on:\n  workflow_dispatch:\n",
   );
   assert.equal(run(root, "check").status, 0);
   const second = run(root, "sync");
@@ -121,16 +118,18 @@ test("unknown templates stop synchronization before changing a managed file", (t
   assert.equal(readFileSync(join(root, "README.md"), "utf8"), before);
 });
 
-test("a single main branch produces one CI target and remains synchronized", (t) => {
+test("hosting branch synchronization leaves manual milestone inputs unchanged", (t) => {
   const { root, write, config } = fixture(t);
-  config.hosting.defaultBranch = "main";
-  config.hosting.releaseBranch = "main";
+  const manual =
+    "on:\n  workflow_dispatch:\n    inputs:\n      desktop_e2e:\n        type: boolean\n        default: true\n";
+  write(".github/workflows/ci.yml", manual);
+  config.hosting.defaultBranch = "integration";
   write("repository.config.json", config);
   const result = run(root, "sync");
   assert.equal(result.status, 0, result.stderr);
-  assert.match(
+  assert.equal(
     readFileSync(join(root, ".github/workflows/ci.yml"), "utf8"),
-    /branches: \[main\]/,
+    manual,
   );
   assert.equal(run(root, "check").status, 0);
   assert.match(run(root, "sync").stdout, /already synchronized/i);
@@ -166,14 +165,6 @@ test("release asset parsing rejects control characters rather than publishing th
       repositoryConfig,
     ),
   );
-});
-
-test("a removed workflow branch filter is reported rather than silently left unmanaged", (t) => {
-  const { root, write } = fixture(t);
-  write(".github/workflows/ci.yml", "on:\n  push: {}\n  pull_request: {}\n");
-  const result = run(root, "check");
-  assert.notEqual(result.status, 0);
-  assert.match(result.stderr, /branch/i);
 });
 
 test("the root command keeps independent marketplace scripts untouched", (t) => {
