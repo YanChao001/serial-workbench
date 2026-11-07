@@ -20,7 +20,7 @@ pnpm repository:sync
 pnpm config:check
 ```
 
-`repository:sync` 更新根目录及 docs 的已知项目链接、`.gitmodules` 子模块地址、GitHub Pages/Dependabot 分支配置和同步状态。里程碑 CI 只手动触发，无分支过滤，不由仓库同步器改写触发策略。归档的 Pages 模板同样接受分支同步与结构检查。固定第三方来源、许可证和测试样本保留原值。
+`repository:sync` 更新根目录及 docs 的已知项目链接、`.gitmodules` 子模块地址、GitHub Pages 分支配置和同步状态。里程碑 CI 只手动触发，无分支过滤，不由仓库同步器改写触发策略。归档的 Pages 模板同样接受分支同步与结构检查。同步器不管理其他自动化配置；自动依赖升级 PR 已停止，依赖审计与升级按 [Git 协作规范](./conventions/git-workflow.md#自动化工作流) 手动集中处理。固定第三方来源、许可证和测试样本保留原值。
 
 同步后运行 `config:check`，检查配置漂移及可执行自有源码中的项目仓库 URL 字面量；单独检查托管配置可用 `repository:check`。这些检查已纳入 `verify`，重复同步应无变化。
 
@@ -38,7 +38,7 @@ pnpm config:check
 | ---------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------- |
 | [`scripts/hosting/`](../scripts/hosting/)                  | GitHub API 请求、PR/Release 元数据、草稿与附件处理、Actions 事件/输出/环境变量、签名 artifact 选择和最终公开。 |
 | [`scripts/release-lib.mjs`](../scripts/release-lib.mjs)    | 稳定的发布命令入口，按显式 hosting.provider 检查适配器；未知平台在远端操作前失败。                             |
-| [`.github/`](../.github/) 与 [`.signpath/`](../.signpath/) | GitHub Actions、Pages、Dependabot、模板和可选 SignPath connector 的平台文件。                                  |
+| [`.github/`](../.github/) 与 [`.signpath/`](../.signpath/) | 手动 GitHub Actions 检查与审计、Pages 和发布模板、可选 SignPath connector 的平台文件。                         |
 
 修改 URL 或页面路径时优先改配置；改变 Release API、认证或 CI 产品时，在上述入口实现并验证适配器，再设置 provider。平台环境变量与工作流按对应平台协议维护，业务代码通过适配入口调用。
 
