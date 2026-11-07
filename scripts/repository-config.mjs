@@ -157,18 +157,6 @@ export function prepareRepositorySync(root) {
         );
     });
   }
-  edit(".github/dependabot.yml", (content) => {
-    const pattern = /^(\s*target-branch: )[^\r\n]+/gm;
-    const count = [...content.matchAll(/^ {2}- package-ecosystem: /gm)].length;
-    if (!count || [...content.matchAll(pattern)].length !== count)
-      throw new Error(
-        "Every Dependabot update entry must have one managed target-branch",
-      );
-    return content.replace(
-      pattern,
-      (_, prefix) => prefix + JSON.stringify(config.hosting.defaultBranch),
-    );
-  });
   if (!isDeepStrictEqual(previous, next)) {
     const before = read("repository.generated.json");
     changes.push({

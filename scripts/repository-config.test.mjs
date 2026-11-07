@@ -107,6 +107,36 @@ test("one sync updates managed links and submodule while preserving manual CI an
   assert.match(second.stdout, /already synchronized/i);
 });
 
+for (const [label, content] of [
+  [
+    "a custom target branch",
+    'version: 2\nupdates:\n  - package-ecosystem: "npm"\n    directory: "/"\n    target-branch: "maintenance"\n',
+  ],
+  [
+    "no explicit target branch",
+    'version: 2\nupdates:\n  - package-ecosystem: "npm"\n    directory: "/"\n',
+  ],
+]) {
+  test(`repository sync leaves unmanaged automation with ${label} intact`, (t) => {
+    const { root, write, config } = fixture(t);
+    const path = ".github/dependabot.yml";
+    write(path, content);
+    config.hosting.defaultBranch = "integration";
+    write("repository.config.json", config);
+    const result = run(root, "sync");
+    assert.equal(result.status, 0, result.stderr);
+    assert.equal(readFileSync(join(root, path), "utf8"), content);
+    assert.equal(
+      JSON.parse(readFileSync(join(root, "repository.generated.json"), "utf8"))
+        .config.hosting.defaultBranch,
+      "integration",
+    );
+    assert.equal(run(root, "check").status, 0);
+    assert.match(run(root, "sync").stdout, /already synchronized/i);
+    assert.equal(readFileSync(join(root, path), "utf8"), content);
+  });
+}
+
 test("unknown templates stop synchronization before changing a managed file", (t) => {
   const { root, write, config } = fixture(t);
   const before = readFileSync(join(root, "README.md"), "utf8");
@@ -201,11 +231,6 @@ for (const [name, path, content] of [
     "Disabled Pages condition structure drift",
     ".github/workflows-disabled/pages.yml",
     "on:\n  push:\n    branches: [develop]\njobs:\n  deploy:\n    if: ${{ github.ref == 'refs/heads/stale-branch' }}\n",
-  ],
-  [
-    "Dependabot missing target branch",
-    ".github/dependabot.yml",
-    "version: 2\nupdates:\n  - package-ecosystem: npm\n    directory: /\n",
   ],
 ]) {
   test(`${name} fails the managed configuration check`, (t) => {

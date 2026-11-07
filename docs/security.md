@@ -56,7 +56,7 @@ pnpm audit
 cargo audit --file src-tauri/Cargo.lock
 ```
 
-自动配置范围读取 [audit.yml](../.github/workflows/audit.yml) 和 [dependabot.yml](../.github/dependabot.yml)。请求失败时记录审计未完成，结合完整输出处理告警。依赖审计由维护者手动触发，没有每周定时任务；实际审计结果在 PR 或里程碑验收中记录。
+保留 [audit.yml](../.github/workflows/audit.yml) 手动依赖审计，没有每周定时任务；请求失败时记录审计未完成，结合完整输出处理审计告警。自动依赖升级 PR 配置已移除，需要的升级由维护者集中评估、验证，并按 [Git 协作规范](./conventions/git-workflow.md) 提交中文里程碑 PR。实际审计结果在 PR 或里程碑验收中记录。
 
 提交锁文件，新增依赖按 [评审标准](./development.md#新增依赖的评审标准) 审查。定向升级后检查依赖链、目标平台与许可，暂时无法修复的实际问题在PR说明原因和缓解。
 
