@@ -95,6 +95,12 @@ pub struct ShutdownRequested {
     pub instance_epoch: U64,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct StreamCursorResult {
+    pub target: Target,
+    pub cursor: Cursor,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(
     tag = "kind",
     content = "value",
@@ -102,6 +108,21 @@ pub struct ShutdownRequested {
     deny_unknown_fields
 )]
 pub enum QueryResult {
+    ClientEffect(ClientEffectResult),
+    Clients(ClientListResult),
+    HostMetrics(HostMetrics),
+    StartupConfig(StartupConfigSnapshot),
+    CaptureStatus(CaptureStatusResult),
+    ReplayRead(ReplayReadResult),
+    Recent(RecentList),
+    FileMetadata(FileMetadata),
+    FileRead(FileReadResult),
+    FileTransferReceipts(FileTransferReceiptsResult),
+    StreamCursor(StreamCursorResult),
+    Scopes(StateScopesResult),
+    Settings(SettingsDocumentResult),
+    Workspace(WorkspaceDocumentResult),
+    DocumentJson(DocumentJsonResult),
     StreamRead(StreamReadResult),
     StreamSubscribe(StreamSubscribeResult),
     StreamCredit(StreamCreditResult),
@@ -110,6 +131,7 @@ pub enum QueryResult {
     Queue(QueueStatus),
     Catalog(CatalogListResult),
     Operation(Box<OperationResult>),
+    OperationInput(OperationInput),
     Snapshot(Snapshot),
     Subscription(SubscriptionResult),
     Closed(ClosedResult),
@@ -126,7 +148,10 @@ impl RpcRequest {
     /// 物理连接限制从 actionId 推导，通用入口不能绕过专用 RPC 的限制。
     pub fn required_channel(&self) -> HostResult<RequestChannel> {
         let (id, expected) = match self {
-            Self::Attach(_) => return Ok(RequestChannel::Control),
+            Self::Attach(_)
+            | Self::ClientRegister(_)
+            | Self::ClientUnregister(_)
+            | Self::ClientReceipt(_) => return Ok(RequestChannel::Control),
             Self::Query(q) => (q.action_id.as_str(), None),
             Self::Invoke(c) => (c.action_id.as_str(), None),
             Self::InvokeChild(c) => (c.action_id.as_str(), None),
@@ -148,7 +173,14 @@ impl RpcRequest {
             ));
         }
         Ok(match id {
-            "stream.read" | "stream.subscribe" | "stream.credit" => RequestChannel::Raw,
+            "stream.cursor"
+            | "stream.read"
+            | "stream.subscribe"
+            | "stream.credit"
+            | "file.read"
+            | "transfer.receiptsRead"
+            | "operation.input"
+            | "replay.read" => RequestChannel::Raw,
             "subscription.close" => RequestChannel::Either,
             _ => RequestChannel::Control,
         })

@@ -6,7 +6,9 @@
 
 实施拆分见 [M0—M6 推进计划](./superpowers/plans/2026-11-07-serial-workbench-roadmap.md)，首阶段见 [M0 契约与执行基线](./superpowers/plans/2026-11-07-m0-contracts-and-baseline.md)。
 
-实施规范见 [Host 与 Node 契约](./contracts/README.md)，需求进度见 [247 项状态账本](./superpowers/acceptance/feature-status.json)；下一阶段按 [M1 Host 与工作区计划](./superpowers/plans/2026-11-07-m1-host-and-workspace.md) 推进。
+实施规范见 [Host 与 Node 契约](./contracts/README.md)，需求进度见 [247 项状态账本](./superpowers/acceptance/feature-status.json)；M1 按 [Host 与工作区计划](./superpowers/plans/2026-11-07-m1-host-and-workspace.md) 推进，独立后端的软件验收入口见 [M1 软件场景验证](./m1-software-validation.md)。
+
+本轮后端候选、实际检查与未通过项见 [M1b 后端候选验收记录](./superpowers/acceptance/2026-11-08-m1b-backend.md)。
 
 | 任务                           | 权威文档                                                                                                                 |
 | ------------------------------ | ------------------------------------------------------------------------------------------------------------------------ |

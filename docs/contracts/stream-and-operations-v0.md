@@ -62,7 +62,7 @@ TX 意图 `tx_intent` 的 payload 为 `{operationId,bytesBase64,byteStart,byteEn
 
 RawEvent 的源端 gap payload 为 `{reason,missingEventRange?,missingByteRange?,direction?,knownExtent}`。reason 为 `network_loss|backend_loss|purge|source_unknown`，表示源 Host 观察到的后端缺失或清空；range 均为 `{start,end}`，byte range 还带 `direction: rx|tx`；knownExtent 为 boolean。可确定范围必须填写；设备只报告溢出但丢失量不可知时 knownExtent=false，不捏造序号/字节数。这条 gap 自身拥有正常的源 eventSeq，不为未观察到的后端字节虚构 RawEvent。
 
-读者丢失使用独立 `ReaderGap={hostId,instanceEpoch,sessionId,sessionEpoch,reason,missingEventRange,missingByteRanges?}`，reason 为 `reader_overflow|capture_overflow|network_loss`，描述该 reader/capture/转发副本未得到的源事件；missingEventRange 必填且精确，missingByteRanges 如已知则为 `{direction: rx|tx,start,end}[]`。TX 字节损失归属于丢失的意图；仅缺少最终回执时记录事件缺口，不重复记录意图字节损失。省略字节范围表示无法确定完整字节损失，空数组表示已知没有丢失 RX/TX 字节。ReaderGap 不含 eventSeq、配置 revision 或虚构源时间，不写入其他 reader 或源权威流。源端 RawEvent gap 与 ReaderGap 都要求解析器重置连续帧状态，不跨缺口拼帧。
+读者丢失使用独立 `ReaderGap={hostId,instanceEpoch,sessionId,sessionEpoch,reason,missingEventRange,missingByteRanges?}`，reason 为 `reader_overflow|capture_overflow|capture_paused|network_loss`，描述该 reader/capture/转发副本未得到的源事件；missingEventRange 必填且精确，missingByteRanges 如已知则为 `{direction: rx|tx,start,end}[]`。TX 字节损失归属于丢失的意图；仅缺少最终回执时记录事件缺口，不重复记录意图字节损失。省略字节范围表示无法确定完整字节损失，空数组表示已知没有丢失 RX/TX 字节。ReaderGap 不含 eventSeq、配置 revision 或虚构源时间，不写入其他 reader 或源权威流。源端 RawEvent gap 与 ReaderGap 都要求解析器重置连续帧状态，不跨缺口拼帧。
 
 派生来源 `SourceRange={hostId,sessionId,sessionEpoch,eventStart,eventEnd,byteStart?,byteEnd?,direction?}`；字节范围存在时 direction 必填。`DerivedProvenance={sources: SourceRange[],parserId,parserVersion,configurationDigest,quality,unit?}`；quality 为 schema 注册的字符串数组，基座标记 `complete|gap|partial|unknown|transformed`。数字采样派生另携 sample clock 与区间。任何降采样/过滤/脱敏保留来源与变换标记，显示降采样不等于源缺口。
 
@@ -123,7 +123,7 @@ purge 中 ranges 是带 direction 的字节区间，unknownExtent 为 boolean。
 
 新录制格式 `formatVersion="0.1"`，M1 定义其容器编码与生成 schema；这是新体系首版，不承诺旧软件录制、插件包或缓存格式的读取/迁移。格式版本独立于协议版本；读取未来格式返回 FUTURE_FORMAT，文件只读保留。M0 先固定以下逻辑结构与验证语义，容器选型不得削弱它们。
 
-Capture 包含 `captureId,formatVersion,mode,sourceHosts,streams,volumes,index,state,watermarks`。mode=`raw|redacted`，redacted 明确记录变换摘要，未经用户选择不另存原始副本。streams 固定源 host/session/epoch/配置及时间精度；原始事件保留源序号、最终 TX 意图与实际回执、源 Gap、控制和生命周期事件。TX 意图和回执按 operationId 关联为一次发送，完整性报告区分尚无最终回执的意图，视图更新该发送的结果而不重复显示字节。捕获某 reader/转发副本时，ReaderGap 作为独立记录保存，只有捕获 recordOrdinal，不虚构源 eventSeq；完整性报告将其覆盖源范围计为不连续。B 的原始录制为来源权威，A 的副本必须标网络缺口，不能改造源序号制造完整性。
+Capture 包含 `captureId,formatVersion,mode,sourceHosts,streams,volumes,index,state,watermarks`。mode=`raw|redacted`，redacted 明确记录变换摘要，未经用户选择不另存原始副本。streams 固定源 host/session/epoch/配置及时间精度；原始事件保留源序号、最终 TX 意图与实际回执、源 Gap、控制和生命周期事件。TX 意图和回执按 owner operationId 关联任务，块结算以真实源 host/session/sessionEpoch 与 byteStart/byteEnd 区分；同一文件发送 owner 的不同块合法，同源同块重复结算仍拒绝。完整性报告按块跟踪尚无最终回执的意图，并将 unsettledOperations 聚合为去重的 operationId；视图按源字节范围更新该任务的结果而不重复显示字节。捕获某 reader/转发副本时，ReaderGap 作为独立记录保存，只有捕获 recordOrdinal，不虚构源 eventSeq；完整性报告将其覆盖源范围计为不连续。B 的原始录制为来源权威，A 的副本必须标网络缺口，不能改造源序号制造完整性。
 
 volume 项包含 `volumeId,ordinal,recordStart,recordEnd,length,digest`，ordinal/recordStart/recordEnd/length 为 U64；manifest/index 固定分卷顺序、哈希、事件区间与前后关联。每个写盘记录分配独立 `recordOrdinal`，从 `"1"` 起；多源交错以捕获序号记录，源顺序仍由其 eventSeq 决定。watermarks 为 `{written,flushed,synced,verified}`，均表示所有分卷的连续、完整 recordOrdinal 前缀，初值 `"0"`，关系 `verified<=synced<=flushed<=written`。索引/manifest 的持久状态也须计入水位，不能仅看 payload 文件长度。
 

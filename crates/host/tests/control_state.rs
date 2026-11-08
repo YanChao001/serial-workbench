@@ -32,19 +32,26 @@ impl Transport for ControlTransport {
             message: None,
         })
     }
-    fn write(&mut self, bytes: &[u8], _: std::time::Duration) -> BackendResult<BackendWrite> {
+    fn begin_write(
+        &mut self,
+        bytes: WritePayload,
+        _: std::time::Duration,
+        _: std::sync::Arc<std::sync::atomic::AtomicBool>,
+        _: std::sync::Arc<std::sync::atomic::AtomicBool>,
+    ) -> BackendResult<Box<dyn PendingWrite>> {
         self.0.writes.fetch_add(1, Ordering::SeqCst);
-        if let Some(gate) = self.0.write_gate.lock().unwrap().take() {
-            gate.hold();
-        }
-        Ok(BackendWrite {
-            accepted_ranges: vec![ByteRange {
-                start: 0.into(),
-                end: (bytes.len() as u64).into(),
-            }],
-            unknown_ranges: vec![],
-            error: None,
-        })
+        let gate = self.0.write_gate.lock().unwrap().take();
+        Ok(support::pending_write(
+            BackendWrite {
+                accepted_ranges: vec![ByteRange {
+                    start: 0.into(),
+                    end: (bytes.len() as u64).into(),
+                }],
+                unknown_ranges: vec![],
+                error: None,
+            },
+            gate,
+        ))
     }
     fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication> {
         if self.0.configure_error.load(Ordering::SeqCst) {
@@ -87,8 +94,16 @@ impl Transport for ControlTransport {
             ControlCommand::QueueStatus => ControlResult::Queue {
                 pending_bytes: 0.into(),
             },
-            ControlCommand::Drain { .. } => ControlResult::Drained,
+            ControlCommand::ModemStatus => {
+                return Err(HostError::new("UNSUPPORTED_CAPABILITY", "No modem inputs").into());
+            }
         })
+    }
+    fn begin_drain(&mut self, request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+        serial_workbench_host::device::virtual_backend::VirtualTransport::new(
+            SerialConfiguration::default(),
+        )
+        .begin_drain(request)
     }
     fn close(&mut self) -> BackendResult<()> {
         Ok(())
@@ -484,7 +499,15 @@ async fn takeover_preserves_unknown_break_cleanup_instead_of_claiming_success() 
     let done = wait_as(&h, &operator, &takeover.operation_id).await;
     let pulse = h.wait(&pulse.operation_id).await;
     let gate = h.host.devices().snapshot(&target).await.unwrap().tx_gate;
-    h.host.shutdown().await.unwrap();
+    let shutdown = h.host.shutdown().await.unwrap_err();
+    assert_eq!(shutdown.code, "SHUTDOWN_INCOMPLETE");
+    let report: ShutdownReport =
+        serde_json::from_value(serde_json::to_value(shutdown.details.unwrap()).unwrap()).unwrap();
+    assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
+    assert_eq!(report.excluded_operation_id, None);
+    assert!(!report.completed);
+    assert!(report.unsettled_operation_ids.is_empty());
+    assert_eq!(report.quarantined_sessions, vec![target.clone()]);
     assert!(
         matches!(pulse.result, Some(ActionResult::Break(ref v)) if v.clear.status==ControlStatus::Failed)
     );
@@ -655,6 +678,7 @@ async fn break_clear_failure_isolates_transmission_and_prevents_reopen() {
             .open(
                 &h.device("break"),
                 OpenParams {
+                    binding: None,
                     configuration: SerialConfiguration::default()
                 }
             )
@@ -665,7 +689,15 @@ async fn break_clear_failure_isolates_transmission_and_prevents_reopen() {
     );
     assert_eq!(h.probe.opens.load(Ordering::SeqCst), 1);
     assert_eq!(h.write_count(), 0);
-    h.host.shutdown().await.unwrap();
+    let shutdown = h.host.shutdown().await.unwrap_err();
+    assert_eq!(shutdown.code, "SHUTDOWN_INCOMPLETE");
+    let report: ShutdownReport =
+        serde_json::from_value(serde_json::to_value(shutdown.details.unwrap()).unwrap()).unwrap();
+    assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
+    assert_eq!(report.excluded_operation_id, None);
+    assert!(!report.completed);
+    assert!(report.unsettled_operation_ids.is_empty());
+    assert_eq!(report.quarantined_sessions, vec![target]);
 }
 
 #[tokio::test]

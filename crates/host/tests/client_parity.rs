@@ -310,6 +310,7 @@ async fn cli_client_and_official_mcp_share_virtual_session_events_and_receipt() 
         .await
         .unwrap();
         assert_ne!(cli_actor, mcp.attachment().actor_id);
+        let mcp_actor = mcp.attachment().actor_id.clone();
         for (client, permissions) in [
             (
                 "serial-workbench-cli",
@@ -576,6 +577,29 @@ async fn cli_client_and_official_mcp_share_virtual_session_events_and_receipt() 
             assert_eq!(rx_bytes(&read.events), b"SAME\r\n");
         }
 
+        let mcp_operation: OperationResult = serde_json::from_value(structured(
+            tool(
+                &peer,
+                "swb_operation_x2E_get",
+                &operation_target,
+                json!({"operationId":tx.operation_id}),
+            )
+            .await,
+        ))
+        .unwrap();
+        assert_eq!(
+            mcp_operation.operation, tx,
+            "MCP with current session read rights sees the full original CLI Operation"
+        );
+        auth.revoke(
+            &operator,
+            RevokeParams {
+                actor_id: mcp_actor,
+                permissions: vec!["content.read".into()],
+                targets: vec![session.clone()],
+            },
+        )
+        .unwrap();
         let denied = tool(
             &peer,
             "swb_operation_x2E_get",
@@ -595,7 +619,7 @@ async fn cli_client_and_official_mcp_share_virtual_session_events_and_receipt() 
         .unwrap();
         assert_eq!(
             error.code, "PERMISSION_DENIED",
-            "MCP cannot query another ordinary actor's TX Operation"
+            "MCP cannot read the retained TX Operation after session content.read is revoked"
         );
 
         let close = cli

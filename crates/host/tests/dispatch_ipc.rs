@@ -127,7 +127,8 @@ async fn live_attach_catalog_generic_query_and_subscription_are_real() {
         .await
         .unwrap();
     assert!(matches!(forbidden,RpcReply::Failure {error,..} if error.code=="PERMISSION_DENIED"));
-    host.projections()
+    let committed = host
+        .projections()
         .commit(
             &id("host.devices"),
             id("devices.changed"),
@@ -135,14 +136,33 @@ async fn live_attach_catalog_generic_query_and_subscription_are_real() {
             JsonObject::new(),
         )
         .unwrap();
-    let event = tokio::time::timeout(Duration::from_secs(3), client.next_event())
-        .await
-        .unwrap()
-        .unwrap()
-        .unwrap();
-    assert!(
-        matches!(event.body,IpcMessage::Delta {subscription_id,delta} if subscription_id==subscription.subscription_id && delta.cursor.position==1.into())
-    );
+    tokio::time::timeout(Duration::from_secs(3), async {
+        let mut previous = snapshot.cursor;
+        loop {
+            let event = client.next_event().await.unwrap().unwrap();
+            let IpcMessage::Delta {
+                subscription_id,
+                delta,
+            } = event.body
+            else {
+                panic!("expected a contiguous state delta, got {:?}", event.body);
+            };
+            assert_eq!(subscription_id, subscription.subscription_id);
+            assert_eq!(delta.previous_cursor, previous);
+            assert_eq!(
+                delta.cursor.position,
+                previous.position.checked_next().unwrap()
+            );
+            assert!(delta.cursor.position <= committed.cursor.position);
+            if delta.cursor == committed.cursor {
+                assert_eq!(delta.as_ref(), &committed);
+                break;
+            }
+            previous = delta.cursor;
+        }
+    })
+    .await
+    .unwrap();
     drop(second);
     assert_eq!(host.projections().reader_count(), 1);
     success(

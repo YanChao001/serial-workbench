@@ -58,6 +58,10 @@ pub(super) struct AuthorizedEvent {
 }
 pub(super) enum EventFrame {
     State(WireFrame),
+    Client {
+        frame: WireFrame,
+        dispatch: Box<crate::client_effects::ClientEffectDispatch>,
+    },
     Raw {
         _slot: crate::stream::RawMemoryLease,
         batch: Arc<crate::stream::PreparedRawBatch>,
@@ -67,11 +71,51 @@ impl EventFrame {
     pub fn frame(&self) -> &WireFrame {
         match self {
             Self::State(frame) => frame,
+            Self::Client { frame, .. } => frame,
             Self::Raw { batch, .. } => batch.frame(),
         }
     }
 }
 impl ConnectionContext {
+    pub(crate) fn emit_client_effect(
+        &self,
+        dispatch: &crate::client_effects::ClientEffectDispatch,
+    ) -> HostResult<()> {
+        if self.channel != IpcChannel::Control
+            || self.connection_id != dispatch.destination.connection_id
+            || !self.actor.is_user_control()
+            || self.is_closed()
+        {
+            return Err(invalid());
+        }
+        dispatch.authorize()?;
+        let frame = WireFrame {
+            request_id: dispatch.request.request_id.clone(),
+            channel: IpcChannel::Control,
+            body: IpcMessage::ClientEffect {
+                request: Box::new(dispatch.request.clone()),
+            },
+        };
+        let size = local::frame::encoded_length(&frame, MAX_FRAME_BYTES)?;
+        let budget = self
+            .event_budget
+            .clone()
+            .try_acquire_many_owned(size as u32)
+            .map_err(|_| busy())?;
+        self.events
+            .try_send(AuthorizedEvent {
+                frame: EventFrame::Client {
+                    frame,
+                    dispatch: Box::new(dispatch.clone()),
+                },
+                grant: None,
+                _budget: budget,
+                subscriptions: self.subscriptions.clone(),
+                stamp: dispatch.authority.stamp.clone(),
+                delivery_liveness: None,
+            })
+            .map_err(|_| busy())
+    }
     pub(crate) fn emit_catalog_changed(
         &self,
         catalog_version: U64,
@@ -377,19 +421,57 @@ impl HostServer {
         let connections = Arc::new(Semaphore::new(128));
         let mut tasks = JoinSet::new();
         let mut failure = None;
+        let mut stopping = false;
+        let mut settlement: Option<Pin<Box<dyn Future<Output = HostResult<()>> + Send>>> = None;
+        let mut retry_at = None;
         loop {
             tokio::select! {
-                _ = &mut shutdown => break,
-                _ = &mut stop_requested => break,
+                _ = &mut shutdown, if !stopping => {
+                    stopping = true;
+                    settlement = Some(handler.shutdown());
+                },
+                _ = &mut stop_requested, if !stopping => {
+                    stopping = true;
+                    settlement = Some(handler.shutdown());
+                },
+                _ = async { tokio::time::sleep_until(retry_at.expect("retry deadline")).await }, if retry_at.is_some() => {
+                    retry_at = None;
+                    settlement = Some(handler.shutdown());
+                },
+                result = async { settlement.as_mut().expect("settlement owner").await }, if settlement.is_some() => {
+                    settlement = None;
+                    match result {
+                        Err(error) if error.code == "SHUTDOWN_INCOMPLETE" => {
+                            // The owner still holds live evidence/work. Keep the listener,
+                            // existing recovery connections and instance guard alive.
+                            retry_at = Some(tokio::time::Instant::now() + Duration::from_millis(250));
+                        }
+                        result => {
+                            if let Err(error) = result {
+                                if failure.is_none() { failure = Some(error); }
+                                else { eprintln!("Host cleanup shutdown failed: {}", error.code); }
+                            }
+                            break;
+                        }
+                    }
+                },
                 Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
                 stream = async {
                     #[cfg(test)]
                     if let Some(error) = self.accept_error.take() { return Err(error); }
                     self.listener.accept().await
-                } => {
+                }, if failure.is_none() => {
                     let mut stream = match stream {
                         Ok(stream) => stream,
-                        Err(error) => { failure = Some(error); break; }
+                        Err(error) => {
+                            failure = Some(error);
+                            stopping = true;
+                            if settlement.is_none() {
+                                retry_at = None;
+                                settlement = Some(handler.shutdown());
+                            }
+                            continue;
+                        }
                     };
                     let Ok(permit) = connections.clone().try_acquire_owned() else {
                         let frame = error_frame(new_request_id(), IpcChannel::Control, busy());
@@ -402,21 +484,16 @@ impl HostServer {
             }
         }
         tasks.shutdown().await;
-        // listener 与关闭错误都必须经过完整屏障，实例锁不能先于已归属任务释放。
-        let shutdown_result = handler.shutdown().await;
+        // Only a completed barrier (or a non-Host handler's ordinary error)
+        // reaches here. Incomplete Host settlement never releases this server.
         let store = self.store.clone();
         let checkpoint_result = blocking(move || store.checkpoint()).await;
-        for (stage, result) in [
-            ("shutdown", shutdown_result),
-            ("checkpoint", checkpoint_result),
-        ] {
-            if let Err(error) = result {
-                if failure.is_some() {
-                    // 保留最早失败原因；次要清理错误只记录稳定 code。
-                    eprintln!("Host cleanup {stage} failed: {}", error.code);
-                } else {
-                    failure = Some(error);
-                }
+        if let Err(error) = checkpoint_result {
+            if failure.is_some() {
+                // 保留最早失败原因；次要清理错误只记录稳定 code。
+                eprintln!("Host cleanup checkpoint failed: {}", error.code);
+            } else {
+                failure = Some(error);
             }
         }
         failure.map_or(Ok(()), Err)
@@ -541,5 +618,116 @@ mod shutdown_tests {
             drop(server);
             assert!(!local::profile_has_running_host(directory.path()).unwrap());
         }
+    }
+
+    struct RetryableShutdown {
+        host: crate::Host,
+        entered: Arc<tokio::sync::Notify>,
+        may_finish: Arc<std::sync::atomic::AtomicBool>,
+    }
+    impl RequestHandler for RetryableShutdown {
+        fn handle(&self, context: ConnectionContext, request: RpcRequest) -> HandlerFuture {
+            self.host.handle(context, request)
+        }
+        fn disconnected(&self, context: &ConnectionContext) {
+            self.host.disconnected(context);
+        }
+        fn shutdown(&self) -> Pin<Box<dyn Future<Output = HostResult<()>> + Send>> {
+            self.entered.notify_one();
+            let may_finish = self.may_finish.load(Ordering::SeqCst);
+            let host = self.host.clone();
+            Box::pin(async move {
+                if may_finish {
+                    host.shutdown().await
+                } else {
+                    Err(HostError::new(
+                        "SHUTDOWN_INCOMPLETE",
+                        "Injected unsettled owner",
+                    ))
+                }
+            })
+        }
+    }
+
+    // A real server/socket boundary test. The process harness separately proves
+    // binary lifetime; a library report alone does not establish that result.
+    #[tokio::test]
+    async fn incomplete_shutdown_keeps_serving_and_holds_instance_until_retry_finishes() {
+        use serial_workbench_client::{ConnectOptions, HostClient};
+        let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let mut server = HostServer::bind(profile.path()).await.unwrap();
+        let host = crate::Host::new(server.store(), server.auth())
+            .await
+            .unwrap();
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let may_finish = Arc::new(std::sync::atomic::AtomicBool::new(false));
+        let handler = Arc::new(RetryableShutdown {
+            host,
+            entered: entered.clone(),
+            may_finish: may_finish.clone(),
+        });
+        let (stop, stopped) = tokio::sync::oneshot::channel();
+        let running = tokio::spawn(async move {
+            server
+                .serve_until(handler, async {
+                    let _ = stopped.await;
+                })
+                .await
+        });
+        let client = HostClient::connect(ConnectOptions::new(
+            profile.path().into(),
+            Id::try_from("shutdown-observer").unwrap(),
+            ClientKind::Cli,
+        ))
+        .await
+        .unwrap();
+        stop.send(()).unwrap();
+        entered.notified().await;
+        let held = local::profile_has_running_host(profile.path()).unwrap();
+        let still_running = !running.is_finished();
+        let a = client.attachment();
+        let query = Query {
+            protocol_version: a.protocol_version,
+            host_id: a.host_id.clone(),
+            instance_epoch: a.instance_epoch,
+            actor_id: a.actor_id.clone(),
+            request_id: new_request_id(),
+            action_id: Id::try_from("catalog.list").unwrap(),
+            target: Target {
+                host_id: a.host_id.clone(),
+                kind: ResourceKind::try_from("host").unwrap(),
+                id: a.host_id.clone(),
+                session_id: None,
+                session_epoch: None,
+            },
+            params: serde_json::from_value(serde_json::json!({"pageSize":"100"})).unwrap(),
+            reveal_target: RevealTarget {
+                page_id: Id::try_from("workbench").unwrap(),
+                workspace_id: None,
+                session_id: None,
+                panel_id: None,
+                result_ref: None,
+            },
+        };
+        let observed = tokio::time::timeout(
+            Duration::from_secs(1),
+            client.request(RpcRequest::Query(query)),
+        )
+        .await;
+        may_finish.store(true, Ordering::SeqCst);
+        let finished = tokio::time::timeout(Duration::from_secs(5), running).await;
+        assert!(
+            held && still_running,
+            "incomplete settlement must retain the live server and instance lock"
+        );
+        assert!(
+            matches!(observed, Ok(Ok(RpcReply::Success { .. }))),
+            "the existing connection must still support read/stop recovery: {observed:?}"
+        );
+        assert!(
+            matches!(finished, Ok(Ok(Ok(())))),
+            "settlement retry must eventually finish the server: {finished:?}"
+        );
+        assert!(!local::profile_has_running_host(profile.path()).unwrap());
     }
 }

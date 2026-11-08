@@ -102,12 +102,40 @@ fn catalog_exposes_only_real_authorized_handlers_and_sorted_pages() {
             .windows(2)
             .all(|pair| pair[0].action_id.as_str() < pair[1].action_id.as_str())
     );
-    assert!(
-        ordinary
+    let expected_query_pages = [
+        ("client.recovery.read", "settings"),
+        ("client.system.read", "settings"),
+        ("client.updater.read", "settings"),
+        ("client.window.read", "settings"),
+        ("startup.config.get", "settings"),
+    ];
+    for (action_id, _) in expected_query_pages {
+        let item = ordinary
             .items
             .iter()
-            .all(|item| item.reveal_target.page_id.as_str() == "workbench")
-    );
+            .find(|item| item.action_id.as_str() == action_id)
+            .unwrap_or_else(|| panic!("Missing ordinary catalog query {action_id}"));
+        assert_eq!(item.kind, ActionKind::Query, "{action_id}");
+    }
+    for item in &ordinary.items {
+        let action_id = item.action_id.as_str();
+        let expected_page = expected_query_pages
+            .iter()
+            .find(|(expected_action_id, _)| *expected_action_id == action_id)
+            .map(|(_, page)| *page)
+            .unwrap_or_else(|| {
+                if action_id.starts_with("settings.") {
+                    "settings"
+                } else {
+                    "workbench"
+                }
+            });
+        assert_eq!(
+            item.reveal_target.page_id.as_str(),
+            expected_page,
+            "Unexpected reveal page for {action_id}"
+        );
+    }
     assert!(
         !ordinary
             .items

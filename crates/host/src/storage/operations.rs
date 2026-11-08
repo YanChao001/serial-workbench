@@ -10,6 +10,27 @@ use crate::auth::{AuthenticatedActor, add_wall_seconds, hash};
 const RETENTION_NS: u64 = 604_800_000_000_000;
 const MAX_IN_FLIGHT: i64 = 256;
 
+#[derive(serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct OperationSource {
+    format_version: String,
+    source: Target,
+}
+fn operation_source_key(id: &Id) -> String {
+    format!("operation-source-{id}")
+}
+fn decode_operation_source(json: &str) -> HostResult<Target> {
+    let document: OperationSource = serde_json::from_str(json).map_err(|_| unavailable())?;
+    if document.format_version != "0.1" {
+        return Err(HostError::new(
+            "UNSUPPORTED_FORMAT",
+            "Operation source format is unsupported",
+        ));
+    }
+    document.source.validate()?;
+    Ok(document.source)
+}
+
 fn find_existing(
     connection: &rusqlite::Connection,
     actor: &AuthenticatedActor,
@@ -94,6 +115,34 @@ fn write_canonical(value: &serde_json::Value, output: &mut Vec<u8>) -> HostResul
 }
 
 impl Database {
+    pub(crate) fn shutdown_operations(
+        &self,
+        tracked: &[Id],
+        limit: usize,
+    ) -> HostResult<Vec<Operation>> {
+        let limit_error = || {
+            HostError::new(
+                "SHUTDOWN_LIMIT_EXCEEDED",
+                "Host shutdown evidence exceeds its bounded operation budget",
+            )
+        };
+        if limit == 0 || limit > 512 || tracked.len() > limit {
+            return Err(limit_error());
+        }
+        let tracked = serde_json::to_string(tracked).map_err(|_| unavailable())?;
+        let mut statement = self.connection.prepare("SELECT operation_json FROM operations WHERE operation_id IN (SELECT operation_id FROM operations WHERE terminal=0 UNION SELECT value FROM json_each(?1)) ORDER BY operation_id LIMIT ?2").map_err(|_| unavailable())?;
+        let operations = statement
+            .query_map(params![tracked, (limit + 1) as i64], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|_| unavailable())?
+            .map(|row| decode(&row.map_err(|_| unavailable())?))
+            .collect::<HostResult<Vec<_>>>()?;
+        if operations.len() > limit {
+            return Err(limit_error());
+        }
+        Ok(operations)
+    }
     fn validate_call(
         &self,
         actor: &AuthenticatedActor,
@@ -217,6 +266,7 @@ impl Database {
             result_expires_at: None,
             progress: None,
             result: None,
+            client_effect_receipt: None,
             error: None,
         };
         transaction.execute(
@@ -249,6 +299,139 @@ impl Database {
         transaction.commit().map_err(|_| unavailable())
     }
 
+    pub(crate) fn record_progress(&mut self, id: &Id, progress: Progress) -> HostResult<Operation> {
+        let identity = self.identity()?;
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| unavailable())?;
+        let mut operation = load(&transaction, id)?;
+        if operation.owner.kind != OwnerKind::Host
+            || operation.owner.id != identity.host_id
+            || operation.execution_host_id != identity.host_id
+        {
+            return Err(HostError::new(
+                "INVALID_OPERATION_OWNER",
+                "Progress belongs to another operation owner",
+            ));
+        }
+        if !matches!(
+            operation.state,
+            OperationState::Running | OperationState::CancelRequested
+        ) {
+            return Err(not_running());
+        }
+        if progress
+            .total
+            .is_some_and(|total| progress.completed > total)
+            || operation.progress.as_ref().is_some_and(|previous| {
+                progress.completed < previous.completed
+                    || progress.unit != previous.unit
+                    || progress.total != previous.total
+            })
+        {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Operation progress must retain its unit and total and cannot move backwards",
+            ));
+        }
+        if operation.progress.as_ref() == Some(&progress) {
+            return Ok(operation);
+        }
+        operation.progress = Some(progress);
+        operation.revision = operation.revision.checked_next()?;
+        transaction
+            .execute(
+                "UPDATE operations SET operation_json=?1 WHERE operation_id=?2",
+                params![encode(&operation)?, id.as_str()],
+            )
+            .map_err(|_| unavailable())?;
+        transaction.commit().map_err(|_| unavailable())?;
+        Ok(operation)
+    }
+
+    pub(crate) fn record_client_receipt_evidence(
+        &mut self,
+        id: &Id,
+        receipt: ClientEffectReceipt,
+    ) -> HostResult<Operation> {
+        let identity = self.identity()?;
+        if receipt.host_id != identity.host_id {
+            return Err(HostError::new(
+                "HOST_ID_MISMATCH",
+                "Receipt belongs to another Host",
+            ));
+        }
+        if receipt.instance_epoch != identity.instance_epoch {
+            return Err(HostError::new(
+                "EPOCH_MISMATCH",
+                "Receipt belongs to another Host instance",
+            ));
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| unavailable())?;
+        let mut operation = load(&transaction, id)?;
+        if operation.owner.kind != OwnerKind::Host
+            || operation.owner.id != identity.host_id
+            || operation.execution_host_id != identity.host_id
+        {
+            return Err(HostError::new(
+                "INVALID_OPERATION_OWNER",
+                "Receipt belongs to another operation owner",
+            ));
+        }
+        let BuiltinAction::Client(capability) = BuiltinAction::find(operation.action_id.as_str())?
+        else {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Operation is not a client effect",
+            ));
+        };
+        if operation.target.kind.as_str() != "client"
+            || operation.target.id != receipt.client_target_id
+        {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Receipt target does not match the operation",
+            ));
+        }
+        let dispatched: bool = transaction
+            .query_row(
+                "SELECT dispatched FROM operations WHERE operation_id=?1",
+                [id.as_str()],
+                |row| row.get(0),
+            )
+            .map_err(|_| unavailable())?;
+        if !dispatched {
+            return Err(not_running());
+        }
+        if let ClientEffectOutcome::Succeeded { result } = &receipt.outcome {
+            result.validate_for(capability)?;
+        }
+        if let Some(existing) = &operation.client_effect_receipt {
+            return if existing == &receipt {
+                Ok(operation)
+            } else {
+                Err(HostError::new(
+                    "REQUEST_CONFLICT",
+                    "Operation already has a different client effect receipt",
+                ))
+            };
+        }
+        operation.client_effect_receipt = Some(receipt);
+        operation.revision = operation.revision.checked_next()?;
+        transaction
+            .execute(
+                "UPDATE operations SET operation_json=?1 WHERE operation_id=?2",
+                params![encode(&operation)?, id.as_str()],
+            )
+            .map_err(|_| unavailable())?;
+        transaction.commit().map_err(|_| unavailable())?;
+        Ok(operation)
+    }
+
     pub fn record_result_evidence(
         &mut self,
         id: &Id,
@@ -266,6 +449,13 @@ impl Database {
             return Err(not_running());
         }
         operation.revision = operation.revision.checked_next()?;
+        if let ActionResult::FileTransfer(transfer) = &result {
+            operation.progress = Some(Progress {
+                completed: transfer.accepted,
+                unit: "bytes".into(),
+                total: Some(transfer.requested),
+            });
+        }
         operation.result = Some(result);
         transaction
             .execute(
@@ -388,6 +578,122 @@ impl Database {
     pub(crate) fn operation_state(&self, id: &Id) -> HostResult<OperationState> {
         load(&self.connection, id).map(|operation| operation.state)
     }
+    /// Trusted source resolver supplies this fact before the accepted operation can dispatch.
+    pub(crate) fn record_operation_source_authority(
+        &mut self,
+        id: &Id,
+        source: &Target,
+    ) -> HostResult<()> {
+        source.validate()?;
+        let identity = self.identity()?;
+        if source.host_id != identity.host_id {
+            return Err(HostError::new(
+                "HOST_ID_MISMATCH",
+                "Source belongs to another Host",
+            ));
+        }
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| unavailable())?;
+        let operation = load(&transaction, id)?;
+        if operation.owner.kind != OwnerKind::Host
+            || operation.owner.id != identity.host_id
+            || operation.execution_host_id != identity.host_id
+        {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "Operation source requires this Host owner",
+            ));
+        }
+        let key = operation_source_key(id);
+        let previous: Option<String> = transaction
+            .query_row(
+                "SELECT value_json FROM documents WHERE id=?1",
+                [&key],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| unavailable())?;
+        if let Some(previous) = previous {
+            return if decode_operation_source(&previous)? == *source {
+                Ok(())
+            } else {
+                Err(HostError::new(
+                    "REQUEST_CONFLICT",
+                    "Operation source is already bound",
+                ))
+            };
+        }
+        if operation.state != OperationState::Queued {
+            return Err(not_running());
+        }
+        let document = serde_json::to_string(&OperationSource {
+            format_version: "0.1".into(),
+            source: source.clone(),
+        })
+        .map_err(|_| unavailable())?;
+        transaction
+            .execute(
+                "INSERT INTO documents(id,revision,value_json) VALUES(?1,'1',?2)",
+                params![key, document],
+            )
+            .map_err(|_| unavailable())?;
+        transaction.commit().map_err(|_| unavailable())
+    }
+    pub(crate) fn operation_source_authority(&self, id: &Id) -> HostResult<Target> {
+        let (operation, _) = self.retained_operation(id)?;
+        let json: Option<String> = self
+            .connection
+            .query_row(
+                "SELECT value_json FROM documents WHERE id=?1",
+                [operation_source_key(id)],
+                |row| row.get(0),
+            )
+            .optional()
+            .map_err(|_| unavailable())?;
+        let source = decode_operation_source(&json.ok_or_else(|| {
+            HostError::new(
+                "SOURCE_AUTHORITY_UNAVAILABLE",
+                "Retained source authority is unavailable",
+            )
+        })?)?;
+        if source.host_id != operation.execution_host_id {
+            return Err(HostError::new(
+                "HOST_ID_MISMATCH",
+                "Saved source belongs to another Host",
+            ));
+        }
+        Ok(source)
+    }
+    pub(crate) fn retained_operation(
+        &self,
+        id: &Id,
+    ) -> HostResult<(Operation, Option<JsonObject>)> {
+        let operation = load(&self.connection, id)?;
+        let (expires, input): (Option<String>, String) = self
+            .connection
+            .query_row(
+                "SELECT expires_at_retention_ns,input_json FROM operations WHERE operation_id=?1",
+                [id.as_str()],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            )
+            .map_err(|_| unavailable())?;
+        if let Some(expires) = expires
+            && self.retention_now()? >= counter(&expires)?.get()
+        {
+            return Err(HostError::new(
+                "NOT_FOUND",
+                "Operation result is no longer retained",
+            ));
+        }
+        // Never return the canonical envelope (lease, revision, or other admission inputs).
+        let params = serde_json::from_str::<serde_json::Value>(&input)
+            .ok()
+            .and_then(|value| value.get("params").cloned())
+            .and_then(|value| serde_json::from_value(value).ok());
+        Ok((operation, params))
+    }
     pub(crate) fn boundary_operations(
         &mut self,
         target: &Target,
@@ -439,10 +745,33 @@ impl Database {
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| unavailable())?;
         // 规范十进制 TEXT 用长度、再按字节序排序，不经过 SQLite signed INTEGER。
-        transaction.execute(
-            "DELETE FROM operations WHERE terminal=1 AND (length(expires_at_retention_ns)<length(?1) OR (length(expires_at_retention_ns)=length(?1) AND expires_at_retention_ns<=?1 COLLATE BINARY))",
-            [now.to_string()],
-        ).map_err(|_| unavailable())?;
+        let expired = {
+            let mut statement = transaction.prepare(
+                "SELECT operation_json FROM operations WHERE terminal=1 AND (length(expires_at_retention_ns)<length(?1) OR (length(expires_at_retention_ns)=length(?1) AND expires_at_retention_ns<=?1 COLLATE BINARY))",
+            ).map_err(|_| unavailable())?;
+            statement
+                .query_map([now.to_string()], |row| row.get::<_, String>(0))
+                .map_err(|_| unavailable())?
+                .map(|row| decode(&row.map_err(|_| unavailable())?))
+                .collect::<HostResult<Vec<_>>>()?
+        };
+        for operation in expired {
+            if operation.action_id.as_str() == "transfer.file" {
+                prune_transfer_receipts(&transaction, &operation.operation_id)?;
+            }
+            transaction
+                .execute(
+                    "DELETE FROM documents WHERE id=?1",
+                    [operation_source_key(&operation.operation_id)],
+                )
+                .map_err(|_| unavailable())?;
+            transaction
+                .execute(
+                    "DELETE FROM operations WHERE operation_id=?1",
+                    [operation.operation_id.as_str()],
+                )
+                .map_err(|_| unavailable())?;
+        }
         save_retention(&transaction, now)?;
         transaction.commit().map_err(|_| unavailable())
     }
@@ -510,9 +839,29 @@ impl Database {
         let mut items = Vec::new();
         for row in rows {
             let operation = decode(&row.map_err(|_| unavailable())?)?;
-            items.push(serde_json::json!({"operationId":operation.operation_id,"actorId":operation.actor_id,"actionId":operation.action_id,"state":operation.state,"revision":operation.revision,"revealTarget":operation.reveal_target}));
+            let mut reveal_target = operation.reveal_target;
+            reveal_target.result_ref = None;
+            items.push(OperationSummary {
+                operation_id: operation.operation_id,
+                execution_host_id: operation.execution_host_id,
+                actor_id: operation.actor_id,
+                action_id: operation.action_id,
+                target: operation.target,
+                execution_mode: operation.execution_mode,
+                state: operation.state,
+                revision: operation.revision,
+                reveal_target,
+                accepted_at: operation.accepted_at,
+                started_at: operation.started_at,
+                settled_at: operation.settled_at,
+                progress: operation.progress,
+                error_code: operation.error.map(|error| error.code),
+            });
         }
-        serde_json::from_value(serde_json::json!({"items":items})).map_err(|_| unavailable())
+        serde_json::from_value(
+            serde_json::to_value(OperationsSnapshot { items }).map_err(|_| unavailable())?,
+        )
+        .map_err(|_| unavailable())
     }
 
     pub fn request_cancel(&mut self, actor: &AuthenticatedActor, id: &Id) -> HostResult<Operation> {
@@ -549,6 +898,39 @@ impl Database {
         transaction.commit().map_err(|_| unavailable())?;
         Ok(operation)
     }
+}
+
+fn prune_transfer_receipts(connection: &Connection, operation_id: &Id) -> HostResult<()> {
+    let manifest = format!("transfer-receipts-{operation_id}");
+    let prefix = format!("{manifest}-");
+    // '-' 的下一个 ASCII 字符是 '.'，范围只覆盖此 operation 的 chunk 前缀。
+    let upper = format!("{manifest}.");
+    let candidates = {
+        let mut statement = connection.prepare(
+            "SELECT id FROM documents WHERE id=?1 OR (id>=?2 COLLATE BINARY AND id<?3 COLLATE BINARY)",
+        ).map_err(|_| unavailable())?;
+        statement
+            .query_map(params![manifest, prefix, upper], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|_| unavailable())?
+            .collect::<Result<Vec<_>, _>>()
+            .map_err(|_| unavailable())?
+    };
+    for key in candidates {
+        let owned = key == manifest
+            || key.strip_prefix(&prefix).is_some_and(|ordinal| {
+                ordinal
+                    .parse::<u64>()
+                    .is_ok_and(|value| value.to_string() == ordinal)
+            });
+        if owned {
+            connection
+                .execute("DELETE FROM documents WHERE id=?1", [key])
+                .map_err(|_| unavailable())?;
+        }
+    }
+    Ok(())
 }
 
 fn is_terminal(state: OperationState) -> bool {

@@ -53,6 +53,44 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         schema_version: 1,
         ..Fixtures::default()
     };
+    f.add::<RpcRequest>(
+        "client-register-controlled-rpc",
+        json!({"method":"client.register","params":{"generation":"1","capabilities":["client.window.read"]}}),
+        true,
+    )?;
+    f.add::<RpcRequest>(
+        "client-register-rejects-claimed-actor",
+        json!({"method":"client.register","params":{"generation":"1","capabilities":["client.window.read"],"actorId":"forged"}}),
+        false,
+    )?;
+    f.add::<ClientRegisterParams>(
+        "client-register-rejects-unknown-capability",
+        json!({"generation":"1","capabilities":["client.future.execute"]}),
+        false,
+    )?;
+    f.add::<RegisterFileParams>(
+        "file-registration-actor-derived",
+        json!({"path":"fixture-source.bin","purpose":"read_file"}),
+        true,
+    )?;
+    f.add::<RegisterFileParams>(
+        "file-registration-forged-client",
+        json!({"path":"fixture-source.bin","purpose":"read_file","clientId":"forged"}),
+        false,
+    )?;
+    for kind in ["transfer_receipts", "capture_record"] {
+        f.add::<ResourceKind>(&format!("registered-{kind}"), json!(kind), true)?;
+        f.object::<ObjectRef>(
+            &format!("reference-{kind}"),
+            json!({"hostId":"host","kind":kind,"id":"derived"}),
+            &["revision"],
+        )?;
+    }
+    f.add::<ResourceKind>(
+        "resource-kind-unknown-unqualified",
+        json!("future_resource"),
+        false,
+    )?;
     for (name, v) in [
         ("zero", "0"),
         ("beyond-js-precision", "9007199254740993"),
@@ -184,6 +222,11 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
     f.add::<ChildCall>("child-zero-key", child, false)?;
     let op = json!({"operationId":"op","executionHostId":"host","actorId":"actor","requestId":"33333333-3333-4333-8333-333333333333","admission":{"kind":"request","requestContextDigest":"a".repeat(64)},"rootOperationId":"op","childHighWatermark":"0","actionId":"session.tx","target":{"hostId":"host","kind":"host","id":"host"},"executionMode":"interactive","state":"queued","revision":"1","revealTarget":{"pageId":"workbench"},"acceptedAt":"2026-11-07T00:00:00Z","owner":{"kind":"host","id":"host"}});
     f.add::<Operation>("root-operation", op.clone(), true)?;
+    let mut receipt_op = op.clone();
+    receipt_op["clientEffectReceipt"] = json!({"hostId":"host","instanceEpoch":"1","clientTargetId":"viewer","generation":"1","deliveryId":"delivery","outcome":{"kind":"succeeded","result":{"kind":"applied","value":{}}}});
+    f.add::<Operation>("operation-client-receipt", receipt_op.clone(), true)?;
+    receipt_op["clientEffectReceipt"] = serde_json::Value::Null;
+    f.add::<Operation>("operation-client-receipt-null", receipt_op, false)?;
     let mut invalid = op.clone();
     invalid["state"] = json!("partial");
     f.add::<Operation>("partial-is-not-state", invalid, false)?;
@@ -448,6 +491,70 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         false,
     )?;
     f.add::<FlowControl>("serial-flow-control-snake-case", json!("rts_cts"), false)?;
+    for kind in ["none", "cr", "lf", "crlf"] {
+        f.object::<LineEnding>(&format!("line-ending-{kind}"), json!({"kind":kind}), &[])?;
+    }
+    f.object::<LineEnding>(
+        "line-ending-custom",
+        json!({"kind":"custom","bytesBase64":"AP8="}),
+        &[],
+    )?;
+    f.add::<LineEnding>(
+        "line-ending-custom-empty",
+        json!({"kind":"custom","bytesBase64":""}),
+        true,
+    )?;
+    f.add::<LineEnding>("line-ending-unknown-kind", json!({"kind":"future"}), false)?;
+    f.add::<LineEnding>(
+        "line-ending-custom-padding",
+        json!({"kind":"custom","bytesBase64":"AQ"}),
+        false,
+    )?;
+    f.add::<LineEnding>(
+        "line-ending-custom-pad-bits",
+        json!({"kind":"custom","bytesBase64":"AR=="}),
+        false,
+    )?;
+    let settings = serde_json::to_value(SharedSettings::default())?;
+    let workspace = serde_json::to_value(WorkspaceDocument::default())?;
+    let settings_scope = json!({"scopeId":"settings:shared","target":{"hostId":"host","kind":"settings","id":"shared"}});
+    let workspace_scope = json!({"scopeId":"workspace:bench","target":{"hostId":"host","kind":"workspace","id":"bench"}});
+    let settings_document =
+        json!({"document":{"revision":"3","value":settings},"scope":settings_scope});
+    let workspace_document =
+        json!({"document":{"revision":"2","value":workspace},"scope":workspace_scope});
+    f.object::<SharedSettings>(
+        "shared-settings-default",
+        settings.clone(),
+        &["customBackground"],
+    )?;
+    f.object::<WorkspaceDocument>("workspace-document-default", workspace.clone(), &[])?;
+    f.object::<SettingsSaveParams>("settings-save", json!({"value":settings}), &[])?;
+    f.object::<WorkspaceSaveParams>("workspace-save", json!({"value":workspace}), &[])?;
+    f.object::<StateScopeRef>("settings-scope-ref", settings_scope.clone(), &[])?;
+    f.object::<StateScopesResult>(
+        "state-scopes",
+        json!({"scopes":[settings_scope,workspace_scope]}),
+        &[],
+    )?;
+    f.object::<SettingsDocumentResult>("settings-document-result", settings_document.clone(), &[])?;
+    f.object::<WorkspaceDocumentResult>(
+        "workspace-document-result",
+        workspace_document.clone(),
+        &[],
+    )?;
+    f.object::<DocumentImportParams>("document-import", json!({"json":"{}"}), &[])?;
+    f.object::<DocumentJsonResult>("document-json", json!({"json":"{}"}), &[])?;
+    f.object::<QueryResult>(
+        "query-settings-document",
+        json!({"kind":"settings","value":settings_document}),
+        &[],
+    )?;
+    f.object::<ActionResult>(
+        "action-workspace-document",
+        json!({"kind":"workspace","value":workspace_document}),
+        &[],
+    )?;
     f.enumeration::<TransportSemantics>("transport-semantics", &["stream", "message"])?;
     f.enumeration::<SessionState>(
         "session-state",
@@ -500,20 +607,52 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
     let capabilities = json!({"semantics":"stream","configuration":true,"dtr":true,"rts":true,"finiteBreak":true,"queueStatus":true,"drain":true,"purgeRx":true,"purgeTx":true});
     f.object::<TransportCapabilities>("transport-capabilities", capabilities.clone(), &[])?;
     let snapshot = json!({"sessionId":"session","deviceId":"virtual.echo","sessionEpoch":"9007199254740993","revision":"1","configurationRevision":"1","state":"open","configuration":configuration,"readOnly":false,"txGate":"ready","controlState":"clear","capabilities":capabilities});
-    f.object::<SessionSnapshot>("session-snapshot", snapshot.clone(), &["lease"])?;
+    f.object::<SessionSnapshot>(
+        "session-snapshot",
+        snapshot.clone(),
+        &["lease", "reconnect"],
+    )?;
+    f.enumeration::<ReconnectState>(
+        "reconnect-state",
+        &[
+            "idle",
+            "waiting",
+            "attempting",
+            "requires_rebind",
+            "stopped",
+        ],
+    )?;
+    let reconnect = json!({"state":"waiting","attempts":"9007199254740993"});
+    f.object::<ReconnectStatus>("reconnect-status", reconnect.clone(), &["lastError"])?;
+    let mut reconnecting_snapshot = snapshot.clone();
+    reconnecting_snapshot["reconnect"] = reconnect;
+    f.add::<SessionSnapshot>(
+        "session-snapshot-with-reconnect",
+        reconnecting_snapshot,
+        true,
+    )?;
     let lease = json!({"leaseId":"lease","sessionId":"session","sessionEpoch":"9007199254740993","actorId":"actor","ownerOperationId":"op","kind":"exclusive","state":"active","executionMode":"interactive","expiresAtMonoNs":"18446744073709551615"});
     f.object::<Lease>("lease", lease.clone(), &[])?;
     let mut leased_snapshot = snapshot.clone();
     leased_snapshot["lease"] = lease.clone();
     f.add::<SessionSnapshot>("session-snapshot-with-lease", leased_snapshot, true)?;
     f.object::<EmptyParams>("empty-params", json!({}), &[])?;
-    let device = json!({"deviceId":"virtual.echo","name":"Virtual Echo"});
-    let devices = json!({"devices":[device]});
-    f.object::<DeviceDescriptor>("virtual-device", device, &[])?;
+    let device = json!({"deviceId":"virtual.echo","hostId":"host","systemName":"virtual:echo","description":"Virtual Echo","fingerprint":{"transport":"virtual","evidence":"unreliable"},"capabilities":snapshot["capabilities"]});
+    let devices = json!({"devices":[device],"stale":false});
+    f.object::<DeviceDescriptor>(
+        "virtual-device",
+        device,
+        &["description", "manufacturer", "driver"],
+    )?;
     f.object::<DeviceList>("device-list", devices.clone(), &[])?;
-    f.object::<OpenParams>("open-params", json!({"configuration":configuration}), &[])?;
+    f.object::<DeviceBindingReference>(
+        "device-binding-reference",
+        json!({"workspaceId":"workspace","bindingId":"binding"}),
+        &[],
+    )?;
+    f.object::<OpenParams>("open-params", json!({"configuration":configuration,"binding":{"workspaceId":"workspace","bindingId":"binding"}}), &["binding"])?;
     let opened = json!({"sessionId":"session","sessionEpoch":"9007199254740993","revision":"1","reused":false});
-    f.object::<OpenResult>("open-result", opened.clone(), &[])?;
+    f.object::<OpenResult>("open-result", opened.clone(), &["recentError"])?;
     let transform =
         json!({"id":"terminal.crlf","version":"1","configurationDigest":"a".repeat(64)});
     f.object::<TransformReference>("transform-reference", transform.clone(), &[])?;
@@ -735,6 +874,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         ResourceKind,
         Target,
         ProtocolVersion,
+        StartupConfigSource,
+        StartupLogLevel,
+        StartupProfileReference,
+        StartupConfigSnapshot,
         ExecutionMode,
         ObjectRef,
         RevealTarget,
@@ -793,9 +936,97 @@ fn main() -> Result<(), Box<dyn Error>> {
         LeaseState,
         TakeoverReason,
         SerialConfiguration,
+        LineEnding,
+        Language,
+        Theme,
+        Accent,
+        Radius,
+        Font,
+        FontSize,
+        Motion,
+        NetworkMode,
+        BackgroundPreset,
+        BackgroundSelection,
+        BackgroundFit,
+        TerminalMode,
+        TerminalSettings,
+        SharedSettings,
+        SettingsSnapshot,
+        SettingsSaveParams,
+        LayoutTemplate,
+        WorkspaceView,
+        WorkspaceDocument,
+        WorkspaceSnapshot,
+        WorkspaceSaveParams,
+        StateScopeRef,
+        StateScopesResult,
+        SettingsDocumentResult,
+        WorkspaceDocumentResult,
+        DocumentImportParams,
+        DocumentJsonResult,
+        StreamCursorResult,
+        FileTransferParams,
+        FileTransferResult,
+        FileTransferReceipt,
+        FileTransferReceiptsParams,
+        FileTransferReceiptsResult,
+        ReplayRecord,
+        CaptureRecord,
+        FileReadParams,
+        FileReadResult,
+        RegisterFileParams,
+        FileMetadataParams,
+        FileMetadata,
+        CaptureTxSettlement,
+        CaptureStatusResult,
+        CaptureStartParams,
+        CaptureStopParams,
+        CaptureVerifyParams,
+        VerificationReport,
+        RecoverPrefixParams,
+        ReplayOpenParams,
+        ReplayReadParams,
+        ReplayReadResult,
+        ReplayControlParams,
+        TextExportParams,
+        RecentList,
+        RebindParams,
+        FavoritesSaveParams,
+        HostMetricsParams,
+        MemoryBudget,
+        HostMetrics,
+        ShutdownMode,
+        ShutdownReport,
+        ClientCapability,
+        ClientEffectAction,
+        ClientFullscreenParams,
+        ClientWindowSizeParams,
+        ClientResetGeometryParams,
+        ClientClipboardWriteParams,
+        ClientAutostartParams,
+        ClientRegisterParams,
+        ClientRegistration,
+        ClientUnregisterParams,
+        ClientReceiptSubmission,
+        ClientSettingsObservation,
+        ClientListItem,
+        ClientListResult,
+        ClientEffectRequest,
+        ClientEffectReceipt,
+        ClientEffectOutcome,
+        ClientEffectResult,
+        ClientEffectAcknowledged,
+        OperationSummary,
+        OperationsSnapshot,
+        OperationInputParams,
+        OperationInputRedaction,
+        OperationInput,
         TransportCapabilities,
         SessionSnapshot,
+        ReconnectState,
+        ReconnectStatus,
         OpenParams,
+        DeviceBindingReference,
         OpenResult,
         TransformReference,
         TxParams,
@@ -863,6 +1094,14 @@ fn main() -> Result<(), Box<dyn Error>> {
     let ts = specta_typescript::Typescript::default().export(&types, specta_serde::PhasesFormat)?;
     let fixtures = fixtures()?;
     let documents = [
+        (
+            "defaults.json",
+            json!({
+                "settings": SharedSettings::default(),
+                "workspace": WorkspaceDocument::default(),
+                "serialConfiguration": SerialConfiguration::default(),
+            }),
+        ),
         (
             "schemas.json",
             json!({"schemaVersion":1,"protocolVersion":"0.1","schemas":schemas}),

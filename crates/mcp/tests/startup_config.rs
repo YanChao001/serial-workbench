@@ -69,6 +69,7 @@ impl Drop for Fixture {
 fn block_default(directory: &Path) {
     let config: serde_json::Value =
         serde_json::from_str(include_str!("../../../app.config.json")).unwrap();
+    #[cfg(not(target_os = "macos"))]
     let base = directory.join("default-base");
     #[cfg(target_os = "macos")]
     let base = directory.join("home/Library/Application Support");

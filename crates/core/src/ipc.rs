@@ -27,6 +27,9 @@ pub struct WireFrame {
     deny_unknown_fields
 )]
 pub enum IpcMessage {
+    ClientEffect {
+        request: Box<ClientEffectRequest>,
+    },
     ClientHello {
         supported_protocol_versions: Vec<String>,
         client_nonce: ContextToken,

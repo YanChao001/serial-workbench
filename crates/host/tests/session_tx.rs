@@ -83,15 +83,21 @@ impl Transport for TestTransport {
             message: None,
         })
     }
-    fn write(&mut self, bytes: &[u8], _: std::time::Duration) -> BackendResult<BackendWrite> {
-        Ok(BackendWrite {
+    fn begin_write(
+        &mut self,
+        bytes: WritePayload,
+        _: std::time::Duration,
+        _: Arc<std::sync::atomic::AtomicBool>,
+        _: Arc<std::sync::atomic::AtomicBool>,
+    ) -> BackendResult<Box<dyn PendingWrite>> {
+        Ok(Box::new(TestWrite(Some(BackendWrite {
             accepted_ranges: vec![ByteRange {
                 start: 0.into(),
                 end: (bytes.len() as u64).into(),
             }],
             unknown_ranges: vec![],
             error: None,
-        })
+        }))))
     }
     fn configure(&mut self, _: &SerialConfiguration) -> BackendResult<ConfigApplication> {
         unreachable!()
@@ -99,14 +105,24 @@ impl Transport for TestTransport {
     fn control(&mut self, _: ControlCommand) -> BackendResult<ControlResult> {
         unreachable!()
     }
+    fn begin_drain(&mut self, _: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+        Err(HostError::new("UNSUPPORTED_CAPABILITY", "No drain").into())
+    }
     fn close(&mut self) -> BackendResult<()> {
         Ok(())
+    }
+}
+struct TestWrite(Option<BackendWrite>);
+impl PendingWrite for TestWrite {
+    fn poll(&mut self) -> Option<BackendResult<BackendWrite>> {
+        self.0.take().map(Ok)
     }
 }
 #[tokio::test]
 async fn concurrent_open_of_one_device_opens_backend_once() {
     let fixture = Fixture::new();
     let params = OpenParams {
+        binding: None,
         configuration: SerialConfiguration::default(),
     };
     let (one, two) = tokio::join!(
@@ -126,6 +142,7 @@ async fn different_configuration_never_silently_reconfigures_open_device() {
         .open(
             &fixture.target,
             OpenParams {
+                binding: None,
                 configuration: SerialConfiguration::default(),
             },
         )
@@ -138,7 +155,13 @@ async fn different_configuration_never_silently_reconfigures_open_device() {
     assert_eq!(
         fixture
             .service
-            .open(&fixture.target, OpenParams { configuration })
+            .open(
+                &fixture.target,
+                OpenParams {
+                    configuration,
+                    binding: None
+                }
+            )
             .await
             .unwrap_err()
             .code,
@@ -215,7 +238,38 @@ async fn unknown_write_preserves_prefix_and_does_not_replay() {
         }]
     );
     assert_eq!(h.write_count(), 1);
-    h.host.shutdown().await.unwrap();
+    let error = h.host.shutdown().await.unwrap_err();
+    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
+    let report: ShutdownReport =
+        serde_json::from_value(serde_json::to_value(error.details.unwrap()).unwrap()).unwrap();
+    let persisted = h.store.get(&h.actor, &op.operation_id).unwrap();
+    assert_eq!(
+        persisted, op,
+        "shutdown must not rewrite or replay Unknown TX"
+    );
+    assert_eq!(
+        report,
+        ShutdownReport {
+            mode: ShutdownMode::CancelAndSettle,
+            completed: false,
+            excluded_operation_id: None,
+            unsettled_operation_ids: vec![],
+            quarantined_sessions: vec![target.clone()],
+            evidence_refs: vec![ObjectRef {
+                host_id: persisted.execution_host_id.clone(),
+                kind: ResourceKind::try_from("operation").unwrap(),
+                id: persisted.operation_id.clone(),
+                revision: Some(persisted.revision),
+            }],
+            failures: vec![],
+        }
+    );
+    let session = h.host.devices().snapshot(&target).await.unwrap();
+    assert_eq!(session.state, SessionState::Closed);
+    assert_eq!(session.tx_gate, TxGate::ControlUnknown);
+    assert_eq!(h.probe.close_calls.load(Ordering::SeqCst), 1);
+    assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+    assert_eq!(h.write_count(), 1);
 }
 
 #[tokio::test]
@@ -287,6 +341,9 @@ async fn queued_cancel_completes_rejected_receipt_without_backend_write() {
 #[tokio::test]
 async fn cancellation_during_partial_write_preserves_accepted_prefix() {
     let h = support::Harness::new().await;
+    h.probe
+        .write_completes_on_cancel
+        .store(true, std::sync::atomic::Ordering::SeqCst);
     let target = h.open("partial-cancel").await;
     let gate = Arc::new(support::Gate::default());
     h.probe.steps.lock().unwrap().push_back(support::WriteStep {

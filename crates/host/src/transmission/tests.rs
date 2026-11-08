@@ -108,7 +108,7 @@ async fn accepted(
 async fn cancellation_between_persistent_accept_and_owner_tracking_has_zero_writes() {
     let h = support::Harness::new().await;
     let service = TransmissionService::new(h.host.devices().clone());
-    let admission = service.admission();
+    let admission = service.admission(false).unwrap();
     let (accepted, preparation) = accepted(&h, &service).await;
     let op = accepted.operation.clone();
     let (entered, held) = tokio::sync::oneshot::channel();

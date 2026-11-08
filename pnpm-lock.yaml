@@ -336,6 +336,12 @@ importers:
 
   packages/contracts: {}
 
+  packages/host-client:
+    dependencies:
+      '@serial-workbench/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+
 packages:
 
   '@adobe/css-tools@4.5.0':

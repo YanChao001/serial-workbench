@@ -270,6 +270,12 @@ pub struct CatalogListResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "method", content = "params", deny_unknown_fields)]
 pub enum RpcRequest {
+    #[serde(rename = "client.register")]
+    ClientRegister(ClientRegisterParams),
+    #[serde(rename = "client.unregister")]
+    ClientUnregister(ClientUnregisterParams),
+    #[serde(rename = "client.receipt")]
+    ClientReceipt(ClientReceiptSubmission),
     #[serde(rename = "action.query")]
     Query(Query),
     #[serde(rename = "host.attach")]
@@ -302,6 +308,8 @@ pub enum RpcRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(untagged)]
 pub enum RpcResult {
+    ClientRegistration(ClientRegistration),
+    ClientEffectAcknowledged(ClientEffectAcknowledged),
     Query(QueryResult),
     Attach(AttachResult),
     Operation(Box<OperationResult>),

@@ -59,11 +59,22 @@ impl Transport for VirtualTransport {
         })
     }
 
-    fn write(&mut self, bytes: &[u8], _wait: Duration) -> BackendResult<BackendWrite> {
+    fn begin_write(
+        &mut self,
+        bytes: WritePayload,
+        _wait: Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+        closing: Arc<std::sync::atomic::AtomicBool>,
+    ) -> BackendResult<Box<dyn PendingWrite>> {
         self.ensure_open()?;
+        if cancelled.load(std::sync::atomic::Ordering::SeqCst)
+            || closing.load(std::sync::atomic::Ordering::SeqCst)
+        {
+            return Err(HostError::new("CANCELLED", "Virtual write was not submitted").into());
+        }
         let accepted = bytes.len().min(RX_CAPACITY - self.rx.len());
         self.rx.extend(&bytes[..accepted]);
-        Ok(BackendWrite {
+        Ok(Box::new(VirtualWrite(Some(BackendWrite {
             accepted_ranges: if accepted == 0 {
                 vec![]
             } else {
@@ -75,7 +86,7 @@ impl Transport for VirtualTransport {
             unknown_ranges: vec![],
             error: (accepted < bytes.len())
                 .then(|| HostError::new("LIMIT_EXCEEDED", "Virtual echo RX queue is full")),
-        })
+        }))))
     }
 
     fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication> {
@@ -137,7 +148,13 @@ impl Transport for VirtualTransport {
             ControlCommand::QueueStatus => ControlResult::Queue {
                 pending_bytes: U64::from(0),
             },
-            ControlCommand::Drain { .. } => ControlResult::Drained,
+            ControlCommand::ModemStatus => {
+                return Err(HostError::new(
+                    "UNSUPPORTED_CAPABILITY",
+                    "Virtual device has no modem inputs",
+                )
+                .into());
+            }
             ControlCommand::Purge { direction } => {
                 let discard_rx = matches!(direction, PurgeDirection::Rx | PurgeDirection::Both);
                 let discarded = discard_rx && !self.rx.is_empty();
@@ -153,6 +170,11 @@ impl Transport for VirtualTransport {
         })
     }
 
+    fn begin_drain(&mut self, _request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+        self.ensure_open()?;
+        Ok(Box::new(VirtualDrain(false)))
+    }
+
     fn close(&mut self) -> BackendResult<()> {
         self.closed = true;
         self.rx = VecDeque::new();
@@ -163,9 +185,44 @@ impl Transport for VirtualTransport {
     }
 }
 
+struct VirtualDrain(bool);
+struct VirtualWrite(Option<BackendWrite>);
+impl PendingWrite for VirtualWrite {
+    fn poll(&mut self) -> Option<BackendResult<BackendWrite>> {
+        self.0.take().map(Ok)
+    }
+}
+impl PendingDrain for VirtualDrain {
+    fn poll(&mut self) -> Option<BackendResult<ControlResult>> {
+        if std::mem::replace(&mut self.0, true) {
+            None
+        } else {
+            Some(Ok(ControlResult::Drained {
+                status: ControlStatus::Confirmed,
+                error: None,
+            }))
+        }
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
+    fn write_now(
+        transport: &mut VirtualTransport,
+        bytes: &[u8],
+        wait: Duration,
+    ) -> BackendResult<BackendWrite> {
+        transport
+            .begin_write(
+                WritePayload::owned(Arc::from(bytes)),
+                wait,
+                Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                Arc::new(std::sync::atomic::AtomicBool::new(false)),
+            )?
+            .poll()
+            .expect("Virtual write is immediate")
+    }
 
     fn backend() -> VirtualTransport {
         VirtualTransport::new(SerialConfiguration::default())
@@ -183,7 +240,7 @@ mod tests {
     fn echoes_every_byte_without_message_metadata() {
         let mut transport = backend();
         let bytes: Vec<u8> = (0..=255).collect();
-        let written = transport.write(&bytes, Duration::ZERO).unwrap();
+        let written = write_now(&mut transport, &bytes, Duration::ZERO).unwrap();
         assert_eq!(ranges(&written), [(0, 256)]);
         assert!(written.unknown_ranges.is_empty());
         assert!(written.error.is_none());
@@ -195,8 +252,8 @@ mod tests {
     #[test]
     fn read_limit_preserves_tail_and_write_order() {
         let mut transport = backend();
-        transport.write(&[0, 1, 2], Duration::ZERO).unwrap();
-        transport.write(&[255, 4], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[0, 1, 2], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[255, 4], Duration::ZERO).unwrap();
         assert!(transport.read(0, Duration::ZERO).unwrap().bytes.is_empty());
         assert_eq!(&*transport.read(2, Duration::ZERO).unwrap().bytes, &[0, 1]);
         assert_eq!(
@@ -211,23 +268,23 @@ mod tests {
                 .bytes
                 .is_empty()
         );
-        transport.write(&[9], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[9], Duration::ZERO).unwrap();
         assert_eq!(&*transport.read(1, Duration::ZERO).unwrap().bytes, &[9]);
     }
 
     #[test]
     fn capacity_reports_partial_prefix_and_read_releases_space() {
         let mut transport = backend();
-        transport.write(&vec![7; 65_534], Duration::ZERO).unwrap();
-        let partial = transport.write(&[0, 255, 3, 4, 5], Duration::ZERO).unwrap();
+        write_now(&mut transport, &vec![7; 65_534], Duration::ZERO).unwrap();
+        let partial = write_now(&mut transport, &[0, 255, 3, 4, 5], Duration::ZERO).unwrap();
         assert_eq!(ranges(&partial), [(0, 2)]);
         assert!(partial.unknown_ranges.is_empty());
         assert_eq!(partial.error.unwrap().code, "LIMIT_EXCEEDED");
-        let full = transport.write(&[8], Duration::from_secs(10)).unwrap();
+        let full = write_now(&mut transport, &[8], Duration::from_secs(10)).unwrap();
         assert!(full.accepted_ranges.is_empty());
         assert!(full.unknown_ranges.is_empty());
         assert_eq!(full.error.unwrap().code, "LIMIT_EXCEEDED");
-        let empty = transport.write(&[], Duration::ZERO).unwrap();
+        let empty = write_now(&mut transport, &[], Duration::ZERO).unwrap();
         assert!(empty.accepted_ranges.is_empty());
         assert!(empty.error.is_none());
         let read = transport.read(65_536, Duration::ZERO).unwrap();
@@ -235,7 +292,7 @@ mod tests {
         assert!(read.bytes[..65_534].iter().all(|byte| *byte == 7));
         assert_eq!(&read.bytes[65_534..], &[0, 255]);
         assert_eq!(
-            ranges(&transport.write(&[3, 4, 5], Duration::ZERO).unwrap()),
+            ranges(&write_now(&mut transport, &[3, 4, 5], Duration::ZERO).unwrap()),
             [(0, 3)]
         );
         assert_eq!(
@@ -396,17 +453,25 @@ mod tests {
     #[test]
     fn queue_and_drain_do_not_consume_pending_echo() {
         let mut transport = backend();
-        transport.write(&[0, 255, 8], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[0, 255, 8], Duration::ZERO).unwrap();
         assert!(
             matches!(transport.control(ControlCommand::QueueStatus).unwrap(), ControlResult::Queue { pending_bytes } if pending_bytes.get() == 0)
         );
         assert!(matches!(
             transport
-                .control(ControlCommand::Drain {
-                    wait: Duration::ZERO
+                .begin_drain(DrainRequest {
+                    wait: Duration::ZERO,
+                    cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),
+                    closing: Arc::new(std::sync::atomic::AtomicBool::new(false)),
                 })
+                .unwrap()
+                .poll()
+                .unwrap()
                 .unwrap(),
-            ControlResult::Drained
+            ControlResult::Drained {
+                status: ControlStatus::Confirmed,
+                error: None
+            }
         ));
         assert_eq!(
             &*transport.read(10, Duration::ZERO).unwrap().bytes,
@@ -417,7 +482,7 @@ mod tests {
     #[test]
     fn purge_tx_preserves_rx_and_rx_purge_discards_pending_echo() {
         let mut transport = backend();
-        transport.write(&[0, 255], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[0, 255], Duration::ZERO).unwrap();
         assert!(
             matches!(transport.control(ControlCommand::Purge { direction: PurgeDirection::Tx }).unwrap(), ControlResult::Purged { ranges, unknown_extent: false } if ranges.is_empty())
         );
@@ -429,21 +494,21 @@ mod tests {
         assert!(
             matches!(transport.control(ControlCommand::Purge { direction: PurgeDirection::Both }).unwrap(), ControlResult::Purged { ranges, unknown_extent: false } if ranges.is_empty())
         );
-        transport.write(&[5], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[5], Duration::ZERO).unwrap();
         assert_eq!(&*transport.read(5, Duration::ZERO).unwrap().bytes, &[5]);
     }
 
     #[test]
     fn close_is_idempotent_and_all_device_operations_disconnect() {
         let mut transport = backend();
-        transport.write(&[1, 2], Duration::ZERO).unwrap();
+        write_now(&mut transport, &[1, 2], Duration::ZERO).unwrap();
         transport.close().unwrap();
         transport.close().unwrap();
         assert_eq!(
             transport.read(10, Duration::ZERO).unwrap_err().error.code,
             "BACKEND_DISCONNECTED"
         );
-        let error = transport.write(&[3], Duration::ZERO).unwrap_err();
+        let error = write_now(&mut transport, &[3], Duration::ZERO).unwrap_err();
         assert_eq!(error.error.code, "BACKEND_DISCONNECTED");
         assert!(error.accepted_ranges.is_empty());
         assert!(error.unknown_ranges.is_empty());

@@ -47,6 +47,26 @@ fn typed_catalog_schema_dialects_keep_correct_target_dependency_keyword() {
     }
 }
 
+#[test]
+fn portable_integer_schemas_preserve_ranges_without_machine_format_annotations() {
+    use serial_workbench_core::*;
+    for dialect in [SchemaDialect::Draft07, SchemaDialect::Draft202012] {
+        for (schema, maximum) in [
+            (schema_for::<u8>(dialect), 255u64),
+            (schema_for::<u16>(dialect), 65535),
+            (schema_for::<u32>(dialect), 4294967295),
+        ] {
+            assert_eq!(schema["type"], "integer");
+            assert_eq!(schema["minimum"], 0);
+            assert_eq!(schema["maximum"], maximum);
+            assert!(schema.get("format").is_none(), "{schema}");
+        }
+        let nested = schema_for::<DeviceFingerprint>(dialect);
+        assert_eq!(nested["properties"]["vid"]["maximum"], 65535);
+        assert!(nested["properties"]["vid"].get("format").is_none());
+    }
+}
+
 fn call() -> Value {
     json!({"protocolVersion":"0.1","hostId":"host","instanceEpoch":"7","actorId":"actor",
         "requestId":"33333333-3333-4333-8333-333333333333","requestContext":"dG9rZW4",

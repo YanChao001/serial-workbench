@@ -1,5 +1,5 @@
 use crate::{
-    auth::{AuthService, HostIdentity},
+    auth::{AuthService, AuthenticatedActor, HostIdentity},
     state::ProjectionStore,
     storage::Store,
     stream::{SourceBoundary, SourceMeta, StreamHub, StreamKey, StreamSource},
@@ -13,13 +13,14 @@ use std::{
         mpsc,
     },
     thread::{self, JoinHandle},
-    time::Duration,
+    time::{Duration, Instant},
 };
 use tokio::sync::oneshot;
 
 pub type TransportOpener =
     Arc<dyn Fn(&Id, &SerialConfiguration) -> BackendResult<Box<dyn Transport>> + Send + Sync>;
 type DeviceSlot = Arc<tokio::sync::Mutex<Option<Arc<Session>>>>;
+type OwnerJoin = Arc<Mutex<Option<JoinHandle<()>>>>;
 #[derive(Clone)]
 pub struct DeviceService {
     pub(crate) inner: Arc<DeviceInner>,
@@ -34,15 +35,68 @@ pub(crate) struct DeviceInner {
     opener: TransportOpener,
     slots: Mutex<HashMap<Id, DeviceSlot>>,
     sessions: Mutex<HashMap<Id, Arc<Session>>>,
+    opening: Mutex<HashMap<Id, Arc<OpeningOwner>>>,
+    runtime: Mutex<Option<RuntimeAttachment>>,
+    reconnect_jobs: Mutex<HashMap<Id, ReconnectJob>>,
     pub closing: AtomicBool,
 }
 pub(crate) struct Session {
+    pub closing: Arc<AtomicBool>,
+    completed: tokio::sync::watch::Receiver<Option<HostResult<()>>>,
     pub snapshot: Arc<Mutex<SessionSnapshot>>,
     pub source: StreamSource,
     sender: mpsc::SyncSender<BackendCommand>,
-    join: Mutex<Option<JoinHandle<()>>>,
+    join: OwnerJoin,
     pub document_revision: tokio::sync::Mutex<U64>,
     projections: ProjectionStore,
+}
+struct OpeningOwner {
+    closing: Arc<AtomicBool>,
+    completed: tokio::sync::watch::Receiver<Option<HostResult<()>>>,
+    join: OwnerJoin,
+}
+impl OpeningOwner {
+    async fn wait(&self) -> HostResult<()> {
+        self.closing.store(true, Ordering::SeqCst);
+        let mut completed = self.completed.clone();
+        let result = completed
+            .wait_for(Option::is_some)
+            .await
+            .map_err(|_| unavailable())?
+            .clone()
+            .ok_or_else(unavailable)?;
+        loop {
+            let finished = self
+                .join
+                .lock()
+                .map_err(|_| unavailable())?
+                .as_ref()
+                .is_none_or(JoinHandle::is_finished);
+            if finished {
+                if let Some(join) = self.join.lock().map_err(|_| unavailable())?.take() {
+                    join.join().map_err(|_| unavailable())?;
+                }
+                return result;
+            }
+            tokio::time::sleep(Duration::from_millis(1)).await;
+        }
+    }
+}
+fn retained_cleanup(error: &BackendError) -> Option<HostResult<()>> {
+    error.cleanup.as_ref().map(|cleanup| {
+        loop {
+            if let Some(result) = cleanup.poll() {
+                return result;
+            }
+            thread::sleep(Duration::from_millis(5));
+        }
+    })
+}
+fn close_unpublished(backend: &mut dyn Transport) -> HostResult<()> {
+    match backend.close() {
+        Ok(()) => Ok(()),
+        Err(error) => retained_cleanup(&error).unwrap_or(Err(*error.error)),
+    }
 }
 pub(crate) struct ConfigurationChange {
     result: Option<BackendResult<ConfigApplication>>,
@@ -121,8 +175,13 @@ impl ConfigurationChange {
     }
 }
 enum BackendCommand {
+    Drain(
+        DrainRequest,
+        BackendAdmission,
+        oneshot::Sender<BackendResult<ControlResult>>,
+    ),
     Write(
-        Arc<[u8]>,
+        WritePayload,
         Duration,
         BackendAdmission,
         oneshot::Sender<BackendResult<BackendWrite>>,
@@ -140,7 +199,109 @@ enum BackendCommand {
     ),
     Close(oneshot::Sender<BackendResult<()>>),
 }
+pub type BindingResolver = Arc<
+    dyn Fn(&AuthenticatedActor, &DeviceBindingReference) -> HostResult<DeviceBinding> + Send + Sync,
+>;
+#[derive(Clone)]
+struct RuntimeAttachment {
+    directory: Arc<super::DeviceRuntime>,
+    resolver: BindingResolver,
+}
+#[derive(Clone)]
+struct OpenAdmission {
+    actor: AuthenticatedActor,
+    grant_stamp: Option<crate::auth::GrantStamp>,
+    binding: Option<(DeviceBindingReference, DeviceBinding)>,
+    cancelled: Arc<AtomicBool>,
+    expected_session: Option<(Id, U64)>,
+}
+struct ResponsibilityPin(Arc<super::DeviceRuntime>, Id);
+struct ReconnectJob {
+    stop: Arc<AtomicBool>,
+    task: tokio::task::JoinHandle<()>,
+}
+impl Drop for ResponsibilityPin {
+    fn drop(&mut self) {
+        self.0.unpin(&self.1);
+    }
+}
 impl DeviceService {
+    pub fn attach_runtime(
+        &self,
+        runtime: Arc<super::DeviceRuntime>,
+        resolver: BindingResolver,
+    ) -> HostResult<()> {
+        let mut attachment = self.inner.runtime.lock().map_err(|_| unavailable())?;
+        if attachment.is_some() {
+            return Err(HostError::new(
+                "REVISION_CONFLICT",
+                "Device runtime is already attached",
+            ));
+        }
+        *attachment = Some(RuntimeAttachment {
+            directory: runtime,
+            resolver,
+        });
+        Ok(())
+    }
+    pub async fn open_authorized(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        params: OpenParams,
+        cancelled: Arc<AtomicBool>,
+    ) -> HostResult<OpenResult> {
+        if cancelled.load(Ordering::SeqCst) {
+            return Err(open_cancelled());
+        }
+        let service = self.clone();
+        let actor = actor.clone();
+        let requested = target.clone();
+        let reference = params.binding.clone();
+        let admission = blocking(move || {
+            service
+                .inner
+                .auth
+                .require(&actor, "device.modify", &requested)?;
+            let binding = reference
+                .as_ref()
+                .map(|reference| {
+                    let runtime = service.runtime_attachment()?.ok_or_else(invalid)?;
+                    let binding = (runtime.resolver)(&actor, reference)?;
+                    binding.validate()?;
+                    Ok((reference.clone(), binding))
+                })
+                .transpose()?;
+            Ok(OpenAdmission {
+                grant_stamp: service.inner.auth.capture_grants(&actor)?,
+                actor,
+                binding,
+                cancelled,
+                expected_session: None,
+            })
+        })
+        .await?;
+        self.check_open(target, &params.configuration, &admission)
+            .await?;
+        let mut opened = self
+            .open_inner(target, params.clone(), Some(&admission))
+            .await?;
+        self.record_recent(target, &params.configuration, &mut opened)
+            .await;
+        if !opened.reused
+            && admission
+                .binding
+                .as_ref()
+                .is_some_and(|(_, binding)| binding.reconnect.enabled)
+        {
+            self.register_reconnect(target.clone(), &opened, admission)
+                .await;
+            if let Ok(session) = self.session(&open_target(&self.inner.identity, &opened)) {
+                opened.revision = session.snapshot()?.revision;
+            }
+        }
+        Ok(opened)
+    }
     pub fn new(
         store: Store,
         auth: AuthService,
@@ -161,6 +322,9 @@ impl DeviceService {
                 projections,
                 slots: Mutex::new(HashMap::new()),
                 sessions: Mutex::new(HashMap::new()),
+                opening: Mutex::new(HashMap::new()),
+                runtime: Mutex::new(None),
+                reconnect_jobs: Mutex::new(HashMap::new()),
                 closing: AtomicBool::new(false),
             }),
         }
@@ -176,6 +340,17 @@ impl DeviceService {
         })
     }
     pub async fn open(&self, target: &Target, params: OpenParams) -> HostResult<OpenResult> {
+        if params.binding.is_some() {
+            return Err(invalid());
+        }
+        self.open_inner(target, params, None).await
+    }
+    async fn open_inner(
+        &self,
+        target: &Target,
+        params: OpenParams,
+        admission: Option<&OpenAdmission>,
+    ) -> HostResult<OpenResult> {
         if target.host_id != self.inner.identity.host_id || target.kind.as_str() != "device" {
             return Err(invalid());
         }
@@ -229,6 +404,10 @@ impl DeviceService {
                 .clone()
         };
         let mut current = slot.lock().await;
+        if let Some(admission) = admission {
+            self.check_open(target, &params.configuration, admission)
+                .await?;
+        }
         if let Some(session) = current.as_ref() {
             let snapshot = session.snapshot()?;
             if snapshot.tx_gate == TxGate::ControlUnknown {
@@ -255,10 +434,19 @@ impl DeviceService {
                     session_epoch: snapshot.session_epoch,
                     revision: snapshot.revision,
                     reused: true,
+                    recent_error: None,
                 });
             }
             if snapshot.state != SessionState::Closed {
-                session.close().await?;
+                if snapshot.state != SessionState::Disconnected
+                    || !session
+                        .completed
+                        .borrow()
+                        .as_ref()
+                        .is_some_and(Result::is_ok)
+                {
+                    session.close().await?;
+                }
                 self.persist(session).await?;
             }
         }
@@ -283,47 +471,123 @@ impl DeviceService {
             .as_ref()
             .map_or_else(new_id, |v| v.session_id.clone());
         let (ready, opened) = oneshot::channel();
+        if let Some(admission) = admission {
+            self.check_open(target, &params.configuration, admission)
+                .await?;
+        }
         let (start, started) = mpsc::sync_channel(1);
         let (sender, receiver) = mpsc::sync_channel(8);
+        let closing_signal = Arc::new(AtomicBool::new(false));
+        let owner_closing = closing_signal.clone();
+        let (completed_send, completed) = tokio::sync::watch::channel(None);
+        let owner = Arc::new(OpeningOwner {
+            closing: closing_signal.clone(),
+            completed: completed.clone(),
+            join: Arc::new(Mutex::new(None)),
+        });
         let opener = self.inner.opener.clone();
         let device = target.id.clone();
         let config = params.configuration.clone();
         let clock = self.inner.clock.clone();
         let projections = self.inner.projections.clone();
         let identity = self.inner.identity.clone();
-        let join = thread::Builder::new()
-            .name(format!("device-{}", target.id.as_str()))
-            .spawn(move || {
-                let mut backend = match opener(&device, &config) {
-                    Ok(v) => v,
-                    Err(e) => {
-                        let _ = ready.send(Err(*e.error));
+        // 注册和启动共用锁；shutdown 关闭 admission 后不会漏掉迟到的打开。
+        {
+            let mut opening = self.inner.opening.lock().map_err(|_| unavailable())?;
+            if self.inner.closing.load(Ordering::SeqCst) {
+                return Err(closing());
+            }
+            if let Some(previous) = opening.get(&target.id) {
+                if !previous
+                    .completed
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(Result::is_ok)
+                    || !previous
+                        .join
+                        .lock()
+                        .map_err(|_| unavailable())?
+                        .as_ref()
+                        .is_none_or(JoinHandle::is_finished)
+                {
+                    return Err(HostError::new(
+                        "HOST_BUSY",
+                        "Device opening or cleanup remains owned",
+                    ));
+                }
+                if let Some(join) = previous.join.lock().map_err(|_| unavailable())?.take() {
+                    let _ = join.join();
+                }
+            }
+            opening.retain(|_, pending| {
+                !pending
+                    .completed
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(Result::is_ok)
+                    || pending.join.lock().map_or(true, |join| {
+                        !join.as_ref().is_none_or(JoinHandle::is_finished)
+                    })
+            });
+            if opening.len() >= 16 {
+                return Err(HostError::new(
+                    "LIMIT_EXCEEDED",
+                    "Device opening owner capacity exhausted",
+                ));
+            }
+            opening.insert(target.id.clone(), owner.clone());
+            let join = thread::Builder::new()
+                .name(format!("device-{}", target.id.as_str()))
+                .spawn(move || {
+                    let mut backend = match opener(&device, &config) {
+                        Ok(v) => v,
+                        Err(e) => {
+                            let _ = ready.send(Err((*e.error).clone()));
+                            completed_send
+                                .send_replace(Some(retained_cleanup(&e).unwrap_or(Ok(()))));
+                            return;
+                        }
+                    };
+                    if ready.send(Ok(backend.capabilities())).is_err() {
+                        completed_send.send_replace(Some(close_unpublished(backend.as_mut())));
                         return;
                     }
-                };
-                if ready.send(Ok(backend.capabilities())).is_err() {
-                    let _ = backend.close();
-                    return;
-                }
-                let Ok((snapshot, source)) = started.recv() else {
-                    let _ = backend.close();
-                    return;
-                };
-                owner_loop(
-                    backend,
-                    receiver,
-                    snapshot,
-                    source,
-                    clock,
-                    identity,
-                    projections,
-                );
-            })
-            .map_err(|_| unavailable())?;
-        // 启动失败也等待唯一owner退出，不能把未关闭句柄留在已脱离的线程里。
+                    let Ok((snapshot, source)) = started.recv() else {
+                        completed_send.send_replace(Some(close_unpublished(backend.as_mut())));
+                        return;
+                    };
+                    let result = owner_loop(
+                        backend,
+                        receiver,
+                        snapshot,
+                        source,
+                        OwnerContext {
+                            clock,
+                            identity,
+                            projections,
+                        },
+                        owner_closing,
+                    );
+                    if let Err(error) = &result {
+                        let _ = retained_cleanup(error);
+                    }
+                    completed_send.send_replace(Some(result.map_err(|error| *error.error)));
+                })
+                .map_err(|_| {
+                    opening.remove(&target.id);
+                    unavailable()
+                })?;
+            *owner.join.lock().map_err(|_| unavailable())? = Some(join);
+        }
+        // 发布失败只结束调用等待；owner 保留到实际原生清理结算。
         let prepared: HostResult<_> = async {
             let capabilities = opened.await.map_err(|_| unavailable())??;
+            if let Some(admission) = admission {
+                self.check_open(target, &params.configuration, admission)
+                    .await?;
+            }
             let snapshot = SessionSnapshot {
+                reconnect: None,
                 session_id: session_id.clone(),
                 device_id: target.id.clone(),
                 session_epoch: epoch,
@@ -405,7 +669,7 @@ impl DeviceService {
             Ok(v) => v,
             Err(error) => {
                 drop(start);
-                blocking(move || join.join().map_err(|_| unavailable())).await?;
+                closing_signal.store(true, Ordering::SeqCst);
                 return Err(error);
             }
         };
@@ -414,10 +678,12 @@ impl DeviceService {
             .send((snapshot.clone(), source.clone()))
             .map_err(|_| unavailable())?;
         let session = Arc::new(Session {
+            closing: closing_signal,
+            completed,
             snapshot,
             source,
             sender,
-            join: Mutex::new(Some(join)),
+            join: owner.join.clone(),
             document_revision: tokio::sync::Mutex::new(document_revision),
             projections: self.inner.projections.clone(),
         });
@@ -428,11 +694,17 @@ impl DeviceService {
             .map_err(|_| unavailable())?
             .insert(session_id, session.clone());
         *current = Some(session);
+        self.inner
+            .opening
+            .lock()
+            .map_err(|_| unavailable())?
+            .remove(&target.id);
         Ok(OpenResult {
             session_id: result.session_id,
             session_epoch: result.session_epoch,
             revision: result.revision,
             reused: false,
+            recent_error: None,
         })
     }
     pub async fn snapshot(&self, target: &Target) -> HostResult<SessionSnapshot> {
@@ -508,8 +780,37 @@ impl DeviceService {
             .collect())
     }
     pub async fn shutdown(&self) -> HostResult<()> {
-        self.inner.closing.store(true, Ordering::SeqCst);
+        let opening: Vec<_> = {
+            let opening = self.inner.opening.lock().map_err(|_| unavailable())?;
+            self.inner.closing.store(true, Ordering::SeqCst);
+            opening.values().cloned().collect()
+        };
+        for owner in &opening {
+            owner.closing.store(true, Ordering::SeqCst);
+        }
+        if let Some(runtime) = self.runtime_attachment()? {
+            runtime.directory.stop();
+        }
+        let jobs: Vec<_> = self
+            .inner
+            .reconnect_jobs
+            .lock()
+            .map_err(|_| unavailable())?
+            .drain()
+            .map(|(_, job)| job)
+            .collect();
+        for job in &jobs {
+            job.stop.store(true, Ordering::SeqCst);
+        }
+        for job in jobs {
+            let _ = job.task.await;
+        }
         let mut failure = None;
+        for owner in opening {
+            if let Err(error) = owner.wait().await {
+                failure.get_or_insert(error);
+            }
+        }
         for session in self.sessions()? {
             if session.snapshot()?.state == SessionState::Closed {
                 continue;
@@ -533,7 +834,7 @@ impl Session {
     }
     pub async fn write(
         &self,
-        bytes: Arc<[u8]>,
+        bytes: WritePayload,
         wait: Duration,
         admission: BackendAdmission,
     ) -> BackendResult<BackendWrite> {
@@ -609,7 +910,28 @@ impl Session {
             .await
             .map_err(|_| BackendError::from(unavailable()))?
     }
+    pub async fn drain(
+        &self,
+        mut request: DrainRequest,
+        admission: BackendAdmission,
+    ) -> BackendResult<ControlResult> {
+        if self.closing.load(Ordering::SeqCst) {
+            return Err(HostError::new("HOST_BUSY", "Session is closing").into());
+        }
+        request.closing = self.closing.clone();
+        let (send, receive) = oneshot::channel();
+        self.sender
+            .try_send(BackendCommand::Drain(request, admission, send))
+            .map_err(|_| {
+                BackendError::from(HostError::new("HOST_BUSY", "Device owner mailbox is full"))
+            })?;
+        receive
+            .await
+            .map_err(|_| BackendError::from(unavailable()))?
+    }
+
     pub async fn close(&self) -> HostResult<()> {
+        self.closing.store(true, Ordering::SeqCst);
         {
             let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
             if state.state == SessionState::Closed {
@@ -620,89 +942,375 @@ impl Session {
                 state.tx_gate = TxGate::Closing;
             }
         }
-        let (send, receive) = oneshot::channel();
-        let sender = self.sender.clone();
-        // 保留八槽邮箱；仅关闭在 blocking 池等待容量，可靠提交退出命令后才能 join。
-        let submitted =
-            blocking(move || Ok(sender.send(BackendCommand::Close(send)).is_ok())).await;
-        let mut result = match submitted {
-            Ok(true) => receive
-                .await
-                .unwrap_or_else(|_| Err(unavailable().into()))
-                .map_err(|e| *e.error),
-            Ok(false) => Ok(()),
-            Err(error) => Err(error),
+        let (send, _) = oneshot::channel();
+        // 仅唤醒提示；关闭责任由独立 sideband 承载，不依赖业务邮箱空位。
+        let _ = self.sender.try_send(BackendCommand::Close(send));
+        let mut completed = self.completed.clone();
+        let result = tokio::time::timeout(
+            Duration::from_millis(250),
+            completed.wait_for(Option::is_some),
+        )
+        .await;
+        let result = match result {
+            Ok(Ok(result)) => result.clone().unwrap_or_else(|| Err(unavailable())),
+            _ => {
+                let error =
+                    HostError::new("CONTROL_UNKNOWN", "Native owner cleanup is not confirmed");
+                if let Ok(mut state) = self.snapshot.lock() {
+                    state.tx_gate = TxGate::ControlUnknown;
+                }
+                let _ = self.source.fail(error.clone());
+                return Err(error);
+            }
         };
-        let join = self.join.lock().map_err(|_| unavailable())?.take();
-        if let Some(join) = join
-            && let Err(error) = blocking(move || join.join().map_err(|_| unavailable())).await
+        if let Ok(mut join) = self.join.lock()
+            && join.as_ref().is_some_and(JoinHandle::is_finished)
+            && let Some(join) = join.take()
         {
-            let _ = self.source.fail(error.clone());
-            result = Err(error);
+            let _ = join.join();
         }
-        if let Err(error) = self.source.close() {
-            result = Err(error);
+        {
+            let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
+            // The owner may have finished before this explicit close request.
+            // Its confirmed result settles the request in either ordering.
+            if result.is_ok() {
+                state.state = SessionState::Closed;
+                if state.tx_gate != TxGate::ControlUnknown {
+                    state.tx_gate = TxGate::Disconnected;
+                }
+            } else {
+                state.state = SessionState::Disconnected;
+                state.tx_gate = TxGate::ControlUnknown;
+            }
         }
-        let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
-        state.state = SessionState::Closed;
-        if state.tx_gate != TxGate::ControlUnknown {
-            state.tx_gate = TxGate::Disconnected;
+        if result.is_ok() {
+            self.source.close()?;
         }
         result
     }
 }
 impl Drop for Session {
     fn drop(&mut self) {
+        self.closing.store(true, Ordering::SeqCst);
+        if let Ok(mut state) = self.snapshot.lock() {
+            if state.state != SessionState::Closed {
+                state.state = SessionState::Closing;
+            }
+            if state.tx_gate != TxGate::ControlUnknown {
+                state.tx_gate = TxGate::Closing;
+            }
+        }
         let (send, _) = oneshot::channel();
-        let _ = self.sender.send(BackendCommand::Close(send));
-        if let Ok(join) = self.join.get_mut()
+        let _ = self.sender.try_send(BackendCommand::Close(send));
+        if let Ok(mut join) = self.join.lock()
+            && join.as_ref().is_some_and(JoinHandle::is_finished)
             && let Some(join) = join.take()
         {
             let _ = join.join();
         }
     }
 }
+struct PendingWriteReply {
+    job: Box<dyn PendingWrite>,
+    reply: oneshot::Sender<BackendResult<BackendWrite>>,
+    wait: BackendWait,
+    length: usize,
+}
+struct PendingDrainReply {
+    job: Box<dyn PendingDrain>,
+    reply: oneshot::Sender<BackendResult<ControlResult>>,
+    wait: BackendWait,
+}
+struct BackendWait {
+    deadline: u64,
+    cancelled: Arc<AtomicBool>,
+    native_cancelled: Arc<AtomicBool>,
+    cleanup_at: Option<Instant>,
+    timed_out: bool,
+}
+impl BackendWait {
+    fn cleanup_expired(&mut self, clock: &dyn Clock, closing: bool) -> bool {
+        let cancelled = self.cancelled.load(Ordering::SeqCst);
+        if clock.mono_ns() >= self.deadline && !cancelled && !closing {
+            self.timed_out = true;
+        }
+        if closing || cancelled || self.timed_out {
+            self.native_cancelled.store(true, Ordering::SeqCst);
+            self.cleanup_at.get_or_insert_with(Instant::now);
+        }
+        self.cleanup_at
+            .is_some_and(|at| at.elapsed() >= Duration::from_millis(150))
+    }
+    fn normalize_error(&self, error: &mut HostError) {
+        if self.timed_out && error.code == "CANCELLED" {
+            error.code = "WRITE_TIMEOUT".into();
+            error.message = "Serial operation wait expired".into();
+        }
+    }
+}
+struct OwnerContext {
+    clock: Arc<dyn Clock>,
+    identity: HostIdentity,
+    projections: ProjectionStore,
+}
 fn owner_loop(
     mut backend: Box<dyn Transport>,
     receiver: mpsc::Receiver<BackendCommand>,
     snapshot: Arc<Mutex<SessionSnapshot>>,
     source: StreamSource,
-    clock: Arc<dyn Clock>,
-    identity: HostIdentity,
-    projections: ProjectionStore,
-) {
+    context: OwnerContext,
+    closing: Arc<AtomicBool>,
+) -> BackendResult<()> {
+    let OwnerContext {
+        clock,
+        identity,
+        projections,
+    } = context;
+    let mut writing: Option<PendingWriteReply> = None;
+    let mut pending: Option<PendingDrainReply> = None;
+    let mut close_reply = None;
     loop {
-        match receiver.recv_timeout(Duration::from_millis(1)) {
-            Ok(BackendCommand::Write(bytes, wait, admission, send)) => {
-                let result = if let Err(error) = admission.begin(&snapshot, clock.as_ref(), false) {
-                    Ok(BackendWrite {
-                        accepted_ranges: vec![],
-                        unknown_ranges: vec![],
-                        error: Some(error),
-                    })
-                } else {
-                    backend.write(&bytes, wait)
+        // 领域期限先请求取消；poll 仍优先收取已存在的完成证据。
+        let write_cleanup_expired = writing.as_mut().is_some_and(|pending| {
+            pending
+                .wait
+                .cleanup_expired(clock.as_ref(), closing.load(Ordering::SeqCst))
+        });
+        let drain_cleanup_expired = pending.as_mut().is_some_and(|pending| {
+            pending
+                .wait
+                .cleanup_expired(clock.as_ref(), closing.load(Ordering::SeqCst))
+        });
+        if let Some(pending_write) = &mut writing
+            && let Some(mut result) = pending_write.job.poll()
+        {
+            match &mut result {
+                Ok(BackendWrite {
+                    error: Some(error), ..
+                }) => pending_write.wait.normalize_error(error),
+                Err(error) => pending_write.wait.normalize_error(&mut error.error),
+                _ => {}
+            }
+            if (result
+                .as_ref()
+                .is_ok_and(|result| !result.unknown_ranges.is_empty())
+                || result.is_err())
+                && let Ok(mut state) = snapshot.lock()
+            {
+                state.tx_gate = TxGate::ControlUnknown;
+            }
+            let _ = writing.take().expect("pending write").reply.send(result);
+        }
+        if writing.is_some() && write_cleanup_expired {
+            let PendingWriteReply {
+                reply,
+                length,
+                wait,
+                ..
+            } = writing.take().expect("pending write");
+            if let Ok(mut state) = snapshot.lock() {
+                state.tx_gate = TxGate::ControlUnknown;
+            }
+            let _ = reply.send(Ok(BackendWrite {
+                accepted_ranges: vec![],
+                unknown_ranges: vec![ByteRange {
+                    start: 0.into(),
+                    end: (length as u64).into(),
+                }],
+                error: Some(HostError::new(
+                    if wait.timed_out {
+                        "WRITE_TIMEOUT"
+                    } else {
+                        "CONTROL_UNKNOWN"
+                    },
+                    "Write backend did not retain a bounded settlement",
+                )),
+            }));
+        }
+        if let Some(pending_drain) = &mut pending
+            && let Some(mut result) = pending_drain.job.poll()
+        {
+            match &mut result {
+                Ok(ControlResult::Drained {
+                    error: Some(error), ..
+                }) => pending_drain.wait.normalize_error(error),
+                Err(error) => pending_drain.wait.normalize_error(&mut error.error),
+                _ => {}
+            }
+            if (matches!(
+                &result,
+                Ok(ControlResult::Drained {
+                    status: ControlStatus::Unknown,
+                    ..
+                })
+            ) || result.is_err())
+                && let Ok(mut state) = snapshot.lock()
+            {
+                state.tx_gate = TxGate::ControlUnknown;
+            }
+            let _ = pending.take().expect("pending drain").reply.send(result);
+        }
+        if pending.is_some() && drain_cleanup_expired {
+            let PendingDrainReply { reply, wait, .. } = pending.take().expect("pending drain");
+            if let Ok(mut state) = snapshot.lock() {
+                state.tx_gate = TxGate::ControlUnknown;
+            }
+            let _ = reply.send(Ok(ControlResult::Drained {
+                status: ControlStatus::Unknown,
+                error: Some(HostError::new(
+                    if wait.timed_out {
+                        "WRITE_TIMEOUT"
+                    } else {
+                        "CONTROL_UNKNOWN"
+                    },
+                    "Drain cleanup did not finish within its budget",
+                )),
+            }));
+        }
+        if closing.load(Ordering::SeqCst) && pending.is_none() && writing.is_none() {
+            // 已接纳只读查询仍可结算；副作用命令在 admission 中因 Closing 拒绝。
+            for _ in 0..8 {
+                let Ok(command) = receiver.try_recv() else {
+                    break;
                 };
-                let _ = send.send(result);
+                match command {
+                    BackendCommand::Control(
+                        command @ (ControlCommand::QueueStatus | ControlCommand::ModemStatus),
+                        _,
+                        reply,
+                    ) => {
+                        let _ = reply.send(backend.control(command));
+                    }
+                    BackendCommand::Close(reply) => {
+                        close_reply = Some(reply);
+                    }
+                    BackendCommand::Write(_, _, _, reply) => {
+                        let _ = reply.send(Ok(BackendWrite {
+                            accepted_ranges: vec![],
+                            unknown_ranges: vec![],
+                            error: Some(closing_error()),
+                        }));
+                    }
+                    BackendCommand::Configure(_, _, reply, _) => {
+                        let _ = reply.send(Err(closing_error().into()));
+                    }
+                    BackendCommand::Control(_, _, reply) | BackendCommand::Drain(_, _, reply) => {
+                        let _ = reply.send(Err(closing_error().into()));
+                    }
+                }
+            }
+            break;
+        }
+        match receiver.recv_timeout(Duration::from_millis(1)) {
+            Ok(BackendCommand::Drain(mut request, admission, reply)) => {
+                let deadline = backend_deadline(clock.as_ref(), request.wait);
+                let cancelled = request.cancelled.clone();
+                let native_cancelled = Arc::new(AtomicBool::new(false));
+                request.cancelled = native_cancelled.clone();
+                let started = if pending.is_some() || writing.is_some() {
+                    Err(HostError::new("HOST_BUSY", "Drain is already pending").into())
+                } else {
+                    admission
+                        .begin(&snapshot, clock.as_ref(), false)
+                        .map_err(BackendError::from)
+                        .and_then(|()| backend.begin_drain(request))
+                };
+                match started {
+                    Ok(job) => {
+                        pending = Some(PendingDrainReply {
+                            job,
+                            reply,
+                            wait: BackendWait {
+                                deadline,
+                                cancelled,
+                                native_cancelled,
+                                cleanup_at: None,
+                                timed_out: false,
+                            },
+                        })
+                    }
+                    Err(error) => {
+                        let _ = reply.send(Err(error));
+                    }
+                }
+            }
+            Ok(BackendCommand::Write(bytes, wait, admission, send)) => {
+                let cancelled = admission.cancelled.clone();
+                let native_cancelled = Arc::new(AtomicBool::new(false));
+                let deadline = backend_deadline(clock.as_ref(), wait);
+                let admitted = if pending.is_some() || writing.is_some() {
+                    Err(HostError::new("HOST_BUSY", "Drain owns the TX boundary"))
+                } else {
+                    admission.begin(&snapshot, clock.as_ref(), false)
+                };
+                let length = bytes.len();
+                match admitted.map_err(BackendError::from).and_then(|()| {
+                    backend.begin_write(bytes, wait, native_cancelled.clone(), closing.clone())
+                }) {
+                    Ok(job) => {
+                        writing = Some(PendingWriteReply {
+                            job,
+                            reply: send,
+                            length,
+                            wait: BackendWait {
+                                deadline,
+                                cancelled,
+                                native_cancelled,
+                                cleanup_at: None,
+                                timed_out: false,
+                            },
+                        })
+                    }
+                    Err(error) => {
+                        let _ = send.send(Ok(BackendWrite {
+                            accepted_ranges: error.accepted_ranges,
+                            unknown_ranges: error.unknown_ranges,
+                            error: Some(*error.error),
+                        }));
+                    }
+                }
             }
             Ok(BackendCommand::Configure(config, admission, send, resumed)) => {
-                let result = admission
-                    .begin(&snapshot, clock.as_ref(), false)
-                    .map_err(BackendError::from)
-                    .and_then(|()| backend.configure(&config));
+                let result = if pending.is_some() || writing.is_some() {
+                    Err(HostError::new("HOST_BUSY", "Drain owns the configuration boundary").into())
+                } else {
+                    admission
+                        .begin(&snapshot, clock.as_ref(), false)
+                        .map_err(BackendError::from)
+                        .and_then(|()| backend.configure(&config))
+                };
                 let _ = send.send(result);
-                if resumed.recv().is_err() {
-                    break;
+                loop {
+                    match resumed.recv_timeout(Duration::from_millis(20)) {
+                        Ok(()) => break,
+                        Err(mpsc::RecvTimeoutError::Timeout) if !closing.load(Ordering::SeqCst) => {
+                        }
+                        _ => {
+                            closing.store(true, Ordering::SeqCst);
+                            break;
+                        }
+                    }
                 }
             }
             Ok(BackendCommand::Control(command, admission, send)) => {
-                let check = admission.map_or(Ok(()), |admission| {
-                    admission.begin(
-                        &snapshot,
-                        clock.as_ref(),
-                        matches!(command, ControlCommand::AssertBreak),
-                    )
-                });
+                let check = if (pending.is_some() || writing.is_some())
+                    && !matches!(
+                        command,
+                        ControlCommand::QueueStatus | ControlCommand::ModemStatus
+                    ) {
+                    Err(HostError::new(
+                        "HOST_BUSY",
+                        "Drain owns the control boundary",
+                    ))
+                } else {
+                    admission.map_or(Ok(()), |admission| {
+                        admission.begin(
+                            &snapshot,
+                            clock.as_ref(),
+                            matches!(command, ControlCommand::AssertBreak),
+                        )
+                    })
+                };
                 let _ = send.send(
                     check
                         .map_err(BackendError::from)
@@ -710,25 +1318,14 @@ fn owner_loop(
                 );
             }
             Ok(BackendCommand::Close(send)) => {
-                let result = backend.close();
-                if let Ok(state) = snapshot.lock() {
-                    let boundary = object(
-                        &serde_json::json!({"state":if result.is_ok(){"closed"}else{"disconnected"}}),
-                    );
-                    if let Ok(boundary) = boundary
-                        && let Err(error) = source.append_boundary(
-                            source_meta(&identity, clock.as_ref(), state.configuration_revision),
-                            SourceBoundary::Lifecycle(boundary),
-                        )
-                    {
-                        let _ = source.fail(error);
-                    }
-                }
-                let _ = send.send(result);
-                return;
+                closing.store(true, Ordering::SeqCst);
+                close_reply = Some(send);
             }
             Err(mpsc::RecvTimeoutError::Disconnected) => break,
             Err(mpsc::RecvTimeoutError::Timeout) => {}
+        }
+        if closing.load(Ordering::SeqCst) {
+            continue;
         }
         match backend.read(16 * 1024, Duration::from_millis(20)) {
             Ok(block) if !block.bytes.is_empty() => {
@@ -742,18 +1339,88 @@ fn owner_loop(
                     block.message,
                 ) {
                     disconnected(&snapshot, &projections, &source, error);
-                    break;
+                    if pending.is_some() || writing.is_some() {
+                        closing.store(true, Ordering::SeqCst);
+                    } else {
+                        break;
+                    }
                 }
             }
             Err(error) => {
                 disconnected(&snapshot, &projections, &source, *error.error);
-                break;
+                if pending.is_some() || writing.is_some() {
+                    closing.store(true, Ordering::SeqCst);
+                } else {
+                    break;
+                }
             }
             _ => {}
         }
     }
-    let _ = backend.close();
+    if let Some(PendingWriteReply { reply, length, .. }) = writing.take() {
+        if let Ok(mut state) = snapshot.lock() {
+            state.tx_gate = TxGate::ControlUnknown;
+        }
+        let _ = reply.send(Ok(BackendWrite {
+            accepted_ranges: vec![],
+            unknown_ranges: vec![ByteRange {
+                start: 0.into(),
+                end: (length as u64).into(),
+            }],
+            error: Some(unavailable()),
+        }));
+    }
+    if let Some(PendingDrainReply { reply, .. }) = pending.take() {
+        if let Ok(mut state) = snapshot.lock() {
+            state.tx_gate = TxGate::ControlUnknown;
+        }
+        let _ = reply.send(Ok(ControlResult::Drained {
+            status: ControlStatus::Unknown,
+            error: Some(unavailable()),
+        }));
+    }
+    let result = backend.close();
+    let mut requested_close = false;
+    if let Ok(mut state) = snapshot.lock() {
+        requested_close = state.state == SessionState::Closing;
+        // 原生清理不能把此前的断连或仍待领域处理的邮箱故障覆写为正常关闭。
+        if requested_close {
+            state.state = if result.is_ok() {
+                SessionState::Closed
+            } else {
+                SessionState::Disconnected
+            };
+        }
+        if result.is_err() {
+            state.tx_gate = TxGate::ControlUnknown;
+        } else if requested_close && state.tx_gate != TxGate::ControlUnknown {
+            state.tx_gate = TxGate::Disconnected;
+        }
+        if let Ok(boundary) = object(&serde_json::json!({"state": state.state})) {
+            let _ = source.append_boundary(
+                source_meta(&identity, clock.as_ref(), state.configuration_revision),
+                SourceBoundary::Lifecycle(boundary),
+            );
+        }
+    }
+    if requested_close {
+        let _ = source.close();
+    }
+    if let Some(reply) = close_reply {
+        let _ = reply.send(result.clone());
+    }
+    result
 }
+
+fn closing_error() -> HostError {
+    HostError::new("HOST_BUSY", "Session is closing")
+}
+fn backend_deadline(clock: &dyn Clock, wait: Duration) -> u64 {
+    clock
+        .mono_ns()
+        .saturating_add(wait.as_nanos().min(u128::from(u64::MAX)) as u64)
+}
+
 fn disconnected(
     snapshot: &Mutex<SessionSnapshot>,
     projections: &ProjectionStore,
@@ -762,7 +1429,10 @@ fn disconnected(
 ) {
     if let Ok(mut state) = snapshot.lock() {
         state.state = SessionState::Disconnected;
-        if state.tx_gate != TxGate::ControlUnknown {
+        if !matches!(
+            state.tx_gate,
+            TxGate::ControlUnknown | TxGate::ConfigurationPending
+        ) {
             state.tx_gate = TxGate::Disconnected;
         }
         if let Ok(revision) = state.revision.checked_next() {
@@ -837,6 +1507,201 @@ mod mailbox_tests {
     use super::*;
     use crate::{test_support as support, transmission::TransmissionService};
     use std::{future::Future, pin::Pin, task::Poll};
+
+    #[tokio::test]
+    async fn write_deadline_requests_cancel_then_settles_without_advancing_domain_clock_again() {
+        let h = support::Harness::new().await;
+        let target = h.open("write-domain-deadline").await;
+        let session = h.host.devices().session(&target).unwrap();
+        let gate = Arc::new(support::Gate::default());
+        h.probe.steps.lock().unwrap().push_back(support::WriteStep {
+            accepted: 3,
+            unknown: false,
+            gate: Some(gate.clone()),
+            advance_ms: 0,
+        });
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let admission = BackendAdmission {
+            session_epoch: target.session_epoch.unwrap(),
+            actor_id: h.actor.id().clone(),
+            lease_id: None,
+            lease: Arc::new(Mutex::new(None)),
+            cancelled: cancelled.clone(),
+        };
+        let writing_session = session.clone();
+        let writing = tokio::spawn(async move {
+            writing_session
+                .write(
+                    WritePayload::owned(Arc::from([1, 2, 3])),
+                    Duration::from_millis(10),
+                    admission,
+                )
+                .await
+        });
+        gate.entered().await;
+        h.clock.advance_ms(10);
+        let result = tokio::time::timeout(Duration::from_millis(500), writing).await;
+        let cancellation_observed = h
+            .probe
+            .write_cancelled
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .load(Ordering::SeqCst);
+        gate.release();
+        assert!(
+            cancellation_observed,
+            "owner must request native cancellation at the domain deadline"
+        );
+        assert!(
+            !cancelled.load(Ordering::SeqCst),
+            "deadline must not impersonate a user cancellation"
+        );
+        let result = result
+            .expect("cleanup must not require another fake-clock advance")
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            result.unknown_ranges,
+            [ByteRange {
+                start: 0.into(),
+                end: 3.into()
+            }]
+        );
+        assert_eq!(result.error.unwrap().code, "WRITE_TIMEOUT");
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    #[tokio::test]
+    async fn drain_deadline_requests_cancel_without_advancing_domain_clock_again() {
+        let h = support::Harness::new().await;
+        let target = h.open("drain-domain-deadline").await;
+        let session = h.host.devices().session(&target).unwrap();
+        h.probe.drain_hold.store(true, Ordering::SeqCst);
+        let cancelled = Arc::new(AtomicBool::new(false));
+        let admission = BackendAdmission {
+            session_epoch: target.session_epoch.unwrap(),
+            actor_id: h.actor.id().clone(),
+            lease_id: None,
+            lease: Arc::new(Mutex::new(None)),
+            cancelled: cancelled.clone(),
+        };
+        let request = DrainRequest {
+            wait: Duration::from_millis(10),
+            cancelled: cancelled.clone(),
+            closing: session.closing.clone(),
+        };
+        let draining_session = session.clone();
+        let draining =
+            tokio::spawn(async move { draining_session.drain(request, admission).await });
+        support::until(|| h.probe.drain_started.load(Ordering::SeqCst)).await;
+        h.clock.advance_ms(10);
+        let result = tokio::time::timeout(Duration::from_millis(500), draining).await;
+        let cancellation_observed = h
+            .probe
+            .drain_cancelled
+            .lock()
+            .unwrap()
+            .as_ref()
+            .unwrap()
+            .load(Ordering::SeqCst);
+        h.probe.drain_release.store(true, Ordering::SeqCst);
+        assert!(
+            cancellation_observed,
+            "owner must request drain cancellation at the domain deadline"
+        );
+        assert!(
+            !cancelled.load(Ordering::SeqCst),
+            "deadline must not impersonate a user cancellation"
+        );
+        assert!(matches!(
+            result
+                .expect("cleanup must not require another fake-clock advance")
+                .unwrap()
+                .unwrap(),
+            ControlResult::Drained {
+                status: ControlStatus::Unknown,
+                ..
+            }
+        ));
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    #[tokio::test]
+    async fn pending_drain_keeps_receiving_and_closing_settles_without_waiting_for_drain() {
+        let h = support::Harness::new().await;
+        let target = h.open("drain-rx").await;
+        let session = h.host.devices().session(&target).unwrap();
+        h.probe.drain_hold.store(true, Ordering::SeqCst);
+        let request = DrainRequest {
+            wait: Duration::from_secs(60),
+            cancelled: Arc::new(AtomicBool::new(false)),
+            closing: session.closing.clone(),
+        };
+        let admission = BackendAdmission {
+            session_epoch: target.session_epoch.unwrap(),
+            actor_id: h.actor.id().clone(),
+            lease_id: None,
+            lease: Arc::new(Mutex::new(None)),
+            cancelled: request.cancelled.clone(),
+        };
+        let mut draining = Box::pin(session.drain(request, admission));
+        poll_pending(draining.as_mut()).await;
+        support::until(|| h.probe.rx_during_drain.load(Ordering::SeqCst) >= 3).await;
+        assert!(matches!(
+            std::future::poll_fn(|cx| Poll::Ready(draining.as_mut().poll(cx))).await,
+            Poll::Pending
+        ));
+        tokio::time::timeout(Duration::from_secs(1), session.close())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(
+            draining.await.unwrap(),
+            ControlResult::Drained {
+                status: ControlStatus::Unknown,
+                ..
+            }
+        ));
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    #[tokio::test]
+    async fn close_wait_is_bounded_when_backend_read_does_not_return() {
+        let h = support::Harness::new().await;
+        let target = h.open("bounded-close").await;
+        let session = h.host.devices().session(&target).unwrap();
+        let gate = hold_read(&h).await;
+        let result = tokio::time::timeout(Duration::from_millis(500), session.close()).await;
+        gate.release();
+        assert!(
+            result.is_ok(),
+            "close waited indefinitely for the blocked owner"
+        );
+        assert_eq!(result.unwrap().unwrap_err().code, "CONTROL_UNKNOWN");
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    async fn assert_shutdown_retains_known_closed_quarantine(
+        h: &support::Harness,
+        target: &Target,
+    ) {
+        let error = h.host.shutdown().await.unwrap_err();
+        assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
+        let report: ShutdownReport = decode(error.details.as_deref().unwrap()).unwrap();
+        assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
+        assert!(!report.completed);
+        assert_eq!(report.quarantined_sessions, vec![target.clone()]);
+        assert!(report.unsettled_operation_ids.is_empty());
+        assert!(report.failures.is_empty());
+        let session = h.host.devices().session(target).unwrap();
+        assert_eq!(*session.completed.borrow(), Some(Ok(())));
+        assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+        assert_eq!(session.snapshot().unwrap().state, SessionState::Closed);
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
+    }
 
     async fn poll_pending<T>(future: Pin<&mut impl Future<Output = T>>) {
         let mut future = future;
@@ -1021,5 +1886,758 @@ mod mailbox_tests {
         let state = session.snapshot().unwrap();
         h.host.shutdown().await.unwrap();
         assert_rejected(&h, &done, &state, "BACKEND_DISCONNECTED");
+    }
+}
+
+impl DeviceService {
+    fn runtime_attachment(&self) -> HostResult<Option<RuntimeAttachment>> {
+        self.inner
+            .runtime
+            .lock()
+            .map(|runtime| runtime.clone())
+            .map_err(|_| unavailable())
+    }
+    pub fn list(&self) -> HostResult<DeviceList> {
+        self.runtime_attachment()?
+            .ok_or_else(unavailable)?
+            .directory
+            .list()
+    }
+    pub async fn refresh(&self) -> HostResult<DeviceList> {
+        self.runtime_attachment()?
+            .ok_or_else(unavailable)?
+            .directory
+            .refresh()
+            .await
+    }
+    pub fn recent(&self) -> HostResult<RecentList> {
+        super::RecentConnections::new(self.inner.store.clone()).list()
+    }
+    async fn check_open(
+        &self,
+        target: &Target,
+        configuration: &SerialConfiguration,
+        admission: &OpenAdmission,
+    ) -> HostResult<()> {
+        let service = self.clone();
+        let target = target.clone();
+        let configuration = configuration.clone();
+        let admission = admission.clone();
+        blocking(move || service.check_open_now(&target, &configuration, &admission)).await
+    }
+    fn check_open_now(
+        &self,
+        target: &Target,
+        configuration: &SerialConfiguration,
+        admission: &OpenAdmission,
+    ) -> HostResult<()> {
+        if admission.cancelled.load(Ordering::SeqCst) {
+            return Err(open_cancelled());
+        }
+        if self.inner.closing.load(Ordering::SeqCst) {
+            return Err(closing());
+        }
+        if self.inner.store.identity()?.instance_epoch != self.inner.identity.instance_epoch {
+            return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
+        }
+        self.inner
+            .auth
+            .require(&admission.actor, "device.modify", target)?;
+        if let Some(stamp) = &admission.grant_stamp {
+            self.inner.auth.validate_grants(stamp)?;
+        }
+        if let Some(runtime) = self.runtime_attachment()? {
+            let list = runtime.directory.list()?;
+            let descriptor = list
+                .devices
+                .iter()
+                .find(|device| device.device_id == target.id)
+                .ok_or_else(|| {
+                    HostError::new("DEVICE_NOT_FOUND", "Device is absent from the directory")
+                })?;
+            if list.stale && descriptor.fingerprint.transport != DeviceTransportKind::Virtual {
+                return Err(HostError::new(
+                    "DISCOVERY_STALE",
+                    "Device discovery must succeed before opening",
+                ));
+            }
+            if let Some((reference, binding)) = &admission.binding {
+                let latest = (runtime.resolver)(&admission.actor, reference)?;
+                if latest != *binding || binding.configuration != *configuration {
+                    return Err(HostError::new(
+                        "CONFIGURATION_CONFLICT",
+                        "Saved device binding changed",
+                    ));
+                }
+                if binding.host_id != target.host_id {
+                    return Err(invalid());
+                }
+                let exact =
+                    super::IdentityMatcher::match_device(&binding.fingerprint, &list.devices)
+                        == super::MatchResult::Exact(target.id.clone());
+                let explicit = admission.expected_session.is_none()
+                    && binding.device_id == target.id
+                    && binding.fingerprint == descriptor.fingerprint;
+                if !exact && !explicit {
+                    return Err(HostError::new(
+                        "REQUIRES_REBIND",
+                        "Device identity requires explicit rebinding",
+                    ));
+                }
+            }
+        } else if admission.binding.is_some() {
+            return Err(invalid());
+        }
+        if let Some((session_id, epoch)) = &admission.expected_session {
+            let session = self
+                .inner
+                .sessions
+                .lock()
+                .map_err(|_| unavailable())?
+                .get(session_id)
+                .cloned()
+                .ok_or_else(unavailable)?;
+            let state = session.snapshot()?;
+            if state.session_epoch != *epoch {
+                return Err(HostError::new("EPOCH_MISMATCH", "Session epoch changed"));
+            }
+            if state.state != SessionState::Disconnected {
+                return Err(open_cancelled());
+            }
+            if state.tx_gate == TxGate::ControlUnknown
+                || state.control_state != ControlState::Clear
+                || !session
+                    .completed
+                    .borrow()
+                    .as_ref()
+                    .is_some_and(Result::is_ok)
+            {
+                return Err(HostError::new(
+                    "CONTROL_UNKNOWN",
+                    "Previous owner cleanup is not confirmed",
+                ));
+            }
+            if state.tx_gate == TxGate::ConfigurationPending {
+                return Err(HostError::new(
+                    "CONFIGURATION_PENDING",
+                    "Configuration is unsettled",
+                ));
+            }
+            if state.lease.as_ref().is_some_and(|lease| {
+                matches!(lease.state, LeaseState::Active | LeaseState::Revoking)
+            }) {
+                return Err(HostError::new(
+                    "LEASE_CONFLICT",
+                    "A lease still owns the previous session",
+                ));
+            }
+        }
+        Ok(())
+    }
+    async fn record_recent(
+        &self,
+        target: &Target,
+        configuration: &SerialConfiguration,
+        opened: &mut OpenResult,
+    ) {
+        let result = async {
+            let Some(runtime) = self.runtime_attachment()? else {
+                return Ok(());
+            };
+            let descriptor = runtime.directory.descriptor(&target.id)?;
+            let recent = super::RecentConnections::new(self.inner.store.clone());
+            let entry = RecentConnection {
+                device_id: target.id.clone(),
+                fingerprint: descriptor.fingerprint,
+                configuration: configuration.clone(),
+                opened_at: self.inner.clock.wall_time(),
+            };
+            blocking(move || recent.record(entry)).await?;
+            Ok::<_, HostError>(())
+        }
+        .await;
+        opened.recent_error = result.err();
+    }
+    async fn reconnect_status(
+        &self,
+        session: &Arc<Session>,
+        state: ReconnectState,
+        attempts: u64,
+        error: Option<HostError>,
+    ) -> HostResult<()> {
+        let snapshot = session.snapshot()?;
+        if !self
+            .inner
+            .sessions
+            .lock()
+            .map_err(|_| unavailable())?
+            .get(&snapshot.session_id)
+            .is_some_and(|current| Arc::ptr_eq(current, session))
+        {
+            return Ok(());
+        }
+        {
+            let mut snapshot = session.snapshot.lock().map_err(|_| unavailable())?;
+            let status = ReconnectStatus {
+                state,
+                attempts: attempts.into(),
+                last_error: error,
+            };
+            if snapshot.reconnect.as_ref() == Some(&status) {
+                return Ok(());
+            }
+            snapshot.reconnect = Some(status);
+            snapshot.revision = snapshot.revision.checked_next()?;
+        }
+        self.persist(session).await
+    }
+    async fn register_reconnect(
+        &self,
+        device: Target,
+        opened: &OpenResult,
+        mut admission: OpenAdmission,
+    ) {
+        let target = open_target(&self.inner.identity, opened);
+        let Ok(session) = self.session(&target) else {
+            return;
+        };
+        let Some((_, binding)) = admission.binding.clone() else {
+            return;
+        };
+        let Ok(Some(runtime)) = self.runtime_attachment() else {
+            return;
+        };
+        let old = self.inner.reconnect_jobs.lock().ok().and_then(|mut jobs| {
+            // 仅退役已结束的观察任务；会话与原生隔离资源仍由各自 owner 持有。
+            jobs.retain(|_, job| !job.task.is_finished());
+            jobs.remove(&opened.session_id)
+        });
+        if let Some(old) = old {
+            old.stop.store(true, Ordering::SeqCst);
+            let _ = old.task.await;
+        }
+        let pin = runtime
+            .directory
+            .descriptor(&device.id)
+            .and_then(|descriptor| runtime.directory.pin(&descriptor));
+        if let Err(error) = pin {
+            let _ = self
+                .reconnect_status(&session, ReconnectState::Stopped, 0, Some(error))
+                .await;
+            return;
+        }
+        let _ = self
+            .reconnect_status(&session, ReconnectState::Idle, 0, None)
+            .await;
+        admission.expected_session = Some((opened.session_id.clone(), opened.session_epoch));
+        let weak = Arc::downgrade(&self.inner);
+        let mut grants = self.inner.auth.subscribe_changes();
+        let session_id = opened.session_id.clone();
+        let stop = Arc::new(AtomicBool::new(false));
+        let stopped = stop.clone();
+        let job = tokio::spawn(async move {
+            let _pin = ResponsibilityPin(runtime.directory.clone(), device.id.clone());
+            let mut target = target;
+            let mut schedule: Option<super::ReconnectResponsibility> = None;
+            let mut attempts = 0;
+            loop {
+                let Some(inner) = weak.upgrade() else {
+                    break;
+                };
+                let service = DeviceService { inner };
+                let Ok(session) = service.session(&target) else {
+                    break;
+                };
+                let Ok(snapshot) = session.snapshot() else {
+                    break;
+                };
+                if schedule.as_ref().is_some_and(|responsibility| {
+                    responsibility.session_epoch != snapshot.session_epoch
+                }) {
+                    schedule = None;
+                    attempts = 0;
+                }
+                let checked = {
+                    let service = service.clone();
+                    let snapshot = snapshot.clone();
+                    let admission = admission.clone();
+                    let runtime = runtime.clone();
+                    let device = device.clone();
+                    let stopped = stopped.clone();
+                    blocking(move || -> HostResult<()> {
+                        if stopped.load(Ordering::SeqCst)
+                            || admission.cancelled.load(Ordering::SeqCst)
+                            || service.inner.closing.load(Ordering::SeqCst)
+                            || matches!(
+                                snapshot.state,
+                                SessionState::Closed | SessionState::Closing
+                            )
+                        {
+                            return Err(open_cancelled());
+                        }
+                        if service.inner.store.identity()?.instance_epoch
+                            != service.inner.identity.instance_epoch
+                        {
+                            return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
+                        }
+                        service
+                            .inner
+                            .auth
+                            .require(&admission.actor, "device.modify", &device)?;
+                        if let Some(stamp) = &admission.grant_stamp {
+                            service.inner.auth.validate_grants(stamp)?;
+                        }
+                        let (reference, original) =
+                            admission.binding.as_ref().ok_or_else(invalid)?;
+                        if (runtime.resolver)(&admission.actor, reference)? != *original
+                            || snapshot.configuration != original.configuration
+                        {
+                            return Err(HostError::new(
+                                "CONFIGURATION_CONFLICT",
+                                "Saved binding or active configuration changed",
+                            ));
+                        }
+                        if snapshot.tx_gate == TxGate::ControlUnknown
+                            || snapshot.control_state != ControlState::Clear
+                        {
+                            return Err(HostError::new(
+                                "CONTROL_UNKNOWN",
+                                "Session remains isolated",
+                            ));
+                        }
+                        if snapshot.tx_gate == TxGate::ConfigurationPending {
+                            return Err(HostError::new(
+                                "CONFIGURATION_PENDING",
+                                "Configuration is unsettled",
+                            ));
+                        }
+                        Ok(())
+                    })
+                    .await
+                };
+                if let Err(error) = checked {
+                    let _ = service
+                        .reconnect_status(&session, ReconnectState::Stopped, attempts, Some(error))
+                        .await;
+                    break;
+                }
+                if snapshot.state == SessionState::Disconnected {
+                    let completed = session.completed.borrow().clone();
+                    if completed.as_ref().is_some_and(Result::is_err) {
+                        let _ = service
+                            .reconnect_status(
+                                &session,
+                                ReconnectState::Stopped,
+                                attempts,
+                                Some(HostError::new("CONTROL_UNKNOWN", "Owner cleanup failed")),
+                            )
+                            .await;
+                        break;
+                    }
+                    let settled = completed.as_ref().is_some_and(Result::is_ok)
+                        && !snapshot.lease.as_ref().is_some_and(|lease| {
+                            matches!(lease.state, LeaseState::Active | LeaseState::Revoking)
+                        });
+                    if settled {
+                        if schedule.is_none() {
+                            schedule = super::ReconnectResponsibility::new(
+                                admission.actor.id().clone(),
+                                binding.clone(),
+                                snapshot.session_epoch,
+                                service.inner.clock.clone(),
+                            )
+                            .ok();
+                            let _ = service
+                                .reconnect_status(&session, ReconnectState::Waiting, attempts, None)
+                                .await;
+                        }
+                        let list = runtime.directory.list();
+                        let identity = list.as_ref().ok().filter(|list| !list.stale).map(|list| {
+                            super::IdentityMatcher::match_device(
+                                &binding.fingerprint,
+                                &list.devices,
+                            )
+                        });
+                        let exact = matches!(&identity, Some(super::MatchResult::Exact(id)) if id == &device.id);
+                        if matches!(identity, Some(super::MatchResult::RequiresRebind(_))) {
+                            let _ = service
+                                .reconnect_status(
+                                    &session,
+                                    ReconnectState::RequiresRebind,
+                                    attempts,
+                                    Some(HostError::new(
+                                        "REQUIRES_REBIND",
+                                        "Device identity requires explicit rebinding",
+                                    )),
+                                )
+                                .await;
+                        }
+                        if let Some(schedule) = schedule.as_mut() {
+                            let decision = schedule.poll(super::ReconnectGate {
+                                authorized: true,
+                                identity_exact: exact,
+                                configuration_settled: true,
+                                epoch_current: true,
+                                closed: false,
+                                cancelled: false,
+                            });
+                            match decision {
+                                super::ReconnectDecision::Attempt => {
+                                    attempts += 1;
+                                    let _ = service
+                                        .reconnect_status(
+                                            &session,
+                                            ReconnectState::Attempting,
+                                            attempts,
+                                            None,
+                                        )
+                                        .await;
+                                    let params = OpenParams {
+                                        configuration: binding.configuration.clone(),
+                                        binding: admission
+                                            .binding
+                                            .as_ref()
+                                            .map(|(reference, _)| reference.clone()),
+                                    };
+                                    match service
+                                        .open_inner(&device, params, Some(&admission))
+                                        .await
+                                    {
+                                        Ok(mut opened) => {
+                                            service
+                                                .record_recent(
+                                                    &device,
+                                                    &binding.configuration,
+                                                    &mut opened,
+                                                )
+                                                .await;
+                                            target = open_target(&service.inner.identity, &opened);
+                                            admission.expected_session =
+                                                Some((opened.session_id, opened.session_epoch));
+                                            if let Ok(current) = service.session(&target) {
+                                                let _ = service
+                                                    .reconnect_status(
+                                                        &current,
+                                                        ReconnectState::Idle,
+                                                        0,
+                                                        opened.recent_error,
+                                                    )
+                                                    .await;
+                                            }
+                                            attempts = 0;
+                                        }
+                                        Err(error) => {
+                                            schedule.attempt_failed();
+                                            let _ = service
+                                                .reconnect_status(
+                                                    &session,
+                                                    ReconnectState::Waiting,
+                                                    attempts,
+                                                    Some(error),
+                                                )
+                                                .await;
+                                        }
+                                    }
+                                }
+                                super::ReconnectDecision::Stopped => {
+                                    let _ = service
+                                        .reconnect_status(
+                                            &session,
+                                            ReconnectState::Stopped,
+                                            attempts,
+                                            Some(HostError::new(
+                                                "RECONNECT_EXHAUSTED",
+                                                "Reconnect attempt limit reached",
+                                            )),
+                                        )
+                                        .await;
+                                    break;
+                                }
+                                super::ReconnectDecision::Wait => {}
+                            }
+                        }
+                    }
+                } else {
+                    schedule = None;
+                }
+                drop(service);
+                tokio::select! { _ = grants.changed() => {}, _ = tokio::time::sleep(Duration::from_millis(20)) => {} }
+            }
+        });
+        if let Ok(mut jobs) = self.inner.reconnect_jobs.lock() {
+            jobs.insert(session_id, ReconnectJob { stop, task: job });
+        }
+    }
+}
+fn open_cancelled() -> HostError {
+    HostError::new("CANCELLED", "Device open responsibility was cancelled")
+}
+fn open_target(identity: &HostIdentity, opened: &OpenResult) -> Target {
+    Target {
+        host_id: identity.host_id.clone(),
+        kind: ResourceKind::try_from("session").expect("session kind"),
+        id: opened.session_id.clone(),
+        session_id: Some(opened.session_id.clone()),
+        session_epoch: Some(opened.session_epoch),
+    }
+}
+
+#[cfg(test)]
+mod responsibility_budget_tests {
+    use super::*;
+    use crate::{
+        device::{DeviceProvider, DeviceRuntime, virtual_backend::VirtualTransport},
+        state::ProjectionLimits,
+        test_support as support,
+    };
+    struct ManyDevices(Id);
+    struct RuntimeProvider {
+        host_id: Id,
+        opener: TransportOpener,
+    }
+    impl DeviceProvider for RuntimeProvider {
+        fn enumerate(&self) -> HostResult<Vec<DeviceDescriptor>> {
+            Ok(ManyDevices(self.host_id.clone())
+                .enumerate()?
+                .into_iter()
+                .take(1)
+                .collect())
+        }
+        fn open(
+            &self,
+            descriptor: &DeviceDescriptor,
+            configuration: &SerialConfiguration,
+        ) -> BackendResult<Box<dyn Transport>> {
+            (self.opener)(&descriptor.device_id, configuration)
+        }
+    }
+    #[tokio::test]
+    async fn host_close_after_disconnected_owner_settles_closed_and_allows_new_epoch() {
+        let mut h = support::Harness::new().await;
+        let provider = Arc::new(RuntimeProvider {
+            host_id: h.host_id.clone(),
+            opener: h.host.devices().inner.opener.clone(),
+        });
+        h.host.shutdown().await.unwrap();
+        h.host = crate::Host::with_device_provider(
+            h.store.clone(),
+            h.auth.clone(),
+            h.clock.clone(),
+            provider,
+        )
+        .await
+        .unwrap();
+        let descriptor = h
+            .host
+            .devices()
+            .refresh()
+            .await
+            .unwrap()
+            .devices
+            .into_iter()
+            .find(|device| device.fingerprint.transport == DeviceTransportKind::Serial)
+            .unwrap();
+        let device = h.device(descriptor.device_id.as_str());
+        let params = serde_json::json!({"configuration": SerialConfiguration::default()});
+        let opened = h.action(&device, "device.open", params.clone()).await;
+        assert_eq!(
+            opened.state,
+            OperationState::Succeeded,
+            "{:?}",
+            opened.error
+        );
+        let Some(ActionResult::Opened(first)) = opened.result else {
+            panic!("open result")
+        };
+        let target = open_target(&h.store.identity().unwrap(), &first);
+        let session = h.host.devices().session(&target).unwrap();
+        h.probe.read_fails.store(true, Ordering::SeqCst);
+        let mut completed = session.completed.clone();
+        let cleanup =
+            tokio::time::timeout(Duration::from_secs(3), completed.wait_for(Option::is_some))
+                .await
+                .unwrap()
+                .unwrap()
+                .clone()
+                .unwrap();
+        assert_eq!(cleanup, Ok(()));
+        assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            session.snapshot().unwrap().state,
+            SessionState::Disconnected
+        );
+        let closed = h
+            .action(&target, "session.close", serde_json::json!({}))
+            .await;
+        assert_eq!(
+            closed.state,
+            OperationState::Succeeded,
+            "{:?}",
+            closed.error
+        );
+        let Some(ActionResult::Session(receipt)) = closed.result else {
+            panic!("close result")
+        };
+        assert_eq!(receipt.state, SessionState::Closed);
+        let persisted = h
+            .store
+            .read_document(&document_id(&device.id).unwrap())
+            .unwrap()
+            .unwrap();
+        let persisted: SessionSnapshot = decode(&persisted.value).unwrap();
+        assert_eq!(persisted.state, SessionState::Closed);
+        assert_eq!(persisted.session_epoch, first.session_epoch);
+        h.probe.read_fails.store(false, Ordering::SeqCst);
+        let reopened = h.action(&device, "device.open", params).await;
+        assert_eq!(
+            reopened.state,
+            OperationState::Succeeded,
+            "{:?}",
+            reopened.error
+        );
+        let Some(ActionResult::Opened(second)) = reopened.result else {
+            panic!("open result")
+        };
+        assert_eq!(second.session_id, first.session_id);
+        assert_eq!(
+            second.session_epoch,
+            first.session_epoch.checked_next().unwrap()
+        );
+        assert!(!second.reused);
+        assert_eq!(h.probe.opens.load(Ordering::SeqCst), 2);
+        assert_eq!(
+            h.host.devices().snapshot(&target).await.unwrap_err().code,
+            "EPOCH_MISMATCH"
+        );
+        h.host.shutdown().await.unwrap();
+    }
+    impl DeviceProvider for ManyDevices {
+        fn enumerate(&self) -> HostResult<Vec<DeviceDescriptor>> {
+            Ok((0..21)
+                .map(|index| DeviceDescriptor {
+                    device_id: support::id(&format!("provider-{index}")),
+                    host_id: self.0.clone(),
+                    system_name: format!("COM{}", index + 1),
+                    description: None,
+                    manufacturer: None,
+                    driver: None,
+                    fingerprint: DeviceFingerprint {
+                        transport: DeviceTransportKind::Serial,
+                        vid: Some(1),
+                        pid: Some(2),
+                        serial_number: Some(format!("unit-{index}")),
+                        topology_path: Some(format!("socket-{index}")),
+                        evidence: IdentityEvidence::SerialNumber,
+                    },
+                    capabilities: VirtualTransport::new(SerialConfiguration::default())
+                        .capabilities(),
+                })
+                .collect())
+        }
+        fn open(
+            &self,
+            _: &DeviceDescriptor,
+            _: &SerialConfiguration,
+        ) -> BackendResult<Box<dyn Transport>> {
+            unreachable!("Harness owns the injected transport")
+        }
+    }
+    #[tokio::test]
+    async fn retired_responsibilities_do_not_accumulate_and_active_owner_is_retained() {
+        let h = support::Harness::new().await;
+        let identity = h.store.identity().unwrap();
+        let directory = DeviceRuntime::new(
+            identity.clone(),
+            Arc::new(ManyDevices(h.host_id.clone())),
+            ProjectionStore::new(identity, h.auth.clone(), ProjectionLimits::default()),
+        )
+        .unwrap();
+        let devices: Vec<_> = directory
+            .refresh()
+            .await
+            .unwrap()
+            .devices
+            .into_iter()
+            .filter(|device| device.fingerprint.transport == DeviceTransportKind::Serial)
+            .collect();
+        let lookup = directory.clone();
+        h.host
+            .devices()
+            .attach_runtime(
+                directory,
+                Arc::new(move |_, reference| {
+                    let descriptor = lookup.descriptor(&reference.binding_id)?;
+                    Ok(DeviceBinding {
+                        binding_id: reference.binding_id.clone(),
+                        host_id: descriptor.host_id,
+                        device_id: descriptor.device_id,
+                        fingerprint: descriptor.fingerprint,
+                        configuration: SerialConfiguration::default(),
+                        reconnect: ReconnectPolicy {
+                            enabled: true,
+                            ..Default::default()
+                        },
+                    })
+                }),
+            )
+            .unwrap();
+        let mut live = None;
+        for (index, descriptor) in devices.iter().enumerate() {
+            let opened = h
+                .host
+                .devices()
+                .open_authorized(
+                    &h.actor,
+                    &h.device(descriptor.device_id.as_str()),
+                    OpenParams {
+                        configuration: SerialConfiguration::default(),
+                        binding: Some(DeviceBindingReference {
+                            workspace_id: support::id("bench"),
+                            binding_id: descriptor.device_id.clone(),
+                        }),
+                    },
+                    Arc::new(AtomicBool::new(false)),
+                )
+                .await
+                .unwrap();
+            if index == 20 {
+                live = Some(opened);
+                break;
+            }
+            let target = open_target(&h.store.identity().unwrap(), &opened);
+            let closed = h
+                .action(&target, "session.close", serde_json::json!({}))
+                .await;
+            assert_eq!(closed.state, OperationState::Succeeded);
+            support::until(|| {
+                h.host
+                    .devices()
+                    .inner
+                    .reconnect_jobs
+                    .lock()
+                    .unwrap()
+                    .get(&opened.session_id)
+                    .is_none_or(|job| job.task.is_finished())
+            })
+            .await;
+        }
+        {
+            let jobs = h.host.devices().inner.reconnect_jobs.lock().unwrap();
+            assert!(
+                jobs.len() <= 16,
+                "retired responsibilities exceeded the live-session budget: {}",
+                jobs.len()
+            );
+            assert!(
+                !jobs
+                    .get(&live.unwrap().session_id)
+                    .unwrap()
+                    .task
+                    .is_finished()
+            );
+        }
+        assert_eq!(h.probe.opens.load(Ordering::SeqCst), 21);
+        assert_eq!(h.probe.closes.load(Ordering::SeqCst), 20);
+        h.host.shutdown().await.unwrap();
     }
 }

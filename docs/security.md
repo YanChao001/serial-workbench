@@ -22,6 +22,14 @@
 
 测试WebDriver仅在可选测试feature和overlay中启用，正式配置不注册测试服务；隔离见 [真实桌面E2E](./testing.md#真实桌面-e2e)。
 
+## Host 授权与文件引用
+
+独立 Host 的普通客户端默认只有元数据权限，授权与撤权使用明确的本地用户控制入口。目录、raw 读取与 Operation 查询按当前资源授权检查；创建者身份不代替读取权限，派生结果还须复查持久保存的原来源授权。操作输入按动作返回类型化内容或脱敏结果，文件登记不公开私有路径。
+
+文件业务使用显式登记的 ObjectRef。固定文件必须携带内容 revision，活动 capture 可省略 revision；引用内容变化后旧固定引用返回 `REVISION_CONFLICT`。登记与派生引用不自动授予读取权限，每次使用都复核授权、目录身份及链接或替换风险。原始录制、恢复和发布的具体规则见 [Capture 容器](./contracts/capture-container-v0.md)。
+
+共享设置与工作区导入先校验格式和当前存档，再以 expected revision CAS 提交；损坏或未来格式原件保留。Host 的退出结算保留未完成 owner、unknown 结果和失败证据，等待取消不释放仍在执行的原生工作责任，职责见 [独立 Host](./architecture.md#独立-host)。
+
 ## CSP
 
 生产规则读取 [tauri.conf.json](../src-tauri/tauri.conf.json)，浏览器预览规则读取 [vite.config.ts](../vite.config.ts)。新增来源按实际用途放行，并验证生产资源。

@@ -1,5 +1,6 @@
 use serial_workbench_core::{ContextToken, HostError, HostResult};
 use serial_workbench_host::{Host, ipc::HostServer};
+use serial_workbench_ipc::startup_config;
 use std::{path::PathBuf, sync::Arc};
 
 #[tokio::main]
@@ -30,9 +31,10 @@ async fn run() -> HostResult<()> {
             _ => return Err(invalid_args()),
         }
     }
-    let profile = profile
-        .map(Ok)
-        .unwrap_or_else(serial_workbench_ipc::default_profile)?;
+    let startup = startup_config::resolve(profile)?;
+    startup_config::init_stderr_logging(startup.log_filter())?;
+    startup_config::log_startup_configuration(&startup.snapshot());
+    let profile = startup.profile();
     if broker {
         // 明确本地用户控制入口，普通 IPC 无领取此凭据的方法。
         let secret =
@@ -47,11 +49,11 @@ async fn run() -> HostResult<()> {
             ContextToken::try_from(std::str::from_utf8(&secret).map_err(|_| invalid_args())?)?;
         return serial_workbench_ipc::write_bootstrap_capability(token.as_str().as_bytes());
     }
-    let mut host = HostServer::bind(&profile).await?;
+    let mut host = HostServer::bind(profile).await?;
     if bootstrap {
         host.write_bootstrap_capability()?;
     }
-    let handler = Host::new(host.store().clone(), host.auth().clone()).await?;
+    let handler = Host::with_startup_config(host.store(), host.auth(), startup.snapshot()).await?;
     host.serve_until(Arc::new(handler), async move {
         let _ = tokio::signal::ctrl_c().await;
     })

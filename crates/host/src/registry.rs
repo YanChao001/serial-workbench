@@ -106,12 +106,40 @@ impl Registry {
     }
     fn visible_actions(&self, actor: &AuthenticatedActor) -> HostResult<Vec<ActionSpec>> {
         let mut items = Vec::new();
-        for spec in builtin_catalog() {
+        let catalog = builtin_catalog();
+        let operation_resources: Vec<ResourceKind> = catalog
+            .iter()
+            .filter(|spec| spec.kind == ActionKind::Action)
+            .flat_map(|spec| spec.target_kinds.iter().cloned())
+            .collect();
+        for spec in catalog {
             let mut visible = true;
             for permission in &spec.permissions {
-                visible &= self
-                    .auth
-                    .can_discover(actor, permission, &spec.target_kinds)?;
+                let action = BuiltinAction::find(spec.action_id.as_str())?;
+                let target_kinds = if matches!(
+                    action,
+                    BuiltinAction::OperationGet | BuiltinAction::OperationInput
+                ) {
+                    // Inspection permissions apply to the original resource, not its lookup envelope.
+                    operation_resources.clone()
+                } else if action.is_capture_api() {
+                    vec![ResourceKind::try_from(
+                        if action == BuiltinAction::CaptureStart && permission == "content.read" {
+                            "session"
+                        } else {
+                            "file"
+                        },
+                    )?]
+                } else if matches!(
+                    spec.action_id.as_str(),
+                    "transfer.file" | "transfer.receiptsRead"
+                ) && permission == "content.read"
+                {
+                    vec![ResourceKind::try_from("file")?]
+                } else {
+                    spec.target_kinds.clone()
+                };
+                visible &= self.auth.can_discover(actor, permission, &target_kinds)?;
             }
             if visible {
                 items.push(spec);

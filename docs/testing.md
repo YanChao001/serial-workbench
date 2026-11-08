@@ -84,18 +84,36 @@ cargo fmt --all -- --check
 
 IPC 契约变化后依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，并提交生成结果。绑定任务与共用 target 的 Cargo 检查顺序执行。
 
-Host DTO 变化后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`；Rust 与 TypeScript 共用导出的正负 fixture。schema 验证结构，跨字段身份、权限和资源语义由 Host 入口继续核验。里程碑检查使用 `cargo test --locked --workspace` 与 `cargo clippy --locked --workspace --all-targets -- -D warnings`。
+Host DTO 变化后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`；Rust 与 TypeScript 共用导出的正负 fixture。schema 验证结构，跨字段身份、权限和资源语义由 Host 入口继续核验。独立后端检查可使用根默认成员的 `cargo test --locked`；Clippy 显式选择 core / ipc / host / client / cli / mcp 六包并带 `--all-targets -- -D warnings`。包含桌面的里程碑检查使用 `cargo test --locked --workspace` 与 `cargo clippy --locked --workspace --all-targets -- -D warnings`。
 
 CLI、MCP 与 HostClient 的交叉验收会启动真实适配器程序。先构建同一 target 的三个入口，再运行测试；CI 同样执行此前置构建：
 
 ```sh
-cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins
 cargo test --locked -p serial-workbench-host --test client_parity
 ```
 
-交叉测试默认读取测试程序所在 target 目录的 CLI/MCP；需要检验独立构建时，可分别设置 `SWB_TEST_CLI_BIN`、`SWB_TEST_MCP_BIN` 为程序绝对路径。测试比较同一会话的原始事件与 TX 回执，同时验证跨 actor 的 Operation 查询限制。
+交叉测试默认读取测试程序所在 target 目录的 CLI/MCP；需要检验独立构建时，可分别设置 `SWB_TEST_CLI_BIN`、`SWB_TEST_MCP_BIN` 为程序绝对路径。测试比较同一会话的原始事件与 TX 回执，同时验证 Operation 查询的当前资源读取权限。
 
 涉及进程的 Rust 测试需核对临时目录和进程回收。
+
+## Host 软件与独立格式验证
+
+定向检查覆盖 contracts / host-client 与场景包装器；按实际改动选择运行：
+
+```sh
+pnpm exec vitest run packages/contracts/src packages/host-client/src
+node --test scripts/generate-host-contracts.test.mjs scripts/test-capture-container-independent.test.mjs scripts/test-host-scenarios.test.mjs
+```
+
+独立格式验收先由 Rust 写出固定输入 fixture，再由不依赖 Rust parser、SDK 或 Host IPC 的 Node reader 扫描全部卷，核对原始字节、索引、摘要和 Partial / Unknown 回执。两个输出位置须使用尚不存在的绝对路径，结果文件放在 fixture 目录外：
+
+```sh
+cargo run --locked -p serial-workbench-host --example capture_fixture -- --output <新fixture绝对目录>
+node scripts/test-capture-container-independent.mjs --fixture <该fixture绝对目录> --result <新结果文件绝对路径>
+```
+
+正式 T01 / T03 / T04 / T05 / T06 / T08 通过显式 harness 执行，不随 workspace 测试自动运行。构建、600 秒门槛、平台记录与待测范围见 [M1 软件场景验证](./m1-software-validation.md)。当前 CI 仍按下文执行既有检查，正式六场景由独立入口运行并在里程碑记录结果。
 
 ## 数据与恢复验证
 

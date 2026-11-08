@@ -1,5 +1,6 @@
 // Generated from Rust core DTOs. Do not edit.
 import type {
+  Accent,
   ActionKind,
   ActionResult,
   ActionSpec,
@@ -8,6 +9,9 @@ import type {
   AttachResult,
   AuthorizationResult,
   AuthorizeParams,
+  BackgroundFit,
+  BackgroundPreset,
+  BackgroundSelection,
   BreakParams,
   BreakReceipt,
   ByteRange,
@@ -16,11 +20,36 @@ import type {
   CancelReason,
   Cancellation,
   CancellationResult,
+  CaptureRecord,
+  CaptureStartParams,
+  CaptureStatusResult,
+  CaptureStopParams,
+  CaptureTxSettlement,
+  CaptureVerifyParams,
   CatalogListParams,
   CatalogListResult,
   Certainty,
   ChildCall,
+  ClientAutostartParams,
+  ClientCapability,
+  ClientClipboardWriteParams,
+  ClientEffectAcknowledged,
+  ClientEffectAction,
+  ClientEffectOutcome,
+  ClientEffectReceipt,
+  ClientEffectRequest,
+  ClientEffectResult,
+  ClientFullscreenParams,
   ClientKind,
+  ClientListItem,
+  ClientListResult,
+  ClientReceiptSubmission,
+  ClientRegisterParams,
+  ClientRegistration,
+  ClientResetGeometryParams,
+  ClientSettingsObservation,
+  ClientUnregisterParams,
+  ClientWindowSizeParams,
   ClosedResult,
   ConfigField,
   ConfigReceipt,
@@ -37,11 +66,14 @@ import type {
   DataBits,
   Delta,
   Dependency,
+  DeviceBindingReference,
   DeviceDescriptor,
   DeviceList,
   Digest,
   Direction,
   DirectionalRange,
+  DocumentImportParams,
+  DocumentJsonResult,
   DrainParams,
   DrainReceipt,
   DurationMs,
@@ -50,13 +82,29 @@ import type {
   ExecutionLocation,
   ExecutionMode,
   ExplicitLeaseKind,
+  FavoritesSaveParams,
   FieldStatus,
+  FileMetadata,
+  FileMetadataParams,
+  FileReadParams,
+  FileReadResult,
+  FileTransferParams,
+  FileTransferReceipt,
+  FileTransferReceiptsParams,
+  FileTransferReceiptsResult,
+  FileTransferResult,
   FlowControl,
+  Font,
+  FontSize,
   HostError,
+  HostMetrics,
+  HostMetricsParams,
   Id,
   IpcChannel,
   IpcMessage,
   JsonValue,
+  Language,
+  LayoutTemplate,
   Lease,
   LeaseAcquireParams,
   LeaseKind,
@@ -64,7 +112,11 @@ import type {
   LeaseRenewParams,
   LeaseState,
   Limits,
+  LineEnding,
+  MemoryBudget,
   MessageFragment,
+  Motion,
+  NetworkMode,
   ObjectReadResult,
   ObjectRef,
   OpenParams,
@@ -72,8 +124,13 @@ import type {
   Operation,
   OperationCancelParams,
   OperationGetParams,
+  OperationInput,
+  OperationInputParams,
+  OperationInputRedaction,
   OperationResult,
   OperationState,
+  OperationSummary,
+  OperationsSnapshot,
   OverflowPolicy,
   Owner,
   OwnerKind,
@@ -89,11 +146,23 @@ import type {
   Query,
   QueryResult,
   QueueStatus,
+  Radius,
   RawBatch,
   RawEvent,
   RawPayload,
   ReaderGap,
   ReaderGapReason,
+  RebindParams,
+  RecentList,
+  ReconnectState,
+  ReconnectStatus,
+  RecoverPrefixParams,
+  RegisterFileParams,
+  ReplayControlParams,
+  ReplayOpenParams,
+  ReplayReadParams,
+  ReplayReadResult,
+  ReplayRecord,
   RequestId,
   ResourceKind,
   ResultReference,
@@ -109,16 +178,29 @@ import type {
   SessionSnapshot,
   SessionState,
   SetReadOnlyParams,
+  SettingsDocumentResult,
+  SettingsSaveParams,
+  SettingsSnapshot,
+  SharedSettings,
+  ShutdownMode,
+  ShutdownReport,
   ShutdownRequested,
   SignedDecimal,
   Snapshot,
   SourceGap,
   SourceGapReason,
+  StartupConfigSnapshot,
+  StartupConfigSource,
+  StartupLogLevel,
+  StartupProfileReference,
+  StateScopeRef,
+  StateScopesResult,
   StateSnapshotParams,
   StateSubscribeParams,
   StopBits,
   StreamCreditParams,
   StreamCreditResult,
+  StreamCursorResult,
   StreamItem,
   StreamReadParams,
   StreamReadResult,
@@ -130,6 +212,10 @@ import type {
   TakeoverReason,
   TakeoverReceipt,
   Target,
+  TerminalMode,
+  TerminalSettings,
+  TextExportParams,
+  Theme,
   TimePrecision,
   TimeSource,
   Timestamp,
@@ -142,10 +228,17 @@ import type {
   TxParams,
   TxReceipt,
   U64,
+  VerificationReport,
   WaitBoundaryParams,
   WaitBoundaryReceipt,
   WireFrame,
+  WorkspaceDocument,
+  WorkspaceDocumentResult,
+  WorkspaceSaveParams,
+  WorkspaceSnapshot,
+  WorkspaceView,
 } from "./types.ts";
+export declare function validateAccent(value: unknown): value is Accent;
 export declare function validateActionKind(value: unknown): value is ActionKind;
 export declare function validateActionResult(
   value: unknown,
@@ -164,6 +257,15 @@ export declare function validateAuthorizationResult(
 export declare function validateAuthorizeParams(
   value: unknown,
 ): value is AuthorizeParams;
+export declare function validateBackgroundFit(
+  value: unknown,
+): value is BackgroundFit;
+export declare function validateBackgroundPreset(
+  value: unknown,
+): value is BackgroundPreset;
+export declare function validateBackgroundSelection(
+  value: unknown,
+): value is BackgroundSelection;
 export declare function validateBreakParams(
   value: unknown,
 ): value is BreakParams;
@@ -182,6 +284,24 @@ export declare function validateCancellation(
 export declare function validateCancellationResult(
   value: unknown,
 ): value is CancellationResult;
+export declare function validateCaptureRecord(
+  value: unknown,
+): value is CaptureRecord;
+export declare function validateCaptureStartParams(
+  value: unknown,
+): value is CaptureStartParams;
+export declare function validateCaptureStatusResult(
+  value: unknown,
+): value is CaptureStatusResult;
+export declare function validateCaptureStopParams(
+  value: unknown,
+): value is CaptureStopParams;
+export declare function validateCaptureTxSettlement(
+  value: unknown,
+): value is CaptureTxSettlement;
+export declare function validateCaptureVerifyParams(
+  value: unknown,
+): value is CaptureVerifyParams;
 export declare function validateCatalogListParams(
   value: unknown,
 ): value is CatalogListParams;
@@ -190,7 +310,64 @@ export declare function validateCatalogListResult(
 ): value is CatalogListResult;
 export declare function validateCertainty(value: unknown): value is Certainty;
 export declare function validateChildCall(value: unknown): value is ChildCall;
+export declare function validateClientAutostartParams(
+  value: unknown,
+): value is ClientAutostartParams;
+export declare function validateClientCapability(
+  value: unknown,
+): value is ClientCapability;
+export declare function validateClientClipboardWriteParams(
+  value: unknown,
+): value is ClientClipboardWriteParams;
+export declare function validateClientEffectAcknowledged(
+  value: unknown,
+): value is ClientEffectAcknowledged;
+export declare function validateClientEffectAction(
+  value: unknown,
+): value is ClientEffectAction;
+export declare function validateClientEffectOutcome(
+  value: unknown,
+): value is ClientEffectOutcome;
+export declare function validateClientEffectReceipt(
+  value: unknown,
+): value is ClientEffectReceipt;
+export declare function validateClientEffectRequest(
+  value: unknown,
+): value is ClientEffectRequest;
+export declare function validateClientEffectResult(
+  value: unknown,
+): value is ClientEffectResult;
+export declare function validateClientFullscreenParams(
+  value: unknown,
+): value is ClientFullscreenParams;
 export declare function validateClientKind(value: unknown): value is ClientKind;
+export declare function validateClientListItem(
+  value: unknown,
+): value is ClientListItem;
+export declare function validateClientListResult(
+  value: unknown,
+): value is ClientListResult;
+export declare function validateClientReceiptSubmission(
+  value: unknown,
+): value is ClientReceiptSubmission;
+export declare function validateClientRegisterParams(
+  value: unknown,
+): value is ClientRegisterParams;
+export declare function validateClientRegistration(
+  value: unknown,
+): value is ClientRegistration;
+export declare function validateClientResetGeometryParams(
+  value: unknown,
+): value is ClientResetGeometryParams;
+export declare function validateClientSettingsObservation(
+  value: unknown,
+): value is ClientSettingsObservation;
+export declare function validateClientUnregisterParams(
+  value: unknown,
+): value is ClientUnregisterParams;
+export declare function validateClientWindowSizeParams(
+  value: unknown,
+): value is ClientWindowSizeParams;
 export declare function validateClosedResult(
   value: unknown,
 ): value is ClosedResult;
@@ -231,6 +408,9 @@ export declare function validateCursor(value: unknown): value is Cursor;
 export declare function validateDataBits(value: unknown): value is DataBits;
 export declare function validateDelta(value: unknown): value is Delta;
 export declare function validateDependency(value: unknown): value is Dependency;
+export declare function validateDeviceBindingReference(
+  value: unknown,
+): value is DeviceBindingReference;
 export declare function validateDeviceDescriptor(
   value: unknown,
 ): value is DeviceDescriptor;
@@ -240,6 +420,12 @@ export declare function validateDirection(value: unknown): value is Direction;
 export declare function validateDirectionalRange(
   value: unknown,
 ): value is DirectionalRange;
+export declare function validateDocumentImportParams(
+  value: unknown,
+): value is DocumentImportParams;
+export declare function validateDocumentJsonResult(
+  value: unknown,
+): value is DocumentJsonResult;
 export declare function validateDrainParams(
   value: unknown,
 ): value is DrainParams;
@@ -260,17 +446,59 @@ export declare function validateExecutionMode(
 export declare function validateExplicitLeaseKind(
   value: unknown,
 ): value is ExplicitLeaseKind;
+export declare function validateFavoritesSaveParams(
+  value: unknown,
+): value is FavoritesSaveParams;
 export declare function validateFieldStatus(
   value: unknown,
 ): value is FieldStatus;
+export declare function validateFileMetadata(
+  value: unknown,
+): value is FileMetadata;
+export declare function validateFileMetadataParams(
+  value: unknown,
+): value is FileMetadataParams;
+export declare function validateFileReadParams(
+  value: unknown,
+): value is FileReadParams;
+export declare function validateFileReadResult(
+  value: unknown,
+): value is FileReadResult;
+export declare function validateFileTransferParams(
+  value: unknown,
+): value is FileTransferParams;
+export declare function validateFileTransferReceipt(
+  value: unknown,
+): value is FileTransferReceipt;
+export declare function validateFileTransferReceiptsParams(
+  value: unknown,
+): value is FileTransferReceiptsParams;
+export declare function validateFileTransferReceiptsResult(
+  value: unknown,
+): value is FileTransferReceiptsResult;
+export declare function validateFileTransferResult(
+  value: unknown,
+): value is FileTransferResult;
 export declare function validateFlowControl(
   value: unknown,
 ): value is FlowControl;
+export declare function validateFont(value: unknown): value is Font;
+export declare function validateFontSize(value: unknown): value is FontSize;
 export declare function validateHostError(value: unknown): value is HostError;
+export declare function validateHostMetrics(
+  value: unknown,
+): value is HostMetrics;
+export declare function validateHostMetricsParams(
+  value: unknown,
+): value is HostMetricsParams;
 export declare function validateId(value: unknown): value is Id;
 export declare function validateIpcChannel(value: unknown): value is IpcChannel;
 export declare function validateIpcMessage(value: unknown): value is IpcMessage;
 export declare function validateJsonValue(value: unknown): value is JsonValue;
+export declare function validateLanguage(value: unknown): value is Language;
+export declare function validateLayoutTemplate(
+  value: unknown,
+): value is LayoutTemplate;
 export declare function validateLease(value: unknown): value is Lease;
 export declare function validateLeaseAcquireParams(
   value: unknown,
@@ -284,9 +512,17 @@ export declare function validateLeaseRenewParams(
 ): value is LeaseRenewParams;
 export declare function validateLeaseState(value: unknown): value is LeaseState;
 export declare function validateLimits(value: unknown): value is Limits;
+export declare function validateLineEnding(value: unknown): value is LineEnding;
+export declare function validateMemoryBudget(
+  value: unknown,
+): value is MemoryBudget;
 export declare function validateMessageFragment(
   value: unknown,
 ): value is MessageFragment;
+export declare function validateMotion(value: unknown): value is Motion;
+export declare function validateNetworkMode(
+  value: unknown,
+): value is NetworkMode;
 export declare function validateObjectReadResult(
   value: unknown,
 ): value is ObjectReadResult;
@@ -300,12 +536,27 @@ export declare function validateOperationCancelParams(
 export declare function validateOperationGetParams(
   value: unknown,
 ): value is OperationGetParams;
+export declare function validateOperationInput(
+  value: unknown,
+): value is OperationInput;
+export declare function validateOperationInputParams(
+  value: unknown,
+): value is OperationInputParams;
+export declare function validateOperationInputRedaction(
+  value: unknown,
+): value is OperationInputRedaction;
 export declare function validateOperationResult(
   value: unknown,
 ): value is OperationResult;
 export declare function validateOperationState(
   value: unknown,
 ): value is OperationState;
+export declare function validateOperationSummary(
+  value: unknown,
+): value is OperationSummary;
+export declare function validateOperationsSnapshot(
+  value: unknown,
+): value is OperationsSnapshot;
 export declare function validateOverflowPolicy(
   value: unknown,
 ): value is OverflowPolicy;
@@ -339,6 +590,7 @@ export declare function validateQueryResult(
 export declare function validateQueueStatus(
   value: unknown,
 ): value is QueueStatus;
+export declare function validateRadius(value: unknown): value is Radius;
 export declare function validateRawBatch(value: unknown): value is RawBatch;
 export declare function validateRawEvent(value: unknown): value is RawEvent;
 export declare function validateRawPayload(value: unknown): value is RawPayload;
@@ -346,6 +598,37 @@ export declare function validateReaderGap(value: unknown): value is ReaderGap;
 export declare function validateReaderGapReason(
   value: unknown,
 ): value is ReaderGapReason;
+export declare function validateRebindParams(
+  value: unknown,
+): value is RebindParams;
+export declare function validateRecentList(value: unknown): value is RecentList;
+export declare function validateReconnectState(
+  value: unknown,
+): value is ReconnectState;
+export declare function validateReconnectStatus(
+  value: unknown,
+): value is ReconnectStatus;
+export declare function validateRecoverPrefixParams(
+  value: unknown,
+): value is RecoverPrefixParams;
+export declare function validateRegisterFileParams(
+  value: unknown,
+): value is RegisterFileParams;
+export declare function validateReplayControlParams(
+  value: unknown,
+): value is ReplayControlParams;
+export declare function validateReplayOpenParams(
+  value: unknown,
+): value is ReplayOpenParams;
+export declare function validateReplayReadParams(
+  value: unknown,
+): value is ReplayReadParams;
+export declare function validateReplayReadResult(
+  value: unknown,
+): value is ReplayReadResult;
+export declare function validateReplayRecord(
+  value: unknown,
+): value is ReplayRecord;
 export declare function validateRequestId(value: unknown): value is RequestId;
 export declare function validateResourceKind(
   value: unknown,
@@ -381,6 +664,24 @@ export declare function validateSessionState(
 export declare function validateSetReadOnlyParams(
   value: unknown,
 ): value is SetReadOnlyParams;
+export declare function validateSettingsDocumentResult(
+  value: unknown,
+): value is SettingsDocumentResult;
+export declare function validateSettingsSaveParams(
+  value: unknown,
+): value is SettingsSaveParams;
+export declare function validateSettingsSnapshot(
+  value: unknown,
+): value is SettingsSnapshot;
+export declare function validateSharedSettings(
+  value: unknown,
+): value is SharedSettings;
+export declare function validateShutdownMode(
+  value: unknown,
+): value is ShutdownMode;
+export declare function validateShutdownReport(
+  value: unknown,
+): value is ShutdownReport;
 export declare function validateShutdownRequested(
   value: unknown,
 ): value is ShutdownRequested;
@@ -392,6 +693,24 @@ export declare function validateSourceGap(value: unknown): value is SourceGap;
 export declare function validateSourceGapReason(
   value: unknown,
 ): value is SourceGapReason;
+export declare function validateStartupConfigSnapshot(
+  value: unknown,
+): value is StartupConfigSnapshot;
+export declare function validateStartupConfigSource(
+  value: unknown,
+): value is StartupConfigSource;
+export declare function validateStartupLogLevel(
+  value: unknown,
+): value is StartupLogLevel;
+export declare function validateStartupProfileReference(
+  value: unknown,
+): value is StartupProfileReference;
+export declare function validateStateScopeRef(
+  value: unknown,
+): value is StateScopeRef;
+export declare function validateStateScopesResult(
+  value: unknown,
+): value is StateScopesResult;
 export declare function validateStateSnapshotParams(
   value: unknown,
 ): value is StateSnapshotParams;
@@ -405,6 +724,9 @@ export declare function validateStreamCreditParams(
 export declare function validateStreamCreditResult(
   value: unknown,
 ): value is StreamCreditResult;
+export declare function validateStreamCursorResult(
+  value: unknown,
+): value is StreamCursorResult;
 export declare function validateStreamItem(value: unknown): value is StreamItem;
 export declare function validateStreamReadParams(
   value: unknown,
@@ -434,6 +756,16 @@ export declare function validateTakeoverReceipt(
   value: unknown,
 ): value is TakeoverReceipt;
 export declare function validateTarget(value: unknown): value is Target;
+export declare function validateTerminalMode(
+  value: unknown,
+): value is TerminalMode;
+export declare function validateTerminalSettings(
+  value: unknown,
+): value is TerminalSettings;
+export declare function validateTextExportParams(
+  value: unknown,
+): value is TextExportParams;
+export declare function validateTheme(value: unknown): value is Theme;
 export declare function validateTimePrecision(
   value: unknown,
 ): value is TimePrecision;
@@ -454,6 +786,9 @@ export declare function validateTxOutcome(value: unknown): value is TxOutcome;
 export declare function validateTxParams(value: unknown): value is TxParams;
 export declare function validateTxReceipt(value: unknown): value is TxReceipt;
 export declare function validateU64(value: unknown): value is U64;
+export declare function validateVerificationReport(
+  value: unknown,
+): value is VerificationReport;
 export declare function validateWaitBoundaryParams(
   value: unknown,
 ): value is WaitBoundaryParams;
@@ -461,3 +796,18 @@ export declare function validateWaitBoundaryReceipt(
   value: unknown,
 ): value is WaitBoundaryReceipt;
 export declare function validateWireFrame(value: unknown): value is WireFrame;
+export declare function validateWorkspaceDocument(
+  value: unknown,
+): value is WorkspaceDocument;
+export declare function validateWorkspaceDocumentResult(
+  value: unknown,
+): value is WorkspaceDocumentResult;
+export declare function validateWorkspaceSaveParams(
+  value: unknown,
+): value is WorkspaceSaveParams;
+export declare function validateWorkspaceSnapshot(
+  value: unknown,
+): value is WorkspaceSnapshot;
+export declare function validateWorkspaceView(
+  value: unknown,
+): value is WorkspaceView;

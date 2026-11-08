@@ -52,6 +52,10 @@ struct Rule {
     deadline_ns: Option<U64>,
 }
 const PERMISSIONS: &[&str] = &[
+    "client.window.modify",
+    "client.clipboard.read",
+    "client.clipboard.write",
+    "client.system.modify",
     "metadata.read",
     "content.read",
     "device.modify",

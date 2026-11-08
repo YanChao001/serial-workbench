@@ -29,6 +29,7 @@ pub enum SourceGapReason {
 pub enum ReaderGapReason {
     ReaderOverflow,
     CaptureOverflow,
+    CapturePaused,
     NetworkLoss,
 }
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]

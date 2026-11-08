@@ -76,6 +76,7 @@ async fn backend_read_failure_publishes_disconnected_and_allows_explicit_new_epo
         .open(
             &h.device("failed-read"),
             OpenParams {
+                binding: None,
                 configuration: SerialConfiguration::default(),
             },
         )

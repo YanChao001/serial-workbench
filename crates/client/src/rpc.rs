@@ -14,7 +14,7 @@ use std::{
 };
 use tokio::{
     io::WriteHalf,
-    sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, oneshot},
+    sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, oneshot, watch},
     task::JoinHandle,
 };
 
@@ -24,21 +24,47 @@ struct Event {
     _budget: OwnedSemaphorePermit,
 }
 pub(crate) struct RpcConnection {
-    writer: Mutex<WriteHalf<LocalStream>>,
+    writer: Mutex<Option<WriteHalf<LocalStream>>>,
     pending: Pending,
     healthy: Arc<AtomicBool>,
     events: Mutex<mpsc::Receiver<Event>>,
-    reader: JoinHandle<()>,
+    reader: Mutex<Option<JoinHandle<()>>>,
+    closed: watch::Sender<bool>,
     channel: IpcChannel,
 }
 impl RpcConnection {
+    pub async fn close(&self) -> HostResult<()> {
+        self.healthy.store(false, Ordering::Release);
+        self.closed.send_replace(true);
+        for (_, sender) in self.pending.lock().map_err(|_| disconnected())?.drain() {
+            let _ = sender.send(Err(disconnected()));
+        }
+        // Keep the handle in its slot until joined. A cancelled close waiter must
+        // not detach ownership or make a concurrent close report completion early.
+        let mut reader = self.reader.lock().await;
+        if let Some(task) = reader.as_mut() {
+            task.abort();
+            let _ = task.await;
+        }
+        reader.take();
+        drop(reader);
+        // Dropping both split halves closes the named pipe as well as Unix
+        // sockets, including when a late worker still holds Arc<HostClient>.
+        self.writer.lock().await.take();
+        let mut events = self.events.lock().await;
+        events.close();
+        while events.try_recv().is_ok() {}
+        Ok(())
+    }
     pub fn new(stream: LocalStream, channel: IpcChannel) -> Self {
         let (mut read, write) = tokio::io::split(stream);
         let pending: Pending = Arc::new(StdMutex::new(HashMap::new()));
         let healthy = Arc::new(AtomicBool::new(true));
+        let (closed, _) = watch::channel(false);
         let (events_tx, events_rx) = mpsc::channel(256);
         let reader_pending = pending.clone();
         let reader_healthy = healthy.clone();
+        let reader_closed = closed.clone();
         let reader = tokio::spawn(async move {
             let budget = Arc::new(Semaphore::new(4 * 1024 * 1024));
             loop {
@@ -73,6 +99,9 @@ impl RpcConnection {
                     IpcMessage::CatalogChanged { .. }
                         if channel == IpcChannel::Control
                             && frame.channel == IpcChannel::Control => {}
+                    IpcMessage::ClientEffect { .. }
+                        if channel == IpcChannel::Control
+                            && frame.channel == IpcChannel::Control => {}
                     IpcMessage::RawBatch { .. }
                         if channel == IpcChannel::Raw && frame.channel == IpcChannel::Raw => {}
                     IpcMessage::SubscriptionEnded { .. }
@@ -100,16 +129,18 @@ impl RpcConnection {
                 }
             }
             reader_healthy.store(false, Ordering::Release);
+            reader_closed.send_replace(true);
             for (_, sender) in reader_pending.lock().expect("pending mutex").drain() {
                 let _ = sender.send(Err(disconnected()));
             }
         });
         Self {
-            writer: Mutex::new(write),
+            writer: Mutex::new(Some(write)),
             pending,
             healthy,
             events: Mutex::new(events_rx),
-            reader,
+            reader: Mutex::new(Some(reader)),
+            closed,
             channel,
         }
     }
@@ -133,6 +164,9 @@ impl RpcConnection {
         let (send, receive) = oneshot::channel();
         {
             let mut pending = self.pending.lock().map_err(|_| disconnected())?;
+            if !self.healthy.load(Ordering::Acquire) {
+                return Err(disconnected());
+            }
             if pending.len() >= 256 {
                 return Err(HostError::new(
                     "HOST_BUSY",
@@ -159,26 +193,38 @@ impl RpcConnection {
             },
         };
         {
+            let mut closed = self.closed.subscribe();
             let mut writer = self.writer.lock().await;
             if !self.healthy.load(Ordering::Acquire) {
                 return Err(disconnected());
             }
+            let writer = writer.as_mut().ok_or_else(disconnected)?;
             let mut write_guard = WriteGuard {
                 healthy: &self.healthy,
                 complete: false,
             };
-            tokio::time::timeout(
-                Duration::from_secs(5),
-                write_frame(&mut *writer, &frame, MAX_FRAME_BYTES),
-            )
-            .await
-            .map_err(|_| disconnected())??;
+            tokio::select! {
+                biased;
+                _ = closed.wait_for(|closed| *closed) => return Err(disconnected()),
+                result = tokio::time::timeout(Duration::from_secs(5), write_frame(writer, &frame, MAX_FRAME_BYTES)) => {
+                    result.map_err(|_| disconnected())??;
+                }
+            }
             write_guard.complete = true;
         }
         receive.await.map_err(|_| disconnected())?
     }
     pub async fn next_event(&self) -> HostResult<Option<WireFrame>> {
-        match self.events.lock().await.recv().await {
+        if !self.healthy.load(Ordering::Acquire) {
+            return Err(disconnected());
+        }
+        let mut closed = self.closed.subscribe();
+        let event = tokio::select! {
+            biased;
+            _ = closed.wait_for(|closed| *closed) => return Err(disconnected()),
+            event = async { self.events.lock().await.recv().await } => event,
+        };
+        match event {
             Some(event) => Ok(Some(event.frame)),
             None if self.healthy.load(Ordering::Acquire) => Ok(None),
             None => Err(disconnected()),
@@ -188,7 +234,10 @@ impl RpcConnection {
 impl Drop for RpcConnection {
     fn drop(&mut self) {
         self.healthy.store(false, Ordering::Release);
-        self.reader.abort();
+        self.closed.send_replace(true);
+        if let Some(reader) = self.reader.get_mut().take() {
+            reader.abort();
+        }
     }
 }
 struct PendingGuard {
@@ -215,7 +264,11 @@ impl Drop for WriteGuard<'_> {
 }
 fn request_id(request: &RpcRequest) -> RequestId {
     match request {
-        RpcRequest::Attach(_) | RpcRequest::InvokeChild(_) => new_request_id(),
+        RpcRequest::Attach(_)
+        | RpcRequest::InvokeChild(_)
+        | RpcRequest::ClientRegister(_)
+        | RpcRequest::ClientUnregister(_)
+        | RpcRequest::ClientReceipt(_) => new_request_id(),
         RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => call.request_id.clone(),
         RpcRequest::Query(q)
         | RpcRequest::CatalogList(q)

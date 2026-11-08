@@ -15,7 +15,7 @@ async fn boundary_capture_includes_owner_tracked_and_settled_during_capture() {
         serde_json::json!({"bytesBase64":"AQIDBAU=","writeWaitMs":"100"}),
     );
     let preparation = service.prepare(&call).unwrap();
-    let admission = service.admission();
+    let admission = service.admission(false).unwrap();
     let Acceptance::New(operation) = h
         .store
         .accept(&h.actor, &call, &canonical_digest(&call).unwrap())
@@ -182,6 +182,59 @@ fn tracked(
         preparation,
     )
 }
+async fn assert_shutdown_retains_fixture_evidence(
+    h: &support::Harness,
+    target: &Target,
+    unsettled: Vec<Id>,
+    evidence: Vec<ObjectRef>,
+    optional_evidence: Vec<ObjectRef>,
+    quarantine: bool,
+) {
+    let error = h.host.shutdown().await.unwrap_err();
+    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
+    let report: ShutdownReport = decode(error.details.as_deref().unwrap()).unwrap();
+    assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
+    assert!(!report.completed);
+    assert!(report.excluded_operation_id.is_none());
+    assert_eq!(report.unsettled_operation_ids, unsettled);
+    assert_eq!(
+        report.quarantined_sessions,
+        if quarantine {
+            vec![target.clone()]
+        } else {
+            vec![]
+        }
+    );
+    assert!(report.failures.is_empty(), "{:?}", report.failures);
+    for reference in &evidence {
+        assert!(report.evidence_refs.contains(reference), "{report:?}");
+    }
+    for reference in &report.evidence_refs {
+        assert!(
+            evidence.contains(reference) || optional_evidence.contains(reference),
+            "{report:?}"
+        );
+    }
+    for (index, reference) in report.evidence_refs.iter().enumerate() {
+        assert!(!report.evidence_refs[..index].contains(reference));
+    }
+    let session = h.host.devices().session(target).unwrap();
+    assert_eq!(session.snapshot().unwrap().state, SessionState::Closed);
+    assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+    assert_eq!(h.probe.close_calls.load(Ordering::SeqCst), 1);
+}
+
+fn operation_evidence(h: &support::Harness, id: &Id) -> ObjectRef {
+    let operation = h.store.get(&h.actor, id).unwrap();
+    assert!(operation.result.is_some());
+    ObjectRef {
+        host_id: h.host_id.clone(),
+        kind: ResourceKind::try_from("operation").unwrap(),
+        id: id.clone(),
+        revision: Some(operation.revision),
+    }
+}
+
 fn seed_lease(
     h: &support::Harness,
     service: &TransmissionService,
@@ -240,7 +293,6 @@ async fn configuration_terminal_failure_never_resumes_backend_rx() {
     connection.execute_batch("CREATE TRIGGER reject_terminal BEFORE UPDATE OF terminal ON operations WHEN NEW.terminal=1 BEGIN SELECT RAISE(ABORT,'terminal fixture'); END;").unwrap();
     assert!(service.execute(accepted, prepared).await.is_err());
     let snapshot = h.host.devices().snapshot(&target).await.unwrap();
-    h.host.shutdown().await.unwrap();
     assert_eq!(
         h.probe.configured_reads.load(Ordering::SeqCst),
         0,
@@ -251,6 +303,16 @@ async fn configuration_terminal_failure_never_resumes_backend_rx() {
         h.store.get(&h.actor, &operation_id).unwrap().state,
         OperationState::Running
     );
+    assert_shutdown_retains_fixture_evidence(
+        &h,
+        &target,
+        vec![operation_id],
+        vec![],
+        vec![],
+        false,
+    )
+    .await;
+    assert_eq!(h.probe.configured_reads.load(Ordering::SeqCst), 0);
 }
 
 #[tokio::test]
@@ -345,9 +407,18 @@ async fn delayed_renew_cannot_extend_from_execution_time() {
         .unwrap()
         .clone()
         .unwrap();
-    h.host.shutdown().await.unwrap();
     assert_eq!(current.expires_at_mono_ns, lease.expires_at_mono_ns);
     assert_ne!(result.state, OperationState::Succeeded);
+    // The seeded independent owner intentionally has no expiry watcher.
+    assert_shutdown_retains_fixture_evidence(
+        &h,
+        &target,
+        vec![lease.owner_operation_id.clone()],
+        vec![operation_evidence(&h, &lease.owner_operation_id)],
+        vec![],
+        false,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -372,12 +443,20 @@ async fn expired_lease_is_rechecked_after_arbitration_without_expiry_watcher() {
     h.clock.advance_ms(6);
     release.send(()).unwrap();
     execution.await.unwrap().unwrap();
-    h.host.shutdown().await.unwrap();
     assert_eq!(
         h.write_count(),
         0,
         "expired lease reached actual backend write"
     );
+    assert_shutdown_retains_fixture_evidence(
+        &h,
+        &target,
+        vec![lease.owner_operation_id.clone()],
+        vec![operation_evidence(&h, &lease.owner_operation_id)],
+        vec![],
+        false,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -447,12 +526,36 @@ async fn release_after_unknown_write_keeps_persistent_isolation() {
     let snapshot = h.host.devices().snapshot(&target).await.unwrap();
     let before = h.write_count();
     let later = h.send(&target).await;
-    h.host.shutdown().await.unwrap();
     assert_eq!(release.state, OperationState::Unknown);
     assert_eq!(owner.state, OperationState::Unknown);
     assert_eq!(snapshot.tx_gate, TxGate::ControlUnknown);
     assert_eq!(h.write_count(), before);
     assert_eq!(support::receipt(&later).outcome, TxOutcome::Rejected);
+    // A later admission retires finished jobs; still-finishing lease jobs may
+    // also be retained, but every reference must identify this fixture's receipt.
+    assert_shutdown_retains_fixture_evidence(
+        &h,
+        &target,
+        vec![],
+        vec![operation_evidence(&h, &later.operation_id)],
+        vec![
+            operation_evidence(&h, &owner.operation_id),
+            operation_evidence(&h, &tx.operation_id),
+            operation_evidence(&h, &release.operation_id),
+        ],
+        true,
+    )
+    .await;
+    assert_eq!(
+        h.host
+            .devices()
+            .session(&target)
+            .unwrap()
+            .snapshot()
+            .unwrap()
+            .tx_gate,
+        TxGate::ControlUnknown
+    );
 }
 
 #[tokio::test]
@@ -491,8 +594,20 @@ async fn boundary_does_not_report_success_after_terminal_commit_failed() {
     h.clock.advance_ms(10);
     work.await.unwrap().unwrap();
     let result = h.store.get(&h.actor, &boundary_id).unwrap();
-    h.host.shutdown().await.unwrap();
     assert_ne!(result.state, OperationState::Succeeded);
+    assert_eq!(
+        h.store.get(&h.actor, &id).unwrap().state,
+        OperationState::Running
+    );
+    assert_shutdown_retains_fixture_evidence(
+        &h,
+        &target,
+        vec![id.clone()],
+        vec![operation_evidence(&h, &id)],
+        vec![],
+        false,
+    )
+    .await;
 }
 
 #[tokio::test]
@@ -602,7 +717,7 @@ async fn boundary_cannot_succeed_for_persistently_accepted_untracked_tx() {
         serde_json::json!({"bytesBase64":"AQIDBAU=","writeWaitMs":"100"}),
     );
     let preparation = service.prepare(&call).unwrap();
-    let admission = service.admission();
+    let admission = service.admission(false).unwrap();
     let Acceptance::New(operation) = h
         .store
         .accept(&h.actor, &call, &canonical_digest(&call).unwrap())

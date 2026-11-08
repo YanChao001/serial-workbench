@@ -80,6 +80,17 @@ pub(super) fn validate_request(
     }
     let (actor, host, epoch, target, inner_id) = match request {
         RpcRequest::Attach(_) => return Ok(()),
+        RpcRequest::ClientRegister(_)
+        | RpcRequest::ClientUnregister(_)
+        | RpcRequest::ClientReceipt(_) => {
+            if !context.actor.is_user_control() {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "Client receiver management requires user control",
+                ));
+            }
+            return Ok(());
+        }
         RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => (
             &call.actor_id,
             &call.host_id,

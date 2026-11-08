@@ -1,6 +1,128 @@
 {
   "invalid": [
     {
+      "name": "client-register-rejects-claimed-actor",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "client.register",
+        "params": {
+          "actorId": "forged",
+          "capabilities": ["client.window.read"],
+          "generation": "1"
+        }
+      }
+    },
+    {
+      "name": "client-register-rejects-unknown-capability",
+      "schema": "ClientRegisterParams",
+      "value": {
+        "capabilities": ["client.future.execute"],
+        "generation": "1"
+      }
+    },
+    {
+      "name": "file-registration-forged-client",
+      "schema": "RegisterFileParams",
+      "value": {
+        "clientId": "forged",
+        "path": "fixture-source.bin",
+        "purpose": "read_file"
+      }
+    },
+    {
+      "name": "reference-transfer_receipts-unknown-field",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived",
+        "kind": "transfer_receipts",
+        "unknown": true
+      }
+    },
+    {
+      "name": "reference-transfer_receipts-missing-hostId",
+      "schema": "ObjectRef",
+      "value": {
+        "id": "derived",
+        "kind": "transfer_receipts"
+      }
+    },
+    {
+      "name": "reference-transfer_receipts-missing-id",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "kind": "transfer_receipts"
+      }
+    },
+    {
+      "name": "reference-transfer_receipts-missing-kind",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived"
+      }
+    },
+    {
+      "name": "reference-transfer_receipts-null-revision",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived",
+        "kind": "transfer_receipts",
+        "revision": null
+      }
+    },
+    {
+      "name": "reference-capture_record-unknown-field",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived",
+        "kind": "capture_record",
+        "unknown": true
+      }
+    },
+    {
+      "name": "reference-capture_record-missing-hostId",
+      "schema": "ObjectRef",
+      "value": {
+        "id": "derived",
+        "kind": "capture_record"
+      }
+    },
+    {
+      "name": "reference-capture_record-missing-id",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "kind": "capture_record"
+      }
+    },
+    {
+      "name": "reference-capture_record-missing-kind",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived"
+      }
+    },
+    {
+      "name": "reference-capture_record-null-revision",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived",
+        "kind": "capture_record",
+        "revision": null
+      }
+    },
+    {
+      "name": "resource-kind-unknown-unqualified",
+      "schema": "ResourceKind",
+      "value": "future_resource"
+    },
+    {
       "name": "leading-zero",
       "schema": "U64",
       "value": "01"
@@ -473,6 +595,40 @@
           "sessionId": "session"
         },
         "taskContext": "dG9rZW4"
+      }
+    },
+    {
+      "name": "operation-client-receipt-null",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "clientEffectReceipt": null,
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
       }
     },
     {
@@ -1757,6 +1913,1111 @@
       "value": "rts_cts"
     },
     {
+      "name": "line-ending-none-unknown-field",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "none",
+        "unknown": true
+      }
+    },
+    {
+      "name": "line-ending-none-missing-kind",
+      "schema": "LineEnding",
+      "value": {}
+    },
+    {
+      "name": "line-ending-cr-unknown-field",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "cr",
+        "unknown": true
+      }
+    },
+    {
+      "name": "line-ending-cr-missing-kind",
+      "schema": "LineEnding",
+      "value": {}
+    },
+    {
+      "name": "line-ending-lf-unknown-field",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "lf",
+        "unknown": true
+      }
+    },
+    {
+      "name": "line-ending-lf-missing-kind",
+      "schema": "LineEnding",
+      "value": {}
+    },
+    {
+      "name": "line-ending-crlf-unknown-field",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "crlf",
+        "unknown": true
+      }
+    },
+    {
+      "name": "line-ending-crlf-missing-kind",
+      "schema": "LineEnding",
+      "value": {}
+    },
+    {
+      "name": "line-ending-custom-unknown-field",
+      "schema": "LineEnding",
+      "value": {
+        "bytesBase64": "AP8=",
+        "kind": "custom",
+        "unknown": true
+      }
+    },
+    {
+      "name": "line-ending-custom-missing-bytesBase64",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "custom"
+      }
+    },
+    {
+      "name": "line-ending-custom-missing-kind",
+      "schema": "LineEnding",
+      "value": {
+        "bytesBase64": "AP8="
+      }
+    },
+    {
+      "name": "line-ending-unknown-kind",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "future"
+      }
+    },
+    {
+      "name": "line-ending-custom-padding",
+      "schema": "LineEnding",
+      "value": {
+        "bytesBase64": "AQ",
+        "kind": "custom"
+      }
+    },
+    {
+      "name": "line-ending-custom-pad-bits",
+      "schema": "LineEnding",
+      "value": {
+        "bytesBase64": "AR==",
+        "kind": "custom"
+      }
+    },
+    {
+      "name": "shared-settings-default-unknown-field",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark",
+        "unknown": true
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-accent",
+      "schema": "SharedSettings",
+      "value": {
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-autoCheckUpdates",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-background",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-backgroundIntensity",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-customAccent",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-font",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-fontSize",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-language",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-motion",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-networkMode",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-radius",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-runInBackground",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-terminal",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-default-missing-theme",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        }
+      }
+    },
+    {
+      "name": "shared-settings-default-null-customBackground",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "customBackground": null,
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "workspace-document-default-unknown-field",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "Workspace",
+        "unknown": true,
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-document-default-missing-bindings",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "Workspace",
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-document-default-missing-captures",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "Workspace",
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-document-default-missing-favoriteBindingIds",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "captures": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "Workspace",
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-document-default-missing-layout",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "name": "Workspace",
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-document-default-missing-name",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-document-default-missing-views",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "Workspace"
+      }
+    },
+    {
+      "name": "settings-save-unknown-field",
+      "schema": "SettingsSaveParams",
+      "value": {
+        "unknown": true,
+        "value": {
+          "accent": "lime",
+          "autoCheckUpdates": true,
+          "background": {
+            "kind": "preset",
+            "value": "plain"
+          },
+          "backgroundIntensity": 50,
+          "customAccent": "#7C3AED",
+          "font": "geist",
+          "fontSize": "md",
+          "language": "zh",
+          "motion": "full",
+          "networkMode": "system",
+          "radius": "soft",
+          "runInBackground": false,
+          "terminal": {
+            "lineEnding": {
+              "kind": "none"
+            },
+            "receiveMode": "text",
+            "sendMode": "text"
+          },
+          "theme": "dark"
+        }
+      }
+    },
+    {
+      "name": "settings-save-missing-value",
+      "schema": "SettingsSaveParams",
+      "value": {}
+    },
+    {
+      "name": "workspace-save-unknown-field",
+      "schema": "WorkspaceSaveParams",
+      "value": {
+        "unknown": true,
+        "value": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "Workspace",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "workspace-save-missing-value",
+      "schema": "WorkspaceSaveParams",
+      "value": {}
+    },
+    {
+      "name": "settings-scope-ref-unknown-field",
+      "schema": "StateScopeRef",
+      "value": {
+        "scopeId": "settings:shared",
+        "target": {
+          "hostId": "host",
+          "id": "shared",
+          "kind": "settings"
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "settings-scope-ref-missing-scopeId",
+      "schema": "StateScopeRef",
+      "value": {
+        "target": {
+          "hostId": "host",
+          "id": "shared",
+          "kind": "settings"
+        }
+      }
+    },
+    {
+      "name": "settings-scope-ref-missing-target",
+      "schema": "StateScopeRef",
+      "value": {
+        "scopeId": "settings:shared"
+      }
+    },
+    {
+      "name": "state-scopes-unknown-field",
+      "schema": "StateScopesResult",
+      "value": {
+        "scopes": [
+          {
+            "scopeId": "settings:shared",
+            "target": {
+              "hostId": "host",
+              "id": "shared",
+              "kind": "settings"
+            }
+          },
+          {
+            "scopeId": "workspace:bench",
+            "target": {
+              "hostId": "host",
+              "id": "bench",
+              "kind": "workspace"
+            }
+          }
+        ],
+        "unknown": true
+      }
+    },
+    {
+      "name": "state-scopes-missing-scopes",
+      "schema": "StateScopesResult",
+      "value": {}
+    },
+    {
+      "name": "settings-document-result-unknown-field",
+      "schema": "SettingsDocumentResult",
+      "value": {
+        "document": {
+          "revision": "3",
+          "value": {
+            "accent": "lime",
+            "autoCheckUpdates": true,
+            "background": {
+              "kind": "preset",
+              "value": "plain"
+            },
+            "backgroundIntensity": 50,
+            "customAccent": "#7C3AED",
+            "font": "geist",
+            "fontSize": "md",
+            "language": "zh",
+            "motion": "full",
+            "networkMode": "system",
+            "radius": "soft",
+            "runInBackground": false,
+            "terminal": {
+              "lineEnding": {
+                "kind": "none"
+              },
+              "receiveMode": "text",
+              "sendMode": "text"
+            },
+            "theme": "dark"
+          }
+        },
+        "scope": {
+          "scopeId": "settings:shared",
+          "target": {
+            "hostId": "host",
+            "id": "shared",
+            "kind": "settings"
+          }
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "settings-document-result-missing-document",
+      "schema": "SettingsDocumentResult",
+      "value": {
+        "scope": {
+          "scopeId": "settings:shared",
+          "target": {
+            "hostId": "host",
+            "id": "shared",
+            "kind": "settings"
+          }
+        }
+      }
+    },
+    {
+      "name": "settings-document-result-missing-scope",
+      "schema": "SettingsDocumentResult",
+      "value": {
+        "document": {
+          "revision": "3",
+          "value": {
+            "accent": "lime",
+            "autoCheckUpdates": true,
+            "background": {
+              "kind": "preset",
+              "value": "plain"
+            },
+            "backgroundIntensity": 50,
+            "customAccent": "#7C3AED",
+            "font": "geist",
+            "fontSize": "md",
+            "language": "zh",
+            "motion": "full",
+            "networkMode": "system",
+            "radius": "soft",
+            "runInBackground": false,
+            "terminal": {
+              "lineEnding": {
+                "kind": "none"
+              },
+              "receiveMode": "text",
+              "sendMode": "text"
+            },
+            "theme": "dark"
+          }
+        }
+      }
+    },
+    {
+      "name": "workspace-document-result-unknown-field",
+      "schema": "WorkspaceDocumentResult",
+      "value": {
+        "document": {
+          "revision": "2",
+          "value": {
+            "bindings": [],
+            "captures": [],
+            "favoriteBindingIds": [],
+            "layout": {
+              "panelHeight": 240,
+              "sidebarWidth": 224
+            },
+            "name": "Workspace",
+            "views": []
+          }
+        },
+        "scope": {
+          "scopeId": "workspace:bench",
+          "target": {
+            "hostId": "host",
+            "id": "bench",
+            "kind": "workspace"
+          }
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "workspace-document-result-missing-document",
+      "schema": "WorkspaceDocumentResult",
+      "value": {
+        "scope": {
+          "scopeId": "workspace:bench",
+          "target": {
+            "hostId": "host",
+            "id": "bench",
+            "kind": "workspace"
+          }
+        }
+      }
+    },
+    {
+      "name": "workspace-document-result-missing-scope",
+      "schema": "WorkspaceDocumentResult",
+      "value": {
+        "document": {
+          "revision": "2",
+          "value": {
+            "bindings": [],
+            "captures": [],
+            "favoriteBindingIds": [],
+            "layout": {
+              "panelHeight": 240,
+              "sidebarWidth": 224
+            },
+            "name": "Workspace",
+            "views": []
+          }
+        }
+      }
+    },
+    {
+      "name": "document-import-unknown-field",
+      "schema": "DocumentImportParams",
+      "value": {
+        "json": "{}",
+        "unknown": true
+      }
+    },
+    {
+      "name": "document-import-missing-json",
+      "schema": "DocumentImportParams",
+      "value": {}
+    },
+    {
+      "name": "document-json-unknown-field",
+      "schema": "DocumentJsonResult",
+      "value": {
+        "json": "{}",
+        "unknown": true
+      }
+    },
+    {
+      "name": "document-json-missing-json",
+      "schema": "DocumentJsonResult",
+      "value": {}
+    },
+    {
+      "name": "query-settings-document-unknown-field",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "settings",
+        "unknown": true,
+        "value": {
+          "document": {
+            "revision": "3",
+            "value": {
+              "accent": "lime",
+              "autoCheckUpdates": true,
+              "background": {
+                "kind": "preset",
+                "value": "plain"
+              },
+              "backgroundIntensity": 50,
+              "customAccent": "#7C3AED",
+              "font": "geist",
+              "fontSize": "md",
+              "language": "zh",
+              "motion": "full",
+              "networkMode": "system",
+              "radius": "soft",
+              "runInBackground": false,
+              "terminal": {
+                "lineEnding": {
+                  "kind": "none"
+                },
+                "receiveMode": "text",
+                "sendMode": "text"
+              },
+              "theme": "dark"
+            }
+          },
+          "scope": {
+            "scopeId": "settings:shared",
+            "target": {
+              "hostId": "host",
+              "id": "shared",
+              "kind": "settings"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "query-settings-document-missing-kind",
+      "schema": "QueryResult",
+      "value": {
+        "value": {
+          "document": {
+            "revision": "3",
+            "value": {
+              "accent": "lime",
+              "autoCheckUpdates": true,
+              "background": {
+                "kind": "preset",
+                "value": "plain"
+              },
+              "backgroundIntensity": 50,
+              "customAccent": "#7C3AED",
+              "font": "geist",
+              "fontSize": "md",
+              "language": "zh",
+              "motion": "full",
+              "networkMode": "system",
+              "radius": "soft",
+              "runInBackground": false,
+              "terminal": {
+                "lineEnding": {
+                  "kind": "none"
+                },
+                "receiveMode": "text",
+                "sendMode": "text"
+              },
+              "theme": "dark"
+            }
+          },
+          "scope": {
+            "scopeId": "settings:shared",
+            "target": {
+              "hostId": "host",
+              "id": "shared",
+              "kind": "settings"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "query-settings-document-missing-value",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "settings"
+      }
+    },
+    {
+      "name": "action-workspace-document-unknown-field",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "workspace",
+        "unknown": true,
+        "value": {
+          "document": {
+            "revision": "2",
+            "value": {
+              "bindings": [],
+              "captures": [],
+              "favoriteBindingIds": [],
+              "layout": {
+                "panelHeight": 240,
+                "sidebarWidth": 224
+              },
+              "name": "Workspace",
+              "views": []
+            }
+          },
+          "scope": {
+            "scopeId": "workspace:bench",
+            "target": {
+              "hostId": "host",
+              "id": "bench",
+              "kind": "workspace"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "action-workspace-document-missing-kind",
+      "schema": "ActionResult",
+      "value": {
+        "value": {
+          "document": {
+            "revision": "2",
+            "value": {
+              "bindings": [],
+              "captures": [],
+              "favoriteBindingIds": [],
+              "layout": {
+                "panelHeight": 240,
+                "sidebarWidth": 224
+              },
+              "name": "Workspace",
+              "views": []
+            }
+          },
+          "scope": {
+            "scopeId": "workspace:bench",
+            "target": {
+              "hostId": "host",
+              "id": "bench",
+              "kind": "workspace"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "action-workspace-document-missing-value",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "workspace"
+      }
+    },
+    {
       "name": "transport-semantics-unregistered",
       "schema": "TransportSemantics",
       "value": "future"
@@ -2825,6 +4086,85 @@
       }
     },
     {
+      "name": "session-snapshot-null-reconnect",
+      "schema": "SessionSnapshot",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "configuration": {
+          "baudRate": "9600",
+          "dataBits": "8",
+          "flowControl": "none",
+          "parity": "none",
+          "readWaitMs": "1",
+          "reconnectBackoffMs": "2147483647",
+          "stopBits": "one",
+          "writeWaitMs": "1000"
+        },
+        "configurationRevision": "1",
+        "controlState": "clear",
+        "deviceId": "virtual.echo",
+        "readOnly": false,
+        "reconnect": null,
+        "revision": "1",
+        "sessionEpoch": "9007199254740993",
+        "sessionId": "session",
+        "state": "open",
+        "txGate": "ready"
+      }
+    },
+    {
+      "name": "reconnect-state-unregistered",
+      "schema": "ReconnectState",
+      "value": "future"
+    },
+    {
+      "name": "reconnect-state-null",
+      "schema": "ReconnectState",
+      "value": null
+    },
+    {
+      "name": "reconnect-status-unknown-field",
+      "schema": "ReconnectStatus",
+      "value": {
+        "attempts": "9007199254740993",
+        "state": "waiting",
+        "unknown": true
+      }
+    },
+    {
+      "name": "reconnect-status-missing-attempts",
+      "schema": "ReconnectStatus",
+      "value": {
+        "state": "waiting"
+      }
+    },
+    {
+      "name": "reconnect-status-missing-state",
+      "schema": "ReconnectStatus",
+      "value": {
+        "attempts": "9007199254740993"
+      }
+    },
+    {
+      "name": "reconnect-status-null-lastError",
+      "schema": "ReconnectStatus",
+      "value": {
+        "attempts": "9007199254740993",
+        "lastError": null,
+        "state": "waiting"
+      }
+    },
+    {
       "name": "lease-unknown-field",
       "schema": "Lease",
       "value": {
@@ -2977,23 +4317,210 @@
       "name": "virtual-device-unknown-field",
       "schema": "DeviceDescriptor",
       "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
         "deviceId": "virtual.echo",
-        "name": "Virtual Echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "systemName": "virtual:echo",
         "unknown": true
+      }
+    },
+    {
+      "name": "virtual-device-missing-capabilities",
+      "schema": "DeviceDescriptor",
+      "value": {
+        "description": "Virtual Echo",
+        "deviceId": "virtual.echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "systemName": "virtual:echo"
       }
     },
     {
       "name": "virtual-device-missing-deviceId",
       "schema": "DeviceDescriptor",
       "value": {
-        "name": "Virtual Echo"
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "systemName": "virtual:echo"
       }
     },
     {
-      "name": "virtual-device-missing-name",
+      "name": "virtual-device-missing-fingerprint",
       "schema": "DeviceDescriptor",
       "value": {
-        "deviceId": "virtual.echo"
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
+        "deviceId": "virtual.echo",
+        "hostId": "host",
+        "systemName": "virtual:echo"
+      }
+    },
+    {
+      "name": "virtual-device-missing-hostId",
+      "schema": "DeviceDescriptor",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
+        "deviceId": "virtual.echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "systemName": "virtual:echo"
+      }
+    },
+    {
+      "name": "virtual-device-missing-systemName",
+      "schema": "DeviceDescriptor",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
+        "deviceId": "virtual.echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host"
+      }
+    },
+    {
+      "name": "virtual-device-null-description",
+      "schema": "DeviceDescriptor",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": null,
+        "deviceId": "virtual.echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "systemName": "virtual:echo"
+      }
+    },
+    {
+      "name": "virtual-device-null-manufacturer",
+      "schema": "DeviceDescriptor",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
+        "deviceId": "virtual.echo",
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "manufacturer": null,
+        "systemName": "virtual:echo"
+      }
+    },
+    {
+      "name": "virtual-device-null-driver",
+      "schema": "DeviceDescriptor",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
+        "deviceId": "virtual.echo",
+        "driver": null,
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "systemName": "virtual:echo"
       }
     },
     {
@@ -3002,22 +4529,98 @@
       "value": {
         "devices": [
           {
+            "capabilities": {
+              "configuration": true,
+              "drain": true,
+              "dtr": true,
+              "finiteBreak": true,
+              "purgeRx": true,
+              "purgeTx": true,
+              "queueStatus": true,
+              "rts": true,
+              "semantics": "stream"
+            },
+            "description": "Virtual Echo",
             "deviceId": "virtual.echo",
-            "name": "Virtual Echo"
+            "fingerprint": {
+              "evidence": "unreliable",
+              "transport": "virtual"
+            },
+            "hostId": "host",
+            "systemName": "virtual:echo"
           }
         ],
+        "stale": false,
         "unknown": true
       }
     },
     {
       "name": "device-list-missing-devices",
       "schema": "DeviceList",
-      "value": {}
+      "value": {
+        "stale": false
+      }
+    },
+    {
+      "name": "device-list-missing-stale",
+      "schema": "DeviceList",
+      "value": {
+        "devices": [
+          {
+            "capabilities": {
+              "configuration": true,
+              "drain": true,
+              "dtr": true,
+              "finiteBreak": true,
+              "purgeRx": true,
+              "purgeTx": true,
+              "queueStatus": true,
+              "rts": true,
+              "semantics": "stream"
+            },
+            "description": "Virtual Echo",
+            "deviceId": "virtual.echo",
+            "fingerprint": {
+              "evidence": "unreliable",
+              "transport": "virtual"
+            },
+            "hostId": "host",
+            "systemName": "virtual:echo"
+          }
+        ]
+      }
+    },
+    {
+      "name": "device-binding-reference-unknown-field",
+      "schema": "DeviceBindingReference",
+      "value": {
+        "bindingId": "binding",
+        "unknown": true,
+        "workspaceId": "workspace"
+      }
+    },
+    {
+      "name": "device-binding-reference-missing-bindingId",
+      "schema": "DeviceBindingReference",
+      "value": {
+        "workspaceId": "workspace"
+      }
+    },
+    {
+      "name": "device-binding-reference-missing-workspaceId",
+      "schema": "DeviceBindingReference",
+      "value": {
+        "bindingId": "binding"
+      }
     },
     {
       "name": "open-params-unknown-field",
       "schema": "OpenParams",
       "value": {
+        "binding": {
+          "bindingId": "binding",
+          "workspaceId": "workspace"
+        },
         "configuration": {
           "baudRate": "9600",
           "dataBits": "8",
@@ -3034,7 +4637,29 @@
     {
       "name": "open-params-missing-configuration",
       "schema": "OpenParams",
-      "value": {}
+      "value": {
+        "binding": {
+          "bindingId": "binding",
+          "workspaceId": "workspace"
+        }
+      }
+    },
+    {
+      "name": "open-params-null-binding",
+      "schema": "OpenParams",
+      "value": {
+        "binding": null,
+        "configuration": {
+          "baudRate": "9600",
+          "dataBits": "8",
+          "flowControl": "none",
+          "parity": "none",
+          "readWaitMs": "1",
+          "reconnectBackoffMs": "2147483647",
+          "stopBits": "one",
+          "writeWaitMs": "1000"
+        }
+      }
     },
     {
       "name": "open-result-unknown-field",
@@ -3081,6 +4706,17 @@
         "reused": false,
         "revision": "1",
         "sessionEpoch": "9007199254740993"
+      }
+    },
+    {
+      "name": "open-result-null-recentError",
+      "schema": "OpenResult",
+      "value": {
+        "recentError": null,
+        "reused": false,
+        "revision": "1",
+        "sessionEpoch": "9007199254740993",
+        "sessionId": "session"
       }
     },
     {
@@ -6501,10 +8137,28 @@
         "value": {
           "devices": [
             {
+              "capabilities": {
+                "configuration": true,
+                "drain": true,
+                "dtr": true,
+                "finiteBreak": true,
+                "purgeRx": true,
+                "purgeTx": true,
+                "queueStatus": true,
+                "rts": true,
+                "semantics": "stream"
+              },
+              "description": "Virtual Echo",
               "deviceId": "virtual.echo",
-              "name": "Virtual Echo"
+              "fingerprint": {
+                "evidence": "unreliable",
+                "transport": "virtual"
+              },
+              "hostId": "host",
+              "systemName": "virtual:echo"
             }
-          ]
+          ],
+          "stale": false
         }
       }
     },
@@ -6515,10 +8169,28 @@
         "value": {
           "devices": [
             {
+              "capabilities": {
+                "configuration": true,
+                "drain": true,
+                "dtr": true,
+                "finiteBreak": true,
+                "purgeRx": true,
+                "purgeTx": true,
+                "queueStatus": true,
+                "rts": true,
+                "semantics": "stream"
+              },
+              "description": "Virtual Echo",
               "deviceId": "virtual.echo",
-              "name": "Virtual Echo"
+              "fingerprint": {
+                "evidence": "unreliable",
+                "transport": "virtual"
+              },
+              "hostId": "host",
+              "systemName": "virtual:echo"
             }
-          ]
+          ],
+          "stale": false
         }
       }
     },
@@ -7024,6 +8696,53 @@
   "schemaVersion": 1,
   "valid": [
     {
+      "name": "client-register-controlled-rpc",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "client.register",
+        "params": {
+          "capabilities": ["client.window.read"],
+          "generation": "1"
+        }
+      }
+    },
+    {
+      "name": "file-registration-actor-derived",
+      "schema": "RegisterFileParams",
+      "value": {
+        "path": "fixture-source.bin",
+        "purpose": "read_file"
+      }
+    },
+    {
+      "name": "registered-transfer_receipts",
+      "schema": "ResourceKind",
+      "value": "transfer_receipts"
+    },
+    {
+      "name": "reference-transfer_receipts",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived",
+        "kind": "transfer_receipts"
+      }
+    },
+    {
+      "name": "registered-capture_record",
+      "schema": "ResourceKind",
+      "value": "capture_record"
+    },
+    {
+      "name": "reference-capture_record",
+      "schema": "ObjectRef",
+      "value": {
+        "hostId": "host",
+        "id": "derived",
+        "kind": "capture_record"
+      }
+    },
+    {
       "name": "zero",
       "schema": "U64",
       "value": "0"
@@ -7214,6 +8933,53 @@
           "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
         },
         "childHighWatermark": "0",
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "host",
+          "kind": "host"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "state": "queued",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        }
+      }
+    },
+    {
+      "name": "operation-client-receipt",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "session.tx",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "clientEffectReceipt": {
+          "clientTargetId": "viewer",
+          "deliveryId": "delivery",
+          "generation": "1",
+          "hostId": "host",
+          "instanceEpoch": "1",
+          "outcome": {
+            "kind": "succeeded",
+            "result": {
+              "kind": "applied",
+              "value": {}
+            }
+          }
+        },
         "executionHostId": "host",
         "executionMode": "interactive",
         "operationId": "op",
@@ -7924,6 +9690,338 @@
       "value": "dsrDtr"
     },
     {
+      "name": "line-ending-none",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "none"
+      }
+    },
+    {
+      "name": "line-ending-cr",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "cr"
+      }
+    },
+    {
+      "name": "line-ending-lf",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "lf"
+      }
+    },
+    {
+      "name": "line-ending-crlf",
+      "schema": "LineEnding",
+      "value": {
+        "kind": "crlf"
+      }
+    },
+    {
+      "name": "line-ending-custom",
+      "schema": "LineEnding",
+      "value": {
+        "bytesBase64": "AP8=",
+        "kind": "custom"
+      }
+    },
+    {
+      "name": "line-ending-custom-empty",
+      "schema": "LineEnding",
+      "value": {
+        "bytesBase64": "",
+        "kind": "custom"
+      }
+    },
+    {
+      "name": "shared-settings-default",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveMode": "text",
+          "sendMode": "text"
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "workspace-document-default",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "Workspace",
+        "views": []
+      }
+    },
+    {
+      "name": "settings-save",
+      "schema": "SettingsSaveParams",
+      "value": {
+        "value": {
+          "accent": "lime",
+          "autoCheckUpdates": true,
+          "background": {
+            "kind": "preset",
+            "value": "plain"
+          },
+          "backgroundIntensity": 50,
+          "customAccent": "#7C3AED",
+          "font": "geist",
+          "fontSize": "md",
+          "language": "zh",
+          "motion": "full",
+          "networkMode": "system",
+          "radius": "soft",
+          "runInBackground": false,
+          "terminal": {
+            "lineEnding": {
+              "kind": "none"
+            },
+            "receiveMode": "text",
+            "sendMode": "text"
+          },
+          "theme": "dark"
+        }
+      }
+    },
+    {
+      "name": "workspace-save",
+      "schema": "WorkspaceSaveParams",
+      "value": {
+        "value": {
+          "bindings": [],
+          "captures": [],
+          "favoriteBindingIds": [],
+          "layout": {
+            "panelHeight": 240,
+            "sidebarWidth": 224
+          },
+          "name": "Workspace",
+          "views": []
+        }
+      }
+    },
+    {
+      "name": "settings-scope-ref",
+      "schema": "StateScopeRef",
+      "value": {
+        "scopeId": "settings:shared",
+        "target": {
+          "hostId": "host",
+          "id": "shared",
+          "kind": "settings"
+        }
+      }
+    },
+    {
+      "name": "state-scopes",
+      "schema": "StateScopesResult",
+      "value": {
+        "scopes": [
+          {
+            "scopeId": "settings:shared",
+            "target": {
+              "hostId": "host",
+              "id": "shared",
+              "kind": "settings"
+            }
+          },
+          {
+            "scopeId": "workspace:bench",
+            "target": {
+              "hostId": "host",
+              "id": "bench",
+              "kind": "workspace"
+            }
+          }
+        ]
+      }
+    },
+    {
+      "name": "settings-document-result",
+      "schema": "SettingsDocumentResult",
+      "value": {
+        "document": {
+          "revision": "3",
+          "value": {
+            "accent": "lime",
+            "autoCheckUpdates": true,
+            "background": {
+              "kind": "preset",
+              "value": "plain"
+            },
+            "backgroundIntensity": 50,
+            "customAccent": "#7C3AED",
+            "font": "geist",
+            "fontSize": "md",
+            "language": "zh",
+            "motion": "full",
+            "networkMode": "system",
+            "radius": "soft",
+            "runInBackground": false,
+            "terminal": {
+              "lineEnding": {
+                "kind": "none"
+              },
+              "receiveMode": "text",
+              "sendMode": "text"
+            },
+            "theme": "dark"
+          }
+        },
+        "scope": {
+          "scopeId": "settings:shared",
+          "target": {
+            "hostId": "host",
+            "id": "shared",
+            "kind": "settings"
+          }
+        }
+      }
+    },
+    {
+      "name": "workspace-document-result",
+      "schema": "WorkspaceDocumentResult",
+      "value": {
+        "document": {
+          "revision": "2",
+          "value": {
+            "bindings": [],
+            "captures": [],
+            "favoriteBindingIds": [],
+            "layout": {
+              "panelHeight": 240,
+              "sidebarWidth": 224
+            },
+            "name": "Workspace",
+            "views": []
+          }
+        },
+        "scope": {
+          "scopeId": "workspace:bench",
+          "target": {
+            "hostId": "host",
+            "id": "bench",
+            "kind": "workspace"
+          }
+        }
+      }
+    },
+    {
+      "name": "document-import",
+      "schema": "DocumentImportParams",
+      "value": {
+        "json": "{}"
+      }
+    },
+    {
+      "name": "document-json",
+      "schema": "DocumentJsonResult",
+      "value": {
+        "json": "{}"
+      }
+    },
+    {
+      "name": "query-settings-document",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "settings",
+        "value": {
+          "document": {
+            "revision": "3",
+            "value": {
+              "accent": "lime",
+              "autoCheckUpdates": true,
+              "background": {
+                "kind": "preset",
+                "value": "plain"
+              },
+              "backgroundIntensity": 50,
+              "customAccent": "#7C3AED",
+              "font": "geist",
+              "fontSize": "md",
+              "language": "zh",
+              "motion": "full",
+              "networkMode": "system",
+              "radius": "soft",
+              "runInBackground": false,
+              "terminal": {
+                "lineEnding": {
+                  "kind": "none"
+                },
+                "receiveMode": "text",
+                "sendMode": "text"
+              },
+              "theme": "dark"
+            }
+          },
+          "scope": {
+            "scopeId": "settings:shared",
+            "target": {
+              "hostId": "host",
+              "id": "shared",
+              "kind": "settings"
+            }
+          }
+        }
+      }
+    },
+    {
+      "name": "action-workspace-document",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "workspace",
+        "value": {
+          "document": {
+            "revision": "2",
+            "value": {
+              "bindings": [],
+              "captures": [],
+              "favoriteBindingIds": [],
+              "layout": {
+                "panelHeight": 240,
+                "sidebarWidth": 224
+              },
+              "name": "Workspace",
+              "views": []
+            }
+          },
+          "scope": {
+            "scopeId": "workspace:bench",
+            "target": {
+              "hostId": "host",
+              "id": "bench",
+              "kind": "workspace"
+            }
+          }
+        }
+      }
+    },
+    {
       "name": "transport-semantics-stream",
       "schema": "TransportSemantics",
       "value": "stream"
@@ -8168,6 +10266,79 @@
       }
     },
     {
+      "name": "reconnect-state-idle",
+      "schema": "ReconnectState",
+      "value": "idle"
+    },
+    {
+      "name": "reconnect-state-waiting",
+      "schema": "ReconnectState",
+      "value": "waiting"
+    },
+    {
+      "name": "reconnect-state-attempting",
+      "schema": "ReconnectState",
+      "value": "attempting"
+    },
+    {
+      "name": "reconnect-state-requires_rebind",
+      "schema": "ReconnectState",
+      "value": "requires_rebind"
+    },
+    {
+      "name": "reconnect-state-stopped",
+      "schema": "ReconnectState",
+      "value": "stopped"
+    },
+    {
+      "name": "reconnect-status",
+      "schema": "ReconnectStatus",
+      "value": {
+        "attempts": "9007199254740993",
+        "state": "waiting"
+      }
+    },
+    {
+      "name": "session-snapshot-with-reconnect",
+      "schema": "SessionSnapshot",
+      "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "configuration": {
+          "baudRate": "9600",
+          "dataBits": "8",
+          "flowControl": "none",
+          "parity": "none",
+          "readWaitMs": "1",
+          "reconnectBackoffMs": "2147483647",
+          "stopBits": "one",
+          "writeWaitMs": "1000"
+        },
+        "configurationRevision": "1",
+        "controlState": "clear",
+        "deviceId": "virtual.echo",
+        "readOnly": false,
+        "reconnect": {
+          "attempts": "9007199254740993",
+          "state": "waiting"
+        },
+        "revision": "1",
+        "sessionEpoch": "9007199254740993",
+        "sessionId": "session",
+        "state": "open",
+        "txGate": "ready"
+      }
+    },
+    {
       "name": "lease",
       "schema": "Lease",
       "value": {
@@ -8238,8 +10409,25 @@
       "name": "virtual-device",
       "schema": "DeviceDescriptor",
       "value": {
+        "capabilities": {
+          "configuration": true,
+          "drain": true,
+          "dtr": true,
+          "finiteBreak": true,
+          "purgeRx": true,
+          "purgeTx": true,
+          "queueStatus": true,
+          "rts": true,
+          "semantics": "stream"
+        },
+        "description": "Virtual Echo",
         "deviceId": "virtual.echo",
-        "name": "Virtual Echo"
+        "fingerprint": {
+          "evidence": "unreliable",
+          "transport": "virtual"
+        },
+        "hostId": "host",
+        "systemName": "virtual:echo"
       }
     },
     {
@@ -8248,16 +10436,46 @@
       "value": {
         "devices": [
           {
+            "capabilities": {
+              "configuration": true,
+              "drain": true,
+              "dtr": true,
+              "finiteBreak": true,
+              "purgeRx": true,
+              "purgeTx": true,
+              "queueStatus": true,
+              "rts": true,
+              "semantics": "stream"
+            },
+            "description": "Virtual Echo",
             "deviceId": "virtual.echo",
-            "name": "Virtual Echo"
+            "fingerprint": {
+              "evidence": "unreliable",
+              "transport": "virtual"
+            },
+            "hostId": "host",
+            "systemName": "virtual:echo"
           }
-        ]
+        ],
+        "stale": false
+      }
+    },
+    {
+      "name": "device-binding-reference",
+      "schema": "DeviceBindingReference",
+      "value": {
+        "bindingId": "binding",
+        "workspaceId": "workspace"
       }
     },
     {
       "name": "open-params",
       "schema": "OpenParams",
       "value": {
+        "binding": {
+          "bindingId": "binding",
+          "workspaceId": "workspace"
+        },
         "configuration": {
           "baudRate": "9600",
           "dataBits": "8",
@@ -9068,10 +11286,28 @@
         "value": {
           "devices": [
             {
+              "capabilities": {
+                "configuration": true,
+                "drain": true,
+                "dtr": true,
+                "finiteBreak": true,
+                "purgeRx": true,
+                "purgeTx": true,
+                "queueStatus": true,
+                "rts": true,
+                "semantics": "stream"
+              },
+              "description": "Virtual Echo",
               "deviceId": "virtual.echo",
-              "name": "Virtual Echo"
+              "fingerprint": {
+                "evidence": "unreliable",
+                "transport": "virtual"
+              },
+              "hostId": "host",
+              "systemName": "virtual:echo"
             }
-          ]
+          ],
+          "stale": false
         }
       }
     },
