@@ -53,6 +53,37 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         schema_version: 1,
         ..Fixtures::default()
     };
+    let capture_ref = json!({"hostId":"host","kind":"capture","id":"capture"});
+    f.add::<CaptureTailParams>(
+        "capture-tail-defaults",
+        json!({"captureRef":capture_ref}),
+        true,
+    )?;
+    f.add::<CaptureTailParams>(
+        "capture-tail-record-limit",
+        json!({"captureRef":capture_ref,"maxRecords":"101"}),
+        false,
+    )?;
+    f.add::<CaptureTailParams>(
+        "capture-tail-byte-limit",
+        json!({"captureRef":capture_ref,"maxBytes":"262145"}),
+        false,
+    )?;
+    f.add::<CaptureTailParams>(
+        "capture-tail-unknown-field",
+        json!({"captureRef":capture_ref,"path":"forged"}),
+        false,
+    )?;
+    f.add::<CaptureTailResult>(
+        "capture-tail-result",
+        json!({
+            "captureRef":capture_ref,
+            "sourceFingerprint":"0000000000000000000000000000000000000000000000000000000000000000",
+            "state":"incomplete","verifiedPrefix":"0","containerComplete":false,
+            "sourceContinuous":true,"firstRecord":"1","records":[]
+        }),
+        true,
+    )?;
     f.add::<RpcRequest>(
         "client-register-controlled-rpc",
         json!({"method":"client.register","params":{"generation":"1","capabilities":["client.window.read"]}}),
@@ -861,6 +892,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         IpcChannel,
         WireFrame,
         IpcMessage,
+        ActionCheckParams,
+        ActionCheckResult,
         AuthorizeParams,
         RevokeParams,
         Bytes,
@@ -949,6 +982,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         BackgroundSelection,
         BackgroundFit,
         TerminalMode,
+        TerminalTypography,
         TerminalSettings,
         SharedSettings,
         SettingsSnapshot,
@@ -979,6 +1013,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         FileMetadata,
         CaptureTxSettlement,
         CaptureStatusResult,
+        CaptureTailParams,
+        CaptureTailResult,
+        CaptureStorageLimits,
         CaptureStartParams,
         CaptureStopParams,
         CaptureVerifyParams,
@@ -1023,6 +1060,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         OperationInput,
         TransportCapabilities,
         SessionSnapshot,
+        SessionMetrics,
+        SessionInputs,
         ReconnectState,
         ReconnectStatus,
         OpenParams,
@@ -1100,6 +1139,8 @@ fn main() -> Result<(), Box<dyn Error>> {
                 "settings": SharedSettings::default(),
                 "workspace": WorkspaceDocument::default(),
                 "serialConfiguration": SerialConfiguration::default(),
+                "terminalTypography": TerminalTypography::default(),
+                "captureStorageLimits": CaptureStorageLimits::default(),
             }),
         ),
         (

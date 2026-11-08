@@ -11,23 +11,25 @@ mod app_config;
 mod autostart;
 pub mod bindings;
 mod blocking;
+mod client_state;
 mod commands;
 mod desktop;
 mod diagnostics;
 mod error;
 mod file_access;
 mod file_commands;
+mod file_resource_commands;
+mod host_bridge;
 mod lifecycle;
+mod media_protocol;
 mod network;
+mod platform_settings;
 mod recovery;
 mod redaction;
 mod storage;
 mod system_commands;
 pub mod update_signature;
 mod updater;
-mod wallpaper_commands;
-mod wallpaper_video;
-mod wallpapers;
 mod window_geometry;
 
 use tauri::Manager;
@@ -37,6 +39,7 @@ use tauri_plugin_window_state::StateFlags;
 
 fn logging_plugin(
     target: Option<tauri_plugin_log::TargetKind>,
+    filter: log::LevelFilter,
 ) -> tauri::plugin::TauriPlugin<tauri::Wry> {
     let mut targets = vec![tauri_plugin_log::Target::new(
         tauri_plugin_log::TargetKind::Stderr,
@@ -50,7 +53,7 @@ fn logging_plugin(
                 out.finish(format_args!("{}", redaction::redact(&message.to_string())));
             })
         }))
-        .level(log::LevelFilter::Info)
+        .level(filter)
         .max_file_size(1_000_000)
         .rotation_strategy(RotationStrategy::KeepSome(3))
         .timezone_strategy(TimezoneStrategy::UseLocal)
@@ -102,7 +105,7 @@ pub fn run() {
         .manage(desktop::DesktopState::default())
         .manage(lifecycle::LifecycleState::default())
         .manage(system_commands::ActivationInbox::default());
-    let builder = wallpaper_video::register_protocol(builder);
+    let builder = media_protocol::register_protocol(builder);
 
     // 单实例必须最先注册，让重复启动在初始化日志等共享资源前退出。
     #[cfg(desktop)]
@@ -139,10 +142,15 @@ pub fn run() {
     let builder = builder.plugin(tauri_plugin_wdio_webdriver::init());
 
     let builder = builder.setup(move |app| {
+        let startup = serial_workbench_ipc::startup_config::resolve(None)?;
+        let log_filter = startup.log_filter();
         let paths = storage::DataPaths::resolve(app.handle())?;
         // 日志目录不可写时仍可进入数据恢复界面，不能让文件日志阻断启动。
-        if let Err(error) = app.handle().plugin(logging_plugin(Some(log_target))) {
-            app.handle().plugin(logging_plugin(None))?;
+        if let Err(error) = app
+            .handle()
+            .plugin(logging_plugin(Some(log_target), log_filter))
+        {
+            app.handle().plugin(logging_plugin(None, log_filter))?;
             log::warn!(
                 "File logging is unavailable; using stderr: {}",
                 redaction::redact(&error.to_string())
@@ -150,15 +158,14 @@ pub fn run() {
         }
         let initialized = recovery::initialize(&paths)?;
         let system = system_commands::SystemState::open(paths.config.join("workspace.json"));
-        app.manage(wallpapers::WallpaperStore::new(
-            initialized.recovery.wallpaper_path(),
-        ));
-        app.manage(wallpaper_video::WallpaperVideoStore::new(
-            &initialized.recovery.wallpaper_path(),
-        ));
+        app.manage(media_protocol::MediaTickets::default());
         app.manage(paths);
         app.manage(initialized.recovery);
-        app.manage(initialized.settings);
+        app.manage(initialized.client_state);
+        app.manage(platform_settings::PlatformSettings::default());
+        app.manage(host_bridge::DesktopHostBridge::new(
+            startup.profile().to_path_buf(),
+        ));
         app.manage(system);
         system_commands::drain_activations(app.handle());
         app.manage(diagnostics::DiagnosticsState::default());
@@ -209,7 +216,9 @@ pub fn run() {
                     // 协商完成后仍可能正在安装；窗口关闭不能穿透执行期的占用。
                     api.prevent_close();
                 } else if matches!(window.label(), "main" | "secondary")
-                    && app.state::<storage::SettingsStore>().run_in_background()
+                    && app
+                        .state::<platform_settings::PlatformSettings>()
+                        .run_in_background()
                     && desktop::status(app).tray_available
                 {
                     api.prevent_close();

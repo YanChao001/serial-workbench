@@ -1,9 +1,10 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import appConfig from "../../app.config.json" with { type: "json" };
 
-const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:settings`;
+const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:preview-settings-v0`;
 const browserFailures = new WeakMap<Page, string[]>();
 
 test.beforeEach(async ({ page }) => {
@@ -21,13 +22,7 @@ test.beforeEach(async ({ page }) => {
     )
       failures.push(message.text());
   });
-  await page.addInitScript((key) => {
-    if (!localStorage.getItem(key))
-      localStorage.setItem(
-        key,
-        JSON.stringify({ schemaVersion: 7, language: "en", motion: "reduced" }),
-      );
-  }, SETTINGS_KEY);
+  await seedBrowserSettings(page);
 });
 
 test.afterEach(async ({ page }, testInfo) => {
@@ -47,7 +42,14 @@ test("the empty workspace and HashRouter load below the product subpath", async 
   await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
   await expect(page.locator("main")).toBeVisible();
   await expect(page.locator("main h1")).toHaveText("Serial Workbench");
-  await expect(page.locator("main").getByRole("button")).toHaveCount(0);
+  const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
+  await expect(draft).toBeEditable();
+  await draft.fill("offline draft");
+  await expect(draft).toHaveValue("offline draft");
+  await expect(
+    page.getByRole("button", { name: "Send", exact: true }),
+  ).toBeDisabled();
+  await expect(page.getByRole("tab")).toHaveCount(0);
   const sidebar = page.locator("#app-sidebar-navigation");
   await expect(sidebar.getByRole("link")).toHaveCount(1);
   await expect(
@@ -84,7 +86,7 @@ test("theme and language preferences survive a real browser reload", async ({
       page.evaluate((key) => {
         const raw = localStorage.getItem(key);
         return raw
-          ? (JSON.parse(raw) as { theme: string; language: string })
+          ? (JSON.parse(raw).value as { theme: string; language: string })
           : null;
       }, SETTINGS_KEY),
     )

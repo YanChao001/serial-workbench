@@ -12,8 +12,9 @@ use tauri::Manager;
 use crate::{
     desktop::{self, DesktopStatus},
     error::{ErrorCode, NativeError, NativeResult, bounded_text},
+    platform_settings::PlatformSettings,
     redaction::redact,
-    storage::{DataPaths, SettingsStore},
+    storage::DataPaths,
     updater,
 };
 
@@ -40,7 +41,7 @@ pub struct DiagnosticsReport {
     pub platform: String,
     pub architecture: String,
     pub window_label: String,
-    pub settings_revision: i32,
+    pub settings_revision: Option<serial_workbench_core::U64>,
     pub desktop: DesktopStatus,
     pub autostart_enabled: Option<bool>,
     pub updater_configured: bool,
@@ -109,7 +110,7 @@ pub fn report(app: &tauri::AppHandle, label: &str) -> NativeResult<DiagnosticsRe
         platform: std::env::consts::OS.into(),
         architecture: std::env::consts::ARCH.into(),
         window_label: label.into(),
-        settings_revision: app.state::<SettingsStore>().snapshot()?.revision,
+        settings_revision: app.state::<PlatformSettings>().revision()?,
         desktop: desktop::status(app),
         autostart_enabled: desktop::get_autostart(app).ok(),
         updater_configured: updater::load_policy(&paths).is_ok_and(|value| value.is_some()),

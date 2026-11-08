@@ -4180,12 +4180,17 @@ name = "serial-workbench"
 version = "0.1.0"
 dependencies = [
  "base64 0.22.1",
+ "chrono",
  "image",
  "log",
  "minisign-verify",
  "regex",
  "serde",
  "serde_json",
+ "serial-workbench-client",
+ "serial-workbench-core",
+ "serial-workbench-host",
+ "serial-workbench-ipc",
  "sha2 0.10.9",
  "specta",
  "specta-typescript",

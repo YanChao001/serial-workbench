@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdirSync,
@@ -351,4 +352,89 @@ test("bundle directory junctions cannot redirect backup or deletion", async (t) 
     /links must not redirect/,
   );
   assert.equal(readFileSync(join(outside, "keep"), "utf8"), "do not delete");
+});
+
+test("desktop build waits for components and passes the same target and sidecars to Tauri", async (t) => {
+  const root = fixture(t);
+  const outputDir = join(root, "target", "x86_64-pc-windows-msvc", "release");
+  mkdirSync(outputDir, { recursive: true });
+  const executable = join(outputDir, "desktop.exe");
+  writeFileSync(executable, "desktop");
+  const plan = {
+    root,
+    env: {},
+    target: "x86_64-pc-windows-msvc",
+    host: "x86_64-pc-windows-msvc",
+    platform: "windows",
+    version: "1.2.3",
+    optimize: "size",
+    metadata: { target_directory: join(root, "target") },
+    package: { id: "app" },
+    binary: { name: "desktop" },
+    config: {},
+    buildArgs: ["--no-bundle", "--"],
+    bundleArgs: [],
+  };
+  const order = [];
+  const built = await buildTools.buildApplication(plan, {
+    buildComponents: async () => {
+      order.push("components");
+      return { files: [], manifest: { components: [] } };
+    },
+    stageComponents: () => ["sidecar"],
+    runTauri: async (_plan, _command, args) => {
+      order.push("tauri");
+      assert.ok(!args.includes("--target"));
+      assert.match(args.join(" "), /sidecar/);
+      return [executable];
+    },
+  });
+  assert.deepEqual(order, ["components", "tauri"]);
+  assert.equal(built.target, plan.target);
+  assert.match(plan.bundleArgs.join(" "), /sidecar/);
+});
+
+test("bundle manifest hashes signed component bytes from the final macOS app", async (t) => {
+  const root = fixture(t);
+  const outputDir = join(root, "release");
+  const app = join(
+    outputDir,
+    "bundle",
+    "macos",
+    "Example.app",
+    "Contents",
+    "MacOS",
+  );
+  mkdirSync(outputDir, { recursive: true });
+  const input = {
+    version: "1",
+    protocol: "0.1",
+    target: "aarch64-apple-darwin",
+    architecture: "aarch64",
+    components: [
+      "serial-workbench-host",
+      "serial-workbench-cli",
+      "serial-workbench-mcp",
+    ].map((path) => ({ path, sha256: "pre-sign" })),
+  };
+  const manifest = await withFreshBundle(
+    { metadata: { target_directory: root } },
+    { outputDir },
+    async () => {
+      mkdirSync(app, { recursive: true });
+      for (const { path } of input.components)
+        writeFileSync(join(app, path), `signed-${path}`);
+    },
+    (entries) =>
+      buildTools.distributionComponentsManifest(
+        { platform: "macos" },
+        input,
+        entries,
+      ),
+  );
+  assert.equal(
+    manifest.components[0].sha256,
+    createHash("sha256").update("signed-serial-workbench-host").digest("hex"),
+  );
+  assert.notEqual(manifest.components[0].sha256, "pre-sign");
 });

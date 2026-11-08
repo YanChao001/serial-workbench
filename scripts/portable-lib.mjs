@@ -10,6 +10,8 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { fileSha256 } from "./artifact-lib.mjs";
+import { inspectComponents } from "./components-build.mjs";
+import { configureBuildTarget } from "./build-lib.mjs";
 
 export function portableFileName(value) {
   if (
@@ -30,11 +32,19 @@ function receiptPath(plan) {
 }
 
 function fingerprint(plan) {
+  const buildArgs = [];
+  for (let i = 0; i < plan.buildArgs.length; i++) {
+    if (["--target", "-t"].includes(plan.buildArgs[i])) {
+      i++;
+      continue;
+    }
+    buildArgs.push(plan.buildArgs[i]);
+  }
   return createHash("sha256")
     .update(
       JSON.stringify({
         config: plan.config,
-        buildArgs: plan.buildArgs,
+        buildArgs,
         optimize: plan.optimize,
       }),
     )
@@ -42,13 +52,27 @@ function fingerprint(plan) {
 }
 
 export function recordPortableBuild(plan, built) {
+  const components = inspectComponents(plan, built.outputDir);
+  if (
+    JSON.stringify(components.manifest) !==
+    JSON.stringify(built.components?.manifest)
+  )
+    throw new Error("Components changed after the build");
   const receipt = {
     root: realpathSync(plan.root),
     version: plan.version,
     fingerprint: fingerprint(plan),
     target: built.target,
+    layout: relative(
+      realpathSync(plan.metadata.target_directory),
+      realpathSync(built.outputDir),
+    ),
     executable: realpathSync(built.executable),
     sha256: fileSha256(built.executable),
+    components: components.manifest,
+    componentsSha256: createHash("sha256")
+      .update(`${JSON.stringify(components.manifest, null, 2)}\n`)
+      .digest("hex"),
   };
   const file = receiptPath(plan);
   const temporary = `${file}.${randomUUID()}.tmp`;
@@ -70,6 +94,23 @@ export function loadPortableBuild(plan) {
       realpathSync(plan.metadata.target_directory),
       executable,
     );
+    const layout = relative(
+      realpathSync(plan.metadata.target_directory),
+      dirname(executable),
+    );
+    if (
+      typeof receipt.target !== "string" ||
+      !/^[a-zA-Z0-9_-]+$/.test(receipt.target) ||
+      receipt.layout !== layout ||
+      !["release", join(receipt.target, "release")].includes(layout)
+    )
+      throw new Error("Invalid portable receipt target or output layout");
+    if (plan.explicitTarget && plan.explicitTarget !== receipt.target)
+      throw new Error(
+        "The requested target differs from the portable receipt target",
+      );
+    configureBuildTarget(plan, receipt.target);
+    const components = inspectComponents(plan, dirname(executable));
     if (
       !offset ||
       offset === ".." ||
@@ -78,7 +119,13 @@ export function loadPortableBuild(plan) {
       receipt.root !== realpathSync(plan.root) ||
       receipt.version !== plan.version ||
       receipt.fingerprint !== fingerprint(plan) ||
-      receipt.sha256 !== fileSha256(executable)
+      receipt.sha256 !== fileSha256(executable) ||
+      JSON.stringify(receipt.components) !==
+        JSON.stringify(components.manifest) ||
+      receipt.componentsSha256 !==
+        createHash("sha256")
+          .update(`${JSON.stringify(components.manifest, null, 2)}\n`)
+          .digest("hex")
     ) {
       throw new Error("The version, configuration, or executable has changed");
     }
@@ -86,6 +133,7 @@ export function loadPortableBuild(plan) {
       executable,
       outputDir: dirname(executable),
       target: receipt.target,
+      components,
     };
   } catch (error) {
     throw new Error(

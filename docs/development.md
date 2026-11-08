@@ -23,6 +23,10 @@ pnpm app:dev
 
 首次桌面启动编译 Rust 依赖，后续复用缓存；前端由 Vite 热更新。`pnpm dev` 在 `http://localhost:1420` 启动浏览器预览，系统服务使用桌面环境。当前能力见 [产品范围](./product-scope.md)。
 
+`pnpm app:dev` 在同一次 Cargo 构建中准备 Host 和 CLI，从构建结果取得可执行文件路径，直接运行 CLI 的 `catalog --json` 完成认证就绪后再启动 Tauri。准备失败会保留终端诊断并停止启动。Host 独立于 GUI，关闭桌面窗口后仍可运行。
+
+准备阶段与桌面沿用同一环境和 `src-tauri` 工作目录，使用现有默认 profile 或 `SWB_PROFILE`；相对 `SWB_PROFILE` 也从该目录解析。Tauri target、release 以及 Cargo 的 target、target-dir、构建 profile、config 参数继续同步到准备构建，原参数原样交给 Tauri。Cargo `[env]` / `--config env.SWB_PROFILE=...` 注入运行环境、Tauri 配置内 runner 或自定义 cwd 的组合尚未验证；命令行自定义 runner 仍被拒绝。
+
 ## 开发流程
 
 日常流程见 [贡献指南](../CONTRIBUTING.md)，模块职责见 [架构](./architecture.md)。跨模块、数据兼容、权限、窗口生命周期或发布恢复变化，先按 [设计门槛](./engineering-at-scale.md#设计评审与-adr-门槛) 说明影响。
@@ -43,7 +47,7 @@ Host 公共 DTO 在 `crates/core` 维护。修改 wire 类型后顺序运行 `pn
 cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins
 ```
 
-程序位于 Cargo target 的 `debug/`，默认是 `src-tauri/target/debug/`；Windows 文件名带 `.exe`。CLI 和 MCP 先认证附着同 profile 的 Host，首次使用会启动同目录的 Host 程序。三个程序应放在一起。Windows 的工具或 IDE 若通过 Job 禁止子进程脱离，会返回 `HOST_START_FAILED`；此时先在独立终端运行 `serial-workbench-host --profile <绝对目录>`，再让客户端连接同一 profile。
+程序位于 Cargo target 的 `debug/`，默认是 `src-tauri/target/debug/`；Windows 文件名带 `.exe`。CLI 和 MCP 先认证附着同 profile 的 Host，首次使用会启动同目录的 Host 程序。三个程序应放在一起。正常 `pnpm app:dev` 会自动完成上述 Host 准备。若外层工具或 IDE 的 Windows Job 禁止独立启动，准备阶段仍会返回 `HOST_START_FAILED`；排查该环境时，可在允许独立启动的终端运行 `serial-workbench-host --profile <绝对目录>`，再让客户端连接同一 profile。
 
 CLI 的完整参数与退出码见 `serial-workbench-cli --help` 和[参数入口](../crates/cli/src/args.rs)。结果写成单个 JSON 到 stdout，诊断写 stderr。首次认证仅有元数据权限，`authorize` / `revoke` 是明确的本地用户控制入口；参数使用 [Core 授权类型](../crates/core/src/auth.rs)，普通查询和调用不自动读取用户控制凭据。
 

@@ -19,6 +19,9 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2", features = [] }
 
 [dependencies]
+serial-workbench-client = { path = "../crates/client" }
+serial-workbench-core = { path = "../crates/core" }
+serial-workbench-ipc = { path = "../crates/ipc" }
 tauri = { version = "2", features = ["tray-icon"] }
 tauri-plugin-opener = "2"
 tauri-plugin-dialog = "2"
@@ -32,6 +35,7 @@ log = "0.4"
 # 原生命令、持久化快照和生成的 IPC 契约共享 serde 数据模型。
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
+chrono = { version = "0.4", default-features = false, features = ["std"] }
 specta = { version = "=2.0.0-rc.25", features = ["derive"] }
 specta-typescript = "=0.0.12"
 tauri-specta = { version = "=2.0.0-rc.25", features = ["typescript"] }
@@ -43,6 +47,10 @@ minisign-verify = "0.3"
 sha2 = "0.10"
 tokio = { version = "1", features = ["sync", "time"] }
 image = { version = "=0.25.10", default-features = false, features = ["jpeg", "png", "webp"] }
+
+[dev-dependencies]
+serial-workbench-host = { path = "../crates/host" }
+tokio = { version = "1", features = ["rt", "macros"] }
 
 # 单实例只在桌面端有意义，移动端不编译这个 crate
 [target.'cfg(not(any(target_os = "android", target_os = "ios")))'.dependencies]

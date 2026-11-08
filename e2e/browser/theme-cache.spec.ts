@@ -1,3 +1,4 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 import { expect, test } from "@playwright/test";
 import appConfig from "../../app.config.json" with { type: "json" };
 
@@ -5,6 +6,7 @@ test("另一个标签页的主题缓存不会覆盖当前偏好或引发主题�
   page,
   context,
 }) => {
+  await seedBrowserSettings(page);
   await page.goto("./#/settings");
   await page
     .locator("#settings-theme")
@@ -26,7 +28,7 @@ test("另一个标签页的主题缓存不会覆盖当前偏好或引发主题�
             Number(document.documentElement.dataset.themeCacheEvents) + 1,
           );
       });
-    }, `${appConfig.browserStorageNamespace}:theme`);
+    }, `${appConfig.browserStorageNamespace}:preview-theme-v0`);
   await page
     .locator("#settings-theme")
     .getByRole("button", { name: "Dark", exact: true })
@@ -48,8 +50,8 @@ test("另一个标签页的主题缓存不会覆盖当前偏好或引发主题�
   await expect(page.locator("html")).toHaveClass(/dark/);
   expect(
     await page.evaluate(
-      (key) => JSON.parse(localStorage.getItem(key) ?? "{}").theme,
-      `${appConfig.browserStorageNamespace}:settings`,
+      (key) => JSON.parse(localStorage.getItem(key) ?? "{}").value.theme,
+      `${appConfig.browserStorageNamespace}:preview-settings-v0`,
     ),
   ).toBe("dark");
   await other.reload();

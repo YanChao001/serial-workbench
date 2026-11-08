@@ -1,6 +1,6 @@
 # Serial Workbench
 
-Serial Workbench（`serial-workbench`）是面向嵌入式开发与设备调试的跨平台串口工作台，使用 Tauri 2、Rust、React 19 与 TypeScript 开发。当前桌面提供空白工作区、设置、诊断恢复与系统窗口能力；独立 Rust Host 已接入系统串口、PTY 与 Virtual 设备、原始录制和只读回放、文件发送、共享文档 CAS、持久操作、本机 IPC、CLI 与官方 MCP SDK。桌面工作区与 Node 插件体系继续开发。
+Serial Workbench（`serial-workbench`）是面向嵌入式开发与设备调试的跨平台串口工作台，使用 Tauri 2、Rust、React 19 与 TypeScript 开发。桌面工作台提供连接管理、文本与 HEX 收发、录制与只读回放、文件发送和显式保存的工作区布局；独立 Rust Host 统一管理系统串口、PTY、Virtual 设备、本机 IPC、CLI 与官方 MCP SDK。软件验收范围与后续里程碑见 [产品范围](./docs/product-scope.md)。
 
 关注 Serial Studio（`serial-studio`）等串口工具的开发者，可从 [产品范围](./docs/product-scope.md) 了解本项目的当前能力与开发阶段。
 

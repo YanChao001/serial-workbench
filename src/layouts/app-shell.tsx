@@ -12,7 +12,7 @@ import { WindowBackground } from "@/components/window-background";
 import { useSettings } from "@/providers/settings";
 import { useCommands } from "@/providers/commands";
 import { ImmersiveNavigation } from "@/components/immersive-navigation";
-import { APP_ROUTES } from "@/routes";
+import { APP_ROUTES, matchRoute } from "@/routes";
 import { isTauri } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 import { SIDEBAR_COLLAPSED_WIDTH } from "@/lib/settings-model";
@@ -24,6 +24,7 @@ import { RouteErrorBoundary } from "@/components/route-error-boundary";
 /** 感知路由的应用布局；页面失败时保留导航能力 */
 export function AppShell() {
   const { pathname } = useLocation();
+  const contentLayout = matchRoute(pathname).contentLayout ?? "document";
   const { settings } = useSettings();
   const [sidebarPreviewWidth, setSidebarPreviewWidth] = useState<number | null>(
     null,
@@ -63,10 +64,11 @@ export function AppShell() {
       <AppSidebar routes={routes} onWidthPreview={setSidebarPreviewWidth} />
       <main
         ref={content}
+        data-content-layout={contentLayout}
         className="app-main app-scroll-region outline-none focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
         tabIndex={0}
       >
-        <div className="app-page-content">
+        <div className="app-page-content" data-content-layout={contentLayout}>
           <Suspense key={pathname} fallback={<PageLoading />}>
             <RouteErrorBoundary>
               <Outlet />

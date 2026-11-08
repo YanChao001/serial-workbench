@@ -782,6 +782,7 @@ impl TransmissionService {
             },
         };
         let receipt = intent.receipt(&settlement)?;
+        session.record_tx(&receipt, self.devices.inner.clock.mono_ns())?;
         session
             .source
             .complete_tx(&intent, self.devices.meta(session)?, settlement)?;

@@ -61,17 +61,19 @@ Rust 命令和 DTO 是 IPC 类型来源，统一在 `bindings.rs` 注册。签�
 
 ## 数据存储
 
-| 数据           | 位置与边界                                                                 |
-| -------------- | -------------------------------------------------------------------------- |
-| 设置           | `appConfigDir/settings.json`；原子写入、revision、损坏备份及未来格式保护   |
-| 窗口与路由恢复 | `appConfigDir/workspace.json`；主 / 次窗口的允许路由与次窗口打开状态       |
-| 壁纸图库       | `appDataDir/wallpapers.json`；浏览器使用独立IndexedDB                      |
-| 壁纸视频       | 图库同级 `wallpaper-media/` 管理副本；浏览器保存Blob，设置只保存引用和封面 |
-| 日志与缓存     | `appLogDir`轮换日志，缓存只用于呈现和可再生内容                            |
+| 数据           | 位置与边界                                                                                 |
+| -------------- | ------------------------------------------------------------------------------------------ |
+| 设置           | `appConfigDir/settings.json`；原子写入、revision、损坏备份及未来格式保护                   |
+| 窗口与路由恢复 | `appConfigDir/workspace.json`；主 / 次窗口的允许路由与次窗口打开状态                       |
+| 壁纸图库       | `appConfigDir/client-state-v0.json` 的窗口 gallery；仅保存 Host ObjectRef 与名称           |
+| 自选图片与视频 | Host 登记用户选择的文件；共享背景仅保存固定 ObjectRef 与显示方式，播放票据属于当前窗口实例 |
+| 日志与缓存     | `appLogDir`轮换日志，缓存只用于呈现和可再生内容                                            |
 
 原生目录由 Tauri 路径 API 决定。默认设置恢复只替换设置，保留图库、日志及其他用户文件。
 
-图库与当前背景分开保存，删除条目不立即删除媒体。视频保存受控内容副本，播放期间复核窗口与内容ID。垃圾回收只处理确定无引用且过了导入保护期的副本，损坏、未来存档或引用读取失败时拒绝清理。具体预算与格式见 [wallpapers.rs](../src-tauri/src/wallpapers.rs)、[wallpaper_video.rs](../src-tauri/src/wallpaper_video.rs) 和 [video-wallpaper.ts](../src/lib/video-wallpaper.ts)。
+图库名称与条目属于客户端窗口状态；当前背景属于 Host 共享设置。删除图库条目只移除该元数据，不删除 Host 对象或用户原文件。原生选择器把实际文件登记为固定引用，不把路径、Data URI 或本地播放 URL 写入共享设置；原文件移动或变化后，旧引用读取失败。图片与视频共用 [文件入口](../src-tauri/src/file_resource_commands.rs) 和 [媒体协议](../src-tauri/src/media_protocol.rs)，每段读取都由 Host 复核当前权限和固定内容，协议按窗口实例与连接代次管理临时票据。响应在分配前取得名额和字节预算，释放票据不提前回收仍在运行的工作预算。
+
+浏览器未连接媒体传输入口时保留已有背景选择，不伪造 Host 引用。若使用本地 Blob 预览，其 URL 只属于当前实例并在结束时释放；浏览器 Host 媒体传输在后续阶段接入。
 
 内置图片由 [resources/wallpapers](../resources/wallpapers/README.md) 自动收录，设置使用稳定相对身份，不保存构建URL。皮肤资源与用户图库分开，规则见 [皮肤资源](../resources/skins/README.md)。
 

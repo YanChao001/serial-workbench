@@ -1,21 +1,30 @@
 use tauri_specta::{Builder, collect_commands};
 
 use crate::commands;
-use crate::wallpaper_commands;
-use crate::{lifecycle, recovery, system_commands};
+use crate::{
+    file_resource_commands, host_bridge, lifecycle, media_protocol, recovery, system_commands,
+};
 
 pub fn builder() -> Builder<tauri::Wry> {
     Builder::new()
         .commands(collect_commands![
             crate::file_commands::save_text_export,
-            wallpaper_commands::list_wallpapers,
-            wallpaper_commands::choose_wallpaper_video,
-            wallpaper_commands::add_wallpaper,
-            wallpaper_commands::rename_wallpaper,
-            wallpaper_commands::remove_wallpaper,
-            commands::load_settings_snapshot,
-            commands::save_settings_snapshot,
-            commands::reset_settings_snapshot,
+            file_resource_commands::choose_file_resource,
+            media_protocol::media_resolve,
+            media_protocol::media_release,
+            commands::client_state_read,
+            commands::client_state_save,
+            commands::apply_host_settings_effects,
+            host_bridge::host_attachment,
+            host_bridge::host_connect_device,
+            host_bridge::document_intents::host_apply_document_intent,
+            host_bridge::host_request,
+            host_bridge::host_subscribe,
+            host_bridge::host_unsubscribe,
+            host_bridge::host_raw_request,
+            host_bridge::host_raw_subscribe,
+            host_bridge::host_raw_unsubscribe,
+            host_bridge::host_delivery_ack,
             commands::open_secondary_window,
             commands::complete_frontend_startup,
             commands::get_window_geometry,
@@ -48,4 +57,8 @@ pub fn builder() -> Builder<tauri::Wry> {
 pub fn export(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
     builder().export(specta_typescript::Typescript::default(), path)?;
     Ok(())
+}
+
+pub fn export_client_defaults(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {
+    crate::client_state::export_defaults(path)
 }

@@ -31,6 +31,8 @@ export type AppRoute = {
   group: NavigationGroup;
   icon: LucideIcon;
   component: PageComponent;
+  /** 内容区布局；默认文档流，工作台占满可用高度并在内部滚动。 */
+  contentLayout?: "document" | "workspace";
   /** 导航意图只预载模块，不挂载页面或执行数据 / 原生操作。 */
   preload?: () => void;
   /**
@@ -72,6 +74,7 @@ export const APP_ROUTES: AppRoute[] = [
     group: "experience",
     icon: LayoutDashboardIcon,
     ...lazyPage(() => import("@/pages/overview")),
+    contentLayout: "workspace",
     index: true,
     exact: true,
   },

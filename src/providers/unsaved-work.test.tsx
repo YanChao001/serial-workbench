@@ -11,6 +11,8 @@ import * as native from "@/lib/tauri";
 import { toast } from "sonner";
 import {
   UnsavedWorkProvider,
+  UnsavedWorkScope,
+  useRequestLeave,
   useUnsavedWork,
   type UnsavedWork,
 } from "./unsaved-work";
@@ -43,6 +45,22 @@ function deferred() {
   });
   return { promise, resolve, reject };
 }
+function CloseTool({
+  scope,
+  signal,
+  onResult,
+}: {
+  scope: string;
+  signal?: AbortSignal;
+  onResult: (allowed: boolean) => void;
+}) {
+  const requestLeave = useRequestLeave();
+  return (
+    <button onClick={() => void requestLeave(scope, signal).then(onResult)}>
+      Close tool
+    </button>
+  );
+}
 describe("unsaved work lifecycle", () => {
   let request: ((value: native.LifecycleRequest) => void) | undefined;
   let finished: ((id: number) => void) | undefined;
@@ -62,6 +80,313 @@ describe("unsaved work lifecycle", () => {
     );
   });
   afterEach(cleanup);
+  it("settles only the requested scope and leaves other work registered", async () => {
+    const saved: string[] = [];
+    const result = vi.fn();
+    render(
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work
+            work={{
+              id: "editor",
+              label: "Editor draft",
+              dirty: true,
+              save: async () => {
+                saved.push("editor");
+              },
+              discard: () => {},
+            }}
+          />
+        </UnsavedWorkScope>
+        <UnsavedWorkScope scope="transfer">
+          <Work
+            work={{
+              id: "transfer",
+              label: "Transfer draft",
+              dirty: true,
+              save: async () => {
+                saved.push("transfer");
+              },
+              discard: () => {},
+            }}
+          />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Editor draft");
+    expect(screen.getByRole("dialog")).not.toHaveTextContent("Transfer draft");
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    await waitFor(() => expect(result).toHaveBeenCalledWith(true));
+    expect(saved).toEqual(["editor"]);
+    expect(native.respondLifecycle).not.toHaveBeenCalled();
+    expect(native.setWindowWorkState).toHaveBeenLastCalledWith([
+      "Transfer draft",
+    ]);
+  });
+  it("cancels a scoped close without removing the draft", async () => {
+    const result = vi.fn();
+    render(
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work
+            work={{
+              id: "editor",
+              label: "Editor draft",
+              dirty: true,
+              save: async () => {},
+              discard: () => {},
+            }}
+          />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(result).toHaveBeenCalledWith(false));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Editor draft");
+  });
+  it("waits for scoped discard and keeps a new edit registered during save", async () => {
+    const saving = deferred();
+    const result = vi.fn();
+    const first = {
+      id: "editor",
+      label: "Editor draft",
+      dirty: true,
+      save: () => saving.promise,
+      discard: () => {},
+    };
+    const tree = (work: UnsavedWork) => (
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work work={work} />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>
+    );
+    const view = render(tree(first));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    const removal = deferred();
+    view.rerender(
+      tree({
+        ...first,
+        label: "New editor draft",
+        discard: () => removal.promise,
+      }),
+    );
+    await act(async () => saving.resolve());
+    expect(result).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("New editor draft");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard and continue" }),
+    );
+    expect(result).not.toHaveBeenCalled();
+    await act(async () => removal.resolve());
+    await waitFor(() => expect(result).toHaveBeenCalledWith(true));
+  });
+  it("aborts scoped waiting and ignores its late result after a native request", async () => {
+    const saving = deferred();
+    const result = vi.fn();
+    let writes = 0;
+    let saveSignal: AbortSignal | undefined;
+    render(
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work
+            work={{
+              id: "editor",
+              label: "Editor draft",
+              dirty: true,
+              save: (signal) => {
+                saveSignal = signal;
+                writes++;
+                return saving.promise;
+              },
+              discard: () => {},
+            }}
+          />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    act(() => request?.({ id: 50, action: "quit", windows: ["main"] }));
+    await waitFor(() => expect(result).toHaveBeenCalledWith(false));
+    expect(saveSignal?.aborted).toBe(true);
+    expect(screen.getByRole("button", { name: "Saving…" })).toBeDisabled();
+    expect(writes).toBe(1);
+    await act(async () => saving.resolve());
+    expect(native.respondLifecycle).not.toHaveBeenCalled();
+    expect(screen.getByRole("dialog")).toHaveTextContent("Editor draft");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard and continue" }),
+    );
+    await waitFor(() =>
+      expect(native.respondLifecycle).toHaveBeenCalledWith(50, true),
+    );
+    expect(result).toHaveBeenCalledTimes(1);
+  });
+  it("resolves false on external abort and scope unmount while retaining work", async () => {
+    const controller = new AbortController();
+    const result = vi.fn();
+    const work = {
+      id: "editor",
+      label: "Editor draft",
+      dirty: true,
+      save: async () => {},
+      discard: () => {},
+    };
+    const tree = (show: boolean, signal?: AbortSignal) => (
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" signal={signal} onResult={result} />
+        {show && (
+          <UnsavedWorkScope scope="editor">
+            <Work work={work} />
+          </UnsavedWorkScope>
+        )}
+      </UnsavedWorkProvider>
+    );
+    const view = render(tree(true, controller.signal));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    act(() => controller.abort());
+    await waitFor(() => expect(result).toHaveBeenLastCalledWith(false));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    view.rerender(tree(true));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    view.rerender(tree(false));
+    await waitFor(() => expect(result).toHaveBeenCalledTimes(2));
+    expect(result).toHaveBeenLastCalledWith(false);
+    act(() => request?.({ id: 60, action: "quit", windows: ["main"] }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Editor draft");
+  });
+  it("allows an empty scope without a dialog and rejects an already aborted caller", async () => {
+    const result = vi.fn();
+    const controller = new AbortController();
+    const tree = (signal?: AbortSignal) => (
+      <UnsavedWorkProvider>
+        <CloseTool scope="empty" signal={signal} onResult={result} />
+      </UnsavedWorkProvider>
+    );
+    const view = render(tree());
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    await waitFor(() => expect(result).toHaveBeenLastCalledWith(true));
+    expect(screen.queryByRole("dialog")).not.toBeInTheDocument();
+    controller.abort();
+    view.rerender(tree(controller.signal));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    await waitFor(() => expect(result).toHaveBeenLastCalledWith(false));
+  });
+  it("retains scoped work after a failed save and resolves cancellation on provider unmount", async () => {
+    const result = vi.fn();
+    const view = render(
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work
+            work={{
+              id: "editor",
+              label: "Editor draft",
+              dirty: true,
+              save: async () => {
+                throw new Error("Save rejected");
+              },
+              discard: () => {},
+            }}
+          />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent("Save rejected");
+    expect(screen.getByRole("dialog")).toHaveTextContent("Editor draft");
+    expect(result).not.toHaveBeenCalled();
+    view.unmount();
+    await waitFor(() => expect(result).toHaveBeenCalledWith(false));
+    expect(native.respondLifecycle).not.toHaveBeenCalled();
+  });
+  it("keeps an aborted save locked until it settles and leaves the next close undecided", async () => {
+    const saving = deferred();
+    const controller = new AbortController();
+    const result = vi.fn();
+    let writes = 0;
+    const work = {
+      id: "editor",
+      label: "Editor draft",
+      dirty: true,
+      save: () => {
+        writes++;
+        return saving.promise;
+      },
+      discard: () => {},
+    };
+    const tree = (signal?: AbortSignal) => (
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" signal={signal} onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work work={work} />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>
+    );
+    const view = render(tree(controller.signal));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    act(() => controller.abort());
+    await waitFor(() => expect(result).toHaveBeenCalledWith(false));
+    view.rerender(tree());
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    await waitFor(() => expect(result).toHaveBeenCalledTimes(2));
+    expect(result.mock.calls).toEqual([[false], [false]]);
+    await act(async () => saving.resolve());
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Editor draft");
+    expect(result).toHaveBeenCalledTimes(2);
+    expect(writes).toBe(1);
+  });
+  it("rejects a scoped close while the native lifecycle owns the save", async () => {
+    const saving = deferred();
+    const result = vi.fn();
+    let writes = 0;
+    render(
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work
+            work={{
+              id: "editor",
+              label: "Editor draft",
+              dirty: true,
+              save: () => {
+                writes++;
+                return saving.promise;
+              },
+              discard: () => {},
+            }}
+          />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>,
+    );
+    const close = screen.getByRole("button", { name: "Close tool" });
+    act(() => request?.({ id: 70, action: "quit", windows: ["main"] }));
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    fireEvent.click(close);
+    await waitFor(() => expect(result).toHaveBeenCalledWith(false));
+    expect(screen.getByRole("dialog")).toHaveAttribute(
+      "data-lifecycle-request",
+      "70",
+    );
+    expect(writes).toBe(1);
+    await act(async () => saving.resolve());
+    await waitFor(() =>
+      expect(native.respondLifecycle).toHaveBeenCalledWith(70, true),
+    );
+    expect(result).toHaveBeenCalledTimes(1);
+  });
   it("reports a background subscription error once with a toast retry action and removes it on unmount", async () => {
     vi.mocked(native.onLifecycleRequest).mockRejectedValueOnce(
       new Error("Cannot listen"),

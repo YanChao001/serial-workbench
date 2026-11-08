@@ -17,6 +17,7 @@ export function NativePage({
   children: ReactNode;
 }) {
   const { t } = useI18n();
+  const NoticeHeading = compact || !title ? "h2" : "h3";
   return (
     <div className="studio-page">
       {compact ? (
@@ -31,7 +32,9 @@ export function NativePage({
         children
       ) : (
         <section className="studio-panel p-5">
-          <h3 className="text-sm font-medium">{t("native.required")}</h3>
+          <NoticeHeading className="text-sm font-medium">
+            {t("native.required")}
+          </NoticeHeading>
           <p className="mt-2 text-sm text-muted-foreground">
             {t("native.description")}
           </p>

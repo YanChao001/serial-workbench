@@ -1,4 +1,8 @@
-import { STORAGE_KEY } from "@/lib/settings-model";
+﻿import {
+  STORAGE_KEY,
+  DEFAULT_SETTINGS,
+  settingsDocument,
+} from "@/lib/settings-model";
 import type { ReactNode } from "react";
 import { cleanup, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
@@ -15,7 +19,7 @@ describe("ErrorBoundary", () => {
     delete document.documentElement.dataset.language;
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ language: "zh" }),
+      JSON.stringify(settingsDocument({ ...DEFAULT_SETTINGS, language: "zh" })),
     );
     vi.spyOn(console, "error").mockImplementation(() => {});
   });
@@ -55,7 +59,7 @@ describe("ErrorBoundary", () => {
   it("provider 不可用时仍按已选英文显示错误入口", () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ language: "en" }),
+      JSON.stringify(settingsDocument({ ...DEFAULT_SETTINGS, language: "en" })),
     );
     render(
       <ErrorBoundary>

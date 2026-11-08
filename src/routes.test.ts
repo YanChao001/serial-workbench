@@ -23,6 +23,18 @@ describe("路由配置与匹配", () => {
     expect(matchRoute("/desktop-tools").path).toBe("/");
     expect(matchRoute("/unknown").path).toBe("/");
   });
+  it("仅工作台声明满高布局，设置子页沿用文档布局默认值", () => {
+    expect(matchRoute("/")).toMatchObject({ contentLayout: "workspace" });
+    expect(
+      APP_ROUTES.filter(
+        (route) =>
+          "contentLayout" in route && route.contentLayout === "workspace",
+      ).map(({ path }) => path),
+    ).toEqual(["/"]);
+    expect(matchRoute("/settings/appearance")).not.toHaveProperty(
+      "contentLayout",
+    );
+  });
   it("只展示工作区与设置，诊断和恢复保留为设置内入口", () => {
     expect(
       APP_ROUTES.filter((route) => !route.hidden).map((route) => route.path),

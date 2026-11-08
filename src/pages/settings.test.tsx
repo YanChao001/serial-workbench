@@ -7,17 +7,93 @@ import { MemoryRouter } from "react-router-dom";
 import { I18nProvider } from "@/providers/i18n";
 import { DEFAULT_SETTINGS, SettingsProvider } from "@/providers/settings";
 import Settings from "./settings";
-import { SETTINGS_VERSION } from "@/lib/settings-model";
+import { defaults } from "@serial-workbench/contracts";
+import {
+  DEFAULT_CLIENT_STATE,
+  browserClientStateStore,
+} from "@/lib/client-settings";
+import type { SettingsBackend } from "@/lib/settings-sync";
+import type {
+  ClientStateSnapshot,
+  ClientPreferences,
+} from "@/lib/generated/bindings";
 import { settingsDocument } from "@/lib/settings-model";
 import * as desktop from "@/lib/tauri";
 import { toast } from "sonner";
+import userEvent from "@testing-library/user-event";
+import { searchSettings } from "@/commands/settings-search";
+import { createTranslator } from "@/i18n/translate";
+import { en } from "@/i18n/en";
+import { zhCN } from "@/i18n/zh-CN";
+import {
+  UnsavedWorkProvider,
+  UnsavedWorkScope,
+  useRequestLeave,
+} from "@/providers/unsaved-work";
 
-function SettingsView({ initial = "/settings" }: { initial?: string }) {
+const host = vi.hoisted(() => ({
+  read: vi.fn<SettingsBackend["read"]>(),
+  save: vi.fn<SettingsBackend["save"]>(),
+  subscribe: vi.fn<SettingsBackend["subscribe"]>(),
+  revision: "1",
+}));
+vi.mock("@/lib/host-settings", () => ({
+  createHostSettingsBackend: () => ({
+    ...host,
+    markExplicitEdit() {},
+    dispose() {},
+  }),
+}));
+vi.mock("@/providers/host-context", async () => {
+  const { createContext } = await import("react");
+  return {
+    HostContext: createContext({
+      connection: { attachment: { hostId: "host", instanceEpoch: "1" } },
+      state: { status: "ready", error: null },
+    }),
+  };
+});
+const clientSnapshot = (
+  preferences: Partial<ClientPreferences> = {},
+): ClientStateSnapshot => ({
+  formatVersion: "0.1",
+  revision: "1",
+  state: {
+    ...DEFAULT_CLIENT_STATE,
+    preferences: { ...DEFAULT_CLIENT_STATE.preferences, ...preferences },
+  },
+});
+
+function LeaveSettings({ onLeave }: { onLeave: (allowed: boolean) => void }) {
+  const requestLeave = useRequestLeave();
+  return (
+    <button onClick={() => void requestLeave("settings-test").then(onLeave)}>
+      Leave settings
+    </button>
+  );
+}
+
+function SettingsView({
+  initial = "/settings",
+  onLeave,
+}: {
+  initial?: string;
+  onLeave?: (allowed: boolean) => void;
+}) {
   return (
     <MemoryRouter initialEntries={[initial]}>
       <SettingsProvider>
         <I18nProvider>
-          <Settings />
+          {onLeave ? (
+            <UnsavedWorkProvider>
+              <UnsavedWorkScope scope="settings-test">
+                <Settings />
+                <LeaveSettings onLeave={onLeave} />
+              </UnsavedWorkScope>
+            </UnsavedWorkProvider>
+          ) : (
+            <Settings />
+          )}
         </I18nProvider>
       </SettingsProvider>
     </MemoryRouter>
@@ -40,10 +116,9 @@ vi.mock("@/lib/tauri", () => ({
   resetWindowGeometry: vi.fn(),
   onWindowResized: vi.fn(),
   onWindowMoved: vi.fn(),
-  loadSettingsSnapshot: vi.fn(),
-  saveSettingsSnapshot: vi.fn(),
-  resetSettingsSnapshot: vi.fn(),
-  onSettingsChanged: vi.fn(),
+  readClientState: vi.fn(),
+  saveClientState: vi.fn(),
+  applyHostSettingsEffects: vi.fn(),
   getDesktopStatus: vi.fn(),
   getAutostartEnabled: vi.fn(),
   setAutostartEnabled: vi.fn(),
@@ -53,12 +128,14 @@ vi.mock("@/lib/tauri", () => ({
   getUpdateSnapshot: vi.fn(),
   onUpdateProgress: vi.fn(),
   relaunchApp: vi.fn(),
+  onLifecycleRequest: vi.fn(async () => () => {}),
+  onLifecycleFinished: vi.fn(async () => () => {}),
+  onLifecycleExecuting: vi.fn(async () => () => {}),
+  setWindowWorkState: vi.fn(async () => {}),
+  respondLifecycle: vi.fn(async () => {}),
 }));
-vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
-vi.mock("@/lib/wallpaper-library", async (importOriginal) => ({
-  ...(await importOriginal<typeof import("@/lib/wallpaper-library")>()),
-  listWallpaperLibrary: vi.fn().mockResolvedValue([]),
-  onWallpaperLibraryChanged: vi.fn().mockResolvedValue(() => {}),
+vi.mock("sonner", () => ({
+  toast: { success: vi.fn(), error: vi.fn(), dismiss: vi.fn() },
 }));
 
 const geometry: desktop.WindowGeometry = {
@@ -99,24 +176,38 @@ describe("设置页", () => {
     vi.mocked(desktop.resetWindowGeometry).mockResolvedValue(geometry);
     vi.mocked(desktop.onWindowResized).mockResolvedValue(vi.fn());
     vi.mocked(desktop.onWindowMoved).mockResolvedValue(vi.fn());
-    vi.mocked(desktop.onSettingsChanged).mockResolvedValue(vi.fn());
-    vi.mocked(desktop.loadSettingsSnapshot).mockResolvedValue({
-      revision: 1,
-      settings: settingsDocument(DEFAULT_SETTINGS),
+    host.revision = "1";
+    host.read.mockResolvedValue({ revision: "1", value: defaults.settings });
+    host.subscribe.mockResolvedValue(() => {});
+    host.save.mockImplementation(async (value, revision) => {
+      host.revision = String(BigInt(revision) + 1n);
+      return { revision: host.revision, value };
     });
-    vi.mocked(desktop.saveSettingsSnapshot).mockImplementation(
-      async (settings, revision) => ({
-        revision: revision + 1,
-        settings: settings as desktop.SettingsSnapshot["settings"],
+    vi.mocked(desktop.readClientState).mockResolvedValue(clientSnapshot());
+    vi.mocked(desktop.saveClientState).mockImplementation(
+      async (state, revision) => ({
+        formatVersion: "0.1",
+        revision: String(BigInt(revision) + 1n),
+        state,
       }),
     );
-    vi.mocked(desktop.resetSettingsSnapshot).mockImplementation(
-      async (settings, revision) => ({ revision: revision + 1, settings }),
+    vi.mocked(desktop.applyHostSettingsEffects).mockImplementation(
+      async () => ({
+        hostId: "host",
+        instanceEpoch: "1",
+        revision: host.revision,
+        effects: {
+          trayLanguage: true,
+          networkMode: true,
+          runInBackground: true,
+        },
+      }),
     );
+    sessionStorage.clear();
     window.localStorage.clear();
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ language: "zh" }),
+      JSON.stringify(settingsDocument(DEFAULT_SETTINGS)),
     );
     Element.prototype.scrollIntoView = vi.fn();
   });
@@ -124,6 +215,240 @@ describe("设置页", () => {
     cleanup();
     vi.restoreAllMocks();
     Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  });
+  it("终端排版使用生成默认，四字段经键盘保存并保留其他终端设置", async () => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    host.read.mockResolvedValue({
+      revision: "1",
+      value: {
+        ...defaults.settings,
+        terminal: {
+          receiveMode: "hex",
+          sendMode: "hex",
+          lineEnding: { kind: "crlf" },
+        },
+      },
+    });
+    render(<SettingsView />);
+    await screen.findByText("当前尺寸 1120 × 740");
+    const family = screen.getByRole("textbox", { name: "终端字体" });
+    const size = screen.getByRole("spinbutton", { name: "终端字号（px）" });
+    const height = screen.getByRole("spinbutton", { name: "终端行高（%）" });
+    const ligatures = screen.getByRole("switch", { name: "终端连字" });
+    expect(family).toHaveValue("ui-monospace");
+    expect(size).toHaveValue(14);
+    expect(height).toHaveValue(150);
+    expect(ligatures).not.toBeChecked();
+    expect(family).toHaveAccessibleDescription(/本机.*等宽/);
+    const user = userEvent.setup();
+    await user.click(family);
+    await user.clear(family);
+    await user.type(family, "Cascadia Code, monospace");
+    expect(host.save).not.toHaveBeenCalled();
+    await user.keyboard("{Enter}");
+    await waitFor(() => expect(host.save).toHaveBeenCalledTimes(1));
+    await user.click(size);
+    await user.clear(size);
+    await user.type(size, "18");
+    await user.tab();
+    await waitFor(() => expect(host.save).toHaveBeenCalledTimes(2));
+    expect(height).toHaveFocus();
+    await user.clear(height);
+    await user.type(height, "180");
+    await user.tab();
+    await waitFor(() => expect(host.save).toHaveBeenCalledTimes(3));
+    expect(ligatures).toHaveFocus();
+    await user.keyboard(" ");
+    await waitFor(() => expect(host.save).toHaveBeenCalledTimes(4));
+    expect(host.save.mock.calls.at(-1)?.[0].terminal).toEqual({
+      receiveMode: "hex",
+      sendMode: "hex",
+      lineEnding: { kind: "crlf" },
+      typography: {
+        fontFamily: "Cascadia Code, monospace",
+        fontSize: 18,
+        lineHeightPercent: 180,
+        ligatures: true,
+      },
+    });
+    expect(screen.getByRole("combobox", { name: "字体" })).toBeInTheDocument();
+    expect(
+      screen.getByRole("radiogroup", { name: "字号" }),
+    ).toBeInTheDocument();
+  });
+
+  it.each([
+    ["终端字号（px）", "8", 8],
+    ["终端字号（px）", "48", 48],
+    ["终端行高（%）", "100", 100],
+    ["终端行高（%）", "300", 300],
+  ])("终端排版接受边界 %s %s", async (label, value, expected) => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    render(<SettingsView />);
+    await screen.findByText("当前尺寸 1120 × 740");
+    const input = screen.getByRole("spinbutton", { name: label });
+    fireEvent.change(input, { target: { value } });
+    fireEvent.blur(input);
+    await waitFor(() => expect(host.save).toHaveBeenCalledOnce());
+    expect(
+      host.save.mock.calls[0]?.[0].terminal.typography?.[
+        label === "终端字号（px）" ? "fontSize" : "lineHeightPercent"
+      ],
+    ).toBe(expected);
+  });
+
+  it.each([
+    ["终端字体", ""],
+    ["终端字体", "   "],
+    ["终端字体", "a\u007fb"],
+    ["终端字体", "😀".repeat(129)],
+    ["终端字号（px）", ""],
+    ["终端字号（px）", "0"],
+    ["终端字号（px）", "7"],
+    ["终端字号（px）", "49"],
+    ["终端字号（px）", "14.5"],
+    ["终端行高（%）", "99"],
+    ["终端行高（%）", ""],
+    ["终端行高（%）", "0"],
+    ["终端行高（%）", "301"],
+    ["终端行高（%）", "150.5"],
+  ])("非法终端排版 %s %s 保留草稿且零保存，可复原", async (label, value) => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    render(<SettingsView />);
+    await screen.findByText("当前尺寸 1120 × 740");
+    const input = screen.getByLabelText(label, { exact: true });
+    fireEvent.change(input, { target: { value } });
+    fireEvent.blur(input);
+    expect(input).toHaveAttribute("aria-invalid", "true");
+    expect(screen.getByRole("alert")).toBeVisible();
+    expect(screen.getByRole("button", { name: "应用终端排版" })).toBeDisabled();
+    expect(host.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "复原终端排版" }));
+    expect(input).toHaveAttribute("aria-invalid", "false");
+    expect(host.save).not.toHaveBeenCalled();
+  });
+
+  it("外部更新刷新未编辑字段，保留本地草稿并合并最新终端设置", async () => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    let changed!: Parameters<SettingsBackend["subscribe"]>[0];
+    host.subscribe.mockImplementation(async (listener) => {
+      changed = listener;
+      return () => {};
+    });
+    render(<SettingsView />);
+    await screen.findByText("当前尺寸 1120 × 740");
+    const family = screen.getByRole("textbox", { name: "终端字体" });
+    fireEvent.change(family, { target: { value: "Draft Mono" } });
+    act(() =>
+      changed({
+        revision: "2",
+        value: {
+          ...defaults.settings,
+          terminal: {
+            receiveMode: "hex",
+            sendMode: "text",
+            lineEnding: { kind: "lf" },
+            typography: {
+              fontFamily: "External Mono",
+              fontSize: 24,
+              lineHeightPercent: 200,
+              ligatures: true,
+            },
+          },
+        },
+      }),
+    );
+    expect(family).toHaveValue("Draft Mono");
+    expect(
+      screen.getByRole("spinbutton", { name: "终端字号（px）" }),
+    ).toHaveValue(24);
+    expect(
+      screen.getByRole("spinbutton", { name: "终端行高（%）" }),
+    ).toHaveValue(200);
+    expect(screen.getByRole("switch", { name: "终端连字" })).toBeChecked();
+    expect(host.save).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("button", { name: "应用终端排版" }));
+    await waitFor(() => expect(host.save).toHaveBeenCalledOnce());
+    expect(host.save.mock.calls[0]).toEqual([
+      expect.objectContaining({
+        terminal: {
+          receiveMode: "hex",
+          sendMode: "text",
+          lineEnding: { kind: "lf" },
+          typography: {
+            fontFamily: "Draft Mono",
+            fontSize: 24,
+            lineHeightPercent: 200,
+            ligatures: true,
+          },
+        },
+      }),
+      "2",
+    ]);
+  });
+
+  it("终端排版搜索中英可达且深链聚焦区域", () => {
+    for (const [dict, query] of [
+      [zhCN, "终端行高"],
+      [en, "terminal ligatures"],
+    ] as const)
+      expect(
+        searchSettings(query, createTranslator(dict)).map((entry) => entry.id),
+      ).toContain("terminalTypography");
+    render(<SettingsView initial="/settings?focus=terminalTypography" />);
+    expect(screen.getByRole("group", { name: "终端排版" })).toHaveFocus();
+  });
+
+  it("终端排版草稿经实际离页协商阻止非法保存，取消保留且明确放弃才复原", async () => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    const onLeave = vi.fn();
+    render(<SettingsView onLeave={onLeave} />);
+    await screen.findByText("当前尺寸 1120 × 740");
+    const input = screen.getByRole("spinbutton", { name: "终端字号（px）" });
+    fireEvent.change(input, { target: { value: "" } });
+    fireEvent.click(screen.getByRole("button", { name: "Leave settings" }));
+    const dialog = within(await screen.findByRole("dialog"));
+    expect(dialog.getByText("终端排版")).toBeVisible();
+    fireEvent.click(dialog.getByRole("button", { name: "保存并继续" }));
+    await waitFor(() => expect(dialog.getByRole("alert")).toBeVisible());
+    expect(host.save).not.toHaveBeenCalled();
+    expect(onLeave).not.toHaveBeenCalled();
+    fireEvent.click(dialog.getByRole("button", { name: "取消" }));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(input).toHaveValue(null);
+    expect(onLeave).toHaveBeenLastCalledWith(false);
+    fireEvent.click(screen.getByRole("button", { name: "Leave settings" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "放弃并继续",
+      }),
+    );
+    await waitFor(() => expect(onLeave).toHaveBeenLastCalledWith(true));
+    expect(input).toHaveValue(14);
+    expect(host.save).not.toHaveBeenCalled();
+  });
+
+  it("终端排版未失焦的合法草稿可经实际离页协商提交", async () => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    const onLeave = vi.fn();
+    render(<SettingsView onLeave={onLeave} />);
+    await screen.findByText("当前尺寸 1120 × 740");
+    fireEvent.change(screen.getByRole("textbox", { name: "终端字体" }), {
+      target: { value: "😀".repeat(128) },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Leave settings" }));
+    fireEvent.click(
+      within(await screen.findByRole("dialog")).getByRole("button", {
+        name: "保存并继续",
+      }),
+    );
+    await waitFor(() => expect(onLeave).toHaveBeenCalledWith(true));
+    await waitFor(() => expect(host.save).toHaveBeenCalledOnce());
+    expect(host.save.mock.calls[0]?.[0].terminal.typography?.fontFamily).toBe(
+      "😀".repeat(128),
+    );
   });
   it("诊断恢复使用可聚焦的设置分组，并保留浏览器提示", () => {
     render(<SettingsView initial="/settings?section=recovery" />);
@@ -157,7 +482,7 @@ describe("设置页", () => {
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       "浏览器自行管理连接方式，仅桌面版可修改此项。",
     );
-    expect(desktop.saveSettingsSnapshot).not.toHaveBeenCalled();
+    expect(host.save).not.toHaveBeenCalled();
   });
 
   it("桌面网络连接通过宿主设置保存，可在直连和系统代理间切换", async () => {
@@ -169,17 +494,17 @@ describe("设置页", () => {
     fireEvent.keyDown(connection, { key: "Enter" });
     fireEvent.click(screen.getByRole("option", { name: "直接连接" }));
     await waitFor(() =>
-      expect(
-        vi.mocked(desktop.saveSettingsSnapshot).mock.calls.at(-1)?.[0],
-      ).toMatchObject({ networkMode: "direct" }),
+      expect(host.save.mock.calls.at(-1)?.[0]).toMatchObject({
+        networkMode: "direct",
+      }),
     );
     expect(connection).toHaveTextContent("直接连接");
     fireEvent.keyDown(connection, { key: "Enter" });
     fireEvent.click(screen.getByRole("option", { name: "系统代理" }));
     await waitFor(() =>
-      expect(
-        vi.mocked(desktop.saveSettingsSnapshot).mock.calls.at(-1)?.[0],
-      ).toMatchObject({ networkMode: "system" }),
+      expect(host.save.mock.calls.at(-1)?.[0]).toMatchObject({
+        networkMode: "system",
+      }),
     );
     expect(connection).toHaveTextContent("系统代理");
   });
@@ -221,7 +546,7 @@ describe("设置页", () => {
     ).toHaveTextContent("English");
     expect(document.documentElement.lang).toBe("en");
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toMatchObject(
-      { language: "en" },
+      { value: { language: "en" } },
     );
     expect(screen.getByRole("button", { name: "Dark" })).toHaveAttribute(
       "aria-pressed",
@@ -229,19 +554,18 @@ describe("设置页", () => {
     );
   });
 
-  it("内置图片默认选中，切换后只持久化文件身份且保留独立用户图库", () => {
+  it("内置图片选择持久化稳定身份且保留独立用户图库", () => {
     render(<SettingsView />);
     const wallpaper = screen.getByRole("radio", {
       name: "使用壁纸：秋日花饰少女",
     });
-    expect(wallpaper).toBeChecked();
+    expect(wallpaper).not.toBeChecked();
     fireEvent.click(screen.getByRole("radio", { name: "纯色" }));
     expect(wallpaper).not.toBeChecked();
     fireEvent.click(wallpaper);
     expect(wallpaper).toBeChecked();
     expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toMatchObject({
-      background: "bundled:001-秋日花饰少女.jpg",
-      customBackground: null,
+      value: { background: { kind: "bundled", id: "bundled:001" } },
     });
     expect(
       screen.queryByRole("button", { name: "删除壁纸：秋日花饰少女" }),
@@ -251,20 +575,23 @@ describe("设置页", () => {
   it("重置外观时保留用户语言并恢复其余默认偏好", async () => {
     window.localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({
-        language: "en",
-        accent: "rose",
-        font: "mono",
-        motion: "reduced",
-        menuBar: false,
-        background: "sakura",
-        backgroundIntensity: "strong",
-      }),
+      JSON.stringify(
+        settingsDocument({
+          ...DEFAULT_SETTINGS,
+          language: "en",
+          accent: "rose",
+          font: "mono",
+          motion: "reduced",
+          menuBar: false,
+          background: { kind: "preset", value: "sakura" },
+          backgroundIntensity: 80,
+        }),
+      ),
     );
     render(<SettingsView />);
     fireEvent.click(screen.getByRole("button", { name: "Reset preferences" }));
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toMatchObject(
-      { accent: "rose", font: "mono" },
+      { value: { accent: "rose", font: "mono" } },
     );
     fireEvent.click(
       within(screen.getByRole("dialog")).getByRole("button", {
@@ -272,7 +599,7 @@ describe("设置页", () => {
       }),
     );
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toMatchObject(
-      { accent: "rose", font: "mono" },
+      { value: { accent: "rose", font: "mono" } },
     );
     fireEvent.click(screen.getByRole("button", { name: "Reset preferences" }));
     fireEvent.click(
@@ -285,11 +612,9 @@ describe("设置页", () => {
     );
     expect(document.documentElement.lang).toBe("en");
     expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
-    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual({
-      schemaVersion: SETTINGS_VERSION,
-      ...DEFAULT_SETTINGS,
-      language: "en",
-    });
+    expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toEqual(
+      settingsDocument({ ...DEFAULT_SETTINGS, language: "en" }),
+    );
   });
 
   it("皮肤与强度即时生效、持久化，并在纯色皮肤下禁用强度", () => {
@@ -388,7 +713,11 @@ describe("设置页", () => {
     ).toBeDisabled();
     for (const button of presets.getAllByRole("button"))
       expect(button).toBeDisabled();
-    expect(screen.queryByRole("spinbutton")).not.toBeInTheDocument();
+    expect(
+      within(document.getElementById("settings-window")!).queryByRole(
+        "spinbutton",
+      ),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByRole("button", { name: "应用窗口大小" }),
     ).not.toBeInTheDocument();
@@ -404,9 +733,11 @@ describe("设置页", () => {
     expect(desktop.getWindowGeometry).not.toHaveBeenCalled();
     expect(screen.getByRole("radio", { name: "记住上次位置" })).toBeChecked();
     fireEvent.click(screen.getByRole("radio", { name: "居中" }));
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!)).toMatchObject({
-      windowPosition: "center",
-    });
+    await waitFor(() =>
+      expect(
+        browserClientStateStore().read().state.preferences.windowPosition,
+      ).toBe("center"),
+    );
     expect(desktop.setWindowSize).not.toHaveBeenCalled();
     expect(desktop.resetWindowGeometry).not.toHaveBeenCalled();
   });
@@ -663,11 +994,9 @@ describe("设置页", () => {
     render(<SettingsView />);
     await screen.findByText("当前尺寸 1120 × 740");
     fireEvent.click(screen.getByRole("radio", { name: "居中" }));
-    await waitFor(() =>
-      expect(desktop.saveSettingsSnapshot).toHaveBeenCalled(),
-    );
+    await waitFor(() => expect(desktop.saveClientState).toHaveBeenCalled());
     expect(
-      vi.mocked(desktop.saveSettingsSnapshot).mock.calls.at(-1)?.[0],
+      vi.mocked(desktop.saveClientState).mock.calls.at(-1)?.[0].preferences,
     ).toMatchObject({
       windowPosition: "center",
     });
@@ -678,15 +1007,11 @@ describe("设置页", () => {
 
   it("恢复默认大小并保留当前位置，等待偏好持久化成功后才关闭确认框", async () => {
     vi.mocked(desktop.isTauri).mockReturnValue(true);
-    vi.mocked(desktop.loadSettingsSnapshot).mockResolvedValue({
-      revision: 1,
-      settings: settingsDocument({
-        ...DEFAULT_SETTINGS,
-        windowPosition: "center",
-      }),
-    });
-    let finishSave!: (snapshot: desktop.SettingsSnapshot) => void;
-    vi.mocked(desktop.resetSettingsSnapshot).mockImplementation(
+    vi.mocked(desktop.readClientState).mockResolvedValue(
+      clientSnapshot({ windowPosition: "center" }),
+    );
+    let finishSave!: (snapshot: ClientStateSnapshot) => void;
+    vi.mocked(desktop.saveClientState).mockImplementation(
       () =>
         new Promise((resolve) => {
           finishSave = resolve;
@@ -700,20 +1025,16 @@ describe("设置页", () => {
     const dialog = confirmReset();
     expect(dialog.queryByRole("checkbox")).not.toBeInTheDocument();
     fireEvent.click(dialog.getByRole("button", { name: "重置偏好" }));
-    await waitFor(() =>
-      expect(desktop.resetSettingsSnapshot).toHaveBeenCalledOnce(),
-    );
+    await waitFor(() => expect(desktop.saveClientState).toHaveBeenCalledOnce());
     expect(desktop.resetWindowGeometry).toHaveBeenCalledExactlyOnceWith(false);
     expect(screen.getByRole("dialog")).toBeVisible();
     expect(toast.success).not.toHaveBeenCalled();
-    expect(
-      vi.mocked(desktop.resetSettingsSnapshot).mock.calls[0]?.[0],
-    ).toMatchObject({
-      windowPosition: "remember",
-    });
-    await act(async () =>
-      finishSave({ revision: 2, settings: settingsDocument(DEFAULT_SETTINGS) }),
+    expect(vi.mocked(desktop.saveClientState).mock.calls[0]?.[0]).toMatchObject(
+      {
+        preferences: { windowPosition: "remember" },
+      },
     );
+    await act(async () => finishSave({ ...clientSnapshot(), revision: "2" }));
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
@@ -739,8 +1060,8 @@ describe("设置页", () => {
     expect(dialog.queryByRole("alert")).not.toBeInTheDocument();
     expect(screen.getByRole("dialog")).toBeVisible();
     expect(desktop.resetWindowGeometry).toHaveBeenCalledExactlyOnceWith(false);
-    expect(desktop.saveSettingsSnapshot).not.toHaveBeenCalled();
-    expect(desktop.resetSettingsSnapshot).not.toHaveBeenCalled();
+    expect(host.save).not.toHaveBeenCalled();
+    expect(desktop.saveClientState).not.toHaveBeenCalled();
     expect(screen.getByText("当前尺寸 1280 × 800")).toBeInTheDocument();
     expect(toast.success).not.toHaveBeenCalled();
   });
@@ -752,7 +1073,7 @@ describe("设置页", () => {
       width: 1280,
       height: 800,
     });
-    vi.mocked(desktop.resetSettingsSnapshot).mockRejectedValue({
+    vi.mocked(desktop.saveClientState).mockRejectedValue({
       code: "STORAGE_IO",
     });
     render(<SettingsView />);

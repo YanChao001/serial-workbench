@@ -89,6 +89,21 @@ pub struct CaptureSummary {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CaptureStorageLimits {
+    pub capacity_bytes: PositiveU64,
+    pub reserve_bytes: U64,
+}
+impl Default for CaptureStorageLimits {
+    fn default() -> Self {
+        Self {
+            capacity_bytes: PositiveU64::try_from(U64::from(1_073_741_824))
+                .expect("positive default capture capacity"),
+            reserve_bytes: 134_217_728.into(),
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptureStartParams {
     pub session_refs: Vec<Target>,
     pub target_ref: ObjectRef,
@@ -105,6 +120,14 @@ pub struct CaptureStartParams {
     #[schemars(with = "Digest")]
     #[specta(type=Digest,optional)]
     pub expected_fingerprint: Option<Digest>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "CaptureStorageLimits")]
+    #[specta(type=CaptureStorageLimits,optional)]
+    pub storage_limits: Option<CaptureStorageLimits>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

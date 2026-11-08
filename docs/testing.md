@@ -151,6 +151,8 @@ pnpm test:e2e --interactive --skip-build
 
 手动输入 `desktop_e2e` 默认开启，真实窗口只在独立 GitHub runner 执行。显式关闭时，质量门禁只允许桌面 job 跳过，并在运行摘要记录选择；其余 job 的失败、取消、缺失或跳过均使门禁失败。构建日志记录本次 SHA 与四目标结果，浏览器报告及桌面失败日志按 job 上传。四平台全量运行成功是里程碑 CI 验收；真串口硬件、72 小时稳定性、正式安装包、签名与公开发布使用各自验收流程。
 
+Ubuntu Rust job 还在独立 network namespace 内以原 runner 用户执行正式六场景及 600 秒负载，场景前后核验 namespace、UID 和双栈无地址/路由证据，再由 namespace 外的步骤上传原件。构建与依赖下载先完成；不操作本机网络，不缩短或跳过场景。入口与证据边界见 [M1 软件场景验证](./m1-software-validation.md#ubuntu-ci-显式离线验证)。
+
 [依赖审计](../.github/workflows/audit.yml) 同样手动运行，停止自动创建依赖升级 PR。需要的升级由维护者按里程碑集中处理，验证后将实现、测试、审阅修正和配套文档合入同一个中文提交，再经 PR squash 交付。
 
 发布与 Pages 模板的状态、审查和启用步骤见 [停用目录说明](../.github/workflows-disabled/README.md)。

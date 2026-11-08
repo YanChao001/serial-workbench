@@ -26,3 +26,18 @@ pub struct RevokeParams {
     pub permissions: Vec<String>,
     pub targets: Vec<Target>,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActionCheckParams {
+    pub action_id: Id,
+    pub params: JsonObject,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActionCheckResult {
+    pub action_id: Id,
+    pub target: Target,
+    pub allowed: bool,
+}

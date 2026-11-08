@@ -41,6 +41,13 @@ impl VerifiedCapture {
         Ok(())
     }
     pub(crate) fn read_verified_record(&mut self, position: usize) -> HostResult<CaptureRecord> {
+        self.read_verified_record_bytes(position)
+            .map(|(record, _)| record)
+    }
+    pub(crate) fn read_verified_record_bytes(
+        &mut self,
+        position: usize,
+    ) -> HostResult<(CaptureRecord, Vec<u8>)> {
         let location = self.index.records.get(position).ok_or_else(changed)?;
         let file = self
             .volume_files
@@ -50,7 +57,7 @@ impl VerifiedCapture {
         if self.record_digests.get(position) != Some(&json_digest(&json)) {
             return Err(changed());
         }
-        Ok(record)
+        Ok((record, json))
     }
 }
 /// Trusted synchronous observation points for deterministic copy fault injection.

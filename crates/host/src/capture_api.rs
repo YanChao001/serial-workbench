@@ -106,12 +106,25 @@ impl CaptureApi {
                 )
                 .await
             }
+            BuiltinAction::CaptureTail => {
+                let params: CaptureTailParams = decode(params)?;
+                reference_target(target, &params.capture_ref)?;
+                self.require_file(&params.capture_ref, actor, "content.read")
+                    .await
+            }
             BuiltinAction::CaptureRecover => {
                 let params: RecoverPrefixParams = decode(params)?;
                 reference_target(target, &params.target_ref)?;
-                // The private verification lease revalidates its saved source in recover_prefix.
                 self.require_file(&params.target_ref, actor, "workspace.modify")
-                    .await
+                    .await?;
+                let captures = self.captures.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    captures
+                        .recovery_authorization_target(&params, &actor, "content.read")
+                        .map(|_| ())
+                })
+                .await
             }
             BuiltinAction::CaptureExport => {
                 let params: TextExportParams = decode(params)?;
@@ -201,6 +214,9 @@ impl CaptureApi {
             BuiltinAction::CaptureStatus => {
                 let params: CaptureVerifyParams = decode(&query.params)?;
                 QueryResult::CaptureStatus(self.status(&params.capture_ref, actor).await?)
+            }
+            BuiltinAction::CaptureTail => {
+                QueryResult::CaptureTail(self.captures.tail(decode(&query.params)?, actor).await?)
             }
             BuiltinAction::ReplayRead => {
                 QueryResult::ReplayRead(self.replays.read(decode(&query.params)?, actor).await?)

@@ -108,11 +108,14 @@ pub struct StreamCursorResult {
     deny_unknown_fields
 )]
 pub enum QueryResult {
+    ActionCheck(ActionCheckResult),
+    WorkspaceImportPreview(WorkspaceDocument),
     ClientEffect(ClientEffectResult),
     Clients(ClientListResult),
     HostMetrics(HostMetrics),
     StartupConfig(StartupConfigSnapshot),
     CaptureStatus(CaptureStatusResult),
+    CaptureTail(CaptureTailResult),
     ReplayRead(ReplayReadResult),
     Recent(RecentList),
     FileMetadata(FileMetadata),
@@ -128,6 +131,8 @@ pub enum QueryResult {
     StreamCredit(StreamCreditResult),
     Devices(DeviceList),
     Session(SessionSnapshot),
+    SessionMetrics(SessionMetrics),
+    SessionInputs(SessionInputs),
     Queue(QueueStatus),
     Catalog(CatalogListResult),
     Operation(Box<OperationResult>),
@@ -180,9 +185,130 @@ impl RpcRequest {
             | "file.read"
             | "transfer.receiptsRead"
             | "operation.input"
+            | "capture.tail"
             | "replay.read" => RequestChannel::Raw,
             "subscription.close" => RequestChannel::Either,
             _ => RequestChannel::Control,
         })
+    }
+}
+
+impl BuiltinAction {
+    /// Pure wire validation shared by normal admission and permission checks.
+    /// Execution state, leases and CAS remain the responsibility of execution.
+    pub fn validate_query_params(self, query: &Query) -> HostResult<()> {
+        fn decode<T: serde::de::DeserializeOwned>(params: &JsonObject) -> HostResult<T> {
+            serde_json::from_value(serde_json::to_value(params).map_err(|_| invalid())?)
+                .map_err(|_| invalid())
+        }
+        fn invalid() -> HostError {
+            HostError::new(
+                "INVALID_ARGUMENT",
+                "Action parameters or target identity are invalid",
+            )
+        }
+        macro_rules! typed {
+            ($ty:ty) => {{
+                let _: $ty = decode(&query.params)?;
+            }};
+        }
+        match self {
+            Self::ActionCheck => typed!(ActionCheckParams),
+            Self::Client(capability) => {
+                ClientEffectAction::from_params(capability, &query.params)?;
+            }
+            Self::HostMetrics => typed!(HostMetricsParams),
+            Self::CaptureStart => typed!(CaptureStartParams),
+            Self::CaptureStop => typed!(CaptureStopParams),
+            Self::CaptureStatus | Self::CaptureVerify => typed!(CaptureVerifyParams),
+            Self::CaptureTail => typed!(CaptureTailParams),
+            Self::CaptureRecover => typed!(RecoverPrefixParams),
+            Self::CaptureExport => typed!(TextExportParams),
+            Self::ReplayOpen => typed!(ReplayOpenParams),
+            Self::ReplayRead => typed!(ReplayReadParams),
+            Self::ReplayControl => typed!(ReplayControlParams),
+            Self::DeviceRebind => typed!(RebindParams),
+            Self::FavoritesSave => typed!(FavoritesSaveParams),
+            Self::FileRegister => typed!(RegisterFileParams),
+            Self::FileMetadata => typed!(FileMetadataParams),
+            Self::FileRead => typed!(FileReadParams),
+            Self::TransferReceiptsRead => typed!(FileTransferReceiptsParams),
+            Self::TransferFile => typed!(FileTransferParams),
+            Self::SettingsSave => typed!(SettingsSaveParams),
+            Self::WorkspaceSave => typed!(WorkspaceSaveParams),
+            Self::SettingsImport | Self::WorkspaceImport | Self::WorkspaceImportPreview => {
+                typed!(DocumentImportParams)
+            }
+            Self::CatalogList => typed!(CatalogListParams),
+            Self::OperationGet => typed!(OperationGetParams),
+            Self::OperationInput => typed!(OperationInputParams),
+            Self::OperationCancel => typed!(OperationCancelParams),
+            Self::StateSnapshot => typed!(StateSnapshotParams),
+            Self::StateSubscribe => typed!(StateSubscribeParams),
+            Self::SubscriptionClose => typed!(SubscriptionCloseParams),
+            Self::Authorize => typed!(AuthorizeParams),
+            Self::Revoke => typed!(RevokeParams),
+            Self::DeviceOpen => typed!(OpenParams),
+            Self::SessionTx => typed!(TxParams),
+            Self::SessionConfigure => typed!(ConfigureParams),
+            Self::SessionControl => typed!(ControlParams),
+            Self::SessionBreak => typed!(BreakParams),
+            Self::SessionSetReadOnly => typed!(SetReadOnlyParams),
+            Self::SessionTakeover => typed!(TakeoverParams),
+            Self::LeaseAcquire => typed!(LeaseAcquireParams),
+            Self::LeaseRenew => typed!(LeaseRenewParams),
+            Self::LeaseRelease => typed!(LeaseReleaseParams),
+            Self::TxWaitBoundary => typed!(WaitBoundaryParams),
+            Self::TxDrain => typed!(DrainParams),
+            Self::SessionPurge => typed!(PurgeParams),
+            Self::StreamRead => {
+                let params: StreamReadParams = decode(&query.params)?;
+                if params.session_id != query.target.id
+                    || Some(params.session_epoch) != query.target.session_epoch
+                {
+                    return Err(invalid());
+                }
+            }
+            Self::StreamSubscribe => {
+                let params: StreamSubscribeParams = decode(&query.params)?;
+                if params.scope_id.as_str()
+                    != format!(
+                        "raw:{}:{}",
+                        query.target.id,
+                        query.target.session_epoch.ok_or_else(invalid)?
+                    )
+                    || params.after.scope_id != params.scope_id
+                    || params.after.host_id != query.host_id
+                    || params.after.instance_epoch != query.instance_epoch
+                {
+                    return Err(invalid());
+                }
+            }
+            Self::StreamCredit => typed!(StreamCreditParams),
+            Self::StateScopes => {
+                typed!(EmptyParams);
+                if query.target.id != query.host_id {
+                    return Err(invalid());
+                }
+            }
+            Self::ClientList
+            | Self::StartupConfigGet
+            | Self::ReplayClose
+            | Self::DeviceRefresh
+            | Self::RecentList
+            | Self::StreamCursor
+            | Self::SettingsRead
+            | Self::SettingsExport
+            | Self::WorkspaceRead
+            | Self::WorkspaceExport
+            | Self::DeviceList
+            | Self::SessionGet
+            | Self::SessionMetrics
+            | Self::SessionInputs
+            | Self::SessionClose
+            | Self::TxQueueStatus
+            | Self::HostShutdown => typed!(EmptyParams),
+        }
+        Ok(())
     }
 }

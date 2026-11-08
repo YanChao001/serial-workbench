@@ -1,77 +1,78 @@
-import {
-  isRecord,
-  normalizeSettings,
-  normalizeSettingsPatch,
-  settingsDocument,
-  type AppSettings,
-} from "./settings-model";
+﻿import type {
+  SharedSettings,
+  SettingsSnapshot,
+  U64,
+} from "@serial-workbench/contracts";
 
 export type PersistenceStatus = "loading" | "saving" | "saved" | "error";
-export type SettingsSnapshot = { revision: number; settings: unknown };
-export type SettingsBackend = {
-  load(): Promise<SettingsSnapshot>;
-  save(
-    settings: ReturnType<typeof settingsDocument>,
-    revision: number,
-  ): Promise<SettingsSnapshot>;
-  reset(
-    settings: ReturnType<typeof settingsDocument>,
-    revision: number,
-  ): Promise<SettingsSnapshot>;
-  subscribe(handler: (snapshot: SettingsSnapshot) => void): Promise<() => void>;
-};
-type State = {
-  settings: AppSettings;
+export type SettingsState<T = SharedSettings> = {
+  settings: T;
+  revision: U64 | undefined;
   status: PersistenceStatus;
   error: string | null;
 };
-const codeOf = (error: unknown) =>
-  isRecord(error) && typeof error.code === "string"
+export type SettingsDocument<T> = Pick<SettingsSnapshot, "revision"> & {
+  value: T;
+};
+export type SettingsBackend<T = SharedSettings> = {
+  read(): Promise<SettingsDocument<T>>;
+  save(value: T, expectedRevision: U64): Promise<SettingsDocument<T>>;
+  subscribe(
+    listener: (snapshot: SettingsDocument<T>) => void,
+    failed?: (error: unknown) => void,
+  ): Promise<() => void>;
+};
+export const settingsErrorCode = (error: unknown): string =>
+  typeof error === "object" &&
+  error !== null &&
+  "code" in error &&
+  typeof error.code === "string"
     ? error.code
     : "STORAGE_UNAVAILABLE";
 
-/** 保留本地字段变更，直至基于版本校验的写入成功，避免被远端快照覆盖。 */
-export class SettingsSync {
-  private base: AppSettings;
-  private pending: Partial<AppSettings> = {};
-  private inFlight: Partial<AppSettings> = {};
-  private revision = -1;
-  private ready = false;
+/** Host owns the document; this client only retains unsaved field edits. */
+export class SettingsSync<T extends object = SharedSettings> {
+  private base: T;
+  private pending: Partial<T> = {};
+  private inFlight: Partial<T> = {};
+  private revision: U64 | undefined;
+  private stopped = false;
   private saving = false;
   private loading = false;
-  private stopped = false;
-  private blocked = false;
-  private needsSeed = false;
-  private resetPending = false;
   private error: string | null = null;
-  private initialization: Promise<void> | null = null;
-  private unlisten?: () => void;
+  private initialization: Promise<void> | undefined;
+  private unlisten: (() => void) | undefined;
+  private subscriptionGeneration = 0;
   private completions = new Set<{
-    resolve: () => void;
-    reject: (error: { code: string }) => void;
+    resolve(): void;
+    reject(error: { code: string }): void;
   }>();
 
   constructor(
-    initial: AppSettings,
-    private backend: SettingsBackend,
-    private changed: (state: State) => void,
+    initial: T,
+    private backend: SettingsBackend<T>,
+    private changed: (state: SettingsState<T>) => void,
   ) {
     this.base = initial;
   }
-
-  private settings() {
+  private settings(): T {
     return { ...this.base, ...this.inFlight, ...this.pending };
   }
   private emit() {
     if (this.stopped) return;
     const status: PersistenceStatus = this.error
       ? "error"
-      : this.loading || !this.ready
+      : this.loading || this.revision === undefined
         ? "loading"
-        : this.saving || this.needsSeed || Object.keys(this.pending).length
+        : this.saving || Object.keys(this.pending).length
           ? "saving"
           : "saved";
-    this.changed({ settings: this.settings(), status, error: this.error });
+    this.changed({
+      settings: this.settings(),
+      revision: this.revision,
+      status,
+      error: this.error,
+    });
     if (status === "saved" || status === "error") {
       for (const completion of this.completions) {
         if (this.error) completion.reject({ code: this.error });
@@ -81,186 +82,132 @@ export class SettingsSync {
     }
   }
   private fail(error: unknown) {
-    this.error = codeOf(error);
-    if (this.error === "FUTURE_SETTINGS_VERSION") this.blocked = true;
+    this.error = settingsErrorCode(error);
     this.emit();
   }
-
-  private accept(snapshot: SettingsSnapshot) {
-    if (!Number.isSafeInteger(snapshot.revision) || snapshot.revision < 0)
-      throw new Error("Invalid settings revision");
-    if (snapshot.revision <= this.revision) return;
-    const first = this.revision < 0;
-    let next: AppSettings;
-    try {
-      next = normalizeSettings(snapshot.settings);
-    } catch (error) {
-      // 保留版本号，确保显式重置可以安全替换更高版本的结构。
-      if (codeOf(error) === "FUTURE_SETTINGS_VERSION")
-        this.revision = snapshot.revision;
-      throw error;
-    }
-    this.revision = snapshot.revision;
+  private accept(snapshot: SettingsDocument<T>) {
     if (
-      first &&
-      isRecord(snapshot.settings) &&
-      Object.keys(snapshot.settings).length === 0
-    ) {
-      // 新建原生存档时，仅用现有浏览器偏好初始化一次。
-      this.needsSeed = true;
-    } else {
-      this.base = next;
-      this.needsSeed = false;
-    }
-    if (this.blocked) {
-      this.blocked = false;
-      this.error = null;
-      this.ready = true;
-    }
+      !/^(0|[1-9][0-9]*)$/.test(snapshot.revision) ||
+      BigInt(snapshot.revision) > 18446744073709551615n
+    )
+      throw { code: "INVALID_DOCUMENT" };
+    if (
+      this.revision !== undefined &&
+      BigInt(snapshot.revision) <= BigInt(this.revision)
+    )
+      return;
+    this.revision = snapshot.revision;
+    this.base = snapshot.value;
   }
-
   start(): Promise<void> {
-    if (this.stopped || this.ready) return Promise.resolve();
+    if (this.stopped || this.revision !== undefined) return Promise.resolve();
     return this.initialize();
   }
-
   private initialize(): Promise<void> {
     if (this.initialization) return this.initialization;
     this.loading = true;
-    if (!this.blocked) this.error = null;
+    this.error = null;
     this.emit();
-    const operation = async () => {
-      if (this.stopped) return;
-      try {
-        if (!this.unlisten) {
-          const stop = await this.backend.subscribe((snapshot) => {
-            if (this.stopped) return;
-            try {
-              this.accept(snapshot);
-              this.emit();
-              void this.flush();
-            } catch (error) {
-              this.fail(error);
-            }
-          });
-          if (this.stopped) {
-            stop();
-            return;
-          }
-          this.unlisten = stop;
-        }
-        const snapshot = await this.backend.load();
-        if (this.stopped) return;
-        this.accept(snapshot);
-        this.ready = true;
-      } catch (error) {
-        if (!this.stopped) this.fail(error);
-      } finally {
-        this.loading = false;
-        this.emit();
-      }
-      await this.flush();
-    };
     this.initialization = Promise.resolve()
-      .then(operation)
+      .then(async () => {
+        if (this.stopped) return;
+        try {
+          if (!this.unlisten) {
+            const generation = ++this.subscriptionGeneration;
+            const failed = (error: unknown) => {
+              if (this.stopped || generation !== this.subscriptionGeneration)
+                return;
+              this.subscriptionGeneration++;
+              this.unlisten?.();
+              this.unlisten = undefined;
+              this.fail(error);
+            };
+            const stop = await this.backend.subscribe((snapshot) => {
+              if (this.stopped || generation !== this.subscriptionGeneration)
+                return;
+              try {
+                this.accept(snapshot);
+                this.emit();
+              } catch (error) {
+                failed(error);
+              }
+            }, failed);
+            if (this.stopped || generation !== this.subscriptionGeneration) {
+              stop();
+              return;
+            }
+            this.unlisten = stop;
+          }
+          const snapshot = await this.backend.read();
+          if (this.stopped) return;
+          this.accept(snapshot);
+        } catch (error) {
+          if (!this.stopped) this.fail(error);
+        } finally {
+          this.loading = false;
+          this.emit();
+        }
+        await this.flush();
+      })
       .finally(() => {
-        this.initialization = null;
+        this.initialization = undefined;
       });
     return this.initialization;
   }
-
-  update(patch: Partial<AppSettings>) {
+  update(patch: Partial<T>) {
     if (this.stopped) return;
-    this.pending = {
-      ...this.pending,
-      ...normalizeSettingsPatch(this.settings(), patch),
-    };
+    this.pending = { ...this.pending, ...patch };
     this.emit();
     void this.flush();
   }
-
-  reset(settings: AppSettings): Promise<void> {
-    if (this.stopped) return Promise.reject({ code: "STORAGE_UNAVAILABLE" });
-    const completion = new Promise<void>((resolve, reject) => {
-      this.completions.add({ resolve, reject });
-    });
-    this.blocked = false;
-    this.error = null;
-    this.pending = normalizeSettings(settings);
-    this.resetPending = true;
-    if (this.revision >= 0 && this.unlisten) this.ready = true;
-    this.emit();
-    if (!this.ready) void this.initialize();
-    else void this.flush();
-    return completion;
-  }
-
   async retry() {
     if (this.stopped || this.saving) return;
     await this.initialize();
   }
-
+  replace(value: T): Promise<void> {
+    if (this.stopped) return Promise.reject({ code: "STORAGE_UNAVAILABLE" });
+    if (this.error) return Promise.reject({ code: this.error });
+    const completed = new Promise<void>((resolve, reject) => {
+      this.completions.add({ resolve, reject });
+    });
+    this.update(value);
+    return completed;
+  }
   private async flush() {
     if (
-      !this.ready ||
+      this.stopped ||
       this.loading ||
       this.saving ||
-      this.stopped ||
-      this.blocked ||
-      this.error
+      this.error ||
+      this.revision === undefined
     )
       return;
     this.saving = true;
-    let conflicts = 0;
     try {
-      while (
-        !this.stopped &&
-        !this.blocked &&
-        !this.error &&
-        (this.needsSeed || Object.keys(this.pending).length)
-      ) {
-        const seeding = this.needsSeed;
-        const resetting = this.resetPending;
-        this.needsSeed = false;
-        this.resetPending = false;
+      while (!this.stopped && !this.error && Object.keys(this.pending).length) {
         this.inFlight = this.pending;
         this.pending = {};
         this.emit();
-        const revision = this.revision;
         try {
-          const snapshot = await this.backend[resetting ? "reset" : "save"](
-            settingsDocument(this.settings()),
-            revision,
+          const snapshot = await this.backend.save(
+            this.settings(),
+            this.revision,
           );
           if (this.stopped) return;
           this.accept(snapshot);
           this.inFlight = {};
-          conflicts = 0;
         } catch (error) {
-          this.resetPending ||= resetting;
-          this.needsSeed ||= seeding && this.revision === revision;
           this.pending = { ...this.inFlight, ...this.pending };
           this.inFlight = {};
-          if (this.stopped) return;
-          if (codeOf(error) === "SETTINGS_CONFLICT" && conflicts++ < 3) {
-            const snapshot = await this.backend.load();
-            if (this.stopped) return;
-            this.accept(snapshot);
-            continue;
-          }
-          this.fail(error);
+          if (!this.stopped) this.fail(error);
         }
       }
-    } catch (error) {
-      if (!this.stopped) this.fail(error);
     } finally {
       this.saving = false;
       this.emit();
     }
   }
-
-  /** 返回未保存字段，供提供器生命周期重放时恢复本地变更。 */
-  stop(): Partial<AppSettings> {
+  stop(): Partial<T> {
     this.stopped = true;
     this.unlisten?.();
     this.unlisten = undefined;

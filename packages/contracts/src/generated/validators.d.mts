@@ -1,6 +1,8 @@
 // Generated from Rust core DTOs. Do not edit.
 import type {
   Accent,
+  ActionCheckParams,
+  ActionCheckResult,
   ActionKind,
   ActionResult,
   ActionSpec,
@@ -24,6 +26,9 @@ import type {
   CaptureStartParams,
   CaptureStatusResult,
   CaptureStopParams,
+  CaptureStorageLimits,
+  CaptureTailParams,
+  CaptureTailResult,
   CaptureTxSettlement,
   CaptureVerifyParams,
   CatalogListParams,
@@ -175,6 +180,8 @@ import type {
   RxPayload,
   SafeInteger,
   SerialConfiguration,
+  SessionInputs,
+  SessionMetrics,
   SessionSnapshot,
   SessionState,
   SetReadOnlyParams,
@@ -214,6 +221,7 @@ import type {
   Target,
   TerminalMode,
   TerminalSettings,
+  TerminalTypography,
   TextExportParams,
   Theme,
   TimePrecision,
@@ -239,6 +247,12 @@ import type {
   WorkspaceView,
 } from "./types.ts";
 export declare function validateAccent(value: unknown): value is Accent;
+export declare function validateActionCheckParams(
+  value: unknown,
+): value is ActionCheckParams;
+export declare function validateActionCheckResult(
+  value: unknown,
+): value is ActionCheckResult;
 export declare function validateActionKind(value: unknown): value is ActionKind;
 export declare function validateActionResult(
   value: unknown,
@@ -296,6 +310,15 @@ export declare function validateCaptureStatusResult(
 export declare function validateCaptureStopParams(
   value: unknown,
 ): value is CaptureStopParams;
+export declare function validateCaptureStorageLimits(
+  value: unknown,
+): value is CaptureStorageLimits;
+export declare function validateCaptureTailParams(
+  value: unknown,
+): value is CaptureTailParams;
+export declare function validateCaptureTailResult(
+  value: unknown,
+): value is CaptureTailResult;
 export declare function validateCaptureTxSettlement(
   value: unknown,
 ): value is CaptureTxSettlement;
@@ -655,6 +678,12 @@ export declare function validateSafeInteger(
 export declare function validateSerialConfiguration(
   value: unknown,
 ): value is SerialConfiguration;
+export declare function validateSessionInputs(
+  value: unknown,
+): value is SessionInputs;
+export declare function validateSessionMetrics(
+  value: unknown,
+): value is SessionMetrics;
 export declare function validateSessionSnapshot(
   value: unknown,
 ): value is SessionSnapshot;
@@ -762,6 +791,9 @@ export declare function validateTerminalMode(
 export declare function validateTerminalSettings(
   value: unknown,
 ): value is TerminalSettings;
+export declare function validateTerminalTypography(
+  value: unknown,
+): value is TerminalTypography;
 export declare function validateTextExportParams(
   value: unknown,
 ): value is TextExportParams;

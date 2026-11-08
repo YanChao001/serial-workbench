@@ -47,7 +47,7 @@
     "version:check": "node scripts/version.mjs check",
     "release:notes": "node scripts/release-lib.mjs notes",
     "tauri": "tauri",
-    "app:dev": "tauri dev",
+    "app:dev": "node scripts/app-dev.mjs",
     "app:build": "node scripts/app-build.mjs",
     "app:portable": "node scripts/portable.mjs",
     "config:sync": "node scripts/init-project.mjs",
@@ -56,6 +56,8 @@
   },
   "dependencies": {
     "@fontsource-variable/geist": "^5.3.0",
+    "@serial-workbench/contracts": "workspace:*",
+    "@serial-workbench/host-client": "workspace:*",
     "@tauri-apps/api": "^2",
     "@tauri-apps/plugin-clipboard-manager": "^2.5.0",
     "@tauri-apps/plugin-notification": "^2.7.0",

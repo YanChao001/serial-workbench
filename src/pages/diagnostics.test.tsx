@@ -43,7 +43,7 @@ const report: DiagnosticsReport = {
   architecture: "x86_64",
   platform: "windows",
   windowLabel: "main",
-  settingsRevision: 4,
+  settingsRevision: "4",
   desktop: {
     trayAvailable: true,
     secondaryOpen: false,
@@ -124,7 +124,7 @@ describe("diagnostics actions", () => {
     const mounted = view();
     await waitFor(() =>
       expect(screen.getByTestId("diagnostics-report")).toHaveTextContent(
-        '"settingsRevision": 4',
+        '"settingsRevision": "4"',
       ),
     );
     const button = screen.getByRole("button", { name: "Copy diagnostics" });
@@ -158,7 +158,7 @@ describe("diagnostics actions", () => {
     fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     await waitFor(() =>
       expect(screen.getByTestId("diagnostics-report")).toHaveTextContent(
-        '"settingsRevision": 4',
+        '"settingsRevision": "4"',
       ),
     );
     expect(
@@ -171,7 +171,7 @@ describe("diagnostics actions", () => {
     const mounted = view();
     await waitFor(() =>
       expect(screen.getByTestId("diagnostics-report")).toHaveTextContent(
-        '"settingsRevision": 4',
+        '"settingsRevision": "4"',
       ),
     );
     fireEvent.click(screen.getByRole("button", { name: "Copy diagnostics" }));
@@ -185,7 +185,7 @@ describe("diagnostics actions", () => {
     view();
     const preview = await screen.findByTestId("diagnostics-report");
     await waitFor(() =>
-      expect(preview).toHaveTextContent('"settingsRevision": 4'),
+      expect(preview).toHaveTextContent('"settingsRevision": "4"'),
     );
     vi.mocked(getDiagnosticsReport).mockRejectedValueOnce({
       code: "STORAGE_IO",
@@ -194,7 +194,7 @@ describe("diagnostics actions", () => {
       screen.getByRole("button", { name: "Refresh diagnostics" }),
     );
     await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
-    expect(preview).toHaveTextContent('"settingsRevision": 4');
+    expect(preview).toHaveTextContent('"settingsRevision": "4"');
     expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Copy diagnostics" }),

@@ -131,6 +131,8 @@ pub fn builtin_catalog() -> Vec<ActionSpec> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinAction {
+    ActionCheck,
+    WorkspaceImportPreview,
     Client(ClientCapability),
     ClientList,
     HostMetrics,
@@ -138,6 +140,7 @@ pub enum BuiltinAction {
     CaptureStart,
     CaptureStop,
     CaptureStatus,
+    CaptureTail,
     CaptureVerify,
     CaptureRecover,
     CaptureExport,
@@ -176,6 +179,8 @@ pub enum BuiltinAction {
     DeviceList,
     DeviceOpen,
     SessionGet,
+    SessionMetrics,
+    SessionInputs,
     SessionClose,
     SessionTx,
     SessionConfigure,
@@ -196,7 +201,9 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 84] = [
+    pub const ALL: [Self; 89] = [
+        Self::ActionCheck,
+        Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
         Self::Client(ClientCapability::WindowMinimize),
         Self::Client(ClientCapability::WindowToggleMaximize),
@@ -225,6 +232,7 @@ impl BuiltinAction {
         Self::CaptureStart,
         Self::CaptureStop,
         Self::CaptureStatus,
+        Self::CaptureTail,
         Self::CaptureVerify,
         Self::CaptureRecover,
         Self::CaptureExport,
@@ -263,6 +271,8 @@ impl BuiltinAction {
         Self::DeviceList,
         Self::DeviceOpen,
         Self::SessionGet,
+        Self::SessionMetrics,
+        Self::SessionInputs,
         Self::SessionClose,
         Self::SessionTx,
         Self::SessionConfigure,
@@ -291,6 +301,7 @@ impl BuiltinAction {
             Self::CaptureStart => "capture.start",
             Self::CaptureStop => "capture.stop",
             Self::CaptureStatus => "capture.status",
+            Self::CaptureTail => "capture.tail",
             Self::CaptureVerify => "capture.verify",
             Self::CaptureRecover => "capture.recover",
             Self::CaptureExport => "capture.export",
@@ -313,6 +324,8 @@ impl BuiltinAction {
             Self::SettingsSave => "settings.save",
             Self::SettingsExport => "settings.export",
             Self::SettingsImport => "settings.import",
+            Self::ActionCheck => "action.check",
+            Self::WorkspaceImportPreview => "workspace.importPreview",
             Self::WorkspaceRead => "workspace.read",
             Self::WorkspaceSave => "workspace.save",
             Self::WorkspaceExport => "workspace.export",
@@ -329,6 +342,8 @@ impl BuiltinAction {
             Self::DeviceList => "device.list",
             Self::DeviceOpen => "device.open",
             Self::SessionGet => "session.get",
+            Self::SessionMetrics => "session.metrics",
+            Self::SessionInputs => "session.inputs",
             Self::SessionClose => "session.close",
             Self::SessionTx => "session.tx",
             Self::SessionConfigure => "session.configure",
@@ -383,6 +398,7 @@ impl BuiltinAction {
             Self::CaptureStart
                 | Self::CaptureStop
                 | Self::CaptureStatus
+                | Self::CaptureTail
                 | Self::CaptureVerify
                 | Self::CaptureRecover
                 | Self::CaptureExport
@@ -427,7 +443,11 @@ impl BuiltinAction {
         let action = self.is_device_action()
             || matches!(self, Self::Client(capability) if !capability.is_query())
             || self.is_document_action()
-            || (self.is_capture_api() && !matches!(self, Self::CaptureStatus | Self::ReplayRead))
+            || (self.is_capture_api()
+                && !matches!(
+                    self,
+                    Self::CaptureStatus | Self::CaptureTail | Self::ReplayRead
+                ))
             || matches!(
                 self,
                 Self::OperationCancel
@@ -441,12 +461,29 @@ impl BuiltinAction {
             Self::Authorize | Self::Revoke | Self::HostShutdown | Self::FileRegister
         );
         let kinds: &[&str] = match self {
+            Self::ActionCheck => &[
+                "host",
+                "device",
+                "session",
+                "operation",
+                "workspace",
+                "settings",
+                "capture",
+                "capture_record",
+                "transfer_receipts",
+                "file",
+                "plugin",
+                "client",
+            ],
+            Self::WorkspaceImportPreview => &["workspace"],
             Self::Client(_) => &["client"],
             Self::CaptureStart | Self::CaptureRecover => &["file"],
             Self::CaptureStop => &["capture"],
-            Self::CaptureStatus | Self::CaptureVerify | Self::CaptureExport | Self::ReplayOpen => {
-                &["file", "capture"]
-            }
+            Self::CaptureStatus
+            | Self::CaptureTail
+            | Self::CaptureVerify
+            | Self::CaptureExport
+            | Self::ReplayOpen => &["file", "capture"],
             Self::ReplayRead | Self::ReplayControl | Self::ReplayClose => &["session"],
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
             Self::FileMetadata => &["file", "capture"],
@@ -462,6 +499,8 @@ impl BuiltinAction {
             | Self::WorkspaceImport => &["workspace"],
             Self::DeviceOpen => &["device"],
             Self::SessionGet
+            | Self::SessionMetrics
+            | Self::SessionInputs
             | Self::TransferFile
             | Self::StreamCursor
             | Self::SessionClose
@@ -562,6 +601,10 @@ impl BuiltinAction {
         if self == Self::TransferFile {
             meta.permissions.push("content.read".into());
         }
+        if matches!(self, Self::SessionMetrics | Self::SessionInputs) {
+            meta.state_scopes.clear();
+            meta.event_types.clear();
+        }
         if self == Self::CatalogList {
             // Authentication identifies whose filtered catalog is returned; no global grant is needed.
             meta.permissions.clear();
@@ -591,6 +634,13 @@ impl BuiltinAction {
             if action {
                 meta.event_types.push("workspace.changed".into());
             }
+        }
+        if self == Self::ActionCheck {
+            meta.permissions.clear();
+        }
+        if matches!(self, Self::ActionCheck | Self::WorkspaceImportPreview) {
+            meta.state_scopes.clear();
+            meta.event_types.clear();
         }
         if let Self::Client(capability) = self {
             meta.permissions = capability
@@ -660,6 +710,9 @@ impl BuiltinAction {
                 CaptureVerifyParams,
                 CaptureStatusResult,
             >(meta, dialect),
+            Self::CaptureTail => {
+                ActionSpec::of_with_dialect::<CaptureTailParams, CaptureTailResult>(meta, dialect)
+            }
             Self::CaptureVerify => ActionSpec::of_with_dialect::<
                 CaptureVerifyParams,
                 VerificationReport,
@@ -728,6 +781,13 @@ impl BuiltinAction {
                 DocumentImportParams,
                 SettingsDocumentResult,
             >(meta, dialect),
+            Self::ActionCheck => {
+                ActionSpec::of_with_dialect::<ActionCheckParams, ActionCheckResult>(meta, dialect)
+            }
+            Self::WorkspaceImportPreview => ActionSpec::of_with_dialect::<
+                DocumentImportParams,
+                WorkspaceDocument,
+            >(meta, dialect),
             Self::WorkspaceRead => {
                 ActionSpec::of_with_dialect::<EmptyParams, WorkspaceDocumentResult>(meta, dialect)
             }
@@ -763,6 +823,12 @@ impl BuiltinAction {
             }
             Self::SessionGet | Self::SessionClose => {
                 ActionSpec::of_with_dialect::<EmptyParams, SessionSnapshot>(meta, dialect)
+            }
+            Self::SessionMetrics => {
+                ActionSpec::of_with_dialect::<EmptyParams, SessionMetrics>(meta, dialect)
+            }
+            Self::SessionInputs => {
+                ActionSpec::of_with_dialect::<EmptyParams, SessionInputs>(meta, dialect)
             }
             Self::SessionTx => ActionSpec::of_with_dialect::<TxParams, TxReceipt>(meta, dialect),
             Self::SessionConfigure => {

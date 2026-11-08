@@ -1059,3 +1059,167 @@ async fn workspace_save_reveal_targets_requested_workspace() {
     );
     f.finish().await;
 }
+
+fn preview_document(name: &str) -> WorkspaceDocument {
+    WorkspaceDocument {
+        name: name.into(),
+        ..WorkspaceDocument::default()
+    }
+}
+fn preview_json(value: &WorkspaceDocument) -> String {
+    json!({"formatVersion":"0.1","value":value}).to_string()
+}
+
+// Catches preview using import/save, granting workspace.modify, or applying an abandoned preview.
+#[tokio::test]
+async fn workspace_import_preview_validates_without_writing_or_granting() {
+    let f = Fixture::new(0).await;
+    let target = f.target("workspace", "preview");
+    let original = read(&f.first, &target, "workspace.read", json!({})).await;
+    let revision = f.auth.current_revision().unwrap();
+    let stored = f.store.read_document(&id("workspace:preview")).unwrap();
+    let value = preview_document("Imported workspace");
+    let request = query(
+        &f.first,
+        &target,
+        "workspace.importPreview",
+        json!({"json":preview_json(&value)}),
+    );
+    let reply = f.first.request(RpcRequest::Query(request)).await.unwrap();
+    let RpcReply::Success { result, .. } = reply else {
+        panic!("preview failed: {reply:?}")
+    };
+    assert!(
+        matches!(*result, RpcResult::Query(QueryResult::WorkspaceImportPreview(ref preview)) if preview == &value)
+    );
+    // Dropping a real IPC wait must not apply the candidate, even when its reply arrives late.
+    {
+        let request = query(
+            &f.first,
+            &target,
+            "workspace.importPreview",
+            json!({"json":preview_json(&value)}),
+        );
+        let pending = f.first.request(RpcRequest::Query(request));
+        tokio::pin!(pending);
+        tokio::select! { biased; _ = &mut pending => {}, _ = tokio::task::yield_now() => {} }
+    }
+    assert_eq!(
+        read(&f.first, &target, "workspace.read", json!({})).await,
+        original
+    );
+    assert_eq!(
+        f.store.read_document(&id("workspace:preview")).unwrap(),
+        stored
+    );
+    assert_eq!(f.auth.current_revision().unwrap(), revision);
+    let reply = f
+        .first
+        .request(RpcRequest::Invoke(call(
+            &f.first,
+            &target,
+            "workspace.save",
+            Some(0.into()),
+            json!({"value":value}),
+        )))
+        .await
+        .unwrap();
+    assert!(matches!(reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"));
+    f.finish().await;
+}
+
+// Catches bypassed version checks and references that deserialize but violate workspace invariants.
+#[tokio::test]
+async fn workspace_import_preview_rejects_future_or_invalid_references() {
+    let f = Fixture::new(0).await;
+    let target = f.target("workspace", "invalid-preview");
+    let revision = f.auth.current_revision().unwrap();
+    let original = read(&f.first, &target, "workspace.read", json!({})).await;
+    let binding = DeviceBinding {
+        binding_id: id("binding"),
+        host_id: target.host_id.clone(),
+        device_id: id("virtual:echo"),
+        fingerprint: DeviceFingerprint {
+            transport: DeviceTransportKind::Virtual,
+            vid: None,
+            pid: None,
+            serial_number: None,
+            topology_path: None,
+            evidence: IdentityEvidence::Unreliable,
+        },
+        configuration: SerialConfiguration::default(),
+        reconnect: ReconnectPolicy::default(),
+    };
+    let view = WorkspaceView {
+        id: id("duplicate"),
+        name: "View".into(),
+        color: "".into(),
+        icon: "terminal".into(),
+        pinned: false,
+        receive_mode: TerminalMode::Text,
+        send_mode: TerminalMode::Text,
+        binding_id: id("binding"),
+    };
+    let mut dangling = preview_document("Dangling");
+    dangling.views.push(view.clone());
+    let mut duplicate = preview_document("Duplicate views");
+    duplicate.bindings.push(binding.clone());
+    duplicate.views = vec![view.clone(), view];
+    let mut duplicate_binding = preview_document("Duplicate bindings");
+    duplicate_binding.bindings = vec![binding.clone(), binding];
+    let mut favorite = preview_document("Favorite");
+    favorite.favorite_binding_ids.push(id("missing"));
+    for (json, code) in [
+        ("{".to_owned(), "INVALID_DOCUMENT"),
+        (
+            "{\"formatVersion\":\"99.0\",\"value\":{}}".into(),
+            "FUTURE_FORMAT",
+        ),
+        (preview_json(&dangling), "INVALID_ARGUMENT"),
+        (preview_json(&duplicate), "INVALID_ARGUMENT"),
+        (preview_json(&duplicate_binding), "INVALID_ARGUMENT"),
+        (preview_json(&favorite), "INVALID_ARGUMENT"),
+    ] {
+        let reply = f
+            .first
+            .request(RpcRequest::Query(query(
+                &f.first,
+                &target,
+                "workspace.importPreview",
+                json!({"json":json}),
+            )))
+            .await
+            .unwrap();
+        assert!(
+            matches!(&reply, RpcReply::Failure { error, .. } if error.code == code),
+            "{reply:?}"
+        );
+        assert_eq!(f.auth.current_revision().unwrap(), revision);
+        assert_eq!(
+            read(&f.first, &target, "workspace.read", json!({})).await,
+            original
+        );
+    }
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.first.attachment().actor_id.clone(),
+                permissions: vec!["metadata.read".into()],
+                targets: vec![target.clone()],
+            },
+        )
+        .unwrap();
+    let reply = f
+        .first
+        .request(RpcRequest::Query(query(
+            &f.first,
+            &target,
+            "workspace.importPreview",
+            json!({"json":preview_json(&preview_document("Hidden"))}),
+        )))
+        .await
+        .unwrap();
+    assert!(matches!(reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"));
+    f.finish().await;
+}

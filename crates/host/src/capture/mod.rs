@@ -42,6 +42,7 @@ pub struct CaptureService {
     starts: Arc<Mutex<HashSet<Id>>>,
     queue_budget: Arc<Semaphore>,
     queue_peak: Arc<AtomicUsize>,
+    tail_budget: Arc<Semaphore>,
 }
 struct ActiveCapture {
     location_id: Id,
@@ -87,6 +88,12 @@ struct VerificationLease {
     actor_id: Id,
     _scan: verify::VerifiedCapture,
 }
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum TailPhase {
+    BindFiles,
+    ReadRecord,
+    ReturnResult,
+}
 impl CaptureService {
     pub fn with_storage(
         runtime: CaptureRuntime,
@@ -108,6 +115,7 @@ impl CaptureService {
             starts: Arc::new(Mutex::new(HashSet::new())),
             queue_budget: Arc::new(Semaphore::new(HOST_CAPTURE_QUEUE_BYTES)),
             queue_peak: Arc::new(AtomicUsize::new(0)),
+            tail_budget: Arc::new(Semaphore::new(1)),
         }
     }
     pub fn memory_usage(&self) -> CaptureMemory {
@@ -278,7 +286,11 @@ impl CaptureService {
         let files = self.runtime.files.clone();
         let location = params.target_ref.clone();
         let creator = actor.clone();
-        let limits = self.limits.clone();
+        let mut limits = self.limits.clone();
+        if let Some(storage_limits) = params.storage_limits {
+            limits.capacity_bytes = storage_limits.capacity_bytes.get();
+            limits.reserve_bytes = storage_limits.reserve_bytes.get();
+        }
         let opener = self.opener.clone();
         let writer = blocking(move || {
             files.require_reference(&location, &creator, "workspace.modify")?;
@@ -623,6 +635,114 @@ impl CaptureService {
         });
         Ok(report)
     }
+    /// 一次性验证并读取末段；不登记 verification lease，也不创建回放会话。
+    pub async fn tail(
+        &self,
+        params: CaptureTailParams,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<CaptureTailResult> {
+        self.tail_observed(params, actor, |_| {}).await
+    }
+    // 与已有导出/恢复 seam 相同：仅供可信 Host 观察，wire 参数不能控制。
+    async fn tail_observed(
+        &self,
+        params: CaptureTailParams,
+        actor: &AuthenticatedActor,
+        mut observe: impl FnMut(TailPhase) + Send + 'static,
+    ) -> HostResult<CaptureTailResult> {
+        if !(1..=100).contains(&params.max_records.get())
+            || !(1..=262144).contains(&params.max_bytes.get())
+        {
+            return Err(invalid());
+        }
+        let permit = self
+            .tail_budget
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| busy())?;
+        let service = self.clone();
+        let actor = actor.clone();
+        blocking(move || {
+            // 等待者被取消后，实际扫描仍持有名额，完成或出错才释放。
+            let _permit = permit;
+            let files = &service.runtime.files;
+            let reference = files.current_reference(&params.capture_ref, &actor)?;
+            {
+                let active = service.active.lock().map_err(|_| busy())?;
+                if active
+                    .get(&reference.id)
+                    .is_some_and(|capture| capture.done.borrow().is_none())
+                {
+                    return Err(HostError::new(
+                        "CAPTURE_ACTIVE",
+                        "Capture is still recording",
+                    ));
+                }
+            }
+            let guard = files.resolve(&reference, &actor, false)?;
+            let mut scan = verify::verify_directory(guard.checked_path())?;
+            observe(TailPhase::BindFiles);
+            scan.bind_files(guard.checked_path())
+                .map_err(|_| format::changed())?;
+            let prefix = scan.report.verified_prefix.get();
+            let mut result = CaptureTailResult {
+                capture_ref: reference.clone(),
+                source_fingerprint: scan.report.source_fingerprint.clone(),
+                state: scan.summary.state,
+                verified_prefix: scan.report.verified_prefix,
+                container_complete: scan.report.container_complete,
+                source_continuous: scan.report.source_continuous,
+                first_record: prefix.checked_add(1).ok_or_else(tail_limit)?.into(),
+                records: vec![],
+            };
+            let fits = |result: &CaptureTailResult| -> HostResult<bool> {
+                Ok(
+                    serde_json::to_vec(result).map_err(|_| invalid())?.len() as u64
+                        <= params.max_bytes.get(),
+                )
+            };
+            if !fits(&result)? {
+                return Err(tail_limit());
+            }
+            let start = prefix.saturating_sub(params.max_records.get());
+            for position in (start..prefix).rev() {
+                observe(TailPhase::ReadRecord);
+                let (record, json) = scan
+                    .read_verified_record_bytes(position as usize)
+                    .map_err(|_| format::changed())?;
+                let ordinal = record.record_ordinal;
+                let previous_first = result.first_record;
+                result.first_record = ordinal;
+                result.records.insert(0, ReplayRecord::Inline { record });
+                if !fits(&result)? {
+                    result.records[0] = files.publish_record(&reference, &actor, ordinal, &json)?;
+                    if !fits(&result)? {
+                        result.records.remove(0);
+                        result.first_record = previous_first;
+                        if result.records.is_empty() {
+                            return Err(tail_limit());
+                        }
+                        break;
+                    }
+                }
+            }
+            // 重新解析原引用，核对路径身份、固定修订和本次完整指纹后才交付正文。
+            observe(TailPhase::ReturnResult);
+            let current = files.current_reference(&params.capture_ref, &actor)?;
+            if current != reference {
+                return Err(format::changed());
+            }
+            let final_guard = files.resolve(&current, &actor, false)?;
+            if final_guard.directory_identity()? != guard.directory_identity()?
+                || format::fingerprint(final_guard.checked_path()).map_err(|_| format::changed())?
+                    != result.source_fingerprint
+            {
+                return Err(format::changed());
+            }
+            Ok(result)
+        })
+        .await
+    }
     pub fn recovery_authorization_target(
         &self,
         params: &RecoverPrefixParams,
@@ -842,4 +962,240 @@ fn invalid() -> HostError {
 }
 fn busy() -> HostError {
     HostError::new("HOST_BUSY", "Capture state is unavailable")
+}
+
+fn tail_limit() -> HostError {
+    HostError::new(
+        "LIMIT_EXCEEDED",
+        "Capture tail does not fit the encoded response budget",
+    )
+}
+
+#[cfg(test)]
+mod tail_tests {
+    use super::*;
+    use crate::{
+        state::{ProjectionLimits, ProjectionStore},
+        stream::StreamLimits,
+    };
+    use serde_json::json;
+    struct Fixture {
+        _dir: tempfile::TempDir,
+        path: std::path::PathBuf,
+        service: CaptureService,
+        actor: AuthenticatedActor,
+        reference: ObjectRef,
+    }
+    impl Fixture {
+        fn new() -> Self {
+            let dir = tempfile::tempdir().unwrap();
+            let store = Store::open(dir.path()).unwrap();
+            let identity = store.begin_instance().unwrap();
+            let secret = ContextToken::try_from("tail-test").unwrap();
+            let auth = AuthService::new(store.clone(), secret.clone());
+            let operator = auth
+                .authenticate_user_control(&Id::try_from("user").unwrap(), &secret)
+                .unwrap();
+            let actor = auth
+                .authenticate(&Id::try_from("user").unwrap(), None)
+                .unwrap()
+                .actor;
+            auth.authorize(
+                &operator,
+                AuthorizeParams {
+                    client_id: actor.client_id().clone(),
+                    permissions: vec!["content.read".into(), "workspace.modify".into()],
+                    targets: vec![Target {
+                        host_id: identity.host_id.clone(),
+                        kind: ResourceKind::try_from("host").unwrap(),
+                        id: identity.host_id.clone(),
+                        session_id: None,
+                        session_epoch: None,
+                    }],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+            let files = FileService::new(store.clone(), auth.clone(), identity.clone());
+            let path = dir.path().canonicalize().unwrap().join("abandoned");
+            let location = files
+                .register(
+                    RegisterFileParams {
+                        path: path.to_str().unwrap().into(),
+                        purpose: FilePurpose::CaptureTarget,
+                    },
+                    &operator,
+                )
+                .unwrap();
+            let source = serde_json::from_value(json!({"hostId":"original","instanceEpoch":"7","sessionId":"source","sessionEpoch":"9","configurationDigest":"0000000000000000000000000000000000000000000000000000000000000000","configuration":SerialConfiguration::default(),"timePrecision":{"source":"host_read","resolutionNs":"1","syncMethod":"none"}})).unwrap();
+            let mut writer =
+                CaptureWriter::create(&path, vec![source], CaptureLimits::default()).unwrap();
+            let event = serde_json::from_value(json!({"hostId":"original","instanceEpoch":"7","sessionId":"source","sessionEpoch":"9","eventSeq":"1","configurationRevision":"1","time":{"clockId":"c","sourceMonoNs":"1","receivedWallTime":"2026-11-07T00:00:00Z","precision":{"source":"host_read","resolutionNs":"1","syncMethod":"none"}},"kind":"lifecycle","payload":{"note":"original"}})).unwrap();
+            writer
+                .push(CaptureEntry::Event(Box::new(event)), 0)
+                .unwrap();
+            let summary = writer.finish().unwrap();
+            // 模拟写入结束后发布前退出：当前 0.1 capture 引用仍合法且没有 revision。
+            let reference = files
+                .begin_capture(&location, &path, &summary.capture_id, &actor, false, None)
+                .unwrap();
+            let clock: Arc<dyn Clock> = Arc::new(crate::test_support::ManualClock(0.into()));
+            let streams = StreamHub::new(identity.clone(), auth.clone(), StreamLimits::default());
+            let projections =
+                ProjectionStore::new(identity.clone(), auth.clone(), ProjectionLimits::default());
+            let devices = DeviceService::new(
+                store.clone(),
+                auth.clone(),
+                identity.clone(),
+                streams.clone(),
+                clock.clone(),
+                DeviceService::virtual_opener(),
+                projections,
+            );
+            let service = CaptureService::new(CaptureRuntime {
+                store,
+                auth,
+                identity,
+                files,
+                streams,
+                devices,
+                clock,
+            });
+            Self {
+                _dir: dir,
+                path,
+                service,
+                actor,
+                reference,
+            }
+        }
+        fn params(&self) -> CaptureTailParams {
+            CaptureTailParams {
+                capture_ref: self.reference.clone(),
+                max_records: 100.into(),
+                max_bytes: 262144.into(),
+            }
+        }
+        fn no_retained_resources(&self) {
+            assert!(self.service.verifications.lock().unwrap().is_empty());
+            assert!(self.service.active.lock().unwrap().is_empty());
+            assert!(self.service.starts.lock().unwrap().is_empty());
+            assert_eq!(self.service.tail_budget.available_permits(), 1);
+            assert_eq!(
+                self.service
+                    .runtime
+                    .store
+                    .operation_metadata()
+                    .unwrap()
+                    .get("items"),
+                Some(&JsonValue::Array(vec![]))
+            );
+        }
+    }
+    #[tokio::test]
+    async fn abandoned_live_capture_tail_uses_local_snapshot_and_releases_all_handles() {
+        let f = Fixture::new();
+        let before = format::fingerprint(&f.path).unwrap();
+        for _ in 0..18 {
+            let result = f.service.tail(f.params(), &f.actor).await.unwrap();
+            assert_eq!(result.capture_ref, f.reference);
+            assert_eq!(result.verified_prefix.get(), 1);
+            assert_eq!(result.source_fingerprint, before);
+            f.no_retained_resources();
+        }
+        assert_eq!(format::fingerprint(&f.path).unwrap(), before);
+        std::fs::rename(&f.path, f.path.with_file_name("archived")).unwrap();
+    }
+    #[tokio::test]
+    async fn capture_tail_source_change_at_each_consumption_boundary_is_atomic() {
+        for phase in [
+            TailPhase::BindFiles,
+            TailPhase::ReadRecord,
+            TailPhase::ReturnResult,
+        ] {
+            let f = Fixture::new();
+            let path = f.path.clone();
+            let result = f
+                .service
+                .tail_observed(f.params(), &f.actor, move |current| {
+                    if current == phase {
+                        let volume = path.join(format::volume_name(1));
+                        let mut bytes = std::fs::read(&volume).unwrap();
+                        *bytes.last_mut().unwrap() ^= 1;
+                        std::fs::write(volume, bytes).unwrap();
+                    }
+                })
+                .await;
+            assert_eq!(result.unwrap_err().code, "SOURCE_CHANGED");
+            f.no_retained_resources();
+            std::fs::rename(&f.path, f.path.with_file_name("archived")).unwrap();
+        }
+    }
+    #[tokio::test]
+    async fn capture_tail_cancelled_waiter_keeps_scan_admission_until_worker_exits() {
+        let f = Fixture::new();
+        let gate = Arc::new(crate::test_support::Gate::default());
+        let seen = gate.clone();
+        let service = f.service.clone();
+        let actor = f.actor.clone();
+        let params = f.params();
+        let waiting = tokio::spawn(async move {
+            service
+                .tail_observed(params, &actor, move |phase| {
+                    if phase == TailPhase::BindFiles {
+                        seen.hold();
+                    }
+                })
+                .await
+        });
+        gate.entered().await;
+        waiting.abort();
+        assert!(waiting.await.unwrap_err().is_cancelled());
+        assert_eq!(
+            f.service.tail(f.params(), &f.actor).await.unwrap_err().code,
+            "HOST_BUSY"
+        );
+        gate.release();
+        crate::test_support::until(|| f.service.tail_budget.available_permits() == 1).await;
+        f.no_retained_resources();
+        f.service.tail(f.params(), &f.actor).await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn capture_tail_revoked_during_scan_returns_no_content() {
+        let f = Fixture::new();
+        let auth = f.service.runtime.auth.clone();
+        let operator = auth
+            .authenticate_user_control(
+                &Id::try_from("user").unwrap(),
+                &ContextToken::try_from("tail-test").unwrap(),
+            )
+            .unwrap();
+        let actor_id = f.actor.id().clone();
+        let identity = f.service.runtime.identity.clone();
+        let result = f
+            .service
+            .tail_observed(f.params(), &f.actor, move |phase| {
+                if phase == TailPhase::ReadRecord {
+                    auth.revoke(
+                        &operator,
+                        RevokeParams {
+                            actor_id: actor_id.clone(),
+                            permissions: vec!["content.read".into()],
+                            targets: vec![Target {
+                                host_id: identity.host_id.clone(),
+                                kind: ResourceKind::try_from("host").unwrap(),
+                                id: identity.host_id.clone(),
+                                session_id: None,
+                                session_epoch: None,
+                            }],
+                        },
+                    )
+                    .unwrap();
+                }
+            })
+            .await;
+        assert_eq!(result.unwrap_err().code, "PERMISSION_DENIED");
+        f.no_retained_resources();
+    }
 }

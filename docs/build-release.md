@@ -66,7 +66,7 @@ pnpm app:portable --skip-build # 核对源码后复用先前便携构建
 pnpm app:portable --optimize speed
 ```
 
-仅支持 Windows 宿主和 Windows 目标，参数见 `pnpm app:portable --help`；安装包使用 `app:build`。`--skip-build` 校验先前便携构建收据的版本、配置、参数、策略与 exe SHA-256；源码变化需由维护者核对，修改后重建。复用 `speed` 构建时同时传入 `--optimize speed --skip-build`。
+仅支持 Windows 宿主和 Windows 目标，参数见 `pnpm app:portable --help`；安装包使用 `app:build`。`--skip-build` 校验先前便携构建收据的版本、配置、参数、策略及桌面程序、Host、CLI、MCP 和组件清单的 SHA-256，不重新编译；仍通过只读 `cargo metadata` 获取工作区和 target 目录。未指定目标时沿用收据中的实际构建目标和输出布局；新的 Cargo 目标配置须通过正常构建应用，显式目标与收据不符时拒绝复用。源码变化需由维护者核对，修改后重建。复用 `speed` 构建时同时传入 `--optimize speed --skip-build`。
 
 - 目标机器需要 WebView2，安装入口见随包说明。数据写当前用户目录，不随 exe 移动；设置、壁纸和日志均不在便携包中。
 - 应用内更新默认启动 NSIS 安装器并转为安装版；保留免安装形态时，从发行页手动下载新版 portable。

@@ -60,6 +60,20 @@
 
 确认占用进程归属后停止自己的开发服务。更换端口时同步 [vite.config.ts](../vite.config.ts)、[Tauri build.devUrl](../src-tauri/tauri.conf.json) 及 [编辑器调试配置](../.vscode/launch.json) 和 [任务](../.vscode/tasks.json)。
 
+## 串口无法连接
+
+工作台的“故障定位 → 无法连接”提供 Windows、macOS、Linux 的离线分步引导，标题可用 Tab 聚焦并用 Enter 或空格展开。先记录返回的错误码，再选择对应系统手动检查；访问被拒绝本身无法确定端口占用者。
+
+| 系统    | 操作索引                                                                                                                                                                                                                                                                 |
+| ------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| Windows | 从开始菜单打开设备管理器，检查端口或 USB 设备属性中的状态、错误码、厂商与驱动；确认自己的应用使用同一端口时，关闭该终端或串口应用后重试。设备报告驱动错误时，按识别出的硬件通过 Windows Update 或厂商正式驱动处理。                                                      |
+| macOS   | 在系统信息的 USB 中确认硬件识别，选择当前 `/dev/cu.*` 设备。Apple Silicon 笔记本出现系统配件批准提示时，先解锁并允许当前配件。确认自己的其他串口应用已释放设备；驱动需求按厂商要求和实际系统错误判断。                                                                   |
+| Linux   | 只读运行 `ls -l <设备路径>` 查看所选真实 `/dev/tty*` 节点的权限与所属组，运行 `id -nG` 查看用户组。Ubuntu、Debian 常见 `dialout`，其他发行版按实际设备组处理。需要调整时由用户或管理员按发行版方法加入正确组，并重新登录；节点不存在时检查连接、内核日志与厂商驱动要求。 |
+
+完成系统操作后，使用引导下方的“刷新”重新列出设备，选择当前设备并重试打开。应用保留原始错误，不代为执行系统命令或修改权限。
+
+系统操作依据：[Microsoft 设备管理器](https://learn.microsoft.com/en-us/windows-hardware/drivers/install/using-device-manager)、[Apple 配件连接许可](https://support.apple.com/en-us/102282)（Apple Silicon 笔记本）、[Debian 安全手册](https://www.debian.org/doc/manuals/securing-debian-manual/securing-debian-manual.en.pdf)（`dialout` 串口访问）。
+
 ## invoke 报 command not found
 
 核对命令注册、生成绑定及实际运行二进制的版本，重新构建并重启原生进程。新增命令按 [页面到 IPC 流程](./development.md#新增页面到-ipc-与测试) 接入。

@@ -60,7 +60,7 @@ const report: Awaited<ReturnType<typeof native.getDiagnosticsReport>> = {
   architecture: "x86_64",
   platform: "windows",
   windowLabel: "main",
-  settingsRevision: 4,
+  settingsRevision: "4",
   desktop: {
     trayAvailable: true,
     secondaryOpen: false,

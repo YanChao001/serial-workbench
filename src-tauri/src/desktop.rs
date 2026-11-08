@@ -16,7 +16,7 @@ use tauri_plugin_autostart::ManagerExt;
 
 use crate::{
     error::{ErrorCode, NativeError, NativeResult},
-    storage::SettingsStore,
+    platform_settings::PlatformSettings,
     window_geometry,
 };
 
@@ -100,16 +100,9 @@ struct TrayMenu {
 
 fn tray_labels(app: &tauri::AppHandle) -> [&'static str; 3] {
     let english = app
-        .state::<SettingsStore>()
-        .snapshot()
-        .ok()
-        .is_some_and(|snapshot| {
-            snapshot
-                .settings
-                .get("language")
-                .and_then(serde_json::Value::as_str)
-                == Some("en")
-        });
+        .state::<PlatformSettings>()
+        .value()
+        .is_ok_and(|value| value.language == serial_workbench_core::Language::En);
     if english {
         ["Show window", "New window", "Quit"]
     } else {
@@ -222,6 +215,9 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> NativeResult<()> {
     let window = builder
         .build()
         .map_err(|e| NativeError::operation(ErrorCode::WindowError, "Cannot create window", e))?;
+    app.state::<crate::host_bridge::DesktopHostBridge>()
+        .register_new_window(&window)
+        .map_err(|error| NativeError::new(ErrorCode::WindowError, error.message))?;
     if label == "main" {
         log_startup(app, "window-created");
     }
@@ -326,7 +322,7 @@ pub fn status(app: &tauri::AppHandle) -> DesktopStatus {
             .load(Ordering::Acquire),
         secondary_open: app.get_webview_window("secondary").is_some(),
         autostart_supported: !cfg!(feature = "e2e"),
-        run_in_background: app.state::<SettingsStore>().run_in_background(),
+        run_in_background: app.state::<PlatformSettings>().run_in_background(),
     }
 }
 

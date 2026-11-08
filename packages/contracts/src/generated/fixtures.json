@@ -1,6 +1,42 @@
 {
   "invalid": [
     {
+      "name": "capture-tail-record-limit",
+      "schema": "CaptureTailParams",
+      "value": {
+        "captureRef": {
+          "hostId": "host",
+          "id": "capture",
+          "kind": "capture"
+        },
+        "maxRecords": "101"
+      }
+    },
+    {
+      "name": "capture-tail-byte-limit",
+      "schema": "CaptureTailParams",
+      "value": {
+        "captureRef": {
+          "hostId": "host",
+          "id": "capture",
+          "kind": "capture"
+        },
+        "maxBytes": "262145"
+      }
+    },
+    {
+      "name": "capture-tail-unknown-field",
+      "schema": "CaptureTailParams",
+      "value": {
+        "captureRef": {
+          "hostId": "host",
+          "id": "capture",
+          "kind": "capture"
+        },
+        "path": "forged"
+      }
+    },
+    {
       "name": "client-register-rejects-claimed-actor",
       "schema": "RpcRequest",
       "value": {
@@ -2034,7 +2070,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark",
         "unknown": true
@@ -2063,7 +2105,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2091,7 +2139,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2116,7 +2170,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2144,7 +2204,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2172,7 +2238,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2200,7 +2272,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2228,7 +2306,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2256,7 +2340,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2284,7 +2374,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2312,7 +2408,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2340,7 +2442,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2368,7 +2476,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2419,7 +2533,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         }
       }
     },
@@ -2448,7 +2568,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -2576,7 +2702,13 @@
               "kind": "none"
             },
             "receiveMode": "text",
-            "sendMode": "text"
+            "sendMode": "text",
+            "typography": {
+              "fontFamily": "ui-monospace",
+              "fontSize": 14,
+              "ligatures": false,
+              "lineHeightPercent": 150
+            }
           },
           "theme": "dark"
         }
@@ -2698,7 +2830,13 @@
                 "kind": "none"
               },
               "receiveMode": "text",
-              "sendMode": "text"
+              "sendMode": "text",
+              "typography": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             },
             "theme": "dark"
           }
@@ -2755,7 +2893,13 @@
                 "kind": "none"
               },
               "receiveMode": "text",
-              "sendMode": "text"
+              "sendMode": "text",
+              "typography": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             },
             "theme": "dark"
           }
@@ -2881,7 +3025,13 @@
                   "kind": "none"
                 },
                 "receiveMode": "text",
-                "sendMode": "text"
+                "sendMode": "text",
+                "typography": {
+                  "fontFamily": "ui-monospace",
+                  "fontSize": 14,
+                  "ligatures": false,
+                  "lineHeightPercent": 150
+                }
               },
               "theme": "dark"
             }
@@ -2925,7 +3075,13 @@
                   "kind": "none"
                 },
                 "receiveMode": "text",
-                "sendMode": "text"
+                "sendMode": "text",
+                "typography": {
+                  "fontFamily": "ui-monospace",
+                  "fontSize": 14,
+                  "ligatures": false,
+                  "lineHeightPercent": 150
+                }
               },
               "theme": "dark"
             }
@@ -8696,6 +8852,35 @@
   "schemaVersion": 1,
   "valid": [
     {
+      "name": "capture-tail-defaults",
+      "schema": "CaptureTailParams",
+      "value": {
+        "captureRef": {
+          "hostId": "host",
+          "id": "capture",
+          "kind": "capture"
+        }
+      }
+    },
+    {
+      "name": "capture-tail-result",
+      "schema": "CaptureTailResult",
+      "value": {
+        "captureRef": {
+          "hostId": "host",
+          "id": "capture",
+          "kind": "capture"
+        },
+        "containerComplete": false,
+        "firstRecord": "1",
+        "records": [],
+        "sourceContinuous": true,
+        "sourceFingerprint": "0000000000000000000000000000000000000000000000000000000000000000",
+        "state": "incomplete",
+        "verifiedPrefix": "0"
+      }
+    },
+    {
       "name": "client-register-controlled-rpc",
       "schema": "RpcRequest",
       "value": {
@@ -9757,7 +9942,13 @@
             "kind": "none"
           },
           "receiveMode": "text",
-          "sendMode": "text"
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         },
         "theme": "dark"
       }
@@ -9802,7 +9993,13 @@
               "kind": "none"
             },
             "receiveMode": "text",
-            "sendMode": "text"
+            "sendMode": "text",
+            "typography": {
+              "fontFamily": "ui-monospace",
+              "fontSize": 14,
+              "ligatures": false,
+              "lineHeightPercent": 150
+            }
           },
           "theme": "dark"
         }
@@ -9888,7 +10085,13 @@
                 "kind": "none"
               },
               "receiveMode": "text",
-              "sendMode": "text"
+              "sendMode": "text",
+              "typography": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             },
             "theme": "dark"
           }
@@ -9974,7 +10177,13 @@
                   "kind": "none"
                 },
                 "receiveMode": "text",
-                "sendMode": "text"
+                "sendMode": "text",
+                "typography": {
+                  "fontFamily": "ui-monospace",
+                  "fontSize": 14,
+                  "ligatures": false,
+                  "lineHeightPercent": 150
+                }
               },
               "theme": "dark"
             }

@@ -22,8 +22,9 @@ use tauri::{
 use tauri_plugin_window_state::AppHandleExt;
 
 use crate::{
+    client_state::{ClientStateStore, WindowPosition},
     error::{ErrorCode, NativeError, NativeResult},
-    storage::{DataPaths, SettingsStore, WindowPosition, atomic_write},
+    storage::{DataPaths, atomic_write},
 };
 
 const SETTLE: Duration = Duration::from_millis(300);
@@ -1133,8 +1134,10 @@ fn track(window: Window) {
     let (default, limits) = configured(app, window.label());
     let was_special = special(&window);
     let initial_position = app
-        .try_state::<SettingsStore>()
-        .map_or(WindowPosition::default(), |store| store.window_position());
+        .try_state::<ClientStateStore>()
+        .map_or(WindowPosition::default(), |store| {
+            store.window_position(window.label())
+        });
     if let Ok(mut cache) = state.cache.lock() {
         let preferred = cache
             .saved

@@ -2,11 +2,12 @@
 
 use crate::{
     blocking,
-    error::{ErrorCode, NativeError, NativeResult},
-    storage::{
-        DataPaths, MAX_SETTINGS_FILE_SIZE, SettingsSnapshot, SettingsStore, atomic_write,
-        future_settings_schema, validate_settings,
+    client_state::{
+        CLIENT_STATE_FILE, ClientStateDocument, ClientStateStore, MAX_CLIENT_STATE_FILE_SIZE,
+        future_client_format, read_document,
     },
+    error::{ErrorCode, NativeError, NativeResult},
+    storage::{DataPaths, atomic_write},
 };
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -18,8 +19,8 @@ use std::{
 };
 use tauri::Manager;
 
-const PENDING: &str = ".recovery-pending.json";
-const JOURNAL: &str = ".recovery-transaction.json";
+const PENDING: &str = ".client-recovery-pending-v0.json";
+const JOURNAL: &str = ".client-recovery-transaction-v0.json";
 
 #[derive(Debug, Clone, Serialize, Type)]
 #[serde(rename_all = "camelCase")]
@@ -32,13 +33,13 @@ pub struct RecoveryStatus {
 
 pub struct RecoveryState {
     paths: DataPaths,
-    temporary: Option<tempfile::TempDir>,
+    _temporary: Option<tempfile::TempDir>,
     status: Mutex<RecoveryStatus>,
     operation: Mutex<()>,
 }
 
 pub struct InitializedStorage {
-    pub settings: SettingsStore,
+    pub client_state: ClientStateStore,
     pub recovery: RecoveryState,
 }
 
@@ -92,7 +93,9 @@ fn validate_token(token: &str) -> NativeResult<()> {
 }
 
 fn candidate(paths: &DataPaths, token: &str) -> PathBuf {
-    paths.config.join(format!(".recovery-next-{token}.json"))
+    paths
+        .config
+        .join(format!(".client-recovery-next-{token}.json"))
 }
 
 fn regular(path: &Path) -> NativeResult<bool> {
@@ -115,7 +118,7 @@ fn root_dir(path: &Path) -> NativeResult<()> {
 
 fn location(paths: &DataPaths, name: &str) -> NativeResult<PathBuf> {
     match name {
-        "settings.json" => Ok(paths.config.join(name)),
+        "client-state-v0.json" => Ok(paths.config.join(name)),
         _ => Err(invalid("Invalid recovery archive entry")),
     }
 }
@@ -124,7 +127,7 @@ fn archive(paths: &DataPaths, token: &str, name: &str) -> NativeResult<PathBuf> 
     Ok(location(paths, name)?
         .parent()
         .ok_or_else(|| invalid("Invalid storage parent"))?
-        .join(format!("recovery-archive-{token}"))
+        .join(format!("client-recovery-archive-{token}"))
         .join(name))
 }
 
@@ -142,24 +145,18 @@ fn verify_settings(path: &Path) -> NativeResult<()> {
     if fs::metadata(path)
         .map_err(|e| failure("Cannot inspect recovery settings candidate", e))?
         .len()
-        > MAX_SETTINGS_FILE_SIZE as u64
+        > MAX_CLIENT_STATE_FILE_SIZE as u64
     {
         return Err(invalid(
             "Recovery settings candidate exceeds the supported size",
         ));
     }
-    let settings: SettingsSnapshot = json(path)?;
-    if settings.revision < 0
-        || future_settings_schema(&settings.settings)
-        || validate_settings(&settings.settings).is_err()
-    {
-        return Err(invalid("Invalid or newer recovery settings candidate"));
-    }
+    read_document(path)?;
     Ok(())
 }
 
 fn protect_future(paths: &DataPaths) -> NativeResult<()> {
-    let settings = paths.config.join("settings.json");
+    let settings = paths.config.join("client-state-v0.json");
     if regular(&settings)? {
         let mut contents = Vec::new();
         File::open(settings)
@@ -171,7 +168,7 @@ fn protect_future(paths: &DataPaths) -> NativeResult<()> {
             ));
         }
         if let Ok(value) = serde_json::from_slice::<serde_json::Value>(&contents)
-            && future_settings_schema(value.get("settings").unwrap_or(&value))
+            && future_client_format(&value)
         {
             return Err(invalid(
                 "Settings from a newer application must not be overwritten",
@@ -187,14 +184,17 @@ fn rollback(paths: &DataPaths, journal: &Journal) -> NativeResult<()> {
         location(paths, name)?;
     }
     let staged = candidate(paths, &journal.request.token);
-    let destination = paths.config.join("settings.json");
+    let destination = paths.config.join("client-state-v0.json");
     if !regular(&staged)?
         && regular(&destination)?
-        && (regular(&archive(paths, &journal.request.token, "settings.json")?)?
-            || !journal
-                .originals
-                .iter()
-                .any(|entry| entry == "settings.json"))
+        && (regular(&archive(
+            paths,
+            &journal.request.token,
+            "client-state-v0.json",
+        )?)? || !journal
+            .originals
+            .iter()
+            .any(|entry| entry == "client-state-v0.json"))
     {
         fs::rename(&destination, &staged)
             .map_err(|e| failure("Cannot preserve uncommitted recovered settings", e))?;
@@ -232,10 +232,13 @@ fn apply_pending_with(
             location(paths, name)?;
         }
         if journal.installed {
-            verify_settings(&paths.config.join("settings.json"))?;
+            verify_settings(&paths.config.join("client-state-v0.json"))?;
             remove_metadata(&paths.data.join(PENDING))?;
             remove_metadata(&paths.data.join(JOURNAL))?;
-            return Ok(Some(format!("recovery-archive-{}", journal.request.token)));
+            return Ok(Some(format!(
+                "client-recovery-archive-{}",
+                journal.request.token
+            )));
         }
         rollback(paths, &journal)?;
     }
@@ -246,8 +249,8 @@ fn apply_pending_with(
     validate_token(&request.token)?;
     protect_future(paths)?;
     verify_settings(&candidate(paths, &request.token))?;
-    let originals = if regular(&paths.config.join("settings.json"))? {
-        vec!["settings.json".to_owned()]
+    let originals = if regular(&paths.config.join("client-state-v0.json"))? {
+        vec!["client-state-v0.json".to_owned()]
     } else {
         Vec::new()
     };
@@ -279,7 +282,7 @@ fn apply_pending_with(
         before_install()?;
         fs::rename(
             candidate(paths, &journal.request.token),
-            paths.config.join("settings.json"),
+            paths.config.join("client-state-v0.json"),
         )
         .map_err(|e| failure("Cannot install recovered settings", e))?;
         journal.installed = true;
@@ -296,7 +299,10 @@ fn apply_pending_with(
     }
     remove_metadata(&paths.data.join(PENDING))?;
     remove_metadata(&paths.data.join(JOURNAL))?;
-    Ok(Some(format!("recovery-archive-{}", journal.request.token)))
+    Ok(Some(format!(
+        "client-recovery-archive-{}",
+        journal.request.token
+    )))
 }
 
 pub fn initialize(paths: &DataPaths) -> NativeResult<InitializedStorage> {
@@ -308,7 +314,7 @@ pub fn initialize(paths: &DataPaths) -> NativeResult<InitializedStorage> {
         });
     let applied = preparation.and_then(|()| apply_pending(paths));
     let settings = if applied.is_ok() {
-        SettingsStore::open(paths.config.join("settings.json"))
+        ClientStateStore::open(paths.config.join(CLIENT_STATE_FILE))
     } else {
         Err(invalid(
             "Original settings remain unopened after recovery preparation failed",
@@ -321,10 +327,10 @@ pub fn initialize(paths: &DataPaths) -> NativeResult<InitializedStorage> {
         .or_else(|| settings.as_ref().err().map(|error| error.message.clone()));
     if reason.is_none() {
         return Ok(InitializedStorage {
-            settings: settings?,
+            client_state: settings?,
             recovery: RecoveryState {
                 paths: paths.clone(),
-                temporary: None,
+                _temporary: None,
                 operation: Mutex::new(()),
                 status: Mutex::new(RecoveryStatus {
                     active: false,
@@ -340,10 +346,10 @@ pub fn initialize(paths: &DataPaths) -> NativeResult<InitializedStorage> {
         .tempdir()
         .map_err(|e| failure("Cannot create isolated recovery workspace", e))?;
     Ok(InitializedStorage {
-        settings: SettingsStore::open(temporary.path().join("settings.json"))?,
+        client_state: ClientStateStore::open(temporary.path().join(CLIENT_STATE_FILE))?,
         recovery: RecoveryState {
             paths: paths.clone(),
-            temporary: Some(temporary),
+            _temporary: Some(temporary),
             operation: Mutex::new(()),
             status: Mutex::new(RecoveryStatus {
                 active: true,
@@ -368,14 +374,7 @@ impl RecoveryState {
 
     #[cfg(test)]
     fn is_isolated(&self) -> bool {
-        self.temporary.is_some()
-    }
-
-    pub fn wallpaper_path(&self) -> PathBuf {
-        self.temporary.as_ref().map_or_else(
-            || self.paths.data.join("wallpapers.json"),
-            |directory| directory.path().join("wallpapers.json"),
-        )
+        self._temporary.is_some()
     }
 
     fn report(&self) -> NativeResult<RecoveryStatus> {
@@ -422,13 +421,7 @@ fn stage(state: &RecoveryState) -> NativeResult<RecoveryStatus> {
         .to_owned();
     validate_token(&token)?;
     let path = candidate(&state.paths, &token);
-    write_json(
-        &path,
-        &SettingsSnapshot {
-            revision: 0,
-            settings: serde_json::json!({}),
-        },
-    )?;
+    write_json(&path, &ClientStateDocument::default())?;
     verify_settings(&path)?;
     write_json(&state.paths.data.join(PENDING), &Pending { token })?;
     let mut status = state
@@ -467,7 +460,11 @@ mod tests {
     }
 
     fn isolated(paths: &DataPaths) -> InitializedStorage {
-        fs::write(paths.config.join("settings.json"), vec![b'x'; 140 * 1024]).unwrap();
+        fs::write(
+            paths.config.join("client-state-v0.json"),
+            vec![b'x'; 520 * 1024],
+        )
+        .unwrap();
         let initialized = initialize(paths).unwrap();
         assert!(initialized.recovery.report().unwrap().active);
         initialized
@@ -491,15 +488,12 @@ mod tests {
     fn settings_reset_only_replaces_after_restart_and_archives_the_original() {
         let (_root, paths) = fixture();
         let initialized = isolated(&paths);
-        let original = fs::read(paths.config.join("settings.json")).unwrap();
+        let original = fs::read(paths.config.join("client-state-v0.json")).unwrap();
         assert!(initialized.recovery.is_isolated());
-        assert_ne!(
-            initialized.recovery.wallpaper_path(),
-            paths.data.join("wallpapers.json")
-        );
+
         stage(&initialized.recovery).unwrap();
         assert_eq!(
-            fs::read(paths.config.join("settings.json")).unwrap(),
+            fs::read(paths.config.join("client-state-v0.json")).unwrap(),
             original
         );
         drop(initialized);
@@ -507,15 +501,15 @@ mod tests {
         let status = restarted.recovery.report().unwrap();
         assert!(!status.active);
         assert_eq!(
-            restarted.settings.snapshot().unwrap().settings,
-            serde_json::json!({})
+            restarted.client_state.snapshot("main").unwrap().state,
+            crate::client_state::ClientWindowState::default()
         );
         assert_eq!(
             fs::read(
                 paths
                     .config
                     .join(status.archive_id.unwrap())
-                    .join("settings.json")
+                    .join("client-state-v0.json")
             )
             .unwrap(),
             original
@@ -528,14 +522,14 @@ mod tests {
     fn failed_installation_restores_original_settings_and_preserves_the_candidate() {
         let (_root, paths) = fixture();
         let initialized = isolated(&paths);
-        let original = fs::read(paths.config.join("settings.json")).unwrap();
+        let original = fs::read(paths.config.join("client-state-v0.json")).unwrap();
         stage(&initialized.recovery).unwrap();
         let request: Pending = json(&paths.data.join(PENDING)).unwrap();
         assert!(
             apply_pending_with(&paths, || Err(invalid("simulated installation failure"))).is_err()
         );
         assert_eq!(
-            fs::read(paths.config.join("settings.json")).unwrap(),
+            fs::read(paths.config.join("client-state-v0.json")).unwrap(),
             original
         );
         assert!(candidate(&paths, &request.token).exists());
@@ -547,36 +541,36 @@ mod tests {
     fn interrupted_installation_rolls_back_before_retrying() {
         let (_root, paths) = fixture();
         let initialized = isolated(&paths);
-        let original = fs::read(paths.config.join("settings.json")).unwrap();
+        let original = fs::read(paths.config.join("client-state-v0.json")).unwrap();
         stage(&initialized.recovery).unwrap();
         drop(initialized);
         let request: Pending = json(&paths.data.join(PENDING)).unwrap();
         let journal = Journal {
             request,
-            originals: vec!["settings.json".into()],
+            originals: vec!["client-state-v0.json".into()],
             installed: false,
         };
-        let saved = archive(&paths, &journal.request.token, "settings.json").unwrap();
+        let saved = archive(&paths, &journal.request.token, "client-state-v0.json").unwrap();
         fs::create_dir(saved.parent().unwrap()).unwrap();
         write_json(&paths.data.join(JOURNAL), &journal).unwrap();
-        fs::rename(paths.config.join("settings.json"), &saved).unwrap();
+        fs::rename(paths.config.join("client-state-v0.json"), &saved).unwrap();
         fs::rename(
             candidate(&paths, &journal.request.token),
-            paths.config.join("settings.json"),
+            paths.config.join("client-state-v0.json"),
         )
         .unwrap();
         let archive_id = apply_pending(&paths).unwrap().unwrap();
         assert_eq!(
-            fs::read(paths.config.join(archive_id).join("settings.json")).unwrap(),
+            fs::read(paths.config.join(archive_id).join("client-state-v0.json")).unwrap(),
             original
         );
         assert_eq!(
-            SettingsStore::open(paths.config.join("settings.json"))
+            ClientStateStore::open(paths.config.join("client-state-v0.json"))
                 .unwrap()
-                .snapshot()
+                .snapshot("main")
                 .unwrap()
-                .settings,
-            serde_json::json!({})
+                .state,
+            crate::client_state::ClientWindowState::default()
         );
         assert!(!paths.data.join(JOURNAL).exists());
     }
@@ -585,19 +579,81 @@ mod tests {
     fn future_settings_are_never_overwritten_during_staging_or_restart() {
         let (_root, paths) = fixture();
         let initialized = isolated(&paths);
-        let original = fs::read(paths.config.join("settings.json")).unwrap();
-        let future = serde_json::json!({"revision": 1, "settings": {"schemaVersion": crate::storage::SETTINGS_SCHEMA_VERSION + 1}});
-        write_json(&paths.config.join("settings.json"), &future).unwrap();
+        let original = fs::read(paths.config.join("client-state-v0.json")).unwrap();
+        let future = serde_json::json!({"formatVersion": "9.0", "windows": {}});
+        write_json(&paths.config.join("client-state-v0.json"), &future).unwrap();
         assert!(stage(&initialized.recovery).is_err());
         assert!(!paths.data.join(PENDING).exists());
-        fs::write(paths.config.join("settings.json"), original).unwrap();
+        fs::write(paths.config.join("client-state-v0.json"), original).unwrap();
         stage(&initialized.recovery).unwrap();
-        write_json(&paths.config.join("settings.json"), &future).unwrap();
-        let bytes = fs::read(paths.config.join("settings.json")).unwrap();
+        write_json(&paths.config.join("client-state-v0.json"), &future).unwrap();
+        let bytes = fs::read(paths.config.join("client-state-v0.json")).unwrap();
         assert!(apply_pending(&paths).is_err());
-        assert_eq!(fs::read(paths.config.join("settings.json")).unwrap(), bytes);
+        assert_eq!(
+            fs::read(paths.config.join("client-state-v0.json")).unwrap(),
+            bytes
+        );
         assert!(paths.data.join(PENDING).exists());
         assert!(!paths.data.join(JOURNAL).exists());
+    }
+
+    #[test]
+    fn future_window_format_refuses_staging_without_creating_recovery_metadata() {
+        for label in ["main", "secondary"] {
+            let (_root, paths) = fixture();
+            let mut future = serde_json::to_value(ClientStateDocument::default()).unwrap();
+            future["windows"][label]["formatVersion"] = "0.2".into();
+            let path = paths.config.join("client-state-v0.json");
+            write_json(&path, &future).unwrap();
+            let original = fs::read(&path).unwrap();
+            assert!(read_document(&path).is_err());
+            let initialized = initialize(&paths).unwrap();
+            assert!(initialized.recovery.is_isolated());
+
+            assert_eq!(
+                stage(&initialized.recovery).unwrap_err().code,
+                ErrorCode::StorageCorrupt
+            );
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert!(!initialized.recovery.report().unwrap().pending);
+            assert!(!paths.data.join(PENDING).exists());
+            assert!(!paths.data.join(JOURNAL).exists());
+            assert_eq!(fs::read_dir(&paths.config).unwrap().count(), 1);
+            assert_eq!(fs::read_dir(&paths.data).unwrap().count(), 0);
+        }
+    }
+
+    #[test]
+    fn future_window_format_refuses_restart_and_preserves_pending_candidate() {
+        for label in ["main", "secondary"] {
+            let (_root, paths) = fixture();
+            let initialized = isolated(&paths);
+            stage(&initialized.recovery).unwrap();
+            let pending_bytes = fs::read(paths.data.join(PENDING)).unwrap();
+            let request: Pending = serde_json::from_slice(&pending_bytes).unwrap();
+            let staged = candidate(&paths, &request.token);
+            let candidate_bytes = fs::read(&staged).unwrap();
+            let mut future = serde_json::to_value(ClientStateDocument::default()).unwrap();
+            future["windows"][label]["formatVersion"] = "0.2".into();
+            let path = paths.config.join("client-state-v0.json");
+            write_json(&path, &future).unwrap();
+            let original = fs::read(&path).unwrap();
+            assert!(read_document(&path).is_err());
+            drop(initialized);
+
+            let restarted = initialize(&paths).unwrap();
+            assert_eq!(fs::read(&path).unwrap(), original);
+            assert!(restarted.recovery.is_isolated());
+            assert_eq!(fs::read(paths.data.join(PENDING)).unwrap(), pending_bytes);
+            assert_eq!(fs::read(&staged).unwrap(), candidate_bytes);
+            assert!(!paths.data.join(JOURNAL).exists());
+            assert!(
+                !paths
+                    .config
+                    .join(format!("client-recovery-archive-{}", request.token))
+                    .exists()
+            );
+        }
     }
 
     #[test]
@@ -605,19 +661,16 @@ mod tests {
         for contents in [
             r#"{"revision":1,"settings":{"runInBackground":"yes"}}"#.to_owned(),
             r#"{"revision":-1,"settings":{}}"#.to_owned(),
-            format!(
-                r#"{{"revision":1,"settings":{{"schemaVersion":{}}}}}"#,
-                crate::storage::SETTINGS_SCHEMA_VERSION + 1
-            ),
+            r#"{"formatVersion":"9.0","windows":{}}"#.to_owned(),
             format!(
                 "{}{}",
                 r#"{"revision":1,"settings":{}}"#,
-                " ".repeat(MAX_SETTINGS_FILE_SIZE)
+                " ".repeat(MAX_CLIENT_STATE_FILE_SIZE)
             ),
         ] {
             let (_root, paths) = fixture();
             let initialized = isolated(&paths);
-            let original = fs::read(paths.config.join("settings.json")).unwrap();
+            let original = fs::read(paths.config.join("client-state-v0.json")).unwrap();
             stage(&initialized.recovery).unwrap();
             let pending_bytes = fs::read(paths.data.join(PENDING)).unwrap();
             let pending: Pending = serde_json::from_slice(&pending_bytes).unwrap();
@@ -629,7 +682,7 @@ mod tests {
             );
             assert_eq!(fs::read_to_string(&path).unwrap(), contents);
             assert_eq!(
-                fs::read(paths.config.join("settings.json")).unwrap(),
+                fs::read(paths.config.join("client-state-v0.json")).unwrap(),
                 original
             );
             assert_eq!(fs::read(paths.data.join(PENDING)).unwrap(), pending_bytes);
@@ -644,7 +697,11 @@ mod tests {
             serde_json::json!({"token": "invalid", "unknown": true}),
         ] {
             let (_root, paths) = fixture();
-            fs::write(paths.config.join("settings.json"), b"original settings").unwrap();
+            fs::write(
+                paths.config.join("client-state-v0.json"),
+                b"original settings",
+            )
+            .unwrap();
             write_json(&paths.data.join(PENDING), &request).unwrap();
             let pending = fs::read(paths.data.join(PENDING)).unwrap();
             let initialized = initialize(&paths).unwrap();
@@ -652,28 +709,57 @@ mod tests {
             assert!(stage(&initialized.recovery).is_err());
             assert_eq!(fs::read(paths.data.join(PENDING)).unwrap(), pending);
             assert_eq!(
-                fs::read(paths.config.join("settings.json")).unwrap(),
+                fs::read(paths.config.join("client-state-v0.json")).unwrap(),
                 b"original settings"
             );
         }
     }
 
     #[test]
-    fn healthy_older_settings_and_unwritable_logs_do_not_trigger_isolation() {
+    fn healthy_client_state_and_unwritable_logs_do_not_trigger_isolation() {
         let (_root, paths) = fixture();
-        let original =
-            br#"{"revision":7,"settings":{"schemaVersion":3,"windowPosition":"center"}}"#;
-        fs::write(paths.config.join("settings.json"), original).unwrap();
+        let original = serde_json::to_vec(&ClientStateDocument::default()).unwrap();
+        fs::write(paths.config.join("client-state-v0.json"), &original).unwrap();
         fs::remove_dir(&paths.logs).unwrap();
         fs::write(&paths.logs, b"log path blocked").unwrap();
         let initialized = initialize(&paths).unwrap();
         assert!(!initialized.recovery.is_isolated());
-        assert_eq!(initialized.settings.snapshot().unwrap().revision, 7);
         assert_eq!(
-            fs::read(paths.config.join("settings.json")).unwrap(),
+            initialized.client_state.snapshot("main").unwrap().revision,
+            0.into()
+        );
+        assert_eq!(
+            fs::read(paths.config.join("client-state-v0.json")).unwrap(),
             original
         );
-        assert_eq!(fs::read(&paths.logs).unwrap(), b"log path blocked");
         assert!(stage(&initialized.recovery).is_err());
+    }
+}
+
+#[cfg(test)]
+mod client_state_tests {
+    use super::*;
+    #[test]
+    fn client_state_recovery_does_not_read_or_replace_legacy_settings() {
+        let directory = tempfile::tempdir().unwrap();
+        let paths = DataPaths {
+            config: directory.path().join("config"),
+            data: directory.path().join("data"),
+            logs: directory.path().join("logs"),
+        };
+        fs::create_dir(&paths.config).unwrap();
+        fs::write(paths.config.join("settings.json"), b"legacy user original").unwrap();
+        let initialized = initialize(&paths).unwrap();
+        assert!(!initialized.recovery.is_isolated());
+        assert_eq!(
+            fs::read(paths.config.join("settings.json")).unwrap(),
+            b"legacy user original"
+        );
+        assert!(
+            !paths
+                .config
+                .join(crate::client_state::CLIENT_STATE_FILE)
+                .exists()
+        );
     }
 }

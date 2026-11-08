@@ -1,4 +1,4 @@
-import type { BundledWallpaperId } from "@/lib/bundled-wallpapers";
+import type { BackgroundPreset } from "@serial-workbench/contracts";
 
 /** 背景设置与预览共用一份注册表，不依赖界面或语言 provider。 */
 export const BACKGROUNDS = [
@@ -14,8 +14,7 @@ export const BACKGROUNDS = [
   "custom",
 ] as const;
 
-export type Background = (typeof BACKGROUNDS)[number] | BundledWallpaperId;
-export type BuiltinBackground = Exclude<(typeof BACKGROUNDS)[number], "custom">;
+export type BuiltinBackground = BackgroundPreset;
 export const BUILTIN_BACKGROUNDS = BACKGROUNDS.filter(
   (background): background is BuiltinBackground => background !== "custom",
 );

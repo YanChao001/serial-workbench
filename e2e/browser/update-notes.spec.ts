@@ -1,13 +1,23 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import appConfig from "../../app.config.json" with { type: "json" };
 import type {
+  QueryResult,
+  RpcRequest,
+  SharedSettings,
+  WorkspaceDocument,
+} from "@serial-workbench/contracts";
+import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
+import clientDefaults from "../../src/lib/generated/client-defaults.json" with { type: "json" };
+import type {
+  ClientStateSnapshot,
+  ClientWindowState,
+  DesktopAttachment,
   DesktopStatus,
   DiagnosticsReport,
+  HostSettingsEffectsReceipt,
   UpdateProgress,
   UpdateStatus,
-  Wallpaper,
   WindowGeometry,
 } from "../../src/lib/generated/bindings";
 
@@ -15,6 +25,8 @@ type UpdateNotesFixture = {
   openedUrls: string[];
   unexpectedCommands: string[];
   executedHtml: boolean;
+  hostQueries: string[];
+  clientStateReads: number;
 };
 
 declare global {
@@ -118,7 +130,7 @@ async function seedUpdateFixture(
     platform: "browser-fixture",
     architecture: "test",
     windowLabel: "main",
-    settingsRevision: 1,
+    settingsRevision: "1",
     desktop: desktopStatus,
     autostartEnabled: false,
     updaterConfigured: status.configured,
@@ -135,26 +147,106 @@ async function seedUpdateFixture(
     defaultWidth: 1120,
     defaultHeight: 740,
   };
-  const wallpapers: Wallpaper[] = [];
+  const attachment: DesktopAttachment = {
+    generation: "1",
+    attachment: {
+      hostId: "release-notes-host",
+      instanceEpoch: "1",
+      protocolVersion: "0.1",
+      catalogVersion: "1",
+      actorId: "release-notes-actor",
+      clientId: "release-notes-client",
+      requestContext: "fixture-context",
+      requestContextAcceptUntil: "2099-01-01T00:00:00Z",
+      limits: {
+        maxRequestBytes: "1048576",
+        maxPageItems: "100",
+        maxBatchBytes: "1048576",
+        maxReaderQueueBytes: "1048576",
+        resultRetentionMs: "60000",
+        maxLeaseTtlMs: "60000",
+      },
+    },
+  };
+  const hostId = attachment.attachment.hostId;
+  const settingsScope = {
+    scopeId: "settings.shared",
+    target: { hostId, kind: "settings", id: "shared" },
+  };
+  const workspaceScope = {
+    scopeId: "workspace.default",
+    target: { hostId, kind: "workspace", id: "default" },
+  };
+  const settingsDocument = {
+    scope: settingsScope,
+    document: {
+      revision: "1",
+      value: {
+        ...(defaults.settings as SharedSettings),
+        language,
+        theme,
+        accent: "violet" as const,
+        motion: "reduced" as const,
+        autoCheckUpdates: false,
+      },
+    },
+  };
+  const workspaceDocument = {
+    scope: workspaceScope,
+    document: { revision: "1", value: defaults.workspace as WorkspaceDocument },
+  };
+  const queryResults = {
+    "state.scopes": {
+      kind: "scopes",
+      value: { scopes: [settingsScope, workspaceScope] },
+    },
+    "catalog.list": {
+      kind: "catalog",
+      value: { catalogVersion: "1", items: [] },
+    },
+    "device.list": { kind: "devices", value: { devices: [], stale: false } },
+    "settings.read": { kind: "settings", value: settingsDocument },
+    "workspace.read": { kind: "workspace", value: workspaceDocument },
+  } satisfies Record<string, QueryResult>;
+  const clientState = {
+    formatVersion: "0.1",
+    revision: "1",
+    state: {
+      ...(clientDefaults as ClientWindowState),
+      currentPage: "settings",
+    },
+  } satisfies ClientStateSnapshot;
+  const effects: HostSettingsEffectsReceipt = {
+    hostId,
+    instanceEpoch: attachment.attachment.instanceEpoch,
+    revision: settingsDocument.document.revision,
+    effects: { trayLanguage: true, networkMode: true, runInBackground: true },
+  };
   // Exercise the production browser UI with controlled IPC, not native behavior.
   await page.addInitScript(
     ({
-      namespace,
-      settings,
+      hostAttachment,
+      hostQueryResults,
+      settingsState,
+      workspaceState,
+      initialClientState,
+      settingsEffects,
       updateSnapshot,
       appVersion,
       desktop,
       diagnosticsReport,
       windowGeometry,
-      images,
     }) => {
-      localStorage.setItem(`${namespace}:settings`, JSON.stringify(settings));
+      let clientSnapshot = initialClientState;
+      let nextSubscription = 1;
       const callbacks = new Map<number, (value: unknown) => void>();
       let nextCallback = 1;
       const fixture: UpdateNotesFixture = {
         openedUrls: [],
         unexpectedCommands: [],
         executedHtml: false,
+        hostQueries: [],
+        clientStateReads: 0,
       };
       Object.assign(window, {
         updateNotesFixture: fixture,
@@ -192,16 +284,73 @@ async function seedUpdateFixture(
                 return appVersion;
               case "plugin:app|tauri_version":
                 return "2.0.0";
-              case "load_settings_snapshot":
-                return { revision: 1, settings };
+              case "host_attachment":
+                return hostAttachment;
+              case "host_request": {
+                const request = args.request as RpcRequest;
+                if (request.method !== "action.query") break;
+                const query = request.params;
+                fixture.hostQueries.push(query.actionId);
+                if (query.actionId === "state.snapshot") {
+                  const scopeId = query.params.scopeId;
+                  const state =
+                    scopeId === settingsState.scope.scopeId
+                      ? settingsState
+                      : scopeId === workspaceState.scope.scopeId
+                        ? workspaceState
+                        : null;
+                  if (!state) break;
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "snapshot",
+                      value: {
+                        hostId: hostAttachment.attachment.hostId,
+                        instanceEpoch: hostAttachment.attachment.instanceEpoch,
+                        revision: state.document.revision,
+                        cursor: {
+                          hostId: hostAttachment.attachment.hostId,
+                          instanceEpoch:
+                            hostAttachment.attachment.instanceEpoch,
+                          scopeId,
+                          position: "0",
+                        },
+                        state,
+                      },
+                    },
+                  };
+                }
+                const result =
+                  hostQueryResults[
+                    query.actionId as keyof typeof hostQueryResults
+                  ];
+                if (result) return { ok: true, result };
+                break;
+              }
+              case "host_subscribe":
+                return `release-notes-subscription-${nextSubscription++}`;
+              case "host_unsubscribe":
+                return null;
+              case "client_state_read":
+                fixture.clientStateReads++;
+                return clientSnapshot;
+              case "client_state_save":
+                if (args.expectedRevision !== clientSnapshot.revision)
+                  throw { code: "CONFLICT" };
+                clientSnapshot = {
+                  ...clientSnapshot,
+                  revision: String(BigInt(clientSnapshot.revision) + 1n),
+                  state: args.state as ClientStateSnapshot["state"],
+                };
+                return clientSnapshot;
+              case "apply_host_settings_effects":
+                return settingsEffects;
               case "get_desktop_status":
                 return desktop;
               case "get_diagnostics_report":
                 return diagnosticsReport;
               case "get_window_geometry":
                 return windowGeometry;
-              case "list_wallpapers":
-                return images;
               case "recovery_status":
                 return {
                   active: false,
@@ -210,7 +359,11 @@ async function seedUpdateFixture(
                   archiveId: null,
                 };
               case "get_workspace":
-                return { routes: {}, secondaryOpen: false };
+                // Shell route restoration still uses this registered command.
+                return {
+                  routes: { main: `/${clientSnapshot.state.currentPage}` },
+                  secondaryOpen: false,
+                };
               case "activation_snapshot":
                 return [];
               case "get_update_snapshot":
@@ -220,33 +373,45 @@ async function seedUpdateFixture(
                   throw new Error("Expected an external URL string");
                 fixture.openedUrls.push(args.url);
                 return null;
-              default:
-                fixture.unexpectedCommands.push(command);
-                throw new Error(`Unexpected IPC fixture command: ${command}`);
             }
+            fixture.unexpectedCommands.push(command);
+            throw new Error(`Unexpected IPC fixture command: ${command}`);
           },
         },
       });
     },
     {
-      namespace: appConfig.browserStorageNamespace,
-      settings: {
-        schemaVersion: 3,
-        language,
-        theme,
-        accent: "violet",
-        motion: "reduced",
-        background: "plain",
-        autoCheckUpdates: false,
-      },
+      hostAttachment: attachment,
+      hostQueryResults: queryResults,
+      settingsState: settingsDocument,
+      workspaceState: workspaceDocument,
+      initialClientState: clientState,
+      settingsEffects: effects,
       updateSnapshot: snapshot,
       appVersion: status.currentVersion,
       desktop: desktopStatus,
       diagnosticsReport: diagnostics,
       windowGeometry: geometry,
-      images: wallpapers,
     },
   );
+}
+
+async function expectNativeFixtureReady(page: Page) {
+  await expect
+    .poll(() => page.evaluate(() => window.updateNotesFixture.hostQueries))
+    .toEqual(
+      expect.arrayContaining([
+        "state.scopes",
+        "catalog.list",
+        "device.list",
+        "workspace.read",
+        "settings.read",
+        "state.snapshot",
+      ]),
+    );
+  await expect
+    .poll(() => page.evaluate(() => window.updateNotesFixture.clientStateReads))
+    .toBeGreaterThan(0);
 }
 
 for (const theme of ["light", "dark"] as const) {
@@ -264,6 +429,7 @@ for (const theme of ["light", "dark"] as const) {
     await page.setViewportSize({ width: 880, height: 600 });
     await seedUpdateFixture(page, { body: longNotes, theme });
     await page.goto("./#/settings?section=updates");
+    await expectNativeFixtureReady(page);
     await expect(page.locator("html")).toHaveCSS("color-scheme", theme);
     const trigger = page
       .locator("#settings-updates")
@@ -434,6 +600,7 @@ for (const fixture of [
     await page.setViewportSize({ width: 880, height: 600 });
     await seedUpdateFixture(page, fixture);
     await page.goto("./#/settings?section=updates");
+    await expectNativeFixtureReady(page);
     const trigger = page
       .locator("#settings-updates")
       .getByRole("button", { name: fixture.trigger, exact: true });

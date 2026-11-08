@@ -23,6 +23,7 @@ import { SkinPicker } from "@/components/skin-picker";
 import { AccentPicker } from "@/components/accent-picker";
 import { SettingsSearch } from "@/components/settings-search";
 import { SettingsPersistence } from "@/components/settings-persistence";
+import { TerminalTypographySettings } from "@/components/terminal-typography-settings";
 import { DesktopSettings } from "@/components/desktop-settings";
 import { UpdateSettings } from "@/components/update-settings";
 import { SettingLabel, SettingRow } from "@/components/setting-row";
@@ -439,6 +440,8 @@ export default function Settings() {
           </SettingRow>
         </div>
       </fieldset>
+
+      <TerminalTypographySettings />
 
       <fieldset
         data-surface="panel"

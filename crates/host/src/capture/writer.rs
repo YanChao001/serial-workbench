@@ -35,11 +35,12 @@ pub struct CaptureLimits {
 }
 impl Default for CaptureLimits {
     fn default() -> Self {
+        let storage = CaptureStorageLimits::default();
         Self {
             volume_bytes: 64 * 1024 * 1024,
             volume_duration_ns: 60 * 60 * 1_000_000_000,
-            capacity_bytes: 1024 * 1024 * 1024,
-            reserve_bytes: 128 * 1024 * 1024,
+            capacity_bytes: storage.capacity_bytes.get(),
+            reserve_bytes: storage.reserve_bytes.get(),
             max_records: 100_000,
         }
     }

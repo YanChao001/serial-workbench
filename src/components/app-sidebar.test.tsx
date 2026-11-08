@@ -5,6 +5,7 @@ import {
   render,
   screen,
   within,
+  waitFor,
 } from "@testing-library/react";
 import { MemoryRouter } from "react-router-dom";
 import type { ReactNode } from "react";
@@ -15,6 +16,8 @@ import { I18nProvider } from "@/providers/i18n";
 import { CommandsProvider, useCommands } from "@/providers/commands";
 import { zhCN } from "@/i18n/zh-CN";
 import { SettingsProvider, STORAGE_KEY } from "@/providers/settings";
+import { DEFAULT_SETTINGS, settingsDocument } from "@/lib/settings-model";
+import { browserClientStateStore } from "@/lib/client-settings";
 import type { AppNavigationItem, AppRoute } from "@/routes";
 import { AppSidebar } from "./app-sidebar";
 
@@ -84,7 +87,11 @@ function renderSidebar(
 describe("persisted application sidebar", () => {
   beforeEach(() => {
     localStorage.clear();
-    localStorage.setItem(STORAGE_KEY, JSON.stringify({ language: "zh" }));
+    sessionStorage.clear();
+    localStorage.setItem(
+      STORAGE_KEY,
+      JSON.stringify(settingsDocument(DEFAULT_SETTINGS)),
+    );
   });
   afterEach(() => {
     cleanup();
@@ -100,7 +107,7 @@ describe("persisted application sidebar", () => {
     expect(link.className).not.toContain("=>");
   });
 
-  it("adjusts width by keyboard within bounds and persists it", () => {
+  it("adjusts width by keyboard within bounds and persists it", async () => {
     renderSidebar();
     const separator = screen.getByRole("separator", { name: "调整侧栏宽度" });
     fireEvent.keyDown(separator, { key: "ArrowRight" });
@@ -117,8 +124,10 @@ describe("persisted application sidebar", () => {
     expect(separator).toHaveAttribute("aria-valuenow", "180");
     fireEvent.keyDown(separator, { key: "Enter" });
     expect(separator).toHaveAttribute("aria-valuenow", "224");
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sidebarWidth).toBe(
-      224,
+    await waitFor(() =>
+      expect(
+        browserClientStateStore().read().state.preferences.sidebarWidth,
+      ).toBe(224),
     );
     write.mockRestore();
   });
@@ -171,7 +180,7 @@ describe("persisted application sidebar", () => {
       expect(preload).not.toHaveBeenCalled();
     },
   );
-  it("keeps collapsed navigation named and restores the saved width", () => {
+  it("keeps collapsed navigation named and restores the saved width", async () => {
     const view = renderSidebar();
     fireEvent.keyDown(screen.getByRole("separator"), {
       key: "ArrowRight",
@@ -189,6 +198,12 @@ describe("persisted application sidebar", () => {
     expect(screen.getByRole("button", { name: "展开侧栏" })).toHaveAttribute(
       "aria-expanded",
       "false",
+    );
+    await waitFor(() =>
+      expect(browserClientStateStore().read().state.preferences).toMatchObject({
+        sidebarCollapsed: true,
+        sidebarWidth: 256,
+      }),
     );
     view.unmount();
     renderSidebar();
@@ -345,7 +360,7 @@ describe("persisted application sidebar", () => {
     expect(screen.queryByRole("tooltip")).toBeNull();
   });
 
-  it("拖动仅预览宽度，释放后只持久化最终宽度，并处理取消和捕获丢失", () => {
+  it("拖动仅预览宽度，释放后只持久化最终宽度，并处理取消和捕获丢失", async () => {
     vi.stubGlobal(
       "PointerEvent",
       class extends MouseEvent {
@@ -370,16 +385,16 @@ describe("persisted application sidebar", () => {
     fireEvent.pointerMove(separator, { pointerId: 2, clientX: 284 });
     expect(sidebar).toHaveStyle({ width: "284px" });
     expect(write).not.toHaveBeenCalled();
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sidebarWidth).toBe(
-      224,
-    );
+    expect(
+      browserClientStateStore().read().state.preferences.sidebarWidth,
+    ).toBe(224);
     fireEvent.pointerUp(separator, { pointerId: 2 });
     expect(sidebar).toHaveAttribute("data-resizing", "false");
     expect(separator.releasePointerCapture).toHaveBeenCalledWith(2);
-    expect(write).toHaveBeenCalledOnce();
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sidebarWidth).toBe(
-      284,
-    );
+    await waitFor(() => expect(write).toHaveBeenCalledOnce());
+    expect(
+      browserClientStateStore().read().state.preferences.sidebarWidth,
+    ).toBe(284);
 
     write.mockClear();
     fireEvent.pointerDown(separator, { button: 0, pointerId: 3, clientX: 284 });
@@ -394,17 +409,19 @@ describe("persisted application sidebar", () => {
     expect(sidebar).toHaveStyle({ width: "360px" });
     fireEvent.lostPointerCapture(separator, { pointerId: 4 });
     expect(sidebar).toHaveAttribute("data-resizing", "false");
-    expect(write).toHaveBeenCalledOnce();
-    expect(JSON.parse(localStorage.getItem(STORAGE_KEY)!).sidebarWidth).toBe(
-      360,
-    );
+    await waitFor(() => expect(write).toHaveBeenCalledOnce());
+    expect(
+      browserClientStateStore().read().state.preferences.sidebarWidth,
+    ).toBe(360);
     write.mockRestore();
   });
 
   it("keeps text in place for fading and exposes reduced-motion preference", () => {
     localStorage.setItem(
       STORAGE_KEY,
-      JSON.stringify({ language: "zh", motion: "reduced" }),
+      JSON.stringify(
+        settingsDocument({ ...DEFAULT_SETTINGS, motion: "reduced" }),
+      ),
     );
     renderSidebar();
     const sidebar = screen.getByRole("complementary");

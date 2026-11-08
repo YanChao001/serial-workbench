@@ -28,6 +28,13 @@ import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { parse as parseToml } from "smol-toml";
 import { checkVersions } from "./version.mjs";
+import { fileSha256 } from "./artifact-lib.mjs";
+import {
+  buildComponents,
+  inspectComponents,
+  stageComponents,
+  targetPlatform,
+} from "./components-build.mjs";
 
 const require = createRequire(import.meta.url);
 const ADVANCED =
@@ -256,13 +263,18 @@ export function prepareBuild(
   const platform = platformForTarget(target);
   const version = checkVersions(root);
   const tauriDir = join(root, "src-tauri");
-  const config = effectiveConfig(root, options, version, platform);
+  const config = effectiveConfig(
+    root,
+    options,
+    version,
+    options.target ? platform : undefined,
+  );
   const metadata = JSON.parse(
     execFileSync(
       "cargo",
       ["metadata", "--no-deps", "--locked", "--format-version", "1"],
       {
-        cwd: root,
+        cwd: tauriDir,
         env,
         encoding: "utf8",
       },
@@ -296,6 +308,7 @@ export function prepareBuild(
     noBundle,
     optimize: options.optimize,
     explicitTarget: options.target,
+    options,
     buildArgs: [
       ...options.common,
       "--no-bundle",
@@ -309,12 +322,15 @@ export function prepareBuild(
 export function effectiveConfig(root, options, version, platform) {
   const tauriDir = join(root, "src-tauri");
   let config = readJsonConfig(join(tauriDir, "tauri.conf.json"));
-  const platformConfig = join(tauriDir, `tauri.${platform}.conf.json`);
-  if (existsSync(platformConfig)) {
+  const platformConfig = platform
+    ? join(tauriDir, `tauri.${platform}.conf.json`)
+    : undefined;
+  if (platformConfig && existsSync(platformConfig)) {
     config = mergeConfig(config, readJsonConfig(platformConfig));
   } else if (
-    existsSync(`${platformConfig}5`) ||
-    existsSync(join(tauriDir, `Tauri.${platform}.toml`))
+    platformConfig &&
+    (existsSync(`${platformConfig}5`) ||
+      existsSync(join(tauriDir, `Tauri.${platform}.toml`)))
   ) {
     optionError(
       "app:build only supports JSON platform configuration; JSON5/TOML configuration cannot be ignored",
@@ -467,10 +483,59 @@ export function locateBuildOutput(plan, executables) {
   return { executable, outputDir, target };
 }
 
-export async function buildApplication(plan) {
+export function configureBuildTarget(plan, target) {
+  plan.target = target;
+  plan.platform = targetPlatform(target);
+  if (!plan.options) return;
+  plan.config = effectiveConfig(
+    plan.root,
+    plan.options,
+    plan.version,
+    plan.platform,
+  );
+  safeBinaryName(plan.config.mainBinaryName ?? plan.binary.name);
+  const targets = plan.options.bundles.length
+    ? plan.options.bundles
+    : (plan.config.bundle?.targets ?? "all");
+  plan.noBundle =
+    plan.options.noBundle ||
+    (!(plan.config.bundle?.active ?? false) && !plan.options.bundles.length) ||
+    (Array.isArray(targets) && targets.length === 0);
+}
+
+export async function buildApplication(
+  plan,
+  {
+    buildComponents: build = buildComponents,
+    stageComponents: stage = stageComponents,
+    runTauri: run = runTauri,
+  } = {},
+) {
   console.log(`Build optimization: ${plan.optimize} (release)`);
-  const executables = await runTauri(plan, "build", plan.buildArgs, true);
-  return locateBuildOutput(plan, executables);
+  const components = await build(plan);
+  if (components.target) configureBuildTarget(plan, components.target);
+  const externalBin = [
+    ...(plan.config.bundle?.externalBin ?? []),
+    ...stage(plan, components),
+  ];
+  const config = JSON.stringify({ bundle: { externalBin } });
+  const separator = plan.buildArgs.indexOf("--");
+  const args = [
+    ...plan.buildArgs.slice(0, separator),
+    "--config",
+    config,
+    ...plan.buildArgs.slice(separator),
+  ];
+  plan.bundleArgs = [...plan.bundleArgs, "--config", config];
+  const executables = await run(plan, "build", args, true);
+  const built = locateBuildOutput(plan, executables);
+  if (
+    components.outputDir &&
+    (built.outputDir !== components.outputDir ||
+      built.target !== components.target)
+  )
+    throw new Error("Desktop and component Cargo outputs do not match");
+  return { ...built, components };
 }
 
 function bundleExists(path) {
@@ -528,6 +593,15 @@ function installerEntries(bundleDir) {
 /** 暂存旧 bundle；只有本次打包、归档均成功后才清理备份，失败则恢复。 */
 export async function bundleApplication(plan, built, consume) {
   if (plan.noBundle) return undefined;
+  const current = inspectComponents(plan, built.outputDir);
+  if (
+    JSON.stringify(current.manifest) !==
+    JSON.stringify(built.components.manifest)
+  )
+    throw new Error(
+      "Components changed after the build; rebuild before packaging",
+    );
+  stageComponents(plan, current);
   return withFreshBundle(
     plan,
     built,
@@ -635,4 +709,37 @@ if (
     console.error(error.message);
     process.exitCode = 1;
   }
+}
+
+export function distributionComponentsManifest(plan, input, entries) {
+  let directory;
+  if (plan.platform === "macos") {
+    const apps = entries.filter(
+      (entry) =>
+        entry.path.replaceAll("\\", "/").startsWith("macos/") &&
+        entry.path.endsWith(".app"),
+    );
+    if (apps.length !== 1)
+      throw new Error(
+        "Cannot verify final signed components without exactly one macOS app bundle",
+      );
+    directory = join(apps[0].source, "Contents", "MacOS");
+  } else {
+    directory = join(
+      plan.metadata.target_directory,
+      ".workbench-sidecars",
+      plan.target,
+    );
+  }
+  return {
+    ...input,
+    components: input.components.map(({ path }) => {
+      const suffix = plan.platform === "windows" ? ".exe" : "";
+      const name =
+        plan.platform === "macos"
+          ? path
+          : `${suffix ? path.slice(0, -suffix.length) : path}-${plan.target}${suffix}`;
+      return { path, sha256: fileSha256(join(directory, name)) };
+    }),
+  };
 }

@@ -16,6 +16,7 @@ if (dirname(directory) !== resolve(tmpdir()))
   throw new Error("Invalid bindings temporary directory");
 try {
   const output = join(directory, "bindings.ts");
+  const defaultsOutput = join(directory, "client-defaults.json");
   const result = spawnSync(
     "cargo",
     [
@@ -28,6 +29,7 @@ try {
       "export-bindings",
       "--",
       output,
+      defaultsOutput,
     ],
     {
       cwd: root,
@@ -39,24 +41,29 @@ try {
   if (result.error) throw result.error;
   if (result.status !== 0) process.exitCode = result.status ?? 1;
   else {
-    const target = join(root, "src/lib/generated/bindings.ts");
-    const generated = await format(readFileSync(output, "utf8"), {
-      filepath: target,
-    });
-    if (args.includes("--check")) {
-      if (readFileSync(target, "utf8") !== generated) {
-        console.error(
-          "Rust IPC bindings changed. Run pnpm bindings:generate and commit the result.",
-        );
-        process.exitCode = 1;
+    for (const [source, name] of [
+      [output, "bindings.ts"],
+      [defaultsOutput, "client-defaults.json"],
+    ]) {
+      const target = join(root, "src/lib/generated", name);
+      const generated = await format(readFileSync(source, "utf8"), {
+        filepath: target,
+      });
+      if (args.includes("--check")) {
+        if (readFileSync(target, "utf8") !== generated) {
+          console.error(
+            "Rust IPC artifact " +
+              name +
+              " changed. Run pnpm bindings:generate and commit the result.",
+          );
+          process.exitCode = 1;
+        } else {
+          console.log("Rust IPC artifact " + name + " is current.");
+        }
       } else {
-        console.log("Rust IPC bindings are current.");
+        writeFileSync(target, generated, "utf8");
+        console.log("Generated src/lib/generated/" + name + " from Rust.");
       }
-    } else {
-      writeFileSync(target, generated, "utf8");
-      console.log(
-        "Generated src/lib/generated/bindings.ts from Rust commands.",
-      );
     }
   }
 } finally {

@@ -854,3 +854,6 @@ async fn running_capture_reports_synced_progress_without_replacing_live_referenc
     assert_eq!(f.wait(&owner, false).await.state, OperationState::Succeeded);
     f.finish().await;
 }
+
+#[path = "support/capture_tail.rs"]
+mod capture_tail;
