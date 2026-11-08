@@ -4287,6 +4287,7 @@ dependencies = [
  "base64 0.22.1",
  "hmac",
  "libc",
+ "log",
  "serde",
  "serde_json",
  "serial-workbench-core",

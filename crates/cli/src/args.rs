@@ -33,7 +33,7 @@ Exit codes: 0 success, 1 other failure, 2 invalid input/unsupported action,
 Use --help to show this help.";
 
 pub struct Args {
-    pub profile: PathBuf,
+    pub profile: Option<PathBuf>,
     pub command: Command,
 }
 pub enum Command {
@@ -252,9 +252,6 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
         }
         _ => return Err(invalid("Invalid command or missing argument; use --help")),
     };
-    let profile = profile
-        .map(Ok)
-        .unwrap_or_else(serial_workbench_ipc::default_profile)?;
     Ok(Some(Args { profile, command }))
 }
 fn allowed(options: &BTreeMap<String, OsString>, allowed: &[&str]) -> HostResult<()> {

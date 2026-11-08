@@ -4,6 +4,7 @@ mod output;
 use args::{Command, InvokeOptions};
 use serial_workbench_client::{ConnectOptions, HostClient, read_user_control_credential};
 use serial_workbench_core::*;
+use serial_workbench_ipc::startup_config;
 use std::{path::Path, process::ExitCode, time::Duration};
 
 #[tokio::main]
@@ -34,8 +35,12 @@ async fn main() -> ExitCode {
 }
 
 async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
+    let startup = startup_config::resolve(arguments.profile)?;
+    startup_config::init_stderr_logging(startup.log_filter())?;
+    startup_config::log_startup_configuration(&startup.snapshot());
+    let profile = startup.profile();
     let mut options = ConnectOptions::new(
-        arguments.profile.clone(),
+        profile.to_path_buf(),
         id("serial-workbench-cli"),
         ClientKind::Cli,
     );
@@ -46,7 +51,7 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
     ) {
         drop(client);
         // 只有显式本地用户入口读取该凭据，clientKind 本身不授予权限。
-        options.user_control_credential = Some(read_user_control_credential(&arguments.profile)?);
+        options.user_control_credential = Some(read_user_control_credential(profile)?);
         HostClient::connect(options).await?
     } else {
         client
@@ -157,7 +162,7 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
                 .await?
         }
         Command::HostStop { request_id } => {
-            return stop_host(&client, &arguments.profile, request_id).await;
+            return stop_host(&client, profile, request_id).await;
         }
     };
     encode_reply(reply)

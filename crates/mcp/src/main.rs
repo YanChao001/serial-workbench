@@ -1,6 +1,7 @@
 use rmcp::{ServiceExt, transport::stdio};
 use serial_workbench_client::{ConnectOptions, HostClient};
 use serial_workbench_core::{ClientKind, HostError, HostResult, Id};
+use serial_workbench_ipc::startup_config;
 use serial_workbench_mcp::McpBridge;
 use std::path::PathBuf;
 
@@ -23,11 +24,11 @@ async fn run() -> HostResult<()> {
             _ => return Err(invalid_args()),
         }
     }
-    let profile = profile
-        .map(Ok)
-        .unwrap_or_else(serial_workbench_ipc::default_profile)?;
+    let startup = startup_config::resolve(profile)?;
+    startup_config::init_stderr_logging(startup.log_filter())?;
+    startup_config::log_startup_configuration(&startup.snapshot());
     let client = HostClient::connect_or_start(ConnectOptions::new(
-        profile,
+        startup.profile().to_path_buf(),
         Id::try_from("serial-workbench-mcp")?,
         ClientKind::Mcp,
     ))

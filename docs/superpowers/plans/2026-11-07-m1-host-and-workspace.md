@@ -19,7 +19,7 @@
 - Host 协议精确 `"0.1"`，新 capture 格式 `"0.1"`；U64 为十进制字符串，requestContext 由执行 Host 签发；actor 由认证绑定；所有调用包含 epoch 和 revealTarget。
 - resultRetentionMs 至少 `"604800000"`；requestContext 接纳窗口 `"86400000"` ms；时限 `"1"`—`"2147483647"` ms，只有明确的立即检查允许 `"0"`。
 - 手写 TS 不使用 any/enum，原生交互经过 `src/lib/tauri.ts`；Rust DTO 生成公共类型/schema；HashRouter、中英词典、语义 token、useUnsavedWork 沿用。
-- M0 清理/合同独立审阅通过并 squash 合入 main 后开始；M0 是前置条件，不是产品完成。M1a 按下文的基础、功能闭环两个可独立验证的里程碑交付，M1b 集中交付；各里程碑的实现、测试、审阅修正和配套文档合为一个提交，不逐任务或一两行修改提交。全部分支线性，同步只用 rebase/fast-forward，短名分支完成即删除，提交主题/正文与 PR 文案使用中文。
+- M0 清理/合同独立审阅通过并 squash 合入 main 后开始；M0 是前置条件，不是产品完成。M1a 按下文的基础、功能闭环两个里程碑交付，M1b 按下文已闭合的独立切片交付；各里程碑的实现、测试、审阅修正和配套文档合为一个提交，不逐测试或一两行修改提交。全部分支线性，同步只用 rebase/fast-forward，短名分支完成即删除，提交主题/正文与 PR 文案使用中文。
 - 软件验证使用 Virtual、独立软件对端、PTY、进程级 IPC 和无头 UI；真实窗口、硬件、驱动与最低系统验收单列，按 M6 或已安排独立环境执行。
 - 用户已要求现在启用 CI/CD：日常主要本机验证、兼顾各平台；积累到 M0/M1 等大节点手动触发完整三平台 CI。独立 CI runner 可执行真实桌面，本机仍不擅自弹窗；不恢复每次提交/PR自动运行。
 
@@ -33,6 +33,8 @@
 | M1a 功能闭环 | Task5—7：Virtual、发送与原始流、CLI/MCP                                                                    | 基础里程碑之上完成原 M1a 软件场景、手动四目标 CI，再集中提交与 PR squash |
 
 基础里程碑不创建 CLI/MCP 空程序；Task7 实现后再将两个包加入 workspace。已完成且可独立验收的边界应及时交付，不把等待后续功能作为长期积压修改的理由。
+
+M1a 两个里程碑已分别通过 PR #34、PR #35 合入。M1b 实施中再次出现已完成内容长期积压，因此先交付可独立使用、审阅和验证的“CLI/MCP 启动配置”切片：统一解析 profile 与日志级别、记录脱敏配置来源、保持机器输出，并同步指南。其余设备、录制、桌面和软件验收继续按原范围推进；该切片不代表 Task11 全部或 M1b 出口完成。每个可交付切片仍将实现、测试、审阅修正和文档集中为一个中文提交，经 PR squash 合入并清理短期分支。
 
 ## Review Focus
 
@@ -176,7 +178,7 @@ Task 8/9 的后端与 Task10 的capture可在Task5/6接口就绪后并行；Task
 - [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test device_identity`。
 - [ ] **Step 3：实现。** M1每500ms异步目录差分轮询并提供立即refresh，避免平台事件丢失；仅变化发布revision。OS字段用实际来源，无法查占用者只给已知错误与系统检查步骤。最近记录在成功open时更新；收藏/重绑定由workspace.modify动作保存。自动重连默认关闭，开启后初始500ms、×2至30000ms、默认10次，可配置；每次重新验证身份，清线/config gate未结算不尝试。
 - [ ] **Step 4：执行 green。** 同命令含fake时钟退避取消；一次目录失败保留最后快照并标stale，不把全部设备当拔除。注册 device.list/refresh/rebind、favorites.save、recent.list，GUI/MCP复用。
-- [ ] **Step 5：纳入M1b交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1b出口统一提交，不创建单独的中间提交。
+- [ ] **Step 5：纳入M1b交付。** 按[交付边界调整](#交付边界调整)集中交付已闭合切片，不逐测试或修正提交。
 
 ### Task 9：OS 串口、PTY 与平台能力
 
@@ -188,7 +190,7 @@ Task 8/9 的后端与 Task10 的capture可在Task5/6接口就绪后并行；Task
 - [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test serial_backend --test pty_roundtrip`；Unix PTY仅目标平台运行，Windows不将跳过计入PTY通过。
 - [ ] **Step 3：实现。** 使用现有windows-sys和Unix libc直接平台API，避免用缺少Mark/Space/1.5/DSR-DTR的高层配置枚举缩减产品模型。Windows CreateFile独占、OVERLAPPED IO/CancelIoEx、DCB/GetCommState、ClearCommError、EscapeCommFunction、PurgeComm；枚举SetupAPI读硬件/驱动属性。Linux termios/termios2 ioctl支持非标准baud，CMSPAR依能力、TIOCEXCL、TIOCMGET、TIOCOUTQ、TIOCSBRK/TIOCCBRK；macOS IOKit目录、termios/IOSSIOSPEED，系统未支持组合精确UNSUPPORTED_CAPABILITY。OS映射函数与unsafe封装局限到平台文件，驱动读回决定能力。参考[DCB](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-dcb)和[termios](https://man7.org/linux/man-pages/man3/termios.3.html)，不得以sleep模拟已确认drain或线状态。
 - [ ] **Step 4：执行 green。** 同命令；真实PTY验证RX/TX/purge/drain取消；mock只证明平台调用参数，硬件速率、输入边沿/收到BREAK和控制线电平列M6。M1提供输出控制与输入采样，unsupported显式显示。阻塞drain放专有可取消后端路径，不能卡Host退出；无法证明结束则unknown并隔离句柄。
-- [ ] **Step 5：纳入M1b交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1b出口统一提交，不创建单独的中间提交。
+- [ ] **Step 5：纳入M1b交付。** 按[交付边界调整](#交付边界调整)集中交付已闭合切片，不逐测试或修正提交。
 
 ### Task 10：有界 capture、验证前缀与只读回放
 
@@ -200,7 +202,7 @@ Task 8/9 的后端与 Task10 的capture可在Task5/6接口就绪后并行；Task
 - [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test capture_integrity --test capture_recovery --test replay_readonly`。
 - [ ] **Step 3：实现。** 格式按工程选择9；正常stop完成flush/sync/独立readback验证才complete，水位单调且verified≤synced≤flushed≤written，包括manifest/index。create_new默认；append仅同format/source/config且前段已验证，先新卷再提交索引；replace需要显式expectedFingerprint，旧目标先归档再原子发布，失败保留原件与证据。恢复始终另存且no-clobber，源句柄身份+hash二次校验；未来格式只读拒写。容量默认1GiB、磁盘余量128MiB，达到即停止并保留证据；默认raw，M1不给未实现redacted选项，传redacted返回UNSUPPORTED_CAPABILITY而非偷偷存raw。只读回放按原时序/最快两模式，可暂停/seek并重置读者；单步/断点和设备transmit留M4。文本导出保留timestamp/direction/offset与替换字符标记，可回查原始文件。
 - [ ] **Step 4：执行 green。** 上述命令+固定样本从捕获到独立读取器比对全部事件/最终回执hash；注入慢盘、只读目录、卷跨界取消、manifest提交失败。文件路径抵御父目录跳转、symlink/reparse替换和目标竞态；metadata权限不暴露正文/真实路径。
-- [ ] **Step 5：纳入M1b交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1b出口统一提交，不创建单独的中间提交。
+- [ ] **Step 5：纳入M1b交付。** 按[交付边界调整](#交付边界调整)集中交付已闭合切片，不逐测试或修正提交。
 
 ### Task 10a：裸文件发送、分块节流与任务取消
 
@@ -212,7 +214,7 @@ Task 8/9 的后端与 Task10 的capture可在Task5/6接口就绪后并行；Task
 - [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test file_transfer`。
 - [ ] **Step 3：实现。** 默认chunk=4096、最大16384；bytesPerSecond正数上限按设备capability与Host预算，interChunkMs允许0=无额外延时、否则合同timer范围；单调deadline令牌桶不累积无限突发，最多一块信用。每块读FileRef固定revision并按共同TX路径持久意图/回执；保留整个owner租约直到取消/结果结算，不允许普通TX插入文件。文件读失败保留已写前缀；回执列表超过maxBatchBytes放授权ObjectRef。M1仅原样字节，文本转码/字符与行延时由M4扩展，不悄悄改文件。
 - [ ] **Step 4：执行 green。** 同命令，fake clock验证块间限速/取消无需真实sleep；独立软件对端校验SHA-256，区分Host接受与对端证据。GUI/MCP/CLI相同调用取得同operation和进度，reader继续采集。
-- [ ] **Step 5：纳入M1b交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1b出口统一提交，不创建单独的中间提交。
+- [ ] **Step 5：纳入M1b交付。** 按[交付边界调整](#交付边界调整)集中交付已闭合切片，不逐测试或修正提交。
 
 ### Task 11：Host 权威设置、工作区与生成 TS 客户端
 
@@ -224,7 +226,7 @@ Task 8/9 的后端与 Task10 的capture可在Task5/6接口就绪后并行；Task
 - [ ] **Step 2：执行 red。** `cargo test --locked -p serial-workbench-host --test shared_documents`；`pnpm exec vitest run packages/host-client/src`。
 - [ ] **Step 3：实现。** SharedSettings包含语言、主题/token、字体/缩放、motion、更新检查/networkMode/runInBackground偏好和默认终端设置；布局模板包括sidebar/panel尺寸。client窗口几何、当前页/焦点/滚动/follow/未提交编辑留客户端。当前v7设置只作为字段与默认值设计参考，不读取迁入；新formatVersion=0.1，所有默认值由Rust生成，TS模型复用生成类型。桌面storage只保存client实例状态/图库文件，不再第二份共享设置。WorkspaceDocument含具名视图、设备绑定/连接配置、Text/HEX模式/命名/色/图标/pin、layout模板、capture引用；load只恢复配置与可验证显示尾部，连接/发送/脚本不自动启动。新增JSON export/import与`SWB_PROFILE`/`SWB_LOG_LEVEL`启动覆盖，来源可查，敏感字段只引用，不接任意环境变量执行。
 - [ ] **Step 4：执行 green。** 两命令、contracts生成/检查、`pnpm typecheck`。新host测试scope revision与导出JSON稳定排序，导入未来版本、损坏和未知字段保持原件。浏览器preview继续单独storage，不使用主机credentials或假称连接真实Host。
-- [ ] **Step 5：纳入M1b交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1b出口统一提交，不创建单独的中间提交。
+- [ ] **Step 5：纳入M1b交付。** 按[交付边界调整](#交付边界调整)集中交付已闭合切片，不逐测试或修正提交。
 
 ### Task 12：桌面桥、最小工作区与 AI 可见操作
 
@@ -236,7 +238,7 @@ Task 8/9 的后端与 Task10 的capture可在Task5/6接口就绪后并行；Task
 - [ ] **Step 2：执行 red。** `pnpm exec vitest run src/features/workbench src/providers/host.test.tsx`；原生bridge测试 `cargo test --locked -p serial-workbench --lib host_bridge`（先pnpm build准备dist）。
 - [ ] **Step 3：实现。** 工作区有设备侧栏、会话标签、Text/HEX并排/切换、发送输入/行尾预览/回执、capture与任务面板、Host指标和缺口。panel折叠/resize有键盘替代，M1不引入复杂dock框架。M1跟随当前AI activity定位输入/进度/结果，暂停跟随只停导航；接管调用Host动作。窗口动作/剪贴板/系统设置/更新诊断由Host注册client目标能力转发已有Tauri服务；无观看窗口返回CLIENT_REQUIRED，不写另一套handler。Host维护公开设置，客户端仅执行平台效果并回传receipt。CLI/MCP可发现这些功能，禁止保留只能GUI触发的业务按钮。文件发送界面复用Task10a的transfer.file owner与回执。
 - [ ] **Step 4：执行 green。** 上述命令、`pnpm bindings:generate`/`:check`（顺序）、`pnpm typecheck`、`pnpm test:ui`。Playwright使用明确preview fixture提供生成契约状态；进程级parity测试证明真实Host，二者分开记录。原生GUI/拖出多窗/DPI/屏读真实验收留后续独立环境。四类诊断向导基于实际open error、编码模式、Gap/队列、disconnect证据提供下一步；不伪造驱动、供电或固件信息。
-- [ ] **Step 5：纳入M1b交付。** 保留本任务已验证修改，连同审阅修正和配套文档在M1b出口统一提交，不创建单独的中间提交。
+- [ ] **Step 5：纳入M1b交付。** 按[交付边界调整](#交付边界调整)集中交付已闭合切片，不逐测试或修正提交。
 
 ### Task 13：退出、进程边界、软件验收与 M1 PR
 
