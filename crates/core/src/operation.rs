@@ -80,6 +80,14 @@ pub enum Admission {
     deny_unknown_fields
 )]
 pub enum ActionResult {
+    ClientEffect(ClientEffectResult),
+    CaptureStatus(CaptureStatusResult),
+    CaptureVerification(VerificationReport),
+    ReplayPosition(ReplayReadResult),
+    FileMetadata(FileMetadata),
+    FileTransfer(FileTransferResult),
+    Settings(SettingsDocumentResult),
+    Workspace(WorkspaceDocumentResult),
     ShutdownRequested(ShutdownRequested),
     Opened(OpenResult),
     Session(SessionSnapshot),
@@ -167,6 +175,14 @@ pub struct Operation {
     #[schemars(with = "ActionResult")]
     #[specta(type=ActionResult, optional)]
     pub result: Option<ActionResult>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "ClientEffectReceipt")]
+    #[specta(type=ClientEffectReceipt, optional)]
+    pub client_effect_receipt: Option<ClientEffectReceipt>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

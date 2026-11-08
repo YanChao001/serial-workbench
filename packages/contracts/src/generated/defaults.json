@@ -1,0 +1,48 @@
+{
+  "serialConfiguration": {
+    "baudRate": "9600",
+    "dataBits": "8",
+    "flowControl": "none",
+    "parity": "none",
+    "readWaitMs": "20",
+    "reconnectBackoffMs": "500",
+    "stopBits": "one",
+    "writeWaitMs": "1000"
+  },
+  "settings": {
+    "accent": "lime",
+    "autoCheckUpdates": true,
+    "background": {
+      "kind": "preset",
+      "value": "plain"
+    },
+    "backgroundIntensity": 50,
+    "customAccent": "#7C3AED",
+    "font": "geist",
+    "fontSize": "md",
+    "language": "zh",
+    "motion": "full",
+    "networkMode": "system",
+    "radius": "soft",
+    "runInBackground": false,
+    "terminal": {
+      "lineEnding": {
+        "kind": "none"
+      },
+      "receiveMode": "text",
+      "sendMode": "text"
+    },
+    "theme": "dark"
+  },
+  "workspace": {
+    "bindings": [],
+    "captures": [],
+    "favoriteBindingIds": [],
+    "layout": {
+      "panelHeight": 240,
+      "sidebarWidth": 224
+    },
+    "name": "Workspace",
+    "views": []
+  }
+}

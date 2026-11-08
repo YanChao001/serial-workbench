@@ -1,4 +1,5 @@
 mod controls;
+pub(crate) mod file_transfer;
 #[cfg(test)]
 mod fix_round1_tests;
 mod leases;
@@ -48,6 +49,8 @@ pub struct TransmissionService {
     ready: Arc<Notify>,
     runtimes: Arc<Mutex<RuntimeMap>>,
     admissions: Arc<AtomicUsize>,
+    quiescing: Arc<AtomicBool>,
+    quiesce_cancel: Arc<AtomicBool>,
     #[cfg(test)]
     cancel_gap: TestGate,
     #[cfg(test)]
@@ -58,6 +61,7 @@ pub struct TransmissionService {
     settlement_gap: TestGate,
 }
 struct ControlToken {
+    is_stop: bool,
     actor_id: Id,
     is_tx: bool,
     cancelled: Arc<AtomicBool>,
@@ -81,6 +85,7 @@ pub(crate) struct AdmissionGuard {
     ready: Arc<Notify>,
 }
 pub(crate) struct OperationPreparation {
+    file_transfer: Option<file_transfer::FileTransferGuard>,
     configuration_change: Option<ConfigurationChange>,
     _queue: Option<QueueReservation>,
     session: Option<Arc<Session>>,
@@ -115,6 +120,8 @@ impl TransmissionService {
             ready: Arc::new(Notify::new()),
             runtimes: Arc::new(Mutex::new(HashMap::new())),
             admissions: Arc::new(AtomicUsize::new(0)),
+            quiescing: Arc::new(AtomicBool::new(false)),
+            quiesce_cancel: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
             cancel_gap: Arc::new(Mutex::new(None)),
             #[cfg(test)]
@@ -125,12 +132,25 @@ impl TransmissionService {
             settlement_gap: Arc::new(Mutex::new(None)),
         }
     }
-    pub(crate) fn admission(&self) -> AdmissionGuard {
+    pub(crate) fn admission(&self, allow_stop: bool) -> HostResult<AdmissionGuard> {
+        if self.quiescing.load(Ordering::SeqCst) && !allow_stop {
+            return Err(HostError::new(
+                "HOST_BUSY",
+                "Host transmission admission is closed",
+            ));
+        }
         self.admissions.fetch_add(1, Ordering::SeqCst);
-        AdmissionGuard {
+        let guard = AdmissionGuard {
             count: self.admissions.clone(),
             ready: self.ready.clone(),
+        };
+        if self.quiescing.load(Ordering::SeqCst) && !allow_stop {
+            return Err(HostError::new(
+                "HOST_BUSY",
+                "Host transmission admission is closed",
+            ));
         }
+        Ok(guard)
     }
     pub(crate) fn prepare(&self, call: &Call) -> HostResult<OperationPreparation> {
         let session = if call.target.kind.as_str() == "session" {
@@ -151,6 +171,7 @@ impl TransmissionService {
         let queue = if matches!(
             call.action_id.as_str(),
             "session.tx"
+                | "transfer.file"
                 | "session.configure"
                 | "session.control"
                 | "session.break"
@@ -158,10 +179,18 @@ impl TransmissionService {
                 | "tx.drain"
                 | "lease.acquire"
         ) {
-            Some(
-                self.runtime(&call.target)?
-                    .reserve(bytes.as_ref().map_or(0, |bytes| bytes.len()))?,
-            )
+            Some(self.runtime(&call.target)?.reserve(
+                if call.action_id.as_str() == "transfer.file" {
+                    usize::try_from(
+                        decode::<FileTransferParams>(&call.params)?
+                            .chunk_bytes
+                            .get(),
+                    )
+                    .map_err(|_| invalid())?
+                } else {
+                    bytes.as_ref().map_or(0, |bytes| bytes.len())
+                },
+            )?)
         } else {
             None
         };
@@ -175,6 +204,7 @@ impl TransmissionService {
             })
             .transpose()?;
         Ok(OperationPreparation {
+            file_transfer: None,
             configuration_change: None,
             session,
             tx,
@@ -204,6 +234,8 @@ impl TransmissionService {
             }
             let mut pending = self.pending_cancels.lock().map_err(|_| invalid())?;
             let mut tokens = self.tokens.lock().map_err(|_| invalid())?;
+            let is_stop = crate::limits::is_stop(operation.action_id.as_str());
+            should_cancel |= self.quiesce_cancel.load(Ordering::SeqCst) && !is_stop;
             should_cancel |= pending.remove(&operation.operation_id);
             if tokens.len() >= 256 {
                 return Err(HostError::new(
@@ -214,8 +246,9 @@ impl TransmissionService {
             tokens.insert(
                 operation.operation_id.clone(),
                 Arc::new(ControlToken {
+                    is_stop,
                     actor_id: operation.actor_id.clone(),
-                    is_tx: operation.action_id.as_str() == "session.tx",
+                    is_tx: matches!(operation.action_id.as_str(), "session.tx" | "transfer.file"),
                     cancelled: Arc::new(AtomicBool::new(should_cancel)),
                     dispatch: tokio::sync::Mutex::new(()),
                     done: Notify::new(),
@@ -359,6 +392,11 @@ impl TransmissionService {
                 }
             }
         }
+        if let Some(guard) = preparation.file_transfer.take()
+            && let Err(error) = self.finish_file_transfer(guard, &settled).await
+        {
+            settled = Err(error);
+        }
         #[cfg(test)]
         {
             let gate = self.settlement_gap.lock().unwrap().take();
@@ -396,13 +434,28 @@ impl TransmissionService {
             blocking(move || store.mark_dispatch(&id)).await?;
             return Ok(Completion::success(ActionResult::Opened(
                 self.devices
-                    .open(&accepted.call.target, decode(&accepted.call.params)?)
+                    .open_authorized(
+                        &accepted.actor,
+                        &accepted.call.target,
+                        decode(&accepted.call.params)?,
+                        token.cancelled.clone(),
+                    )
                     .await?,
             )));
         }
         let session = preparation.session.as_ref().ok_or_else(invalid)?;
         let runtime = self.runtime(&accepted.call.target)?;
         match accepted.call.action_id.as_str() {
+            "transfer.file" => {
+                self.transfer_file(
+                    accepted,
+                    token,
+                    session,
+                    &runtime,
+                    &mut preparation.file_transfer,
+                )
+                .await
+            }
             "session.tx" => {
                 self.submit(
                     accepted,
@@ -483,13 +536,13 @@ impl TransmissionService {
         if Some(state.session_epoch) != accepted.call.target.session_epoch {
             return Err(HostError::new("EPOCH_MISMATCH", "Session epoch changed"));
         }
-        if state.state != SessionState::Open {
+        let action = accepted.call.action_id.as_str();
+        if state.state != SessionState::Open && action != "session.close" {
             return Err(HostError::new(
                 "BACKEND_DISCONNECTED",
                 "Session is not open",
             ));
         }
-        let action = accepted.call.action_id.as_str();
         if state.read_only
             && !matches!(
                 action,
@@ -709,7 +762,7 @@ impl TransmissionService {
                     blocking(move || store.record_result_evidence(&id, &evidence)).await?;
                     let result = session
                         .write(
-                            bytes.clone(),
+                            intent.write_payload(),
                             Duration::from_millis(params.write_wait_ms.get()),
                             self.backend_admission(accepted, token, runtime),
                         )
@@ -830,14 +883,26 @@ impl TransmissionService {
             }
         }
     }
-    pub(crate) fn request_shutdown(&self) {
-        self.devices.inner.closing.store(true, Ordering::SeqCst);
-        if let Ok(tokens) = self.tokens.lock() {
+    pub(crate) fn request_quiesce(&self, cancel: bool) -> HostResult<()> {
+        self.quiescing.store(true, Ordering::SeqCst);
+        if cancel {
+            self.quiesce_cancel.store(true, Ordering::SeqCst);
+            let tokens = self.tokens.lock().map_err(|_| invalid())?;
             for token in tokens.values() {
-                token.cancel();
+                if !token.is_stop {
+                    token.cancel();
+                }
             }
         }
         self.ready.notify_waiters();
+        Ok(())
+    }
+    pub(crate) fn quiesce_pending(&self) -> HostResult<(Vec<Id>, usize)> {
+        let tokens = self.tokens.lock().map_err(|_| invalid())?;
+        Ok((
+            tokens.keys().cloned().collect(),
+            self.admissions.load(Ordering::SeqCst),
+        ))
     }
     pub async fn queue_status(&self, target: &Target) -> HostResult<QueueStatus> {
         let session = self.devices.session(target)?;
@@ -939,6 +1004,14 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
         object(&decode::<T>(value)?)
     }
     match action {
+        BuiltinAction::TransferFile => {
+            if call.execution_mode != Some(ExecutionMode::Independent) || call.lease_id.is_some() {
+                return Err(invalid());
+            }
+            let params: FileTransferParams = decode(&call.params)?;
+            file_transfer::validate_params(&params)?;
+            object(&params)
+        }
         BuiltinAction::DeviceOpen => norm::<OpenParams>(&call.params),
         BuiltinAction::SessionTx => {
             let params: TxParams = decode(&call.params)?;

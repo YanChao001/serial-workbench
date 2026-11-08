@@ -22,6 +22,8 @@ impl TryFrom<&str> for ResourceKind {
             "workspace",
             "settings",
             "capture",
+            "capture_record",
+            "transfer_receipts",
             "file",
             "plugin",
             "client",
@@ -51,7 +53,7 @@ impl JsonSchema for ResourceKind {
         "ResourceKind".into()
     }
     fn json_schema(_: &mut SchemaGenerator) -> Schema {
-        schemars::json_schema!({"type":"string","pattern":"^(?:host|device|session|operation|workspace|settings|capture|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$"})
+        schemars::json_schema!({"type":"string","pattern":"^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$"})
     }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Type)]

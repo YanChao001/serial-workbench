@@ -124,18 +124,31 @@ impl TransmissionService {
             "tx.drain" => {
                 let params: DrainParams = decode(&accepted.call.params)?;
                 match session
-                    .control(
-                        ControlCommand::Drain {
+                    .drain(
+                        DrainRequest {
                             wait: Duration::from_millis(params.write_wait_ms.get()),
+                            cancelled: token.cancelled.clone(),
+                            closing: session.closing.clone(),
                         },
-                        Some(self.backend_admission(accepted, token, runtime)),
+                        self.backend_admission(accepted, token, runtime),
                     )
                     .await
                 {
-                    Ok(ControlResult::Drained) => {
-                        Ok(Completion::success(ActionResult::Drained(DrainReceipt {
-                            status: ControlStatus::Confirmed,
-                        })))
+                    Ok(ControlResult::Drained { status, error }) => {
+                        if status == ControlStatus::Unknown {
+                            session.snapshot.lock().map_err(|_| invalid())?.tx_gate =
+                                TxGate::ControlUnknown;
+                            self.devices.persist(session).await?;
+                        }
+                        Ok(Completion {
+                            state: match status {
+                                ControlStatus::Confirmed => OperationState::Succeeded,
+                                ControlStatus::Failed => OperationState::Failed,
+                                ControlStatus::Unknown => OperationState::Unknown,
+                            },
+                            result: ActionResult::Drained(DrainReceipt { status }),
+                            error,
+                        })
                     }
                     Ok(_) => Err(invalid()),
                     Err(error) => Err(*error.error),
@@ -546,18 +559,19 @@ impl TransmissionService {
             state.revision = state.revision.checked_next()?;
         }
         self.devices.persist(session).await?;
-        let state =
-            if clear.status == ControlStatus::Unknown || assert.status == ControlStatus::Unknown {
-                OperationState::Unknown
-            } else if clear.status != ControlStatus::Confirmed
-                || assert.status != ControlStatus::Confirmed
-            {
-                OperationState::Failed
-            } else if interruption.is_some() || token.cancelled.load(Ordering::SeqCst) {
-                OperationState::Cancelled
-            } else {
-                OperationState::Succeeded
-            };
+        let state = if clear.status != ControlStatus::Confirmed
+            || assert.status == ControlStatus::Unknown
+        {
+            OperationState::Unknown
+        } else if clear.status != ControlStatus::Confirmed
+            || assert.status != ControlStatus::Confirmed
+        {
+            OperationState::Failed
+        } else if interruption.is_some() || token.cancelled.load(Ordering::SeqCst) {
+            OperationState::Cancelled
+        } else {
+            OperationState::Succeeded
+        };
         Ok(Completion {
             state,
             result: ActionResult::Break(BreakReceipt { assert, clear }),

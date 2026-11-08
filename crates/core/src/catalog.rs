@@ -1,5 +1,9 @@
 use crate::*;
-use schemars::{JsonSchema, generate::SchemaSettings};
+use schemars::{
+    JsonSchema, Schema,
+    generate::SchemaSettings,
+    transform::{RecursiveTransform, Transform},
+};
 use serde::{Deserialize, Serialize};
 use specta::Type;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
@@ -78,15 +82,44 @@ pub fn schema<T: JsonSchema>() -> serde_json::Value {
     schema_for::<T>(SchemaDialect::Draft07)
 }
 pub fn schema_for<T: JsonSchema>(dialect: SchemaDialect) -> serde_json::Value {
-    serde_json::to_value(
-        match dialect {
-            SchemaDialect::Draft07 => SchemaSettings::draft07(),
-            SchemaDialect::Draft202012 => SchemaSettings::draft2020_12(),
+    let mut schema = match dialect {
+        SchemaDialect::Draft07 => SchemaSettings::draft07(),
+        SchemaDialect::Draft202012 => SchemaSettings::draft2020_12(),
+    }
+    .into_generator()
+    .into_root_schema_for::<T>();
+    // 把机器整数格式转换成标准数值范围，保留更严格的字段约束。
+    RecursiveTransform(|schema: &mut Schema| {
+        if schema.get("type").and_then(serde_json::Value::as_str) != Some("integer") {
+            return;
         }
-        .into_generator()
-        .into_root_schema_for::<T>(),
-    )
-    .expect("schema serializes")
+        let (minimum, maximum) = match schema.get("format").and_then(serde_json::Value::as_str) {
+            Some("uint8") => (0, i64::from(u8::MAX)),
+            Some("uint16") => (0, i64::from(u16::MAX)),
+            Some("uint32") => (0, i64::from(u32::MAX)),
+            Some("int8") => (i64::from(i8::MIN), i64::from(i8::MAX)),
+            Some("int16") => (i64::from(i16::MIN), i64::from(i16::MAX)),
+            Some("int32") => (i64::from(i32::MIN), i64::from(i32::MAX)),
+            _ => return,
+        };
+        if schema
+            .get("minimum")
+            .and_then(serde_json::Value::as_f64)
+            .is_none_or(|value| value < minimum as f64)
+        {
+            schema.insert("minimum".into(), minimum.into());
+        }
+        if schema
+            .get("maximum")
+            .and_then(serde_json::Value::as_f64)
+            .is_none_or(|value| value > maximum as f64)
+        {
+            schema.insert("maximum".into(), maximum.into());
+        }
+        schema.remove("format");
+    })
+    .transform(&mut schema);
+    serde_json::to_value(schema).expect("schema serializes")
 }
 /// 只有已经实现的 handler 才能进入目录；业务任务在接线时添加目录项。
 pub fn builtin_catalog() -> Vec<ActionSpec> {
@@ -98,8 +131,42 @@ pub fn builtin_catalog() -> Vec<ActionSpec> {
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub enum BuiltinAction {
+    Client(ClientCapability),
+    ClientList,
+    HostMetrics,
+    StartupConfigGet,
+    CaptureStart,
+    CaptureStop,
+    CaptureStatus,
+    CaptureVerify,
+    CaptureRecover,
+    CaptureExport,
+    ReplayOpen,
+    ReplayRead,
+    ReplayControl,
+    ReplayClose,
+    DeviceRefresh,
+    RecentList,
+    DeviceRebind,
+    FavoritesSave,
+    FileRegister,
+    FileMetadata,
+    FileRead,
+    TransferReceiptsRead,
+    StreamCursor,
+    TransferFile,
+    StateScopes,
+    SettingsRead,
+    SettingsSave,
+    SettingsExport,
+    SettingsImport,
+    WorkspaceRead,
+    WorkspaceSave,
+    WorkspaceExport,
+    WorkspaceImport,
     CatalogList,
     OperationGet,
+    OperationInput,
     OperationCancel,
     StateSnapshot,
     StateSubscribe,
@@ -129,9 +196,64 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 29] = [
+    pub const ALL: [Self; 84] = [
+        Self::Client(ClientCapability::WindowRead),
+        Self::Client(ClientCapability::WindowMinimize),
+        Self::Client(ClientCapability::WindowToggleMaximize),
+        Self::Client(ClientCapability::WindowSetFullscreen),
+        Self::Client(ClientCapability::WindowSetSize),
+        Self::Client(ClientCapability::WindowResetGeometry),
+        Self::Client(ClientCapability::WindowShowMain),
+        Self::Client(ClientCapability::WindowOpenSecondary),
+        Self::Client(ClientCapability::WindowClose),
+        Self::Client(ClientCapability::ClipboardReadText),
+        Self::Client(ClientCapability::ClipboardWriteText),
+        Self::Client(ClientCapability::SystemRead),
+        Self::Client(ClientCapability::SystemSetAutostart),
+        Self::Client(ClientCapability::SettingsApplyEffects),
+        Self::Client(ClientCapability::UpdaterCheck),
+        Self::Client(ClientCapability::UpdaterRead),
+        Self::Client(ClientCapability::UpdaterInstall),
+        Self::Client(ClientCapability::AppRestart),
+        Self::Client(ClientCapability::AppQuit),
+        Self::Client(ClientCapability::DiagnosticsRead),
+        Self::Client(ClientCapability::RecoveryRead),
+        Self::Client(ClientCapability::RecoveryStage),
+        Self::ClientList,
+        Self::HostMetrics,
+        Self::StartupConfigGet,
+        Self::CaptureStart,
+        Self::CaptureStop,
+        Self::CaptureStatus,
+        Self::CaptureVerify,
+        Self::CaptureRecover,
+        Self::CaptureExport,
+        Self::ReplayOpen,
+        Self::ReplayRead,
+        Self::ReplayControl,
+        Self::ReplayClose,
+        Self::DeviceRefresh,
+        Self::RecentList,
+        Self::DeviceRebind,
+        Self::FavoritesSave,
+        Self::FileRegister,
+        Self::FileMetadata,
+        Self::FileRead,
+        Self::TransferReceiptsRead,
+        Self::StreamCursor,
+        Self::TransferFile,
+        Self::StateScopes,
+        Self::SettingsRead,
+        Self::SettingsSave,
+        Self::SettingsExport,
+        Self::SettingsImport,
+        Self::WorkspaceRead,
+        Self::WorkspaceSave,
+        Self::WorkspaceExport,
+        Self::WorkspaceImport,
         Self::CatalogList,
         Self::OperationGet,
+        Self::OperationInput,
         Self::OperationCancel,
         Self::StateSnapshot,
         Self::StateSubscribe,
@@ -162,8 +284,42 @@ impl BuiltinAction {
     ];
     pub fn action_id(self) -> &'static str {
         match self {
+            Self::Client(capability) => capability.action_id(),
+            Self::ClientList => "client.list",
+            Self::HostMetrics => "host.metrics",
+            Self::StartupConfigGet => "startup.config.get",
+            Self::CaptureStart => "capture.start",
+            Self::CaptureStop => "capture.stop",
+            Self::CaptureStatus => "capture.status",
+            Self::CaptureVerify => "capture.verify",
+            Self::CaptureRecover => "capture.recover",
+            Self::CaptureExport => "capture.export",
+            Self::ReplayOpen => "replay.open",
+            Self::ReplayRead => "replay.read",
+            Self::ReplayControl => "replay.control",
+            Self::ReplayClose => "replay.close",
+            Self::DeviceRefresh => "device.refresh",
+            Self::RecentList => "recent.list",
+            Self::DeviceRebind => "device.rebind",
+            Self::FavoritesSave => "favorites.save",
+            Self::FileRegister => "file.register",
+            Self::FileMetadata => "file.metadata",
+            Self::FileRead => "file.read",
+            Self::TransferReceiptsRead => "transfer.receiptsRead",
+            Self::StreamCursor => "stream.cursor",
+            Self::TransferFile => "transfer.file",
+            Self::StateScopes => "state.scopes",
+            Self::SettingsRead => "settings.read",
+            Self::SettingsSave => "settings.save",
+            Self::SettingsExport => "settings.export",
+            Self::SettingsImport => "settings.import",
+            Self::WorkspaceRead => "workspace.read",
+            Self::WorkspaceSave => "workspace.save",
+            Self::WorkspaceExport => "workspace.export",
+            Self::WorkspaceImport => "workspace.import",
             Self::CatalogList => "catalog.list",
             Self::OperationGet => "operation.get",
+            Self::OperationInput => "operation.input",
             Self::OperationCancel => "operation.cancel",
             Self::StateSnapshot => "state.snapshot",
             Self::StateSubscribe => "state.subscribe",
@@ -205,6 +361,7 @@ impl BuiltinAction {
         matches!(
             self,
             Self::DeviceOpen
+                | Self::TransferFile
                 | Self::SessionClose
                 | Self::SessionTx
                 | Self::SessionConfigure
@@ -218,6 +375,32 @@ impl BuiltinAction {
                 | Self::TxWaitBoundary
                 | Self::TxDrain
                 | Self::SessionPurge
+        )
+    }
+    pub fn is_capture_api(self) -> bool {
+        matches!(
+            self,
+            Self::CaptureStart
+                | Self::CaptureStop
+                | Self::CaptureStatus
+                | Self::CaptureVerify
+                | Self::CaptureRecover
+                | Self::CaptureExport
+                | Self::ReplayOpen
+                | Self::ReplayRead
+                | Self::ReplayControl
+                | Self::ReplayClose
+        )
+    }
+    pub fn is_document_action(self) -> bool {
+        matches!(
+            self,
+            Self::SettingsSave
+                | Self::SettingsImport
+                | Self::WorkspaceSave
+                | Self::WorkspaceImport
+                | Self::DeviceRebind
+                | Self::FavoritesSave
         )
     }
     pub fn spec(self) -> ActionSpec {
@@ -242,14 +425,45 @@ impl BuiltinAction {
     }
     fn build_spec(self, dialect: SchemaDialect) -> ActionSpec {
         let action = self.is_device_action()
+            || matches!(self, Self::Client(capability) if !capability.is_query())
+            || self.is_document_action()
+            || (self.is_capture_api() && !matches!(self, Self::CaptureStatus | Self::ReplayRead))
             || matches!(
                 self,
-                Self::OperationCancel | Self::Authorize | Self::Revoke | Self::HostShutdown
+                Self::OperationCancel
+                    | Self::Authorize
+                    | Self::Revoke
+                    | Self::HostShutdown
+                    | Self::FileRegister
             );
-        let auth = matches!(self, Self::Authorize | Self::Revoke | Self::HostShutdown);
+        let auth = matches!(
+            self,
+            Self::Authorize | Self::Revoke | Self::HostShutdown | Self::FileRegister
+        );
         let kinds: &[&str] = match self {
+            Self::Client(_) => &["client"],
+            Self::CaptureStart | Self::CaptureRecover => &["file"],
+            Self::CaptureStop => &["capture"],
+            Self::CaptureStatus | Self::CaptureVerify | Self::CaptureExport | Self::ReplayOpen => {
+                &["file", "capture"]
+            }
+            Self::ReplayRead | Self::ReplayControl | Self::ReplayClose => &["session"],
+            Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
+            Self::FileMetadata => &["file", "capture"],
+            Self::FileRead => &["file", "capture_record"],
+            Self::TransferReceiptsRead => &["transfer_receipts"],
+            Self::SettingsRead
+            | Self::SettingsSave
+            | Self::SettingsExport
+            | Self::SettingsImport => &["settings"],
+            Self::WorkspaceRead
+            | Self::WorkspaceSave
+            | Self::WorkspaceExport
+            | Self::WorkspaceImport => &["workspace"],
             Self::DeviceOpen => &["device"],
             Self::SessionGet
+            | Self::TransferFile
+            | Self::StreamCursor
             | Self::SessionClose
             | Self::SessionTx
             | Self::SessionConfigure
@@ -269,12 +483,12 @@ impl BuiltinAction {
             | Self::StreamCredit => &["session"],
             Self::OperationCancel => &["operation"],
             Self::StateSnapshot | Self::StateSubscribe | Self::SubscriptionClose => {
-                &["host", "workspace", "session"]
+                &["host", "settings", "workspace", "session"]
             }
-            Self::OperationGet => &["host", "operation"],
+            Self::OperationGet | Self::OperationInput => &["host", "operation"],
             _ => &["host"],
         };
-        let meta = ActionMetadata {
+        let mut meta = ActionMetadata {
             action_id: Id::try_from(self.action_id()).expect("builtin Id"),
             kind: if action {
                 ActionKind::Action
@@ -287,13 +501,28 @@ impl BuiltinAction {
                 .collect(),
             execution_location: ExecutionLocation::ResourceHost,
             permissions: vec![
-                if auth || self == Self::SessionTakeover {
+                if matches!(self, Self::SettingsSave | Self::SettingsImport) {
+                    "settings.modify"
+                } else if matches!(
+                    self,
+                    Self::WorkspaceSave
+                        | Self::WorkspaceImport
+                        | Self::DeviceRebind
+                        | Self::FavoritesSave
+                ) {
+                    "workspace.modify"
+                } else if auth || self == Self::SessionTakeover {
                     "auth.manage"
                 } else if self.is_device_action() {
                     "device.modify"
                 } else if matches!(
                     self,
-                    Self::StreamRead | Self::StreamSubscribe | Self::StreamCredit
+                    Self::StreamCursor
+                        | Self::FileRead
+                        | Self::TransferReceiptsRead
+                        | Self::StreamRead
+                        | Self::StreamSubscribe
+                        | Self::StreamCredit
                 ) {
                     "content.read"
                 } else {
@@ -317,7 +546,7 @@ impl BuiltinAction {
                 }
                 .into(),
             ],
-            cancellation: if self.is_device_action() {
+            cancellation: if self.is_device_action() || self == Self::CaptureStart {
                 Cancellation::Cooperative
             } else {
                 Cancellation::None
@@ -330,7 +559,189 @@ impl BuiltinAction {
                 result_ref: None,
             },
         };
+        if self == Self::TransferFile {
+            meta.permissions.push("content.read".into());
+        }
+        if self == Self::CatalogList {
+            // Authentication identifies whose filtered catalog is returned; no global grant is needed.
+            meta.permissions.clear();
+        }
+        if self == Self::StartupConfigGet {
+            meta.reveal_target.page_id = Id::try_from("settings").expect("page");
+        }
+        if matches!(
+            self,
+            Self::SettingsRead | Self::SettingsSave | Self::SettingsExport | Self::SettingsImport
+        ) {
+            meta.state_scopes.push("settings:shared".into());
+            meta.reveal_target.page_id = Id::try_from("settings").expect("page");
+            if action {
+                meta.event_types.push("settings.changed".into());
+            }
+        } else if matches!(
+            self,
+            Self::WorkspaceRead
+                | Self::WorkspaceSave
+                | Self::WorkspaceExport
+                | Self::WorkspaceImport
+                | Self::DeviceRebind
+                | Self::FavoritesSave
+        ) {
+            meta.state_scopes.push("workspace:<id>".into());
+            if action {
+                meta.event_types.push("workspace.changed".into());
+            }
+        }
+        if let Self::Client(capability) = self {
+            meta.permissions = capability
+                .permissions()
+                .iter()
+                .map(|permission| (*permission).into())
+                .collect();
+            meta.execution_location = ExecutionLocation::Client;
+            meta.reveal_target.page_id = Id::try_from("settings").expect("page");
+        }
+        if self.is_capture_api() {
+            meta.permissions = match self {
+                Self::CaptureStart => vec!["workspace.modify", "content.read", "metadata.read"],
+                Self::CaptureStop => vec!["workspace.modify", "metadata.read"],
+                Self::CaptureStatus => vec!["metadata.read"],
+                Self::CaptureRecover | Self::CaptureExport => {
+                    vec!["content.read", "workspace.modify"]
+                }
+                _ => vec!["content.read"],
+            }
+            .into_iter()
+            .map(str::to_owned)
+            .collect();
+            meta.reveal_target.panel_id = Some(Id::try_from("capture").expect("panel"));
+        }
         match self {
+            Self::ClientList => {
+                ActionSpec::of_with_dialect::<EmptyParams, ClientListResult>(meta, dialect)
+            }
+            Self::Client(capability) => match capability {
+                ClientCapability::WindowSetFullscreen => ActionSpec::of_with_dialect::<
+                    ClientFullscreenParams,
+                    ClientEffectResult,
+                >(meta, dialect),
+                ClientCapability::WindowSetSize => ActionSpec::of_with_dialect::<
+                    ClientWindowSizeParams,
+                    ClientEffectResult,
+                >(meta, dialect),
+                ClientCapability::WindowResetGeometry => ActionSpec::of_with_dialect::<
+                    ClientResetGeometryParams,
+                    ClientEffectResult,
+                >(meta, dialect),
+                ClientCapability::ClipboardWriteText => ActionSpec::of_with_dialect::<
+                    ClientClipboardWriteParams,
+                    ClientEffectResult,
+                >(meta, dialect),
+                ClientCapability::SystemSetAutostart => ActionSpec::of_with_dialect::<
+                    ClientAutostartParams,
+                    ClientEffectResult,
+                >(meta, dialect),
+                _ => ActionSpec::of_with_dialect::<EmptyParams, ClientEffectResult>(meta, dialect),
+            },
+            Self::HostMetrics => {
+                ActionSpec::of_with_dialect::<HostMetricsParams, HostMetrics>(meta, dialect)
+            }
+            Self::StartupConfigGet => {
+                ActionSpec::of_with_dialect::<EmptyParams, StartupConfigSnapshot>(meta, dialect)
+            }
+            Self::CaptureStart => ActionSpec::of_with_dialect::<
+                CaptureStartParams,
+                CaptureStatusResult,
+            >(meta, dialect),
+            Self::CaptureStop => {
+                ActionSpec::of_with_dialect::<CaptureStopParams, CaptureStatusResult>(meta, dialect)
+            }
+            Self::CaptureStatus => ActionSpec::of_with_dialect::<
+                CaptureVerifyParams,
+                CaptureStatusResult,
+            >(meta, dialect),
+            Self::CaptureVerify => ActionSpec::of_with_dialect::<
+                CaptureVerifyParams,
+                VerificationReport,
+            >(meta, dialect),
+            Self::CaptureRecover => {
+                ActionSpec::of_with_dialect::<RecoverPrefixParams, ResultReference>(meta, dialect)
+            }
+            Self::CaptureExport => {
+                ActionSpec::of_with_dialect::<TextExportParams, ResultReference>(meta, dialect)
+            }
+            Self::ReplayOpen => {
+                ActionSpec::of_with_dialect::<ReplayOpenParams, OpenResult>(meta, dialect)
+            }
+            Self::ReplayRead => {
+                ActionSpec::of_with_dialect::<ReplayReadParams, ReplayReadResult>(meta, dialect)
+            }
+            Self::ReplayControl => {
+                ActionSpec::of_with_dialect::<ReplayControlParams, ReplayReadResult>(meta, dialect)
+            }
+            Self::ReplayClose => {
+                ActionSpec::of_with_dialect::<EmptyParams, SessionSnapshot>(meta, dialect)
+            }
+            Self::DeviceRefresh => {
+                ActionSpec::of_with_dialect::<EmptyParams, DeviceList>(meta, dialect)
+            }
+            Self::RecentList => {
+                ActionSpec::of_with_dialect::<EmptyParams, RecentList>(meta, dialect)
+            }
+            Self::DeviceRebind => {
+                ActionSpec::of_with_dialect::<RebindParams, WorkspaceDocumentResult>(meta, dialect)
+            }
+            Self::FavoritesSave => ActionSpec::of_with_dialect::<
+                FavoritesSaveParams,
+                WorkspaceDocumentResult,
+            >(meta, dialect),
+            Self::FileRegister => {
+                ActionSpec::of_with_dialect::<RegisterFileParams, FileMetadata>(meta, dialect)
+            }
+            Self::FileMetadata => {
+                ActionSpec::of_with_dialect::<FileMetadataParams, FileMetadata>(meta, dialect)
+            }
+            Self::FileRead => {
+                ActionSpec::of_with_dialect::<FileReadParams, FileReadResult>(meta, dialect)
+            }
+            Self::TransferReceiptsRead => ActionSpec::of_with_dialect::<
+                FileTransferReceiptsParams,
+                FileTransferReceiptsResult,
+            >(meta, dialect),
+            Self::StreamCursor => {
+                ActionSpec::of_with_dialect::<EmptyParams, StreamCursorResult>(meta, dialect)
+            }
+            Self::TransferFile => {
+                ActionSpec::of_with_dialect::<FileTransferParams, FileTransferResult>(meta, dialect)
+            }
+            Self::StateScopes => {
+                ActionSpec::of_with_dialect::<EmptyParams, StateScopesResult>(meta, dialect)
+            }
+            Self::SettingsRead => {
+                ActionSpec::of_with_dialect::<EmptyParams, SettingsDocumentResult>(meta, dialect)
+            }
+            Self::SettingsSave => ActionSpec::of_with_dialect::<
+                SettingsSaveParams,
+                SettingsDocumentResult,
+            >(meta, dialect),
+            Self::SettingsImport => ActionSpec::of_with_dialect::<
+                DocumentImportParams,
+                SettingsDocumentResult,
+            >(meta, dialect),
+            Self::WorkspaceRead => {
+                ActionSpec::of_with_dialect::<EmptyParams, WorkspaceDocumentResult>(meta, dialect)
+            }
+            Self::WorkspaceSave => ActionSpec::of_with_dialect::<
+                WorkspaceSaveParams,
+                WorkspaceDocumentResult,
+            >(meta, dialect),
+            Self::WorkspaceImport => ActionSpec::of_with_dialect::<
+                DocumentImportParams,
+                WorkspaceDocumentResult,
+            >(meta, dialect),
+            Self::SettingsExport | Self::WorkspaceExport => {
+                ActionSpec::of_with_dialect::<EmptyParams, DocumentJsonResult>(meta, dialect)
+            }
             Self::HostShutdown => {
                 ActionSpec::of_with_dialect::<EmptyParams, ShutdownRequested>(meta, dialect)
             }
@@ -396,6 +807,9 @@ impl BuiltinAction {
             }
             Self::OperationGet => {
                 ActionSpec::of_with_dialect::<OperationGetParams, OperationResult>(meta, dialect)
+            }
+            Self::OperationInput => {
+                ActionSpec::of_with_dialect::<OperationInputParams, OperationInput>(meta, dialect)
             }
             Self::OperationCancel => ActionSpec::of_with_dialect::<
                 OperationCancelParams,

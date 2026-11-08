@@ -40,6 +40,16 @@ impl Drop for Writer {
 #[derive(Clone)]
 pub struct Store {
     writer: Arc<Writer>,
+    operation_changes: tokio::sync::watch::Sender<()>,
+    #[cfg(test)]
+    request_diagnostics: Arc<RequestDiagnostics>,
+}
+
+#[cfg(test)]
+#[derive(Default)]
+struct RequestDiagnostics {
+    enabled: std::sync::atomic::AtomicBool,
+    sequence: std::sync::atomic::AtomicU64,
 }
 
 impl Store {
@@ -81,21 +91,63 @@ impl Store {
             return Err(error);
         }
         Ok(Self {
+            operation_changes: tokio::sync::watch::channel(()).0,
             writer: Arc::new(Writer {
                 sender,
                 join: Mutex::new(Some(join)),
             }),
+            #[cfg(test)]
+            request_diagnostics: Arc::default(),
         })
     }
 
     // 同步 API 只供控制 worker / spawn_blocking 使用，不在采集或异步调度线程上等待。
+    #[cfg_attr(test, track_caller)]
     fn request<T: Send + 'static>(
         &self,
         execute: impl FnOnce(&mut Database) -> HostResult<T> + Send + 'static,
     ) -> HostResult<T> {
         let (sender, receiver) = mpsc::sync_channel(1);
+        #[cfg(test)]
+        let site = std::panic::Location::caller();
+        #[cfg(test)]
+        let trace = self
+            .request_diagnostics
+            .enabled
+            .load(std::sync::atomic::Ordering::SeqCst)
+            .then(|| {
+                let sequence = self
+                    .request_diagnostics
+                    .sequence
+                    .fetch_add(1, std::sync::atomic::Ordering::SeqCst);
+                let queued = std::time::Instant::now();
+                eprintln!(
+                    "store_request sequence={sequence} stage=enqueue site={site} at={queued:?}"
+                );
+                (sequence, queued, site)
+            });
         let job = Box::new(move |database: &mut Database| {
-            let _ = sender.send(execute(database));
+            #[cfg(test)]
+            let started = trace.map(|(sequence, queued, site)| {
+                let started = std::time::Instant::now();
+                eprintln!(
+                    "store_request sequence={sequence} stage=start site={site} at={started:?} queue_us={}",
+                    started.duration_since(queued).as_micros()
+                );
+                started
+            });
+            let result = execute(database);
+            #[cfg(test)]
+            if let Some((sequence, _, site)) = trace {
+                let finished = std::time::Instant::now();
+                eprintln!(
+                    "store_request sequence={sequence} stage=finish site={site} at={finished:?} execute_us={}",
+                    finished
+                        .duration_since(started.expect("traced request start"))
+                        .as_micros()
+                );
+            }
+            let _ = sender.send(result);
         });
         self.writer
             .sender
@@ -105,6 +157,13 @@ impl Store {
                 mpsc::TrySendError::Disconnected(_) => unavailable(),
             })?;
         receiver.recv().map_err(|_| unavailable())?
+    }
+
+    #[cfg(test)]
+    pub(crate) fn trace_requests(&self, enabled: bool) {
+        self.request_diagnostics
+            .enabled
+            .store(enabled, std::sync::atomic::Ordering::SeqCst);
     }
 
     pub fn begin_instance(&self) -> HostResult<HostIdentity> {
@@ -125,9 +184,34 @@ impl Store {
         let (actor, selector) = (actor.clone(), selector.clone());
         self.request(move |database| database.get_selected(&actor, &selector))
     }
+    /// Trusted dispatcher only: callers must authorize the original resources before disclosure.
+    pub(crate) fn retained_operation(
+        &self,
+        id: &Id,
+    ) -> HostResult<(Operation, Option<JsonObject>)> {
+        let id = id.clone();
+        self.request(move |database| database.retained_operation(&id))
+    }
+    pub(crate) fn record_operation_source_authority(
+        &self,
+        id: &Id,
+        source: &Target,
+    ) -> HostResult<()> {
+        let (id, source) = (id.clone(), source.clone());
+        self.request(move |database| database.record_operation_source_authority(&id, &source))
+    }
+    pub(crate) fn operation_source_authority(&self, id: &Id) -> HostResult<Target> {
+        let id = id.clone();
+        self.request(move |database| database.operation_source_authority(&id))
+    }
     pub fn request_cancel(&self, actor: &AuthenticatedActor, id: &Id) -> HostResult<Operation> {
         let (actor, id) = (actor.clone(), id.clone());
-        self.request(move |database| database.request_cancel(&actor, &id))
+        let operation = self.request(move |database| database.request_cancel(&actor, &id))?;
+        self.operation_changes.send_replace(());
+        Ok(operation)
+    }
+    pub(crate) fn subscribe_operation_changes(&self) -> tokio::sync::watch::Receiver<()> {
+        self.operation_changes.subscribe()
     }
     pub fn operation_metadata(&self) -> HostResult<JsonObject> {
         self.request(|database| database.operation_metadata())
@@ -143,7 +227,11 @@ impl Store {
         digest: &Digest,
     ) -> HostResult<Acceptance> {
         let (actor, call, digest) = (actor.clone(), call.clone(), digest.clone());
-        self.request(move |database| database.accept(&actor, &call, &digest))
+        let acceptance = self.request(move |database| database.accept(&actor, &call, &digest))?;
+        if matches!(&acceptance, Acceptance::New(_)) {
+            self.operation_changes.send_replace(());
+        }
+        Ok(acceptance)
     }
     pub(crate) fn lookup_call(
         &self,
@@ -156,18 +244,44 @@ impl Store {
     }
     pub fn mark_dispatch(&self, id: &Id) -> HostResult<()> {
         let id = id.clone();
-        self.request(move |database| database.mark_dispatch(&id))
+        self.request(move |database| database.mark_dispatch(&id))?;
+        self.operation_changes.send_replace(());
+        Ok(())
     }
     pub fn settle(&self, id: &Id, outcome: Settlement) -> HostResult<Operation> {
         let id = id.clone();
-        self.request(move |database| database.settle(&id, outcome))
+        let operation = self.request(move |database| database.settle(&id, outcome))?;
+        self.operation_changes.send_replace(());
+        Ok(operation)
     }
     pub fn record_result_evidence(&self, id: &Id, result: &ActionResult) -> HostResult<Operation> {
         let (id, result) = (id.clone(), result.clone());
-        self.request(move |database| database.record_result_evidence(&id, result))
+        let operation =
+            self.request(move |database| database.record_result_evidence(&id, result))?;
+        self.operation_changes.send_replace(());
+        Ok(operation)
+    }
+    pub(crate) fn record_progress(&self, id: &Id, progress: &Progress) -> HostResult<Operation> {
+        let (id, progress) = (id.clone(), progress.clone());
+        let operation = self.request(move |database| database.record_progress(&id, progress))?;
+        self.operation_changes.send_replace(());
+        Ok(operation)
+    }
+    pub(crate) fn record_client_receipt_evidence(
+        &self,
+        id: &Id,
+        receipt: &ClientEffectReceipt,
+    ) -> HostResult<Operation> {
+        let (id, receipt) = (id.clone(), receipt.clone());
+        let operation =
+            self.request(move |database| database.record_client_receipt_evidence(&id, receipt))?;
+        self.operation_changes.send_replace(());
+        Ok(operation)
     }
     pub fn recover(&self) -> HostResult<Vec<Operation>> {
-        self.request(Database::recover)
+        let operations = self.request(Database::recover)?;
+        self.operation_changes.send_replace(());
+        Ok(operations)
     }
     pub fn get(&self, actor: &AuthenticatedActor, id: &Id) -> HostResult<Operation> {
         let (actor, id) = (actor.clone(), id.clone());
@@ -188,7 +302,17 @@ impl Store {
         self.request(move |database| database.boundary_operations(&target, &through, owners))
     }
     pub fn prune(&self) -> HostResult<()> {
-        self.request(Database::prune)
+        self.request(Database::prune)?;
+        self.operation_changes.send_replace(());
+        Ok(())
+    }
+    pub(crate) fn shutdown_operations(
+        &self,
+        tracked: &[Id],
+        limit: usize,
+    ) -> HostResult<Vec<Operation>> {
+        let tracked = tracked.to_vec();
+        self.request(move |database| database.shutdown_operations(&tracked, limit))
     }
     /// 正常退出前显式等待此提交，错误由关闭协调器记录；Drop 仅作最后一次尽力提交。
     pub fn checkpoint(&self) -> HostResult<()> {
@@ -216,4 +340,10 @@ fn unavailable() -> HostError {
 }
 
 #[cfg(test)]
+mod client_receipt_tests;
+#[cfg(test)]
+mod operation_progress_tests;
+#[cfg(test)]
 mod operation_recovery_tests;
+#[cfg(test)]
+mod operation_source_tests;

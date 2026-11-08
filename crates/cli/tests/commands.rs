@@ -350,9 +350,17 @@ async fn generic_query_returns_real_typed_result_and_domain_failure() {
         ])
         .await;
     assert_eq!(result["result"]["kind"], "devices");
+    let devices: DeviceList = serde_json::from_value(result["result"]["value"].clone()).unwrap();
+    let virtual_devices = devices
+        .devices
+        .iter()
+        .filter(|device| device.device_id.as_str() == "virtual:echo")
+        .collect::<Vec<_>>();
+    assert_eq!(virtual_devices.len(), 1);
+    assert_eq!(virtual_devices[0].host_id, f.host_id);
     assert_eq!(
-        result["result"]["value"]["devices"][0]["deviceId"],
-        "virtual:echo"
+        virtual_devices[0].fingerprint.transport,
+        DeviceTransportKind::Virtual
     );
     let bad = f.file("bad.json", json!({"unknown":true}));
     let output = f

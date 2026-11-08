@@ -21,6 +21,10 @@ function exportedFiles() {
   return new Map([
     ["types.ts", "export type RpcReply = { value: string };\n"],
     [
+      "defaults.json",
+      JSON.stringify({ settings: {}, workspace: {}, serialConfiguration: {} }),
+    ],
+    [
       "schemas.json",
       JSON.stringify({
         schemaVersion: 1,
@@ -57,6 +61,7 @@ test("standalone validators run as browser ESM without Ajv runtime imports", asy
   const artifacts = await buildArtifacts(exportedFiles());
   assert.deepEqual([...artifacts.keys()].sort(), [
     "catalog.json",
+    "defaults.json",
     "fixtures.json",
     "schemas.json",
     "types.ts",
@@ -131,6 +136,7 @@ test("check reports missing output without creating a generated directory", asyn
     });
     assert.deepEqual(changed, [
       "catalog.json",
+      "defaults.json",
       "fixtures.json",
       "schemas.json",
       "types.ts",

@@ -121,6 +121,12 @@ impl ProjectionStore {
             ));
         }
         let valid = match scope_id.as_str() {
+            "settings:shared" => {
+                target.kind.as_str() == "settings"
+                    && target.id.as_str() == "shared"
+                    && target.session_id.is_none()
+                    && target.session_epoch.is_none()
+            }
             "host.activity" | "host.operations" | "host.devices" => {
                 target.kind.as_str() == "host"
                     && target.session_id.is_none()
@@ -153,6 +159,12 @@ impl ProjectionStore {
                 "REVISION_CONFLICT",
                 "Projection scope is already registered",
             ));
+        }
+        // 文档投影工作集有界，达到容量时不会删除持久文档。
+        if is_document_scope(&scope_id)
+            && scopes.keys().filter(|id| is_document_scope(id)).count() >= 256
+        {
+            return Err(limit());
         }
         scopes.insert(
             scope_id.clone(),
@@ -317,8 +329,25 @@ impl ProjectionStore {
         actor: &AuthenticatedActor,
         scope_id: &Id,
     ) -> HostResult<Snapshot> {
+        self.snapshot_target(actor, scope_id, None).await
+    }
+    pub(crate) async fn snapshot_for(
+        &self,
+        actor: &AuthenticatedActor,
+        scope_id: &Id,
+        target: &Target,
+    ) -> HostResult<Snapshot> {
+        self.snapshot_target(actor, scope_id, Some(target)).await
+    }
+    async fn snapshot_target(
+        &self,
+        actor: &AuthenticatedActor,
+        scope_id: &Id,
+        expected: Option<&Target>,
+    ) -> HostResult<Snapshot> {
         let scope = self.scope(scope_id)?;
         let target = lock(&scope.state)?.target.clone();
+        verify_target(expected, &target)?;
         let stamp = check(&self.inner.auth, actor, &target, &scope.permission).await?;
         let snapshot = {
             let current = lock(&scope.state)?;
@@ -341,8 +370,28 @@ impl ProjectionStore {
         scope_id: &Id,
         after: &Cursor,
     ) -> HostResult<Subscription> {
+        self.subscribe_target(actor, scope_id, after, None).await
+    }
+    pub(crate) async fn subscribe_for(
+        &self,
+        actor: &AuthenticatedActor,
+        scope_id: &Id,
+        after: &Cursor,
+        target: &Target,
+    ) -> HostResult<Subscription> {
+        self.subscribe_target(actor, scope_id, after, Some(target))
+            .await
+    }
+    async fn subscribe_target(
+        &self,
+        actor: &AuthenticatedActor,
+        scope_id: &Id,
+        after: &Cursor,
+        expected: Option<&Target>,
+    ) -> HostResult<Subscription> {
         let scope = self.scope(scope_id)?;
         let target = lock(&scope.state)?.target.clone();
+        verify_target(expected, &target)?;
         // 先订阅变更再读授权，不能漏掉 check 与等待之间发生的撤权。
         let changes = self.inner.auth.subscribe_changes();
         let stamp = check(&self.inner.auth, actor, &target, &scope.permission).await?;
@@ -422,6 +471,90 @@ impl ProjectionStore {
         recheck(&self.inner.auth, actor, &target, &scope.permission, stamp).await?;
         same_target(&*lock(&scope.state)?, &target)?;
         Ok(subscription)
+    }
+    pub(crate) async fn list_scopes(
+        &self,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<StateScopesResult> {
+        let scopes: Vec<_> = lock(&self.inner.scopes)?.values().cloned().collect();
+        let mut visible = Vec::new();
+        for scope in scopes {
+            let target = lock(&scope.state)?.target.clone();
+            let stamp = match check(&self.inner.auth, actor, &target, &scope.permission).await {
+                Ok(stamp) => stamp,
+                Err(error) if error.code == "PERMISSION_DENIED" => continue,
+                Err(error) => return Err(error),
+            };
+            visible.push((scope, target, stamp));
+        }
+        let mut refs = Vec::new();
+        for (scope, target, stamp) in visible {
+            match recheck(&self.inner.auth, actor, &target, &scope.permission, stamp).await {
+                Ok(()) => {}
+                Err(error) if error.code == "PERMISSION_DENIED" => continue,
+                Err(error) => return Err(error),
+            }
+            same_target(&*lock(&scope.state)?, &target)?;
+            refs.push(StateScopeRef {
+                scope_id: scope.id.clone(),
+                target,
+            });
+        }
+        Ok(StateScopesResult { scopes: refs })
+    }
+    /// 持有对应文档协调锁时，在 Store CAS 之前预检发布预算与计数。
+    pub(crate) fn preflight_document(
+        &self,
+        scope_id: &Id,
+        event_type: Id,
+        state: &JsonObject,
+    ) -> HostResult<()> {
+        let scope = self.scope(scope_id)?;
+        let current = lock(&scope.state)?;
+        let next = current.revision.checked_next()?;
+        let delta = Delta {
+            cursor: self.cursor(scope_id, next),
+            previous_cursor: self.cursor(scope_id, current.revision),
+            revision: next,
+            event_type,
+            payload: state.clone(),
+        };
+        encoded_length(state, self.inner.limits.history_bytes)?;
+        encoded_length(
+            &delta,
+            self.inner
+                .limits
+                .history_bytes
+                .min(self.inner.limits.queue_bytes),
+        )?;
+        Ok(())
+    }
+    /// 读取修复以持久文档为准，投影不是第二份状态来源。
+    pub(crate) fn synchronize_document(
+        &self,
+        reference: &StateScopeRef,
+        event_type: Id,
+        state: JsonObject,
+    ) -> HostResult<()> {
+        match self.scope(&reference.scope_id) {
+            Ok(scope) => {
+                let current = lock(&scope.state)?;
+                verify_target(Some(&reference.target), &current.target)?;
+                if current.value == state {
+                    return Ok(());
+                }
+                drop(current);
+                self.commit(&reference.scope_id, event_type, state.clone(), state)?;
+                Ok(())
+            }
+            Err(error) if error.code == "NOT_FOUND" => self.register_scope(
+                reference.scope_id.clone(),
+                reference.target.clone(),
+                "metadata.read".into(),
+                state,
+            ),
+            Err(error) => Err(error),
+        }
     }
     pub fn reader_count(&self) -> usize {
         let Ok(scopes) = self.inner.scopes.lock() else {
@@ -568,6 +701,26 @@ impl Drop for Subscription {
     }
 }
 
+fn is_document_scope(id: &Id) -> bool {
+    id.as_str() == "settings:shared" || id.as_str().starts_with("workspace:")
+}
+fn verify_target(expected: Option<&Target>, actual: &Target) -> HostResult<()> {
+    if let Some(expected) = expected
+        && expected != actual
+    {
+        if expected.kind == actual.kind
+            && expected.id == actual.id
+            && expected.session_epoch != actual.session_epoch
+        {
+            return Err(epoch_changed());
+        }
+        return Err(HostError::new(
+            "INVALID_ARGUMENT",
+            "Scope target does not match its registered resource",
+        ));
+    }
+    Ok(())
+}
 async fn check(
     auth: &AuthService,
     actor: &AuthenticatedActor,

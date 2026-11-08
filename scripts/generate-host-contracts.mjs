@@ -22,6 +22,7 @@ const EXPORTED_FILES = [
   "types.ts",
   "schemas.json",
   "catalog.json",
+  "defaults.json",
   "fixtures.json",
 ];
 const GENERATED_HEADER = "// Generated from Rust core DTOs. Do not edit.\n";

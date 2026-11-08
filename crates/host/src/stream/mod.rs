@@ -38,6 +38,14 @@ pub struct TxIntentRef {
     event: Arc<SourceEvent>,
     completed: Mutex<Option<Arc<SourceEvent>>>,
 }
+impl TxIntentRef {
+    pub(crate) fn write_payload(&self) -> WritePayload {
+        WritePayload::retained(
+            self.event.allocation.bytes.clone(),
+            self.event.allocation.clone(),
+        )
+    }
+}
 #[derive(Clone)]
 pub struct SourceMeta {
     pub configuration_revision: U64,
@@ -82,6 +90,33 @@ impl Default for StreamLimits {
     }
 }
 impl StreamHub {
+    /// 录制从当前已提交前缀之后订阅；寻址必须包含精确会话代次。
+    pub(crate) fn current_cursor(&self, target: &Target) -> HostResult<Cursor> {
+        target.validate()?;
+        if target.host_id != self.inner.identity.host_id || target.kind.as_str() != "session" {
+            return Err(invalid());
+        }
+        let sources = self.inner.sources.lock().map_err(|_| busy())?;
+        let source = sources
+            .values()
+            .find(|source| source.target == *target)
+            .ok_or_else(|| {
+                HostError::new("EPOCH_MISMATCH", "Raw session epoch is not available")
+            })?;
+        let state = source.state.lock().map_err(|_| busy())?;
+        if state.closed {
+            return Err(HostError::new(
+                "BACKEND_DISCONNECTED",
+                "Raw source is closed",
+            ));
+        }
+        Ok(Cursor {
+            host_id: self.inner.identity.host_id.clone(),
+            instance_epoch: self.inner.identity.instance_epoch,
+            scope_id: source.scope.clone(),
+            position: state.next.saturating_sub(1).into(),
+        })
+    }
     pub fn new(identity: HostIdentity, auth: AuthService, limits: StreamLimits) -> Self {
         Self {
             inner: Arc::new(HubInner {
@@ -244,6 +279,8 @@ impl StreamHub {
     }
     pub fn memory_usage(&self) -> StreamMemory {
         StreamMemory {
+            source_limit: self.inner.limits.total_source_bytes,
+            reader_limit: self.inner.limits.total_reader_bytes,
             source_bytes: self.inner.source_budget.used(),
             source_peak: self.inner.source_budget.peak(),
             reader_bytes: self.inner.reader_budget.used(),
@@ -253,6 +290,8 @@ impl StreamHub {
 }
 #[derive(Debug)]
 pub struct StreamMemory {
+    pub source_limit: usize,
+    pub reader_limit: usize,
     pub source_bytes: usize,
     pub source_peak: usize,
     pub reader_bytes: usize,
@@ -319,4 +358,25 @@ fn limit() -> HostError {
 }
 fn busy() -> HostError {
     HostError::new("HOST_BUSY", "Raw stream state is unavailable")
+}
+
+#[cfg(test)]
+mod capture_cursor_tests {
+    use crate::test_support::Harness;
+    use serial_workbench_core::U64;
+    #[tokio::test]
+    async fn capture_cursor_tracks_committed_events_and_rejects_old_epoch() {
+        let h = Harness::new().await;
+        let target = h.open("cursor-capture").await;
+        let before = h.host.streams().current_cursor(&target).unwrap();
+        h.send(&target).await;
+        let after = h.host.streams().current_cursor(&target).unwrap();
+        assert_eq!(after.position.get(), before.position.get() + 2);
+        let mut old = target;
+        old.session_epoch = Some(U64::from(0));
+        assert_eq!(
+            h.host.streams().current_cursor(&old).unwrap_err().code,
+            "EPOCH_MISMATCH"
+        );
+    }
 }

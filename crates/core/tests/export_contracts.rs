@@ -21,7 +21,36 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
     names.sort();
     assert_eq!(
         names,
-        ["catalog.json", "fixtures.json", "schemas.json", "types.ts"]
+        [
+            "catalog.json",
+            "defaults.json",
+            "fixtures.json",
+            "schemas.json",
+            "types.ts"
+        ]
+    );
+    let defaults_bytes = std::fs::read(output.join("defaults.json")).unwrap();
+    let defaults: Value = serde_json::from_slice(&defaults_bytes).unwrap();
+    assert_eq!(
+        defaults
+            .as_object()
+            .unwrap()
+            .keys()
+            .map(String::as_str)
+            .collect::<Vec<_>>(),
+        ["serialConfiguration", "settings", "workspace"]
+    );
+    assert_eq!(
+        defaults["settings"],
+        serde_json::to_value(serial_workbench_core::SharedSettings::default()).unwrap()
+    );
+    assert_eq!(
+        defaults["workspace"],
+        serde_json::to_value(serial_workbench_core::WorkspaceDocument::default()).unwrap()
+    );
+    assert_eq!(
+        defaults["serialConfiguration"],
+        serde_json::to_value(serial_workbench_core::SerialConfiguration::default()).unwrap()
     );
     let schemas: Value =
         serde_json::from_slice(&std::fs::read(output.join("schemas.json")).unwrap()).unwrap();
@@ -86,6 +115,10 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
             .success()
     );
     assert_eq!(first, std::fs::read(output.join("schemas.json")).unwrap());
+    assert_eq!(
+        defaults_bytes,
+        std::fs::read(output.join("defaults.json")).unwrap()
+    );
 }
 
 #[test]
@@ -123,6 +156,7 @@ fn exports_complete_m1_wire_roots_and_catalog_uses_the_same_schemas() {
         "LeaseState",
         "TakeoverReason",
         "SerialConfiguration",
+        "LineEnding",
         "TransportCapabilities",
         "SessionSnapshot",
         "OpenParams",

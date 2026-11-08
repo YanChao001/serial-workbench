@@ -43,6 +43,9 @@ pub struct RawConnection {
     connection: RpcConnection,
 }
 impl HostClient {
+    pub async fn close(&self) -> HostResult<()> {
+        self.connection.close().await
+    }
     pub async fn connect(options: ConnectOptions) -> HostResult<Self> {
         Self::connect_inner(options, true).await
     }
@@ -204,6 +207,9 @@ fn registration_busy() -> HostError {
     )
 }
 impl RawConnection {
+    pub async fn close(&self) -> HostResult<()> {
+        self.connection.close().await
+    }
     pub async fn connect(attachment: RawAttachment) -> HostResult<Self> {
         let mut stream = verified_connection(
             &attachment.discovery,

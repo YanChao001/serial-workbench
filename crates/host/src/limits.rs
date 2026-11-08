@@ -9,5 +9,7 @@ pub(crate) fn is_stop(action: &str) -> bool {
             | "lease.release"
             | "subscription.close"
             | "host.shutdown"
+            | "capture.stop"
+            | "replay.close"
     )
 }

@@ -10,6 +10,16 @@ Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/l
 
 浏览器共用界面源码和 HashRouter，提供外观、导航与偏好预览，使用独立的浏览器存储；原生调用由门面检查桌面环境。
 
+## 独立 Host
+
+独立运行时位于 `crates/host`，CLI、MCP 和 Rust 客户端经本机 IPC 共用目录、授权与 Operation。设备目录协调系统串口、PTY 与 Virtual，设备服务持有会话 owner、TX 门控和重连责任；raw 通路与状态投影分开，慢读者与 capture 使用各自有界预算。`packages/host-client` 提供不依赖 React / Tauri 的客户端投影、增量解码与转换。
+
+共享设置和工作区由 Host 的 SettingsService / WorkspaceService 经 Store 持久化，以文档 revision CAS 保存并发布投影；读取失败、损坏或未来格式会阻止覆盖。它们与下文桌面 `settings.json`、`workspace.json` 的存储职责分别维护，桌面继续使用现有 Tauri 服务。
+
+FileService 将显式登记的位置与内容引用分开；固定内容引用携带 revision，派生 capture / record 引用沿原授权来源复查。Capture 持有录制责任，停止后独立读回验证再发布完成状态；恢复另存已验证前缀，替换保留归档与失败证据。回放使用独立文件 reader，不创建设备 Transport。格式见 [Capture 容器](./contracts/capture-container-v0.md)。
+
+Host 指标记录实际队列与资源计数；shutdown 协调已接纳任务、TX、capture、设备和持久化结算，报告未结算操作、隔离会话、证据引用与失败。超时后原 owner 继续持有未完成资源和清理责任，已发出而无最终回执的效果保留 unknown。客户端效果管理层负责登记、转发和回执，Native 系统效果执行器留待后续集成。
+
 ## 模块职责
 
 | 模块             | 职责                                                          |

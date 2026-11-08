@@ -57,12 +57,22 @@ impl Gate {
         *self.released.lock().unwrap() = true;
         self.wake.notify_all();
     }
+    pub fn is_released(&self) -> bool {
+        *self.released.lock().unwrap()
+    }
     pub async fn entered(&self) {
         until(|| self.entered.load(Ordering::SeqCst)).await;
     }
 }
 #[derive(Default)]
 pub struct Probe {
+    pub drain_hold: AtomicBool,
+    pub drain_started: AtomicBool,
+    pub write_cancelled: Mutex<Option<Arc<AtomicBool>>>,
+    pub write_completes_on_cancel: AtomicBool,
+    pub drain_cancelled: Mutex<Option<Arc<AtomicBool>>>,
+    pub drain_release: AtomicBool,
+    pub rx_during_drain: AtomicUsize,
     pub read_gate: Mutex<Option<Arc<Gate>>>,
     pub read_fails: AtomicBool,
     pub configured_reads: AtomicUsize,
@@ -95,6 +105,9 @@ pub struct Harness {
 impl Harness {
     pub async fn new() -> Self {
         let dir = tempfile::tempdir().unwrap();
+        Self::in_profile(dir).await
+    }
+    pub async fn in_profile(dir: tempfile::TempDir) -> Self {
         let clock = Arc::new(ManualClock(AtomicU64::new(0)));
         let store = Store::open_with_clock(dir.path(), clock.clone()).unwrap();
         let identity = store.begin_instance().unwrap();
@@ -164,6 +177,7 @@ impl Harness {
             .open(
                 &self.device(name),
                 OpenParams {
+                    binding: None,
                     configuration: SerialConfiguration::default(),
                 },
             )
@@ -351,11 +365,25 @@ impl Transport for ScriptedTransport {
         assert!(limit <= 16384);
         assert!(wait <= Duration::from_millis(20));
         Ok(ReadBlock {
-            bytes: Arc::from([]),
+            bytes: if self.probe.drain_started.load(Ordering::SeqCst)
+                && !self.probe.drain_release.load(Ordering::SeqCst)
+            {
+                self.probe.rx_during_drain.fetch_add(1, Ordering::SeqCst);
+                Arc::from([7])
+            } else {
+                Arc::from([])
+            },
             message: None,
         })
     }
-    fn write(&mut self, bytes: &[u8], wait: Duration) -> BackendResult<BackendWrite> {
+    fn begin_write(
+        &mut self,
+        bytes: WritePayload,
+        wait: Duration,
+        cancelled: Arc<AtomicBool>,
+        _: Arc<AtomicBool>,
+    ) -> BackendResult<Box<dyn PendingWrite>> {
+        *self.probe.write_cancelled.lock().unwrap() = Some(cancelled.clone());
         assert!(bytes.len() <= 16384);
         self.probe
             .writes
@@ -369,12 +397,8 @@ impl Transport for ScriptedTransport {
                 usize::MAX,
                 "Scripted owner lost its write receipt"
             );
-            if let Some(gate) = step.gate {
-                gate.hold();
-            }
-            self.clock.advance_ms(step.advance_ms);
             let count = step.accepted.min(bytes.len());
-            Ok(BackendWrite {
+            let result = BackendWrite {
                 accepted_ranges: if count > 0 {
                     vec![ByteRange {
                         start: 0.into(),
@@ -396,16 +420,33 @@ impl Transport for ScriptedTransport {
                 } else {
                     None
                 },
-            })
+            };
+            if let Some(gate) = &step.gate {
+                gate.entered.store(true, Ordering::SeqCst);
+            }
+            Ok(Box::new(ScriptedWrite {
+                result: Some(result),
+                gate: step.gate,
+                clock: self.clock.clone(),
+                advance_ms: step.advance_ms,
+                cancelled: self
+                    .probe
+                    .write_completes_on_cancel
+                    .load(Ordering::SeqCst)
+                    .then_some(cancelled),
+            }))
         } else {
-            Ok(BackendWrite {
-                accepted_ranges: vec![ByteRange {
-                    start: 0.into(),
-                    end: (bytes.len() as u64).into(),
-                }],
-                unknown_ranges: vec![],
-                error: None,
-            })
+            Ok(pending_write(
+                BackendWrite {
+                    accepted_ranges: vec![ByteRange {
+                        start: 0.into(),
+                        end: (bytes.len() as u64).into(),
+                    }],
+                    unknown_ranges: vec![],
+                    error: None,
+                },
+                None,
+            ))
         }
     }
     fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication> {
@@ -456,12 +497,29 @@ impl Transport for ScriptedTransport {
             ControlCommand::QueueStatus => Ok(ControlResult::Queue {
                 pending_bytes: 0.into(),
             }),
-            ControlCommand::Drain { .. } => Ok(ControlResult::Drained),
+            ControlCommand::ModemStatus => {
+                Err(HostError::new("UNSUPPORTED_CAPABILITY", "No modem inputs").into())
+            }
             ControlCommand::Purge { .. } => Ok(ControlResult::Purged {
                 ranges: vec![],
                 unknown_extent: false,
             }),
         }
+    }
+    fn begin_drain(&mut self, request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+        *self.probe.drain_cancelled.lock().unwrap() = Some(request.cancelled.clone());
+        if self.probe.drain_hold.load(Ordering::SeqCst) {
+            self.probe.drain_started.store(true, Ordering::SeqCst);
+            return Ok(Box::new(ScriptedDrain {
+                probe: self.probe.clone(),
+                request,
+                settled: false,
+            }));
+        }
+        serial_workbench_host::device::virtual_backend::VirtualTransport::new(
+            SerialConfiguration::default(),
+        )
+        .begin_drain(request)
     }
     fn close(&mut self) -> BackendResult<()> {
         self.probe.close_calls.fetch_add(1, Ordering::SeqCst);
@@ -470,5 +528,97 @@ impl Transport for ScriptedTransport {
             self.probe.closes.fetch_add(1, Ordering::SeqCst);
         }
         Ok(())
+    }
+}
+
+struct ScriptedWrite {
+    result: Option<BackendWrite>,
+    gate: Option<Arc<Gate>>,
+    clock: Arc<ManualClock>,
+    advance_ms: u64,
+    cancelled: Option<Arc<AtomicBool>>,
+}
+impl PendingWrite for ScriptedWrite {
+    fn poll(&mut self) -> Option<BackendResult<BackendWrite>> {
+        if self.gate.as_ref().is_some_and(|gate| !gate.is_released())
+            && !self
+                .cancelled
+                .as_ref()
+                .is_some_and(|cancelled| cancelled.load(Ordering::SeqCst))
+        {
+            return None;
+        }
+        let result = self.result.take()?;
+        self.clock.advance_ms(self.advance_ms);
+        Some(Ok(result))
+    }
+}
+struct TestWrite {
+    result: Option<BackendWrite>,
+    gate: Option<Arc<Gate>>,
+    cancelled: Option<Arc<AtomicBool>>,
+}
+impl PendingWrite for TestWrite {
+    fn poll(&mut self) -> Option<BackendResult<BackendWrite>> {
+        if self.gate.as_ref().is_some_and(|gate| !gate.is_released())
+            && !self
+                .cancelled
+                .as_ref()
+                .is_some_and(|cancelled| cancelled.load(Ordering::SeqCst))
+        {
+            return None;
+        }
+        self.result.take().map(Ok)
+    }
+}
+pub fn pending_write(result: BackendWrite, gate: Option<Arc<Gate>>) -> Box<dyn PendingWrite> {
+    if let Some(gate) = &gate {
+        gate.entered.store(true, Ordering::SeqCst);
+    }
+    Box::new(TestWrite {
+        result: Some(result),
+        gate,
+        cancelled: None,
+    })
+}
+pub fn pending_write_on_cancel(
+    result: BackendWrite,
+    gate: Option<Arc<Gate>>,
+    cancelled: Arc<AtomicBool>,
+) -> Box<dyn PendingWrite> {
+    if let Some(gate) = &gate {
+        gate.entered.store(true, Ordering::SeqCst);
+    }
+    Box::new(TestWrite {
+        result: Some(result),
+        gate,
+        cancelled: Some(cancelled),
+    })
+}
+
+struct ScriptedDrain {
+    probe: Arc<Probe>,
+    request: DrainRequest,
+    settled: bool,
+}
+impl PendingDrain for ScriptedDrain {
+    fn poll(&mut self) -> Option<BackendResult<ControlResult>> {
+        if self.settled {
+            return None;
+        }
+        let status = if self.probe.drain_release.load(Ordering::SeqCst) {
+            ControlStatus::Confirmed
+        } else if self.request.cancelled.load(Ordering::SeqCst)
+            || self.request.closing.load(Ordering::SeqCst)
+        {
+            ControlStatus::Unknown
+        } else {
+            return None;
+        };
+        self.settled = true;
+        Some(Ok(ControlResult::Drained {
+            status,
+            error: None,
+        }))
     }
 }

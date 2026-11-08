@@ -160,7 +160,7 @@ impl Default for SerialConfiguration {
             flow_control: FlowControl::None,
             read_wait_ms: DurationMs::try_from(U64::from(20)).expect("read wait"),
             write_wait_ms: DurationMs::try_from(U64::from(1000)).expect("write wait"),
-            reconnect_backoff_ms: DurationMs::try_from(U64::from(1000)).expect("reconnect wait"),
+            reconnect_backoff_ms: DurationMs::try_from(U64::from(500)).expect("reconnect wait"),
         }
     }
 }
@@ -180,6 +180,14 @@ pub struct TransportCapabilities {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct SessionSnapshot {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "ReconnectStatus")]
+    #[specta(type=ReconnectStatus, optional)]
+    pub reconnect: Option<ReconnectStatus>,
     pub session_id: Id,
     pub device_id: Id,
     pub session_epoch: U64,
@@ -204,6 +212,14 @@ pub struct SessionSnapshot {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OpenParams {
     pub configuration: SerialConfiguration,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "DeviceBindingReference")]
+    #[specta(type=DeviceBindingReference, optional)]
+    pub binding: Option<DeviceBindingReference>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -212,6 +228,14 @@ pub struct OpenResult {
     pub session_epoch: U64,
     pub revision: U64,
     pub reused: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "HostError")]
+    #[specta(type=HostError, optional)]
+    pub recent_error: Option<HostError>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -387,17 +411,6 @@ pub struct PurgeReceipt {
     pub affected_operation_ids: Vec<Id>,
     pub ranges: Vec<DirectionalRange>,
     pub unknown_extent: bool,
-}
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DeviceDescriptor {
-    pub device_id: Id,
-    pub name: String,
-}
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct DeviceList {
-    pub devices: Vec<DeviceDescriptor>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(deny_unknown_fields)]

@@ -104,6 +104,7 @@ impl Database {
                 .map_err(|_| unavailable())?;
             transaction.commit().map_err(|_| unavailable())?;
         }
+        connection.execute_batch("CREATE INDEX IF NOT EXISTS operation_active ON operations(operation_id) WHERE terminal=0;").map_err(|_| unavailable())?;
         let retention: String = connection
             .query_row(
                 "SELECT retention_clock_ns FROM host_identity WHERE singleton=1",

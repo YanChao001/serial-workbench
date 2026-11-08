@@ -824,14 +824,23 @@ impl Transport for BurstTransport {
         }
         self.inner.read(max, wait)
     }
-    fn write(&mut self, bytes: &[u8], wait: std::time::Duration) -> BackendResult<BackendWrite> {
-        self.inner.write(bytes, wait)
+    fn begin_write(
+        &mut self,
+        bytes: WritePayload,
+        wait: std::time::Duration,
+        cancelled: Arc<std::sync::atomic::AtomicBool>,
+        closing: Arc<std::sync::atomic::AtomicBool>,
+    ) -> BackendResult<Box<dyn PendingWrite>> {
+        self.inner.begin_write(bytes, wait, cancelled, closing)
     }
     fn configure(&mut self, value: &SerialConfiguration) -> BackendResult<ConfigApplication> {
         self.inner.configure(value)
     }
     fn control(&mut self, value: ControlCommand) -> BackendResult<ControlResult> {
         self.inner.control(value)
+    }
+    fn begin_drain(&mut self, request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+        self.inner.begin_drain(request)
     }
     fn close(&mut self) -> BackendResult<()> {
         self.probe
@@ -935,6 +944,7 @@ impl LiveRaw {
             .open(
                 &device,
                 OpenParams {
+                    binding: None,
                     configuration: SerialConfiguration::default(),
                 },
             )

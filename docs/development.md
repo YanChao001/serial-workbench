@@ -40,7 +40,7 @@ Host 公共 DTO 在 `crates/core` 维护。修改 wire 类型后顺序运行 `pn
 从仓库根目录构建三个入口：
 
 ```sh
-cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins
 ```
 
 程序位于 Cargo target 的 `debug/`，默认是 `src-tauri/target/debug/`；Windows 文件名带 `.exe`。CLI 和 MCP 先认证附着同 profile 的 Host，首次使用会启动同目录的 Host 程序。三个程序应放在一起。Windows 的工具或 IDE 若通过 Job 禁止子进程脱离，会返回 `HOST_START_FAILED`；此时先在独立终端运行 `serial-workbench-host --profile <绝对目录>`，再让客户端连接同一 profile。
@@ -65,6 +65,8 @@ serial-workbench-cli --profile <绝对目录> operation get --request-id <原uui
 
 退出 CLI 保留 Host 及已接纳任务；`operation cancel <operationId>` 才请求合作取消。`host stop` 等待原实例实际结束后返回确认，回执中的接纳成功与实例停止分开判断；另一客户端随后可以启动新实例。
 
+新增设备、capture / replay、文件传输、共享文档和指标操作均从 `catalog --json` 发现 actionId、目标与参数 schema，按目录的 kind 使用 `query` 或 `invoke`；动作接纳后沿上述 Operation 流程查询。`settings.save` / `workspace.save` 等 CAS 写入通过调用的 `expectedRevision` 提交；CLI 对应参数为 `--expected-revision`，完整格式以 `--help` 为准。文件业务先经显式 `file.register` 登记，再使用返回的 ObjectRef，不将任意路径传给收发或回放操作。
+
 MCP 入口为 `serial-workbench-mcp --profile <绝对目录>`，stdio 只承载官方 SDK 协议。工具来自同一 Host 目录及当前 actor 权限；普通 MCP 不自动取得用户控制权限。取消工具等待只结束适配器等待，业务取消仍通过明确的 `operation.cancel`。原始读取使用独立 raw 连接，语义见 [Host 契约](./contracts/host-v0.md) 与[流和操作契约](./contracts/stream-and-operations-v0.md)。
 
 #### CLI / MCP 启动配置
@@ -73,7 +75,7 @@ CLI 与 MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录的顺序选择 
 
 `SWB_LOG_LEVEL` 接受大小写不敏感的 `off`、`error`、`warn`、`info`、`debug`、`trace`，默认 `info`；空值、空白和日志过滤表达式会返回 `INVALID_ARGUMENT`。该级别控制当前 CLI / MCP 进程的应用日志，写入 stderr；stdout 继续只承载 CLI JSON 或 MCP 协议。`off` 保留致命错误输出。`debug` / `trace` 会记录配置来源和级别枚举，不输出实际目录、参数或凭据。
 
-这两项环境覆盖当前作用于 CLI / MCP。客户端启动子 Host 时显式传递解析后的目录；直接运行 Host 和桌面入口的配置来源查询继续随 M1b 集成。
+直接运行 Host 也使用相同的 profile 与日志解析规则；客户端启动子 Host 时显式传递解析后的目录。Host 将解析结果注入运行时，`startup.config.get` 返回脱敏配置来源快照；桌面入口的接线继续随后续集成。
 
 ## 产品身份配置
 

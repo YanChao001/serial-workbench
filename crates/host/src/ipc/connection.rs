@@ -411,6 +411,25 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
             event = events.recv() => match event { Some(event) => event, None => break },
         };
         let frame = event.frame.frame();
+        if let EventFrame::Client { dispatch, .. } = &event.frame {
+            // The operator receives the event, but the business actor's current
+            // authority and the registered receiver generation authorize it.
+            let changes = auth.subscribe_changes();
+            let check = dispatch.clone();
+            if let Err(error) = blocking(move || check.authorize()).await {
+                let rejected = dispatch.clone();
+                blocking(move || rejected.reject_undelivered(error)).await?;
+                continue;
+            }
+            tokio::select! {
+                biased;
+                _ = wait_raw_revocation(auth.clone(), dispatch.authority.stamp.clone(), changes) => return Err(unauthenticated()),
+                result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, frame, MAX_FRAME_BYTES)) => result.map_err(|_| busy())??,
+            }
+            // Once writing begins, failure or disconnect is uncertain. The
+            // receiver's ledger retains capacity until a receipt or destruction.
+            continue;
+        }
         let subscription = match &frame.body {
             IpcMessage::Delta {
                 subscription_id, ..
@@ -479,7 +498,7 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
         }
         let encoding = match &event.frame {
             EventFrame::Raw { batch, .. } => Some(batch.encoding_lease()?),
-            EventFrame::State(_) => None,
+            EventFrame::State(_) | EventFrame::Client { .. } => None,
         };
         if event.grant.is_some() {
             let revoked = wait_raw_revocation(auth.clone(), event.stamp.clone(), changes);
@@ -975,6 +994,65 @@ mod tests {
         assert!(
             !session.raw_attached.load(Ordering::Acquire),
             "The next raw attachment must be allowed after cleanup"
+        );
+    }
+    #[tokio::test]
+    async fn file_read_reply_stops_writing_sensitive_bytes_after_revocation() {
+        use tokio::io::AsyncReadExt;
+        let mut f = RawTest::new();
+        f.replies
+            .send(PendingReply {
+                frame: WireFrame {
+                    request_id: new_request_id(),
+                    channel: IpcChannel::Raw,
+                    body: IpcMessage::Reply {
+                        reply: Box::new(RpcReply::Success {
+                            ok: True,
+                            result: Box::new(RpcResult::Query(QueryResult::FileRead(
+                                FileReadResult {
+                                    file_ref: ObjectRef {
+                                        host_id: f.target.host_id.clone(),
+                                        kind: ResourceKind::try_from("file").unwrap(),
+                                        id: id("private-source"),
+                                        revision: None,
+                                    },
+                                    offset: 0.into(),
+                                    next_offset: 18.into(),
+                                    total_bytes: 18.into(),
+                                    bytes_base64: Bytes::try_from("ZmlsZS1hcGktcGxhaW50ZXh0")
+                                        .unwrap(),
+                                    fingerprint: Digest::try_from("a".repeat(64).as_str()).unwrap(),
+                                    at_end: true,
+                                },
+                            ))),
+                        }),
+                    },
+                },
+                _permit: None,
+                stamp: f.auth.capture_grants(&f.actor).unwrap(),
+                _raw_output_lease: None,
+            })
+            .await
+            .unwrap();
+        let (mut writing, mut input) = f.writer(1);
+        input.read_u8().await.unwrap();
+        f.revoke();
+        let result = tokio::time::timeout(Duration::from_secs(2), &mut writing).await;
+        if result.is_err() {
+            writing.abort();
+        }
+        assert!(
+            result
+                .expect("revocation must interrupt sensitive raw reply")
+                .unwrap()
+                .is_err()
+        );
+        let mut remaining = Vec::new();
+        input.read_to_end(&mut remaining).await.unwrap();
+        assert!(
+            !remaining
+                .windows(b"ZmlsZS1hcGktcGxhaW50ZXh0".len())
+                .any(|bytes| bytes == b"ZmlsZS1hcGktcGxhaW50ZXh0")
         );
     }
     #[tokio::test]
