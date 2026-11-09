@@ -21,6 +21,8 @@ describe("语言资源", () => {
       expect(Intl.getCanonicalLocales(locale.documentLang)).toHaveLength(1);
       for (const key of keys) {
         expect(locale.messages[key].trim(), `${language}: ${key}`).not.toBe("");
+        if (language === "zh")
+          expect(locale.messages[key], key).not.toMatch(/\?{2,}/);
         expect(
           placeholders(locale.messages[key]),
           `${language}: ${key}`,

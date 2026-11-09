@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, readFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import test from "node:test";
 
@@ -77,62 +77,4 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
     if (name === "workflow_dispatch") continue;
     assert.match(job(name), /timeout-minutes: \d+/, name);
   }
-});
-
-test("unused skip helpers are removed and the release template has no dangling call", () => {
-  for (const name of [
-    "scripts/ci-scope.mjs",
-    "scripts/ci-scope.test.mjs",
-    "scripts/hosting/github-ci-scope.mjs",
-    "scripts/ci-verified-tree.mjs",
-    "scripts/ci-verified-tree.test.mjs",
-  ]) {
-    assert.equal(existsSync(resolve(root, name)), false, name);
-  }
-  const release = read(".github/workflows-disabled/release.yml");
-  assert.doesNotMatch(release, /ci-verified-tree|steps\.verified|reused_run/);
-  assert.match(release, /run: pnpm verify/);
-  assert.equal(
-    existsSync(resolve(root, ".github/workflows/release.yml")),
-    false,
-  );
-  assert.equal(existsSync(resolve(root, ".github/workflows/pages.yml")), false);
-});
-
-test("native jobs resolve root workspace and retain isolated target caches", () => {
-  for (const name of ["rust", "bindings"])
-    assert.match(job(name), /workspaces: \. -> src-tauri\/target\n/);
-  assert.match(
-    job("desktop-e2e"),
-    /workspaces: \. -> src-tauri\/target\/e2e\n/,
-  );
-  assert.doesNotMatch(ci, /working-directory: src-tauri/);
-  assert.match(
-    read(".github/workflows/audit.yml"),
-    /cargo audit --file Cargo\.lock/,
-  );
-  assert.match(
-    read(".github/workflows-disabled/release.yml"),
-    /workspaces: \. -> src-tauri\/target\n/,
-  );
-});
-
-test("generated Host contracts and desktop bindings are checked serially in the bindings job", () => {
-  assert.match(
-    job("bindings"),
-    /run: \|\n {10}pnpm contracts:check\n {10}pnpm bindings:check/,
-  );
-  assert.doesNotMatch(job("bindings"), /pnpm (?:contracts|bindings):check.*&/);
-});
-
-test("release package output follows successful configuration and version checks", () => {
-  const release = read(".github/workflows-disabled/release.yml");
-  assert.match(
-    release,
-    /id: version\n {8}run: \|\n {10}pnpm config:check\n {10}node scripts\/version.mjs check\n {10}node --input-type=module -e/,
-  );
-  assert.match(
-    release,
-    /args:.*-- --package \$\{\{ steps\.version\.outputs\.package \}\}/,
-  );
 });

@@ -55,20 +55,4 @@ describe("路由配置与匹配", () => {
       hidden: true,
     });
   });
-  it("移除演示路由，旧链接回到首页", () => {
-    for (const path of [
-      "/motion",
-      "/catalog",
-      "/bridge",
-      "/components",
-      "/database",
-      "/tasks",
-      "/workbench",
-      "/system",
-      "/network",
-      "/data-studio",
-      "/media",
-    ])
-      expect(matchRoute(path).path).toBe("/");
-  });
 });

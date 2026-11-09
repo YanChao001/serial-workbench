@@ -1519,7 +1519,7 @@ it.each([
   },
 );
 
-it("keeps a newly selected workspace and in-flight edits while returning the submitted receipt", async () => {
+it("keeps a newly selected workspace while returning the earlier save receipt", async () => {
   const connection = await createHostConnection(port());
   const base = workspaceFixture();
   const terminal = workspaceOperation(base);
@@ -1559,11 +1559,9 @@ it("keeps a newly selected workspace and in-flight edits while returning the sub
   const submitted = structuredClone(base.document.value);
   const saved = workspace.saveWorkspace(base, submitted);
   await polling;
-  const newerDraft = { ...submitted, name: "New unsaved edit" };
   await workspace.loadWorkspace("other");
   release?.();
   await expect(saved).resolves.toEqual(terminal.result.value);
-  expect(newerDraft.name).toBe("New unsaved edit");
   expect(workspace.getSnapshot().state.workspace?.scope.target.id).toBe(
     "other",
   );

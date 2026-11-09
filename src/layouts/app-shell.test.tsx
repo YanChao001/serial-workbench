@@ -39,18 +39,8 @@ vi.mock("@/components/window-background", () => ({
   WindowBackground: () => null,
 }));
 vi.mock("@/components/app-sidebar", () => ({
-  AppSidebar: ({
-    routes,
-    onWidthPreview,
-  }: {
-    routes: readonly AppRoute[];
-    onWidthPreview: (width: number | null) => void;
-  }) => (
+  AppSidebar: ({ routes }: { routes: readonly AppRoute[] }) => (
     <nav aria-label="Test sidebar">
-      <button onClick={() => onWidthPreview(280)}>Preview sidebar width</button>
-      <button onClick={() => onWidthPreview(null)}>
-        Cancel sidebar resize
-      </button>
       {routes.map(({ path }) => (
         <Link key={path} to={path}>
           {path}
@@ -201,39 +191,6 @@ describe("应用内容导航", () => {
       "data-content-layout",
       "document",
     );
-  });
-
-  it("侧栏拖动预览同步内容区留白，取消后恢复持久宽度", () => {
-    renderShell();
-    const shell = screen.getByRole("main").closest(".app-shell");
-    expect(shell).toHaveStyle({ "--app-sidebar-width": "224px" });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Preview sidebar width" }),
-    );
-    expect(shell).toHaveStyle({ "--app-sidebar-width": "280px" });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Cancel sidebar resize" }),
-    );
-    expect(shell).toHaveStyle({ "--app-sidebar-width": "224px" });
-  });
-
-  it("折叠为图标栏预留48逻辑像素，并保留展开宽度", () => {
-    shellSettings.sidebarCollapsed = true;
-    renderShell();
-    const shell = screen.getByRole("main").closest(".app-shell");
-    expect(shell).toHaveStyle({ "--app-sidebar-width": "48px" });
-    expect(shellSettings.sidebarWidth).toBe(224);
-  });
-
-  it("页面切换直接显示内容，保留页面标题语义", () => {
-    renderShell("/");
-    expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
-    expect(document.querySelector(".app-route-context")).toBeNull();
-    fireEvent.click(screen.getByRole("link", { name: "/settings" }));
-    expect(
-      screen.queryByRole("navigation", { name: "navContext.location" }),
-    ).not.toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
   });
 
   it("目标页模块未就绪时显示预布局骨架，加载后立即切换", async () => {

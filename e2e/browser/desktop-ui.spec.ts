@@ -1160,6 +1160,7 @@ for (const theme of ["light", "dark"]) {
       .locator('label:has(input[name="background-skin"][value="aurora"])')
       .click();
     await page.emulateMedia({ forcedColors: "active" });
+    await expect(page.locator("[data-window-background]")).toBeHidden();
     await expect
       .poll(() => measure('input[type="search"]'))
       .toEqual({ alpha: 1, blur: 0 });
@@ -1369,7 +1370,6 @@ for (const theme of ["light", "dark"]) {
         await page.goto("./#" + route);
         await expectRouteReady(page, route);
         const result = await new AxeBuilder({ page })
-          .include("main")
           .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
           .analyze();
         expect(result.violations, theme + " " + route).toEqual([]);
@@ -2785,23 +2785,6 @@ for (const theme of ["light", "dark"]) {
     },
   );
 }
-
-test("the settings gallery and background controls have no detected WCAG A/AA violations", async ({
-  page,
-}) => {
-  await seed(page, { background: "aurora" });
-  await page.goto("./#/settings");
-  await expect(
-    page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
-  ).toBeVisible();
-  const scan = await new AxeBuilder({ page })
-    .include("main")
-    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-    .analyze();
-  expect(scan.violations).toEqual([]);
-  await page.emulateMedia({ forcedColors: "active" });
-  await expect(page.locator("[data-window-background]")).toBeHidden();
-});
 
 for (const profile of [
   {
