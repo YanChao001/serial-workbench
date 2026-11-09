@@ -49,7 +49,7 @@ pnpm test:ui
 
 真实桌面通过 `pnpm e2e:build` 与 `pnpm test:e2e --interactive --skip-build` 运行 `e2e/specs/`，使用测试配置和 WebDriver。构建包含相邻同源 Host/CLI/MCP，收据校验源码、target/profile 与程序哈希；runner 使用独立 Host profile、持有 PID、正常 CLI 认证及实际退出，失败保留现场。工作台场景在同一窗口内请求 runner 重启其持有的 Host，核对旧实例退出、新 epoch、显式重新附着、订阅及未发送草稿。
 
-设置场景分别读取 Host SharedSettings 和 Native ClientState，按字符串 revision 保存并等待 Operation 终态。媒体场景仅在测试 feature 中用 suite 固定 PNG 替代系统选择对话框，后续仍经过正式文件检查、登记、授权和媒体票据；这不验证系统选择对话框本身。I5/I7 接线尚待完整四目标 CI 复验，不在本机启动真实窗口。
+设置场景分别读取 Host SharedSettings 和 Native ClientState，按字符串 revision 保存并等待 Operation 终态。媒体场景仅在测试 feature 中用 suite 固定 PNG 替代系统选择对话框，后续仍经过正式文件检查、登记、授权和媒体票据；这不验证系统选择对话框本身。I5/I7 接线已在候选 `9283f22` 的完整四目标 CI 通过，见[进度](./progress.md#当前验证)；日常仍不在本机启动真实窗口。
 
 同一 Native 阶段串行复用 profile 和界面状态；首个失败后停止该阶段并保留截图/日志，避免后续依赖状态的连锁超时。成功候选仍执行全部阶段和场景。授权恢复定向检查覆盖多个终态无 ACK、正常/应急容量及实际回收、连续授权、恢复查询再次遇到授权变化、真实撤权拒绝，以及旧 reader 回调隔离；恢复只查询和订阅，不重放发送动作。退休检查还验证普通 RPC、订阅及设置副作用不会隐式附着或启动 Host，明确附着后才允许新代次访问。
 
