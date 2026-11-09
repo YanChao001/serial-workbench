@@ -2,7 +2,7 @@
 
 使用 Tauri、Rust、React 和 TypeScript 开发的跨平台串口工作台。独立 Rust Host 管理串口、会话、录制和共享状态，桌面、CLI 与 MCP 使用同一后端。
 
-当前工作台具备 Text/HEX 收发、文件发送、录制与只读回放、工作区和共享设置；M1b 尚未完成，已知问题及验证范围见[开发进度](./docs/progress.md)。Node 插件、浏览器连接和 LAN 属于后续阶段。
+当前工作台具备 Text/HEX 收发、文件发送、录制与只读回放、工作区和共享设置；M1b 已完成验收并合入，后续任务及验证范围见[开发进度](./docs/progress.md)。Node 插件、浏览器连接和 LAN 属于后续阶段。
 
 [English](./README.en.md) · [工程文档](./docs/README.md) · [需求](./docs/requirements.md) · [贡献](./CONTRIBUTING.md)
 

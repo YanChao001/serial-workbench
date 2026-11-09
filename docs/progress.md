@@ -1,28 +1,26 @@
 # 开发进度
 
-更新：2026-11-10。当前执行 M1b，随后按阶段出口推进至 M6。M1b 尚未完成；以下验证只适用于其记录的源码和环境。
+更新：2026-11-10。M1b 已完成验收并合入；当前同步交付状态，随后逐张审查界面截图，再接续 M2—M6。整个目标尚未完成，以下结果只适用于其记录的源码和环境。
 
 ## 当前基线
 
-- 恢复核对：本地 `main` 与 fetch 后的 `origin/main` 均为 `63b8a9c7bb346b05539e6d2fbbced520dcb40c4e`，工作区干净，无待接续的未提交修改；远端无打开的 PR。当前切片从该基线建立 `fix/m1b-acceptance`，未清理历史备份、用户数据或编译缓存。
-- 247 条需求账本继续区分软件、硬件和发行；恢复执行不提升任何验收状态。当前阶段出口为 M1b 阻断项、同源验证及完整四目标 CI 通过后 PR squash 合入。
-- 当前候选由 [PR #40](https://github.com/YanChao001/serial-workbench/pull/40) 交付；已完成本机综合检查和两轴增量复审，76 个 M1 切片登记该 PR 证据，软件状态仍保持 in-progress，完整四目标 CI 与 Native 实测通过后才能合入。
-- 当前工作区为主仓库 `D:\yanchao\Codex\serial-workbench`，分支 `fix/m1b-acceptance`，Native 读取恢复及测试修正随本机检查集中冻结到 PR #40 最新 HEAD，候选具体身份由该提交及源码收据核对。最近完整 CI `42699180945` 对应旧候选 `850ba5d`，四目标 Native 通过，Windows/macOS Intel Rust 有五项失败；不将旧通过计作新候选验收。新门禁及合入仍待完成。
-- 验收范围更新（用户 2026-11-09 确认）：真实硬件仅做 Windows，macOS/Linux 做实现与虚拟测试。当前端口 COM14，PnP 为 CH340（VID 1A86/PID 7523，状态 OK）；用户确认 TX/RX 已短接、参数可按测试选择。尚未执行硬件收发；其余设备、Windows LAN 第二台物理机、长稳和发行环境未取得证据。
-- 本轮源码与文档整合由 [PR #38](https://github.com/YanChao001/serial-workbench/pull/38) 追溯，基于工作台候选 `0c2ca56528956c1b7fcf4828addc7f17828c18d0` 补齐现有修复。
-- 主线后端：[PR #37](https://github.com/YanChao001/serial-workbench/pull/37) 已 squash 合入 `6f47d4e`，候选 `9e0e0ed` 与合入树相同。
-- 工作台的历史 CI 结果属于候选 `0c2ca56`；本轮检查见下方记录，完整跨平台与原生复验仍待完成。
-- 历史迁移副本、原始日志和截图已清理，重要结论保留于本页；新检查日志位于忽略目录 `.cache/`。
+- M1b 通过 [PR #40](https://github.com/YanChao001/serial-workbench/pull/40) squash 合入 `main@7b466df28bf255a325ed8275612ffb4400a06001`。候选 `9283f22463106a785834d055fb55f86a5aa14195` 与合入树完全相同；重新计算源码指纹均为 `86a459f87deab7e1077ae7caf2ca18897027b73c6b8d225e50e8f8b6c5177d37`。
+- 主工作区 `D:\yanchao\Codex\serial-workbench` 已 fast-forward 到该 main 并核对干净。M1b 自有分支已清理；本次状态同步从该主线创建短期文档分支，后续继续从最新 main 创建短期分支。未修改 marketplace，未清理指定备份、用户数据或编译缓存。
+- 247 条需求账本校验通过：76 个跨阶段软件项仍为 in-progress、168 个 not-started、3 个 not-applicable；76 个 M1 切片已登记并合入 PR #40 证据。切片交付不提升其后续软件、硬件或发行范围，也不把 247 条全部记为完成。
+- 真实硬件仅做 Windows，macOS/Linux 做实现与虚拟测试。COM14 为 CH340（VID 1A86/PID 7523）；用户确认 TX/RX 已短接、可按测试需要选择参数，当前未执行正式硬件收发。最低系统、实际 72h、Windows LAN 双机、专业设备、安装签名及发行仍未验收。
+- 合入/同源收据位于 `.cache/evidence/m1b/7b466df28bf255a325ed8275612ffb4400a06001/delivery.json`；候选源码、程序哈希、日志与软件/原生证据位于 `.cache/evidence/m1b/9283f22463106a785834d055fb55f86a5aa14195/`。历史失败保持原源码归属。
 
 ## 当前验证
 
-最新完整 CI [42699180945](https://github.com/YanChao001/serial-workbench/actions/runs/42699180945) 对应 `850ba5d`，源指纹 `b15a72b5…`。四目标 Native 均实际执行并通过；fresh 的 Windows/Ubuntu 各 14 通过/1 条件跳过，macOS ARM/Intel 各 13 通过/2 条件跳过，persisted 和 centered 均各 2 通过。四份候选收据与 Host/CLI/MCP 组件齐全，最终 Settings 页无错误或等待；中途日志仍有设置效果权限错误，不能称为全程正常。Ubuntu 正式六场景/18 断言通过，T06 实际 600.479811005 秒/602 样本；Windows/macOS Intel Rust 的五项失败使质量门禁正确拒绝，未合入。
+[完整 CI 42710347353](https://github.com/YanChao001/serial-workbench/actions/runs/42710347353) 对应候选 `9283f22`，12 项必需任务全部成功：前端、浏览器、IPC 绑定、四目标 Rust、四目标 Native 和质量门禁。完整模式下未执行的预检占位是唯一 job skip，不能当作未运行的目标；四目标均实际执行。
 
-增量复核确定 Native 内部 `settings.read`、设备连接后的 `operation.get/session.get` 绕过前端只读恢复。新增同代次纯读白名单，不重做授权、打开设备或平台效果；真实 Host 生成结果后合法改变 grant stamp，旧实现三项失败，补齐后初步三项通过，退休和设备入口回归继续复验。Windows reader 用例在授权持久提交/建立订阅前消耗真实 200ms；现先建立等待再推进手动时钟。macOS Intel BREAK 用例看到后端标记就推进时钟，早于业务层计算截止点；现等待业务 Asserted。饱和测试保留生产关停预算与未完成报告，在测试总预算内等待真实责任退出并再检查完成，不要求首轮关停必成功。
+四目标 Native 的 fresh 阶段：Windows/Ubuntu 各 14 通过/1 条件跳过，macOS ARM/Intel 各 13 通过/2 条件跳过；persisted 和 centered 均各 2 通过。源码指纹和 Host/CLI/MCP 三组件收据齐全；最终 Settings 页无错误或保存等待，本轮四端均未记录 Settings effects 错误。各端两个测试 Host 正常退出，三个桌面进程记录 runner 受控停止后的真实退出，不把强制结束记为正常 0。驱动 wheel 输入、Windows 专属 fullscreen 的条件跳过及系统文件选择对话框未测范围保留。
 
-传输回执用例的原 CI 仅留下五秒等待超时，具体停滞点未确定。Harness 仍用五秒等待，将 Store 读取移到阻塞 worker、降低轮询频率，超时输出最后已读状态、已写块数、剩余脚本步和时钟；默认新建的失败 profile 保留在 `artifacts/rust-failures/` 并由 CI 上传，外部传入目录原地保留。本机新增夹具曾因 Debug 格式约束及未规范化 `..` 路径失败，均已修正，日志保留且不计产品通过。两轴最后增量复核均无剩余发现，CI/门禁相关 8 项和 247 ID 账本检查通过；旧 Cargo 因复核发现测试漏判而主动中止，不计通过。
+Windows 正式 T01/T03/T04/T05/T06/T08 六场景/18 断言通过，T06 实际 `600.5741037` 秒/602 样本；Ubuntu 离线同六场景/18 断言通过，T06 实际 `600.602492452` 秒/602 样本。两端各 11 个自有进程退出、清理完成；Windows 的 private Host runtime 和 forced-crash capture writer 为受控强制退出 code 1，不声称所有进程正常退出。原始 JSON、遥测及清理记录已由仓库校验器复核。
 
-本轮最终本机检查通过：Host all-targets 43 个结果组/464 项通过/2 个受父用例控制的辅助入口 ignored，含旧 CI 的五项失败用例；桌面 Rust 库 164 项，包含 6 项新增 Native 读取边界；两包 all-targets Clippy 与全仓 Rust fmt 通过。日志 `.cache/m1b-native-read-host-full-final.log`、`m1b-native-read-desktop-full-final.log`、`m1b-native-read-clippy-final.log`。`pnpm verify --jobs 1` 九步骤通过，113 文件/1833 Vitest、290 工程脚本通过及 4 条件跳过，耗时 195.6 秒，目录 `.cache/verify/run-4yLZIA/`；完整无头浏览器 97 项通过，6.6 分钟，日志 `.cache/m1b-native-read-browser-full-final.log`。独立 Host/CLI/MCP 和正式软件 harness 构建完成；冻结后仍须取得新候选的软件与原生证据，不以本机通过宣布 M1b 完成。
+本机最终检查通过：Host all-targets 43 个结果组/464 项通过/2 个受父用例控制的辅助入口 ignored；桌面 Rust 库 164 项，含 6 项新增 Native 读取边界；相关 all-targets Clippy 与全仓 Rust fmt 通过。`pnpm verify --jobs 1` 九步骤通过，113 文件/1833 Vitest、290 工程脚本通过及 4 条件跳过，195.6 秒，目录 `.cache/verify/run-4yLZIA/`；完整无头浏览器 97 项通过，6.6 分钟。两轴最后增量复核无剩余发现，CI/门禁 8 项与脚本全集重叠，不额外相加。
+
+反复失败已分别处理：Native 内部三个纯读入口补同代次有界恢复，不重放 invoke、授权、设备打开或平台效果；读者到期和 BREAK 先建立业务时序屏障，再推进可控时钟；饱和关停区分有界未完成与真实退出。传输等待保留原五秒，Store 读取移到阻塞 worker并保留失败诊断；旧 CI 具体停滞点仍无法由当时日志确定，新候选在四目标全部通过，不把诊断优化冒称为已证旧根因。本机 Debug/路径夹具失败和因新发现中止的旧 Cargo 均保留且不计通过。
 
 ## 当前能力
 
@@ -32,30 +30,32 @@
 
 Node 插件、浏览器连接、LAN、实际 MCP 产品客户端交互、最低系统、真实硬件、72 小时和公开发行按后续范围验收。当前浏览器为界面预览；发布模板、代码签名与更新配置尚未启用。
 
-## 未完成问题
+## M1b 问题闭合
 
-候选 `0c2ca56` 的整体评审记录为 0 Critical、8 Important、6 Minor。下表保留原编号并更新本轮已验证范围，剩余问题用于 M1b 阶段验收。
+原评审 8 项 Important、6 项 Minor 已闭合，最终两轴复核无剩余发现。表中 M1—M6 是原 Minor 编号，不是后续阶段名称；完整产品范围仍待 M2—M6。
 
-| 编号 | 问题、修复方向与状态                                                                                                                                         |
-| ---- | ------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| I1   | 已补文档视图选择器、菜单编辑、CAS、克隆及独立草稿；组件回归通过，`95de4d1` Windows/Ubuntu 原生预检通过，最终完整门禁待验                                     |
-| I2   | 已等待匹配 action/完整 target/epoch 的终态，按 applied 实际值确认；部分/未知、错误回执、在途编辑及取消/切换回归通过，最终完整门禁待验                        |
-| I3   | 身份、代次和启动失败退休 attachment，资源查询失败保留连接；显式重附着、旧回调隔离和原生重启回归通过，不自动重放 invoke，最终完整门禁待验                     |
-| I4   | 已按完整来源、operation ID 和 byte span 合并意图/回执，分块显示最终字节及 accepted/unknown 范围；本机及原生预检通过，最终完整门禁待验                        |
-| I5   | 已迁到 SharedSettings、ClientState、字符串 revision 及真实文件登记/授权/媒体票据；仅选择对话框使用 fixture，原生预检通过，最终完整门禁待验                   |
-| I6   | `storage.rs` 专用测试已收敛到 Windows test cfg；四目标 Clippy 已通过。撤权时序本机修正通过；后续 macOS Intel owner join 缺口已修正，最终 CI 待验             |
-| I7   | 已接同源 Host/CLI/MCP、源码/程序哈希收据、独立 profile、持有 PID/认证就绪和实际退出；`95de4d1` Windows/Ubuntu 三阶段通过，最终完整门禁待验                   |
-| I8   | 已规范化 Cargo 输出与 metadata 路径，等价路径及 target/profile 边界回归通过；三个 Rust 目标无 bundle 构建通过；macOS Intel 该步骤跳过，Native 测试包装已通过 |
-| M1   | 已区分生成的保存输入和完整读取输出类型，浏览器保存补齐默认 gallery，存档读取继续严格校验；定向回归和类型检查通过                                             |
-| M2   | 删除不能证明受理时点的 select/drop 片段，声明收窄为已完成预览查询不写文档/不扩大授权；action_check 8 项通过，不声称证明受理后的取消时序                      |
-| M3   | 已删除 Provider 中未经过保存流程的 newerDraft 字面量断言，测试名称收窄到其实际覆盖的工作区切换与旧保存回执                                                   |
-| M4   | 已补图库 artwork 的 hover、选中和键盘焦点反馈，保留材质与 aria-pressed；浏览器 97 场景通过，已查看深色选中缩略图截图确认可见反馈                             |
-| M5   | 已补真实菜单的导出失败与切换晚结果回归，并按 Host/文档 scope 隔离导出结果和等待；成功、取消、失败及切换回归通过                                              |
-| M6   | 架构/安全文档曾描述旧设置和恢复。此次已按 ClientState、Host CAS 与未来格式保护重写；未改变相关生产行为                                                       |
+| 编号 | 最终状态与证据范围                                                                                              |
+| ---- | --------------------------------------------------------------------------------------------------------------- |
+| I1   | 文档视图选择、真实菜单编辑/克隆、CAS 和独立草稿完成；定向及所属完整 CI 通过                                     |
+| I2   | 终态匹配 action/完整 target/epoch，以 applied 实际值确认；错误、未知、在途编辑、取消/切换回归与完整 CI 通过     |
+| I3   | 身份/代次/启动失败退休连接，资源查询失败保留独立连接；显式重附着、旧回调隔离、原生重启通过，不重放 invoke       |
+| I4   | 以来源、operation ID、byte span 合并意图/回执，保持 accepted/unknown 和分块事实；本机及四目标原生检查通过       |
+| I5   | SharedSettings、ClientState、字符串 revision 及正式文件/授权/媒体链路完成；四目标原生通过，选择对话框本身仍未测 |
+| I6   | Windows 专用测试 cfg/import、撤权时序及 owner 真实退出修正；四目标 Clippy 和单元测试通过                        |
+| I7   | 同源 Host/CLI/MCP、源码/程序哈希、独立 profile 和真实退出收据齐全；四目标原生与两端正式软件通过                 |
+| I8   | Cargo 真实输出、路径等价与 target/profile 边界通过；四目标未签名原生构建全部通过，Intel 不再跳过                |
+| M1   | 保存输入/完整读取输出类型分开；默认 gallery、严格存档读取、类型及所属回归通过                                   |
+| M2   | 删除不能证明受理时点的片段，声明只覆盖已完成预览查询不写文档/不扩大授权；不冒称证明受理后的取消时序             |
+| M3   | 删除无效 newerDraft 字面量断言；保留真实工作区切换与旧保存回执检查                                              |
+| M4   | artwork 的 hover、选中、键盘焦点与 aria-pressed 反馈通过；整体界面审美审查接续执行                              |
+| M5   | 真实菜单导出成功/失败/取消及切换晚结果隔离回归通过                                                              |
+| M6   | 架构/安全文档按 ClientState、Host CAS 和未来格式写保护更新                                                      |
 
-PR #38 的修复基于当时停手的九个源码/测试草稿；当前切片继续处理上表剩余出口。本页记录检查范围，需求账本状态保持原阶段判定。
+后续未验收的 Node、浏览器连接、LAN、最低系统、硬件、72h 与发行按[规划](./plan.md#当前执行与下一步)推进；原失败记录继续保留，需求账本保持跨阶段判定。
 
 ## 有效验证记录
+
+以下为交付前各候选的历史过程，不代表当前执行状态。失败、未执行和中止保持原归属；M1b 最终验收以[当前验证](#当前验证)及 PR #40 合入收据为准。
 
 PR #40 首轮完整 CI（[42605928424](https://github.com/YanChao001/serial-workbench/actions/runs/42605928424)，源码 `e267c52`）：前端、IPC 绑定、浏览器与 Ubuntu Rust/正式离线六场景通过，600 秒负载实际执行。四目标 Native 均未通过，最早为语言保存未落盘，随后打开 Virtual 显示 `EPOCH_MISMATCH`，后续超时不计为独立通过。macOS 两目标六个 Rust 测试因临时目录含系统符号链接被拒绝；对应 Host 夹具改在 canonical 临时根创建，安全校验不放宽。
 
@@ -177,4 +177,4 @@ Windows 成功预检仍记录 Host workspace 查询及 Settings effects 的权�
 
 ## 下一步
 
-按[任务规划](./plan.md#m1b-剩余任务)完成清单原子替换增量的本机检查，冻结候选并取得同源正式软件、原生预检与完整四目标结果，复核后 squash 交付 M1b。随后逐张审查界面截图，再接续 M2。真实硬件、最低系统、长稳、LAN 双机与发行继续单独记录。
+完成 M1b 交付状态同步后，按用户安排在独立环境逐张审查界面截图并记录问题，再接续 M2；任务和出口见[规划](./plan.md#当前执行与下一步)。真实硬件、最低系统、实际 72h、LAN 双机、安装签名与发行继续单独记录，不以当前软件检查替代。

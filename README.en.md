@@ -2,7 +2,7 @@
 
 A cross-platform serial workbench built with Tauri, Rust, React and TypeScript. An independent Rust Host owns devices, sessions, captures and shared state; the desktop UI, CLI and MCP adapter use the same backend.
 
-The current workbench includes Text/HEX I/O, file sending, capture, read-only replay and workspaces. M1b remains incomplete; see [development status](./docs/progress.md) for known issues and validation scope. Node extensions, browser connections and LAN sharing belong to later milestones.
+The current workbench includes Text/HEX I/O, file sending, capture, read-only replay and workspaces. M1b has passed acceptance and merged; see [development status](./docs/progress.md) for remaining milestones and validation scope. Node extensions, browser connections and LAN sharing belong to later milestones.
 
 [中文](./README.md) · [Engineering docs](./docs/README.md) · [Requirements](./docs/requirements.md) · [Contributing](./CONTRIBUTING.md)
 

@@ -95,7 +95,7 @@ pnpm app:portable
 
 版本脚本同步 npm/workspace、Tauri、Cargo 共享版本与锁文件。MSI/NSIS 的版本范围及预发布限制由 [version.mjs](../scripts/version.mjs) 校验，不能仅靠选择其他 bundle 绕过配置约束；已发布版本号不复用。
 
-构建按 Cargo 真实输出收集桌面、Host、CLI、MCP 与组件清单。`--optimize size|speed` 均为 release，默认 size，speed 缩短编译但增大产物并改变优化；参数见脚本 `--help`。当前 I8 路径问题仍待最终验证，见[进度](./progress.md#未完成问题)。
+构建按 Cargo 真实输出收集桌面、Host、CLI、MCP 与组件清单。`--optimize size|speed` 均为 release，默认 size，speed 缩短编译但增大产物并改变优化；参数见脚本 `--help`。I8 路径边界及四目标未签名原生构建已通过，源范围见[进度](./progress.md#m1b-问题闭合)。
 
 交付从 `artifacts/<version>/<target-triple>/installers/` 或 `portable/` 取文件，manifest 记录版本、target 和文件 SHA-256。同一版本/target 的该类产物整体替换，保留其他版本和另一类，失败恢复旧 bundle。Windows 产出 NSIS/MSI，macOS app/DMG，Linux 格式由 Tauri bundle.targets 决定。
 
