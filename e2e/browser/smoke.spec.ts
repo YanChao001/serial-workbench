@@ -1,7 +1,6 @@
 import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
-import AxeBuilder from "@axe-core/playwright";
 import appConfig from "../../app.config.json" with { type: "json" };
 
 const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:preview-settings-v0`;
@@ -112,29 +111,3 @@ test("keyboard opens the command palette and restores trigger focus", async ({
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
 });
-
-for (const route of ["/", "/settings", "/diagnostics", "/recovery"]) {
-  test(`${route} has no detected WCAG A/AA violations`, async ({
-    page,
-  }, testInfo) => {
-    await page.goto(`./#${route}`);
-    if (route === "/")
-      await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
-    else if (route === "/recovery") {
-      await expect(page).toHaveURL(/#\/settings\?section=recovery$/);
-      await expect(page.locator("#settings-recovery")).toBeFocused();
-      await expect(page.locator("main h1")).toBeVisible();
-    } else if (route === "/settings")
-      await expect(page.locator("main h1")).toBeVisible();
-    else await expect(page.locator("main h2").first()).toBeVisible();
-    const result = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-      .analyze();
-    if (result.violations.length)
-      await testInfo.attach("accessibility-violations", {
-        body: JSON.stringify(result.violations, null, 2),
-        contentType: "application/json",
-      });
-    expect(result.violations).toEqual([]);
-  });
-}

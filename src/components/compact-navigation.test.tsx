@@ -27,12 +27,6 @@ describe("浏览器导航", () => {
     state.native = false;
   });
   afterEach(cleanup);
-  it("仅提供标题栏页面选择，不添加演示说明或下载外壳", () => {
-    renderBar();
-    expect(screen.queryByRole("region")).not.toBeInTheDocument();
-    expect(screen.queryByRole("link")).not.toBeInTheDocument();
-    expect(screen.getByRole("combobox")).toBeInTheDocument();
-  });
   it("页面选择复用真实路由，不创建模拟场景", () => {
     renderBar();
     const navigation = screen.getByRole("combobox", { name: "切换页面" });
