@@ -87,7 +87,7 @@ export function DesktopEffects() {
   useRegisterCommands(actions);
   const showFutureWarning =
     persistence === "error" &&
-    persistenceError === "FUTURE_SETTINGS_VERSION" &&
+    persistenceError === "FUTURE_FORMAT" &&
     pathname !== "/settings";
   const persistenceFeedback = (
     <SettingsPersistence compact showFutureWarning={showFutureWarning} />

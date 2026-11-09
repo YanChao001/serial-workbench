@@ -14,7 +14,7 @@ export function SettingsPersistence({
   const { t } = useI18n();
   const failed = persistence === "error";
   const busy = persistence === "loading" || persistence === "saving";
-  const future = failed && persistenceError === "FUTURE_SETTINGS_VERSION";
+  const future = failed && persistenceError === "FUTURE_FORMAT";
   useEffect(() => {
     // 由全局常驻的 compact 实例维护提示，页面切换不撤掉仍有效的保存错误。
     if (!compact) return;

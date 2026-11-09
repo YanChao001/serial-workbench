@@ -1,6 +1,10 @@
 packages:
   - "packages/*"
 
+# 缓存随项目位于同一磁盘，避免跨盘硬链接回退。
+storeDir: .pnpm-store
+updateNotifier: false
+
 allowBuilds:
   esbuild: true
   edgedriver: false

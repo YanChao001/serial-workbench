@@ -390,6 +390,28 @@ async fn assert_tool_changes(lifecycle: ClientLifecycleMode) {
     )
     .await
     .unwrap();
+    let device = Target {
+        id: id("virtual:echo"),
+        kind: ResourceKind::try_from("device").unwrap(),
+        ..target.clone()
+    };
+    let opened = tool(
+        &sdk,
+        "device.open",
+        &device,
+        serde_json::json!({"configuration":SerialConfiguration::default()}),
+        None,
+    )
+    .await;
+    assert_ne!(opened.is_error, Some(true), "{opened:?}");
+    let seed: Operation = serde_json::from_value(opened.structured_content.unwrap()).unwrap();
+    let seed = settled(&sdk, &target, &seed).await;
+    assert_eq!(seed.actor_id, ordinary.attachment().actor_id);
+    assert_eq!(seed.state, OperationState::Succeeded);
+    assert!(
+        matches!(&seed.result, Some(ActionResult::Opened(_))),
+        "{seed:?}"
+    );
     auth.revoke(
         &operator,
         RevokeParams {
@@ -405,9 +427,9 @@ async fn assert_tool_changes(lifecycle: ClientLifecycleMode) {
     )
     .await
     .unwrap();
-    // 仅需 metadata 的持久取消操作，复用真实 operation.get 恢复路径。
+    // 已终态的自身 Operation 可用 metadata 权限取消；Virtual Session 由下方 shutdown 清理。
     let operation_target = Target {
-        id: id("notification-recovery-missing"),
+        id: seed.operation_id.clone(),
         kind: ResourceKind::try_from("operation").unwrap(),
         ..target.clone()
     };
@@ -419,8 +441,15 @@ async fn assert_tool_changes(lifecycle: ClientLifecycleMode) {
         None,
     )
     .await;
+    assert_ne!(accepted.is_error, Some(true), "{accepted:?}");
     let accepted: Operation = serde_json::from_value(accepted.structured_content.unwrap()).unwrap();
     let original = settled(&sdk, &target, &accepted).await;
+    assert_eq!(original.state, OperationState::Succeeded);
+    assert!(
+        matches!(&original.result, Some(ActionResult::CancellationRequested(result))
+            if result.operation_id == seed.operation_id && result.state == OperationState::Succeeded),
+        "{original:?}"
+    );
     host.shutdown().await.unwrap();
     stop.send(()).unwrap();
     running.await.unwrap().unwrap();
@@ -468,6 +497,8 @@ async fn assert_tool_changes(lifecycle: ClientLifecycleMode) {
             serde_json::from_value(recovered.structured_content.unwrap()).unwrap();
         assert_eq!(recovered.operation.operation_id, original.operation_id);
         assert_eq!(recovered.operation.request_id, original.request_id);
+        assert_eq!(recovered.operation.state, original.state);
+        assert_eq!(recovered.operation.result, original.result);
         // 恢复后不先调用 tools/list；授予/撤权必须直接唤醒原 MCP 会话。
         assert_eq!(
             sdk.peer_info().unwrap().protocol_version,

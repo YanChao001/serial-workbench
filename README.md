@@ -1,14 +1,14 @@
 # Serial Workbench
 
-Serial Workbench（`serial-workbench`）是面向嵌入式开发与设备调试的跨平台串口工作台，使用 Tauri 2、Rust、React 19 与 TypeScript 开发。当前桌面提供空白工作区、设置、诊断恢复与系统窗口能力；独立 Rust Host 已接入系统串口、PTY 与 Virtual 设备、原始录制和只读回放、文件发送、共享文档 CAS、持久操作、本机 IPC、CLI 与官方 MCP SDK。桌面工作区与 Node 插件体系继续开发。
+使用 Tauri、Rust、React 和 TypeScript 开发的跨平台串口工作台。独立 Rust Host 管理串口、会话、录制和共享状态，桌面、CLI 与 MCP 使用同一后端。
 
-关注 Serial Studio（`serial-studio`）等串口工具的开发者，可从 [产品范围](./docs/product-scope.md) 了解本项目的当前能力与开发阶段。
+当前工作台具备 Text/HEX 收发、文件发送、录制与只读回放、工作区和共享设置；M1b 尚未完成，已知问题及验证范围见[开发进度](./docs/progress.md)。Node 插件、浏览器连接和 LAN 属于后续阶段。
 
-[English](./README.en.md) · [文档索引](./docs/README.md) · [贡献指南](./CONTRIBUTING.md) · [安全报告](./SECURITY.md)
+[English](./README.en.md) · [工程文档](./docs/README.md) · [需求](./docs/requirements.md) · [贡献](./CONTRIBUTING.md)
 
 ## 从源码运行
 
-工具版本以 [`.nvmrc`](./.nvmrc)、[`package.json`](./package.json) 和 [`rust-toolchain.toml`](./rust-toolchain.toml) 为准；平台依赖见 [开发指南](./docs/development.md#环境要求)。
+工具版本读取 [package.json](./package.json)、[.nvmrc](./.nvmrc) 和 [rust-toolchain.toml](./rust-toolchain.toml)，平台依赖见[环境准备](./docs/development.md#环境与启动)。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -17,29 +17,17 @@ pnpm doctor
 pnpm app:dev
 ```
 
-`pnpm dev` 在 `http://localhost:1420` 提供浏览器界面预览。浏览器与桌面共用 HashRouter 和界面源码，系统服务需要桌面环境。未安装依赖时，也可运行 `node scripts/doctor.mjs` 诊断环境。
+`pnpm dev` 提供浏览器预览；系统能力使用桌面环境。无 npm 依赖时也可运行 `node scripts/doctor.mjs`。
 
-## 验证与构建
+## 开发入口
 
-```sh
-pnpm verify
-pnpm test:ui
-pnpm app:build
-pnpm app:portable
-```
+- [架构](./docs/architecture.md)：目录职责、Host/桌面边界、数据与恢复。
+- [规范](./docs/conventions.md)及[开发指南](./docs/development.md)：实现约束、功能接线、配置与构建。
+- [测试](./docs/testing.md)：定向检查、无头 `pnpm test:ui` 及原生验收。
+- [任务规划](./docs/plan.md)及[进度](./docs/progress.md)：当前问题、下一步与阶段出口。
 
-按 [测试规范](./docs/testing.md#日常验证范围) 选择与改动相关的检查。
+`pnpm app:build` 生成安装包，Windows `pnpm app:portable` 生成便携文件，归档于 `artifacts/<version>/<target-triple>/`。签名、更新和公开发布尚待配置，见[构建与发布](./docs/development.md#构建与发布)。
 
-安装包和 Windows 便携包归档在 `artifacts/<version>/<target-triple>/`，附 SHA-256 清单。便携版仍依赖 WebView2，使用当前用户的数据目录。签名、更新和发布条件见 [构建与发布](./docs/build-release.md)。
+## 许可与安全
 
-## 工程入口
-
-前端从 [main.tsx](./src/main.tsx) 进入 [App.tsx](./src/App.tsx)，路由统一维护在 [routes.tsx](./src/routes.tsx)；原生入口为 [main.rs](./src-tauri/src/main.rs) 与 [lib.rs](./src-tauri/src/lib.rs)。新增页面和 IPC 按 [开发流程](./docs/development.md#新增页面到-ipc-与测试) 接入。
-
-应用身份由 [app.config.json](./app.config.json) 维护；品牌 SVG、版本与仓库链接使用对应脚本更新，见 [产品身份配置](./docs/development.md#产品身份配置)。协作采用 `main` 单主分支、短期分支与 PR squash merge，见 [Git 协作规范](./docs/conventions/git-workflow.md)。
-
-## 开源许可
-
-项目采用 [Apache License 2.0](./LICENSE)，版权说明见 [NOTICE](./NOTICE)。第三方组件沿用各自许可证。
-
-[AGENTS](./AGENTS.md) · [代码签名策略](./docs/code-signing-policy.md)
+采用 [Apache-2.0](./LICENSE)，保留 [NOTICE](./NOTICE) 和第三方归属。漏洞通过 [SECURITY.md](./SECURITY.md) 的私密渠道报告。编码智能体从 [AGENTS.md](./AGENTS.md) 开始。

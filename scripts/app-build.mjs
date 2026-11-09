@@ -4,6 +4,7 @@ import { publishArtifacts } from "./artifact-lib.mjs";
 import {
   buildApplication,
   bundleApplication,
+  distributionComponentsManifest,
   prepareBuild,
 } from "./build-lib.mjs";
 
@@ -26,7 +27,13 @@ Also supports --ci, --no-sign, --skip-stapling, --no-binary-patching, and -v / -
           version: plan.version,
           target: built.target,
           kind: "installers",
-          entries,
+          entries: [
+            ...entries,
+            {
+              path: "components.json",
+              contents: `${JSON.stringify(distributionComponentsManifest(plan, built.components.manifest, entries), null, 2)}\n`,
+            },
+          ],
         }),
       );
       console.log(`\nInstallers archived: ${outputDir}`);

@@ -1,3 +1,4 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
@@ -5,7 +6,7 @@ import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
 import appConfig from "../../app.config.json" with { type: "json" };
 
-const wallpaperId = "bundled:001-秋日花饰少女.jpg";
+const wallpaperId = "bundled:001";
 const source = readFileSync(
   new URL("../../resources/wallpapers/001-秋日花饰少女.jpg", import.meta.url),
 );
@@ -19,16 +20,7 @@ for (const theme of ["dark", "light"] as const) {
     page,
   }, testInfo) => {
     await page.setViewportSize({ width: 880, height: 600 });
-    await page.addInitScript(
-      ({ namespace, theme }) => {
-        if (!localStorage.getItem(`${namespace}:settings`))
-          localStorage.setItem(
-            `${namespace}:settings`,
-            JSON.stringify({ language: "en", theme, motion: "reduced" }),
-          );
-      },
-      { namespace: appConfig.browserStorageNamespace, theme },
-    );
+    await seedBrowserSettings(page, { theme });
     await page.goto("./#/settings?section=skin");
     const background = page.locator("img[data-bundled-wallpaper]");
     await expect(background).toBeVisible();
@@ -84,12 +76,11 @@ for (const theme of ["dark", "light"] as const) {
     await expect(choice).toBeChecked();
     await expect(background).toBeVisible();
     const stored = await page.evaluate(
-      (key) => JSON.parse(localStorage.getItem(key) ?? "{}"),
-      `${appConfig.browserStorageNamespace}:settings`,
+      (key) => JSON.parse(localStorage.getItem(key) ?? "{}").value,
+      `${appConfig.browserStorageNamespace}:preview-settings-v0`,
     );
     expect(stored).toMatchObject({
-      background: wallpaperId,
-      customBackground: null,
+      background: { kind: "bundled", id: wallpaperId },
     });
     expect(JSON.stringify(stored)).not.toContain("/assets/");
     await page.reload();

@@ -1,6 +1,6 @@
-﻿# Capture 容器 0.1
+# Capture 容器 0.1
 
-本格式服务于独立 Host 的原始录制与只读回放，逻辑语义见 [Stream 与操作合同](./stream-and-operations-v0.md#录制验证与回放)。
+本文定义原始录制和只读回放的容器、验证与恢复格式；任务语义见[流与操作](./stream-and-operations-v0.md#录制验证与回放)，独立 reader 验证入口见[测试](../testing.md#独立录制格式)。
 
 ## 目录与记录
 
@@ -29,6 +29,16 @@ verify 在首个缺失/损坏记录停止，不跨越坏卷。恢复校验 verif
 回放回复中的 `records` 使用 `inline` 或 `reference` 项。普通记录在 `inline.record` 中原样提供；无法放入当前有界回复的记录返回 `reference`，包含 `recordRef`、`recordOrdinal`、`jsonBytes` 与原始 JSON 的 `jsonSha256`。引用类型为 `capture_record`，固定 revision 为 1，并继承原源的读取授权，不自动增加 grant。
 
 统一 `file.read` 按 offset 分块读取引用，每次最多返回 64 KiB 解码后的字节，正文经 raw 连接发送。客户端按 offset 拼接后核对原 JSON 长度与 SHA-256，再解析为同一个 `CaptureRecord`；源 host/session/epoch、时钟、序号和最终 TX 区间保持不变。容器的 1 MiB 记录上限不会扩大 IPC 的 1 MiB 帧上限，也不会通过截断记录满足帧限制。每次分块读取都重新检查当前原源授权。
+
+## 无会话尾部查询
+
+`capture.tail` 是经 `action.query` 调用的 Raw 正文查询，目标为 `file` 或 `capture`，按原授权目标检查当前 `content.read`。请求使用 `CaptureTailParams`：`captureRef`、缺省为 100 的 `maxRecords`（1–100）、缺省为 262144 的 `maxBytes`（1–262144），数值均为十进制字符串。预算包含整个 `CaptureTailResult` 的 JSON 编码。
+
+结果返回实际 `captureRef`、本次 `sourceFingerprint`、`state`、`verifiedPrefix`、`containerComplete`、`sourceContinuous`、`firstRecord` 和 `records`。记录是已验证连续前缀的连续末段，按 ordinal 升序，保留 Gap、Unknown TX 和历史来源身份；空结果的 `firstRecord` 为 `verifiedPrefix + 1`。损坏容器可以返回首个坏记录之前的验证前缀，不跨越坏段。大记录使用上述 `capture_record` 引用，长度与摘要来自实际读取并验证的原始 JSON；包含引用的完整回复仍放不下时返回 `LIMIT_EXCEEDED`。
+
+本代仍活动的 capture 返回 `CAPTURE_ACTIVE`，不读取尾部、不停止录制。已非活动且合法无 revision 的 capture 经目录、captureId 和指纹核验后读取快照；已发布时返回真实固定 revision。固定旧 revision 和源变化分别按既有 `REVISION_CONFLICT`、`SOURCE_CHANGED` 拒绝，不更新工作区引用、重新登记或自动授权。验证后绑定、读取和返回前发现源变化时整次失败，不交付部分记录。
+
+该查询不创建 Operation、Replay Session 或 verification lease，不修改录制原件。每个 Host 同时接纳一个尾部扫描，忙时返回 `HOST_BUSY`；等待者取消后，扫描仍持有名额至实际结束。扫描在阻塞工作线程执行，仍需遍历并哈希容器；有界的是尾部物化、回复及并发数。局部文件句柄随请求工作完成释放。查询前后与 IPC 发送前复核授权，Raw 写入期间沿现有撤权路径中断。
 
 ## 引用、内容修订与队列预算
 

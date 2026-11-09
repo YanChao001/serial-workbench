@@ -1,5 +1,6 @@
 import {
   UnsavedWorkContext as Context,
+  UnsavedWorkScopeContext as ScopeContext,
   type UnsavedWork,
 } from "./unsaved-work-context";
 import {
@@ -36,23 +37,61 @@ import {
 
 export type { UnsavedWork } from "./unsaved-work-context";
 
+export function UnsavedWorkScope({
+  scope,
+  children,
+}: {
+  scope: string;
+  children: ReactNode;
+}) {
+  const registry = useContext(Context);
+  useEffect(() => () => registry?.releaseScope(scope), [registry, scope]);
+  return (
+    <ScopeContext.Provider value={scope}>{children}</ScopeContext.Provider>
+  );
+}
+
+export function useRequestLeave() {
+  const registry = useContext(Context);
+  return useCallback(
+    (scope: string, signal?: AbortSignal) =>
+      registry?.requestLeave(scope, signal) ??
+      Promise.resolve(!signal?.aborted),
+    [registry],
+  );
+}
+
+type RegisteredWork = { work: UnsavedWork; scope?: string };
+type LeaveRequest =
+  | { kind: "native"; value: LifecycleRequest }
+  | { kind: "scope"; scope: string; settle: (allowed: boolean) => void };
+
+function belongsTo(entry: RegisteredWork, request: LeaveRequest) {
+  return (
+    entry.work.dirty &&
+    (request.kind === "native" || entry.scope === request.scope)
+  );
+}
+
 /** 脏工作在离页后仍保留最后一个保存动作，保存成功或明确放弃后移除。 */
 export function useUnsavedWork(work: UnsavedWork) {
   const registry = useContext(Context);
+  const scope = useContext(ScopeContext);
   useEffect(() => {
-    registry?.register(work);
+    registry?.register(work, scope);
   });
   useEffect(() => () => registry?.unregister(work.id), [registry, work.id]);
 }
 
 export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
   const { t } = useI18n();
-  const items = useRef(new Map<string, UnsavedWork>());
+  const items = useRef(new Map<string, RegisteredWork>());
   const operation = useRef<AbortController | null>(null);
   const requestId = useRef<number | null>(null);
   const completedThrough = useRef(0);
   const [revision, setRevision] = useState(0);
-  const [request, setRequest] = useState<LifecycleRequest | null>(null);
+  const activeRequest = useRef<LeaveRequest | null>(null);
+  const [request, setRequest] = useState<LeaveRequest | null>(null);
   const [busy, setBusy] = useState(false);
   const [waiting, setWaiting] = useState(false);
   const [executing, setExecuting] = useState(false);
@@ -62,28 +101,78 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
   const errorText = error === null ? null : nativeErrorText(error, t);
   const errorToastId = useId();
   const notifiedError = useRef<string | null>(null);
-  const register = useCallback((work: UnsavedWork) => {
-    const previous = items.current.get(work.id);
-    items.current.set(work.id, work);
+  const register = useCallback((work: UnsavedWork, scope?: string) => {
+    const previous = items.current.get(work.id)?.work;
+    items.current.set(work.id, { work, scope });
     if (
       (!previous && work.dirty) ||
       previous?.dirty !== work.dirty ||
-      (work.dirty && previous?.label !== work.label)
+      (work.dirty &&
+        (previous?.label !== work.label ||
+          Boolean(previous?.save) !== Boolean(work.save)))
     )
       setRevision((v) => v + 1);
   }, []);
   const unregister = useCallback((id: string) => {
-    if (!items.current.get(id)?.dirty) items.current.delete(id);
+    if (!items.current.get(id)?.work.dirty) items.current.delete(id);
   }, []);
+  const finishScoped = useCallback((target: LeaveRequest, allowed: boolean) => {
+    if (target.kind !== "scope" || activeRequest.current !== target) return;
+    activeRequest.current = null;
+    if (!allowed) operation.current?.abort();
+    setRequest(null);
+    setError(null);
+    target.settle(allowed);
+  }, []);
+  const requestLeave = useCallback(
+    (scope: string, signal?: AbortSignal): Promise<boolean> => {
+      if (signal?.aborted || activeRequest.current || operation.current)
+        return Promise.resolve(false);
+      if (
+        ![...items.current.values()].some(
+          (entry) => entry.scope === scope && entry.work.dirty,
+        )
+      )
+        return Promise.resolve(true);
+      return new Promise((resolve) => {
+        const target: LeaveRequest = {
+          kind: "scope",
+          scope,
+          settle: (allowed) => {
+            signal?.removeEventListener("abort", abort);
+            resolve(allowed);
+          },
+        };
+        const abort = () => finishScoped(target, false);
+        signal?.addEventListener("abort", abort, { once: true });
+        activeRequest.current = target;
+        setError(null);
+        setWaiting(false);
+        setExecuting(false);
+        setRequest(target);
+      });
+    },
+    [finishScoped],
+  );
+  const releaseScope = useCallback(
+    (scope: string) => {
+      const target = activeRequest.current;
+      if (target?.kind === "scope" && target.scope === scope)
+        finishScoped(target, false);
+    },
+    [finishScoped],
+  );
   const registry = useMemo(
-    () => ({ register, unregister }),
-    [register, unregister],
+    () => ({ register, unregister, requestLeave, releaseScope }),
+    [register, unregister, requestLeave, releaseScope],
   );
   useEffect(() => {
     let stopped = false;
     if (isTauri() && listening)
       void setWindowWorkState(
-        [...items.current.values()].filter((v) => v.dirty).map((v) => v.label),
+        [...items.current.values()]
+          .filter((v) => v.work.dirty)
+          .map((v) => v.work.label),
       ).catch((reason: unknown) => {
         if (!stopped) setError(reason);
       });
@@ -108,25 +197,27 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
         )
           return;
         operation.current?.abort();
-        operation.current = null;
+        const current = activeRequest.current;
+        if (current?.kind === "scope") finishScoped(current, false);
         requestId.current = value.id;
-        setBusy(false);
+        const target: LeaveRequest = { kind: "native", value };
+        activeRequest.current = target;
+        setBusy(operation.current !== null);
         setExecuting(false);
         setError(null);
         setWaiting(false);
-        setRequest(value);
+        setRequest(target);
       }),
     );
     const finished = attach(
       onLifecycleFinished((id) => {
         if (stopped) return;
         completedThrough.current = Math.max(completedThrough.current, id);
-        setRequest((current) => (current?.id === id ? null : current));
         if (requestId.current === id) {
           operation.current?.abort();
-          operation.current = null;
+          activeRequest.current = null;
           requestId.current = null;
-          setBusy(false);
+          setBusy(operation.current !== null);
           setRequest(null);
           setWaiting(false);
           setExecuting(false);
@@ -148,7 +239,7 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
         if (!stopped) setError(reason);
       });
     const warn = (event: BeforeUnloadEvent) => {
-      if ([...items.current.values()].some((v) => v.dirty)) {
+      if ([...items.current.values()].some((v) => v.work.dirty)) {
         event.preventDefault();
         event.returnValue = "";
       }
@@ -157,48 +248,80 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
     return () => {
       stopped = true;
       operation.current?.abort();
+      const target = activeRequest.current;
+      if (target?.kind === "scope") finishScoped(target, false);
       stops.forEach((stop) => stop());
       window.removeEventListener("beforeunload", warn);
     };
-  }, [attempt]);
+  }, [attempt, finishScoped]);
   const answer = useCallback(
     async (choice: "save" | "discard" | "cancel") => {
-      if (!request || executing || ((busy || waiting) && choice !== "cancel"))
+      if (
+        !request ||
+        activeRequest.current !== request ||
+        executing ||
+        ((operation.current || waiting) && choice !== "cancel")
+      )
         return;
-      const id = request.id;
       if (choice === "cancel") {
         operation.current?.abort();
-        operation.current = null;
+        if (request.kind === "scope") {
+          finishScoped(request, false);
+          return;
+        }
+        const id = request.value.id;
         try {
           await respondLifecycle(id, false);
-          if (requestId.current === id) {
+          if (activeRequest.current === request) {
+            activeRequest.current = null;
             requestId.current = null;
             setRequest(null);
             setWaiting(false);
-            setBusy(false);
+            setBusy(operation.current !== null);
           }
         } catch (reason) {
           if (requestId.current === id) setError(reason);
         }
         return;
       }
+      if (
+        choice === "save" &&
+        [...items.current.values()].some(
+          (entry) => belongsTo(entry, request) && !entry.work.save,
+        )
+      )
+        return;
       const controller = new AbortController();
       operation.current = controller;
       setBusy(true);
       setError(null);
       try {
-        for (const work of [...items.current.values()].filter((v) => v.dirty)) {
-          if (choice === "save") await work.save(controller.signal);
+        for (const entry of [...items.current.values()].filter((v) =>
+          belongsTo(v, request),
+        )) {
+          const { work } = entry;
+          // A callback may register a newer edit while an earlier save is pending.
+          if (items.current.get(work.id)?.work !== work) continue;
+          if (choice === "save") await work.save?.(controller.signal);
           else await work.discard(controller.signal);
           controller.signal.throwIfAborted();
-          items.current.delete(work.id);
+          if (items.current.get(work.id)?.work === work)
+            items.current.delete(work.id);
         }
         setRevision((v) => v + 1);
         controller.signal.throwIfAborted();
-        await respondLifecycle(id, true);
-        if (requestId.current === id) setWaiting(true);
+        if (
+          activeRequest.current !== request ||
+          [...items.current.values()].some((v) => belongsTo(v, request))
+        )
+          return;
+        if (request.kind === "scope") finishScoped(request, true);
+        else {
+          await respondLifecycle(request.value.id, true);
+          if (activeRequest.current === request) setWaiting(true);
+        }
       } catch (reason) {
-        if (!controller.signal.aborted && requestId.current === id)
+        if (!controller.signal.aborted && activeRequest.current === request)
           setError(reason);
       } finally {
         if (operation.current === controller) {
@@ -207,7 +330,7 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
         }
       }
     },
-    [request, busy, waiting, executing],
+    [request, waiting, executing, finishScoped],
   );
   useEffect(() => {
     if (
@@ -215,7 +338,7 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
       !busy &&
       !waiting &&
       error === null &&
-      ![...items.current.values()].some((work) => work.dirty)
+      ![...items.current.values()].some((entry) => belongsTo(entry, request))
     )
       void answer("save");
   }, [request, revision, busy, waiting, error, answer]);
@@ -257,7 +380,9 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
       >
         <DialogContent
           className="min-w-0 sm:max-w-xl"
-          data-lifecycle-request={request?.id}
+          data-lifecycle-request={
+            request?.kind === "native" ? request.value.id : undefined
+          }
           data-lifecycle-phase={
             executing
               ? "executing"
@@ -276,13 +401,15 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
             <DialogTitle>{t("lifecycle.title")}</DialogTitle>
             <DialogDescription>
               {t("lifecycle.description", {
-                count: request?.windows.length ?? 1,
+                count:
+                  request?.kind === "native" ? request.value.windows.length : 1,
               })}
             </DialogDescription>
           </DialogHeader>
           <ul className="list-inside list-disc text-sm">
             {[...items.current.values()]
-              .filter((v) => v.dirty)
+              .filter((v) => request && belongsTo(v, request))
+              .map((v) => v.work)
               .map((v) => (
                 <li key={v.id}>{v.label}</li>
               ))}
@@ -323,12 +450,17 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
             >
               {t("lifecycle.discard")}
             </Button>
-            <Button
-              disabled={busy || waiting}
-              onClick={() => void answer("save")}
-            >
-              {busy ? t("lifecycle.saving") : t("lifecycle.save")}
-            </Button>
+            {![...items.current.values()].some(
+              (entry) =>
+                request && belongsTo(entry, request) && !entry.work.save,
+            ) && (
+              <Button
+                disabled={busy || waiting}
+                onClick={() => void answer("save")}
+              >
+                {busy ? t("lifecycle.saving") : t("lifecycle.save")}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

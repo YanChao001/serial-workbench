@@ -15,6 +15,26 @@ export type Accent =
   | "slate"
   | "custom";
 
+export type ActionCheckParams = {
+  actionId: Id;
+  params: { [key in string]: JsonValue };
+};
+
+export type ActionCheckResult =
+  ActionCheckResult_Serialize | ActionCheckResult_Deserialize;
+
+export type ActionCheckResult_Deserialize = {
+  actionId: Id;
+  target: Target_Deserialize;
+  allowed: boolean;
+};
+
+export type ActionCheckResult_Serialize = {
+  actionId: Id;
+  target: Target_Serialize;
+  allowed: boolean;
+};
+
 export type ActionKind = "query" | "action";
 
 export type ActionResult = ActionResult_Serialize | ActionResult_Deserialize;
@@ -307,6 +327,7 @@ export type CaptureStartParams_Deserialize = {
   overflowPolicy: OverflowPolicy;
   writeMode?: CaptureWriteMode;
   expectedFingerprint?: Digest;
+  storageLimits?: CaptureStorageLimits;
 };
 
 export type CaptureStartParams_Serialize = {
@@ -316,6 +337,7 @@ export type CaptureStartParams_Serialize = {
   overflowPolicy: OverflowPolicy;
   writeMode: CaptureWriteMode;
   expectedFingerprint?: Digest;
+  storageLimits?: CaptureStorageLimits;
 };
 
 export type CaptureState =
@@ -347,6 +369,11 @@ export type CaptureStopParams_Serialize = {
   captureRef: ObjectRef_Serialize;
 };
 
+export type CaptureStorageLimits = {
+  capacityBytes: PositiveU64;
+  reserveBytes: U64;
+};
+
 export type CaptureSummary =
   CaptureSummary_Serialize | CaptureSummary_Deserialize;
 
@@ -366,6 +393,46 @@ export type CaptureSummary_Serialize = {
   containerComplete: boolean;
   sourceContinuous: boolean;
   sourceFingerprint?: Digest;
+};
+
+export type CaptureTailParams =
+  CaptureTailParams_Serialize | CaptureTailParams_Deserialize;
+
+export type CaptureTailParams_Deserialize = {
+  captureRef: ObjectRef_Deserialize;
+  maxRecords?: U64;
+  maxBytes?: U64;
+};
+
+export type CaptureTailParams_Serialize = {
+  captureRef: ObjectRef_Serialize;
+  maxRecords: U64;
+  maxBytes: U64;
+};
+
+export type CaptureTailResult =
+  CaptureTailResult_Serialize | CaptureTailResult_Deserialize;
+
+export type CaptureTailResult_Deserialize = {
+  captureRef: ObjectRef_Deserialize;
+  sourceFingerprint: Digest;
+  state: CaptureState;
+  verifiedPrefix: U64;
+  containerComplete: boolean;
+  sourceContinuous: boolean;
+  firstRecord: U64;
+  records: ReplayRecord_Deserialize[];
+};
+
+export type CaptureTailResult_Serialize = {
+  captureRef: ObjectRef_Serialize;
+  sourceFingerprint: Digest;
+  state: CaptureState;
+  verifiedPrefix: U64;
+  containerComplete: boolean;
+  sourceContinuous: boolean;
+  firstRecord: U64;
+  records: ReplayRecord_Serialize[];
 };
 
 export type CaptureTxSettlement =
@@ -2558,11 +2625,14 @@ export type Query = Query_Serialize | Query_Deserialize;
 export type QueryResult = QueryResult_Serialize | QueryResult_Deserialize;
 
 export type QueryResult_Deserialize =
+  | { kind: "action_check"; value: ActionCheckResult_Deserialize }
+  | { kind: "workspace_import_preview"; value: WorkspaceDocument_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
   | { kind: "clients"; value: ClientListResult_Deserialize }
   | { kind: "host_metrics"; value: HostMetrics }
   | { kind: "startup_config"; value: StartupConfigSnapshot }
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
+  | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
   | { kind: "recent"; value: RecentList_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
@@ -2581,6 +2651,8 @@ export type QueryResult_Deserialize =
   | { kind: "stream_credit"; value: StreamCreditResult }
   | { kind: "devices"; value: DeviceList_Deserialize }
   | { kind: "session"; value: SessionSnapshot_Deserialize }
+  | { kind: "session_metrics"; value: SessionMetrics }
+  | { kind: "session_inputs"; value: SessionInputs }
   | { kind: "queue"; value: QueueStatus }
   | { kind: "catalog"; value: CatalogListResult_Deserialize }
   | { kind: "operation"; value: OperationResult_Deserialize }
@@ -2590,11 +2662,14 @@ export type QueryResult_Deserialize =
   | { kind: "closed"; value: ClosedResult };
 
 export type QueryResult_Serialize =
+  | { kind: "action_check"; value: ActionCheckResult_Serialize }
+  | { kind: "workspace_import_preview"; value: WorkspaceDocument_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
   | { kind: "clients"; value: ClientListResult_Serialize }
   | { kind: "host_metrics"; value: HostMetrics }
   | { kind: "startup_config"; value: StartupConfigSnapshot }
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
+  | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
   | { kind: "recent"; value: RecentList_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
@@ -2613,6 +2688,8 @@ export type QueryResult_Serialize =
   | { kind: "stream_credit"; value: StreamCreditResult }
   | { kind: "devices"; value: DeviceList_Serialize }
   | { kind: "session"; value: SessionSnapshot_Serialize }
+  | { kind: "session_metrics"; value: SessionMetrics }
+  | { kind: "session_inputs"; value: SessionInputs }
   | { kind: "queue"; value: QueueStatus }
   | { kind: "catalog"; value: CatalogListResult_Serialize }
   | { kind: "operation"; value: OperationResult_Serialize }
@@ -3070,6 +3147,39 @@ export type SerialConfiguration = {
   reconnectBackoffMs: DurationMs;
 };
 
+/**  owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。 */
+export type SessionInputs = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  sampledAt: Timestamp;
+  sampledMonoNs: U64;
+  cts: boolean;
+  dsr: boolean;
+  ri: boolean;
+  cd: boolean;
+};
+
+/**  当前 Host instance 的会话累计值；重连仅重启本次连接时长。 */
+export type SessionMetrics = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  instanceEpoch: U64;
+  observedAt: Timestamp;
+  observedMonoNs: U64;
+  connectionDurationMs: U64;
+  rxBytes: U64;
+  txAcceptedBytes: U64;
+  txUnknownBytes: U64;
+  rxReadErrors: U64;
+  txWriteErrors: U64;
+  rxBytesPerSecond: U64;
+  txAcceptedBytesPerSecond: U64;
+  rateWindowMs: U64;
+  rateResolutionMs: U64;
+  lineErrorsAvailable: false;
+  frameCountsAvailable: false;
+};
+
 export type SessionSnapshot =
   SessionSnapshot_Serialize | SessionSnapshot_Deserialize;
 
@@ -3166,7 +3276,7 @@ export type SharedSettings_Deserialize = {
   autoCheckUpdates: boolean;
   networkMode: NetworkMode;
   runInBackground: boolean;
-  terminal: TerminalSettings;
+  terminal: TerminalSettings_Deserialize;
 };
 
 export type SharedSettings_Serialize = {
@@ -3183,7 +3293,7 @@ export type SharedSettings_Serialize = {
   autoCheckUpdates: boolean;
   networkMode: NetworkMode;
   runInBackground: boolean;
-  terminal: TerminalSettings;
+  terminal: TerminalSettings_Serialize;
 };
 
 export type ShutdownMode = "settle" | "cancel_and_settle";
@@ -3404,10 +3514,38 @@ export type Target_Serialize = {
 
 export type TerminalMode = "text" | "hex";
 
-export type TerminalSettings = {
+export type TerminalSettings =
+  TerminalSettings_Serialize | TerminalSettings_Deserialize;
+
+export type TerminalSettings_Deserialize = {
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
   lineEnding: LineEnding;
+  typography?: TerminalTypography_Deserialize;
+};
+
+export type TerminalSettings_Serialize = {
+  receiveMode: TerminalMode;
+  sendMode: TerminalMode;
+  lineEnding: LineEnding;
+  typography?: TerminalTypography_Serialize;
+};
+
+export type TerminalTypography =
+  TerminalTypography_Serialize | TerminalTypography_Deserialize;
+
+export type TerminalTypography_Deserialize = {
+  fontFamily: string;
+  fontSize: number;
+  lineHeightPercent: number;
+  ligatures: boolean;
+};
+
+export type TerminalTypography_Serialize = {
+  fontFamily: string;
+  fontSize: number;
+  lineHeightPercent: number;
+  ligatures: boolean;
 };
 
 export type TextExportParams =

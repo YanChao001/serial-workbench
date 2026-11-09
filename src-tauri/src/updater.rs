@@ -18,7 +18,8 @@ use crate::{
     blocking,
     error::{ErrorCode, NativeError, NativeResult, bounded_text},
     network::NetworkMode,
-    storage::{DataPaths, SettingsStore},
+    platform_settings::PlatformSettings,
+    storage::DataPaths,
 };
 
 pub const UPDATE_EVENT: &str = "app://update-progress";
@@ -216,7 +217,7 @@ impl UpdateManager {
         status.configured = true;
         status.endpoint = Some(policy.endpoint.clone());
         let endpoint = validate_policy(&policy)?;
-        let network_mode = app.state::<SettingsStore>().network_mode()?;
+        let network_mode = app.state::<PlatformSettings>().network_mode()?;
         let updater = app
             .updater_builder()
             .pubkey(&policy.public_key)
@@ -309,7 +310,7 @@ impl UpdateManager {
             .await?;
         // 检查结果会缓存更新句柄；下载按此刻已提交的宿主偏好重新选择传输。
         // configure_client 只限制 HTTPS，不捕获检查时的代理模式。
-        update.no_proxy = app.state::<SettingsStore>().network_mode()? == NetworkMode::Direct;
+        update.no_proxy = app.state::<PlatformSettings>().network_mode()? == NetworkMode::Direct;
         let mut downloaded = 0_f64;
         let mut last_event = Instant::now();
         let handle = app.clone();

@@ -208,6 +208,41 @@ pub struct SessionSnapshot {
     #[specta(type=Lease, optional)]
     pub lease: Option<Lease>,
 }
+/// 当前 Host instance 的会话累计值；重连仅重启本次连接时长。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionMetrics {
+    pub session_id: Id,
+    pub session_epoch: U64,
+    pub instance_epoch: U64,
+    pub observed_at: Timestamp,
+    pub observed_mono_ns: U64,
+    pub connection_duration_ms: U64,
+    pub rx_bytes: U64,
+    pub tx_accepted_bytes: U64,
+    pub tx_unknown_bytes: U64,
+    pub rx_read_errors: U64,
+    pub tx_write_errors: U64,
+    pub rx_bytes_per_second: U64,
+    pub tx_accepted_bytes_per_second: U64,
+    pub rate_window_ms: U64,
+    pub rate_resolution_ms: U64,
+    pub line_errors_available: False,
+    pub frame_counts_available: False,
+}
+/// owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SessionInputs {
+    pub session_id: Id,
+    pub session_epoch: U64,
+    pub sampled_at: Timestamp,
+    pub sampled_mono_ns: U64,
+    pub cts: bool,
+    pub dsr: bool,
+    pub ri: bool,
+    pub cd: bool,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OpenParams {

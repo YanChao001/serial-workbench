@@ -1,6 +1,6 @@
 # Host v0
 
-本文定义新独立 Host 的 M0 合同，实施阶段与权威来源见 [索引](./README.md)。GUI、CLI、MCP、Node 后台和远端转发调用相同业务 handler；客户端适配器只负责认证、传输、呈现与客户端系统交互。
+本文定义独立 Host v0 契约，实施阶段与权威来源见 [索引](./README.md)。GUI、CLI、MCP、Node 后台和远端转发调用相同业务 handler；客户端适配器只负责认证、传输、呈现与客户端系统交互。
 
 ## Wire 基元与身份
 

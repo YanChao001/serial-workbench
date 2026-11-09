@@ -18,9 +18,8 @@ import {
   validateFeatureStatus,
 } from "./check-feature-status.mjs";
 
-const MATRIX_PATH =
-  "docs/superpowers/specs/2026-11-07-serial-workbench-feature-matrix.md";
-const LEDGER_PATH = "docs/superpowers/acceptance/feature-status.json";
+const MATRIX_PATH = "docs/requirements.md";
+const LEDGER_PATH = "docs/feature-status.json";
 const matrixFixture = `# Fixture
 Mention CONN-09 outside the table.
 | ID | Requirement |
@@ -149,8 +148,7 @@ for (const scope of ["excluded", "deferred"]) {
     const item = {
       ...feature(),
       scope,
-      scopeNote:
-        "Matrix: ../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定",
+      scopeNote: "Matrix: ./requirements.md#本轮范围决定",
     };
     for (const phase of ["software", "hardware", "release"])
       item[phase].status = "not-applicable";

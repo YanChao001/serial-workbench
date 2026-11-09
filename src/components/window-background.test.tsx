@@ -1,7 +1,8 @@
-import { cleanup, render, screen } from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { BUILTIN_BACKGROUNDS } from "@/lib/backgrounds";
-import type { CustomBackground } from "@/lib/background-image";
+import type { BackgroundSelection } from "@serial-workbench/contracts";
+import type { MediaPort, ResolvedMedia } from "@/lib/media";
 import { PatternArtwork, WindowBackground } from "./window-background";
 
 const sources = import.meta.glob<string>("../../resources/skins/*.svg", {
@@ -10,18 +11,19 @@ const sources = import.meta.glob<string>("../../resources/skins/*.svg", {
   import: "default",
 });
 const appearance = vi.hoisted(() => ({
-  background: "starlight",
-  customBackground: null as CustomBackground | null,
+  background: { kind: "preset", value: "starlight" } as BackgroundSelection,
+  backgroundIntensity: 50,
+  media: undefined as MediaPort | undefined,
 }));
 vi.mock("@/providers/settings", () => ({
-  useSettings: () => ({ settings: appearance }),
+  useSettings: () => ({ settings: appearance, media: appearance.media }),
 }));
 
 afterEach(cleanup);
 
 describe("窗口插画", () => {
   it("内置壁纸从构建资源加载，使用构建资源图片", () => {
-    appearance.background = "bundled:001-秋日花饰少女.jpg";
+    appearance.background = { kind: "bundled", id: "bundled:001" };
     const view = render(<WindowBackground />);
     const image = view.container.querySelector("[data-bundled-wallpaper]");
     expect(image).toHaveAttribute("src", expect.stringContaining("001-"));
@@ -98,20 +100,42 @@ describe("窗口插画", () => {
     },
   );
 
-  it("导入图片保留显示方式，切回皮肤时卸载自定义图片", () => {
-    appearance.background = "custom";
-    appearance.customBackground = {
-      name: "sky.webp",
-      dataUrl: "data:image/webp;base64," + btoa("RIFF0000WEBP"),
+  it("renders authorized media with its fit and releases it on selection changes", async () => {
+    appearance.background = {
+      kind: "media",
+      reference: { hostId: "host", kind: "file", id: "image" },
       fit: "contain",
     };
+    const dispose = vi.fn();
+    appearance.media = {
+      choose: vi.fn(),
+      resolve: vi.fn(async () => ({
+        url: "blob:authorized",
+        mime: "image/webp",
+        name: "sky.webp",
+        dispose,
+      })),
+    };
     const { container, rerender } = render(<WindowBackground />);
+    await waitFor(() =>
+      expect(
+        container.querySelector("[data-custom-background]"),
+      ).not.toBeNull(),
+    );
     const image = container.querySelector("[data-custom-background]")!;
-    expect(image).toHaveAttribute("src", appearance.customBackground.dataUrl);
+    expect(image).toHaveAttribute("src", "blob:authorized");
     expect(image).toHaveAttribute("alt", "");
     expect(image).toHaveStyle({ objectFit: "contain" });
     expect(screen.queryByRole("img")).toBeNull();
-    appearance.background = "aurora";
+    appearance.background = {
+      ...appearance.background,
+      reference: { ...appearance.background.reference },
+      fit: "cover",
+    };
+    rerender(<WindowBackground />);
+    expect(appearance.media.resolve).toHaveBeenCalledOnce();
+    expect(image).toHaveStyle({ objectFit: "cover" });
+    appearance.background = { kind: "preset", value: "aurora" };
     rerender(<WindowBackground />);
     expect(container.querySelector("[data-custom-background]")).toBeNull();
     expect(container.querySelector(".pattern-artwork")).toHaveAttribute(
@@ -121,11 +145,47 @@ describe("窗口插画", () => {
     expect(
       (container.querySelector(".skin-scene") as HTMLElement).style.maskImage,
     ).toContain("cat-doodles.svg");
-    appearance.customBackground = null;
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("releases late resources and never displays a previous reference", async () => {
+    appearance.background = {
+      kind: "media",
+      reference: { hostId: "host", kind: "file", id: "late" },
+      fit: "cover",
+    };
+    let finish!: (resource: ResolvedMedia) => void;
+    const resolve = vi.fn<MediaPort["resolve"]>(
+      () =>
+        new Promise((done) => {
+          finish = done;
+        }),
+    );
+    appearance.media = { choose: vi.fn(), resolve };
+    const view = render(<WindowBackground />);
+    view.unmount();
+    expect(resolve.mock.calls[0]?.[1]?.aborted).toBe(true);
+    const dispose = vi.fn();
+    await act(async () =>
+      finish({ url: "blob:late", mime: "image/png", name: "late", dispose }),
+    );
+    expect(dispose).toHaveBeenCalledOnce();
+  });
+
+  it("does not replace a saved media reference when no service is registered", () => {
+    appearance.background = {
+      kind: "media",
+      reference: { hostId: "host", kind: "file", id: "retained" },
+      fit: "cover",
+    };
+    appearance.media = undefined;
+    const view = render(<WindowBackground />);
+    expect(view.container.querySelector("img,video")).toBeNull();
+    expect(appearance.background.reference.id).toBe("retained");
   });
 
   it("全窗背景随设置切换，保持独立于内容的装饰层", () => {
-    appearance.background = "starlight";
+    appearance.background = { kind: "preset", value: "starlight" };
     const { container, rerender } = render(<WindowBackground />);
     expect(container.querySelector("[data-window-background]")).toHaveAttribute(
       "aria-hidden",
@@ -133,7 +193,7 @@ describe("窗口插画", () => {
     );
     const before = (container.querySelector(".skin-scene") as HTMLElement).style
       .maskImage;
-    appearance.background = "moonlit";
+    appearance.background = { kind: "preset", value: "moonlit" };
     rerender(<WindowBackground />);
     expect(container.querySelector(".pattern-artwork")).toHaveAttribute(
       "data-pattern",

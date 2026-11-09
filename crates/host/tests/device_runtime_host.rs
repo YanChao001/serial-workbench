@@ -425,8 +425,29 @@ async fn bound_open_resolves_current_workspace_and_requires_its_read_permission(
             },
         )
         .unwrap();
-    let denied = f.invoke(&target, "device.open", params, None).await;
-    assert_eq!(denied.state, OperationState::Failed);
-    assert_eq!(denied.error.unwrap().code, "PERMISSION_DENIED");
+    let before = f.store.operation_metadata().unwrap();
+    let q = f.query(&target, "device.open", params);
+    let call = Call {
+        protocol_version: q.protocol_version,
+        host_id: q.host_id,
+        instance_epoch: q.instance_epoch,
+        actor_id: q.actor_id,
+        request_id: q.request_id,
+        request_context: f.client.attachment().request_context.clone(),
+        action_id: q.action_id,
+        target: q.target,
+        params: q.params,
+        reveal_target: q.reveal_target,
+        expected_revision: None,
+        lease_id: None,
+        execution_mode: None,
+    };
+    let reply = f.client.request(RpcRequest::Invoke(call)).await.unwrap();
+    let RpcReply::Failure { error, .. } = reply else {
+        panic!("expected admission denial: {reply:?}")
+    };
+    assert_eq!(error.code, "PERMISSION_DENIED");
+    assert_eq!(error.operation_id, None);
+    assert_eq!(f.store.operation_metadata().unwrap(), before);
     f.finish().await;
 }

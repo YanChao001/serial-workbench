@@ -296,7 +296,8 @@ impl Host {
             ));
         }
         query.target.validate()?;
-        let replay = query.target.kind.as_str() == "session"
+        let replay = query.action_id.as_str() != "action.check"
+            && query.target.kind.as_str() == "session"
             && self.inner.capture_api.owns_replay(&query.target.id);
         let store = self.inner.store.clone();
         let auth = self.inner.auth.clone();
@@ -349,6 +350,7 @@ impl Host {
                 }
                 auth.require(&actor, permission, &query.target)?;
             }
+            action.validate_query_params(&query)?;
             Ok(action)
         })
         .await?;
@@ -358,7 +360,99 @@ impl Host {
                 .authorize(action, &query.target, &query.params, &actor)
                 .await?;
         }
+        self.authorize_resource(&actor, query, action).await?;
         Ok(action)
+    }
+    // Both normal admission and action.check resolve composite authority here.
+    // Reading a reference's authority never opens its payload or performs the action.
+    async fn authorize_resource(
+        &self,
+        actor: &AuthenticatedActor,
+        query: &Query,
+        action: BuiltinAction,
+    ) -> HostResult<()> {
+        match action {
+            action
+                if action.is_document_action()
+                    || matches!(
+                        action,
+                        BuiltinAction::SettingsRead
+                            | BuiltinAction::SettingsExport
+                            | BuiltinAction::WorkspaceRead
+                            | BuiltinAction::WorkspaceExport
+                            | BuiltinAction::WorkspaceImportPreview
+                    ) =>
+            {
+                crate::documents::DocumentService::reference(&query.target)?;
+            }
+            BuiltinAction::DeviceOpen => {
+                let params: OpenParams = decode(&query.params)?;
+                if let Some(reference) = params.binding {
+                    let documents = self.inner.documents.clone();
+                    let actor = actor.clone();
+                    blocking(move || {
+                        documents
+                            .resolve_device_binding(&actor, &reference)
+                            .map(|_| ())
+                    })
+                    .await?;
+                }
+            }
+            BuiltinAction::OperationCancel => {
+                self.authorize_cancellation(actor, &query.target, decode(&query.params)?)
+                    .await?;
+            }
+            BuiltinAction::OperationGet => {
+                self.inspect_operation(actor, &query.target, decode(&query.params)?, false)
+                    .await?;
+            }
+            BuiltinAction::OperationInput => {
+                let params: OperationInputParams = decode(&query.params)?;
+                self.inspect_operation(
+                    actor,
+                    &query.target,
+                    OperationGetParams::ById {
+                        operation_id: params.operation_id,
+                        request_context: None,
+                    },
+                    true,
+                )
+                .await?;
+            }
+            BuiltinAction::FileMetadata
+            | BuiltinAction::FileRead
+            | BuiltinAction::TransferReceiptsRead
+            | BuiltinAction::TransferFile => {
+                let files = self.inner.files.clone();
+                let actor = actor.clone();
+                let query = query.clone();
+                blocking(move || match action {
+                    BuiltinAction::FileMetadata => {
+                        let params: FileMetadataParams = decode(&query.params)?;
+                        require_reference_target(&query.target, &params.file_ref)?;
+                        files.require_reference(&params.file_ref, &actor, "metadata.read")
+                    }
+                    BuiltinAction::FileRead => {
+                        let params: FileReadParams = decode(&query.params)?;
+                        require_reference_target(&query.target, &params.file_ref)?;
+                        files.require_reference(&params.file_ref, &actor, "content.read")
+                    }
+                    BuiltinAction::TransferReceiptsRead => {
+                        let params: FileTransferReceiptsParams = decode(&query.params)?;
+                        require_reference_target(&query.target, &params.receipts_ref)?;
+                        files.authorize_receipts(&params.receipts_ref, &actor)
+                    }
+                    BuiltinAction::TransferFile => {
+                        let params: FileTransferParams = decode(&query.params)?;
+                        files.require_reference(&params.source_ref, &actor, "content.read")
+                    }
+                    _ => Err(invalid()),
+                })
+                .await?;
+            }
+            _ => {}
+        }
+        Ok(())
     }
     fn activity(
         &self,
@@ -402,6 +496,79 @@ impl Host {
         )?;
         Ok(())
     }
+    pub async fn check_action(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        params: ActionCheckParams,
+    ) -> HostResult<ActionCheckResult> {
+        let action = BuiltinAction::find(params.action_id.as_str())?;
+        if action == BuiltinAction::ActionCheck {
+            return Err(invalid());
+        }
+        target.validate()?;
+        let spec = action.spec();
+        if !spec.target_kinds.contains(&target.kind) {
+            return Err(invalid());
+        }
+        // Connection-owned state has additional ownership gates.
+        // They need a reusable read-only gate before they can advertise permission here.
+        if matches!(
+            action,
+            BuiltinAction::Client(_)
+                | BuiltinAction::StateSnapshot
+                | BuiltinAction::StateSubscribe
+                | BuiltinAction::SubscriptionClose
+                | BuiltinAction::StreamCredit
+        ) {
+            return Err(HostError::new(
+                "UNSUPPORTED_CAPABILITY",
+                "This action has no read-only permission check",
+            ));
+        }
+        let auth = self.inner.auth.clone();
+        let store = self.inner.store.clone();
+        let reader = actor.clone();
+        let (identity, stamp) =
+            blocking(move || Ok((store.identity()?, auth.capture_grants(&reader)?))).await?;
+        let query = Query {
+            protocol_version: ProtocolVersion::V0_1,
+            host_id: identity.host_id.clone(),
+            instance_epoch: identity.instance_epoch,
+            actor_id: actor.id().clone(),
+            request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str())?,
+            action_id: params.action_id.clone(),
+            target: target.clone(),
+            params: params.params,
+            reveal_target: spec.reveal_target,
+        };
+        let authorization = self.validate(actor, &query, spec.kind).await;
+        let auth = self.inner.auth.clone();
+        let store = self.inner.store.clone();
+        blocking(move || {
+            if store.identity()?.instance_epoch != identity.instance_epoch {
+                return Err(HostError::new(
+                    "EPOCH_MISMATCH",
+                    "Host instance has changed",
+                ));
+            }
+            if let Some(stamp) = stamp {
+                auth.validate_grants(&stamp)?;
+            }
+            Ok(())
+        })
+        .await?;
+        let allowed = match authorization {
+            Ok(_) => true,
+            Err(error) if error.code == "PERMISSION_DENIED" => false,
+            Err(error) => return Err(error),
+        };
+        Ok(ActionCheckResult {
+            action_id: params.action_id,
+            target: target.clone(),
+            allowed,
+        })
+    }
     pub async fn query(&self, actor: &AuthenticatedActor, query: Query) -> HostResult<QueryResult> {
         self.query_connected(actor, query, None)
             .await
@@ -414,8 +581,30 @@ impl Host {
         connection: Option<ConnectionContext>,
     ) -> HostResult<QueryOutput> {
         let action = self.validate(actor, &query, ActionKind::Query).await?;
-        self.activity(actor, &query, action)?;
+        if !matches!(
+            action,
+            BuiltinAction::ActionCheck
+                | BuiltinAction::WorkspaceImportPreview
+                | BuiltinAction::SessionMetrics
+                | BuiltinAction::SessionInputs
+        ) {
+            self.activity(actor, &query, action)?;
+        }
         let result = match action {
+            BuiltinAction::ActionCheck => self
+                .check_action(actor, &query.target, decode(&query.params)?)
+                .await
+                .map(QueryResult::ActionCheck),
+            BuiltinAction::WorkspaceImportPreview => {
+                let documents = self.inner.documents.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    documents
+                        .preview_workspace_import(&actor, &query.target, decode(&query.params)?)
+                        .map(QueryResult::WorkspaceImportPreview)
+                })
+                .await
+            }
             BuiltinAction::StartupConfigGet => {
                 let _: EmptyParams = decode(&query.params)?;
                 self.inner
@@ -479,10 +668,14 @@ impl Host {
                 .await
             }
             action if action.is_capture_api() => {
-                if action == BuiltinAction::ReplayRead && connection.is_none() {
+                if matches!(
+                    action,
+                    BuiltinAction::ReplayRead | BuiltinAction::CaptureTail
+                ) && connection.is_none()
+                {
                     return Err(HostError::new(
                         "CLIENT_REQUIRED",
-                        "Replay read requires a raw connection",
+                        "Capture content requires a raw connection",
                     ));
                 }
                 self.inner.capture_api.query(action, &query, actor).await
@@ -595,11 +788,6 @@ impl Host {
                     )
                 })?;
                 let params: StreamReadParams = decode(&query.params)?;
-                if params.session_id != query.target.id
-                    || Some(params.session_epoch) != query.target.session_epoch
-                {
-                    return Err(invalid());
-                }
                 let (result, lease) = self
                     .inner
                     .streams
@@ -613,15 +801,6 @@ impl Host {
             }
             BuiltinAction::StreamSubscribe => {
                 let params: StreamSubscribeParams = decode(&query.params)?;
-                if params.scope_id.as_str()
-                    != format!(
-                        "raw:{}:{}",
-                        query.target.id,
-                        query.target.session_epoch.ok_or_else(invalid)?
-                    )
-                {
-                    return Err(invalid());
-                }
                 let context = connection.ok_or_else(|| {
                     HostError::new("CLIENT_REQUIRED", "Raw subscription requires a connection")
                 })?;
@@ -721,6 +900,21 @@ impl Host {
                 Ok(QueryResult::Queue(
                     self.inner.sessions.queue_status(&query.target).await?,
                 ))
+            }
+            BuiltinAction::SessionMetrics => {
+                let _: EmptyParams = decode(&query.params)?;
+                self.inner
+                    .devices
+                    .metrics(&query.target)
+                    .map(QueryResult::SessionMetrics)
+            }
+            BuiltinAction::SessionInputs => {
+                let _: EmptyParams = decode(&query.params)?;
+                self.inner
+                    .devices
+                    .inputs(&query.target)
+                    .await
+                    .map(QueryResult::SessionInputs)
             }
             BuiltinAction::CatalogList => {
                 let params = decode(&query.params)?;
@@ -1013,16 +1207,7 @@ impl Host {
             BuiltinAction::FileRegister => normalize::<RegisterFileParams>(&call.params)?,
             BuiltinAction::Authorize => normalize::<AuthorizeParams>(&call.params)?,
             BuiltinAction::Revoke => normalize::<RevokeParams>(&call.params)?,
-            BuiltinAction::OperationCancel => {
-                let params: OperationCancelParams = decode(&call.params)?;
-                if params.reason != CancelReason::User && !actor.is_user_control() {
-                    return Err(HostError::new(
-                        "PERMISSION_DENIED",
-                        "Cancellation reason requires user control",
-                    ));
-                }
-                normalize::<OperationCancelParams>(&call.params)?
-            }
+            BuiltinAction::OperationCancel => normalize::<OperationCancelParams>(&call.params)?,
             action if action.is_device_action() => crate::transmission::normalize(action, &call)?,
             _ => return Err(invalid()),
         };
@@ -1518,7 +1703,45 @@ impl Host {
             self.inner.stop_requested.send_replace(true);
         }
     }
+    async fn authorize_cancellation(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        params: OperationCancelParams,
+    ) -> HostResult<()> {
+        target.validate()?;
+        if target.kind.as_str() != "operation"
+            || target.session_id.is_some()
+            || target.session_epoch.is_some()
+        {
+            return Err(invalid());
+        }
+        if params.reason != CancelReason::User && !actor.is_user_control() {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "Cancellation reason requires user control",
+            ));
+        }
+        let store = self.inner.store.clone();
+        let auth = self.inner.auth.clone();
+        let actor = actor.clone();
+        let target = target.clone();
+        blocking(move || {
+            auth.require(&actor, "metadata.read", &target)?;
+            // TransmissionService::cancel and Store::request_cancel use this same
+            // retained-operation ownership gate before signalling or changing state.
+            store.get(&actor, &target.id).map(|_| ())
+        })
+        .await
+    }
     async fn cancel_operation(&self, accepted: &AcceptedCall) -> HostResult<Operation> {
+        // Recheck current rights, reason, owner and Host epoch at actual dispatch.
+        self.validate(
+            &accepted.actor,
+            &call_query(&accepted.call),
+            ActionKind::Action,
+        )
+        .await?;
         let store = self.inner.store.clone();
         let id = accepted.operation.operation_id.clone();
         blocking(move || store.mark_dispatch(&id)).await?;

@@ -1,5 +1,4 @@
-import { SettingsContext } from "./settings-context";
-import {
+﻿import {
   useCallback,
   useContext,
   useEffect,
@@ -8,148 +7,301 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { defaults, type SharedSettings } from "@serial-workbench/contracts";
+import { SettingsContext } from "./settings-context";
+import { HostContext } from "./host-context";
 import {
   applySettings,
-  DEFAULT_SETTINGS,
+  clientPreferences,
+  DEFAULT_CLIENT_PREFERENCES,
   normalizeSettingsPatch,
   readInitialSettings,
   settingsDocument,
+  sharedSettings,
   STORAGE_KEY,
   type AppSettings,
+  type ClientPreferences,
 } from "@/lib/settings-model";
-import { SettingsSync, type PersistenceStatus } from "@/lib/settings-sync";
-import * as desktop from "@/lib/tauri";
-
+import {
+  SettingsSync,
+  settingsErrorCode,
+  type PersistenceStatus,
+} from "@/lib/settings-sync";
+import { createHostSettingsBackend } from "@/lib/host-settings";
+import { createMediaPort, type MediaPort } from "@/lib/media";
+import {
+  isTauri,
+  applyHostSettingsEffects,
+  chooseFileResource,
+  mediaResolve,
+  mediaRelease,
+} from "@/lib/tauri";
+import {
+  createClientSettingsBackend,
+  readClientWindowState,
+  saveClientWindowState,
+  readInitialClientPreferences,
+} from "@/lib/client-settings";
 export * from "@/lib/settings-model";
-export function SettingsProvider({ children }: { children: ReactNode }) {
-  const [initial] = useState(readInitialSettings);
-  const [settings, setSettings] = useState(initial.settings);
-  const [persistence, setPersistence] = useState<PersistenceStatus>(
-    initial.error ? "error" : "loading",
+
+export function SettingsProvider({
+  children,
+  media: injectedMedia,
+}: {
+  children: ReactNode;
+  media?: MediaPort;
+}) {
+  const host = useContext(HostContext);
+  const connection = host?.connection;
+  const native = isTauri();
+  const media = useMemo(
+    () =>
+      injectedMedia ??
+      (native && connection
+        ? createMediaPort({
+            choose: () => chooseFileResource("media", connection.generation),
+            resolve: (reference) =>
+              mediaResolve(reference, connection.generation),
+            release: (ticket) => mediaRelease(ticket, connection.generation),
+          })
+        : undefined),
+    [injectedMedia, native, connection],
   );
-  const [persistenceError, setPersistenceError] = useState(initial.error);
-  const [retry, setRetry] = useState(0);
+  const [initial] = useState(readInitialSettings);
+  const [initialClient] = useState(readInitialClientPreferences);
+  const [settings, setSettings] = useState(initial.settings);
+  const [sharedPersistence, setPersistence] = useState<PersistenceStatus>(
+    initial.error ? "error" : native ? "loading" : "saved",
+  );
+  const [sharedError, setPersistenceError] = useState(initial.error);
+  const [clientState, setClientState] = useState<{
+    status: PersistenceStatus;
+    error: string | null;
+  }>({
+    status: initialClient.error ? "error" : "loading",
+    error: initialClient.error,
+  });
+  const [committedRevision, setCommittedRevision] = useState<string>();
+  const [effectsError, setEffectsError] = useState<string | null>(null);
+  const [effectsRetry, setEffectsRetry] = useState(0);
+  const attachmentError =
+    native && !connection && host?.state.status === "error"
+      ? settingsErrorCode(host.state.error)
+      : null;
+  const persistenceError =
+    attachmentError ?? sharedError ?? clientState.error ?? effectsError;
+  const persistence: PersistenceStatus = persistenceError
+    ? "error"
+    : (native && !connection) ||
+        sharedPersistence === "loading" ||
+        clientState.status === "loading"
+      ? "loading"
+      : sharedPersistence === "saving" || clientState.status === "saving"
+        ? "saving"
+        : "saved";
   const current = useRef(settings);
   const sync = useRef<SettingsSync | null>(null);
-  const unsaved = useRef<Partial<AppSettings>>({});
-  const futureVersion = useRef(initial.error === "FUTURE_SETTINGS_VERSION");
-  const browserNeedsRead = useRef(initial.error !== null);
-  const native = desktop.isTauri();
+  const sharedBackend = useRef<ReturnType<
+    typeof createHostSettingsBackend
+  > | null>(null);
+  const clientSync = useRef<SettingsSync<ClientPreferences> | null>(null);
+  const unsavedClient = useRef<Partial<ClientPreferences>>({});
+  const unsaved = useRef<Partial<SharedSettings>>({});
+  const previewPending = useRef<Partial<SharedSettings>>({});
+  const blockedPreview = useRef(initial.error !== null);
+  const publish = useCallback((next: AppSettings) => {
+    current.current = next;
+    setSettings(next);
+  }, []);
+  const savePreview = useCallback((next: AppSettings) => {
+    if (blockedPreview.current) return false;
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsDocument(next)));
+      setPersistence("saved");
+      setPersistenceError(null);
+      previewPending.current = {};
+      return true;
+    } catch {
+      setPersistence("error");
+      setPersistenceError("STORAGE_UNAVAILABLE");
+      return false;
+    }
+  }, []);
   useEffect(() => {
-    if (!native) return;
+    applySettings(settings, { includeTheme: false });
+  }, [settings]);
+  useEffect(() => {
+    if (!native) savePreview(current.current);
+  }, [native, savePreview]);
+  useEffect(() => {
+    if (!native || !connection) return;
+    const backend = createHostSettingsBackend(connection);
+    sharedBackend.current = backend;
     const coordinator = new SettingsSync(
-      current.current,
-      {
-        load: desktop.loadSettingsSnapshot,
-        save: desktop.saveSettingsSnapshot,
-        reset: desktop.resetSettingsSnapshot,
-        subscribe: desktop.onSettingsChanged,
-      },
+      sharedSettings(current.current),
+      backend,
       (state) => {
-        if (state.error === "FUTURE_SETTINGS_VERSION")
-          futureVersion.current = true;
-        current.current = state.settings;
-        setSettings(state.settings);
+        publish({ ...state.settings, ...clientPreferences(current.current) });
         setPersistence(state.status);
         setPersistenceError(state.error);
+        setCommittedRevision(state.revision);
       },
     );
     sync.current = coordinator;
     coordinator.update(unsaved.current);
+    unsaved.current = {};
     void coordinator.start();
     return () => {
       unsaved.current = coordinator.stop();
+      backend.dispose();
+      sharedBackend.current = null;
       sync.current = null;
     };
-  }, [native]);
+  }, [connection, native, publish]);
   useEffect(() => {
-    applySettings(settings, { includeTheme: false });
-    if (futureVersion.current) return;
-    if (native) {
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(settingsDocument(settings)),
-        );
-      } catch {
-        /* 原生存储仍可用 */
-      }
-      return;
-    }
-    if (browserNeedsRead.current) return;
-    try {
-      localStorage.setItem(
-        STORAGE_KEY,
-        JSON.stringify(settingsDocument(settings)),
-      );
-      setPersistence("saved");
-      setPersistenceError(null);
-    } catch {
-      setPersistence("error");
-      setPersistenceError("STORAGE_UNAVAILABLE");
-    }
-  }, [settings, retry, native]);
+    const coordinator = new SettingsSync(
+      clientPreferences(current.current),
+      createClientSettingsBackend({
+        read: readClientWindowState,
+        save: saveClientWindowState,
+      }),
+      (state) => {
+        publish({ ...current.current, ...state.settings });
+        setClientState({ status: state.status, error: state.error });
+      },
+    );
+    clientSync.current = coordinator;
+    coordinator.update(unsavedClient.current);
+    unsavedClient.current = {};
+    void coordinator.start();
+    return () => {
+      unsavedClient.current = coordinator.stop();
+      clientSync.current = null;
+    };
+  }, [native, publish]);
+  useEffect(() => {
+    if (!native || !connection || committedRevision === undefined) return;
+    let active = true;
+    void applyHostSettingsEffects().then(
+      (receipt) => {
+        if (!active) return;
+        if (
+          receipt.hostId !== connection.attachment.hostId ||
+          receipt.instanceEpoch !== connection.attachment.instanceEpoch ||
+          BigInt(receipt.revision) < BigInt(committedRevision)
+        ) {
+          setEffectsError("HOST_EFFECTS_STALE");
+          return;
+        }
+        setEffectsError(null);
+      },
+      (error) => {
+        if (active) setEffectsError(settingsErrorCode(error));
+      },
+    );
+    return () => {
+      active = false;
+    };
+  }, [native, connection, committedRevision, effectsRetry]);
   const update = useCallback(
     (patch: Partial<AppSettings>) => {
       const normalized = normalizeSettingsPatch(current.current, patch);
-      if (sync.current) sync.current.update(normalized);
-      else {
-        if (native || browserNeedsRead.current)
-          unsaved.current = { ...unsaved.current, ...normalized };
-        const next = { ...current.current, ...normalized };
-        current.current = next;
-        setSettings(next);
+      const next = { ...current.current, ...normalized };
+      const {
+        menuBar,
+        windowPosition,
+        sidebarCollapsed,
+        sidebarWidth,
+        ...shared
+      } = normalized;
+      if (
+        menuBar !== undefined ||
+        windowPosition !== undefined ||
+        sidebarCollapsed !== undefined ||
+        sidebarWidth !== undefined
+      ) {
+        const patch = {
+          ...(menuBar !== undefined ? { menuBar } : {}),
+          ...(windowPosition !== undefined ? { windowPosition } : {}),
+          ...(sidebarCollapsed !== undefined ? { sidebarCollapsed } : {}),
+          ...(sidebarWidth !== undefined ? { sidebarWidth } : {}),
+        };
+        if (clientSync.current) clientSync.current.update(patch);
+        else {
+          unsavedClient.current = { ...unsavedClient.current, ...patch };
+          publish({ ...current.current, ...patch });
+        }
+      }
+      if (Object.keys(shared).length) {
+        if (!native) {
+          previewPending.current = { ...previewPending.current, ...shared };
+          publish({ ...current.current, ...shared });
+          savePreview(current.current);
+        } else if (sync.current) {
+          sharedBackend.current?.markExplicitEdit();
+          sync.current.update(shared);
+        } else {
+          unsaved.current = { ...unsaved.current, ...shared };
+          publish(next);
+        }
       }
     },
-    [native],
+    [native, publish, savePreview],
   );
   const reset = useCallback(async () => {
-    const next = { ...DEFAULT_SETTINGS, language: current.current.language };
-    if (sync.current) {
-      await sync.current.reset(next);
-      futureVersion.current = false;
-      setRetry((value) => value + 1);
-    } else {
-      if (native) throw { code: "STORAGE_UNAVAILABLE" };
-      try {
-        localStorage.setItem(
-          STORAGE_KEY,
-          JSON.stringify(settingsDocument(next)),
-        );
-      } catch {
-        setPersistence("error");
-        setPersistenceError("STORAGE_UNAVAILABLE");
-        throw { code: "STORAGE_UNAVAILABLE" };
-      }
-      futureVersion.current = false;
-      browserNeedsRead.current = false;
-      unsaved.current = {};
-      current.current = next;
-      setSettings(next);
-      setPersistence("saved");
-      setPersistenceError(null);
+    if (!native) {
+      if (blockedPreview.current || clientState.error)
+        throw { code: persistenceError ?? "INVALID_DOCUMENT" };
+      const next = {
+        ...defaults.settings,
+        language: current.current.language,
+        ...DEFAULT_CLIENT_PREFERENCES,
+      };
+      if (!savePreview(next)) throw { code: "STORAGE_UNAVAILABLE" };
+      publish({ ...current.current, ...sharedSettings(next) });
+      if (!clientSync.current) throw { code: "STORAGE_UNAVAILABLE" };
+      await clientSync.current.replace(DEFAULT_CLIENT_PREFERENCES);
+      return;
     }
-  }, [native]);
+    if (!sync.current || !clientSync.current)
+      throw { code: "HOST_UNAVAILABLE" };
+    if (persistenceError) throw { code: persistenceError };
+    sharedBackend.current?.markExplicitEdit();
+    await Promise.all([
+      sync.current.replace({
+        ...defaults.settings,
+        language: current.current.language,
+      }),
+      clientSync.current.replace(DEFAULT_CLIENT_PREFERENCES),
+    ]);
+  }, [native, persistenceError, clientState.error, publish, savePreview]);
   const retrySave = useCallback(() => {
-    if (sync.current) void sync.current.retry();
-    else if (!native && browserNeedsRead.current) {
+    if (clientSync.current) void clientSync.current.retry();
+    if (native) {
+      if (sync.current) {
+        sharedBackend.current?.markExplicitEdit();
+        void sync.current.retry();
+      } else
+        void host?.refresh().catch((error) => {
+          setPersistence("error");
+          setPersistenceError(settingsErrorCode(error));
+        });
+      setEffectsRetry((value) => value + 1);
+      return;
+    }
+    if (blockedPreview.current) {
       const loaded = readInitialSettings();
       if (loaded.error) {
         setPersistence("error");
         setPersistenceError(loaded.error);
         return;
       }
-      browserNeedsRead.current = false;
-      futureVersion.current = false;
-      const next = {
-        ...loaded.settings,
-        ...normalizeSettingsPatch(loaded.settings, unsaved.current),
-      };
-      unsaved.current = {};
-      current.current = next;
-      setSettings(next);
-    } else setRetry((value) => value + 1);
-  }, [native]);
+      blockedPreview.current = false;
+      const next = { ...loaded.settings, ...previewPending.current };
+      publish(next);
+      savePreview(next);
+    } else savePreview(current.current);
+  }, [host, native, publish, savePreview]);
   const value = useMemo(
     () => ({
       settings,
@@ -158,8 +310,9 @@ export function SettingsProvider({ children }: { children: ReactNode }) {
       persistence,
       persistenceError,
       retrySave,
+      media,
     }),
-    [settings, update, reset, persistence, persistenceError, retrySave],
+    [settings, update, reset, persistence, persistenceError, retrySave, media],
   );
   return (
     <SettingsContext.Provider value={value}>

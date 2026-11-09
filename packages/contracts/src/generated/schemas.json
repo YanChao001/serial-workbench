@@ -23,6 +23,142 @@
       "title": "Accent",
       "type": "string"
     },
+    "ActionCheckParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "JsonValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/SafeInteger"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "SafeInteger": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        }
+      },
+      "properties": {
+        "actionId": {
+          "$ref": "#/definitions/Id"
+        },
+        "params": {
+          "additionalProperties": {
+            "$ref": "#/definitions/JsonValue"
+          },
+          "type": "object"
+        }
+      },
+      "required": ["actionId", "params"],
+      "title": "ActionCheckParams",
+      "type": "object"
+    },
+    "ActionCheckResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "Target": {
+          "additionalProperties": false,
+          "dependencies": {
+            "sessionEpoch": ["sessionId"],
+            "sessionId": ["sessionEpoch"]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "session"
+              }
+            },
+            "required": ["kind"]
+          },
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "sessionEpoch": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/U64"
+                }
+              ],
+              "default": null
+            },
+            "sessionId": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "then": {
+            "required": ["sessionId", "sessionEpoch"]
+          },
+          "type": "object"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "actionId": {
+          "$ref": "#/definitions/Id"
+        },
+        "allowed": {
+          "type": "boolean"
+        },
+        "target": {
+          "$ref": "#/definitions/Target"
+        }
+      },
+      "required": ["actionId", "target", "allowed"],
+      "title": "ActionCheckResult",
+      "type": "object"
+    },
     "ActionKind": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "enum": ["query", "action"],
@@ -2276,9 +2412,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -4689,6 +4869,19 @@
           "enum": ["raw", "redacted"],
           "type": "string"
         },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
+          "type": "object"
+        },
         "CaptureWriteMode": {
           "enum": ["create_new", "append", "replace"],
           "type": "string"
@@ -4722,6 +4915,13 @@
         },
         "OverflowPolicy": {
           "enum": ["drop_with_gap", "stop", "flow_control"],
+          "type": "string"
+        },
+        "PositiveU64": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
           "type": "string"
         },
         "ResourceKind": {
@@ -4800,6 +5000,9 @@
             "$ref": "#/definitions/Target"
           },
           "type": "array"
+        },
+        "storageLimits": {
+          "$ref": "#/definitions/CaptureStorageLimits"
         },
         "targetRef": {
           "$ref": "#/definitions/ObjectRef"
@@ -4975,6 +5178,844 @@
       },
       "required": ["captureRef"],
       "title": "CaptureStopParams",
+      "type": "object"
+    },
+    "CaptureStorageLimits": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "PositiveU64": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "capacityBytes": {
+          "$ref": "#/definitions/PositiveU64"
+        },
+        "reserveBytes": {
+          "$ref": "#/definitions/U64"
+        }
+      },
+      "required": ["capacityBytes", "reserveBytes"],
+      "title": "CaptureStorageLimits",
+      "type": "object"
+    },
+    "CaptureTailParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "captureRef": {
+          "$ref": "#/definitions/ObjectRef"
+        },
+        "maxBytes": {
+          "default": "262144",
+          "pattern": "^(?:[1-9][0-9]{0,4}|1[0-9]{5}|2[0-5][0-9]{4}|26[01][0-9]{3}|2620[0-9]{2}|2621[0-3][0-9]|26214[0-4])$",
+          "type": "string"
+        },
+        "maxRecords": {
+          "default": "100",
+          "pattern": "^(?:[1-9]|[1-9][0-9]|100)$",
+          "type": "string"
+        }
+      },
+      "required": ["captureRef"],
+      "title": "CaptureTailParams",
+      "type": "object"
+    },
+    "CaptureTailResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "ByteRange": {
+          "additionalProperties": false,
+          "properties": {
+            "end": {
+              "$ref": "#/definitions/U64"
+            },
+            "start": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["start", "end"],
+          "type": "object"
+        },
+        "Bytes": {
+          "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+          "type": "string"
+        },
+        "CaptureEntry": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "event",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/RawEvent"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tx_settlement",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/CaptureTxSettlement"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "reader_gap",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ReaderGap"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            }
+          ]
+        },
+        "CaptureRecord": {
+          "additionalProperties": false,
+          "properties": {
+            "entry": {
+              "$ref": "#/definitions/CaptureEntry"
+            },
+            "recordOrdinal": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["recordOrdinal", "entry"],
+          "type": "object"
+        },
+        "CaptureState": {
+          "enum": [
+            "recording",
+            "finalizing",
+            "complete",
+            "incomplete",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "CaptureTxSettlement": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "receipt": {
+              "$ref": "#/definitions/TxReceipt"
+            }
+          },
+          "required": ["hostId", "instanceEpoch", "receipt"],
+          "type": "object"
+        },
+        "Certainty": {
+          "enum": ["confirmed", "uncertain"],
+          "type": "string"
+        },
+        "ConfigurationBoundary": {
+          "additionalProperties": false,
+          "properties": {
+            "certainty": {
+              "$ref": "#/definitions/Certainty"
+            },
+            "receiptRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["revision", "certainty", "receiptRef"],
+          "type": "object"
+        },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Direction": {
+          "enum": ["rx", "tx"],
+          "type": "string"
+        },
+        "DirectionalRange": {
+          "additionalProperties": false,
+          "properties": {
+            "direction": {
+              "$ref": "#/definitions/Direction"
+            },
+            "end": {
+              "$ref": "#/definitions/U64"
+            },
+            "start": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["direction", "start", "end"],
+          "type": "object"
+        },
+        "EventTime": {
+          "additionalProperties": false,
+          "properties": {
+            "clockId": {
+              "$ref": "#/definitions/Id"
+            },
+            "precision": {
+              "$ref": "#/definitions/TimePrecision"
+            },
+            "receivedWallTime": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "sourceMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "sourceWallTime": {
+              "$ref": "#/definitions/Timestamp"
+            }
+          },
+          "required": [
+            "clockId",
+            "sourceMonoNs",
+            "receivedWallTime",
+            "precision"
+          ],
+          "type": "object"
+        },
+        "False": {
+          "const": false,
+          "type": "boolean"
+        },
+        "HostError": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            },
+            "message": {
+              "type": "string"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            }
+          },
+          "required": ["code", "message", "retryable"],
+          "type": "object"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "JsonValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/SafeInteger"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "MessageFragment": {
+          "additionalProperties": false,
+          "properties": {
+            "fragmentOffset": {
+              "$ref": "#/definitions/U64"
+            },
+            "messageId": {
+              "$ref": "#/definitions/Id"
+            },
+            "messageLength": {
+              "$ref": "#/definitions/U64"
+            },
+            "messageType": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "messageId",
+            "fragmentOffset",
+            "messageLength",
+            "messageType"
+          ],
+          "type": "object"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "RawEvent": {
+          "additionalProperties": false,
+          "oneOf": [
+            {
+              "properties": {
+                "kind": {
+                  "const": "rx",
+                  "type": "string"
+                },
+                "payload": {
+                  "$ref": "#/definitions/RxPayload"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "tx_intent",
+                  "type": "string"
+                },
+                "payload": {
+                  "$ref": "#/definitions/TxIntent"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "tx",
+                  "type": "string"
+                },
+                "payload": {
+                  "$ref": "#/definitions/TxReceipt"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "gap",
+                  "type": "string"
+                },
+                "payload": {
+                  "$ref": "#/definitions/SourceGap"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "configuration_boundary",
+                  "type": "string"
+                },
+                "payload": {
+                  "$ref": "#/definitions/ConfigurationBoundary"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "lifecycle",
+                  "type": "string"
+                },
+                "payload": {
+                  "additionalProperties": {
+                    "$ref": "#/definitions/JsonValue"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            },
+            {
+              "properties": {
+                "kind": {
+                  "const": "control",
+                  "type": "string"
+                },
+                "payload": {
+                  "additionalProperties": {
+                    "$ref": "#/definitions/JsonValue"
+                  },
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "payload"],
+              "type": "object"
+            }
+          ],
+          "properties": {
+            "configurationRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "eventSeq": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "kind": true,
+            "payload": true,
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "time": {
+              "$ref": "#/definitions/EventTime"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "sessionId",
+            "sessionEpoch",
+            "eventSeq",
+            "configurationRevision",
+            "time"
+          ],
+          "type": "object"
+        },
+        "ReaderGap": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "missingByteRanges": {
+              "items": {
+                "$ref": "#/definitions/DirectionalRange"
+              },
+              "type": "array"
+            },
+            "missingEventRange": {
+              "$ref": "#/definitions/ByteRange"
+            },
+            "reason": {
+              "$ref": "#/definitions/ReaderGapReason"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "sessionId",
+            "sessionEpoch",
+            "reason",
+            "missingEventRange"
+          ],
+          "type": "object"
+        },
+        "ReaderGapReason": {
+          "enum": [
+            "reader_overflow",
+            "capture_overflow",
+            "capture_paused",
+            "network_loss"
+          ],
+          "type": "string"
+        },
+        "ReplayRecord": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "inline",
+                  "type": "string"
+                },
+                "record": {
+                  "$ref": "#/definitions/CaptureRecord"
+                }
+              },
+              "required": ["kind", "record"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "jsonBytes": {
+                  "$ref": "#/definitions/U64"
+                },
+                "jsonSha256": {
+                  "$ref": "#/definitions/Digest"
+                },
+                "kind": {
+                  "const": "reference",
+                  "type": "string"
+                },
+                "recordOrdinal": {
+                  "$ref": "#/definitions/U64"
+                },
+                "recordRef": {
+                  "$ref": "#/definitions/ObjectRef"
+                }
+              },
+              "required": [
+                "kind",
+                "recordRef",
+                "recordOrdinal",
+                "jsonBytes",
+                "jsonSha256"
+              ],
+              "type": "object"
+            }
+          ]
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "RevealTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "pageId": {
+              "$ref": "#/definitions/Id"
+            },
+            "panelId": {
+              "$ref": "#/definitions/Id"
+            },
+            "resultRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "workspaceId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["pageId"],
+          "type": "object"
+        },
+        "RxPayload": {
+          "additionalProperties": false,
+          "properties": {
+            "byteEnd": {
+              "$ref": "#/definitions/U64"
+            },
+            "byteStart": {
+              "$ref": "#/definitions/U64"
+            },
+            "bytesBase64": {
+              "$ref": "#/definitions/Bytes"
+            },
+            "message": {
+              "$ref": "#/definitions/MessageFragment"
+            }
+          },
+          "required": ["bytesBase64", "byteStart", "byteEnd"],
+          "type": "object"
+        },
+        "SafeInteger": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "SignedDecimal": {
+          "pattern": "^(?:0|-?[1-9][0-9]*)$",
+          "type": "string"
+        },
+        "SourceGap": {
+          "additionalProperties": false,
+          "properties": {
+            "direction": {
+              "$ref": "#/definitions/Direction"
+            },
+            "knownExtent": {
+              "type": "boolean"
+            },
+            "missingByteRange": {
+              "$ref": "#/definitions/DirectionalRange"
+            },
+            "missingEventRange": {
+              "$ref": "#/definitions/ByteRange"
+            },
+            "reason": {
+              "$ref": "#/definitions/SourceGapReason"
+            }
+          },
+          "required": ["reason", "knownExtent"],
+          "type": "object"
+        },
+        "SourceGapReason": {
+          "enum": ["network_loss", "backend_loss", "purge", "source_unknown"],
+          "type": "string"
+        },
+        "TimePrecision": {
+          "additionalProperties": false,
+          "properties": {
+            "offsetErrorNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "offsetEstimateNs": {
+              "$ref": "#/definitions/SignedDecimal"
+            },
+            "resolutionNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rttNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "source": {
+              "$ref": "#/definitions/TimeSource"
+            },
+            "syncMethod": {
+              "type": "string"
+            }
+          },
+          "required": ["source", "resolutionNs", "syncMethod"],
+          "type": "object"
+        },
+        "TimeSource": {
+          "enum": ["host_read", "device", "line_capture", "sample_clock"],
+          "type": "string"
+        },
+        "Timestamp": {
+          "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+          "type": "string"
+        },
+        "TxIntent": {
+          "additionalProperties": false,
+          "properties": {
+            "byteEnd": {
+              "$ref": "#/definitions/U64"
+            },
+            "byteStart": {
+              "$ref": "#/definitions/U64"
+            },
+            "bytesBase64": {
+              "$ref": "#/definitions/Bytes"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["operationId", "bytesBase64", "byteStart", "byteEnd"],
+          "type": "object"
+        },
+        "TxOutcome": {
+          "enum": ["accepted", "partial", "rejected", "unknown"],
+          "type": "string"
+        },
+        "TxReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "acceptedRanges": {
+              "items": {
+                "$ref": "#/definitions/ByteRange"
+              },
+              "type": "array"
+            },
+            "backendError": {
+              "$ref": "#/definitions/HostError"
+            },
+            "byteEnd": {
+              "$ref": "#/definitions/U64"
+            },
+            "byteStart": {
+              "$ref": "#/definitions/U64"
+            },
+            "bytesBase64": {
+              "$ref": "#/definitions/Bytes"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "outcome": {
+              "$ref": "#/definitions/TxOutcome"
+            },
+            "peerAcknowledged": {
+              "$ref": "#/definitions/False"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "unknownRanges": {
+              "items": {
+                "$ref": "#/definitions/ByteRange"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "operationId",
+            "sessionId",
+            "sessionEpoch",
+            "outcome",
+            "bytesBase64",
+            "byteStart",
+            "byteEnd",
+            "acceptedRanges",
+            "unknownRanges",
+            "peerAcknowledged"
+          ],
+          "type": "object"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "captureRef": {
+          "$ref": "#/definitions/ObjectRef"
+        },
+        "containerComplete": {
+          "type": "boolean"
+        },
+        "firstRecord": {
+          "$ref": "#/definitions/U64"
+        },
+        "records": {
+          "items": {
+            "$ref": "#/definitions/ReplayRecord"
+          },
+          "type": "array"
+        },
+        "sourceContinuous": {
+          "type": "boolean"
+        },
+        "sourceFingerprint": {
+          "$ref": "#/definitions/Digest"
+        },
+        "state": {
+          "$ref": "#/definitions/CaptureState"
+        },
+        "verifiedPrefix": {
+          "$ref": "#/definitions/U64"
+        }
+      },
+      "required": [
+        "captureRef",
+        "sourceFingerprint",
+        "state",
+        "verifiedPrefix",
+        "containerComplete",
+        "sourceContinuous",
+        "firstRecord",
+        "records"
+      ],
+      "title": "CaptureTailResult",
       "type": "object"
     },
     "CaptureTxSettlement": {
@@ -12617,6 +13658,22 @@
           ],
           "type": "string"
         },
+        "ActionCheckResult": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "allowed": {
+              "type": "boolean"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["actionId", "target", "allowed"],
+          "type": "object"
+        },
         "ActionKind": {
           "enum": ["query", "action"],
           "type": "string"
@@ -13406,6 +14463,9 @@
               },
               "type": "array"
             },
+            "storageLimits": {
+              "$ref": "#/definitions/CaptureStorageLimits"
+            },
             "targetRef": {
               "$ref": "#/definitions/ObjectRef"
             },
@@ -13447,6 +14507,19 @@
           "required": ["captureRef", "summary"],
           "type": "object"
         },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
+          "type": "object"
+        },
         "CaptureSummary": {
           "additionalProperties": false,
           "properties": {
@@ -13475,6 +14548,49 @@
             "watermarks",
             "containerComplete",
             "sourceContinuous"
+          ],
+          "type": "object"
+        },
+        "CaptureTailResult": {
+          "additionalProperties": false,
+          "properties": {
+            "captureRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "containerComplete": {
+              "type": "boolean"
+            },
+            "firstRecord": {
+              "$ref": "#/definitions/U64"
+            },
+            "records": {
+              "items": {
+                "$ref": "#/definitions/ReplayRecord"
+              },
+              "type": "array"
+            },
+            "sourceContinuous": {
+              "type": "boolean"
+            },
+            "sourceFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "state": {
+              "$ref": "#/definitions/CaptureState"
+            },
+            "verifiedPrefix": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "captureRef",
+            "sourceFingerprint",
+            "state",
+            "verifiedPrefix",
+            "containerComplete",
+            "sourceContinuous",
+            "firstRecord",
+            "records"
           ],
           "type": "object"
         },
@@ -16308,6 +17424,34 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "action_check",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ActionCheckResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_import_preview",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceDocument"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "client_effect",
                   "type": "string"
                 },
@@ -16369,6 +17513,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/CaptureStatusResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "capture_tail",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/CaptureTailResult"
                 }
               },
               "required": ["kind", "value"],
@@ -16579,6 +17737,34 @@
                 },
                 "value": {
                   "$ref": "#/definitions/SessionSnapshot"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_metrics",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionMetrics"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_inputs",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionInputs"
                 }
               },
               "required": ["kind", "value"],
@@ -17505,6 +18691,124 @@
           ],
           "type": "object"
         },
+        "SessionInputs": {
+          "additionalProperties": false,
+          "description": "owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。",
+          "properties": {
+            "cd": {
+              "type": "boolean"
+            },
+            "cts": {
+              "type": "boolean"
+            },
+            "dsr": {
+              "type": "boolean"
+            },
+            "ri": {
+              "type": "boolean"
+            },
+            "sampledAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "sampledMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "sampledAt",
+            "sampledMonoNs",
+            "cts",
+            "dsr",
+            "ri",
+            "cd"
+          ],
+          "type": "object"
+        },
+        "SessionMetrics": {
+          "additionalProperties": false,
+          "description": "当前 Host instance 的会话累计值；重连仅重启本次连接时长。",
+          "properties": {
+            "connectionDurationMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "frameCountsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "lineErrorsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "observedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "observedMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateResolutionMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateWindowMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxReadErrors": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "txAcceptedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txAcceptedBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "txUnknownBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txWriteErrors": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "instanceEpoch",
+            "observedAt",
+            "observedMonoNs",
+            "connectionDurationMs",
+            "rxBytes",
+            "txAcceptedBytes",
+            "txUnknownBytes",
+            "rxReadErrors",
+            "txWriteErrors",
+            "rxBytesPerSecond",
+            "txAcceptedBytesPerSecond",
+            "rateWindowMs",
+            "rateResolutionMs",
+            "lineErrorsAvailable",
+            "frameCountsAvailable"
+          ],
+          "type": "object"
+        },
         "SessionSnapshot": {
           "additionalProperties": false,
           "properties": {
@@ -17990,9 +19294,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -22132,9 +23480,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -22798,6 +24190,9 @@
               },
               "type": "array"
             },
+            "storageLimits": {
+              "$ref": "#/definitions/CaptureStorageLimits"
+            },
             "targetRef": {
               "$ref": "#/definitions/ObjectRef"
             },
@@ -22811,6 +24206,19 @@
             }
           },
           "required": ["sessionRefs", "targetRef", "overflowPolicy"],
+          "type": "object"
+        },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
           "type": "object"
         },
         "CaptureWriteMode": {
@@ -23718,9 +25126,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -26912,9 +28364,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -28130,6 +29626,22 @@
           ],
           "type": "string"
         },
+        "ActionCheckResult": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "allowed": {
+              "type": "boolean"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["actionId", "target", "allowed"],
+          "type": "object"
+        },
         "ActionKind": {
           "enum": ["query", "action"],
           "type": "string"
@@ -28793,6 +30305,9 @@
               },
               "type": "array"
             },
+            "storageLimits": {
+              "$ref": "#/definitions/CaptureStorageLimits"
+            },
             "targetRef": {
               "$ref": "#/definitions/ObjectRef"
             },
@@ -28834,6 +30349,19 @@
           "required": ["captureRef", "summary"],
           "type": "object"
         },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
+          "type": "object"
+        },
         "CaptureSummary": {
           "additionalProperties": false,
           "properties": {
@@ -28862,6 +30390,49 @@
             "watermarks",
             "containerComplete",
             "sourceContinuous"
+          ],
+          "type": "object"
+        },
+        "CaptureTailResult": {
+          "additionalProperties": false,
+          "properties": {
+            "captureRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "containerComplete": {
+              "type": "boolean"
+            },
+            "firstRecord": {
+              "$ref": "#/definitions/U64"
+            },
+            "records": {
+              "items": {
+                "$ref": "#/definitions/ReplayRecord"
+              },
+              "type": "array"
+            },
+            "sourceContinuous": {
+              "type": "boolean"
+            },
+            "sourceFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "state": {
+              "$ref": "#/definitions/CaptureState"
+            },
+            "verifiedPrefix": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "captureRef",
+            "sourceFingerprint",
+            "state",
+            "verifiedPrefix",
+            "containerComplete",
+            "sourceContinuous",
+            "firstRecord",
+            "records"
           ],
           "type": "object"
         },
@@ -31855,6 +33426,124 @@
           ],
           "type": "object"
         },
+        "SessionInputs": {
+          "additionalProperties": false,
+          "description": "owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。",
+          "properties": {
+            "cd": {
+              "type": "boolean"
+            },
+            "cts": {
+              "type": "boolean"
+            },
+            "dsr": {
+              "type": "boolean"
+            },
+            "ri": {
+              "type": "boolean"
+            },
+            "sampledAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "sampledMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "sampledAt",
+            "sampledMonoNs",
+            "cts",
+            "dsr",
+            "ri",
+            "cd"
+          ],
+          "type": "object"
+        },
+        "SessionMetrics": {
+          "additionalProperties": false,
+          "description": "当前 Host instance 的会话累计值；重连仅重启本次连接时长。",
+          "properties": {
+            "connectionDurationMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "frameCountsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "lineErrorsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "observedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "observedMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateResolutionMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateWindowMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxReadErrors": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "txAcceptedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txAcceptedBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "txUnknownBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txWriteErrors": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "instanceEpoch",
+            "observedAt",
+            "observedMonoNs",
+            "connectionDurationMs",
+            "rxBytes",
+            "txAcceptedBytes",
+            "txUnknownBytes",
+            "rxReadErrors",
+            "txWriteErrors",
+            "rxBytesPerSecond",
+            "txAcceptedBytesPerSecond",
+            "rateWindowMs",
+            "rateResolutionMs",
+            "lineErrorsAvailable",
+            "frameCountsAvailable"
+          ],
+          "type": "object"
+        },
         "SessionSnapshot": {
           "additionalProperties": false,
           "properties": {
@@ -32308,9 +33997,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -32738,6 +34471,34 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "action_check",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/ActionCheckResult"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "workspace_import_preview",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/WorkspaceDocument"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "client_effect",
               "type": "string"
             },
@@ -32799,6 +34560,20 @@
             },
             "value": {
               "$ref": "#/definitions/CaptureStatusResult"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "capture_tail",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/CaptureTailResult"
             }
           },
           "required": ["kind", "value"],
@@ -33009,6 +34784,34 @@
             },
             "value": {
               "$ref": "#/definitions/SessionSnapshot"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "session_metrics",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/SessionMetrics"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "session_inputs",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/SessionInputs"
             }
           },
           "required": ["kind", "value"],
@@ -37072,6 +38875,22 @@
           ],
           "type": "string"
         },
+        "ActionCheckResult": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "allowed": {
+              "type": "boolean"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["actionId", "target", "allowed"],
+          "type": "object"
+        },
         "ActionKind": {
           "enum": ["query", "action"],
           "type": "string"
@@ -37779,6 +39598,9 @@
               },
               "type": "array"
             },
+            "storageLimits": {
+              "$ref": "#/definitions/CaptureStorageLimits"
+            },
             "targetRef": {
               "$ref": "#/definitions/ObjectRef"
             },
@@ -37820,6 +39642,19 @@
           "required": ["captureRef", "summary"],
           "type": "object"
         },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
+          "type": "object"
+        },
         "CaptureSummary": {
           "additionalProperties": false,
           "properties": {
@@ -37848,6 +39683,49 @@
             "watermarks",
             "containerComplete",
             "sourceContinuous"
+          ],
+          "type": "object"
+        },
+        "CaptureTailResult": {
+          "additionalProperties": false,
+          "properties": {
+            "captureRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "containerComplete": {
+              "type": "boolean"
+            },
+            "firstRecord": {
+              "$ref": "#/definitions/U64"
+            },
+            "records": {
+              "items": {
+                "$ref": "#/definitions/ReplayRecord"
+              },
+              "type": "array"
+            },
+            "sourceContinuous": {
+              "type": "boolean"
+            },
+            "sourceFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "state": {
+              "$ref": "#/definitions/CaptureState"
+            },
+            "verifiedPrefix": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "captureRef",
+            "sourceFingerprint",
+            "state",
+            "verifiedPrefix",
+            "containerComplete",
+            "sourceContinuous",
+            "firstRecord",
+            "records"
           ],
           "type": "object"
         },
@@ -40437,6 +42315,34 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "action_check",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ActionCheckResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_import_preview",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceDocument"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "client_effect",
                   "type": "string"
                 },
@@ -40498,6 +42404,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/CaptureStatusResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "capture_tail",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/CaptureTailResult"
                 }
               },
               "required": ["kind", "value"],
@@ -40708,6 +42628,34 @@
                 },
                 "value": {
                   "$ref": "#/definitions/SessionSnapshot"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_metrics",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionMetrics"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_inputs",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionInputs"
                 }
               },
               "required": ["kind", "value"],
@@ -41339,6 +43287,124 @@
           ],
           "type": "object"
         },
+        "SessionInputs": {
+          "additionalProperties": false,
+          "description": "owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。",
+          "properties": {
+            "cd": {
+              "type": "boolean"
+            },
+            "cts": {
+              "type": "boolean"
+            },
+            "dsr": {
+              "type": "boolean"
+            },
+            "ri": {
+              "type": "boolean"
+            },
+            "sampledAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "sampledMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "sampledAt",
+            "sampledMonoNs",
+            "cts",
+            "dsr",
+            "ri",
+            "cd"
+          ],
+          "type": "object"
+        },
+        "SessionMetrics": {
+          "additionalProperties": false,
+          "description": "当前 Host instance 的会话累计值；重连仅重启本次连接时长。",
+          "properties": {
+            "connectionDurationMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "frameCountsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "lineErrorsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "observedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "observedMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateResolutionMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateWindowMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxReadErrors": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "txAcceptedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txAcceptedBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "txUnknownBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txWriteErrors": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "instanceEpoch",
+            "observedAt",
+            "observedMonoNs",
+            "connectionDurationMs",
+            "rxBytes",
+            "txAcceptedBytes",
+            "txUnknownBytes",
+            "rxReadErrors",
+            "txWriteErrors",
+            "rxBytesPerSecond",
+            "txAcceptedBytesPerSecond",
+            "rateWindowMs",
+            "rateResolutionMs",
+            "lineErrorsAvailable",
+            "frameCountsAvailable"
+          ],
+          "type": "object"
+        },
         "SessionSnapshot": {
           "additionalProperties": false,
           "properties": {
@@ -41792,9 +43858,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -43640,6 +45750,22 @@
           ],
           "type": "string"
         },
+        "ActionCheckResult": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "allowed": {
+              "type": "boolean"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["actionId", "target", "allowed"],
+          "type": "object"
+        },
         "ActionKind": {
           "enum": ["query", "action"],
           "type": "string"
@@ -44347,6 +46473,9 @@
               },
               "type": "array"
             },
+            "storageLimits": {
+              "$ref": "#/definitions/CaptureStorageLimits"
+            },
             "targetRef": {
               "$ref": "#/definitions/ObjectRef"
             },
@@ -44388,6 +46517,19 @@
           "required": ["captureRef", "summary"],
           "type": "object"
         },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
+          "type": "object"
+        },
         "CaptureSummary": {
           "additionalProperties": false,
           "properties": {
@@ -44416,6 +46558,49 @@
             "watermarks",
             "containerComplete",
             "sourceContinuous"
+          ],
+          "type": "object"
+        },
+        "CaptureTailResult": {
+          "additionalProperties": false,
+          "properties": {
+            "captureRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "containerComplete": {
+              "type": "boolean"
+            },
+            "firstRecord": {
+              "$ref": "#/definitions/U64"
+            },
+            "records": {
+              "items": {
+                "$ref": "#/definitions/ReplayRecord"
+              },
+              "type": "array"
+            },
+            "sourceContinuous": {
+              "type": "boolean"
+            },
+            "sourceFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "state": {
+              "$ref": "#/definitions/CaptureState"
+            },
+            "verifiedPrefix": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "captureRef",
+            "sourceFingerprint",
+            "state",
+            "verifiedPrefix",
+            "containerComplete",
+            "sourceContinuous",
+            "firstRecord",
+            "records"
           ],
           "type": "object"
         },
@@ -47005,6 +49190,34 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "action_check",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ActionCheckResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_import_preview",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceDocument"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "client_effect",
                   "type": "string"
                 },
@@ -47066,6 +49279,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/CaptureStatusResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "capture_tail",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/CaptureTailResult"
                 }
               },
               "required": ["kind", "value"],
@@ -47276,6 +49503,34 @@
                 },
                 "value": {
                   "$ref": "#/definitions/SessionSnapshot"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_metrics",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionMetrics"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_inputs",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionInputs"
                 }
               },
               "required": ["kind", "value"],
@@ -47867,6 +50122,124 @@
           ],
           "type": "object"
         },
+        "SessionInputs": {
+          "additionalProperties": false,
+          "description": "owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。",
+          "properties": {
+            "cd": {
+              "type": "boolean"
+            },
+            "cts": {
+              "type": "boolean"
+            },
+            "dsr": {
+              "type": "boolean"
+            },
+            "ri": {
+              "type": "boolean"
+            },
+            "sampledAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "sampledMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "sampledAt",
+            "sampledMonoNs",
+            "cts",
+            "dsr",
+            "ri",
+            "cd"
+          ],
+          "type": "object"
+        },
+        "SessionMetrics": {
+          "additionalProperties": false,
+          "description": "当前 Host instance 的会话累计值；重连仅重启本次连接时长。",
+          "properties": {
+            "connectionDurationMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "frameCountsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "lineErrorsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "observedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "observedMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateResolutionMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateWindowMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxReadErrors": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "txAcceptedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txAcceptedBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "txUnknownBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txWriteErrors": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "instanceEpoch",
+            "observedAt",
+            "observedMonoNs",
+            "connectionDurationMs",
+            "rxBytes",
+            "txAcceptedBytes",
+            "txUnknownBytes",
+            "rxReadErrors",
+            "txWriteErrors",
+            "rxBytesPerSecond",
+            "txAcceptedBytesPerSecond",
+            "rateWindowMs",
+            "rateResolutionMs",
+            "lineErrorsAvailable",
+            "frameCountsAvailable"
+          ],
+          "type": "object"
+        },
         "SessionSnapshot": {
           "additionalProperties": false,
           "properties": {
@@ -48320,9 +50693,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -48885,6 +51302,160 @@
         "reconnectBackoffMs"
       ],
       "title": "SerialConfiguration",
+      "type": "object"
+    },
+    "SessionInputs": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "Timestamp": {
+          "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "description": "owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。",
+      "properties": {
+        "cd": {
+          "type": "boolean"
+        },
+        "cts": {
+          "type": "boolean"
+        },
+        "dsr": {
+          "type": "boolean"
+        },
+        "ri": {
+          "type": "boolean"
+        },
+        "sampledAt": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "sampledMonoNs": {
+          "$ref": "#/definitions/U64"
+        },
+        "sessionEpoch": {
+          "$ref": "#/definitions/U64"
+        },
+        "sessionId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "sessionId",
+        "sessionEpoch",
+        "sampledAt",
+        "sampledMonoNs",
+        "cts",
+        "dsr",
+        "ri",
+        "cd"
+      ],
+      "title": "SessionInputs",
+      "type": "object"
+    },
+    "SessionMetrics": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "False": {
+          "const": false,
+          "type": "boolean"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "Timestamp": {
+          "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "description": "当前 Host instance 的会话累计值；重连仅重启本次连接时长。",
+      "properties": {
+        "connectionDurationMs": {
+          "$ref": "#/definitions/U64"
+        },
+        "frameCountsAvailable": {
+          "$ref": "#/definitions/False"
+        },
+        "instanceEpoch": {
+          "$ref": "#/definitions/U64"
+        },
+        "lineErrorsAvailable": {
+          "$ref": "#/definitions/False"
+        },
+        "observedAt": {
+          "$ref": "#/definitions/Timestamp"
+        },
+        "observedMonoNs": {
+          "$ref": "#/definitions/U64"
+        },
+        "rateResolutionMs": {
+          "$ref": "#/definitions/U64"
+        },
+        "rateWindowMs": {
+          "$ref": "#/definitions/U64"
+        },
+        "rxBytes": {
+          "$ref": "#/definitions/U64"
+        },
+        "rxBytesPerSecond": {
+          "$ref": "#/definitions/U64"
+        },
+        "rxReadErrors": {
+          "$ref": "#/definitions/U64"
+        },
+        "sessionEpoch": {
+          "$ref": "#/definitions/U64"
+        },
+        "sessionId": {
+          "$ref": "#/definitions/Id"
+        },
+        "txAcceptedBytes": {
+          "$ref": "#/definitions/U64"
+        },
+        "txAcceptedBytesPerSecond": {
+          "$ref": "#/definitions/U64"
+        },
+        "txUnknownBytes": {
+          "$ref": "#/definitions/U64"
+        },
+        "txWriteErrors": {
+          "$ref": "#/definitions/U64"
+        }
+      },
+      "required": [
+        "sessionId",
+        "sessionEpoch",
+        "instanceEpoch",
+        "observedAt",
+        "observedMonoNs",
+        "connectionDurationMs",
+        "rxBytes",
+        "txAcceptedBytes",
+        "txUnknownBytes",
+        "rxReadErrors",
+        "txWriteErrors",
+        "rxBytesPerSecond",
+        "txAcceptedBytesPerSecond",
+        "rateWindowMs",
+        "rateResolutionMs",
+        "lineErrorsAvailable",
+        "frameCountsAvailable"
+      ],
+      "title": "SessionMetrics",
       "type": "object"
     },
     "SessionSnapshot": {
@@ -49661,9 +52232,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -49976,9 +52591,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -50288,9 +52947,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -50536,9 +53239,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {
@@ -53019,6 +55766,37 @@
         "TerminalMode": {
           "enum": ["text", "hex"],
           "type": "string"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
+          "type": "object"
         }
       },
       "properties": {
@@ -53030,10 +55808,51 @@
         },
         "sendMode": {
           "$ref": "#/definitions/TerminalMode"
+        },
+        "typography": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TerminalTypography"
+            }
+          ],
+          "default": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
         }
       },
       "required": ["receiveMode", "sendMode", "lineEnding"],
       "title": "TerminalSettings",
+      "type": "object"
+    },
+    "TerminalTypography": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "fontFamily": {
+          "maxLength": 128,
+          "minLength": 1,
+          "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+          "type": "string"
+        },
+        "fontSize": {
+          "maximum": 48,
+          "minimum": 8,
+          "type": "integer"
+        },
+        "ligatures": {
+          "type": "boolean"
+        },
+        "lineHeightPercent": {
+          "maximum": 300,
+          "minimum": 100,
+          "type": "integer"
+        }
+      },
+      "required": ["fontFamily", "fontSize", "lineHeightPercent", "ligatures"],
+      "title": "TerminalTypography",
       "type": "object"
     },
     "TextExportParams": {
@@ -53748,6 +56567,22 @@
             "custom"
           ],
           "type": "string"
+        },
+        "ActionCheckResult": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "allowed": {
+              "type": "boolean"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["actionId", "target", "allowed"],
+          "type": "object"
         },
         "ActionKind": {
           "enum": ["query", "action"],
@@ -54538,6 +57373,9 @@
               },
               "type": "array"
             },
+            "storageLimits": {
+              "$ref": "#/definitions/CaptureStorageLimits"
+            },
             "targetRef": {
               "$ref": "#/definitions/ObjectRef"
             },
@@ -54579,6 +57417,19 @@
           "required": ["captureRef", "summary"],
           "type": "object"
         },
+        "CaptureStorageLimits": {
+          "additionalProperties": false,
+          "properties": {
+            "capacityBytes": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "reserveBytes": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["capacityBytes", "reserveBytes"],
+          "type": "object"
+        },
         "CaptureSummary": {
           "additionalProperties": false,
           "properties": {
@@ -54607,6 +57458,49 @@
             "watermarks",
             "containerComplete",
             "sourceContinuous"
+          ],
+          "type": "object"
+        },
+        "CaptureTailResult": {
+          "additionalProperties": false,
+          "properties": {
+            "captureRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "containerComplete": {
+              "type": "boolean"
+            },
+            "firstRecord": {
+              "$ref": "#/definitions/U64"
+            },
+            "records": {
+              "items": {
+                "$ref": "#/definitions/ReplayRecord"
+              },
+              "type": "array"
+            },
+            "sourceContinuous": {
+              "type": "boolean"
+            },
+            "sourceFingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "state": {
+              "$ref": "#/definitions/CaptureState"
+            },
+            "verifiedPrefix": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "captureRef",
+            "sourceFingerprint",
+            "state",
+            "verifiedPrefix",
+            "containerComplete",
+            "sourceContinuous",
+            "firstRecord",
+            "records"
           ],
           "type": "object"
         },
@@ -57701,6 +60595,34 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "action_check",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ActionCheckResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "workspace_import_preview",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceDocument"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "client_effect",
                   "type": "string"
                 },
@@ -57762,6 +60684,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/CaptureStatusResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "capture_tail",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/CaptureTailResult"
                 }
               },
               "required": ["kind", "value"],
@@ -57972,6 +60908,34 @@
                 },
                 "value": {
                   "$ref": "#/definitions/SessionSnapshot"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_metrics",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionMetrics"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "session_inputs",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/SessionInputs"
                 }
               },
               "required": ["kind", "value"],
@@ -58898,6 +61862,124 @@
           ],
           "type": "object"
         },
+        "SessionInputs": {
+          "additionalProperties": false,
+          "description": "owner 实际读取的输入线；不表示输出线设定，也不提供边沿历史。",
+          "properties": {
+            "cd": {
+              "type": "boolean"
+            },
+            "cts": {
+              "type": "boolean"
+            },
+            "dsr": {
+              "type": "boolean"
+            },
+            "ri": {
+              "type": "boolean"
+            },
+            "sampledAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "sampledMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "sampledAt",
+            "sampledMonoNs",
+            "cts",
+            "dsr",
+            "ri",
+            "cd"
+          ],
+          "type": "object"
+        },
+        "SessionMetrics": {
+          "additionalProperties": false,
+          "description": "当前 Host instance 的会话累计值；重连仅重启本次连接时长。",
+          "properties": {
+            "connectionDurationMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "frameCountsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "lineErrorsAvailable": {
+              "$ref": "#/definitions/False"
+            },
+            "observedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "observedMonoNs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateResolutionMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rateWindowMs": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "rxReadErrors": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "txAcceptedBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txAcceptedBytesPerSecond": {
+              "$ref": "#/definitions/U64"
+            },
+            "txUnknownBytes": {
+              "$ref": "#/definitions/U64"
+            },
+            "txWriteErrors": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "sessionId",
+            "sessionEpoch",
+            "instanceEpoch",
+            "observedAt",
+            "observedMonoNs",
+            "connectionDurationMs",
+            "rxBytes",
+            "txAcceptedBytes",
+            "txUnknownBytes",
+            "rxReadErrors",
+            "txWriteErrors",
+            "rxBytesPerSecond",
+            "txAcceptedBytesPerSecond",
+            "rateWindowMs",
+            "rateResolutionMs",
+            "lineErrorsAvailable",
+            "frameCountsAvailable"
+          ],
+          "type": "object"
+        },
         "SessionSnapshot": {
           "additionalProperties": false,
           "properties": {
@@ -59383,9 +62465,53 @@
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "typography": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TerminalTypography"
+                }
+              ],
+              "default": {
+                "fontFamily": "ui-monospace",
+                "fontSize": 14,
+                "ligatures": false,
+                "lineHeightPercent": 150
+              }
             }
           },
           "required": ["receiveMode", "sendMode", "lineEnding"],
+          "type": "object"
+        },
+        "TerminalTypography": {
+          "additionalProperties": false,
+          "properties": {
+            "fontFamily": {
+              "maxLength": 128,
+              "minLength": 1,
+              "pattern": "^[^\\u0000-\\u001F\\u007F-\\u009F\\uD800-\\uDFFF]+(?![\\s\\S])",
+              "type": "string"
+            },
+            "fontSize": {
+              "maximum": 48,
+              "minimum": 8,
+              "type": "integer"
+            },
+            "ligatures": {
+              "type": "boolean"
+            },
+            "lineHeightPercent": {
+              "maximum": 300,
+              "minimum": 100,
+              "type": "integer"
+            }
+          },
+          "required": [
+            "fontFamily",
+            "fontSize",
+            "lineHeightPercent",
+            "ligatures"
+          ],
           "type": "object"
         },
         "Theme": {

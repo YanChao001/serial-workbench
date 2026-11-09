@@ -12,10 +12,19 @@ import {
 
 export function portableArtifactEntries(
   root,
-  { executable, executableName, readme },
+  { executable, executableName, readme, components },
 ) {
   return [
     { source: executable, path: executableName },
+    ...(components
+      ? [
+          ...components.files,
+          {
+            path: "components.json",
+            contents: `${JSON.stringify(components.manifest, null, 2)}\n`,
+          },
+        ]
+      : []),
     { contents: readme, path: "使用说明.txt" },
     ...["LICENSE", "NOTICE"].map((path) => ({
       source: resolve(root, path),
@@ -45,18 +54,20 @@ async function main() {
       "Portable builds do not generate installers. Use pnpm app:build with --bundles.",
     );
   const plan = prepareBuild(root, [...args, "--no-bundle"]);
-  if (plan.platform !== "windows")
-    throw new Error("Portable builds require a Windows target.");
-  const productName = plan.config.productName ?? plan.package.name;
-  const executableName = portableFileName(productName);
-  artifactDirectory(root, plan.version, plan.target, "portable");
   const built = skipBuild
     ? loadPortableBuild(plan)
     : await buildApplication(plan);
+  if (skipBuild)
+    console.log(
+      `Reusing portable build target ${built.target}; run without --skip-build to apply Cargo target configuration changes.`,
+    );
   if (!built.target.includes("-windows-"))
     throw new Error(
       "The portable build receipt does not refer to a Windows target.",
     );
+  const productName = plan.config.productName ?? plan.package.name;
+  const executableName = portableFileName(productName);
+  artifactDirectory(root, plan.version, built.target, "portable");
   if (!skipBuild) recordPortableBuild(plan, built);
   const readme = `${productName} 便携版 v${plan.version}
 
@@ -80,6 +91,7 @@ manifest.json 记录版本、目标平台和文件 SHA-256，可用于检查分�
       executable: built.executable,
       executableName,
       readme,
+      components: built.components,
     }),
   });
   console.log(`Portable build created: ${relative(root, output)}`);

@@ -1,22 +1,13 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 
 async function seed(page: Page, motion = "reduced") {
-  await page.addInitScript(
-    ({ key, motion }) =>
-      localStorage.setItem(
-        key,
-        JSON.stringify({
-          schemaVersion: 3,
-          language: "en",
-          theme: "light",
-          background: "plain",
-          motion,
-        }),
-      ),
-    { key: `${appConfig.browserStorageNamespace}:settings`, motion },
-  );
+  await seedBrowserSettings(page, {
+    motion,
+    theme: "light",
+    background: "plain",
+  });
 }
 
 test("controlled dialogs and search cancellation restore the keyboard position", async ({

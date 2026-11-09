@@ -12,6 +12,7 @@ import { dirname, join, resolve } from "node:path";
 import test from "node:test";
 import { portableArtifactEntries } from "./portable.mjs";
 import { publishArtifacts } from "./artifact-lib.mjs";
+import { inspectComponents } from "./components-build.mjs";
 import {
   loadPortableBuild,
   portableFileName,
@@ -30,6 +31,8 @@ function fixture(t) {
   writeFileSync(executable, "fresh portable program");
   const plan = {
     root,
+    target: "x86_64-pc-windows-msvc",
+    platform: "windows",
     version: "1.2.3",
     config: { productName: "Desktop App" },
     optimize: "size",
@@ -41,6 +44,18 @@ function fixture(t) {
     outputDir: dirname(executable),
     target: "x86_64-pc-windows-msvc",
   };
+  const pe = Buffer.alloc(128);
+  pe.write("MZ");
+  pe.writeUInt32LE(64, 60);
+  pe.write("PE\0\0", 64);
+  pe.writeUInt16LE(0x8664, 68);
+  for (const name of [
+    "serial-workbench-host",
+    "serial-workbench-cli",
+    "serial-workbench-mcp",
+  ])
+    writeFileSync(join(built.outputDir, `${name}.exe`), pe);
+  built.components = inspectComponents(plan, built.outputDir);
   return { root, plan, built };
 }
 
@@ -143,4 +158,73 @@ test("portable filenames reject path traversal and reserved Windows names", () =
     "app:name",
   ])
     assert.throws(() => portableFileName(name), /Windows/);
+});
+
+test("portable receipt rejects changed or missing release components", (t) => {
+  const { plan, built } = fixture(t);
+  plan.target = built.target;
+  plan.platform = "windows";
+  const pe = Buffer.alloc(128);
+  pe.write("MZ");
+  pe.writeUInt32LE(64, 60);
+  pe.write("PE\0\0", 64);
+  pe.writeUInt16LE(0x8664, 68);
+  for (const name of [
+    "serial-workbench-host",
+    "serial-workbench-cli",
+    "serial-workbench-mcp",
+  ])
+    writeFileSync(join(built.outputDir, `${name}.exe`), pe);
+  built.components = inspectComponents(plan, built.outputDir);
+  recordPortableBuild(plan, built);
+  assert.deepEqual(
+    loadPortableBuild(plan).components.manifest,
+    built.components.manifest,
+  );
+  writeFileSync(
+    join(built.outputDir, "serial-workbench-host.exe"),
+    Buffer.concat([pe, Buffer.from("changed")]),
+  );
+  assert.throws(() => loadPortableBuild(plan), /changed/);
+  rmSync(join(built.outputDir, "serial-workbench-host.exe"));
+  assert.throws(() => loadPortableBuild(plan), /Missing component/i);
+});
+
+test("portable distribution puts components and their manifest beside the client", (t) => {
+  const { root, built } = fixture(t);
+  const projectRoot = resolve(import.meta.dirname, "..");
+  const entries = portableArtifactEntries(projectRoot, {
+    executable: built.executable,
+    executableName: "Desktop.exe",
+    readme: "fixture",
+    components: built.components,
+  });
+  const output = publishArtifacts(root, {
+    version: "1.2.3",
+    target: built.target,
+    kind: "portable",
+    entries,
+  });
+  for (const { path } of built.components.files)
+    assert.ok(existsSync(join(output, path)));
+  assert.deepEqual(
+    JSON.parse(readFileSync(join(output, "components.json"), "utf8")),
+    built.components.manifest,
+  );
+});
+
+test("skip-build reuses the receipt target without guessing the current host", (t) => {
+  const { plan, built } = fixture(t);
+  recordPortableBuild(plan, built);
+  const result = loadPortableBuild({
+    ...plan,
+    target: "aarch64-pc-windows-msvc",
+    host: "aarch64-pc-windows-msvc",
+  });
+  assert.equal(result.target, built.target);
+  assert.throws(
+    () =>
+      loadPortableBuild({ ...plan, explicitTarget: "aarch64-pc-windows-msvc" }),
+    /target/i,
+  );
 });

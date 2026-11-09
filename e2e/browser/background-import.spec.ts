@@ -1,78 +1,79 @@
-/// <reference lib="dom" />
-import { Buffer } from "node:buffer";
+﻿/// <reference lib="dom" />
 import { expect, test } from "@playwright/test";
+import { seedBrowserSettings } from "./browser-settings.fixture";
+import {
+  chooseFixtureMedia,
+  colorMedia,
+  seedMediaFixture,
+} from "./media.fixture";
 
-function textChunk(bytes: number): Buffer {
-  const content = Buffer.concat([
-    Buffer.from("Comment\0"),
-    Buffer.alloc(bytes, 65),
-  ]);
-  const kind = Buffer.from("tEXt");
-  const table = Array.from({ length: 256 }, (_, value) => {
-    for (let bit = 0; bit < 8; bit++)
-      value = value & 1 ? 0xedb88320 ^ (value >>> 1) : value >>> 1;
-    return value >>> 0;
-  });
-  let checksum = 0xffffffff;
-  for (const byte of Buffer.concat([kind, content]))
-    checksum = table[(checksum ^ byte) & 255]! ^ (checksum >>> 8);
-  const chunk = Buffer.alloc(content.length + 12);
-  chunk.writeUInt32BE(content.length, 0);
-  kind.copy(chunk, 4);
-  content.copy(chunk, 8);
-  chunk.writeUInt32BE((checksum ^ 0xffffffff) >>> 0, chunk.length - 4);
-  return chunk;
-}
-
-test("a large high-resolution photo is optimized automatically without manual resizing", async ({
+test("browser preview preserves wallpaper controls and reports that native media is unavailable", async ({
   page,
 }) => {
-  test.setTimeout(60_000);
+  await seedBrowserSettings(page);
   await page.goto("./#/settings");
-  const png = Buffer.from(
-    await page.evaluate(() => {
-      const canvas = document.createElement("canvas");
-      canvas.width = 9000;
-      canvas.height = 6000;
-      const context = canvas.getContext("2d")!;
-      context.fillStyle = "#386789";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.fillStyle = "#e4b691";
-      context.fillRect(4500, 0, 4500, 6000);
-      const encoded = canvas.toDataURL("image/png").split(",")[1]!;
-      canvas.width = canvas.height = 0;
-      return encoded;
-    }),
-    "base64",
-  );
-  // 合法 PNG 文本元数据也计入原图大小，重绘后不会进入偏好存档。
-  const image = Buffer.concat([
-    png.subarray(0, -12),
-    textChunk(12 * 1024 * 1024),
-    png.subarray(-12),
-  ]);
-  expect(image.length).toBeGreaterThan(10 * 1024 * 1024);
   await expect(
     page.getByRole("button", { name: "Add wallpapers", exact: true }),
-  ).toBeEnabled();
-  await page.locator('input[type="file"]').setInputFiles({
-    name: "panorama.png",
-    mimeType: "image/png",
-    buffer: image,
-  });
+  ).toBeDisabled();
   await expect(
-    page.getByRole("radio", {
-      name: "Use wallpaper: panorama.png",
-      exact: true,
-    }),
-  ).toBeChecked();
-  const background = page.locator("[data-custom-background]");
+    page.getByText(
+      "Media backgrounds are not connected yet. Your selection is preserved.",
+      { exact: true },
+    ),
+  ).toBeVisible();
+  await expect(page.locator('input[type="file"]')).toHaveCount(0);
+  await expect(page.locator("img[data-bundled-wallpaper]")).toBeVisible();
+});
+
+test("a native media selection stores references and renders the resolved image across a reload", async ({
+  page,
+}, testInfo) => {
+  await seedMediaFixture(page);
+  await page.goto("./#/settings");
+  const reference = await chooseFixtureMedia(
+    page,
+    await colorMedia(page, "sky.png", "#94bddc"),
+  );
+  const image = page.locator("[data-custom-background]");
+  await expect(image).toBeVisible();
+  await expect
+    .poll(() => image.evaluate((node: HTMLImageElement) => node.naturalWidth))
+    .toBe(320);
+  await expect(
+    page.getByRole("button", { name: "Use wallpaper: sky.png", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await expect
     .poll(() =>
-      background.evaluate((node) => (node as HTMLImageElement).naturalWidth),
+      page.evaluate(
+        () => window.workbenchFixture.settingsWrites.at(-1)?.background,
+      ),
     )
-    .toBe(1600);
-  const source = await background.getAttribute("src");
-  expect(source?.length).toBeLessThanOrEqual(96 * 1024);
-  await expect(page.locator(".wallpaper-card")).toHaveCount(1);
+    .toEqual({ kind: "media", reference, fit: "cover" });
+  await page
+    .getByRole("radio", { name: "Show full image", exact: true })
+    .click();
+  await expect(image).toHaveCSS("object-fit", "contain");
+  await page.reload();
+  await expect(image).toHaveCSS("object-fit", "contain");
+  await expect(
+    page.getByRole("button", { name: "Use wallpaper: sky.png", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const snapshot = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem("workbench-native-fixture")!),
+  );
+  expect(snapshot.client.state.gallery).toEqual([
+    { name: "sky.png", reference },
+  ]);
+  expect(snapshot.settings.document.value.background).toEqual({
+    kind: "media",
+    reference,
+    fit: "contain",
+  });
+  expect(JSON.stringify(snapshot.settings)).not.toMatch(
+    /data:image|blob:|__fixture-media/,
+  );
+  expect(
+    await page.evaluate(() => window.workbenchFixture.unexpectedCommands),
+  ).toEqual([]);
+  await page.screenshot({ path: testInfo.outputPath("native-image.png") });
 });

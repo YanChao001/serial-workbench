@@ -1,6 +1,6 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 
 async function expectContinuousSurface(page: Page, tooltip: Locator) {
   const bounds = (await tooltip.boundingBox())!;
@@ -53,22 +53,12 @@ for (const theme of ["light", "dark"] as const) {
   test(`translucent tooltip arrows join the body without a darker overlap: ${theme}`, async ({
     page,
   }) => {
-    await page.addInitScript(
-      ({ key, theme }) =>
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            schemaVersion: 3,
-            language: "en",
-            theme,
-            motion: "reduced",
-            sidebarCollapsed: true,
-            background: "aurora",
-            backgroundIntensity: 50,
-          }),
-        ),
-      { key: `${appConfig.browserStorageNamespace}:settings`, theme },
-    );
+    await seedBrowserSettings(page, {
+      theme,
+      sidebarCollapsed: true,
+      background: "aurora",
+      backgroundIntensity: 50,
+    });
     await page.goto("./#/settings");
     // 统一两侧的背景，像素差只反映箭头与正文的材质合成。
     await page.evaluate(() => {

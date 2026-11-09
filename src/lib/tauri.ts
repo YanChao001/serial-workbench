@@ -1,70 +1,113 @@
-import type { settingsDocument } from "./settings-model";
+﻿// Host errors preserve Core codes independently of the desktop system error enum.
+import {
+  ContractValidationError,
+  parseReply,
+} from "@serial-workbench/contracts";
+import type {
+  HostError,
+  ObjectRef,
+  OpenParams,
+  Query,
+  RawBatch,
+  RpcReply,
+  RpcRequest,
+  WireFrame,
+  SessionSnapshot,
+  U64,
+  Operation,
+} from "@serial-workbench/contracts";
+import type { DesktopAttachment, DeliveryStream } from "./generated/bindings";
+import { HostRequestError } from "@serial-workbench/host-client";
 import type {
   DesktopStatus,
+  ClientStateSnapshot,
+  ClientWindowState,
+  HostSettingsEffectsReceipt,
   DiagnosticsReport,
   NativeError as NativeFailure,
-  SettingsSnapshot,
   UpdateProgress,
   UpdateStatus,
   WindowGeometry,
-  Wallpaper,
-  WallpaperInput,
-  WallpaperVideo,
-  WallpaperVideoChoice,
+  FileResourceRole,
+  CaptureNameHint,
+  SelectedFileResource,
+  MediaResolution,
+  LocalDocumentIntent_Deserialize,
 } from "./generated/bindings";
 
 export type {
+  ClientPreferences,
+  ClientStateSnapshot,
+  ClientWindowState,
+  HostSettingsEffectsReceipt,
   DesktopStatus,
   DiagnosticsReport,
   FrontendError,
-  SettingsSnapshot,
   UpdateProgress,
   UpdateStatus,
   WindowGeometry,
-  Wallpaper,
-  WallpaperInput,
-  WallpaperVideo,
-  WallpaperVideoChoice,
-  WallpaperVideoMime,
+  FileResourceRole,
+  CaptureNameHint,
+  SelectedFileResource,
+  MediaResolution,
 } from "./generated/bindings";
 
-export function listWallpapers(): Promise<Wallpaper[]> {
-  return callNative((commands) => commands.listWallpapers());
+export function readClientState(): Promise<ClientStateSnapshot> {
+  return callNative((commands) => commands.clientStateRead());
 }
-export function addWallpaper(input: WallpaperInput): Promise<Wallpaper> {
-  return callNative((commands) => commands.addWallpaper(input));
-}
-export function chooseWallpaperVideo(): Promise<WallpaperVideoChoice | null> {
-  return callNative((commands) => commands.chooseWallpaperVideo());
-}
-export async function wallpaperVideoUrl(
-  video: WallpaperVideo,
-): Promise<string> {
-  requireDesktop();
-  if (
-    !/^[a-f0-9]{64}$/.test(video.id) ||
-    !["video/mp4", "video/webm"].includes(video.mime)
-  ) {
-    throw new NativeBridgeError({
-      code: "INVALID_ARGUMENT",
-      message: "Invalid wallpaper video reference",
-      retryable: false,
-    });
-  }
-  const { convertFileSrc } = await import("@tauri-apps/api/core");
-  return convertFileSrc(
-    `${video.id}.${video.mime === "video/mp4" ? "mp4" : "webm"}`,
-    "wallpaper-media",
+export function saveClientState(
+  state: ClientWindowState,
+  expectedRevision: U64,
+): Promise<ClientStateSnapshot> {
+  return callNative((commands) =>
+    commands.clientStateSave(state, expectedRevision),
   );
 }
-export function renameWallpaper(id: string, name: string): Promise<Wallpaper> {
-  return callNative((commands) => commands.renameWallpaper(id, name));
+export function applyHostSettingsEffects(): Promise<HostSettingsEffectsReceipt> {
+  return callHost((commands) => commands.applyHostSettingsEffects());
 }
-export async function removeWallpaper(id: string): Promise<void> {
-  await callNative((commands) => commands.removeWallpaper(id));
+export function chooseFileResource(
+  role: FileResourceRole,
+  generation: U64,
+  captureNameHint?: CaptureNameHint,
+): Promise<SelectedFileResource | null> {
+  return callHost((commands) =>
+    commands.chooseFileResource(role, generation, captureNameHint ?? null),
+  );
 }
-export function onWallpapersChanged(handler: () => void): Promise<() => void> {
-  return onNativeEvent("app://wallpapers-changed", handler);
+export function mediaResolve(
+  reference: ObjectRef,
+  generation: U64,
+): Promise<MediaResolution> {
+  return callHost((commands) => commands.mediaResolve(reference, generation));
+}
+export async function mediaRelease(
+  ticket: string,
+  generation: U64,
+): Promise<void> {
+  await callHost((commands) => commands.mediaRelease(ticket, generation));
+}
+export function hostConnectDevice(
+  generation: U64,
+  deviceId: string,
+  params: OpenParams,
+): Promise<SessionSnapshot> {
+  return callHost((commands) =>
+    commands.hostConnectDevice(generation, deviceId, params),
+  );
+}
+
+export async function hostApplyDocumentIntent(
+  generation: U64,
+  intent: LocalDocumentIntent_Deserialize,
+): Promise<Operation> {
+  const operation = await callHost((commands) =>
+    commands.hostApplyDocumentIntent(generation, intent),
+  );
+  const reply = parseReply({ ok: true, result: { operation } });
+  if (!reply.ok || !("operation" in reply.result))
+    throw new ContractValidationError();
+  return reply.result.operation;
 }
 
 export class NativeBridgeError extends Error {
@@ -265,31 +308,6 @@ export async function getAppInfo(): Promise<AppInfo> {
   return { version, tauriVersion };
 }
 
-export function loadSettingsSnapshot(): Promise<SettingsSnapshot> {
-  return callNative((commands) => commands.loadSettingsSnapshot());
-}
-
-export function saveSettingsSnapshot(
-  settings: ReturnType<typeof settingsDocument>,
-  expectedRevision: number,
-): Promise<SettingsSnapshot> {
-  const document = structuredClone(settings);
-  return callNative((commands) =>
-    commands.saveSettingsSnapshot(document, expectedRevision),
-  );
-}
-
-/** 显式恢复默认值独立于普通保存，允许用户确认后替换未来版本存档。 */
-export function resetSettingsSnapshot(
-  settings: ReturnType<typeof settingsDocument>,
-  expectedRevision: number,
-): Promise<SettingsSnapshot> {
-  const document = structuredClone(settings);
-  return callNative((commands) =>
-    commands.resetSettingsSnapshot(document, expectedRevision),
-  );
-}
-
 async function onNativeEvent<T>(
   event: string,
   handler: (payload: T) => void,
@@ -303,12 +321,6 @@ async function onNativeEvent<T>(
   return listen<T>(event, ({ payload }) => handler(payload), {
     target: { kind: "WebviewWindow", label: getCurrentWindow().label },
   });
-}
-
-export function onSettingsChanged(
-  handler: (snapshot: SettingsSnapshot) => void,
-): Promise<() => void> {
-  return onNativeEvent("app://settings-changed", handler);
 }
 
 export function onUpdateProgress(
@@ -495,4 +507,69 @@ export async function onSystemNotification(
   return () => {
     void listener.unregister();
   };
+}
+
+async function callHost<T>(
+  call: (
+    commands: NativeCommands,
+  ) => Promise<
+    { status: "ok"; data: T } | { status: "error"; error: HostError }
+  >,
+): Promise<T> {
+  requireDesktop();
+  const { commands } = await import("./generated/bindings");
+  const result = await call(commands);
+  if (result.status === "error") throw new HostRequestError(result.error);
+  return result.data;
+}
+export function hostAttachment(): Promise<DesktopAttachment> {
+  return callHost((commands) => commands.hostAttachment());
+}
+export function hostRequest(request: RpcRequest): Promise<RpcReply> {
+  return callHost((commands) => commands.hostRequest(request));
+}
+export function hostRawRequest(request: RpcRequest): Promise<RpcReply> {
+  return callHost((commands) => commands.hostRawRequest(request));
+}
+export async function hostSubscribe(
+  request: Query,
+  onFrame: (frame: WireFrame) => void,
+): Promise<string> {
+  requireDesktop();
+  const { Channel } = await import("@tauri-apps/api/core");
+  const channel = new Channel<WireFrame>(onFrame);
+  return callHost((commands) => commands.hostSubscribe(request, channel));
+}
+export async function hostRawSubscribe(
+  request: Query,
+  onBatch: (batch: RawBatch) => void,
+  onLifecycle: (frame: WireFrame) => void,
+): Promise<string> {
+  requireDesktop();
+  const { Channel } = await import("@tauri-apps/api/core");
+  return callHost((commands) =>
+    commands.hostRawSubscribe(
+      request,
+      new Channel<RawBatch>(onBatch),
+      new Channel<WireFrame>(onLifecycle),
+    ),
+  );
+}
+export async function hostUnsubscribe(subscriptionId: string): Promise<void> {
+  await callHost((commands) => commands.hostUnsubscribe(subscriptionId));
+}
+export async function hostRawUnsubscribe(
+  subscriptionId: string,
+): Promise<void> {
+  await callHost((commands) => commands.hostRawUnsubscribe(subscriptionId));
+}
+export async function hostDeliveryAck(
+  generation: U64,
+  subscriptionId: string,
+  stream: DeliveryStream,
+  ordinal: U64,
+): Promise<void> {
+  await callHost((commands) =>
+    commands.hostDeliveryAck(generation, subscriptionId, stream, ordinal),
+  );
 }

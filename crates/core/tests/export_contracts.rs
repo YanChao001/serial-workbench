@@ -38,7 +38,13 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
             .keys()
             .map(String::as_str)
             .collect::<Vec<_>>(),
-        ["serialConfiguration", "settings", "workspace"]
+        [
+            "captureStorageLimits",
+            "serialConfiguration",
+            "settings",
+            "terminalTypography",
+            "workspace"
+        ]
     );
     assert_eq!(
         defaults["settings"],
@@ -51,6 +57,18 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
     assert_eq!(
         defaults["serialConfiguration"],
         serde_json::to_value(serial_workbench_core::SerialConfiguration::default()).unwrap()
+    );
+    assert_eq!(
+        defaults["terminalTypography"],
+        serde_json::to_value(serial_workbench_core::TerminalTypography::default()).unwrap()
+    );
+    assert_eq!(
+        defaults["captureStorageLimits"],
+        serde_json::to_value(serial_workbench_core::CaptureStorageLimits::default()).unwrap()
+    );
+    assert_eq!(
+        defaults["captureStorageLimits"],
+        serde_json::json!({"capacityBytes":"1073741824","reserveBytes":"134217728"})
     );
     let schemas: Value =
         serde_json::from_slice(&std::fs::read(output.join("schemas.json")).unwrap()).unwrap();
@@ -159,6 +177,9 @@ fn exports_complete_m1_wire_roots_and_catalog_uses_the_same_schemas() {
         "LineEnding",
         "TransportCapabilities",
         "SessionSnapshot",
+        "SessionMetrics",
+        "SessionInputs",
+        "CaptureStorageLimits",
         "OpenParams",
         "OpenResult",
         "TransformReference",
@@ -253,6 +274,8 @@ fn exports_complete_m1_wire_roots_and_catalog_uses_the_same_schemas() {
         ("device.list", "EmptyParams", "DeviceList"),
         ("device.open", "OpenParams", "OpenResult"),
         ("session.get", "EmptyParams", "SessionSnapshot"),
+        ("session.metrics", "EmptyParams", "SessionMetrics"),
+        ("session.inputs", "EmptyParams", "SessionInputs"),
         ("session.close", "EmptyParams", "SessionSnapshot"),
         ("session.tx", "TxParams", "TxReceipt"),
         ("session.configure", "ConfigureParams", "ConfigReceipt"),

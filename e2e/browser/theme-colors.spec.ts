@@ -1,35 +1,25 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import appConfig from "../../app.config.json" with { type: "json" };
 import { PRESET_ACCENTS } from "../../src/lib/accent-colors";
 
-const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:settings`;
+const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:preview-settings-v0`;
 
 async function seed(page: Page, theme: "light" | "dark" = "light") {
-  await page.addInitScript(
-    ({ key, theme }) => {
-      if (!localStorage.getItem(key))
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            schemaVersion: 5,
-            language: "en",
-            theme,
-            motion: "reduced",
-            background: "plain",
-            accent: "neutral",
-          }),
-        );
-    },
-    { key: SETTINGS_KEY, theme },
-  );
+  await seedBrowserSettings(page, {
+    theme,
+    background: "plain",
+    accent: "neutral",
+  });
 }
 
 function savedAccent(page: Page) {
   return page.evaluate((key) => {
-    const settings = JSON.parse(localStorage.getItem(key) ?? "{}");
+    const document = JSON.parse(localStorage.getItem(key) ?? "{}");
+    const settings = document.value;
     return {
-      schemaVersion: settings.schemaVersion,
+      formatVersion: document.formatVersion,
       accent: settings.accent,
       customAccent: settings.customAccent,
     };
@@ -177,7 +167,7 @@ test("custom accent normalizes, survives reload and preset switching, and cancel
   await page.goto("./#/settings");
   await applyCustom(page, "#3ad");
   const expected = {
-    schemaVersion: 7,
+    formatVersion: "0.1",
     accent: "custom",
     customAccent: "#33AADD",
   };
@@ -367,7 +357,7 @@ for (const theme of ["light", "dark"] as const) {
       await expect
         .poll(() => savedAccent(page))
         .toEqual({
-          schemaVersion: 7,
+          formatVersion: "0.1",
           accent: "custom",
           customAccent: color,
         });

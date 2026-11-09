@@ -1,4 +1,4 @@
-import { CheckIcon } from "lucide-react";
+﻿import { CheckIcon } from "lucide-react";
 import { PatternArtwork } from "@/components/window-background";
 import { CustomBackgroundPicker } from "@/components/custom-background-picker";
 import { WallpaperThumbnail } from "@/components/wallpaper-thumbnail";
@@ -31,13 +31,15 @@ export function SkinPicker() {
   return (
     <fieldset data-surface="panel" className="min-w-0 space-y-3">
       <legend id="skin-gallery-heading" className="text-sm font-medium">
-        {t("settings.skinGallery")}
+        <h2>{t("settings.skinGallery")}</h2>
       </legend>
       <div className="space-y-3">
         <TooltipProvider delayDuration={650} skipDelayDuration={0}>
           <div className="skin-gallery">
             {BUNDLED_WALLPAPERS.map((wallpaper) => {
-              const active = settings.background === wallpaper.id;
+              const active =
+                settings.background.kind === "bundled" &&
+                settings.background.id === wallpaper.id;
               return (
                 <label
                   key={wallpaper.id}
@@ -60,7 +62,11 @@ export function SkinPicker() {
                     aria-label={t("settings.chooseWallpaper", {
                       name: wallpaper.name,
                     })}
-                    onChange={() => update({ background: wallpaper.id })}
+                    onChange={() =>
+                      update({
+                        background: { kind: "bundled", id: wallpaper.id },
+                      })
+                    }
                   />
                   <span
                     data-surface="artwork"
@@ -87,7 +93,9 @@ export function SkinPicker() {
             })}
             {BUILTIN_BACKGROUNDS.map((kind) => {
               const metadata = BACKGROUND_METADATA[kind];
-              const active = settings.background === kind;
+              const active =
+                settings.background.kind === "preset" &&
+                settings.background.value === kind;
               const descriptionId = `skin-${kind}-description`;
               return (
                 <Tooltip key={kind}>
@@ -110,7 +118,11 @@ export function SkinPicker() {
                         checked={active}
                         aria-label={t(metadata.labelKey)}
                         aria-describedby={descriptionId}
-                        onChange={() => update({ background: kind })}
+                        onChange={() =>
+                          update({
+                            background: { kind: "preset", value: kind },
+                          })
+                        }
                       />
                       <span
                         data-surface="artwork"
@@ -185,7 +197,10 @@ export function SkinPicker() {
                 max={100}
                 step={10}
                 value={[settings.backgroundIntensity]}
-                disabled={settings.background === "plain"}
+                disabled={
+                  settings.background.kind === "preset" &&
+                  settings.background.value === "plain"
+                }
                 aria-labelledby="skin-intensity-heading"
                 aria-valuetext={t("settings.intensityValue", {
                   value: settings.backgroundIntensity,

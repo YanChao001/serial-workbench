@@ -94,7 +94,7 @@ impl DocumentService {
             locks: Mutex::new(HashMap::new()),
         }
     }
-    fn reference(target: &Target) -> HostResult<StateScopeRef> {
+    pub(crate) fn reference(target: &Target) -> HostResult<StateScopeRef> {
         if target.session_id.is_some() || target.session_epoch.is_some() {
             return Err(invalid());
         }
@@ -144,6 +144,27 @@ impl DocumentService {
         wire_budget(&state)?;
         self.projections
             .synchronize_document(document.reference(), document.event(), state)
+    }
+    pub(crate) fn preview_workspace_import(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        params: DocumentImportParams,
+    ) -> HostResult<WorkspaceDocument> {
+        if target.kind.as_str() != "workspace" {
+            return Err(invalid());
+        }
+        Self::reference(target)?;
+        let stamp = self.auth.capture_grants(actor)?;
+        self.auth.require(actor, "metadata.read", target)?;
+        let value = import_document::<WorkspaceDocument>(&params.json)?;
+        value.validate()?;
+        wire_budget(&value)?;
+        if let Some(stamp) = stamp {
+            self.auth.validate_grants(&stamp)?;
+        }
+        self.auth.require(actor, "metadata.read", target)?;
+        Ok(value)
     }
     pub(crate) fn query(
         &self,

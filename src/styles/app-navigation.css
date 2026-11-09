@@ -135,6 +135,30 @@
   padding: 1rem 1.5rem 1.5rem;
 }
 
+.app-main[data-content-layout="workspace"] {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  scrollbar-gutter: auto;
+}
+
+.app-main[data-content-layout="workspace"] > .app-page-content {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  max-width: none;
+  overflow: hidden;
+  padding: 1rem;
+}
+
+.app-main[data-content-layout="workspace"]
+  > .app-page-content
+  > [role="alert"] {
+  max-height: 100%;
+  overflow: auto;
+  overscroll-behavior: contain;
+}
+
 .app-title-menu-trigger {
   display: inline-flex;
   height: 32px;

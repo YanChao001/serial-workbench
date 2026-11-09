@@ -10,6 +10,8 @@ export default tseslint.config(
       "dist-web/**",
       "artifacts/**",
       ".cache/**",
+      ".pnpm-store/**",
+      ".superpowers/**",
       ".claude/worktrees/**",
       "node_modules/**",
       "marketplace/**",

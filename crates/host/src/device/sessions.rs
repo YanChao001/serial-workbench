@@ -1,3 +1,4 @@
+use super::observability::{InputPermit, InputSample, SessionObservability};
 use crate::{
     auth::{AuthService, AuthenticatedActor, HostIdentity},
     state::ProjectionStore,
@@ -49,6 +50,8 @@ pub(crate) struct Session {
     join: OwnerJoin,
     pub document_revision: tokio::sync::Mutex<U64>,
     projections: ProjectionStore,
+    pub(crate) observability: Arc<Mutex<SessionObservability>>,
+    input_pending: Arc<AtomicBool>,
 }
 struct OpeningOwner {
     closing: Arc<AtomicBool>,
@@ -175,6 +178,7 @@ impl ConfigurationChange {
     }
 }
 enum BackendCommand {
+    SampleInputs(InputSample),
     Drain(
         DrainRequest,
         BackendAdmission,
@@ -470,6 +474,10 @@ impl DeviceService {
         let session_id = previous
             .as_ref()
             .map_or_else(new_id, |v| v.session_id.clone());
+        let observability = current.as_ref().map_or_else(
+            || Arc::new(Mutex::new(SessionObservability::default())),
+            |session| session.observability.clone(),
+        );
         let (ready, opened) = oneshot::channel();
         if let Some(admission) = admission {
             self.check_open(target, &params.configuration, admission)
@@ -548,11 +556,12 @@ impl DeviceService {
                             return;
                         }
                     };
-                    if ready.send(Ok(backend.capabilities())).is_err() {
+                    let opened_at = clock.mono_ns();
+                    if ready.send(Ok((backend.capabilities(), opened_at))).is_err() {
                         completed_send.send_replace(Some(close_unpublished(backend.as_mut())));
                         return;
                     }
-                    let Ok((snapshot, source)) = started.recv() else {
+                    let Ok((snapshot, source, observability)) = started.recv() else {
                         completed_send.send_replace(Some(close_unpublished(backend.as_mut())));
                         return;
                     };
@@ -565,6 +574,7 @@ impl DeviceService {
                             clock,
                             identity,
                             projections,
+                            observability,
                         },
                         owner_closing,
                     );
@@ -581,7 +591,7 @@ impl DeviceService {
         }
         // 发布失败只结束调用等待；owner 保留到实际原生清理结算。
         let prepared: HostResult<_> = async {
-            let capabilities = opened.await.map_err(|_| unavailable())??;
+            let (capabilities, opened_at) = opened.await.map_err(|_| unavailable())??;
             if let Some(admission) = admission {
                 self.check_open(target, &params.configuration, admission)
                     .await?;
@@ -662,10 +672,10 @@ impl DeviceService {
                 let _ = source.close();
                 return Err(error);
             }
-            Ok((snapshot, source, persisted.revision))
+            Ok((snapshot, source, persisted.revision, opened_at))
         }
         .await;
-        let (snapshot, source, document_revision) = match prepared {
+        let (snapshot, source, document_revision, opened_at) = match prepared {
             Ok(v) => v,
             Err(error) => {
                 drop(start);
@@ -674,8 +684,12 @@ impl DeviceService {
             }
         };
         let snapshot = Arc::new(Mutex::new(snapshot));
+        observability
+            .lock()
+            .map_err(|_| unavailable())?
+            .connected(epoch, opened_at);
         start
-            .send((snapshot.clone(), source.clone()))
+            .send((snapshot.clone(), source.clone(), observability.clone()))
             .map_err(|_| unavailable())?;
         let session = Arc::new(Session {
             closing: closing_signal,
@@ -686,6 +700,8 @@ impl DeviceService {
             join: owner.join.clone(),
             document_revision: tokio::sync::Mutex::new(document_revision),
             projections: self.inner.projections.clone(),
+            observability,
+            input_pending: Arc::new(AtomicBool::new(false)),
         });
         let result = session.snapshot()?;
         self.inner
@@ -826,6 +842,35 @@ impl DeviceService {
     }
 }
 impl Session {
+    pub(super) async fn sample_inputs(&self, epoch: U64) -> HostResult<SessionInputs> {
+        let permit = InputPermit::acquire(&self.input_pending)?;
+        let (reply, receive) = oneshot::channel();
+        {
+            let state = self.snapshot.lock().map_err(|_| unavailable())?;
+            if state.session_epoch != epoch {
+                return Err(HostError::new("EPOCH_MISMATCH", "Session epoch changed"));
+            }
+            if self.closing.load(Ordering::SeqCst) || state.state != SessionState::Open {
+                return Err(HostError::new(
+                    "HOST_BUSY",
+                    "Session is not open for input sampling",
+                ));
+            }
+            self.sender
+                .try_send(BackendCommand::SampleInputs(InputSample {
+                    epoch,
+                    reply,
+                    permit,
+                }))
+                .map_err(|error| match error {
+                    mpsc::TrySendError::Full(_) => {
+                        HostError::new("HOST_BUSY", "Device control queue is full")
+                    }
+                    mpsc::TrySendError::Disconnected(_) => unavailable(),
+                })?;
+        }
+        receive.await.map_err(|_| unavailable())?
+    }
     pub fn snapshot(&self) -> HostResult<SessionSnapshot> {
         self.snapshot
             .lock()
@@ -1052,6 +1097,7 @@ struct OwnerContext {
     clock: Arc<dyn Clock>,
     identity: HostIdentity,
     projections: ProjectionStore,
+    observability: Arc<Mutex<SessionObservability>>,
 }
 fn owner_loop(
     mut backend: Box<dyn Transport>,
@@ -1065,6 +1111,7 @@ fn owner_loop(
         clock,
         identity,
         projections,
+        observability,
     } = context;
     let mut writing: Option<PendingWriteReply> = None;
     let mut pending: Option<PendingDrainReply> = None;
@@ -1084,6 +1131,16 @@ fn owner_loop(
         if let Some(pending_write) = &mut writing
             && let Some(mut result) = pending_write.job.poll()
         {
+            let error = match &result {
+                Ok(write) => write.error.as_ref(),
+                Err(error) => Some(error.error.as_ref()),
+            };
+            if let Some(error) = error {
+                observability
+                    .lock()
+                    .map_err(|_| unavailable())?
+                    .write_error(error);
+            }
             match &mut result {
                 Ok(BackendWrite {
                     error: Some(error), ..
@@ -1174,6 +1231,9 @@ fn owner_loop(
                     break;
                 };
                 match command {
+                    BackendCommand::SampleInputs(sample) => {
+                        sample.complete(backend.as_mut(), &snapshot, clock.as_ref(), &closing);
+                    }
                     BackendCommand::Control(
                         command @ (ControlCommand::QueueStatus | ControlCommand::ModemStatus),
                         _,
@@ -1202,6 +1262,9 @@ fn owner_loop(
             break;
         }
         match receiver.recv_timeout(Duration::from_millis(1)) {
+            Ok(BackendCommand::SampleInputs(sample)) => {
+                sample.complete(backend.as_mut(), &snapshot, clock.as_ref(), &closing);
+            }
             Ok(BackendCommand::Drain(mut request, admission, reply)) => {
                 let deadline = backend_deadline(clock.as_ref(), request.wait);
                 let cancelled = request.cancelled.clone();
@@ -1245,7 +1308,15 @@ fn owner_loop(
                 };
                 let length = bytes.len();
                 match admitted.map_err(BackendError::from).and_then(|()| {
-                    backend.begin_write(bytes, wait, native_cancelled.clone(), closing.clone())
+                    let result =
+                        backend.begin_write(bytes, wait, native_cancelled.clone(), closing.clone());
+                    if let Err(error) = &result {
+                        observability
+                            .lock()
+                            .map_err(|_| unavailable())?
+                            .write_error(&error.error);
+                    }
+                    result
                 }) {
                     Ok(job) => {
                         writing = Some(PendingWriteReply {
@@ -1329,6 +1400,10 @@ fn owner_loop(
         }
         match backend.read(16 * 1024, Duration::from_millis(20)) {
             Ok(block) if !block.bytes.is_empty() => {
+                observability
+                    .lock()
+                    .map_err(|_| unavailable())?
+                    .received(block.bytes.len(), clock.mono_ns());
                 let revision = match snapshot.lock() {
                     Ok(v) => v.configuration_revision,
                     Err(_) => break,
@@ -1338,6 +1413,10 @@ fn owner_loop(
                     block.bytes,
                     block.message,
                 ) {
+                    observability
+                        .lock()
+                        .map_err(|_| unavailable())?
+                        .disconnected(clock.mono_ns());
                     disconnected(&snapshot, &projections, &source, error);
                     if pending.is_some() || writing.is_some() {
                         closing.store(true, Ordering::SeqCst);
@@ -1347,6 +1426,11 @@ fn owner_loop(
                 }
             }
             Err(error) => {
+                {
+                    let mut metrics = observability.lock().map_err(|_| unavailable())?;
+                    metrics.read_error(&error.error);
+                    metrics.disconnected(clock.mono_ns());
+                }
                 disconnected(&snapshot, &projections, &source, *error.error);
                 if pending.is_some() || writing.is_some() {
                     closing.store(true, Ordering::SeqCst);
@@ -1380,6 +1464,10 @@ fn owner_loop(
         }));
     }
     let result = backend.close();
+    observability
+        .lock()
+        .map_err(|_| unavailable())?
+        .disconnected(clock.mono_ns());
     let mut requested_close = false;
     if let Ok(mut state) = snapshot.lock() {
         requested_close = state.state == SessionState::Closing;

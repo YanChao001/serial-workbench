@@ -382,6 +382,35 @@ pub async fn authorize(
     }
 }
 
+pub(crate) fn request_bound_window_close(
+    app: &tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    instance: u64,
+) -> serial_workbench_core::HostResult<()> {
+    use serial_workbench_core::HostError;
+    let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
+    if bridge.bind_window(&window)? != instance {
+        return Err(HostError::new("EPOCH_MISMATCH", "Window instance changed"));
+    }
+    let app = app.clone();
+    tauri::async_runtime::spawn(async move {
+        let label = window.label().to_owned();
+        let Ok(_authorization) = authorize(&app, LifecycleAction::Close, Some(&label)).await else {
+            return;
+        };
+        let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
+        if bridge.can_close_window_instance(&label, instance)
+            && bridge
+                .bind_window(&window)
+                .is_ok_and(|current| current == instance)
+            && let Err(error) = window.destroy()
+        {
+            log::warn!("Cannot close window: {error}");
+        }
+    });
+    Ok(())
+}
+
 pub fn request_action(app: &tauri::AppHandle, action: LifecycleAction, label: Option<String>) {
     let app = app.clone();
     tauri::async_runtime::spawn(async move {

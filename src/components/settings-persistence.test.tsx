@@ -62,7 +62,7 @@ describe("设置保存反馈", () => {
   });
   it("未来版本拒写仍有紧凑说明，不提供覆盖或普通重试入口", () => {
     state.persistence = "error";
-    state.persistenceError = "FUTURE_SETTINGS_VERSION";
+    state.persistenceError = "FUTURE_FORMAT";
     render(<SettingsPersistence />);
     expect(screen.getByRole("alert")).toHaveTextContent(
       "settings.persistenceFuture",

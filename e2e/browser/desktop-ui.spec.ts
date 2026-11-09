@@ -1,11 +1,17 @@
+import {
+  seedMediaFixture,
+  chooseFixtureMedia,
+  colorMedia,
+} from "./media.fixture";
+import {
+  seedBrowserSettings,
+  clientStateKey,
+} from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import appConfig from "../../app.config.json" with { type: "json" };
-
-const KEY = `${appConfig.browserStorageNamespace}:settings`;
 
 test("settings search opens over the page without moving settings or stealing input focus", async ({
   page,
@@ -138,22 +144,7 @@ for (const profile of [
 
 const routes = ["/", "/diagnostics", "/recovery", "/settings"];
 async function seed(page: Page, settings: Record<string, unknown> = {}) {
-  await page.addInitScript(
-    ({ key, value }) => {
-      if (!localStorage.getItem(key))
-        localStorage.setItem(
-          key,
-          JSON.stringify({
-            schemaVersion: 3,
-            language: "en",
-            theme: "light",
-            motion: "reduced",
-            ...value,
-          }),
-        );
-    },
-    { key: KEY, value: settings },
-  );
+  await seedBrowserSettings(page, settings);
 }
 
 async function expectRouteReady(page: Page, route: string) {
@@ -507,7 +498,10 @@ for (const theme of ["light", "dark"]) {
     page,
   }, testInfo) => {
     test.setTimeout(180_000);
-    await seed(page, { theme, backgroundIntensity: 50 });
+    await seedMediaFixture(page, {
+      theme: theme as "light" | "dark",
+      backgroundIntensity: 50,
+    });
     const samples = new Map<
       string,
       { visible: number[][]; backdrop: number[][] }[]
@@ -787,7 +781,7 @@ for (const theme of ["light", "dark"]) {
         context.fillRect(0, 0, 16, 16);
         return canvas.toDataURL("image/png").split(",")[1]!;
       }, wallpaper);
-      await page.locator('input[type="file"]').setInputFiles({
+      await chooseFixtureMedia(page, {
         name: `dialog-${wallpaper}.png`,
         mimeType: "image/png",
         buffer: Buffer.from(image, "base64"),
@@ -1174,7 +1168,10 @@ for (const theme of ["light", "dark"]) {
   test(`50% frost exposes wallpaper and keeps placeholder and popup text readable: ${theme}`, async ({
     page,
   }, testInfo) => {
-    await seed(page, { theme, backgroundIntensity: 50 });
+    await seedMediaFixture(page, {
+      theme: theme as "light" | "dark",
+      backgroundIntensity: 50,
+    });
     await page.goto("./#/settings");
     const search = page.getByRole("searchbox", {
       name: "Search settings",
@@ -1191,7 +1188,7 @@ for (const theme of ["light", "dark"]) {
         context.fillRect(0, 0, 16, 16);
         return canvas.toDataURL("image/png").split(",")[1]!;
       }, background);
-      await page.locator('input[type="file"]').setInputFiles({
+      await chooseFixtureMedia(page, {
         name: `frost-${background}.png`,
         mimeType: "image/png",
         buffer: Buffer.from(source, "base64"),
@@ -1328,17 +1325,17 @@ for (const theme of ["light", "dark"]) {
       for (let x = 24; x < 640; x += 80) context.fillRect(x, 0, 16, 360);
       return canvas.toDataURL("image/png").split(",")[1]!;
     });
-    await page.locator('input[type="file"]').setInputFiles({
+    await chooseFixtureMedia(page, {
       name: "frost-colors.png",
       mimeType: "image/png",
       buffer: Buffer.from(colorfulSource, "base64"),
     });
     await expect(
-      page.getByRole("radio", {
+      page.getByRole("button", {
         name: "Use wallpaper: frost-colors.png",
         exact: true,
       }),
-    ).toBeChecked();
+    ).toHaveAttribute("aria-pressed", "true");
     await expect(page.locator("html")).toHaveAttribute(
       "data-background-intensity",
       "50",
@@ -1401,7 +1398,9 @@ test("the browser fills the viewport with the desktop and keeps narrow navigatio
   const navigation = page.locator(".app-title-bar .app-compact-navigation");
   await expect(navigation).toBeVisible();
   await navigation.click();
-  await page.getByRole("option", { name: "Home", exact: true }).click();
+  await page
+    .getByRole("option", { name: "Serial Workbench", exact: true })
+    .click();
   await expect(page).toHaveURL(/#\/$/);
   expect((await page.locator(".app-chrome").boundingBox())?.height).toBe(40);
 });
@@ -1462,6 +1461,14 @@ for (const theme of ["light", "dark"] as const) {
     await sidebar.getByRole("button", { name: "Collapse sidebar" }).click();
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     await expect(sidebar).toHaveCSS("width", "48px");
+    // The top row can finish its layout one frame after the sidebar width.
+    await expect
+      .poll(() =>
+        sidebar.evaluate(
+          (element) => element.scrollWidth <= element.clientWidth,
+        ),
+      )
+      .toBe(true);
     const compactGeometry = await sidebar.evaluate((element) => {
       const bounds = element.getBoundingClientRect();
       const controls = element.querySelectorAll<HTMLElement>("a, button");
@@ -2002,82 +2009,35 @@ test("both scrollbars use thin arrowless tracks and fade after the pointer leave
     .toBe(0);
 });
 
-async function wallpaperFile(page: Page, name: string, color: string) {
-  const source = await page.evaluate((fill) => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 320;
-    canvas.height = 200;
-    const context = canvas.getContext("2d")!;
-    context.fillStyle = fill;
-    context.fillRect(0, 0, 320, 200);
-    context.fillStyle = "#ffffff";
-    context.beginPath();
-    context.arc(80, 65, 30, 0, Math.PI * 2);
-    context.fill();
-    return canvas.toDataURL("image/png").split(",")[1]!;
-  }, color);
-  return { name, mimeType: "image/png", buffer: Buffer.from(source, "base64") };
-}
-
-test("wallpaper library supports multi-import, rename, deletion and shared browser storage", async ({
+test("native gallery selection, rename and deletion keep window metadata separate from the selected Host reference", async ({
   page,
-  context,
-}, testInfo) => {
-  await seed(page, { theme: "dark" });
+}) => {
+  await seedMediaFixture(page, { theme: "dark" });
   await page.goto("./#/settings");
+  const first = await chooseFixtureMedia(
+    page,
+    await colorMedia(page, "sky.png", "#94bddc"),
+  );
   await expect(
-    page.getByRole("button", { name: "Add wallpapers", exact: true }),
-  ).toBeEnabled();
-  const first = await wallpaperFile(page, "sky.png", "#94bddc");
-  const second = await wallpaperFile(page, "rose.png", "#d8a4b2");
-  await page.locator('input[type="file"]').setInputFiles([
-    first,
-    {
-      name: "broken.png",
-      mimeType: "image/png",
-      buffer: Buffer.from("broken"),
-    },
-    second,
-  ]);
-  await expect(page.locator(".wallpaper-card")).toHaveCount(2);
-  await page
-    .locator('[data-sonner-toast][data-type="error"]')
-    .getByRole("button", { name: "View details" })
-    .click();
-  const importDetails = page.getByRole("dialog", {
-    name: "Images not imported",
-  });
-  await expect(importDetails).toContainText("broken.png");
-  await importDetails
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
+    page.getByRole("button", { name: "Use wallpaper: sky.png", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
+  const second = await chooseFixtureMedia(
+    page,
+    await colorMedia(page, "rose.png", "#d8a4b2"),
+  );
   await expect(
-    page.getByRole("radio", { name: "Use wallpaper: rose.png", exact: true }),
-  ).toBeChecked();
+    page.getByRole("button", { name: "Use wallpaper: rose.png", exact: true }),
+  ).toHaveAttribute("aria-pressed", "true");
   await page
-    .getByRole("radio", { name: "Use wallpaper: sky.png", exact: true })
-    .locator("..")
+    .getByRole("button", { name: "Use wallpaper: sky.png", exact: true })
     .click();
-  const background = page.locator("[data-custom-background]");
-  await expect(background).toHaveAttribute("src", /^data:image\/(webp|jpeg);/);
   await expect
     .poll(() =>
-      background.evaluate((node) => (node as HTMLImageElement).naturalWidth),
+      page.evaluate(
+        () => window.workbenchFixture.settingsWrites.at(-1)?.background,
+      ),
     )
-    .toBe(320);
-  const thumbnail = page.locator(".wallpaper-card").first().locator("img");
-  await expect(thumbnail).toHaveAttribute("src", /^data:image\/png;/);
-  expect(await background.getAttribute("src")).not.toBe(
-    await thumbnail.getAttribute("src"),
-  );
-  await page.locator('input[type="file"]').setInputFiles(first);
-  await expect(
-    page.getByRole("button", { name: "Add wallpapers", exact: true }),
-  ).toBeEnabled();
-  await expect(page.locator(".wallpaper-card")).toHaveCount(2);
-  const other = await context.newPage();
-  await other.goto("./#/settings");
-  await expect(other.locator(".wallpaper-card")).toHaveCount(2);
+    .toEqual({ kind: "media", reference: first, fit: "cover" });
   await page
     .getByRole("button", { name: "Rename wallpaper: sky.png", exact: true })
     .click();
@@ -2086,47 +2046,37 @@ test("wallpaper library supports multi-import, rename, deletion and shared brows
     .fill("Morning sky");
   await page.getByRole("button", { name: "Save", exact: true }).click();
   await expect(
-    other.getByRole("radio", {
+    page.getByRole("button", {
       name: "Use wallpaper: Morning sky",
       exact: true,
     }),
   ).toBeVisible();
-  await other
+  await page
     .getByRole("button", { name: "Delete wallpaper: rose.png", exact: true })
     .click();
-  await other
-    .getByRole("dialog", { name: "Remove wallpaper from library?" })
-    .getByRole("button", { name: "Remove wallpaper", exact: true })
-    .click();
-  await expect(page.locator(".wallpaper-card")).toHaveCount(1);
-  await page.reload();
-  await expect(page.locator(".wallpaper-card")).toHaveCount(1);
   await expect(
-    page.getByRole("radio", {
+    page.getByRole("button", { name: "Use wallpaper: rose.png", exact: true }),
+  ).toHaveCount(0);
+  const retained = await page.evaluate(() =>
+    JSON.parse(sessionStorage.getItem("workbench-native-fixture")!),
+  );
+  expect(retained.client.state.gallery).toEqual([
+    { name: "Morning sky", reference: first },
+  ]);
+  expect(retained.settings.document.value.background.reference).toEqual(first);
+  expect(retained.settings.document.value.background.reference).not.toEqual(
+    second,
+  );
+  await page.reload();
+  await expect(
+    page.getByRole("button", {
       name: "Use wallpaper: Morning sky",
       exact: true,
     }),
-  ).toBeChecked();
-  await page
-    .locator(".wallpaper-library")
-    .screenshot({ path: testInfo.outputPath("wallpaper-library.png") });
-  await page
-    .getByRole("button", { name: "Clear background", exact: true })
-    .click();
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-background",
-    "plain",
-  );
-  await expect(page.locator(".wallpaper-card")).toHaveCount(1);
-  await page
-    .getByRole("radio", { name: "Use wallpaper: Morning sky", exact: true })
-    .locator("..")
-    .click();
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-background",
-    "custom",
-  );
-  await other.close();
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(
+    await page.evaluate(() => window.workbenchFixture.unexpectedCommands),
+  ).toEqual([]);
 });
 
 test("full screen menu and F11 share real fullscreen state and restore the sidebar", async ({
@@ -2170,8 +2120,8 @@ test("full screen menu and F11 share real fullscreen state and restore the sideb
     /app-shell-immersive/,
   );
   const settings = await page.evaluate(
-    (key) => JSON.parse(localStorage.getItem(key)!),
-    KEY,
+    (key) => JSON.parse(sessionStorage.getItem(key)!).state.preferences,
+    clientStateKey,
   );
   expect(settings.sidebarCollapsed).toBe(true);
   expect(settings.sidebarWidth).toBe(280);
@@ -2451,8 +2401,8 @@ test("immersive navigation supports narrow screens and reduced motion without ch
   await expect(sidebar).toBeHidden();
   await page.keyboard.press("Escape");
   const settings = await page.evaluate(
-    (key) => JSON.parse(localStorage.getItem(key)!),
-    KEY,
+    (key) => JSON.parse(sessionStorage.getItem(key)!).state.preferences,
+    clientStateKey,
   );
   expect(settings.sidebarCollapsed).toBe(true);
   expect(settings.sidebarWidth).toBe(280);
@@ -2492,121 +2442,37 @@ test.describe("immersive touch navigation", () => {
   });
 });
 
-test("a local background imports, survives reload, keeps the last good image on failure and can be removed", async ({
+test("cancelling the native media picker keeps the current resolved image and Host selection", async ({
   page,
 }) => {
-  const external: string[] = [];
-  page.on("request", (request) => {
-    if (
-      /^https?:/.test(request.url()) &&
-      new URL(request.url()).hostname !== "127.0.0.1"
-    )
-      external.push(request.url());
-  });
-  await seed(page);
+  await seedMediaFixture(page);
   await page.goto("./#/settings");
-  const source = await page.evaluate(() => {
-    const canvas = document.createElement("canvas");
-    canvas.width = 1900;
-    canvas.height = 1100;
-    const context = canvas.getContext("2d")!;
-    const gradient = context.createLinearGradient(0, 0, 1900, 1100);
-    gradient.addColorStop(0, "#5b719c");
-    gradient.addColorStop(1, "#b8d3bf");
-    context.fillStyle = gradient;
-    context.fillRect(0, 0, 1900, 1100);
-    return canvas.toDataURL("image/png").split(",")[1]!;
-  });
-  const input = page.locator('input[type="file"]');
+  await chooseFixtureMedia(
+    page,
+    await colorMedia(page, "landscape.png", "#9abbd1"),
+  );
+  const image = page.locator("[data-custom-background]");
+  await expect(image).toBeVisible();
+  const source = await image.getAttribute("src");
+  const before = await page.evaluate(
+    () => window.workbenchFixture.settingsWrites.length,
+  );
+  await page
+    .getByRole("button", { name: "Add wallpapers", exact: true })
+    .click();
   await expect(
     page.getByRole("button", { name: "Add wallpapers", exact: true }),
   ).toBeEnabled();
-  await input.setInputFiles({
-    name: "landscape.png",
-    mimeType: "image/png",
-    buffer: Buffer.from(source, "base64"),
-  });
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-background",
-    "custom",
-  );
-  await expect
-    .poll(() =>
-      page
-        .locator("[data-custom-background]")
-        .evaluate(
-          (image) =>
-            image instanceof HTMLImageElement &&
-            image.complete &&
-            image.naturalWidth <= 1600 &&
-            image.naturalWidth > 0,
-        ),
-    )
-    .toBe(true);
-  const saved = await page.evaluate(
-    (key) =>
-      JSON.parse(localStorage.getItem(key)!) as {
-        customBackground: { dataUrl: string; name: string; fit: string };
-      },
-    KEY,
-  );
-  expect(saved.customBackground.name).toBe("landscape.png");
-  expect(saved.customBackground.dataUrl).toMatch(
-    /^data:image\/(webp|jpeg);base64,/,
-  );
-  expect(saved.customBackground.dataUrl.length).toBeLessThanOrEqual(96 * 1024);
-  await page.getByRole("combobox", { name: "Image fit", exact: true }).click();
-  await page
-    .getByRole("option", { name: "Show full image", exact: true })
-    .click();
-  await page.reload();
-  await expect(page.locator("[data-custom-background]")).toHaveCSS(
-    "object-fit",
-    "contain",
-  );
-  await expect(page.getByText("landscape.png", { exact: true })).toBeVisible();
-  await input.setInputFiles({
-    name: "broken.png",
-    mimeType: "image/png",
-    buffer: Buffer.from("broken image"),
-  });
-  await page
-    .locator('[data-sonner-toast][data-type="error"]')
-    .getByRole("button", { name: "View details" })
-    .click();
-  const importDetails = page.getByRole("dialog", {
-    name: "Images not imported",
-  });
-  await expect(importDetails).toContainText("Cannot read the image");
-  await importDetails
-    .getByRole("button", { name: "Close", exact: true })
-    .click();
-  await expect(page.locator("[data-custom-background]")).toHaveAttribute(
-    "src",
-    saved.customBackground.dataUrl,
-  );
-  await page
-    .getByRole("button", {
-      name: "Delete wallpaper: landscape.png",
+  await expect(image).toHaveAttribute("src", source!);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.settingsWrites.length),
+  ).toBe(before);
+  await expect(
+    page.getByRole("button", {
+      name: "Use wallpaper: landscape.png",
       exact: true,
-    })
-    .click();
-  await page
-    .getByRole("dialog", { name: "Remove wallpaper from library?" })
-    .getByRole("button", { name: "Remove wallpaper", exact: true })
-    .click();
-  await expect(page.locator("html")).toHaveAttribute(
-    "data-background",
-    "plain",
-  );
-  await expect(page.locator("[data-custom-background]")).toHaveCount(0);
-  const removed = await page.evaluate(
-    (key) =>
-      JSON.parse(localStorage.getItem(key)!) as { customBackground: unknown },
-    KEY,
-  );
-  expect(removed.customBackground).toBeNull();
-  expect(external).toEqual([]);
+    }),
+  ).toHaveAttribute("aria-pressed", "true");
 });
 
 for (const theme of ["light", "dark"]) {
@@ -2617,11 +2483,7 @@ for (const theme of ["light", "dark"]) {
       width: theme === "light" ? 880 : 1280,
       height: 900,
     });
-    await seed(page, {
-      theme,
-      background: "aurora",
-      sidebarWidth: theme === "light" ? 360 : 224,
-    });
+    await seedMediaFixture(page, { theme: theme as "light" | "dark" });
     await page.goto("./#/settings");
     const slider = page.getByRole("slider", {
       name: "Background transparency",
@@ -2641,7 +2503,7 @@ for (const theme of ["light", "dark"]) {
       context.fillRect(0, 0, 800, 500);
       return canvas.toDataURL("image/png").split(",")[1]!;
     });
-    await page.locator('input[type="file"]').setInputFiles({
+    await chooseFixtureMedia(page, {
       name: "intensity.png",
       mimeType: "image/png",
       buffer: Buffer.from(source, "base64"),
@@ -2760,8 +2622,9 @@ for (const theme of ["light", "dark"]) {
     await expect
       .poll(() =>
         page.evaluate(
-          (key) => JSON.parse(localStorage.getItem(key)!).backgroundIntensity,
-          KEY,
+          () =>
+            JSON.parse(sessionStorage.getItem("workbench-native-fixture")!)
+              .settings.document.value.backgroundIntensity,
         ),
       )
       .toBe(80);

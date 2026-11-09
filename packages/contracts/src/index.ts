@@ -1,20 +1,24 @@
 import type {
   CaptureRecord,
+  CaptureStorageLimits,
   ObjectRef,
   OperationsSnapshot,
   RpcReply,
   SerialConfiguration,
   SharedSettings,
+  TerminalTypography,
   WireFrame,
   WorkspaceDocument,
 } from "./generated/types.ts";
 import {
   validateCaptureRecord,
+  validateCaptureStorageLimits,
   validateObjectRef,
   validateOperationsSnapshot,
   validateRpcReply,
   validateSerialConfiguration,
   validateSharedSettings,
+  validateTerminalTypography,
   validateWireFrame,
   validateWorkspaceDocument,
 } from "./generated/validators.mjs";
@@ -29,11 +33,19 @@ export class ContractValidationError extends Error {
   }
 }
 
-const { settings, workspace, serialConfiguration } = generatedDefaults;
+const {
+  settings,
+  workspace,
+  serialConfiguration,
+  terminalTypography,
+  captureStorageLimits,
+} = generatedDefaults;
 if (
   !validateSharedSettings(settings) ||
   !validateWorkspaceDocument(workspace) ||
-  !validateSerialConfiguration(serialConfiguration)
+  !validateSerialConfiguration(serialConfiguration) ||
+  !validateTerminalTypography(terminalTypography) ||
+  !validateCaptureStorageLimits(captureStorageLimits)
 )
   throw new ContractValidationError("Invalid Rust Host defaults");
 
@@ -41,7 +53,15 @@ export const defaults: Readonly<{
   settings: SharedSettings;
   workspace: WorkspaceDocument;
   serialConfiguration: SerialConfiguration;
-}> = { settings, workspace, serialConfiguration };
+  terminalTypography: TerminalTypography;
+  captureStorageLimits: CaptureStorageLimits;
+}> = {
+  settings,
+  workspace,
+  serialConfiguration,
+  terminalTypography,
+  captureStorageLimits,
+};
 
 export function parseReply(value: unknown): RpcReply {
   if (!validateRpcReply(value)) throw new ContractValidationError();

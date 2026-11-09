@@ -105,19 +105,15 @@ async fn recovery_history_reads_saved_source_after_verification_lease_is_consume
         "{:?}",
         recovered.error
     );
+    let before = f.store.operation_metadata().unwrap();
     let consumed = f
-        .action(
-            &f.user,
-            "capture.recover",
-            f.reference_target(&destination),
-            params,
-        )
+        .rejected_action("capture.recover", f.reference_target(&destination), params)
         .await;
-    assert_ne!(
-        consumed.state,
-        OperationState::Succeeded,
+    assert_eq!(
+        consumed.code, "NOT_FOUND",
         "verification lease must be consumed"
     );
+    assert_eq!(f.store.operation_metadata().unwrap(), before);
     f.grant("content.read", f.reference_target(&destination));
     assert_eq!(
         failure(inspected(&f, &recovered).await).code,

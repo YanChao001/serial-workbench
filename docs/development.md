@@ -1,18 +1,12 @@
 # 开发指南
 
-## 环境要求
+命令从仓库根目录运行。实现约束见[开发规范](./conventions.md)，当前任务与已知失败见[进度](./progress.md)。
 
-工具版本以 [`.nvmrc`](../.nvmrc)、[`package.json`](../package.json) 的 `engines` / `packageManager` 和 [`rust-toolchain.toml`](../rust-toolchain.toml) 为准。
+## 环境与启动
 
-- Windows：Visual Studio Build Tools 的“使用 C++ 的桌面开发”工作负载、Windows SDK 和 WebView2 Runtime；MSI 构建还需启用相应系统组件。
-- macOS：Xcode Command Line Tools。
-- Linux：编译工具和 WebKitGTK 开发库。
+工具版本读取 [package.json](../package.json) 的 engines/packageManager、[.nvmrc](../.nvmrc) 和 [rust-toolchain.toml](../rust-toolchain.toml)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2；macOS 需要 Xcode Command Line Tools；Linux 需要编译工具与 WebKitGTK 开发库，具体安装见 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)。
 
-安装步骤见 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)。
-
-## 首次启动
-
-命令从仓库根目录运行：
+pnpm 在项目内的 `.pnpm-store/` 保存依赖缓存，随项目保持在同一磁盘，配置见 [pnpm-workspace.yaml](../pnpm-workspace.yaml)。该目录由 Git、格式检查和文件监听排除；工具版本由 packageManager 固定，版本更新提示关闭，升级按依赖评审统一处理。
 
 ```sh
 pnpm install --frozen-lockfile
@@ -21,33 +15,23 @@ pnpm doctor
 pnpm app:dev
 ```
 
-首次桌面启动编译 Rust 依赖，后续复用缓存；前端由 Vite 热更新。`pnpm dev` 在 `http://localhost:1420` 启动浏览器预览，系统服务使用桌面环境。当前能力见 [产品范围](./product-scope.md)。
+未安装 npm 依赖也可运行 `node scripts/doctor.mjs`。`pnpm dev` 提供 `http://localhost:1420` 浏览器预览；`pnpm build:web` 输出可部署到子路径的 `dist-web/`，原生构建使用 `dist/`。
 
-## 开发流程
+浏览器生产预览使用 `pnpm build:web` 后运行 `pnpm exec vite preview --outDir dist-web`。TSX/CSS 由 Vite 热更新；Rust、capability 和平台配置变化后重新构建并重启原生进程。
 
-日常流程见 [贡献指南](../CONTRIBUTING.md)，模块职责见 [架构](./architecture.md)。跨模块、数据兼容、权限、窗口生命周期或发布恢复变化，先按 [设计门槛](./engineering-at-scale.md#设计评审与-adr-门槛) 说明影响。
+`app:dev` 在启动 Tauri 前同源构建 Host/CLI，并通过 CLI `catalog --json` 完成就绪。准备失败停止启动并保留终端错误。Host 独立于 GUI，关闭窗口后仍可运行。
 
-### Rust workspace 与公共契约
+准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
-根 [Cargo.toml](../Cargo.toml) 管理桌面与无头 crate，当前成员和默认检查范围以 `members` / `default-members` 为准；[Cargo.lock](../Cargo.lock) 是唯一 Rust 锁文件。版本在 `workspace.package.version` 维护，各成员使用 `version.workspace`；版本变更仍使用 `pnpm version:set`。桌面命令显式选择 `-p serial-workbench`。
-
-[target 配置](../.cargo/config.toml) 保留 `src-tauri/target` 缓存。共享 target 的 Cargo 与绑定/契约生成命令依次执行。仅检查无头 crate 不需要构建前端；桌面检查先准备 `dist/`，见 [Rust 测试](./testing.md#rust-测试)。
-
-Host 公共 DTO 在 `crates/core` 维护。修改 wire 类型后顺序运行 `pnpm contracts:generate`、`pnpm contracts:check`，提交 `packages/contracts/src/generated/` 的结果。生成器从 Rust 导出类型、draft-07 schema、目录和正负 fixture，再生成浏览器 ESM 校验器。手写 TypeScript 从 contracts 包使用类型与 `parseReply`，未知输入先校验；Tauri 本地命令继续使用原有 `bindings:*` 流程。
-
-### 独立 Host、CLI 与 MCP
-
-从仓库根目录构建三个入口：
+## Host、CLI 与 MCP
 
 ```sh
 cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins
 ```
 
-程序位于 Cargo target 的 `debug/`，默认是 `src-tauri/target/debug/`；Windows 文件名带 `.exe`。CLI 和 MCP 先认证附着同 profile 的 Host，首次使用会启动同目录的 Host 程序。三个程序应放在一起。Windows 的工具或 IDE 若通过 Job 禁止子进程脱离，会返回 `HOST_START_FAILED`；此时先在独立终端运行 `serial-workbench-host --profile <绝对目录>`，再让客户端连接同一 profile。
+默认程序在 `src-tauri/target/debug/`，Windows 带 `.exe`；Host、CLI 和 MCP 放在同一输出目录。CLI/MCP 首次连接可启动相邻 Host，普通客户端默认只有元数据权限。
 
-CLI 的完整参数与退出码见 `serial-workbench-cli --help` 和[参数入口](../crates/cli/src/args.rs)。结果写成单个 JSON 到 stdout，诊断写 stderr。首次认证仅有元数据权限，`authorize` / `revoke` 是明确的本地用户控制入口；参数使用 [Core 授权类型](../crates/core/src/auth.rs)，普通查询和调用不自动读取用户控制凭据。
-
-每个要重试的请求先保存 Host 签发的上下文：
+以下示例在正式程序目录已加入 PATH 后执行，参数文件采用当前 [Core 类型](../crates/core/src/)：
 
 ```sh
 serial-workbench-cli --profile <绝对目录> catalog --json
@@ -55,127 +39,105 @@ serial-workbench-cli --profile <绝对目录> context --out request-context.json
 serial-workbench-cli --profile <绝对目录> invoke <actionId> --target-json target.json --params-json params.json --request-id <uuid> --request-context-json request-context.json --json
 ```
 
-`context --out` 以新建方式写入 UTF-8 JSON，不覆盖已有文件。文件使用 Core `AttachResult`，绑定 Host、actor、客户端与实例。重试继续使用相同文件、requestId 和参数；异参由 Host 返回 `REQUEST_CONFLICT`。新任务可显式签发新文件，旧请求不会自动换上下文续期或重发。
-
-正常调用返回真实接纳 Operation，使用 `operation get <operationId>` 查询结果。Host 重启后，旧实例的 invoke 被拒绝；按原请求身份查询持久结果：
+`context --out` 新建 UTF-8 AttachResult，不覆盖原文件。重试保持相同上下文、requestId 和参数，异参返回 `REQUEST_CONFLICT`；Host 重启后不重发旧 invoke，按原上下文查询持久结果：
 
 ```sh
 serial-workbench-cli --profile <绝对目录> operation get --request-id <原uuid> --request-context-json request-context.json --json
 ```
 
-退出 CLI 保留 Host 及已接纳任务；`operation cancel <operationId>` 才请求合作取消。`host stop` 等待原实例实际结束后返回确认，回执中的接纳成功与实例停止分开判断；另一客户端随后可以启动新实例。
+正常调用返回接纳 Operation，使用 `operation get <operationId>` 查询终态；`operation cancel` 请求合作取消，退出客户端保留任务。`host stop` 的接纳和实际停止分别确认。目录定义 query/invoke、目标和参数 schema，CAS 写入通过 `--expected-revision`；完整参数与退出码以 [args.rs](../crates/cli/src/args.rs) 和 `--help` 为准。
 
-新增设备、capture / replay、文件传输、共享文档和指标操作均从 `catalog --json` 发现 actionId、目标与参数 schema，按目录的 kind 使用 `query` 或 `invoke`；动作接纳后沿上述 Operation 流程查询。`settings.save` / `workspace.save` 等 CAS 写入通过调用的 `expectedRevision` 提交；CLI 对应参数为 `--expected-revision`，完整格式以 `--help` 为准。文件业务先经显式 `file.register` 登记，再使用返回的 ObjectRef，不将任意路径传给收发或回放操作。
+`authorize`/`revoke` 是明确的本地用户控制入口。文件业务先经 `file.register` 登记再使用 ObjectRef，普通请求不自动读取用户控制凭据。MCP 使用 `serial-workbench-mcp --profile <绝对目录>`，stdout 仅承载官方 SDK 协议，工具来自同一目录和权限；取消工具等待不代替 `operation.cancel`。
 
-MCP 入口为 `serial-workbench-mcp --profile <绝对目录>`，stdio 只承载官方 SDK 协议。工具来自同一 Host 目录及当前 actor 权限；普通 MCP 不自动取得用户控制权限。取消工具等待只结束适配器等待，业务取消仍通过明确的 `operation.cancel`。原始读取使用独立 raw 连接，语义见 [Host 契约](./contracts/host-v0.md) 与[流和操作契约](./contracts/stream-and-operations-v0.md)。
+Host/CLI/MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录选择配置。相对路径绑定启动 cwd，不展开变量或 `~`；Windows 盘符相对/根相对路径拒绝。`SWB_LOG_LEVEL` 接受 off/error/warn/info/debug/trace，默认 info；空值和过滤表达式拒绝。日志写 stderr，CLI JSON/MCP 协议写 stdout；`startup.config.get` 提供脱敏来源。
 
-#### CLI / MCP 启动配置
+## 契约与功能接线
 
-CLI 与 MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录的顺序选择 Host 配置。普通相对路径在启动时绑定当前目录，不展开变量或 `~`；Windows 的盘符相对路径（如 `C:profile`）和根相对路径（如 `\profile`）会被拒绝。解析配置不创建目录，首次连接仍由受保护的 Host 启动流程准备存储。
+Rust 包、共享 profile 和默认成员读取根 [Cargo.toml](../Cargo.toml)，共用 Cargo.lock 与 [.cargo/config.toml](../.cargo/config.toml) 的 target。仅无头包检查不需要前端，桌面检查先准备 `dist/`。
 
-`SWB_LOG_LEVEL` 接受大小写不敏感的 `off`、`error`、`warn`、`info`、`debug`、`trace`，默认 `info`；空值、空白和日志过滤表达式会返回 `INVALID_ARGUMENT`。该级别控制当前 CLI / MCP 进程的应用日志，写入 stderr；stdout 继续只承载 CLI JSON 或 MCP 协议。`off` 保留致命错误输出。`debug` / `trace` 会记录配置来源和级别枚举，不输出实际目录、参数或凭据。
+1. 对照[需求](./requirements.md)确定目标行为、失败和验收；页面放 `src/pages/`，有独立业务规则时建立 `src/features/<domain>/`。
+2. `src/routes.tsx` 注册路由、布局、懒加载与导航；共用操作进入 `src/commands/`，同步深链和窗口路由白名单。
+3. 局部草稿由组件拥有，偏好复用 Provider/同步器；未保存工作登记 `useUnsavedWork`，文案补齐中英词典。
+4. 业务能力进入 Host 服务与目录，系统交互进入 Native 服务；命令处理边界适配，手写前端经 `src/lib/tauri.ts`。
+5. Host wire DTO 改变后依次运行 `pnpm contracts:generate`、`pnpm contracts:check`，提交 `packages/contracts/src/generated/`。Rust 同源导出类型、draft-07 schema、目录、默认值及正负 fixture，客户端校验未知输入。
+6. Native 命令/DTO 在 `src-tauri/src/bindings.rs` 注册，依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，提交 `src/lib/generated/`。生成任务和共用 target 的 Cargo 检查顺序执行。
+7. 按[测试范围](./testing.md#日常验证范围)验证规则及真实入口接线；删除功能同步清理所属源码、依赖、权限、专属测试和文档。
 
-直接运行 Host 也使用相同的 profile 与日志解析规则；客户端启动子 Host 时显式传递解析后的目录。Host 将解析结果注入运行时，`startup.config.get` 返回脱敏配置来源快照；桌面入口的接线继续随后续集成。
+## 身份、资源与依赖
 
-## 产品身份配置
+[app.config.json](../app.config.json) 管理名称、标识符、深链、浏览器存储空间和更新信任，`pnpm config:sync --config <配置补丁.json> --dry-run` 预览，去掉 dry-run 同步，再 `pnpm config:check`。身份变化可能改变数据位置，脚本保留原用户数据，已分发身份迁移另行设计。
 
-名称、包名、标识符、深链 scheme、浏览器存储命名空间及更新信任集中在 [app.config.json](../app.config.json)。
+同步器在 identifier 或 repositoryUrl 改变时清空原更新端点和公钥，只改变更新端点时也会清空公钥；同一产品迁移需要保留信任时，在补丁中显式提供匹配的端点和公钥，见 [init-lib.mjs](../scripts/init-lib.mjs)。配置同步不迁移磁盘数据。
 
-修改身份使用产品配置同步入口，先检查差异：
+[repository.config.json](../repository.config.json) 管理仓库、分支、市场和链接模板，修改后运行 `pnpm repository:sync` / `pnpm repository:check`，提交生成同步结果。同步更新受管链接与模板，不配置远端权限、Secrets、签名门户或域名；平台 API 在 `scripts/hosting/` 适配。
 
-```sh
-pnpm config:sync --config ../serial-workbench-config.json --dry-run
-pnpm config:sync --config ../serial-workbench-config.json
-pnpm config:check
-```
+`repository.generated.json` 保存上次同步的公开配置，用于识别旧链接，和配置一起提交。修改链接优先改模板；更换托管平台须实现发布适配器，再设置 provider，子模块 gitUrl 不承担插件下载或信任配置。
 
-`--config` 文件是现有配置的字段补丁，字段与校验见 [init-lib.mjs](../scripts/init-lib.mjs)。同步器更新 npm / Cargo 身份、平台配置、测试身份和品牌链接。标识符与存储命名空间变化会改变数据位置，同步器保留原有用户数据；正式交付后的身份迁移须单独设计。
+品牌源在 `resources/branding/`，修改 SVG 后执行 `pnpm branding:generate` / `pnpm branding:check`，提交 icons 和安装器生成结果。安装器保留原生文字区、高 DPI 缩放和本地修复；升级 Tauri 时审查 NSIS/WiX 模板差异。皮肤和内置图片分别按 [skins](../resources/skins/README.md)、[wallpapers](../resources/wallpapers/README.md) 维护。
 
-仓库链接、分支和市场子模块地址由 [repository.config.json](../repository.config.json) 维护，修改后运行 `pnpm repository:sync` 和 `pnpm repository:check`。生成同步状态与配置一起审查，具体范围见 [仓库托管配置](./repository-hosting.md)。
+新增共享外观字段从 `crates/core` 的设置 DTO/默认值和生成结果开始，再接前端归一化、`applySettings`、语义 token 及设置控件；客户端窗口偏好走 ClientState。设置搜索控件 ID 与索引同步维护。
 
-图标与安装器视觉源在 `resources/branding/`，修改后运行 `pnpm branding:generate` 并提交生成结果，见 [安装器外观](./build-release.md#安装器外观)。版本使用 `pnpm version:set x.y.z`；签名和发布配置见 [构建与发布](./build-release.md)。
+新依赖评估用途、替代方案、许可、平台、包体与安装脚本，提交最小清单/锁差异。锁冲突先合并清单，再用规定工具链基于已有锁重新解析；避免删除锁文件整体升级。
 
-## 新增页面到 IPC 与测试
+## 构建与发布
 
-1. 对照 [产品范围](./product-scope.md) 确定本次用户行为与失败路径。页面放在 `src/pages/`，业务形成独立规则后再建 `src/features/<domain>/`。
-2. 在 `src/routes.tsx` 统一注册路由、懒加载、预载和导航。菜单、命令面板及快捷键复用 `src/commands/`；窗口与原生深链白名单同步核对。
-3. 文案同步中英文词典，局部状态留在组件，跨页偏好进入现有设置模型和同步器。涉及未保存内容时登记 `useUnsavedWork`。
-4. 原生能力由 Rust 服务实现，命令层负责边界适配；手写前端通过 `src/lib/tauri.ts` 门面调用。组件和 Hook 不直接导入 Tauri 插件或调用 `invoke`，Rust 在提交边界校验身份、路径、配额和权限。
-5. 在 `src-tauri/src/bindings.rs` 注册命令 / DTO，按 [Rust 测试](./testing.md#rust-测试) 准备 `dist/`，依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，提交 IPC 绑定。
-6. 按 [日常验证范围](./testing.md#日常验证范围) 检查规则与入口接线；原生窗口和系统服务按 [桌面验收](./testing.md#真实桌面-e2e) 安排。删除能力时一并清理路由、命令、权限、专属依赖、资源、测试与文档。
-
-## 环境诊断
+当前发布/Pages 模板停用，签名和更新配置待启用。手动 CI 见[测试](./testing.md#持续集成)；正式分发前按本节准备并验收。
 
 ```sh
-node scripts/doctor.mjs
-node scripts/doctor.mjs --json
+pnpm version:set 1.2.0
+pnpm version:check
+pnpm app:build
+pnpm app:build --bundles nsis
+pnpm app:portable
 ```
 
-诊断无需 npm 依赖，只读检查工具链、Git、依赖与平台组件。缺少必要组件时退出码为 1；纯浏览器开发按实际需要处理 Rust / 桌面组件提示。构建故障见 [排障手册](./troubleshooting.md)。
+版本脚本同步 npm/workspace、Tauri、Cargo 共享版本与锁文件。MSI/NSIS 的版本范围及预发布限制由 [version.mjs](../scripts/version.mjs) 校验，不能仅靠选择其他 bundle 绕过配置约束；已发布版本号不复用。
 
-## 清理构建产物
+构建按 Cargo 真实输出收集桌面、Host、CLI、MCP 与组件清单。`--optimize size|speed` 均为 release，默认 size，speed 缩短编译但增大产物并改变优化；参数见脚本 `--help`。当前 I8 路径问题仍待最终验证，见[进度](./progress.md#未完成问题)。
 
-清理命令支持 `--dry-run`，先核对实际删除范围：
+交付从 `artifacts/<version>/<target-triple>/installers/` 或 `portable/` 取文件，manifest 记录版本、target 和文件 SHA-256。同一版本/target 的该类产物整体替换，保留其他版本和另一类，失败恢复旧 bundle。Windows 产出 NSIS/MSI，macOS app/DMG，Linux 格式由 Tauri bundle.targets 决定。
 
-```sh
-pnpm clean:outputs --dry-run
-```
+Windows portable 包含程序、组件和许可证，需要 WebView2，数据写当前用户目录；应用内更新会转为安装版。`--skip-build` 核对构建收据、配置和组件哈希，源码变化需重新构建，复用 speed 时同时指定策略。macOS 和 Linux 分别使用 app/DMG 与 AppImage/系统包。
 
-| 命令                   | 删除范围                                                                             |
-| ---------------------- | ------------------------------------------------------------------------------------ |
-| `pnpm clean:outputs`   | 构建输出、报告，以及 `artifacts/` 和 `.cache/` 中的生成内容；保留识别出的 Cargo 缓存 |
-| `pnpm clean:artifacts` | 整个 `artifacts/`                                                                    |
-| `pnpm clean:temporary` | 临时报告、构建输出、默认 Rust 缓存和旧便携备份；保留正式版本归档                     |
-| `pnpm clean`           | 默认构建输出、整个 `artifacts/` 和默认 Rust 缓存                                     |
-| `pnpm clean:all`       | `clean` 的范围及 `node_modules/`                                                     |
+### 签名与更新
 
-`clean:outputs`、`clean:artifacts`、`clean` 和 `clean:all` 都会删除正式分发文件。各模式的精确路径与缓存识别规则见 [clean-lib.mjs](../scripts/clean-lib.mjs)，自定义 Cargo target 由设置者管理。先停止自己启动的开发或测试进程，再按预览结果清理；正常编译等待可保留缓存。
+代码签名验证系统发布者，更新签名验证包和版本。**先确定最终交付字节，再生成更新签名与清单。**
 
-## 环境变量
+- Windows 可选 SignPath 配置当前只覆盖 x64 NSIS 外层，安装后 exe、MSI 和第三方组件须另行处理。启用前确认服务资格、证书主体、审批人和最小 Secret 权限；后签改变字节，现模板拒绝与更新签名同时使用。
+- SignPath 的提供方和公开签名策略入口、账号 MFA、人工审批及 `.signpath/artifact-configuration.xml` 随启用一起核对；token 仅限提交签名请求。PFX 和 SignPath 二选一，硬件或其他托管签名尚未接线，需实现工具与 signCommand。
+- PFX 使用 `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD`；macOS 的证书、身份与公证 Secrets 读取 [release 模板](../.github/workflows-disabled/release.yml)。正式 macOS 分发完成 Developer ID 签名、公证与 stapling；Linux 当前提供哈希，未配置独立包签名。凭据通过受控渠道提供。
+- 更新在 app.config 配置匹配端点、公钥，发布端配置 `TAURI_SIGNING_PRIVATE_KEY`，加密私钥另设 password Secret。公钥固定在安装包内，deployment 仅可覆盖 HTTPS 镜像或以空端点禁用，不能替换公钥。
+- 启用后发布模板核验四目标、最终资产、签名版本和唯一 latest.json。无公钥的旧客户端需手动安装可信版本，换钥使用过渡版本或手动安装。
+- 发布准备保留正式源、tag、构建环境、许可、组件收据、签名及最终哈希；验收升级时采用两个不同版本，覆盖发现、下载、验签、未保存协商、安装和重启。
 
-`VITE_` 变量会进入前端 bundle，只存公开配置。新增变量在 `src/vite-env.d.ts` 声明并在使用处校验；本地 `.env.local` 保持在版本控制之外。凭据使用受控构建环境或系统存储，见 [安全规范](./security.md#密钥与证书)。
+### 交付检查
 
-## 调试
+1. 确认可交付候选、需求范围和有效里程碑 CI，在 PR 准备用户可见摘要及升级限制。
+2. 在确认的 main 提交打 `v<version>` 标签，同源构建四目标；恢复模板前核对 Actions SHA、参数、平台和 Secrets。
+3. 验证最终哈希、发布者、许可、安装/卸载、协议关联、自启动、更新及失败恢复。Windows MSI 按机器卸载不保证清除原账户 HKCU，自启动应先在原账户关闭。
+4. 核对 draft 资产与更新清单后再执行公开发布；观察安装/更新失败及错误报告。撤回错误清单或资产时保留证据，用更高修复版本恢复；不覆盖旧版本号或假定较旧程序可读取较新数据。
 
-前端使用 WebView 开发者工具；浏览器预览可使用 React DevTools。Rust 日志位置见 [先看日志](./troubleshooting.md#先看日志)，沿用日志插件并保持脱敏。
+恢复 release 模板后，v* tag 或手动触发会构建并在必要 job 全部成功后自动公开同一 Release，发布授权与适用验收须在触发前完成。失败、取消或意外跳过保留 draft；需要源码修正时使用新版本/tag，已公开资产不靠重跑替换。
 
-VS Code 的 [launch.json](../.vscode/launch.json) 和 [tasks.json](../.vscode/tasks.json) 提供 Rust / WebView 与浏览器调试入口。Rust 修改后重新构建并重启调试进程。
+发布说明从 tag 源提交对应的已合入 PR 读取“变更内容”和“影响范围”，也支持显式的“变更摘要”和“升级与限制”；这些标题是工具契约。版本 PR 覆盖上一公开正式版以来的全部变化，可用 `pnpm release:notes` 只读预览（需完整 Git 历史及 gh 认证）。更新清单生成后再编辑 Release 正文不会自动同步其中的说明。
 
-## 热更新边界
+## 排障与清理
 
-前端 TSX / CSS 由 Vite 更新；Rust、capability、平台配置变化后，重新构建并重启原生进程。依赖变更后重新安装并审查锁文件；生成文件通过对应脚本更新。
+先记录应用/源码版本、系统、稳定错误 code 和触发步骤，再检查实际进程及日志。诊断区可复制脱敏报告；文件日志由 Tauri 路径 API 定位，见 [diagnostics.rs](../src-tauri/src/diagnostics.rs)，反馈前复核私有内容。
 
-## 端口被占用
+| 现象                                  | 检查                                                                                                          |
+| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
+| 窗口不出现/白屏                       | 已有实例、托盘/显示器、WebView、终端和原生日志、资源路径/CSP；真实窗口按[桌面边界](./testing.md#桌面边界)安排 |
+| `HOST_START_FAILED`                   | 正式相邻 Host、相同 profile、程序源身份及 Windows Job 限制                                                    |
+| Host 失效后重试失败                   | I3 的重新附着与 epoch 问题，保留本地草稿，不重复发送旧动作                                                    |
+| command not found / permission denied | 当前二进制、命令注册、生成绑定、capability、窗口身份及目标授权                                                |
+| 串口无法连接                          | 使用工作台平台引导，核对实际设备、驱动、权限和原始错误；拒绝访问不能据此猜测占用进程                          |
+| 1420 端口冲突                         | 确认进程归属；改端口同步 Vite、Tauri devUrl 和编辑器调试配置                                                  |
+| Rust 长时间无输出                     | CPU/磁盘、实际编译/链接进程与日志；保留缓存，顺序执行共享 target 的任务                                       |
+| EPERM / 归档失败                      | 确认占用来自本轮程序或扫描，停止自己的相关进程再重试；保留失败证据                                            |
+| 图标或安装器仍旧                      | 核对源 SVG、生成资源、实际 exe/快捷方式和系统图标缓存，重新构建                                               |
+| 保存/恢复失败                         | 区分 Host CAS 与 ClientState，重读冲突，损坏/未来格式保留原件，不编辑版本号强行覆盖                           |
 
-Vite 固定使用 1420 端口并启用 `strictPort`，处理方式见 [端口排障](./troubleshooting.md#端口-1420-被占用)。
+清理先预览 `pnpm clean:temporary --dry-run`。temporary 清理临时报告、前端输出、默认 Rust 缓存和旧便携备份，保留正式版本归档与依赖；outputs 清理生成内容并保留识别出的 Cargo 缓存；artifacts 清整个分发目录；clean 默认还清默认 Rust 输出；all 再删除根依赖。精确路径见 [clean-lib.mjs](../scripts/clean-lib.mjs)，自定义 target 自行管理，重装依赖使用冻结锁文件。
 
-## 依赖下载失败或缓慢
-
-按报错区分 registry、源码托管和安装器下载，检查当前终端网络与代理。使用可信镜像并保留锁文件；安装器下载见 [NSIS 排障](./troubleshooting.md#打包时卡在下载-nsis)。
-
-## 编译耗时优化
-
-前端迭代使用 HMR，正式分发再打包；Rust 并发与缓存配置见 [编译策略](./build-release.md#编译策略)，检查任务安排见 [并行与耗时](./testing.md#并行与耗时)。
-
-## 重置环境
-
-先核对报错、工具链和锁文件差异。确需重装时预览 `pnpm clean:all --dry-run`，按 [清理范围](#清理构建产物) 确认后执行清理，再运行 `pnpm install --frozen-lockfile`。用户存档故障使用 [设置恢复](./troubleshooting.md#设置保存失败或版本不兼容)。
-
-## 新增依赖的评审标准
-
-PR 说明实际用途、维护与兼容状态、许可证和分发义务。显著影响 bundle 时比较加载边界和体积；Rust 依赖同时评估编译成本与目标平台。优先复用现有能力，锁文件只保留定向变化。
-
-## IDE 配置
-
-推荐扩展与格式规则见 [extensions.json](../.vscode/extensions.json) 和 [settings.json](../.vscode/settings.json)。编辑器搜索和 Vite 监听已排除构建输出、缓存与依赖。
-
-## 浏览器预览构建与部署
-
-```sh
-pnpm build:web
-pnpm exec vite preview --outDir dist-web
-```
-
-构建使用 `web-preview` 模式，输出 `dist-web/`；桌面前端输出 `dist/`。相对资源路径与 HashRouter 支持 `/serial-workbench/` 等静态子路径。
-
-发布前执行 [浏览器构建冒烟](./testing.md#浏览器生产构建冒烟)。Pages 模板状态与启用步骤见 [停用目录说明](../.github/workflows-disabled/README.md)。
+带 `-Force` 的检查与删除、修改、服务启停分开调用。遇到 blocked by policy，检查是否混用操作并核验实际结果，记录仍失败的命令和错误。

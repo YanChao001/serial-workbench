@@ -1,0 +1,15 @@
+{
+  "preferences": {
+    "menuBar": true,
+    "windowPosition": "remember",
+    "sidebarCollapsed": false,
+    "sidebarWidth": 224
+  },
+  "currentPage": "workbench",
+  "focusedPanelId": null,
+  "scrollOffset": 0,
+  "follow": true,
+  "lastWorkspaceId": null,
+  "drafts": {},
+  "gallery": []
+}

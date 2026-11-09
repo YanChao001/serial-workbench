@@ -90,7 +90,7 @@ function renderShell(initial = "/") {
       <Routes>
         <Route element={<AppShell />}>
           <Route index element={<Page />} />
-          <Route path="settings" element={<Page />} />
+          <Route path="settings/*" element={<Page />} />
         </Route>
       </Routes>
     </MemoryRouter>,
@@ -119,6 +119,24 @@ describe("应用内容导航", () => {
     cleanup();
     vi.restoreAllMocks();
     vi.unstubAllGlobals();
+  });
+
+  it("按当前路由切换工作台和文档布局，设置子页使用文档默认值", () => {
+    renderShell("/settings/appearance");
+    const main = screen.getByRole("main");
+    const pageContent = screen.getByRole("heading", {
+      name: "Page content",
+    }).parentElement?.parentElement;
+    expect(main).toHaveAttribute("data-content-layout", "document");
+    expect(pageContent).toHaveAttribute("data-content-layout", "document");
+
+    fireEvent.click(screen.getByRole("link", { name: "/" }));
+    expect(main).toHaveAttribute("data-content-layout", "workspace");
+    expect(pageContent).toHaveAttribute("data-content-layout", "workspace");
+
+    fireEvent.click(screen.getByRole("link", { name: "/settings" }));
+    expect(main).toHaveAttribute("data-content-layout", "document");
+    expect(pageContent).toHaveAttribute("data-content-layout", "document");
   });
 
   it("切换页面时只重置内容区滚动并保留导航焦点", () => {
@@ -150,6 +168,39 @@ describe("应用内容导航", () => {
     expect(window.scrollTo).not.toHaveBeenCalled();
     expect(main.scrollTop).toBe(240);
     expect(screen.getByRole("textbox", { name: "Page input" })).toHaveFocus();
+  });
+
+  it("工作台渲染失败时保留恢复入口，并可导航到文档页面", () => {
+    function BrokenPage(): never {
+      throw new Error("Workspace render failure");
+    }
+    vi.spyOn(console, "error").mockImplementation(() => {});
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<BrokenPage />} />
+            <Route path="settings" element={<Page />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    expect(screen.getByRole("alert")).toHaveTextContent(
+      "Workspace render failure",
+    );
+    expect(screen.getByRole("button", { name: "common.retry" })).toBeVisible();
+    expect(screen.getByRole("main")).toHaveAttribute(
+      "data-content-layout",
+      "workspace",
+    );
+
+    fireEvent.click(screen.getByRole("link", { name: "/settings" }));
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(screen.getByRole("heading", { name: "Page content" })).toBeVisible();
+    expect(screen.getByRole("main")).toHaveAttribute(
+      "data-content-layout",
+      "document",
+    );
   });
 
   it("侧栏拖动预览同步内容区留白，取消后恢复持久宽度", () => {

@@ -1,13 +1,13 @@
 //! 面向渲染进程的命令，数据结构与稳定错误码由 Rust 统一导出。
 
-use tauri::{Emitter, Manager, State};
+use tauri::{Manager, State};
 
 use crate::{
     blocking,
+    client_state::{ClientStateSnapshot, ClientStateStore, ClientWindowState},
     desktop::{self, DesktopStatus},
     diagnostics::{self, DiagnosticsReport, DiagnosticsState, FrontendError},
     error::{ErrorCode, NativeError, NativeResult},
-    storage::{JsonValue, SETTINGS_EVENT, SettingsSnapshot, SettingsStore},
     updater::{UpdateManager, UpdateProgress, UpdateStatus},
     window_geometry::{self, WindowGeometry},
 };
@@ -25,72 +25,140 @@ pub(crate) fn require_host_window(label: &str) -> NativeResult<()> {
 
 #[tauri::command]
 #[specta::specta]
-pub async fn load_settings_snapshot(
-    store: State<'_, SettingsStore>,
-) -> NativeResult<SettingsSnapshot> {
-    store.snapshot()
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn save_settings_snapshot(
-    app: tauri::AppHandle,
-    settings: JsonValue,
-    expected_revision: i32,
-) -> NativeResult<SettingsSnapshot> {
-    persist_settings_snapshot(app, settings, expected_revision, false).await
-}
-
-#[tauri::command]
-#[specta::specta]
-pub async fn reset_settings_snapshot(
+pub async fn client_state_read(
     app: tauri::AppHandle,
     window: tauri::WebviewWindow,
-    settings: JsonValue,
-    expected_revision: i32,
-) -> NativeResult<SettingsSnapshot> {
+) -> NativeResult<ClientStateSnapshot> {
     require_host_window(window.label())?;
-    persist_settings_snapshot(app, settings, expected_revision, true).await
+    blocking::run(move || app.state::<ClientStateStore>().snapshot(window.label())).await
 }
-
-async fn persist_settings_snapshot(
+#[tauri::command]
+#[specta::specta]
+pub async fn client_state_save(
     app: tauri::AppHandle,
-    settings: JsonValue,
-    expected_revision: i32,
-    reset: bool,
-) -> NativeResult<SettingsSnapshot> {
-    let settings = serde_json::to_value(settings).map_err(|e| {
-        NativeError::operation(ErrorCode::InvalidArgument, "Settings JSON is invalid", e)
-    })?;
+    window: tauri::WebviewWindow,
+    state: ClientWindowState,
+    expected_revision: serial_workbench_core::U64,
+) -> NativeResult<ClientStateSnapshot> {
+    require_host_window(window.label())?;
     blocking::run(move || {
-        let video = settings
-            .pointer("/customBackground/video")
-            .filter(|value| !value.is_null())
-            .and_then(|value| {
-                serde_json::from_value::<crate::wallpapers::WallpaperVideo>(value.clone()).ok()
-            });
-        let snapshot = app
-            .state::<crate::wallpaper_video::WallpaperVideoStore>()
-            .with_video(video.as_ref(), || {
-                let store = app.state::<SettingsStore>();
-                if reset {
-                    store.reset(settings, expected_revision)
-                } else {
-                    store.save(settings, expected_revision)
-                }
-            })?;
-        if let Err(error) = desktop::refresh_tray(&app) {
-            log::warn!("{error}");
-        }
-        if let Err(error) = app.emit(SETTINGS_EVENT, &snapshot) {
-            log::warn!(
-                "Could not broadcast settings revision {}: {error}",
-                snapshot.revision
-            );
-        }
-        Ok(snapshot)
+        app.state::<ClientStateStore>()
+            .save(window.label(), state, expected_revision)
     })
     .await
+}
+#[tauri::command]
+#[specta::specta]
+pub async fn apply_host_settings_effects(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+) -> serial_workbench_core::HostResult<crate::platform_settings::HostSettingsEffectsReceipt> {
+    let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
+    let instance = bridge.bind_window(&window)?;
+    let current = bridge
+        .attach_guarded(window.label(), instance, async {}, async { Ok(()) })
+        .await?;
+    apply_host_settings_effects_for_generation(app.clone(), window, current.generation).await
+}
+
+pub(crate) async fn apply_host_settings_effects_for_generation(
+    app: tauri::AppHandle,
+    window: tauri::WebviewWindow,
+    generation: serial_workbench_core::U64,
+) -> serial_workbench_core::HostResult<crate::platform_settings::HostSettingsEffectsReceipt> {
+    use crate::platform_settings::{HostSettingsEffectsReceipt, PlatformEffects, PlatformSettings};
+    use serial_workbench_core::{
+        HostError, Id, Query, QueryResult, ResourceKind, RevealTarget, RpcReply, RpcRequest,
+        RpcResult, Target,
+    };
+    require_host_window(window.label())
+        .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot apply Host settings"))?;
+    let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
+    let instance = bridge.bind_window(&window)?;
+    if bridge
+        .window_instance_at_generation(window.label(), generation)
+        .await?
+        != instance
+    {
+        return Err(HostError::new("EPOCH_MISMATCH", "Window instance changed"));
+    }
+    let attachment = bridge
+        .settings_attachment_for_generation(window.label(), generation)
+        .await?;
+    let query = Query {
+        protocol_version: attachment.protocol_version,
+        host_id: attachment.host_id.clone(),
+        instance_epoch: attachment.instance_epoch,
+        actor_id: attachment.actor_id.clone(),
+        request_id: crate::platform_settings::next_effects_request_id()?,
+        action_id: Id::try_from("settings.read")?,
+        target: Target {
+            host_id: attachment.host_id.clone(),
+            kind: ResourceKind::try_from("settings")?,
+            id: Id::try_from("shared")?,
+            session_id: None,
+            session_epoch: None,
+        },
+        params: Default::default(),
+        reveal_target: RevealTarget {
+            page_id: Id::try_from("settings")?,
+            workspace_id: None,
+            session_id: None,
+            panel_id: None,
+            result_ref: None,
+        },
+    };
+    let document = match bridge
+        .request_at_generation(window.label(), generation, RpcRequest::Query(query))
+        .await?
+    {
+        RpcReply::Failure { error, .. } => return Err(error),
+        RpcReply::Success { result, .. } => match *result {
+            RpcResult::Query(QueryResult::Settings(result)) => result.document,
+            _ => {
+                return Err(HostError::new(
+                    "INVALID_ARGUMENT",
+                    "Host returned an invalid settings document",
+                ));
+            }
+        },
+    };
+    let receipt = bridge
+        .with_current_generation(window.label(), generation, || {
+            let revision = document.revision;
+            app.state::<PlatformSettings>()
+                .apply(
+                    attachment.host_id.clone(),
+                    attachment.instance_epoch,
+                    document,
+                )
+                .map_err(|error| {
+                    HostError::new(
+                        if error.code == ErrorCode::Conflict {
+                            "CONFLICT"
+                        } else {
+                            "INTERNAL"
+                        },
+                        error.message,
+                    )
+                })?;
+            Ok(HostSettingsEffectsReceipt {
+                host_id: attachment.host_id.clone(),
+                instance_epoch: attachment.instance_epoch,
+                revision,
+                effects: PlatformEffects {
+                    tray_language: true,
+                    network_mode: true,
+                    run_in_background: true,
+                },
+            })
+        })
+        .await?;
+    // 托盘 API 等待主线程；释放 bridge 锁后再读取最新内存策略，
+    // 避免窗口销毁清理与菜单刷新相互等待。失败不回滚已应用策略。
+    desktop::refresh_tray(&app)
+        .map_err(|error| HostError::new("PLATFORM_EFFECT_FAILED", error.message))?;
+    Ok(receipt)
 }
 
 #[tauri::command]

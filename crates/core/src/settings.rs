@@ -85,12 +85,71 @@ pub enum LineEnding {
     Crlf {},
     Custom { bytes_base64: Bytes },
 }
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TerminalTypography {
+    #[serde(deserialize_with = "terminal_font_family")]
+    #[schemars(length(min = 1, max = 128))]
+    // 绝对结尾避免 JavaScript 的 $ 在末尾换行之前匹配。
+    // Unicode 模式按码点匹配：排除孤立代理项，保留完整补充平面字符。
+    #[schemars(regex(pattern = r"^[^\u0000-\u001F\u007F-\u009F\uD800-\uDFFF]+(?![\s\S])"))]
+    #[specta(type = String)]
+    pub font_family: String,
+    #[serde(deserialize_with = "terminal_font_size")]
+    #[schemars(range(min = 8, max = 48))]
+    #[specta(type = u16)]
+    pub font_size: u16,
+    #[serde(deserialize_with = "terminal_line_height_percent")]
+    #[schemars(range(min = 100, max = 300))]
+    #[specta(type = u16)]
+    pub line_height_percent: u16,
+    pub ligatures: bool,
+}
+impl Default for TerminalTypography {
+    fn default() -> Self {
+        Self {
+            font_family: "ui-monospace".into(),
+            font_size: 14,
+            line_height_percent: 150,
+            ligatures: false,
+        }
+    }
+}
+fn terminal_font_family<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+    let value = String::deserialize(d)?;
+    if !value.is_empty() && value.chars().count() <= 128 && !value.chars().any(char::is_control) {
+        Ok(value)
+    } else {
+        Err(serde::de::Error::custom("Invalid terminal font family"))
+    }
+}
+fn terminal_font_size<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
+    let value = u16::deserialize(d)?;
+    if (8..=48).contains(&value) {
+        Ok(value)
+    } else {
+        Err(serde::de::Error::custom("Invalid terminal font size"))
+    }
+}
+fn terminal_line_height_percent<'de, D: serde::Deserializer<'de>>(d: D) -> Result<u16, D::Error> {
+    let value = u16::deserialize(d)?;
+    if (100..=300).contains(&value) {
+        Ok(value)
+    } else {
+        Err(serde::de::Error::custom(
+            "Invalid terminal line height percent",
+        ))
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TerminalSettings {
     pub receive_mode: TerminalMode,
     pub send_mode: TerminalMode,
     pub line_ending: LineEnding,
+    #[serde(default)]
+    #[specta(optional)]
+    pub typography: TerminalTypography,
 }
 impl Default for TerminalSettings {
     fn default() -> Self {
@@ -98,6 +157,7 @@ impl Default for TerminalSettings {
             receive_mode: TerminalMode::Text,
             send_mode: TerminalMode::Text,
             line_ending: LineEnding::None {},
+            typography: TerminalTypography::default(),
         }
     }
 }

@@ -138,18 +138,12 @@ export function validateFeatureStatus(matrixIds, document) {
 async function main() {
   try {
     const matrix = await readFile(
-      new URL(
-        "../docs/superpowers/specs/2026-11-07-serial-workbench-feature-matrix.md",
-        import.meta.url,
-      ),
+      new URL("../docs/requirements.md", import.meta.url),
       "utf8",
     );
     const document = JSON.parse(
       await readFile(
-        new URL(
-          "../docs/superpowers/acceptance/feature-status.json",
-          import.meta.url,
-        ),
+        new URL("../docs/feature-status.json", import.meta.url),
         "utf8",
       ),
     );

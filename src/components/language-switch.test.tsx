@@ -1,4 +1,4 @@
-import { STORAGE_KEY } from "@/lib/settings-model";
+﻿import { STORAGE_KEY } from "@/lib/settings-model";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { LanguageSwitch } from "./language-switch";
@@ -68,7 +68,7 @@ describe("LanguageSwitch", () => {
     expect(screen.getByRole("heading", { name: "Settings" })).toBeVisible();
     expect(document.documentElement.lang).toBe("en");
     expect(JSON.parse(window.localStorage.getItem(STORAGE_KEY)!)).toMatchObject(
-      { language: "en" },
+      { value: { language: "en" } },
     );
 
     unmount();

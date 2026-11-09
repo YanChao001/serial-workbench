@@ -68,6 +68,31 @@ const pull = {
   body: "## 变更内容\n\n修复导航等待。\n\n## 验证结果\n\n通过。\n\n## 影响范围\n\n未完成跨版本安装验收。",
 };
 
+test("the repository PR template supplies release sections without copying review details", () => {
+  const template = readFileSync(
+    new URL("../.github/pull_request_template.md", import.meta.url),
+    "utf8",
+  );
+  const answers = [
+    "修复设备重连后的接收显示。",
+    "仅供评审的定向检查明细。",
+    "升级前保留录制原件。",
+  ];
+  let index = 0;
+  const body = template.replace(/^## .+$/gm, (heading) => {
+    const answer = answers[index++] ?? "";
+    return heading + "\n\n" + answer;
+  });
+  const notes = generateReleaseNotes(
+    options,
+    () => [[{ ...pull, body }]],
+    history(["fix(workbench): 修复接收显示"]),
+  );
+  assert.match(notes, /修复设备重连后的接收显示/);
+  assert.match(notes, /升级前保留录制原件/);
+  assert.doesNotMatch(notes, /仅供评审的定向检查明细/);
+});
+
 test("an ordinary version PR supplies the public summary without a release branch", () => {
   const notes = generateReleaseNotes(
     options,

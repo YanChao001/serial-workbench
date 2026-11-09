@@ -588,6 +588,21 @@ impl FileService {
             fingerprint: d.fingerprint,
         })
     }
+    /// 内容查询沿现有修订与授权规则获取本次真实引用，不要求 metadata.read。
+    pub(crate) fn current_reference(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<ObjectRef> {
+        let document = self.document(reference, actor, "content.read")?;
+        let mut current = reference.clone();
+        current.revision = if document.live {
+            None
+        } else {
+            Some(document.content_revision)
+        };
+        Ok(current)
+    }
     pub(crate) fn resolve(
         &self,
         reference: &ObjectRef,

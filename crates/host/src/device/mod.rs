@@ -1,5 +1,6 @@
 mod discovery;
 pub mod identity;
+mod observability;
 mod reconnect;
 pub mod serial;
 pub(crate) mod sessions;

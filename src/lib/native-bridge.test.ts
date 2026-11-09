@@ -1,15 +1,12 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { DEFAULT_SETTINGS, settingsDocument } from "@/lib/settings-model";
 import { invoke } from "@tauri-apps/api/core";
-import { listen } from "@tauri-apps/api/event";
+import { defaults, type Operation } from "@serial-workbench/contracts";
 import {
   NativeBridgeError,
   getDesktopStatus,
-  loadSettingsSnapshot,
-  onSettingsChanged,
+  hostApplyDocumentIntent,
+  readClientState,
   recordFrontendError,
-  saveSettingsSnapshot,
-  resetSettingsSnapshot,
 } from "./tauri";
 
 vi.mock("@tauri-apps/api/core", () => ({ invoke: vi.fn() }));
@@ -32,66 +29,64 @@ describe("generated native bridge", () => {
 
   it("turns stable Rust error DTOs into errors with code and retryability", async () => {
     vi.mocked(invoke).mockRejectedValue({
-      code: "SETTINGS_CONFLICT",
+      code: "CONFLICT",
       message: "reload",
       retryable: true,
     });
-    await expect(loadSettingsSnapshot()).rejects.toBeInstanceOf(
-      NativeBridgeError,
-    );
-    await expect(loadSettingsSnapshot()).rejects.toMatchObject({
-      code: "SETTINGS_CONFLICT",
+    await expect(readClientState()).rejects.toBeInstanceOf(NativeBridgeError);
+    await expect(readClientState()).rejects.toMatchObject({
+      code: "CONFLICT",
       message: "reload",
       retryable: true,
     });
   });
 
-  it.each([
-    ["save", saveSettingsSnapshot, "save_settings_snapshot"],
-    ["reset", resetSettingsSnapshot, "reset_settings_snapshot"],
-  ] as const)(
-    "%s passes a detached settings document and expected revision",
-    async (_label, persist, command) => {
-      const document = settingsDocument({
-        ...DEFAULT_SETTINGS,
-        language: "en",
-        runInBackground: false,
-      });
-      const snapshot = { revision: 2, settings: document };
-      vi.mocked(invoke).mockResolvedValue(snapshot);
-      await expect(persist(document, 1)).resolves.toEqual(snapshot);
-      expect(invoke).toHaveBeenLastCalledWith(command, {
-        settings: document,
-        expectedRevision: 1,
-      });
-      const sent = vi.mocked(invoke).mock.calls[0]?.[1] as {
-        settings?: unknown;
-      };
-      expect(sent.settings).not.toBe(document);
-    },
-  );
-
-  it("subscribes to shared settings events and returns cleanup", async () => {
-    const stop = vi.fn();
-    vi.mocked(listen).mockResolvedValue(stop);
-    const changed = vi.fn();
-    expect(await onSettingsChanged(changed)).toBe(stop);
-    expect(listen).toHaveBeenCalledExactlyOnceWith(
-      "app://settings-changed",
-      expect.any(Function),
-      { target: { kind: "WebviewWindow", label: "secondary" } },
-    );
-    const callback = vi.mocked(listen).mock.calls[0]?.[1];
-    expect(callback).toBeDefined();
-    callback?.({
-      event: "app://settings-changed",
-      id: 1,
-      payload: { revision: 3, settings: { language: "en" } },
+  it("validates local document operation receipts and preserves Host error codes", async () => {
+    const intent = {
+      kind: "settingsSave" as const,
+      expectedRevision: "9007199254740993",
+      params: { value: { ...defaults.settings, theme: "light" as const } },
+    };
+    vi.mocked(invoke).mockResolvedValue({ operationId: "incomplete" });
+    await expect(hostApplyDocumentIntent("12", intent)).rejects.toMatchObject({
+      name: "ContractValidationError",
     });
-    expect(changed).toHaveBeenCalledWith({
-      revision: 3,
-      settings: { language: "en" },
+    expect(invoke).toHaveBeenLastCalledWith("host_apply_document_intent", {
+      generation: "12",
+      intent,
     });
+    const operation: Operation = {
+      operationId: "settings-save",
+      executionHostId: "host",
+      actorId: "actor",
+      requestId: "00000000-0000-4000-8000-000000000001",
+      admission: { kind: "request", requestContextDigest: "a".repeat(64) },
+      rootOperationId: "settings-save",
+      childHighWatermark: "0",
+      actionId: "settings.save",
+      target: { hostId: "host", kind: "settings", id: "shared" },
+      executionMode: "interactive",
+      state: "queued",
+      revision: "1",
+      revealTarget: { pageId: "settings" },
+      acceptedAt: "2026-11-08T00:00:00Z",
+      owner: { kind: "host", id: "host" },
+    };
+    vi.mocked(invoke).mockResolvedValue(operation);
+    expect(await hostApplyDocumentIntent("12", intent)).toEqual(operation);
+    vi.mocked(invoke).mockRejectedValue({
+      code: "PERMISSION_DENIED",
+      message: "revoked",
+    });
+    await expect(hostApplyDocumentIntent("12", intent)).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+    });
+    Reflect.deleteProperty(window, "__TAURI_INTERNALS__");
+    vi.mocked(invoke).mockClear();
+    await expect(hostApplyDocumentIntent("12", intent)).rejects.toMatchObject({
+      code: "PLATFORM_UNAVAILABLE",
+    });
+    expect(invoke).not.toHaveBeenCalled();
   });
 
   it("bounds error logs without splitting Unicode characters", async () => {

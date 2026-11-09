@@ -1,16 +1,11 @@
+import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 
 test("reselecting settings preserves its controls and keyboard navigation keeps focus", async ({
   page,
 }) => {
-  await page.addInitScript((key) => {
-    localStorage.setItem(
-      key,
-      JSON.stringify({ schemaVersion: 7, language: "en", motion: "reduced" }),
-    );
-  }, `${appConfig.browserStorageNamespace}:settings`);
+  await seedBrowserSettings(page);
   await page.goto("./#/settings");
   const theme = page.locator("#settings-theme");
   const original = (await theme.elementHandle())!;
