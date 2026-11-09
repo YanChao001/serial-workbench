@@ -1,3 +1,4 @@
+import { readSettings } from "../settings.mjs";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -14,10 +15,7 @@ const execute = promisify(execFile);
 describe("Centered window startup", () => {
   it("centers a restarted main window and a newly created secondary window", async () => {
     await ready();
-    assert.equal(
-      (await invoke("load_settings_snapshot")).value.settings.windowPosition,
-      "center",
-    );
+    assert.equal((await readSettings()).settings.windowPosition, "center");
     await browser.waitUntil(async () => (await windowPlacement()).centered);
     const geometry = (await invoke("get_window_geometry")).value;
     assert.equal(
@@ -54,7 +52,7 @@ describe("Centered window startup", () => {
     assert.ok(
       Math.abs(moved.x - after.x) <= 2 && Math.abs(moved.y - after.y) <= 2,
     );
-    assert.equal((await invoke("load_settings_snapshot")).ok, true);
+    assert.equal(typeof (await readSettings()).revision, "string");
   });
 });
 /* global describe, it */

@@ -29,6 +29,7 @@ import {
   saveClientWindowState,
 } from "@/lib/client-settings";
 import { nativeErrorText } from "@/lib/native-error";
+import { stateScopeKey } from "@/lib/host-scope";
 import { createWorkbenchFileActions } from "@/features/workbench/file-actions";
 
 const windowDraftStore = createClientDraftStore({
@@ -52,7 +53,7 @@ export default function Overview({
   >({});
   const hostWorkspace = host.state.workspace;
   const scopeOf = (value: WorkspaceDocumentResult | undefined) =>
-    value ? JSON.stringify(value.scope) : "";
+    stateScopeKey(value?.scope);
   const attachmentKey = JSON.stringify([
     host.connection?.attachment.hostId ?? hostWorkspace?.scope.target.hostId,
     host.connection?.attachment.instanceEpoch,
@@ -68,7 +69,7 @@ export default function Overview({
   const workspaceBase =
     savedResult &&
     hostWorkspace &&
-    JSON.stringify(savedResult.scope) === JSON.stringify(hostWorkspace.scope) &&
+    scopeOf(savedResult) === scopeOf(hostWorkspace) &&
     BigInt(hostWorkspace.document.revision) >
       BigInt(savedResult.document.revision)
       ? hostWorkspace
@@ -330,6 +331,7 @@ export default function Overview({
     invalidHex: t("workbench.invalidHex"),
     sending: t("workbench.sending"),
     receipt: t("workbench.receipt"),
+    awaitingReceipt: t("workbench.awaitingReceipt"),
     previousPage: t("common.previous"),
     nextPage: t("common.next"),
     sendFile: t("workbench.sendFile"),

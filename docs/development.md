@@ -11,15 +11,17 @@ pnpm 在项目内的 `.pnpm-store/` 保存依赖缓存，随项目保持在同�
 ```sh
 pnpm install --frozen-lockfile
 rustup toolchain install
-pnpm doctor
+pnpm run doctor
 pnpm app:dev
 ```
 
-未安装 npm 依赖也可运行 `node scripts/doctor.mjs`。`pnpm dev` 提供 `http://localhost:1420` 浏览器预览；`pnpm build:web` 输出可部署到子路径的 `dist-web/`，原生构建使用 `dist/`。
+未安装 npm 依赖也可运行 `node scripts/doctor.mjs`。使用 `pnpm run doctor` 明确调用项目诊断，避免命中 pnpm 自带的同名命令。`pnpm dev` 提供 `http://localhost:1420` 浏览器预览；`pnpm build:web` 输出可部署到子路径的 `dist-web/`，原生构建使用 `dist/`。
 
 浏览器生产预览使用 `pnpm build:web` 后运行 `pnpm exec vite preview --outDir dist-web`。TSX/CSS 由 Vite 热更新；Rust、capability 和平台配置变化后重新构建并重启原生进程。
 
-`app:dev` 在启动 Tauri 前同源构建 Host/CLI，并通过 CLI `catalog --json` 完成就绪。准备失败停止启动并保留终端错误。Host 独立于 GUI，关闭窗口后仍可运行。
+`app:dev` 在启动 Tauri 前同源构建 Host/CLI，按内容哈希复制到 `.cache/dev-runtime/` 的独立版本目录，再通过副本 CLI `catalog --json` 完成就绪。Host 独立于 GUI，关闭窗口后仍可运行；执行副本避免 Windows 锁住下次 Cargo 要覆盖的产物。副本校验或准备失败停止启动，保留终端错误和已有版本。
+
+已有 profile 的 Host 继续复用，不自动停止在途工作。需要应用新的 Host 实现时，先确认该 profile 的操作已结算，再用 CLI `--profile <实际绝对目录> host stop --json` 正常停止，随后运行 `pnpm app:dev`；窗口代码变化仍由开发工具重建。旧版本留下的 Host 若直接运行在 `target/debug/`，首次迁到副本前也需正常停止以解除占用。
 
 准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
@@ -125,18 +127,20 @@ Windows portable 包含程序、组件和许可证，需要 WebView2，数据写
 
 先记录应用/源码版本、系统、稳定错误 code 和触发步骤，再检查实际进程及日志。诊断区可复制脱敏报告；文件日志由 Tauri 路径 API 定位，见 [diagnostics.rs](../src-tauri/src/diagnostics.rs)，反馈前复核私有内容。
 
-| 现象                                  | 检查                                                                                                          |
-| ------------------------------------- | ------------------------------------------------------------------------------------------------------------- |
-| 窗口不出现/白屏                       | 已有实例、托盘/显示器、WebView、终端和原生日志、资源路径/CSP；真实窗口按[桌面边界](./testing.md#桌面边界)安排 |
-| `HOST_START_FAILED`                   | 正式相邻 Host、相同 profile、程序源身份及 Windows Job 限制                                                    |
-| Host 失效后重试失败                   | I3 的重新附着与 epoch 问题，保留本地草稿，不重复发送旧动作                                                    |
-| command not found / permission denied | 当前二进制、命令注册、生成绑定、capability、窗口身份及目标授权                                                |
-| 串口无法连接                          | 使用工作台平台引导，核对实际设备、驱动、权限和原始错误；拒绝访问不能据此猜测占用进程                          |
-| 1420 端口冲突                         | 确认进程归属；改端口同步 Vite、Tauri devUrl 和编辑器调试配置                                                  |
-| Rust 长时间无输出                     | CPU/磁盘、实际编译/链接进程与日志；保留缓存，顺序执行共享 target 的任务                                       |
-| EPERM / 归档失败                      | 确认占用来自本轮程序或扫描，停止自己的相关进程再重试；保留失败证据                                            |
-| 图标或安装器仍旧                      | 核对源 SVG、生成资源、实际 exe/快捷方式和系统图标缓存，重新构建                                               |
-| 保存/恢复失败                         | 区分 Host CAS 与 ClientState，重读冲突，损坏/未来格式保留原件，不编辑版本号强行覆盖                           |
+| 现象                                                | 检查                                                                                                                                                                                                |
+| --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 窗口不出现/白屏                                     | 已有实例、托盘/显示器、WebView、终端和原生日志、资源路径/CSP；真实窗口按[桌面边界](./testing.md#桌面边界)安排                                                                                       |
+| `HOST_START_FAILED`                                 | 正式相邻 Host、相同 profile、程序源身份及 Windows Job 限制                                                                                                                                          |
+| Host 失效后重试失败                                 | I3 的重新附着与 epoch 问题，保留本地草稿，不重复发送旧动作                                                                                                                                          |
+| command not found / permission denied               | 当前二进制、命令注册、生成绑定、capability、窗口身份及目标授权                                                                                                                                      |
+| 串口无法连接                                        | 使用工作台平台引导，核对实际设备、驱动、权限和原始错误；拒绝访问不能据此猜测占用进程                                                                                                                |
+| 1420 端口冲突                                       | 确认进程归属；改端口同步 Vite、Tauri devUrl 和编辑器调试配置                                                                                                                                        |
+| Rust 长时间无输出                                   | CPU/磁盘、实际编译/链接进程与日志；保留缓存，顺序执行共享 target 的任务                                                                                                                             |
+| `Blocking waiting for file lock on build directory` | 另一 Cargo 正在使用同一 target；先核对任务归属并等待或停止自己的检查。显式 `--target` 仍共享根构建目录锁；无头检查可用独立 `--target-dir .cache/local-acceptance-target`，真实桌面验收优先放独立 CI |
+| Windows 无法覆盖 `serial-workbench-host.exe`        | 后台 Host 仍在运行；先核对该 profile 的在途工作，再用已构建 CLI 的 `--profile <实际绝对目录> host stop --json` 正常停止并等待 `stopped: true`，随后重试构建                                         |
+| EPERM / 归档失败                                    | 确认占用来自本轮程序或扫描，停止自己的相关进程再重试；保留失败证据                                                                                                                                  |
+| 图标或安装器仍旧                                    | 核对源 SVG、生成资源、实际 exe/快捷方式和系统图标缓存，重新构建                                                                                                                                     |
+| 保存/恢复失败                                       | 区分 Host CAS 与 ClientState，重读冲突，损坏/未来格式保留原件，不编辑版本号强行覆盖                                                                                                                 |
 
 清理先预览 `pnpm clean:temporary --dry-run`。temporary 清理临时报告、前端输出、默认 Rust 缓存和旧便携备份，保留正式版本归档与依赖；outputs 清理生成内容并保留识别出的 Cargo 缓存；artifacts 清整个分发目录；clean 默认还清默认 Rust 输出；all 再删除根依赖。精确路径见 [clean-lib.mjs](../scripts/clean-lib.mjs)，自定义 target 自行管理，重装依赖使用冻结锁文件。
 

@@ -191,6 +191,59 @@ function workspace(
   };
 }
 describe("Serial Workbench 首页", () => {
+  it("keeps the active session and draft when the same scope arrives with reordered JSON fields", async () => {
+    const host = readyHost();
+    host.connection = await attachment("1");
+    const base = workspace("default", "Bench");
+    base.document.value = snapshotWindowLayout(
+      base.document.value,
+      [{ id: "saved-view", sessionId: "session" }],
+      host.state.sessions,
+      host.state.devices,
+      defaults.settings.terminal,
+      {},
+    );
+    host.state.workspace = base;
+    host.trustedConnect = vi.fn().mockResolvedValue(session());
+    const content = (value: HostContextValue) => (
+      <I18nContext value={i18n}>
+        <HostContext value={value}>
+          <Overview />
+        </HostContext>
+      </I18nContext>
+    );
+    const view = render(content(host));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open Virtual serial" }),
+    );
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Close session" }),
+      ).toBeEnabled(),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
+      target: { value: "KEEP UNSENT" },
+    });
+    const reordered = {
+      ...base,
+      scope: {
+        target: { id: "default", kind: "workspace", hostId: "host" },
+        scopeId: base.scope.scopeId,
+      },
+    };
+    expect(reordered.scope).toEqual(base.scope);
+    expect(JSON.stringify(reordered.scope)).not.toBe(
+      JSON.stringify(base.scope),
+    );
+    view.rerender(
+      content({ ...host, state: { ...host.state, workspace: reordered } }),
+    );
+    expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
+      "KEEP UNSENT",
+    );
+    expect(screen.getByRole("button", { name: "Close session" })).toBeEnabled();
+  });
+
   it("edits and clones a document view from the workspace menu, CAS saves and reopens independent drafts on one session", async () => {
     const ready = readyHost();
     let saved = workspace("chosen", "Bench");
@@ -327,6 +380,73 @@ describe("Serial Workbench 首页", () => {
         ).not.toBeInTheDocument();
     },
   );
+  it("reports a real file export failure and keeps the current workspace draft", async () => {
+    const host = readyHost();
+    host.state.workspace = workspace("export-error", "Export bench");
+    host.exportWorkspace = vi
+      .fn()
+      .mockResolvedValue({ json: "saved envelope" });
+    vi.mocked(saveTextExport)
+      .mockReset()
+      .mockRejectedValue(new Error("File write failed"));
+    render(
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <Overview />
+        </HostContext>
+      </I18nContext>,
+    );
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Export bench" }),
+    );
+    fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+      target: { value: "Unsaved local name" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "File write failed",
+    );
+    expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
+      "Unsaved local name",
+    );
+    expect(
+      screen.queryByRole("textbox", { name: "Exported workspace JSON" }),
+    ).not.toBeInTheDocument();
+  });
+  it("ignores a file export completing after the workspace target changes", async () => {
+    const host = readyHost();
+    host.state.workspace = workspace("old-export", "Old bench");
+    host.exportWorkspace = vi.fn().mockResolvedValue({ json: "old envelope" });
+    const saved = deferred<string | null>();
+    vi.mocked(saveTextExport).mockReset().mockReturnValue(saved.promise);
+    const content = (value: HostContextValue) => (
+      <I18nContext value={i18n}>
+        <HostContext value={value}>
+          <Overview />
+        </HostContext>
+      </I18nContext>
+    );
+    const view = render(content(host));
+    fireEvent.click(await screen.findByRole("button", { name: "Old bench" }));
+    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    await waitFor(() => expect(saveTextExport).toHaveBeenCalledOnce());
+    const signal = vi.mocked(host.exportWorkspace).mock.calls[0]![1];
+    view.rerender(
+      content({
+        ...host,
+        state: {
+          ...host.state,
+          workspace: workspace("new-export", "New bench"),
+        },
+      }),
+    );
+    expect(signal?.aborted).toBe(true);
+    await act(async () => saved.resolve("old-export.json"));
+    expect(
+      screen.queryByRole("textbox", { name: "Exported workspace JSON" }),
+    ).not.toBeInTheDocument();
+    expect(screen.queryByText("old envelope")).not.toBeInTheDocument();
+  });
   it("keeps current editing and disables Host actions when menu Refresh loses an established attachment", async () => {
     const connection = await attachment("8");
     const current = session();

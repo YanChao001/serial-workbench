@@ -184,6 +184,10 @@ it("blocks ordinary sends and the shortcut when permission is denied while retai
   expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
   expect(send).not.toHaveBeenCalled();
+  expect(screen.getByText(labels.unavailable)).toBeInTheDocument();
+  view.rerender(<SendPanel {...props} draft="" permissionAllowed={false} />);
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(screen.queryByText(labels.unavailable)).not.toBeInTheDocument();
   view.rerender(<SendPanel {...props} permissionAllowed />);
   fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
   await waitFor(() => expect(send).toHaveBeenCalledOnce());

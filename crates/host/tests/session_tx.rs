@@ -551,13 +551,16 @@ async fn queue_capacity_is_reserved_before_accept_and_duplicate_needs_no_new_cap
         serde_json::json!({"bytesBase64":"AQ==","writeWaitMs":"100"}),
     );
     let first = h.invoke(call.clone()).await;
+    let mut accepted_ids = vec![lease.operation_id.clone(), first.operation_id.clone()];
     for _ in 0..126 {
-        h.invoke(h.call(
-            &target,
-            "session.tx",
-            serde_json::json!({"bytesBase64":"AQ==","writeWaitMs":"100"}),
-        ))
-        .await;
+        let accepted = h
+            .invoke(h.call(
+                &target,
+                "session.tx",
+                serde_json::json!({"bytesBase64":"AQ==","writeWaitMs":"100"}),
+            ))
+            .await;
+        accepted_ids.push(accepted.operation_id);
     }
     let rejected = h.call(
         &target,
@@ -574,7 +577,52 @@ async fn queue_capacity_is_reserved_before_accept_and_duplicate_needs_no_new_cap
             request_context: rejected.request_context,
         },
     );
-    h.host.shutdown().await.unwrap();
+    // Saturation tests admission, not a disk throughput deadline. Each bounded
+    // stop must retain all responsibility until a later barrier really completes.
+    tokio::time::timeout(std::time::Duration::from_secs(60), async {
+        loop {
+            let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
+            assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
+            assert!(report.quarantined_sessions.is_empty(), "{report:?}");
+            assert!(report.excluded_operation_id.is_none());
+            for id in &accepted_ids {
+                assert!(
+                    report.unsettled_operation_ids.contains(id)
+                        || report.evidence_refs.iter().any(|reference| {
+                            reference.host_id == h.host_id
+                                && reference.kind.as_str() == "operation"
+                                && &reference.id == id
+                        }),
+                    "Unreported accepted operation {id}: {report:?}"
+                );
+            }
+            assert!(
+                report
+                    .unsettled_operation_ids
+                    .iter()
+                    .all(|id| accepted_ids.contains(id)),
+                "{report:?}"
+            );
+            assert_eq!(h.write_count(), 0);
+            if report.completed {
+                assert!(report.unsettled_operation_ids.is_empty());
+                assert!(report.failures.is_empty());
+                break;
+            }
+            assert!(!report.failures.is_empty(), "{report:?}");
+            assert!(
+                report
+                    .failures
+                    .iter()
+                    .all(|error| error.code == "SHUTDOWN_INCOMPLETE" && error.retryable),
+                "{report:?}"
+            );
+            tokio::task::yield_now().await;
+        }
+        h.host.shutdown().await.unwrap();
+    })
+    .await
+    .unwrap();
     assert!(matches!(overflow,Err(ref error) if error.code=="HOST_BUSY"));
     assert!(matches!(selected,Err(ref error) if error.code=="NOT_FOUND"));
     assert_eq!(duplicate.unwrap().operation_id, first.operation_id);

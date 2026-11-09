@@ -267,6 +267,7 @@ export const zhCN = {
   "workbench.preview": "实际发送字节",
   "workbench.invalidHex": "请输入完整的十六进制字节对",
   "workbench.sending": "正在发送",
+  "workbench.awaitingReceipt": "尚无回执，发送结果未确认",
   "workbench.receipt": "回执",
   "workbench.sendFile": "发送文件",
   "workbench.fileUnavailable": "当前不可发送文件",

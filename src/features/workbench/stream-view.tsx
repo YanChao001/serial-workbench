@@ -12,6 +12,7 @@ import {
 } from "lucide-react";
 import type {
   StreamItem,
+  TxReceipt,
   TerminalSettings,
   TerminalMode,
 } from "@serial-workbench/contracts";
@@ -29,6 +30,7 @@ import type { WorkbenchLabels } from "./labels";
 import {
   decodeBytes,
   findStreamMatches,
+  projectStreamItems,
   type StreamMatch,
 } from "./stream-model";
 import {
@@ -113,16 +115,30 @@ export function StreamView({
     const shown = new Set(frozen.map(key));
     return items.filter((item) => !shown.has(key(item))).length;
   }, [frozen, items]);
-  const times = useMemo(() => presentStreamTimes(displayed), [displayed]);
+  const projected = useMemo(() => projectStreamItems(displayed), [displayed]);
+  const times = useMemo(
+    () =>
+      presentStreamTimes(
+        projected.map(({ itemIndex }) => displayed[itemIndex]!),
+      ),
+    [displayed, projected],
+  );
   const rows = useMemo(() => {
     let decoder = new TextDecoder();
+    let txDecoder = new TextDecoder();
     let previousEnd: string | undefined;
     let previousSource: string | undefined;
-    return displayed.map((item) => {
+    let previousTxEnd: string | undefined;
+    let previousTxSource: string | undefined;
+    return projected.map(({ item, itemIndex }, displayIndex) => {
       if (item.kind === "reader_gap") {
         decoder = new TextDecoder();
+        txDecoder = new TextDecoder();
         previousEnd = undefined;
+        previousTxEnd = undefined;
         return {
+          itemIndex,
+          displayIndex,
           kind: "gap",
           text: `${item.gap.reason} [${item.gap.missingEventRange.start}, ${item.gap.missingEventRange.end})`,
         };
@@ -133,13 +149,19 @@ export function StreamView({
         event.kind === "lifecycle"
       ) {
         decoder = new TextDecoder();
+        txDecoder = new TextDecoder();
         previousEnd = undefined;
+        previousTxEnd = undefined;
       }
       if (event.kind === "gap") {
         decoder = new TextDecoder();
+        txDecoder = new TextDecoder();
         previousEnd = undefined;
+        previousTxEnd = undefined;
         const range = event.payload.missingByteRange;
         return {
+          itemIndex,
+          displayIndex,
           kind: "gap",
           text: `${event.payload.reason}${range ? ` [${range.start}, ${range.end})` : ""}`,
         };
@@ -160,21 +182,48 @@ export function StreamView({
         previousSource = source;
         const bytes = decodeBytes(event.payload.bytesBase64);
         return {
+          itemIndex,
+          displayIndex,
           kind: "rx",
           text: decoder.decode(bytes, { stream: true }),
           hex: formatHex(bytes),
           offset: event.payload.byteStart,
         };
       }
-      if (event.kind === "tx")
+      if (event.kind === "tx" || event.kind === "tx_intent") {
+        const source = JSON.stringify([
+          event.hostId,
+          event.instanceEpoch,
+          event.sessionId,
+          event.sessionEpoch,
+        ]);
+        if (
+          previousTxEnd !== event.payload.byteStart ||
+          previousTxSource !== source
+        )
+          txDecoder = new TextDecoder();
+        previousTxEnd = event.payload.byteEnd;
+        previousTxSource = source;
+        const bytes = decodeBytes(event.payload.bytesBase64);
         return {
+          itemIndex,
+          displayIndex,
           kind: "tx",
-          text: `${event.payload.outcome} [${event.payload.byteStart}, ${event.payload.byteEnd})`,
+          text: txDecoder.decode(bytes, { stream: true }),
+          hex: formatHex(bytes),
           offset: event.payload.byteStart,
+          byteEnd: event.payload.byteEnd,
+          receipt: event.kind === "tx" ? event.payload : undefined,
         };
-      return { kind: event.kind, text: event.eventSeq };
+      }
+      return {
+        itemIndex,
+        displayIndex,
+        kind: event.kind,
+        text: event.eventSeq,
+      };
     });
-  }, [displayed]);
+  }, [projected]);
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
@@ -446,12 +495,12 @@ export function StreamView({
         {!rows.length && (
           <p className="text-muted-foreground">{labels.emptyStream}</p>
         )}
-        {rows.map((row, index) => (
+        {rows.map((row) => (
           <div
-            key={index}
+            key={row.itemIndex}
             ref={(element) => {
-              if (element) rowRefs.current.set(index, element);
-              else rowRefs.current.delete(index);
+              if (element) rowRefs.current.set(row.itemIndex, element);
+              else rowRefs.current.delete(row.itemIndex);
             }}
             tabIndex={-1}
             data-offset={row.offset}
@@ -475,28 +524,30 @@ export function StreamView({
               <details className="workbench-stream-time text-muted-foreground text-xs">
                 <summary title={presentationLabels.timeDetails}>
                   {timeMode === "absolute"
-                    ? (times[index]!.absolute ?? presentationLabels.missingTime)
+                    ? (times[row.displayIndex]!.absolute ??
+                      presentationLabels.missingTime)
                     : (timeMode === "relative"
-                          ? times[index]!.relativeNs
-                          : times[index]!.intervalNs) === null
+                          ? times[row.displayIndex]!.relativeNs
+                          : times[row.displayIndex]!.intervalNs) === null
                       ? presentationLabels.missingTime
-                      : `${timeMode === "relative" ? times[index]!.relativeNs : times[index]!.intervalNs} ns`}
+                      : `${timeMode === "relative" ? times[row.displayIndex]!.relativeNs : times[row.displayIndex]!.intervalNs} ns`}
                 </summary>
-                {times[index]!.time ? (
+                {times[row.displayIndex]!.time ? (
                   <>
                     <p>
-                      {presentationLabels.clock}: {times[index]!.time!.clockId}
+                      {presentationLabels.clock}:{" "}
+                      {times[row.displayIndex]!.time!.clockId}
                     </p>
                     <p>
                       {presentationLabels.timeSource}:{" "}
-                      {times[index]!.time!.precision.source}
+                      {times[row.displayIndex]!.time!.precision.source}
                     </p>
                     <p>
                       {presentationLabels.resolution}:{" "}
-                      {times[index]!.time!.precision.resolutionNs} ns
+                      {times[row.displayIndex]!.time!.precision.resolutionNs} ns
                     </p>
                     <p>
-                      {times[index]!.absoluteSource === "source"
+                      {times[row.displayIndex]!.absoluteSource === "source"
                         ? presentationLabels.sourceTime
                         : presentationLabels.receivedTime}
                     </p>
@@ -511,7 +562,7 @@ export function StreamView({
               data-mode={mode}
               style={terminalTypographyStyle(terminalSettings?.typography)}
             >
-              {row.kind === "rx" ? (
+              {row.kind === "rx" || row.kind === "tx" ? (
                 <>
                   <span
                     className={mode === "hex" ? "sr-only" : "workbench-payload"}
@@ -520,6 +571,14 @@ export function StreamView({
                   </span>
                   {mode !== "text" && (
                     <span className="workbench-payload">{row.hex}</span>
+                  )}
+                  {row.kind === "tx" && (
+                    <div className="text-muted-foreground text-xs">
+                      <p>
+                        {labels.requestedBytes}: [{row.offset}, {row.byteEnd})
+                      </p>
+                      <TxStreamReceipt receipt={row.receipt} labels={labels} />
+                    </div>
                   )}
                 </>
               ) : (
@@ -534,5 +593,34 @@ export function StreamView({
       )}
       {error && <p role="alert">{error.message}</p>}
     </section>
+  );
+}
+
+function TxStreamReceipt({
+  receipt,
+  labels,
+}: {
+  receipt?: TxReceipt;
+  labels: WorkbenchLabels;
+}) {
+  if (!receipt) return <p>{labels.awaitingReceipt}</p>;
+  return (
+    <>
+      <p>
+        {labels.status}: {receipt.outcome}
+      </p>
+      {receipt.acceptedRanges.map((range) => (
+        <p key={`accepted-${range.start}`}>
+          {labels.acceptedBytes}: [{range.start}, {range.end})
+        </p>
+      ))}
+      {receipt.unknownRanges.map((range) => (
+        <p key={`unknown-${range.start}`}>
+          {labels.unknownBytes}: [{range.start}, {range.end})
+        </p>
+      ))}
+      <p>{labels.peerUnconfirmed}</p>
+      {receipt.backendError && <p>{receipt.backendError.code}</p>}
+    </>
   );
 }

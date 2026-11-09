@@ -42,7 +42,11 @@ export function waitForHost<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   if (!signal) return pending;
-  if (signal.aborted) return Promise.reject(abortError());
+  if (signal.aborted) {
+    // A Native request already owns its work; still observe its late rejection.
+    void pending.catch(() => {});
+    return Promise.reject(abortError());
+  }
   return new Promise((resolve, reject) => {
     const abort = () => reject(abortError());
     signal.addEventListener("abort", abort, { once: true });

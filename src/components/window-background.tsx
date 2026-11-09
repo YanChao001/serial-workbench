@@ -5,6 +5,7 @@ import { useSettings } from "@/providers/settings";
 import { PatternArtwork } from "@/components/skin-artwork";
 import { VideoBackground } from "@/components/video-background";
 import { getBundledWallpaper } from "@/lib/bundled-wallpapers";
+import { reportClientError } from "@/lib/report-error";
 export { PatternArtwork } from "@/components/skin-artwork";
 
 function MediaBackground({
@@ -37,8 +38,10 @@ function MediaBackground({
         resolved = value;
         setResolvedState({ media, resource: value });
       })
-      .catch(() => {
+      .catch((error: unknown) => {
         /* Keep the saved reference intact when resolution fails. */
+        if (!request.signal.aborted)
+          reportClientError(error, "Media background");
       });
     return () => {
       request.abort();

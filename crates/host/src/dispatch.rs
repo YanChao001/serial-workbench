@@ -1259,6 +1259,11 @@ impl Host {
         } else {
             None
         };
+        let operation_source = self
+            .inner
+            .capture_api
+            .operation_source(action, &call.target, &call.params, actor)
+            .await?;
         let capacity = if crate::limits::is_stop(call.action_id.as_str()) {
             &self.inner.stop_capacity
         } else {
@@ -1308,10 +1313,11 @@ impl Host {
                 let accept_files = host.inner.files.clone();
                 let acceptance = blocking(move || {
                     let stamp = accept_auth.capture_grants(&accept_actor)?;
-                    let acceptance = store.accept(
+                    let acceptance = store.accept_with_source(
                         &accept_actor,
                         &accept_call,
                         &canonical_digest(&accept_call)?,
+                        operation_source.as_ref(),
                     )?;
                     let operation = match &acceptance {
                         Acceptance::New(operation) | Acceptance::Existing(operation) => operation,
@@ -2370,7 +2376,9 @@ mod tests {
                     // finishing. Retry only after they actually retire.
                     eprintln!("saturated stage=owner_retirement stop={stop}");
                     let wait_started = std::time::Instant::now();
-                    let waited = tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                    let retirement_budget = std::time::Duration::from_secs(60)
+                        .saturating_sub(shutdown_started.elapsed());
+                    let waited = tokio::time::timeout(retirement_budget, async {
                         loop {
                             let (pending, admissions) =
                                 h.host.inner.sessions.quiesce_pending().unwrap();

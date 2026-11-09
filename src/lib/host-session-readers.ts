@@ -16,6 +16,13 @@ import type { HostStreamView } from "@/providers/host-context";
 function failure(code: string, message: string) {
   return new HostRequestError({ code, message, retryable: false });
 }
+type ReaderResume = {
+  view: HostStreamView;
+  retained: Array<{ item: StreamItem; size: number }>;
+  retainedBytes: number;
+  cursor: Cursor;
+  recoveries: number;
+};
 
 export function createSessionReaders(
   connection: HostConnection,
@@ -49,6 +56,7 @@ export function createSessionReaders(
   function startReader(
     session: SessionSnapshot,
     notifications: Set<() => void>,
+    resume?: ReaderResume,
   ) {
     const controller = new AbortController();
     const entry = {
@@ -61,9 +69,16 @@ export function createSessionReaders(
       !disposed &&
       !controller.signal.aborted &&
       readers.get(session.sessionId) === entry;
-    let view: HostStreamView = { items: [], error: null, trimmed: false };
-    const retained: Array<{ item: StreamItem; size: number }> = [];
-    let retainedBytes = 0;
+    let view: HostStreamView = resume?.view ?? {
+      items: [],
+      error: null,
+      trimmed: false,
+    };
+    const retained = resume?.retained ?? [];
+    let retainedBytes = resume?.retainedBytes ?? 0;
+    let resumeCursor = resume?.cursor;
+    let recoveries = resume?.recoveries ?? 0;
+    let authorized = false;
     const publish = () => {
       if (!current()) return;
       onUpdate(session.sessionId, view);
@@ -71,6 +86,24 @@ export function createSessionReaders(
     };
     const fail = (error: unknown) => {
       if (!current()) return;
+      if (
+        error instanceof HostRequestError &&
+        error.code === "PERMISSION_DENIED" &&
+        (authorized || resume !== undefined) &&
+        resumeCursor &&
+        recoveries < 3
+      ) {
+        // 授权代次变化结束旧 reader；只用新查询重新验权，再从已处理游标接续。
+        controller.abort();
+        startReader(session, notifications, {
+          view,
+          retained,
+          retainedBytes,
+          cursor: resumeCursor,
+          recoveries: recoveries + 1,
+        });
+        return;
+      }
       view = {
         ...view,
         error: error instanceof Error ? error : new Error(String(error)),
@@ -100,7 +133,15 @@ export function createSessionReaders(
       const queue = BigInt(connection.attachment.limits.maxReaderQueueBytes);
       const windowBytes = queue < 1048576n ? queue : 1048576n;
       let grant = windowBytes;
-      let last = cursor;
+      let last = resumeCursor ?? cursor;
+      if (
+        last.hostId !== cursor.hostId ||
+        last.instanceEpoch !== cursor.instanceEpoch ||
+        last.scopeId !== cursor.scopeId
+      )
+        throw failure("EPOCH_MISMATCH", "Raw stream source changed");
+      resumeCursor = last;
+      authorized = true;
       const identity: { subscriptionId?: string } = {};
       let pendingCredit: Cursor | undefined;
       let creditInFlight = false;
@@ -138,7 +179,7 @@ export function createSessionReaders(
       };
       const request = connection.buildQuery("stream.subscribe", target, {
         scopeId: cursor.scopeId,
-        after: cursor,
+        after: last,
         queueBytes: windowBytes.toString(),
         initialCreditBytes: windowBytes.toString(),
         overflowPolicy: "drop_with_gap",
@@ -187,12 +228,14 @@ export function createSessionReaders(
             }
           }
           last = batch.cursor;
+          resumeCursor = last;
           view = { ...view, items: retained.map((value) => value.item) };
           publish();
           pendingCredit = batch.cursor;
           void credit().catch(fail);
         },
         (frame) => {
+          if (!current()) return;
           if (frame.requestId !== request.requestId || frame.channel !== "raw")
             throw new ContractValidationError();
           if (
@@ -215,6 +258,7 @@ export function createSessionReaders(
         once: true,
       });
       await credit();
+      if (current()) recoveries = 0;
     })().catch(fail);
     return entry;
   }

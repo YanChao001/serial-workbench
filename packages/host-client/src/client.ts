@@ -69,7 +69,11 @@ async function waitFor<T>(
   signal?: AbortSignal,
 ): Promise<T> {
   if (!signal) return promise;
-  if (signal.aborted) throw abortError();
+  if (signal.aborted) {
+    // The request may have started and rejected while obtaining this promise.
+    void promise.catch(() => {});
+    throw abortError();
+  }
   return new Promise<T>((resolve, reject) => {
     const abort = () => reject(abortError());
     signal.addEventListener("abort", abort, { once: true });
@@ -122,9 +126,9 @@ export function createHostClient(transport: HostTransport): HostClient {
       };
       if (signal?.aborted) throw abortError();
       signal?.addEventListener("abort", close, { once: true });
-      async function start(expirations = 0): Promise<void> {
+      async function start(recoveryAttempts = 0): Promise<void> {
         const thisGeneration = ++generation;
-        let recoveries = expirations;
+        let recoveries = recoveryAttempts;
         const attachment = transport.getAttachment();
         const target = transport.resolveScope(scopeId);
         const makeQuery = (
@@ -141,10 +145,23 @@ export function createHostClient(transport: HostTransport): HostClient {
           params,
           revealTarget: { pageId: "workbench" },
         });
-        const result = await query(
-          makeQuery("state.snapshot", { scopeId }),
-          signal,
-        );
+        let result: QueryResult;
+        try {
+          result = await query(
+            makeQuery("state.snapshot", { scopeId }),
+            signal,
+          );
+        } catch (error) {
+          // 恢复查询也可能撞上下一次授权变更，继续消耗同一预算重新验权。
+          if (
+            !closed &&
+            recoveries < 3 &&
+            error instanceof HostRequestError &&
+            error.code === "PERMISSION_DENIED"
+          )
+            return start(recoveries + 1);
+          throw error;
+        }
         if (closed || generation !== thisGeneration) return;
         if (result.kind !== "snapshot") throw new ContractValidationError();
         const snapshot = result.value;
@@ -172,6 +189,7 @@ export function createHostClient(transport: HostTransport): HostClient {
           after: snapshot.cursor,
         });
         const channelState: { subscriptionId?: string } = {};
+        let setupCompleted = false;
         const buffered: unknown[] = [];
         const fail = (error: Error) => {
           if (!closed && generation === thisGeneration) {
@@ -247,7 +265,10 @@ export function createHostClient(transport: HostTransport): HostClient {
             )
               throw new ContractValidationError("Invalid Host state frame");
             if (frame.body.type === "subscriptionEnded") {
-              if (frame.body.error.code === "CURSOR_EXPIRED")
+              if (
+                frame.body.error.code === "CURSOR_EXPIRED" ||
+                frame.body.error.code === "PERMISSION_DENIED"
+              )
                 recover(new HostRequestError(frame.body.error));
               else fail(new HostRequestError(frame.body.error));
               return;
@@ -256,7 +277,7 @@ export function createHostClient(transport: HostTransport): HostClient {
             if (disposition === "gap")
               recover(new ProjectionError("CURSOR_GAP", "State cursor gap"));
             else if (disposition === "applied") {
-              recoveries = 0;
+              if (setupCompleted) recoveries = 0;
               listener({ type: "delta", delta: frame.body.delta });
             }
           } catch {
@@ -286,7 +307,8 @@ export function createHostClient(transport: HostTransport): HostClient {
           if (
             !closed &&
             error instanceof HostRequestError &&
-            error.code === "CURSOR_EXPIRED" &&
+            (error.code === "CURSOR_EXPIRED" ||
+              error.code === "PERMISSION_DENIED") &&
             recoveries < 3
           ) {
             return start(recoveries + 1);
@@ -297,6 +319,12 @@ export function createHostClient(transport: HostTransport): HostClient {
         channelState.subscriptionId = channel.subscriptionId;
         unsubscribe = channel.unsubscribe;
         for (const frame of buffered) onFrame(frame);
+        // 新快照与订阅均重新验权；成功建立的空闲订阅不累计过去的恢复。
+        // setup 内连续结束仍由上面的同一恢复预算限制，旧队列绝不重新使用。
+        if (!closed && generation === thisGeneration) {
+          setupCompleted = true;
+          recoveries = 0;
+        }
       }
       try {
         await start();

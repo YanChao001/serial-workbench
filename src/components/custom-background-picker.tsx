@@ -13,6 +13,7 @@ import {
 import { useI18n } from "@/providers/i18n";
 import { useSettings } from "@/providers/settings";
 import type { MediaPort, ResolvedMedia } from "@/lib/media";
+import { reportClientError } from "@/lib/report-error";
 import {
   createClientGallery,
   sameGalleryReference,
@@ -44,7 +45,10 @@ function GalleryPreview({
         resource = value;
         setResolved({ port: media, value });
       })
-      .catch(() => {});
+      .catch((error: unknown) => {
+        if (!request.signal.aborted)
+          reportClientError(error, "Gallery preview");
+      });
     return () => {
       request.abort();
       resource?.dispose();
@@ -225,7 +229,7 @@ export function CustomBackgroundPicker() {
               <button
                 data-surface="artwork"
                 type="button"
-                className="block w-full text-left focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring"
+                className="block w-full rounded-md text-left transition-shadow hover:ring-2 hover:ring-ring/60 aria-pressed:ring-2 aria-pressed:ring-primary aria-pressed:ring-inset focus-visible:outline focus-visible:outline-2 focus-visible:outline-ring disabled:cursor-not-allowed"
                 aria-label={t("settings.chooseWallpaper", { name: entry.name })}
                 aria-pressed={
                   !!selected &&

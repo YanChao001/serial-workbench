@@ -22,6 +22,7 @@ import type {
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { saveTextExport } from "@/lib/tauri";
+import { stateScopeKey } from "@/lib/host-scope";
 import { SerialConfigurationFields } from "./serial-configuration-fields";
 import { validSerialConfiguration } from "./serial-configuration";
 import { useUnsavedWork } from "@/providers/unsaved-work";
@@ -65,7 +66,7 @@ export function WorkbenchTools({
   const [workspaceId, setWorkspaceId] = useState(
     base?.scope.target.id ?? "default",
   );
-  const [exported, setExported] = useState("");
+  const [exported, setExported] = useState<{ scope: string; json: string }>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const ready = host.state.status === "ready";
@@ -100,6 +101,7 @@ export function WorkbenchTools({
     host.connection?.attachment.instanceEpoch,
     host.connection?.generation,
   ]);
+  const documentKey = JSON.stringify([generation, stateScopeKey(base?.scope)]);
   useEffect(() => {
     setRecent(undefined);
     return () => pending.current?.abort();
@@ -245,6 +247,7 @@ export function WorkbenchTools({
         {error && <p role="alert">{error}</p>}
         {base && (
           <WorkspaceEditor
+            key={documentKey}
             base={base}
             value={draft}
             labels={labels.workspace}
@@ -268,14 +271,15 @@ export function WorkbenchTools({
                 `workspace-${current.scope.target.id}.json`,
                 result.json,
               );
-              if (!signal?.aborted && path !== null) setExported(result.json);
+              if (!signal?.aborted && path !== null)
+                setExported({ scope: documentKey, json: result.json });
             }}
           />
         )}
-        {exported && (
+        {exported?.scope === documentKey && (
           <Textarea
             aria-label={t("workbench.tools.exportedJson")}
-            value={exported}
+            value={exported.json}
             readOnly
           />
         )}

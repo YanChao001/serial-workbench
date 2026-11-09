@@ -8,14 +8,16 @@ vi.mock("./tauri", () => ({
 }));
 
 describe("前端错误记录", () => {
-  beforeEach(() => {
+  let reportClientError: typeof import("./report-error").reportClientError;
+  beforeEach(async () => {
     vi.resetModules();
     vi.clearAllMocks();
     vi.mocked(isTauri).mockReturnValue(true);
-  });
+    // 冷导入属于夹具准备，等待完成后再进入断言，避免超时后的旧用例污染新 mock。
+    ({ reportClientError } = await import("./report-error"));
+  }, 30000);
 
   it("在写入日志前去掉URL凭据、查询参数、令牌及用户目录", async () => {
-    const { reportClientError } = await import("./report-error");
     const error = new Error(
       "https://alice:pass@example.com/api?code=oauth#private token=secret",
     );
@@ -28,7 +30,6 @@ describe("前端错误记录", () => {
   });
 
   it("将完整的 Unicode 诊断交给原生门面统一裁剪", async () => {
-    const { reportClientError } = await import("./report-error");
     const error = new Error("错🌸".repeat(3000));
     error.stack = "错🌸".repeat(5000);
     reportClientError(error, error.stack);
@@ -41,7 +42,6 @@ describe("前端错误记录", () => {
   });
 
   it("浏览器不发IPC，原生每分钟最多20条，记录自身失败不递归", async () => {
-    const { reportClientError } = await import("./report-error");
     vi.mocked(isTauri).mockReturnValue(false);
     reportClientError(new Error("browser"));
     expect(recordFrontendError).not.toHaveBeenCalled();

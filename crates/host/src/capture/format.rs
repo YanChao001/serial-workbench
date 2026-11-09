@@ -234,8 +234,11 @@ pub(crate) fn write_json_at(
     let mut file = temp.create_file()?;
     file.write_all(&bytes).map_err(io_error)?;
     file.sync_all().map_err(io_error)?;
-    drop(file);
     temp.rename_to(target, true)?;
+    #[cfg(windows)]
+    // Flush the renamed file's metadata through the same RW identity. A
+    // FileRenameInfoEx fallback does not carry MOVEFILE_WRITE_THROUGH.
+    file.sync_all().map_err(io_error)?;
     target.sync_parent()
 }
 pub fn rename_no_replace(source: &Path, target: &Path) -> HostResult<()> {

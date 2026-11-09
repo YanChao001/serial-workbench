@@ -8,6 +8,8 @@ const root = resolve("/project");
 const output = resolve("/external cache/custom-target/custom-profile");
 const host = join(output, "serial-workbench-host.exe");
 const cli = join(output, "serial-workbench-cli.exe");
+const runtimeDirectory = resolve("/immutable runtime/version");
+const runtimeCli = join(runtimeDirectory, "serial-workbench-cli.exe");
 
 function artifact(name, executable, extra = {}) {
   return JSON.stringify({
@@ -48,19 +50,23 @@ function runner({ lines = artifacts, buildCode = 0, cliCode = 0 } = {}) {
   const calls = [];
   return {
     calls,
+    stageRuntime: (_root, sources) => {
+      assert.deepEqual(sources, [host, cli]);
+      return [join(runtimeDirectory, "serial-workbench-host.exe"), runtimeCli];
+    },
     run: async (cmd, args, opts) => {
       calls.push({ cmd, args, opts });
       if (cmd === "cargo") {
         for (const line of lines) opts.onStdoutLine?.(line);
         return buildCode;
       }
-      if (cmd === cli) return cliCode;
+      if (cmd === runtimeCli) return cliCode;
       return 0;
     },
   };
 }
 
-test("dev builds Host and CLI, authenticates the artifact CLI, then starts Tauri", async () => {
+test("dev builds Host and CLI, authenticates the immutable runtime CLI, then starts Tauri", async () => {
   const fixture = runner();
   assert.equal(await runDev(root, ["--no-watch"], fixture), 0);
   const [build, prepare, tauri] = fixture.calls;
@@ -77,7 +83,7 @@ test("dev builds Host and CLI, authenticates the artifact CLI, then starts Tauri
     "--package",
     "serial-workbench-cli",
   ]);
-  assert.equal(prepare.cmd, cli);
+  assert.equal(prepare.cmd, runtimeCli);
   assert.deepEqual(prepare.args, ["catalog", "--json"]);
   assert.deepEqual(prepare.opts.stdio, ["ignore", "ignore", "inherit"]);
   assert.deepEqual(build.opts.stdio, ["ignore", "pipe", "inherit"]);
@@ -133,17 +139,35 @@ test("dev stops before Tauri when CLI authentication fails", async () => {
   const fixture = runner({ cliCode: 7 });
   assert.equal(await runDev(root, [], fixture), 7);
   assert.equal(fixture.calls.length, 2);
-  assert.equal(fixture.calls[1].cmd, cli);
+  assert.equal(fixture.calls[1].cmd, runtimeCli);
+});
+
+test("dev stops before authentication and Tauri if runtime staging fails", async () => {
+  const fixture = runner();
+  const failure = new Error("changed cached runtime");
+  await assert.rejects(
+    runDev(root, [], {
+      ...fixture,
+      stageRuntime() {
+        throw failure;
+      },
+    }),
+    failure,
+  );
+  assert.equal(fixture.calls.length, 1);
 });
 
 test("dev propagates preparation spawn errors before Tauri", async () => {
   const fixture = runner();
   const failure = new Error("CLI could not start");
   const run = async (...args) => {
-    if (args[0] === cli) throw failure;
+    if (args[0] === runtimeCli) throw failure;
     return fixture.run(...args);
   };
-  await assert.rejects(runDev(root, [], { run }), failure);
+  await assert.rejects(
+    runDev(root, [], { run, stageRuntime: fixture.stageRuntime }),
+    failure,
+  );
   assert.equal(fixture.calls.length, 1);
 });
 
@@ -258,7 +282,7 @@ test("dev accepts identical cached artifacts without guessing their output direc
   });
   await runDev(root, [], fixture);
   assert.equal(fixture.calls.length, 3);
-  assert.equal(fixture.calls[1].cmd, cli);
+  assert.equal(fixture.calls[1].cmd, runtimeCli);
 });
 
 test("dev refuses missing, non-bin, invalid, ambiguous or non-adjacent executables", async () => {

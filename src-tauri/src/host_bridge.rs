@@ -2,7 +2,10 @@
 mod client_effects;
 mod connect_device;
 pub(crate) mod document_intents;
+mod pending_frames;
 mod platform_effects;
+mod read_requests;
+use pending_frames::PendingFrames;
 use serial_workbench_core::{HostError, HostResult, Id};
 use std::collections::{HashMap, VecDeque};
 
@@ -242,15 +245,13 @@ struct RawSubscription {
 }
 struct RawSubscriptions {
     active: HashMap<Id, RawSubscription>,
-    early: Vec<serial_workbench_core::WireFrame>,
-    early_bytes: usize,
+    setups: std::sync::Arc<std::sync::Mutex<PendingFrames>>,
     ledger: std::sync::Arc<std::sync::Mutex<DeliveryLedger>>,
     failed: bool,
 }
 struct Subscriptions {
     active: HashMap<Id, Subscription>,
-    early: Vec<serial_workbench_core::WireFrame>,
-    early_bytes: usize,
+    setups: std::sync::Arc<std::sync::Mutex<PendingFrames>>,
     ledger: std::sync::Arc<std::sync::Mutex<DeliveryLedger>>,
     failed: bool,
 }
@@ -723,7 +724,35 @@ impl DesktopHostBridge {
         window: &str,
         request: serial_workbench_core::RpcRequest,
     ) -> HostResult<serial_workbench_core::RpcReply> {
-        let attachment = self.attach(window).await?;
+        let instance = self
+            .instances
+            .lock()
+            .expect("window instances")
+            .active
+            .get(window)
+            .copied()
+            .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
+        self.raw_request_for_instance(window, instance, request)
+            .await
+    }
+    async fn raw_request_for_instance(
+        &self,
+        window: &str,
+        instance: u64,
+        request: serial_workbench_core::RpcRequest,
+    ) -> HostResult<serial_workbench_core::RpcReply> {
+        use serial_workbench_core::RpcRequest;
+        if matches!(
+            &request,
+            RpcRequest::StreamSubscribe(_) | RpcRequest::SubscriptionClose(_)
+        ) || matches!(&request, RpcRequest::Query(query) if matches!(query.action_id.as_str(), "stream.subscribe" | "subscription.close"))
+        {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "Request requires a bridge subscription command",
+            ));
+        }
+        let attachment = self.attachment_for_instance(window, instance).await?;
         self.raw_request_at_generation(window, attachment.generation, request)
             .await
     }
@@ -736,15 +765,17 @@ impl DesktopHostBridge {
         lifecycle: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
     ) -> HostResult<Id> {
         use serial_workbench_core::{RpcReply, RpcRequest, RpcResult};
-        let attached = self
-            .attach_guarded(window, instance, async {}, async { Ok(()) })
+        let attached = self.attachment_for_instance(window, instance).await?;
+        let raw = self
+            .raw_link_at_generation(window, attached.generation)
             .await?;
-        let reply = self
-            .raw_request_at_generation(
-                window,
-                attached.generation,
-                RpcRequest::StreamSubscribe(query.clone()),
-            )
+        let setup = PendingFrames::begin(
+            &raw.subscriptions.lock().expect("raw subscriptions").setups,
+            query.request_id.clone(),
+        )?;
+        let reply = raw
+            .connection
+            .request(RpcRequest::StreamSubscribe(query.clone()))
             .await?;
         let id = match reply {
             RpcReply::Success { result, .. } => match *result {
@@ -776,11 +807,21 @@ impl DesktopHostBridge {
                 .raw
                 .clone()
         };
-        let raw = slot
+        let current_raw = slot
             .lock()
             .await
             .clone()
             .ok_or_else(|| HostError::new("UNAUTHENTICATED", "Raw connection closed"))?;
+        if !std::sync::Arc::ptr_eq(&raw, &current_raw) {
+            let _ = raw
+                .connection
+                .request(RpcRequest::SubscriptionClose(make_close_query(query, &id)))
+                .await;
+            return Err(HostError::new(
+                "UNAUTHENTICATED",
+                "Raw connection changed during subscription setup",
+            ));
+        }
         let mut subscriptions = raw.subscriptions.lock().expect("raw subscriptions");
         subscriptions.active.insert(
             id.clone(),
@@ -790,9 +831,7 @@ impl DesktopHostBridge {
                 lifecycle,
             },
         );
-        let early = std::mem::take(&mut subscriptions.early);
-        subscriptions.early_bytes = 0;
-        for frame in early {
+        for frame in setup.take() {
             let matches = match &frame.body {
                 serial_workbench_core::IpcMessage::RawBatch { batch } => {
                     batch.subscription_id == id
@@ -802,27 +841,19 @@ impl DesktopHostBridge {
                 } => subscription_id == &id,
                 _ => false,
             };
-            if matches {
-                if let Some(query) =
+            if matches
+                && let Some(query) =
                     deliver_raw(&mut subscriptions, attached.generation.get(), frame)
-                {
-                    let connection = raw.connection.clone();
-                    let id = id.clone();
-                    tokio::spawn(async move {
-                        let _ = connection
-                            .request(serial_workbench_core::RpcRequest::SubscriptionClose(
-                                make_close_query(query, &id),
-                            ))
-                            .await;
-                    });
-                }
-            } else {
-                subscriptions.early_bytes += serial_workbench_ipc::frame::encoded_length(
-                    &frame,
-                    serial_workbench_ipc::frame::MAX_FRAME_BYTES,
-                )
-                .unwrap_or(0);
-                subscriptions.early.push(frame);
+            {
+                let connection = raw.connection.clone();
+                let id = id.clone();
+                tokio::spawn(async move {
+                    let _ = connection
+                        .request(serial_workbench_core::RpcRequest::SubscriptionClose(
+                            make_close_query(query, &id),
+                        ))
+                        .await;
+                });
             }
         }
         if subscriptions.failed {
@@ -840,6 +871,29 @@ impl DesktopHostBridge {
         generation: serial_workbench_core::U64,
         request: serial_workbench_core::RpcRequest,
     ) -> HostResult<serial_workbench_core::RpcReply> {
+        let raw = self.raw_link_at_generation(window, generation).await?;
+        let result = raw.connection.request(request).await;
+        let state = self.inner.lock().await;
+        if !state.windows.get(window).is_some_and(|connected| {
+            connected.generation == generation.get()
+                && self
+                    .instances
+                    .lock()
+                    .expect("window instances")
+                    .current(window, connected.instance)
+        }) {
+            return Err(HostError::new(
+                "EPOCH_MISMATCH",
+                "Window Host connection changed; the request may have completed",
+            ));
+        }
+        result
+    }
+    async fn raw_link_at_generation(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
+    ) -> HostResult<std::sync::Arc<RawLink>> {
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let (client, raw, ledger) = {
@@ -870,8 +924,7 @@ impl DesktopHostBridge {
                 let connection = std::sync::Arc::new(client.connect_raw().await?);
                 let subscriptions = std::sync::Arc::new(std::sync::Mutex::new(RawSubscriptions {
                     active: HashMap::new(),
-                    early: Vec::new(),
-                    early_bytes: 0,
+                    setups: Default::default(),
                     ledger,
                     failed: false,
                 }));
@@ -910,18 +963,13 @@ impl DesktopHostBridge {
                             if failed {
                                 break;
                             }
-                        } else if let Ok(size) = serial_workbench_ipc::frame::encoded_length(
-                            &frame,
-                            serial_workbench_ipc::frame::MAX_FRAME_BYTES,
-                        ) {
-                            if events.early.len() >= 256
-                                || size > (4 * 1024 * 1024_usize).saturating_sub(events.early_bytes)
-                            {
-                                break;
-                            }
-                            events.early_bytes += size;
-                            events.early.push(frame);
-                        } else {
+                        } else if events
+                            .setups
+                            .lock()
+                            .expect("pending subscription frames")
+                            .push(frame)
+                            .is_err()
+                        {
                             break;
                         }
                     }
@@ -967,22 +1015,7 @@ impl DesktopHostBridge {
             }
             slot.as_ref().expect("raw connection").clone()
         };
-        let result = raw.connection.request(request).await;
-        let state = self.inner.lock().await;
-        if !state.windows.get(window).is_some_and(|connected| {
-            connected.generation == generation.get()
-                && self
-                    .instances
-                    .lock()
-                    .expect("window instances")
-                    .current(window, connected.instance)
-        }) {
-            return Err(HostError::new(
-                "EPOCH_MISMATCH",
-                "Window Host connection changed; the request may have completed",
-            ));
-        }
-        result
+        Ok(raw)
     }
     async fn delivery_ack(
         &self,
@@ -1080,6 +1113,36 @@ impl DesktopHostBridge {
         let mut bridge = Self::new(profile);
         bridge.delivery_limits = (items, bytes);
         bridge
+    }
+    pub(crate) async fn attachment_for_instance(
+        &self,
+        window: &str,
+        instance: u64,
+    ) -> HostResult<DesktopAttachment> {
+        crate::commands::require_host_window(window)
+            .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
+        let state = self.inner.lock().await;
+        let connected = state
+            .windows
+            .get(window)
+            .filter(|connected| {
+                connected.instance == instance
+                    && self
+                        .instances
+                        .lock()
+                        .expect("window instances")
+                        .current(window, instance)
+            })
+            .ok_or_else(|| {
+                HostError::new(
+                    "EPOCH_MISMATCH",
+                    "Window Host connection changed; attach explicitly",
+                )
+            })?;
+        Ok(DesktopAttachment {
+            attachment: connected.client.attachment().clone(),
+            generation: connected.generation.into(),
+        })
     }
     pub(crate) async fn attachment_at_generation(
         &self,
@@ -1290,8 +1353,7 @@ impl DesktopHostBridge {
             .clone();
         let subscriptions = std::sync::Arc::new(std::sync::Mutex::new(Subscriptions {
             active: HashMap::new(),
-            early: Vec::new(),
-            early_bytes: 0,
+            setups: Default::default(),
             ledger,
             failed: false,
         }));
@@ -1326,18 +1388,13 @@ impl DesktopHostBridge {
                     if failed {
                         break;
                     }
-                } else if let Ok(size) = serial_workbench_ipc::frame::encoded_length(
-                    &frame,
-                    serial_workbench_ipc::frame::MAX_FRAME_BYTES,
-                ) {
-                    if subscriptions.early.len() >= 256
-                        || size > (4 * 1024 * 1024_usize).saturating_sub(subscriptions.early_bytes)
-                    {
-                        break;
-                    }
-                    subscriptions.early_bytes += size;
-                    subscriptions.early.push(frame);
-                } else {
+                } else if subscriptions
+                    .setups
+                    .lock()
+                    .expect("pending subscription frames")
+                    .push(frame)
+                    .is_err()
+                {
                     break;
                 }
             }
@@ -1396,7 +1453,23 @@ impl DesktopHostBridge {
         window: &str,
         request: serial_workbench_core::RpcRequest,
     ) -> HostResult<serial_workbench_core::RpcReply> {
-        let attached = self.attach(window).await?;
+        let instance = self
+            .instances
+            .lock()
+            .expect("window instances")
+            .active
+            .get(window)
+            .copied()
+            .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
+        self.request_for_instance(window, instance, request).await
+    }
+    async fn request_for_instance(
+        &self,
+        window: &str,
+        instance: u64,
+        request: serial_workbench_core::RpcRequest,
+    ) -> HostResult<serial_workbench_core::RpcReply> {
+        let attached = self.attachment_for_instance(window, instance).await?;
         self.request_for_generation(window, attached.generation, request)
             .await
     }
@@ -1512,21 +1585,29 @@ impl DesktopHostBridge {
         use serial_workbench_core::{RpcReply, RpcRequest, RpcResult};
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
-        self.attach_guarded(window, instance, async {}, async { Ok(()) })
-            .await?;
+        let attached = self.attachment_for_instance(window, instance).await?;
         let (client, subscriptions, generation) = {
             let state = self.inner.lock().await;
             let connected = state
                 .windows
                 .get(window)
-                .filter(|connected| connected.instance == instance)
-                .ok_or_else(|| HostError::new("UNAUTHENTICATED", "Window disconnected"))?;
+                .filter(|connected| {
+                    connected.instance == instance
+                        && connected.generation == attached.generation.get()
+                })
+                .ok_or_else(|| {
+                    HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
+                })?;
             (
                 connected.client.clone(),
                 connected.subscriptions.clone(),
                 connected.generation,
             )
         };
+        let setup = PendingFrames::begin(
+            &subscriptions.lock().expect("subscription lock").setups,
+            query.request_id.clone(),
+        )?;
         let result = client
             .request(RpcRequest::StateSubscribe(query.clone()))
             .await?;
@@ -1565,10 +1646,7 @@ impl DesktopHostBridge {
                 channel: channel.clone(),
             },
         );
-        let mut retained = Vec::new();
-        let early = std::mem::take(&mut subscriptions.early);
-        subscriptions.early_bytes = 0;
-        for frame in early {
+        for frame in setup.take() {
             let matches = match &frame.body {
                 serial_workbench_core::IpcMessage::Delta {
                     subscription_id, ..
@@ -1578,24 +1656,14 @@ impl DesktopHostBridge {
                 } => subscription_id == &id,
                 _ => false,
             };
-            if matches {
-                if let Some(query) = deliver_state(&mut subscriptions, generation, frame) {
-                    let client = client.clone();
-                    let id = id.clone();
-                    tokio::spawn(async move {
-                        let _ = close_subscription(client, query, id).await;
-                    });
-                }
-            } else {
-                subscriptions.early_bytes += serial_workbench_ipc::frame::encoded_length(
-                    &frame,
-                    serial_workbench_ipc::frame::MAX_FRAME_BYTES,
-                )
-                .unwrap_or(0);
-                retained.push(frame);
+            if matches && let Some(query) = deliver_state(&mut subscriptions, generation, frame) {
+                let client = client.clone();
+                let id = id.clone();
+                tokio::spawn(async move {
+                    let _ = close_subscription(client, query, id).await;
+                });
             }
         }
-        subscriptions.early = retained;
         if subscriptions.failed {
             let connection = client.clone();
             tokio::spawn(async move {
@@ -1688,7 +1756,10 @@ fn deliver_raw(
     let mut ledger = subscriptions.ledger.lock().expect("delivery ledger");
     let accepted = size.is_some_and(|size| {
         if stream == DeliveryStream::Lifecycle {
-            ledger.reserve_terminal(&key, size).is_ok()
+            ledger
+                .reserve(&key, size)
+                .or_else(|_| ledger.reserve_terminal(&key, size).map(|_| 0))
+                .is_ok()
         } else {
             ledger.reserve(&key, size).is_ok()
         }
@@ -1773,7 +1844,11 @@ fn deliver_state(
     let accepted = size.is_some_and(|size| {
         let mut ledger = subscriptions.ledger.lock().expect("delivery ledger");
         if is_terminal {
-            ledger.reserve_terminal(&key, size).is_ok()
+            // 正常终态也消耗普通预算；唯一应急槽只用于普通容量真正耗尽。
+            ledger
+                .reserve(&key, size)
+                .or_else(|_| ledger.reserve_terminal(&key, size).map(|_| 0))
+                .is_ok()
         } else {
             ledger.reserve(&key, size).is_ok()
         }
@@ -1903,11 +1978,8 @@ pub(crate) async fn host_request(
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<serial_workbench_core::RpcReply> {
     let instance = state.bind_window(&window)?;
-    let attachment = state
-        .attach_guarded(window.label(), instance, async {}, async { Ok(()) })
-        .await?;
     state
-        .request_for_generation(window.label(), attachment.generation, request)
+        .request_for_instance(window.label(), instance, request)
         .await
 }
 
@@ -1946,22 +2018,8 @@ pub(crate) async fn host_raw_request(
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<serial_workbench_core::RpcReply> {
     let instance = state.bind_window(&window)?;
-    use serial_workbench_core::RpcRequest;
-    if matches!(
-        &request,
-        RpcRequest::StreamSubscribe(_) | RpcRequest::SubscriptionClose(_)
-    ) || matches!(&request, RpcRequest::Query(query) if matches!(query.action_id.as_str(), "stream.subscribe" | "subscription.close"))
-    {
-        return Err(HostError::new(
-            "PERMISSION_DENIED",
-            "Request requires a bridge subscription command",
-        ));
-    }
-    let attachment = state
-        .attach_guarded(window.label(), instance, async {}, async { Ok(()) })
-        .await?;
     state
-        .raw_request_at_generation(window.label(), attachment.generation, request)
+        .raw_request_for_instance(window.label(), instance, request)
         .await
 }
 #[tauri::command]

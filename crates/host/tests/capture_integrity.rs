@@ -71,6 +71,29 @@ fn records_rotate_whole_and_corruption_stops_prefix() {
     assert_eq!(scan.report.verified_prefix, U64::from(1));
     assert!(!scan.report.container_complete);
 }
+#[cfg(windows)]
+#[test]
+fn stop_verifies_complete_capture_while_a_shared_manifest_reader_remains_open() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("capture");
+    let mut writer =
+        CaptureWriter::create(&path, vec![source()], CaptureLimits::default()).unwrap();
+    writer.push(entry(1), 0).unwrap();
+    let mut reader =
+        serial_workbench_host::capture::format::open_read(&path.join("manifest.json")).unwrap();
+    let summary = writer.finish().unwrap();
+    assert_eq!(summary.state, CaptureState::Complete);
+    assert_eq!(summary.watermarks.verified, U64::from(1));
+    let scan = verify_directory(&path).unwrap();
+    assert!(scan.report.container_complete);
+    assert_eq!(scan.report.verified_prefix, U64::from(1));
+    let mut old = String::new();
+    std::io::Read::read_to_string(&mut reader, &mut old).unwrap();
+    assert_eq!(
+        serde_json::from_str::<serde_json::Value>(&old).unwrap()["state"],
+        "recording"
+    );
+}
 #[test]
 fn capacity_failure_preserves_written_evidence() {
     let dir = tempfile::tempdir().unwrap();

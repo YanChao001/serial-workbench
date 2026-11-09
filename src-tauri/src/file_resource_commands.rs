@@ -516,6 +516,15 @@ pub async fn choose_file_resource(
         tauri::async_runtime::spawn_blocking(move || {
             use tauri_plugin_dialog::DialogExt;
             select_path(window.label(), || {
+                // 测试构建只替换系统对话框，后续文件检查、登记和授权仍走正式链路。
+                #[cfg(feature = "e2e")]
+                if matches!(role, FileResourceRole::Media) {
+                    let root = std::env::var_os("STARTER_TEST_DATA_DIR")
+                        .map(PathBuf::from)
+                        .filter(|path| path.is_absolute())
+                        .ok_or_else(invalid)?;
+                    return Ok(Some(root.join("e2e-background.png")));
+                }
                 let dialog = app.dialog().file().set_parent(&window);
                 let selected = match role {
                     FileResourceRole::Source => dialog.blocking_pick_file(),
@@ -688,7 +697,7 @@ mod tests {
             ipc::HostServer,
         };
         use std::sync::Arc;
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(directory.path()).await.unwrap();
         let auth = server.auth();
         let host = Host::new(server.store(), auth.clone()).await.unwrap();
@@ -862,7 +871,7 @@ mod tests {
     async fn explicit_selection_grants_only_selected_ref_and_never_regrants_on_read() {
         use serial_workbench_host::{Host, ipc::HostServer};
         use std::sync::Arc;
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(directory.path()).await.unwrap();
         let auth = server.auth();
         let host = Host::new(server.store(), auth.clone()).await.unwrap();
@@ -1028,7 +1037,7 @@ mod tests {
     async fn trusted_chooser_registers_through_real_host_without_publishing_path() {
         use serial_workbench_host::{Host, ipc::HostServer};
         use std::sync::Arc;
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(directory.path()).await.unwrap();
         let host = Host::new(server.store(), server.auth()).await.unwrap();
         let (stop, done) = tokio::sync::oneshot::channel();

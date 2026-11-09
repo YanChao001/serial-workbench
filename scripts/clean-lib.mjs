@@ -153,7 +153,7 @@ export function getWindowsProcesses(probe = spawnSync) {
       "-NoProfile",
       "-NonInteractive",
       "-Command",
-      "$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $items = @(Get-CimInstance Win32_Process | Where-Object { $_.ExecutablePath } | Select-Object ProcessId, ExecutablePath); ConvertTo-Json -InputObject $items -Compress",
+      "$ErrorActionPreference = 'Stop'; [Console]::OutputEncoding = [Text.UTF8Encoding]::new($false); $items = @(Get-CimInstance -Query 'SELECT ProcessId, ExecutablePath FROM Win32_Process WHERE ExecutablePath IS NOT NULL' | Select-Object ProcessId, ExecutablePath); ConvertTo-Json -InputObject $items -Compress",
     ],
     {
       encoding: "utf8",

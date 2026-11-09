@@ -22,6 +22,20 @@ pub type TransportOpener =
     Arc<dyn Fn(&Id, &SerialConfiguration) -> BackendResult<Box<dyn Transport>> + Send + Sync>;
 type DeviceSlot = Arc<tokio::sync::Mutex<Option<Arc<Session>>>>;
 type OwnerJoin = Arc<Mutex<Option<JoinHandle<()>>>>;
+async fn wait_owner_exit(owner: &OwnerJoin) -> HostResult<()> {
+    loop {
+        {
+            let mut join = owner.lock().map_err(|_| unavailable())?;
+            if join.as_ref().is_none_or(JoinHandle::is_finished) {
+                if let Some(join) = join.take() {
+                    join.join().map_err(|_| unavailable())?;
+                }
+                return Ok(());
+            }
+        }
+        tokio::time::sleep(Duration::from_millis(1)).await;
+    }
+}
 #[derive(Clone)]
 pub struct DeviceService {
     pub(crate) inner: Arc<DeviceInner>,
@@ -40,6 +54,8 @@ pub(crate) struct DeviceInner {
     runtime: Mutex<Option<RuntimeAttachment>>,
     reconnect_jobs: Mutex<HashMap<Id, ReconnectJob>>,
     pub closing: AtomicBool,
+    #[cfg(test)]
+    owner_exit_gate: Mutex<Option<Arc<crate::test_support::Gate>>>,
 }
 pub(crate) struct Session {
     pub closing: Arc<AtomicBool>,
@@ -68,21 +84,8 @@ impl OpeningOwner {
             .map_err(|_| unavailable())?
             .clone()
             .ok_or_else(unavailable)?;
-        loop {
-            let finished = self
-                .join
-                .lock()
-                .map_err(|_| unavailable())?
-                .as_ref()
-                .is_none_or(JoinHandle::is_finished);
-            if finished {
-                if let Some(join) = self.join.lock().map_err(|_| unavailable())?.take() {
-                    join.join().map_err(|_| unavailable())?;
-                }
-                return result;
-            }
-            tokio::time::sleep(Duration::from_millis(1)).await;
-        }
+        wait_owner_exit(&self.join).await?;
+        result
     }
 }
 fn retained_cleanup(error: &BackendError) -> Option<HostResult<()>> {
@@ -330,6 +333,8 @@ impl DeviceService {
                 runtime: Mutex::new(None),
                 reconnect_jobs: Mutex::new(HashMap::new()),
                 closing: AtomicBool::new(false),
+                #[cfg(test)]
+                owner_exit_gate: Mutex::new(None),
             }),
         }
     }
@@ -544,6 +549,8 @@ impl DeviceService {
                 ));
             }
             opening.insert(target.id.clone(), owner.clone());
+            #[cfg(test)]
+            let owner_exit_gate = self.inner.owner_exit_gate.lock().unwrap().take();
             let join = thread::Builder::new()
                 .name(format!("device-{}", target.id.as_str()))
                 .spawn(move || {
@@ -582,6 +589,10 @@ impl DeviceService {
                         let _ = retained_cleanup(error);
                     }
                     completed_send.send_replace(Some(result.map_err(|error| *error.error)));
+                    #[cfg(test)]
+                    if let Some(gate) = owner_exit_gate {
+                        gate.hold();
+                    }
                 })
                 .map_err(|_| {
                     opening.remove(&target.id);
@@ -828,7 +839,9 @@ impl DeviceService {
             }
         }
         for session in self.sessions()? {
-            if session.snapshot()?.state == SessionState::Closed {
+            if session.snapshot()?.state == SessionState::Closed
+                && session.join.lock().map_err(|_| unavailable())?.is_none()
+            {
                 continue;
             }
             if let Err(error) = session.close().await {
@@ -979,25 +992,32 @@ impl Session {
         self.closing.store(true, Ordering::SeqCst);
         {
             let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
-            if state.state == SessionState::Closed {
-                return Ok(());
-            }
-            state.state = SessionState::Closing;
-            if state.tx_gate != TxGate::ControlUnknown {
-                state.tx_gate = TxGate::Closing;
+            if state.state != SessionState::Closed {
+                state.state = SessionState::Closing;
+                if state.tx_gate != TxGate::ControlUnknown {
+                    state.tx_gate = TxGate::Closing;
+                }
             }
         }
         let (send, _) = oneshot::channel();
         // 仅唤醒提示；关闭责任由独立 sideband 承载，不依赖业务邮箱空位。
         let _ = self.sender.try_send(BackendCommand::Close(send));
         let mut completed = self.completed.clone();
-        let result = tokio::time::timeout(
-            Duration::from_millis(250),
-            completed.wait_for(Option::is_some),
-        )
+        let result = tokio::time::timeout(Duration::from_millis(250), async {
+            let result = completed
+                .wait_for(Option::is_some)
+                .await
+                .map_err(|_| unavailable())?
+                .clone()
+                .unwrap_or_else(|| Err(unavailable()));
+            // A completed backend result may precede the owner thread's return.
+            // Keep its JoinHandle owned until actual exit, including Closed retries.
+            wait_owner_exit(&self.join).await?;
+            Ok::<_, HostError>(result)
+        })
         .await;
         let result = match result {
-            Ok(Ok(result)) => result.clone().unwrap_or_else(|| Err(unavailable())),
+            Ok(Ok(result)) => result,
             _ => {
                 let error =
                     HostError::new("CONTROL_UNKNOWN", "Native owner cleanup is not confirmed");
@@ -1008,12 +1028,6 @@ impl Session {
                 return Err(error);
             }
         };
-        if let Ok(mut join) = self.join.lock()
-            && join.as_ref().is_some_and(JoinHandle::is_finished)
-            && let Some(join) = join.take()
-        {
-            let _ = join.join();
-        }
         {
             let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
             // The owner may have finished before this explicit close request.
@@ -1595,6 +1609,61 @@ mod mailbox_tests {
     use super::*;
     use crate::{test_support as support, transmission::TransmissionService};
     use std::{future::Future, pin::Pin, task::Poll};
+
+    #[tokio::test]
+    async fn completed_close_and_shutdown_wait_for_actual_owner_thread_exit() {
+        let h = support::Harness::new().await;
+        let exited = Arc::new(support::Gate::default());
+        *h.host.devices().inner.owner_exit_gate.lock().unwrap() = Some(exited.clone());
+        let target = h.open("owner-thread-exit").await;
+        let devices = h.host.devices().clone();
+        let session = devices.session(&target).unwrap();
+        let read = hold_read(&h).await;
+        let mut first = Box::pin(session.close());
+        poll_pending(first.as_mut()).await;
+        read.release();
+        exited.entered().await;
+        assert_eq!(session.snapshot().unwrap().state, SessionState::Closed);
+        assert!(session.completed.borrow().as_ref().unwrap().is_ok());
+        let first_state = std::future::poll_fn(|cx| Poll::Ready(first.as_mut().poll(cx))).await;
+        let mut second = Box::pin(session.close());
+        let second_state = std::future::poll_fn(|cx| Poll::Ready(second.as_mut().poll(cx))).await;
+        let mut shutdown = Box::pin(devices.shutdown());
+        let shutdown_state =
+            std::future::poll_fn(|cx| Poll::Ready(shutdown.as_mut().poll(cx))).await;
+        let premature = [
+            first_state.is_ready(),
+            second_state.is_ready(),
+            shutdown_state.is_ready(),
+        ];
+        exited.release();
+        match first_state {
+            Poll::Ready(result) => result,
+            Poll::Pending => first.await,
+        }
+        .unwrap();
+        match second_state {
+            Poll::Ready(result) => result,
+            Poll::Pending => second.await,
+        }
+        .unwrap();
+        match shutdown_state {
+            Poll::Ready(result) => result,
+            Poll::Pending => shutdown.await,
+        }
+        .unwrap();
+        let reaped = session.join.lock().unwrap().is_none();
+        // Also clean up the old implementation when running the red regression.
+        if let Some(join) = session.join.lock().unwrap().take() {
+            join.join().unwrap();
+        }
+        assert_eq!(
+            premature, [false; 3],
+            "A close path reported success while its owner thread was still held"
+        );
+        assert!(reaped, "Successful shutdown retained the owner JoinHandle");
+        assert_eq!(h.probe.close_calls.load(Ordering::SeqCst), 1);
+    }
 
     #[tokio::test]
     async fn write_deadline_requests_cancel_then_settles_without_advancing_domain_clock_again() {

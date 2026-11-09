@@ -92,8 +92,22 @@ pub struct WriteStep {
     pub gate: Option<Arc<Gate>>,
     pub advance_ms: u64,
 }
+pub struct Profile(Option<tempfile::TempDir>);
+impl Profile {
+    pub fn path(&self) -> &std::path::Path {
+        self.0.as_ref().unwrap().path()
+    }
+}
+impl Drop for Profile {
+    fn drop(&mut self) {
+        if std::thread::panicking() {
+            let path = self.0.take().unwrap().keep();
+            eprintln!("host_test_failed_profile={}", path.display());
+        }
+    }
+}
+
 pub struct Harness {
-    pub dir: tempfile::TempDir,
     pub store: Store,
     pub auth: AuthService,
     pub actor: AuthenticatedActor,
@@ -101,10 +115,18 @@ pub struct Harness {
     pub clock: Arc<ManualClock>,
     pub probe: Arc<Probe>,
     pub host_id: Id,
+    // Release Host/Store owners before TempDir attempts successful-test cleanup.
+    pub dir: Profile,
 }
 impl Harness {
     pub async fn new() -> Self {
-        let dir = tempfile::tempdir().unwrap();
+        let evidence =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/rust-failures");
+        std::fs::create_dir_all(&evidence).unwrap();
+        let dir = tempfile::Builder::new()
+            .prefix("host-harness-")
+            .tempdir_in(evidence.canonicalize().unwrap())
+            .unwrap();
         Self::in_profile(dir).await
     }
     pub async fn in_profile(dir: tempfile::TempDir) -> Self {
@@ -151,7 +173,7 @@ impl Harness {
             .await
             .unwrap();
         Self {
-            dir,
+            dir: Profile(Some(dir)),
             store,
             auth,
             actor,
@@ -227,17 +249,50 @@ impl Harness {
         self.host.invoke(&self.actor, call).await.unwrap()
     }
     pub async fn wait(&self, id: &Id) -> Operation {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        let mut last = None;
+        let result = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
-                let operation = self.store.get(&self.actor, id).unwrap();
+                let store = self.store.clone();
+                let actor = self.actor.clone();
+                let id = id.clone();
+                let operation = tokio::task::spawn_blocking(move || store.get(&actor, &id))
+                    .await
+                    .unwrap()
+                    .unwrap();
                 if terminal(operation.state) {
                     return operation;
                 }
-                tokio::time::sleep(Duration::from_millis(2)).await;
+                last = Some(operation);
+                tokio::time::sleep(Duration::from_millis(20)).await;
             }
         })
-        .await
-        .unwrap()
+        .await;
+        if result.is_err() {
+            let last = last.as_ref().map(|operation| {
+                let transfer = match &operation.result {
+                    Some(ActionResult::FileTransfer(value)) => Some(serde_json::json!({
+                        "accepted": value.accepted,
+                        "unknown": value.unknown,
+                        "receiptsRef": value.receipts_ref,
+                    })),
+                    _ => None,
+                };
+                serde_json::json!({
+                    "state": operation.state,
+                    "revision": operation.revision,
+                    "error": operation.error,
+                    "transfer": transfer,
+                })
+            });
+            eprintln!(
+                "host_test_wait_timeout operation={id} profile={} last={last:?} writes={} remaining_steps={} clock_ns={}",
+                self.dir.path().display(),
+                self.probe.writes.lock().unwrap().len(),
+                self.probe.steps.lock().unwrap().len(),
+                self.clock.mono_ns(),
+            );
+        }
+        result.unwrap()
     }
     pub async fn send(&self, target: &Target) -> Operation {
         let op = self

@@ -13,7 +13,7 @@
 ```sh
 pnpm install --frozen-lockfile
 rustup toolchain install
-pnpm doctor
+pnpm run doctor
 pnpm app:dev
 ```
 

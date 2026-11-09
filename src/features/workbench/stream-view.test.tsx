@@ -3,8 +3,74 @@ import { afterEach, expect, it, vi } from "vitest";
 import type { StreamItem } from "@serial-workbench/contracts";
 import { defaults } from "@serial-workbench/contracts";
 import { StreamView } from "./stream-view";
-import { labels } from "./test-fixtures";
+import { labels, txItem } from "./test-fixtures";
 afterEach(cleanup);
+it.each(["accepted", "partial", "unknown", "rejected"] as const)(
+  "updates TX bytes in place with their %s receipt and preserves a gap",
+  (outcome) => {
+    const intent = txItem("tx_intent");
+    const receipt = txItem("tx", "0", outcome);
+    const gap: StreamItem = {
+      kind: "reader_gap",
+      gap: {
+        hostId: "host",
+        instanceEpoch: "1",
+        sessionId: "session",
+        sessionEpoch: "1",
+        reason: "reader_overflow",
+        missingEventRange: { start: "2", end: "3" },
+      },
+    };
+    const view = render(<StreamView items={[intent]} labels={labels} />);
+    expect(screen.getByText("Hello")).toBeInTheDocument();
+    expect(screen.getByText(labels.awaitingReceipt)).toBeInTheDocument();
+    view.rerender(
+      <StreamView items={[intent, gap, receipt]} labels={labels} />,
+    );
+    expect(screen.getAllByText("Hello")).toHaveLength(1);
+    expect(screen.queryByText(labels.awaitingReceipt)).not.toBeInTheDocument();
+    expect(screen.getByText(`Status: ${outcome}`)).toBeInTheDocument();
+    expect(screen.getByText(labels.peerUnconfirmed)).toBeInTheDocument();
+    expect(screen.getByText(/reader_overflow/)).toBeInTheDocument();
+    if (outcome === "partial" || outcome === "unknown")
+      expect(
+        screen.getByText("Bytes accepted by backend: [0, 2)"),
+      ).toBeInTheDocument();
+    if (outcome === "unknown")
+      expect(
+        screen.getByText("Bytes with unknown outcome: [2, 5)"),
+      ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "HEX" }));
+    expect(screen.getByText("48 65 6C 6C 6F")).toBeInTheDocument();
+  },
+);
+it("computes block intervals from visible TX rows rather than hidden receipts", () => {
+  const timed = (item: StreamItem, sourceMonoNs: string): StreamItem => {
+    if (item.kind !== "source") throw new Error("Expected source");
+    return {
+      ...item,
+      event: { ...item.event, time: { ...item.event.time, sourceMonoNs } },
+    };
+  };
+  render(
+    <StreamView
+      items={[
+        timed(txItem("tx_intent"), "10"),
+        timed(txItem("tx"), "20"),
+        timed(txItem("tx_intent", "5"), "30"),
+        timed(txItem("tx", "5"), "40"),
+      ]}
+      labels={labels}
+      presentationLabels={presentationLabels}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.encodingHelp }));
+  fireEvent.click(screen.getByRole("radio", { name: "Block interval" }));
+  const summaries = screen.getByRole("log").querySelectorAll("summary");
+  expect(summaries).toHaveLength(2);
+  expect(summaries[0]).toHaveTextContent("Unavailable");
+  expect(summaries[1]).toHaveTextContent("20 ns");
+});
 it("applies shared typography to received text and HEX without changing terminal controls", () => {
   const view = render(<StreamView items={[first]} labels={labels} />);
   expect(

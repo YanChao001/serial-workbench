@@ -167,7 +167,7 @@ export function SendPanel({
         ? labels.readOnly
         : session.txGate !== "ready"
           ? `${labels.status}: ${session.txGate}`
-          : permissionAllowed === false
+          : permissionAllowed === false && preview.bytes.length > 0
             ? labels.unavailable
             : undefined;
   async function send() {

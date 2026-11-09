@@ -1,8 +1,8 @@
 import type {
   ClientPreferences,
-  ClientStateSnapshot,
-  ClientWindowState,
-  ClientWindowState_Serialize,
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
+  ClientWindowState_Serialize as ClientWindowState,
+  ClientWindowState_Deserialize as ClientWindowStateInput,
   GalleryEntry,
 } from "./generated/bindings";
 import { parseObjectRef } from "@serial-workbench/contracts";
@@ -14,8 +14,9 @@ import { isTauri, readClientState, saveClientState } from "./tauri";
 
 export type {
   ClientPreferences,
-  ClientWindowState,
-  ClientStateSnapshot,
+  ClientWindowState_Serialize as ClientWindowState,
+  ClientWindowState_Deserialize as ClientWindowStateInput,
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
 } from "./generated/bindings";
 export const DEFAULT_CLIENT_STATE = parseClientWindowState(
   generatedClientDefaults,
@@ -34,7 +35,7 @@ export async function readClientWindowState(): Promise<ClientStateSnapshot> {
   return isTauri() ? readClientState() : browserClientStateStore().read();
 }
 export async function saveClientWindowState(
-  state: ClientWindowState,
+  state: ClientWindowStateInput,
   expectedRevision: string,
 ): Promise<ClientStateSnapshot> {
   return isTauri()
@@ -82,9 +83,33 @@ export function createClientSettingsBackend(
     },
     async save(preferences, revision) {
       if (!current || current.revision !== revision) throw { code: "CONFLICT" };
-      return accept(
-        await port.save({ ...current.state, preferences }, revision),
-      );
+      const original = current;
+      let base = original;
+      for (let attempt = 0; ; attempt++) {
+        try {
+          return accept(
+            await port.save({ ...base.state, preferences }, base.revision),
+          );
+        } catch (error) {
+          if (settingsErrorCode(error) !== "CONFLICT" || attempt === 2)
+            throw error;
+          const fresh = await port.read();
+          if (fresh.formatVersion !== "0.1") throw { code: "FUTURE_FORMAT" };
+          const keys = Object.keys(original.state.preferences) as Array<
+            keyof ClientPreferences
+          >;
+          // 草稿/图库也推进窗口 revision；只合并偏好未变化的其他切片更新。
+          if (
+            keys.some(
+              (key) =>
+                fresh.state.preferences[key] !==
+                original.state.preferences[key],
+            )
+          )
+            throw error;
+          base = fresh;
+        }
+      }
     },
     async subscribe() {
       return () => {};
@@ -158,9 +183,7 @@ function parseClientGallery(value: unknown): GalleryEntry[] {
     return { reference, name: entry.name };
   });
 }
-export function parseClientWindowState(
-  value: unknown,
-): ClientWindowState_Serialize {
+export function parseClientWindowState(value: unknown): ClientWindowState {
   if (
     !record(value) ||
     !exactKeys(value, [
@@ -254,7 +277,7 @@ export function createBrowserClientStateStore(
       return {
         formatVersion: "0.1",
         revision: "0",
-        state: structuredClone(initial),
+        state: parseClientWindowState(initial),
       };
     if (new TextEncoder().encode(raw).length > 512 * 1024) invalidClient();
     let value: unknown;
@@ -278,7 +301,7 @@ export function createBrowserClientStateStore(
   return {
     read,
     save(
-      state: ClientWindowState,
+      state: ClientWindowStateInput,
       expectedRevision: string,
     ): ClientStateSnapshot {
       const current = read();
@@ -286,7 +309,10 @@ export function createBrowserClientStateStore(
       const next = {
         formatVersion: "0.1",
         revision: revision(String(BigInt(current.revision) + 1n)),
-        state: parseClientWindowState(state),
+        state: parseClientWindowState({
+          ...state,
+          gallery: state.gallery ?? [],
+        }),
       };
       const json = JSON.stringify(next);
       if (new TextEncoder().encode(json).length > 512 * 1024)

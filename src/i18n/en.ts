@@ -287,6 +287,7 @@ export const en = {
   "workbench.preview": "Bytes to send",
   "workbench.invalidHex": "Enter complete hexadecimal byte pairs",
   "workbench.sending": "Sending",
+  "workbench.awaitingReceipt": "Receipt unavailable; outcome not confirmed",
   "workbench.receipt": "Receipt",
   "workbench.sendFile": "Send file",
   "workbench.fileUnavailable": "File sending is unavailable",

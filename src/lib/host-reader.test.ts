@@ -284,6 +284,162 @@ describe("Host raw reader owner", () => {
     expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-1");
     h.workspace.dispose();
   });
+  it("rechecks repeated authorization changes from the last raw cursor without reviving old queues", async () => {
+    const h = await setupReader();
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    await waitFor(() => expect(h.deliveries).toHaveLength(1));
+    h.batch(0, "0", "1");
+    for (let index = 0; index < 5; index++) {
+      const old = h.deliveries[index]!;
+      old.lifecycle({
+        requestId: old.query.requestId,
+        channel: "raw",
+        body: {
+          type: "subscriptionEnded",
+          subscriptionId: old.id,
+          error: {
+            code: "PERMISSION_DENIED",
+            message: "Authorization changed",
+            retryable: false,
+          },
+        },
+      });
+      await waitFor(() => expect(h.deliveries).toHaveLength(index + 2));
+      expect(h.deliveries[index + 1]!.query.params.after).toMatchObject({
+        position: "1",
+      });
+      h.batch(index, "1", "2");
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.items,
+      ).toHaveLength(1);
+    }
+    h.batch(5, "1", "2");
+    expect(
+      h.workspace.getSnapshot().state.streams.get(h.session.sessionId),
+    ).toMatchObject({ error: null, items: expect.any(Array) });
+    expect(
+      h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.items,
+    ).toHaveLength(2);
+    stop();
+    h.workspace.dispose();
+  });
+
+  it("stops raw delivery when a new permission check is denied", async () => {
+    const h = await setupReader();
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    await waitFor(() => expect(h.deliveries).toHaveLength(1));
+    vi.mocked(h.native.rawRequest).mockResolvedValue(
+      parseReply({
+        ok: false,
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "Revoked",
+          retryable: false,
+        },
+      }),
+    );
+    const old = h.deliveries[0]!;
+    old.lifecycle({
+      requestId: old.query.requestId,
+      channel: "raw",
+      body: {
+        type: "subscriptionEnded",
+        subscriptionId: old.id,
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "Authorization changed",
+          retryable: false,
+        },
+      },
+    });
+    await waitFor(() => expect(h.native.rawRequest).toHaveBeenCalledTimes(4));
+    await waitFor(() =>
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.error,
+      ).toMatchObject({ code: "PERMISSION_DENIED" }),
+    );
+    h.batch(0, "0", "1");
+    expect(
+      h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.items,
+    ).toEqual([]);
+    expect(h.deliveries).toHaveLength(1);
+    stop();
+    h.workspace.dispose();
+  });
+
+  it("rechecks an interrupted recovery cursor query before opening a new raw reader", async () => {
+    const h = await setupReader();
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    await waitFor(() => expect(h.deliveries).toHaveLength(1));
+    vi.mocked(h.native.rawRequest).mockResolvedValueOnce(
+      parseReply({
+        ok: false,
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "Authorization changed",
+          retryable: false,
+        },
+      }),
+    );
+    const old = h.deliveries[0]!;
+    old.lifecycle({
+      requestId: old.query.requestId,
+      channel: "raw",
+      body: {
+        type: "subscriptionEnded",
+        subscriptionId: old.id,
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "Authorization changed",
+          retryable: false,
+        },
+      },
+    });
+    await waitFor(() => expect(h.deliveries).toHaveLength(2));
+    expect(h.native.rawRequest).toHaveBeenCalledTimes(3);
+    expect(
+      h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.error,
+    ).toBeNull();
+    stop();
+    h.workspace.dispose();
+  });
+
+  it("bounds authorization changes arriving during raw channel setup and releases every reader", async () => {
+    const h = await setupReader();
+    vi.mocked(h.native.rawSubscribe).mockImplementation(
+      async (query, batch, lifecycle) => {
+        const id = `raw-${h.deliveries.length}`;
+        h.deliveries.push({ query, batch, lifecycle, id });
+        lifecycle({
+          requestId: query.requestId,
+          channel: "raw",
+          body: {
+            type: "subscriptionEnded",
+            subscriptionId: id,
+            error: {
+              code: "PERMISSION_DENIED",
+              message: "Authorization changed",
+              retryable: false,
+            },
+          },
+        });
+        return id;
+      },
+    );
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    await waitFor(() =>
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.error,
+      ).toMatchObject({ code: "PERMISSION_DENIED" }),
+    );
+    expect(h.deliveries).toHaveLength(4);
+    await waitFor(() =>
+      expect(h.native.rawUnsubscribe).toHaveBeenCalledTimes(4),
+    );
+    stop();
+    h.workspace.dispose();
+  });
+
   it("shows the Host lifecycle error without inventing an empty raw batch", async () => {
     const h = await setupReader();
     const stop = h.workspace.watchSession(h.session.sessionId, () => {});

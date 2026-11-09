@@ -6,6 +6,38 @@ export function decodeBytes(bytesBase64: string): Uint8Array {
   return Uint8Array.from(atob(bytesBase64), (byte) => byte.charCodeAt(0));
 }
 
+/** 同一发送块的回执更新原行；文件任务的不同块保留各自字节和结果。 */
+export function projectStreamItems(items: readonly StreamItem[]) {
+  const rows: { item: StreamItem; itemIndex: number }[] = [];
+  const txRows = new Map<string, number>();
+  items.forEach((item, itemIndex) => {
+    if (
+      item.kind === "source" &&
+      (item.event.kind === "tx_intent" || item.event.kind === "tx")
+    ) {
+      const { event } = item;
+      const key = JSON.stringify([
+        event.hostId,
+        event.instanceEpoch,
+        event.sessionId,
+        event.sessionEpoch,
+        event.payload.operationId,
+        event.payload.byteStart,
+        event.payload.byteEnd,
+      ]);
+      const previous = txRows.get(key);
+      if (previous !== undefined) {
+        if (event.kind === "tx")
+          rows[previous] = { item, itemIndex: rows[previous]!.itemIndex };
+        return;
+      }
+      txRows.set(key, rows.length);
+    }
+    rows.push({ item, itemIndex });
+  });
+  return rows;
+}
+
 export function findStreamMatches(
   items: readonly StreamItem[],
   input: string,

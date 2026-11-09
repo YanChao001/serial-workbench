@@ -28,7 +28,9 @@ import {
   type PersistenceStatus,
 } from "@/lib/settings-sync";
 import { createHostSettingsBackend } from "@/lib/host-settings";
+import type { HostConnection } from "@/lib/host-client";
 import { createMediaPort, type MediaPort } from "@/lib/media";
+import { reportClientError } from "@/lib/report-error";
 import {
   isTauri,
   applyHostSettingsEffects,
@@ -84,6 +86,18 @@ export function SettingsProvider({
   const [committedRevision, setCommittedRevision] = useState<string>();
   const [effectsError, setEffectsError] = useState<string | null>(null);
   const [effectsRetry, setEffectsRetry] = useState(0);
+  const [effectsCompleted, setEffectsCompleted] = useState<{
+    connection: HostConnection;
+    revision: string;
+    retry: number;
+  } | null>(null);
+  const effectsPending =
+    native &&
+    connection &&
+    committedRevision !== undefined &&
+    (effectsCompleted?.connection !== connection ||
+      effectsCompleted?.revision !== committedRevision ||
+      effectsCompleted?.retry !== effectsRetry);
   const attachmentError =
     native && !connection && host?.state.status === "error"
       ? settingsErrorCode(host.state.error)
@@ -96,9 +110,22 @@ export function SettingsProvider({
         sharedPersistence === "loading" ||
         clientState.status === "loading"
       ? "loading"
-      : sharedPersistence === "saving" || clientState.status === "saving"
+      : sharedPersistence === "saving" ||
+          clientState.status === "saving" ||
+          effectsPending
         ? "saving"
         : "saved";
+  useEffect(() => {
+    if (!native) return;
+    for (const [scope, code] of [
+      ["attachment", attachmentError],
+      ["shared", sharedError],
+      ["client", clientState.error],
+      ["effects", effectsError],
+    ] as const) {
+      if (code) reportClientError(new Error(code), `Settings ${scope}`);
+    }
+  }, [native, attachmentError, sharedError, clientState.error, effectsError]);
   const current = useRef(settings);
   const sync = useRef<SettingsSync | null>(null);
   const sharedBackend = useRef<ReturnType<
@@ -193,6 +220,11 @@ export function SettingsProvider({
           setEffectsError("HOST_EFFECTS_STALE");
           return;
         }
+        setEffectsCompleted({
+          connection,
+          revision: committedRevision,
+          retry: effectsRetry,
+        });
         setEffectsError(null);
       },
       (error) => {

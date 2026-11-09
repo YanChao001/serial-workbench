@@ -233,6 +233,24 @@ impl Store {
         }
         Ok(acceptance)
     }
+    /// Publish the accepted operation and its trusted parent in the same transaction.
+    pub(crate) fn accept_with_source(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+        source: Option<&Target>,
+    ) -> HostResult<Acceptance> {
+        let (actor, call, digest, source) =
+            (actor.clone(), call.clone(), digest.clone(), source.cloned());
+        let acceptance = self.request(move |database| {
+            database.accept_with_source(&actor, &call, &digest, source.as_ref())
+        })?;
+        if matches!(&acceptance, Acceptance::New(_)) {
+            self.operation_changes.send_replace(());
+        }
+        Ok(acceptance)
+    }
     pub(crate) fn lookup_call(
         &self,
         actor: &AuthenticatedActor,

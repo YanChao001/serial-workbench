@@ -729,19 +729,17 @@ async fn pull_read_lease_moves_with_reply_and_releases_on_drop() {
 
 #[tokio::test]
 async fn idle_reader_expires_without_new_events_or_authorization_writes() {
-    struct Elapsed(std::time::Instant);
-    impl Clock for Elapsed {
+    struct Manual(std::sync::atomic::AtomicU64);
+    impl Clock for Manual {
         fn mono_ns(&self) -> u64 {
-            self.0.elapsed().as_nanos() as u64
+            self.0.load(std::sync::atomic::Ordering::SeqCst)
         }
         fn wall_time(&self) -> Timestamp {
             Timestamp::try_from("2026-11-07T00:00:00Z").unwrap()
         }
     }
-    let f = Fixture::with_clock(
-        StreamLimits::default(),
-        Arc::new(Elapsed(std::time::Instant::now())),
-    );
+    let clock = Arc::new(Manual(std::sync::atomic::AtomicU64::new(0)));
+    let f = Fixture::with_clock(StreamLimits::default(), clock.clone());
     f.auth
         .authorize(
             &f.control,
@@ -754,10 +752,32 @@ async fn idle_reader_expires_without_new_events_or_authorization_writes() {
         )
         .unwrap();
     let sub = f.subscribe(0, OverflowPolicy::DropWithGap).await;
-    let result = tokio::time::timeout(std::time::Duration::from_secs(2), sub.next())
-        .await
-        .unwrap();
+    assert!(f.hub.memory_usage().reader_bytes > 0);
+    let revision = f.auth.current_revision().unwrap();
+    let waiting = sub.next();
+    tokio::pin!(waiting);
+    // Poll the idle reader before expiration; persistence and runner load cannot
+    // consume the grant's lifetime before this precondition is established.
+    tokio::select! {
+        biased;
+        _ = &mut waiting => panic!("Reader ended before expiry"),
+        _ = tokio::task::yield_now() => {}
+    }
+    clock
+        .0
+        .store(200_000_000, std::sync::atomic::Ordering::SeqCst);
+    let result = tokio::time::timeout(std::time::Duration::from_secs(2), async {
+        // Do not poll next again until the background expiry monitor releases
+        // this idle reader; next's own permission check must not satisfy this.
+        while f.hub.memory_usage().reader_bytes > 0 {
+            tokio::task::yield_now().await;
+        }
+        waiting.await
+    })
+    .await
+    .unwrap();
     assert_eq!(result.err().unwrap().code, "PERMISSION_DENIED");
+    assert_eq!(f.auth.current_revision().unwrap(), revision);
     assert_eq!(f.hub.memory_usage().reader_bytes, 0);
 }
 

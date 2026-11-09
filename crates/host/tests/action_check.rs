@@ -872,6 +872,26 @@ async fn fix1_cancel_rechecks_grants_before_actual_invoke() {
     let target = f.target("operation", lease.operation_id.as_str());
     assert!(checked(&f, &target, "operation.cancel", json!({"reason":"user"})).await);
     revoke(&f, "metadata.read", &target);
+    // A grant generation change also retires the already-running lease.
+    let revoked_lease = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let current = f.store.get(&f.operator, &lease.operation_id).unwrap();
+            if current.state == OperationState::Cancelled {
+                return current;
+            }
+            tokio::time::sleep(Duration::from_millis(2)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert!(matches!(
+        &revoked_lease.result,
+        Some(ActionResult::Lease(Lease {
+            state: LeaseState::Expired,
+            ..
+        }))
+    ));
+    // The denied invocation must not alter the completed revocation or admit work.
     let before = check_observations(&f);
     denied(
         f.first
@@ -888,7 +908,7 @@ async fn fix1_cancel_rechecks_grants_before_actual_invoke() {
     assert_eq!(check_observations(&f), before);
     assert_eq!(
         f.store.get(&f.operator, &lease.operation_id).unwrap(),
-        lease
+        revoked_lease
     );
     f.finish().await;
 }

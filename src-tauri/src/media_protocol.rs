@@ -614,7 +614,7 @@ mod tests {
         use crate::file_resource_commands::{FileResourceRole, choose_with_picker};
         use serial_workbench_host::{Host, ipc::HostServer};
         use std::sync::Arc;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(dir.path()).await.unwrap();
         let auth = server.auth();
         let host = Host::new(server.store(), auth.clone()).await.unwrap();
@@ -768,7 +768,7 @@ mod tests {
         use crate::file_resource_commands::{FileResourceRole, choose_with_picker};
         use serial_workbench_host::{Host, ipc::HostServer};
         use std::sync::Arc;
-        let dir = tempfile::tempdir().unwrap();
+        let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(dir.path()).await.unwrap();
         let auth = server.auth();
         let host = Host::new(server.store(), auth.clone()).await.unwrap();

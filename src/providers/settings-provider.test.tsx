@@ -25,13 +25,16 @@ const env = vi.hoisted(() => ({
   connection: undefined as object | undefined,
   clientWrites: [] as unknown[],
   effects: [] as string[],
+  effectsWait: undefined as Promise<void> | undefined,
   hostError: null as { code: string } | null,
   choose: vi.fn(),
   resolveMedia: vi.fn(),
   releaseMedia: vi.fn(),
   realBackend: false,
   documentIntent: vi.fn(),
+  reportError: vi.fn(),
 }));
+vi.mock("@/lib/report-error", () => ({ reportClientError: env.reportError }));
 vi.mock("@/lib/tauri", () => ({
   isTauri: () => env.native,
   hostApplyDocumentIntent: (...args: unknown[]) => env.documentIntent(...args),
@@ -66,6 +69,7 @@ vi.mock("@/lib/tauri", () => ({
   },
   applyHostSettingsEffects: async () => {
     env.effects.push("applied");
+    if (env.effectsWait) await env.effectsWait;
     return {
       hostId: "host",
       instanceEpoch: "1",
@@ -117,6 +121,7 @@ beforeEach(() => {
   env.connection = undefined;
   env.clientWrites = [];
   env.effects = [];
+  env.effectsWait = undefined;
   env.hostError = null;
   env.realBackend = false;
   env.documentIntent.mockReset();
@@ -238,6 +243,72 @@ function localHost(generation = "12") {
 }
 
 describe("local shared settings intent through the real synchronization adapter", () => {
+  it("keeps persistence pending until the original native effects receipt completes", async () => {
+    let release!: () => void;
+    env.effectsWait = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    localHost();
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    try {
+      await waitFor(() => expect(env.effects.length).toBeGreaterThan(0));
+      await waitFor(() =>
+        expect(result.current.persistence).not.toBe("loading"),
+      );
+      expect(result.current.persistence).toBe("saving");
+    } finally {
+      await act(async () => release());
+    }
+    await waitFor(() => expect(result.current.persistence).toBe("saved"));
+  });
+
+  it("does not let an old attachment receipt finish the current settings effects", async () => {
+    let releaseOld!: () => void;
+    let releaseCurrent: (() => void) | undefined;
+    env.effectsWait = new Promise<void>((resolve) => {
+      releaseOld = resolve;
+    });
+    localHost("12");
+    const { result, rerender } = renderHook(() => useSettings(), { wrapper });
+    try {
+      await waitFor(() => expect(env.effects).toHaveLength(1));
+      env.effectsWait = new Promise<void>((resolve) => {
+        releaseCurrent = resolve;
+      });
+      localHost("13");
+      rerender();
+      await waitFor(() => expect(env.effects).toHaveLength(2));
+      await act(async () => releaseOld());
+      expect(result.current.persistence).toBe("saving");
+      await act(async () => releaseCurrent?.());
+      await waitFor(() => expect(result.current.persistence).toBe("saved"));
+    } finally {
+      await act(async () => {
+        releaseOld();
+        releaseCurrent?.();
+      });
+    }
+  });
+
+  it("keeps a failed effects receipt explicit until the user retries", async () => {
+    let rejectEffects!: (reason: unknown) => void;
+    env.effectsWait = new Promise<void>((_resolve, reject) => {
+      rejectEffects = reject;
+    });
+    const host = localHost();
+    const { result } = renderHook(() => useSettings(), { wrapper });
+    await waitFor(() => expect(env.effects).toHaveLength(1));
+    await act(async () => rejectEffects({ code: "PERMISSION_DENIED" }));
+    await waitFor(() => expect(result.current.persistence).toBe("error"));
+    expect(result.current.persistenceError).toBe("PERMISSION_DENIED");
+    expect(env.effects).toHaveLength(1);
+    env.effectsWait = undefined;
+    act(() => result.current.retrySave());
+    await waitFor(() => expect(result.current.persistence).toBe("saved"));
+    expect(env.effects).toHaveLength(2);
+    expect(host.writes).toHaveLength(0);
+  });
+
   it("keeps CAS merge and background retries on the business client after consuming one intent", async () => {
     const host = localHost();
     const backend = createHostSettingsBackend(

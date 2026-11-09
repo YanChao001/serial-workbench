@@ -654,11 +654,33 @@ async fn break_clear_failure_isolates_transmission_and_prevents_reopen() {
             serde_json::json!({"durationMs":"10"}),
         ))
         .await;
-    support::until(|| {
-        h.probe.break_asserted.load(Ordering::SeqCst)
-            || support::terminal(h.store.get(&h.actor, &op.operation_id).unwrap().state)
+    tokio::time::timeout(std::time::Duration::from_secs(5), async {
+        loop {
+            if h.host
+                .devices()
+                .snapshot(&target)
+                .await
+                .unwrap()
+                .control_state
+                == ControlState::Asserted
+            {
+                break;
+            }
+            let store = h.store.clone();
+            let actor = h.actor.clone();
+            let id = op.operation_id.clone();
+            let operation = tokio::task::spawn_blocking(move || store.get(&actor, &id))
+                .await
+                .unwrap()
+                .unwrap();
+            if support::terminal(operation.state) {
+                break;
+            }
+            tokio::task::yield_now().await;
+        }
     })
-    .await;
+    .await
+    .unwrap();
     h.clock.advance_ms(10);
     let done = h.wait(&op.operation_id).await;
     assert!(

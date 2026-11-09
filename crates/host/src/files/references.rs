@@ -1576,24 +1576,26 @@ impl PathGuard {
         #[cfg(windows)]
         {
             use std::os::windows::ffi::OsStrExt;
-            use windows_sys::Win32::Storage::FileSystem::{
-                MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH, MoveFileExW,
-            };
-            let from: Vec<u16> = self.path.as_os_str().encode_wide().chain(Some(0)).collect();
-            let to: Vec<u16> = target
-                .path
-                .as_os_str()
-                .encode_wide()
-                .chain(Some(0))
-                .collect();
-            let flags = MOVEFILE_WRITE_THROUGH
-                | if replace {
-                    MOVEFILE_REPLACE_EXISTING
+            use windows_sys::Win32::Storage::FileSystem::{MOVEFILE_WRITE_THROUGH, MoveFileExW};
+            let result = if replace {
+                // std also handles a live FILE_SHARE_DELETE reader via
+                // FileRenameInfoEx; MoveFileExW alone rejects it with OS code 5.
+                fs::rename(&self.path, &target.path)
+            } else {
+                let from: Vec<u16> = self.path.as_os_str().encode_wide().chain(Some(0)).collect();
+                let to: Vec<u16> = target
+                    .path
+                    .as_os_str()
+                    .encode_wide()
+                    .chain(Some(0))
+                    .collect();
+                if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), MOVEFILE_WRITE_THROUGH) } != 0 {
+                    Ok(())
                 } else {
-                    0
-                };
-            if unsafe { MoveFileExW(from.as_ptr(), to.as_ptr(), flags) } == 0 {
-                let error = std::io::Error::last_os_error();
+                    Err(std::io::Error::last_os_error())
+                }
+            };
+            if let Err(error) = result {
                 if !replace && target.path.exists() {
                     return Err(HostError::new("TARGET_EXISTS", "Target already exists"));
                 }

@@ -362,6 +362,65 @@ impl ConnectionState {
         result
     }
 }
+struct WriteProgress<'a, W> {
+    writer: &'a mut W,
+    started: bool,
+}
+impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for WriteProgress<'_, W> {
+    fn poll_write(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+        bytes: &[u8],
+    ) -> std::task::Poll<std::io::Result<usize>> {
+        let this = self.get_mut();
+        let result = std::pin::Pin::new(&mut *this.writer).poll_write(cx, bytes);
+        if matches!(result, std::task::Poll::Ready(Ok(written)) if written > 0) {
+            this.started = true;
+        }
+        result
+    }
+    fn poll_flush(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut *self.get_mut().writer).poll_flush(cx)
+    }
+    fn poll_shutdown(
+        self: std::pin::Pin<&mut Self>,
+        cx: &mut std::task::Context<'_>,
+    ) -> std::task::Poll<std::io::Result<()>> {
+        std::pin::Pin::new(&mut *self.get_mut().writer).poll_shutdown(cx)
+    }
+}
+enum GuardedWrite {
+    Written,
+    NotWritten(HostError),
+}
+async fn write_guarded_frame<W: tokio::io::AsyncWrite + Unpin>(
+    writer: &mut W,
+    frame: &WireFrame,
+    invalidated: impl std::future::Future<Output = HostError> + Send,
+) -> HostResult<GuardedWrite> {
+    let mut progress = WriteProgress {
+        writer,
+        started: false,
+    };
+    let interrupted = {
+        tokio::select! {
+            biased;
+            error = invalidated => Some(error),
+            result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut progress, frame, MAX_FRAME_BYTES)) => {
+                result.map_err(|_| busy())??;
+                None
+            },
+        }
+    };
+    match interrupted {
+        Some(error) if progress.started => Err(error),
+        Some(error) => Ok(GuardedWrite::NotWritten(error)),
+        None => Ok(GuardedWrite::Written),
+    }
+}
 async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
     mut writer: W,
     mut replies: mpsc::Receiver<PendingReply>,
@@ -381,12 +440,22 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                         if let Err(error) = blocking(move || check.validate_grants(&stamp)).await {
                             reply.frame.body = IpcMessage::Reply { reply: Box::new(failure(error)) };
                             reply._raw_output_lease = None;
+                            reply.stamp = None;
                         }
                     }
                     let result = if reply.frame.channel == IpcChannel::Raw {
-                        tokio::select! {
-                            result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)) => result.map_err(|_| busy())?,
-                            _ = wait_raw_revocation(auth.clone(), reply.stamp.clone(), changes) => return Err(unauthenticated()),
+                        let invalidated = async {
+                            wait_raw_revocation(auth.clone(), reply.stamp.clone(), changes).await;
+                            HostError::new("PERMISSION_DENIED", "Reply authorization ended")
+                        };
+                        match write_guarded_frame(&mut writer, &reply.frame, invalidated).await {
+                            Ok(GuardedWrite::Written) => Ok(()),
+                            Ok(GuardedWrite::NotWritten(error)) => {
+                                reply.frame.body = IpcMessage::Reply { reply: Box::new(failure(error)) };
+                                reply._raw_output_lease = None;
+                                tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())?
+                            },
+                            Err(error) => Err(error),
                         }
                     } else {
                         tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())?
@@ -421,10 +490,15 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                 blocking(move || rejected.reject_undelivered(error)).await?;
                 continue;
             }
-            tokio::select! {
-                biased;
-                _ = wait_raw_revocation(auth.clone(), dispatch.authority.stamp.clone(), changes) => return Err(unauthenticated()),
-                result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, frame, MAX_FRAME_BYTES)) => result.map_err(|_| busy())??,
+            let invalidated = async {
+                wait_raw_revocation(auth.clone(), dispatch.authority.stamp.clone(), changes).await;
+                HostError::new("PERMISSION_DENIED", "Client effect authorization ended")
+            };
+            if let GuardedWrite::NotWritten(error) =
+                write_guarded_frame(&mut writer, frame, invalidated).await?
+            {
+                let rejected = dispatch.clone();
+                blocking(move || rejected.reject_undelivered(error)).await?;
             }
             // Once writing begins, failure or disconnect is uncertain. The
             // receiver's ledger retains capacity until a receipt or destruction.
@@ -501,12 +575,17 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
             EventFrame::State(_) | EventFrame::Client { .. } => None,
         };
         if event.grant.is_some() {
-            let revoked = wait_raw_revocation(auth.clone(), event.stamp.clone(), changes);
-            tokio::select! {
-                biased;
-                _=wait_delivery_end(event.delivery_liveness.clone())=>return Err(HostError::new("EPOCH_MISMATCH","Subscription delivery ended")),
-                _=revoked=>return Err(unauthenticated()),
-                result=tokio::time::timeout(Duration::from_secs(5),write_frame(&mut writer,frame,MAX_FRAME_BYTES))=>result.map_err(|_|busy())??,
+            let invalidated = async {
+                tokio::select! {
+                    biased;
+                    _ = wait_delivery_end(event.delivery_liveness.clone()) => HostError::new("EPOCH_MISMATCH", "Subscription delivery ended"),
+                    _ = wait_raw_revocation(auth.clone(), event.stamp.clone(), changes) => HostError::new("PERMISSION_DENIED", "Subscription authorization ended"),
+                }
+            };
+            if let GuardedWrite::NotWritten(_) =
+                write_guarded_frame(&mut writer, frame, invalidated).await?
+            {
+                continue;
             }
         } else {
             tokio::time::timeout(
@@ -564,6 +643,7 @@ mod tests {
     }
     struct RawTest {
         _dir: tempfile::TempDir,
+        store: Store,
         hub: crate::stream::StreamHub,
         source: crate::stream::StreamSource,
         auth: AuthService,
@@ -581,7 +661,7 @@ mod tests {
             let store = Store::open(dir.path()).unwrap();
             let identity = store.begin_instance().unwrap();
             let secret = ContextToken::try_from("raw-control").unwrap();
-            let auth = AuthService::new(store, secret.clone());
+            let auth = AuthService::new(store.clone(), secret.clone());
             let actor = auth.authenticate(&id("raw-reader"), None).unwrap().actor;
             let operator = auth
                 .authenticate_user_control(&id("raw-operator"), &secret)
@@ -642,6 +722,7 @@ mod tests {
             };
             Self {
                 _dir: dir,
+                store,
                 hub,
                 source,
                 auth,
@@ -687,6 +768,330 @@ mod tests {
             )
         }
     }
+    #[tokio::test]
+    async fn zero_byte_grant_revocation_preserves_the_control_connection() {
+        zero_byte_invalidation(false).await;
+    }
+    #[tokio::test]
+    async fn zero_byte_epoch_end_preserves_the_control_connection() {
+        zero_byte_invalidation(true).await;
+    }
+    use std::{
+        pin::Pin,
+        task::{Context, Poll},
+    };
+    use tokio::io::AsyncWrite;
+    struct InvalidateBeforeWrite {
+        output: tokio::io::DuplexStream,
+        invalidate: Option<Box<dyn FnOnce() + Send>>,
+        entered: Arc<tokio::sync::Notify>,
+        blocked_header: Option<Vec<u8>>,
+    }
+    impl AsyncWrite for InvalidateBeforeWrite {
+        fn poll_write(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+            bytes: &[u8],
+        ) -> Poll<std::io::Result<usize>> {
+            if let Some(invalidate) = self.invalidate.take() {
+                assert_eq!(bytes.len(), 4, "No frame byte may precede the invalidation");
+                self.blocked_header = Some(bytes.to_vec());
+                invalidate();
+                self.entered.notify_one();
+            }
+            if self.blocked_header.as_deref() == Some(bytes) {
+                return Poll::Pending;
+            }
+            Pin::new(&mut self.output).poll_write(cx, bytes)
+        }
+        fn poll_flush(mut self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.output).poll_flush(cx)
+        }
+        fn poll_shutdown(
+            mut self: Pin<&mut Self>,
+            cx: &mut Context<'_>,
+        ) -> Poll<std::io::Result<()>> {
+            Pin::new(&mut self.output).poll_shutdown(cx)
+        }
+    }
+    async fn zero_byte_invalidation(epoch: bool) {
+        let mut f = RawTest::new();
+        f.context.channel = IpcChannel::Control;
+        let subscription = id("old-subscription");
+        f.context
+            .register_subscription(subscription.clone())
+            .unwrap();
+        let previous = f.source.initial_cursor();
+        let mut cursor = previous.clone();
+        cursor.position = 1.into();
+        let (valid, guard) = watch::channel(true);
+        f.context
+            .emit_with_stamp(
+                WireFrame {
+                    request_id: new_request_id(),
+                    channel: IpcChannel::State,
+                    body: IpcMessage::Delta {
+                        subscription_id: subscription,
+                        delta: Box::new(Delta {
+                            cursor,
+                            previous_cursor: previous,
+                            revision: 1.into(),
+                            event_type: id("private.changed"),
+                            payload: serde_json::from_value(
+                                serde_json::json!({"secret":"must-not-be-written"}),
+                            )
+                            .unwrap(),
+                        }),
+                    },
+                },
+                "content.read",
+                f.target.clone(),
+                f.auth.capture_grants(&f.actor).unwrap(),
+                Some(guard),
+            )
+            .unwrap();
+        let auth = f.auth.clone();
+        let actor = f.actor.clone();
+        let operator = f.operator.clone();
+        let target = f.target.clone();
+        let invalidate: Box<dyn FnOnce() + Send> = if epoch {
+            Box::new(move || {
+                valid.send_replace(false);
+            })
+        } else {
+            Box::new(move || {
+                auth.revoke(
+                    &operator,
+                    RevokeParams {
+                        actor_id: actor.id().clone(),
+                        permissions: vec!["content.read".into()],
+                        targets: vec![target],
+                    },
+                )
+                .unwrap();
+            })
+        };
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let (output, mut input) = tokio::io::duplex(65536);
+        let writing = tokio::spawn(output_writer(
+            InvalidateBeforeWrite {
+                output,
+                invalidate: Some(invalidate),
+                entered: entered.clone(),
+                blocked_header: None,
+            },
+            f.replies_rx.take().unwrap(),
+            f.events_rx.take().unwrap(),
+            f.context.catalog_changed.subscribe(),
+            f.auth.clone(),
+            f.actor.clone(),
+        ));
+        tokio::time::timeout(Duration::from_secs(3), entered.notified())
+            .await
+            .unwrap();
+        let marker = id("unrelated-subscription");
+        let marker_registration = f.context.register_subscription(marker.clone());
+        f.context
+            .end_subscription(new_request_id(), &marker, "EPOCH_MISMATCH");
+        let observed = tokio::time::timeout(
+            Duration::from_secs(3),
+            read_frame(&mut input, MAX_FRAME_BYTES),
+        )
+        .await;
+        drop(f.replies);
+        let outcome = tokio::time::timeout(Duration::from_secs(3), writing).await;
+        assert!(
+            marker_registration.is_ok(),
+            "An unwritten stale frame closed the control connection: {marker_registration:?}"
+        );
+        assert!(
+            matches!(observed, Ok(Ok(Some(WireFrame { body: IpcMessage::SubscriptionEnded { ref subscription_id, .. }, .. }))) if subscription_id == &marker),
+            "An unwritten stale frame interrupted the control stream: {observed:?}"
+        );
+        assert!(
+            matches!(outcome, Ok(Ok(Ok(())))),
+            "The writer did not remain usable: {outcome:?}"
+        );
+    }
+    #[tokio::test]
+    async fn zero_byte_client_effect_rejection_settles_failed_without_a_receipt() {
+        let mut f = RawTest::new();
+        f.context.channel = IpcChannel::Control;
+        let store = f.store.clone();
+        let host = crate::Host::new(store.clone(), f.auth.clone())
+            .await
+            .unwrap();
+        let mut receiver = f.context.clone();
+        receiver.actor = f.operator.clone();
+        let reply = host
+            .handle(
+                receiver.clone(),
+                RpcRequest::ClientRegister(ClientRegisterParams {
+                    generation: 1.into(),
+                    capabilities: vec![ClientCapability::ClipboardWriteText],
+                }),
+            )
+            .await
+            .unwrap();
+        let RpcReply::Success { result, .. } = reply.wire_reply else {
+            panic!("receiver registration failed")
+        };
+        let RpcResult::ClientRegistration(registration) = *result else {
+            panic!("expected registration")
+        };
+        f.auth
+            .authorize(
+                &f.operator,
+                AuthorizeParams {
+                    client_id: f.actor.client_id().clone(),
+                    permissions: vec!["client.clipboard.write".into()],
+                    targets: vec![registration.target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        let identity = store.identity().unwrap();
+        let operation = host
+            .invoke(
+                &f.actor,
+                Call {
+                    protocol_version: ProtocolVersion::V0_1,
+                    host_id: identity.host_id.clone(),
+                    instance_epoch: identity.instance_epoch,
+                    actor_id: f.actor.id().clone(),
+                    request_id: new_request_id(),
+                    request_context: store.issue_context(&f.actor).unwrap().token,
+                    action_id: id("client.clipboard.writeText"),
+                    target: registration.target.clone(),
+                    params: serde_json::from_value(
+                        serde_json::json!({"text":"must-not-reach-the-platform"}),
+                    )
+                    .unwrap(),
+                    reveal_target: RevealTarget {
+                        page_id: id("settings"),
+                        workspace_id: None,
+                        session_id: None,
+                        panel_id: None,
+                        result_ref: None,
+                    },
+                    expected_revision: None,
+                    lease_id: None,
+                    execution_mode: Some(ExecutionMode::Interactive),
+                },
+            )
+            .await
+            .unwrap();
+        let auth = f.auth.clone();
+        let actor = f.actor.clone();
+        let operator = f.operator.clone();
+        let target = registration.target;
+        let entered = Arc::new(tokio::sync::Notify::new());
+        let (output, mut input) = tokio::io::duplex(65536);
+        let writing = tokio::spawn(output_writer(
+            InvalidateBeforeWrite {
+                output,
+                entered: entered.clone(),
+                blocked_header: None,
+                invalidate: Some(Box::new(move || {
+                    auth.revoke(
+                        &operator,
+                        RevokeParams {
+                            actor_id: actor.id().clone(),
+                            permissions: vec!["client.clipboard.write".into()],
+                            targets: vec![target],
+                        },
+                    )
+                    .unwrap();
+                })),
+            },
+            f.replies_rx.take().unwrap(),
+            f.events_rx.take().unwrap(),
+            f.context.catalog_changed.subscribe(),
+            f.auth.clone(),
+            f.operator.clone(),
+        ));
+        tokio::time::timeout(Duration::from_secs(3), entered.notified())
+            .await
+            .unwrap();
+        let marker = id("still-connected");
+        receiver.register_subscription(marker.clone()).unwrap();
+        receiver.end_subscription(new_request_id(), &marker, "EPOCH_MISMATCH");
+        let observed = tokio::time::timeout(
+            Duration::from_secs(3),
+            read_frame(&mut input, MAX_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        let settled = tokio::time::timeout(Duration::from_secs(3), async {
+            loop {
+                let QueryResult::Operation(result) = host
+                    .query(
+                        &f.operator,
+                        Query {
+                            protocol_version: ProtocolVersion::V0_1,
+                            host_id: identity.host_id.clone(),
+                            instance_epoch: identity.instance_epoch,
+                            actor_id: f.operator.id().clone(),
+                            request_id: new_request_id(),
+                            action_id: id("operation.get"),
+                            target: Target {
+                                host_id: identity.host_id.clone(),
+                                kind: ResourceKind::try_from("host").unwrap(),
+                                id: identity.host_id.clone(),
+                                session_id: None,
+                                session_epoch: None,
+                            },
+                            params: serde_json::from_value(
+                                serde_json::json!({"operationId":operation.operation_id}),
+                            )
+                            .unwrap(),
+                            reveal_target: RevealTarget {
+                                page_id: id("settings"),
+                                workspace_id: None,
+                                session_id: None,
+                                panel_id: None,
+                                result_ref: None,
+                            },
+                        },
+                    )
+                    .await
+                    .unwrap()
+                else {
+                    panic!("expected operation")
+                };
+                if !matches!(
+                    result.operation.state,
+                    OperationState::Queued
+                        | OperationState::Running
+                        | OperationState::CancelRequested
+                ) {
+                    break result.operation;
+                }
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        drop(f.replies);
+        writing.await.unwrap().unwrap();
+        host.shutdown().await.unwrap();
+        assert!(
+            matches!(observed.body, IpcMessage::SubscriptionEnded { subscription_id, .. } if subscription_id == marker)
+        );
+        assert_eq!(
+            settled.state,
+            OperationState::Failed,
+            "Proven zero output cannot have an unknown platform effect"
+        );
+        assert_eq!(settled.error.unwrap().code, "PERMISSION_DENIED");
+        assert!(
+            settled.client_effect_receipt.is_none(),
+            "Host rejection must not fabricate a platform receipt"
+        );
+    }
+
     #[tokio::test]
     async fn state_epoch_rebind_invalidates_queued_and_started_frames_under_unchanged_host_grant() {
         state_epoch_writer(false).await;

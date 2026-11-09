@@ -140,6 +140,7 @@ export async function language(locale) {
     "#settings-language button[aria-description][role=combobox]",
   );
   await trigger.waitForExist();
+  await trigger.waitForEnabled();
   await trigger.click();
   await $(`[role=option][lang="${locale === "en" ? "en" : "zh-CN"}"]`).click();
   await browser.waitUntil(() =>
