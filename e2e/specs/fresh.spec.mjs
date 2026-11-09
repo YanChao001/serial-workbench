@@ -1,3 +1,4 @@
+import { readSettings } from "../settings.mjs";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -17,14 +18,15 @@ import {
 } from "../helpers.mjs";
 
 import { desktopUiChecks } from "./desktop-ui.mjs";
+import { workbenchChecks } from "./workbench.mjs";
 const execute = promisify(execFile);
 
 describe("Real Tauri desktop", () => {
   it("reveals the main window with native settings and the workspace shell", async () => {
     await ready();
-    const settings = await invoke("load_settings_snapshot");
-    assert.equal(settings.ok, true);
-    assert.equal(typeof settings.value.revision, "number");
+    const settings = await readSettings();
+    assert.equal(typeof settings.revision, "string");
+    assert.equal(typeof settings.client.revision, "string");
     await $("[data-testid=serial-workbench-shell]").waitForExist();
     await $("main").waitForDisplayed();
   });
@@ -40,7 +42,7 @@ describe("Real Tauri desktop", () => {
       ),
     );
     assert.equal((await browser.getWindowHandles()).length, 1);
-    assert.equal((await invoke("load_settings_snapshot")).ok, true);
+    assert.equal(typeof (await readSettings()).revision, "string");
     await $("#root main").waitForDisplayed();
   });
 
@@ -48,9 +50,7 @@ describe("Real Tauri desktop", () => {
     for (const locale of ["zh", "en"]) {
       await language(locale);
       await browser.waitUntil(
-        async () =>
-          (await invoke("load_settings_snapshot")).value.settings.language ===
-          locale,
+        async () => (await readSettings()).settings.language === locale,
       );
       assert.equal(
         await $("main h1").getText(),
@@ -59,6 +59,7 @@ describe("Real Tauri desktop", () => {
     }
   });
 
+  workbenchChecks();
   desktopUiChecks();
 
   it("uses the actual native window maximize, restore and minimize controls", async () => {
@@ -562,9 +563,7 @@ describe("Real Tauri desktop", () => {
     await centered.waitForEnabled();
     await centered.click();
     await browser.waitUntil(
-      async () =>
-        (await invoke("load_settings_snapshot")).value.settings
-          ?.windowPosition === "center",
+      async () => (await readSettings()).settings?.windowPosition === "center",
     );
     const afterPreference = await browser.execute(async () =>
       window.__TAURI__.window.getCurrentWindow().outerPosition(),
@@ -576,10 +575,7 @@ describe("Real Tauri desktop", () => {
     await $("[role=dialog]").waitForExist({ reverse: true });
     const reset = await invoke("get_window_geometry");
     assert.equal(reset.ok, true);
-    assert.equal(
-      (await invoke("load_settings_snapshot")).value.settings.windowPosition,
-      "remember",
-    );
+    assert.equal((await readSettings()).settings.windowPosition, "remember");
     assert.equal(
       reset.value.width,
       Math.min(bounds.maxWidth, bounds.defaultWidth),
@@ -643,11 +639,21 @@ describe("Real Tauri desktop", () => {
       await browser.switchToWindow(secondary);
       await ready("secondary");
       await language("zh");
+      await browser.waitUntil(
+        async () => (await readSettings()).settings.language === "zh",
+        {
+          timeoutMsg: "The secondary window did not persist its language edit",
+        },
+      );
       await browser.switchToWindow(main);
       await browser.waitUntil(
         async () => (await appearance()).language === "zh-CN",
       );
       await language("en");
+      await browser.waitUntil(
+        async () => (await readSettings()).settings.language === "en",
+        { timeoutMsg: "The main window did not persist its language edit" },
+      );
       await browser.switchToWindow(secondary);
       await browser.waitUntil(
         async () => (await appearance()).language === "en",
@@ -693,6 +699,39 @@ describe("Real Tauri desktop", () => {
         Math.abs(secondaryPosition.x - restoredPosition.x) <= 2 &&
           Math.abs(secondaryPosition.y - restoredPosition.y) <= 2,
       );
+    } catch (error) {
+      try {
+        const windows = [];
+        for (const handle of [main, secondary].filter(Boolean)) {
+          if (!(await browser.getWindowHandles()).includes(handle)) continue;
+          await browser.switchToWindow(handle);
+          const snapshot = await readSettings();
+          windows.push({
+            handle,
+            appearance: await appearance(),
+            storedLanguage: snapshot.settings.language,
+            sharedRevision: snapshot.revision,
+            clientRevision: snapshot.client.revision,
+            controls: await browser.execute(() =>
+              [
+                ...document.querySelectorAll(
+                  "button[aria-description][role=combobox]",
+                ),
+              ].map((control) => ({
+                value: control.getAttribute("aria-description"),
+                disabled: control.disabled,
+              })),
+            ),
+          });
+        }
+        writeFileSync(
+          "artifacts/e2e/fresh/window-settings-failure.json",
+          JSON.stringify(windows, null, 2),
+        );
+      } catch {
+        console.warn("Window settings diagnostic collection did not complete.");
+      }
+      throw error;
     } finally {
       // 从主窗口关闭本轮次窗口，避免失败后把后续用例的窗口身份颠倒。
       await browser.switchToWindow(main);
@@ -756,15 +795,15 @@ describe("Real Tauri desktop", () => {
     });
     // 等待异步原生偏好快照落盘，后续进程从同一隔离目录读取。
     await browser.waitUntil(async () => {
-      const result = await invoke("load_settings_snapshot");
+      const result = await readSettings();
       return (
-        result.ok &&
-        result.value.settings?.language === "en" &&
-        result.value.settings?.background === "sakura" &&
-        result.value.settings?.backgroundIntensity === 70
+        result.settings?.language === "en" &&
+        result.settings?.background.kind === "preset" &&
+        result.settings?.background.value === "sakura" &&
+        result.settings?.backgroundIntensity === 70
       );
     });
-    const snapshot = (await invoke("load_settings_snapshot")).value;
+    const snapshot = await readSettings();
     const backgroundFixturePath = join(
       process.env.STARTER_E2E_DATA_ROOT,
       "background-image-fixture.json",
@@ -773,17 +812,15 @@ describe("Real Tauri desktop", () => {
       existsSync(backgroundFixturePath),
       "The earlier native raster-import prerequisite did not produce the background fixture; check that test's failure first",
     );
-    const customBackground = JSON.parse(
+    const importedReference = JSON.parse(
       readFileSync(backgroundFixturePath, "utf8"),
     );
-    assert.equal(
-      (
-        await invoke("save_settings_snapshot", {
-          settings: { ...snapshot.settings, customBackground },
-          expectedRevision: snapshot.revision,
-        })
-      ).ok,
-      true,
+    assert.ok(
+      snapshot.client.state.gallery.some(
+        (entry) =>
+          entry.reference.hostId === importedReference.hostId &&
+          entry.reference.id === importedReference.id,
+      ),
     );
     const geometry = (await invoke("get_window_geometry")).value;
     assert.equal(
@@ -801,8 +838,7 @@ describe("Real Tauri desktop", () => {
     await $("[data-window-position=remember]").click();
     await browser.waitUntil(
       async () =>
-        (await invoke("load_settings_snapshot")).value.settings
-          ?.windowPosition === "remember",
+        (await readSettings()).settings?.windowPosition === "remember",
     );
     const position = await placeNearWorkAreaCorner();
     writeFileSync(
@@ -818,6 +854,59 @@ describe("Real Tauri desktop", () => {
       expected: position,
       ...(await windowPlacement()),
     });
+    // 落盘值不能证明当前窗口的设置效果已成功，保留最终用户可见状态。
+    let finalUi;
+    let checkFailed = false;
+    let checkError;
+    try {
+      await browser.waitUntil(
+        async () => {
+          finalUi = await browser.execute(() => {
+            const texts = (selector) =>
+              [...globalThis.document.querySelectorAll(selector)]
+                .filter((element) => element.getClientRects().length > 0)
+                .map((element) => element.textContent?.trim() ?? "")
+                .filter(Boolean);
+            return {
+              statuses: texts('[role="status"]'),
+              alerts: texts('[role="alert"]'),
+              errorToasts: texts('[data-sonner-toast][data-type="error"]'),
+            };
+          });
+          return (
+            finalUi.alerts.length === 0 &&
+            finalUi.errorToasts.length === 0 &&
+            !finalUi.statuses.some((text) =>
+              /Settings not saved|设置未保存|Saving…|Syncing settings…|保存中…|同步设置…/.test(
+                text,
+              ),
+            )
+          );
+        },
+        {
+          timeoutMsg:
+            "The final window retained a settings error or pending save",
+        },
+      );
+    } catch (error) {
+      checkFailed = true;
+      checkError = error;
+    }
+    try {
+      writeFileSync(
+        join(
+          "artifacts",
+          "e2e",
+          process.env.STARTER_E2E_PHASE,
+          "final-settings-ui.json",
+        ),
+        JSON.stringify(finalUi ?? { notObserved: true }, null, 2),
+      );
+    } catch (error) {
+      if (!checkFailed) throw error;
+      console.error("Unable to write final settings UI evidence", error);
+    }
+    if (checkFailed) throw checkError;
   });
 });
 /* global describe, it */

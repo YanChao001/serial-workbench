@@ -17,6 +17,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { useUnsavedWork } from "@/providers/unsaved-work";
+import { stateScopeKey } from "@/lib/host-scope";
 import { diffWorkspaceImport } from "./workspace-import";
 
 export type WorkspaceEditorLabels = {
@@ -124,7 +125,7 @@ export function cloneWorkspaceView(
 
 export function WorkspaceEditor(props: WorkspaceEditorProps) {
   return (
-    <WorkspaceEditorDraft key={JSON.stringify(props.base.scope)} {...props} />
+    <WorkspaceEditorDraft key={stateScopeKey(props.base.scope)} {...props} />
   );
 }
 

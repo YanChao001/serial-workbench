@@ -187,7 +187,7 @@ async fn replay_close_history_survives_normal_closed_session_cache_eviction() {
 }
 
 #[tokio::test]
-async fn source_fact_persistence_failure_prevents_recovery_dispatch_and_output_creation() {
+async fn source_fact_persistence_failure_rejects_admission_without_operation_or_output() {
     let f = Fixture::new().await;
     let (_, fixed) = captured(&f).await;
     let verified = f
@@ -202,25 +202,20 @@ async fn source_fact_persistence_failure_prevents_recovery_dispatch_and_output_c
         panic!("verification")
     };
     let destination = f.register("no-history-fact-no-output").await;
+    let before = f.store.operation_metadata().unwrap();
     let db = rusqlite::Connection::open(f.dir.path().join("host-v0/state.sqlite3")).unwrap();
     db.execute_batch("CREATE TRIGGER reject_source_fact BEFORE INSERT ON documents WHEN NEW.id GLOB 'operation-source-*' BEGIN SELECT RAISE(FAIL,'test authority persistence failure'); END;").unwrap();
-    let recovered = f.action(&f.user, "capture.recover", f.reference_target(&destination), json!({"verificationId":verification.verification_id,"sourceFingerprint":verification.source_fingerprint,"targetRef":destination})).await;
+    let reply = f.user.request(RpcRequest::Invoke(f.call(&f.user, "capture.recover", f.reference_target(&destination), json!({"verificationId":verification.verification_id,"sourceFingerprint":verification.source_fingerprint,"targetRef":destination})))).await.unwrap();
     let output_exists = f.dir.path().join("no-history-fact-no-output").exists();
-    let dispatched: i64 = db
-        .query_row(
-            "SELECT dispatched FROM operations WHERE operation_id=?1",
-            [recovered.operation_id.as_str()],
-            |row| row.get(0),
-        )
-        .unwrap();
+    let after = f.store.operation_metadata().unwrap();
     db.execute_batch("DROP TRIGGER reject_source_fact;")
         .unwrap();
     f.finish().await;
+    assert_eq!(failure(reply).code, "STORAGE_UNAVAILABLE");
     assert_eq!(
-        recovered.error.as_ref().map(|e| e.code.as_str()),
-        Some("STORAGE_UNAVAILABLE")
+        before, after,
+        "failed admission must roll back its operation"
     );
-    assert_eq!(dispatched, 0);
     assert!(
         !output_exists,
         "no recovery artifact without durable source authority"

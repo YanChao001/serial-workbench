@@ -56,7 +56,7 @@ pub async fn apply_host_settings_effects(
     let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
     let instance = bridge.bind_window(&window)?;
     let current = bridge
-        .attach_guarded(window.label(), instance, async {}, async { Ok(()) })
+        .attachment_for_instance(window.label(), instance)
         .await?;
     apply_host_settings_effects_for_generation(app.clone(), window, current.generation).await
 }
@@ -109,7 +109,7 @@ pub(crate) async fn apply_host_settings_effects_for_generation(
         },
     };
     let document = match bridge
-        .request_at_generation(window.label(), generation, RpcRequest::Query(query))
+        .read_request_at_generation(window.label(), generation, RpcRequest::Query(query))
         .await?
     {
         RpcReply::Failure { error, .. } => return Err(error),

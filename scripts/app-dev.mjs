@@ -4,6 +4,7 @@ import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { pathToFileURL } from "node:url";
 import { buildEnvironment } from "./build-lib.mjs";
+import { stageDevRuntime } from "./dev-runtime.mjs";
 
 const require = createRequire(import.meta.url);
 
@@ -75,7 +76,11 @@ function runProcess(command, args, options) {
   });
 }
 
-export async function runDev(root, args, { run = runProcess } = {}) {
+export async function runDev(
+  root,
+  args,
+  { run = runProcess, stageRuntime = stageDevRuntime } = {},
+) {
   const options = {
     cwd: join(root, "src-tauri"),
     env: buildEnvironment(),
@@ -143,8 +148,9 @@ export async function runDev(root, args, { run = runProcess } = {}) {
     throw new Error(
       "Cargo Host and CLI executables do not share an output directory",
     );
+  const runtime = stageRuntime(root, paths);
   // 在 Tauri 的 cargo run 创建受限 Job 前，由正式 CLI 认证并准备同一 Host。
-  const ready = await run(paths[1], ["catalog", "--json"], {
+  const ready = await run(runtime[1], ["catalog", "--json"], {
     ...options,
     stdio: ["ignore", "ignore", "inherit"],
   });

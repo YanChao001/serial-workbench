@@ -15,6 +15,7 @@ import type {
 import {
   WorkspaceEditor,
   type WorkspaceEditorLabels,
+  type WorkspaceEditorProps,
 } from "./workspace-editor";
 import { session } from "./test-fixtures";
 import {
@@ -145,6 +146,47 @@ it("saves edited view, connection and panel configuration with the original docu
     screen.getByRole("button", { name: "Save configuration" }),
   ).toBeDisabled();
 });
+it("keeps the draft and pending save when an equivalent scope uses another JSON field order", async () => {
+  const original = base();
+  let finish!: (value: WorkspaceDocumentResult) => void;
+  const onSave = vi.fn<NonNullable<WorkspaceEditorProps["onSave"]>>(
+    () =>
+      new Promise<WorkspaceDocumentResult>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const content = (value: WorkspaceDocumentResult) => (
+    <WorkspaceEditor base={value} labels={labels} onSave={onSave} />
+  );
+  const view = render(content(original));
+  fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
+    target: { value: "Unsent edit" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
+  const reordered = {
+    ...original,
+    scope: {
+      target: { id: "bench", kind: "workspace", hostId: "host" },
+      scopeId: original.scope.scopeId,
+    },
+  };
+  view.rerender(content(reordered));
+  expect(screen.getByRole("textbox", { name: "View name" })).toHaveValue(
+    "Unsent edit",
+  );
+  const signal = onSave.mock.calls[0]?.[2];
+  expect(signal?.aborted).toBe(false);
+  await act(async () =>
+    finish({
+      ...reordered,
+      document: { revision: "8", value: onSave.mock.calls[0]![1] },
+    }),
+  );
+  expect(
+    screen.getByRole("button", { name: "Save configuration" }),
+  ).toBeDisabled();
+});
+
 it("retains a conflicting draft until explicit reload and uses the reloaded revision", async () => {
   const original = base();
   const onSave = vi

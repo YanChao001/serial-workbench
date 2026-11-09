@@ -1,3 +1,4 @@
+import { readSettings } from "../settings.mjs";
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -27,12 +28,14 @@ describe("App process restart", () => {
       background: "sakura",
       intensity: "70",
     });
-    const settings = await invoke("load_settings_snapshot");
-    assert.equal(settings.ok, true);
-    assert.equal(settings.value.settings.language, "en");
-    assert.equal(settings.value.settings.background, "sakura");
-    assert.equal(settings.value.settings.backgroundIntensity, 70);
-    assert.equal(settings.value.settings.windowPosition, "remember");
+    const settings = await readSettings();
+    assert.equal(settings.settings.language, "en");
+    assert.deepEqual(settings.settings.background, {
+      kind: "preset",
+      value: "sakura",
+    });
+    assert.equal(settings.settings.backgroundIntensity, 70);
+    assert.equal(settings.settings.windowPosition, "remember");
     const backgroundFixture = JSON.parse(
       readFileSync(
         join(
@@ -42,10 +45,13 @@ describe("App process restart", () => {
         "utf8",
       ),
     );
-    assert.equal(settings.value.settings.schemaVersion, 7);
-    assert.deepEqual(
-      settings.value.settings.customBackground,
-      backgroundFixture,
+    assert.equal(settings.client.formatVersion, "0.1");
+    assert.ok(
+      settings.client.state.gallery.some(
+        (entry) =>
+          entry.reference.hostId === backgroundFixture.hostId &&
+          entry.reference.id === backgroundFixture.id,
+      ),
     );
     const expectedPosition = JSON.parse(
       readFileSync(
@@ -127,9 +133,7 @@ describe("App process restart", () => {
     const before = (await windowPlacement()).position;
     await $("[data-window-position=center]").click();
     await browser.waitUntil(
-      async () =>
-        (await invoke("load_settings_snapshot")).value.settings
-          ?.windowPosition === "center",
+      async () => (await readSettings()).settings?.windowPosition === "center",
     );
     assert.deepEqual((await windowPlacement()).position, before);
     assert.equal(

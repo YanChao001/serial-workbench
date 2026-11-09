@@ -9,6 +9,7 @@ const snapshot = (
   formatVersion: "0.1",
   revision,
   state: {
+    gallery: [],
     preferences: {
       menuBar: true,
       windowPosition: "remember",

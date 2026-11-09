@@ -147,6 +147,79 @@ async fn rejected_window_cannot_bootstrap_or_create_profile() {
 }
 
 #[tokio::test]
+async fn retired_window_requests_and_subscriptions_never_implicitly_reattach() {
+    use serial_workbench_core::*;
+    use serial_workbench_host::{Host, ipc::HostServer};
+    use std::sync::Arc;
+    use tauri::ipc::Channel;
+    let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let mut server = HostServer::bind(directory.path()).await.unwrap();
+    let host = Host::new(server.store(), server.auth()).await.unwrap();
+    let (stop, done) = tokio::sync::oneshot::channel();
+    let running = tokio::spawn(async move {
+        server
+            .serve_until(Arc::new(host), async {
+                let _ = done.await;
+            })
+            .await
+    });
+    let bridge = DesktopHostBridge::new(directory.path().into());
+    let attached = bridge.attach("main").await.unwrap();
+    let instance = bridge.instances.lock().unwrap().active["main"];
+    let request = query(
+        &attached.attachment,
+        "state.snapshot",
+        serde_json::json!({"scopeId":"host.devices"}),
+        "00000000-0000-4000-8000-000000000091",
+    );
+    bridge.disconnect_for_test("main").await;
+    let control = bridge
+        .request("main", RpcRequest::StateSnapshot(request.clone()))
+        .await;
+    let control_reattached = bridge.inner.lock().await.windows.contains_key("main");
+    bridge.disconnect_for_test("main").await;
+    let raw = bridge
+        .raw_request("main", RpcRequest::StateSnapshot(request.clone()))
+        .await;
+    let raw_reattached = bridge.inner.lock().await.windows.contains_key("main");
+    bridge.disconnect_for_test("main").await;
+    let state = bridge
+        .subscribe_for_instance("main", instance, request.clone(), Channel::new(|_| Ok(())))
+        .await;
+    let state_reattached = bridge.inner.lock().await.windows.contains_key("main");
+    bridge.disconnect_for_test("main").await;
+    let stream = bridge
+        .raw_subscribe_for_instance(
+            "main",
+            instance,
+            request,
+            Channel::new(|_| Ok(())),
+            Channel::new(|_| Ok(())),
+        )
+        .await;
+    let stream_reattached = bridge.inner.lock().await.windows.contains_key("main");
+    bridge.disconnect_for_test("main").await;
+    let explicit = bridge.attach("main").await.unwrap();
+    drop(bridge);
+    stop.send(()).unwrap();
+    running.await.unwrap().unwrap();
+    for (name, result) in [("control", control), ("raw", raw)] {
+        assert!(
+            matches!(result, Err(ref error) if error.code == "EPOCH_MISMATCH"),
+            "{name}: {result:?}"
+        );
+    }
+    for (name, result) in [("state", state), ("stream", stream)] {
+        assert!(
+            matches!(result, Err(ref error) if error.code == "EPOCH_MISMATCH"),
+            "{name}: {result:?}"
+        );
+    }
+    assert!(!control_reattached && !raw_reattached && !state_reattached && !stream_reattached);
+    assert!(explicit.generation > attached.generation);
+}
+
+#[tokio::test]
 async fn real_host_snapshot_subscription_and_close_use_one_authenticated_connection() {
     use serial_workbench_core::*;
     use serial_workbench_host::{Host, ipc::HostServer};
@@ -720,7 +793,7 @@ async fn raw_connection_rejects_control_requests_without_stopping_control_connec
 async fn first_profile_starts_then_reads_control_and_attaches_distinct_business_actor() {
     use serial_workbench_host::{Host, ipc::HostServer};
     use std::sync::{Arc, Mutex};
-    let directory = tempfile::tempdir().unwrap();
+    let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let profile = directory.path().join("fresh");
     let bridge = DesktopHostBridge::new(profile.clone());
     let running = Arc::new(Mutex::new(None));
@@ -1104,6 +1177,151 @@ async fn raw_subscription_uses_real_host_cursor_and_closes_its_reader() {
 }
 
 #[tokio::test]
+async fn late_frames_after_unsubscribe_do_not_disconnect_another_subscription() {
+    use serial_workbench_core::*;
+    use serial_workbench_host::{
+        Host,
+        ipc::{ConnectionContext, HandlerFuture, HostServer, RequestHandler},
+    };
+    use std::{
+        sync::{Arc, Mutex},
+        time::Duration,
+    };
+    use tauri::ipc::{Channel, InvokeResponseBody};
+    use tokio::sync::{Notify, oneshot};
+    struct DelayedClose {
+        host: Host,
+        entered: Arc<Notify>,
+        release: Mutex<Option<oneshot::Receiver<()>>>,
+    }
+    impl RequestHandler for DelayedClose {
+        fn handle(&self, context: ConnectionContext, request: RpcRequest) -> HandlerFuture {
+            let release = if matches!(request, RpcRequest::SubscriptionClose(_)) {
+                self.release.lock().unwrap().take()
+            } else {
+                None
+            };
+            if let Some(release) = release {
+                let host = self.host.clone();
+                let entered = self.entered.clone();
+                Box::pin(async move {
+                    entered.notify_one();
+                    let _ = release.await;
+                    host.handle(context, request).await
+                })
+            } else {
+                self.host.handle(context, request)
+            }
+        }
+        fn disconnected(&self, context: &ConnectionContext) {
+            self.host.disconnected(context);
+        }
+    }
+    let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let mut server = HostServer::bind(directory.path()).await.unwrap();
+    let host = Host::new(server.store(), server.auth()).await.unwrap();
+    let entered = Arc::new(Notify::new());
+    let (release, held) = oneshot::channel();
+    let (stop, done) = oneshot::channel();
+    let handler = DelayedClose {
+        host: host.clone(),
+        entered: entered.clone(),
+        release: Mutex::new(Some(held)),
+    };
+    let running = tokio::spawn(async move {
+        server
+            .serve_until(Arc::new(handler), async {
+                let _ = done.await;
+            })
+            .await
+    });
+    let bridge = DesktopHostBridge::new(directory.path().to_path_buf());
+    let attachment = bridge.attach("main").await.unwrap();
+    let reply = bridge
+        .request(
+            "main",
+            RpcRequest::StateSnapshot(query(
+                &attachment.attachment,
+                "state.snapshot",
+                serde_json::json!({"scopeId":"host.devices"}),
+                "00000000-0000-4000-8000-000000000091",
+            )),
+        )
+        .await
+        .unwrap();
+    let RpcReply::Success { result, .. } = reply else {
+        panic!("snapshot failed")
+    };
+    let RpcResult::Snapshot(snapshot) = *result else {
+        panic!("expected snapshot")
+    };
+    let old = bridge
+        .subscribe(
+            "main",
+            query(
+                &attachment.attachment,
+                "state.subscribe",
+                serde_json::json!({"scopeId":"host.devices","after":snapshot.cursor}),
+                "00000000-0000-4000-8000-000000000092",
+            ),
+            Channel::new(|_| Ok(())),
+        )
+        .await
+        .unwrap();
+    let (frames, mut received) = tokio::sync::mpsc::unbounded_channel();
+    let witness = bridge
+        .subscribe(
+            "main",
+            query(
+                &attachment.attachment,
+                "state.subscribe",
+                serde_json::json!({"scopeId":"host.devices","after":snapshot.cursor}),
+                "00000000-0000-4000-8000-000000000093",
+            ),
+            Channel::new(move |message| {
+                if let InvokeResponseBody::Json(json) = message {
+                    let _ = frames.send(serde_json::from_str::<WireFrame>(&json).unwrap());
+                }
+                Ok(())
+            }),
+        )
+        .await
+        .unwrap();
+    let worker = bridge.clone();
+    let closing = tokio::spawn(async move { worker.unsubscribe("main", old).await });
+    tokio::time::timeout(Duration::from_secs(3), entered.notified())
+        .await
+        .unwrap();
+    // Host close is deliberately held: each event reaches the already-retired
+    // channel and a live witness. Acknowledging the witness keeps normal delivery
+    // capacity available, so only retention of the retired frames can overflow.
+    let outcome = tokio::time::timeout(Duration::from_secs(10), async {
+        for ordinal in 1..=300_u64 {
+            host.projections().commit(
+                &Id::try_from("host.devices").unwrap(), Id::try_from("devices.changed").unwrap(),
+                JsonObject::new(), JsonObject::new(),
+            ).map_err(|error| error.to_string())?;
+            let frame = received.recv().await.ok_or("Witness channel closed".to_owned())?;
+            if !matches!(frame.body, IpcMessage::Delta { subscription_id, .. } if subscription_id == witness) {
+                return Err("An unrelated live subscription was terminated by retired frames".to_owned());
+            }
+            bridge.delivery_ack("main", attachment.generation, witness.clone(), DeliveryStream::Data, ordinal.into())
+                .await.map_err(|error| error.to_string())?;
+        }
+        Ok::<_, String>(())
+    }).await;
+    let _ = release.send(());
+    let _ = tokio::time::timeout(Duration::from_secs(3), closing).await;
+    drop(bridge);
+    stop.send(()).unwrap();
+    running.await.unwrap().unwrap();
+    assert!(
+        matches!(outcome, Ok(Ok(()))),
+        "Late-frame isolation failed: {outcome:?}"
+    );
+}
+
+#[tokio::test]
 async fn early_frame_overflow_closes_actual_control_connection() {
     use serial_workbench_core::*;
     use serial_workbench_host::{
@@ -1216,7 +1434,7 @@ async fn early_frame_overflow_closes_actual_control_connection() {
                         .map(|window| window.subscriptions.clone())
                 };
                 let count = subscriptions
-                    .map(|subscriptions| subscriptions.lock().unwrap().early.len())
+                    .map(|subscriptions| subscriptions.lock().unwrap().setups.lock().unwrap().len())
                     .unwrap_or(0);
                 if count >= expected {
                     break;
@@ -1273,11 +1491,14 @@ fn late_call_from_old_window_identity_never_resolves_new_instance() {
 }
 
 #[test]
-fn host_terminal_keeps_permission_error_when_data_budget_is_full() {
+fn concurrent_host_terminals_use_normal_budget_then_one_emergency_slot() {
     use serial_workbench_core::*;
     use std::sync::{Arc, Mutex};
     use tauri::ipc::{Channel, InvokeResponseBody};
-    let id = Id::try_from("sub").unwrap();
+    let ids: Vec<_> = ["sub-a", "sub-b", "sub-c"]
+        .into_iter()
+        .map(|id| Id::try_from(id).unwrap())
+        .collect();
     let target = Target {
         host_id: Id::try_from("host").unwrap(),
         kind: ResourceKind::try_from("host").unwrap(),
@@ -1312,27 +1533,37 @@ fn host_terminal_keeps_permission_error_when_data_budget_is_full() {
         }
         Ok(())
     });
-    let ledger = Arc::new(Mutex::new(DeliveryLedger::new(1, 1024 * 1024)));
+    let ledger = Arc::new(Mutex::new(DeliveryLedger::new(2, 1024 * 1024)));
     ledger
         .lock()
         .unwrap()
         .reserve(
             &DeliveryKey {
                 generation: 1,
-                subscription_id: id.clone(),
+                subscription_id: ids[0].clone(),
                 stream: DeliveryStream::Data,
             },
             1,
         )
         .unwrap();
     let mut subscriptions = Subscriptions {
-        active: HashMap::from([(id.clone(), Subscription { query, channel })]),
-        early: Vec::new(),
-        early_bytes: 0,
+        active: ids
+            .iter()
+            .map(|id| {
+                (
+                    id.clone(),
+                    Subscription {
+                        query: query.clone(),
+                        channel: channel.clone(),
+                    },
+                )
+            })
+            .collect(),
+        setups: Default::default(),
         ledger,
         failed: false,
     };
-    let frame = WireFrame {
+    let terminal = |id: Id| WireFrame {
         request_id: RequestId::try_from("00000000-0000-4000-8000-000000000092").unwrap(),
         channel: IpcChannel::State,
         body: IpcMessage::SubscriptionEnded {
@@ -1340,11 +1571,30 @@ fn host_terminal_keeps_permission_error_when_data_budget_is_full() {
             error: HostError::new("PERMISSION_DENIED", "Permission revoked"),
         },
     };
-    deliver_state(&mut subscriptions, 1, frame);
+    for id in &ids[..2] {
+        deliver_state(&mut subscriptions, 1, terminal(id.clone()));
+    }
+    assert!(!subscriptions.failed);
+    assert_eq!(subscriptions.ledger.lock().unwrap().pending().0, 3);
+    // 普通预算及唯一应急槽都耗尽后，仍关闭连接，不无限排队。
+    deliver_state(&mut subscriptions, 1, terminal(ids[2].clone()));
+    assert!(subscriptions.failed);
     let received = received.lock().unwrap();
-    assert!(
-        matches!(&received[0].body, IpcMessage::SubscriptionEnded { error, .. } if error.code == "PERMISSION_DENIED")
-    );
+    assert_eq!(received.len(), 2);
+    for frame in received.iter() {
+        assert!(
+            matches!(&frame.body, IpcMessage::SubscriptionEnded { error, .. } if error.code == "PERMISSION_DENIED")
+        );
+    }
+    let mut ledger = subscriptions.ledger.lock().unwrap();
+    ledger
+        .acknowledge(&key(1, "sub-a", DeliveryStream::Data), 2)
+        .unwrap();
+    ledger
+        .acknowledge(&key(1, "sub-b", DeliveryStream::Data), 1)
+        .unwrap();
+    assert_eq!(ledger.pending(), (0, 0));
+    assert!(!ledger.terminal_inflight);
 }
 
 #[tokio::test]

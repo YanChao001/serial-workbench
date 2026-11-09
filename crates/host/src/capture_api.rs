@@ -231,6 +231,37 @@ impl CaptureApi {
         }
         Ok(result)
     }
+    pub(crate) async fn operation_source(
+        &self,
+        action: BuiltinAction,
+        target: &Target,
+        params: &JsonObject,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<Option<Target>> {
+        if action == BuiltinAction::CaptureRecover {
+            let captures = self.captures.clone();
+            let actor = actor.clone();
+            let params: RecoverPrefixParams = decode(params)?;
+            blocking(move || {
+                captures.recovery_authorization_target(&params, &actor, "content.read")
+            })
+            .await
+            .map(Some)
+        } else if matches!(
+            action,
+            BuiltinAction::ReplayControl | BuiltinAction::ReplayClose
+        ) || (action == BuiltinAction::SessionClose && self.owns_replay(&target.id))
+        {
+            let replays = self.replays.clone();
+            let actor = actor.clone();
+            let target = target.clone();
+            blocking(move || replays.authorization_target(&target, &actor, "content.read"))
+                .await
+                .map(Some)
+        } else {
+            Ok(None)
+        }
+    }
     pub(crate) async fn execute(
         &self,
         action: BuiltinAction,
@@ -259,36 +290,20 @@ impl CaptureApi {
             &accepted.actor,
         )
         .await?;
-        // The service lease/session may disappear after execution. Bind its verified parent
-        // to this accepted operation before dispatch, without exposing it in the public DTO.
-        if action == BuiltinAction::CaptureRecover {
-            let captures = self.captures.clone();
-            let actor = accepted.actor.clone();
-            let params: RecoverPrefixParams = decode(&accepted.call.params)?;
-            let store = self.store.clone();
-            let operation_id = accepted.operation.operation_id.clone();
-            blocking(move || {
-                let source =
-                    captures.recovery_authorization_target(&params, &actor, "content.read")?;
-                store.record_operation_source_authority(&operation_id, &source)
-            })
-            .await?;
-        } else if matches!(
-            action,
-            BuiltinAction::ReplayControl | BuiltinAction::ReplayClose
-        ) || (action == BuiltinAction::SessionClose
-            && self.owns_replay(&accepted.call.target.id))
+        // Recheck the current service parent before dispatch; admission already persisted it.
+        if let Some(source) = self
+            .operation_source(
+                action,
+                &accepted.call.target,
+                &accepted.call.params,
+                &accepted.actor,
+            )
+            .await?
         {
-            let replays = self.replays.clone();
-            let actor = accepted.actor.clone();
-            let target = accepted.call.target.clone();
             let store = self.store.clone();
             let operation_id = accepted.operation.operation_id.clone();
-            blocking(move || {
-                let source = replays.authorization_target(&target, &actor, "content.read")?;
-                store.record_operation_source_authority(&operation_id, &source)
-            })
-            .await?;
+            blocking(move || store.record_operation_source_authority(&operation_id, &source))
+                .await?;
         }
         // Serialize publication with shutdown, but release before the long owner wait.
         let publication = if matches!(

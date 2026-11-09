@@ -25,6 +25,7 @@ import type {
 import { HostRequestError } from "@serial-workbench/host-client";
 import type { HostConnection } from "@/lib/host-client";
 import { abortError, waitForHost } from "@/lib/host-native-transport";
+import { reportClientError } from "@/lib/report-error";
 import { createSessionReaders } from "@/lib/host-session-readers";
 import { readReplayRecord as readRecord } from "@/lib/host-reader";
 import {
@@ -270,6 +271,7 @@ export function createHostWorkspace(
     change({ streams });
   });
   const report = (error: unknown) => {
+    reportClientError(error, "Host workspace");
     if (error instanceof HostRequestError && error.code === "PERMISSION_DENIED")
       invalidateActions();
     if (!lifetime.signal.aborted)
@@ -726,6 +728,10 @@ export function createHostWorkspace(
     refreshPending = pending;
     try {
       await pending;
+    } catch (error) {
+      report(error);
+      if (state.status === "connecting") change({ status: "error" });
+      throw error;
     } finally {
       if (refreshPending === pending) refreshPending = undefined;
     }

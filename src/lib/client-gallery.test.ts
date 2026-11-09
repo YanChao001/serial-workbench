@@ -1,5 +1,8 @@
 import { describe, expect, it, vi } from "vitest";
-import type { ClientStateSnapshot, GalleryEntry } from "./generated/bindings";
+import type {
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
+  GalleryEntry,
+} from "./generated/bindings";
 import { DEFAULT_CLIENT_STATE } from "./client-settings";
 import { createClientGallery } from "./client-gallery";
 

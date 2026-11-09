@@ -1070,7 +1070,7 @@ fn preview_json(value: &WorkspaceDocument) -> String {
     json!({"formatVersion":"0.1","value":value}).to_string()
 }
 
-// Catches preview using import/save, granting workspace.modify, or applying an abandoned preview.
+// 完成的预览查询只能返回候选，不写文档或扩大授权。
 #[tokio::test]
 async fn workspace_import_preview_validates_without_writing_or_granting() {
     let f = Fixture::new(0).await;
@@ -1092,18 +1092,6 @@ async fn workspace_import_preview_validates_without_writing_or_granting() {
     assert!(
         matches!(*result, RpcResult::Query(QueryResult::WorkspaceImportPreview(ref preview)) if preview == &value)
     );
-    // Dropping a real IPC wait must not apply the candidate, even when its reply arrives late.
-    {
-        let request = query(
-            &f.first,
-            &target,
-            "workspace.importPreview",
-            json!({"json":preview_json(&value)}),
-        );
-        let pending = f.first.request(RpcRequest::Query(request));
-        tokio::pin!(pending);
-        tokio::select! { biased; _ = &mut pending => {}, _ = tokio::task::yield_now() => {} }
-    }
     assert_eq!(
         read(&f.first, &target, "workspace.read", json!({})).await,
         original

@@ -1,4 +1,9 @@
-import type { SessionSnapshot, Operation } from "@serial-workbench/contracts";
+import type {
+  SessionSnapshot,
+  Operation,
+  StreamItem,
+  TxOutcome,
+} from "@serial-workbench/contracts";
 import type { WorkbenchLabels } from "./labels";
 
 export const labels: WorkbenchLabels = {
@@ -91,6 +96,7 @@ export const labels: WorkbenchLabels = {
   invalidHex: "Enter complete hexadecimal byte pairs",
   sending: "Sending",
   receipt: "Receipt",
+  awaitingReceipt: "Receipt unavailable; outcome not confirmed",
   previousPage: "Previous page",
   nextPage: "Next page",
   sendFile: "Send file",
@@ -121,6 +127,71 @@ export const labels: WorkbenchLabels = {
   peerUnconfirmed: "No device acknowledgement provided",
   unavailable: "Host is unavailable",
 };
+export function txItem(
+  kind: "tx_intent" | "tx",
+  byteStart = "0",
+  outcome: TxOutcome = "accepted",
+): StreamItem {
+  const payload = {
+    operationId: "file-transfer",
+    bytesBase64: "SGVsbG8=",
+    byteStart,
+    byteEnd: String(BigInt(byteStart) + 5n),
+  };
+  return {
+    kind: "source",
+    event: {
+      hostId: "host",
+      instanceEpoch: "1",
+      sessionId: "session",
+      sessionEpoch: "1",
+      eventSeq: kind === "tx_intent" ? "1" : "2",
+      configurationRevision: "1",
+      time: {
+        clockId: "clock",
+        sourceMonoNs: kind === "tx_intent" ? "1" : "2",
+        receivedWallTime: "2026-11-09T00:00:00Z",
+        precision: {
+          source: "host_read",
+          resolutionNs: "1",
+          syncMethod: "none",
+        },
+      },
+      ...(kind === "tx_intent"
+        ? { kind, payload }
+        : {
+            kind,
+            payload: {
+              ...payload,
+              sessionId: "session",
+              sessionEpoch: "1",
+              outcome,
+              acceptedRanges:
+                outcome === "accepted"
+                  ? [{ start: payload.byteStart, end: payload.byteEnd }]
+                  : outcome === "partial" || outcome === "unknown"
+                    ? [
+                        {
+                          start: payload.byteStart,
+                          end: String(BigInt(byteStart) + 2n),
+                        },
+                      ]
+                    : [],
+              unknownRanges:
+                outcome === "unknown"
+                  ? [
+                      {
+                        start: String(BigInt(byteStart) + 2n),
+                        end: payload.byteEnd,
+                      },
+                    ]
+                  : [],
+              peerAcknowledged: false,
+            },
+          }),
+    },
+  };
+}
 export function session(id = "session"): SessionSnapshot {
   return {
     sessionId: id,

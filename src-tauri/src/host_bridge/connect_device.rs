@@ -159,7 +159,7 @@ impl DesktopHostBridge {
                 serde_json::json!({"operationId":operation.operation_id,"requestContext":business.request_context}),
             )?;
             let RpcResult::Operation(result) = unpack(
-                self.request_at_generation(window, generation, RpcRequest::OperationGet(q))
+                self.read_request_at_generation(window, generation, RpcRequest::OperationGet(q))
                     .await?,
             )?
             else {
@@ -184,7 +184,7 @@ impl DesktopHostBridge {
         .await?;
         let q = query(&business, "session.get", session, serde_json::json!({}))?;
         match unpack(
-            self.request_at_generation(window, generation, RpcRequest::Query(q))
+            self.read_request_at_generation(window, generation, RpcRequest::Query(q))
                 .await?,
         )? {
             RpcResult::Query(QueryResult::Session(snapshot)) => Ok(snapshot),

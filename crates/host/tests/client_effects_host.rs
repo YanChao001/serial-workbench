@@ -1089,7 +1089,10 @@ async fn component_prepare_accounts_final_operation_uuid_before_store_acceptance
                 HostError::new("USER_CANCELLED", "Unsent fixture effect"),
             )
             .unwrap();
-        assert!(waiter.wait().await.is_err());
+        assert!(matches!(
+            waiter.wait().await.unwrap(),
+            ClientEffectOutcome::Failed { error } if error.code == "USER_CANCELLED"
+        ));
     }
     assert!(encoded <= 1024 * 1024);
     f.finish().await;

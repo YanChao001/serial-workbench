@@ -1,12 +1,15 @@
 import { describe, expect, it, vi } from "vitest";
 import type {
-  ClientStateSnapshot,
-  ClientWindowState,
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
+  ClientWindowState_Serialize as ClientWindowState,
 } from "./generated/bindings";
 import {
+  createBrowserClientStateStore,
   createClientSettingsBackend,
   parseClientWindowState,
 } from "./client-settings";
+import { createClientGallery } from "./client-gallery";
+import { createClientDraftStore } from "@/features/workbench/client-drafts";
 import { SettingsSync } from "./settings-sync";
 const state: ClientWindowState = {
   preferences: {
@@ -51,6 +54,16 @@ function setup() {
         ...current,
         revision: "4",
         state: { ...current.state, drafts: { "view-1": "NEW UNSENT" } },
+      };
+    },
+    changePreferences() {
+      current = {
+        ...current,
+        revision: String(BigInt(current.revision) + 1n),
+        state: {
+          ...current.state,
+          preferences: { ...current.state.preferences, sidebarWidth: 300 },
+        },
       };
     },
   };
@@ -147,7 +160,49 @@ describe("client preference persistence", () => {
     });
     expect(env.writes[0]).not.toHaveProperty("theme");
   });
-  it("re-reads on explicit conflict retry and keeps a concurrent unsent draft", async () => {
+  it("saves startup position after real draft and gallery writes without losing either", async () => {
+    sessionStorage.clear();
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "client-cas",
+      state,
+    );
+    const port = {
+      read: async () => store.read(),
+      save: async (value: ClientWindowState, revision: string) =>
+        store.save(value, revision),
+    };
+    const states: string[] = [];
+    const sync = new SettingsSync(
+      state.preferences,
+      createClientSettingsBackend(port),
+      (value) => states.push(value.status),
+    );
+    await sync.start();
+    await createClientDraftStore(port).save({ "view-1": "NEW UNSENT" });
+    const entry = {
+      reference: { hostId: "host", kind: "file", id: "image", revision: "1" },
+      name: "Imported image",
+    };
+    await createClientGallery(port).upsert(entry);
+    sync.update({ windowPosition: "center" });
+    try {
+      await vi.waitFor(() => {
+        expect(states.at(-1)).toBe("saved");
+        expect(store.read().state.preferences.windowPosition).toBe("center");
+      });
+      expect(states).not.toContain("error");
+      expect(store.read().state).toEqual({
+        ...state,
+        preferences: { ...state.preferences, windowPosition: "center" },
+        drafts: { "view-1": "NEW UNSENT" },
+        gallery: [entry],
+      });
+    } finally {
+      sync.stop();
+    }
+  });
+  it("re-reads on explicit preference conflict retry and keeps a concurrent unsent draft", async () => {
     const env = setup();
     const backend = createClientSettingsBackend(env.port);
     let status = "loading";
@@ -156,20 +211,67 @@ describe("client preference persistence", () => {
     });
     await sync.start();
     env.changeDraft();
+    env.changePreferences();
     sync.update({ menuBar: false });
     await vi.waitFor(() => expect(status).toBe("error"));
     expect(env.writes).toHaveLength(0);
     await sync.retry();
     expect(env.writes[0]).toMatchObject({
-      preferences: { menuBar: false },
+      preferences: { menuBar: false, sidebarWidth: 300 },
       drafts: { "view-1": "NEW UNSENT" },
       follow: false,
     });
     sync.stop();
   });
+  it("bounds automatic retries and propagates genuine storage failures immediately", async () => {
+    for (const code of ["CONFLICT", "STORAGE_IO"]) {
+      const env = setup();
+      const save = vi.fn(async () => {
+        throw { code };
+      });
+      const read = vi.fn(env.port.read);
+      const backend = createClientSettingsBackend({ read, save });
+      const initial = await backend.read();
+      await expect(
+        backend.save({ ...initial.value, menuBar: false }, initial.revision),
+      ).rejects.toEqual({ code });
+      expect(save).toHaveBeenCalledTimes(code === "CONFLICT" ? 3 : 1);
+      expect(read).toHaveBeenCalledTimes(code === "CONFLICT" ? 3 : 1);
+    }
+  });
+  it("keeps a future document untouched when a conflict refresh encounters it", async () => {
+    const env = setup();
+    const future = { ...(await env.port.read()), formatVersion: "0.2" };
+    const read = vi
+      .fn(env.port.read)
+      .mockResolvedValueOnce(await env.port.read());
+    read.mockResolvedValue(future);
+    const save = vi.fn(async () => {
+      throw { code: "CONFLICT" };
+    });
+    const backend = createClientSettingsBackend({ read, save });
+    const initial = await backend.read();
+    await expect(
+      backend.save({ ...initial.value, menuBar: false }, initial.revision),
+    ).rejects.toEqual({ code: "FUTURE_FORMAT" });
+    expect(save).toHaveBeenCalledTimes(1);
+  });
 });
 
 describe("browser ClientState isolation", () => {
+  it("normalizes the optional gallery input to the complete native output shape", async () => {
+    const { createBrowserClientStateStore } = await import("./client-settings");
+    sessionStorage.clear();
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "optional-gallery",
+      state,
+    );
+    const { gallery: _gallery, ...input } = state;
+    const saved = store.save(input, "0");
+    expect(saved.state.gallery).toEqual([]);
+    expect(store.read()).toEqual(saved);
+  });
   it("uses generated client defaults through the same browser port used by preferences and drafts", async () => {
     sessionStorage.clear();
     const client = await import("./client-settings");

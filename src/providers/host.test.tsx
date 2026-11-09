@@ -441,6 +441,50 @@ it("keeps an established attachment ready after an ordinary refresh query permis
   established.view.unmount();
 });
 
+it.each(["PERMISSION_DENIED", "STORAGE_UNAVAILABLE"])(
+  "keeps the authenticated connection when the first workspace refresh fails with %s",
+  async (code) => {
+    const native = port();
+    const connection = await createHostConnection(native);
+    const dispose = vi.spyOn(connection, "dispose");
+    const failure = new HostRequestError({
+      code,
+      message: "metadata failed",
+      retryable: false,
+    });
+    vi.spyOn(connection.client, "query").mockRejectedValueOnce(failure);
+    const connect = vi.fn(async () => connection);
+    let current: ReturnType<typeof useHost> | undefined;
+    function InitialRefreshProbe() {
+      current = useHost();
+      return <span>{current.state.status}</span>;
+    }
+    const view = render(
+      <HostProvider desktop connect={connect}>
+        <InitialRefreshProbe />
+      </HostProvider>,
+    );
+    try {
+      await waitFor(() => expect(current?.state.status).toBe("error"));
+      expect(current?.state.error).toBe(failure);
+      expect(current?.connection).toBe(connection);
+      expect(dispose).not.toHaveBeenCalled();
+      await act(async () => current?.refresh());
+      expect(current?.state.status).toBe("ready");
+      expect(current?.connection).toBe(connection);
+      expect(connect).toHaveBeenCalledOnce();
+      expect(
+        native.request.mock.calls.every(
+          ([request]) => request.method !== "action.invoke",
+        ),
+      ).toBe(true);
+    } finally {
+      view.unmount();
+    }
+    expect(dispose).toHaveBeenCalledOnce();
+  },
+);
+
 it("loads workspace configuration without opening devices and saves against the returned revision and target", async () => {
   const connection = await createHostConnection(port());
   const parsed = parseReply({

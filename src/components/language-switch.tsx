@@ -13,6 +13,7 @@ import {
 } from "@/components/ui/tooltip";
 import { getLocale, isLanguage, LANGUAGES, LOCALES } from "@/i18n/registry";
 import { cn } from "@/lib/utils";
+import { isTauri } from "@/lib/tauri";
 import { useI18n } from "@/providers/i18n";
 import { useSettings } from "@/providers/settings";
 
@@ -27,7 +28,7 @@ export function LanguageSwitch({
   className,
 }: LanguageSwitchProps) {
   const { t } = useI18n();
-  const { settings, update } = useSettings();
+  const { settings, update, persistence } = useSettings();
   const locale = getLocale(settings.language);
   const trigger = (
     <SelectTrigger
@@ -54,6 +55,7 @@ export function LanguageSwitch({
   return (
     <Select
       value={settings.language}
+      disabled={isTauri() && persistence === "loading"}
       onValueChange={(value) => {
         if (isLanguage(value)) update({ language: value });
       }}

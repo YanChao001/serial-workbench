@@ -6,10 +6,11 @@ import test from "node:test";
 const root = resolve(import.meta.dirname, "..");
 const read = (name) => readFileSync(resolve(root, name), "utf8");
 const ci = read(".github/workflows/ci.yml");
-const job = (name) => {
-  const start = ci.indexOf(`\n  ${name}:\n`);
+const native = read(".github/workflows/native-e2e.yml");
+const job = (name, source = ci) => {
+  const start = source.indexOf(`\n  ${name}:\n`);
   assert.notEqual(start, -1, name);
-  return ci.slice(start + 1).split(/\n {2}[\w-]+:\n/)[0];
+  return source.slice(start + 1).split(/\n {2}[\w-]+:\n/)[0];
 };
 
 // These assertions lock repository policy; actionlint and an actual manual run
@@ -30,7 +31,10 @@ test("CI and audit run only on manual dispatch and use read-only repository perm
     );
   }
   assert.match(ci, /desktop_e2e:[\s\S]*?type: boolean\n {8}default: true/);
-  assert.match(job("desktop-e2e"), /^ {4}if: inputs\.desktop_e2e$/m);
+  assert.match(
+    job("desktop-e2e"),
+    /^ {4}if: inputs\.desktop_e2e && !inputs\.native_preflight$/m,
+  );
 });
 
 test("both native matrices cover all four targets without scope or tree reuse", () => {
@@ -49,13 +53,21 @@ test("both native matrices cover all four targets without scope or tree reuse", 
       ),
       expected,
     );
-    assert.match(body, /MACOSX_DEPLOYMENT_TARGET: "14\.0"/);
-    assert.match(body, /libwebkit2gtk-4\.1-dev.*libatomic1/);
-    assert.match(body, /key: (?:native|e2e)-\$\{\{ matrix\.target \}\}/);
+    const runner = name === "desktop-e2e" ? native : body;
+    assert.match(runner, /MACOSX_DEPLOYMENT_TARGET: "14\.0"/);
+    assert.match(runner, /libwebkit2gtk-4\.1-dev.*libatomic1/);
+    assert.match(
+      runner,
+      /key: (?:native|e2e)-\$\{\{ (?:matrix|inputs)\.target \}\}/,
+    );
   }
   assert.doesNotMatch(ci, /docs_only|rust_required|reused_run|needs: changes/);
   for (const name of ["frontend", "browser-smoke", "rust", "bindings"]) {
-    assert.doesNotMatch(job(name), /^ {4}if:/m, name);
+    assert.match(
+      job(name),
+      /^ {4}if: \$\{\{ !inputs\.native_preflight \}\}$/m,
+      name,
+    );
   }
   assert.match(job("rust"), /cargo clippy --locked --workspace --all-targets/);
   assert.match(job("rust"), /cargo test --locked --workspace --no-fail-fast/);
@@ -63,11 +75,60 @@ test("both native matrices cover all four targets without scope or tree reuse", 
   assert.match(job("bindings"), /pnpm bindings:check/);
 });
 
+test("preflight shares the full native runner and retains successful source receipts", () => {
+  for (const name of ["desktop-e2e", "native-preflight"])
+    assert.match(job(name), /uses: \.\/.github\/workflows\/native-e2e.yml/);
+  const preflight = job("native-preflight");
+  const runnerMap = preflight.match(/platform: \$\{\{ fromJSON\('([^']+)'\)/);
+  assert.ok(runnerMap, "preflight runners must come from a fixed whitelist");
+  assert.deepEqual(JSON.parse(runnerMap[1]), {
+    "x86_64-unknown-linux-gnu": "ubuntu-22.04",
+    "x86_64-pc-windows-msvc": "windows-2022",
+    "aarch64-apple-darwin": "macos-15",
+    "x86_64-apple-darwin": "macos-15-intel",
+  });
+  const targetInput = ci.match(
+    / {6}native_preflight_target:\n([\s\S]*?)(?=\n\S)/,
+  )?.[1];
+  assert.ok(targetInput);
+  assert.match(targetInput, /type: choice/);
+  assert.match(targetInput, /default: x86_64-unknown-linux-gnu/);
+  assert.deepEqual(
+    [...targetInput.matchAll(/^ {10}- ([\w-]+)$/gm)].map((match) => match[1]),
+    Object.keys(JSON.parse(runnerMap[1])),
+  );
+  assert.match(
+    preflight,
+    /\)\[inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu'\] \}\}/,
+  );
+  assert.match(
+    preflight,
+    /target: \$\{\{ inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu' \}\}/,
+  );
+  const triggers = native.split(/^on:\s*$/m)[1]?.split(/^\S/m)[0];
+  assert.deepEqual(
+    [...triggers.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1]),
+    ["workflow_call"],
+  );
+  assert.match(native, /runs-on: \$\{\{ inputs\.platform \}\}/);
+  assert.match(native, /保留原生收据、截图与测试日志\n {8}if: always\(\)/);
+  assert.match(native, /pnpm test:e2e --interactive --skip-build/);
+  assert.match(
+    job("quality-gate"),
+    /name: \$\{\{ inputs\.native_preflight && '原生预检结果（非里程碑验收）' \|\| '质量门禁' \}\}/,
+  );
+  assert.match(
+    job("quality-gate"),
+    /确认所有检查通过\n {8}if: \$\{\{ !inputs\.native_preflight \}\}/,
+  );
+  assert.match(job("quality-gate"), /NATIVE_PREFLIGHT_RESULT !== 'success'/);
+});
+
 test("the gate always gathers every job, and all jobs have a time budget", () => {
   assert.match(job("quality-gate"), /if: always\(\)/);
   assert.match(
     job("quality-gate"),
-    /needs: \[frontend, browser-smoke, rust, bindings, desktop-e2e\]/,
+    /needs:\s*\[frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight\]/,
   );
   assert.match(
     job("quality-gate"),
@@ -75,6 +136,9 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   for (const [, name] of ci.matchAll(/^ {2}([\w-]+):\n/g)) {
     if (name === "workflow_dispatch") continue;
-    assert.match(job(name), /timeout-minutes: \d+/, name);
+    const runner = ["desktop-e2e", "native-preflight"].includes(name)
+      ? job("desktop-e2e", native)
+      : job(name);
+    assert.match(runner, /timeout-minutes: \d+/, name);
   }
 });

@@ -1,21 +1,6 @@
-import assert from "node:assert/strict";
 import { join } from "node:path";
 import { browser } from "@wdio/globals";
-import { invoke } from "./helpers.mjs";
-
-export async function patchSettings(patch) {
-  for (let attempt = 0; attempt < 3; attempt++) {
-    const snapshot = await invoke("load_settings_snapshot");
-    assert.equal(snapshot.ok, true);
-    const result = await invoke("save_settings_snapshot", {
-      settings: { ...snapshot.value.settings, ...patch, schemaVersion: 7 },
-      expectedRevision: snapshot.value.revision,
-    });
-    if (result.ok) return result.value;
-    assert.equal(result.failure.code, "SETTINGS_CONFLICT");
-  }
-  throw new Error("Native preferences did not settle");
-}
+export { patchSettings } from "./settings.mjs";
 
 export async function settledAppearance(expected) {
   await browser.waitUntil(() =>

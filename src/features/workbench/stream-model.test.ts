@@ -1,6 +1,49 @@
 import { describe, expect, it } from "vitest";
 import type { StreamItem } from "@serial-workbench/contracts";
-import { findStreamMatches } from "./stream-model";
+import { findStreamMatches, projectStreamItems } from "./stream-model";
+import { txItem } from "./test-fixtures";
+
+describe("TX block projection", () => {
+  it("keeps separate chunks of one file operation and updates each matching intent", () => {
+    const firstIntent = txItem("tx_intent");
+    const secondIntent = txItem("tx_intent", "5");
+    const firstReceipt = txItem("tx", "0", "partial");
+    const secondReceipt = txItem("tx", "5", "unknown");
+    expect(
+      projectStreamItems([
+        firstIntent,
+        secondIntent,
+        firstReceipt,
+        secondReceipt,
+      ]),
+    ).toEqual([
+      { item: firstReceipt, itemIndex: 0 },
+      { item: secondReceipt, itemIndex: 1 },
+    ]);
+  });
+  it.each(["hostId", "instanceEpoch", "sessionId", "sessionEpoch"] as const)(
+    "does not join equal operation IDs and spans across %s",
+    (field) => {
+      const receipt = txItem("tx");
+      if (receipt.kind !== "source") throw new Error("Expected source");
+      const different: StreamItem = {
+        ...receipt,
+        event: { ...receipt.event, [field]: "2" },
+      };
+      expect(projectStreamItems([txItem("tx_intent"), different])).toHaveLength(
+        2,
+      );
+    },
+  );
+  it("shows a retained receipt when the intent was trimmed, and never invents a receipt", () => {
+    const receipt = txItem("tx");
+    const pending = txItem("tx_intent", "5");
+    expect(projectStreamItems([receipt, pending])).toEqual([
+      { item: receipt, itemIndex: 0 },
+      { item: pending, itemIndex: 1 },
+    ]);
+  });
+});
 
 export function rx(
   bytesBase64: string,

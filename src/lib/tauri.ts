@@ -20,8 +20,8 @@ import type { DesktopAttachment, DeliveryStream } from "./generated/bindings";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type {
   DesktopStatus,
-  ClientStateSnapshot,
-  ClientWindowState,
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
+  ClientWindowState_Deserialize as ClientWindowStateInput,
   HostSettingsEffectsReceipt,
   DiagnosticsReport,
   NativeError as NativeFailure,
@@ -37,8 +37,9 @@ import type {
 
 export type {
   ClientPreferences,
-  ClientStateSnapshot,
-  ClientWindowState,
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
+  ClientWindowState_Serialize as ClientWindowState,
+  ClientWindowState_Deserialize as ClientWindowStateInput,
   HostSettingsEffectsReceipt,
   DesktopStatus,
   DiagnosticsReport,
@@ -56,7 +57,7 @@ export function readClientState(): Promise<ClientStateSnapshot> {
   return callNative((commands) => commands.clientStateRead());
 }
 export function saveClientState(
-  state: ClientWindowState,
+  state: ClientWindowStateInput,
   expectedRevision: U64,
 ): Promise<ClientStateSnapshot> {
   return callNative((commands) =>

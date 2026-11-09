@@ -14,7 +14,7 @@ import {
 } from "@/lib/client-settings";
 import type { SettingsBackend } from "@/lib/settings-sync";
 import type {
-  ClientStateSnapshot,
+  ClientStateSnapshot_Serialize as ClientStateSnapshot,
   ClientPreferences,
 } from "@/lib/generated/bindings";
 import { settingsDocument } from "@/lib/settings-model";
@@ -44,6 +44,7 @@ vi.mock("@/lib/host-settings", () => ({
     dispose() {},
   }),
 }));
+vi.mock("@/lib/report-error", () => ({ reportClientError: vi.fn() }));
 vi.mock("@/providers/host-context", async () => {
   const { createContext } = await import("react");
   return {
@@ -188,7 +189,7 @@ describe("设置页", () => {
       async (state, revision) => ({
         formatVersion: "0.1",
         revision: String(BigInt(revision) + 1n),
-        state,
+        state: { ...state, gallery: state.gallery ?? [] },
       }),
     );
     vi.mocked(desktop.applyHostSettingsEffects).mockImplementation(
@@ -215,6 +216,35 @@ describe("设置页", () => {
     cleanup();
     vi.restoreAllMocks();
     Reflect.deleteProperty(Element.prototype, "scrollIntoView");
+  });
+  it("读取原生偏好前禁止把默认语言当成已加载值，加载后明确选择仍正常保存", async () => {
+    vi.mocked(desktop.isTauri).mockReturnValue(true);
+    let finish!: (value: Awaited<ReturnType<SettingsBackend["read"]>>) => void;
+    host.read.mockReturnValue(
+      new Promise((resolve) => {
+        finish = resolve;
+      }),
+    );
+    render(<SettingsView />);
+    const trigger = screen.getByRole("combobox", { name: "语言" });
+    expect(trigger).toBeDisabled();
+    await waitFor(() => expect(host.read).toHaveBeenCalled());
+    await act(async () =>
+      finish({
+        revision: "1",
+        value: { ...defaults.settings, language: "en" },
+      }),
+    );
+    await waitFor(() => expect(trigger).toHaveAccessibleDescription("English"));
+    expect(trigger).toBeEnabled();
+    fireEvent.keyDown(trigger, { key: "Enter" });
+    fireEvent.click(screen.getByRole("option", { name: "简体中文" }));
+    await waitFor(() =>
+      expect(host.save).toHaveBeenCalledWith(
+        expect.objectContaining({ language: "zh" }),
+        "1",
+      ),
+    );
   });
   it("终端排版使用生成默认，四字段经键盘保存并保留其他终端设置", async () => {
     vi.mocked(desktop.isTauri).mockReturnValue(true);

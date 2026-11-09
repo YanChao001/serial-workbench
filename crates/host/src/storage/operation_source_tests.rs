@@ -37,15 +37,18 @@ impl Fixture {
             clock,
         }
     }
-    fn queued(&self) -> Operation {
+    fn call(&self) -> Call {
         let identity = self.store.identity().unwrap();
-        let call: Call = serde_json::from_value(serde_json::json!({
+        serde_json::from_value(serde_json::json!({
             "protocolVersion":"0.1", "hostId":identity.host_id, "instanceEpoch":identity.instance_epoch,
             "actorId":self.actor.id(), "requestId":uuid::Uuid::new_v4().to_string(),
             "requestContext":self.store.issue_context(&self.actor).unwrap().token,
             "actionId":"capture.recover", "target":self.source("output"), "params":{},
             "revealTarget":{"pageId":"workbench"}
-        })).unwrap();
+        })).unwrap()
+    }
+    fn queued(&self) -> Operation {
+        let call = self.call();
         let Acceptance::New(operation) = self
             .store
             .accept(&self.actor, &call, &canonical_digest(&call).unwrap())
@@ -95,6 +98,43 @@ impl Fixture {
     fn expire(&self) {
         self.clock.0.store(7 * 86_400_000_000_000, Ordering::SeqCst);
     }
+}
+
+#[test]
+fn accepted_queued_operation_already_has_immutable_source_authority() {
+    let f = Fixture::new();
+    let call = f.call();
+    let digest = canonical_digest(&call).unwrap();
+    let source = f.source("original");
+    let Acceptance::New(operation) = f
+        .store
+        .accept_with_source(&f.actor, &call, &digest, Some(&source))
+        .unwrap()
+    else {
+        panic!("new operation")
+    };
+    assert_eq!(operation.state, OperationState::Queued);
+    assert_eq!(
+        f.store
+            .operation_source_authority(&operation.operation_id)
+            .unwrap(),
+        source
+    );
+    let Acceptance::Existing(duplicate) = f
+        .store
+        .accept_with_source(&f.actor, &call, &digest, Some(&f.source("replacement")))
+        .unwrap()
+    else {
+        panic!("duplicate operation")
+    };
+    assert_eq!(duplicate.operation_id, operation.operation_id);
+    assert_eq!(
+        f.store
+            .operation_source_authority(&operation.operation_id)
+            .unwrap(),
+        source,
+        "duplicate acceptance must not replace trusted provenance"
+    );
 }
 
 #[test]

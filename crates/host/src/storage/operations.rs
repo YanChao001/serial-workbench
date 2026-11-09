@@ -204,7 +204,32 @@ impl Database {
         call: &Call,
         digest: &Digest,
     ) -> HostResult<Acceptance> {
+        self.accept_with_source(actor, call, digest, None)
+    }
+    pub(crate) fn accept_with_source(
+        &mut self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+        source: Option<&Target>,
+    ) -> HostResult<Acceptance> {
         let (identity, input) = self.validate_call(actor, call, digest)?;
+        let source = source
+            .map(|source| {
+                source.validate()?;
+                if source.host_id != identity.host_id {
+                    return Err(HostError::new(
+                        "HOST_ID_MISMATCH",
+                        "Source belongs to another Host",
+                    ));
+                }
+                serde_json::to_string(&OperationSource {
+                    format_version: "0.1".into(),
+                    source: source.clone(),
+                })
+                .map_err(|_| unavailable())
+            })
+            .transpose()?;
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -274,6 +299,14 @@ impl Database {
             params![operation.operation_id.as_str(), actor.id().as_str(), context.digest.as_str(), call.request_id.as_str(), digest.as_str(),
                 std::str::from_utf8(&input).map_err(|_| unavailable())?, encode(&operation)?],
         ).map_err(|_| unavailable())?;
+        if let Some(source) = source {
+            transaction
+                .execute(
+                    "INSERT INTO documents(id,revision,value_json) VALUES(?1,'1',?2)",
+                    params![operation_source_key(&operation.operation_id), source],
+                )
+                .map_err(|_| unavailable())?;
+        }
         transaction.commit().map_err(|_| unavailable())?;
         Ok(Acceptance::New(operation))
     }

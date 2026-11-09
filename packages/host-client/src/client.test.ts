@@ -306,6 +306,102 @@ it.each(["invalid", "wrong-channel", "wrong-id"])(
   },
 );
 
+it.each(["CURSOR_EXPIRED", "CURSOR_GAP"])(
+  "keeps five completed %s recoveries independent without waiting for a delta",
+  async (reason) => {
+    const events: { type: string }[] = [];
+    const callbacks: ((value: unknown) => void)[] = [];
+    const queries: Query[] = [];
+    const request = vi.fn().mockResolvedValue({
+      ok: true,
+      result: { kind: "snapshot", value: snap("1") },
+    });
+    const client = createHostClient({
+      getAttachment: () => attachment,
+      resolveScope: () => query.target,
+      request,
+      openChannel: async (query, callback) => {
+        queries.push(query);
+        callbacks.push(callback);
+        return { subscriptionId: "sub", unsubscribe: () => {} };
+      },
+    });
+    const stop = await client.subscribe("host.devices", (event) =>
+      events.push(event),
+    );
+    try {
+      for (let index = 0; index < 5; index++) {
+        if (reason === "CURSOR_GAP")
+          callbacks[index]!(frame(queries[index]!.requestId, "3", "4"));
+        else
+          callbacks[index]!({
+            requestId: queries[index]!.requestId,
+            channel: "state",
+            body: {
+              type: "subscriptionEnded",
+              subscriptionId: "sub",
+              error: {
+                code: reason,
+                message: "cursor expired",
+                retryable: false,
+              },
+            },
+          });
+        await vi.waitFor(() => expect(queries).toHaveLength(index + 2));
+        // The resolved channel has to be installed before the next independent recovery.
+        await Promise.resolve();
+      }
+      expect(events.map(({ type }) => type)).toEqual(Array(6).fill("snapshot"));
+    } finally {
+      stop();
+    }
+  },
+);
+
+it("continues a cursor recovery interrupted by one authorization change", async () => {
+  const events: { type: string }[] = [];
+  const callbacks: ((value: unknown) => void)[] = [];
+  const queries: Query[] = [];
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      result: { kind: "snapshot", value: snap("1") },
+    })
+    .mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "Authorization changed",
+        retryable: false,
+      },
+    })
+    .mockResolvedValue({
+      ok: true,
+      result: { kind: "snapshot", value: snap("4") },
+    });
+  const client = createHostClient({
+    getAttachment: () => attachment,
+    resolveScope: () => query.target,
+    request,
+    openChannel: async (query, callback) => {
+      queries.push(query);
+      callbacks.push(callback);
+      return { subscriptionId: "sub", unsubscribe: () => {} };
+    },
+  });
+  const stop = await client.subscribe("host.devices", (event) =>
+    events.push(event),
+  );
+  callbacks[0]!(frame(queries[0]!.requestId, "3", "4"));
+  await vi.waitFor(() => expect(queries).toHaveLength(2));
+  expect(request).toHaveBeenCalledTimes(3);
+  expect(events.map(({ type }) => type)).toEqual(["snapshot", "snapshot"]);
+  callbacks[1]!(frame(queries[1]!.requestId, "4", "5"));
+  expect(events.at(-1)?.type).toBe("delta");
+  stop();
+});
+
 it("reports authorization failure while recovering a gap", async () => {
   let deliver: (value: unknown) => void = () => {};
   let requestId = "";
@@ -316,7 +412,7 @@ it("reports authorization failure while recovering a gap", async () => {
       ok: true,
       result: { kind: "snapshot", value: snap("1") },
     })
-    .mockResolvedValueOnce({
+    .mockResolvedValue({
       ok: false,
       error: { code: "PERMISSION_DENIED", message: "denied", retryable: false },
     });
@@ -334,6 +430,7 @@ it("reports authorization failure while recovering a gap", async () => {
   deliver(frame(requestId, "3", "4"));
   await vi.waitFor(() => expect(events).toHaveLength(2));
   expect(events[1]!.error).toMatchObject({ code: "PERMISSION_DENIED" });
+  expect(request).toHaveBeenCalledTimes(4);
 });
 
 it("bounds frames arriving before the channel handle", async () => {
@@ -489,54 +586,205 @@ it("buffers and validates a delta received before the channel handle", async () 
   stop();
 });
 
-it("bounds consecutive cursor expiration frames and closes each handle", async () => {
-  const events: { type: string; error?: Error }[] = [];
-  const disposals: ReturnType<typeof vi.fn>[] = [];
-  const request = vi.fn().mockResolvedValue({
+it.each(
+  ["CURSOR_EXPIRED", "PERMISSION_DENIED"].flatMap((code) =>
+    [false, true].map((bufferedDelta) => ({ code, bufferedDelta })),
+  ),
+)(
+  "bounds consecutive $code setup ends with buffered delta=$bufferedDelta",
+  async ({ code, bufferedDelta }) => {
+    const events: { type: string; error?: Error }[] = [];
+    const disposals: ReturnType<typeof vi.fn>[] = [];
+    const request = vi.fn().mockImplementation(async () => ({
+      ok: true,
+      result: { kind: "snapshot", value: snap(String(opens + 1)) },
+    }));
+    let opens = 0;
+    const client = createHostClient({
+      getAttachment: () => attachment,
+      resolveScope: () => query.target,
+      request,
+      openChannel: async (q, cb) => {
+        opens++;
+        const unsubscribe = vi.fn();
+        disposals.push(unsubscribe);
+        if (opens <= 5) {
+          if (bufferedDelta)
+            cb(frame(q.requestId, String(opens), String(opens + 1)));
+          cb({
+            requestId: q.requestId,
+            channel: "state",
+            body: {
+              type: "subscriptionEnded",
+              subscriptionId: "sub",
+              error: {
+                code,
+                message: "expired",
+                retryable: false,
+              },
+            },
+          });
+        }
+        return { subscriptionId: "sub", unsubscribe };
+      },
+    });
+    const stop = await client.subscribe("host.devices", (event) =>
+      events.push(event),
+    );
+    await vi.waitFor(() =>
+      expect(events.some((event) => event.type === "error") || opens >= 6).toBe(
+        true,
+      ),
+    );
+    expect(opens).toBe(4);
+    expect(request).toHaveBeenCalledTimes(4);
+    expect(disposals).toHaveLength(4);
+    for (const dispose of disposals) expect(dispose).toHaveBeenCalledTimes(1);
+    expect(events.filter((event) => event.type === "error")).toHaveLength(1);
+    expect(events.at(-1)?.error).toMatchObject({ code });
+    stop();
+  },
+);
+
+it("rechecks five authorization changes despite an interrupted recovery snapshot and ignores retired queues", async () => {
+  const events: { type: string }[] = [];
+  const callbacks: ((value: unknown) => void)[] = [];
+  const queries: Query[] = [];
+  const closed = vi.fn();
+  const snapshotReply = {
     ok: true,
     result: { kind: "snapshot", value: snap("1") },
-  });
-  let opens = 0;
+  };
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce(snapshotReply)
+    .mockResolvedValueOnce({
+      ok: false,
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "Authorization changed",
+        retryable: false,
+      },
+    })
+    .mockResolvedValue(snapshotReply);
   const client = createHostClient({
     getAttachment: () => attachment,
     resolveScope: () => query.target,
     request,
     openChannel: async (q, cb) => {
-      opens++;
-      const unsubscribe = vi.fn();
-      disposals.push(unsubscribe);
-      if (opens <= 5)
-        cb({
-          requestId: q.requestId,
-          channel: "state",
-          body: {
-            type: "subscriptionEnded",
-            subscriptionId: "sub",
-            error: {
-              code: "CURSOR_EXPIRED",
-              message: "expired",
-              retryable: false,
-            },
-          },
-        });
-      return { subscriptionId: "sub", unsubscribe };
+      queries.push(q);
+      callbacks.push(cb);
+      return { subscriptionId: "sub", unsubscribe: closed };
     },
   });
   const stop = await client.subscribe("host.devices", (event) =>
     events.push(event),
   );
-  await vi.waitFor(() =>
-    expect(events.some((event) => event.type === "error") || opens >= 6).toBe(
-      true,
-    ),
-  );
-  expect(opens).toBe(4);
-  expect(request).toHaveBeenCalledTimes(4);
-  expect(disposals).toHaveLength(4);
-  for (const dispose of disposals) expect(dispose).toHaveBeenCalledTimes(1);
-  expect(events.filter((event) => event.type === "error")).toHaveLength(1);
-  expect(events.at(-1)?.error).toMatchObject({ code: "CURSOR_EXPIRED" });
+  for (let index = 0; index < 5; index++) {
+    callbacks[index]!({
+      requestId: queries[index]!.requestId,
+      channel: "state",
+      body: {
+        type: "subscriptionEnded",
+        subscriptionId: "sub",
+        error: {
+          code: "PERMISSION_DENIED",
+          message: "Authorization changed",
+          retryable: false,
+        },
+      },
+    });
+    await vi.waitFor(() => expect(queries).toHaveLength(index + 2));
+    callbacks[index]!(frame(queries[index]!.requestId, "1", "2"));
+  }
+  expect(request).toHaveBeenCalledTimes(7);
+  expect(events.map((event) => event.type)).toEqual(Array(6).fill("snapshot"));
+  expect(closed).toHaveBeenCalledTimes(5);
+  callbacks[5]!(frame(queries[5]!.requestId, "1", "2"));
+  expect(events.at(-1)?.type).toBe("delta");
   stop();
+  expect(closed).toHaveBeenCalledTimes(6);
+});
+
+it("stops after current snapshot denies revoked permission and never revives the old queue", async () => {
+  const events: { type: string; error?: Error }[] = [];
+  let deliver: (value: unknown) => void = () => {};
+  let requestId = "";
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      result: { kind: "snapshot", value: snap("1") },
+    })
+    .mockResolvedValue({
+      ok: false,
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "Revoked",
+        retryable: false,
+      },
+    });
+  const close = vi.fn();
+  const client = createHostClient({
+    getAttachment: () => attachment,
+    resolveScope: () => query.target,
+    request,
+    openChannel: async (q, cb) => {
+      requestId = q.requestId;
+      deliver = cb;
+      return { subscriptionId: "sub", unsubscribe: close };
+    },
+  });
+  const stop = await client.subscribe("host.devices", (event) =>
+    events.push(event),
+  );
+  deliver({
+    requestId,
+    channel: "state",
+    body: {
+      type: "subscriptionEnded",
+      subscriptionId: "sub",
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "Authorization changed",
+        retryable: false,
+      },
+    },
+  });
+  await vi.waitFor(() => expect(events.at(-1)?.type).toBe("error"));
+  expect(request).toHaveBeenCalledTimes(4);
+  expect(events.at(-1)?.error).toMatchObject({ code: "PERMISSION_DENIED" });
+  deliver(frame(requestId, "1", "2"));
+  expect(events.map((event) => event.type)).toEqual(["snapshot", "error"]);
+  stop();
+  expect(close).toHaveBeenCalledTimes(1);
+});
+
+it("rechecks permission when it changes between snapshot and subscribe, then stops on the new denial", async () => {
+  const denied = {
+    code: "PERMISSION_DENIED",
+    message: "Revoked",
+    retryable: false,
+  };
+  const request = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ok: true,
+      result: { kind: "snapshot", value: snap("1") },
+    })
+    .mockResolvedValue({ ok: false, error: denied });
+  const openChannel = vi.fn().mockRejectedValue(new HostRequestError(denied));
+  const client = createHostClient({
+    getAttachment: () => attachment,
+    resolveScope: () => query.target,
+    request,
+    openChannel,
+  });
+  await expect(
+    client.subscribe("host.devices", () => {}),
+  ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+  expect(request).toHaveBeenCalledTimes(4);
+  expect(openChannel).toHaveBeenCalledTimes(1);
 });
 
 it.each(["PERMISSION_DENIED", "EPOCH_MISMATCH"])(

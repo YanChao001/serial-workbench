@@ -163,8 +163,8 @@ pub struct ClientEffectAuthority {
     pub(crate) stamp: Option<GrantStamp>,
 }
 
-/// A received Failed outcome is a known platform failure. An outer error means
-/// no final receipt was obtained; a dispatched side effect must settle unknown.
+/// Failed includes a platform failure or proven non-delivery. An outer error
+/// means no final outcome was obtained; a dispatched side effect settles unknown.
 pub struct ClientEffectWaiter {
     pub delivery_id: Id,
     completion: oneshot::Receiver<HostResult<ClientEffectOutcome>>,
@@ -552,7 +552,7 @@ impl ClientEffects {
             if let Some(mut pending) = entry.pending.remove(delivery_id) {
                 entry.pending_bytes -= pending.bytes;
                 if let Some(send) = pending.completion.take() {
-                    let _ = send.send(Err(error));
+                    let _ = send.send(Ok(ClientEffectOutcome::Failed { error }));
                 }
                 return Ok(());
             }

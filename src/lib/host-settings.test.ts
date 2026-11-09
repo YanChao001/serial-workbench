@@ -1,13 +1,16 @@
 ﻿import {
   defaults,
   parseReply,
+  parseWireFrame,
   type Operation,
+  type SettingsSnapshot,
   type RpcRequest,
   type WireFrame,
 } from "@serial-workbench/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { createHostConnection, type HostNativePort } from "./host-client";
 import { createHostSettingsBackend } from "./host-settings";
+import { SettingsSync } from "./settings-sync";
 
 const nativeIntent = vi.hoisted(() => vi.fn());
 vi.mock("./tauri", async (importOriginal) => ({
@@ -18,13 +21,18 @@ vi.mock("./tauri", async (importOriginal) => ({
 const target = { hostId: "host", kind: "settings", id: "shared" };
 const scope = { scopeId: "opaque.settings.scope", target };
 const document = { revision: "3", value: defaults.settings };
-function setup() {
+function setup(initial: SettingsSnapshot = document) {
   const requests: RpcRequest[] = [];
   let deliver: (frame: WireFrame) => void = () => {};
   let requestId = "";
   let invokes = 0;
   let gets = 0;
   let closed = 0;
+  const deniedReads = new Map<string, { count: number; code: string }>();
+  let currentDocument = initial;
+  let terminalDocument = { ...initial, revision: "4" };
+  let stateRevision = 89n;
+  let onRead: ((action: string) => void) | undefined;
   const operation: Operation = {
     operationId: "save-op",
     executionHostId: "host",
@@ -72,6 +80,19 @@ function setup() {
       }
       if (request.method !== "action.query") throw Error("Unexpected request");
       const action = request.params.actionId;
+      onRead?.(action);
+      const denied = deniedReads.get(action);
+      if (denied && denied.count > 0) {
+        denied.count--;
+        return parseReply({
+          ok: false,
+          error: {
+            code: denied.code,
+            message: "Authorization changed",
+            retryable: false,
+          },
+        });
+      }
       if (action === "state.scopes")
         return parseReply({
           ok: true,
@@ -80,7 +101,10 @@ function setup() {
       if (action === "settings.read")
         return parseReply({
           ok: true,
-          result: { kind: "settings", value: { document, scope } },
+          result: {
+            kind: "settings",
+            value: { document: currentDocument, scope },
+          },
         });
       if (action === "state.snapshot")
         return parseReply({
@@ -90,14 +114,14 @@ function setup() {
             value: {
               hostId: "host",
               instanceEpoch: "7",
-              revision: "89",
+              revision: String(stateRevision),
               cursor: {
                 hostId: "host",
                 instanceEpoch: "7",
                 scopeId: scope.scopeId,
-                position: "89",
+                position: String(stateRevision),
               },
-              state: { document, scope },
+              state: { document: currentDocument, scope },
             },
           },
         });
@@ -114,7 +138,7 @@ function setup() {
                 revision: "2",
                 result: {
                   kind: "settings",
-                  value: { document: { ...document, revision: "4" }, scope },
+                  value: { document: terminalDocument, scope },
                 },
               },
             },
@@ -140,6 +164,42 @@ function setup() {
     port,
     operation,
     requests,
+    denyReads(action: string, count = 1, code = "PERMISSION_DENIED") {
+      deniedReads.set(action, { count, code });
+    },
+    beforeRead(callback: (action: string) => void) {
+      onRead = callback;
+    },
+    terminal(snapshot: SettingsSnapshot) {
+      terminalDocument = snapshot;
+    },
+    publish(snapshot: SettingsSnapshot) {
+      currentDocument = snapshot;
+      const previous = String(stateRevision++);
+      const cursor = (position: string) => ({
+        hostId: "host",
+        instanceEpoch: "7",
+        scopeId: scope.scopeId,
+        position,
+      });
+      deliver(
+        parseWireFrame({
+          requestId,
+          channel: "state",
+          body: {
+            type: "delta",
+            subscriptionId: "subscription",
+            delta: {
+              previousCursor: cursor(previous),
+              cursor: cursor(String(stateRevision)),
+              revision: String(stateRevision),
+              eventType: "settings.changed",
+              payload: { document: snapshot, scope },
+            },
+          },
+        }),
+      );
+    },
     counts: () => ({ invokes, gets, closed }),
     deliver: (frame: Omit<WireFrame, "requestId">) =>
       deliver({ ...frame, requestId } as WireFrame),
@@ -147,6 +207,190 @@ function setup() {
 }
 
 describe("settings adapter on the existing Host connection", () => {
+  it("settles one admitted save after a terminal-read race without hiding a newer remote language", async () => {
+    const initial: SettingsSnapshot = {
+      revision: "3",
+      value: { ...defaults.settings, language: "en" },
+    };
+    const env = setup(initial);
+    const chinese: SettingsSnapshot = {
+      revision: "4",
+      value: { ...initial.value, language: "zh" },
+    };
+    env.terminal(chinese);
+    nativeIntent.mockResolvedValue(env.operation);
+    const before = nativeIntent.mock.calls.length;
+    const connection = await createHostConnection(env.port);
+    const backend = createHostSettingsBackend(connection);
+    let latest = { status: "loading", language: "en" };
+    const coordinator = new SettingsSync(
+      defaults.settings,
+      backend,
+      (state) => {
+        latest = { status: state.status, language: state.settings.language };
+      },
+    );
+    let interrupted = false;
+    env.beforeRead((action) => {
+      if (action !== "operation.get" || interrupted) return;
+      interrupted = true;
+      env.publish(chinese);
+      env.publish({ revision: "5", value: initial.value });
+      env.denyReads("operation.get");
+    });
+    try {
+      await coordinator.start();
+      backend.markExplicitEdit();
+      coordinator.update({ language: "zh" });
+      await vi.waitFor(() => expect(interrupted).toBe(true));
+      await vi.waitFor(() =>
+        expect(latest).toEqual({ status: "saved", language: "en" }),
+      );
+      expect(nativeIntent.mock.calls.length).toBe(before + 1);
+      expect(env.counts().invokes).toBe(0);
+    } finally {
+      coordinator.stop();
+      backend.dispose();
+      connection.dispose();
+    }
+  });
+
+  it.each(["settings.read", "state.scopes", "operation.get"])(
+    "stops a continuously denied %s after three reads",
+    async (action) => {
+      const env = setup();
+      const connection = await createHostConnection(env.port);
+      const backend = createHostSettingsBackend(connection);
+      const before = env.requests.length;
+      env.denyReads(action, 10);
+      nativeIntent.mockResolvedValue(env.operation);
+      backend.markExplicitEdit();
+      try {
+        await expect(
+          action === "operation.get"
+            ? backend.save(defaults.settings, "3")
+            : backend.subscribe(() => {}),
+        ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+        expect(
+          env.requests
+            .slice(before)
+            .filter(
+              (request) =>
+                request.method === "action.query" &&
+                request.params.actionId === action,
+            ),
+        ).toHaveLength(3);
+        expect(env.counts().invokes).toBe(0);
+      } finally {
+        backend.dispose();
+        connection.dispose();
+      }
+    },
+  );
+
+  it("does not retry a read after an attachment generation mismatch", async () => {
+    const env = setup();
+    const connection = await createHostConnection(env.port);
+    const backend = createHostSettingsBackend(connection);
+    const before = env.requests.length;
+    env.denyReads("settings.read", 10, "EPOCH_MISMATCH");
+    try {
+      await expect(backend.read()).rejects.toMatchObject({
+        code: "EPOCH_MISMATCH",
+      });
+      expect(env.requests.slice(before)).toHaveLength(1);
+    } finally {
+      backend.dispose();
+      connection.dispose();
+    }
+  });
+
+  it.each(["reply", "rejection"])(
+    "stops a pending %s read when its owner is disposed without retiring the shared connection",
+    async (outcome) => {
+      const env = setup();
+      const connection = await createHostConnection(env.port);
+      const backend = createHostSettingsBackend(connection);
+      const before = env.requests.length;
+      env.denyReads("settings.read", 10);
+      env.beforeRead((action) => {
+        if (action !== "settings.read") return;
+        backend.dispose();
+        if (outcome === "rejection")
+          throw new Error("Late transport rejection");
+      });
+      try {
+        await expect(backend.read()).rejects.toMatchObject({
+          name: "AbortError",
+        });
+        expect(env.requests.slice(before)).toHaveLength(1);
+        expect((await connection.refreshScopes())[0]?.scopeId).toBe(
+          scope.scopeId,
+        );
+      } finally {
+        backend.dispose();
+        connection.dispose();
+      }
+    },
+  );
+
+  it.each(["settings.read", "state.scopes"])(
+    "establishes the settings subscription after one %s authorization race",
+    async (action) => {
+      const env = setup();
+      const connection = await createHostConnection(env.port);
+      const backend = createHostSettingsBackend(connection);
+      env.denyReads(action);
+      const received: string[] = [];
+      try {
+        const stop = await backend.subscribe((snapshot) =>
+          received.push(snapshot.revision),
+        );
+        expect(received).toEqual(["3"]);
+        expect(env.counts().invokes).toBe(0);
+        stop();
+      } finally {
+        backend.dispose();
+        connection.dispose();
+      }
+    },
+  );
+
+  it("reads the same admitted save after an interrupted terminal query without replaying the intent", async () => {
+    const env = setup();
+    nativeIntent.mockResolvedValue(env.operation);
+    const before = nativeIntent.mock.calls.length;
+    const connection = await createHostConnection(env.port);
+    const backend = createHostSettingsBackend(connection);
+    env.denyReads("operation.get");
+    backend.markExplicitEdit();
+    try {
+      expect((await backend.save(defaults.settings, "3")).revision).toBe("4");
+      expect(nativeIntent.mock.calls.length).toBe(before + 1);
+      expect(env.counts().invokes).toBe(0);
+      const reads = env.requests.filter(
+        (request) =>
+          request.method === "action.query" &&
+          request.params.actionId === "operation.get",
+      );
+      expect(reads).toHaveLength(2);
+      expect(
+        new Set(
+          reads.flatMap((request) =>
+            request.method === "action.query" ? [request.params.requestId] : [],
+          ),
+        ).size,
+      ).toBe(2);
+      for (const request of reads) {
+        if (request.method === "action.query")
+          expect(request.params.params.operationId).toBe("save-op");
+      }
+    } finally {
+      backend.dispose();
+      connection.dispose();
+    }
+  });
+
   it("waits for the native intent's terminal operation without reinvoking a save", async () => {
     const env = setup();
     nativeIntent.mockResolvedValue(env.operation);

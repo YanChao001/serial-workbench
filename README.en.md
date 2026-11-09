@@ -13,7 +13,7 @@ Use the versions in [package.json](./package.json), [.nvmrc](./.nvmrc) and [rust
 ```sh
 pnpm install --frozen-lockfile
 rustup toolchain install
-pnpm doctor
+pnpm run doctor
 pnpm app:dev
 ```
 

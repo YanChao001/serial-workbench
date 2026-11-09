@@ -889,6 +889,7 @@ export async function seedWorkbenchFixture(
             case "activation_snapshot":
               return [];
             case "get_update_snapshot":
+            case "record_frontend_error":
               return null;
           }
           fixture.unexpectedCommands.push(command);

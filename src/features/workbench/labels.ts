@@ -88,6 +88,7 @@ export type WorkbenchLabels = Record<
   | "invalidHex"
   | "sending"
   | "receipt"
+  | "awaitingReceipt"
   | "previousPage"
   | "nextPage"
   | "sendFile"

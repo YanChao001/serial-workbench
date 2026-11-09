@@ -38,7 +38,8 @@ export const config = {
   connectionRetryCount: 1,
   framework: "mocha",
   reporters: ["spec"],
-  mochaOpts: { ui: "bdd", timeout: 90000 },
+  // 同阶段复用设置与工作区；首个失败后停止，避免后续连锁超时掩盖根因。
+  mochaOpts: { ui: "bdd", timeout: 90000, bail: true },
   async afterTest(test, _context, { passed }) {
     if (!passed) {
       const { browser } = await import("@wdio/globals");

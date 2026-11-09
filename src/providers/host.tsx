@@ -124,8 +124,13 @@ export function HostProvider({
       try {
         await attaching;
       } catch (error) {
-        disposeWorkspace();
-        failed(error);
+        if (workspace && !attachmentFailed(error)) {
+          // 首次元数据查询失败也保留已认证连接，独立的设置订阅继续工作。
+          publish(workspace);
+        } else {
+          disposeWorkspace();
+          failed(error);
+        }
       } finally {
         attaching = undefined;
       }

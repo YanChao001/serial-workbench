@@ -7,6 +7,7 @@ import type {
   WorkspaceDocumentResult,
 } from "@serial-workbench/contracts";
 import { useUnsavedWork } from "@/providers/unsaved-work";
+import { stateScopeKey } from "@/lib/host-scope";
 import { Button } from "@/components/ui/button";
 
 export type DeviceLibraryLabels = Record<
@@ -57,7 +58,7 @@ export type DeviceLibraryProps = {
 };
 export function DeviceLibrary(props: DeviceLibraryProps) {
   return (
-    <LibraryContent key={JSON.stringify(props.workspace?.scope)} {...props} />
+    <LibraryContent key={stateScopeKey(props.workspace?.scope)} {...props} />
   );
 }
 
