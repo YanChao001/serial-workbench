@@ -112,10 +112,9 @@ pub fn atomic_write(path: &Path, contents: &[u8]) -> NativeResult<()> {
     Ok(())
 }
 
-#[cfg(test)]
+#[cfg(all(test, windows))]
 mod tests {
     use super::*;
-    #[cfg(windows)]
     #[test]
     fn atomic_write_replaces_long_windows_paths_without_changing_system_settings() {
         use std::os::windows::ffi::OsStrExt;

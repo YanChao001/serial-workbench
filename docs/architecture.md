@@ -1,94 +1,137 @@
-# 架构说明
+# 产品架构
 
-当前产品范围见 [产品范围](./product-scope.md)。本文维护当前公共框架的职责、数据归属和生命周期。
+本文描述当前源码结构。预期功能见[需求](./requirements.md)，实现与验收缺口见[进度](./progress.md)；Node、浏览器连接与 LAN 的后续设计见[规划](./plan.md)和[契约](./contracts/README.md)。
 
-## 运行时结构
+## 运行结构
 
-前端从 `main.tsx` 挂载 React，`App.tsx` 组装 Provider、HashRouter 和路由边界。主导航由 [routes.tsx](../src/routes.tsx) 提供空白工作区和设置。诊断恢复归入设置，启动隔离使用独立受保护页面。
+桌面、CLI 和 MCP 经本机 IPC 连接同一 profile 的独立 Rust Host。Host 统一持有设备、发送仲裁、原始流、录制、操作和共享文档；关闭窗口或客户端后，已接纳任务可以继续。桌面仅管理本地窗口、系统交互和呈现。
 
-Tauri 从 [main.rs](../src-tauri/src/main.rs) 进入 [lib.rs](../src-tauri/src/lib.rs)。Rust 组装窗口、设置、恢复和更新服务，持有原生资源及持久化权威。页面、组件和 Hook 通过 [tauri.ts](../src/lib/tauri.ts) 门面调用原生能力。
+| 位置                         | 职责                                                          |
+| ---------------------------- | ------------------------------------------------------------- |
+| `crates/core/`               | 公共领域模型、wire DTO、错误、能力目录与导出契约              |
+| `crates/ipc/`                | 当前用户本机传输、帧、发现、实例锁和受保护身份存储            |
+| `crates/host/`               | 设备、流、TX、任务、录制回放、权限及共享文档服务              |
+| `crates/client/`             | Host 的 Rust 认证、连接、启动与 RPC 客户端                    |
+| `crates/cli/`、`crates/mcp/` | 命令行和官方 MCP SDK 适配器，共用 Host 能力                   |
+| `src-tauri/src/`             | Tauri 桌面组装、Host bridge、窗口、文件选择、媒体、恢复和更新 |
+| `packages/contracts/`        | 从 Rust 导出的 TypeScript、schema、默认值及校验器             |
+| `packages/host-client/`      | 不依赖 React/Tauri 的客户端投影、reader 和增量解码            |
+| `src/features/workbench/`    | 工作台组件、布局、发送草稿及工具                              |
+| `src/providers/`、`src/lib/` | Host/设置/未保存工作协调、门面和模型                          |
+| `e2e/`                       | 浏览器与真实桌面测试源码；运行产物另存 artifacts              |
 
-浏览器共用界面源码和 HashRouter，提供外观、导航与偏好预览，使用独立的浏览器存储；原生调用由门面检查桌面环境。
+根 [Cargo.toml](../Cargo.toml) 管理全部 Rust 包和共享 profile，使用唯一的根 Cargo.lock。无头包能够独立构建和测试；`src-tauri/target/` 是配置的共享编译输出位置。
 
-## 独立 Host
+## 客户端入口
 
-独立运行时位于 `crates/host`，CLI、MCP 和 Rust 客户端经本机 IPC 共用目录、授权与 Operation。设备目录协调系统串口、PTY 与 Virtual，设备服务持有会话 owner、TX 门控和重连责任；raw 通路与状态投影分开，慢读者与 capture 使用各自有界预算。`packages/host-client` 提供不依赖 React / Tauri 的客户端投影、增量解码与转换。
+前端由 `main.tsx`、`App.tsx` 组装 Provider、HashRouter 和边界。路由、懒加载、预载、导航位置与布局统一在 [routes.tsx](../src/routes.tsx)，菜单、命令面板和快捷键复用 `src/commands/`。
 
-共享设置和工作区由 Host 的 SettingsService / WorkspaceService 经 Store 持久化，以文档 revision CAS 保存并发布投影；读取失败、损坏或未来格式会阻止覆盖。它们与下文桌面 `settings.json`、`workspace.json` 的存储职责分别维护，桌面继续使用现有 Tauri 服务。
+首页为串口工作台，设置承载偏好、诊断与恢复，启动故障保留受保护的隔离入口。工作台顶部连接、中央接收、底部常显发送，参数和辅助工具就近展开；布局及无障碍约束见[界面规范](./conventions.md#界面)。
 
-FileService 将显式登记的位置与内容引用分开；固定内容引用携带 revision，派生 capture / record 引用沿原授权来源复查。Capture 持有录制责任，停止后独立读回验证再发布完成状态；恢复另存已验证前缀，替换保留归档与失败证据。回放使用独立文件 reader，不创建设备 Transport。格式见 [Capture 容器](./contracts/capture-container-v0.md)。
+手写 TypeScript 通过 [tauri.ts](../src/lib/tauri.ts) 使用原生能力。门面检查运行环境；浏览器提供独立存储的界面预览。浏览器 fixture 只服务测试，不进入生产状态回退。Native 命令及 Host DTO 分别生成绑定，流程见[开发指南](./development.md#契约与功能接线)。
 
-Host 指标记录实际队列与资源计数；shutdown 协调已接纳任务、TX、capture、设备和持久化结算，报告未结算操作、隔离会话、证据引用与失败。超时后原 owner 继续持有未完成资源和清理责任，已发出而无最终回执的效果保留 unknown。客户端效果管理层负责登记、转发和回执，Native 系统效果执行器留待后续集成。
+## 数据归属
 
-## 模块职责
+| 数据                                    | 权威与位置                                                                                                                  |
+| --------------------------------------- | --------------------------------------------------------------------------------------------------------------------------- |
+| 身份、授权、Operation、共享设置和工作区 | Host profile 下 `host-v0/state.sqlite3`，实现见 [storage](../crates/host/src/storage/)                                      |
+| 客户端窗口偏好、图库引用和草稿          | Native `appConfigDir/client-state-v0.json`，按窗口保存，见 [client_state.rs](../src-tauri/src/client_state.rs)              |
+| 桌面路由与窗口恢复元数据                | Native `appConfigDir/workspace.json` 及窗口插件管理的几何状态，见 [system_commands.rs](../src-tauri/src/system_commands.rs) |
+| 更新镜像或禁用策略                      | `appConfigDir/deployment.json`；公钥仍固定在安装包内                                                                        |
+| 原始录制和导出                          | 明确选择或登记的目标，由 Host 管理引用、内容 revision 和实际写入结果                                                        |
+| 浏览器预览                              | 共享预览偏好用 localStorage；窗口 ClientState 用 sessionStorage，见 [client-settings.ts](../src/lib/client-settings.ts)     |
 
-| 模块             | 职责                                                          |
-| ---------------- | ------------------------------------------------------------- |
-| 路由、布局和命令 | 工作区与设置入口、键盘与菜单、加载与错误边界                  |
-| 设置模型和同步器 | 当前扁平格式归一化、revision合并、在途写入与跨窗口事件        |
-| 窗口和生命周期   | 主 / 次窗口、托盘、几何恢复、首帧显示、关闭 / 退出 / 重启协商 |
-| 文件授权         | 用户明确选择位置后的文本导出                                  |
-| 诊断和恢复       | 脱敏系统报告、设置故障隔离、确认后的默认设置暂存与启动安装    |
-| 更新框架         | 固定信任策略、检查 / 下载快照、验签及安装前生命周期协商       |
+共享设置与工作区使用 revision CAS。保存只确认相应提交，冲突重读且保留草稿；窗口的日常标签调整不立即写入共享模板，显式保存才更新模板，其他窗口的运行布局独立。
 
-## 命令与桌面交互
+图库保存 ObjectRef 与名称，当前背景属于共享设置；移除图库条目只移除元数据。媒体内容经受控协议读取，临时 URL 不进入共享文档。内置壁纸及 SVG 皮肤由资源清单维护，见 [wallpapers](../resources/wallpapers/README.md) 和 [skins](../resources/skins/README.md)。
 
-菜单、命令面板和快捷键复用 `src/commands/`，路由命令从 `routes.tsx` 生成。命令只表达当前可用操作，保持环境和窗口过滤；设置搜索直接定位设置分区。未知浏览器路由回到首页，原生深链仅接受允许的本地路由。
+旧软件 API、数据和插件格式不读取迁入。旧 `settings.json` 原件保留；当前共享偏好权威为 Host，Native 恢复对象为 ClientState。
 
-应用身份和深链 scheme 来自 [app.config.json](../app.config.json)。深链只用于允许路由的导航，单实例激活与次窗口恢复沿用原生窗口所有权。
+## 生命周期与资源责任
 
-未保存工作由调用方登记 `useUnsavedWork`，保存、放弃和取消参加离页与退出协商。原生维护、下载和其他在途操作按真实结束释放占用；停止前端等待不等于原生回滚。次窗口的关闭行为由窗口生命周期管理，不能绕过全应用退出协商。
+- Host、客户端、会话、视图和 Operation 各有身份与代次。切换 Host/目标、撤权或卸载后隔离旧结果；订阅处理 StrictMode、晚到完成和清理。
+- 未保存工作由 `useUnsavedWork` 登记。离页、关闭、退出和安装更新复用协商；保存失败或用户取消时保留工作。
+- 调用接纳与执行完成分别处理。停止等待不回滚已发生 I/O；按 Operation 终态和实际回执确认，避免自动重放未知发送。
+- Raw reader、源历史、capture、媒体响应和原生工作都有有界名额及字节预算。慢消费者产生明确 Gap 或停止结果；任务实际结束才归还其持有的预算。
+- 会话 owner 管理唯一持口、发送门控、配置与重连。关闭视图不会伪造设备停止；未完成原生线程继续承担句柄、缓冲区与清理责任。
 
-## 通信机制
+## 安全与恢复
 
-Rust 命令和 DTO 是 IPC 类型来源，统一在 `bindings.rs` 注册。签名、DTO 或注册变化时生成并检查 [bindings.ts](../src/lib/generated/bindings.ts)，步骤见 [页面到 IPC 流程](./development.md#新增页面到-ipc-与测试)。
+应用以当前 OS 用户运行，本机隔离不抵御同账户恶意进程。普通 Host 客户端默认只有元数据权限；授权和撤权由明确的本地用户控制入口完成。操作、查询、订阅、派生结果和文件读取都复核当前来源权限。
 
-门面负责环境检查和错误归一化，命令返回 `NativeResult<T>`，错误含稳定 `code`、`message`、`retryable`。前端按 `code` 处理，Rust 提交边界校验身份、大小、路径和权限。阻塞 I/O 移入有界阻塞池，任务满额返回 `NATIVE_BUSY`；已开始的同步任务保持占用直至真实完成。
+文件选择将实际目标登记为受控 ObjectRef，普通前端请求不能通过任意路径扩大权限。固定引用绑定内容 revision，内容变化拒绝沿用。Native 媒体票据绑定窗口与连接代次，每段读取仍由 Host 验权。
 
-订阅先建立再读快照，按revision与操作ID过滤旧消息。事件不是持久消息队列，写入结果以命令返回为准。异步订阅处理卸载、StrictMode重建及取消函数晚到，避免旧回调更新新界面。
+[recovery.rs](../src-tauri/src/recovery.rs) 处理 ClientState：确认后暂存候选，明确重启时复核格式，将原件归档到 `client-recovery-archive-{token}/` 后安装；失败保留或恢复原件、journal 与错误证据。未来格式在准备和重启阶段都拒绝覆盖，Host 文档损坏或未来格式也阻止写入。
 
-## 状态管理与当前扁平格式归一化
+恢复候选是默认 ClientState 文档，会重建其中的窗口偏好、草稿和图库元数据；原 ClientState 随归档保留。它不重置 Host 共享设置或工作区，也不删除图库指向的用户文件，不能用来修复 Host 数据库。
 
-页面状态留在组件；跨页偏好由 `SettingsProvider` 管理，命令由 `CommandsProvider` 管理。设置 schema、当前扁平格式归一化和默认值以 [settings-model.ts](../src/lib/settings-model.ts) 为准。
+CSP、Tauri capabilities、路径校验、预算和内容校验分别约束对应边界；密钥、输入和日志规则见[安全约束](./conventions.md#安全)。
 
-桌面 `settings.json` 是权威快照，Rust 使用原子替换与 revision CAS。前端同步器分离未提交与在途字段，冲突后重读并有限重试，失败保留修改；跨窗口只接受更新 revision。主题、语言、字体、皮肤和壁纸引用共用该模型。
+## 更新与分发
 
-普通保存拒绝覆盖未来 schema。用户明确确认的设置重置可以替换已读入的未来设置，仍检查 revision 并原子写入；启动隔离中的恢复流程保留未来格式保护，见下文。
+应用版本、协议版本、目录版本和文件格式分别管理。Rust updater 管理检查、下载验签与安装；安装前协商所有窗口及在途工作。更新公钥编译进安装包，deployment 配置仅能更换受控 HTTPS 镜像或禁用更新。
 
-浏览器使用独立localStorage与IndexedDB。读取失败保留原存档，修改暂留内存；重试先读成功再合并明确修改的字段。命名空间隔离同源产品数据，不构成脚本安全边界。
+当前发布模板、签名和更新端点尚未启用。组件构建需要同源的桌面、Host、CLI、MCP 和有效收据；后续 Node/runtime 也作为整套发行组件升级，先结算任务再切换，见[构建与发布](./development.md#构建与发布)。
 
-网络偏好选择后续原生 HTTP 的直连或系统代理，供更新请求使用；不修改进程代理环境或已开始操作，更新端点与验签规则继续生效。
+## 关键取舍
 
-## 数据存储
+- **独立 Host：** 让多个客户端共享唯一设备所有者，录制和长任务独立于窗口；代价是实例管理、身份和整套组件发布的协调。
+- **Tauri 桌面：** 复用 Web 界面与系统 WebView，系统能力由 Rust 提交边界控制；浏览器预览与原生验收分别验证。
+- **可信 Node 扩展：** 后续统一 SDK、后台和隔离 Web UI；Node 具有 OS 用户权限，代码执行信任与设备 API 授权分别建立，重计算交给受监督 worker。
+- **图库与选择分离：** 元数据、共享背景选择和用户原文件各有归属，避免窗口设置副本成为内容权威。
+- **安装包固定更新公钥：** 可写部署配置不能替换信任根；换钥需要可信过渡版本或手动安装。
+- **线性里程碑交付：** 同一切片的实现、测试、审阅修正和文档集中，经 PR squash 合入；Git 规则见[协作](./conventions.md#协作)。
 
-| 数据           | 位置与边界                                                                                 |
-| -------------- | ------------------------------------------------------------------------------------------ |
-| 设置           | `appConfigDir/settings.json`；原子写入、revision、损坏备份及未来格式保护                   |
-| 窗口与路由恢复 | `appConfigDir/workspace.json`；主 / 次窗口的允许路由与次窗口打开状态                       |
-| 壁纸图库       | `appConfigDir/client-state-v0.json` 的窗口 gallery；仅保存 Host ObjectRef 与名称           |
-| 自选图片与视频 | Host 登记用户选择的文件；共享背景仅保存固定 ObjectRef 与显示方式，播放票据属于当前窗口实例 |
-| 日志与缓存     | `appLogDir`轮换日志，缓存只用于呈现和可再生内容                                            |
+## 系统串口与 PTY 能力
 
-原生目录由 Tauri 路径 API 决定。默认设置恢复只替换设置，保留图库、日志及其他用户文件。
+系统串口由独立 Host 的设备目录提供。目录返回不透明 `deviceId`；打开操作解析当前目录与绑定后，才把受信的系统定位符交给原生提供器。COM 编号、tty 路径和枚举顺序都不是稳定设备身份。目录刷新、stale 与重连规则由设备服务维护，平台提供器只读取 OS 事实。
 
-图库名称与条目属于客户端窗口状态；当前背景属于 Host 共享设置。删除图库条目只移除该元数据，不删除 Host 对象或用户原文件。原生选择器把实际文件登记为固定引用，不把路径、Data URI 或本地播放 URL 写入共享设置；原文件移动或变化后，旧引用读取失败。图片与视频共用 [文件入口](../src-tauri/src/file_resource_commands.rs) 和 [媒体协议](../src-tauri/src/media_protocol.rs)，每段读取都由 Host 复核当前权限和固定内容，协议按窗口实例与连接代次管理临时票据。响应在分配前取得名额和字节预算，释放票据不提前回收仍在运行的工作预算。
+### 配置与读回
 
-浏览器未连接媒体传输入口时保留已有背景选择，不伪造 Host 引用。若使用本地 Blob 预览，其 URL 只属于当前实例并在结束时释放；浏览器 Host 媒体传输在后续阶段接入。
+产品保留 5/6/7/8 数据位、五种 parity、三种 stop width 和四种流控。平台不能表达的组合返回 `UNSUPPORTED_CAPABILITY`；驱动修改了请求值时，配置回执保留实际读回，TX 门控保持关闭。打开时只有全部字段确认一致才返回成功。
 
-内置图片由 [resources/wallpapers](../resources/wallpapers/README.md) 自动收录，设置使用稳定相对身份，不保存构建URL。皮肤资源与用户图库分开，规则见 [皮肤资源](../resources/skins/README.md)。
+| 配置              | Windows                           | Linux                                   | macOS                                          |
+| ----------------- | --------------------------------- | --------------------------------------- | ---------------------------------------------- |
+| 5/6/7/8 数据位    | DCB，随后 GetCommState            | termios2，随后 TCGETS2                  | termios，随后 tcgetattr                        |
+| none/even/odd     | 支持编码与独立读回                | 支持编码与独立读回                      | 支持编码与独立读回                             |
+| mark/space        | DCB MARKPARITY/SPACEPARITY        | CMSPAR，依驱动读回                      | 通用 termios 无对应表达，明确拒绝              |
+| 1.5 stop          | 仅 5 数据位组合；6/7/8 明确拒绝   | 通用接口无法与 two 准确区分，明确拒绝   | 通用接口无对应表达，明确拒绝                   |
+| 2 stop + 5 数据位 | 明确拒绝                          | 明确拒绝物理宽度歧义                    | 明确拒绝物理宽度歧义                           |
+| RTS/CTS           | CTS 输出门控与 RTS handshake      | CRTSCTS                                 | CRTSCTS                                        |
+| DSR/DTR           | DSR 输出门控与 DTR handshake      | 通用 termios 无双向 handshake，明确拒绝 | CDTR_IFLOW 与 CDSR_OFLOW，依驱动读回           |
+| XON/XOFF          | 双向软件流控                      | IXON 与 IXOFF                           | IXON 与 IXOFF                                  |
+| 任意 baud         | DCB 的 u32 范围，依驱动接受与读回 | termios2/BOTHER 的 u32 范围             | termios 或 IOSSIOSPEED；无法独立读回时拒绝确认 |
 
-## 恢复、诊断与更新
+读写等待和重连间隔是 Host 策略字段，由 Host 保存；它们不伪装成硬件寄存器读回。数据通路关闭 echo、换行转换、strip、NUL 丢弃和字符替换。RTS/CTS 模式占用 RTS，DSR/DTR 模式占用 DTR；手动改变已被流控占用的线返回 `CONTROL_CONFLICT`。
 
-正常运行时从设置进入诊断和恢复，旧 `/recovery` 路由跳转设置恢复分区。启动隔离时由 `RecoveryGate` 将普通页面导向独立恢复页，并允许访问隐藏的 `/diagnostics` 页面。设置与独立页面复用诊断内容，报告包含有限系统信息、设置 revision 和脱敏日志。
+### 原生资源与排空
 
-启动时，可读且未超限的损坏设置文件先备份为 `settings-corrupt-*.json`，再写入默认快照；读取、超限或备份失败保留原件。设置打开或恢复准备失败时，应用使用临时设置与临时图库隔离正式数据。
+每个端口只独占打开一次。专有原生读取线程与单个 TX 或 drain 任务共享同一份受控句柄引用；会话所有者在写入和 drain 待完成期间继续 RX，不允许新的 TX、配置或有副作用控制穿插。写回执分别记录已经确认的接纳前缀、当前在途未知区间和未提交的尾部；取消不会把已提交的字节改写为零副作用。
 
-用户确认后暂存默认设置候选和待处理元数据，再由用户明确重启。下次启动验证候选与原件的未来格式保护，将正式 `settings.json` 原件重命名至 `recovery-archive-{token}/settings.json`，按恢复日志安装新设置；失败回滚或保留待处理证据。未知恢复元数据拒绝处理并保留原件供人工复核。
+写入载荷同时保有字节与原分配的预算租约。业务已返回 unknown、源历史已被回收时，未完成的原生任务仍承担这笔预算；实际完成后才释放。Windows overlapped 写入借用这份载荷，不额外复制整块缓冲区。
 
-更新由Rust持有检查、下载和安装句柄，各窗口订阅快照。当前端点和公钥为空，框架停用且不联网。配置齐备后，安装前仍需重读策略、验证签名并重新协商全部窗口，细节见 [自动更新](./build-release.md#自动更新)。
+Windows 使用 FlushFileBuffers，Unix 使用 tcdrain。只有原生调用成功结束才产生 confirmed；驱动队列计数为零、等待一段时间或请求取消都不能生成确认。Windows 通过 CancelSynchronousIo 请求中断 drain；Unix 尝试安装专用 SIGUSR2 空 handler 并定向中断，不覆盖进程已有的该信号处理器。不能安装 handler 或驱动不响应时，等待仍然有界，结果保留 unknown。
 
-## 安全边界
+取消收尾预算为 100 ms。超过预算后原生线程继续持有句柄、缓冲区和清理责任；会话进入 `ControlUnknown`，同设备保留隔离，晚到成功不会自动恢复 TX 或允许重开。活跃与隔离串口合计最多 16 项。会话 close 使用独立关闭信号，等待 owner 最多 250 ms；业务邮箱满不会丢失关闭责任，Drop 不等待未完成线程。
 
-主 / 次窗口加载可信本地界面。Tauri capability与自定义命令校验是不同机制，规则见 [安全规范](./security.md)。
+领域 write/drain 期限使用 Host 的注入单调时钟；到期通过独立原生取消信号请求收尾，错误仍保留 `WRITE_TIMEOUT`，不会改成用户主动取消。owner 的备用收尾预算是实际时间 150 ms，不依赖领域时钟继续推进。
 
-新增业务复用现有路由、命令、设置和门面；跨层契约、权限和窗口生命周期变化先完成 [影响分析](./engineering-at-scale.md#设计评审与-adr-门槛)，长期取舍记入 [ADR](./adr/README.md)。
+原生 close 也在持有资源的原生线程执行。实际进程或 OS 锁尚未消失时，停止流程仍需按真实状态报告；线程分离不产生“设备已停止”证明。
+
+### 控制与诊断
+
+- Windows 使用 SetupAPI 枚举 present Ports，读取受控 PortName、说明、厂商、硬件标识、拓扑及驱动信息；Linux 读取 sysfs tty 与 USB 祖先属性；macOS 使用 IOKit IOSerialBSDClient 与 USB 注册表属性。
+- 序列号缺失不补默认值。Windows 不把任意实例 ID 的末段当序列号；目录还会检查候选唯一性和拓扑变化。
+- DTR/RTS、BREAK、purge、队列采样与 CTS/DSR/RI/CD 输入采样通过平台 API。输出调用成功表示驱动接受了请求；物理电平与对端收到 BREAK 需要硬件验证。
+- purge 无法对应逻辑流偏移时报告未知丢弃范围，不编造字节偏移。Windows 接收溢出会产生明确错误；Unix 的普通 tty 接口没有统一的溢出计数，持续无损能力需结合实际驱动验证。
+- 原生错误保留稳定 code 与 `details.osCode`，不把任意路径或推测的占用进程写入错误文本。
+
+### 验证分层
+
+`cargo test --locked -p serial-workbench-host --lib device::serial` 验证参数编码、读回与可控原生调用的资源生命周期；`--lib device::sessions::mailbox_tests` 验证真实 owner 的 RX、邮箱和有限关闭。
+
+`cargo test --locked -p serial-workbench-host --test serial_backend --test pty_roundtrip` 在目标 OS 运行提供器与 PTY 测试。PTY 对端是独立进程，验证任意分块、字节摘要、RX purge、实际 drain 调用和断连。Windows 上被 cfg 排除的 PTY 用例不计为通过。Linux PTY 的 tcdrain 可能立即返回，因此这一结果不证明成功中断过阻塞 drain。
+
+M6 硬件检查保留 CTS/XOFF 阻塞、实际速率、最后停止位、USB FIFO、输入边沿、线电平与 BREAK 接收。记录 OS、内核、驱动、芯片、接线和时间基准；本机软件用例不替代这些证据。
+
+实现依据：[Windows DCB](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-dcb)、[Windows COMMTIMEOUTS](https://learn.microsoft.com/en-us/windows/win32/api/winbase/ns-winbase-commtimeouts)、[Windows CancelIoEx](https://learn.microsoft.com/en-us/windows/win32/api/ioapiset/nf-ioapiset-cancelioex)、[Linux termios](https://man7.org/linux/man-pages/man3/termios.3.html)、[Linux termios2](https://man7.org/linux/man-pages/man2/TCGETS2.2const.html)、[Apple 串口访问](https://developer.apple.com/library/archive/documentation/DeviceDrivers/Conceptual/WorkingWSerial/WWSerial_SerialDevs/SerialDevices.html)、[Darwin termios 声明](https://raw.githubusercontent.com/apple-oss-distributions/xnu/main/bsd/sys/termios.h)、[IOSSIOSPEED 声明](https://raw.githubusercontent.com/apple-oss-distributions/IOSerialFamily/main/IOSerialFamily.kmodproj/ioss.h)。

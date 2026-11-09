@@ -32,7 +32,16 @@ import {
   DEFAULT_CLIENT_STATE,
   type ClientStateSnapshot,
 } from "@/lib/client-settings";
-import { createHostConnection, type HostNativePort } from "@/lib/host-client";
+import {
+  createHostConnection,
+  createHostWorkspace,
+  type HostNativePort,
+} from "@/lib/host-client";
+import { saveTextExport } from "@/lib/tauri";
+vi.mock("@/lib/tauri", async (original) => ({
+  ...(await original<typeof import("@/lib/tauri")>()),
+  saveTextExport: vi.fn(),
+}));
 
 afterEach(cleanup);
 beforeEach(() => sessionStorage.clear());
@@ -182,6 +191,142 @@ function workspace(
   };
 }
 describe("Serial Workbench 首页", () => {
+  it("edits and clones a document view from the workspace menu, CAS saves and reopens independent drafts on one session", async () => {
+    const ready = readyHost();
+    let saved = workspace("chosen", "Bench");
+    saved.document.value = snapshotWindowLayout(
+      saved.document.value,
+      [{ id: "saved-view", sessionId: "session" }],
+      ready.state.sessions,
+      ready.state.devices,
+      defaults.settings.terminal,
+      {},
+    );
+    const connection = await attachment("9");
+    vi.spyOn(connection.client, "query").mockImplementation(async (query) => {
+      if (query.actionId === "workspace.read")
+        return { kind: "workspace", value: saved };
+      throw new Error(query.actionId);
+    });
+    vi.spyOn(connection, "refreshScopes").mockResolvedValue([]);
+    const applyDocumentIntent =
+      vi.fn<typeof import("@/lib/tauri").hostApplyDocumentIntent>();
+    applyDocumentIntent.mockImplementation(async (_generation, intent) => {
+      if (
+        intent.kind !== "workspaceSave" ||
+        intent.workspaceId !== "chosen" ||
+        intent.expectedRevision !== saved.document.revision
+      )
+        throw new Error("CAS mismatch");
+      saved = {
+        ...saved,
+        document: { revision: "2", value: intent.params.value },
+      };
+      return {
+        ...operation(),
+        actionId: "workspace.save",
+        target: saved.scope.target,
+        result: { kind: "workspace", value: saved },
+      };
+    });
+    const controller = createHostWorkspace(connection, {
+      connectDevice: vi.fn(),
+      chooseFile: vi.fn(),
+      applyDocumentIntent,
+    });
+    await controller.loadWorkspace("chosen");
+    const host = {
+      ...ready,
+      ...controller.getSnapshot(),
+      state: { ...ready.state, workspace: saved },
+    };
+    const content = () => (
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <Overview />
+        </HostContext>
+      </I18nContext>
+    );
+    const view = render(content());
+    fireEvent.click(await screen.findByRole("button", { name: "Bench" }));
+    expect(screen.getByRole("combobox", { name: "Views" })).toBeInTheDocument();
+    fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
+      target: { value: "Original view" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Clone view" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
+      target: { value: "Clone view" },
+    });
+    fireEvent.click(screen.getByRole("button", { name: "Save workspace" }));
+    await waitFor(() => expect(saved.document.revision).toBe("2"));
+    expect(applyDocumentIntent).toHaveBeenCalledWith(
+      "9",
+      expect.objectContaining({ expectedRevision: "1", workspaceId: "chosen" }),
+    );
+    expect(saved.document.value.views.map((value) => value.name)).toEqual([
+      "Original view",
+      "Clone view",
+    ]);
+    expect(saved.document.value.bindings).toHaveLength(2);
+    expect(saved.document.value.bindings[1]?.deviceId).toBe("device");
+    view.unmount();
+    host.state.workspace = saved;
+    render(content());
+    fireEvent.click(await screen.findByRole("tab", { name: "Original view" }));
+    fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
+      target: { value: "ORIGINAL" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Clone view" }));
+    expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue("");
+    fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
+      target: { value: "CLONE" },
+    });
+    fireEvent.click(screen.getByRole("tab", { name: "Original view" }));
+    expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
+      "ORIGINAL",
+    );
+    expect(ready.open).not.toHaveBeenCalled();
+    controller.dispose();
+  });
+
+  it.each(["saved.json", null])(
+    "exports the Host JSON envelope through the file facade (result %s)",
+    async (path) => {
+      const host = readyHost();
+      host.state.workspace = workspace("export", "Export bench");
+      const json =
+        '{"formatVersion":"0.1","kind":"workspace","value":{"name":"original envelope"}}';
+      host.exportWorkspace = vi.fn().mockResolvedValue({ json });
+      vi.mocked(saveTextExport).mockReset().mockResolvedValue(path);
+      render(
+        <I18nContext value={i18n}>
+          <HostContext value={host}>
+            <Overview />
+          </HostContext>
+        </I18nContext>,
+      );
+      fireEvent.click(
+        await screen.findByRole("button", { name: "Export bench" }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+      await waitFor(() =>
+        expect(saveTextExport).toHaveBeenCalledWith(
+          "workspace-export.json",
+          json,
+        ),
+      );
+      if (path)
+        expect(
+          await screen.findByRole("textbox", {
+            name: "Exported workspace JSON",
+          }),
+        ).toHaveValue(json);
+      else
+        expect(
+          screen.queryByRole("textbox", { name: "Exported workspace JSON" }),
+        ).not.toBeInTheDocument();
+    },
+  );
   it("keeps current editing and disables Host actions when menu Refresh loses an established attachment", async () => {
     const connection = await attachment("8");
     const current = session();

@@ -104,6 +104,7 @@ export type SessionControlsProps = {
   disabled?: boolean;
   labels: SessionControlsLabels;
   invoke: HostContextValue["invoke"];
+  waitForOperation: HostContextValue["waitForOperation"];
   watchActions: HostContextValue["watchActions"];
 };
 type ControlAction =
@@ -132,6 +133,7 @@ function ControlsForm({
   disabled = false,
   labels,
   invoke,
+  waitForOperation,
   watchActions,
 }: SessionControlsProps & { session: SessionSnapshot }) {
   const id = useId();
@@ -320,6 +322,49 @@ function ControlsForm({
       combined.throwIfAborted();
       if (operation.error)
         throw new Error(`${operation.error.code}: ${operation.error.message}`);
+      if (action.actionId === "session.configure") {
+        const terminal = await waitForOperation(operation, combined);
+        combined.throwIfAborted();
+        if (
+          !mounted.current ||
+          terminal.operationId !== operation.operationId ||
+          terminal.actionId !== action.actionId ||
+          terminal.executionHostId !== actionTarget.hostId ||
+          terminal.target.hostId !== actionTarget.hostId ||
+          terminal.target.kind !== actionTarget.kind ||
+          terminal.target.id !== actionTarget.id ||
+          terminal.target.sessionId !== actionTarget.sessionId ||
+          terminal.target.sessionEpoch !== actionTarget.sessionEpoch ||
+          terminal.state !== "succeeded" ||
+          terminal.error ||
+          terminal.result?.kind !== "configuration" ||
+          CONFIG_FIELDS.some(
+            (field) =>
+              terminal.result?.kind !== "configuration" ||
+              terminal.result.value.requested[field] !==
+                action.params.requested[field],
+          )
+        )
+          throw new Error(labels.unavailable);
+        const receipt = terminal.result.value;
+        setSubmitted((previous) => {
+          const confirmed = { ...previous };
+          for (const field of CONFIG_FIELDS) {
+            const result = receipt.fields.find(
+              (value) => value.field === field,
+            );
+            if (
+              result?.status === "applied" &&
+              result.actual === action.params.requested[field]
+            )
+              Object.assign(confirmed, {
+                [field]: action.params.requested[field],
+              });
+          }
+          return confirmed;
+        });
+        return terminal;
+      }
       return operation;
     } finally {
       if (pending.current === controller) pending.current = null;
@@ -334,7 +379,6 @@ function ControlsForm({
       { actionId: "session.configure", params: { requested: snapshot } },
       signal,
     );
-    if (!signal?.aborted) setSubmitted(snapshot);
   }
   function run(action: () => Promise<unknown>) {
     void action().catch((reason: unknown) => {
@@ -349,7 +393,6 @@ function ControlsForm({
     id: `session-configuration-${session.sessionId}-${session.sessionEpoch}`,
     label: labels.configuration,
     dirty,
-    save: apply,
     discard: () => setDraft(submitted),
   });
   const receipts = operations
@@ -382,7 +425,7 @@ function ControlsForm({
         </p>
       )}
       {error && <p role="alert">{error}</p>}
-      <fieldset disabled={disabled || session.readOnly || busy}>
+      <fieldset disabled={disabled || session.readOnly}>
         <legend>{labels.configuration}</legend>
         <SerialConfigurationFields
           id={id}

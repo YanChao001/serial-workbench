@@ -197,7 +197,7 @@ export function generateReleaseNotes(
     `## 破坏性变更\n\n${breaking}`,
     `## 更新内容\n\n${changes}`,
     `## 升级与限制\n\n${limitations}`,
-    `## 下载与系统要求\n\n安装包见下方 Assets，按系统和处理器选择：\n\n| 系统 | 架构 | 安装包 |\n| --- | --- | --- |\n| Windows | x64 | \`*-setup.exe\`（NSIS，按用户安装）或 \`.msi\`（所有用户安装） |\n| macOS | Apple Silicon / Intel | 对应 \`aarch64\` / \`x64\` 的 \`.dmg\`；\`.app.tar.gz\` 用于应用内更新 |\n| Linux | x64 | \`.AppImage\`，或匹配发行版的 \`.deb\` / \`.rpm\` |\n\nWindows 需要受目标系统支持的 WebView2 Runtime；Linux 依赖与安装方式见[平台说明](${link("file", { ref: commit, path: "docs/development.md#环境要求" })})。本项目尚未声明经安装验收的统一最低系统版本，CI runner 版本不等于最低支持版本；实际系统、签名及升级验收范围以上方限制为准。\n\n使用方式见 [README](${link("file", { ref: commit, path: "README.md" })})，签名范围与验证方式见[签名策略](${link("file", { ref: commit, path: "docs/code-signing-policy.md" })})。`,
+    `## 下载与系统要求\n\n安装包见下方 Assets，按系统和处理器选择：\n\n| 系统 | 架构 | 安装包 |\n| --- | --- | --- |\n| Windows | x64 | \`*-setup.exe\`（NSIS，按用户安装）或 \`.msi\`（所有用户安装） |\n| macOS | Apple Silicon / Intel | 对应 \`aarch64\` / \`x64\` 的 \`.dmg\`；\`.app.tar.gz\` 用于应用内更新 |\n| Linux | x64 | \`.AppImage\`，或匹配发行版的 \`.deb\` / \`.rpm\` |\n\nWindows 需要受目标系统支持的 WebView2 Runtime；Linux 依赖与安装方式见[平台说明](${link("file", { ref: commit, path: "docs/development.md#环境与启动" })})。本项目尚未声明经安装验收的统一最低系统版本，CI runner 版本不等于最低支持版本；实际系统、签名及升级验收范围以上方限制为准。\n\n使用方式见 [README](${link("file", { ref: commit, path: "README.md" })})，签名范围与验证方式见[签名策略](${link("file", { ref: commit, path: "docs/development.md#签名与更新" })})。`,
     `## 完整变更\n\n${previous ? `[${previous.tag_name}...${tag}](${link("compare", { base: previous.tag_name, ref: commit })})` : `[全部提交](${link("commits", { ref: commit })})`}`,
   ].join("\n\n");
   if (Buffer.byteLength(notes) > 120_000)

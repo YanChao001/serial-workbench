@@ -21,6 +21,7 @@ import type {
   HostInvocation,
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
+import { saveTextExport } from "@/lib/tauri";
 import { SerialConfigurationFields } from "./serial-configuration-fields";
 import { validSerialConfiguration } from "./serial-configuration";
 import { useUnsavedWork } from "@/providers/unsaved-work";
@@ -162,6 +163,7 @@ export function WorkbenchTools({
         disabled={!ready || context.isReplay}
         labels={labels.parameters}
         invoke={invoke}
+        waitForOperation={host.waitForOperation}
         watchActions={watchActions}
       />
     ) : (
@@ -261,7 +263,12 @@ export function WorkbenchTools({
                 current.scope.target.id,
                 signal,
               );
-              if (!signal?.aborted) setExported(result.json);
+              signal?.throwIfAborted();
+              const path = await saveTextExport(
+                `workspace-${current.scope.target.id}.json`,
+                result.json,
+              );
+              if (!signal?.aborted && path !== null) setExported(result.json);
             }}
           />
         )}
@@ -430,9 +437,6 @@ function ConnectionOptions({
     id: "workbench-connection-options",
     label: labels.configuration,
     dirty,
-    save: async () => {
-      throw new Error(labels.unavailable);
-    },
     discard: () => setDraft(value),
   });
   return (

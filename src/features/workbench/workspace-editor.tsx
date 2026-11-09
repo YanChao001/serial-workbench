@@ -144,7 +144,9 @@ function WorkspaceEditorDraft({
 }: WorkspaceEditorProps) {
   const [original, setOriginal] = useState(base);
   const [local, setLocal] = useState(base.document.value);
-  const [localSelection, setLocalSelection] = useState(selectedViewId);
+  const [localSelection, setLocalSelection] = useState(
+    selectedViewId ?? base.document.value.views[0]?.id,
+  );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
   const [saved, setSaved] = useState(false);
@@ -402,6 +404,30 @@ function WorkspaceEditorDraft({
             onChange={(event) => change({ ...draft, name: event.target.value })}
           />
         </label>
+        {draft.views.length > 0 && (
+          <label className="grid gap-1 text-sm">
+            {labels.views ?? labels.viewName}
+            <Select
+              value={view?.id ?? ""}
+              onValueChange={(viewId) => {
+                setLocalSelection(viewId);
+                onSelectView?.(viewId);
+              }}
+              disabled={locked}
+            >
+              <SelectTrigger aria-label={labels.views ?? labels.viewName}>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {draft.views.map((item) => (
+                  <SelectItem key={item.id} value={item.id}>
+                    {item.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+          </label>
+        )}
         {view ? (
           <>
             <div className="grid gap-3 sm:grid-cols-2">

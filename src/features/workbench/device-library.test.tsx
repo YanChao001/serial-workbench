@@ -301,7 +301,7 @@ it("saves pending rebind through leave negotiation and refuses to discard a newe
   const signal = new AbortController().signal;
   let saving!: Promise<void>;
   act(() => {
-    saving = [...work.values()][0]!.save(signal);
+    saving = [...work.values()][0]!.save!(signal);
   });
   choose("device-b");
   const rejected = expect(saving).rejects.toThrow("New changes need saving");
@@ -389,7 +389,7 @@ it("does not accept a document result after the leave signal is cancelled", asyn
   const controller = new AbortController();
   let saving!: Promise<void>;
   act(() => {
-    saving = [...work.values()][0]!.save(controller.signal);
+    saving = [...work.values()][0]!.save!(controller.signal);
   });
   act(() => controller.abort());
   const rejected = expect(saving).rejects.toMatchObject({ name: "AbortError" });

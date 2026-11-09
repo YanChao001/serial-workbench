@@ -83,6 +83,7 @@ export default defineConfig(({ mode }) => ({
         "**/dist-web/**",
         "**/coverage/**",
         "**/.cache/**",
+        "**/.pnpm-store/**",
       ],
     },
   },

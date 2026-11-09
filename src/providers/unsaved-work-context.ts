@@ -4,7 +4,7 @@ export type UnsavedWork = {
   id: string;
   label: string;
   dirty: boolean;
-  save: (signal?: AbortSignal) => Promise<void>;
+  save?: (signal?: AbortSignal) => Promise<void>;
   discard: (signal?: AbortSignal) => void | Promise<void>;
 };
 type Registry = {

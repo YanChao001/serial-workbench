@@ -12,7 +12,10 @@ function unavailable(): never {
 }
 function attachmentFailed(error: unknown) {
   return (
-    error instanceof HostRequestError && error.code === "HOST_START_FAILED"
+    error instanceof HostRequestError &&
+    ["HOST_START_FAILED", "UNAUTHENTICATED", "EPOCH_MISMATCH"].includes(
+      error.code,
+    )
   );
 }
 const empty = (status: HostState["status"]): HostContextValue => ({
@@ -83,8 +86,13 @@ export function HostProvider({
       previous?.dispose();
     };
     const publish = (owner: typeof workspace) => {
-      if (active && owner && workspace === owner)
-        setValue({ ...owner.getSnapshot(), refresh });
+      if (active && owner && workspace === owner) {
+        const current = owner.getSnapshot();
+        if (attachmentFailed(current.state.error)) {
+          disposeWorkspace();
+          failed(current.state.error);
+        } else setValue({ ...current, refresh });
+      }
     };
     const failed = (error: unknown) => {
       if (active)

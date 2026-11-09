@@ -24,6 +24,160 @@ import {
 } from "./session-controls.test-fixtures";
 
 afterEach(cleanup);
+it("keeps local parameters discard-only and confirms only matching applied fields after a terminal receipt", async () => {
+  const work = new Map<string, UnsavedWork>();
+  let finish!: (value: Operation) => void;
+  const requested = {
+    ...session().configuration,
+    baudRate: "57600",
+    readWaitMs: "23",
+  };
+  const admitted = {
+    ...operation(),
+    actionId: "session.configure",
+    target,
+    state: "queued" as const,
+  };
+  const invoke = vi.fn().mockResolvedValue(admitted);
+  const waitForOperation = vi.fn(
+    () =>
+      new Promise<Operation>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(
+    <UnsavedWorkContext.Provider
+      value={{
+        requestLeave: async () => true,
+        releaseScope: () => {},
+        register: (value) => {
+          work.set(value.id, value);
+        },
+        unregister: (id) => {
+          work.delete(id);
+        },
+      }}
+    >
+      <SessionControls
+        session={session()}
+        target={target}
+        operations={[]}
+        labels={controlLabels}
+        invoke={invoke}
+        watchActions={allowControlActions}
+        waitForOperation={waitForOperation}
+      />
+    </UnsavedWorkContext.Provider>,
+  );
+  fireEvent.change(screen.getByLabelText("Baud rate"), {
+    target: { value: "57600" },
+  });
+  fireEvent.change(screen.getByLabelText("Read wait (ms)"), {
+    target: { value: "23" },
+  });
+  expect([...work.values()][0]?.save).toBeUndefined();
+  fireEvent.click(screen.getByRole("button", { name: "Apply configuration" }));
+  await waitFor(() => expect(waitForOperation).toHaveBeenCalledOnce());
+  expect([...work.values()][0]?.dirty).toBe(true);
+  fireEvent.change(screen.getByLabelText("Baud rate"), {
+    target: { value: "38400" },
+  });
+  await act(async () =>
+    finish({
+      ...admitted,
+      state: "succeeded",
+      result: {
+        kind: "configuration",
+        value: {
+          requested,
+          fields: [
+            { field: "baudRate", status: "applied", actual: "57600" },
+            { field: "readWaitMs", status: "unknown" },
+          ],
+          readback: { baudRate: "57600" },
+          revision: "2",
+          boundaryEventSeq: "9",
+          txGate: "ready",
+        },
+      },
+    }),
+  );
+  expect(screen.getByLabelText("Baud rate")).toHaveValue("38400");
+  expect(screen.getByLabelText("Read wait (ms)")).toHaveValue("23");
+  expect([...work.values()][0]?.dirty).toBe(true);
+  fireEvent.click(screen.getByRole("button", { name: "Reset configuration" }));
+  expect(screen.getByLabelText("Baud rate")).toHaveValue("57600");
+  expect(screen.getByLabelText("Read wait (ms)")).toHaveValue("100");
+  expect(invoke).toHaveBeenCalledOnce();
+});
+
+it.each([
+  "failed",
+  "wrong-target",
+  "wrong-operation",
+  "wrong-action",
+  "wrong-configuration",
+  "queued",
+])(
+  "retains the requested draft after %s configuration result",
+  async (failure) => {
+    const requested = { ...session().configuration, baudRate: "57600" };
+    const admitted: Operation = {
+      ...operation(),
+      actionId: "session.configure",
+      target,
+      state: "queued",
+    };
+    const result: Operation = {
+      ...admitted,
+      state: "succeeded",
+      result: {
+        kind: "configuration",
+        value: {
+          requested,
+          fields: [{ field: "baudRate", status: "applied", actual: "57600" }],
+          readback: {},
+          revision: "2",
+          boundaryEventSeq: "9",
+          txGate: "ready",
+        },
+      },
+    };
+    if (failure === "failed") result.state = "failed";
+    if (failure === "queued") result.state = "queued";
+    if (failure === "wrong-target")
+      result.target = { ...target, sessionEpoch: "2" };
+    if (failure === "wrong-operation") result.operationId = "other";
+    if (failure === "wrong-action") result.actionId = "session.tx";
+    if (
+      failure === "wrong-configuration" &&
+      result.result?.kind === "configuration"
+    )
+      result.result.value.requested = session().configuration;
+    render(
+      <SessionControls
+        session={session()}
+        target={target}
+        operations={[]}
+        labels={controlLabels}
+        invoke={vi.fn().mockResolvedValue(admitted)}
+        watchActions={allowControlActions}
+        waitForOperation={vi.fn().mockResolvedValue(result)}
+      />,
+    );
+    fireEvent.change(screen.getByLabelText("Baud rate"), {
+      target: { value: "57600" },
+    });
+    fireEvent.click(
+      screen.getByRole("button", { name: "Apply configuration" }),
+    );
+    await screen.findByRole("alert");
+    expect(screen.getByLabelText("Baud rate")).toHaveValue("57600");
+    expect(
+      screen.getByRole("button", { name: "Reset configuration" }),
+    ).toBeEnabled();
+  },
+);
 const setup = (value = session()) => {
   const invoke = vi.fn().mockResolvedValue(operation());
   const props = {
@@ -34,7 +188,13 @@ const setup = (value = session()) => {
     labels: controlLabels,
     invoke,
   };
-  return { invoke, props, ...render(<SessionControls {...props} />) };
+  return {
+    invoke,
+    props,
+    ...render(
+      <SessionControls waitForOperation={async (value) => value} {...props} />,
+    ),
+  };
 };
 
 it("registers only the unsubmitted configuration and aborts a pending apply on unmount in StrictMode", async () => {
@@ -64,6 +224,7 @@ it("registers only the unsubmitted configuration and aborts a pending apply on u
         }}
       >
         <SessionControls
+          waitForOperation={async (value) => value}
           session={session()}
           target={target}
           operations={[]}
@@ -130,6 +291,7 @@ it("blocks invalid numeric models and respects configuration and unknown control
   ).toBeDisabled();
   rerender(
     <SessionControls
+      waitForOperation={async (value) => value}
       {...props}
       session={{
         ...session(),
@@ -162,6 +324,7 @@ it("shows requested configuration separately from unknown actual fields and real
   };
   render(
     <SessionControls
+      waitForOperation={async (value) => value}
       session={session()}
       target={target}
       operations={[result]}
@@ -241,6 +404,7 @@ it("disables read-only and flow-owned line controls and displays shared BREAK un
   };
   rerender(
     <SessionControls
+      waitForOperation={async (value) => value}
       {...props}
       session={{ ...props.session, readOnly: true }}
       operations={[receipt]}
@@ -273,6 +437,7 @@ it("keeps unknown or denied actions non-executable while drafts stay editable", 
       }}
     >
       <SessionControls
+        waitForOperation={async (value) => value}
         session={session()}
         target={target}
         operations={[]}
@@ -313,16 +478,20 @@ it("keeps unknown or denied actions non-executable while drafts stay editable", 
     expect(screen.getByRole("button", { name })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name }));
   }
-  await expect(
-    [...work.values()][0]?.save?.(new AbortController().signal),
-  ).rejects.toThrow("Unavailable");
+  expect([...work.values()][0]?.save).toBeUndefined();
   expect(invoke).not.toHaveBeenCalled();
 });
 
 it("authorizes each exact action independently with current requested parameters", async () => {
   const observer = observeControlActions();
   const { props, rerender, invoke } = setup();
-  rerender(<SessionControls {...props} watchActions={observer.watchActions} />);
+  rerender(
+    <SessionControls
+      waitForOperation={async (value) => value}
+      {...props}
+      watchActions={observer.watchActions}
+    />,
+  );
   fireEvent.change(screen.getByLabelText("Baud rate"), {
     target: { value: "57600" },
   });
@@ -399,7 +568,11 @@ it.each([
     const observer = observeControlActions();
     const { props, rerender, invoke } = setup();
     rerender(
-      <SessionControls {...props} watchActions={observer.watchActions} />,
+      <SessionControls
+        waitForOperation={async (value) => value}
+        {...props}
+        watchActions={observer.watchActions}
+      />,
     );
     fireEvent.change(screen.getByLabelText("Baud rate"), {
       target: { value: "230400" },
@@ -438,7 +611,7 @@ it("isolates old target and epoch callbacks and disposes StrictMode observations
   };
   const view = render(
     <StrictMode>
-      <SessionControls {...props} />
+      <SessionControls waitForOperation={async (value) => value} {...props} />
     </StrictMode>,
   );
   expect(observer.subscriptions.filter((item) => !item.stopped)).toHaveLength(
@@ -450,6 +623,7 @@ it("isolates old target and epoch callbacks and disposes StrictMode observations
   view.rerender(
     <StrictMode>
       <SessionControls
+        waitForOperation={async (value) => value}
         {...props}
         target={{ ...target, hostId: "other-host" }}
       />
@@ -463,6 +637,7 @@ it("isolates old target and epoch callbacks and disposes StrictMode observations
   view.rerender(
     <StrictMode>
       <SessionControls
+        waitForOperation={async (value) => value}
         {...props}
         session={{ ...session(), sessionEpoch: "2", revision: "7" }}
         target={{ ...target, sessionEpoch: "2" }}
@@ -492,7 +667,13 @@ it("clears previous availability when the catalog-filtered watcher changes", () 
   const { props, rerender, invoke } = setup();
   expect(screen.getByRole("button", { name: "DTR on" })).toBeEnabled();
   const observer = observeControlActions();
-  rerender(<SessionControls {...props} watchActions={observer.watchActions} />);
+  rerender(
+    <SessionControls
+      waitForOperation={async (value) => value}
+      {...props}
+      watchActions={observer.watchActions}
+    />,
+  );
   expect(screen.getByRole("button", { name: "DTR on" })).toBeDisabled();
   fireEvent.click(screen.getByRole("button", { name: "DTR on" }));
   expect(invoke).not.toHaveBeenCalled();
@@ -511,6 +692,7 @@ it("samples actual modem inputs on opening the controls", async () => {
   });
   render(
     <SessionControls
+      waitForOperation={async (value) => value}
       session={session()}
       target={target}
       operations={[]}
@@ -553,6 +735,7 @@ it("polls inputs every 500ms with manual refresh, one inflight read, and unmount
       });
     const view = render(
       <SessionControls
+        waitForOperation={async (value) => value}
         session={session()}
         target={target}
         operations={[]}
@@ -630,7 +813,13 @@ it("clears old input booleans on an unsupported result and retries only after ep
       watchActions: allowControlActions,
       readInputs,
     };
-    const view = render(<SessionControls {...props} session={session()} />);
+    const view = render(
+      <SessionControls
+        waitForOperation={async (value) => value}
+        {...props}
+        session={session()}
+      />,
+    );
     await act(async () => {});
     expect(screen.getByText("sample-time")).toBeInTheDocument();
     await act(async () => {
@@ -646,6 +835,7 @@ it("clears old input booleans on an unsupported result and retries only after ep
     expect(readInputs).toHaveBeenCalledTimes(2);
     view.rerender(
       <SessionControls
+        waitForOperation={async (value) => value}
         {...props}
         session={{ ...session(), sessionEpoch: "2" }}
         target={{ ...target, sessionEpoch: "2" }}
@@ -693,10 +883,17 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
     watchActions: allowControlActions,
     readInputs,
   };
-  const view = render(<SessionControls {...props} session={session()} />);
+  const view = render(
+    <SessionControls
+      waitForOperation={async (value) => value}
+      {...props}
+      session={session()}
+    />,
+  );
   await waitFor(() => expect(readInputs).toHaveBeenCalledOnce());
   view.rerender(
     <SessionControls
+      waitForOperation={async (value) => value}
       {...props}
       session={{ ...session(), sessionEpoch: "2" }}
       target={{ ...target, sessionEpoch: "2" }}
@@ -708,6 +905,7 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
   expect(screen.queryByText("old-sample")).not.toBeInTheDocument();
   view.rerender(
     <SessionControls
+      waitForOperation={async (value) => value}
       {...props}
       session={{ ...session(), sessionEpoch: "2", state: "disconnected" }}
       target={{ ...target, sessionEpoch: "2" }}

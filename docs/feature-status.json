@@ -3659,7 +3659,7 @@
     {
       "id": "FUT-08",
       "scope": "included",
-      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：本轮浏览器作为独立 Host 的共享 GUI 客户端；零安装 Web Serial 为后续专项。",
+      "scopeNote": "[矩阵范围决定](./requirements.md#本轮范围决定)：本轮浏览器作为独立 Host 的共享 GUI 客户端；零安装 Web Serial 为后续专项。",
       "software": {
         "status": "not-started",
         "evidence": []
@@ -3693,7 +3693,7 @@
     {
       "id": "FUT-10",
       "scope": "excluded",
-      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：本轮排除移动端；原编号保留。",
+      "scopeNote": "[矩阵范围决定](./requirements.md#本轮范围决定)：本轮排除移动端；原编号保留。",
       "software": {
         "status": "not-applicable",
         "evidence": []
@@ -3727,7 +3727,7 @@
     {
       "id": "CONN-19",
       "scope": "excluded",
-      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：随 FUT-10 排除移动端连接生命周期。",
+      "scopeNote": "[矩阵范围决定](./requirements.md#本轮范围决定)：随 FUT-10 排除移动端连接生命周期。",
       "software": {
         "status": "not-applicable",
         "evidence": []
@@ -3965,7 +3965,7 @@
     {
       "id": "NET-13",
       "scope": "deferred",
-      "scopeNote": "[矩阵范围决定](../specs/2026-11-07-serial-workbench-feature-matrix.md#本轮范围决定)：浏览器逐站点设备授权随零安装 Web Serial 后续专项。",
+      "scopeNote": "[矩阵范围决定](./requirements.md#本轮范围决定)：浏览器逐站点设备授权随零安装 Web Serial 后续专项。",
       "software": {
         "status": "not-applicable",
         "evidence": []

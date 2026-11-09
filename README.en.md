@@ -1,14 +1,14 @@
 # Serial Workbench
 
-Serial Workbench (`serial-workbench`) is a cross-platform serial port workbench for embedded development and device debugging, built with Tauri 2, Rust, React 19 and TypeScript. The desktop workbench provides connection management, text and HEX communication, recording and read-only replay, file transmission, and explicitly saved workspace layouts. An independent Rust Host manages system serial ports, PTYs, Virtual devices, local IPC, CLI access and the official MCP SDK. See the [product scope](./docs/product-scope.md) for validation coverage and future milestones.
+A cross-platform serial workbench built with Tauri, Rust, React and TypeScript. An independent Rust Host owns devices, sessions, captures and shared state; the desktop UI, CLI and MCP adapter use the same backend.
 
-Developers exploring serial tools such as Serial Studio (`serial-studio`) can review the [product scope](./docs/product-scope.md) for the current capabilities and development stage.
+The current workbench includes Text/HEX I/O, file sending, capture, read-only replay and workspaces. M1b remains incomplete; see [development status](./docs/progress.md) for known issues and validation scope. Node extensions, browser connections and LAN sharing belong to later milestones.
 
-[中文](./README.md) · [Documentation](./docs/README.md) · [Contributing](./CONTRIBUTING.md) · [Security](./SECURITY.md)
+[中文](./README.md) · [Engineering docs](./docs/README.md) · [Requirements](./docs/requirements.md) · [Contributing](./CONTRIBUTING.md)
 
 ## Run from source
 
-Use the versions in [`.nvmrc`](./.nvmrc), [`package.json`](./package.json) and [`rust-toolchain.toml`](./rust-toolchain.toml). Install platform prerequisites from the [development guide](./docs/development.md#环境要求).
+Use the versions in [package.json](./package.json), [.nvmrc](./.nvmrc) and [rust-toolchain.toml](./rust-toolchain.toml). Install the [platform prerequisites](./docs/development.md#环境与启动), then run from the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -17,25 +17,14 @@ pnpm doctor
 pnpm app:dev
 ```
 
-For a browser preview, run `pnpm dev` and open `http://localhost:1420`. Browser and desktop builds share the React source and HashRouter. System services require the desktop app. `node scripts/doctor.mjs` also works before dependencies are installed.
+`pnpm dev` starts the browser preview; system capabilities require the desktop environment. Without npm dependencies, run `node scripts/doctor.mjs` for diagnostics.
 
-## Verify and build
+## Development
 
-```sh
-pnpm verify
-pnpm test:ui
-pnpm app:build
-pnpm app:portable
-```
+Read [architecture](./docs/architecture.md), [conventions](./docs/conventions.md), [development](./docs/development.md) and [testing](./docs/testing.md). Use [the plan](./docs/plan.md) and [status](./docs/progress.md) to identify current work.
 
-Choose checks for the changed behavior using the [testing guide](./docs/testing.md#日常验证范围).
+`pnpm app:build` creates installers; on Windows, `pnpm app:portable` creates portable files. Outputs are archived under `artifacts/<version>/<target-triple>/`. Signing, updates and public release remain unconfigured; see [build and release](./docs/development.md#构建与发布).
 
-Installers and Windows portable distributions are archived under `artifacts/<version>/<target-triple>/` with SHA-256 manifests. Portable builds use the current user's data directories and require WebView2. See [build and release](./docs/build-release.md) for signing and distribution requirements.
+## License and security
 
-Application identity is maintained in [app.config.json](./app.config.json). Daily contribution follows short-lived branches from `main`, pull requests and squash merge. The Chinese [documentation index](./docs/README.md) provides the detailed engineering reference.
-
-## License
-
-This project is licensed under the [Apache License 2.0](./LICENSE). See [NOTICE](./NOTICE) for copyright information. Third-party components retain their own licenses.
-
-[Code signing policy](./docs/code-signing-policy.md)
+Licensed under [Apache-2.0](./LICENSE), with attribution in [NOTICE](./NOTICE). Follow [SECURITY.md](./SECURITY.md) for private vulnerability reports and [AGENTS.md](./AGENTS.md) for coding-agent instructions.

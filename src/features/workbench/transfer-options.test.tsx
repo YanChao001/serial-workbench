@@ -156,7 +156,7 @@ it("registers edited parameters as unsaved work and saving options never submits
     target: { value: "2500" },
   });
   expect(work?.dirty).toBe(true);
-  await act(async () => work?.save());
+  await act(async () => work!.save!());
   expect(save).toHaveBeenCalledWith(
     expect.objectContaining({ bytesPerSecond: "2500" }),
     undefined,

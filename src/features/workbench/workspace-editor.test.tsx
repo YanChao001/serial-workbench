@@ -311,7 +311,7 @@ it("releases a cancelled lifecycle save without losing the edited draft", async 
   const controller = new AbortController();
   let saving!: Promise<void>;
   act(() => {
-    saving = work!.save(controller.signal);
+    saving = work!.save!(controller.signal);
   });
   controller.abort();
   await act(async () => {
@@ -775,7 +775,7 @@ it("keeps lifecycle navigation pending when new edits arrive during its save", a
   });
   let saving!: Promise<void>;
   act(() => {
-    saving = work!.save(new AbortController().signal);
+    saving = work!.save!(new AbortController().signal);
   });
   fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
     target: { value: "Still unsaved" },

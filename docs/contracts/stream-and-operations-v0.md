@@ -1,6 +1,6 @@
 # 流与操作 v0
 
-本文是 M0 规范，使用 [Host v0](./host-v0.md) 的 U64、Target、ObjectRef、Call、Query、Operation 与错误信封。所有新增字段遵守其编码规则；本文的范围/序号均是十进制字符串，区间统一左闭右开 `[start,end)`。
+本文使用 [Host v0](./host-v0.md) 的 U64、Target、ObjectRef、Call、Query、Operation 与错误信封。所有新增字段遵守其编码规则；本文的范围/序号均是十进制字符串，区间统一左闭右开 `[start,end)`。
 
 ## 会话与租约
 

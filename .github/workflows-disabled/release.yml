@@ -133,7 +133,7 @@ jobs:
 
       # PFX 链路只用于仍有效、允许导出的证书（例如内部信任签名）。
       # 公共代码签名按服务商硬件 / 托管方案配置 bundle.windows.signCommand，
-      # 接入方式见 docs/build-release.md。
+      # 接入方式见 docs/development.md。
       - name: 导入 Windows 代码签名证书
         if: matrix.platform == 'windows-latest'
         shell: pwsh
@@ -208,7 +208,7 @@ jobs:
           fi
 
       # 未配置签名时产物可用，但用户会看到"未知发布者"（Windows）或无法通过公证（macOS）。
-      # 需要的 secrets 见 docs/build-release.md 的「代码签名」一节：
+      # 需要的 secrets 见 docs/development.md 的「签名与更新」一节：
       #   WINDOWS_CERTIFICATE / WINDOWS_CERTIFICATE_PASSWORD（Windows PFX，base64）
       #   APPLE_CERTIFICATE / APPLE_CERTIFICATE_PASSWORD / APPLE_SIGNING_IDENTITY /
       #   APPLE_ID / APPLE_PASSWORD / APPLE_TEAM_ID（macOS 公证）
@@ -343,7 +343,7 @@ jobs:
           if-no-files-found: error
 
   # 可选：SignPath Foundation（开源免费签名）。未配置仓库变量时整个 job 跳过，
-  # 不影响现有发布流程。申请与配置步骤见 docs/build-release.md 的「SignPath Foundation」。
+  # 不影响现有发布流程。申请与配置步骤见 docs/development.md 的「签名与更新」。
   # 与上面的 PFX 链路二选一：同时配置会在构建前报错。
   # 仓库变量：SIGNPATH_ORGANIZATION_ID / SIGNPATH_PROJECT_SLUG /
   #            SIGNPATH_SIGNING_POLICY_SLUG / SIGNPATH_ARTIFACT_CONFIGURATION_SLUG

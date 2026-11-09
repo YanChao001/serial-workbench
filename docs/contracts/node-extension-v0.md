@@ -1,7 +1,7 @@
 # Node 扩展合同 v0
 
 - 状态：M0 设计合同；正式离线加载、后台和 Web UI SDK 在 M2 实现，M3 参考场景通过后冻结 v1。
-- 依据：[重构设计](../superpowers/specs/2026-11-07-serial-workbench-design.md)、[功能矩阵](../superpowers/specs/2026-11-07-serial-workbench-feature-matrix.md)、[ADR 0027](../adr/0027-shared-host-and-node-extensions.md)。
+- 依据：[架构取舍](../architecture.md#关键取舍)与[产品需求](../requirements.md)。
 - 分发运行时的精确版本、四目标来源、完整性与固定启动位置只在 [runtime 分发基线](./runtime-distribution.md) 维护。
 
 本合同定义可信 Node 插件的正式包、后台、Web UI 与授权边界。

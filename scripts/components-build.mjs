@@ -1,5 +1,11 @@
 ﻿import { execFileSync } from "node:child_process";
-import { copyFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
+import {
+  copyFileSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  realpathSync,
+} from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import { fileSha256 } from "./artifact-lib.mjs";
 
@@ -144,11 +150,16 @@ export async function buildComponents(
   }
   if (paths.size !== COMPONENTS.length)
     throw new Error("Cargo did not report all component executables");
-  const dirs = new Set([...paths.values()].map(dirname));
+  const dirs = new Set(
+    [...paths.values()].map((path) => realpathSync(dirname(path))),
+  );
   if (dirs.size !== 1)
     throw new Error("Cargo components do not share an output directory");
   const outputDir = [...dirs][0];
-  const offset = relative(plan.metadata.target_directory, outputDir);
+  const offset = relative(
+    realpathSync(plan.metadata.target_directory),
+    outputDir,
+  );
   const parts = offset.split(sep);
   if (
     isAbsolute(offset) ||

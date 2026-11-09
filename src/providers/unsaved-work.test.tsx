@@ -80,6 +80,76 @@ describe("unsaved work lifecycle", () => {
     );
   });
   afterEach(cleanup);
+  it("offers cancellation or explicit discard for a local draft and awaits discard before leaving", async () => {
+    const removal = deferred();
+    const discard = vi.fn(() => removal.promise);
+    const result = vi.fn();
+    render(
+      <UnsavedWorkProvider>
+        <CloseTool scope="connection" onResult={result} />
+        <UnsavedWorkScope scope="connection">
+          <Work
+            work={{
+              id: "parameters",
+              label: "Parameters",
+              dirty: true,
+              discard,
+            }}
+          />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>,
+    );
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    expect(
+      screen.queryByRole("button", { name: "Save and continue" }),
+    ).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Cancel" }));
+    await waitFor(() => expect(result).toHaveBeenCalledWith(false));
+    expect(discard).not.toHaveBeenCalled();
+    result.mockClear();
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard and continue" }),
+    );
+    expect(discard).toHaveBeenCalledOnce();
+    expect(result).not.toHaveBeenCalled();
+    await act(async () => removal.resolve());
+    await waitFor(() => expect(result).toHaveBeenCalledWith(true));
+  });
+  it("updates save availability when a dirty draft changes its persistence capability", async () => {
+    const save = vi.fn(async () => {});
+    const result = vi.fn();
+    const work: UnsavedWork = {
+      id: "editor",
+      label: "Editor",
+      dirty: true,
+      save,
+      discard: () => {},
+    };
+    const tree = (value: UnsavedWork) => (
+      <UnsavedWorkProvider>
+        <CloseTool scope="editor" onResult={result} />
+        <UnsavedWorkScope scope="editor">
+          <Work work={value} />
+        </UnsavedWorkScope>
+      </UnsavedWorkProvider>
+    );
+    const view = render(tree(work));
+    fireEvent.click(screen.getByRole("button", { name: "Close tool" }));
+    expect(
+      screen.getByRole("button", { name: "Save and continue" }),
+    ).toBeEnabled();
+    view.rerender(tree({ ...work, save: undefined }));
+    expect(
+      screen.queryByRole("button", { name: "Save and continue" }),
+    ).not.toBeInTheDocument();
+    expect(save).not.toHaveBeenCalled();
+    expect(result).not.toHaveBeenCalled();
+    view.rerender(tree(work));
+    fireEvent.click(screen.getByRole("button", { name: "Save and continue" }));
+    await waitFor(() => expect(result).toHaveBeenCalledWith(true));
+    expect(save).toHaveBeenCalledOnce();
+  });
   it("settles only the requested scope and leaves other work registered", async () => {
     const saved: string[] = [];
     const result = vi.fn();

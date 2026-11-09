@@ -358,31 +358,65 @@ async function establishedProvider() {
   };
 }
 
-it("retires a startup-failed attachment so a late old projection cannot restore ready", async () => {
-  const established = await establishedProvider();
-  const failure = new HostRequestError({
-    code: "HOST_START_FAILED",
-    message:
-      "cargo run --secret=EXPLICIT_FIXTURE_SECRET C:/private/fixture-user",
-    retryable: true,
-  });
-  const dispose = vi.spyOn(established.connection, "dispose");
-  vi.spyOn(established.connection.client, "query").mockRejectedValueOnce(
-    failure,
-  );
-  await act(async () => {
-    await expect(established.current().refresh()).rejects.toBe(failure);
-  });
-  expect(established.current().state.status).toBe("error");
-  act(established.lateProjection);
-  expect(established.current().state.status).toBe("error");
-  expect(established.current().state.error).toBe(failure);
-  expect(established.current().connection).toBeUndefined();
-  expect(dispose).toHaveBeenCalledOnce();
-  expect(established.stop).toHaveBeenCalledOnce();
-  expect(established.connect).toHaveBeenCalledOnce();
-  established.view.unmount();
-});
+it.each(["HOST_START_FAILED", "UNAUTHENTICATED", "EPOCH_MISMATCH"])(
+  "retires a %s attachment and restores reads only after explicit Retry",
+  async (code) => {
+    const established = await establishedProvider();
+    const failure = new HostRequestError({
+      code,
+      message:
+        "cargo run --secret=EXPLICIT_FIXTURE_SECRET C:/private/fixture-user",
+      retryable: true,
+    });
+    const dispose = vi.spyOn(established.connection, "dispose");
+    vi.spyOn(established.connection.client, "query").mockRejectedValueOnce(
+      failure,
+    );
+    await act(async () => {
+      await expect(established.current().refresh()).rejects.toBe(failure);
+    });
+    expect(established.current().state.status).toBe("error");
+    act(established.lateProjection);
+    expect(established.current().state.status).toBe("error");
+    expect(established.current().state.error).toBe(failure);
+    expect(established.current().connection).toBeUndefined();
+    expect(dispose).toHaveBeenCalledOnce();
+    expect(established.stop).toHaveBeenCalledOnce();
+    expect(established.connect).toHaveBeenCalledOnce();
+    const native = port();
+    const old = await native.attachment();
+    native.attachment.mockResolvedValue({
+      ...old,
+      generation: "2",
+      attachment: { ...old.attachment, instanceEpoch: "8" },
+    });
+    const replacement = await createHostConnection(native);
+    established.connect.mockResolvedValue(replacement);
+    await act(async () => {
+      await established.current().refresh();
+    });
+    expect(established.current().state.status).toBe("ready");
+    expect(established.current().connection?.generation).toBe("2");
+    expect(established.current().connection?.attachment.instanceEpoch).toBe(
+      "8",
+    );
+    act(established.lateProjection);
+    expect(established.current().state.status).toBe("ready");
+    expect(
+      native.request.mock.calls.some(
+        ([request]) =>
+          request.method === "action.query" &&
+          request.params.instanceEpoch === "8",
+      ),
+    ).toBe(true);
+    expect(
+      native.request.mock.calls.every(
+        ([request]) => request.method !== "action.invoke",
+      ),
+    ).toBe(true);
+    established.view.unmount();
+  },
+);
 
 it("keeps an established attachment ready after an ordinary refresh query permission failure", async () => {
   const established = await establishedProvider();

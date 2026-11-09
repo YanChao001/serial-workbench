@@ -107,7 +107,9 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
     if (
       (!previous && work.dirty) ||
       previous?.dirty !== work.dirty ||
-      (work.dirty && previous?.label !== work.label)
+      (work.dirty &&
+        (previous?.label !== work.label ||
+          Boolean(previous?.save) !== Boolean(work.save)))
     )
       setRevision((v) => v + 1);
   }, []);
@@ -282,6 +284,13 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
         }
         return;
       }
+      if (
+        choice === "save" &&
+        [...items.current.values()].some(
+          (entry) => belongsTo(entry, request) && !entry.work.save,
+        )
+      )
+        return;
       const controller = new AbortController();
       operation.current = controller;
       setBusy(true);
@@ -293,7 +302,7 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
           const { work } = entry;
           // A callback may register a newer edit while an earlier save is pending.
           if (items.current.get(work.id)?.work !== work) continue;
-          if (choice === "save") await work.save(controller.signal);
+          if (choice === "save") await work.save?.(controller.signal);
           else await work.discard(controller.signal);
           controller.signal.throwIfAborted();
           if (items.current.get(work.id)?.work === work)
@@ -441,12 +450,17 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
             >
               {t("lifecycle.discard")}
             </Button>
-            <Button
-              disabled={busy || waiting}
-              onClick={() => void answer("save")}
-            >
-              {busy ? t("lifecycle.saving") : t("lifecycle.save")}
-            </Button>
+            {![...items.current.values()].some(
+              (entry) =>
+                request && belongsTo(entry, request) && !entry.work.save,
+            ) && (
+              <Button
+                disabled={busy || waiting}
+                onClick={() => void answer("save")}
+              >
+                {busy ? t("lifecycle.saving") : t("lifecycle.save")}
+              </Button>
+            )}
           </DialogFooter>
         </DialogContent>
       </Dialog>

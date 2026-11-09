@@ -5,12 +5,130 @@ import {
   writeFileSync,
   readFileSync,
   rmSync,
+  symlinkSync,
+  realpathSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import * as components from "./components-build.mjs";
+import { buildApplication } from "./build-lib.mjs";
+
+test("desktop and all components accept equivalent real Cargo paths but reject different directories", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "components-path-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const target = "x86_64-pc-windows-msvc";
+  const targetDir = join(root, "target");
+  const output = join(targetDir, target, "release");
+  mkdirSync(output, { recursive: true });
+  const alias = join(root, "target-alias");
+  symlinkSync(
+    targetDir,
+    alias,
+    process.platform === "win32" ? "junction" : "dir",
+  );
+  const messages = components.COMPONENTS.map((name, index) => {
+    const bytes = pe();
+    bytes[100] = index;
+    writeFileSync(join(output, `${name}.exe`), bytes);
+    return JSON.stringify({
+      reason: "compiler-artifact",
+      target: { name, kind: ["bin"] },
+      executable: join(
+        index % 2 ? targetDir : alias,
+        target,
+        "release",
+        `${name}.exe`,
+      ),
+    });
+  }).join("\n");
+  const desktop = join(output, "desktop.exe");
+  writeFileSync(desktop, "desktop");
+  const plan = {
+    root,
+    env: {},
+    host: target,
+    target,
+    explicitTarget: target,
+    platform: "windows",
+    version: "1.2.3",
+    optimize: "size",
+    metadata: { target_directory: alias },
+    package: { id: "app" },
+    binary: { name: "desktop" },
+    config: {},
+    buildArgs: ["--no-bundle", "--"],
+    bundleArgs: [],
+  };
+  let receipt;
+  const built = await buildApplication(plan, {
+    buildComponents: async (current) => {
+      receipt = await components.buildComponents(current, {
+        run: async () => messages,
+      });
+      return receipt;
+    },
+    runTauri: async () => [desktop],
+  });
+  assert.equal(built.outputDir, realpathSync(output));
+  for (const component of receipt.manifest.components)
+    assert.equal(
+      component.sha256,
+      createHash("sha256")
+        .update(readFileSync(join(output, component.path)))
+        .digest("hex"),
+    );
+  const other = join(targetDir, "release");
+  mkdirSync(other);
+  const different = join(other, "desktop.exe");
+  writeFileSync(different, "desktop");
+  await assert.rejects(
+    buildApplication(
+      { ...plan, explicitTarget: undefined },
+      {
+        buildComponents: async () => receipt,
+        runTauri: async () => [different],
+      },
+    ),
+    /Desktop and component Cargo outputs do not match/,
+  );
+});
+
+test("canonical component paths still reject another target, profile and metadata boundary", async (t) => {
+  const root = mkdtempSync(join(tmpdir(), "components-boundary-"));
+  t.after(() => rmSync(root, { recursive: true, force: true }));
+  const targetDir = join(root, "target");
+  mkdirSync(targetDir);
+  for (const suffix of [
+    ["x86_64-pc-windows-msvc", "debug"],
+    ["aarch64-pc-windows-msvc", "release"],
+    ["..", "outside", "release"],
+  ]) {
+    const output = join(targetDir, ...suffix);
+    mkdirSync(output, { recursive: true });
+    const messages = components.COMPONENTS.map((name) => {
+      const executable = join(output, `${name}.exe`);
+      writeFileSync(executable, pe());
+      return JSON.stringify({
+        reason: "compiler-artifact",
+        target: { name, kind: ["bin"] },
+        executable,
+      });
+    }).join("\n");
+    await assert.rejects(
+      components.buildComponents(
+        {
+          root,
+          explicitTarget: "x86_64-pc-windows-msvc",
+          metadata: { target_directory: targetDir },
+        },
+        { run: async () => messages },
+      ),
+      /output directory|target differs/,
+    );
+  }
+});
 
 function pe(machine = 0x8664) {
   const data = Buffer.alloc(128);
