@@ -19,8 +19,36 @@ import {
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { stateScopeKey } from "@/lib/host-scope";
 import { diffWorkspaceImport } from "./workspace-import";
+import {
+  SerialConfigurationFields,
+  type SerialConfigurationLabels,
+} from "./serial-configuration-fields";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
+import { nativeErrorCode } from "@/lib/native-error";
+import {
+  RotateCw,
+  Undo2,
+  FileDown,
+  FileUp,
+  Info,
+  FolderOpen,
+} from "lucide-react";
+import { WorkbenchIconButton } from "./workbench-icon-button";
 
 export type WorkspaceEditorLabels = {
+  configurationLabels: SerialConfigurationLabels;
+  defaultIcon: string;
+  defaultWorkspaceName: string;
+  details: string;
+  chooseImportFile: string;
+  emptyImportFile: string;
+  enteredImportContent: string;
+  failure: (code: string) => string;
   title: string;
   workspaceName: string;
   viewName: string;
@@ -79,6 +107,7 @@ export type WorkspaceEditorProps = {
   value?: WorkspaceDocument;
   selectedViewId?: string;
   disabled?: boolean;
+  maxImportBytes?: string;
   labels: WorkspaceEditorLabels;
   onChange?: (value: WorkspaceDocument) => void;
   onSelectView?: (viewId: string) => void;
@@ -134,6 +163,7 @@ function WorkspaceEditorDraft({
   value,
   selectedViewId,
   disabled = false,
+  maxImportBytes = "1048576",
   labels,
   onChange,
   onSelectView,
@@ -150,9 +180,13 @@ function WorkspaceEditorDraft({
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [eventKey, setEventKey] = useState<string>();
+  const [failureIndex, setFailureIndex] = useState(0);
   const [saved, setSaved] = useState(false);
   const [importOpen, setImportOpen] = useState(false);
   const [importJson, setImportJson] = useState("");
+  const [importFileName, setImportFileName] = useState<string>();
+  const importFileControl = useRef<HTMLInputElement | null>(null);
   const [candidate, setCandidate] = useState<WorkspaceDocument>();
   const importGeneration = useRef(0);
   const importPending = useRef(false);
@@ -184,6 +218,7 @@ function WorkspaceEditorDraft({
   async function request<T>(
     action: (signal: AbortSignal) => Promise<T>,
     signal?: AbortSignal,
+    dedupeOperationFailure = false,
   ) {
     signal?.throwIfAborted();
     if (pending.current) throw new Error(labels.unavailable);
@@ -200,6 +235,7 @@ function WorkspaceEditorDraft({
     pending.current = controller;
     setBusy(true);
     setError(undefined);
+    setEventKey(undefined);
     setSaved(false);
     try {
       const result = await action(controller.signal);
@@ -207,19 +243,11 @@ function WorkspaceEditorDraft({
       return result;
     } catch (reason) {
       if (!controller.signal.aborted) {
-        const code =
-          typeof reason === "object" && reason !== null && "code" in reason
-            ? reason.code
-            : undefined;
-        const message =
-          reason instanceof Error
-            ? reason.message
-            : typeof reason === "object" &&
-                reason !== null &&
-                "message" in reason
-              ? String(reason.message)
-              : String(reason);
-        setError(code === "REVISION_CONFLICT" ? labels.conflict : message);
+        setError(nativeErrorCode(reason) ?? "OPERATION_FAILED");
+        setEventKey(
+          dedupeOperationFailure ? operationFailureEventKey(reason) : undefined,
+        );
+        setFailureIndex((value) => value + 1);
       }
       throw reason;
     } finally {
@@ -237,6 +265,7 @@ function WorkspaceEditorDraft({
     const result = await request(
       (nextSignal) => onSave(original, snapshot, nextSignal),
       signal,
+      true,
     );
     setOriginal(result);
     const unchanged =
@@ -268,11 +297,13 @@ function WorkspaceEditorDraft({
   function changeImportJson(json: string) {
     invalidateImport();
     setImportJson(json);
+    setImportFileName(undefined);
   }
   function cancelImport() {
     invalidateImport();
     setImportOpen(false);
     setImportJson("");
+    setImportFileName(undefined);
   }
   async function previewImport() {
     if (!onPreviewImport || disabled) return;
@@ -290,32 +321,61 @@ function WorkspaceEditorDraft({
   }
   async function readImportFile(file: File) {
     invalidateImport();
+    setImportJson("");
+    setImportFileName(file.name);
     const generation = importGeneration.current;
     importPending.current = true;
     try {
-      const json = await request(() => file.text());
+      const json = await request(() => {
+        if (BigInt(file.size) > BigInt(maxImportBytes))
+          throw { code: "MESSAGE_TOO_LARGE" };
+        return file.text();
+      });
       if (generation === importGeneration.current) setImportJson(json);
     } finally {
       if (generation === importGeneration.current)
         importPending.current = false;
     }
   }
-  async function applyImport() {
+  async function applyImport(signal?: AbortSignal) {
     if (!onSave || !candidate || disabled) return;
     const snapshot = latest.current;
     const imported = candidate;
-    const result = await request((signal) =>
-      onSave(original, imported, signal),
+    const generation = importGeneration.current;
+    const result = await request(
+      (requestSignal) => onSave(original, imported, requestSignal),
+      signal,
+      true,
     );
     setOriginal(result);
-    if (JSON.stringify(latest.current) === JSON.stringify(snapshot))
-      change(result.document.value);
-    setSaved(JSON.stringify(latest.current) === JSON.stringify(snapshot));
-    setCandidate(undefined);
-    setImportOpen(false);
+    const unchanged =
+      JSON.stringify(latest.current) === JSON.stringify(snapshot);
+    if (unchanged) change(result.document.value);
+    const sourceUnchanged = generation === importGeneration.current;
+    setSaved(unchanged && sourceUnchanged);
+    if (sourceUnchanged) {
+      setCandidate(undefined);
+      setImportOpen(false);
+      setImportJson("");
+      setImportFileName(undefined);
+    }
     onAcknowledged?.(result);
+    if (signal && (!unchanged || !sourceUnchanged))
+      throw new Error(labels.editedWhileSaving ?? "New changes need saving");
   }
   const importChanges = candidate ? diffWorkspaceImport(draft, candidate) : [];
+  function changeName(item: (typeof importChanges)[number]) {
+    if (item.key === "$order") return labels.order ?? "Order";
+    for (const value of [item.after, item.before])
+      if (
+        typeof value === "object" &&
+        value !== null &&
+        "name" in value &&
+        typeof value.name === "string"
+      )
+        return value.name;
+    return "";
+  }
   const sectionLabels = {
     name: labels.workspaceName,
     views: labels.views ?? labels.viewName,
@@ -330,10 +390,18 @@ function WorkspaceEditorDraft({
   }
   useUnsavedWork({
     id: `workspace-configuration-${base.scope.scopeId}`,
-    label: labels.title,
-    dirty,
-    save,
-    discard,
+    label: importOpen && importJson ? labels.import : labels.title,
+    dirty: dirty || Boolean(importOpen && importJson),
+    save:
+      importOpen && importJson
+        ? candidate && onSave
+          ? applyImport
+          : undefined
+        : save,
+    discard: () => {
+      discard();
+      cancelImport();
+    },
   });
   function editView(patch: Partial<WorkspaceView>) {
     if (view)
@@ -383,7 +451,11 @@ function WorkspaceEditorDraft({
                 ? labels.text
                 : item === "hex"
                   ? labels.hex
-                  : item}
+                  : label === labels.binding
+                    ? (draft.views.find((view) => view.bindingId === item)
+                        ?.name ??
+                      `${labels.binding} ${draft.bindings.findIndex((binding) => binding.bindingId === item) + 1}`)
+                    : item}
             </SelectItem>
           ))}
         </SelectContent>
@@ -394,387 +466,394 @@ function WorkspaceEditorDraft({
     <section
       aria-label={labels.title}
       aria-busy={busy}
-      className="grid gap-3 p-3"
+      className="workbench-workspace-editor"
     >
-      <h2 className="text-sm font-medium">{labels.title}</h2>
-      <fieldset disabled={disabled} className="grid min-w-0 gap-3">
-        <label className="grid gap-1 text-sm">
-          {labels.workspaceName}
-          <Input
-            value={draft.name}
-            onChange={(event) => change({ ...draft, name: event.target.value })}
-          />
-        </label>
-        {draft.views.length > 0 && (
+      <h2 className="sr-only">{labels.title}</h2>
+      <div className="workbench-workspace-content app-scroll-region">
+        <fieldset
+          disabled={disabled}
+          hidden={importOpen}
+          className="workbench-workspace-fields"
+        >
           <label className="grid gap-1 text-sm">
-            {labels.views ?? labels.viewName}
-            <Select
-              value={view?.id ?? ""}
-              onValueChange={(viewId) => {
-                setLocalSelection(viewId);
-                onSelectView?.(viewId);
-              }}
-              disabled={locked}
-            >
-              <SelectTrigger aria-label={labels.views ?? labels.viewName}>
-                <SelectValue />
-              </SelectTrigger>
-              <SelectContent>
-                {draft.views.map((item) => (
-                  <SelectItem key={item.id} value={item.id}>
-                    {item.name}
-                  </SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
+            {labels.workspaceName}
+            <Input
+              value={draft.name}
+              placeholder={labels.defaultWorkspaceName}
+              onChange={(event) =>
+                change({ ...draft, name: event.target.value })
+              }
+            />
           </label>
-        )}
-        {view ? (
-          <>
-            <div className="grid gap-3 sm:grid-cols-2">
-              <label className="grid gap-1 text-sm">
-                {labels.viewName}
-                <Input
-                  value={view.name}
-                  onChange={(event) => editView({ name: event.target.value })}
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                {labels.color}
-                <Input
-                  value={view.color}
-                  onChange={(event) => editView({ color: event.target.value })}
-                />
-              </label>
-              <label className="grid gap-1 text-sm">
-                {labels.icon}
-                <Input
-                  value={view.icon}
-                  onChange={(event) => editView({ icon: event.target.value })}
-                />
-              </label>
-              <label
-                htmlFor={`${id}-pinned`}
-                className="flex items-center gap-2 text-sm"
-              >
-                <Checkbox
-                  id={`${id}-pinned`}
-                  checked={view.pinned}
-                  onCheckedChange={(checked) =>
-                    editView({ pinned: checked === true })
-                  }
-                  disabled={locked}
-                />
-                {labels.pinned}
-              </label>
-              {choice(
-                labels.receiveMode,
-                view.receiveMode,
-                ["text", "hex"],
-                (mode) => {
-                  if (mode === "text" || mode === "hex")
-                    editView({ receiveMode: mode });
-                },
-              )}
-              {choice(
-                labels.sendMode,
-                view.sendMode,
-                ["text", "hex"],
-                (mode) => {
-                  if (mode === "text" || mode === "hex")
-                    editView({ sendMode: mode });
-                },
-              )}
-              {choice(
-                labels.binding,
-                view.bindingId,
-                draft.bindings.map((item) => item.bindingId),
-                (bindingId) => editView({ bindingId }),
-              )}
-            </div>
-            <Button
-              variant="outline"
-              size="sm"
-              disabled={!binding || locked}
-              onClick={clone}
-            >
-              {labels.clone}
-            </Button>
-          </>
-        ) : (
-          <p className="text-sm text-muted-foreground">{labels.noView}</p>
-        )}
-        {binding && (
-          <fieldset className="grid gap-3 sm:grid-cols-2">
-            <legend className="text-sm font-medium">
-              {labels.configuration}
-            </legend>
-            {(
-              [
-                "baudRate",
-                "readWaitMs",
-                "writeWaitMs",
-                "reconnectBackoffMs",
-              ] as const
-            ).map((key) => (
-              <label key={key} className="grid gap-1 text-sm">
-                {labels[key]}
-                <Input
-                  inputMode="numeric"
-                  value={binding.configuration[key]}
-                  onChange={(event) =>
-                    editConfiguration({ [key]: event.target.value })
-                  }
-                />
-              </label>
-            ))}
-            {choice(
-              labels.dataBits,
-              binding.configuration.dataBits,
-              ["5", "6", "7", "8"],
-              (dataBits) => {
-                if (
-                  dataBits === "5" ||
-                  dataBits === "6" ||
-                  dataBits === "7" ||
-                  dataBits === "8"
-                )
-                  editConfiguration({ dataBits });
-              },
-            )}
-            {choice(
-              labels.parity,
-              binding.configuration.parity,
-              ["none", "even", "odd", "mark", "space"],
-              (parity) => {
-                if (
-                  parity === "none" ||
-                  parity === "even" ||
-                  parity === "odd" ||
-                  parity === "mark" ||
-                  parity === "space"
-                )
-                  editConfiguration({ parity });
-              },
-            )}
-            {choice(
-              labels.stopBits,
-              binding.configuration.stopBits,
-              ["one", "onePointFive", "two"],
-              (stopBits) => {
-                if (
-                  stopBits === "one" ||
-                  stopBits === "onePointFive" ||
-                  stopBits === "two"
-                )
-                  editConfiguration({ stopBits });
-              },
-            )}
-            {choice(
-              labels.flowControl,
-              binding.configuration.flowControl,
-              ["none", "rtsCts", "xonXoff", "dsrDtr"],
-              (flowControl) => {
-                if (
-                  flowControl === "none" ||
-                  flowControl === "rtsCts" ||
-                  flowControl === "xonXoff" ||
-                  flowControl === "dsrDtr"
-                )
-                  editConfiguration({ flowControl });
-              },
-            )}
-          </fieldset>
-        )}
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(["sidebarWidth", "panelHeight"] as const).map((key) => (
-            <label key={key} className="grid gap-1 text-sm">
-              {labels[key]}
-              <Input
-                type="number"
-                value={draft.layout[key]}
-                onChange={(event) => {
-                  if (Number.isFinite(event.target.valueAsNumber))
-                    change({
-                      ...draft,
-                      layout: {
-                        ...draft.layout,
-                        [key]: event.target.valueAsNumber,
-                      },
-                    });
+          {draft.views.length > 0 && (
+            <label className="grid gap-1 text-sm">
+              {labels.views ?? labels.viewName}
+              <Select
+                value={view?.id ?? ""}
+                onValueChange={(viewId) => {
+                  setLocalSelection(viewId);
+                  onSelectView?.(viewId);
                 }}
-              />
+                disabled={locked}
+              >
+                <SelectTrigger aria-label={labels.views ?? labels.viewName}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {draft.views.map((item) => (
+                    <SelectItem key={item.id} value={item.id}>
+                      {item.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </label>
-          ))}
-        </div>
-      </fieldset>
-      <div className="flex flex-wrap gap-2">
-        <Button
-          size="sm"
-          disabled={locked || !dirty || !onSave}
-          onClick={() => void save().catch(() => {})}
-        >
-          {labels.save}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={locked || !onReload}
-          onClick={() => void reload().catch(() => {})}
-        >
-          {labels.reload}
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={locked || !dirty}
-          onClick={discard}
-        >
-          {labels.discard}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={locked || !onPreviewImport}
-          onClick={() => setImportOpen(true)}
-        >
-          {labels.import}
-        </Button>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={locked || !onExport}
-          onClick={() => {
-            if (onExport)
-              void request((signal) => onExport(original, signal)).catch(
-                () => {},
-              );
+          )}
+          {view ? (
+            <>
+              <div className="workbench-workspace-view-fields">
+                <label className="grid gap-1 text-sm">
+                  {labels.viewName}
+                  <Input
+                    value={view.name}
+                    onChange={(event) => editView({ name: event.target.value })}
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  {labels.color}
+                  <Input
+                    value={view.color}
+                    onChange={(event) =>
+                      editView({ color: event.target.value })
+                    }
+                  />
+                </label>
+                <label className="grid gap-1 text-sm">
+                  {labels.icon}
+                  <Input
+                    value={view.icon === "terminal" ? "" : view.icon}
+                    placeholder={labels.defaultIcon}
+                    onChange={(event) =>
+                      editView({ icon: event.target.value || "terminal" })
+                    }
+                  />
+                </label>
+                <label
+                  htmlFor={`${id}-pinned`}
+                  className="flex items-center gap-2 text-sm"
+                >
+                  <span>{labels.pinned}</span>
+                  <Checkbox
+                    id={`${id}-pinned`}
+                    checked={view.pinned}
+                    onCheckedChange={(checked) =>
+                      editView({ pinned: checked === true })
+                    }
+                    disabled={locked}
+                  />
+                </label>
+                {choice(
+                  labels.receiveMode,
+                  view.receiveMode,
+                  ["text", "hex"],
+                  (mode) => {
+                    if (mode === "text" || mode === "hex")
+                      editView({ receiveMode: mode });
+                  },
+                )}
+                {choice(
+                  labels.sendMode,
+                  view.sendMode,
+                  ["text", "hex"],
+                  (mode) => {
+                    if (mode === "text" || mode === "hex")
+                      editView({ sendMode: mode });
+                  },
+                )}
+                {choice(
+                  labels.binding,
+                  view.bindingId,
+                  draft.bindings.map((item) => item.bindingId),
+                  (bindingId) => editView({ bindingId }),
+                )}
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                disabled={!binding || locked}
+                onClick={clone}
+              >
+                {labels.clone}
+              </Button>
+            </>
+          ) : (
+            <p className="text-sm text-muted-foreground">{labels.noView}</p>
+          )}
+          {binding && (
+            <fieldset className="workbench-workspace-configuration">
+              <legend>{labels.configuration}</legend>
+              <SerialConfigurationFields
+                id={id + "-binding"}
+                value={binding.configuration}
+                labels={labels.configurationLabels}
+                onChange={(value) => editConfiguration(value)}
+              />
+            </fieldset>
+          )}
+        </fieldset>
+        {importOpen && (
+          <section
+            aria-label={labels.import}
+            className="workbench-workspace-import"
+          >
+            <div className="workbench-workspace-import-file">
+              <label htmlFor={`${id}-import-file`}>
+                {labels.importFile ?? "Configuration file"}
+              </label>
+              <div className="workbench-file-selection">
+                <output>
+                  {importFileName ??
+                    (importJson
+                      ? labels.enteredImportContent
+                      : labels.emptyImportFile)}
+                </output>
+                <WorkbenchIconButton
+                  label={labels.chooseImportFile}
+                  variant="outline"
+                  disabled={disabled || (busy && !importPending.current)}
+                  onClick={() => importFileControl.current?.click()}
+                >
+                  <FolderOpen aria-hidden="true" />
+                </WorkbenchIconButton>
+                <Input
+                  ref={importFileControl}
+                  id={`${id}-import-file`}
+                  className="sr-only"
+                  tabIndex={-1}
+                  type="file"
+                  accept=".json,application/json"
+                  disabled={disabled || (busy && !importPending.current)}
+                  onChange={(event) => {
+                    const file = event.target.files?.[0];
+                    event.target.value = "";
+                    if (file) void readImportFile(file).catch(() => {});
+                  }}
+                />
+              </div>
+            </div>
+            <Popover>
+              <PopoverTrigger asChild>
+                <Button size="sm" variant="outline">
+                  {labels.importJson ?? "Configuration content"}
+                </Button>
+              </PopoverTrigger>
+              <PopoverContent
+                className="workbench-detail-popover"
+                aria-label={labels.importJson ?? "Configuration content"}
+              >
+                <label className="grid gap-1 text-sm">
+                  {labels.importJson ?? "Configuration content"}
+                  <Textarea
+                    value={importJson}
+                    disabled={disabled || (busy && !importPending.current)}
+                    rows={6}
+                    onChange={(event) => changeImportJson(event.target.value)}
+                  />
+                </label>
+              </PopoverContent>
+            </Popover>
+            {candidate && (
+              <section
+                aria-label={labels.changes}
+                className="grid min-w-0 gap-2"
+              >
+                <h3 className="text-sm font-medium">{labels.changes}</h3>
+                {importChanges.length === 0 ? (
+                  <p className="text-sm text-muted-foreground">
+                    {labels.noChanges ?? "No changes"}
+                  </p>
+                ) : (
+                  <ul className="grid max-h-64 gap-3 overflow-auto text-sm">
+                    {importChanges.map((item) => (
+                      <li
+                        key={`${item.section}/${item.key}`}
+                        className="grid min-w-0 gap-1"
+                      >
+                        <p>
+                          {sectionLabels[item.section]} · {changeName(item)} ·{" "}
+                          <span>
+                            {labels[item.kind] ??
+                              {
+                                added: "Added",
+                                removed: "Removed",
+                                changed: "Changed",
+                              }[item.kind]}
+                          </span>
+                        </p>
+                        {item.section === "name" && item.kind !== "added" && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              {labels.before ?? "Current draft"}
+                            </span>
+                            <p>
+                              {typeof item.before === "string"
+                                ? item.before
+                                : ""}
+                            </p>
+                          </div>
+                        )}
+                        {item.section === "name" && item.kind !== "removed" && (
+                          <div>
+                            <span className="text-muted-foreground">
+                              {labels.after ?? "Import candidate"}
+                            </span>
+                            <p>
+                              {typeof item.after === "string" ? item.after : ""}
+                            </p>
+                          </div>
+                        )}
+                        <Popover>
+                          <PopoverTrigger asChild>
+                            <WorkbenchIconButton label={labels.details}>
+                              <Info aria-hidden="true" />
+                            </WorkbenchIconButton>
+                          </PopoverTrigger>
+                          <PopoverContent
+                            className="workbench-detail-popover"
+                            aria-label={labels.details}
+                          >
+                            <Textarea
+                              readOnly
+                              aria-label={labels.details}
+                              rows={8}
+                              value={JSON.stringify(
+                                { before: item.before, after: item.after },
+                                null,
+                                2,
+                              )}
+                              onFocus={(event) => event.currentTarget.select()}
+                            />
+                          </PopoverContent>
+                        </Popover>
+                      </li>
+                    ))}
+                  </ul>
+                )}
+              </section>
+            )}
+          </section>
+        )}
+        <WorkbenchNotice
+          noticeKey={`workspace-editor:${failureIndex}`}
+          eventKey={eventKey}
+          log={{
+            module: "workspace",
+            level: "error",
+            code: error,
+            message: error
+              ? error === "REVISION_CONFLICT"
+                ? labels.conflict
+                : labels.failure(error)
+              : "",
           }}
         >
-          {labels.export}
-        </Button>
+          {error ? (
+            <span role="alert">
+              {error === "REVISION_CONFLICT"
+                ? labels.conflict
+                : labels.failure(error)}
+            </span>
+          ) : null}
+        </WorkbenchNotice>
+        {saved && (
+          <p role="status" className="sr-only">
+            {labels.saved}
+          </p>
+        )}
       </div>
-      {!onPreviewImport && (
-        <p className="text-sm text-muted-foreground">
-          {labels.importUnavailable}
-        </p>
-      )}
-      {importOpen && (
-        <section aria-label={labels.import} className="grid min-w-0 gap-3">
-          <label className="grid gap-1 text-sm">
-            {labels.importJson ?? "Workspace JSON"}
-            <Textarea
-              value={importJson}
-              disabled={disabled || (busy && !importPending.current)}
-              rows={6}
-              onChange={(event) => changeImportJson(event.target.value)}
-            />
-          </label>
-          <label className="grid gap-1 text-sm">
-            {labels.importFile ?? "Workspace JSON file"}
-            <Input
-              type="file"
-              accept=".json,application/json"
-              disabled={disabled || (busy && !importPending.current)}
-              onChange={(event) => {
-                const file = event.target.files?.[0];
-                event.target.value = "";
-                if (file) void readImportFile(file).catch(() => {});
-              }}
-            />
-          </label>
-          <div className="flex flex-wrap gap-2">
+      <div className="workbench-workspace-actions">
+        {importOpen ? (
+          <>
             <Button
               size="sm"
-              variant="outline"
-              disabled={locked || !importJson.trim() || !onPreviewImport}
-              onClick={() => void previewImport().catch(() => {})}
+              disabled={
+                locked ||
+                !importJson.trim() ||
+                !onPreviewImport ||
+                (!!candidate && !onSave)
+              }
+              onClick={() =>
+                void (candidate ? applyImport() : previewImport()).catch(
+                  () => {},
+                )
+              }
             >
-              {labels.previewImport ?? "Preview import"}
+              {candidate
+                ? labels.apply
+                : (labels.previewImport ?? "Preview import")}
             </Button>
             <Button
               size="sm"
-              variant="ghost"
+              variant="outline"
               disabled={disabled || (busy && !importPending.current)}
               onClick={cancelImport}
             >
               {labels.cancelImport}
             </Button>
-          </div>
-          {candidate && (
-            <section aria-label={labels.changes} className="grid min-w-0 gap-2">
-              <h3 className="text-sm font-medium">{labels.changes}</h3>
-              {importChanges.length === 0 ? (
-                <p className="text-sm text-muted-foreground">
-                  {labels.noChanges ?? "No changes"}
-                </p>
-              ) : (
-                <ul className="grid max-h-64 gap-3 overflow-auto text-sm">
-                  {importChanges.map((item) => (
-                    <li
-                      key={`${item.section}/${item.key}`}
-                      className="grid min-w-0 gap-1"
-                    >
-                      <p>
-                        {sectionLabels[item.section]} ·{" "}
-                        {item.key === "$order"
-                          ? (labels.order ?? "Order")
-                          : item.key}{" "}
-                        ·{" "}
-                        <span>
-                          {labels[item.kind] ??
-                            {
-                              added: "Added",
-                              removed: "Removed",
-                              changed: "Changed",
-                            }[item.kind]}
-                        </span>
-                      </p>
-                      {item.kind !== "added" && (
-                        <div>
-                          <span className="text-muted-foreground">
-                            {labels.before ?? "Current draft"}
-                          </span>
-                          <pre className="whitespace-pre-wrap break-all font-mono">
-                            {JSON.stringify(item.before, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                      {item.kind !== "removed" && (
-                        <div>
-                          <span className="text-muted-foreground">
-                            {labels.after ?? "Import candidate"}
-                          </span>
-                          <pre className="whitespace-pre-wrap break-all font-mono">
-                            {JSON.stringify(item.after, null, 2)}
-                          </pre>
-                        </div>
-                      )}
-                    </li>
-                  ))}
-                </ul>
-              )}
-              <Button
-                size="sm"
-                disabled={locked || !onSave}
-                onClick={() => void applyImport().catch(() => {})}
-              >
-                {labels.apply}
-              </Button>
-            </section>
-          )}
-        </section>
-      )}
-      {error && (
-        <p role="alert" className="text-sm text-destructive">
-          {error}
-        </p>
-      )}
-      {saved && (
-        <p role="status" className="text-sm">
-          {labels.saved}
-        </p>
-      )}
+            <WorkbenchIconButton
+              label={labels.reload}
+              disabled={locked || !onReload}
+              onClick={() => void reload().catch(() => {})}
+            >
+              <RotateCw aria-hidden="true" />
+            </WorkbenchIconButton>
+          </>
+        ) : (
+          <>
+            <Button
+              size="sm"
+              disabled={locked || !dirty || !onSave}
+              onClick={() => void save().catch(() => {})}
+            >
+              {labels.save}
+            </Button>
+            <WorkbenchIconButton
+              label={labels.reload}
+              disabled={locked || !onReload}
+              onClick={() => void reload().catch(() => {})}
+            >
+              <RotateCw aria-hidden="true" />
+            </WorkbenchIconButton>
+            <WorkbenchIconButton
+              label={labels.discard}
+              disabled={locked || !dirty}
+              onClick={discard}
+            >
+              <Undo2 aria-hidden="true" />
+            </WorkbenchIconButton>
+            <WorkbenchIconButton
+              label={labels.import}
+              tooltip={!onPreviewImport ? labels.importUnavailable : undefined}
+              disabled={locked || !onPreviewImport}
+              onClick={() => setImportOpen(true)}
+            >
+              <FileDown aria-hidden="true" />
+            </WorkbenchIconButton>
+            <WorkbenchIconButton
+              label={labels.export}
+              disabled={locked || !onExport}
+              onClick={() => {
+                if (onExport)
+                  void request((signal) => onExport(original, signal)).catch(
+                    () => {},
+                  );
+              }}
+            >
+              <FileUp aria-hidden="true" />
+            </WorkbenchIconButton>
+          </>
+        )}
+      </div>
     </section>
   );
 }

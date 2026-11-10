@@ -10,7 +10,10 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Toaster } from "sonner";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
+import userEvent from "@testing-library/user-event";
 import { defaults } from "@serial-workbench/contracts";
 import { CaptureTools } from "./capture-tools";
 import { operation } from "./test-fixtures";
@@ -20,6 +23,98 @@ import {
   verification,
 } from "./transfer-capture-test-helpers";
 afterEach(cleanup);
+beforeEach(() => {
+  clearUserLog();
+  render(<Toaster />);
+});
+async function selectOption(label: string, name: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: label }));
+  await user.click(await screen.findByRole("option", { name }));
+}
+it("uses the shared popup for recording mode and replay timing without starting a task", async () => {
+  const start = vi.fn();
+  const replay = vi.fn();
+  render(
+    <CaptureTools
+      contextKey="dropdown-host"
+      watchActions={allowControlActions}
+      labels={toolLabels}
+      sessionRefs={[]}
+      onStart={start}
+      onReplay={replay}
+    />,
+  );
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Write mode" }));
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  await user.click(screen.getByRole("option", { name: toolLabels.append }));
+  expect(
+    screen.getByRole("combobox", { name: "Write mode" }),
+  ).toHaveTextContent(toolLabels.append);
+  await user.click(screen.getByRole("tab", { name: "Playback" }));
+  await user.click(screen.getByRole("combobox", { name: "Replay timing" }));
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  await user.click(screen.getByRole("option", { name: toolLabels.fastest }));
+  expect(
+    screen.getByRole("combobox", { name: "Replay timing" }),
+  ).toHaveTextContent(toolLabels.fastest);
+  expect(start).not.toHaveBeenCalled();
+  expect(replay).not.toHaveBeenCalled();
+});
+it.each([
+  ["1234567", "1,234,567 records"],
+  ["18446744073709551615", "18,446,744,073,709,551,615 records"],
+])(
+  "preserves the exact verified record prefix %s in recovery preview instead of converting it to bytes",
+  async (prefix, expected) => {
+    const verify = vi.fn().mockResolvedValue({
+      ...operation("verify-record-prefix"),
+      actionId: "capture.verify",
+      result: {
+        kind: "capture_verification",
+        value: {
+          ...verification,
+          verifiedPrefix: prefix,
+          volumeResults: verification.volumeResults.map((volume) => ({
+            ...volume,
+            verifiedPrefix: prefix,
+          })),
+        },
+      },
+    });
+    render(
+      <CaptureTools
+        watchActions={allowControlActions}
+        contextKey="host:record-prefix"
+        labels={toolLabels}
+        sessionRefs={[]}
+        pickFile={async () => selectedFile}
+        onVerify={verify}
+      />,
+    );
+    await userEvent
+      .setup()
+      .click(screen.getByRole("tab", { name: "Playback" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Select capture source" }),
+    );
+    await screen.findByText("payload.bin");
+    const verifyButton = screen.getByRole("button", { name: "Verify capture" });
+    await waitFor(() => expect(verifyButton).toBeEnabled());
+    fireEvent.click(verifyButton);
+    expect(await screen.findByText(expected)).toHaveAttribute("title", prefix);
+    expect(screen.queryByText("1.23 MB")).not.toBeInTheDocument();
+    await userEvent
+      .setup()
+      .click(screen.getByRole("button", { name: "View details" }));
+    const details = screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: "View details",
+    });
+    const value: unknown = JSON.parse(details.value);
+    expect(value).toMatchObject({ verifiedPrefix: prefix });
+  },
+);
 it("requires the current original fingerprint confirmation before a raw replace", async () => {
   const start = vi.fn().mockResolvedValue(operation());
   const readMetadata = vi.fn().mockResolvedValue({
@@ -52,9 +147,7 @@ it("requires the current original fingerprint confirmation before a raw replace"
     screen.getByRole("button", { name: "Select capture target" }),
   );
   await screen.findByText("payload.bin");
-  fireEvent.change(screen.getByLabelText("Write mode"), {
-    target: { value: "replace" },
-  });
+  await selectOption("Write mode", toolLabels.replace);
   await waitFor(() =>
     expect(readMetadata).toHaveBeenCalledWith(
       selectedFile.reference,
@@ -120,6 +213,7 @@ it("shows actual corrupt and discontinuous evidence then recovers only the verif
     />,
   );
   expect(verify).not.toHaveBeenCalled();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
@@ -130,7 +224,7 @@ it("shows actual corrupt and discontinuous evidence then recovers only the verif
     ).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "Verify capture" }));
-  await screen.findByText("corrupt");
+  await screen.findByLabelText("Container complete");
   expect(screen.getByLabelText("Container complete")).toHaveTextContent("No");
   expect(screen.getByLabelText("Source continuous")).toHaveTextContent("No");
   fireEvent.click(
@@ -181,6 +275,7 @@ it("uses an explicitly picked destination for text export and sends selected rea
       onReplay={replay}
     />,
   );
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
@@ -202,9 +297,7 @@ it("uses an explicitly picked destination for text export and sends selected rea
       expect.any(AbortSignal),
     ),
   );
-  fireEvent.change(screen.getByLabelText("Replay timing"), {
-    target: { value: "fastest" },
-  });
+  await selectOption("Replay timing", toolLabels.fastest);
   fireEvent.click(screen.getByRole("button", { name: "Open replay" }));
   await waitFor(() =>
     expect(replay).toHaveBeenCalledWith(
@@ -237,6 +330,7 @@ it("tracks the actual verification operation and retains its report when recover
       operations={[]}
     />,
   );
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
@@ -247,7 +341,7 @@ it("tracks the actual verification operation and retains its report when recover
     ).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "Verify capture" }));
-  await screen.findByText("verify · running");
+  await screen.findByText("Running");
   expect(
     screen.getByRole("button", { name: "Save verified prefix as" }),
   ).toBeDisabled();
@@ -276,9 +370,20 @@ it("tracks the actual verification operation and retains its report when recover
     screen.getByRole("button", { name: "Save verified prefix as" }),
   );
   await screen.findByRole("alert");
-  expect(screen.getByRole("alert")).toHaveTextContent("TARGET_EXISTS");
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    toolLabels.operationText.failure("TARGET_EXISTS"),
+  );
+  expect(getUserLog().some((entry) => entry.code === "TARGET_EXISTS")).toBe(
+    true,
+  );
   expect(screen.getByLabelText("Source continuous")).toHaveTextContent("No");
-  expect(screen.getByText("corrupt")).toBeInTheDocument();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: "View details" }));
+  expect(screen.getByRole("textbox", { name: "View details" })).toHaveProperty(
+    "value",
+    expect.stringContaining('"status": "corrupt"'),
+  );
 });
 it("aborts verification and drops a late report when attachment generation changes", async () => {
   let signal: AbortSignal | undefined,
@@ -301,6 +406,7 @@ it("aborts verification and drops a late report when attachment generation chang
       contextKey="host:1"
     />,
   );
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
@@ -325,7 +431,8 @@ it("aborts verification and drops a late report when attachment generation chang
       result: { kind: "capture_verification", value: verification },
     }),
   );
-  expect(screen.queryByText("corrupt")).not.toBeInTheDocument();
+  expect(screen.queryByLabelText("Container complete")).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   expect(
     screen.getByRole("button", { name: "Save verified prefix as" }),
   ).toBeDisabled();
@@ -335,6 +442,39 @@ it("keeps source rights independent and invalidates replay timing and source ref
   const observer = observeControlActions();
   const verify = vi.fn(),
     replay = vi.fn();
+  const sourceSubscription = async (
+    reference: typeof selectedFile.reference,
+    mode: "original_timing" | "fastest",
+  ) =>
+    waitFor(() => {
+      const subscription = observer.subscriptions
+        .slice()
+        .reverse()
+        .find((value) => !value.stopped);
+      expect(subscription?.inputs).toEqual([
+        {
+          actionId: "capture.verify",
+          target: {
+            hostId: reference.hostId,
+            kind: reference.kind,
+            id: reference.id,
+          },
+          params: { captureRef: reference },
+        },
+        {
+          actionId: "replay.open",
+          target: {
+            hostId: reference.hostId,
+            kind: reference.kind,
+            id: reference.id,
+          },
+          params: { captureRef: reference, mode },
+        },
+      ]);
+      if (!subscription)
+        throw new Error("Capture source action subscription is not registered");
+      return subscription;
+    });
   const second = {
     ...selectedFile,
     name: "second.capture",
@@ -355,9 +495,11 @@ it("keeps source rights independent and invalidates replay timing and source ref
       watchActions={observer.watchActions}
     />,
   );
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   expect(
     screen.getByRole("button", { name: "Select capture source" }),
   ).toBeEnabled();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
@@ -368,7 +510,10 @@ it("keeps source rights independent and invalidates replay timing and source ref
     screen.getByRole("button", { name: "Open replay" });
   expect(verifyButton()).toBeDisabled();
   expect(replayButton()).toBeDisabled();
-  const first = observer.subscriptions.at(-1)!;
+  const first = await sourceSubscription(
+    selectedFile.reference,
+    "original_timing",
+  );
   act(() =>
     observer.publish(first, (input) => input.actionId === "capture.verify"),
   );
@@ -379,24 +524,24 @@ it("keeps source rights independent and invalidates replay timing and source ref
   );
   expect(verifyButton()).toBeDisabled();
   expect(replayButton()).toBeEnabled();
-  fireEvent.change(screen.getByLabelText("Replay timing"), {
-    target: { value: "fastest" },
-  });
+  await selectOption("Replay timing", toolLabels.fastest);
   expect(replayButton()).toBeDisabled();
+  const timing = await sourceSubscription(selectedFile.reference, "fastest");
   act(() => observer.publish(first, () => true));
   expect(replayButton()).toBeDisabled();
-  const timing = observer.subscriptions.at(-1)!;
   expect(timing.inputs).toContainEqual({
     actionId: "replay.open",
     target: { hostId: "host", kind: "file", id: "source" },
     params: { captureRef: selectedFile.reference, mode: "fastest" },
   });
   act(() => observer.publish(timing, () => true));
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
   await screen.findByText("second.capture");
   expect(replayButton()).toBeDisabled();
+  await sourceSubscription(second.reference, "fastest");
   act(() => observer.publish(timing, () => true));
   expect(replayButton()).toBeDisabled();
   fireEvent.click(replayButton());
@@ -405,6 +550,22 @@ it("keeps source rights independent and invalidates replay timing and source ref
 });
 it("observes a complete recovery token and selected destination without starting work, then clears grants for a replacement token", async () => {
   const observer = observeControlActions();
+  const actionSubscription = (expected: {
+    actionId: string;
+    target: { hostId: string; kind: string; id: string };
+    params: unknown;
+  }) =>
+    waitFor(() => {
+      // 文件名已渲染不代表权限 effect 已建立；等待当前输入的订阅。
+      const subscription = observer.subscriptions
+        .slice()
+        .reverse()
+        .find((value) => !value.stopped);
+      expect(subscription?.inputs).toContainEqual(expected);
+      if (!subscription)
+        throw new Error("Capture action subscription is not registered");
+      return subscription;
+    });
   const selected = {
     ...operation("verification"),
     state: "succeeded" as const,
@@ -432,15 +593,18 @@ it("observes a complete recovery token and selected destination without starting
     watchActions: observer.watchActions,
   };
   const view = render(<CaptureTools {...props} operations={[selected]} />);
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
   await screen.findByText("payload.bin");
+  const source = await actionSubscription({
+    actionId: "capture.verify",
+    target: { hostId: "host", kind: "file", id: "source" },
+    params: { captureRef: selectedFile.reference },
+  });
   act(() =>
-    observer.publish(
-      observer.subscriptions.at(-1)!,
-      (input) => input.actionId === "capture.verify",
-    ),
+    observer.publish(source, (input) => input.actionId === "capture.verify"),
   );
   await waitFor(() =>
     expect(
@@ -448,7 +612,7 @@ it("observes a complete recovery token and selected destination without starting
     ).toBeEnabled(),
   );
   fireEvent.click(screen.getByRole("button", { name: "Verify capture" }));
-  await screen.findByText("corrupt");
+  await screen.findByLabelText("Container complete");
   expect(
     screen.getByRole("button", { name: "Select capture target" }),
   ).toBeEnabled();
@@ -464,8 +628,7 @@ it("observes a complete recovery token and selected destination without starting
     screen.getByRole("button", { name: "Export text as" });
   expect(recoverButton()).toBeDisabled();
   expect(exportButton()).toBeDisabled();
-  const first = observer.subscriptions.at(-1)!;
-  expect(first.inputs).toContainEqual({
+  const first = await actionSubscription({
     actionId: "capture.recover",
     target: { hostId: "host", kind: "file", id: "target" },
     params: {
@@ -545,9 +708,7 @@ it("gates capture start by exact target, write mode and source session epoch", a
   expect(start).not.toHaveBeenCalled();
   act(() => observer.publish(first, () => true));
   expect(button()).toBeEnabled();
-  fireEvent.change(screen.getByLabelText("Write mode"), {
-    target: { value: "append" },
-  });
+  await selectOption("Write mode", toolLabels.append);
   expect(button()).toBeDisabled();
   act(() => observer.publish(first, () => true));
   expect(button()).toBeDisabled();
@@ -586,7 +747,11 @@ it("clears replacement evidence and confirmation when selection is cancelled or 
       length: "123",
       fingerprint: "a".repeat(64),
     })
-    .mockRejectedValueOnce(new Error("REVISION_CONFLICT"));
+    .mockRejectedValueOnce(
+      Object.assign(new Error("Private metadata failure"), {
+        code: "REVISION_CONFLICT",
+      }),
+    );
   const pickFile = vi
     .fn()
     .mockResolvedValueOnce(selectedFile)
@@ -603,9 +768,7 @@ it("clears replacement evidence and confirmation when selection is cancelled or 
       onStart={vi.fn()}
     />,
   );
-  fireEvent.change(screen.getByLabelText("Write mode"), {
-    target: { value: "replace" },
-  });
+  await selectOption("Write mode", toolLabels.replace);
   const pick = () =>
     screen.getByRole("button", { name: "Select capture target" });
   fireEvent.click(pick());
@@ -628,7 +791,10 @@ it("clears replacement evidence and confirmation when selection is cancelled or 
   expect(screen.getByRole("button", { name: "Start capture" })).toBeDisabled();
   fireEvent.click(pick());
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "REVISION_CONFLICT",
+    toolLabels.operationText.failure("REVISION_CONFLICT"),
+  );
+  expect(getUserLog().some((entry) => entry.code === "REVISION_CONFLICT")).toBe(
+    true,
   );
   expect(screen.queryByLabelText("Target revision")).not.toBeInTheDocument();
   expect(screen.getByLabelText("Expected original fingerprint")).toHaveValue(
@@ -661,9 +827,7 @@ it("aborts metadata on attachment change and ignores a late snapshot", async () 
     fingerprint: "a".repeat(64),
   });
   const view = render(<CaptureTools {...props} contextKey="host:1" />);
-  fireEvent.change(screen.getByLabelText("Write mode"), {
-    target: { value: "replace" },
-  });
+  await selectOption("Write mode", toolLabels.replace);
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture target" }),
   );
@@ -691,7 +855,7 @@ it("aborts metadata on attachment change and ignores a late snapshot", async () 
   expect(screen.queryByLabelText("Target revision")).not.toBeInTheDocument();
 });
 
-it("offers independent integer MiB storage limits from Host defaults", () => {
+it("offers independent integer MiB storage limits from Host defaults in Advanced", async () => {
   render(
     <CaptureTools
       labels={{
@@ -705,6 +869,8 @@ it("offers independent integer MiB storage limits from Host defaults", () => {
       watchActions={allowControlActions}
     />,
   );
+  expect(screen.queryByLabelText("Capacity (MiB)")).not.toBeInTheDocument();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   expect(screen.getByLabelText("Capacity (MiB)")).toHaveValue("1024");
   expect(screen.getByLabelText("Disk reserve (MiB)")).toHaveValue("128");
 });
@@ -731,6 +897,7 @@ it("uses exact MiB bytes for both action checks and capture invocation and sends
     screen.getByRole("button", { name: "Select capture target" }),
   );
   await screen.findByText("payload.bin");
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Capacity (MiB)"), {
     target: { value: "9007199254741" },
   });
@@ -814,9 +981,7 @@ it("allows a new target selection while metadata is pending and ignores the old 
   );
   const select = () =>
     screen.getByRole("button", { name: "Select capture target" });
-  fireEvent.change(screen.getByLabelText("Write mode"), {
-    target: { value: "replace" },
-  });
+  await selectOption("Write mode", toolLabels.replace);
   fireEvent.click(select());
   await waitFor(() => expect(readMetadata).toHaveBeenCalledOnce());
   expect(screen.queryByLabelText("Target revision")).not.toBeInTheDocument();
@@ -841,7 +1006,7 @@ it("allows a new target selection while metadata is pending and ignores the old 
   expect(screen.getByLabelText("Target revision")).toHaveTextContent("4");
 });
 
-it("keeps storage drafts independent between two capture forms", () => {
+it("keeps storage drafts independent between two capture forms", async () => {
   render(
     <>
       <CaptureTools
@@ -858,6 +1023,8 @@ it("keeps storage drafts independent between two capture forms", () => {
       />
     </>,
   );
+  for (const tab of screen.getAllByRole("tab", { name: "Advanced" }))
+    await userEvent.setup().click(tab);
   const capacities = screen.getAllByLabelText("Capacity (MiB)");
   fireEvent.change(capacities[0]!, { target: { value: "4" } });
   expect(capacities[0]).toHaveValue("4");

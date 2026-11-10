@@ -20,22 +20,6 @@ import { e2eExecutable, root as projectRoot } from "./build.mjs";
 import * as e2eBuild from "./build.mjs";
 import { fileSha256 } from "../scripts/artifact-lib.mjs";
 
-test("E2E builds all adjacent Host entrypoints for the same explicit target", () => {
-  assert.deepEqual(e2eBuild.e2eHostBuildArgs("x86_64-pc-windows-msvc"), [
-    "build",
-    "--locked",
-    "--target",
-    "x86_64-pc-windows-msvc",
-    "--package",
-    "serial-workbench-host",
-    "--package",
-    "serial-workbench-cli",
-    "--package",
-    "serial-workbench-mcp",
-    "--bins",
-  ]);
-});
-
 test("E2E source identity is stable across Gitlink checkout states and detects nested HEAD changes", (t) => {
   const { root } = fixture(t);
   const nested = join(root, "marketplace");
@@ -159,7 +143,7 @@ test("E2E rejects changed source, missing or substituted adjacent components and
   }
 });
 
-test("E2E build selects the desktop package alongside its isolated configuration", () => {
+test("E2E builds desktop and adjacent entrypoints in one locked Cargo selection", () => {
   assert.deepEqual(
     e2eBuild.e2eBuildArgs("x86_64-pc-windows-msvc", "desktop-app"),
     [
@@ -173,8 +157,15 @@ test("E2E build selects the desktop package alongside its isolated configuration
       "--config",
       "src-tauri/tauri.e2e.conf.json",
       "--",
+      "--locked",
       "--package",
       "desktop-app",
+      "--package",
+      "serial-workbench-host",
+      "--package",
+      "serial-workbench-cli",
+      "--package",
+      "serial-workbench-mcp",
     ],
   );
 });

@@ -1,7 +1,8 @@
 import { useEffect, useId, useRef } from "react";
 import type { ObjectRef, WorkspaceView } from "@serial-workbench/contracts";
-import { PinIcon, TerminalIcon } from "lucide-react";
+import { PinIcon, TerminalIcon, Plus, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { WorkbenchLabels } from "./labels";
 export type SessionTab = {
   id: string;
@@ -18,6 +19,7 @@ export function SessionTabs({
   onSelect,
   onDuplicate,
   onClose,
+  onEmptyFocus,
 }: {
   tabs: readonly SessionTab[];
   selected?: string;
@@ -27,6 +29,7 @@ export function SessionTabs({
   onSelect: (id: string) => void;
   onDuplicate: () => void;
   onClose?: (id: string) => void;
+  onEmptyFocus?: () => void;
 }) {
   const id = useId();
   const pendingFocus = useRef<string | null>(null);
@@ -36,8 +39,9 @@ export function SessionTabs({
     const index = tabs.findIndex((tab) => tab.id === pendingFocus.current);
     pendingFocus.current = null;
     if (index >= 0) document.getElementById(id + "-" + index)?.focus();
-    else tablist.current?.focus();
-  }, [tabs, id]);
+    else if (tablist.current) tablist.current.focus();
+    else onEmptyFocus?.();
+  }, [tabs, id, onEmptyFocus]);
   function close(tabId: string) {
     const index = tabs.findIndex((tab) => tab.id === tabId);
     const remaining = tabs.filter((tab) => tab.id !== tabId);
@@ -45,6 +49,7 @@ export function SessionTabs({
       remaining[Math.min(index, remaining.length - 1)]?.id ?? "";
     onClose?.(tabId);
   }
+  if (!tabs.length) return null;
   return (
     <div className="workbench-toolbar workbench-tabs">
       <div
@@ -114,22 +119,20 @@ export function SessionTabs({
           </Button>
         ))}
       </div>
-      <Button
-        size="sm"
-        variant="ghost"
+      <WorkbenchIconButton
+        label={labels.duplicateView}
         disabled={!selected || canDuplicate === false}
         onClick={onDuplicate}
       >
-        {labels.duplicateView}
-      </Button>
-      <Button
-        size="sm"
-        variant="ghost"
+        <Plus aria-hidden="true" />
+      </WorkbenchIconButton>
+      <WorkbenchIconButton
+        label={labels.closeView}
         disabled={!selected || !onClose}
         onClick={() => selected && close(selected)}
       >
-        {labels.closeView}
-      </Button>
+        <X aria-hidden="true" />
+      </WorkbenchIconButton>
     </div>
   );
 }

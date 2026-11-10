@@ -3,6 +3,9 @@ import type {
   HostActionCheckInput,
   HostContextValue,
 } from "@/providers/host-context";
+import { workbenchToolLabels } from "./tool-labels";
+import { createTranslator } from "../../i18n/translate";
+import { en } from "../../i18n/en";
 
 export const allowControlActions: HostContextValue["watchActions"] = (
   inputs,
@@ -64,6 +67,7 @@ export const target = {
   sessionEpoch: "1",
 };
 export const controlLabels = {
+  ...workbenchToolLabels(createTranslator(en)).parameters,
   sessionControls: "Session controls",
   configuration: "Requested configuration",
   baudRate: "Baud rate",
@@ -79,8 +83,6 @@ export const controlLabels = {
   resetConfiguration: "Reset configuration",
   invalidConfiguration:
     "Enter positive integer values within the supported range",
-  configurationSupport:
-    "Driver support varies by combination; rejected fields appear in the receipt.",
   controlLines: "Control lines",
   dtrOn: "DTR on",
   dtrOff: "DTR off",
@@ -97,7 +99,6 @@ export const controlLabels = {
   queueWaitMs: "Queue wait (ms)",
   waitBoundary: "Wait boundary",
   inputSignals: "Actual input samples",
-  refreshInputs: "Refresh inputs",
   sampledAt: "Sampled at",
   on: "On",
   off: "Off",

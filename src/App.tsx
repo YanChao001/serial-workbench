@@ -17,6 +17,7 @@ import { UnsavedWorkProvider } from "@/providers/unsaved-work";
 import { RecoveryGate } from "@/components/recovery-gate";
 import { DEFAULT_SETTINGS, THEME_STORAGE_KEY } from "@/lib/settings-model";
 import { ThemeEffects } from "@/components/theme-effects";
+import { OperationFailureObserver } from "@/features/workbench/operation-failure-notices";
 
 function AppEffects() {
   useExternalLinks();
@@ -41,6 +42,7 @@ export default function App() {
               scriptProps={{ type: "text/plain" }}
             >
               <ThemeEffects />
+              <OperationFailureObserver />
               <TooltipProvider delayDuration={200}>
                 {/* HashRouter：生产构建下用的是自定义协议，hash 路由不会出现刷新 404 */}
                 <HashRouter>
@@ -68,7 +70,13 @@ export default function App() {
                     </Routes>
                   </CommandsProvider>
                 </HashRouter>
-                <Toaster position="bottom-right" />
+                <Toaster
+                  position="bottom-right"
+                  offset={{ bottom: "var(--workbench-toast-bottom, 24px)" }}
+                  mobileOffset={{
+                    bottom: "var(--workbench-toast-bottom, 16px)",
+                  }}
+                />
               </TooltipProvider>
             </ThemeProvider>
           </UnsavedWorkProvider>

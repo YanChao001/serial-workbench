@@ -6,7 +6,14 @@ import type {
 } from "@serial-workbench/contracts";
 import type { SelectedFileResource } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
+import { FolderOpen } from "lucide-react";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { formatByteSize } from "./metric-format";
+import { nativeErrorCode } from "@/lib/native-error";
+import { WorkbenchNotice } from "./workbench-notice";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { operationProgress, type OperationText } from "./operation-text";
 import {
   unsigned,
   useToolAction,
@@ -37,7 +44,12 @@ export type TransferOptionsLabels = Record<
   | "draft"
   | "saveUnavailable",
   string
->;
+> & {
+  basic: string;
+  advanced: string;
+  fileSize: string;
+  operationText: OperationText;
+};
 export type TransferDraft = Pick<
   FileTransferParams,
   | "offset"
@@ -55,6 +67,7 @@ export type TransferOptionsProps = {
   labels: TransferOptionsLabels;
   writeWaitMs: string;
   disabled?: boolean;
+  operations?: readonly Operation[];
   initialDraft?: TransferDraft;
   pickSource?: (signal?: AbortSignal) => Promise<SelectedFileResource | null>;
   onTransfer?: (
@@ -76,6 +89,7 @@ function TransferOptionsForm({
   onSaveDraft,
   target,
   watchActions,
+  operations,
 }: TransferOptionsProps) {
   const [source, setSource] = useState<SelectedFileResource>();
   const [draft, setDraft] = useState<TransferDraft>(
@@ -88,7 +102,13 @@ function TransferOptionsForm({
       writeWaitMs,
     },
   );
-  const action = useToolAction();
+  const action = useToolAction((reason) =>
+    labels.operationText.failure(nativeErrorCode(reason)),
+  );
+  const [submitted, setSubmitted] = useState<Operation>();
+  const current =
+    operations?.find((value) => value.operationId === submitted?.operationId) ??
+    submitted;
   useToolDraft(
     draft,
     labels.draft,
@@ -135,100 +155,152 @@ function TransferOptionsForm({
     <section
       aria-label={labels.transferOptions}
       aria-busy={action.busy}
-      className="space-y-3"
+      className="workbench-tool-form"
     >
-      <h3>{labels.transferOptions}</h3>
-      <Button
-        variant="outline"
-        size="sm"
-        disabled={locked || !pickSource}
-        onClick={() =>
-          void action.run(async (signal) => {
-            const selected = await pickSource!(signal);
-            if (selected && !signal.aborted) {
-              setSource(selected);
-              setDraft((current) => ({
-                ...current,
-                offset: "0",
-                length: selected.length,
-              }));
-            }
-          })
+      <h3 className="sr-only">{labels.transferOptions}</h3>
+      <Tabs defaultValue="basic" className="workbench-tool-pages">
+        <TabsList aria-label={labels.transferOptions}>
+          <TabsTrigger value="basic">{labels.basic}</TabsTrigger>
+          <TabsTrigger value="advanced">{labels.advanced}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="basic" className="workbench-tool-page">
+          <div className="workbench-form-fields">
+            <div className="workbench-form-row">
+              <span>{labels.source}</span>
+              <div className="workbench-file-selection">
+                <output aria-label={labels.source} title={source?.name}>
+                  {source?.name ?? "—"}
+                </output>
+                <WorkbenchIconButton
+                  label={labels.selectSource}
+                  variant="outline"
+                  disabled={locked || !pickSource}
+                  onClick={() =>
+                    void action.run(async (signal) => {
+                      const selected = await pickSource!(signal);
+                      if (selected && !signal.aborted) {
+                        setSource(selected);
+                        setSubmitted(undefined);
+                        setDraft((current) => ({
+                          ...current,
+                          offset: "0",
+                          length: selected.length,
+                        }));
+                      }
+                    })
+                  }
+                >
+                  <FolderOpen aria-hidden="true" />
+                </WorkbenchIconButton>
+              </div>
+            </div>
+            <div className="workbench-form-row">
+              <span>{labels.fileSize}</span>
+              <output title={source?.length}>
+                {source ? formatByteSize(source.length) : "—"}
+              </output>
+            </div>
+          </div>
+        </TabsContent>
+        <TabsContent value="advanced" className="workbench-tool-page">
+          <fieldset disabled={locked}>
+            <legend className="sr-only">{labels.transferOptions}</legend>
+            <div className="workbench-form-fields">
+              {(
+                [
+                  "offset",
+                  "length",
+                  "chunkBytes",
+                  "bytesPerSecond",
+                  "interChunkMs",
+                  "writeWaitMs",
+                ] as const
+              ).map((field) => (
+                <label key={field}>
+                  <span>{labels[field]}</span>
+                  <Input
+                    inputMode="numeric"
+                    value={draft[field] ?? ""}
+                    onChange={(event) =>
+                      setDraft((current) => ({
+                        ...current,
+                        [field]: event.target.value,
+                      }))
+                    }
+                  />
+                </label>
+              ))}
+            </div>
+          </fieldset>
+          {valid ? (
+            <output aria-label={labels.preview}>
+              [{draft.offset}, {(offset! + length!).toString()}) /{" "}
+              {source?.length}
+            </output>
+          ) : (
+            source && <p role="status">{labels.invalidRange}</p>
+          )}
+        </TabsContent>
+      </Tabs>
+      <div className="workbench-tool-footer">
+        {current && (
+          <output role="status">
+            {labels.operationText.states[current.state]}
+            {current.progress
+              ? ` · ${operationProgress(current.progress, labels.operationText)}`
+              : ""}
+          </output>
+        )}
+        <span className="sr-only">
+          {!onTransfer ? labels.unavailable : undefined}
+        </span>
+        <Button
+          size="sm"
+          disabled={
+            locked ||
+            !allowed(inputs[0]) ||
+            !valid ||
+            !onTransfer ||
+            source?.reference.kind !== "file" ||
+            !source.reference.revision
+          }
+          onClick={() =>
+            void action.run(async (signal) => {
+              if (
+                locked ||
+                !source ||
+                !valid ||
+                !onTransfer ||
+                !allowed(inputs[0])
+              )
+                return;
+              const operation = await onTransfer(
+                { ...draft, sourceRef: source.reference },
+                signal,
+              );
+              if (!signal.aborted) setSubmitted(operation);
+            })
+          }
+        >
+          {labels.sendFile}
+        </Button>
+      </div>
+      <WorkbenchNotice
+        eventKey={action.eventKey}
+        noticeKey={`transfer:${action.failureIndex}`}
+        log={
+          action.error
+            ? {
+                module: "transfer",
+                level: "error",
+                message: action.error,
+                code: action.errorCode,
+              }
+            : undefined
         }
       >
-        {labels.selectSource}
-      </Button>
-      {source && (
-        <p aria-label={labels.source}>
-          <span>{source.name}</span> · {source.length} · {source.reference.id} @{" "}
-          {source.reference.revision}
-        </p>
-      )}
-      <fieldset disabled={locked}>
-        <legend>{labels.transferOptions}</legend>
-        <div className="grid gap-3 sm:grid-cols-2">
-          {(
-            [
-              "offset",
-              "length",
-              "chunkBytes",
-              "bytesPerSecond",
-              "interChunkMs",
-              "writeWaitMs",
-            ] as const
-          ).map((field) => (
-            <label key={field} className="space-y-1">
-              <span>{labels[field]}</span>
-              <Input
-                inputMode="numeric"
-                value={draft[field] ?? ""}
-                onChange={(event) =>
-                  setDraft((current) => ({
-                    ...current,
-                    [field]: event.target.value,
-                  }))
-                }
-              />
-            </label>
-          ))}
-        </div>
-      </fieldset>
-      {valid ? (
-        <output aria-label={labels.preview}>
-          [{draft.offset}, {(offset! + length!).toString()}) / {source?.length}
-        </output>
-      ) : (
-        source && <p role="status">{labels.invalidRange}</p>
-      )}
-      <p className="text-xs text-muted-foreground">{labels.transferEvidence}</p>
-      {!onTransfer && <p>{labels.unavailable}</p>}
-      <Button
-        size="sm"
-        disabled={
-          locked ||
-          !allowed(inputs[0]) ||
-          !valid ||
-          !onTransfer ||
-          source?.reference.kind !== "file" ||
-          !source.reference.revision
-        }
-        onClick={() =>
-          void action.run(async (signal) => {
-            if (
-              locked ||
-              !source ||
-              !valid ||
-              !onTransfer ||
-              !allowed(inputs[0])
-            )
-              return;
-            await onTransfer({ ...draft, sourceRef: source.reference }, signal);
-          })
-        }
-      >
-        {labels.sendFile}
-      </Button>
-      {action.error && <p role="alert">{action.error}</p>}
+        {action.error && <p role="alert">{action.error}</p>}
+      </WorkbenchNotice>
     </section>
   );
 }

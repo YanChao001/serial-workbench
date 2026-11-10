@@ -2,7 +2,7 @@
   "preferences": {
     "menuBar": true,
     "windowPosition": "remember",
-    "sidebarCollapsed": false,
+    "sidebarCollapsed": true,
     "sidebarWidth": 224
   },
   "currentPage": "workbench",

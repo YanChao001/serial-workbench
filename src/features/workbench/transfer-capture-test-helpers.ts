@@ -1,5 +1,6 @@
 import type { SelectedFileResource } from "@/lib/tauri";
 import type { VerificationReport } from "@serial-workbench/contracts";
+import { labels as workbenchLabels } from "./test-fixtures";
 export const selectedFile: SelectedFileResource = {
   reference: { hostId: "host", kind: "file", id: "source", revision: "3" },
   name: "payload.bin",
@@ -19,6 +20,15 @@ export const verification: VerificationReport = {
   unsettledOperations: ["unsettled-tx"],
 };
 export const toolLabels = {
+  operationText: workbenchLabels.operationText,
+  recording: "Recording",
+  playback: "Playback",
+  targetFile: "Recording file",
+  sourceFile: "Playback file",
+  destinationFile: "Save to",
+  basic: "General",
+  advanced: "Advanced",
+  fileSize: "File size",
   transferOptions: "File transfer options",
   selectSource: "Select source",
   source: "Source",

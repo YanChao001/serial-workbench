@@ -134,8 +134,21 @@ export function createHostSettingsBackend(
           throw new ContractValidationError();
         operation = checkedOperation(result.value.operation);
       }
-      if (operation.error) throw new HostRequestError(operation.error);
-      if (operation.state !== "succeeded") throw { code: "OPERATION_ABORTED" };
+      if (operation.error || operation.state !== "succeeded") {
+        const error = operation.error
+          ? new HostRequestError(operation.error)
+          : { code: "OPERATION_ABORTED" };
+        if (
+          operation.state === "failed" ||
+          operation.state === "interrupted" ||
+          operation.state === "unknown"
+        )
+          Object.assign(error, {
+            executionHostId: operation.executionHostId,
+            operationId: operation.operationId,
+          });
+        throw error;
+      }
       if (operation.result?.kind !== "settings")
         throw new ContractValidationError();
       const document = checked(operation.result.value).document;

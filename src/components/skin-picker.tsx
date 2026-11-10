@@ -50,7 +50,7 @@ export function SkinPicker() {
                     "skin-gallery-card group relative cursor-pointer rounded-xl border p-2 transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
                     active
                       ? "border-primary bg-(--surface-state-selected)"
-                      : "border-border/70 hover:border-primary/50 hover:bg-(--surface-state-hover)",
+                      : "border-border/70 hover:border-foreground/30 hover:bg-(--surface-state-hover)",
                   )}
                 >
                   <input
@@ -107,7 +107,7 @@ export function SkinPicker() {
                         "skin-gallery-card group relative cursor-pointer rounded-xl border p-2 transition-colors focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-2 focus-within:ring-offset-background",
                         active
                           ? "border-primary bg-(--surface-state-selected)"
-                          : "border-border/70 hover:border-primary/50 hover:bg-(--surface-state-hover)",
+                          : "border-border/70 hover:border-foreground/30 hover:bg-(--surface-state-hover)",
                       )}
                     >
                       <input

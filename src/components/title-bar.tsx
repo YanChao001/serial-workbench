@@ -53,7 +53,7 @@ import { cn } from "@/lib/utils";
  * 这里只负责给红绿灯让出位置（见 src-tauri/tauri.macos.conf.json）。
  */
 export function TitleBar() {
-  const { t } = useI18n();
+  const { t, language } = useI18n();
   const { settings } = useSettings();
   const { theme } = useThemeSwitch();
   const { execute, aboutOpen, setAboutOpen, fullscreen } = useCommands();
@@ -138,7 +138,9 @@ export function TitleBar() {
                   data-variant="ghost"
                   className="app-title-menu-trigger"
                 >
-                  {t("title.file")}
+                  <span className="app-title-menu-label" lang={language}>
+                    {t("title.file")}
+                  </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-44">
@@ -155,7 +157,9 @@ export function TitleBar() {
                   data-variant="ghost"
                   className="app-title-menu-trigger"
                 >
-                  {t("title.view")}
+                  <span className="app-title-menu-label" lang={language}>
+                    {t("title.view")}
+                  </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-60">
@@ -198,7 +202,9 @@ export function TitleBar() {
                   data-variant="ghost"
                   className="app-title-menu-trigger"
                 >
-                  {t("title.help")}
+                  <span className="app-title-menu-label" lang={language}>
+                    {t("title.help")}
+                  </span>
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">

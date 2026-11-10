@@ -2,6 +2,8 @@ import type { Translate } from "@/i18n/translate";
 import type { MessageKey } from "@/i18n/zh-CN";
 import { isRecord } from "./settings-model";
 const ERROR_KEYS: Record<string, MessageKey> = {
+  ACCESS_DENIED: "nativeError.accessDenied",
+  PERMISSION_DENIED: "nativeError.permissionDenied",
   CLIPBOARD_WRITE_FAILED: "nativeError.clipboardWriteFailed",
   INVALID_ARGUMENT: "errors.VALIDATION",
   USER_CANCELLED: "nativeError.userCancelled",
@@ -35,6 +37,13 @@ export function errorMessage(error: unknown): string {
     return error.message;
   if (typeof error === "string") return error;
   return "Unknown error";
+}
+export function nativeErrorCode(error: unknown): string | undefined {
+  return isRecord(error) &&
+    typeof error.code === "string" &&
+    /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)
+    ? error.code
+    : undefined;
 }
 export function nativeErrorText(error: unknown, t: Translate): string {
   const key =

@@ -79,6 +79,11 @@ export function parseSharedSettings(value: unknown): SharedSettings {
     throw new ContractValidationError("Invalid Host shared settings");
   return value;
 }
+export function parseSerialConfiguration(value: unknown): SerialConfiguration {
+  if (!validateSerialConfiguration(value))
+    throw new ContractValidationError("Invalid serial configuration");
+  return value;
+}
 
 export function parseObjectRef(value: unknown): ObjectRef {
   if (!validateObjectRef(value))

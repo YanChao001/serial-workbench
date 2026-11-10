@@ -7,7 +7,8 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Toaster } from "sonner";
 import type {
   WorkspaceDocument,
   WorkspaceDocumentResult,
@@ -18,13 +19,103 @@ import {
   type WorkspaceEditorProps,
 } from "./workspace-editor";
 import { session } from "./test-fixtures";
+import { controlLabels } from "./session-controls.test-fixtures";
 import {
   UnsavedWorkContext,
   type UnsavedWork,
 } from "@/providers/unsaved-work-context";
 
 afterEach(cleanup);
+beforeEach(() => {
+  render(<Toaster />);
+});
+function configurationContent() {
+  if (!screen.queryByRole("textbox", { name: "Configuration content" }))
+    fireEvent.click(
+      screen.getByRole("button", { name: "Configuration content" }),
+    );
+  return screen.getByRole("textbox", { name: "Configuration content" });
+}
+
+it("rejects a configuration file beyond the attached request budget before reading it", async () => {
+  const file = new File(["x".repeat(32)], "large.json");
+  const read = vi.fn().mockResolvedValue("unread content");
+  Object.defineProperty(file, "text", { value: read });
+  const preview = vi.fn();
+  const save = vi.fn();
+  render(
+    <WorkspaceEditor
+      base={base()}
+      labels={labels}
+      maxImportBytes="16"
+      onPreviewImport={preview}
+      onSave={save}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.import }));
+  fireEvent.change(screen.getByLabelText("Configuration file"), {
+    target: { files: [file] },
+  });
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "MESSAGE_TOO_LARGE",
+  );
+  expect(read).not.toHaveBeenCalled();
+  expect(preview).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Bench");
+});
+
+it("registers entered configuration until explicit validation, application or discard", async () => {
+  let work: UnsavedWork | undefined;
+  const save = vi.fn();
+  render(
+    <UnsavedWorkContext
+      value={{
+        requestLeave: async () => true,
+        releaseScope: () => {},
+        register: (next) => {
+          work = next;
+        },
+        unregister: () => {},
+      }}
+    >
+      <WorkspaceEditor
+        base={base()}
+        labels={labels}
+        onSave={save}
+        onPreviewImport={async () => ({
+          ...base().document.value,
+          name: "Imported",
+        })}
+      />
+    </UnsavedWorkContext>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.import }));
+  fireEvent.change(configurationContent(), {
+    target: { value: "pending envelope" },
+  });
+  expect(work?.dirty).toBe(true);
+  expect(work?.save).toBeUndefined();
+  fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
+  await screen.findByRole("region", { name: labels.changes });
+  expect(work?.save).toBeTypeOf("function");
+  expect(save).not.toHaveBeenCalled();
+  await act(async () => work?.discard());
+  expect(work?.dirty).toBe(false);
+  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
+    "Bench",
+  );
+  expect(save).not.toHaveBeenCalled();
+});
 const labels: WorkspaceEditorLabels = {
+  configurationLabels: controlLabels,
+  defaultIcon: "Default icon",
+  defaultWorkspaceName: "Default workspace",
+  details: "Details",
+  chooseImportFile: "Choose file",
+  emptyImportFile: "No file selected",
+  enteredImportContent: "Entered configuration",
+  failure: (code) => `Failed: ${code}`,
   title: "Workspace configuration",
   workspaceName: "Workspace name",
   viewName: "View name",
@@ -54,8 +145,10 @@ const labels: WorkspaceEditorLabels = {
   unavailable: "Unavailable",
   conflict: "Configuration changed. Reload to review the saved version.",
   saved: "Configuration saved",
-  import: "Import JSON",
-  export: "Export JSON",
+  import: "Import configuration",
+  export: "Export configuration",
+  importJson: "Configuration content",
+  importFile: "Configuration file",
   apply: "Apply import",
   cancelImport: "Cancel import",
   changes: "Import changes",
@@ -101,6 +194,102 @@ function base(): WorkspaceDocumentResult {
     },
   };
 }
+
+it("localizes only the placeholder of an unnamed workspace without changing the stored name", () => {
+  const original = base();
+  original.scope.target.id = "default";
+  original.document.value.name = "";
+  const onChange = vi.fn();
+  const view = render(
+    <WorkspaceEditor base={original} labels={labels} onChange={onChange} />,
+  );
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveValue("");
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveAttribute("placeholder", "Default workspace");
+  view.rerender(
+    <WorkspaceEditor
+      base={original}
+      labels={{
+        ...labels,
+        workspaceName: "工作区名称",
+        defaultWorkspaceName: "默认工作区",
+      }}
+      onChange={onChange}
+    />,
+  );
+  expect(screen.getByRole("textbox", { name: "工作区名称" })).toHaveValue("");
+  expect(screen.getByRole("textbox", { name: "工作区名称" })).toHaveAttribute(
+    "placeholder",
+    "默认工作区",
+  );
+  expect(onChange).not.toHaveBeenCalled();
+  expect(original.document.value.name).toBe("");
+});
+
+it("preserves a custom Workspace name through language changes, import, save and export", async () => {
+  const original = base();
+  original.scope.target.id = "default";
+  original.document.value.name = "Workspace";
+  const onSave = vi.fn(
+    async (snapshot: WorkspaceDocumentResult, value: WorkspaceDocument) => ({
+      ...snapshot,
+      document: { revision: "8", value },
+    }),
+  );
+  const onExport = vi.fn().mockResolvedValue(undefined);
+  const onPreviewImport = vi.fn().mockResolvedValue({
+    ...original.document.value,
+    views: [],
+  });
+  const chineseLabels = {
+    ...labels,
+    workspaceName: "工作区名称",
+    defaultWorkspaceName: "默认工作区",
+  };
+  const content = (localized: WorkspaceEditorLabels) => (
+    <WorkspaceEditor
+      base={original}
+      labels={localized}
+      onSave={onSave}
+      onExport={onExport}
+      onPreviewImport={onPreviewImport}
+    />
+  );
+  const view = render(content(labels));
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Workspace");
+  view.rerender(content(chineseLabels));
+  expect(screen.getByLabelText("工作区名称")).toHaveValue("Workspace");
+  fireEvent.click(screen.getByRole("button", { name: labels.import }));
+  fireEvent.change(configurationContent(), {
+    target: { value: "validated Workspace envelope" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
+  await screen.findByRole("region", { name: labels.changes });
+  fireEvent.click(screen.getByRole("button", { name: labels.apply }));
+  await screen.findByRole("status");
+  expect(onSave).toHaveBeenCalledWith(
+    original,
+    expect.objectContaining({ name: "Workspace" }),
+    expect.any(AbortSignal),
+  );
+  expect(screen.getByLabelText("工作区名称")).toHaveValue("Workspace");
+  fireEvent.click(screen.getByRole("button", { name: labels.export }));
+  await waitFor(() =>
+    expect(onExport).toHaveBeenCalledWith(
+      expect.objectContaining({
+        document: expect.objectContaining({
+          revision: "8",
+          value: expect.objectContaining({ name: "Workspace" }),
+        }),
+      }),
+      expect.any(AbortSignal),
+    ),
+  );
+});
+
 it("saves edited view, connection and panel configuration with the original document revision", async () => {
   const original = base();
   const onSave = vi.fn(
@@ -121,18 +310,19 @@ it("saves edited view, connection and panel configuration with the original docu
     target: { value: "Motor 2" },
   });
   fireEvent.click(screen.getByRole("checkbox", { name: "Pinned" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Baud rate" }), {
+  fireEvent.change(screen.getByLabelText("Baud rate"), {
     target: { value: "57600" },
   });
-  fireEvent.change(screen.getByRole("spinbutton", { name: "Panel height" }), {
-    target: { value: "256" },
-  });
+  expect(screen.queryByRole("spinbutton", { name: "Panel height" })).toBeNull();
+  expect(
+    screen.queryByRole("spinbutton", { name: "Sidebar width" }),
+  ).toBeNull();
   fireEvent.click(screen.getByRole("button", { name: "Save configuration" }));
   await screen.findByRole("status");
   expect(onSave).toHaveBeenCalledWith(
     original,
     expect.objectContaining({
-      layout: { sidebarWidth: 224, panelHeight: 256 },
+      layout: { sidebarWidth: 224, panelHeight: 192 },
       views: [expect.objectContaining({ name: "Motor 2", pinned: true })],
       bindings: [
         expect.objectContaining({
@@ -273,7 +463,7 @@ it("clones complete view configuration into new identities through the controlle
   expect(latest.bindings[1]!.configuration).toEqual(
     original.document.value.bindings[0]!.configuration,
   );
-  fireEvent.change(screen.getByRole("textbox", { name: "Baud rate" }), {
+  fireEvent.change(screen.getByLabelText("Baud rate"), {
     target: { value: "38400" },
   });
   expect(latest.bindings[0]!.configuration.baudRate).toBe(
@@ -370,11 +560,13 @@ it("shows document import and export as unavailable when real document file call
   render(
     <WorkspaceEditor base={base()} selectedViewId="view" labels={labels} />,
   );
-  expect(screen.getByRole("button", { name: "Import JSON" })).toBeDisabled();
-  expect(screen.getByRole("button", { name: "Export JSON" })).toBeDisabled();
   expect(
-    screen.getByText("Document preview is unavailable"),
-  ).toBeInTheDocument();
+    screen.getByRole("button", { name: "Import configuration" }),
+  ).toBeDisabled();
+  expect(
+    screen.getByRole("button", { name: "Export configuration" }),
+  ).toBeDisabled();
+  expect(screen.queryByText("Document preview is unavailable")).toBeNull();
 });
 
 it("exports the saved workspace only after an explicit click through the controlled file callback", async () => {
@@ -392,7 +584,7 @@ it("exports the saved workspace only after an explicit click through the control
   fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
     target: { value: "Draft stays local" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+  fireEvent.click(screen.getByRole("button", { name: "Export configuration" }));
   await waitFor(() =>
     expect(onExport).toHaveBeenCalledWith(original, expect.any(AbortSignal)),
   );
@@ -419,11 +611,11 @@ it("previews Host-validated JSON against the edited draft and only saves on expl
       onPreviewImport={onPreviewImport}
     />,
   );
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+  fireEvent.change(screen.getByLabelText("Workspace name"), {
     target: { value: "Current draft" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "raw envelope" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
@@ -432,13 +624,11 @@ it("previews Host-validated JSON against the edited draft and only saves on expl
     "raw envelope",
     expect.any(AbortSignal),
   );
-  expect(screen.getByText('"Current draft"')).toBeInTheDocument();
-  expect(screen.getByText('"Imported"')).toBeInTheDocument();
+  expect(screen.getAllByText("Current draft").length).toBeGreaterThan(0);
+  expect(screen.getByText("Imported")).toBeInTheDocument();
   expect(screen.getByText("Removed")).toBeInTheDocument();
   expect(onSave).not.toHaveBeenCalled();
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "Current draft",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Current draft");
   fireEvent.click(screen.getByRole("button", { name: "Apply import" }));
   await screen.findByRole("status");
   expect(onSave).toHaveBeenCalledWith(
@@ -446,9 +636,7 @@ it("previews Host-validated JSON against the edited draft and only saves on expl
     candidate,
     expect.any(AbortSignal),
   );
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "Host receipt",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Host receipt");
 });
 
 it("cancels a validated candidate without saving or changing the local draft", async () => {
@@ -465,8 +653,8 @@ it("cancels a validated candidate without saving or changing the local draft", a
       })}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "{}" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
@@ -475,9 +663,7 @@ it("cancels a validated candidate without saving or changing the local draft", a
   expect(
     screen.queryByRole("region", { name: "Import changes" }),
   ).not.toBeInTheDocument();
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "Bench",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Bench");
   expect(onSave).not.toHaveBeenCalled();
 });
 
@@ -509,33 +695,27 @@ it("preserves JSON, validated candidate and draft on CAS conflict and reviews ag
       onPreviewImport={async () => candidate}
     />,
   );
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+  fireEvent.change(screen.getByLabelText("Workspace name"), {
     target: { value: "My draft" },
   });
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "original imported envelope" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
   await screen.findByRole("region", { name: "Import changes" });
   fireEvent.click(screen.getByRole("button", { name: "Apply import" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(labels.conflict);
-  expect(screen.getByRole("textbox", { name: "Workspace JSON" })).toHaveValue(
-    "original imported envelope",
-  );
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "My draft",
-  );
-  expect(screen.getByText('"Imported"')).toBeInTheDocument();
+  expect(configurationContent()).toHaveValue("original imported envelope");
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("My draft");
+  expect(screen.getByText("Imported")).toBeInTheDocument();
   expect(onReload).not.toHaveBeenCalled();
   fireEvent.click(
     screen.getByRole("button", { name: "Reload saved configuration" }),
   );
-  await screen.findByText('"New saved version"');
+  await screen.findByText("New saved version");
   expect(onSave).toHaveBeenCalledTimes(1);
-  expect(screen.getByRole("textbox", { name: "Workspace JSON" })).toHaveValue(
-    "original imported envelope",
-  );
+  expect(configurationContent()).toHaveValue("original imported envelope");
   fireEvent.click(screen.getByRole("button", { name: "Apply import" }));
   await screen.findByRole("status");
   expect(onSave).toHaveBeenLastCalledWith(
@@ -567,20 +747,20 @@ it("ignores a late preview after newer JSON and allows a new preview without wai
       onPreviewImport={onPreviewImport}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "old" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.change(configurationContent(), {
     target: { value: "new" },
   });
   expect(signal?.aborted).toBe(true);
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
-  await screen.findByText('"Newest"');
+  await screen.findByText("Newest");
   await act(async () => finish({ ...original.document.value, name: "Stale" }));
   expect(screen.queryByText('"Stale"')).not.toBeInTheDocument();
-  expect(screen.getByText('"Newest"')).toBeInTheDocument();
+  expect(screen.getByText("Newest")).toBeInTheDocument();
 });
 
 it("reads a JSON file as text and requires the same explicit Host preview and apply", async () => {
@@ -601,19 +781,17 @@ it("reads a JSON file as text and requires the same explicit Host preview and ap
       onPreviewImport={onPreviewImport}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByLabelText("Workspace JSON file"), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(screen.getByLabelText("Configuration file"), {
     target: { files: [file] },
   });
   await waitFor(() =>
-    expect(screen.getByRole("textbox", { name: "Workspace JSON" })).toHaveValue(
-      "file envelope",
-    ),
+    expect(configurationContent()).toHaveValue("file envelope"),
   );
   expect(onPreviewImport).not.toHaveBeenCalled();
   expect(onSave).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
-  await screen.findByText('"From file"');
+  await screen.findByText("From file");
   expect(onPreviewImport).toHaveBeenCalledWith(
     "file envelope",
     expect.any(AbortSignal),
@@ -637,20 +815,16 @@ it("keeps rejected future-format input and the current draft without offering ap
       }}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "future envelope" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
-    "Future workspace format",
+    "UNSUPPORTED_FORMAT",
   );
-  expect(screen.getByRole("textbox", { name: "Workspace JSON" })).toHaveValue(
-    "future envelope",
-  );
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "Bench",
-  );
+  expect(configurationContent()).toHaveValue("future envelope");
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Bench");
   expect(
     screen.queryByRole("button", { name: "Apply import" }),
   ).not.toBeInTheDocument();
@@ -674,8 +848,8 @@ it("aborts an import preview when the workspace target changes and ignores late 
       onPreviewImport={onPreviewImport}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "old target" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
@@ -697,9 +871,7 @@ it("aborts an import preview when the workspace target changes and ignores late 
   await act(async () =>
     finish({ ...original.document.value, name: "Stale import" }),
   );
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "Other target",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Other target");
   expect(
     screen.queryByRole("region", { name: "Import changes" }),
   ).not.toBeInTheDocument();
@@ -723,15 +895,15 @@ it("keeps edits made during import apply while acknowledging the actual saved do
       }
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(configurationContent(), {
     target: { value: "envelope" },
   });
   fireEvent.click(screen.getByRole("button", { name: "Preview import" }));
   await screen.findByRole("region", { name: "Import changes" });
   fireEvent.click(screen.getByRole("button", { name: "Apply import" }));
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toBeEnabled();
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+  expect(screen.getByLabelText("Workspace name")).toBeEnabled();
+  fireEvent.change(screen.getByLabelText("Workspace name"), {
     target: { value: "New edit" },
   });
   const receipt = {
@@ -740,9 +912,7 @@ it("keeps edits made during import apply while acknowledging the actual saved do
   };
   await act(async () => finish(receipt));
   expect(onAcknowledged).toHaveBeenCalledWith(receipt);
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "New edit",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("New edit");
   expect(screen.queryByRole("status")).not.toBeInTheDocument();
   expect(
     screen.getByRole("button", { name: "Save configuration" }),
@@ -768,7 +938,7 @@ it("does not overwrite edits made while an explicit reload is waiting", async ()
   fireEvent.click(
     screen.getByRole("button", { name: "Reload saved configuration" }),
   );
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+  fireEvent.change(screen.getByLabelText("Workspace name"), {
     target: { value: "New edit" },
   });
   await act(async () =>
@@ -780,9 +950,7 @@ it("does not overwrite edits made while an explicit reload is waiting", async ()
       },
     }),
   );
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "New edit",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("New edit");
   expect(onAcknowledged).not.toHaveBeenCalled();
 });
 
@@ -812,14 +980,14 @@ it("keeps lifecycle navigation pending when new edits arrive during its save", a
       />
     </UnsavedWorkContext.Provider>,
   );
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+  fireEvent.change(screen.getByLabelText("Workspace name"), {
     target: { value: "Submitted" },
   });
   let saving!: Promise<void>;
   act(() => {
     saving = work!.save!(new AbortController().signal);
   });
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
+  fireEvent.change(screen.getByLabelText("Workspace name"), {
     target: { value: "Still unsaved" },
   });
   await act(async () => {
@@ -833,9 +1001,7 @@ it("keeps lifecycle navigation pending when new edits arrive during its save", a
     await expect(saving).rejects.toThrow("New changes need saving");
   });
   expect(work?.dirty).toBe(true);
-  expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
-    "Still unsaved",
-  );
+  expect(screen.getByLabelText("Workspace name")).toHaveValue("Still unsaved");
 });
 
 it("does not replace newer pasted JSON when an older file read completes", async () => {
@@ -854,15 +1020,13 @@ it("does not replace newer pasted JSON when an older file read completes", async
       onPreviewImport={async () => base().document.value}
     />,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Import JSON" }));
-  fireEvent.change(screen.getByLabelText("Workspace JSON file"), {
+  fireEvent.click(screen.getByRole("button", { name: "Import configuration" }));
+  fireEvent.change(screen.getByLabelText("Configuration file"), {
     target: { files: [file] },
   });
-  fireEvent.change(screen.getByRole("textbox", { name: "Workspace JSON" }), {
+  fireEvent.change(configurationContent(), {
     target: { value: "new pasted envelope" },
   });
   await act(async () => finish("old file envelope"));
-  expect(screen.getByRole("textbox", { name: "Workspace JSON" })).toHaveValue(
-    "new pasted envelope",
-  );
+  expect(configurationContent()).toHaveValue("new pasted envelope");
 });

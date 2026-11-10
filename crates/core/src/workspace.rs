@@ -34,7 +34,8 @@ pub struct WorkspaceDocument {
 impl Default for WorkspaceDocument {
     fn default() -> Self {
         Self {
-            name: "Workspace".into(),
+            // 空名表示尚未命名，客户端只本地化显示，不改写用户名称。
+            name: String::new(),
             views: Vec::new(),
             bindings: Vec::new(),
             favorite_binding_ids: Vec::new(),
@@ -82,4 +83,36 @@ pub struct WorkspaceSnapshot {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceSaveParams {
     pub value: WorkspaceDocument,
+}
+
+#[cfg(test)]
+mod tests {
+    use super::WorkspaceDocument;
+
+    #[test]
+    fn unnamed_workspace_is_valid_and_round_trips_without_a_display_name() {
+        let workspace = WorkspaceDocument::default();
+        assert!(workspace.name.is_empty());
+        workspace.validate().unwrap();
+        let encoded = serde_json::to_vec(&workspace).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<WorkspaceDocument>(&encoded).unwrap(),
+            workspace
+        );
+    }
+
+    #[test]
+    fn a_literal_workspace_name_is_preserved() {
+        let workspace = WorkspaceDocument {
+            name: "Workspace".into(),
+            ..WorkspaceDocument::default()
+        };
+        let encoded = serde_json::to_vec(&workspace).unwrap();
+        assert_eq!(
+            serde_json::from_slice::<WorkspaceDocument>(&encoded)
+                .unwrap()
+                .name,
+            "Workspace"
+        );
+    }
 }

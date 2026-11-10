@@ -1,12 +1,18 @@
 ﻿import { parseWireFrame } from "@serial-workbench/contracts";
 import { describe, expect, it, vi } from "vitest";
+import { parseReply } from "@serial-workbench/contracts";
 import type {
   AttachResult,
   Query,
   WireFrame,
 } from "@serial-workbench/contracts";
-import { createNativeTransport, createHostConnection } from "./host-client";
+import {
+  createNativeTransport,
+  createHostConnection,
+  HostProjectionError,
+} from "./host-client";
 import type { HostNativePort } from "./host-client";
+import { HostRequestError } from "@serial-workbench/host-client";
 
 const attachment: AttachResult = {
   hostId: "host",
@@ -71,6 +77,144 @@ function setup() {
   };
 }
 const tick = () => new Promise<void>((resolve) => queueMicrotask(resolve));
+
+describe("Host scope directory epoch classification", () => {
+  it.each(["catalog", "wrong-kind", "probe-failed"])(
+    "classifies a directory epoch only after an unchanged original attachment returns catalog: %s",
+    async (probeResult) => {
+      const { port } = setup();
+      const desktop = {
+        attachment: { ...attachment, limits: { ...attachment.limits } },
+        generation: "8",
+      };
+      vi.mocked(port.attachment).mockResolvedValue(desktop);
+      const directoryError = {
+        code: "EPOCH_MISMATCH",
+        message: "original directory epoch",
+        retryable: false,
+      };
+      vi.mocked(port.request).mockImplementation(async (request) => {
+        if (request.method !== "action.query")
+          throw new Error("read-only probe");
+        if (request.params.actionId === "state.scopes")
+          return parseReply({ ok: false, error: directoryError });
+        expect(request.params).toMatchObject({
+          actionId: "catalog.list",
+          hostId: "host",
+          instanceEpoch: "7",
+          target: { hostId: "host", kind: "host", id: "host" },
+          params: { pageSize: "1" },
+        });
+        if (probeResult === "probe-failed")
+          return parseReply({
+            ok: false,
+            error: { ...directoryError, message: "probe instance failed" },
+          });
+        return parseReply({
+          ok: true,
+          result:
+            probeResult === "catalog"
+              ? { kind: "catalog", value: { catalogVersion: "1", items: [] } }
+              : { kind: "devices", value: { devices: [], stale: false } },
+        });
+      });
+      const connection = await createHostConnection(port);
+      try {
+        const failure: unknown = await connection
+          .refreshScopes()
+          .catch((error: unknown) => error);
+        if (probeResult === "catalog") {
+          expect(failure).toBeInstanceOf(HostProjectionError);
+          expect(failure).toMatchObject({
+            code: "EPOCH_MISMATCH",
+            cause: {
+              code: "EPOCH_MISMATCH",
+              message: "original directory epoch",
+            },
+          });
+          if (!(failure instanceof HostProjectionError))
+            throw new Error("projection failure expected");
+          expect(failure.cause).toBeInstanceOf(HostRequestError);
+        } else {
+          expect(failure).toBeInstanceOf(HostRequestError);
+          expect(failure).not.toBeInstanceOf(HostProjectionError);
+          expect(failure).toMatchObject({
+            code: "EPOCH_MISMATCH",
+            message: "original directory epoch",
+          });
+        }
+        expect(port.request).toHaveBeenCalledTimes(2);
+        expect(port.attachment).toHaveBeenCalledOnce();
+        expect(port.subscribe).not.toHaveBeenCalled();
+        expect(port.rawRequest).not.toHaveBeenCalled();
+        expect(port.rawSubscribe).not.toHaveBeenCalled();
+      } finally {
+        connection.dispose();
+      }
+    },
+  );
+
+  it.each(["generation", "instanceEpoch"])(
+    "preserves the directory failure when the original %s changes during its probe",
+    async (changed) => {
+      const { port } = setup();
+      const desktop = {
+        attachment: { ...attachment, limits: { ...attachment.limits } },
+        generation: "8",
+      };
+      vi.mocked(port.attachment).mockResolvedValue(desktop);
+      let finish: ((reply: ReturnType<typeof parseReply>) => void) | undefined;
+      vi.mocked(port.request).mockImplementation(async (request) => {
+        if (request.method !== "action.query")
+          throw new Error("read-only probe");
+        if (request.params.actionId === "state.scopes")
+          return parseReply({
+            ok: false,
+            error: {
+              code: "EPOCH_MISMATCH",
+              message: "original directory epoch",
+              retryable: false,
+            },
+          });
+        expect(request.params.actionId).toBe("catalog.list");
+        return new Promise<ReturnType<typeof parseReply>>((resolve) => {
+          finish = resolve;
+        });
+      });
+      const connection = await createHostConnection(port);
+      try {
+        const waiting = connection
+          .refreshScopes()
+          .catch((error: unknown) => error);
+        await vi.waitFor(() => expect(finish).toBeTypeOf("function"));
+        if (changed === "generation") desktop.generation = "9";
+        else desktop.attachment.instanceEpoch = "8";
+        finish?.(
+          parseReply({
+            ok: true,
+            result: {
+              kind: "catalog",
+              value: { catalogVersion: "1", items: [] },
+            },
+          }),
+        );
+        const failure: unknown = await waiting;
+        expect(failure).toBeInstanceOf(HostRequestError);
+        expect(failure).not.toBeInstanceOf(HostProjectionError);
+        expect(failure).toMatchObject({
+          code: "EPOCH_MISMATCH",
+          message: "original directory epoch",
+        });
+        expect(port.request).toHaveBeenCalledTimes(2);
+        expect(port.attachment).toHaveBeenCalledOnce();
+        expect(port.subscribe).not.toHaveBeenCalled();
+        expect(port.rawRequest).not.toHaveBeenCalled();
+      } finally {
+        connection.dispose();
+      }
+    },
+  );
+});
 describe("native Host transport", () => {
   it("waits for the real subscription ID then consumes before acknowledging its generation", async () => {
     expect(parseWireFrame(frame)).toEqual(frame);
@@ -140,6 +284,8 @@ describe("native Host transport", () => {
       },
     });
     const connection = await createHostConnection(port);
+    expect(port.request).not.toHaveBeenCalled();
+    await connection.refreshScopes();
     expect(connection.transport.resolveScope("opaque-scope")).toEqual(target);
     expect(() =>
       connection.transport.resolveScope("workspace:guessed"),

@@ -22,21 +22,35 @@ import type {
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { saveTextExport } from "@/lib/tauri";
+import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { stateScopeKey } from "@/lib/host-scope";
 import { SerialConfigurationFields } from "./serial-configuration-fields";
 import { validSerialConfiguration } from "./serial-configuration";
 import { useUnsavedWork } from "@/providers/unsaved-work";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { FolderOpen, FolderSearch, RotateCw } from "lucide-react";
+import { WorkbenchIconButton } from "./workbench-icon-button";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Textarea } from "@/components/ui/textarea";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { SessionControls } from "./session-controls";
 import { DeviceLibrary } from "./device-library";
 import { WorkspaceEditor } from "./workspace-editor";
 import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
 import { DiagnosticPanel } from "./diagnostic-panel";
-import { OperationActions } from "./operation-actions";
 import { workbenchToolLabels } from "./tool-labels";
+import { WorkbenchNotice } from "./workbench-notice";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 /** Owns no Host projection: tool components keep their drafts and Host owns receipts. */
@@ -60,13 +74,23 @@ export function WorkbenchTools({
   onLoaded: (result: WorkspaceDocumentResult) => void;
 }) {
   const { t } = useI18n();
-  const labels = workbenchToolLabels(t);
+  const labels = useMemo(() => workbenchToolLabels(t), [t]);
   const pending = useRef<AbortController | null>(null);
   const [recent, setRecent] = useState<RecentList>();
-  const [workspaceId, setWorkspaceId] = useState(
-    base?.scope.target.id ?? "default",
-  );
-  const [exported, setExported] = useState<{ scope: string; json: string }>();
+  const recentReader = useRef(host.recentConnections);
+  recentReader.current = host.recentConnections;
+  const [recentLoading, setRecentLoading] = useState(false);
+  const [recentError, setRecentError] = useState<string>();
+  const [recentReload, setRecentReload] = useState(0);
+  const workspaceReader = useRef(host.listWorkspaces);
+  workspaceReader.current = host.listWorkspaces;
+  const [workspaces, setWorkspaces] = useState<WorkspaceDocumentResult[]>([]);
+  const [workspaceLoading, setWorkspaceLoading] = useState(false);
+  const [workspaceDirectoryError, setWorkspaceDirectoryError] =
+    useState<string>();
+  const [workspaceReload, setWorkspaceReload] = useState(0);
+  const [requestedWorkspaceId, setRequestedWorkspaceId] = useState("");
+  const [workspaceTargetOpen, setWorkspaceTargetOpen] = useState(false);
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const ready = host.state.status === "ready";
@@ -104,8 +128,61 @@ export function WorkbenchTools({
   const documentKey = JSON.stringify([generation, stateScopeKey(base?.scope)]);
   useEffect(() => {
     setRecent(undefined);
+    setWorkspaces([]);
     return () => pending.current?.abort();
   }, [generation]);
+  useEffect(() => {
+    setError(undefined);
+    setBusy(false);
+    return () => {
+      pending.current?.abort();
+      pending.current = null;
+    };
+  }, [tool, generation]);
+  useEffect(() => {
+    if (tool !== "devices" || !ready) return;
+    const controller = new AbortController();
+    setRecentLoading(true);
+    setRecentError(undefined);
+    void recentReader
+      .current(controller.signal)
+      .then(
+        (value) => {
+          if (!controller.signal.aborted) setRecent(value);
+        },
+        (reason) => {
+          if (!controller.signal.aborted)
+            setRecentError(nativeErrorCode(reason) ?? "HOST_UNAVAILABLE");
+        },
+      )
+      .finally(() => {
+        if (!controller.signal.aborted) setRecentLoading(false);
+      });
+    return () => controller.abort();
+  }, [generation, tool, ready, recentReload]);
+  useEffect(() => {
+    if (tool !== "workspace" || !ready) return;
+    const controller = new AbortController();
+    setWorkspaceLoading(true);
+    setWorkspaceDirectoryError(undefined);
+    void workspaceReader
+      .current(controller.signal)
+      .then(
+        (values) => {
+          if (!controller.signal.aborted) setWorkspaces(values);
+        },
+        (reason) => {
+          if (!controller.signal.aborted)
+            setWorkspaceDirectoryError(
+              nativeErrorCode(reason) ?? "HOST_UNAVAILABLE",
+            );
+        },
+      )
+      .finally(() => {
+        if (!controller.signal.aborted) setWorkspaceLoading(false);
+      });
+    return () => controller.abort();
+  }, [tool, generation, ready, workspaceReload]);
   const invoke: HostContextValue["invoke"] = async (input, signal) => {
     if (
       !host.state.catalog.some(
@@ -154,6 +231,33 @@ export function WorkbenchTools({
       ),
     [watchHostActions, catalog],
   );
+  function loadWorkspace(workspaceId: string) {
+    if (pending.current || !ready) return;
+    setBusy(true);
+    setError(undefined);
+    const controller = new AbortController();
+    pending.current = controller;
+    void context
+      .beforeReplace()
+      .then((allowed) => {
+        if (!allowed || controller.signal.aborted) return;
+        return host.loadWorkspace(workspaceId, controller.signal);
+      })
+      .then((result) => {
+        if (result && !controller.signal.aborted) {
+          setWorkspaceTargetOpen(false);
+          onLoaded(result);
+        }
+      })
+      .catch((reason: unknown) => {
+        if (!controller.signal.aborted)
+          setError(nativeErrorCode(reason) ?? "OPERATION_FAILED");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setBusy(false);
+        if (pending.current === controller) pending.current = null;
+      });
+  }
   if (tool === "parameters")
     return context.session ? (
       <SessionControls
@@ -167,6 +271,7 @@ export function WorkbenchTools({
         invoke={invoke}
         waitForOperation={host.waitForOperation}
         watchActions={watchActions}
+        onConfigurationApplied={context.onConfigurationChange}
       />
     ) : (
       <ConnectionOptions
@@ -174,18 +279,41 @@ export function WorkbenchTools({
         value={context.configuration}
         onApply={context.onConfigurationChange}
         labels={labels.parameters}
-        applyLabel={t("workbench.tools.applyToConnection")}
-        help={t("workbench.tools.nextConnection")}
+        disabled={context.configurationDisabled}
       />
     );
   if (tool === "devices")
     return (
       <>
-        <p role="status">
-          {host.state.devicesStale
-            ? t("workbench.tools.deviceListStale")
-            : null}
-        </p>
+        <WorkbenchNotice
+          noticeKey={`device-list:${host.state.devicesStale}`}
+          log={{
+            module: "connection",
+            level: "warning",
+            message: t("workbench.tools.deviceListStale"),
+          }}
+        >
+          {host.state.devicesStale ? (
+            <span role="status">{t("workbench.tools.deviceListStale")}</span>
+          ) : null}
+        </WorkbenchNotice>
+        <WorkbenchNotice
+          noticeKey={`recent:${recentReload}`}
+          log={{
+            module: "connection",
+            level: "error",
+            code: recentError,
+            message: recentError
+              ? nativeErrorText({ code: recentError }, t)
+              : "",
+          }}
+        >
+          {recentError ? (
+            <span role="alert">
+              {nativeErrorText({ code: recentError }, t)}
+            </span>
+          ) : null}
+        </WorkbenchNotice>
         <DeviceLibrary
           devices={host.state.devices}
           workspace={base}
@@ -197,54 +325,112 @@ export function WorkbenchTools({
             host.state.devicesStale ? undefined : host.rebindDevice
           }
           onAcknowledged={onAcknowledged}
-          onRefreshRecent={async (signal) => {
-            const result = await host.recentConnections(signal);
-            if (!signal?.aborted) setRecent(result);
-          }}
+          recentLoading={recentLoading}
+          recentError={recentError}
+          onRetryRecent={() => setRecentReload((value) => value + 1)}
         />
       </>
     );
   if (tool === "workspace")
     return (
-      <div className="space-y-3">
-        <div className="workbench-toolbar">
-          <Input
-            aria-label={t("workbench.tools.workspaceId")}
-            value={workspaceId}
-            onChange={(event) => setWorkspaceId(event.target.value)}
-          />
-          <Button
-            size="sm"
-            disabled={!ready || busy || !workspaceId.trim()}
-            onClick={() => {
-              setBusy(true);
-              setError(undefined);
-              const controller = new AbortController();
-              pending.current = controller;
-              void context
-                .beforeReplace()
-                .then((allowed) => {
-                  if (!allowed || controller.signal.aborted) return;
-                  return host.loadWorkspace(workspaceId, controller.signal);
-                })
-                .then((result) => {
-                  if (result && !controller.signal.aborted) onLoaded(result);
-                })
-                .catch((reason: unknown) =>
-                  setError(
-                    reason instanceof Error ? reason.message : String(reason),
-                  ),
-                )
-                .finally(() => {
-                  if (!controller.signal.aborted) setBusy(false);
-                  if (pending.current === controller) pending.current = null;
-                });
-            }}
+      <div className="workbench-workspace-tool">
+        <div className="workbench-toolbar workbench-workspace-picker">
+          <FolderOpen aria-hidden="true" className="size-4 shrink-0" />
+          <Select
+            value={base?.scope.target.id ?? ""}
+            disabled={!ready || busy || (workspaceLoading && !base)}
+            onValueChange={loadWorkspace}
           >
-            {t("workbench.tools.load")}
-          </Button>
+            <SelectTrigger
+              aria-label={t("workbench.tools.chooseWorkspace")}
+              aria-busy={workspaceLoading}
+            >
+              <SelectValue placeholder={t("workbench.tools.chooseWorkspace")} />
+            </SelectTrigger>
+            <SelectContent>
+              {[
+                ...new Map(
+                  [...workspaces, ...(base ? [base] : [])].map((item) => [
+                    item.scope.target.id,
+                    item,
+                  ]),
+                ).values(),
+              ].map((item, index) => (
+                <SelectItem
+                  key={item.scope.target.id}
+                  value={item.scope.target.id}
+                >
+                  {item.document.value.name ||
+                    (item.scope.target.id === "default"
+                      ? t("workbench.tools.defaultWorkspace")
+                      : `${t("workbench.tools.workspace")} ${index + 1}`)}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Popover
+            open={workspaceTargetOpen}
+            onOpenChange={setWorkspaceTargetOpen}
+          >
+            <PopoverTrigger asChild>
+              <WorkbenchIconButton
+                label={t("workbench.tools.openOtherWorkspace")}
+                disabled={!ready || busy}
+              >
+                <FolderSearch aria-hidden="true" />
+              </WorkbenchIconButton>
+            </PopoverTrigger>
+            <PopoverContent
+              className="workbench-detail-popover workbench-workspace-target"
+              aria-label={t("workbench.tools.openOtherWorkspace")}
+            >
+              <label>
+                <span>{t("workbench.tools.workspaceId")}</span>
+                <Input
+                  value={requestedWorkspaceId}
+                  onChange={(event) =>
+                    setRequestedWorkspaceId(event.target.value)
+                  }
+                  autoComplete="off"
+                  maxLength={128}
+                />
+              </label>
+              <Button
+                size="sm"
+                disabled={!ready || busy || !requestedWorkspaceId.trim()}
+                onClick={() => loadWorkspace(requestedWorkspaceId.trim())}
+              >
+                {t("workbench.tools.load")}
+              </Button>
+            </PopoverContent>
+          </Popover>
+          {workspaceDirectoryError && (
+            <WorkbenchIconButton
+              label={t("common.retry")}
+              onClick={() => setWorkspaceReload((value) => value + 1)}
+            >
+              <RotateCw aria-hidden="true" />
+            </WorkbenchIconButton>
+          )}
         </div>
-        {error && <p role="alert">{error}</p>}
+        <WorkbenchNotice
+          noticeKey={`workspace-directory:${workspaceReload}:${error ?? workspaceDirectoryError}`}
+          log={{
+            module: "workspace",
+            level: "error",
+            message: nativeErrorText(
+              { code: error ?? workspaceDirectoryError },
+              t,
+            ),
+            code: error ?? workspaceDirectoryError,
+          }}
+        >
+          {error || workspaceDirectoryError ? (
+            <span role="alert">
+              {nativeErrorText({ code: error ?? workspaceDirectoryError }, t)}
+            </span>
+          ) : null}
+        </WorkbenchNotice>
         {base && (
           <WorkspaceEditor
             key={documentKey}
@@ -252,12 +438,19 @@ export function WorkbenchTools({
             value={draft}
             labels={labels.workspace}
             disabled={!ready || busy}
+            maxImportBytes={host.connection?.attachment.limits.maxRequestBytes}
             onChange={onChange}
             onAcknowledged={onAcknowledged}
             onSave={host.saveWorkspace}
-            onReload={(signal) =>
-              host.loadWorkspace(base.scope.target.id, signal)
-            }
+            onReload={async (signal) => {
+              const result = await host.loadWorkspace(
+                base.scope.target.id,
+                signal,
+              );
+              signal?.throwIfAborted();
+              onLoaded(result);
+              return result;
+            }}
             onPreviewImport={(json, signal) =>
               host.previewWorkspaceImport(base.scope.target.id, json, signal)
             }
@@ -267,20 +460,11 @@ export function WorkbenchTools({
                 signal,
               );
               signal?.throwIfAborted();
-              const path = await saveTextExport(
-                `workspace-${current.scope.target.id}.json`,
+              await saveTextExport(
+                t("workbench.tools.configurationFileName"),
                 result.json,
               );
-              if (!signal?.aborted && path !== null)
-                setExported({ scope: documentKey, json: result.json });
             }}
-          />
-        )}
-        {exported?.scope === documentKey && (
-          <Textarea
-            aria-label={t("workbench.tools.exportedJson")}
-            value={exported.json}
-            readOnly
           />
         )}
       </div>
@@ -288,6 +472,7 @@ export function WorkbenchTools({
   if (tool === "transfer")
     return (
       <TransferOptions
+        operations={host.state.operations}
         watchActions={watchActions}
         target={context.target}
         contextKey={`${generation}:${context.session?.sessionId}:${context.session?.sessionEpoch}`}
@@ -371,51 +556,10 @@ export function WorkbenchTools({
             ? host.state.streams.get(context.session.sessionId)?.error
             : undefined
         }
-        onRefresh={() =>
-          void host
-            .refresh()
-            .catch((reason: unknown) =>
-              setError(
-                reason instanceof Error ? reason.message : String(reason),
-              ),
-            )
-        }
         onInspectMetrics={context.onInspectMetrics}
         onReconnect={context.onReconnect}
         onInspectBytes={context.onInspectBytes}
       />
-      {host.state.operations
-        .filter(
-          (operation) =>
-            operation.state === "queued" ||
-            operation.state === "running" ||
-            operation.state === "cancel_requested",
-        )
-        .map((operation) => (
-          <OperationActions
-            watchActions={watchActions}
-            key={operation.operationId}
-            operation={operation}
-            labels={{
-              operation: t("workbench.tools.operation"),
-              cancel: t("workbench.cancel"),
-              cancelRequested: t("workbench.tools.cancelRequested"),
-            }}
-            disabled={!ready}
-            onCancel={(operationId, signal) =>
-              call(
-                "operation.cancel",
-                {
-                  hostId: operation.executionHostId,
-                  kind: "operation",
-                  id: operationId,
-                },
-                { reason: "user" },
-                signal,
-              )
-            }
-          />
-        ))}
     </div>
   );
 }
@@ -424,14 +568,12 @@ function ConnectionOptions({
   value,
   onApply,
   labels,
-  applyLabel,
-  help,
+  disabled,
 }: {
   value: SerialConfiguration;
   onApply: (value: SerialConfiguration) => void;
   labels: import("./session-controls").SessionControlsLabels;
-  applyLabel: string;
-  help: string;
+  disabled?: boolean;
 }) {
   const [draft, setDraft] = useState(value);
   const dirty = JSON.stringify(value) !== JSON.stringify(draft);
@@ -440,22 +582,29 @@ function ConnectionOptions({
   useUnsavedWork({
     id: "workbench-connection-options",
     label: labels.configuration,
-    dirty,
+    dirty: dirty && !valid,
     discard: () => setDraft(value),
   });
   return (
-    <div className="space-y-3">
-      <p>{help}</p>
-      <SerialConfigurationFields
-        value={draft}
-        onChange={setDraft}
-        labels={labels}
-        id={id}
-      />
-      <Button size="sm" disabled={!valid} onClick={() => onApply(draft)}>
-        {applyLabel}
-      </Button>
-      {!valid && <p role="alert">{labels.invalidConfiguration}</p>}
+    <div className="workbench-connection-options">
+      <fieldset disabled={disabled}>
+        <legend className="sr-only">{labels.configuration}</legend>
+        <SerialConfigurationFields
+          value={draft}
+          onChange={(value) => {
+            setDraft(value);
+            if (validSerialConfiguration(value)) onApply(value);
+          }}
+          labels={labels}
+          id={id}
+        />
+      </fieldset>
+      <p
+        role={!valid ? "alert" : undefined}
+        className="workbench-configuration-validation"
+      >
+        {!valid ? labels.invalidConfiguration : ""}
+      </p>
     </div>
   );
 }

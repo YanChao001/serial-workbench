@@ -4,13 +4,54 @@ import {
   type EventTime,
   type StreamItem,
   type TerminalTypography,
+  type SessionState,
+  type OperationState,
+  type TxGate,
+  type TxOutcome,
 } from "@serial-workbench/contracts";
+import type { WorkbenchLabels } from "./labels";
+
+export function workbenchStatus(
+  status: SessionState | OperationState | TxGate | TxOutcome,
+  labels: WorkbenchLabels,
+): string {
+  return {
+    open: labels.connected,
+    opening: labels.opening,
+    closed: labels.closed,
+    closing: labels.closing,
+    disconnected: labels.disconnected,
+    ready: labels.ready,
+    configuration_pending: labels.configurationPending,
+    control_unknown: labels.controlUnknown,
+    queued: labels.queued,
+    running: labels.running,
+    cancel_requested: labels.cancelRequested,
+    succeeded: labels.succeeded,
+    failed: labels.failed,
+    cancelled: labels.cancelled,
+    interrupted: labels.interrupted,
+    unknown: labels.unknown,
+    accepted: labels.accepted,
+    partial: labels.partial,
+    rejected: labels.rejected,
+  }[status];
+}
+
+export function compactStreamTime(absolute: string): string {
+  // 只收起日期；保留原始时区及精度，完整值仍在时间详情中。
+  return absolute.replace(/^\d{4}-\d{2}-\d{2}T/, "");
+}
 
 export function terminalTypographyStyle(
   typography: TerminalTypography = defaults.terminalTypography,
 ): CSSProperties {
   return {
-    fontFamily: typography.fontFamily,
+    // Windows WebView 不保证识别独立的 ui-monospace；共享栈提供系统等宽回退。
+    fontFamily:
+      typography.fontFamily === "ui-monospace"
+        ? "var(--font-mono)"
+        : typography.fontFamily,
     fontSize: typography.fontSize,
     lineHeight: typography.lineHeightPercent / 100,
     fontVariantLigatures: typography.ligatures ? "normal" : "none",

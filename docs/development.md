@@ -8,6 +8,8 @@
 
 pnpm 在项目内的 `.pnpm-store/` 保存依赖缓存，随项目保持在同一磁盘，配置见 [pnpm-workspace.yaml](../pnpm-workspace.yaml)。该目录由 Git、格式检查和文件监听排除；工具版本由 packageManager 固定，版本更新提示关闭，升级按依赖评审统一处理。
 
+格式命令在展开文件路径时显式排除 `.cache/`，避免遍历其中由不同 Windows 执行身份创建的私有测试 profile；不修改其访问权限，失败现场继续保留。源码、测试和工程文档仍执行原有格式检查。
+
 ```sh
 pnpm install --frozen-lockfile
 rustup toolchain install

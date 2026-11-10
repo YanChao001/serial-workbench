@@ -55,7 +55,12 @@ test("both native matrices cover all four targets without scope or tree reuse", 
     );
     const runner = name === "desktop-e2e" ? native : body;
     assert.match(runner, /MACOSX_DEPLOYMENT_TARGET: "14\.0"/);
-    assert.match(runner, /libwebkit2gtk-4\.1-dev.*libatomic1/);
+    assert.match(
+      runner,
+      new RegExp(
+        `bash scripts/ci-linux-deps\\.sh ${name === "desktop-e2e" ? "native" : "rust"}`,
+      ),
+    );
     assert.match(
       runner,
       /key: (?:native|e2e)-\$\{\{ (?:matrix|inputs)\.target \}\}/,

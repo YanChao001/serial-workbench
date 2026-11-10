@@ -18,6 +18,10 @@ import type {
 } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { WorkbenchNotice } from "./workbench-notice";
+import { useStreamGapNotices } from "./stream-gap-notices";
+import { nativeErrorCode } from "@/lib/native-error";
 import { Input } from "@/components/ui/input";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
@@ -36,8 +40,11 @@ import {
 import {
   presentStreamTimes,
   terminalTypographyStyle,
+  compactStreamTime,
+  workbenchStatus,
   type StreamPresentationLabels,
 } from "./stream-presentation";
+import { TxReceiptFacts } from "./tx-receipt-facts";
 export type StreamViewProps = {
   mode?: TerminalMode;
   onReceiveModeChange?: (mode: TerminalMode) => void;
@@ -100,6 +107,7 @@ export function StreamView({
   const viewport = useRef<HTMLDivElement>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const displayed = frozen ?? items;
+  useStreamGapNotices(items, labels.gapHelp);
   const pendingCount = useMemo(() => {
     if (!frozen) return 0;
     const key = (item: StreamItem) =>
@@ -298,22 +306,17 @@ export function StreamView({
           </span>
         )}
         <span className="workbench-toolbar-spacer" />
-        <Button
+        <WorkbenchIconButton
           ref={searchTrigger}
-          size="icon-sm"
-          variant="ghost"
-          aria-label={labels.search}
-          title={labels.search}
+          label={labels.search}
           aria-expanded={searchOpen}
           aria-controls={`${id}-search`}
           onClick={() => setSearchOpen(!searchOpen)}
         >
           <Search aria-hidden="true" />
-        </Button>
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={frozen ? labels.resume : labels.freeze}
+        </WorkbenchIconButton>
+        <WorkbenchIconButton
+          label={frozen ? labels.resume : labels.freeze}
           aria-pressed={Boolean(frozen)}
           onClick={() => {
             setFrozen(frozen ? null : [...items]);
@@ -325,43 +328,28 @@ export function StreamView({
           ) : (
             <Pause aria-hidden="true" />
           )}
-          <span className="workbench-tool-label">
-            {frozen ? labels.resume : labels.freeze}
-          </span>
-        </Button>
+        </WorkbenchIconButton>
         {onOpenCapture && (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-label={labels.capture}
+          <WorkbenchIconButton
+            label={labels.capture}
             aria-pressed={captureActive}
             onClick={onOpenCapture}
           >
             <Circle aria-hidden="true" />
-            <span className="workbench-tool-label">{labels.capture}</span>
-          </Button>
+          </WorkbenchIconButton>
         )}
         {onOpenActivity && (
-          <Button
-            size="sm"
-            variant="ghost"
-            aria-label={labels.activity}
-            onClick={onOpenActivity}
-          >
+          <WorkbenchIconButton label={labels.activity} onClick={onOpenActivity}>
             <FileText aria-hidden="true" />
-            <span className="workbench-tool-label">{labels.activity}</span>
-          </Button>
+          </WorkbenchIconButton>
         )}
         <Popover>
           <PopoverTrigger asChild>
-            <Button
-              size="icon-sm"
-              variant="ghost"
-              aria-label={displayLabels?.displayOptions ?? labels.encodingHelp}
-              title={displayLabels?.displayOptions ?? labels.encodingHelp}
+            <WorkbenchIconButton
+              label={displayLabels?.displayOptions ?? labels.encodingHelp}
             >
               <Settings2 aria-hidden="true" />
-            </Button>
+            </WorkbenchIconButton>
           </PopoverTrigger>
           <PopoverContent align="end" className="workbench-display-options">
             <PopoverTitle>
@@ -401,10 +389,8 @@ export function StreamView({
           </PopoverContent>
         </Popover>
         {onClearView && (
-          <Button
-            size="icon-sm"
-            variant="ghost"
-            aria-label={displayLabels?.clearView ?? labels.terminal}
+          <WorkbenchIconButton
+            label={displayLabels?.clearView ?? labels.terminal}
             disabled={!items.length}
             onClick={() => {
               setFrozen(null);
@@ -413,7 +399,7 @@ export function StreamView({
             }}
           >
             <Trash2 aria-hidden="true" />
-          </Button>
+          </WorkbenchIconButton>
         )}
       </div>
       {searchOpen && (
@@ -492,9 +478,6 @@ export function StreamView({
             setFrozen([...items]);
         }}
       >
-        {!rows.length && (
-          <p className="text-muted-foreground">{labels.emptyStream}</p>
-        )}
         {rows.map((row) => (
           <div
             key={row.itemIndex}
@@ -521,11 +504,18 @@ export function StreamView({
               {row.kind === "gap" ? labels.gap : row.kind.toUpperCase()}
             </span>
             {presentationLabels && (
-              <details className="workbench-stream-time text-muted-foreground text-xs">
-                <summary title={presentationLabels.timeDetails}>
+              <details
+                data-surface="transparent"
+                className="workbench-stream-time text-muted-foreground text-xs"
+              >
+                <summary
+                  data-surface="transparent"
+                  title={presentationLabels.timeDetails}
+                >
                   {timeMode === "absolute"
-                    ? (times[row.displayIndex]!.absolute ??
-                      presentationLabels.missingTime)
+                    ? times[row.displayIndex]!.absolute
+                      ? compactStreamTime(times[row.displayIndex]!.absolute!)
+                      : presentationLabels.missingTime
                     : (timeMode === "relative"
                           ? times[row.displayIndex]!.relativeNs
                           : times[row.displayIndex]!.intervalNs) === null
@@ -534,6 +524,16 @@ export function StreamView({
                 </summary>
                 {times[row.displayIndex]!.time ? (
                   <>
+                    <p>
+                      <time
+                        dateTime={
+                          times[row.displayIndex]!.absolute ?? undefined
+                        }
+                      >
+                        {times[row.displayIndex]!.absolute ??
+                          presentationLabels.missingTime}
+                      </time>
+                    </p>
                     <p>
                       {presentationLabels.clock}:{" "}
                       {times[row.displayIndex]!.time!.clockId}
@@ -573,11 +573,13 @@ export function StreamView({
                     <span className="workbench-payload">{row.hex}</span>
                   )}
                   {row.kind === "tx" && (
-                    <div className="text-muted-foreground text-xs">
-                      <p>
-                        {labels.requestedBytes}: [{row.offset}, {row.byteEnd})
-                      </p>
-                      <TxStreamReceipt receipt={row.receipt} labels={labels} />
+                    <div className="workbench-tx-receipt text-muted-foreground text-xs">
+                      <TxStreamReceipt
+                        receipt={row.receipt}
+                        byteStart={row.offset!}
+                        byteEnd={row.byteEnd!}
+                        labels={labels}
+                      />
                     </div>
                   )}
                 </>
@@ -588,39 +590,62 @@ export function StreamView({
           </div>
         ))}
       </div>
-      {(trimmed || rows.some((row) => row.kind === "gap")) && (
-        <p className="text-muted-foreground">{labels.gapHelp}</p>
-      )}
-      {error && <p role="alert">{error.message}</p>}
+      <WorkbenchNotice
+        noticeKey={`gap:${trimmed ?? false}:${labels.gapHelp}`}
+        log={{ module: "display", level: "warning", message: labels.gapHelp }}
+      >
+        {trimmed && <p className="text-muted-foreground">{labels.gapHelp}</p>}
+      </WorkbenchNotice>
+      <WorkbenchNotice
+        noticeKey={`stream:${error?.message ?? ""}:${labels.streamUnavailable}`}
+        log={{
+          module: "display",
+          level: "error",
+          message: labels.streamUnavailable,
+          code: nativeErrorCode(error),
+        }}
+      >
+        {error && (
+          <div className="workbench-stream-error" role="alert">
+            <p>{labels.streamUnavailable}</p>
+            <p>{labels.disconnectHelp}</p>
+            <details>
+              <summary>{labels.errorDetails}</summary>
+              <code>{error.message}</code>
+            </details>
+          </div>
+        )}
+      </WorkbenchNotice>
     </section>
   );
 }
 
 function TxStreamReceipt({
   receipt,
+  byteStart,
+  byteEnd,
   labels,
 }: {
   receipt?: TxReceipt;
+  byteStart: string;
+  byteEnd: string;
   labels: WorkbenchLabels;
 }) {
-  if (!receipt) return <p>{labels.awaitingReceipt}</p>;
+  if (!receipt)
+    return (
+      <details data-surface="transparent">
+        <summary data-surface="transparent">{labels.awaitingReceipt}</summary>
+        <p>
+          {labels.requestedBytes}: [{byteStart}, {byteEnd})
+        </p>
+      </details>
+    );
   return (
-    <>
-      <p>
-        {labels.status}: {receipt.outcome}
-      </p>
-      {receipt.acceptedRanges.map((range) => (
-        <p key={`accepted-${range.start}`}>
-          {labels.acceptedBytes}: [{range.start}, {range.end})
-        </p>
-      ))}
-      {receipt.unknownRanges.map((range) => (
-        <p key={`unknown-${range.start}`}>
-          {labels.unknownBytes}: [{range.start}, {range.end})
-        </p>
-      ))}
-      <p>{labels.peerUnconfirmed}</p>
-      {receipt.backendError && <p>{receipt.backendError.code}</p>}
-    </>
+    <details data-surface="transparent" data-outcome={receipt.outcome}>
+      <summary data-surface="transparent">
+        {workbenchStatus(receipt.outcome, labels)}
+      </summary>
+      <TxReceiptFacts receipt={receipt} labels={labels} />
+    </details>
   );
 }

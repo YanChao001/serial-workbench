@@ -1,3 +1,5 @@
+import type { OperationText } from "./operation-text";
+import type { CaptureState } from "@serial-workbench/contracts";
 /** Supplied by the application dictionary; components never choose a locale. */
 export type WorkbenchLabels = Record<
   | "captureSource"
@@ -15,9 +17,15 @@ export type WorkbenchLabels = Record<
   | "captureDenied"
   | "captureYes"
   | "captureNo"
+  | "captureStatusDetails"
+  | "stopRequested"
+  | "retry"
   | "title"
+  | "logs"
   | "closeView"
   | "closeSession"
+  | "restoreAccess"
+  | "restoringAccess"
   | "operationInput"
   | "redactedInput"
   | "replay"
@@ -59,6 +67,7 @@ export type WorkbenchLabels = Record<
   | "opening"
   | "noDevices"
   | "sessions"
+  | "sessionLabel"
   | "duplicateView"
   | "noSession"
   | "bindingUnavailable"
@@ -84,8 +93,9 @@ export type WorkbenchLabels = Record<
   | "sendMode"
   | "lineEnding"
   | "none"
-  | "preview"
+  | "draftByteCount"
   | "invalidHex"
+  | "invalidUtf8"
   | "sending"
   | "receipt"
   | "awaitingReceipt"
@@ -117,6 +127,30 @@ export type WorkbenchLabels = Record<
   | "unknownBytes"
   | "peerConfirmed"
   | "peerUnconfirmed"
+  | "connected"
+  | "closed"
+  | "closing"
+  | "ready"
+  | "configurationPending"
+  | "controlUnknown"
+  | "queued"
+  | "running"
+  | "cancelRequested"
+  | "succeeded"
+  | "failed"
+  | "cancelled"
+  | "interrupted"
+  | "unknown"
+  | "accepted"
+  | "partial"
+  | "rejected"
+  | "emptyDraft"
+  | "sendNotAllowed"
+  | "streamUnavailable"
+  | "errorDetails"
   | "unavailable",
   string
->;
+> & {
+  operationText: OperationText;
+  captureStates: Record<CaptureState, string>;
+};

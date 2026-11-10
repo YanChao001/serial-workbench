@@ -1,10 +1,11 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import type { OperationSummary } from "@serial-workbench/contracts";
 import { ActivityPanel } from "./activity-panel";
 import { labels, operation } from "./test-fixtures";
 afterEach(cleanup);
-it("renders safe activity summaries without inventing an operation body", () => {
+it("shows human activity summaries and keeps technical identities in explicit details", async () => {
   const source = operation("ai");
   const summary: OperationSummary = {
     operationId: source.operationId,
@@ -30,9 +31,20 @@ it("renders safe activity summaries without inventing an operation body", () => 
       onLocate={locate}
     />,
   );
-  expect(screen.getByText("mcp-agent")).toBeInTheDocument();
-  expect(screen.getByText(/12 \/ 24 bytes/)).toBeInTheDocument();
-  expect(screen.getByText("PERMISSION_DENIED")).toBeInTheDocument();
+  expect(screen.getByText("Other client")).toBeInTheDocument();
+  expect(screen.getByText(/12 B \/ 24 B/)).toBeInTheDocument();
+  expect(
+    screen.getByText(labels.operationText.failure("PERMISSION_DENIED")),
+  ).toBeInTheDocument();
+  expect(screen.queryByText("mcp-agent")).not.toBeInTheDocument();
+  expect(screen.queryByText("PERMISSION_DENIED")).not.toBeInTheDocument();
+  await userEvent
+    .setup()
+    .click(screen.getByRole("button", { name: labels.operationText.details }));
+  expect(
+    screen.getByRole("textbox", { name: labels.operationText.details }),
+  ).toHaveProperty("value", expect.stringContaining('"actorId": "mcp-agent"'));
+  await userEvent.setup().keyboard("{Escape}");
   fireEvent.click(screen.getByRole("button", { name: "Locate ai" }));
   expect(locate).toHaveBeenCalledWith(summary);
 });

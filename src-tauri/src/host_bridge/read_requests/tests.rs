@@ -57,7 +57,20 @@ impl RequestHandler for ChangeBeforeDelivery {
                     }
                     // The real server already captured the actor's grant stamp.
                     // Change it after the real read: output_writer rejects that reply.
-                    let reply = host.handle(context.clone(), request).await?;
+                    let mut reply = host.handle(context.clone(), request.clone()).await?;
+                    if change && index == 1 {
+                        // 本例验证已接纳 Open 的只读回复失效；先等真实 Open 终态，
+                        // 否则授权变化会正确取消仍在打开的设备，测成另一个生命周期。
+                        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+                            while matches!(&reply.wire_reply, RpcReply::Success { result, .. }
+                                if matches!(result.as_ref(), RpcResult::Operation(value)
+                                    if matches!(value.operation.state, OperationState::Queued | OperationState::Running | OperationState::CancelRequested))) {
+                                tokio::task::yield_now().await;
+                                reply = host.handle(context.clone(), request.clone()).await?;
+                            }
+                            Ok::<(), HostError>(())
+                        }).await.map_err(|_| HostError::new("TIMEOUT", "Fixture Open did not reach its real terminal state"))??;
+                    }
                     if let Some(paused) = paused {
                         entered.notify_one();
                         let _ = paused.await;

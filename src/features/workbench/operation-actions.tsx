@@ -7,6 +7,8 @@ import type {
   HostContextValue,
 } from "@/providers/host-context";
 import { useToolActionAvailability } from "./use-tool-action-availability";
+import { nativeErrorCode } from "@/lib/native-error";
+import { WorkbenchNotice } from "./workbench-notice";
 
 export type OperationActionsLabels = Record<
   "operation" | "cancel" | "cancelRequested",
@@ -16,6 +18,7 @@ export type OperationActionsProps = {
   operation: Operation;
   watchActions: HostContextValue["watchActions"];
   labels: OperationActionsLabels;
+  formatError?: (code: string | undefined) => string;
   disabled?: boolean;
   onCancel?: (operationId: string, signal?: AbortSignal) => Promise<unknown>;
 };
@@ -28,8 +31,11 @@ function OperationActionsView({
   disabled,
   onCancel,
   watchActions,
+  formatError,
 }: OperationActionsProps) {
-  const action = useToolAction();
+  const action = useToolAction(
+    (reason) => formatError?.(nativeErrorCode(reason)) ?? labels.operation,
+  );
   const [requested, setRequested] = useState(false);
   const inputs = useMemo<HostActionCheckInput[]>(
     () => [
@@ -50,9 +56,6 @@ function OperationActionsView({
     operation.state === "queued" || operation.state === "running";
   return (
     <div className="space-y-2">
-      <p aria-label={labels.operation}>
-        {operation.operationId} · {operation.state}
-      </p>
       <Button
         size="sm"
         variant="outline"
@@ -85,12 +88,20 @@ function OperationActionsView({
         (requested && cancellable)) && (
         <p role="status">{labels.cancelRequested}</p>
       )}
-      {operation.error && (
-        <p role="alert">
-          {operation.error.code}: {operation.error.message}
-        </p>
-      )}
-      {action.error && <p role="alert">{action.error}</p>}
+      <WorkbenchNotice
+        eventKey={action.eventKey}
+        noticeKey={`${operation.operationId}:${action.failureIndex}`}
+        log={{
+          module: operation.actionId.startsWith("capture.")
+            ? "capture"
+            : "transfer",
+          level: "error",
+          message: action.error ?? "",
+          code: action.errorCode,
+        }}
+      >
+        {action.error ? <span role="alert">{action.error}</span> : null}
+      </WorkbenchNotice>
     </div>
   );
 }

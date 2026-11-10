@@ -79,17 +79,6 @@ export function e2eSourceIdentity(projectRoot = root) {
   return hash.digest("hex");
 }
 
-export function e2eHostBuildArgs(target) {
-  return [
-    "build",
-    "--locked",
-    "--target",
-    target,
-    ...COMPONENTS.flatMap((name) => ["--package", name]),
-    "--bins",
-  ];
-}
-
 function runBuild(command, args, env) {
   return new Promise((done, fail) => {
     const child = spawn(command, args, {
@@ -117,8 +106,11 @@ export function e2eBuildArgs(target, packageName) {
     "--config",
     "src-tauri/tauri.e2e.conf.json",
     "--",
+    "--locked",
     "--package",
     packageName,
+    // Tauri CLI 已提供 --bins，透传部分只补同图构建的相邻包。
+    ...COMPONENTS.flatMap((name) => ["--package", name]),
   ];
 }
 
@@ -180,8 +172,7 @@ export async function buildE2E() {
   );
   if (!pkg) throw new Error("未找到应用 Cargo package");
   const executable = e2eExecutable(root, host, pkg);
-  // Host 与测试桌面共用 target 和构建环境，禁止相邻旧程序混入原生验收。
-  await runBuild("cargo", e2eHostBuildArgs(host), env);
+  // 四个入口在同一 Cargo 特性图构建，避免分两轮编译共享包。
   await runBuild(
     process.execPath,
     [

@@ -131,6 +131,7 @@ function Harness({
 describe("unified application commands", () => {
   beforeEach(() => {
     localStorage.clear();
+    sessionStorage.clear();
     localStorage.setItem(STORAGE_KEY, JSON.stringify({ language: "zh" }));
     vi.stubGlobal(
       "ResizeObserver",
@@ -150,8 +151,9 @@ describe("unified application commands", () => {
 
   it("shares keyboard actions and protects editing while allowing the palette from inputs", async () => {
     render(<Harness />);
-    fireEvent.keyDown(document.body, { key: "b", ctrlKey: true });
     expect(screen.getByTestId("collapsed")).toHaveTextContent("true");
+    fireEvent.keyDown(document.body, { key: "b", ctrlKey: true });
+    expect(screen.getByTestId("collapsed")).toHaveTextContent("false");
     const editor = screen.getByRole("textbox", { name: "Editor" });
     fireEvent.keyDown(editor, { key: "b", ctrlKey: true });
     fireEvent.keyDown(document.body, {
@@ -159,7 +161,7 @@ describe("unified application commands", () => {
       ctrlKey: true,
       isComposing: true,
     });
-    expect(screen.getByTestId("collapsed")).toHaveTextContent("true");
+    expect(screen.getByTestId("collapsed")).toHaveTextContent("false");
     fireEvent.keyDown(editor, { key: "k", ctrlKey: true });
     const input = await screen.findByRole("combobox", { name: "快速操作" });
     expect(input).toHaveFocus();

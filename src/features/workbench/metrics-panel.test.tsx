@@ -1,16 +1,17 @@
-import {
-  act,
-  cleanup,
-  fireEvent,
-  render,
-  screen,
-  waitFor,
-} from "@testing-library/react";
+import { act, cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type { HostMetrics, SessionMetrics } from "@serial-workbench/contracts";
 import { MetricsPanel } from "./metrics-panel";
 import { labels } from "./test-fixtures";
-afterEach(cleanup);
+import { Toaster, toast } from "sonner";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+  clearUserLog();
+  vi.useRealTimers();
+  vi.restoreAllMocks();
+});
 const metrics: HostMetrics = {
   hostId: "host",
   instanceEpoch: "1",
@@ -22,28 +23,88 @@ const metrics: HostMetrics = {
   reader: { usedBytes: "3", peakBytes: "5", limitBytes: "10" },
   captureQueue: { usedBytes: "7", peakBytes: "8", limitBytes: "16" },
 };
-it("shows exact Host values, refresh errors, and cancels an outstanding read on unmount", async () => {
+it("updates Host metrics automatically, keeps exact values in details and cancels on close", async () => {
+  vi.useFakeTimers();
   let pending: AbortSignal | undefined;
   const read = vi
     .fn()
     .mockResolvedValueOnce(metrics)
-    .mockRejectedValueOnce(new Error("PERMISSION_DENIED"))
+    .mockRejectedValueOnce({ code: "PERMISSION_DENIED" })
     .mockImplementationOnce((signal: AbortSignal) => {
       pending = signal;
       return new Promise(() => {});
     });
-  const view = render(<MetricsPanel read={read} labels={labels} />);
-  expect(await screen.findByText("9007199254740999")).toBeInTheDocument();
-  expect(screen.getByText("13 / 40")).toBeInTheDocument();
-  expect(screen.getByText(metrics.observedAt)).toBeInTheDocument();
-  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    "PERMISSION_DENIED",
+  const view = render(
+    <>
+      <Toaster />
+      <MetricsPanel read={read} labels={labels} />
+    </>,
   );
-  fireEvent.click(screen.getByRole("button", { name: "Refresh" }));
-  await waitFor(() => expect(read).toHaveBeenCalledTimes(3));
+  await act(async () => {});
+  expect(screen.getByTitle("9007199254740999")).toHaveTextContent("9.01 PB");
+  expect(screen.getByTitle("13 / 40")).toHaveTextContent("13 B / 40 B");
+  expect(screen.getByTitle(metrics.observedAt)).toBeInTheDocument();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  await act(async () => vi.advanceTimersByTimeAsync(0));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    labels.operationText.failure("PERMISSION_DENIED"),
+  );
+  expect(
+    screen
+      .getByRole("region", { name: labels.metrics })
+      .querySelector('[role="alert"]'),
+  ).toBeNull();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(1000);
+  });
+  expect(read).toHaveBeenCalledTimes(3);
   view.unmount();
   expect(pending?.aborted).toBe(true);
+  vi.useRealTimers();
+});
+
+it("reports one safe notification and module log for repeated metrics failures, then a new recovery episode", async () => {
+  vi.useFakeTimers();
+  const notify = vi.spyOn(toast, "custom");
+  const read = vi.fn().mockRejectedValue({
+    code: "PERMISSION_DENIED",
+    message: "private path C:\\private-user-data and raw diagnostic input",
+  });
+  const view = render(
+    <>
+      <Toaster />
+      <MetricsPanel read={read} labels={labels} />
+    </>,
+  );
+  await act(async () => {});
+  await act(async () => vi.advanceTimersByTimeAsync(0));
+  expect(notify).toHaveBeenCalledTimes(1);
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    labels.operationText.failure("PERMISSION_DENIED"),
+  );
+  expect(
+    screen.queryByText(/private-user-data|\[object Object\]/),
+  ).not.toBeInTheDocument();
+  expect(getUserLog()).toMatchObject([
+    {
+      module: "application",
+      level: "error",
+      code: "PERMISSION_DENIED",
+      count: 1,
+    },
+  ]);
+  await act(async () => vi.advanceTimersByTimeAsync(3000));
+  expect(read).toHaveBeenCalledTimes(4);
+  expect(notify).toHaveBeenCalledTimes(1);
+  expect(getUserLog()[0]?.count).toBe(1);
+  read.mockResolvedValueOnce(metrics);
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(notify).toHaveBeenCalledTimes(2);
+  expect(getUserLog()[0]?.count).toBe(2);
+  view.unmount();
 });
 it("discards late metrics when the connection reader changes", async () => {
   let resolve!: (value: HostMetrics) => void;
@@ -56,7 +117,7 @@ it("discards late metrics when the connection reader changes", async () => {
   const next = vi.fn().mockResolvedValue({ ...metrics, rssBytes: "222" });
   const view = render(<MetricsPanel read={old} labels={labels} />);
   view.rerender(<MetricsPanel read={next} labels={labels} />);
-  await screen.findByText("222");
+  await screen.findByText("222 B");
   await act(async () => resolve(metrics));
   expect(screen.queryByText(metrics.rssBytes)).not.toBeInTheDocument();
 });
@@ -81,6 +142,46 @@ const sessionMetrics: SessionMetrics = {
   frameCountsAvailable: false,
 };
 
+it("reports an invalid session sample through the serial log without showing stale session data", async () => {
+  vi.useFakeTimers();
+  const readSession = vi
+    .fn()
+    .mockResolvedValue({ ...sessionMetrics, sessionEpoch: "9" });
+  render(
+    <>
+      <Toaster />
+      <MetricsPanel
+        read={async () => metrics}
+        readSession={readSession}
+        labels={labels}
+        target={{
+          hostId: "host",
+          kind: "session",
+          id: "session",
+          sessionId: "session",
+          sessionEpoch: "1",
+        }}
+      />
+    </>,
+  );
+  await act(async () => {});
+  await act(async () => vi.advanceTimersByTimeAsync(0));
+  expect(screen.getByRole("alert")).toHaveTextContent(
+    labels.operationText.failure("EPOCH_MISMATCH"),
+  );
+  expect(screen.queryByTitle(sessionMetrics.rxBytes)).not.toBeInTheDocument();
+  expect(getUserLog()).toMatchObject([
+    { module: "serial", code: "EPOCH_MISMATCH", count: 1 },
+  ]);
+  await act(async () => vi.advanceTimersByTimeAsync(1000));
+  expect(getUserLog()[0]?.count).toBe(1);
+  expect(
+    screen
+      .getByRole("region", { name: labels.sessionMetrics })
+      .querySelector('[role="alert"]'),
+  ).toBeNull();
+});
+
 it("reads authoritative counters for the active session alongside Host memory", async () => {
   const target = {
     hostId: "host",
@@ -100,9 +201,9 @@ it("reads authoritative counters for the active session alongside Host memory", 
   await waitFor(() =>
     expect(readSession).toHaveBeenCalledWith(target, expect.any(AbortSignal)),
   );
-  expect(await screen.findByText("9007199254741999")).toBeInTheDocument();
-  expect(screen.getByText("9007199254742000")).toBeInTheDocument();
-  expect(screen.getByText("9007199254740999")).toBeInTheDocument();
+  expect(await screen.findByTitle("9007199254741999")).toBeInTheDocument();
+  expect(screen.getByTitle("9007199254742000")).toBeInTheDocument();
+  expect(screen.getByTitle("9007199254740999")).toBeInTheDocument();
 });
 
 it("polls only the current session, clears old target values, and aborts reads on close", async () => {
@@ -143,7 +244,7 @@ it("polls only the current session, clears old target values, and aborts reads o
     );
     await act(async () => {});
     expect(readSession).toHaveBeenCalledTimes(1);
-    expect(screen.getByText("9007199254741999")).toBeInTheDocument();
+    expect(screen.getByTitle("9007199254741999")).toBeInTheDocument();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1000);
     });
@@ -168,10 +269,10 @@ it("polls only the current session, clears old target values, and aborts reads o
     await act(async () => {});
     expect(pending?.aborted).toBe(true);
     expect(readSession).toHaveBeenCalledTimes(3);
-    expect(screen.queryByText("9007199254741999")).not.toBeInTheDocument();
-    expect(screen.getByText("7777777")).toBeInTheDocument();
+    expect(screen.queryByTitle("9007199254741999")).not.toBeInTheDocument();
+    expect(screen.getByTitle("7777777")).toBeInTheDocument();
     await act(async () => finish(sessionMetrics));
-    expect(screen.queryByText("9007199254741999")).not.toBeInTheDocument();
+    expect(screen.queryByTitle("9007199254741999")).not.toBeInTheDocument();
     view.unmount();
     await act(async () => {
       await vi.advanceTimersByTimeAsync(2000);
@@ -180,4 +281,46 @@ it("polls only the current session, clears old target values, and aborts reads o
   } finally {
     vi.useRealTimers();
   }
+});
+
+it("stops both background and session sampling while hidden and resumes each once", async () => {
+  vi.useFakeTimers();
+  const hidden = vi.spyOn(document, "hidden", "get").mockReturnValue(false);
+  const read = vi.fn().mockResolvedValue(metrics);
+  const readSession = vi.fn().mockResolvedValue(sessionMetrics);
+  const view = render(
+    <MetricsPanel
+      read={read}
+      readSession={readSession}
+      labels={labels}
+      target={{
+        hostId: "host",
+        kind: "session",
+        id: "session",
+        sessionId: "session",
+        sessionEpoch: "1",
+      }}
+    />,
+  );
+  await act(async () => {});
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(readSession).toHaveBeenCalledTimes(1);
+  hidden.mockReturnValue(true);
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+    await vi.advanceTimersByTimeAsync(4000);
+  });
+  expect(read).toHaveBeenCalledTimes(1);
+  expect(readSession).toHaveBeenCalledTimes(1);
+  hidden.mockReturnValue(false);
+  await act(async () => {
+    document.dispatchEvent(new Event("visibilitychange"));
+  });
+  expect(read).toHaveBeenCalledTimes(2);
+  expect(readSession).toHaveBeenCalledTimes(2);
+  view.unmount();
+  await act(async () => {
+    await vi.advanceTimersByTimeAsync(3000);
+  });
+  expect(readSession).toHaveBeenCalledTimes(2);
 });

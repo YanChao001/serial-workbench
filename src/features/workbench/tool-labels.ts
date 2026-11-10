@@ -4,6 +4,8 @@ import type { DeviceLibraryLabels } from "./device-library";
 import type { WorkspaceEditorLabels } from "./workspace-editor";
 import type { TransferOptionsLabels } from "./transfer-options";
 import type { CaptureToolsLabels } from "./capture-tools";
+import { operationText } from "./operation-text";
+import { nativeErrorText } from "@/lib/native-error";
 import type { DiagnosticLabels } from "./diagnostic-panel";
 import type { StreamPresentationLabels } from "./stream-presentation";
 export function workbenchToolLabels(t: Translate) {
@@ -22,7 +24,6 @@ export function workbenchToolLabels(t: Translate) {
     applyConfiguration: t("workbench.tools.applyConfiguration"),
     resetConfiguration: t("workbench.tools.resetConfiguration"),
     invalidConfiguration: t("workbench.tools.invalidConfiguration"),
-    configurationSupport: t("workbench.tools.configurationSupport"),
     controlLines: t("workbench.tools.controlLines"),
     dtrOn: t("workbench.tools.dtrOn"),
     dtrOff: t("workbench.tools.dtrOff"),
@@ -39,7 +40,6 @@ export function workbenchToolLabels(t: Translate) {
     queueWaitMs: t("workbench.tools.queueWaitMs"),
     waitBoundary: t("workbench.tools.waitBoundary"),
     inputSignals: t("workbench.tools.inputSignals"),
-    refreshInputs: t("workbench.tools.refreshInputs"),
     sampledAt: t("workbench.tools.sampledAt"),
     on: t("workbench.tools.on"),
     off: t("workbench.tools.off"),
@@ -48,6 +48,20 @@ export function workbenchToolLabels(t: Translate) {
     requested: t("workbench.tools.requested"),
     actual: t("workbench.tools.actual"),
     unknown: t("workbench.tools.unknown"),
+    applied: t("workbench.tools.applied"),
+    rejected: t("workbench.tools.rejected"),
+    partial: t("workbench.partial"),
+    confirmed: t("workbench.tools.confirmed"),
+    details: t("common.details"),
+    operationText: operationText(t, (code) => nativeErrorText({ code }, t)),
+    failure: (code) => nativeErrorText({ code }, t),
+    gates: {
+      ready: t("workbench.ready"),
+      configuration_pending: t("workbench.configurationPending"),
+      control_unknown: t("workbench.controlUnknown"),
+      closing: t("workbench.closing"),
+      disconnected: t("workbench.disconnected"),
+    },
     field: t("workbench.tools.field"),
     status: t("workbench.tools.status"),
     readback: t("workbench.tools.readback"),
@@ -76,6 +90,17 @@ export function workbenchToolLabels(t: Translate) {
     dsrDtr: t("workbench.tools.dsrDtr"),
   };
   const devices: DeviceLibraryLabels = {
+    onlineDevices: t("workbench.tools.onlineDevices"),
+    details: t("common.details"),
+    offlineDevice: t("workbench.tools.offlineDevice"),
+    noDevices: t("workbench.noDevices"),
+    loading: t("common.loading"),
+    retry: t("common.retry"),
+    serialIdentity: t("workbench.tools.serialIdentity"),
+    topologyIdentity: t("workbench.tools.topologyIdentity"),
+    unknownIdentity: t("workbench.tools.unknownIdentity"),
+    virtualDevice: t("workbench.tools.virtualDevice"),
+    failure: (code) => nativeErrorText({ code }, t),
     deviceLibrary: t("workbench.tools.deviceLibrary"),
     deviceInformation: t("workbench.tools.deviceInformation"),
     manufacturer: t("workbench.tools.manufacturer"),
@@ -102,6 +127,19 @@ export function workbenchToolLabels(t: Translate) {
     rebindHelp: t("workbench.tools.rebindHelp"),
   };
   const workspace: WorkspaceEditorLabels = {
+    chooseImportFile: t("workbench.tools.chooseConfigurationFile"),
+    emptyImportFile: t("workbench.tools.noConfigurationFile"),
+    enteredImportContent: t("workbench.tools.enteredConfiguration"),
+    configurationLabels: parameters,
+    defaultIcon: t("workbench.tools.defaultIcon"),
+    defaultWorkspaceName: t("workbench.tools.defaultWorkspace"),
+    details: t("common.details"),
+    failure: (code) =>
+      code === "MESSAGE_TOO_LARGE"
+        ? t("workbench.tools.configurationTooLarge")
+        : code === "UNSUPPORTED_FORMAT"
+          ? t("workbench.tools.unsupportedConfiguration")
+          : nativeErrorText({ code }, t),
     title: t("workbench.tools.title"),
     workspaceName: t("workbench.tools.workspaceName"),
     viewName: t("workbench.tools.viewName"),
@@ -156,6 +194,10 @@ export function workbenchToolLabels(t: Translate) {
     editedWhileSaving: t("workbench.tools.editedWhileSaving"),
   };
   const transfer: TransferOptionsLabels = {
+    operationText: operationText(t, (code) => nativeErrorText({ code }, t)),
+    basic: t("workbench.tools.basic"),
+    advanced: t("workbench.tools.advanced"),
+    fileSize: t("workbench.tools.fileSize"),
     transferOptions: t("workbench.tools.transferOptions"),
     selectSource: t("workbench.tools.selectSource"),
     source: t("workbench.tools.source"),
@@ -174,6 +216,13 @@ export function workbenchToolLabels(t: Translate) {
     saveUnavailable: t("workbench.tools.saveUnavailable"),
   };
   const captureTools: CaptureToolsLabels = {
+    operationText: operationText(t, (code) => nativeErrorText({ code }, t)),
+    recording: t("workbench.tools.recording"),
+    playback: t("workbench.tools.playback"),
+    advanced: t("workbench.tools.advanced"),
+    targetFile: t("workbench.tools.recordingFile"),
+    sourceFile: t("workbench.tools.playbackFile"),
+    destinationFile: t("workbench.tools.destinationFile"),
     captureTools: t("workbench.tools.captureTools"),
     selectTarget: t("workbench.tools.selectTarget"),
     selectCapture: t("workbench.tools.selectCapture"),
@@ -215,32 +264,32 @@ export function workbenchToolLabels(t: Translate) {
     saveUnavailable: t("workbench.tools.saveUnavailable"),
   };
   const diagnostics: DiagnosticLabels = {
-    connectionHelp: t("workbench.tools.connectionHelp"),
-    encodingHelp: t("workbench.tools.encodingHelp"),
-    gapHelp: t("workbench.tools.gapHelp"),
+    restoreAccess: t("workbench.restoreAccess"),
     disconnectHelp: t("workbench.tools.disconnectHelp"),
-    refresh: t("workbench.tools.refresh"),
     hex: t("workbench.tools.hex"),
     metrics: t("workbench.tools.metrics"),
     open: t("workbench.tools.open"),
     diagnostics: t("workbench.tools.diagnostics"),
     cannotOpen: t("workbench.tools.cannotOpen"),
-    inspectEncoding: t("workbench.tools.inspectEncoding"),
     inspectGaps: t("workbench.tools.inspectGaps"),
     inspectDisconnect: t("workbench.tools.inspectDisconnect"),
-    noRecordedGap: t("workbench.tools.noRecordedGap"),
-    platformHelp: t("workbench.tools.platformHelp"),
-    platformRefresh: t("workbench.tools.platformRefresh"),
-    windows: t("workbench.tools.windows"),
+    details: t("logs.details"),
+    noIssues: t("workbench.diagnostics.noIssues"),
+    accessDenied: t("workbench.diagnostics.accessDenied"),
+    permissionDenied: t("workbench.diagnostics.permissionDenied"),
+    missingDevice: t("workbench.diagnostics.missingDevice"),
+    configurationConflict: t("workbench.diagnostics.configurationConflict"),
+    staleSession: t("workbench.diagnostics.staleSession"),
+    unknownFailure: t("workbench.diagnostics.unknownFailure"),
+    streamFailed: t("workbench.diagnostics.streamFailed"),
+    gapDetected: t("workbench.diagnostics.gapDetected"),
     windowsDeviceManager: t("workbench.tools.windowsDeviceManager"),
     windowsRelease: t("workbench.tools.windowsRelease"),
     windowsDriver: t("workbench.tools.windowsDriver"),
-    macos: t("workbench.tools.macos"),
     macosHardware: t("workbench.tools.macosHardware"),
     macosAccessory: t("workbench.tools.macosAccessory"),
     macosRelease: t("workbench.tools.macosRelease"),
     macosDriver: t("workbench.tools.macosDriver"),
-    linux: t("workbench.tools.linux"),
     linuxPermissions: t("workbench.tools.linuxPermissions"),
     linuxGroup: t("workbench.tools.linuxGroup"),
     linuxMissing: t("workbench.tools.linuxMissing"),

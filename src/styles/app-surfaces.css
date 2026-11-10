@@ -32,8 +32,8 @@
   display: none;
 }
 .settings-about > summary:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: 3px;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
 }
 .settings-about[open] > summary svg {
   transform: rotate(180deg);
@@ -80,5 +80,79 @@
   .studio-panel {
     background: Canvas;
     border-color: CanvasText;
+  }
+}
+
+/* 本地控件统一单线焦点；只移除焦点环，保留选中项和浮层原有阴影。 */
+:is(
+  input,
+  select,
+  textarea,
+  button,
+  a[data-surface],
+  [role="combobox"],
+  [role="radio"],
+  [role="checkbox"],
+  [role="switch"],
+  [role="tab"]
+):focus-visible {
+  --tw-ring-shadow: 0 0 #0000;
+  --tw-ring-offset-shadow: 0 0 #0000;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
+  border-color: var(--ui-focus-color);
+  box-shadow: var(--tw-shadow, none);
+}
+:is(input, select, textarea, button, a[data-surface], [tabindex]):is(
+    [aria-invalid="true"],
+    [data-variant="destructive"],
+    .ui-button-destructive
+  ):focus-visible {
+  --ui-focus-color: var(--ui-invalid-border, var(--destructive));
+}
+:is(
+  input:not(
+    [type="range"],
+    [type="checkbox"],
+    [type="radio"],
+    [type="button"],
+    [type="submit"],
+    [type="reset"]
+  ),
+  select,
+  textarea,
+  [data-slot="select-trigger"]
+):focus-visible {
+  outline: none;
+}
+:is(
+  .ui-button-default,
+  input[type="checkbox"]:checked,
+  input[type="radio"]:checked,
+  [data-slot="checkbox"][data-state="checked"],
+  [data-slot="radio-group-item"][data-state="checked"],
+  [data-slot="switch"][data-state="checked"]
+):focus-visible {
+  outline-color: var(--primary-foreground);
+}
+@media (prefers-contrast: more), (forced-colors: active) {
+  :root {
+    --ui-focus-color: Highlight;
+  }
+}
+@media (forced-colors: active) {
+  :is(button, input, select, textarea, [tabindex]):focus-visible {
+    outline-color: Highlight;
+  }
+  :is(
+      input,
+      select,
+      textarea,
+      button,
+      a[data-surface],
+      [tabindex]
+    )[aria-invalid="true"]:focus-visible {
+    --ui-focus-color: CanvasText;
+    border-style: dashed;
   }
 }

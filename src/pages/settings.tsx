@@ -22,7 +22,10 @@ import { LanguageSwitch } from "@/components/language-switch";
 import { SkinPicker } from "@/components/skin-picker";
 import { AccentPicker } from "@/components/accent-picker";
 import { SettingsSearch } from "@/components/settings-search";
-import { SettingsPersistence } from "@/components/settings-persistence";
+import {
+  SettingsPersistence,
+  SettingsPersistenceRetry,
+} from "@/components/settings-persistence";
 import { TerminalTypographySettings } from "@/components/terminal-typography-settings";
 import { DesktopSettings } from "@/components/desktop-settings";
 import { UpdateSettings } from "@/components/update-settings";
@@ -75,6 +78,7 @@ import {
 import { nativeErrorText } from "@/lib/native-error";
 import { cn } from "@/lib/utils";
 import { DiagnosticsContent } from "./diagnostics";
+import { focusSetting } from "@/commands/settings-search";
 
 const THEMES = [
   { value: "light", labelKey: "title.light", icon: SunIcon },
@@ -281,19 +285,42 @@ export default function Settings() {
 
   return (
     <div className="studio-page settings-studio">
-      <h1 className="sr-only">{t("settings.title")}</h1>
-
-      <SettingsSearch />
+      <header className="settings-header">
+        <h1>{t("settings.title")}</h1>
+        <div className="settings-header-tools">
+          <SettingsPersistenceRetry />
+          <SettingsSearch />
+        </div>
+      </header>
+      <nav aria-label={t("settings.sections")} className="settings-section-nav">
+        {(
+          [
+            ["settings-appearance", "settings.appearance"],
+            ["settings-terminalTypography", "settings.terminalTypography"],
+            ["settings-skin", "settings.skinGallery"],
+            ["settings-layout", "studio.settingsWorkspace"],
+            ["settings-window", "desktop.settingsTitle"],
+            ["settings-network", "settings.network"],
+          ] as const
+        ).map(([anchor, key]) => (
+          <Button
+            key={anchor}
+            variant="ghost"
+            size="sm"
+            onClick={() => focusSetting(anchor)}
+          >
+            {t(key)}
+          </Button>
+        ))}
+      </nav>
       <SettingsPersistence />
-      <section
-        id="settings-skin"
-        tabIndex={-1}
-        className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
-      >
-        <SkinPicker />
-      </section>
 
-      <fieldset data-surface="panel" className="min-w-0">
+      <fieldset
+        data-surface="panel"
+        id="settings-appearance"
+        tabIndex={-1}
+        className="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <legend className="text-sm font-medium">
           {t("settings.appearance")}
         </legend>
@@ -442,6 +469,14 @@ export default function Settings() {
       </fieldset>
 
       <TerminalTypographySettings />
+
+      <section
+        id="settings-skin"
+        tabIndex={-1}
+        className="rounded-xl focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
+        <SkinPicker />
+      </section>
 
       <fieldset
         data-surface="panel"
@@ -657,7 +692,12 @@ export default function Settings() {
 
       <UpdateSettings />
 
-      <fieldset data-surface="panel" className="min-w-0">
+      <fieldset
+        data-surface="panel"
+        id="settings-network"
+        tabIndex={-1}
+        className="min-w-0 outline-none focus-visible:ring-2 focus-visible:ring-ring"
+      >
         <legend className="text-sm font-medium">{t("settings.network")}</legend>
         <div className="settings-list">
           <SettingRow

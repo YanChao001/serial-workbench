@@ -1207,6 +1207,7 @@ export type ClientWindowState_Deserialize = {
   lastWorkspaceId: string | null;
   drafts: { [key in string]: string };
   gallery?: GalleryEntry_Deserialize[];
+  connectionDefaults?: ConnectionDefault[];
 };
 
 export type ClientWindowState_Serialize = {
@@ -1218,6 +1219,7 @@ export type ClientWindowState_Serialize = {
   lastWorkspaceId: string | null;
   drafts: { [key in string]: string };
   gallery: GalleryEntry_Serialize[];
+  connectionDefaults?: ConnectionDefault[];
 };
 
 export type ClosedResult = {
@@ -1275,6 +1277,12 @@ export type ConfigurationBoundary_Serialize = {
 
 export type ConfigureParams = {
   requested: SerialConfiguration;
+};
+
+export type ConnectionDefault = {
+  hostId: Id;
+  deviceId: Id;
+  configuration: SerialConfiguration;
 };
 
 export type ContextToken = string;

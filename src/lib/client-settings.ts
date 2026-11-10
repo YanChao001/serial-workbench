@@ -4,8 +4,12 @@ import type {
   ClientWindowState_Serialize as ClientWindowState,
   ClientWindowState_Deserialize as ClientWindowStateInput,
   GalleryEntry,
+  ConnectionDefault,
 } from "./generated/bindings";
-import { parseObjectRef } from "@serial-workbench/contracts";
+import {
+  parseObjectRef,
+  parseSerialConfiguration,
+} from "@serial-workbench/contracts";
 import type { SettingsBackend } from "./settings-sync";
 import { settingsErrorCode } from "./settings-sync";
 import generatedClientDefaults from "./generated/client-defaults.json";
@@ -123,11 +127,41 @@ function record(value: unknown): value is Record<string, unknown> {
 function invalidClient(): never {
   throw { code: "STORAGE_CORRUPT" };
 }
-function exactKeys(value: Record<string, unknown>, keys: readonly string[]) {
+function exactKeys(
+  value: Record<string, unknown>,
+  keys: readonly string[],
+  optional: readonly string[] = [],
+) {
   return (
-    Object.keys(value).length === keys.length &&
-    keys.every((key) => Object.hasOwn(value, key))
+    Object.keys(value).every(
+      (key) => keys.includes(key) || optional.includes(key),
+    ) && keys.every((key) => Object.hasOwn(value, key))
   );
+}
+export function parseConnectionDefaults(value: unknown): ConnectionDefault[] {
+  if (!Array.isArray(value) || value.length > 128) invalidClient();
+  const targets = new Set<string>();
+  return value.map((entry: unknown) => {
+    if (
+      !record(entry) ||
+      !exactKeys(entry, ["hostId", "deviceId", "configuration"])
+    )
+      invalidClient();
+    try {
+      const target = parseObjectRef({
+        hostId: entry.hostId,
+        kind: "device",
+        id: entry.deviceId,
+      });
+      const configuration = parseSerialConfiguration(entry.configuration);
+      const key = JSON.stringify([target.hostId, target.id]);
+      if (targets.has(key)) invalidClient();
+      targets.add(key);
+      return { hostId: target.hostId, deviceId: target.id, configuration };
+    } catch {
+      invalidClient();
+    }
+  });
 }
 export function parseClientPreferences(value: unknown): ClientPreferences {
   if (
@@ -186,16 +220,20 @@ function parseClientGallery(value: unknown): GalleryEntry[] {
 export function parseClientWindowState(value: unknown): ClientWindowState {
   if (
     !record(value) ||
-    !exactKeys(value, [
-      "preferences",
-      "currentPage",
-      "focusedPanelId",
-      "scrollOffset",
-      "follow",
-      "lastWorkspaceId",
-      "drafts",
-      "gallery",
-    ]) ||
+    !exactKeys(
+      value,
+      [
+        "preferences",
+        "currentPage",
+        "focusedPanelId",
+        "scrollOffset",
+        "follow",
+        "lastWorkspaceId",
+        "drafts",
+        "gallery",
+      ],
+      ["connectionDefaults"],
+    ) ||
     typeof value.currentPage !== "string" ||
     !["workbench", "settings", "diagnostics", "recovery"].includes(
       value.currentPage,
@@ -254,6 +292,11 @@ export function parseClientWindowState(value: unknown): ClientWindowState {
     lastWorkspaceId: value.lastWorkspaceId,
     drafts,
     gallery: parseClientGallery(value.gallery),
+    ...(Object.hasOwn(value, "connectionDefaults")
+      ? {
+          connectionDefaults: parseConnectionDefaults(value.connectionDefaults),
+        }
+      : {}),
   };
 }
 function revision(value: unknown): string {

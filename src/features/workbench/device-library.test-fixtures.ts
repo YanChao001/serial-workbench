@@ -5,6 +5,17 @@ import type {
 import { session } from "./test-fixtures";
 
 export const deviceLabels = {
+  onlineDevices: "Online devices",
+  details: "Details",
+  offlineDevice: "Offline device",
+  noDevices: "No online devices",
+  loading: "Loading",
+  retry: "Retry",
+  serialIdentity: "Device serial number",
+  topologyIdentity: "USB port location",
+  unknownIdentity: "Cannot uniquely identify",
+  virtualDevice: "Virtual loopback device",
+  failure: (code: string) => `Failed: ${code}`,
   deviceLibrary: "Device library",
   deviceInformation: "Device information",
   manufacturer: "Manufacturer",

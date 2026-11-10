@@ -1,8 +1,16 @@
 ﻿/// <reference lib="dom" />
 import { writeFile } from "node:fs/promises";
-import { expect, test, type Page } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { seedWorkbenchFixture } from "./workbench.fixture";
+import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
 
 const records = new WeakMap<
   Page,
@@ -33,30 +41,139 @@ test.afterEach(async ({ page }, info) => {
   expect(records.get(page)?.errors).toEqual([]);
   expect(fixture.unexpectedCommands).toEqual([]);
 });
-for (const language of ["en", "zh"] as const)
-  test(`platform guidance uses native keyboard disclosure and explicit refresh in ${language}`, async ({
+function texts(language: "en" | "zh") {
+  const messages = language === "en" ? en : zhCN;
+  return {
+    open: language === "en" ? "Open Virtual serial" : "打开 Virtual serial",
+    menu: messages["workbench.tools.more"],
+    tool: messages["workbench.tools.diagnostics"],
+    chooseDevice: messages["workbench.tools.chooseDevice"],
+    refresh: messages["workbench.refresh"],
+    details: messages["logs.details"],
+    noIssues: messages["workbench.diagnostics.noIssues"],
+    cause: messages["workbench.diagnostics.accessDenied"],
+    guidance: {
+      windows: [
+        messages["workbench.tools.windowsRelease"],
+        messages["workbench.tools.windowsDeviceManager"],
+      ],
+      macos: [
+        messages["workbench.tools.macosRelease"],
+        messages["workbench.tools.macosAccessory"],
+      ],
+      linux: [
+        messages["workbench.tools.linuxPermissions"],
+        messages["workbench.tools.linuxGroup"],
+      ],
+      web: [],
+    },
+  };
+}
+
+async function deviceQueries(page: Page) {
+  return page.evaluate(() => ({
+    catalog: window.workbenchFixture.hostQueries.filter(
+      (query) => query === "catalog.list",
+    ).length,
+    devices: window.workbenchFixture.hostQueries.filter(
+      (query) => query === "device.list",
+    ).length,
+    enumerations: window.workbenchFixture.hostQueries.filter(
+      (query) => query === "device.refresh",
+    ).length,
+  }));
+}
+
+async function openDiagnostics(page: Page, text: ReturnType<typeof texts>) {
+  const menu = page.getByRole("button", { name: text.menu, exact: true });
+  await menu.focus();
+  await menu.press("Enter");
+  const item = page.getByRole("menuitem", { name: text.tool, exact: true });
+  await item.focus();
+  await item.press("Enter");
+  const dialog = page.getByRole("dialog", { name: text.tool, exact: true });
+  await expect(dialog).toBeVisible();
+  return { menu, dialog };
+}
+
+async function recordLayoutAndAccessibility(
+  page: Page,
+  dialog: Locator,
+  info: TestInfo,
+) {
+  const geometry = await dialog.evaluate((element) => {
+    const rect = element.getBoundingClientRect();
+    return {
+      top: rect.top,
+      bottom: rect.bottom,
+      viewportHeight: innerHeight,
+      scrollHeight: element.scrollHeight,
+      clientHeight: element.clientHeight,
+      pageScroll: scrollY,
+      pageWidth: document.documentElement.scrollWidth,
+      viewportWidth: innerWidth,
+    };
+  });
+  await writeFile(
+    info.outputPath("diagnostic-geometry.json"),
+    JSON.stringify(geometry, null, 2),
+  );
+  expect(geometry.top).toBeGreaterThanOrEqual(0);
+  expect(geometry.bottom).toBeLessThanOrEqual(geometry.viewportHeight);
+  expect(geometry.pageScroll).toBe(0);
+  expect(geometry.pageWidth).toBeLessThanOrEqual(geometry.viewportWidth);
+  await page.screenshot({ path: info.outputPath("diagnostic-880.png") });
+  const axe = await new AxeBuilder({ page })
+    .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
+    .analyze();
+  await writeFile(
+    info.outputPath("accessibility.json"),
+    JSON.stringify(axe, null, 2),
+  );
+  expect(axe.violations).toEqual([]);
+}
+
+async function refreshFromDevicePicker(page: Page, chooseDevice: string) {
+  const baseline = await deviceQueries(page);
+  const operations = await page.evaluate(() => ({
+    connections: window.workbenchFixture.connectCalls.length,
+    invocations: window.workbenchFixture.invocations.length,
+  }));
+  const picker = page.getByRole("combobox", {
+    name: chooseDevice,
+    exact: true,
+  });
+  await picker.focus();
+  await picker.press("Enter");
+  await expect(page.getByRole("listbox")).toBeVisible();
+  await expect
+    .poll(() => deviceQueries(page))
+    .toEqual({
+      catalog: baseline.catalog + 1,
+      devices: baseline.devices,
+      enumerations: baseline.enumerations + 1,
+    });
+  await page.keyboard.press("Escape");
+  await expect(page.getByRole("listbox")).toHaveCount(0);
+  await expect(picker).toBeFocused();
+  expect(await deviceQueries(page)).toEqual({
+    catalog: baseline.catalog + 1,
+    devices: baseline.devices,
+    enumerations: baseline.enumerations + 1,
+  });
+  expect(
+    await page.evaluate(() => ({
+      connections: window.workbenchFixture.connectCalls.length,
+      invocations: window.workbenchFixture.invocations.length,
+    })),
+  ).toEqual(operations);
+}
+
+for (const language of ["en", "zh"] as const) {
+  test(`healthy diagnostics stay quiet and device-picker opening refreshes in ${language}`, async ({
     page,
   }, info) => {
-    const text =
-      language === "en"
-        ? {
-            open: "Open Virtual serial",
-            menu: "Workspace menu",
-            tool: "Troubleshooting",
-            refresh: "Refresh",
-            manager: "Device Manager",
-            manual: "manual checks",
-            after: "After completing the system steps",
-          }
-        : {
-            open: "\u6253\u5f00 Virtual serial",
-            menu: "\u5de5\u4f5c\u533a\u83dc\u5355",
-            tool: "\u6545\u969c\u5b9a\u4f4d",
-            refresh: "\u5237\u65b0",
-            manager: "\u8bbe\u5907\u7ba1\u7406\u5668",
-            manual: "\u624b\u52a8\u68c0\u67e5",
-            after: "\u5b8c\u6210\u7cfb\u7edf\u64cd\u4f5c\u540e",
-          };
+    const text = texts(language);
     await page.setViewportSize({ width: 880, height: 600 });
     await seedWorkbenchFixture(page, {
       language,
@@ -64,7 +181,7 @@ for (const language of ["en", "zh"] as const)
     });
     await page.goto("./#/");
     await page.getByRole("button", { name: text.open, exact: true }).click();
-    // trustedConnect explicitly refreshes its catalog/devices after acquiring permissions.
+    // Wait for the separate metadata read after the confirmed Native open.
     await expect
       .poll(() =>
         page.evaluate(
@@ -74,119 +191,99 @@ for (const language of ["en", "zh"] as const)
             ).length,
         ),
       )
-      .toBe(2);
-    const baseline = await page.evaluate(
-      () =>
-        window.workbenchFixture.hostQueries.filter((q) => q === "device.list")
-          .length,
-    );
-    const menu = page.getByRole("button", { name: text.menu, exact: true });
-    await menu.focus();
-    await menu.press("Enter");
-    const item = page.getByRole("menuitem", { name: text.tool, exact: true });
-    await item.focus();
-    await item.press("Enter");
-    const dialog = page.getByRole("dialog", { name: text.tool, exact: true });
-    await expect(dialog).toBeVisible();
-    await expect(dialog).toContainText(text.manual);
-    const platforms = ["Windows", "macOS", "Linux"];
-    const summaries = platforms.map((name) =>
-      dialog.locator("summary").filter({ hasText: new RegExp(`^${name}$`) }),
-    );
-    await dialog.focus();
-    await page.keyboard.press("Tab");
-    await expect(summaries[0]!).toBeFocused();
-    for (let i = 0; i < summaries.length; i++) {
-      const summary = summaries[i]!;
-      await expect(summary.locator("..")).not.toHaveAttribute("open", "");
-      await summary.press(i === 1 ? "Space" : "Enter");
-      await expect(summary.locator("..")).toHaveAttribute("open", "");
-      await expect(summary.locator("..").locator("ol > li")).toHaveCount(
-        i === 1 ? 4 : 3,
-      );
-      if (i < summaries.length - 1) {
-        await summary.press("Tab");
-        await expect(summaries[i + 1]!).toBeFocused();
-      }
-    }
-    await expect(summaries[0]!.locator("..")).toContainText(text.manager);
-    await expect(summaries[1]!.locator("..")).toContainText("Apple Silicon");
-    await expect(summaries[1]!.locator("..")).toContainText("/dev/cu.*");
-    await expect(summaries[2]!.locator("..")).toContainText("ls -l");
-    await expect(summaries[2]!.locator("..")).toContainText("id -nG");
-    await expect(summaries[2]!.locator("..")).toContainText("dialout");
-    await expect(dialog.locator("a")).toHaveCount(0);
-    expect(
-      await page.evaluate(
-        () =>
-          window.workbenchFixture.hostQueries.filter((q) => q === "device.list")
-            .length,
-      ),
-    ).toBe(baseline);
-    await summaries[0]!.scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: info.outputPath(`platform-guidance-${language}-top-880.png`),
-    });
-    await summaries[2]!.focus();
-    await summaries[2]!.press("End");
-    await expect
-      .poll(() => dialog.evaluate((e) => e.scrollTop))
-      .toBeGreaterThan(0);
-    expect(await dialog.evaluate((e) => e.scrollHeight > e.clientHeight)).toBe(
-      true,
-    );
-    await writeFile(
-      info.outputPath("disclosure-scroll-geometry.json"),
-      JSON.stringify(
-        await dialog.evaluate((e) => ({
-          scrollTop: e.scrollTop,
-          scrollHeight: e.scrollHeight,
-          clientHeight: e.clientHeight,
-          pageScroll: scrollY,
-          pageWidth: document.documentElement.scrollWidth,
-          viewport: innerWidth,
-        })),
-        null,
-        2,
-      ),
-    );
-    expect(await page.evaluate(() => scrollY)).toBe(0);
-    expect(
-      await page.evaluate(
-        () => document.documentElement.scrollWidth <= innerWidth,
-      ),
-    ).toBe(true);
-    await expect(dialog).toContainText(text.after);
-    const refresh = dialog.getByRole("button", {
-      name: text.refresh,
-      exact: true,
-    });
-    await refresh.focus();
-    await refresh.press("Enter");
-    await expect
-      .poll(() =>
-        page.evaluate(
-          () =>
-            window.workbenchFixture.hostQueries.filter(
-              (q) => q === "device.list",
-            ).length,
-        ),
-      )
-      .toBeGreaterThan(baseline);
-    await expect(dialog).toBeVisible();
-    await summaries[2]!.scrollIntoViewIfNeeded();
-    await page.screenshot({
-      path: info.outputPath(`platform-guidance-${language}-880.png`),
-    });
-    const axe = await new AxeBuilder({ page })
-      .withTags(["wcag2a", "wcag2aa", "wcag21a", "wcag21aa"])
-      .analyze();
-    await writeFile(
-      info.outputPath("accessibility.json"),
-      JSON.stringify(axe, null, 2),
-    );
-    expect(axe.violations).toEqual([]);
+      .toBeGreaterThanOrEqual(2);
+    const baseline = await deviceQueries(page);
+    const { menu, dialog } = await openDiagnostics(page, text);
+    await expect(dialog).toContainText(text.noIssues);
+    await expect(dialog.locator("summary, ol, a")).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: text.details, exact: true }),
+    ).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: text.refresh, exact: true }),
+    ).toHaveCount(0);
+    for (const steps of Object.values(text.guidance))
+      for (const step of steps) await expect(dialog).not.toContainText(step);
+    expect(await deviceQueries(page)).toEqual(baseline);
+    await recordLayoutAndAccessibility(page, dialog, info);
     await dialog.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(menu).toBeFocused();
+    await refreshFromDevicePicker(page, text.chooseDevice);
   });
+
+  test(`access-denied diagnostics select the current platform without inferring a cause in ${language}`, async ({
+    page,
+  }, info) => {
+    const text = texts(language);
+    const privateMessage = "EXPLICIT_FIXTURE_PRIVATE_CONNECTION_DETAIL";
+    await page.setViewportSize({ width: 880, height: 600 });
+    await seedWorkbenchFixture(page, {
+      language,
+      theme: language === "en" ? "light" : "dark",
+      connectFailure: {
+        code: "ACCESS_DENIED",
+        message: privateMessage,
+        retryable: false,
+      },
+    });
+    await page.goto("./#/");
+    await page.getByRole("button", { name: text.open, exact: true }).click();
+    await expect
+      .poll(() => page.evaluate(() => window.workbenchFixture.connectCalls))
+      .toEqual(["device"]);
+    const baseline = await deviceQueries(page);
+    const { menu, dialog } = await openDiagnostics(page, text);
+    await expect(dialog).toContainText(text.cause);
+    await expect(dialog).toContainText(
+      language === "en"
+        ? "the current evidence does not identify the cause"
+        : "当前证据无法确定具体原因",
+    );
+    await expect(dialog).not.toContainText(text.noIssues);
+    await expect(dialog).not.toContainText(privateMessage);
+    await expect(dialog.locator("summary, a")).toHaveCount(0);
+    await expect(
+      dialog.getByRole("button", { name: text.refresh, exact: true }),
+    ).toHaveCount(0);
+    const platform = await page.evaluate(() => {
+      const ua = navigator.userAgent;
+      return /Macintosh|Mac OS X/i.test(ua)
+        ? "macos"
+        : /Windows/i.test(ua)
+          ? "windows"
+          : /Linux/i.test(ua)
+            ? "linux"
+            : "web";
+    });
+    await expect(dialog.locator("ol > li")).toHaveCount(
+      text.guidance[platform].length,
+    );
+    for (const [candidate, steps] of Object.entries(text.guidance))
+      for (const step of steps)
+        if (candidate === platform) await expect(dialog).toContainText(step);
+        else await expect(dialog).not.toContainText(step);
+    const details = dialog.getByRole("button", {
+      name: text.details,
+      exact: true,
+    });
+    await details.focus();
+    await details.press("Enter");
+    const code = page.getByRole("textbox", { name: text.details, exact: true });
+    await expect(code).toHaveValue("ACCESS_DENIED");
+    await expect(code).toHaveAttribute("readonly", "");
+    await code.press("Escape");
+    await expect(code).toHaveCount(0);
+    await expect(details).toBeFocused();
+    await expect(dialog).toBeVisible();
+    expect(await deviceQueries(page)).toEqual(baseline);
+    await recordLayoutAndAccessibility(page, dialog, info);
+    await dialog.press("Escape");
+    await expect(dialog).toHaveCount(0);
+    await expect(menu).toBeFocused();
+    expect(
+      await page.evaluate(() => window.workbenchFixture.connectCalls),
+    ).toEqual(["device"]);
+    await refreshFromDevicePicker(page, text.chooseDevice);
+  });
+}

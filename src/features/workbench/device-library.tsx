@@ -9,6 +9,24 @@ import type {
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { stateScopeKey } from "@/lib/host-scope";
 import { Button } from "@/components/ui/button";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { Info } from "lucide-react";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
+import { nativeErrorCode } from "@/lib/native-error";
 
 export type DeviceLibraryLabels = Record<
   | "deviceLibrary"
@@ -36,7 +54,20 @@ export type DeviceLibraryLabels = Record<
   | "unavailable"
   | "rebindHelp",
   string
-> & { editedWhileSaving?: string };
+> & {
+  editedWhileSaving?: string;
+  onlineDevices: string;
+  details: string;
+  offlineDevice: string;
+  noDevices: string;
+  loading: string;
+  retry: string;
+  serialIdentity: string;
+  topologyIdentity: string;
+  unknownIdentity: string;
+  virtualDevice: string;
+  failure: (code: string) => string;
+};
 export type DeviceLibraryProps = {
   devices: readonly DeviceDescriptor[];
   workspace?: WorkspaceDocumentResult;
@@ -54,7 +85,9 @@ export type DeviceLibraryProps = {
     signal?: AbortSignal,
   ) => Promise<WorkspaceDocumentResult>;
   onAcknowledged?: (result: WorkspaceDocumentResult) => void;
-  onRefreshRecent?: (signal?: AbortSignal) => Promise<void>;
+  recentLoading?: boolean;
+  recentError?: string;
+  onRetryRecent?: () => void;
 };
 export function DeviceLibrary(props: DeviceLibraryProps) {
   return (
@@ -71,8 +104,15 @@ function LibraryContent({
   onSaveFavorites,
   onRebindDevice,
   onAcknowledged,
-  onRefreshRecent,
+  recentLoading,
+  recentError,
+  onRetryRecent,
 }: DeviceLibraryProps) {
+  const [activeDevice, setActiveDevice] = useState<string>();
+  const selectedDevice =
+    devices.find(
+      (device) => `${device.hostId}:${device.deviceId}` === activeDevice,
+    ) ?? devices[0];
   const [selection, setSelection] = useState<RebindParams>();
   const latestSelection = useRef(selection);
   latestSelection.current = selection;
@@ -81,6 +121,8 @@ function LibraryContent({
   const previousRevision = useRef(incomingRevision);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
+  const [eventKey, setEventKey] = useState<string>();
+  const [failureIndex, setFailureIndex] = useState(0);
   const pending = useRef<AbortController | null>(null);
   const mounted = useRef(false);
   useEffect(() => {
@@ -96,6 +138,7 @@ function LibraryContent({
       pending.current?.abort();
       setConfirmed(workspace);
       setError(undefined);
+      setEventKey(undefined);
     }
   }, [incomingRevision, workspace]);
   const document = confirmed?.document.value;
@@ -123,25 +166,16 @@ function LibraryContent({
     pending.current = controller;
     setBusy(true);
     setError(undefined);
+    setEventKey(undefined);
     try {
       const result = await action(controller.signal);
       controller.signal.throwIfAborted();
       return result;
     } catch (reason) {
       if (mounted.current && !controller.signal.aborted) {
-        const code =
-          typeof reason === "object" && reason !== null && "code" in reason
-            ? reason.code
-            : undefined;
-        const message =
-          reason instanceof Error
-            ? reason.message
-            : typeof reason === "object" &&
-                reason !== null &&
-                "message" in reason
-              ? String(reason.message)
-              : String(reason);
-        setError(typeof code === "string" ? `${code}: ${message}` : message);
+        setError(nativeErrorCode(reason) ?? "OPERATION_FAILED");
+        setEventKey(operationFailureEventKey(reason));
+        setFailureIndex((value) => value + 1);
       }
       throw reason;
     } finally {
@@ -207,184 +241,330 @@ function LibraryContent({
     <section
       aria-label={labels.deviceLibrary}
       data-panel-id="device-library"
-      className="space-y-3 border-t p-3 text-sm"
+      className="workbench-device-library text-sm"
       aria-busy={busy}
     >
-      <h2 className="font-medium">{labels.deviceLibrary}</h2>
-      {error && <p role="alert">{error}</p>}
-      <div className="space-y-2" aria-label={labels.deviceInformation}>
-        {devices.map((device) => (
-          <details key={`${device.hostId}:${device.deviceId}`} open>
-            <summary className="cursor-pointer">{device.systemName}</summary>
-            <dl className="grid grid-cols-2 gap-x-2 text-xs">
-              {(
-                [
-                  [labels.manufacturer, device.manufacturer],
-                  [labels.driver, device.driver],
-                  [
-                    labels.usbVid,
-                    device.fingerprint.vid?.toString(16).padStart(4, "0"),
-                  ],
-                  [
-                    labels.usbPid,
-                    device.fingerprint.pid?.toString(16).padStart(4, "0"),
-                  ],
-                  [labels.serialNumber, device.fingerprint.serialNumber],
-                  [labels.topologyPath, device.fingerprint.topologyPath],
-                  [labels.identityEvidence, device.fingerprint.evidence],
-                ] as const
-              ).map(([label, value]) => (
-                <div key={label} className="contents">
-                  <dt className="text-muted-foreground">{label}</dt>
-                  <dd className="break-all">
-                    {value ?? labels.missingEvidence}
-                  </dd>
-                </div>
-              ))}
-            </dl>
-          </details>
-        ))}
-      </div>
-      <fieldset disabled={disabled || busy}>
-        <legend>{labels.recentConnections}</legend>
-        {onRefreshRecent && (
-          <Button
-            size="sm"
-            variant="ghost"
-            onClick={() => run(() => act(onRefreshRecent))}
+      <h2 className="sr-only">{labels.deviceLibrary}</h2>
+      <WorkbenchNotice
+        noticeKey={`device:${failureIndex}`}
+        eventKey={eventKey}
+        log={{
+          module: "workspace",
+          level: "error",
+          code: error,
+          message: error ? labels.failure(error) : "",
+        }}
+      >
+        {error ? <span role="alert">{labels.failure(error)}</span> : null}
+      </WorkbenchNotice>
+      <Tabs defaultValue="online" className="workbench-tool-pages">
+        <TabsList variant="line">
+          <TabsTrigger value="online">{labels.onlineDevices}</TabsTrigger>
+          <TabsTrigger value="recent">{labels.recentConnections}</TabsTrigger>
+          <TabsTrigger value="favorites">{labels.favorites}</TabsTrigger>
+        </TabsList>
+        <TabsContent value="online" className="workbench-device-browser">
+          <div
+            className="workbench-device-list app-scroll-region"
+            aria-label={labels.onlineDevices}
           >
-            {labels.refreshRecent}
-          </Button>
-        )}
-        {!recent ? (
-          <p className="text-xs text-muted-foreground">{labels.unavailable}</p>
-        ) : !recent.entries.length ? (
-          <p>{labels.noRecent}</p>
-        ) : (
-          <ul className="space-y-2">
-            {recent.entries.map((entry, index) => (
-              <li key={`${entry.deviceId}:${entry.openedAt}:${index}`}>
-                <p>{entry.deviceId}</p>
-                <p className="text-xs">{entry.openedAt}</p>
-                <p className="break-all text-xs text-muted-foreground">
-                  {entry.fingerprint.serialNumber ??
-                    entry.fingerprint.topologyPath ??
-                    labels.missingEvidence}{" "}
-                  · {entry.fingerprint.evidence}
-                </p>
-                <pre
-                  aria-label={labels.configuration}
-                  className="overflow-auto text-xs"
-                >
-                  {JSON.stringify(entry.configuration, null, 2)}
-                </pre>
-              </li>
+            {!devices.length && (
+              <p className="text-muted-foreground">{labels.noDevices}</p>
+            )}
+            {devices.map((device) => (
+              <Button
+                key={`${device.hostId}:${device.deviceId}`}
+                size="sm"
+                variant="ghost"
+                aria-pressed={selectedDevice === device}
+                onClick={() =>
+                  setActiveDevice(`${device.hostId}:${device.deviceId}`)
+                }
+              >
+                {device.systemName}
+              </Button>
             ))}
-          </ul>
-        )}
-      </fieldset>
-      <fieldset disabled={blocked}>
-        <legend>{labels.favorites}</legend>
-        {!document?.bindings.length ? (
-          <p className="text-xs text-muted-foreground">{labels.noBindings}</p>
-        ) : (
-          <ul className="space-y-3">
-            {document.bindings.map((binding) => {
-              const favorite = document.favoriteBindingIds.includes(
-                binding.bindingId,
-              );
-              const available = devices.some(
-                (device) =>
-                  device.deviceId === binding.deviceId &&
-                  device.hostId === binding.hostId,
-              );
-              return (
-                <li key={binding.bindingId} className="space-y-2">
-                  <p>
-                    {labels.binding}: {binding.bindingId} · {binding.deviceId}
-                    {!available && ` · ${labels.disconnected}`}
+          </div>
+          <div
+            className="workbench-device-detail app-scroll-region"
+            aria-label={labels.deviceInformation}
+          >
+            {(selectedDevice ? [selectedDevice] : []).map((device) => (
+              <section
+                key={`${device.hostId}:${device.deviceId}`}
+                className="workbench-device-information"
+              >
+                <div className="workbench-toolbar">
+                  <h3>{device.systemName}</h3>
+                  <span className="workbench-toolbar-spacer" />
+                  <DeviceDetails device={device} labels={labels} />
+                </div>
+                {device.fingerprint.transport === "virtual" ? (
+                  <p className="text-muted-foreground">
+                    {labels.virtualDevice}
                   </p>
-                  <Button
-                    size="sm"
-                    variant="ghost"
-                    aria-label={`${favorite ? labels.removeFavorite : labels.addFavorite} ${binding.bindingId}`}
-                    disabled={busy || !onSaveFavorites}
-                    onClick={() =>
-                      run(() =>
-                        saveFavorites({
-                          bindingIds: favorite
-                            ? document.favoriteBindingIds.filter(
-                                (id) => id !== binding.bindingId,
-                              )
-                            : [
-                                ...document.favoriteBindingIds,
-                                binding.bindingId,
-                              ],
-                        }),
-                      )
-                    }
-                  >
-                    {favorite ? labels.removeFavorite : labels.addFavorite}
-                  </Button>
-                  <label className="block text-xs">
-                    {labels.chooseDevice} {binding.bindingId}
-                    <select
-                      className="w-full"
-                      disabled={!onRebindDevice}
-                      value={
-                        selection?.bindingId === binding.bindingId
-                          ? selection.deviceId
-                          : ""
-                      }
-                      onChange={(event) =>
-                        changeSelection(
-                          event.target.value
-                            ? {
-                                bindingId: binding.bindingId,
-                                deviceId: event.target.value,
-                              }
-                            : undefined,
-                        )
-                      }
+                ) : (
+                  <dl className="workbench-device-facts">
+                    {(
+                      [
+                        [labels.manufacturer, device.manufacturer],
+                        [labels.driver, device.driver],
+                        [
+                          labels.usbVid,
+                          device.fingerprint.vid?.toString(16).padStart(4, "0"),
+                        ],
+                        [
+                          labels.usbPid,
+                          device.fingerprint.pid?.toString(16).padStart(4, "0"),
+                        ],
+                        [labels.serialNumber, device.fingerprint.serialNumber],
+                        [
+                          labels.identityEvidence,
+                          device.fingerprint.evidence === "serialNumber"
+                            ? labels.serialIdentity
+                            : device.fingerprint.evidence === "topology"
+                              ? labels.topologyIdentity
+                              : labels.unknownIdentity,
+                        ],
+                      ] as const
+                    )
+                      .filter(([, value]) => value !== undefined)
+                      .map(([label, value]) => (
+                        <div key={label} className="contents">
+                          <dt className="text-muted-foreground">{label}</dt>
+                          <dd className="break-all">
+                            {value ?? labels.missingEvidence}
+                          </dd>
+                        </div>
+                      ))}
+                  </dl>
+                )}
+              </section>
+            ))}
+          </div>
+        </TabsContent>
+        <TabsContent value="recent" className="workbench-tool-page">
+          <fieldset disabled={disabled || busy} aria-busy={recentLoading}>
+            <legend className="sr-only">{labels.recentConnections}</legend>
+            {recentLoading && (
+              <p role="status" className="text-muted-foreground">
+                {labels.loading}
+              </p>
+            )}
+            {recentError && (
+              <div className="workbench-toolbar">
+                <p>{labels.failure(recentError)}</p>
+                <Button size="sm" variant="outline" onClick={onRetryRecent}>
+                  {labels.retry}
+                </Button>
+              </div>
+            )}
+            {!recent ? null : !recent.entries.length ? (
+              <p>{labels.noRecent}</p>
+            ) : (
+              <ul className="space-y-2">
+                {recent.entries.map((entry, index) => (
+                  <li key={`${entry.deviceId}:${entry.openedAt}:${index}`}>
+                    <div className="workbench-toolbar">
+                      <span>
+                        {devices.find(
+                          (device) => device.deviceId === entry.deviceId,
+                        )?.systemName ?? `${labels.offlineDevice} ${index + 1}`}
+                      </span>
+                      <span className="workbench-toolbar-spacer" />
+                      <DeviceDetails device={entry} labels={labels} />
+                    </div>
+                    <time
+                      dateTime={entry.openedAt}
+                      className="text-xs text-muted-foreground"
                     >
-                      <option value="">{labels.chooseDevice}</option>
-                      {devices
-                        .filter((device) => device.hostId === binding.hostId)
-                        .map((device) => (
-                          <option key={device.deviceId} value={device.deviceId}>
-                            {device.systemName} ·{" "}
-                            {device.fingerprint.serialNumber ??
-                              device.fingerprint.topologyPath ??
-                              labels.missingEvidence}
-                          </option>
-                        ))}
-                    </select>
-                  </label>
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    aria-label={`${labels.rebind} ${binding.bindingId}`}
-                    disabled={
-                      busy ||
-                      !onRebindDevice ||
-                      selection?.bindingId !== binding.bindingId ||
-                      !devices.some(
-                        (device) =>
-                          device.deviceId === selection.deviceId &&
-                          device.hostId === binding.hostId,
-                      )
-                    }
-                    onClick={() => run(() => rebind())}
-                  >
-                    {labels.rebind}
-                  </Button>
-                </li>
-              );
-            })}
-          </ul>
-        )}
-        <p className="text-xs text-muted-foreground">{labels.rebindHelp}</p>
-      </fieldset>
+                      {new Date(entry.openedAt).toLocaleString(undefined, {
+                        hourCycle: "h23",
+                      })}
+                    </time>
+                    <p aria-label={labels.configuration} className="text-xs">
+                      {entry.configuration.baudRate} /{" "}
+                      {entry.configuration.dataBits}
+                      {
+                        {
+                          none: "N",
+                          even: "E",
+                          odd: "O",
+                          mark: "M",
+                          space: "S",
+                        }[entry.configuration.parity]
+                      }
+                      {
+                        { one: "1", onePointFive: "1.5", two: "2" }[
+                          entry.configuration.stopBits
+                        ]
+                      }
+                    </p>
+                  </li>
+                ))}
+              </ul>
+            )}
+          </fieldset>
+        </TabsContent>
+        <TabsContent value="favorites" className="workbench-tool-page">
+          <fieldset disabled={blocked}>
+            <legend className="sr-only">{labels.favorites}</legend>
+            {!document?.bindings.length ? (
+              <p className="text-xs text-muted-foreground">
+                {labels.noBindings}
+              </p>
+            ) : (
+              <ul className="space-y-3">
+                {document.bindings.map((binding, index) => {
+                  const bindingName =
+                    document.views.find(
+                      (view) => view.bindingId === binding.bindingId,
+                    )?.name ?? `${labels.binding} ${index + 1}`;
+                  const favorite = document.favoriteBindingIds.includes(
+                    binding.bindingId,
+                  );
+                  const available = devices.some(
+                    (device) =>
+                      device.deviceId === binding.deviceId &&
+                      device.hostId === binding.hostId,
+                  );
+                  return (
+                    <li key={binding.bindingId} className="space-y-2">
+                      <p>
+                        {bindingName} ·{" "}
+                        {devices.find(
+                          (device) =>
+                            device.deviceId === binding.deviceId &&
+                            device.hostId === binding.hostId,
+                        )?.systemName ?? labels.offlineDevice}
+                        {!available && ` · ${labels.disconnected}`}
+                      </p>
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        aria-label={`${favorite ? labels.removeFavorite : labels.addFavorite} ${bindingName}`}
+                        disabled={busy || !onSaveFavorites}
+                        onClick={() =>
+                          run(() =>
+                            saveFavorites({
+                              bindingIds: favorite
+                                ? document.favoriteBindingIds.filter(
+                                    (id) => id !== binding.bindingId,
+                                  )
+                                : [
+                                    ...document.favoriteBindingIds,
+                                    binding.bindingId,
+                                  ],
+                            }),
+                          )
+                        }
+                      >
+                        {favorite ? labels.removeFavorite : labels.addFavorite}
+                      </Button>
+                      <label className="workbench-form-row">
+                        <span>{labels.chooseDevice}</span>
+                        <Select
+                          disabled={blocked || !onRebindDevice}
+                          value={
+                            selection?.bindingId === binding.bindingId
+                              ? selection.deviceId
+                              : ""
+                          }
+                          onValueChange={(value) =>
+                            changeSelection(
+                              value
+                                ? {
+                                    bindingId: binding.bindingId,
+                                    deviceId: value,
+                                  }
+                                : undefined,
+                            )
+                          }
+                        >
+                          <SelectTrigger
+                            aria-label={`${labels.chooseDevice} ${bindingName}`}
+                          >
+                            <SelectValue placeholder={labels.chooseDevice} />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {devices
+                              .filter(
+                                (device) => device.hostId === binding.hostId,
+                              )
+                              .map((device) => (
+                                <SelectItem
+                                  key={device.deviceId}
+                                  value={device.deviceId}
+                                >
+                                  {device.systemName}
+                                  {device.fingerprint.serialNumber
+                                    ? ` · ${device.fingerprint.serialNumber}`
+                                    : ""}
+                                </SelectItem>
+                              ))}
+                          </SelectContent>
+                        </Select>
+                      </label>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        aria-label={`${labels.rebind} ${bindingName}`}
+                        disabled={
+                          busy ||
+                          !onRebindDevice ||
+                          selection?.bindingId !== binding.bindingId ||
+                          !devices.some(
+                            (device) =>
+                              device.deviceId === selection.deviceId &&
+                              device.hostId === binding.hostId,
+                          )
+                        }
+                        onClick={() => run(() => rebind())}
+                      >
+                        {labels.rebind}
+                      </Button>
+                    </li>
+                  );
+                })}
+              </ul>
+            )}
+            <p className="sr-only">{labels.rebindHelp}</p>
+          </fieldset>
+        </TabsContent>
+      </Tabs>
     </section>
+  );
+}
+
+function DeviceDetails({
+  device,
+  labels,
+}: {
+  device: Pick<DeviceDescriptor, "deviceId" | "fingerprint">;
+  labels: DeviceLibraryLabels;
+}) {
+  return (
+    <Popover>
+      <PopoverTrigger asChild>
+        <WorkbenchIconButton label={labels.details}>
+          <Info aria-hidden="true" />
+        </WorkbenchIconButton>
+      </PopoverTrigger>
+      <PopoverContent
+        className="workbench-detail-popover"
+        aria-label={labels.details}
+      >
+        <Textarea
+          readOnly
+          aria-label={labels.details}
+          value={JSON.stringify(
+            { deviceId: device.deviceId, fingerprint: device.fingerprint },
+            null,
+            2,
+          )}
+          onFocus={(event) => event.currentTarget.select()}
+        />
+      </PopoverContent>
+    </Popover>
   );
 }

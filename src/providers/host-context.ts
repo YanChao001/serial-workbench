@@ -69,7 +69,7 @@ export type HostState = {
 export type HostContextValue = {
   state: HostState;
   connection?: HostConnection;
-  refresh(): Promise<void>;
+  refresh(options?: { enumerateDevices?: boolean }): Promise<void>;
   metrics(signal?: AbortSignal): Promise<HostMetrics>;
   sessionMetrics(target: Target, signal?: AbortSignal): Promise<SessionMetrics>;
   sessionInputs(target: Target, signal?: AbortSignal): Promise<SessionInputs>;
@@ -119,6 +119,8 @@ export type HostContextValue = {
     workspaceId: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceDocumentResult>;
+  /** 当前 Host 已注册且可见的 scope；重启后可能尚未读取其他持久工作区。 */
+  listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDocumentResult[]>;
   /** Explicit user gesture; resolves only with this save's successful receipt. */
   saveWorkspace(
     base: WorkspaceDocumentResult,

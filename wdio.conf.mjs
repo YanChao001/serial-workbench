@@ -35,7 +35,8 @@ export const config = {
   outputDir,
   waitforTimeout: 15000,
   connectionRetryTimeout: 90000,
-  connectionRetryCount: 1,
+  // execute 超时前可能已经执行 Native 副作用，不能由驱动再次投递同一脚本。
+  connectionRetryCount: 0,
   framework: "mocha",
   reporters: ["spec"],
   // 同阶段复用设置与工作区；首个失败后停止，避免后续连锁超时掩盖根因。

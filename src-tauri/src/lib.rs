@@ -102,6 +102,7 @@ pub fn run() {
         file_name: Some("app".into()),
     };
     let builder = tauri::Builder::default()
+        .invoke_system(include_str!("ipc-transport.js"))
         .manage(desktop::DesktopState::default())
         .manage(lifecycle::LifecycleState::default())
         .manage(system_commands::ActivationInbox::default());

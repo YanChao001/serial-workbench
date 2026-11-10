@@ -1,8 +1,17 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { SessionInputs, Target } from "@serial-workbench/contracts";
 import type { HostContextValue } from "@/providers/host-context";
-import { Button } from "@/components/ui/button";
+import { Info } from "lucide-react";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { nativeErrorCode } from "@/lib/native-error";
 import type { SessionControlsLabels } from "./session-controls";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { WorkbenchNotice } from "./workbench-notice";
 
 export function SessionInputSamples({
   target,
@@ -18,8 +27,6 @@ export function SessionInputSamples({
   const [sample, setSample] = useState<SessionInputs>();
   const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
-  const [unsupported, setUnsupported] = useState(false);
-  const refresh = useRef<() => void>(() => {});
   const hostId = target?.hostId,
     sessionId = target?.sessionId,
     epoch = target?.sessionEpoch;
@@ -27,7 +34,6 @@ export function SessionInputSamples({
     setSample(undefined);
     setError(undefined);
     setBusy(false);
-    setUnsupported(false);
     if (!read || !connected || !hostId || !sessionId || !epoch) return;
     const controller = new AbortController();
     const current: Target = {
@@ -47,22 +53,17 @@ export function SessionInputSamples({
         const value = await read!(current, controller.signal);
         if (!controller.signal.aborted) {
           if (value.sessionId !== sessionId || value.sessionEpoch !== epoch)
-            throw new Error("EPOCH_MISMATCH");
+            throw { code: "EPOCH_MISMATCH" };
           setSample(value);
           setError(undefined);
         }
       } catch (reason: unknown) {
         if (!controller.signal.aborted) {
           setSample(undefined);
-          setError(reason instanceof Error ? reason.message : String(reason));
-          if (
-            typeof reason === "object" &&
-            reason !== null &&
-            "code" in reason &&
-            reason.code === "UNSUPPORTED_CAPABILITY"
-          ) {
+          const code = nativeErrorCode(reason) ?? "INTERNAL";
+          setError(code);
+          if (code === "UNSUPPORTED_CAPABILITY") {
             stopped = true;
-            setUnsupported(true);
           }
         }
       } finally {
@@ -70,13 +71,11 @@ export function SessionInputSamples({
         if (!controller.signal.aborted) setBusy(false);
       }
     }
-    refresh.current = () => void poll();
     void poll();
     const interval = setInterval(() => void poll(), 500);
     return () => {
       controller.abort();
       clearInterval(interval);
-      refresh.current = () => {};
     };
   }, [read, connected, hostId, sessionId, epoch]);
   const current =
@@ -85,6 +84,11 @@ export function SessionInputSamples({
     sample?.sessionEpoch === epoch
       ? sample
       : undefined;
+  const sampledAt = current ? new Date(current.sampledAt) : undefined;
+  const unsupported = error === "UNSUPPORTED_CAPABILITY";
+  const message = unsupported
+    ? labels.inputSignalsUnavailable
+    : labels.failure(error);
   return (
     <section
       aria-label={labels.inputSignals}
@@ -92,14 +96,21 @@ export function SessionInputSamples({
       aria-busy={busy}
     >
       <h3>{labels.inputSignals}</h3>
-      <Button
-        size="sm"
-        variant="outline"
-        disabled={!read || !connected || !target || busy || unsupported}
-        onClick={() => refresh.current()}
+      <WorkbenchNotice
+        noticeKey={`session-inputs:${error ?? "none"}`}
+        log={
+          error
+            ? {
+                module: "serial",
+                level: unsupported ? "warning" : "error",
+                code: error,
+                message,
+              }
+            : undefined
+        }
       >
-        {labels.refreshInputs}
-      </Button>
+        {error ? <span role="alert">{message}</span> : null}
+      </WorkbenchNotice>
       <dl className="flex flex-wrap gap-3">
         {(["cts", "dsr", "ri", "cd"] as const).map((line) => (
           <div key={line}>
@@ -114,14 +125,30 @@ export function SessionInputSamples({
           </div>
         ))}
       </dl>
-      {current && (
-        <p>
-          {labels.sampledAt}: <span>{current.sampledAt}</span> ·{" "}
-          {current.sampledMonoNs} ns
-        </p>
-      )}
+      <div className="flex h-8 items-center gap-2 text-xs text-muted-foreground">
+        <span>{labels.sampledAt}</span>
+        <time dateTime={current?.sampledAt} aria-label={labels.sampledAt}>
+          {sampledAt && Number.isFinite(sampledAt.getTime())
+            ? sampledAt.toLocaleTimeString(undefined, { hourCycle: "h23" })
+            : "—"}
+        </time>
+        <Popover>
+          <PopoverTrigger asChild>
+            <WorkbenchIconButton label={labels.details} disabled={!current}>
+              <Info aria-hidden="true" />
+            </WorkbenchIconButton>
+          </PopoverTrigger>
+          <PopoverContent align="end" className="workbench-detail-popover">
+            <Textarea
+              aria-label={labels.inputSignals}
+              value={JSON.stringify(current, null, 2) ?? ""}
+              readOnly
+              className="workbench-log-details"
+            />
+          </PopoverContent>
+        </Popover>
+      </div>
       {(unsupported || !read) && <p>{labels.inputSignalsUnavailable}</p>}
-      {error && <p role="alert">{error}</p>}
     </section>
   );
 }

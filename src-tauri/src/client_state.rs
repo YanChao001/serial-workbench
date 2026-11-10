@@ -26,7 +26,7 @@ impl Default for ClientPreferences {
         Self {
             menu_bar: true,
             window_position: WindowPosition::Remember,
-            sidebar_collapsed: false,
+            sidebar_collapsed: true,
             sidebar_width: 224,
         }
     }
@@ -36,6 +36,13 @@ impl Default for ClientPreferences {
 pub struct GalleryEntry {
     pub reference: serial_workbench_core::ObjectRef,
     pub name: String,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ConnectionDefault {
+    pub host_id: serial_workbench_core::Id,
+    pub device_id: serial_workbench_core::Id,
+    pub configuration: serial_workbench_core::SerialConfiguration,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -49,6 +56,9 @@ pub struct ClientWindowState {
     pub drafts: BTreeMap<String, String>,
     #[serde(default)]
     pub gallery: Vec<GalleryEntry>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub connection_defaults: Vec<ConnectionDefault>,
 }
 impl Default for ClientWindowState {
     fn default() -> Self {
@@ -61,6 +71,7 @@ impl Default for ClientWindowState {
             last_workspace_id: None,
             drafts: BTreeMap::new(),
             gallery: Vec::new(),
+            connection_defaults: Vec::new(),
         }
     }
 }
@@ -126,6 +137,21 @@ fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
     if let Some(id) = &state.last_workspace_id {
         bounded_text(id, 128, "Workspace identity")?;
     }
+    if state.connection_defaults.len() > 128 {
+        return Err(NativeError::new(
+            ErrorCode::InputTooLong,
+            "Too many remembered connections",
+        ));
+    }
+    let mut connection_targets = std::collections::BTreeSet::new();
+    for entry in &state.connection_defaults {
+        if !connection_targets.insert((&entry.host_id, &entry.device_id)) {
+            return Err(NativeError::new(
+                ErrorCode::InvalidArgument,
+                "Duplicate remembered connection",
+            ));
+        }
+    }
     if state.gallery.len() > 24 {
         return Err(NativeError::new(
             ErrorCode::InputTooLong,
@@ -165,6 +191,88 @@ fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
     }
     Ok(())
 }
+#[cfg(test)]
+mod connection_defaults_tests {
+    use super::*;
+
+    fn entry() -> ConnectionDefault {
+        ConnectionDefault {
+            host_id: serial_workbench_core::Id::try_from("host-a").unwrap(),
+            device_id: serial_workbench_core::Id::try_from("device-a").unwrap(),
+            configuration: Default::default(),
+        }
+    }
+
+    #[test]
+    fn remembered_parameters_round_trip_without_changing_other_window_or_drafts() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let mut state = ClientWindowState::default();
+        state.drafts.insert("view".into(), "UNSENT".into());
+        let mut remembered = entry();
+        remembered.configuration.baud_rate =
+            serial_workbench_core::PositiveU64::try_from(U64::from(230400)).unwrap();
+        state.connection_defaults.push(remembered);
+        let saved = store.save("main", state, 0.into()).unwrap();
+        let reopened = ClientStateStore::open(path).unwrap();
+        assert_eq!(reopened.snapshot("main").unwrap(), saved);
+        assert!(
+            reopened
+                .snapshot("secondary")
+                .unwrap()
+                .state
+                .connection_defaults
+                .is_empty()
+        );
+        assert_eq!(saved.state.drafts.get("view").unwrap(), "UNSENT");
+    }
+
+    #[test]
+    fn duplicate_and_oversized_defaults_do_not_replace_the_original() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        store
+            .save("main", ClientWindowState::default(), 0.into())
+            .unwrap();
+        let original = std::fs::read(&path).unwrap();
+        let mut state = ClientWindowState {
+            connection_defaults: vec![entry(), entry()],
+            ..ClientWindowState::default()
+        };
+        assert_eq!(
+            store
+                .save("main", state.clone(), 1.into())
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidArgument
+        );
+        state.connection_defaults = vec![entry(); 129];
+        assert_eq!(
+            store.save("main", state, 1.into()).unwrap_err().code,
+            ErrorCode::InputTooLong
+        );
+        assert_eq!(std::fs::read(path).unwrap(), original);
+    }
+
+    #[test]
+    fn absent_unreleased_field_is_empty_and_invalid_parameters_are_rejected() {
+        let mut value = serde_json::to_value(ClientWindowState::default()).unwrap();
+        assert!(value.get("connectionDefaults").is_none());
+        assert!(
+            serde_json::from_value::<ClientWindowState>(value.clone())
+                .unwrap()
+                .connection_defaults
+                .is_empty()
+        );
+        let mut invalid = serde_json::to_value(entry()).unwrap();
+        invalid["configuration"]["baudRate"] = serde_json::json!("0");
+        value["connectionDefaults"] = serde_json::json!([invalid]);
+        assert!(serde_json::from_value::<ClientWindowState>(value).is_err());
+    }
+}
+
 pub(crate) fn future_client_format(value: &serde_json::Value) -> bool {
     let unsupported_version = |document: &serde_json::Value| {
         document
@@ -290,6 +398,29 @@ impl ClientStateStore {
 mod tests {
     use super::*;
     use std::fs;
+    #[test]
+    fn compact_navigation_is_only_the_default_for_new_window_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let mut state = store.snapshot("main").unwrap().state;
+        assert!(state.preferences.sidebar_collapsed);
+        state.preferences.sidebar_collapsed = false;
+        state.preferences.sidebar_width = 300;
+        store.save("main", state, 0.into()).unwrap();
+        let reopened = ClientStateStore::open(path).unwrap();
+        let saved = reopened.snapshot("main").unwrap();
+        assert!(!saved.state.preferences.sidebar_collapsed);
+        assert_eq!(saved.state.preferences.sidebar_width, 300);
+        assert!(
+            reopened
+                .snapshot("secondary")
+                .unwrap()
+                .state
+                .preferences
+                .sidebar_collapsed
+        );
+    }
     #[test]
     fn drafts_roundtrip_without_reading_or_changing_legacy_shared_settings() {
         let dir = tempfile::tempdir().unwrap();

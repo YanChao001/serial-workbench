@@ -6,8 +6,11 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import { toast } from "sonner";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
 import type { CaptureTailResult } from "@serial-workbench/contracts";
 import type {
   HostActionAvailability,
@@ -15,7 +18,13 @@ import type {
 } from "@/providers/host-context";
 import { CaptureTailPanel } from "./capture-tail-panel";
 import { labels } from "./test-fixtures";
-afterEach(cleanup);
+import { allowControlActions } from "./session-controls.test-fixtures";
+vi.mock("sonner", () => ({ toast: { custom: vi.fn(), dismiss: vi.fn() } }));
+afterEach(() => {
+  cleanup();
+  clearUserLog();
+  vi.clearAllMocks();
+});
 const ref = { hostId: "host", kind: "capture", id: "A", revision: "1" };
 function tail(id: string): CaptureTailResult {
   return {
@@ -37,6 +46,146 @@ function tail(id: string): CaptureTailResult {
     ],
   };
 }
+it.each([
+  ["SOURCE_CHANGED", labels.captureChanged],
+  ["REVISION_CONFLICT", labels.captureRevision],
+  ["IO", labels.operationText.failure("IO")],
+])(
+  "notifies and logs a real %s read failure without inserting an inline error row",
+  async (code, message) => {
+    const read = vi
+      .fn()
+      .mockRejectedValue({ code, message: "C:/private/input-secret" });
+    const props = {
+      reference: ref,
+      scopeKey: "safe-failure",
+      ready: true,
+      read,
+      watchActions: allowControlActions,
+      labels,
+    };
+    const view = render(<CaptureTailPanel {...props} />);
+    await waitFor(() => expect(toast.custom).toHaveBeenCalledOnce());
+    expect(getUserLog()).toMatchObject([
+      { module: "capture", level: "error", code, message, count: 1 },
+    ]);
+    expect(JSON.stringify(getUserLog())).not.toContain("input-secret");
+    expect(
+      within(
+        screen.getByRole("region", { name: labels.captureTail }),
+      ).queryByRole("alert"),
+    ).not.toBeInTheDocument();
+    expect(document.body).not.toHaveTextContent("input-secret");
+    view.rerender(<CaptureTailPanel {...props} reference={{ ...ref }} />);
+    await act(async () => {});
+    expect(read).toHaveBeenCalledOnce();
+    expect(toast.custom).toHaveBeenCalledOnce();
+    expect(getUserLog()[0]?.count).toBe(1);
+  },
+);
+it.each([
+  ["CAPTURE_ACTIVE", labels.captureActive],
+  ["PERMISSION_DENIED", labels.captureDenied],
+])(
+  "keeps initial %s as an ordinary state across reopening",
+  async (code, message) => {
+    const read = vi
+      .fn()
+      .mockRejectedValue({ code, message: "C:/private/input-secret" });
+    const props = {
+      reference: ref,
+      scopeKey: "ordinary-state",
+      ready: true,
+      read,
+      watchActions: allowControlActions,
+      labels,
+    };
+    const first = render(<CaptureTailPanel {...props} />);
+    expect(await screen.findByText(message)).toHaveAttribute("role", "status");
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+    expect(toast.custom).not.toHaveBeenCalled();
+    expect(getUserLog()).toEqual([]);
+    first.unmount();
+    render(<CaptureTailPanel {...props} />);
+    expect(await screen.findByText(message)).toHaveAttribute("role", "status");
+    expect(toast.custom).not.toHaveBeenCalled();
+    expect(getUserLog()).toEqual([]);
+  },
+);
+it("does not query or warn before initial capture permission is allowed", async () => {
+  const read = vi.fn();
+  const watchActions = (
+    inputs: readonly HostActionCheckInput[],
+    listener: (values: readonly HostActionAvailability[]) => void,
+  ) => {
+    listener(
+      inputs.map((input) => ({
+        input,
+        error: null,
+        result: { ...input, allowed: false },
+      })),
+    );
+    return () => {};
+  };
+  render(
+    <CaptureTailPanel
+      reference={ref}
+      scopeKey="not-authorized"
+      ready
+      read={read}
+      watchActions={watchActions}
+      labels={labels}
+    />,
+  );
+  expect(await screen.findByText(labels.captureDenied)).toHaveAttribute(
+    "role",
+    "status",
+  );
+  expect(read).not.toHaveBeenCalled();
+  expect(toast.custom).not.toHaveBeenCalled();
+  expect(getUserLog()).toEqual([]);
+});
+it("ignores an old read rejection after switching capture references", async () => {
+  let rejectOld!: (reason: unknown) => void;
+  const read = vi
+    .fn()
+    .mockImplementationOnce(
+      () =>
+        new Promise<CaptureTailResult>((_resolve, reject) => {
+          rejectOld = reject;
+        }),
+    )
+    .mockResolvedValueOnce(tail("B"));
+  const props = {
+    reference: ref,
+    scopeKey: "old-A",
+    ready: true,
+    read,
+    watchActions: allowControlActions,
+    labels,
+  };
+  const view = render(<CaptureTailPanel {...props} />);
+  await waitFor(() => expect(read).toHaveBeenCalledOnce());
+  view.rerender(
+    <CaptureTailPanel
+      {...props}
+      reference={{ ...ref, id: "B" }}
+      scopeKey="new-B"
+    />,
+  );
+  await waitFor(() => expect(read).toHaveBeenCalledTimes(2));
+  await act(async () =>
+    rejectOld({ code: "SOURCE_CHANGED", message: "C:/private/input-secret" }),
+  );
+  expect(toast.custom).not.toHaveBeenCalled();
+  expect(getUserLog()).toEqual([]);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(
+    screen.getByRole("button", {
+      name: labels.captureTail + " · " + labels.expand,
+    }),
+  ).toBeInTheDocument();
+});
 it("aborts replaced requests, keeps only the selected verified prefix and hides revoked content", async () => {
   const calls: {
     signal?: AbortSignal;
@@ -155,9 +304,15 @@ it("renders safe stable errors without raw host paths", async () => {
       labels={labels}
     />,
   );
-  expect(await screen.findByRole("alert")).toHaveTextContent(
-    labels.captureChanged,
-  );
+  await waitFor(() => expect(toast.custom).toHaveBeenCalledOnce());
+  expect(getUserLog()).toMatchObject([
+    {
+      module: "capture",
+      code: "SOURCE_CHANGED",
+      message: labels.captureChanged,
+    },
+  ]);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(screen.queryByText(/secret/)).not.toBeInTheDocument();
 });
 
@@ -236,7 +391,7 @@ it("keeps historical source identities, verified gaps and unknown TX settlement"
   expect(await screen.findByText(/reader_overflow/)).toBeInTheDocument();
   expect(
     screen.getByRole("status", { name: labels.txUnknownBytes }),
-  ).toHaveTextContent("unknown");
+  ).toHaveTextContent(labels.unknown);
   fireEvent.click(
     screen.getByRole("button", {
       name: labels.captureTail + " · " + labels.expand,

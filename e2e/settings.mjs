@@ -2,42 +2,63 @@ import assert from "node:assert/strict";
 import { browser } from "@wdio/globals";
 import { invoke, ready } from "./helpers.mjs";
 
-export async function nativeValue(command, args) {
+export async function nativeValue(command, args, onFailure) {
   const reply = await invoke(command, args);
+  if (!reply.ok) onFailure?.(reply.failure);
   assert.equal(reply.ok, true, `${command}: ${JSON.stringify(reply.failure)}`);
   return reply.value;
 }
 
-export async function hostQuery(actionId, kind, id, params = {}) {
-  const { attachment } = await nativeValue("host_attachment");
+export async function hostQuery(actionId, kind, id, params = {}, observed) {
+  const { attachment, generation } = await nativeValue(
+    "host_attachment",
+    {},
+    (failure) =>
+      observed?.({ phase: "attachment_failed", errorCode: failure?.code }),
+  );
+  observed?.({ phase: "attachment_observed", generation });
   const requestId = await browser.execute(() => crypto.randomUUID());
-  const reply = await nativeValue("host_request", {
-    request: {
-      method: "action.query",
-      params: {
-        protocolVersion: attachment.protocolVersion,
-        hostId: attachment.hostId,
-        instanceEpoch: attachment.instanceEpoch,
-        actorId: attachment.actorId,
-        requestId,
-        actionId,
-        target: {
+  const reply = await nativeValue(
+    "host_request",
+    {
+      request: {
+        method: "action.query",
+        params: {
+          protocolVersion: attachment.protocolVersion,
           hostId: attachment.hostId,
-          kind,
-          id: id ?? attachment.hostId,
+          instanceEpoch: attachment.instanceEpoch,
+          actorId: attachment.actorId,
+          requestId,
+          actionId,
+          target: {
+            hostId: attachment.hostId,
+            kind,
+            id: id ?? attachment.hostId,
+          },
+          params,
+          revealTarget: { pageId: "settings" },
         },
-        params,
-        revealTarget: { pageId: "settings" },
       },
     },
+    (failure) =>
+      observed?.({
+        phase: "query_failed",
+        generation,
+        errorCode: failure?.code,
+      }),
+  );
+  observed?.({
+    phase: reply.ok ? "query_replied" : "query_failed",
+    generation,
+    errorCode: reply.error?.code,
   });
   assert.equal(reply.ok, true, `${actionId}: ${JSON.stringify(reply.error)}`);
   return reply.result;
 }
 
-export async function readSettings() {
+export async function readSettings(observed) {
   const [shared, client] = await Promise.all([
-    hostQuery("settings.read", "settings", "shared"),
+    hostQuery("settings.read", "settings", "shared", {}, observed),
     nativeValue("client_state_read"),
   ]);
   assert.equal(shared.kind, "settings");
@@ -80,11 +101,11 @@ export async function patchSettings(patch) {
       });
       if (!reply.ok && reply.failure?.code === "CONFLICT") continue;
       assert.equal(reply.ok, true, JSON.stringify(reply.failure));
-      // ClientState 按窗口读取；直接写入后重新加载真实 Provider，不伪造同步事件。
-      await browser.refresh();
       const label = await browser.execute(
         () => window.__TAURI__.window.getCurrentWindow().label,
       );
+      // ClientState 按窗口读取；直接写入后重新加载真实 Provider，不伪造同步事件。
+      await browser.refresh();
       await ready(label);
     }
     if (!Object.keys(sharedPatch).length) return readSettings();
