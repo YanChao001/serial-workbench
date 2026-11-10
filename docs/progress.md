@@ -1,16 +1,31 @@
 # 开发进度
 
-更新：2026-11-11。M1b 已完成验收与状态同步；主工作区在 `fix/workbench-ui`，PR #42 尚未合入。候选 `092d564` 完整 CI 的四个 Native、前端、绑定及浏览器通过，但四个 Rust 均因同一 CLI 关停输出检查失败，质量门禁失败。普通 EOF 日志级别已修正，本机真实反例红→绿，完整 Rust 工作区 773 项及 Clippy/fmt 通过，当前冻结修订候选运行完整四目标门槛。用户已要求本轮界面修正、验证与交付完成后暂停总目标，不继续 M2—M6。整个目标尚未完成，以下结果只适用于其记录的源码和环境。
+更新：2026-11-11。M1b 与本轮界面软件切片均已交付；PR #42 已 squash 合入 main。最终完整四目标 CI 的 12 项必需任务全部成功。按用户要求暂停总目标，不推进 M2—M6。最新 COM14 GUI 前台复测因桌面锁屏未做，最低系统、实际 72h、完整硬件及发行等范围仍未验收；整个目标尚未完成。
 
 ## 当前基线
 
+- 本轮界面软件通过 [PR #42](https://github.com/YanChao001/serial-workbench/pull/42) squash 合入 `main@1154b89f3b6eb59a1668bcef9c2bc6b245c88fc3`。候选 `2f3d06441f62f2e5a4f785dfc6cb7e4245305939` 与合入树完全相同，重新计算源码指纹均为 `6fd5e73698eb122c069bf3fd6647a88a9c4b3c3c851872ebaca698874e91870e`；收据在 `.cache/evidence/ui/1154b89f3b6eb59a1668bcef9c2bc6b245c88fc3/delivery.json`，实际源码、程序、日志和验证结果在相邻候选证据目录。后续状态同步仅修改文档与账本。
 - M1b 通过 [PR #40](https://github.com/YanChao001/serial-workbench/pull/40) squash 合入 `main@7b466df28bf255a325ed8275612ffb4400a06001`。候选 `9283f22463106a785834d055fb55f86a5aa14195` 与合入树完全相同；重新计算源码指纹均为 `86a459f87deab7e1077ae7caf2ca18897027b73c6b8d225e50e8f8b6c5177d37`。
-- M1b 交付时主工作区 `D:\yanchao\Codex\serial-workbench` 已 fast-forward 到该 main 并核对干净，自有分支已清理；后续 PR #41 状态文档已合入 `main@7a8e81a`。本轮 UI 切片从该主线创建 `fix/workbench-ui`，当前仍在主工作区接续；后续切片继续从最新 main 创建短期分支。未修改 marketplace，未清理指定备份、用户数据或编译缓存。
+- M1b 交付时主工作区 `D:\yanchao\Codex\serial-workbench` 已 fast-forward 到该 main 并核对干净，自有分支已清理；后续 PR #41 状态文档已合入 `main@7a8e81a`。本轮 UI 切片从该主线创建 `fix/workbench-ui` 并已由 PR #42 交付；后续切片继续从最新 main 创建短期分支。未修改 marketplace，未清理指定备份、用户数据或编译缓存。
 - 247 条需求账本校验通过：76 个跨阶段软件项仍为 in-progress、168 个 not-started、3 个 not-applicable；76 个 M1 切片已登记并合入 PR #40 证据。切片交付不提升其后续软件、硬件或发行范围，也不把 247 条全部记为完成。
 - 真实硬件仅做 Windows，macOS/Linux 做实现与虚拟测试。COM14 为 CH340（VID 1A86/PID 7523）；用户确认 TX/RX 已短接、可按测试需要选择参数。驱动重装和重启后，9600/115200、8N1、无流控的独立系统及当前 Host/CLI 定向回环均通过；此结果不代替完整硬件矩阵、GUI 或 M6 验收。最低系统、实际 72h、Windows LAN 双机、专业设备、安装签名及发行仍未验收。
 - 合入/同源收据位于 `.cache/evidence/m1b/7b466df28bf255a325ed8275612ffb4400a06001/delivery.json`；候选源码、程序哈希、日志与软件/原生证据位于 `.cache/evidence/m1b/9283f22463106a785834d055fb55f86a5aa14195/`。历史失败保持原源码归属。
 
 ## 当前验证
+
+[最终完整 CI 42916751468](https://github.com/YanChao001/serial-workbench/actions/runs/42916751468) 对候选 `2f3d064` 的 12 项必需任务全部成功：四个 Rust、四个 Native、前端、浏览器、绑定及质量门禁；另 1 项预检占位按完整模式跳过。四个平台普通原生程序均构建成功，没有打包、签名或发布。PR #42 已合入，合入树与验收候选及源码指纹均实际核对一致。
+
+浏览器 128/128；Native fresh 为 Windows/Linux 各 26 通过/1 条件跳过，macOS ARM/Intel 各 25 通过/2 条件跳过，四目标 persisted/centered 各 2 通过。四份 ZIP 摘要、完整源码与四程序收据、12 份阶段原始日志已核验，RPC/订阅四类冲突全部为零；EOF 只出现在各目标安排的 Host 重启，正常关闭不新增 Raw 故障（Linux 0→0，其余三个目标 1→1，实际观察 2024—2057ms）。11 张窗口内截图中 7 张与已审图同 SHA256、4 张变化图已重新查看。
+
+Ubuntu 正式离线六场景的 18 条断言通过，实际负载 `600.440496826s`、602 个样本，wrapper 总计 `610.288377034s`，11 个自有进程全部退出。已复核网络隔离、原始遥测、程序来源与清理；它属于 M1 软件参考负载，不替代 M6 的实际 72 小时及硬件矩阵。
+
+本机完整 verify 的 2105 应用测试、309 工程脚本/4 条件跳过及其他检查和构建通过；之后 EOF 日志修订另由同源三程序、完整 Rust workspace 773 通过/5 原条件忽略/0 失败、workspace all-targets Clippy/fmt、相关 E2E 检查 5/5 和 JS lint/格式覆盖。各轮源身份独立保留，最终候选的完整门槛以本轮 CI 为准。
+
+36 项用户界面反馈在记录的软件/浏览器范围完成修正；最新 COM14 GUI、当前电脑字体/DPI、系统选择对话框、最低系统、实际 72h、完整 Windows 硬件、LAN 双机、安装签名及发行保留未测。开发窗口、原 Host、草稿、指定备份和编译缓存保留。247 条需求账本的状态仍为 76 个软件 in-progress、168 个 not-started、3 个 not-applicable；本轮 35 个相关软件项已登记 PR #42 交付证据，最终 CI 通过记录位于该 PR 与本节，没有提升硬件或发行状态。
+
+### 收尾过程记录
+
+以下保留各候选发生时的执行状态、原失败与修正经过；当前交付和暂停状态以上述汇总为准。
 
 日志修订后的本机检查全部通过：先实际构建同源 Host/CLI/MCP，再执行 `cargo test --locked --target-dir .cache/local-acceptance-target --workspace --no-fail-fast`，71 组结果汇总为 773 通过/5 原条件忽略/0 失败，包含桌面库、CLI 关停与真实程序交叉测试；workspace all-targets Clippy 和 Rust fmt 通过。运行输入 source `9c119998673422eb338d6b6feae8ffb980fa431faf32b4499ddf1ed1715357f9`，之后仅更新状态文档；日志为 `.cache/ui-audit/gui-final-rust-*-2.log`。本机以 jobs=2 保留独立 target 缓存，完整测试程序编译 13m42s，不与 CI runner 耗时混比。相关 E2E 日志检查 5/5、JS lint/格式和 247 条账本通过。当前冻结修订候选后运行完整四目标，不以旧 Native 通过替代新门槛。
 
