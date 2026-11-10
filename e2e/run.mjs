@@ -18,6 +18,7 @@ import {
 } from "./suite-host.mjs";
 import { Resvg } from "@resvg/resvg-js";
 import { parseE2EOptions } from "./run-options.mjs";
+import { checkNativeRequestDiagnostics } from "./native-log-evidence.mjs";
 import {
   spawnOwned,
   stopOwned,
@@ -155,6 +156,8 @@ try {
     });
     const env = {
       ...suiteEnv,
+      // 普通 EOF 属于调试信息；独立验收仍保留其时刻，不提升生产告警级别。
+      SWB_LOG_LEVEL: "debug",
       TAURI_WEBDRIVER_PORT: String(port),
       STARTER_E2E_BINARY: binary,
       STARTER_E2E_DATA_ROOT: dataRoot,
@@ -202,6 +205,10 @@ try {
       await stopOwned(runner);
       await stopOwned(app);
     }
+    checkNativeRequestDiagnostics(
+      join(root, "artifacts", "e2e", phase, "native.log"),
+      join(root, "artifacts", "e2e", phase, "rpc-request-conflicts.json"),
+    );
   }
 } catch (error) {
   preserveData = true;

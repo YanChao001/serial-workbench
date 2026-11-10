@@ -8,16 +8,222 @@ import {
   waitFor,
   within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Toaster } from "sonner";
 import type { WorkspaceDocument } from "@serial-workbench/contracts";
 import { WorkspaceLayout, type WorkbenchHost } from "./workspace-layout";
 import { labels, operation, session, actionCatalog } from "./test-fixtures";
 import { workbenchToolLabels } from "./tool-labels";
 import { createTranslator } from "@/i18n/translate";
 import { en } from "@/i18n/en";
+import { zhCN } from "@/i18n/zh-CN";
 import { defaults } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
+import { createHostConnection } from "@/lib/host-client";
+import type { HostNativePort } from "@/lib/host-client";
+import type { AttachResult } from "@serial-workbench/contracts";
 afterEach(cleanup);
+beforeEach(() => {
+  render(<Toaster />);
+});
+const namedSessionLabels = { ...labels, sessionLabel: "Session" };
+async function namedSessionConnection(
+  options: {
+    hostId?: string;
+    instanceEpoch?: string;
+    generation?: string;
+  } = {},
+) {
+  const attachment: AttachResult = {
+    hostId: options.hostId ?? "host",
+    instanceEpoch: options.instanceEpoch ?? "1",
+    protocolVersion: "0.1",
+    catalogVersion: "1",
+    actorId: "actor",
+    clientId: "client",
+    requestContext: "fixture-context",
+    requestContextAcceptUntil: "2026-11-11T00:00:00Z",
+    limits: {
+      maxRequestBytes: "100000",
+      maxPageItems: "100",
+      maxBatchBytes: "100000",
+      maxReaderQueueBytes: "100000",
+      resultRetentionMs: "1000",
+      maxLeaseTtlMs: "1000",
+    },
+  };
+  const port: HostNativePort = {
+    attachment: vi
+      .fn()
+      .mockResolvedValue({ attachment, generation: options.generation ?? "1" }),
+    request: vi.fn(),
+    rawRequest: vi.fn(),
+    subscribe: vi.fn(),
+    rawSubscribe: vi.fn(),
+    unsubscribe: vi.fn().mockResolvedValue(undefined),
+    rawUnsubscribe: vi.fn().mockResolvedValue(undefined),
+    ack: vi.fn().mockResolvedValue(undefined),
+  };
+  return createHostConnection(port);
+}
+
+it("retains a source-proven friendly session tab and its draft when the Host attachment retires", async () => {
+  const adapter = host();
+  adapter.connection = await namedSessionConnection();
+  const view = render(
+    <WorkspaceLayout host={adapter} labels={namedSessionLabels} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open Virtual serial" }));
+  await screen.findByRole("tab", { name: "Virtual serial" });
+  fireEvent.change(screen.getByRole("textbox", { name: "Send input" }), {
+    target: { value: "CURRENT EDIT" },
+  });
+  adapter.connection.dispose();
+  adapter.connection = undefined;
+  adapter.state = {
+    ...adapter.state,
+    status: "error",
+    error: new Error("retired attachment"),
+    devices: [],
+    sessions: [],
+  };
+  view.rerender(<WorkspaceLayout host={adapter} labels={namedSessionLabels} />);
+  expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
+    "Virtual serial",
+  );
+  expect(screen.getByRole("tab", { selected: true })).not.toHaveTextContent(
+    "session-session",
+  );
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    "CURRENT EDIT",
+  );
+});
+
+it("retains a source-proven friendly session tab when only its device descriptor disappears", async () => {
+  const adapter = host();
+  adapter.connection = await namedSessionConnection();
+  const view = render(
+    <WorkspaceLayout host={adapter} labels={namedSessionLabels} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open Virtual serial" }));
+  await screen.findByRole("tab", { name: "Virtual serial" });
+  adapter.state = { ...adapter.state, devices: [] };
+  view.rerender(<WorkspaceLayout host={adapter} labels={namedSessionLabels} />);
+  expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
+    "Virtual serial",
+  );
+  adapter.connection.dispose();
+});
+
+it.each(["Host", "instance", "generation", "session epoch"])(
+  "does not borrow a prior friendly session tab label after its %s changes",
+  async (changed) => {
+    const adapter = host();
+    adapter.connection = await namedSessionConnection();
+    const previous = adapter.connection;
+    const view = render(
+      <WorkspaceLayout host={adapter} labels={namedSessionLabels} />,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Virtual serial" }),
+    );
+    await screen.findByRole("tab", { name: "Virtual serial" });
+    fireEvent.change(screen.getByRole("textbox", { name: "Send input" }), {
+      target: { value: "CURRENT EDIT" },
+    });
+    adapter.connection = await namedSessionConnection({
+      hostId: changed === "Host" ? "replacement-host" : "host",
+      instanceEpoch: changed === "instance" ? "2" : "1",
+      generation: changed === "generation" ? "2" : "1",
+    });
+    adapter.state = {
+      ...adapter.state,
+      devices: [],
+      sessions: [
+        { ...session(), sessionEpoch: changed === "session epoch" ? "2" : "1" },
+      ],
+    };
+    view.rerender(
+      <WorkspaceLayout host={adapter} labels={namedSessionLabels} />,
+    );
+    expect(screen.getByRole("tab", { selected: true }).textContent).toBe(
+      "Session",
+    );
+    expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+      "CURRENT EDIT",
+    );
+    previous.dispose();
+    adapter.connection.dispose();
+  },
+);
+
+it("uses a generic session label for an unknown source instead of opaque identities", () => {
+  const adapter = host();
+  adapter.state = {
+    ...adapter.state,
+    devices: [],
+    operationSummaries: [operation("unknown-name")],
+  };
+  render(<WorkspaceLayout host={adapter} labels={namedSessionLabels} />);
+  locateActivity("Locate unknown-name");
+  expect(screen.getByRole("tab", { selected: true }).textContent).toBe(
+    "Session",
+  );
+});
+
+it.each(["", " \t ", "  Motor controller  ", "串口 A"])(
+  "uses a safe generic tab label only for blank custom session names: %j",
+  (name) => {
+    const adapter = host();
+    render(
+      <WorkspaceLayout
+        host={adapter}
+        labels={namedSessionLabels}
+        initialWorkspace={{
+          ...defaults.workspace,
+          views: [
+            {
+              id: "opaque-internal-view",
+              name,
+              color: "#2266aa",
+              icon: "terminal",
+              pinned: false,
+              receiveMode: "text",
+              sendMode: "text",
+              bindingId: "unknown-binding",
+            },
+          ],
+        }}
+      />,
+    );
+    expect(screen.getByRole("tab").textContent).toBe(
+      name.trim() ? name : "Session",
+    );
+  },
+);
+it("requests actual enumeration only when the COM picker opens and retains the draft", async () => {
+  const adapter = host();
+  const toolLabels = workbenchToolLabels(createTranslator(en)).layout;
+  render(
+    <WorkspaceLayout host={adapter} labels={labels} toolLabels={toolLabels} />,
+  );
+  const draft = screen.getByRole("textbox", { name: "Send input" });
+  fireEvent.change(draft, { target: { value: "RETAINED DRAFT" } });
+  const picker = screen.getByRole("combobox", { name: "Choose device" });
+  expect(adapter.refresh).not.toHaveBeenCalled();
+  fireEvent.keyDown(picker, { key: "Enter" });
+  await screen.findByRole("listbox");
+  expect(adapter.refresh).toHaveBeenCalledWith({ enumerateDevices: true });
+  expect(adapter.refresh).toHaveBeenCalledOnce();
+  fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
+  await waitFor(() =>
+    expect(screen.queryByRole("listbox")).not.toBeInTheDocument(),
+  );
+  expect(adapter.refresh).toHaveBeenCalledOnce();
+  expect(draft).toHaveValue("RETAINED DRAFT");
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+});
 it("disables view duplication when a retained local tab has no ready session", () => {
   const adapter = host();
   const view = render(<WorkspaceLayout host={adapter} labels={labels} />);
@@ -40,16 +246,51 @@ it("disables view duplication when a retained local tab has no ready session", (
     "CURRENT EDIT",
   );
 });
-it("includes the visible serial summary in the connection parameter button name", () => {
+it("keeps the parameter action compact and exposes the current serial summary on focus", async () => {
   const adapter = host();
   adapter.state.sessions = [];
   const toolLabels = workbenchToolLabels(createTranslator(en)).layout;
   render(
     <WorkspaceLayout host={adapter} labels={labels} toolLabels={toolLabels} />,
   );
-  expect(
-    screen.getByRole("button", { name: /^Connection parameters/ }),
-  ).toHaveAccessibleName("Connection parameters 9600 / 8 none");
+  const parameters = screen.getByRole("button", {
+    name: "Connection parameters",
+  });
+  expect(parameters).not.toHaveTextContent("9600");
+  fireEvent.focus(parameters);
+  expect(await screen.findByRole("tooltip")).toHaveTextContent("9600 / 8N1");
+});
+it("keeps the workspace entry stable while loading and localizes only its unnamed presentation", async () => {
+  const adapter = host();
+  const english = workbenchToolLabels(createTranslator(en)).layout;
+  const chinese = workbenchToolLabels(createTranslator(zhCN)).layout;
+  const content = (
+    toolLabels: typeof english,
+    initialWorkspace?: WorkspaceDocument,
+  ) => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      toolLabels={toolLabels}
+      initialWorkspace={initialWorkspace}
+      renderTool={() => null}
+    />
+  );
+  const view = render(content(english));
+  const entry = screen.getByRole("button", { name: "Workspace" });
+  fireEvent.focus(entry);
+  await waitFor(() => expect(entry).toHaveAccessibleDescription("Workspace"));
+  view.rerender(content(english, { ...defaults.workspace, name: "" }));
+  expect(screen.getByRole("button", { name: "Workspace" })).toBe(entry);
+  await waitFor(() => expect(entry).toHaveAccessibleDescription("Workspace"));
+  view.rerender(content(chinese, { ...defaults.workspace, name: "" }));
+  expect(screen.getByRole("button", { name: "工作区" })).toBe(entry);
+  await waitFor(() => expect(entry).toHaveAccessibleDescription("工作区"));
+  view.rerender(content(chinese, { ...defaults.workspace, name: "Workspace" }));
+  await waitFor(() =>
+    expect(entry).toHaveAccessibleDescription("工作区: Workspace"),
+  );
+  expect(entry).toHaveTextContent("");
 });
 it("returns keyboard menu tools and internal tool jumps to the permanent menu trigger", async () => {
   const tools = workbenchToolLabels(createTranslator(en)).layout;
@@ -216,7 +457,7 @@ it("clears only the current view and shows new data after the bounded reader tri
   );
   expect(screen.getByText("C")).toBeInTheDocument();
   expect(adapter.refresh).not.toHaveBeenCalled();
-  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.open).toHaveBeenCalledOnce();
 });
 it("watches exact send bytes and immediately disables a revoked target while catalog remains unchanged", async () => {
   const adapter = host();
@@ -227,11 +468,13 @@ it("watches exact send bytes and immediately disables a revoked target while cat
     | undefined;
   let watched: readonly import("@/providers/host-context").HostActionCheckInput[] =
     [];
-  adapter.watchActions = vi.fn((inputs, listener) => {
-    watched = inputs;
-    publish = listener;
-    return () => {};
-  });
+  adapter.watchActions = vi.fn<WorkbenchHost["watchActions"]>(
+    (inputs, listener) => {
+      watched = inputs;
+      publish = listener;
+      return () => {};
+    },
+  );
   render(<WorkspaceLayout host={adapter} labels={labels} />);
   fireEvent.click(screen.getByRole("button", { name: "Open Virtual serial" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Send input" }), {
@@ -322,6 +565,9 @@ it("closing a view only releases its reader while closing the session calls Host
     <WorkspaceLayout host={adapter} labels={labels} onCloseSession={close} />,
   );
   fireEvent.click(screen.getByRole("button", { name: "Open Virtual serial" }));
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Close session" })).toBeEnabled(),
+  );
   fireEvent.change(screen.getByRole("textbox", { name: "Send input" }), {
     target: { value: "UNSENT" },
   });
@@ -332,6 +578,9 @@ it("closing a view only releases its reader while closing the session calls Host
   expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
     "UNSENT",
   );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Close session" })).toBeEnabled(),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Close session" }));
   await waitFor(() =>
     expect(close).toHaveBeenCalledWith("session", expect.any(AbortSignal)),
@@ -339,6 +588,262 @@ it("closing a view only releases its reader while closing the session calls Host
   expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
     "UNSENT",
   );
+});
+
+it("keeps the actual connection button stable while close authorization is being checked", async () => {
+  const adapter = host();
+  let publishUnknown = () => {};
+  adapter.watchActions = vi.fn<WorkbenchHost["watchActions"]>(
+    (inputs, listener) => {
+      listener(
+        inputs.map((input) => ({
+          input,
+          result: {
+            actionId: input.actionId,
+            target: input.target,
+            allowed: true,
+          },
+          error: null,
+        })),
+      );
+      publishUnknown = () =>
+        listener(inputs.map((input) => ({ input, result: null, error: null })));
+      return () => {};
+    },
+  );
+  render(
+    <WorkspaceLayout host={adapter} labels={labels} onCloseSession={vi.fn()} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open Virtual serial" }));
+  const connected = await screen.findByRole("button", {
+    name: "Close session",
+  });
+  await waitFor(() => expect(connected).toBeEnabled());
+  act(() => publishUnknown());
+  expect(screen.getByRole("button", { name: "Close session" })).toBe(connected);
+  expect(connected).toBeDisabled();
+  expect(connected).toHaveAttribute("aria-pressed", "true");
+  expect(
+    screen.queryByRole("button", { name: "Open Virtual serial" }),
+  ).not.toBeInTheDocument();
+  expect(adapter.open).toHaveBeenCalledOnce();
+});
+
+it.each([
+  ["Restore connection access", "Restoring connection access…", "modify"],
+  ["恢复连接访问", "正在恢复连接访问…", "raw"],
+] as const)(
+  "restores an existing connected view explicitly after confirmed %s denial",
+  async (restoreAccess, restoringAccess, source) => {
+    const adapter = host();
+    let publish: (allowed: boolean | null) => void = () => {};
+    let publishForeign = () => {};
+    adapter.watchActions = vi.fn<WorkbenchHost["watchActions"]>(
+      (inputs, listener) => {
+        publish = (allowed) =>
+          listener(
+            inputs.map((input) => ({
+              input,
+              result:
+                allowed === null
+                  ? null
+                  : { actionId: input.actionId, target: input.target, allowed },
+              error: null,
+            })),
+          );
+        publishForeign = () =>
+          listener(
+            inputs.map((input) => {
+              const foreign = {
+                ...input,
+                target: { ...input.target, sessionEpoch: "999" },
+              };
+              return {
+                input: foreign,
+                result: {
+                  actionId: foreign.actionId,
+                  target: foreign.target,
+                  allowed: false,
+                },
+                error: null,
+              };
+            }),
+          );
+        publish(true);
+        return () => {};
+      },
+    );
+    const messages = source === "raw" ? zhCN : en;
+    const localized = {
+      ...labels,
+      restoreAccess: messages["workbench.restoreAccess"],
+      restoringAccess: messages["workbench.restoringAccess"],
+    };
+    expect(localized.restoreAccess).toBe(restoreAccess);
+    expect(localized.restoringAccess).toBe(restoringAccess);
+    const close = vi.fn();
+    const content = () => (
+      <WorkspaceLayout
+        host={adapter}
+        labels={localized}
+        onCloseSession={close}
+      />
+    );
+    const view = render(content());
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Virtual serial" }),
+    );
+    const tab = await screen.findByRole("tab", { name: /Virtual serial/ });
+    await screen.findByRole("button", { name: "Close session" });
+    const draft = screen.getByRole("textbox", { name: "Send input" });
+    fireEvent.change(draft, { target: { value: "DO NOT TRANSMIT" } });
+    const restore = vi.fn().mockResolvedValue(session());
+    adapter.trustedConnect = restore;
+    act(() => publish(null));
+    const menuTrigger = screen.getByRole("button", { name: "Expand" });
+    fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+    expect(
+      screen.queryByRole("menuitem", { name: restoreAccess }),
+    ).not.toBeInTheDocument();
+    act(() => publishForeign());
+    expect(
+      screen.queryByRole("menuitem", { name: restoreAccess }),
+    ).not.toBeInTheDocument();
+    fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("menu")).not.toBeInTheDocument(),
+    );
+    if (source === "raw") {
+      adapter.state = {
+        ...adapter.state,
+        streams: new Map([
+          [
+            "session",
+            {
+              items: [],
+              trimmed: false,
+              error: new HostRequestError({
+                code: "PERMISSION_DENIED",
+                message: "read denied",
+                retryable: false,
+              }),
+            },
+          ],
+        ]),
+      };
+      view.rerender(content());
+    } else act(() => publish(false));
+    expect(restore).not.toHaveBeenCalled();
+    const connected = screen.getByRole("button", { name: "Close session" });
+    expect(connected).toHaveAttribute("aria-pressed", "true");
+    fireEvent.pointerDown(menuTrigger, { button: 0, ctrlKey: false });
+    fireEvent.click(
+      await screen.findByRole("menuitem", { name: restoreAccess }),
+    );
+    await waitFor(() =>
+      expect(restore).toHaveBeenCalledExactlyOnceWith(
+        "device",
+        expect.any(AbortSignal),
+        session().configuration,
+      ),
+    );
+    expect(screen.getByRole("tab", { name: /Virtual serial/ })).toBe(tab);
+    expect(screen.getByRole("textbox", { name: "Send input" })).toBe(draft);
+    expect(draft).toHaveValue("DO NOT TRANSMIT");
+    expect(adapter.send).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  },
+);
+
+it.each(["readonly", "closed", "SOURCE_ENDED"] as const)(
+  "does not offer access restoration for %s",
+  async (reason) => {
+    const adapter = host();
+    const props = { host: adapter, labels, onCloseSession: vi.fn() };
+    const view = render(<WorkspaceLayout {...props} />);
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open Virtual serial" }),
+    );
+    await screen.findByRole("tab", { name: /Virtual serial/ });
+    adapter.trustedConnect = vi.fn().mockResolvedValue(session());
+    adapter.watchActions = vi.fn<WorkbenchHost["watchActions"]>(
+      (inputs, listener) => {
+        listener(
+          inputs.map((input) => ({
+            input,
+            result: {
+              actionId: input.actionId,
+              target: input.target,
+              allowed: false,
+            },
+            error: null,
+          })),
+        );
+        return () => {};
+      },
+    );
+    adapter.state = {
+      ...adapter.state,
+      sessions: adapter.state.sessions.map((value) =>
+        value.sessionId !== "session"
+          ? value
+          : {
+              ...value,
+              ...(reason === "readonly"
+                ? { readOnly: true }
+                : reason === "closed"
+                  ? { state: "closed" as const }
+                  : {}),
+            },
+      ),
+      streams:
+        reason === "SOURCE_ENDED"
+          ? new Map([
+              [
+                "session",
+                {
+                  items: [],
+                  trimmed: false,
+                  error: new HostRequestError({
+                    code: "SOURCE_ENDED",
+                    message: "source ended",
+                    retryable: false,
+                  }),
+                },
+              ],
+            ])
+          : adapter.state.streams,
+    };
+    view.rerender(<WorkspaceLayout {...props} />);
+    fireEvent.pointerDown(screen.getByRole("button", { name: "Expand" }), {
+      button: 0,
+      ctrlKey: false,
+    });
+    expect(
+      screen.queryByRole("menuitem", { name: labels.restoreAccess }),
+    ).not.toBeInTheDocument();
+    expect(adapter.trustedConnect).not.toHaveBeenCalled();
+  },
+);
+
+it("does not recreate action observations when metadata republishes the same session target", async () => {
+  const adapter = host();
+  const close = vi.fn();
+  const view = render(
+    <WorkspaceLayout host={adapter} labels={labels} onCloseSession={close} />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Open Virtual serial" }));
+  await screen.findByRole("button", { name: "Close session" });
+  const count = vi.mocked(adapter.watchActions).mock.calls.length;
+  adapter.state = {
+    ...adapter.state,
+    devices: adapter.state.devices.map((device) => ({ ...device })),
+    sessions: adapter.state.sessions.map((value) => ({ ...value })),
+  };
+  view.rerender(
+    <WorkspaceLayout host={adapter} labels={labels} onCloseSession={close} />,
+  );
+  expect(adapter.watchActions).toHaveBeenCalledTimes(count);
 });
 it("reports a failed replay import without guessing a device connection diagnosis", async () => {
   render(
@@ -464,7 +969,7 @@ function host(): WorkbenchHost {
     watchSession: vi.fn(() => () => {}),
   };
 }
-it("reuses the session for a second tab and switches Text/HEX without reader churn", async () => {
+it("explicitly authorizes the existing session once and adds a second tab without reader churn", async () => {
   const adapter = host();
   render(<WorkspaceLayout host={adapter} labels={labels} />);
   fireEvent.click(screen.getByRole("button", { name: /Open Virtual serial/ }));
@@ -476,7 +981,7 @@ it("reuses the session for a second tab and switches Text/HEX without reader chu
       name: "HEX",
     }),
   );
-  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.open).toHaveBeenCalledTimes(1);
   expect(adapter.watchSession).toHaveBeenCalledTimes(1);
 });
 it("opening a device then adding a second view makes exactly one Host open", async () => {
@@ -522,9 +1027,7 @@ it("keeps capture progress live when receive rendering is frozen and disables re
   view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
   fireEvent.click(screen.getByRole("button", { name: "Capture" }));
   expect(
-    within(screen.getByRole("region", { name: "Capture" })).getByText(
-      /8 bytes/,
-    ),
+    within(screen.getByRole("region", { name: "Capture" })).getByText("8 B"),
   ).toBeInTheDocument();
   fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
   await waitFor(() =>
@@ -553,7 +1056,7 @@ it("activity navigation preserves drafts and an old operation update cannot stea
   };
   view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
   expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-    "other-device",
+    labels.sessionLabel,
   );
   locateActivity(/Locate a/);
   expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
@@ -613,7 +1116,7 @@ it("does not move selection when an earlier open completes after explicit activi
   view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
   await act(async () => finish(session()));
   expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-    "other-device",
+    labels.sessionLabel,
   );
 });
 it("restores named colored views as configuration without opening or subscribing", () => {
@@ -706,7 +1209,7 @@ it("does not follow a previously unseen old result after a newer activity", () =
   adapter.state = { ...adapter.state, operationSummaries: [newer] };
   view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
   expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-    "other-device",
+    labels.sessionLabel,
   );
   adapter.state = {
     ...adapter.state,
@@ -714,7 +1217,7 @@ it("does not follow a previously unseen old result after a newer activity", () =
   };
   view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
   expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-    "other-device",
+    labels.sessionLabel,
   );
 });
 it("does not open devices while the Host is unavailable", () => {
@@ -1091,12 +1594,19 @@ it("shares the existing unconnected draft owner across capture tabs without chan
     key: "Enter",
   });
   fireEvent.click(screen.getByRole("tab", { name: /Recording 2/ }));
-  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue("41");
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    "34 31",
+  );
   expect(within(sender).getByRole("radio", { name: "HEX" })).toBeChecked();
   expect(
     within(sender).getByRole("combobox", { name: "Line ending" }),
   ).toHaveTextContent("CRLF");
-  expect(screen.getByLabelText("Byte preview")).toHaveTextContent("41 0D 0A");
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
+    "4 bytes",
+  );
+  expect(
+    screen.queryByRole("button", { name: /^Byte preview:/ }),
+  ).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
   expect(screen.getByRole("button", { name: "Send file" })).toBeDisabled();
   fireEvent.keyDown(screen.getByRole("textbox", { name: "Send input" }), {
@@ -1110,7 +1620,7 @@ it("shares the existing unconnected draft owner across capture tabs without chan
   );
   await waitFor(() =>
     expect(save).toHaveBeenCalledWith(
-      { unconnected: "41", "view/unconnected": "DEVICE" },
+      { unconnected: "34 31", "view/unconnected": "DEVICE" },
       expect.any(AbortSignal),
     ),
   );
@@ -1124,7 +1634,9 @@ it("shares the existing unconnected draft owner across capture tabs without chan
     }),
   ).toBeChecked();
   fireEvent.click(screen.getByRole("tab", { name: "Send input" }));
-  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue("41");
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    "34 31",
+  );
   expect(
     within(screen.getByRole("region", { name: "Send" })).getByRole("radio", {
       name: "HEX",
@@ -1175,9 +1687,9 @@ it("keeps capture draft saving directly reachable while disclosing its layout bl
   expect(
     screen.getByRole("button", { name: "Save current layout" }),
   ).toBeDisabled();
-  const trigger = within(screen.getByRole("region", { name: "Send" }))
-    .getByText("Save current layout")
-    .closest("button")!;
+  const trigger = within(
+    screen.getByRole("region", { name: "Send" }),
+  ).getByRole("button", { name: /Unconnected draft · Save current layout/ });
   expect(trigger).toHaveAccessibleName(/Save current layout/);
   expect(trigger).toHaveAccessibleName(/Unconnected draft/);
   expect(trigger).toHaveAccessibleName(/Expand/);
@@ -1203,7 +1715,7 @@ it("keeps capture draft saving directly reachable while disclosing its layout bl
   expect(adapter.open).not.toHaveBeenCalled();
 });
 
-it("includes the visible fallback label in the capture draft disclosure name", () => {
+it("keeps the capture draft disclosure named while using a compact icon", () => {
   render(
     <WorkspaceLayout
       host={host()}
@@ -1222,7 +1734,7 @@ it("includes the visible fallback label in the capture draft disclosure name", (
   const trigger = within(
     screen.getByRole("region", { name: "Send" }),
   ).getByRole("button", { name: /Unconnected draft/ });
-  expect(trigger).toHaveTextContent("Save drafts");
+  expect(trigger).toHaveTextContent("");
   expect(trigger).toHaveAccessibleName(/Save drafts/);
 });
 
@@ -1258,7 +1770,9 @@ it("keeps capture Host failures visible while retaining device-status facts in t
     />,
   );
   fireEvent.click(screen.getByRole("tab", { name: /Recording 1/ }));
-  expect(screen.getByRole("alert")).toHaveTextContent(labels.unavailable);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    labels.unavailable,
+  );
   expect(screen.getByRole("alert")).toBeVisible();
   fireEvent.click(
     screen.getByRole("button", {
@@ -1316,26 +1830,25 @@ it("compacts only the disabled capture close control after a real connection and
   const deviceTab = await screen.findByRole("tab", { name: "Virtual serial" });
   expect(deviceTab).toHaveAttribute("aria-selected", "true");
   const deviceClose = screen.getByRole("button", { name: "Close session" });
-  expect(deviceClose).toHaveTextContent("Close session");
+  expect(deviceClose).not.toHaveTextContent("Close session");
   expect(deviceClose).toBeEnabled();
   fireEvent.click(screen.getByRole("tab", { name: /Recording 1/ }));
   const captureClose = screen.getByRole("button", { name: "Close session" });
   expect(captureClose).toBeDisabled();
   expect(captureClose).toHaveAccessibleName("Close session");
   expect(captureClose).not.toHaveTextContent("Close session");
-  expect(captureClose).toHaveAttribute("title", "Close session");
   expect(
     screen.getByRole("button", {
-      name: "Connection parameters 115200 / 8 none",
+      name: "Connection parameters",
     }),
   ).toBeDisabled();
-  expect(screen.getByText("115200 / 8 none")).toBeVisible();
+  expect(screen.queryByText("115200 / 8N1")).not.toBeInTheDocument();
   fireEvent.click(captureClose);
   expect(close).not.toHaveBeenCalled();
   fireEvent.click(deviceTab);
   const returnedClose = screen.getByRole("button", { name: "Close session" });
   expect(returnedClose).toBeEnabled();
-  expect(returnedClose).toHaveTextContent("Close session");
+  expect(returnedClose).not.toHaveTextContent("Close session");
   fireEvent.click(returnedClose);
   await waitFor(() =>
     expect(close).toHaveBeenCalledWith(

@@ -207,10 +207,14 @@ async function captureEvidence(page: Page, info: TestInfo, name: string) {
   ).toBe(true);
 }
 async function openTool(page: Page, name: string) {
-  await page
-    .getByRole("button", { name: "Workspace menu", exact: true })
-    .click();
-  await page.getByRole("menuitem", { name, exact: true }).click();
+  const direct = page.getByRole("button", { name, exact: true });
+  if (await direct.isVisible()) await direct.click();
+  else {
+    await page
+      .getByRole("button", { name: "Workspace menu", exact: true })
+      .click();
+    await page.getByRole("menuitem", { name, exact: true }).click();
+  }
   const dialog = page.getByRole("dialog", { name, exact: true });
   await expect(dialog).toBeVisible();
   return dialog;
@@ -243,9 +247,7 @@ test("saved recording refs restore readonly Raw tails, retain drafts, and persis
     },
   });
   await page.goto("./#/");
-  await expect(
-    page.getByRole("button", { name: "Saved recordings", exact: true }),
-  ).toBeVisible();
+  await expect(recording(page, 2)).toBeVisible();
   const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
   const sender = page.getByRole("region", { name: "Send", exact: true });
   const log = panel(page).getByRole("log", { name: "Receive", exact: true });
@@ -433,7 +435,7 @@ test("saved recording refs restore readonly Raw tails, retain drafts, and persis
   await expect(draft).toBeEditable();
   await expect(draft).toHaveValue("UNBOUND EDIT KEPT");
   await expect(draft).toHaveAccessibleDescription("Unconnected draft");
-  await draft.fill("43 41 50 54 55 52 45");
+  await draft.fill("CAPTURE");
   await sender.getByRole("radio", { name: "HEX", exact: true }).click();
   await sender
     .getByRole("combobox", { name: "Line ending", exact: true })
@@ -469,7 +471,7 @@ test("saved recording refs restore readonly Raw tails, retain drafts, and persis
     exact: true,
   });
   await expect(deviceTab).toHaveAttribute("aria-selected", "true");
-  await expect(draft).toHaveValue("43 41 50 54 55 52 45");
+  await expect(draft).toHaveValue("CAPTURE");
   await draft.fill("DEVICE EDIT KEPT");
   await page.getByRole("button", { name: "Save drafts", exact: true }).click();
   await expect
@@ -736,9 +738,7 @@ test("workspace replacement and Host failure exclude late tail bodies without di
     },
   });
   await page.goto("./#/");
-  await expect(
-    page.getByRole("button", { name: "Saved recordings", exact: true }),
-  ).toBeVisible();
+  await expect(recording(page, 1)).toBeVisible();
   await recording(page, 1).click();
   const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
   await expect(draft).toBeEditable();
@@ -761,19 +761,18 @@ test("workspace replacement and Host failure exclude late tail bodies without di
     )
     .toBeGreaterThan(0);
   const dialog = await openTool(page, "Workspace");
-  await dialog
-    .getByRole("textbox", { name: "Workspace ID", exact: true })
-    .fill("other");
-  await dialog
-    .getByRole("button", { name: "Load workspace", exact: true })
+  const choice = dialog.getByRole("combobox", {
+    name: "Choose workspace",
+    exact: true,
+  });
+  await expect(choice).toBeEnabled();
+  await choice.click();
+  await page
+    .getByRole("option", { name: "Other saved recordings", exact: true })
     .click();
   await expect(
-    page.getByRole("button", {
-      name: "Other saved recordings",
-      exact: true,
-      includeHidden: true,
-    }),
-  ).toHaveCount(1);
+    dialog.getByRole("textbox", { name: "Workspace name", exact: true }),
+  ).toHaveValue(other.name);
   await dialog.press("Escape");
   await expect(dialog).toHaveCount(0);
   await recording(page, 1).click();
@@ -830,18 +829,28 @@ test("workspace replacement and Host failure exclude late tail bodies without di
       ),
     )
     .toBeGreaterThan(before);
-  await page.evaluate(() => window.workbenchFixture.failRefresh());
-  const diagnostics = await openTool(page, "Troubleshooting");
-  await diagnostics
-    .getByRole("button", { name: "Refresh", exact: true })
-    .click();
-  await diagnostics.press("Escape");
-  await expect(diagnostics).toHaveCount(0);
+  await expect(recording(page, 1)).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("combobox", { name: "Choose device", exact: true }),
+  ).toBeDisabled();
+  const pendingRaw = await page.evaluate(() => ({
+    requests: window.workbenchFixture.captureTailRequests.filter(
+      (request) => request.query.target.id === "recording-b",
+    ).length,
+    responses: window.workbenchFixture.captureTailResponses.filter(
+      (id) => id === "recording-b",
+    ).length,
+  }));
+  expect(pendingRaw.requests).toBeGreaterThan(pendingRaw.responses);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.failHost()),
+  ).toBeGreaterThan(0);
   await expect(
     page.getByRole("alert").filter({
       hasText: "The local service could not connect. Please retry.",
     }),
   ).toBeVisible();
+  expect(await page.evaluate(() => window.workbenchFixture.failHost())).toBe(0);
   const deliveredBeforeLoss = await page.evaluate(
     () =>
       window.workbenchFixture.captureTailResponses.filter(

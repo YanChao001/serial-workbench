@@ -1,10 +1,38 @@
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Toaster } from "sonner";
 import type { StreamItem } from "@serial-workbench/contracts";
 import { defaults } from "@serial-workbench/contracts";
 import { StreamView } from "./stream-view";
 import { labels, txItem } from "./test-fixtures";
 afterEach(cleanup);
+beforeEach(() => {
+  render(<Toaster />);
+});
+it("preserves the original TX intent byte range while a receipt is unavailable", () => {
+  render(<StreamView items={[txItem("tx_intent", "12")]} labels={labels} />);
+  expect(screen.getByText(labels.awaitingReceipt)).toBeVisible();
+  fireEvent.click(screen.getByText(labels.awaitingReceipt));
+  expect(screen.getByText("Requested bytes: [12, 17)")).toBeVisible();
+  expect(screen.queryByText(labels.accepted)).not.toBeInTheDocument();
+});
+it("keeps stopped stream bytes and offers recovery before the technical error details", async () => {
+  render(
+    <StreamView
+      items={[txItem("tx")]}
+      labels={labels}
+      error={new Error("Subscription source epoch ended")}
+    />,
+  );
+  expect(screen.getByText("Hello")).toBeVisible();
+  const fault = await screen.findByRole("alert");
+  expect(fault).toHaveTextContent(labels.streamUnavailable);
+  expect(fault).toHaveTextContent(labels.disconnectHelp);
+  const technical = screen.getByText("Subscription source epoch ended");
+  expect(technical).not.toBeVisible();
+  fireEvent.click(screen.getByText(labels.errorDetails));
+  expect(technical).toBeVisible();
+});
 it.each(["accepted", "partial", "unknown", "rejected"] as const)(
   "updates TX bytes in place with their %s receipt and preserves a gap",
   (outcome) => {
@@ -29,7 +57,10 @@ it.each(["accepted", "partial", "unknown", "rejected"] as const)(
     );
     expect(screen.getAllByText("Hello")).toHaveLength(1);
     expect(screen.queryByText(labels.awaitingReceipt)).not.toBeInTheDocument();
-    expect(screen.getByText(`Status: ${outcome}`)).toBeInTheDocument();
+    const disclosure = screen.getByText(labels[outcome]);
+    expect(disclosure).toBeVisible();
+    expect(screen.getByText(labels.peerUnconfirmed)).not.toBeVisible();
+    fireEvent.click(disclosure);
     expect(screen.getByText(labels.peerUnconfirmed)).toBeInTheDocument();
     expect(screen.getByText(/reader_overflow/)).toBeInTheDocument();
     if (outcome === "partial" || outcome === "unknown")
@@ -66,7 +97,9 @@ it("computes block intervals from visible TX rows rather than hidden receipts", 
   );
   fireEvent.click(screen.getByRole("button", { name: labels.encodingHelp }));
   fireEvent.click(screen.getByRole("radio", { name: "Block interval" }));
-  const summaries = screen.getByRole("log").querySelectorAll("summary");
+  const summaries = screen
+    .getByRole("log")
+    .querySelectorAll(".workbench-stream-time > summary");
   expect(summaries).toHaveLength(2);
   expect(summaries[0]).toHaveTextContent("Unavailable");
   expect(summaries[1]).toHaveTextContent("20 ns");
@@ -76,7 +109,7 @@ it("applies shared typography to received text and HEX without changing terminal
   expect(
     screen.getByText("Hello").closest(".workbench-stream-content"),
   ).toHaveStyle({
-    fontFamily: defaults.terminalTypography.fontFamily,
+    fontFamily: "var(--font-mono)",
     fontSize: `${defaults.terminalTypography.fontSize}px`,
     lineHeight: String(defaults.terminalTypography.lineHeightPercent / 100),
     fontVariantLigatures: defaults.terminalTypography.ligatures
@@ -175,11 +208,7 @@ it.each([
     mode: "absolute",
     timeDetails: "Time details",
     missingTime: "Time unavailable",
-    expected: [
-      "2026-11-08T00:00:00Z",
-      "2026-11-08T00:00:00Z",
-      "Time unavailable",
-    ],
+    expected: ["00:00:00Z", "00:00:00Z", "Time unavailable"],
   },
   {
     locale: "en",
@@ -200,7 +229,7 @@ it.each([
     mode: "absolute",
     timeDetails: "时间详情",
     missingTime: "时间未知",
-    expected: ["2026-11-08T00:00:00Z", "2026-11-08T00:00:00Z", "时间未知"],
+    expected: ["00:00:00Z", "00:00:00Z", "时间未知"],
   },
   {
     locale: "zh",
@@ -254,7 +283,9 @@ it.each([
         }),
       );
     }
-    const summaries = screen.getByRole("log").querySelectorAll("summary");
+    const summaries = screen
+      .getByRole("log")
+      .querySelectorAll(".workbench-stream-time > summary");
     expect(summaries).toHaveLength(3);
     summaries.forEach((summary, index) => {
       expect(summary).toHaveTextContent(expected[index]!);

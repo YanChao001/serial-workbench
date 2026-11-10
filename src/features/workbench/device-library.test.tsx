@@ -6,8 +6,9 @@ import {
   screen,
   waitFor,
 } from "@testing-library/react";
-import { StrictMode } from "react";
-import { afterEach, expect, it, vi } from "vitest";
+import { StrictMode, type ReactNode } from "react";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Toaster } from "sonner";
 import type { WorkspaceDocumentResult } from "@serial-workbench/contracts";
 import {
   UnsavedWorkContext,
@@ -24,6 +25,24 @@ import {
 import { session } from "./test-fixtures";
 
 afterEach(cleanup);
+beforeEach(() => {
+  render(<Toaster />);
+});
+function renderFavorites(content: ReactNode) {
+  const view = render(content);
+  fireEvent.keyDown(screen.getByRole("tab", { name: "Favorites" }), {
+    key: "Enter",
+  });
+  return {
+    ...view,
+    rerender(content: ReactNode) {
+      view.rerender(content);
+      fireEvent.keyDown(screen.getByRole("tab", { name: "Favorites" }), {
+        key: "Enter",
+      });
+    },
+  };
+}
 
 function pendingResult() {
   let resolve!: (result: WorkspaceDocumentResult) => void;
@@ -54,9 +73,19 @@ function registry() {
   return { work, value };
 }
 function choose(deviceId = "device-a") {
-  fireEvent.change(screen.getByLabelText("Choose a device explicitly probe"), {
-    target: { value: deviceId },
+  const tab = screen.getByRole("tab", { name: "Favorites" });
+  if (tab.getAttribute("aria-selected") !== "true")
+    fireEvent.keyDown(tab, { key: "Enter" });
+  const select = screen.getByRole("combobox", {
+    name: "Choose a device explicitly Binding 1",
   });
+  select.focus();
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  const option = screen.getByRole("option", {
+    name: deviceId === "device-a" ? "COM9 · serial-42" : "COM2 · serial-42",
+  });
+  option.focus();
+  fireEvent.keyDown(option, { key: "Enter" });
 }
 
 it("retains an unsubmitted rebind through CAS conflicts until the document is acknowledged", async () => {
@@ -70,7 +99,7 @@ it("retains an unsubmitted rebind through CAS conflicts until the document is ac
     })
     .mockReturnValueOnce(result.promise);
   const onAcknowledged = vi.fn();
-  render(
+  renderFavorites(
     <UnsavedWorkContext.Provider value={value}>
       <DeviceLibrary
         {...props()}
@@ -81,27 +110,27 @@ it("retains an unsubmitted rebind through CAS conflicts until the document is ac
   );
   choose();
   expect([...work.values()].some((item) => item.dirty)).toBe(true);
-  fireEvent.click(screen.getByRole("button", { name: "Rebind probe" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rebind Binding 1" }));
   expect(await screen.findByRole("alert")).toHaveTextContent(
     "REVISION_CONFLICT",
   );
-  expect(screen.getByLabelText("Choose a device explicitly probe")).toHaveValue(
-    "device-a",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Rebind probe" }));
+  expect(
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
+  ).toHaveTextContent("COM9");
+  fireEvent.click(screen.getByRole("button", { name: "Rebind Binding 1" }));
   await waitFor(() => expect(onRebindDevice).toHaveBeenCalledTimes(2));
   expect([...work.values()].some((item) => item.dirty)).toBe(true);
   expect(onAcknowledged).not.toHaveBeenCalled();
   await act(async () => result.resolve(deviceRebound()));
-  expect(screen.getByText("Binding: probe · device-a")).toBeVisible();
-  expect(screen.getByLabelText("Choose a device explicitly probe")).toHaveValue(
-    "",
-  );
+  expect(screen.getByText("Binding 1 · COM9")).toBeVisible();
+  expect(
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
+  ).toHaveTextContent("Choose a device explicitly");
   expect([...work.values()].some((item) => item.dirty)).toBe(false);
   expect(onAcknowledged).toHaveBeenCalledWith(deviceRebound());
 });
 
-it("renders real device evidence and explicitly marks missing evidence", () => {
+it("uses a selectable device list and shows only relevant reported facts", () => {
   render(
     <DeviceLibrary
       devices={[
@@ -118,21 +147,23 @@ it("renders real device evidence and explicitly marks missing evidence", () => {
   );
   expect(screen.getByText("driver-v1")).toBeVisible();
   expect(screen.getByText("serial-42")).toBeVisible();
-  expect(screen.getByText("usb/1/2")).toBeVisible();
-  expect(screen.getAllByText("Not reported").length).toBeGreaterThan(0);
+  expect(screen.queryByText("Not reported")).toBeNull();
+  fireEvent.click(screen.getByRole("button", { name: "COM2" }));
+  expect(screen.getByText("Cannot uniquely identify")).toBeVisible();
+  expect(screen.queryByText("driver-v1")).toBeNull();
 });
 
 it("never guesses an ambiguous candidate and only submits the explicitly confirmed rebind", async () => {
   const onRebindDevice = vi.fn().mockResolvedValue(deviceRebound("device-b"));
   const base = props();
-  render(<DeviceLibrary {...base} onRebindDevice={onRebindDevice} />);
-  const action = screen.getByRole("button", { name: "Rebind probe" });
+  renderFavorites(<DeviceLibrary {...base} onRebindDevice={onRebindDevice} />);
+  const action = screen.getByRole("button", { name: "Rebind Binding 1" });
   expect(action).toBeDisabled();
   expect(onRebindDevice).not.toHaveBeenCalled();
   choose("device-b");
   expect(onRebindDevice).not.toHaveBeenCalled();
   fireEvent.click(action);
-  await screen.findByText("Binding: probe · device-b");
+  await screen.findByText("Binding 1 · COM2");
   expect(onRebindDevice).toHaveBeenCalledWith(
     base.workspace,
     { bindingId: "probe", deviceId: "device-b" },
@@ -140,11 +171,10 @@ it("never guesses an ambiguous candidate and only submits the explicitly confirm
   );
 });
 
-it("keeps global Host history separate from online devices and refreshes without document intent", async () => {
+it("keeps Host history separate and uses readable device and parameter summaries", () => {
   const onSaveFavorites = vi.fn();
   const onRebindDevice = vi.fn();
-  const onRefreshRecent = vi.fn().mockResolvedValue(undefined);
-  render(
+  renderFavorites(
     <DeviceLibrary
       {...props()}
       devices={[]}
@@ -165,20 +195,20 @@ it("keeps global Host history separate from online devices and refreshes without
       }}
       onSaveFavorites={onSaveFavorites}
       onRebindDevice={onRebindDevice}
-      onRefreshRecent={onRefreshRecent}
     />,
   );
-  expect(screen.getByText("missing-device")).toBeVisible();
-  expect(screen.getByText(/old-usb-path/)).toBeVisible();
   expect(
-    screen.getByText("Binding: probe · missing-device · Disconnected"),
+    screen.getByText("Binding 1 · Offline device · Disconnected"),
   ).toBeVisible();
+  fireEvent.keyDown(screen.getByRole("tab", { name: "Recent connections" }), {
+    key: "Enter",
+  });
+  expect(screen.getByText("Offline device 1")).toBeVisible();
+  expect(screen.queryByText("missing-device")).toBeNull();
   expect(screen.getByLabelText("Requested configuration")).toHaveTextContent(
-    '"baudRate"',
+    "115200 / 8N1",
   );
-  expect(screen.getAllByRole("option")).toHaveLength(1);
-  fireEvent.click(screen.getByRole("button", { name: "Refresh recent" }));
-  await waitFor(() => expect(onRefreshRecent).toHaveBeenCalledOnce());
+  expect(screen.queryByRole("button", { name: "Refresh recent" })).toBeNull();
   expect(onSaveFavorites).not.toHaveBeenCalled();
   expect(onRebindDevice).not.toHaveBeenCalled();
 });
@@ -191,7 +221,7 @@ it("waits for a real favorite document and uses its revision for the next explic
     .mockResolvedValueOnce(workspace());
   const onAcknowledged = vi.fn();
   const base = props();
-  render(
+  renderFavorites(
     <DeviceLibrary
       {...base}
       onSaveFavorites={onSaveFavorites}
@@ -199,7 +229,7 @@ it("waits for a real favorite document and uses its revision for the next explic
     />,
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   );
   await waitFor(() => expect(onSaveFavorites).toHaveBeenCalledOnce());
   expect(onSaveFavorites).toHaveBeenCalledWith(
@@ -208,11 +238,13 @@ it("waits for a real favorite document and uses its revision for the next explic
     expect.any(AbortSignal),
   );
   expect(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   ).toBeDisabled();
   expect(onAcknowledged).not.toHaveBeenCalled();
   await act(async () => result.resolve(favoriteSaved()));
-  fireEvent.click(screen.getByRole("button", { name: "Add favorite probe" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Add favorite Binding 1" }),
+  );
   await waitFor(() => expect(onSaveFavorites).toHaveBeenCalledTimes(2));
   expect(onSaveFavorites.mock.calls[1]?.[0].document.revision).toBe("8");
   expect(onSaveFavorites.mock.calls[1]?.[1]).toEqual({ bindingIds: ["probe"] });
@@ -222,19 +254,19 @@ it("gates each intent on its callback and explicit disabled context", () => {
   const base = props();
   const onSaveFavorites = vi.fn().mockResolvedValue(favoriteSaved());
   const onRebindDevice = vi.fn().mockResolvedValue(deviceRebound());
-  const view = render(<DeviceLibrary {...base} />);
+  const view = renderFavorites(<DeviceLibrary {...base} />);
   expect(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   ).toBeDisabled();
   expect(
-    screen.getByLabelText("Choose a device explicitly probe"),
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
   ).toBeDisabled();
   view.rerender(<DeviceLibrary {...base} onSaveFavorites={onSaveFavorites} />);
   expect(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   ).toBeEnabled();
   expect(
-    screen.getByLabelText("Choose a device explicitly probe"),
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
   ).toBeDisabled();
   view.rerender(
     <DeviceLibrary
@@ -245,14 +277,16 @@ it("gates each intent on its callback and explicit disabled context", () => {
     />,
   );
   expect(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   ).toBeDisabled();
   view.rerender(<DeviceLibrary {...base} onRebindDevice={onRebindDevice} />);
   expect(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   ).toBeDisabled();
   choose();
-  expect(screen.getByRole("button", { name: "Rebind probe" })).toBeEnabled();
+  expect(
+    screen.getByRole("button", { name: "Rebind Binding 1" }),
+  ).toBeEnabled();
   view.rerender(
     <DeviceLibrary
       {...base}
@@ -272,19 +306,21 @@ it("preserves a newer rebind selection while acknowledging the submitted documen
     .fn()
     .mockReturnValueOnce(result.promise)
     .mockResolvedValueOnce(deviceRebound("device-b"));
-  render(<DeviceLibrary {...props()} onRebindDevice={onRebindDevice} />);
+  renderFavorites(
+    <DeviceLibrary {...props()} onRebindDevice={onRebindDevice} />,
+  );
   choose();
-  fireEvent.click(screen.getByRole("button", { name: "Rebind probe" }));
+  fireEvent.click(screen.getByRole("button", { name: "Rebind Binding 1" }));
   expect(
-    screen.getByLabelText("Choose a device explicitly probe"),
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
   ).toBeEnabled();
   choose("device-b");
   await act(async () => result.resolve(deviceRebound()));
-  expect(screen.getByLabelText("Choose a device explicitly probe")).toHaveValue(
-    "device-b",
-  );
-  fireEvent.click(screen.getByRole("button", { name: "Rebind probe" }));
-  await screen.findByText("Binding: probe · device-b");
+  expect(
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
+  ).toHaveTextContent("COM2");
+  fireEvent.click(screen.getByRole("button", { name: "Rebind Binding 1" }));
+  await screen.findByText("Binding 1 · COM2");
   expect(onRebindDevice.mock.calls[1]?.[0].document.revision).toBe("8");
 });
 
@@ -292,7 +328,7 @@ it("saves pending rebind through leave negotiation and refuses to discard a newe
   const { work, value } = registry();
   const result = pendingResult();
   const onRebindDevice = vi.fn().mockReturnValue(result.promise);
-  render(
+  renderFavorites(
     <UnsavedWorkContext.Provider value={value}>
       <DeviceLibrary {...props()} onRebindDevice={onRebindDevice} />
     </UnsavedWorkContext.Provider>,
@@ -310,15 +346,15 @@ it("saves pending rebind through leave negotiation and refuses to discard a newe
     await rejected;
   });
   expect([...work.values()].some((item) => item.dirty)).toBe(true);
-  expect(screen.getByLabelText("Choose a device explicitly probe")).toHaveValue(
-    "device-b",
-  );
+  expect(
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
+  ).toHaveTextContent("COM2");
   await act(async () => {
     await [...work.values()][0]!.discard();
   });
-  expect(screen.getByLabelText("Choose a device explicitly probe")).toHaveValue(
-    "",
-  );
+  expect(
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
+  ).toHaveTextContent("Choose a device explicitly");
 });
 
 it.each(["host", "workspace", "unmount"] as const)(
@@ -328,7 +364,7 @@ it.each(["host", "workspace", "unmount"] as const)(
     const onAcknowledged = vi.fn();
     const onRebindDevice = vi.fn().mockReturnValue(result.promise);
     const base = props();
-    const view = render(
+    const view = renderFavorites(
       <StrictMode>
         <DeviceLibrary
           {...base}
@@ -338,7 +374,7 @@ it.each(["host", "workspace", "unmount"] as const)(
       </StrictMode>,
     );
     choose();
-    fireEvent.click(screen.getByRole("button", { name: "Rebind probe" }));
+    fireEvent.click(screen.getByRole("button", { name: "Rebind Binding 1" }));
     const signal: AbortSignal = onRebindDevice.mock.calls[0]![2];
     if (kind === "unmount") view.unmount();
     else {
@@ -362,10 +398,10 @@ it.each(["host", "workspace", "unmount"] as const)(
     expect(onAcknowledged).not.toHaveBeenCalled();
     if (kind !== "unmount") {
       expect(
-        screen.getByLabelText("Choose a device explicitly probe"),
-      ).toHaveValue("device-b");
+        screen.getByLabelText("Choose a device explicitly Binding 1"),
+      ).toHaveTextContent("COM2");
       expect(
-        screen.getByText("Binding: probe · missing-device · Disconnected"),
+        screen.getByText("Binding 1 · Offline device · Disconnected"),
       ).toBeVisible();
     }
   },
@@ -376,7 +412,7 @@ it("does not accept a document result after the leave signal is cancelled", asyn
   const result = pendingResult();
   const onAcknowledged = vi.fn();
   const onRebindDevice = vi.fn().mockReturnValue(result.promise);
-  render(
+  renderFavorites(
     <UnsavedWorkContext.Provider value={value}>
       <DeviceLibrary
         {...props()}
@@ -398,10 +434,12 @@ it("does not accept a document result after the leave signal is cancelled", asyn
     await rejected;
   });
   expect(onAcknowledged).not.toHaveBeenCalled();
-  expect(screen.getByLabelText("Choose a device explicitly probe")).toHaveValue(
-    "device-a",
-  );
-  expect(screen.getByRole("button", { name: "Rebind probe" })).toBeEnabled();
+  expect(
+    screen.getByLabelText("Choose a device explicitly Binding 1"),
+  ).toHaveTextContent("COM9");
+  expect(
+    screen.getByRole("button", { name: "Rebind Binding 1" }),
+  ).toBeEnabled();
 });
 
 it("keeps a newer Host workspace revision when an earlier save resolves late", async () => {
@@ -409,7 +447,7 @@ it("keeps a newer Host workspace revision when an earlier save resolves late", a
   const onSaveFavorites = vi.fn().mockReturnValue(result.promise);
   const onAcknowledged = vi.fn();
   const base = props();
-  const view = render(
+  const view = renderFavorites(
     <DeviceLibrary
       {...base}
       onSaveFavorites={onSaveFavorites}
@@ -417,7 +455,7 @@ it("keeps a newer Host workspace revision when an earlier save resolves late", a
     />,
   );
   fireEvent.click(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   );
   const next = workspace();
   next.document.revision = "9";
@@ -433,10 +471,10 @@ it("keeps a newer Host workspace revision when an earlier save resolves late", a
   await act(async () => result.resolve(favoriteSaved()));
   expect(onAcknowledged).not.toHaveBeenCalled();
   expect(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   ).toBeEnabled();
   fireEvent.click(
-    screen.getByRole("button", { name: "Remove favorite probe" }),
+    screen.getByRole("button", { name: "Remove favorite Binding 1" }),
   );
   expect(onSaveFavorites.mock.calls[1]?.[0].document.revision).toBe("9");
 });

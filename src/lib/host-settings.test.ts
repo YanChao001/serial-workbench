@@ -1,5 +1,6 @@
 ﻿import {
   defaults,
+  ContractValidationError,
   parseReply,
   parseWireFrame,
   type Operation,
@@ -11,6 +12,8 @@ import { describe, expect, it, vi } from "vitest";
 import { createHostConnection, type HostNativePort } from "./host-client";
 import { createHostSettingsBackend } from "./host-settings";
 import { SettingsSync } from "./settings-sync";
+import { operationFailureEventKey } from "./operation-failure";
+import { HostRequestError } from "@serial-workbench/host-client";
 
 const nativeIntent = vi.hoisted(() => vi.fn());
 vi.mock("./tauri", async (importOriginal) => ({
@@ -207,6 +210,41 @@ function setup(initial: SettingsSnapshot = document) {
 }
 
 describe("settings adapter on the existing Host connection", () => {
+  it.each(["foreign-target", "rpc"])(
+    "does not attach operation identity to an unverified %s failure",
+    async (kind) => {
+      const env = setup();
+      const error = {
+        code: "STORAGE_IO",
+        message: "private diagnostic",
+        retryable: false,
+      };
+      if (kind === "rpc")
+        nativeIntent.mockRejectedValueOnce(new HostRequestError(error));
+      else
+        nativeIntent.mockResolvedValueOnce({
+          ...env.operation,
+          target: { ...target, id: "other" },
+          state: "failed",
+          error,
+        });
+      const connection = await createHostConnection(env.port);
+      const backend = createHostSettingsBackend(connection);
+      backend.markExplicitEdit();
+      try {
+        await backend.save(defaults.settings, "3");
+        expect.unreachable("The failed save must reject");
+      } catch (reason) {
+        expect(reason).toBeInstanceOf(
+          kind === "rpc" ? HostRequestError : ContractValidationError,
+        );
+        expect(operationFailureEventKey(reason)).toBeUndefined();
+      } finally {
+        backend.dispose();
+        connection.dispose();
+      }
+    },
+  );
   it("settles one admitted save after a terminal-read race without hiding a newer remote language", async () => {
     const initial: SettingsSnapshot = {
       revision: "3",

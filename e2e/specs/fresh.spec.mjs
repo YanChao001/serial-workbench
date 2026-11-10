@@ -1,4 +1,8 @@
 import { readSettings } from "../settings.mjs";
+import {
+  settingsSaveUiObservation,
+  waitForSettingsCommit,
+} from "../settings-save-evidence.mjs";
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { promisify } from "node:util";
@@ -619,11 +623,23 @@ describe("Real Tauri desktop", () => {
     assert.notEqual(colors.key, colors.plain);
   });
 
+  // 每次真实重载独立计时，避免准备步骤耗掉后续保存测试的原有预算。
+  for (let reload = 1; reload <= 12; reload++) {
+    it(`keeps settings available after main-page reload ${reload}`, async () => {
+      if (reload === 1) await openDeepLink("/settings");
+      await browser.refresh();
+      await ready("main");
+      await $("#settings-language button[role=combobox]").waitForEnabled();
+      assert.equal((await browser.getWindowHandles()).length, 1);
+    });
+  }
+
   it("reuses the secondary native window and synchronizes settings events both ways", async () => {
     const main = await browser.getWindowHandle();
     assert.equal((await browser.getWindowHandles()).length, 1);
     let secondary;
     try {
+      await openDeepLink("/settings");
       assert.equal((await invoke("open_secondary_window")).ok, true);
       await browser.waitUntil(
         async () => (await browser.getWindowHandles()).length === 2,
@@ -705,9 +721,12 @@ describe("Real Tauri desktop", () => {
         for (const handle of [main, secondary].filter(Boolean)) {
           if (!(await browser.getWindowHandles()).includes(handle)) continue;
           await browser.switchToWindow(handle);
+          // 在独立原生查询可能重新附着前，先保留真实 GUI 的保存状态。
+          const ui = await browser.execute(settingsSaveUiObservation);
           const snapshot = await readSettings();
           windows.push({
             handle,
+            persistence: ui.persistence,
             appearance: await appearance(),
             storedLanguage: snapshot.settings.language,
             sharedRevision: snapshot.revision,
@@ -794,14 +813,22 @@ describe("Real Tauri desktop", () => {
       );
     });
     // 等待异步原生偏好快照落盘，后续进程从同一隔离目录读取。
-    await browser.waitUntil(async () => {
-      const result = await readSettings();
-      return (
+    await waitForSettingsCommit({
+      readSettings,
+      readUi: () => browser.execute(settingsSaveUiObservation),
+      waitUntil: (condition) => browser.waitUntil(condition),
+      matches: (result) =>
         result.settings?.language === "en" &&
         result.settings?.background.kind === "preset" &&
         result.settings?.background.value === "sakura" &&
-        result.settings?.backgroundIntensity === 70
-      );
+        result.settings?.backgroundIntensity === 70,
+      outputPath: join(
+        "artifacts",
+        "e2e",
+        "fresh",
+        "settings-commit-failure.json",
+      ),
+      candidatePath: join("artifacts", "e2e", "candidate.json"),
     });
     const snapshot = await readSettings();
     const backgroundFixturePath = join(

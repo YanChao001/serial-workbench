@@ -12,8 +12,12 @@ const zh = {
   draft: "\u53d1\u9001\u8349\u7a3f",
   send: "\u53d1\u9001",
   saveDrafts: "\u4fdd\u5b58\u8349\u7a3f",
-  retry: "\u91cd\u8bd5",
+  retryHost: "\u91cd\u8bd5\u8fde\u63a5\u672c\u673a\u670d\u52a1",
   details: "\u67e5\u770b\u8be6\u60c5",
+  logs: "\u65e5\u5fd7",
+  logDetails: "\u65e5\u5fd7\u8be6\u60c5",
+  menu: "\u5de5\u4f5c\u533a\u83dc\u5355",
+  closeView: "\u5173\u95ed\u89c6\u56fe",
   newView: "\u65b0\u5efa\u89c6\u56fe",
   failed:
     "\u672c\u673a\u670d\u52a1\u8fde\u63a5\u5931\u8d25\uff0c\u8bf7\u91cd\u8bd5\u3002",
@@ -26,6 +30,32 @@ const zh = {
 const serialConfiguration = defaults.serialConfiguration;
 if (!validateSerialConfiguration(serialConfiguration))
   throw new Error("Invalid generated serial fixture");
+
+test("Host retry remains reachable after the transient failure notification expires", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { hostStart: "failed" });
+  await page.goto("./#/");
+  const notification = page.getByRole("alert").filter({ hasText: zh.failed });
+  await expect(notification).toBeVisible();
+  await expect(notification).toHaveCount(0);
+  const retry = page
+    .getByRole("main")
+    .getByRole("button", { name: zh.retryHost, exact: true });
+  await expect(retry).toBeEnabled();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.attachmentCalls),
+  ).toBe(1);
+  await page.evaluate(() => window.workbenchFixture.releaseHost());
+  await retry.click();
+  await expect(
+    page.getByRole("button", { name: "Open Virtual serial", exact: true }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.attachmentCalls),
+  ).toBe(2);
+  await expect(page.getByRole("tab")).toHaveCount(0);
+});
 const workspace: WorkspaceDocument = {
   ...defaults.workspace,
   name: "Restored bench",
@@ -106,6 +136,58 @@ async function safeText(page: Page) {
   );
 }
 
+async function storedConnectionFailure(
+  page: Page,
+  labels: {
+    menu: string;
+    logs: string;
+    details: string;
+    logDetails: string;
+    closeView: string;
+    failed: string;
+  },
+) {
+  // These cases use the narrow toolbar: persistent logs remain in its menu
+  // after the transient failure notification has expired.
+  await page
+    .getByRole("main")
+    .getByRole("button", { name: labels.menu, exact: true })
+    .click();
+  await page.getByRole("menuitem", { name: labels.logs, exact: true }).click();
+  const dialog = page.getByRole("dialog", { name: labels.logs, exact: true });
+  const entry = dialog
+    .getByRole("log", { name: labels.logs, exact: true })
+    .getByRole("listitem")
+    .filter({ hasText: labels.failed });
+  await expect(entry).toHaveCount(1);
+  const details = entry.getByRole("button", {
+    name: labels.details,
+    exact: true,
+  });
+  await details.focus();
+  await details.press("Enter");
+  const text = page.getByRole("textbox", {
+    name: labels.logDetails,
+    exact: true,
+  });
+  await expect(text).toHaveValue(
+    /(?:^|\n)(?:错误代码|Error code): HOST_START_FAILED(?:\n|$)/,
+  );
+  await expect(text).not.toHaveValue(
+    /EXPLICIT_FIXTURE_SECRET|cargo run|C:\/private\/fixture-user/,
+  );
+  await safeText(page);
+  await text.press("Escape");
+  await expect(text).toHaveCount(0);
+  const close = dialog.getByRole("button", {
+    name: labels.closeView,
+    exact: true,
+  });
+  await close.focus();
+  await close.press("Enter");
+  await expect(dialog).toHaveCount(0);
+}
+
 test("first Host failure keeps recovered Chinese drafts editable and exposes safe keyboard retry", async ({
   page,
 }, info) => {
@@ -126,31 +208,45 @@ test("first Host failure keeps recovered Chinese drafts editable and exposes saf
   ).toBeDisabled();
   await expect(
     page.getByRole("button", { name: zh.newView, exact: true }),
-  ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: /^\u6253\u5f00/ }),
-  ).toBeDisabled();
+  ).toHaveCount(0);
+  await expect(page.getByRole("button", { name: /^\u6253\u5f00/ })).toHaveCount(
+    0,
+  );
+  const retry = page
+    .getByRole("main")
+    .getByRole("button", { name: zh.retryHost, exact: true });
+  await expect(retry).toBeEnabled();
   await draft.fill("0123456789".repeat(24));
   await draft.focus();
   await draft.press("Shift+Tab");
-  const preview = page.getByRole("status", {
-    name: "\u5b9e\u9645\u53d1\u9001\u5b57\u8282",
-    exact: true,
-  });
-  await expect(preview).toBeFocused();
+  await expect(
+    page.getByRole("button", { name: zh.saveDrafts, exact: true }),
+  ).toBeFocused();
+  const sender = page.getByRole("region", { name: zh.send, exact: true });
+  const hex = sender.getByRole("radio", { name: "HEX", exact: true });
+  await hex.focus();
+  await hex.press("Space");
+  await expect(draft).toHaveValue(
+    Array(24).fill("30 31 32 33 34 35 36 37 38 39").join(" "),
+  );
+  await expect(page.locator(".workbench-draft-bytes")).toHaveText("240 字节");
+  await expect(
+    page.locator(".workbench-preview-trigger,.workbench-byte-preview"),
+  ).toHaveCount(0);
+  await draft.focus();
   expect(
-    await preview.evaluate(
+    await draft.evaluate(
       (element) => element.scrollHeight > element.clientHeight,
     ),
   ).toBe(true);
-  await preview.press("End");
+  await draft.press("Control+End");
   await expect
-    .poll(() => preview.evaluate((element) => element.scrollTop))
+    .poll(() => draft.evaluate((element) => element.scrollTop))
     .toBeGreaterThan(0);
   await writeFile(
-    info.outputPath("byte-preview-keyboard.json"),
+    info.outputPath("converted-draft-keyboard.json"),
     JSON.stringify(
-      await preview.evaluate((element) => ({
+      await draft.evaluate((element) => ({
         focused: document.activeElement === element,
         scrollTop: element.scrollTop,
         scrollHeight: element.scrollHeight,
@@ -161,8 +257,15 @@ test("first Host failure keeps recovered Chinese drafts editable and exposes saf
     ),
   );
   await page.screenshot({
-    path: info.outputPath("first-failure-preview-keyboard.png"),
+    path: info.outputPath("first-failure-hex-draft-keyboard.png"),
   });
+  const text = sender.getByRole("radio", { name: "文本", exact: true });
+  await text.focus();
+  await text.press("Space");
+  await expect(draft).toHaveValue("0123456789".repeat(24));
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
   await draft.fill("EDITED OFFLINE");
   await page.getByRole("button", { name: zh.saveDrafts, exact: true }).click();
   await expect
@@ -174,22 +277,20 @@ test("first Host failure keeps recovered Chinese drafts editable and exposes saf
       ),
     )
     .toBe(true);
-  const details = page.locator("summary").filter({ hasText: zh.details });
-  await details.focus();
-  await details.press("Enter");
   await expect(
-    page.locator("code").filter({ hasText: "HOST_START_FAILED" }),
-  ).toBeVisible();
+    page.getByRole("alert").filter({ hasText: zh.failed }),
+  ).toHaveCount(0);
+  await storedConnectionFailure(page, zh);
   await safeText(page);
   await evidence(page, info, "first-failure-chinese-880");
   const attempts = await page.evaluate(
     () => window.workbenchFixture.attachmentCalls,
   );
   expect(attempts).toBe(1);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual([]);
   await page.evaluate(() => window.workbenchFixture.releaseHost());
-  const retry = page
-    .getByRole("main")
-    .getByRole("button", { name: zh.retry, exact: true });
   await retry.focus();
   await retry.press("Enter");
   await expect(
@@ -201,6 +302,12 @@ test("first Host failure keeps recovered Chinese drafts editable and exposes saf
   expect(
     await page.evaluate(() => window.workbenchFixture.attachmentCalls),
   ).toBe(attempts + 1);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual([]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
 });
 
 test("pending first connection retains the unbound draft across late workspace arrival and explicit device binding", async ({
@@ -217,8 +324,11 @@ test("pending first connection retains the unbound draft across late workspace a
     page.getByRole("status").filter({ hasText: zh.connecting }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: zh.retry, exact: true }),
+    page.getByRole("button", { name: zh.connecting, exact: true }),
   ).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^\u6253\u5f00/ })).toHaveCount(
+    0,
+  );
   await page
     .getByRole("textbox", { name: zh.draft, exact: true })
     .fill("EDITED BEFORE CONNECT");
@@ -278,6 +388,12 @@ test("pending first connection retains the unbound draft across late workspace a
     )
     .toBe(true);
   await evidence(page, info, "late-workspace-unbound-draft");
+  expect(
+    await page.evaluate(() => window.workbenchFixture.attachmentCalls),
+  ).toBe(1);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual([]);
   await page
     .getByRole("button", { name: "Open Virtual serial", exact: true })
     .click();
@@ -295,6 +411,12 @@ test("pending first connection retains the unbound draft across late workspace a
   );
   expect(saved?.views).toHaveLength(2);
   expect(saved?.views.map((v) => v.id)).toEqual(["saved-view", "unconnected"]);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual(["device"]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
   await evidence(page, info, "bound-layout-save-restored");
 });
 
@@ -357,9 +479,8 @@ test("an established Host losing its attachment preserves the current tab and dr
     .fill("CURRENT EDIT");
   await page.evaluate(() => window.workbenchFixture.failRefresh());
   await page
-    .getByRole("button", { name: "Workspace menu", exact: true })
+    .getByRole("combobox", { name: "Choose device", exact: true })
     .click();
-  await page.getByRole("menuitem", { name: "Refresh", exact: true }).click();
   await expect(
     page.getByRole("alert").filter({
       hasText: "The local service could not connect. Please retry.",
@@ -369,6 +490,10 @@ test("an established Host losing its attachment preserves the current tab and dr
     "id",
     tabId!,
   );
+  await expect(tab).toHaveAttribute("aria-selected", "true");
+  await expect(
+    page.getByRole("tablist", { name: "Sessions", exact: true }),
+  ).not.toContainText("session-session");
   await expect(
     page.getByRole("textbox", { name: "Send draft", exact: true }),
   ).toHaveValue("CURRENT EDIT");
@@ -378,8 +503,17 @@ test("an established Host losing its attachment preserves the current tab and dr
   await expect(
     page.getByRole("button", { name: "New view", exact: true }),
   ).toBeDisabled();
+  await expect(page.getByRole("button", { name: /^Open(?: |$)/ })).toHaveCount(
+    0,
+  );
   await expect(
-    page.getByRole("button", { name: "Open", exact: true }),
+    page.getByRole("button", {
+      name: "Retry local service connection",
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("combobox", { name: "Choose device", exact: true }),
   ).toBeDisabled();
   await page.getByRole("button", { name: "Save drafts", exact: true }).click();
   await expect
@@ -391,6 +525,28 @@ test("an established Host losing its attachment preserves the current tab and dr
       ),
     )
     .toBe(true);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.attachmentCalls),
+  ).toBe(1);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual(["device"]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await expect(
+    page.getByRole("alert").filter({
+      hasText: "The local service could not connect. Please retry.",
+    }),
+  ).toHaveCount(0);
+  await storedConnectionFailure(page, {
+    menu: "Workspace menu",
+    logs: "Logs",
+    details: "View details",
+    logDetails: "Log details",
+    closeView: "Close view",
+    failed: "The local service could not connect. Please retry.",
+  });
   await safeText(page);
   await evidence(page, info, "disconnected-current-tab-880");
 });

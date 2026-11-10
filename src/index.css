@@ -148,7 +148,7 @@
 /* 中性表面是基底；用户选择的强调色只为交互表面提供轻微色调。 */
 html[data-accent]:not([data-accent="neutral"]) {
   --background: color-mix(in oklab, var(--primary) 2%, var(--surface-base));
-  --sidebar: color-mix(in oklab, var(--primary) 3%, var(--surface-sidebar));
+  --sidebar: var(--surface-sidebar);
   --accent: color-mix(in oklab, var(--primary) 9%, var(--surface-base));
   --sidebar-accent: color-mix(
     in oklab,

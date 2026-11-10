@@ -3,7 +3,7 @@ import type {
   SessionSnapshot,
   SerialConfiguration,
 } from "@serial-workbench/contracts";
-import { useRef } from "react";
+import { useEffect, useRef, useState, type ReactNode } from "react";
 import {
   Plug,
   Unplug,
@@ -11,8 +11,16 @@ import {
   MoreHorizontal,
   Terminal,
   Save,
+  Usb,
+  FileUp,
+  Clapperboard,
+  Stethoscope,
+  ListTodo,
+  Gauge,
+  RotateCw,
+  ScrollText,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
+import { WorkbenchIconButton } from "./workbench-icon-button";
 import {
   Select,
   SelectContent,
@@ -29,6 +37,7 @@ import {
 import type { WorkbenchLabels } from "./labels";
 import type { WorkbenchTool, WorkspaceLayoutProps } from "./workspace-layout";
 export function WorkbenchConnection({
+  recovery,
   labels,
   toolLabels,
   workspaceName,
@@ -36,12 +45,15 @@ export function WorkbenchConnection({
   deviceId,
   device,
   session,
+  hasSessionView = false,
+  viewTabs,
   configuration,
   opening,
   readOnly = false,
   disabled,
   devicesStale,
   canClose,
+  canRestoreAccess,
   canSave,
   canTakeover,
   canReplay,
@@ -52,9 +64,11 @@ export function WorkbenchConnection({
   onClose,
   onSave,
   onRefresh,
+  onUnavailableFocus,
   onTakeover,
   onReplay,
 }: {
+  recovery?: WorkspaceLayoutProps["connectionRecovery"];
   labels: WorkbenchLabels;
   toolLabels: WorkspaceLayoutProps["toolLabels"];
   workspaceName: string;
@@ -62,47 +76,90 @@ export function WorkbenchConnection({
   deviceId: string;
   device?: DeviceDescriptor;
   session?: SessionSnapshot;
+  hasSessionView?: boolean;
+  viewTabs?: ReactNode;
   configuration: SerialConfiguration;
   opening: string | null;
   readOnly?: boolean;
   disabled: boolean;
   devicesStale: boolean;
   canClose: boolean;
+  canRestoreAccess: boolean;
   canSave: boolean;
   canTakeover: boolean;
   canReplay: boolean;
   toolsAvailable: boolean;
   onDeviceChange: (id: string) => void;
   onTool: (
-    tool: WorkbenchTool | "tasks" | "metrics",
+    tool: WorkbenchTool | "tasks" | "metrics" | "logs",
     returnPoint?: HTMLElement | null,
   ) => void;
   onOpen: () => void;
   onClose: () => void;
   onSave: () => void;
+  onUnavailableFocus?: () => void;
   onRefresh: () => void;
   onTakeover: () => void;
   onReplay: () => void;
 }) {
+  const [deviceListOpen, setDeviceListOpen] = useState(false);
+  const header = useRef<HTMLElement | null>(null);
+  const primaryTools = useRef<HTMLDivElement | null>(null);
+  const [commonOverflow, setCommonOverflow] = useState(true);
+  useEffect(() => {
+    const element = header.current;
+    if (!element) return;
+    const measure = () =>
+      setCommonOverflow(
+        element.getBoundingClientRect().width === 0 ||
+          !primaryTools.current ||
+          getComputedStyle(primaryTools.current).display === "none",
+      );
+    measure();
+    const observer = new ResizeObserver(measure);
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, []);
+  useEffect(() => {
+    if (disabled) setDeviceListOpen(false);
+  }, [disabled]);
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
-  const parameterSummary = `${configuration.baudRate} / ${configuration.dataBits} ${configuration.parity}`;
+  const parity = { none: "N", even: "E", odd: "O", mark: "M", space: "S" }[
+    configuration.parity
+  ];
+  const stopBits = { one: "1", onePointFive: "1.5", two: "2" }[
+    configuration.stopBits
+  ];
+  const parameterSummary = `${configuration.baudRate} / ${configuration.dataBits}${parity}${stopBits}`;
   const parameterPurpose = toolLabels?.parameters ?? labels.status;
   return (
-    <header className="workbench-connection" data-surface="transparent">
-      <Button
-        size="sm"
-        variant="ghost"
+    <header
+      ref={header}
+      className="workbench-connection"
+      data-surface="transparent"
+    >
+      <WorkbenchIconButton
+        label={toolLabels?.workspace ?? labels.title}
+        tooltip={
+          workspaceName
+            ? `${toolLabels?.workspace ?? labels.title}: ${workspaceName}`
+            : (toolLabels?.workspace ?? labels.title)
+        }
         className="workbench-workspace-name"
         disabled={!toolsAvailable}
         onClick={(event) => onTool("workspace", event.currentTarget)}
       >
         <Terminal aria-hidden="true" />
-        <span>{workspaceName}</span>
-      </Button>
+      </WorkbenchIconButton>
       <Select
+        open={deviceListOpen && !disabled}
         value={deviceId}
         onValueChange={onDeviceChange}
-        disabled={disabled || devices.length === 0}
+        onOpenChange={(open) => {
+          setDeviceListOpen(open);
+          if (open) onRefresh();
+        }}
+        disabled={disabled}
       >
         <SelectTrigger
           size="sm"
@@ -112,7 +169,20 @@ export function WorkbenchConnection({
           <Plug aria-hidden="true" />
           <SelectValue placeholder={labels.noDevices} />
         </SelectTrigger>
-        <SelectContent position="popper">
+        <SelectContent
+          position="popper"
+          onCloseAutoFocus={(event) => {
+            if (disabled && onUnavailableFocus) {
+              event.preventDefault();
+              onUnavailableFocus();
+            }
+          }}
+        >
+          {devices.length === 0 && (
+            <p className="px-3 py-2 text-sm text-muted-foreground">
+              {labels.noDevices}
+            </p>
+          )}
           {devices.map((value) => (
             <SelectItem key={value.deviceId} value={value.deviceId}>
               {value.systemName}
@@ -120,100 +190,144 @@ export function WorkbenchConnection({
           ))}
         </SelectContent>
       </Select>
-      <Button
-        variant="ghost"
-        size="sm"
+      <WorkbenchIconButton
         disabled={!toolsAvailable || readOnly}
-        aria-label={
-          parameterSummary
-            ? `${parameterPurpose} ${parameterSummary}`
-            : parameterPurpose
-        }
+        label={parameterPurpose}
+        tooltip={`${parameterPurpose}: ${parameterSummary}`}
         onClick={(event) => onTool("parameters", event.currentTarget)}
       >
         <Settings2 aria-hidden="true" />
-        <span className="workbench-parameter-summary">{parameterSummary}</span>
-      </Button>
-      {session?.state === "open" && session.deviceId === deviceId ? (
-        <Button
-          size={readOnly ? "icon-sm" : "sm"}
+      </WorkbenchIconButton>
+      {recovery ? (
+        <WorkbenchIconButton
           variant="outline"
-          aria-label={readOnly ? labels.closeSession : undefined}
-          title={readOnly ? labels.closeSession : undefined}
-          disabled={!canClose}
+          label={recovery.label}
+          disabled={recovery.busy}
+          aria-busy={recovery.busy}
+          onClick={recovery.onRetry}
+        >
+          <RotateCw aria-hidden="true" />
+        </WorkbenchIconButton>
+      ) : session?.state === "open" &&
+        session.deviceId === deviceId &&
+        hasSessionView ? (
+        <WorkbenchIconButton
+          label={labels.closeSession}
+          variant="default"
+          aria-pressed="true"
+          disabled={!canClose || opening !== null}
           onClick={onClose}
         >
           <Unplug aria-hidden="true" />
-          {!readOnly && labels.closeSession}
-        </Button>
+        </WorkbenchIconButton>
       ) : (
-        <Button
-          size="sm"
-          variant="outline"
+        <WorkbenchIconButton
+          variant={session?.state === "open" ? "default" : "outline"}
+          aria-pressed={session?.state === "open" ? true : undefined}
           disabled={opening !== null || disabled || !device || devicesStale}
-          aria-label={labels.open + " " + (device?.systemName ?? "")}
+          label={labels.open + " " + (device?.systemName ?? "")}
+          tooltip={opening ? labels.opening : labels.open}
           onClick={onOpen}
         >
           <Plug aria-hidden="true" />
-          {opening ? labels.opening : labels.open}
-        </Button>
+        </WorkbenchIconButton>
       )}
-      <Button
-        size="sm"
-        variant="ghost"
+      <WorkbenchIconButton
         disabled={!canSave}
-        aria-label={toolLabels?.saveCurrentLayout ?? labels.saveDrafts}
+        label={toolLabels?.saveCurrentLayout ?? labels.saveDrafts}
         onClick={onSave}
       >
         <Save aria-hidden="true" />
-        <span className="workbench-tool-label">
-          {toolLabels?.saveCurrentLayout ?? labels.saveDrafts}
-        </span>
-      </Button>
+      </WorkbenchIconButton>
+      <div ref={primaryTools} className="workbench-primary-tools">
+        {(
+          [
+            ["devices", Usb],
+            ["transfer", FileUp],
+            ["captureTools", Clapperboard],
+            ["diagnostics", Stethoscope],
+          ] as const
+        ).map(([tool, Icon]) => (
+          <WorkbenchIconButton
+            key={tool}
+            label={toolLabels?.[tool] ?? labels.title}
+            disabled={!toolsAvailable}
+            onClick={(event) => onTool(tool, event.currentTarget)}
+          >
+            <Icon aria-hidden="true" />
+          </WorkbenchIconButton>
+        ))}
+        <WorkbenchIconButton
+          label={labels.tasks}
+          onClick={(event) => onTool("tasks", event.currentTarget)}
+        >
+          <ListTodo aria-hidden="true" />
+        </WorkbenchIconButton>
+        <WorkbenchIconButton
+          label={labels.metrics}
+          onClick={(event) => onTool("metrics", event.currentTarget)}
+        >
+          <Gauge aria-hidden="true" />
+        </WorkbenchIconButton>
+        <WorkbenchIconButton
+          label={labels.logs}
+          onClick={(event) => onTool("logs", event.currentTarget)}
+        >
+          <ScrollText aria-hidden="true" />
+        </WorkbenchIconButton>
+      </div>
+      <div className="workbench-view-tabs">{viewTabs}</div>
       <DropdownMenu>
         <DropdownMenuTrigger asChild>
-          <Button
+          <WorkbenchIconButton
             ref={menuTrigger}
-            size="icon-sm"
-            variant="ghost"
-            aria-label={toolLabels?.more ?? labels.expand}
+            label={toolLabels?.more ?? labels.expand}
           >
             <MoreHorizontal aria-hidden="true" />
-          </Button>
+          </WorkbenchIconButton>
         </DropdownMenuTrigger>
-        <DropdownMenuContent align="end">
-          <DropdownMenuItem disabled={disabled} onSelect={onRefresh}>
-            {labels.refresh}
-          </DropdownMenuItem>
-          {toolsAvailable &&
+        <DropdownMenuContent align="end" className="workbench-workspace-menu">
+          {canRestoreAccess && (
+            <DropdownMenuItem
+              disabled={disabled || opening !== null || devicesStale}
+              onSelect={onOpen}
+            >
+              {opening === deviceId
+                ? labels.restoringAccess
+                : labels.restoreAccess}
+            </DropdownMenuItem>
+          )}
+          {commonOverflow &&
+            toolsAvailable &&
             (
-              [
-                "devices",
-                "workspace",
-                "parameters",
-                "transfer",
-                "captureTools",
-                "diagnostics",
-              ] as const
+              ["devices", "transfer", "captureTools", "diagnostics"] as const
             ).map((tool) => (
               <DropdownMenuItem
                 key={tool}
-                disabled={readOnly && tool === "parameters"}
                 onSelect={() => onTool(tool, menuTrigger.current)}
               >
                 {toolLabels?.[tool] ?? tool}
               </DropdownMenuItem>
             ))}
-          <DropdownMenuItem
-            onSelect={() => onTool("tasks", menuTrigger.current)}
-          >
-            {labels.tasks}
-          </DropdownMenuItem>
-          <DropdownMenuItem
-            onSelect={() => onTool("metrics", menuTrigger.current)}
-          >
-            {labels.metrics}
-          </DropdownMenuItem>
+          {commonOverflow && (
+            <>
+              <DropdownMenuItem
+                onSelect={() => onTool("tasks", menuTrigger.current)}
+              >
+                {labels.tasks}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onTool("metrics", menuTrigger.current)}
+              >
+                {labels.metrics}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onTool("logs", menuTrigger.current)}
+              >
+                {labels.logs}
+              </DropdownMenuItem>
+            </>
+          )}
           <DropdownMenuItem disabled={!canTakeover} onSelect={onTakeover}>
             {labels.takeover}
           </DropdownMenuItem>

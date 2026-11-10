@@ -88,6 +88,15 @@ describe("persisted application sidebar", () => {
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();
+    const client = browserClientStateStore();
+    const initial = client.read();
+    client.save(
+      {
+        ...initial.state,
+        preferences: { ...initial.state.preferences, sidebarCollapsed: false },
+      },
+      initial.revision,
+    );
     localStorage.setItem(
       STORAGE_KEY,
       JSON.stringify(settingsDocument(DEFAULT_SETTINGS)),
@@ -504,7 +513,7 @@ describe("persisted application sidebar", () => {
     ).toEqual(["/", "/desktop", "/preferences"]);
   });
 
-  it("keeps footer routes icon-only, named and active with a keyboard tooltip in both sidebar states", async () => {
+  it("keeps footer routes named and active with an expanded label and a collapsed keyboard tooltip", async () => {
     vi.stubGlobal(
       "ResizeObserver",
       class {
@@ -518,20 +527,18 @@ describe("persisted application sidebar", () => {
     expect(link).toHaveAttribute("href", "/preferences");
     expect(link).toHaveAttribute("aria-label", zhCN["nav.settings"]);
     expect(link).toHaveAttribute("aria-current", "page");
-    expect(link.textContent).toBe("");
+    expect(link.textContent).toBe(zhCN["nav.settings"]);
     expect(
       within(screen.getByRole("navigation")).queryByRole("link", {
         name: zhCN["nav.settings"],
       }),
     ).not.toBeInTheDocument();
     fireEvent.focus(link);
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      zhCN["nav.settings"],
-    );
+    expect(screen.queryByRole("tooltip")).toBeNull();
     fireEvent.click(screen.getByRole("button", { name: "折叠侧栏" }));
     expect(screen.queryByRole("tooltip")).toBeNull();
     expect(screen.getByRole("link", { name: zhCN["nav.settings"] })).toBe(link);
-    expect(link.textContent).toBe("");
+    expect(link.textContent).toBe(zhCN["nav.settings"]);
     fireEvent.focus(link);
     expect(await screen.findByRole("tooltip")).toHaveTextContent(
       zhCN["nav.settings"],

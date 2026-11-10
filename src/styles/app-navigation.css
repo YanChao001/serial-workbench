@@ -53,6 +53,9 @@
 
 .app-sidebar-link {
   position: relative;
+  padding-inline: calc(
+    (var(--app-sidebar-collapsed-width) - 1px - 1rem) / 2 - 0.5rem
+  );
   color: var(--muted-foreground);
   transition:
     background-color 150ms ease,
@@ -87,8 +90,8 @@
 }
 
 .app-sidebar-link:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
 }
 
 .app-sidebar[data-collapsed="true"] .app-sidebar-group-heading::before {
@@ -96,15 +99,8 @@
 }
 
 .app-sidebar[data-collapsed="true"] .app-sidebar-navigation {
-  padding-inline: 4px;
   scrollbar-gutter: auto;
   scrollbar-width: none;
-}
-
-.app-sidebar[data-collapsed="true"] .app-sidebar-navigation .app-sidebar-link {
-  padding-inline: calc(
-    (var(--app-sidebar-collapsed-width) - 1px - 8px - 1rem) / 2
-  );
 }
 
 .app-sidebar[data-collapsed="true"] .app-sidebar-top-heading {
@@ -115,12 +111,8 @@
   right: calc((var(--app-sidebar-collapsed-width) - 1px - 1.75rem) / 2);
 }
 
-.app-sidebar[data-collapsed="true"] .app-sidebar-tools {
-  padding-inline: 4px;
-}
-
 .app-sidebar[data-collapsed="true"] .app-sidebar-tools .app-sidebar-link {
-  width: calc(var(--app-sidebar-collapsed-width) - 1px - 8px);
+  width: calc(var(--app-sidebar-collapsed-width) - 1px - 1rem);
   max-width: 100%;
 }
 
@@ -148,7 +140,7 @@
   min-height: 0;
   max-width: none;
   overflow: hidden;
-  padding: 1rem;
+  padding: 0;
 }
 
 .app-main[data-content-layout="workspace"]
@@ -181,8 +173,12 @@
   color: var(--foreground);
 }
 .app-title-menu-trigger:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
+}
+/* 中文字形作半像素光学校正；只移动文字，不移动按钮和焦点边界。 */
+.app-title-menu-label:lang(zh) {
+  transform: translateY(0.5px);
 }
 .app-title-language[data-size="sm"] {
   height: 32px;
@@ -190,6 +186,41 @@
 
 .settings-studio {
   container: settings / inline-size;
+}
+.settings-header {
+  display: grid;
+  grid-template-columns: auto minmax(10rem, 32rem);
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+.settings-header h1 {
+  font-size: 1.25rem;
+  font-weight: 600;
+  line-height: 1.5;
+}
+.settings-header-tools {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  min-width: 0;
+}
+.settings-header-tools > :last-child {
+  flex: 1;
+  min-width: 0;
+}
+.settings-section-nav {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.25rem;
+  padding-block-end: 0.5rem;
+  border-bottom: 1px solid var(--border);
+}
+@container settings (max-width: 30rem) {
+  .settings-header {
+    grid-template-columns: 1fr;
+    gap: 0.5rem;
+  }
 }
 .settings-list > * {
   position: relative;
@@ -278,8 +309,8 @@
   object-fit: cover;
 }
 .wallpaper-thumbnail:focus-within {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
 }
 .wallpaper-empty {
   display: flex;
@@ -374,8 +405,8 @@
   opacity: 0;
 }
 .immersive-edge:focus-visible {
-  outline: 2px solid var(--ring);
-  outline-offset: -2px;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
   background: var(--popover);
 }
 .immersive-edge:focus-visible svg {

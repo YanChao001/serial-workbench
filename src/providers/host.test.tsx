@@ -17,8 +17,11 @@ import fixtures from "../../packages/contracts/src/generated/fixtures.json";
 import { parseReply } from "@serial-workbench/contracts";
 import type {
   Call,
+  CaptureStatusResult,
   ObjectRef,
   Query,
+  SessionSnapshot,
+  WireFrame,
   WorkspaceDocumentResult,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
@@ -117,6 +120,520 @@ function Probe() {
   const host = useHost();
   return <span>{host.state.status}</span>;
 }
+
+async function sessionProjectionRace(
+  mode: "once" | "always" | "live" | "directory-once" | "directory-always",
+) {
+  const parsed = parseReply({
+    ok: true,
+    result: { kind: "session", value: fixture("SessionSnapshot") },
+  });
+  if (
+    !parsed.ok ||
+    !("kind" in parsed.result) ||
+    parsed.result.kind !== "session"
+  )
+    throw new Error("session fixture");
+  let session: SessionSnapshot = parsed.result.value;
+  const firstEpoch = session.sessionEpoch;
+  const scopeId = "fixture-session-state";
+  let failSnapshot = mode === "once" || mode === "always";
+  let failDirectory = false;
+  let directoryFailures = 0;
+  const native = port();
+  const fallback = native.request.getMockImplementation()!;
+  const snapshots: string[] = [];
+  const deliveries: Array<{
+    query: Query;
+    deliver: (frame: WireFrame) => void;
+    id: string;
+  }> = [];
+  native.subscribe.mockImplementation(async (query, deliver) => {
+    const id = `session-state-${deliveries.length}`;
+    deliveries.push({ query, deliver, id });
+    return id;
+  });
+  native.request.mockImplementation(async (request) => {
+    if (request.method !== "action.query") throw new Error("read-only fixture");
+    const query = request.params;
+    if (query.actionId === "state.scopes") {
+      if (failDirectory) {
+        directoryFailures++;
+        if (mode === "directory-once") {
+          failDirectory = false;
+          session = {
+            ...session,
+            sessionEpoch: String(BigInt(session.sessionEpoch) + 1n),
+            revision: String(BigInt(session.revision) + 1n),
+          };
+        }
+        return parseReply({
+          ok: false,
+          error: {
+            code: "EPOCH_MISMATCH",
+            message: "Fixture session directory changed during authorization",
+            retryable: false,
+          },
+        });
+      }
+      return parseReply({
+        ok: true,
+        result: {
+          kind: "scopes",
+          value: {
+            scopes: [
+              {
+                scopeId,
+                target: {
+                  hostId: "host",
+                  kind: "session",
+                  id: session.sessionId,
+                  sessionId: session.sessionId,
+                  sessionEpoch: session.sessionEpoch,
+                },
+              },
+            ],
+          },
+        },
+      });
+    }
+    if (query.actionId === "device.list")
+      return parseReply({
+        ok: true,
+        result: {
+          kind: "devices",
+          value: {
+            stale: false,
+            devices: [
+              {
+                hostId: "host",
+                deviceId: session.deviceId,
+                systemName: "COM14",
+                fingerprint: { transport: "virtual", evidence: "unreliable" },
+                capabilities: session.capabilities,
+              },
+            ],
+          },
+        },
+      });
+    if (query.actionId === "state.snapshot") {
+      snapshots.push(query.target.sessionEpoch ?? "missing");
+      if (failSnapshot) {
+        if (mode === "once") {
+          failSnapshot = false;
+          session = {
+            ...session,
+            sessionEpoch: String(BigInt(session.sessionEpoch) + 1n),
+            revision: String(BigInt(session.revision) + 1n),
+          };
+        }
+        return parseReply({
+          ok: false,
+          error: {
+            code: "EPOCH_MISMATCH",
+            message: "Fixture session projection changed",
+            retryable: false,
+          },
+        });
+      }
+      return parseReply({
+        ok: true,
+        result: {
+          kind: "snapshot",
+          value: {
+            hostId: "host",
+            instanceEpoch: "7",
+            revision: session.revision,
+            cursor: {
+              hostId: "host",
+              instanceEpoch: "7",
+              scopeId,
+              position: "0",
+            },
+            state: session,
+          },
+        },
+      });
+    }
+    return fallback(request);
+  });
+  const connection = await createHostConnection(native);
+  // 只覆盖工作区恢复阶段，不把构造连接的首个目录读取伪造成失败。
+  failDirectory = mode === "directory-once" || mode === "directory-always";
+  const dispose = vi.spyOn(connection, "dispose");
+  const connect = vi.fn(async () => connection);
+  let current: ReturnType<typeof useHost> | undefined;
+  function RaceProbe() {
+    current = useHost();
+    return <span>{current.state.status}</span>;
+  }
+  const view = render(
+    <HostProvider desktop connect={connect}>
+      <RaceProbe />
+    </HostProvider>,
+  );
+  return {
+    native,
+    connection,
+    dispose,
+    connect,
+    snapshots,
+    deliveries,
+    firstEpoch,
+    view,
+    current: () => current!,
+    directoryFailures: () => directoryFailures,
+    advance() {
+      failSnapshot = false;
+      failDirectory = false;
+      session = {
+        ...session,
+        sessionEpoch: String(BigInt(session.sessionEpoch) + 1n),
+        revision: String(BigInt(session.revision) + 1n),
+      };
+    },
+    session: () => session,
+  };
+}
+
+describe("session projection epoch recovery", () => {
+  it("confirms the original attachment before retrying a changed session scope directory", async () => {
+    const h = await sessionProjectionRace("directory-once");
+    try {
+      await waitFor(() => expect(h.current().state.status).toBe("ready"));
+      expect(h.directoryFailures()).toBe(1);
+      const probes = h.native.request.mock.calls.flatMap(([request]) =>
+        request.method === "action.query" &&
+        request.params.actionId === "catalog.list" &&
+        request.params.params.pageSize === "1"
+          ? [request.params]
+          : [],
+      );
+      expect(probes).toHaveLength(1);
+      expect(probes[0]).toMatchObject({
+        hostId: "host",
+        instanceEpoch: "7",
+        target: { kind: "host", hostId: "host", id: "host" },
+      });
+      expect(h.current().connection).toBe(h.connection);
+      expect(
+        h.current().state.devices.map((device) => device.systemName),
+      ).toEqual(["COM14"]);
+      expect(h.current().state.sessions).toEqual([h.session()]);
+      expect(h.current().state.error).toBeNull();
+      expect(h.snapshots).toEqual([h.session().sessionEpoch]);
+      expect(h.dispose).not.toHaveBeenCalled();
+      expect(h.connect).toHaveBeenCalledOnce();
+      expect(
+        h.native.request.mock.calls.every(
+          ([request]) => request.method === "action.query",
+        ),
+      ).toBe(true);
+    } finally {
+      h.view.unmount();
+    }
+  });
+
+  it("bounds a repeatedly changed session directory while retaining devices and explicit recovery", async () => {
+    const h = await sessionProjectionRace("directory-always");
+    try {
+      await waitFor(() => {
+        expect(h.current().state.status).toBe("ready");
+        expect(h.current().state.error).toMatchObject({
+          code: "EPOCH_MISMATCH",
+        });
+      });
+      expect(h.directoryFailures()).toBe(3);
+      expect(h.current().state.error).not.toBeInstanceOf(HostRequestError);
+      expect(h.current().connection).toBe(h.connection);
+      expect(
+        h.current().state.devices.map((device) => device.systemName),
+      ).toEqual(["COM14"]);
+      const probes = h.native.request.mock.calls.filter(
+        ([request]) =>
+          request.method === "action.query" &&
+          request.params.actionId === "catalog.list" &&
+          request.params.params.pageSize === "1",
+      );
+      expect(probes).toHaveLength(3);
+      expect(h.dispose).not.toHaveBeenCalled();
+      h.advance();
+      await act(async () => {
+        await h.current().refresh();
+      });
+      expect(h.current().state.status).toBe("ready");
+      expect(h.current().state.error).toBeNull();
+      expect(h.current().state.sessions).toEqual([h.session()]);
+      expect(h.connect).toHaveBeenCalledOnce();
+      expect(
+        h.native.request.mock.calls.every(
+          ([request]) => request.method === "action.query",
+        ),
+      ).toBe(true);
+    } finally {
+      h.view.unmount();
+    }
+  });
+
+  it("refreshes the session directory after snapshot epoch changes without retiring the authenticated Host", async () => {
+    const h = await sessionProjectionRace("once");
+    try {
+      await waitFor(() => expect(h.current().state.status).toBe("ready"));
+      expect(h.current().connection).toBe(h.connection);
+      expect(
+        h.current().state.devices.map((device) => device.systemName),
+      ).toEqual(["COM14"]);
+      expect(h.current().state.sessions).toEqual([h.session()]);
+      expect(h.current().state.error).toBeNull();
+      expect(h.snapshots).toEqual([h.firstEpoch, h.session().sessionEpoch]);
+      expect(h.deliveries[0]?.query.target.sessionEpoch).toBe(
+        h.session().sessionEpoch,
+      );
+      expect(h.dispose).not.toHaveBeenCalled();
+      expect(h.connect).toHaveBeenCalledOnce();
+      expect(
+        h.native.request.mock.calls.every(
+          ([request]) => request.method === "action.query",
+        ),
+      ).toBe(true);
+      expect(h.native.rawRequest).not.toHaveBeenCalled();
+    } finally {
+      h.view.unmount();
+    }
+  });
+
+  it("bounds repeated session epoch changes while keeping devices and permits an explicit retry", async () => {
+    const h = await sessionProjectionRace("always");
+    try {
+      await waitFor(() => {
+        expect(h.current().state.status).toBe("ready");
+        expect(h.current().state.error).toMatchObject({
+          code: "EPOCH_MISMATCH",
+        });
+      });
+      expect(h.current().state.error).not.toBeInstanceOf(HostRequestError);
+      expect(h.current().connection).toBe(h.connection);
+      expect(
+        h.current().state.devices.map((device) => device.systemName),
+      ).toEqual(["COM14"]);
+      expect(h.snapshots).toHaveLength(3);
+      expect(h.dispose).not.toHaveBeenCalled();
+      expect(h.connect).toHaveBeenCalledOnce();
+      h.advance();
+      await act(async () => {
+        await h.current().refresh();
+      });
+      expect(h.current().state.status).toBe("ready");
+      expect(h.current().state.error).toBeNull();
+      expect(h.current().state.sessions).toEqual([h.session()]);
+      expect(h.deliveries).toHaveLength(1);
+      expect(h.connect).toHaveBeenCalledOnce();
+      expect(
+        h.native.request.mock.calls.every(
+          ([request]) => request.method === "action.query",
+        ),
+      ).toBe(true);
+    } finally {
+      h.view.unmount();
+    }
+  });
+
+  it("replaces an ended session projection and ignores late frames from its former epoch", async () => {
+    const h = await sessionProjectionRace("live");
+    try {
+      await waitFor(() => expect(h.current().state.status).toBe("ready"));
+      const old = h.deliveries[0]!;
+      h.advance();
+      act(() =>
+        old.deliver({
+          requestId: old.query.requestId,
+          channel: "state",
+          body: {
+            type: "subscriptionEnded",
+            subscriptionId: old.id,
+            error: {
+              code: "EPOCH_MISMATCH",
+              message: "Fixture session reopened",
+              retryable: false,
+            },
+          },
+        }),
+      );
+      await waitFor(() => expect(h.deliveries).toHaveLength(2));
+      expect(h.native.unsubscribe).toHaveBeenCalledWith(old.id);
+      expect(h.deliveries[1]?.query.target.sessionEpoch).toBe(
+        h.session().sessionEpoch,
+      );
+      expect(h.current().state.sessions).toEqual([h.session()]);
+      act(() =>
+        old.deliver({
+          requestId: old.query.requestId,
+          channel: "state",
+          body: {
+            type: "error",
+            error: {
+              code: "EPOCH_MISMATCH",
+              message: "late old projection",
+              retryable: false,
+            },
+          },
+        }),
+      );
+      expect(h.current().state.status).toBe("ready");
+      expect(h.current().state.error).toBeNull();
+      expect(h.current().connection).toBe(h.connection);
+      expect(h.dispose).not.toHaveBeenCalled();
+      expect(h.connect).toHaveBeenCalledOnce();
+    } finally {
+      h.view.unmount();
+    }
+  });
+  it("bounds session epoch endings across completed recovery tasks until an explicit refresh", async () => {
+    const h = await sessionProjectionRace("live");
+    try {
+      await waitFor(() => expect(h.current().state.status).toBe("ready"));
+      for (let failure = 1; failure <= 3; failure++) {
+        const active = h.deliveries.at(-1)!;
+        h.advance();
+        act(() =>
+          active.deliver({
+            requestId: active.query.requestId,
+            channel: "state",
+            body: {
+              type: "subscriptionEnded",
+              subscriptionId: active.id,
+              error: {
+                code: "EPOCH_MISMATCH",
+                message: "Fixture session reopened after completed recovery",
+                retryable: false,
+              },
+            },
+          }),
+        );
+        if (failure < 3) {
+          // 新订阅及新 epoch 快照均已交付，下一次结束发生在另一轮恢复任务之后。
+          await waitFor(() => {
+            expect(h.deliveries).toHaveLength(failure + 1);
+            expect(h.current().state.sessions).toEqual([h.session()]);
+          });
+        }
+      }
+      await waitFor(() =>
+        expect({
+          deliveries: h.deliveries.length,
+          error: h.current().state.error,
+        }).toMatchObject({ deliveries: 3, error: { code: "EPOCH_MISMATCH" } }),
+      );
+      expect(h.snapshots).toHaveLength(3);
+      expect(h.current().state.status).toBe("ready");
+      expect(h.current().connection).toBe(h.connection);
+      expect(
+        h.current().state.devices.map((device) => device.systemName),
+      ).toEqual(["COM14"]);
+      expect(h.dispose).not.toHaveBeenCalled();
+      expect(h.connect).toHaveBeenCalledOnce();
+      expect(
+        h.native.request.mock.calls.every(
+          ([request]) => request.method === "action.query",
+        ),
+      ).toBe(true);
+      expect(h.native.rawRequest).not.toHaveBeenCalled();
+      expect(h.native.rawSubscribe).not.toHaveBeenCalled();
+      await act(async () => {
+        await h.current().refresh();
+      });
+      expect(h.deliveries).toHaveLength(4);
+      expect(h.current().state.sessions).toEqual([h.session()]);
+      expect(h.current().state.error).toBeNull();
+      expect(h.connect).toHaveBeenCalledOnce();
+    } finally {
+      h.view.unmount();
+    }
+  });
+  it("retires a genuinely failed attachment when its session recovery budget is exhausted", async () => {
+    const h = await sessionProjectionRace("live");
+    try {
+      await waitFor(() => expect(h.current().state.status).toBe("ready"));
+      for (let recovery = 1; recovery <= 2; recovery++) {
+        const active = h.deliveries.at(-1)!;
+        h.advance();
+        act(() =>
+          active.deliver({
+            requestId: active.query.requestId,
+            channel: "state",
+            body: {
+              type: "subscriptionEnded",
+              subscriptionId: active.id,
+              error: {
+                code: "EPOCH_MISMATCH",
+                message: "Fixture session reopened before attachment failure",
+                retryable: false,
+              },
+            },
+          }),
+        );
+        await waitFor(() => {
+          expect(h.deliveries).toHaveLength(recovery + 1);
+          expect(h.current().state.sessions).toEqual([h.session()]);
+        });
+      }
+      const original = h.native.request.getMockImplementation()!;
+      const failedProbe = vi.fn(() =>
+        parseReply({
+          ok: false,
+          error: {
+            code: "EPOCH_MISMATCH",
+            message: "Fixture original Host instance is no longer current",
+            retryable: false,
+          },
+        }),
+      );
+      h.native.request.mockImplementation(async (request) => {
+        if (
+          request.method === "action.query" &&
+          request.params.actionId === "catalog.list" &&
+          request.params.params.pageSize === "1"
+        )
+          return failedProbe();
+        return original(request);
+      });
+      const active = h.deliveries.at(-1)!;
+      h.advance();
+      act(() =>
+        active.deliver({
+          requestId: active.query.requestId,
+          channel: "state",
+          body: {
+            type: "subscriptionEnded",
+            subscriptionId: active.id,
+            error: {
+              code: "EPOCH_MISMATCH",
+              message: "Fixture final session projection ended",
+              retryable: false,
+            },
+          },
+        }),
+      );
+      await waitFor(() => expect(h.current().state.status).toBe("error"));
+      expect(failedProbe).toHaveBeenCalledOnce();
+      expect(h.current().state.error).toBeInstanceOf(HostRequestError);
+      expect(h.current().state.error).toMatchObject({ code: "EPOCH_MISMATCH" });
+      expect(h.current().connection).toBeUndefined();
+      expect(h.dispose).toHaveBeenCalledOnce();
+      expect(h.deliveries).toHaveLength(3);
+      expect(h.connect).toHaveBeenCalledOnce();
+      expect(
+        h.native.request.mock.calls.every(
+          ([request]) => request.method === "action.query",
+        ),
+      ).toBe(true);
+      expect(h.native.rawRequest).not.toHaveBeenCalled();
+      expect(h.native.rawSubscribe).not.toHaveBeenCalled();
+    } finally {
+      h.view.unmount();
+    }
+  });
+});
 describe("HostProvider lifecycle", () => {
   it("ordinary browser preview never initializes native attachment", () => {
     const connect = vi.fn();
@@ -321,6 +838,45 @@ it("retries attachment only after an explicit refresh following a connection fai
   view.unmount();
 });
 
+it("forwards explicit COM enumeration through the published Host provider", async () => {
+  const connection = await createHostConnection(port());
+  const read = connection.client.query;
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input, signal) => {
+      if (input.actionId === "device.refresh")
+        return { kind: "devices", value: { devices: [], stale: false } };
+      return read(input, signal);
+    });
+  let current: ReturnType<typeof useHost> | undefined;
+  function Probe() {
+    current = useHost();
+    return null;
+  }
+  const connect = vi.fn().mockResolvedValue(connection);
+  const view = render(
+    <HostProvider desktop connect={connect}>
+      <Probe />
+    </HostProvider>,
+  );
+  try {
+    await waitFor(() => expect(current?.state.status).toBe("ready"));
+    await act(async () => {
+      if (!current) throw new Error("Missing published Host");
+      await current.refresh({ enumerateDevices: true });
+    });
+    expect(
+      query.mock.calls.filter(([input]) => input.actionId === "device.refresh"),
+    ).toHaveLength(1);
+    expect(
+      query.mock.calls.filter(([input]) => input.actionId === "device.list"),
+    ).toHaveLength(1);
+    expect(connect).toHaveBeenCalledOnce();
+  } finally {
+    view.unmount();
+  }
+});
+
 async function establishedProvider() {
   const connection = await createHostConnection(port());
   vi.spyOn(connection, "refreshScopes").mockResolvedValue([
@@ -520,6 +1076,9 @@ it("loads workspace configuration without opening devices and saves against the 
     chooseFile: vi.fn(),
     applyDocumentIntent,
   });
+  expect(await workspace.listWorkspaces()).toEqual([document]);
+  expect(workspace.getSnapshot().state.workspace).toBeUndefined();
+  expect(invoke).not.toHaveBeenCalled();
   const loaded = await workspace.loadWorkspace("chosen");
   expect(loaded).toEqual(document);
   expect(workspace.getSnapshot().state.workspace).toEqual(document);
@@ -632,7 +1191,7 @@ async function operationProjection() {
     connection,
     workspace,
     operation,
-    metadata(ids: string[]) {
+    metadata(ids: string[], source = operation) {
       publish({
         type: "snapshot",
         snapshot: {
@@ -648,15 +1207,15 @@ async function operationProjection() {
           state: {
             items: ids.map((operationId) => ({
               operationId,
-              executionHostId: operation.executionHostId,
-              actorId: operation.actorId,
-              actionId: operation.actionId,
-              target: operation.target,
-              executionMode: operation.executionMode,
-              state: operation.state,
-              revision: operation.revision,
-              revealTarget: operation.revealTarget,
-              acceptedAt: operation.acceptedAt,
+              executionHostId: source.executionHostId,
+              actorId: source.actorId,
+              actionId: source.actionId,
+              target: source.target,
+              executionMode: source.executionMode,
+              state: source.state,
+              revision: source.revision,
+              revealTarget: source.revealTarget,
+              acceptedAt: source.acceptedAt,
             })),
           },
         },
@@ -691,6 +1250,211 @@ it("selects the first 128 active-first newest operation metadata entries", async
     workspace.getSnapshot().state.operations.map((item) => item.operationId),
   ).toEqual(ids.slice(0, 128));
   workspace.dispose();
+});
+
+it("does not republish unchanged operation details while still reading each operation with current permissions", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  const ids = ["stable-a", "stable-b", "stable-c", "changing"];
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input) => {
+      const id = input.params.operationId;
+      if (typeof id !== "string") throw new Error("operation id");
+      return {
+        kind: "operation",
+        value: {
+          operation: structuredClone({ ...operation, operationId: id }),
+        },
+      };
+    });
+  metadata(ids);
+  await waitFor(() =>
+    expect(workspace.getSnapshot().state.operations).toHaveLength(ids.length),
+  );
+  const before = workspace.getSnapshot().state.operations;
+  const published = vi.fn();
+  const stop = workspace.subscribe(published);
+  try {
+    query.mockClear();
+    metadata(ids);
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(ids.length));
+    await Promise.all(query.mock.results.map((result) => result.value));
+    expect({
+      notifications: published.mock.calls.length,
+      stableOperationObjects: workspace
+        .getSnapshot()
+        .state.operations.every((value, index) => value === before[index]),
+    }).toEqual({ notifications: 1, stableOperationObjects: true });
+    expect(workspace.getSnapshot().state.operations).toBe(before);
+    expect(query.mock.calls.map(([input]) => input.params.operationId)).toEqual(
+      ids,
+    );
+  } finally {
+    stop();
+    workspace.dispose();
+  }
+});
+
+it("publishes a new operation revision once while retaining other operation objects", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  const ids = ["stable-a", "stable-b", "stable-c", "changing"];
+  let changed = false;
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input) => {
+      const id = input.params.operationId;
+      if (typeof id !== "string") throw new Error("operation id");
+      return {
+        kind: "operation",
+        value: {
+          operation: structuredClone({
+            ...operation,
+            operationId: id,
+            revision:
+              id === "changing" && changed
+                ? String(BigInt(operation.revision) + 1n)
+                : operation.revision,
+          }),
+        },
+      };
+    });
+  metadata(ids);
+  await waitFor(() =>
+    expect(workspace.getSnapshot().state.operations).toHaveLength(ids.length),
+  );
+  const before = workspace.getSnapshot().state.operations;
+  const published = vi.fn();
+  const stop = workspace.subscribe(published);
+  try {
+    changed = true;
+    query.mockClear();
+    metadata(ids);
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(ids.length));
+    await Promise.all(query.mock.results.map((result) => result.value));
+    expect(published).toHaveBeenCalledTimes(2);
+    const current = workspace.getSnapshot().state.operations;
+    for (const id of ids.slice(0, -1))
+      expect(current.find((value) => value.operationId === id)).toBe(
+        before.find((value) => value.operationId === id),
+      );
+    expect(
+      current.find((value) => value.operationId === "changing"),
+    ).toHaveProperty("revision", String(BigInt(operation.revision) + 1n));
+  } finally {
+    stop();
+    workspace.dispose();
+  }
+});
+
+it("accepts same-revision operation detail redaction returned by a fresh authorized read", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  const full = {
+    ...operation,
+    error: {
+      code: "STORAGE_IO",
+      message: "write failed",
+      retryable: false,
+      details: { privateDiagnostic: "not displayed" },
+    },
+  };
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockResolvedValue({ kind: "operation", value: { operation: full } });
+  metadata([operation.operationId]);
+  await waitFor(() =>
+    expect(workspace.getSnapshot().state.operations).toHaveLength(1),
+  );
+  const sanitized = {
+    ...full,
+    error: { code: "STORAGE_IO", message: "write failed", retryable: false },
+  };
+  query.mockResolvedValue({
+    kind: "operation",
+    value: { operation: sanitized },
+  });
+  metadata([operation.operationId]);
+  await waitFor(() =>
+    expect(
+      workspace.getSnapshot().state.operations[0]?.error?.details,
+    ).toBeUndefined(),
+  );
+  expect(workspace.getSnapshot().state.operations[0]?.revision).toBe(
+    full.revision,
+  );
+  expect(query).toHaveBeenCalledTimes(2);
+  workspace.dispose();
+});
+
+it("still resolves a missing replay session after a same-revision operation is read again", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  const parsed = parseReply({
+    ok: true,
+    result: { kind: "session", value: fixture("SessionSnapshot") },
+  });
+  if (
+    !parsed.ok ||
+    !("kind" in parsed.result) ||
+    parsed.result.kind !== "session"
+  )
+    throw new Error("session fixture");
+  const session = parsed.result.value;
+  const replay = {
+    ...operation,
+    actionId: "replay.open",
+    state: "succeeded" as const,
+    result: {
+      kind: "opened" as const,
+      value: {
+        sessionId: session.sessionId,
+        sessionEpoch: session.sessionEpoch,
+        revision: session.revision,
+        reused: false,
+      },
+    },
+  };
+  let denied = true;
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input) => {
+      if (input.actionId === "operation.get")
+        return {
+          kind: "operation",
+          value: { operation: structuredClone(replay) },
+        };
+      if (input.actionId === "session.get") {
+        if (denied)
+          throw new HostRequestError({
+            code: "PERMISSION_DENIED",
+            message: "old authorization",
+            retryable: false,
+          });
+        return { kind: "session", value: session };
+      }
+      throw new Error(input.actionId);
+    });
+  try {
+    metadata([replay.operationId], replay);
+    await waitFor(() =>
+      expect(workspace.getSnapshot().state.error).toMatchObject({
+        code: "PERMISSION_DENIED",
+      }),
+    );
+    expect(workspace.getSnapshot().state.sessions).toHaveLength(0);
+    denied = false;
+    metadata([replay.operationId], replay);
+    await waitFor(() =>
+      expect(workspace.getSnapshot().state.sessions).toEqual([session]),
+    );
+    expect(
+      query.mock.calls.filter(([input]) => input.actionId === "session.get"),
+    ).toHaveLength(2);
+  } finally {
+    workspace.dispose();
+  }
 });
 
 it("continues authorized operation detail reads after another actor's detail is denied", async () => {
@@ -950,6 +1714,42 @@ it("discards a late trusted connection result after the provider is disposed", a
   expect(workspace.getSnapshot().state.sessions).toEqual([]);
 });
 
+it("keeps a confirmed native open successful when its later metadata refresh fails", async () => {
+  const connection = await createHostConnection(port());
+  const reply = parseReply({
+    ok: true,
+    result: { kind: "session", value: fixture("SessionSnapshot") },
+  });
+  if (!reply.ok || !("kind" in reply.result) || reply.result.kind !== "session")
+    throw new Error("fixture");
+  const session = reply.result.value;
+  const userActions = {
+    connectDevice: vi.fn().mockResolvedValue(session),
+    chooseFile: vi.fn(),
+    applyDocumentIntent: vi.fn(),
+  };
+  const workspace = createHostWorkspace(connection, userActions);
+  await workspace.refresh();
+  const error = new HostRequestError({
+    code: "STORAGE_IO",
+    message: "metadata unavailable",
+    retryable: false,
+  });
+  vi.spyOn(connection.client, "query").mockRejectedValue(error);
+  try {
+    await expect(workspace.trustedConnect(session.deviceId)).resolves.toEqual(
+      session,
+    );
+    await waitFor(() =>
+      expect(workspace.getSnapshot().state.error).toBe(error),
+    );
+    expect(workspace.getSnapshot().state.sessions).toEqual([session]);
+    expect(userActions.connectDevice).toHaveBeenCalledOnce();
+  } finally {
+    workspace.dispose();
+  }
+});
+
 it("reads typed operation input through the raw channel without constructing it from summary metadata", async () => {
   const connection = await createHostConnection(port());
   const raw = vi.spyOn(connection.transport, "rawRequest").mockResolvedValue({
@@ -1117,6 +1917,156 @@ function workspaceOperation(
   };
 }
 
+function captureStatusFixture(reference: ObjectRef): CaptureStatusResult {
+  return {
+    captureRef: reference,
+    summary: {
+      captureId: reference.id,
+      state: "complete",
+      containerComplete: true,
+      sourceContinuous: true,
+      watermarks: {
+        written: "100",
+        flushed: "100",
+        synced: "100",
+        verified: "100",
+      },
+    },
+  };
+}
+
+it.each(["host", "kind", "id", "revision"] as const)(
+  "rejects a capture status from a different %s before it can become a stop target",
+  async (mismatch) => {
+    const connection = await createHostConnection(port());
+    const reference: ObjectRef = {
+      hostId: "host",
+      kind: "capture",
+      id: "selected",
+      revision: "3",
+    };
+    const returned: ObjectRef = {
+      ...reference,
+      ...(mismatch === "host" ? { hostId: "other" } : {}),
+      ...(mismatch === "kind" ? { kind: "file" } : {}),
+      ...(mismatch === "id" ? { id: "other" } : {}),
+      ...(mismatch === "revision" ? { revision: "4" } : {}),
+    };
+    vi.spyOn(connection.client, "query").mockResolvedValue({
+      kind: "capture_status",
+      value: captureStatusFixture(returned),
+    });
+    const workspace = createHostWorkspace(connection);
+    try {
+      await expect(workspace.captureStatus(reference)).rejects.toThrow(
+        "Invalid Host RPC reply",
+      );
+    } finally {
+      workspace.dispose();
+    }
+  },
+);
+
+it("accepts the current capture status revision when the caller did not request a fixed revision", async () => {
+  const connection = await createHostConnection(port());
+  const reference: ObjectRef = {
+    hostId: "host",
+    kind: "capture",
+    id: "selected",
+  };
+  const current = captureStatusFixture({ ...reference, revision: "4" });
+  vi.spyOn(connection.client, "query").mockResolvedValue({
+    kind: "capture_status",
+    value: current,
+  });
+  const workspace = createHostWorkspace(connection);
+  try {
+    await expect(workspace.captureStatus(reference)).resolves.toEqual(current);
+  } finally {
+    workspace.dispose();
+  }
+});
+
+it("attaches verified terminal operation identity while preserving its HostRequestError", async () => {
+  const connection = await createHostConnection(port());
+  const base = workspaceFixture();
+  const terminal = {
+    ...workspaceOperation(base, "failed"),
+    error: { code: "STORAGE_IO", message: "write failed", retryable: false },
+  };
+  vi.spyOn(connection.client, "query").mockResolvedValue({
+    kind: "operation",
+    value: { operation: terminal },
+  });
+  const workspace = createHostWorkspace(connection);
+  try {
+    const error: unknown = await workspace
+      .waitForOperation(workspaceOperation(base, "queued"))
+      .catch((reason: unknown) => reason);
+    expect(error).toBeInstanceOf(HostRequestError);
+    expect(error).toMatchObject({
+      code: "STORAGE_IO",
+      executionHostId: terminal.executionHostId,
+      operationId: terminal.operationId,
+    });
+  } finally {
+    workspace.dispose();
+  }
+});
+
+it("keeps an operation-wait RPC failure free of terminal operation identity", async () => {
+  const connection = await createHostConnection(port());
+  const rpcError = new HostRequestError({
+    code: "HOST_START_FAILED",
+    message: "connection closed",
+    retryable: false,
+  });
+  vi.spyOn(connection.client, "query").mockRejectedValue(rpcError);
+  const workspace = createHostWorkspace(connection);
+  try {
+    const error: unknown = await workspace
+      .waitForOperation(workspaceOperation(workspaceFixture(), "queued"))
+      .catch((reason: unknown) => reason);
+    expect(error).toBe(rpcError);
+    expect(error).not.toHaveProperty("operationId");
+    expect(error).not.toHaveProperty("executionHostId");
+  } finally {
+    workspace.dispose();
+  }
+});
+
+it.each(["operationId", "target"] as const)(
+  "does not attach terminal identity from a mismatched operation %s",
+  async (mismatch) => {
+    const connection = await createHostConnection(port());
+    const initial = workspaceOperation(workspaceFixture(), "queued");
+    const terminal = {
+      ...initial,
+      state: "failed" as const,
+      error: { code: "STORAGE_IO", message: "write failed", retryable: false },
+      ...(mismatch === "operationId"
+        ? { operationId: "other" }
+        : { target: { ...initial.target, id: "other" } }),
+    };
+    vi.spyOn(connection.client, "query").mockResolvedValue({
+      kind: "operation",
+      value: { operation: terminal },
+    });
+    const workspace = createHostWorkspace(connection);
+    try {
+      const error: unknown = await workspace
+        .waitForOperation(initial)
+        .catch((reason: unknown) => reason);
+      expect(error).not.toBeInstanceOf(HostRequestError);
+      expect(error).toBeInstanceOf(Error);
+      expect(error).not.toHaveProperty("operationId");
+      expect(error).not.toHaveProperty("executionHostId");
+    } finally {
+      workspace.dispose();
+    }
+  },
+);
+
 it("exposes the real catalog and stale devices without inventing global write permission", async () => {
   const native = port();
   const fallback = native.request.getMockImplementation()!;
@@ -1236,6 +2186,131 @@ it("refreshes visible target rights after revocation even when catalog remains u
   expect(native.request.mock.calls.length).toBe(calls);
   workspace.dispose();
   vi.useRealTimers();
+});
+
+it("keeps an existing unexpired action observation while unrelated controls subscribe and unsubscribe", async () => {
+  vi.useFakeTimers();
+  const native = port();
+  const fallback = native.request.getMockImplementation()!;
+  native.request.mockImplementation(async (request) => {
+    if (
+      request.method === "action.query" &&
+      request.params.actionId === "action.check"
+    ) {
+      const actionId = request.params.params.actionId;
+      if (typeof actionId !== "string")
+        throw new Error("fixture action required");
+      return {
+        ok: true,
+        result: {
+          kind: "action_check",
+          value: { actionId, target: request.params.target, allowed: true },
+        },
+      };
+    }
+    return fallback(request);
+  });
+  const workspace = createHostWorkspace(await createHostConnection(native));
+  const target = {
+    hostId: "host",
+    kind: "session",
+    id: "s",
+    sessionId: "s",
+    sessionEpoch: "2",
+  };
+  const observed: (boolean | null)[] = [];
+  workspace.watchActions(
+    [
+      { actionId: "session.close", target, params: {} },
+      { actionId: "session.close", target, params: {} },
+    ],
+    (values) => observed.push(values[0]?.result?.allowed ?? null),
+  );
+  try {
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed.at(-1)).toBe(true);
+    expect(
+      native.request.mock.calls.filter(
+        ([request]) =>
+          request.method === "action.query" &&
+          request.params.actionId === "action.check",
+      ),
+    ).toHaveLength(1);
+    const stopOther = workspace.watchActions(
+      [{ actionId: "session.tx", target, params: {} }],
+      () => {},
+    );
+    expect(observed.at(-1)).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    stopOther();
+    expect(observed.at(-1)).toBe(true);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed.slice(1)).not.toContain(null);
+  } finally {
+    workspace.dispose();
+    vi.useRealTimers();
+  }
+});
+
+it("does not extend existing action validity while a newly visible control is slow", async () => {
+  vi.useFakeTimers();
+  const native = port();
+  const fallback = native.request.getMockImplementation()!;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  native.request.mockImplementation(async (request) => {
+    if (
+      request.method === "action.query" &&
+      request.params.actionId === "action.check"
+    ) {
+      const actionId = request.params.params.actionId;
+      if (typeof actionId !== "string")
+        throw new Error("fixture action required");
+      if (actionId === "session.tx") await gate;
+      return {
+        ok: true,
+        result: {
+          kind: "action_check",
+          value: { actionId, target: request.params.target, allowed: true },
+        },
+      };
+    }
+    return fallback(request);
+  });
+  const workspace = createHostWorkspace(await createHostConnection(native));
+  const target = {
+    hostId: "host",
+    kind: "session",
+    id: "s",
+    sessionId: "s",
+    sessionEpoch: "2",
+  };
+  const observed: (boolean | null)[] = [];
+  workspace.watchActions(
+    [{ actionId: "session.close", target, params: {} }],
+    (values) => observed.push(values[0]?.result?.allowed ?? null),
+  );
+  try {
+    await vi.advanceTimersByTimeAsync(400);
+    expect(observed.at(-1)).toBe(true);
+    workspace.watchActions(
+      [{ actionId: "session.tx", target, params: {} }],
+      () => {},
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed.at(-1)).toBe(true);
+    await vi.advanceTimersByTimeAsync(600);
+    expect(observed.at(-1)).toBeNull();
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed.at(-1)).toBe(true);
+  } finally {
+    release();
+    workspace.dispose();
+    vi.useRealTimers();
+  }
 });
 
 it("discards an old target observer's late grant and keeps only one check in flight", async () => {
@@ -1368,7 +2443,11 @@ it.each(["failed", "cancelled", "interrupted", "unknown"] as const)(
     });
     await expect(
       workspace.saveWorkspace(base, base.document.value),
-    ).rejects.toMatchObject({ code: "OPERATION_ABORTED" });
+    ).rejects.toMatchObject({
+      code: "OPERATION_ABORTED",
+      executionHostId: operation.executionHostId,
+      operationId: operation.operationId,
+    });
     expect(workspace.getSnapshot().state.workspace).toBeUndefined();
     workspace.dispose();
   },

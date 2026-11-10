@@ -5,8 +5,17 @@ import type {
   TxOutcome,
 } from "@serial-workbench/contracts";
 import type { WorkbenchLabels } from "./labels";
+import { operationText } from "./operation-text";
+import { createTranslator } from "../../i18n/translate";
+import { en } from "../../i18n/en";
 
 export const labels: WorkbenchLabels = {
+  operationText: operationText(createTranslator(en), (code) =>
+    code === "PERMISSION_DENIED"
+      ? en["nativeError.permissionDenied"]
+      : en["errors.INTERNAL"],
+  ),
+  logs: "Logs",
   captureSource: "Recorded sources",
   captureFirstRecord: "First displayed record",
   captureTail: "Recording",
@@ -22,9 +31,21 @@ export const labels: WorkbenchLabels = {
   captureDenied: "Recording content requires permission",
   captureYes: "Yes",
   captureNo: "No",
+  captureStatusDetails: "Recording details",
+  stopRequested: "Waiting for recording to stop",
+  retry: "Retry",
+  captureStates: {
+    recording: "Recording",
+    finalizing: "Finishing recording",
+    complete: "Recording complete",
+    incomplete: "Recording incomplete",
+    failed: "Recording failed",
+  },
   title: "Workbench",
   closeView: "Close view",
   closeSession: "Close session",
+  restoreAccess: "Restore connection access",
+  restoringAccess: "Restoring connection access…",
   operationInput: "View operation input",
   redactedInput: "Input redacted",
   replay: "Replay",
@@ -69,6 +90,7 @@ export const labels: WorkbenchLabels = {
   opening: "Opening",
   noDevices: "No devices",
   sessions: "Sessions",
+  sessionLabel: "Session",
   duplicateView: "New view",
   noSession: "Select a device to open a session",
   readOnly: "Read only",
@@ -92,8 +114,9 @@ export const labels: WorkbenchLabels = {
   sendMode: "Send mode",
   lineEnding: "Line ending",
   none: "None",
-  preview: "Byte preview",
+  draftByteCount: "Bytes to send",
   invalidHex: "Enter complete hexadecimal byte pairs",
+  invalidUtf8: "These bytes are not valid UTF-8. The HEX draft is unchanged.",
   sending: "Sending",
   receipt: "Receipt",
   awaitingReceipt: "Receipt unavailable; outcome not confirmed",
@@ -125,6 +148,27 @@ export const labels: WorkbenchLabels = {
   unknownBytes: "Bytes with unknown outcome",
   peerConfirmed: "Device acknowledged",
   peerUnconfirmed: "No device acknowledgement provided",
+  connected: "Connected",
+  closed: "Closed",
+  closing: "Closing",
+  ready: "Ready",
+  configurationPending: "Connection parameters need confirmation",
+  controlUnknown: "Control state unknown; inspect connection parameters",
+  queued: "Queued",
+  running: "Running",
+  cancelRequested: "Cancellation requested",
+  succeeded: "Completed",
+  failed: "Failed",
+  cancelled: "Cancelled",
+  interrupted: "Interrupted",
+  unknown: "Outcome unknown",
+  accepted: "Accepted by backend",
+  partial: "Partially accepted",
+  rejected: "Rejected",
+  emptyDraft: "Enter text or HEX bytes to send",
+  sendNotAllowed: "Sending is not permitted for this session or byte sequence",
+  streamUnavailable: "Live data stopped. Existing bytes are kept.",
+  errorDetails: "Error details",
   unavailable: "Host is unavailable",
 };
 export function txItem(

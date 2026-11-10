@@ -2590,7 +2590,7 @@
           "panelHeight": 240,
           "sidebarWidth": 224
         },
-        "name": "Workspace",
+        "name": "",
         "unknown": true,
         "views": []
       }
@@ -2605,7 +2605,7 @@
           "panelHeight": 240,
           "sidebarWidth": 224
         },
-        "name": "Workspace",
+        "name": "",
         "views": []
       }
     },
@@ -2619,7 +2619,7 @@
           "panelHeight": 240,
           "sidebarWidth": 224
         },
-        "name": "Workspace",
+        "name": "",
         "views": []
       }
     },
@@ -2633,7 +2633,7 @@
           "panelHeight": 240,
           "sidebarWidth": 224
         },
-        "name": "Workspace",
+        "name": "",
         "views": []
       }
     },
@@ -2644,7 +2644,7 @@
         "bindings": [],
         "captures": [],
         "favoriteBindingIds": [],
-        "name": "Workspace",
+        "name": "",
         "views": []
       }
     },
@@ -2673,7 +2673,7 @@
           "panelHeight": 240,
           "sidebarWidth": 224
         },
-        "name": "Workspace"
+        "name": ""
       }
     },
     {
@@ -2732,7 +2732,7 @@
             "panelHeight": 240,
             "sidebarWidth": 224
           },
-          "name": "Workspace",
+          "name": "",
           "views": []
         }
       }
@@ -2920,7 +2920,7 @@
               "panelHeight": 240,
               "sidebarWidth": 224
             },
-            "name": "Workspace",
+            "name": "",
             "views": []
           }
         },
@@ -2963,7 +2963,7 @@
               "panelHeight": 240,
               "sidebarWidth": 224
             },
-            "name": "Workspace",
+            "name": "",
             "views": []
           }
         }
@@ -3121,7 +3121,7 @@
                 "panelHeight": 240,
                 "sidebarWidth": 224
               },
-              "name": "Workspace",
+              "name": "",
               "views": []
             }
           },
@@ -3151,7 +3151,7 @@
                 "panelHeight": 240,
                 "sidebarWidth": 224
               },
-              "name": "Workspace",
+              "name": "",
               "views": []
             }
           },
@@ -9964,7 +9964,7 @@
           "panelHeight": 240,
           "sidebarWidth": 224
         },
-        "name": "Workspace",
+        "name": "",
         "views": []
       }
     },
@@ -10017,7 +10017,7 @@
             "panelHeight": 240,
             "sidebarWidth": 224
           },
-          "name": "Workspace",
+          "name": "",
           "views": []
         }
       }
@@ -10120,7 +10120,7 @@
               "panelHeight": 240,
               "sidebarWidth": 224
             },
-            "name": "Workspace",
+            "name": "",
             "views": []
           }
         },
@@ -10215,7 +10215,7 @@
                 "panelHeight": 240,
                 "sidebarWidth": 224
               },
-              "name": "Workspace",
+              "name": "",
               "views": []
             }
           },

@@ -6,7 +6,7 @@ import {
   useState,
   type ReactNode,
 } from "react";
-import { FileUp, Send } from "lucide-react";
+import { FileUp, Send, Save, Settings2, ReceiptText } from "lucide-react";
 import type {
   LineEnding,
   Operation,
@@ -15,7 +15,19 @@ import type {
   TerminalMode,
 } from "@serial-workbench/contracts";
 import { encodeSend, formatHex, parseHex } from "@serial-workbench/host-client";
-import { Button } from "@/components/ui/button";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { useComposerToastOffset } from "./use-composer-toast-offset";
+import {
+  operationFailureEventKey,
+  operationFailureKey,
+  WorkbenchNotice,
+} from "./workbench-notice";
+import { nativeErrorCode } from "@/lib/native-error";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
@@ -32,19 +44,39 @@ import {
   type Shortcut,
 } from "@/commands/shortcuts";
 import type { WorkbenchLabels } from "./labels";
-import { terminalTypographyStyle } from "./stream-presentation";
+import {
+  terminalTypographyStyle,
+  workbenchStatus,
+} from "./stream-presentation";
+import { TxReceiptFacts } from "./tx-receipt-facts";
+import { convertSendDraft } from "./send-draft-conversion";
 const SEND_SHORTCUT: Shortcut = {
   key: "Enter",
   primary: true,
   allowInEditable: true,
 };
 const NO_LINE_ENDING: LineEnding = { kind: "none" };
+function sameReceiptIdentity(value: Operation, admitted: Operation): boolean {
+  return (
+    value.operationId === admitted.operationId &&
+    value.executionHostId === admitted.executionHostId &&
+    value.actionId === admitted.actionId &&
+    value.target.hostId === admitted.target.hostId &&
+    value.target.kind === admitted.target.kind &&
+    value.target.id === admitted.target.id &&
+    value.target.sessionId === admitted.target.sessionId &&
+    value.target.sessionEpoch === admitted.target.sessionEpoch
+  );
+}
 export type SendPanelProps = {
   /** 只约束发送能力；本地草稿仍可编辑。 */
   readOnly?: boolean;
   draftCaption?: string;
   draftActions?: ReactNode;
+  onSaveDrafts?: () => void;
+  draftsDirty?: boolean;
   mode?: TerminalMode;
+  /** 与同一事件中的 onDraftChange 一并提交转换后的模式与正文。 */
   onSendModeChange?: (mode: TerminalMode) => void;
   terminalSettings?: TerminalSettings;
   presentationLabels?: {
@@ -63,11 +95,15 @@ export type SendPanelProps = {
   onSendFile?: () => void;
   fileBusy?: boolean;
   operations?: readonly Operation[];
+  formatError?: (error: { code?: string }) => string;
+  deviceName?: string;
 };
 export function SendPanel({
   readOnly = false,
   draftCaption,
   draftActions,
+  onSaveDrafts,
+  draftsDirty = false,
   session,
   draft,
   onDraftChange,
@@ -78,13 +114,20 @@ export function SendPanel({
   onSendFile,
   fileBusy = false,
   operations = [],
+  formatError,
+  deviceName,
   initialMode = "text",
   mode: controlledMode,
   onSendModeChange,
   terminalSettings,
   presentationLabels,
 }: SendPanelProps) {
+  const composer = useComposerToastOffset();
   const id = useId();
+  const [receiptOpen, setReceiptOpen] = useState(false);
+  const [conversionError, setConversionError] = useState<
+    "INVALID_HEX" | "INVALID_UTF8"
+  >();
   const [localMode, setMode] = useState<TerminalMode | null>(null);
   const mode =
     controlledMode ?? localMode ?? terminalSettings?.sendMode ?? initialMode;
@@ -102,17 +145,47 @@ export function SendPanel({
     busy: boolean;
     receipt?: Operation;
     error?: string;
+    errorCode?: string;
+    errorEventKey?: string;
   }>({ scope: null, busy: false });
   const currentSend = sendState.scope === sessionScope ? sendState : undefined;
   const busy = currentSend?.busy ?? false;
   const admittedReceipt = currentSend?.receipt;
   const receiptId = admittedReceipt?.operationId;
   const receipt =
-    operations.find((operation) => operation.operationId === receiptId) ??
-    admittedReceipt;
+    operations.find(
+      (operation) =>
+        admittedReceipt && sameReceiptIdentity(operation, admittedReceipt),
+    ) ?? admittedReceipt;
   const error = currentSend?.error;
+  const errorCode =
+    error !== undefined ? currentSend?.errorCode : receipt?.error?.code;
+  const outcome =
+    receipt?.result?.kind === "tx"
+      ? receipt.result.value.outcome
+      : receipt?.state === "failed"
+        ? "rejected"
+        : receipt?.state === "unknown"
+          ? "unknown"
+          : undefined;
+  const receiptFault =
+    !busy &&
+    outcome &&
+    (outcome === "partial" || outcome === "unknown" || outcome === "rejected")
+      ? errorCode && formatError
+        ? formatError({ code: errorCode })
+        : `${labels.send}: ${workbenchStatus(outcome, labels)}`
+      : undefined;
+  const noticeMessage = error ?? receiptFault;
+  const noticeEventKey = error
+    ? currentSend?.errorEventKey
+    : receiptFault && receipt
+      ? operationFailureKey(receipt)
+      : undefined;
   const pending = useRef<AbortController | null>(null);
   useEffect(() => {
+    setReceiptOpen(false);
+    setConversionError(undefined);
     setSendState((current) =>
       current.scope === sessionScope
         ? current
@@ -166,10 +239,19 @@ export function SendPanel({
       : session.readOnly
         ? labels.readOnly
         : session.txGate !== "ready"
-          ? `${labels.status}: ${session.txGate}`
+          ? workbenchStatus(session.txGate, labels)
           : permissionAllowed === false && preview.bytes.length > 0
-            ? labels.unavailable
+            ? labels.sendNotAllowed
             : undefined;
+  const sendHint =
+    disabledReason ??
+    (preview.invalid
+      ? labels.invalidHex
+      : busy
+        ? labels.sending
+        : !preview.bytes.length
+          ? labels.emptyDraft
+          : `${formatShortcut(SEND_SHORTCUT)} ${labels.send}`);
   async function send() {
     if (disabled || preview.invalid || busy || !preview.bytes.length) return;
     const controller = new AbortController();
@@ -182,12 +264,15 @@ export function SendPanel({
       if (isCurrent())
         setSendState({ scope: sessionScope, busy: false, receipt: result });
     } catch (reason) {
+      const code = nativeErrorCode(reason);
       if (isCurrent())
         setSendState({
           scope: sessionScope,
           busy: false,
           receipt: admittedReceipt,
-          error: reason instanceof Error ? reason.message : String(reason),
+          error: formatError?.({ code }) ?? `${labels.send}: ${labels.failed}`,
+          errorCode: code,
+          errorEventKey: operationFailureEventKey(reason),
         });
     } finally {
       if (pending.current === controller) pending.current = null;
@@ -195,16 +280,16 @@ export function SendPanel({
   }
   return (
     <section
+      ref={composer}
       aria-label={labels.send}
       className="workbench-send"
       data-panel-id="send"
-      style={readOnly && draftActions ? { rowGap: "0.25rem" } : undefined}
     >
       <div
         className="workbench-toolbar workbench-compose-toolbar"
         data-surface="transparent"
       >
-        <h2>{labels.send}</h2>
+        <h2 className="sr-only">{labels.send}</h2>
         <ToggleGroup
           type="single"
           size="sm"
@@ -214,6 +299,14 @@ export function SendPanel({
           aria-label={labels.sendMode}
           onValueChange={(value) => {
             if (value !== "text" && value !== "hex") return;
+            if (value === mode) return;
+            const converted = convertSendDraft(draft, mode, value);
+            if (!converted.ok) {
+              setConversionError(converted.code);
+              return;
+            }
+            setConversionError(undefined);
+            onDraftChange(converted.draft);
             setMode(value);
             onSendModeChange?.(value);
           }}
@@ -254,133 +347,206 @@ export function SendPanel({
             )}
           </SelectContent>
         </Select>
+        {presentationLabels && ending.kind === "custom" && (
+          <Popover>
+            <PopoverTrigger asChild>
+              <WorkbenchIconButton label={presentationLabels.customLineEnding}>
+                <Settings2 aria-hidden="true" />
+              </WorkbenchIconButton>
+            </PopoverTrigger>
+            <PopoverContent
+              aria-label={presentationLabels.customLineEnding}
+              className="workbench-detail-popover"
+              side="top"
+              align="start"
+            >
+              <label className="workbench-custom-ending">
+                {presentationLabels.customLineEndingHex}
+                <Input
+                  value={suffixHex}
+                  onChange={(event) => setCustomHex(event.target.value)}
+                  aria-invalid={preview.invalid}
+                  aria-describedby={
+                    preview.invalid ? `${id}-invalid` : undefined
+                  }
+                />
+              </label>
+            </PopoverContent>
+          </Popover>
+        )}
         <span className="workbench-toolbar-spacer" />
-        <Button
-          size="sm"
-          variant="ghost"
-          aria-label={labels.sendFile}
+        {draftActions}
+        {onSaveDrafts && (
+          <WorkbenchIconButton
+            label={labels.saveDrafts}
+            disabled={!draftsDirty}
+            onClick={onSaveDrafts}
+          >
+            <Save aria-hidden="true" />
+          </WorkbenchIconButton>
+        )}
+        <Popover open={receiptOpen} onOpenChange={setReceiptOpen}>
+          <PopoverTrigger asChild>
+            <WorkbenchIconButton label={labels.receipt} disabled={!receipt}>
+              <ReceiptText aria-hidden="true" />
+            </WorkbenchIconButton>
+          </PopoverTrigger>
+          {receipt && (
+            <PopoverContent
+              aria-label={labels.receipt}
+              className="workbench-detail-popover workbench-send-receipt"
+              side="top"
+              align="end"
+            >
+              <div role="status" aria-label={labels.receipt}>
+                <p>{workbenchStatus(receipt.state, labels)}</p>
+                <p className="font-mono">{receiptId}</p>
+                {receipt.result?.kind === "tx" && (
+                  <TxReceiptFacts
+                    receipt={receipt.result.value}
+                    labels={labels}
+                  />
+                )}
+              </div>
+            </PopoverContent>
+          )}
+        </Popover>
+        <WorkbenchIconButton
+          label={labels.sendFile}
           onClick={onSendFile}
           disabled={
             !session || session.state !== "open" || !onSendFile || fileBusy
           }
-          title={!onSendFile ? labels.fileUnavailable : undefined}
+          tooltip={!onSendFile ? labels.fileUnavailable : labels.sendFile}
         >
           <FileUp aria-hidden="true" />
-          <span className="workbench-tool-label">{labels.sendFile}</span>
-        </Button>
-        <output
-          aria-label={labels.preview}
-          tabIndex={0}
-          className="workbench-byte-preview font-mono"
-        >
-          {formatHex(preview.bytes)}{" "}
-          <span className="text-muted-foreground">
-            ({preview.bytes.length} {labels.bytes})
-          </span>
-        </output>
+        </WorkbenchIconButton>
       </div>
-      {presentationLabels && ending.kind === "custom" && (
-        <label className="workbench-custom-ending">
-          {presentationLabels.customLineEndingHex}
-          <Input
-            value={suffixHex}
-            onChange={(event) => setCustomHex(event.target.value)}
-            aria-invalid={preview.invalid}
-            aria-describedby={preview.invalid ? `${id}-invalid` : undefined}
-          />
-        </label>
-      )}
-      {(draftCaption || draftActions) && (
-        <div className="flex items-center justify-between gap-2">
-          {draftCaption && (
-            <p
-              id={`${id}-draft-owner`}
-              className="text-xs text-muted-foreground"
-            >
-              {draftCaption}
-            </p>
-          )}
-          {draftActions && (
-            <div className="flex items-center gap-2">{draftActions}</div>
-          )}
-        </div>
+      <span role="status" className="sr-only">
+        {receipt
+          ? `${labels.receipt}: ${workbenchStatus(receipt.state, labels)}`
+          : ""}
+      </span>
+      {draftCaption && (
+        <span id={`${id}-draft-owner`} className="sr-only">
+          {draftCaption}
+        </span>
       )}
       <div className="workbench-compose-body">
         <label htmlFor={`${id}-draft`} className="sr-only">
           {labels.draft}
         </label>
-        <Textarea
-          id={`${id}-draft`}
-          value={draft}
-          onChange={(event) => onDraftChange(event.target.value)}
-          aria-invalid={preview.invalid}
-          aria-describedby={
-            [
-              draftCaption ? `${id}-draft-owner` : undefined,
-              preview.invalid ? `${id}-invalid` : undefined,
-            ]
-              .filter(Boolean)
-              .join(" ") || undefined
-          }
-          className="workbench-draft font-mono"
-          style={terminalTypographyStyle(terminalSettings?.typography)}
-          rows={3}
-          onKeyDown={(event) => {
-            if (matchesShortcut(event.nativeEvent, SEND_SHORTCUT)) {
-              event.preventDefault();
-              void send();
+        <div
+          className="workbench-draft-frame"
+          data-surface="control"
+          data-invalid={preview.invalid || undefined}
+        >
+          <Textarea
+            id={`${id}-draft`}
+            data-surface="transparent"
+            value={draft}
+            onChange={(event) => {
+              setConversionError(undefined);
+              onDraftChange(event.target.value);
+            }}
+            aria-invalid={preview.invalid}
+            aria-describedby={
+              [
+                draftCaption ? `${id}-draft-owner` : undefined,
+                preview.invalid ? `${id}-invalid` : undefined,
+              ]
+                .filter(Boolean)
+                .join(" ") || undefined
             }
-          }}
-        />
-        <Button
-          size="sm"
+            className="workbench-draft font-mono"
+            style={terminalTypographyStyle(terminalSettings?.typography)}
+            rows={3}
+            onKeyDown={(event) => {
+              if (matchesShortcut(event.nativeEvent, SEND_SHORTCUT)) {
+                event.preventDefault();
+                void send();
+              }
+            }}
+          />
+          <span
+            role="note"
+            className="workbench-draft-bytes"
+            aria-label={labels.draftByteCount}
+          >
+            {preview.invalid ? "—" : preview.bytes.length} {labels.bytes}
+          </span>
+        </div>
+        <WorkbenchIconButton
+          label={busy ? labels.sending : labels.send}
+          tooltip={sendHint}
+          variant="default"
           className="workbench-send-button"
-          aria-describedby={disabledReason ? `${id}-send-reason` : undefined}
+          aria-describedby={`${id}-send-reason`}
           onClick={() => void send()}
           disabled={
             disabled || preview.invalid || !preview.bytes.length || busy
           }
         >
           <Send aria-hidden="true" />
-          {busy ? labels.sending : labels.send}
-        </Button>
+        </WorkbenchIconButton>
+        {preview.invalid && (
+          <span id={`${id}-invalid`} className="sr-only">
+            {labels.invalidHex}
+          </span>
+        )}
       </div>
-      <div className="workbench-compose-hint text-muted-foreground">
-        <span id={`${id}-send-reason`}>
-          {disabledReason ?? `${formatShortcut(SEND_SHORTCUT)} ${labels.send}`}
-        </span>
-        <span>
-          UTF-8 ·{" "}
-          {ending.kind === "none"
-            ? labels.none
-            : ending.kind === "custom"
-              ? presentationLabels?.customLineEnding
-              : ending.kind.toUpperCase()}
-        </span>
+      <div className="sr-only">
+        <span id={`${id}-send-reason`}>{sendHint}</span>
       </div>
-      {preview.invalid && (
-        <p role="alert" id={`${id}-invalid`}>
-          {labels.invalidHex}
-        </p>
-      )}
-      {error && <p role="alert">{error}</p>}
-      {receipt && (
-        <div
-          role="status"
-          aria-label={labels.receipt}
-          className="workbench-send-receipt"
-        >
-          <details>
-            <summary>
-              {labels.receipt}: {receipt.state}
-              {receipt?.result?.kind === "tx"
-                ? ` · ${receipt.result.value.outcome} [${receipt.result.value.byteStart}, ${receipt.result.value.byteEnd})`
-                : ""}
-            </summary>
-            <p className="font-mono">{receiptId}</p>
-          </details>
-        </div>
-      )}
+      <WorkbenchNotice
+        noticeKey={`draft-conversion:${conversionError ?? "none"}`}
+        log={
+          conversionError
+            ? {
+                module: "serial",
+                level: "error",
+                code: conversionError,
+                message:
+                  conversionError === "INVALID_HEX"
+                    ? labels.invalidHex
+                    : labels.invalidUtf8,
+              }
+            : undefined
+        }
+      >
+        {conversionError ? (
+          <p role="alert">
+            {conversionError === "INVALID_HEX"
+              ? labels.invalidHex
+              : labels.invalidUtf8}
+          </p>
+        ) : null}
+      </WorkbenchNotice>
+      <WorkbenchNotice
+        eventKey={noticeEventKey}
+        noticeKey={
+          error
+            ? `send:${sessionScope}:${errorCode}:${error}`
+            : `receipt:${receiptId}:${receipt?.revision}`
+        }
+        log={
+          noticeMessage
+            ? {
+                module: "serial",
+                level:
+                  error === undefined &&
+                  (outcome === "partial" || outcome === "unknown")
+                    ? "warning"
+                    : "error",
+                message: noticeMessage,
+                code: errorCode,
+                context: deviceName,
+              }
+            : undefined
+        }
+      >
+        {noticeMessage && <p role="alert">{noticeMessage}</p>}
+      </WorkbenchNotice>
     </section>
   );
 }

@@ -3,6 +3,7 @@
   SettingsSnapshot,
   U64,
 } from "@serial-workbench/contracts";
+import { operationFailureEventKey } from "./operation-failure";
 
 export type PersistenceStatus = "loading" | "saving" | "saved" | "error";
 export type SettingsState<T = SharedSettings> = {
@@ -10,6 +11,7 @@ export type SettingsState<T = SharedSettings> = {
   revision: U64 | undefined;
   status: PersistenceStatus;
   error: string | null;
+  errorEventKey?: string;
 };
 export type SettingsDocument<T> = Pick<SettingsSnapshot, "revision"> & {
   value: T;
@@ -40,6 +42,7 @@ export class SettingsSync<T extends object = SharedSettings> {
   private saving = false;
   private loading = false;
   private error: string | null = null;
+  private errorEventKey: string | undefined;
   private initialization: Promise<void> | undefined;
   private unlisten: (() => void) | undefined;
   private subscriptionGeneration = 0;
@@ -72,6 +75,7 @@ export class SettingsSync<T extends object = SharedSettings> {
       revision: this.revision,
       status,
       error: this.error,
+      ...(this.errorEventKey ? { errorEventKey: this.errorEventKey } : {}),
     });
     if (status === "saved" || status === "error") {
       for (const completion of this.completions) {
@@ -83,6 +87,7 @@ export class SettingsSync<T extends object = SharedSettings> {
   }
   private fail(error: unknown) {
     this.error = settingsErrorCode(error);
+    this.errorEventKey = operationFailureEventKey(error);
     this.emit();
   }
   private accept(snapshot: SettingsDocument<T>) {
@@ -107,6 +112,7 @@ export class SettingsSync<T extends object = SharedSettings> {
     if (this.initialization) return this.initialization;
     this.loading = true;
     this.error = null;
+    this.errorEventKey = undefined;
     this.emit();
     this.initialization = Promise.resolve()
       .then(async () => {
@@ -160,6 +166,31 @@ export class SettingsSync<T extends object = SharedSettings> {
     this.emit();
     void this.flush();
   }
+  whenSaved(signal?: AbortSignal): Promise<void> {
+    if (signal?.aborted) return Promise.reject(signal.reason);
+    if (this.stopped) return Promise.reject({ code: "STORAGE_UNAVAILABLE" });
+    return new Promise((resolve, reject) => {
+      const cleanup = () => signal?.removeEventListener("abort", abort);
+      const completion = {
+        resolve: () => {
+          cleanup();
+          resolve();
+        },
+        reject: (error: { code: string }) => {
+          cleanup();
+          reject(error);
+        },
+      };
+      const abort = () => {
+        this.completions.delete(completion);
+        cleanup();
+        reject(signal?.reason);
+      };
+      this.completions.add(completion);
+      signal?.addEventListener("abort", abort, { once: true });
+      this.emit();
+    });
+  }
   async retry() {
     if (this.stopped || this.saving) return;
     await this.initialize();
@@ -183,6 +214,7 @@ export class SettingsSync<T extends object = SharedSettings> {
     )
       return;
     this.saving = true;
+    this.errorEventKey = undefined;
     try {
       while (!this.stopped && !this.error && Object.keys(this.pending).length) {
         this.inFlight = this.pending;

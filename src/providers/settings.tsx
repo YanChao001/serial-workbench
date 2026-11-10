@@ -8,7 +8,8 @@
   type ReactNode,
 } from "react";
 import { defaults, type SharedSettings } from "@serial-workbench/contracts";
-import { SettingsContext } from "./settings-context";
+import { SettingsContext, type SettingsContextValue } from "./settings-context";
+import { useConnectionPreferences } from "./use-connection-preferences";
 import { HostContext } from "./host-context";
 import {
   applySettings,
@@ -70,12 +71,15 @@ export function SettingsProvider({
     [injectedMedia, native, connection],
   );
   const [initial] = useState(readInitialSettings);
+  const connections = useConnectionPreferences();
+  const retryConnections = connections.retry;
   const [initialClient] = useState(readInitialClientPreferences);
   const [settings, setSettings] = useState(initial.settings);
   const [sharedPersistence, setPersistence] = useState<PersistenceStatus>(
     initial.error ? "error" : native ? "loading" : "saved",
   );
   const [sharedError, setPersistenceError] = useState(initial.error);
+  const [sharedErrorEventKey, setSharedErrorEventKey] = useState<string>();
   const [clientState, setClientState] = useState<{
     status: PersistenceStatus;
     error: string | null;
@@ -103,18 +107,37 @@ export function SettingsProvider({
       ? settingsErrorCode(host.state.error)
       : null;
   const persistenceError =
-    attachmentError ?? sharedError ?? clientState.error ?? effectsError;
+    attachmentError ??
+    sharedError ??
+    clientState.error ??
+    connections.error ??
+    effectsError;
+  const persistenceScope = attachmentError
+    ? "connection"
+    : sharedError
+      ? "shared"
+      : clientState.error
+        ? "client"
+        : connections.error
+          ? "serial"
+          : effectsError
+            ? "effects"
+            : undefined;
   const persistence: PersistenceStatus = persistenceError
     ? "error"
     : (native && !connection) ||
         sharedPersistence === "loading" ||
-        clientState.status === "loading"
+        clientState.status === "loading" ||
+        connections.status === "loading"
       ? "loading"
       : sharedPersistence === "saving" ||
           clientState.status === "saving" ||
+          connections.status === "saving" ||
           effectsPending
         ? "saving"
         : "saved";
+  const persistenceEventKey =
+    persistenceScope === "shared" ? sharedErrorEventKey : undefined;
   useEffect(() => {
     if (!native) return;
     for (const [scope, code] of [
@@ -146,11 +169,13 @@ export function SettingsProvider({
       localStorage.setItem(STORAGE_KEY, JSON.stringify(settingsDocument(next)));
       setPersistence("saved");
       setPersistenceError(null);
+      setSharedErrorEventKey(undefined);
       previewPending.current = {};
       return true;
     } catch {
       setPersistence("error");
       setPersistenceError("STORAGE_UNAVAILABLE");
+      setSharedErrorEventKey(undefined);
       return false;
     }
   }, []);
@@ -171,6 +196,7 @@ export function SettingsProvider({
         publish({ ...state.settings, ...clientPreferences(current.current) });
         setPersistence(state.status);
         setPersistenceError(state.error);
+        setSharedErrorEventKey(state.errorEventKey);
         setCommittedRevision(state.revision);
       },
     );
@@ -308,6 +334,7 @@ export function SettingsProvider({
     ]);
   }, [native, persistenceError, clientState.error, publish, savePreview]);
   const retrySave = useCallback(() => {
+    void retryConnections();
     if (clientSync.current) void clientSync.current.retry();
     if (native) {
       if (sync.current) {
@@ -317,6 +344,7 @@ export function SettingsProvider({
         void host?.refresh().catch((error) => {
           setPersistence("error");
           setPersistenceError(settingsErrorCode(error));
+          setSharedErrorEventKey(undefined);
         });
       setEffectsRetry((value) => value + 1);
       return;
@@ -333,18 +361,32 @@ export function SettingsProvider({
       publish(next);
       savePreview(next);
     } else savePreview(current.current);
-  }, [host, native, publish, savePreview]);
-  const value = useMemo(
+  }, [host, native, publish, savePreview, retryConnections]);
+  const value = useMemo<SettingsContextValue>(
     () => ({
       settings,
       update,
       reset,
       persistence,
       persistenceError,
+      persistenceEventKey,
+      persistenceScope,
       retrySave,
       media,
+      connections,
     }),
-    [settings, update, reset, persistence, persistenceError, retrySave, media],
+    [
+      settings,
+      update,
+      reset,
+      persistence,
+      persistenceError,
+      persistenceEventKey,
+      persistenceScope,
+      retrySave,
+      media,
+      connections,
+    ],
   );
   return (
     <SettingsContext.Provider value={value}>

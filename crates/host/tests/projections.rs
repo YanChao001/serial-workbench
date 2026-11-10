@@ -8,7 +8,7 @@ use serial_workbench_host::{
 use std::{
     sync::{
         Arc,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
     },
     time::Duration,
 };
@@ -802,6 +802,7 @@ async fn revoked_then_reauthorized_subscription_cannot_revive_queued_secret() {
 }
 
 struct IdleClock {
+    now: AtomicU64,
     runtime_thread: std::thread::ThreadId,
     armed: AtomicBool,
     waiting: Notify,
@@ -809,6 +810,7 @@ struct IdleClock {
 impl IdleClock {
     fn new() -> Self {
         Self {
+            now: AtomicU64::new(0),
             runtime_thread: std::thread::current().id(),
             armed: AtomicBool::new(false),
             waiting: Notify::new(),
@@ -817,17 +819,20 @@ impl IdleClock {
     fn arm(&self) {
         self.armed.store(true, Ordering::SeqCst);
     }
+    fn advance_ms(&self, ms: u64) {
+        self.now.fetch_add(ms * 1_000_000, Ordering::SeqCst);
+    }
 }
 impl Clock for IdleClock {
     fn mono_ns(&self) -> u64 {
-        // grant_remaining 在 current-thread 的等待分支调用时钟；Auth 检查在 blocking 线程。
+        // wait_grant_expiry 在 current-thread 的等待分支调用时钟；Auth 检查在 blocking 线程。
         // 发信号到 select 之间没有 await，同线程测试只有在 next 真正 Pending 后才继续。
         if std::thread::current().id() == self.runtime_thread
             && self.armed.swap(false, Ordering::SeqCst)
         {
             self.waiting.notify_one();
         }
-        0
+        self.now.load(Ordering::SeqCst)
     }
     fn wall_time(&self) -> Timestamp {
         Timestamp::try_from("2026-11-07T00:00:00Z").unwrap()
@@ -889,33 +894,13 @@ async fn idle_subscription_cannot_revive_after_coalesced_revoke_and_authorize() 
     assert_eq!(f.projections.reader_count(), 0);
 }
 
-struct ElapsedClock(std::time::Instant);
-impl Clock for ElapsedClock {
-    fn mono_ns(&self) -> u64 {
-        self.0.elapsed().as_nanos().try_into().unwrap()
-    }
-    fn wall_time(&self) -> Timestamp {
-        Timestamp::try_from("2026-11-07T00:00:00Z").unwrap()
-    }
-}
-#[tokio::test]
+#[tokio::test(flavor = "current_thread")]
 async fn idle_subscription_expires_without_authorization_write_or_delta() {
-    let f = Fixture::with_clock(
-        ProjectionLimits::default(),
-        "content.read",
-        Arc::new(ElapsedClock(std::time::Instant::now())),
-    );
-    f.auth
-        .authorize(
-            &f.control,
-            AuthorizeParams {
-                client_id: id("projection-client"),
-                permissions: vec!["content.read".into()],
-                targets: vec![f.target.clone()],
-                expires_at: Some(Timestamp::try_from("2026-11-07T00:00:00.200Z").unwrap()),
-            },
-        )
-        .unwrap();
+    let clock = Arc::new(IdleClock::new());
+    let f = Fixture::with_clock(ProjectionLimits::default(), "content.read", clock.clone());
+    f.authorize_content(Some(
+        Timestamp::try_from("2026-11-07T00:00:00.200Z").unwrap(),
+    ));
     let cursor = f
         .projections
         .snapshot(&f.actor, &f.scope)
@@ -927,12 +912,24 @@ async fn idle_subscription_expires_without_authorization_write_or_delta() {
         .subscribe(&f.actor, &f.scope, &cursor)
         .await
         .unwrap();
-    let error = tokio::time::timeout(Duration::from_secs(2), reader.next())
+    let grant_revision = f.auth.grant_revision(&f.actor).unwrap();
+    clock.arm();
+    let waiting = tokio::spawn(async move { reader.next().await });
+    tokio::time::timeout(Duration::from_secs(2), clock.waiting.notified())
         .await
+        .unwrap();
+    assert!(!waiting.is_finished());
+    assert_eq!(f.projections.reader_count(), 1);
+    // Only advance the deadline after the reader has entered its actual idle wait.
+    clock.advance_ms(200);
+    let error = tokio::time::timeout(Duration::from_secs(2), waiting)
+        .await
+        .unwrap()
         .unwrap()
         .unwrap_err();
     assert_eq!(error.code, "PERMISSION_DENIED");
     assert_eq!(f.projections.reader_count(), 0);
+    assert_eq!(f.auth.grant_revision(&f.actor).unwrap(), grant_revision);
 }
 
 #[tokio::test]

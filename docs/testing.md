@@ -16,6 +16,8 @@
 
 测试验证用户行为和模块边界。fixture 提供可控输入和失败，不替代真实 Host/系统能力；删除功能同时清专属测试。低影响可逆改动选择直接核验，避免镜像实现的断言或重复运行未变全集。
 
+共享文档默认值变更须同时核对 Core、生成 fixture 与 Host 文档集成测试；系统默认值和用户显式命名分别验证，不能只跑默认值所在包。
+
 Host 脚本化夹具的 Operation 等待保留五秒门槛，数据库读取在阻塞 worker 中执行，超时只报告最后已读状态及后端进展，不在失败路径追加同步查询。默认新建 profile 在 panic 时保留到 `artifacts/rust-failures/`，CI 失败时上传；外部传入目录原地保留，通过时沿用 TempDir 常规清理。授权到期使用可控时钟，先建立 reader 等待再推进，并独立观察后台监视器释放预算；BREAK 持续时间从业务 Asserted 屏障后推进。饱和关停区分首轮有界未完成报告与最终责任退出，测试总预算不放宽生产的关闭/关停预算，完整核对操作归属和证据。
 
 `pnpm test` 汇总应用代码、Host 客户端和 Rust 导出契约，参数化输入分别计数。格式与数值边界集中在契约或纯函数测试，界面选择代表性交互；同一行为重复覆盖时合并。样式以浏览器实际布局、可读性和无障碍验证，避免用源码扫描器、CSS 类名或配置文本复刻实现。
@@ -31,6 +33,8 @@ pnpm verify --jobs 1
 ```
 
 verify 的实际步骤见 [verify.mjs](../scripts/verify.mjs)，本轮日志写入 `.cache/verify/`。浏览器、预览端口和报告目录不并发运行；Cargo/生成任务共用 target 时顺序执行。
+
+工程脚本的文件级并发固定为 4，避免高核数 Windows 上大量文件同时启动系统探针；`verify --jobs 1` 只控制检查组，不能限制组内并发。此限制保留全部用例和原有探针期限；实际超时仍报失败，不跳过进程核对。
 
 组件测试 mock `@/lib/tauri`，门面契约测试再 mock 底层 Tauri API。脚本/进程测试使用自建临时目录和持有的进程，Host 使用独立 profile；测试失败保留必要现场，不触及真实用户数据。
 
@@ -49,15 +53,21 @@ pnpm test:ui
 
 真实桌面通过 `pnpm e2e:build` 与 `pnpm test:e2e --interactive --skip-build` 运行 `e2e/specs/`，使用测试配置和 WebDriver。构建包含相邻同源 Host/CLI/MCP，收据校验源码、target/profile 与程序哈希；runner 使用独立 Host profile、持有 PID、正常 CLI 认证及实际退出，失败保留现场。工作台场景在同一窗口内请求 runner 重启其持有的 Host，核对旧实例退出、新 epoch、显式重新附着、订阅及未发送草稿。
 
+WebDriver 不自动重发失败或超时的命令：脚本报错前可能已执行原生副作用。`e2e/webdriver-transport.test.mjs` 用实际驱动配置及独立 HTTP 夹具验证一次投递，日常检查不启动原生窗口；界面等待仍由各用例的只读观察条件负责。
+
+`scripts/ipc-transport.test.mjs` 检查单一原生投递、认证和序列化兼容、独立用户调用及投递后错误不重放；真实 Native 日志另检查 RPC 和订阅建立冲突，reporter 通过仍须满足日志门控。E2E 的桌面、Host、CLI 与 MCP 由同一次 Cargo 选择构建，保留显式 target、锁文件、独立 feature/配置与四入口哈希收据。
+
 设置场景分别读取 Host SharedSettings 和 Native ClientState，按字符串 revision 保存并等待 Operation 终态。媒体场景仅在测试 feature 中用 suite 固定 PNG 替代系统选择对话框，后续仍经过正式文件检查、登记、授权和媒体票据；这不验证系统选择对话框本身。I5/I7 接线已在候选 `9283f22` 的完整四目标 CI 通过，见[进度](./progress.md#当前验证)；日常仍不在本机启动真实窗口。
 
 同一 Native 阶段串行复用 profile 和界面状态；首个失败后停止该阶段并保留截图/日志，避免后续依赖状态的连锁超时。成功候选仍执行全部阶段和场景。授权恢复定向检查覆盖多个终态无 ACK、正常/应急容量及实际回收、连续授权、恢复查询再次遇到授权变化、真实撤权拒绝，以及旧 reader 回调隔离；恢复只查询和订阅，不重放发送动作。退休检查还验证普通 RPC、订阅及设置副作用不会隐式附着或启动 Host，明确附着后才允许新代次访问。
+
+每个成功 Native 阶段在实际进程回收后检查本阶段原生日志，并保存 `rpc-request-conflicts.json` 的字节数、摘要和冲突计数。套件未主动注入的在途请求冲突即使未使 WebDriver 用例失败，也会拒绝该阶段；缺失或空日志不计通过。已安排的 Host 重启与权限失败仍按所属场景检查，不用统一忽略全部日志错误。普通 EOF 属于 debug；独立 Native 程序显式开启调试日志以保留其时刻，不将正常关停提高为生产告警，也不改变 Host/CLI 默认日志级别。独立 E2E 固定记录安全的 DeviceConnect 阶段元数据，普通程序仍只在 debug 级别输出，不记录业务身份或正文。
 
 原生桥接库回归用真实 Host 暂停旧订阅关闭，连续投递 300 个晚帧并 ACK 另一活跃订阅，核对旧帧不会耗尽建立队列；建立请求失败/取消会释放早帧，合法建立请求的共享条数/字节溢出仍拒绝。IPC 回归区分零字节撤权/epoch 失效与部分帧中断；接纳剪贴板动作后，通过真实 writer 零字节撤权及 `operation.get` 核对 Failed/错误码、无伪造回执及连接继续可用。会话测试用线程退出屏障区分 completed、Closed、关闭操作及实际 join，不以增加等待上限修正断言。
 
 原生链路故障先本机定向复现并收齐本轮 CI 的实际失败，再手动运行 `ci.yml` 的 `native_preflight=true`；`native_preflight_target` 默认 Ubuntu x64，可选择实际失败的 Windows x64、macOS arm64/x64，执行与完整检查相同的 fresh、persisted、centered 三阶段。通过后，对冻结候选以 `native_preflight=false`、`desktop_e2e=true` 运行完整四目标门禁。预检结果单独命名，不计里程碑验收；两种模式均保留原生收据和测试日志。原生驱动的 DOM 点击与真实指针事件有差异，菜单可使用产品提供的键盘入口；标签切换须等待选中状态及对应草稿完成渲染，不复用切换前的元素快照。不得通过直接修改应用状态绕过交互。
 
-预检并发按 ref/target 隔离，完整模式仍按 ref 串行。Linux Native 安装使用非交互与 `--no-install-recommends`，显式保留 Xvfb/xauth、CJK 字体、调试符号及媒体解码包；环境准备预算 12 分钟，测试预算不变。安装超时和未获得 runner 的取消单独记录，未执行的场景不能计为软件失败或通过；同候选的预检偶发通过也不能覆盖完整模式的实际失败。
+预检并发按 ref/target 隔离，完整模式仍按 ref 串行。Linux Rust、绑定及 Native 共用[依赖脚本](../scripts/ci-linux-deps.sh)，非交互且不安装推荐包；只将已知 Azure 镜像 URI 改为 Ubuntu 官方源，保留安全源、签名、Xvfb/xauth、CJK 字体、调试符号及媒体解码必需包。下载阶段单独限 480 秒，成功后从已下载归档安装；不在 dpkg 阶段套额外超时。环境准备预算 12 分钟，软件测试预算不变。安装超时单独记录，离线场景只有实际执行后才上传证据，实际执行却缺失仍报错；未执行不能计为软件失败或通过，同候选预检通过也不能覆盖完整模式的实际失败。
 
 ## Rust 与生成
 

@@ -66,6 +66,36 @@ function setup(backend: SettingsBackend) {
 }
 
 describe("Host shared settings synchronization", () => {
+  it("keeps verified failure identity only until the next actual retry and never borrows it for a same-code RPC failure", async () => {
+    const host = store();
+    vi.spyOn(host.backend, "save")
+      .mockRejectedValueOnce({
+        code: "STORAGE_IO",
+        executionHostId: "host",
+        operationId: "verified-save",
+      })
+      .mockRejectedValueOnce({ code: "STORAGE_IO" });
+    const env = setup(host.backend);
+    await env.sync.start();
+    env.sync.update({ language: "en" });
+    await vi.waitFor(() => expect(env.latest().status).toBe("error"));
+    expect(env.latest().errorEventKey).toEqual(expect.any(String));
+    const reading = deferred<SettingsSnapshot>();
+    vi.spyOn(host.backend, "read").mockImplementationOnce(
+      () => reading.promise,
+    );
+    const retry = env.sync.retry();
+    expect(env.latest().status).toBe("loading");
+    expect(env.latest().errorEventKey).toBeUndefined();
+    reading.resolve(snapshot());
+    await retry;
+    expect(env.latest()).toMatchObject({
+      status: "error",
+      error: "STORAGE_IO",
+    });
+    expect(env.latest().errorEventKey).toBeUndefined();
+    env.sync.stop();
+  });
   it("reconnects a failed subscription on retry and ignores the retired listener", async () => {
     const host = store();
     const subscriptions: Array<{

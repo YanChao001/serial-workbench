@@ -5,9 +5,15 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { defaults } from "@serial-workbench/contracts";
+import { Toaster } from "sonner";
+import {
+  defaults,
+  type CaptureStatusResult,
+  type Operation,
+} from "@serial-workbench/contracts";
 import { I18nContext } from "@/providers/i18n-context";
 import { createTranslator } from "@/i18n/translate";
 import { en } from "@/i18n/en";
@@ -19,6 +25,7 @@ import {
 } from "@/features/workbench/client-drafts";
 import { snapshotWindowLayout } from "@/features/workbench/window-layout-template";
 import { HostProvider } from "@/providers/host";
+import { SettingsProvider } from "@/providers/settings";
 import { HostContext, type HostContextValue } from "@/providers/host-context";
 import Overview from "./overview";
 import { WorkbenchTools } from "@/features/workbench/workbench-tools";
@@ -44,9 +51,29 @@ vi.mock("@/lib/tauri", async (original) => ({
 }));
 
 afterEach(cleanup);
-beforeEach(() => sessionStorage.clear());
+beforeEach(() => {
+  sessionStorage.clear();
+  render(<Toaster />);
+});
 const i18n = { language: "en" as const, t: createTranslator(en) };
 const chinese = { language: "zh" as const, t: createTranslator(zhCN) };
+async function chooseWorkspace(name: string) {
+  const select = screen.getByRole("combobox", { name: "Choose workspace" });
+  await waitFor(() => expect(select).toBeEnabled());
+  select.focus();
+  fireEvent.keyDown(select, { key: "ArrowDown" });
+  const option = await screen.findByRole("option", { name });
+  option.focus();
+  fireEvent.keyDown(option, { key: "Enter" });
+}
+async function expectWorkspaceName(name: string) {
+  const entry = screen.getByRole("button", { name: "Workspace" });
+  fireEvent.focus(entry);
+  await waitFor(() =>
+    expect(entry).toHaveAccessibleDescription(`Workspace: ${name}`),
+  );
+  fireEvent.blur(entry);
+}
 function deferred<T>() {
   let resolve!: (value: T) => void;
   let reject!: (error: unknown) => void;
@@ -111,10 +138,13 @@ function readyHost(): HostContextValue {
     takeover: vi.fn(),
     invoke: vi.fn(),
     loadWorkspace: vi.fn(),
+    listWorkspaces: vi.fn().mockResolvedValue([]),
     saveWorkspace: vi.fn(),
     saveFavorites: vi.fn(),
     rebindDevice: vi.fn(),
-    recentConnections: vi.fn(),
+    recentConnections: vi
+      .fn()
+      .mockResolvedValue({ revision: "0", entries: [] }),
     exportWorkspace: vi.fn(),
     previewWorkspaceImport: vi.fn(),
     waitForOperation: vi.fn(),
@@ -141,6 +171,57 @@ function readyHost(): HostContextValue {
     }),
     watchSession: vi.fn(() => () => {}),
   };
+}
+function captureStopFixture() {
+  const host = readyHost();
+  const reference = {
+    hostId: "host",
+    kind: "capture",
+    id: "live",
+    revision: "3",
+  };
+  const recording: CaptureStatusResult = {
+    captureRef: reference,
+    ownerOperationId: "capture",
+    summary: {
+      captureId: "live",
+      state: "recording",
+      watermarks: { written: "9", flushed: "8", synced: "7", verified: "0" },
+      containerComplete: false,
+      sourceContinuous: true,
+    },
+  };
+  host.state.operations = [
+    {
+      ...operation("capture"),
+      actionId: "capture.start",
+      state: "running",
+      result: { kind: "capture_status", value: recording },
+    },
+  ];
+  host.state.operationSummaries = host.state.operations;
+  host.captureStatus = vi.fn().mockResolvedValue(recording);
+  const accepted: Operation = {
+    ...operation("stop"),
+    actionId: "capture.stop",
+    target: { hostId: "host", kind: "capture", id: "live" },
+    state: "queued",
+  };
+  host.invoke = vi.fn().mockResolvedValue(accepted);
+  return { host, reference, recording, accepted };
+}
+async function openCaptureStop(host: HostContextValue) {
+  render(
+    <I18nContext value={i18n}>
+      <HostContext value={host}>
+        <Overview />
+      </HostContext>
+    </I18nContext>,
+  );
+  fireEvent.click(await screen.findByRole("button", { name: "Capture" }));
+  const stop = await screen.findByRole("button", { name: "Stop capture" });
+  await waitFor(() => expect(stop).toBeEnabled());
+  return stop;
 }
 async function attachment(generation: string) {
   return createHostConnection({
@@ -191,6 +272,169 @@ function workspace(
   };
 }
 describe("Serial Workbench 首页", () => {
+  it("keeps cancellation with business tasks and waits for its matching receipt and actual target state", async () => {
+    const host = readyHost();
+    const task = {
+      ...operation("private-task-id"),
+      actionId: "transfer.file",
+      state: "running" as const,
+    };
+    host.state.operations = [
+      task,
+      { ...operation("authorization-log"), actionId: "auth.authorize" },
+    ];
+    host.state.catalog = [
+      ...host.state.catalog,
+      {
+        ...host.state.catalog[0]!,
+        actionId: "operation.cancel",
+        targetKinds: ["operation"],
+      },
+    ];
+    const accepted = {
+      ...operation("cancel-request"),
+      actionId: "operation.cancel",
+      state: "queued" as const,
+      target: { hostId: "host", kind: "operation", id: task.operationId },
+    };
+    const done = deferred<import("@serial-workbench/contracts").Operation>();
+    host.invoke = vi.fn().mockResolvedValue(accepted);
+    host.waitForOperation = vi.fn().mockReturnValue(done.promise);
+    const content = () => (
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <Overview />
+        </HostContext>
+      </I18nContext>
+    );
+    const view = render(content());
+    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
+    const dialog = screen.getByRole("dialog", { name: "Tasks" });
+    const cancel = within(dialog).getByRole("button", { name: "Cancel" });
+    expect(dialog).not.toHaveTextContent("private-task-id");
+    expect(dialog).not.toHaveTextContent("auth.authorize");
+    fireEvent.click(cancel);
+    await waitFor(() =>
+      expect(host.waitForOperation).toHaveBeenCalledWith(
+        accepted,
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(host.checkAction).toHaveBeenCalledWith(
+      {
+        actionId: "operation.cancel",
+        target: { hostId: "host", kind: "operation", id: task.operationId },
+        params: { reason: "user" },
+      },
+      expect.any(AbortSignal),
+    );
+    expect(
+      within(dialog).getByText(en["workbench.operation.running"]),
+    ).toBeVisible();
+    await act(async () =>
+      done.resolve({
+        ...accepted,
+        state: "succeeded",
+        result: {
+          kind: "cancellation_requested",
+          value: { operationId: task.operationId, state: "cancel_requested" },
+        },
+      }),
+    );
+    expect(
+      within(dialog).getByText(en["workbench.operation.running"]),
+    ).toBeVisible();
+    expect(
+      within(dialog).getByText(en["workbench.cancelRequested"]),
+    ).toBeVisible();
+    expect(cancel).toBeDisabled();
+    host.state = {
+      ...host.state,
+      operations: [{ ...task, state: "cancelled" }],
+    };
+    view.rerender(content());
+    expect(
+      within(dialog).getByText(en["workbench.operation.cancelled"]),
+    ).toBeVisible();
+    expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
+  });
+  it("keeps direct access to a stored workspace outside this Host's registered directory in an on-demand tool", async () => {
+    const host = readyHost();
+    host.state.workspace = workspace("current", "Current bench");
+    host.loadWorkspace = vi
+      .fn()
+      .mockResolvedValue(workspace("stored-identifier", "Stored bench"));
+    render(
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <Overview />
+        </HostContext>
+      </I18nContext>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    expect(
+      screen.queryByRole("textbox", { name: "Workspace identifier" }),
+    ).toBeNull();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Open workspace by identifier" }),
+    );
+    fireEvent.change(
+      screen.getByRole("textbox", { name: "Workspace identifier" }),
+      { target: { value: "stored-identifier" } },
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: en["workbench.tools.load"] }),
+    );
+    await waitFor(() =>
+      expect(host.loadWorkspace).toHaveBeenCalledWith(
+        "stored-identifier",
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(host.trustedConnect).not.toHaveBeenCalled();
+    expect(host.invoke).not.toHaveBeenCalled();
+    expect(host.send).not.toHaveBeenCalled();
+  });
+  it("keeps workspace focus during a directory read and closes after reloading the same template", async () => {
+    const host = readyHost();
+    host.connection = await attachment("1");
+    const base = workspace("reload-current", "Current bench");
+    host.state.workspace = base;
+    host.loadWorkspace = vi.fn().mockResolvedValue(base);
+    const directory =
+      deferred<
+        import("@serial-workbench/contracts").WorkspaceDocumentResult[]
+      >();
+    host.listWorkspaces = vi.fn().mockReturnValue(directory.promise);
+    render(
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <Overview />
+        </HostContext>
+      </I18nContext>,
+    );
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    const choice = screen.getByRole("combobox", { name: "Choose workspace" });
+    expect(choice).toBeEnabled();
+    expect(choice).toHaveAttribute("aria-busy", "true");
+    await waitFor(() => expect(choice).toHaveFocus());
+    await act(async () => directory.resolve([]));
+    fireEvent.click(
+      screen.getByRole("button", { name: en["workbench.tools.reload"] }),
+    );
+    await waitFor(() => expect(host.loadWorkspace).toHaveBeenCalledOnce());
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: en["workbench.tools.reload"] }),
+      ).toBeEnabled(),
+    );
+    fireEvent.keyDown(screen.getByRole("dialog", { name: "Workspace" }), {
+      key: "Escape",
+    });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog", { name: "Workspace" })).toBeNull(),
+    );
+  });
   it("keeps the active session and draft when the same scope arrives with reordered JSON fields", async () => {
     const host = readyHost();
     host.connection = await attachment("1");
@@ -301,7 +545,7 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content());
-    fireEvent.click(await screen.findByRole("button", { name: "Bench" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
     expect(screen.getByRole("combobox", { name: "Views" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
       target: { value: "Original view" },
@@ -358,26 +602,19 @@ describe("Serial Workbench 首页", () => {
           </HostContext>
         </I18nContext>,
       );
+      fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
       fireEvent.click(
-        await screen.findByRole("button", { name: "Export bench" }),
+        screen.getByRole("button", { name: "Export configuration" }),
       );
-      fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
       await waitFor(() =>
         expect(saveTextExport).toHaveBeenCalledWith(
-          "workspace-export.json",
+          "workspace-configuration.json",
           json,
         ),
       );
-      if (path)
-        expect(
-          await screen.findByRole("textbox", {
-            name: "Exported workspace JSON",
-          }),
-        ).toHaveValue(json);
-      else
-        expect(
-          screen.queryByRole("textbox", { name: "Exported workspace JSON" }),
-        ).not.toBeInTheDocument();
+      expect(
+        screen.queryByRole("textbox", { name: "Exported workspace JSON" }),
+      ).not.toBeInTheDocument();
     },
   );
   it("reports a real file export failure and keeps the current workspace draft", async () => {
@@ -396,14 +633,15 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Export bench" }),
-    );
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
     fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
       target: { value: "Unsaved local name" },
     });
-    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
-    expect(await screen.findByRole("alert")).toHaveTextContent(
+    fireEvent.click(
+      screen.getByRole("button", { name: "Export configuration" }),
+    );
+    expect(await screen.findByRole("alert")).toBeVisible();
+    expect(screen.getByRole("alert")).not.toHaveTextContent(
       "File write failed",
     );
     expect(screen.getByRole("textbox", { name: "Workspace name" })).toHaveValue(
@@ -427,8 +665,10 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content(host));
-    fireEvent.click(await screen.findByRole("button", { name: "Old bench" }));
-    fireEvent.click(screen.getByRole("button", { name: "Export JSON" }));
+    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Export configuration" }),
+    );
     await waitFor(() => expect(saveTextExport).toHaveBeenCalledOnce());
     const signal = vi.mocked(host.exportWorkspace).mock.calls[0]![1];
     view.rerender(
@@ -542,11 +782,9 @@ describe("Serial Workbench 首页", () => {
       expect(screen.getByRole("button", { name: "Send" })).toBeEnabled(),
     );
     failRefresh = true;
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Workspace menu" }),
-      { button: 0, ctrlKey: false },
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Refresh" }));
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Choose device" }), {
+      key: "Enter",
+    });
     await screen.findByText(
       "The local service could not connect. Please retry.",
     );
@@ -568,7 +806,12 @@ describe("Serial Workbench 首页", () => {
     );
     expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
     expect(screen.getByRole("button", { name: "New view" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Open" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "Open" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Retry local service connection" }),
+    ).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Save drafts" }));
     await waitFor(() =>
       expect(port.save).toHaveBeenCalledWith(
@@ -604,14 +847,13 @@ describe("Serial Workbench 首页", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
       target: { value: "CURRENT EDIT" },
     });
-    fireEvent.pointerDown(
-      screen.getByRole("button", { name: "Workspace menu" }),
-      { button: 0, ctrlKey: false },
-    );
-    fireEvent.click(screen.getByRole("menuitem", { name: "Refresh" }));
+    fireEvent.keyDown(screen.getByRole("combobox", { name: "Choose device" }), {
+      key: "Enter",
+    });
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "PERMISSION_DENIED",
     );
+    fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
     expect(
       screen.queryByText(/EXPLICIT_FIXTURE_SECRET|cargo run|C:\/private/),
     ).not.toBeInTheDocument();
@@ -646,23 +888,27 @@ describe("Serial Workbench 首页", () => {
     const draft = await screen.findByRole("textbox", { name: "发送草稿" });
     expect(draft).toHaveValue("STATUS?");
     expect(draft).toBeEnabled();
-    expect(screen.getByText("本机服务连接失败，请重试。")).toBeVisible();
+    expect(await screen.findByText("本机服务连接失败，请重试。")).toBeVisible();
     expect(screen.getByRole("heading", { name: "接收" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(screen.getByRole("combobox", { name: "选择设备" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "打开" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "新建视图" })).toBeDisabled();
+    expect(
+      screen.queryByRole("button", { name: "打开" }),
+    ).not.toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: "新建视图" }),
+    ).not.toBeInTheDocument();
     expect(
       screen.queryByText(/cargo run|private-token|D:\/private/),
     ).not.toBeInTheDocument();
     expect(connect).toHaveBeenCalledOnce();
-    const button = screen.getByRole("button", { name: "重试" });
+    const button = screen.getByRole("button", { name: "重试连接本机服务" });
     button.focus();
     expect(button).toHaveFocus();
     fireEvent.change(draft, { target: { value: "KEEP ME" } });
     fireEvent.click(button);
     await waitFor(() => expect(connect).toHaveBeenCalledTimes(2));
-    expect(screen.getByText("正在重新连接本机服务…")).toBeVisible();
+    expect(await screen.findByText("正在重新连接本机服务…")).toBeVisible();
     expect(button).toBeDisabled();
     await act(async () => retry.reject(startupError()));
     expect(screen.getByRole("textbox", { name: "发送草稿" })).toHaveValue(
@@ -696,7 +942,7 @@ describe("Serial Workbench 首页", () => {
     expect(
       await screen.findByRole("textbox", { name: "发送草稿" }),
     ).toHaveValue("RESTORED");
-    expect(screen.getByText("正在连接本机服务…")).toBeVisible();
+    expect(await screen.findByText("正在连接本机服务…")).toBeVisible();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(
       screen.queryByText(/状态: connecting|状态：connecting/),
@@ -841,7 +1087,7 @@ describe("Serial Workbench 首页", () => {
     };
     view.rerender(content(online));
     expect(
-      screen.getByRole("button", { name: "Restored bench" }),
+      screen.getByRole("button", { name: "Workspace" }),
     ).toBeInTheDocument();
     expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
       "EDITED BEFORE CONNECT",
@@ -855,7 +1101,7 @@ describe("Serial Workbench 首页", () => {
       screen.getByRole("button", { name: "Save current layout" }),
     ).toBeDisabled();
     expect(
-      screen.getByText(
+      await screen.findByText(
         "The current draft has no device binding. Connect before saving the window layout. Drafts can be saved separately.",
       ),
     ).toBeVisible();
@@ -1140,6 +1386,7 @@ describe("Serial Workbench 首页", () => {
         }),
     );
     host.loadWorkspace = vi.fn().mockResolvedValue(next);
+    host.listWorkspaces = vi.fn().mockResolvedValue([first, next]);
     render(
       <I18nContext value={i18n}>
         <HostContext value={host}>
@@ -1150,19 +1397,16 @@ describe("Serial Workbench 首页", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Save current layout" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Bench A" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Workspace ID" }), {
-      target: { value: "b" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Load workspace" }));
+    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    await chooseWorkspace("Bench B");
     await waitFor(() => expect(host.loadWorkspace).toHaveBeenCalled());
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
-    expect(screen.getByRole("button", { name: "Bench B" })).toBeInTheDocument();
+    await expectWorkspaceName("Bench B");
     await act(async () => finish(workspace("a", "Late A", "2")));
-    expect(screen.getByRole("button", { name: "Bench B" })).toBeInTheDocument();
+    await expectWorkspaceName("Bench B");
   });
   it("does not reuse a saved base or late receipt across an attachment generation", async () => {
     const host = readyHost();
@@ -1193,20 +1437,16 @@ describe("Serial Workbench 首页", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Save current layout" }),
     );
-    await screen.findByRole("button", { name: "Saved old attachment" });
+    await screen.findByRole("button", { name: "Workspace" });
     fireEvent.click(
       screen.getByRole("button", { name: "Save current layout" }),
     );
     const next = { ...readyHost(), connection: await attachment("2") };
     next.state.workspace = workspace("a", "New attachment");
     view.rerender(content(next));
-    expect
-      .soft(screen.queryByRole("button", { name: "New attachment" }))
-      .toBeInTheDocument();
+    await expectWorkspaceName("New attachment");
     await act(async () => finish(workspace("a", "Late old attachment", "3")));
-    expect(
-      screen.getByRole("button", { name: "New attachment" }),
-    ).toBeInTheDocument();
+    await expectWorkspaceName("New attachment");
   });
   it("edits and connects the selected device B while session A remains active", async () => {
     const host = readyHost();
@@ -1239,7 +1479,7 @@ describe("Serial Workbench 首页", () => {
     option.focus();
     fireEvent.keyDown(option, { key: "Enter" });
     fireEvent.click(
-      screen.getByRole("button", { name: /^Connection parameters / }),
+      screen.getByRole("button", { name: /^Connection parameters/ }),
     );
     expect(screen.getByLabelText("Baud rate")).toHaveValue(
       defaults.serialConfiguration.baudRate,
@@ -1247,9 +1487,9 @@ describe("Serial Workbench 首页", () => {
     fireEvent.change(screen.getByLabelText("Baud rate"), {
       target: { value: "230400" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use for next connection" }),
-    );
+    expect(
+      screen.queryByRole("button", { name: "Use for next connection" }),
+    ).toBeNull();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
     await waitFor(() =>
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
@@ -1276,14 +1516,14 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>,
     );
     fireEvent.click(
-      await screen.findByRole("button", { name: /^Connection parameters / }),
+      await screen.findByRole("button", { name: /^Connection parameters/ }),
     );
     fireEvent.change(screen.getByLabelText("Baud rate"), {
       target: { value: "9600" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Use for next connection" }),
-    );
+    expect(
+      screen.queryByRole("button", { name: "Use for next connection" }),
+    ).toBeNull();
     expect(host.invoke).not.toHaveBeenCalled();
     expect(host.trustedConnect).not.toHaveBeenCalled();
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -1298,6 +1538,61 @@ describe("Serial Workbench 首页", () => {
         "device",
         expect.any(AbortSignal),
         expect.objectContaining({ baudRate: "9600" }),
+      ),
+    );
+  });
+  it("automatically restores valid per-device parameters after remount without saving invalid input", async () => {
+    const host = readyHost();
+    host.state.sessions = [];
+    host.trustedConnect = vi.fn(async (_device, _signal, configuration) => ({
+      ...session(),
+      configuration: configuration ?? defaults.serialConfiguration,
+    }));
+    const content = () => (
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <SettingsProvider>
+            <Overview />
+          </SettingsProvider>
+        </HostContext>
+      </I18nContext>
+    );
+    const view = render(content());
+    const parameters = await screen.findByRole("button", {
+      name: /^Connection parameters/,
+    });
+    await waitFor(() => expect(parameters).toBeEnabled());
+    fireEvent.click(parameters);
+    const baud = screen.getByLabelText("Baud rate");
+    await waitFor(() => expect(baud).toBeEnabled());
+    fireEvent.change(baud, { target: { value: "230400" } });
+    const storage = browserClientStateStore();
+    await waitFor(() =>
+      expect(storage.read().state.connectionDefaults).toEqual([
+        expect.objectContaining({
+          hostId: "host",
+          deviceId: "device",
+          configuration: expect.objectContaining({ baudRate: "230400" }),
+        }),
+      ]),
+    );
+    fireEvent.change(baud, { target: { value: "0" } });
+    await act(async () => {});
+    expect(
+      storage.read().state.connectionDefaults?.[0]?.configuration.baudRate,
+    ).toBe("230400");
+    view.unmount();
+    render(content());
+    const open = await screen.findByRole("button", {
+      name: "Open Virtual serial",
+    });
+    await waitFor(() => expect(open).toBeEnabled());
+    fireEvent.click(open);
+    await waitFor(() =>
+      expect(host.trustedConnect).toHaveBeenCalledWith(
+        "device",
+        expect.any(AbortSignal),
+        expect.objectContaining({ baudRate: "230400" }),
       ),
     );
   });
@@ -1364,6 +1659,9 @@ describe("Serial Workbench 首页", () => {
       },
       document: { revision: "1", value: defaults.workspace },
     };
+    host.listWorkspaces = vi
+      .fn()
+      .mockResolvedValue([workspace("next", "Other bench", "3")]);
     host.loadWorkspace = vi.fn().mockResolvedValue({
       scope: {
         scopeId: "workspace/next",
@@ -1382,10 +1680,7 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>,
     );
     fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
-    fireEvent.change(screen.getByRole("textbox", { name: "Workspace ID" }), {
-      target: { value: "next" },
-    });
-    fireEvent.click(screen.getByRole("button", { name: "Load workspace" }));
+    await chooseWorkspace("Other bench");
     await waitFor(() =>
       expect(host.loadWorkspace).toHaveBeenCalledWith(
         "next",
@@ -1397,7 +1692,7 @@ describe("Serial Workbench 首页", () => {
       expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
     );
     expect(
-      screen.getByRole("button", { name: "Other bench" }),
+      screen.getByRole("button", { name: "Workspace" }),
     ).toBeInTheDocument();
     expect(host.trustedConnect).not.toHaveBeenCalled();
     expect(host.invoke).not.toHaveBeenCalled();
@@ -1499,7 +1794,14 @@ describe("Serial Workbench 首页", () => {
         sourceContinuous: true,
       },
     });
-    host.invoke = vi.fn().mockResolvedValue(operation("stop"));
+    const accepted: Operation = {
+      ...operation("stop"),
+      actionId: "capture.stop",
+      target: reference,
+      state: "succeeded",
+    };
+    host.invoke = vi.fn().mockResolvedValue(accepted);
+    host.waitForOperation = vi.fn().mockResolvedValue(accepted);
     render(
       <I18nContext value={i18n}>
         <HostContext value={host}>
@@ -1522,6 +1824,171 @@ describe("Serial Workbench 首页", () => {
         expect.any(AbortSignal),
       ),
     );
+  });
+  it.each(["failed", "cancelled", "unknown", "interrupted"] as const)(
+    "restores capture stop after the admitted stop operation ends %s",
+    async (state) => {
+      const { host, accepted } = captureStopFixture();
+      const waiting = deferred<Operation>();
+      host.waitForOperation = vi.fn().mockReturnValue(waiting.promise);
+      const stop = await openCaptureStop(host);
+      fireEvent.click(stop);
+      await waitFor(() =>
+        expect(host.waitForOperation).toHaveBeenCalledWith(
+          accepted,
+          expect.any(AbortSignal),
+        ),
+      );
+      expect(stop).toBeDisabled();
+      await act(async () =>
+        waiting.resolve({
+          ...accepted,
+          state,
+          ...(state === "failed"
+            ? {
+                error: {
+                  code: "IO",
+                  message: "private/recording/path",
+                  retryable: false,
+                },
+              }
+            : {}),
+        }),
+      );
+      await waitFor(() => expect(stop).toBeEnabled());
+      expect(screen.getByRole("status")).toHaveTextContent("Recording");
+      expect(document.body).not.toHaveTextContent("private/recording/path");
+      fireEvent.click(stop);
+      await waitFor(() => expect(host.invoke).toHaveBeenCalledTimes(2));
+    },
+  );
+  it("keeps successful capture stop waiting separate from the recording's actual state", async () => {
+    const { host, accepted } = captureStopFixture();
+    const waiting = deferred<Operation>();
+    host.waitForOperation = vi.fn().mockReturnValue(waiting.promise);
+    const stop = await openCaptureStop(host);
+    fireEvent.click(stop);
+    await waitFor(() =>
+      expect(host.waitForOperation).toHaveBeenCalledWith(
+        accepted,
+        expect.any(AbortSignal),
+      ),
+    );
+    expect(stop).toHaveAttribute("aria-busy", "true");
+    await act(async () => waiting.resolve({ ...accepted, state: "succeeded" }));
+    await waitFor(() => expect(stop).toHaveAttribute("aria-busy", "false"));
+    expect(stop).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Recording");
+    expect(host.invoke).toHaveBeenCalledOnce();
+  });
+  it.each([
+    {
+      name: "operation ID",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        operationId: "another-stop",
+      }),
+    },
+    {
+      name: "action",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        actionId: "capture.start",
+      }),
+    },
+    {
+      name: "execution Host",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        executionHostId: "other-host",
+      }),
+    },
+    {
+      name: "target Host",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        target: { ...receipt.target, hostId: "other-host" },
+      }),
+    },
+    {
+      name: "target kind",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        target: { ...receipt.target, kind: "file" },
+      }),
+    },
+    {
+      name: "target ID",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        target: { ...receipt.target, id: "other-capture" },
+      }),
+    },
+    {
+      name: "session ID",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        target: { ...receipt.target, sessionId: "unexpected" },
+      }),
+    },
+    {
+      name: "session epoch",
+      patch: (receipt: Operation) => ({
+        ...receipt,
+        target: { ...receipt.target, sessionEpoch: "42" },
+      }),
+    },
+  ])(
+    "rejects a capture stop terminal receipt with a mismatching $name",
+    async ({ patch }) => {
+      const { host, accepted } = captureStopFixture();
+      host.waitForOperation = vi
+        .fn()
+        .mockResolvedValue(patch({ ...accepted, state: "succeeded" }));
+      const stop = await openCaptureStop(host);
+      fireEvent.click(stop);
+      await waitFor(() => expect(host.waitForOperation).toHaveBeenCalledOnce());
+      await waitFor(() => expect(stop).toBeEnabled());
+      expect(screen.getByRole("status")).toHaveTextContent("Recording");
+      expect(host.invoke).toHaveBeenCalledOnce();
+    },
+  );
+  it("rejects an admitted capture stop for a different target before starting a wait", async () => {
+    const { host, accepted } = captureStopFixture();
+    host.invoke = vi.fn().mockResolvedValue({
+      ...accepted,
+      target: { ...accepted.target, sessionEpoch: "42" },
+    });
+    const stop = await openCaptureStop(host);
+    fireEvent.click(stop);
+    await waitFor(() => expect(host.invoke).toHaveBeenCalledOnce());
+    await waitFor(() => expect(stop).toBeEnabled());
+    expect(host.waitForOperation).not.toHaveBeenCalled();
+    expect(screen.getByRole("status")).toHaveTextContent("Recording");
+  });
+  it("cancels capture stop waiting on dialog close and ignores its late completion", async () => {
+    const { host, accepted } = captureStopFixture();
+    const waiting = deferred<Operation>();
+    host.waitForOperation = vi.fn().mockReturnValue(waiting.promise);
+    const stop = await openCaptureStop(host);
+    fireEvent.click(stop);
+    await waitFor(() => expect(host.waitForOperation).toHaveBeenCalledOnce());
+    const signal = vi.mocked(host.waitForOperation).mock.calls[0]![1];
+    expect(signal?.aborted).toBe(false);
+    fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    expect(signal?.aborted).toBe(true);
+    await act(async () => waiting.resolve({ ...accepted, state: "succeeded" }));
+    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await waitFor(() =>
+      expect(
+        screen.getByRole("button", { name: "Stop capture" }),
+      ).toBeEnabled(),
+    );
+    expect(screen.getByRole("status")).toHaveTextContent("Recording");
+    expect(host.invoke).toHaveBeenCalledOnce();
   });
   it("浏览器草稿保存使用同一sessionStorage窗口状态并保留偏好", async () => {
     const storage = browserClientStateStore();
@@ -1601,10 +2068,13 @@ describe("Serial Workbench 首页", () => {
       takeover: vi.fn(),
       invoke: vi.fn(),
       loadWorkspace: vi.fn(),
+      listWorkspaces: vi.fn().mockResolvedValue([]),
       saveWorkspace: vi.fn(),
       saveFavorites: vi.fn(),
       rebindDevice: vi.fn(),
-      recentConnections: vi.fn(),
+      recentConnections: vi
+        .fn()
+        .mockResolvedValue({ revision: "0", entries: [] }),
       exportWorkspace: vi.fn(),
       previewWorkspaceImport: vi.fn(),
       waitForOperation: vi.fn(),
@@ -1698,10 +2168,13 @@ describe("Serial Workbench 首页", () => {
       takeover: vi.fn(),
       invoke: vi.fn(),
       loadWorkspace: vi.fn(),
+      listWorkspaces: vi.fn().mockResolvedValue([]),
       saveWorkspace: vi.fn(),
       saveFavorites: vi.fn(),
       rebindDevice: vi.fn(),
-      recentConnections: vi.fn(),
+      recentConnections: vi
+        .fn()
+        .mockResolvedValue({ revision: "0", entries: [] }),
       exportWorkspace: vi.fn(),
       previewWorkspaceImport: vi.fn(),
       waitForOperation: vi.fn(),
@@ -1790,16 +2263,16 @@ describe("Serial Workbench 首页", () => {
       await screen.findByRole("button", { name: "Workspace menu" }),
       { button: 0, ctrlKey: false },
     );
-    expect(screen.getByRole("menuitem", { name: "Refresh" })).toHaveAttribute(
-      "aria-disabled",
-      "true",
-    );
+    expect(
+      screen.queryByRole("menuitem", { name: "Refresh" }),
+    ).not.toBeInTheDocument();
     fireEvent.keyDown(screen.getByRole("menu"), { key: "Escape" });
+    expect(
+      screen.getByRole("combobox", { name: "Choose device" }),
+    ).toBeDisabled();
     expect(screen.queryByRole("tab")).not.toBeInTheDocument();
     expect(
-      (
-        await screen.findAllByText("No devices. Refresh to discover devices.")
-      )[0],
+      (await screen.findAllByText("No serial ports"))[0],
     ).toBeInTheDocument();
   });
 });
@@ -2243,12 +2716,14 @@ it.each(["workspace", "attachment", "selection"])(
       view.rerender(content());
     } else {
       host.loadWorkspace = vi.fn().mockResolvedValue(base);
-      fireEvent.click(screen.getByRole("button", { name: "Capture owner" }));
-      fireEvent.click(screen.getByRole("button", { name: "Load workspace" }));
+      fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+      fireEvent.click(
+        screen.getByRole("button", { name: en["workbench.tools.reload"] }),
+      );
       await waitFor(() => expect(host.loadWorkspace).toHaveBeenCalledOnce());
       await waitFor(() =>
         expect(
-          screen.getByRole("button", { name: "Load workspace" }),
+          screen.getByRole("button", { name: en["workbench.tools.reload"] }),
         ).toBeEnabled(),
       );
       fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });

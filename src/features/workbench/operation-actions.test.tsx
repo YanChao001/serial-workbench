@@ -33,7 +33,10 @@ it("requests cancellation without claiming settlement and follows actual Host st
   await waitFor(() =>
     expect(cancel).toHaveBeenCalledWith("operation", expect.any(AbortSignal)),
   );
-  expect(screen.getByLabelText("Operation")).toHaveTextContent("running");
+  expect(screen.queryByText("operation")).toBeNull();
+  expect(screen.getByRole("status")).toHaveTextContent(
+    "waiting for Host settlement",
+  );
   view.rerender(
     <OperationActions
       {...props}
@@ -52,7 +55,10 @@ it("requests cancellation without claiming settlement and follows actual Host st
       operation={{ ...operation(), state: "cancelled" }}
     />,
   );
-  expect(screen.getByLabelText("Operation")).toHaveTextContent("cancelled");
+  expect(screen.queryByRole("status")).toBeNull();
+  expect(
+    screen.getByRole("button", { name: "Request cancellation" }),
+  ).toBeDisabled();
 });
 it("rebuilds observation under StrictMode and clears an allowed result when the watcher changes", () => {
   const first = observeControlActions(),

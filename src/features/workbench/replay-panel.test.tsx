@@ -5,6 +5,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import type {
@@ -14,7 +15,138 @@ import type {
 } from "@serial-workbench/contracts";
 import { ReplayPanel } from "./replay-panel";
 import { labels, operation, session } from "./test-fixtures";
-afterEach(cleanup);
+import { Toaster, toast } from "sonner";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+  clearUserLog();
+  vi.restoreAllMocks();
+});
+
+it("keeps referenced records and exact TX settlement facts in an explicit detail panel", async () => {
+  const read = vi.fn().mockResolvedValue({
+    records: [
+      {
+        kind: "reference",
+        recordOrdinal: "42",
+        jsonBytes: "200",
+        jsonSha256: "a".repeat(64),
+        recordRef: {
+          hostId: "host",
+          kind: "capture_record",
+          id: "large-record",
+          revision: "1",
+        },
+      },
+      {
+        kind: "inline",
+        record: {
+          recordOrdinal: "43",
+          entry: {
+            kind: "tx_settlement",
+            value: {
+              hostId: "host",
+              instanceEpoch: "1",
+              receipt: {
+                operationId: "private-operation-uuid",
+                sessionId: "session",
+                sessionEpoch: "1",
+                outcome: "accepted",
+                bytesBase64: "SEVMTE8=",
+                byteStart: "9007199254740999",
+                byteEnd: "9007199254741004",
+                acceptedRanges: [
+                  { start: "9007199254740999", end: "9007199254741004" },
+                ],
+                unknownRanges: [],
+                peerAcknowledged: false,
+              },
+            },
+          },
+        },
+      },
+    ],
+    readerGeneration: "1",
+    nextRecord: "44",
+    atEnd: true,
+  } satisfies ReplayReadResult);
+  render(
+    <ReplayPanel
+      session={session()}
+      read={read}
+      readRecord={vi.fn()}
+      control={vi.fn()}
+      disabled={false}
+      labels={labels}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.readReplay }));
+  await screen.findByText(labels.atEnd);
+  expect(
+    screen.queryByRole("button", { name: "Read replay 42" }),
+  ).not.toBeInTheDocument();
+  expect(screen.queryByText(/private-operation-uuid/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/9007199254740999/)).not.toBeInTheDocument();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: labels.operationText.details,
+    }),
+  );
+  expect(
+    await screen.findByRole("button", { name: "Read replay 42" }),
+  ).toBeVisible();
+  expect(screen.getByText(labels.accepted)).toBeVisible();
+  expect(screen.getByText(/Requested bytes.*9007199254740999/)).toBeVisible();
+  expect(
+    screen.getByRole("textbox", { name: labels.receipt }),
+  ).toHaveDisplayValue(/private-operation-uuid/);
+});
+
+it("routes replay failures to safe notifications and capture logs without adding an inline error", async () => {
+  const read = vi.fn().mockRejectedValue({
+    code: "PERMISSION_DENIED",
+    message: "private capture path and diagnostic input",
+  });
+  const notify = vi.spyOn(toast, "custom");
+  const props = {
+    session: session(),
+    read,
+    readRecord: vi.fn(),
+    control: vi.fn(),
+    disabled: false,
+    labels,
+  };
+  const view = render(
+    <>
+      <Toaster />
+      <ReplayPanel {...props} />
+    </>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.readReplay }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    labels.operationText.failure("PERMISSION_DENIED"),
+  );
+  expect(
+    screen.queryByText(/private capture path|\[object Object\]/),
+  ).not.toBeInTheDocument();
+  expect(
+    within(screen.getByRole("region", { name: labels.replay })).queryByRole(
+      "alert",
+    ),
+  ).not.toBeInTheDocument();
+  expect(getUserLog()).toMatchObject([
+    { module: "capture", code: "PERMISSION_DENIED", count: 1 },
+  ]);
+  expect(notify).toHaveBeenCalledOnce();
+  view.rerender(
+    <>
+      <Toaster />
+      <ReplayPanel {...props} />
+    </>,
+  );
+  expect(notify).toHaveBeenCalledOnce();
+});
 it("aborts an old replay read when its connection changes and ignores its late page", async () => {
   let oldSignal: AbortSignal | undefined;
   let resolve!: (value: ReplayReadResult) => void;
@@ -161,8 +293,19 @@ it("reads only on request, renders checked referenced records, and seeks with th
     expect.any(AbortSignal),
   );
   expect(readRecord).not.toHaveBeenCalled();
+  fireEvent.click(
+    screen.getByRole("button", {
+      name: labels.operationText.details,
+    }),
+  );
   fireEvent.click(screen.getByRole("button", { name: "Read replay 42" }));
   await screen.findByText("HELLO");
+  fireEvent.keyDown(
+    screen.getByRole("button", {
+      name: labels.operationText.details,
+    }),
+    { key: "Escape" },
+  );
   expect(
     screen.getByText("HELLO").closest(".workbench-stream-content"),
   ).toHaveStyle({
@@ -171,12 +314,11 @@ it("reads only on request, renders checked referenced records, and seeks with th
     lineHeight: "1.75",
     fontVariantLigatures: "normal",
   });
-  expect(screen.getByTitle("时间详情")).toHaveTextContent(
-    "2026-11-08T00:00:00Z",
-  );
-  expect(screen.getByTitle("时间详情")).toHaveAccessibleName(
-    "2026-11-08T00:00:00Z",
-  );
+  expect(screen.getByTitle("时间详情")).toHaveTextContent("00:00:00Z");
+  expect(screen.getByTitle("时间详情")).toHaveAccessibleName("00:00:00Z");
+  expect(screen.getByText("2026-11-08T00:00:00Z")).not.toBeVisible();
+  fireEvent.click(screen.getByTitle("时间详情"));
+  expect(screen.getByText("2026-11-08T00:00:00Z")).toBeVisible();
   expect(screen.getByText("时钟: clock")).toBeInTheDocument();
   expect(readRecord).toHaveBeenCalledWith(
     page.records[0],

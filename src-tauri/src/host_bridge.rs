@@ -772,6 +772,7 @@ impl DesktopHostBridge {
         let setup = PendingFrames::begin(
             &raw.subscriptions.lock().expect("raw subscriptions").setups,
             query.request_id.clone(),
+            (channel.id(), Some(lifecycle.id())),
         )?;
         let reply = raw
             .connection
@@ -1362,7 +1363,12 @@ impl DesktopHostBridge {
         let owner = std::sync::Arc::downgrade(&self.inner);
         let owner_label = window.to_owned();
         let pump = tokio::spawn(async move {
-            while let Ok(Some(frame)) = source.next_event().await {
+            let stopped = loop {
+                let frame = match source.next_event().await {
+                    Ok(Some(frame)) => frame,
+                    Ok(None) => break "event_stream_ended",
+                    Err(_) => break "event_stream_failed",
+                };
                 let id = match &frame.body {
                     serial_workbench_core::IpcMessage::Delta {
                         subscription_id, ..
@@ -1386,7 +1392,7 @@ impl DesktopHostBridge {
                         });
                     }
                     if failed {
-                        break;
+                        break "state_delivery_failed";
                     }
                 } else if subscriptions
                     .setups
@@ -1395,9 +1401,11 @@ impl DesktopHostBridge {
                     .push(frame)
                     .is_err()
                 {
-                    break;
+                    break "pending_frames_overflow";
                 }
-            }
+            };
+            // 仅记录固定原因，不包含目标、请求、状态正文或凭据。
+            log::warn!("Native Host state pump stopped: reason={stopped}");
             {
                 let mut subscriptions = events.lock().expect("subscription lock");
                 let pending: Vec<_> = subscriptions
@@ -1607,6 +1615,7 @@ impl DesktopHostBridge {
         let setup = PendingFrames::begin(
             &subscriptions.lock().expect("subscription lock").setups,
             query.request_id.clone(),
+            (channel.id(), None),
         )?;
         let result = client
             .request(RpcRequest::StateSubscribe(query.clone()))
@@ -1887,6 +1896,18 @@ fn deliver_state(
         .is_some_and(|size| ledger.reserve_terminal(&key, size).is_ok())
         && channel.send(terminal).is_ok();
     if !terminal_sent {
+        let reason = if size.is_none() {
+            "frame_encoding"
+        } else if accepted {
+            "frontend_channel_closed"
+        } else {
+            "delivery_budget_exhausted"
+        };
+        log::warn!(
+            "Native Host state delivery stopped: reason={reason} pending_items={} pending_bytes={}",
+            ledger.items,
+            ledger.bytes,
+        );
         subscriptions.failed = true;
     }
     ledger.close(&key);

@@ -5,9 +5,13 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
-import { afterEach, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, expect, it, vi } from "vitest";
+import { Toaster, toast } from "sonner";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
 import { StrictMode } from "react";
+import userEvent from "@testing-library/user-event";
 import type { Operation } from "@serial-workbench/contracts";
 import type { HostInvocation } from "@/providers/host-context";
 import {
@@ -15,6 +19,7 @@ import {
   type UnsavedWork,
 } from "@/providers/unsaved-work-context";
 import { SessionControls } from "./session-controls";
+import { CONFIG_FIELDS } from "./serial-configuration";
 import { operation, session } from "./test-fixtures";
 import {
   allowControlActions,
@@ -23,7 +28,62 @@ import {
   target,
 } from "./session-controls.test-fixtures";
 
-afterEach(cleanup);
+beforeEach(() => render(<Toaster />));
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+  clearUserLog();
+});
+async function selectOption(label: string, name: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: label }));
+  await user.click(await screen.findByRole("option", { name }));
+}
+it("opens themed queue selectors and applies only the option the user chooses", async () => {
+  const { invoke } = setup();
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Purge direction" }));
+  const directions = screen.getByRole("listbox");
+  expect(within(directions).getAllByRole("option")).toHaveLength(3);
+  await user.click(
+    within(directions).getByRole("option", {
+      name: controlLabels.tx,
+    }),
+  );
+  expect(
+    screen.getByRole("combobox", { name: "Purge direction" }),
+  ).toHaveTextContent(controlLabels.tx);
+  await user.click(screen.getByRole("combobox", { name: "Purge scope" }));
+  await user.click(screen.getByRole("option", { name: controlLabels.driver }));
+  expect(
+    screen.getByRole("combobox", { name: "Purge scope" }),
+  ).toHaveTextContent(controlLabels.driver);
+  expect(invoke).not.toHaveBeenCalled();
+});
+it("closes a portalled queue selector when the session becomes read-only and does not reopen it on recovery", async () => {
+  const { props, rerender, invoke } = setup();
+  const user = userEvent.setup();
+  const scope = screen.getByRole("combobox", { name: "Purge scope" });
+  scope.focus();
+  await user.keyboard("{ArrowDown}");
+  expect(screen.getByRole("listbox")).toBeInTheDocument();
+  rerender(
+    <SessionControls
+      waitForOperation={async (value) => value}
+      {...props}
+      session={{ ...props.session, readOnly: true }}
+    />,
+  );
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  expect(scope).toBeDisabled();
+  rerender(
+    <SessionControls waitForOperation={async (value) => value} {...props} />,
+  );
+  expect(scope).toBeEnabled();
+  expect(screen.queryByRole("listbox")).not.toBeInTheDocument();
+  expect(scope).toHaveTextContent(controlLabels.both);
+  expect(invoke).not.toHaveBeenCalled();
+});
 it("keeps local parameters discard-only and confirms only matching applied fields after a terminal receipt", async () => {
   const work = new Map<string, UnsavedWork>();
   let finish!: (value: Operation) => void;
@@ -39,6 +99,7 @@ it("keeps local parameters discard-only and confirms only matching applied field
     state: "queued" as const,
   };
   const invoke = vi.fn().mockResolvedValue(admitted);
+  const onConfigurationApplied = vi.fn();
   const waitForOperation = vi.fn(
     () =>
       new Promise<Operation>((resolve) => {
@@ -66,6 +127,7 @@ it("keeps local parameters discard-only and confirms only matching applied field
         invoke={invoke}
         watchActions={allowControlActions}
         waitForOperation={waitForOperation}
+        onConfigurationApplied={onConfigurationApplied}
       />
     </UnsavedWorkContext.Provider>,
   );
@@ -109,6 +171,64 @@ it("keeps local parameters discard-only and confirms only matching applied field
   expect(screen.getByLabelText("Baud rate")).toHaveValue("57600");
   expect(screen.getByLabelText("Read wait (ms)")).toHaveValue("100");
   expect(invoke).toHaveBeenCalledOnce();
+  expect(onConfigurationApplied).not.toHaveBeenCalled();
+});
+
+it("remembers parameters only after every requested field has a matching applied terminal receipt", async () => {
+  const requested = { ...session().configuration, baudRate: "57600" };
+  const admitted: Operation = {
+    ...operation(),
+    actionId: "session.configure",
+    target,
+    state: "queued",
+  };
+  const terminal = {
+    ...admitted,
+    state: "succeeded" as const,
+    result: {
+      kind: "configuration" as const,
+      value: {
+        requested,
+        fields: CONFIG_FIELDS.map((field) => ({
+          field,
+          status: "applied" as const,
+          actual: requested[field],
+        })),
+        readback: {},
+        revision: "2",
+        boundaryEventSeq: "9",
+        txGate: "ready" as const,
+      },
+    },
+  };
+  let finish!: (value: Operation) => void;
+  const waitForOperation = vi.fn(
+    () =>
+      new Promise<Operation>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  const onConfigurationApplied = vi.fn();
+  render(
+    <SessionControls
+      session={session()}
+      target={target}
+      operations={[]}
+      labels={controlLabels}
+      invoke={vi.fn().mockResolvedValue(admitted)}
+      watchActions={allowControlActions}
+      waitForOperation={waitForOperation}
+      onConfigurationApplied={onConfigurationApplied}
+    />,
+  );
+  fireEvent.change(screen.getByLabelText("Baud rate"), {
+    target: { value: "57600" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Apply configuration" }));
+  await waitFor(() => expect(waitForOperation).toHaveBeenCalledOnce());
+  expect(onConfigurationApplied).not.toHaveBeenCalled();
+  await act(async () => finish(terminal));
+  expect(onConfigurationApplied).toHaveBeenCalledExactlyOnceWith(requested);
 });
 
 it.each([
@@ -281,6 +401,125 @@ it("submits a custom baud and independent timeouts with the exact session revisi
   });
 });
 
+it("routes an action failure to the serial log and floating notification using only its safe code", async () => {
+  const invoke = vi.fn().mockRejectedValue({
+    code: "PERMISSION_DENIED",
+    message: "private device path and secret",
+  });
+  const view = render(
+    <SessionControls
+      waitForOperation={async (value) => value}
+      session={session()}
+      target={target}
+      operations={[]}
+      labels={controlLabels}
+      invoke={invoke}
+      watchActions={allowControlActions}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "DTR on" }));
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    controlLabels.failure("PERMISSION_DENIED"),
+  );
+  expect(view.container.querySelector('[role="alert"]')).toBeNull();
+  expect(screen.queryByText(/private device path/)).not.toBeInTheDocument();
+  expect(getUserLog()).toEqual([
+    expect.objectContaining({
+      module: "serial",
+      code: "PERMISSION_DENIED",
+      count: 1,
+    }),
+  ]);
+});
+
+it("keeps a historical failed receipt readable without making it a current fault or replaying a notice", async () => {
+  const result: Operation = {
+    ...operation(),
+    actionId: "session.control",
+    target,
+    state: "failed",
+    error: {
+      code: "PERMISSION_DENIED",
+      message: "private device path and secret",
+      retryable: false,
+    },
+  };
+  const props = {
+    waitForOperation: async (value: Operation) => value,
+    session: session(),
+    target,
+    operations: [result],
+    labels: controlLabels,
+    invoke: vi.fn(),
+    watchActions: allowControlActions,
+  };
+  const view = render(<SessionControls {...props} />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  const receipts = screen.getByRole("region", { name: "Receipt" });
+  expect(receipts).toHaveTextContent(controlLabels.controlLines);
+  expect(receipts).toHaveTextContent(controlLabels.operationText.states.failed);
+  expect(receipts).not.toHaveTextContent(result.operationId);
+  expect(receipts).not.toHaveTextContent(result.actionId);
+  expect(receipts).not.toHaveTextContent("private device path");
+  view.rerender(<SessionControls {...props} operations={[{ ...result }]} />);
+  expect(getUserLog()).toEqual([]);
+  fireEvent.click(
+    within(receipts).getByRole("button", { name: controlLabels.details }),
+  );
+  expect(
+    screen.getByRole<HTMLTextAreaElement>("textbox", {
+      name: controlLabels.details,
+    }).value,
+  ).toContain(result.operationId);
+});
+
+it("clears the current request fault after a successful retry while preserving the failed receipt across tool reopening", async () => {
+  const previous: Operation = {
+    ...operation("previous-control"),
+    actionId: "session.control",
+    target,
+    state: "failed",
+    error: {
+      code: "PERMISSION_DENIED",
+      message: "not for display",
+      retryable: false,
+    },
+  };
+  const invoke = vi
+    .fn()
+    .mockRejectedValueOnce({ code: "PERMISSION_DENIED" })
+    .mockResolvedValueOnce({
+      ...operation("retry-control"),
+      actionId: "session.control",
+      target,
+    });
+  const props = {
+    session: session(),
+    target,
+    operations: [previous],
+    labels: controlLabels,
+    watchActions: allowControlActions,
+    invoke,
+    waitForOperation: async (value: Operation) => value,
+  };
+  const view = render(<SessionControls {...props} />);
+  fireEvent.click(screen.getByRole("button", { name: "DTR on" }));
+  await screen.findByRole("alert");
+  fireEvent.click(screen.getByRole("button", { name: "DTR off" }));
+  await waitFor(() =>
+    expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
+  );
+  expect(invoke).toHaveBeenCalledTimes(2);
+  expect(screen.getByRole("region", { name: "Receipt" })).toHaveTextContent(
+    controlLabels.operationText.states.failed,
+  );
+  expect(getUserLog()[0]?.count).toBe(1);
+  view.unmount();
+  render(<SessionControls {...props} />);
+  expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  expect(getUserLog()[0]?.count).toBe(1);
+});
+
 it("blocks invalid numeric models and respects configuration and unknown control gates", () => {
   const { invoke, props, rerender } = setup();
   fireEvent.change(screen.getByLabelText("Baud rate"), {
@@ -339,7 +578,16 @@ it("shows requested configuration separately from unknown actual fields and real
   expect(
     screen.getByRole("table", { name: "Configuration receipt" }),
   ).toHaveTextContent("unknown");
-  expect(screen.getByLabelText("Driver readback")).toHaveTextContent("57600");
+  expect(screen.queryByLabelText("Driver readback")).not.toBeInTheDocument();
+  fireEvent.click(
+    within(screen.getByRole("region", { name: "Receipt" })).getByRole(
+      "button",
+      { name: controlLabels.details },
+    ),
+  );
+  expect(screen.getByLabelText("Driver readback")).toHaveValue(
+    JSON.stringify(result.result.value, null, 2),
+  );
 });
 
 it("uses real typed control, finite BREAK, purge, drain and boundary actions", async () => {
@@ -412,11 +660,7 @@ it("disables read-only and flow-owned line controls and displays shared BREAK un
   );
   expect(screen.getByRole("button", { name: "DTR on" })).toBeDisabled();
   expect(screen.getByLabelText("BREAK receipt")).toHaveTextContent("unknown");
-  expect(
-    screen.getByText(
-      "Stopping a wait leaves the line outcome unconfirmed; inspect the receipt.",
-    ),
-  ).toBeVisible();
+  expect(screen.queryByText(receipt.operationId)).not.toBeInTheDocument();
 });
 
 it("keeps unknown or denied actions non-executable while drafts stay editable", async () => {
@@ -564,7 +808,7 @@ it.each([
   ["Through operation", "transmit-2", "Wait boundary", "tx.waitBoundary"],
 ])(
   "clears old allowed observation when %s changes",
-  (label, value, button, actionId) => {
+  async (label, value, button, actionId) => {
     const observer = observeControlActions();
     const { props, rerender, invoke } = setup();
     rerender(
@@ -583,7 +827,11 @@ it.each([
     const old = observer.subscriptions.at(-1)!;
     act(() => observer.publish(old, (input) => input.actionId === actionId));
     expect(screen.getByRole("button", { name: button })).toBeEnabled();
-    fireEvent.change(screen.getByLabelText(label), { target: { value } });
+    if (label === "Purge scope")
+      await selectOption(label, controlLabels.driver);
+    else if (label === "Purge direction")
+      await selectOption(label, controlLabels.tx);
+    else fireEvent.change(screen.getByLabelText(label), { target: { value } });
     expect(screen.getByRole("button", { name: button })).toBeDisabled();
     act(() => observer.publish(old, () => true));
     expect(screen.getByRole("button", { name: button })).toBeDisabled();
@@ -705,16 +953,23 @@ it("samples actual modem inputs on opening the controls", async () => {
   await waitFor(() =>
     expect(readInputs).toHaveBeenCalledWith(target, expect.any(AbortSignal)),
   );
-  expect(await screen.findByText("2026-11-08T00:00:00Z")).toBeInTheDocument();
+  await waitFor(() =>
+    expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
+      "dateTime",
+      "2026-11-08T00:00:00Z",
+    ),
+  );
+  expect(screen.queryByText("2026-11-08T00:00:00Z")).not.toBeInTheDocument();
+  expect(screen.queryByText("123 ns")).not.toBeInTheDocument();
 });
 
-it("polls inputs every 500ms with manual refresh, one inflight read, and unmount cancellation", async () => {
+it("polls inputs every 500ms without redundant refresh, one inflight read, and unmount cancellation", async () => {
   vi.useFakeTimers();
   try {
     const sample = {
       sessionId: "session",
       sessionEpoch: "1",
-      sampledAt: "sample-time",
+      sampledAt: "2026-11-08T00:00:00Z",
       sampledMonoNs: "123",
       cts: true,
       dsr: false,
@@ -741,7 +996,6 @@ it("polls inputs every 500ms with manual refresh, one inflight read, and unmount
         operations={[]}
         labels={{
           ...controlLabels,
-          refreshInputs: "Refresh inputs",
           inputSignals: "Input signals",
           sampledAt: "Sampled at",
           on: "On",
@@ -758,8 +1012,12 @@ it("polls inputs every 500ms with manual refresh, one inflight read, and unmount
       await vi.advanceTimersByTimeAsync(500);
     });
     expect(readInputs).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByRole("button", { name: "Refresh inputs" }));
-    await act(async () => {});
+    expect(
+      screen.queryByRole("button", { name: "Refresh inputs" }),
+    ).not.toBeInTheDocument();
+    await act(async () => {
+      await vi.advanceTimersByTimeAsync(500);
+    });
     expect(readInputs).toHaveBeenCalledTimes(3);
     await act(async () => {
       await vi.advanceTimersByTimeAsync(1500);
@@ -778,7 +1036,7 @@ it("clears old input booleans on an unsupported result and retries only after ep
     const sample = {
       sessionId: "session",
       sessionEpoch: "1",
-      sampledAt: "sample-time",
+      sampledAt: "2026-11-08T00:00:00Z",
       sampledMonoNs: "123",
       cts: true,
       dsr: false,
@@ -796,14 +1054,13 @@ it("clears old input booleans on an unsupported result and retries only after ep
       .mockResolvedValue({
         ...sample,
         sessionEpoch: "2",
-        sampledAt: "new-sample-time",
+        sampledAt: "2026-11-08T00:00:01Z",
       });
     const props = {
       target,
       operations: [],
       labels: {
         ...controlLabels,
-        refreshInputs: "Refresh inputs",
         inputSignals: "Input signals",
         sampledAt: "Sampled at",
         on: "On",
@@ -821,11 +1078,14 @@ it("clears old input booleans on an unsupported result and retries only after ep
       />,
     );
     await act(async () => {});
-    expect(screen.getByText("sample-time")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
+      "dateTime",
+      sample.sampledAt,
+    );
     await act(async () => {
       await vi.advanceTimersByTimeAsync(500);
     });
-    expect(screen.queryByText("sample-time")).not.toBeInTheDocument();
+    expect(screen.getByLabelText("Sampled at")).not.toHaveAttribute("dateTime");
     expect(screen.getByLabelText("CTS")).toHaveTextContent(
       controlLabels.unknown,
     );
@@ -843,7 +1103,10 @@ it("clears old input booleans on an unsupported result and retries only after ep
     );
     await act(async () => {});
     expect(readInputs).toHaveBeenCalledTimes(3);
-    expect(screen.getByText("new-sample-time")).toBeInTheDocument();
+    expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
+      "dateTime",
+      "2026-11-08T00:00:01Z",
+    );
   } finally {
     vi.useRealTimers();
   }
@@ -853,7 +1116,7 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
   const sample = {
     sessionId: "session",
     sessionEpoch: "1",
-    sampledAt: "old-sample",
+    sampledAt: "2026-11-08T00:00:00Z",
     sampledMonoNs: "123",
     cts: true,
     dsr: false,
@@ -873,7 +1136,7 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
     .mockResolvedValue({
       ...sample,
       sessionEpoch: "2",
-      sampledAt: "new-sample",
+      sampledAt: "2026-11-08T00:00:01Z",
     });
   const props = {
     target,
@@ -899,10 +1162,18 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
       target={{ ...target, sessionEpoch: "2" }}
     />,
   );
-  await screen.findByText("new-sample");
+  await waitFor(() =>
+    expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
+      "dateTime",
+      "2026-11-08T00:00:01Z",
+    ),
+  );
   expect(oldSignal?.aborted).toBe(true);
   await act(async () => finish(sample));
-  expect(screen.queryByText("old-sample")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
+    "dateTime",
+    "2026-11-08T00:00:01Z",
+  );
   view.rerender(
     <SessionControls
       waitForOperation={async (value) => value}
@@ -911,6 +1182,6 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
       target={{ ...target, sessionEpoch: "2" }}
     />,
   );
-  expect(screen.queryByText("new-sample")).not.toBeInTheDocument();
+  expect(screen.getByLabelText("Sampled at")).not.toHaveAttribute("dateTime");
   expect(screen.getByLabelText("CTS")).toHaveTextContent(controlLabels.unknown);
 });

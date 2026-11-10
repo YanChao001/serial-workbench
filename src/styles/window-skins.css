@@ -21,7 +21,10 @@
   border-radius: inherit;
 }
 .pattern-artwork--preview .skin-scene {
-  opacity: 0.42;
+  /* 缩略图放大同一场景的局部，避免细线压缩到亚像素后无法辨认。 */
+  opacity: 0.8;
+  mask-size: 280% auto;
+  mask-position: left top;
 }
 .pattern-artwork[data-pattern="plain"] {
   background: var(--background);

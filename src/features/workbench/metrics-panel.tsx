@@ -1,9 +1,10 @@
 import type { HostContextValue } from "@/providers/host-context";
 import { SessionMetricsView } from "./session-metrics";
 import type { HostMetrics, Target } from "@serial-workbench/contracts";
-import { useEffect, useState } from "react";
-import { Button } from "@/components/ui/button";
+import { formatByteSize } from "./metric-format";
+import { useMetricsReader } from "./use-metrics-reader";
 import type { WorkbenchLabels } from "./labels";
+import { WorkbenchNotice } from "./workbench-notice";
 export type MetricsReader = (signal?: AbortSignal) => Promise<HostMetrics>;
 export function MetricsPanel({
   read,
@@ -18,68 +19,58 @@ export function MetricsPanel({
   contextKey?: string;
   labels: WorkbenchLabels;
 }) {
-  const [attempt, setAttempt] = useState(0);
-  const [value, setValue] = useState<HostMetrics>();
-  const [error, setError] = useState<string>();
-  const [loading, setLoading] = useState(true);
-  useEffect(() => {
-    const controller = new AbortController();
-    setLoading(true);
-    setError(undefined);
-    setValue(undefined);
-    void read(controller.signal)
-      .then((result) => {
-        if (!controller.signal.aborted) setValue(result);
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted)
-          setError(reason instanceof Error ? reason.message : String(reason));
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setLoading(false);
-      });
-    return () => controller.abort();
-  }, [read, attempt]);
+  const { value, error, loading } = useMetricsReader(read, contextKey);
+  const failure = error ? labels.operationText.failure(error.code) : undefined;
   return (
     <section
       aria-label={labels.metrics}
       className="workbench-metrics"
       aria-busy={loading}
     >
-      <div className="workbench-toolbar">
-        <h2>{labels.metrics}</h2>
-        <Button
-          size="sm"
-          variant="ghost"
-          disabled={loading}
-          onClick={() => setAttempt((value) => value + 1)}
-        >
-          {labels.refresh}
-        </Button>
-      </div>
-      {readSession && target && (
-        <SessionMetricsView
-          key={JSON.stringify([contextKey, target])}
-          read={readSession}
-          target={target}
-          attempt={attempt}
-          labels={labels}
-        />
-      )}
-      {error && <p role="alert">{error}</p>}
+      <h2 className="sr-only">{labels.metrics}</h2>
+      <WorkbenchNotice
+        noticeKey={JSON.stringify([contextKey, "metrics", error?.code])}
+        log={
+          failure
+            ? {
+                module: "application",
+                level: "error",
+                code: error?.code,
+                message: failure,
+                context: labels.metrics,
+              }
+            : undefined
+        }
+      >
+        {failure ? (
+          <span role="alert">
+            {labels.metrics}: {failure}
+          </span>
+        ) : null}
+      </WorkbenchNotice>
       {value && (
-        <dl className="workbench-transfer-result">
+        <dl className="workbench-metrics-values">
           <div>
             <dt>{labels.observedAt}</dt>
-            <dd>{value.observedAt}</dd>
+            <dd title={value.observedAt}>
+              <time dateTime={value.observedAt}>
+                {new Date(value.observedAt).toLocaleTimeString(undefined, {
+                  hourCycle: "h23",
+                })}
+              </time>
+            </dd>
           </div>
           <div>
             <dt>{labels.rss}</dt>
-            <dd>{value.rssBytes}</dd>
+            <dd title={value.rssBytes ?? undefined}>
+              {formatByteSize(value.rssBytes)}
+            </dd>
           </div>
           <div>
             <dt>{labels.rssPeak}</dt>
-            <dd>{value.rssPeakBytes}</dd>
+            <dd title={value.rssPeakBytes ?? undefined}>
+              {formatByteSize(value.rssPeakBytes)}
+            </dd>
           </div>
           {(
             [
@@ -89,19 +80,39 @@ export function MetricsPanel({
             ] as const
           ).map(([key, name]) => (
             <div key={key}>
-              <dt>
-                {name} ({labels.bytes})
-              </dt>
-              <dd>
-                {value[key].usedBytes} / {value[key].limitBytes}
+              <dt>{name}</dt>
+              <dd title={`${value[key].usedBytes} / ${value[key].limitBytes}`}>
+                {formatByteSize(value[key].usedBytes)} /{" "}
+                {formatByteSize(value[key].limitBytes)}
               </dd>
               <dd>
-                {labels.peak}: {value[key].peakBytes}
+                {labels.peak}:{" "}
+                <span title={value[key].peakBytes}>
+                  {formatByteSize(value[key].peakBytes)}
+                </span>
               </dd>
             </div>
           ))}
         </dl>
       )}
+      {readSession &&
+        target?.kind === "session" &&
+        target.sessionId &&
+        target.sessionEpoch && (
+          <SessionMetricsView
+            key={JSON.stringify([
+              contextKey,
+              target.hostId,
+              target.kind,
+              target.id,
+              target.sessionId,
+              target.sessionEpoch,
+            ])}
+            read={readSession}
+            target={target}
+            labels={labels}
+          />
+        )}
     </section>
   );
 }

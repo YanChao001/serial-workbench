@@ -1,4 +1,4 @@
-﻿import {
+import {
   act,
   cleanup,
   fireEvent,
@@ -7,6 +7,7 @@
   waitFor,
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
+import userEvent from "@testing-library/user-event";
 import { TransferOptions } from "./transfer-options";
 import { operation } from "./test-fixtures";
 import { selectedFile, toolLabels } from "./transfer-capture-test-helpers";
@@ -35,6 +36,7 @@ it("previews an exact large range without sending, then explicitly submits fixed
   );
   fireEvent.click(screen.getByRole("button", { name: "Select source" }));
   await screen.findByText("payload.bin");
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Offset"), {
     target: { value: "9007199254740990" },
   });
@@ -76,6 +78,7 @@ it("keeps zero write wait out of an otherwise valid transfer request", async () 
   );
   fireEvent.click(screen.getByRole("button", { name: "Select source" }));
   await screen.findByText("payload.bin");
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Write wait milliseconds"), {
     target: { value: "0" },
   });
@@ -95,6 +98,7 @@ it("prevents invalid ranges and ignores a picker result after unmount", async ()
   );
   fireEvent.click(screen.getByRole("button", { name: "Select source" }));
   await screen.findByText("payload.bin");
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Offset"), {
     target: { value: "9007199254740999" },
   });
@@ -152,6 +156,7 @@ it("registers edited parameters as unsaved work and saving options never submits
     </UnsavedWorkContext.Provider>,
   );
   expect(work?.dirty).toBe(false);
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Bytes per second"), {
     target: { value: "2500" },
   });
@@ -189,6 +194,7 @@ it("allows Native source selection while transfer rights are unknown and invalid
   expect(button()).toBeDisabled();
   act(() => observer.publish(first, () => true));
   expect(button()).toBeEnabled();
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Bytes per second"), {
     target: { value: "2000" },
   });

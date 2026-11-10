@@ -24,6 +24,7 @@ import type {
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type { HostConnection } from "@/lib/host-client";
+import { confirmProjectionHost, HostProjectionError } from "@/lib/host-client";
 import { abortError, waitForHost } from "@/lib/host-native-transport";
 import { reportClientError } from "@/lib/report-error";
 import { createSessionReaders } from "@/lib/host-session-readers";
@@ -102,6 +103,11 @@ export function createHostWorkspace(
     string,
     { target: Target; close: () => void; controller: AbortController }
   >();
+  let projectionsPending: Promise<void> | undefined;
+  let projectionsRequested = false;
+  let projectionEpochError: HostProjectionError | undefined;
+  let projectionFailures = 0;
+  const failedProjectionScopes = new Set<string>();
   let state: HostState = {
     status: "connecting",
     error: null,
@@ -114,6 +120,8 @@ export function createHostWorkspace(
     streams: new Map(),
   };
   let refreshPending: Promise<void> | undefined;
+  let refreshEnumerating = false;
+  let enumerationPending: Promise<void> | undefined;
   let operationsRefreshing = false;
   let operationIds: string[] | undefined;
   let workspaceSelection = 0;
@@ -156,6 +164,16 @@ export function createHostWorkspace(
       actionWatchers.size > 0 && visible() && !lifetime.signal.aborted;
     if (checksRequested) void refreshActionChecks();
   }
+  function changedActionWatchers() {
+    checksVersion++;
+    clearTimeout(checksRefreshTimer);
+    checksRefreshTimer = undefined;
+    checksRequested =
+      actionWatchers.size > 0 && visible() && !lifetime.signal.aborted;
+    // 观察者增减并不改变授权；已有结果仍按原截止时间到期。
+    if (!checksRequested) clearChecksTimer();
+    if (checksRequested) void refreshActionChecks();
+  }
   async function refreshActionChecks() {
     if (
       checksRunning ||
@@ -181,6 +199,7 @@ export function createHostWorkspace(
       return false;
     };
     let succeeded = true;
+    const checked = new Map<string, ReturnType<typeof checkAction>>();
     try {
       for (const watcher of [...actionWatchers]) {
         const values: HostActionAvailability[] = [];
@@ -188,9 +207,23 @@ export function createHostWorkspace(
           if (!currentRound()) return;
           if (!actionWatchers.has(watcher)) break;
           try {
+            const key = JSON.stringify([
+              input.actionId,
+              input.target.hostId,
+              input.target.kind,
+              input.target.id,
+              input.target.sessionId,
+              input.target.sessionEpoch,
+              input.params,
+            ]);
+            let pending = checked.get(key);
+            if (!pending) {
+              pending = checkAction(input);
+              checked.set(key, pending);
+            }
             values.push({
               input,
-              result: await checkAction(input),
+              result: await pending,
               error: null,
             });
           } catch (error) {
@@ -248,10 +281,11 @@ export function createHostWorkspace(
       listener,
     };
     actionWatchers.add(watcher);
-    invalidateActions();
+    unknownActions(watcher);
+    changedActionWatchers();
     return () => {
       if (!actionWatchers.delete(watcher)) return;
-      invalidateActions();
+      changedActionWatchers();
     };
   }
   if (typeof document !== "undefined")
@@ -264,14 +298,21 @@ export function createHostWorkspace(
     snapshot = { ...actions, state, connection };
     for (const listener of listeners) listener();
   };
-  const readers = createSessionReaders(connection, (sessionId, view) => {
-    const streams = new Map(state.streams);
-    if (view) streams.set(sessionId, view);
-    else streams.delete(sessionId);
-    change({ streams });
-  });
+  const readers = createSessionReaders(
+    connection,
+    (sessionId, view) => {
+      const streams = new Map(state.streams);
+      if (view) streams.set(sessionId, view);
+      else streams.delete(sessionId);
+      change({ streams });
+    },
+    (session) => pendingTrustedConnections.get(session.deviceId),
+  );
   const report = (error: unknown) => {
-    reportClientError(error, "Host workspace");
+    reportClientError(
+      error instanceof HostProjectionError ? error.cause : error,
+      "Host workspace",
+    );
     if (error instanceof HostRequestError && error.code === "PERMISSION_DENIED")
       invalidateActions();
     if (!lifetime.signal.aborted)
@@ -315,16 +356,23 @@ export function createHostWorkspace(
     const previous = state.operations.find(
       (value) => value.operationId === operation.operationId,
     );
+    // 查询仍逐次验权；同版本内容未变则保留引用。读取可清理 error.details，不能只比较版本。
     if (previous && BigInt(previous.revision) > BigInt(operation.revision))
       return;
-    change({
-      operations: [
-        ...state.operations.filter(
-          (value) => value.operationId !== operation.operationId,
-        ),
-        operation,
-      ].slice(-128),
-    });
+    if (
+      !previous ||
+      previous.revision !== operation.revision ||
+      JSON.stringify(previous) !== JSON.stringify(operation)
+    ) {
+      change({
+        operations: [
+          ...state.operations.filter(
+            (value) => value.operationId !== operation.operationId,
+          ),
+          operation,
+        ].slice(-128),
+      });
+    }
     if (
       operation.actionId === "replay.open" &&
       operation.state === "succeeded" &&
@@ -407,7 +455,43 @@ export function createHostWorkspace(
       operationsRefreshing = false;
     }
   }
-  async function syncProjections() {
+  function syncProjections(): Promise<void> {
+    projectionsRequested = true;
+    if (projectionsPending) return projectionsPending;
+    const pending = (async () => {
+      while (projectionsRequested && !lifetime.signal.aborted) {
+        projectionsRequested = false;
+        if (projectionEpochError) {
+          const error = projectionEpochError;
+          projectionEpochError = undefined;
+          if (error.scopeId) failedProjectionScopes.add(error.scopeId);
+          if (++projectionFailures >= 3)
+            throw await confirmProjectionHost(
+              connection,
+              error,
+              lifetime.signal,
+            );
+        }
+        try {
+          await syncProjectionPass();
+        } catch (error) {
+          if (!(error instanceof HostProjectionError)) throw error;
+          projectionEpochError = error;
+        }
+        if (projectionEpochError) projectionsRequested = true;
+      }
+      if (
+        !lifetime.signal.aborted &&
+        state.error instanceof HostProjectionError
+      )
+        change({ error: null });
+    })().finally(() => {
+      if (projectionsPending === pending) projectionsPending = undefined;
+    });
+    projectionsPending = pending;
+    return pending;
+  }
+  async function syncProjectionPass() {
     const scopes = (await connection.refreshScopes(lifetime.signal)).filter(
       (scope) =>
         scope.target.kind === "session" ||
@@ -420,7 +504,8 @@ export function createHostWorkspace(
       const current = scopes.find((scope) => scope.scopeId === id);
       if (
         !retained.has(id) ||
-        current?.target.sessionEpoch !== entry.target.sessionEpoch
+        !current ||
+        !sameTarget(current.target, entry.target)
       ) {
         entry.controller.abort();
         entry.close();
@@ -443,8 +528,31 @@ export function createHostWorkspace(
         entry.close = await connection.client.subscribe(
           scope.scopeId,
           (event) => {
-            if (controller.signal.aborted || lifetime.signal.aborted) return;
+            if (
+              controller.signal.aborted ||
+              lifetime.signal.aborted ||
+              projections.get(scope.scopeId) !== entry
+            )
+              return;
             if (event.type === "error") {
+              controller.abort();
+              entry.close();
+              if (projections.get(scope.scopeId) === entry)
+                projections.delete(scope.scopeId);
+              if (
+                scope.target.kind === "session" &&
+                event.error instanceof HostRequestError &&
+                event.error.code === "EPOCH_MISMATCH"
+              ) {
+                projectionEpochError = new HostProjectionError(
+                  event.error,
+                  scope.scopeId,
+                );
+                const alreadyPending = projectionsPending !== undefined;
+                const recovery = syncProjections();
+                if (!alreadyPending) void recovery.catch(report);
+                return;
+              }
               report(event.error);
               return;
             }
@@ -454,7 +562,16 @@ export function createHostWorkspace(
                 : event.delta.payload;
             if (scope.target.kind === "session") {
               const parsed = asQueryResult({ kind: "session", value: payload });
-              if (parsed.kind === "session") updateSession(parsed.value);
+              if (parsed.kind === "session") {
+                updateSession(parsed.value);
+                // 建立订阅不证明持续健康；只有失败过的 scope 真正交付增量才归还恢复预算。
+                if (
+                  event.type === "delta" &&
+                  failedProjectionScopes.delete(scope.scopeId) &&
+                  failedProjectionScopes.size === 0
+                )
+                  projectionFailures = 0;
+              }
             } else if (scope.target.kind === "workspace") {
               const parsed = asQueryResult({
                 kind: "workspace",
@@ -472,21 +589,31 @@ export function createHostWorkspace(
           },
           controller.signal,
         );
-        if (controller.signal.aborted) entry.close();
+        if (
+          controller.signal.aborted ||
+          projections.get(scope.scopeId) !== entry
+        )
+          entry.close();
       } catch (error) {
-        projections.delete(scope.scopeId);
+        if (projections.get(scope.scopeId) === entry)
+          projections.delete(scope.scopeId);
         if (!controller.signal.aborted) {
           controller.abort();
+          if (
+            scope.target.kind === "session" &&
+            error instanceof HostRequestError &&
+            error.code === "EPOCH_MISMATCH"
+          )
+            throw new HostProjectionError(error, scope.scopeId);
           throw error;
         }
       }
     }
   }
-  async function loadWorkspace(
+  async function readWorkspace(
     workspaceId: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceDocumentResult> {
-    const selection = ++workspaceSelection;
     const result = await connection.client.query(
       connection.buildQuery("workspace.read", {
         hostId: connection.attachment.hostId,
@@ -502,15 +629,54 @@ export function createHostWorkspace(
       result.value.scope.target.id !== workspaceId
     )
       throw new ContractValidationError("Workspace belongs to another target");
+    return result.value;
+  }
+  async function listWorkspaces(
+    signal?: AbortSignal,
+  ): Promise<WorkspaceDocumentResult[]> {
+    const scopes = await connection.refreshScopes(signal ?? lifetime.signal);
+    const ids = [
+      ...new Set(
+        scopes
+          .filter(
+            (scope) =>
+              scope.target.hostId === connection.attachment.hostId &&
+              scope.target.kind === "workspace",
+          )
+          .map((scope) => scope.target.id),
+      ),
+    ];
+    if (ids.length > 128)
+      throw failure(
+        "LIMIT_EXCEEDED",
+        "Workspace directory exceeds the UI budget",
+      );
+    const documents: WorkspaceDocumentResult[] = [];
+    for (const id of ids) {
+      lifetime.signal.throwIfAborted();
+      signal?.throwIfAborted();
+      const document = await readWorkspace(id, signal);
+      lifetime.signal.throwIfAborted();
+      signal?.throwIfAborted();
+      documents.push(document);
+    }
+    return documents;
+  }
+  async function loadWorkspace(
+    workspaceId: string,
+    signal?: AbortSignal,
+  ): Promise<WorkspaceDocumentResult> {
+    const selection = ++workspaceSelection;
+    const result = await readWorkspace(workspaceId, signal);
     if (
       selection === workspaceSelection &&
       !signal?.aborted &&
       !lifetime.signal.aborted
     ) {
-      change({ workspace: result.value });
+      change({ workspace: result });
       await syncProjections();
     }
-    return result.value;
+    return result;
   }
   async function saveWorkspace(
     base: WorkspaceDocumentResult,
@@ -693,9 +859,10 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
-  async function refresh() {
-    if (lifetime.signal.aborted) throw abortError();
-    if (refreshPending) return refreshPending;
+  function startRefresh(enumerateDevices: boolean) {
+    // 元数据刷新是一次新的明确尝试；自动投影重建沿用 owner 的剩余预算。
+    projectionFailures = 0;
+    failedProjectionScopes.clear();
     const pending = (async () => {
       const catalog: ActionSpec[] = [];
       let pageToken: string | undefined;
@@ -712,7 +879,10 @@ export function createHostWorkspace(
         pageToken = result.value.nextPageToken;
       } while (pageToken);
       const devices = await connection.client.query(
-        connection.buildQuery("device.list", connection.hostTarget),
+        connection.buildQuery(
+          enumerateDevices ? "device.refresh" : "device.list",
+          connection.hostTarget,
+        ),
         lifetime.signal,
       );
       if (devices.kind !== "devices") throw new ContractValidationError();
@@ -724,17 +894,41 @@ export function createHostWorkspace(
       if (!state.workspace) await loadWorkspace("default");
       await syncProjections();
       change({ status: "ready", error: null });
-    })();
+    })()
+      .catch((error: unknown) => {
+        report(error);
+        if (error instanceof HostProjectionError) change({ status: "ready" });
+        else if (state.status === "connecting") change({ status: "error" });
+        throw error;
+      })
+      .finally(() => {
+        if (refreshPending === pending) {
+          refreshPending = undefined;
+          refreshEnumerating = false;
+        }
+      });
     refreshPending = pending;
-    try {
-      await pending;
-    } catch (error) {
-      report(error);
-      if (state.status === "connecting") change({ status: "error" });
-      throw error;
-    } finally {
-      if (refreshPending === pending) refreshPending = undefined;
-    }
+    refreshEnumerating = enumerateDevices;
+    return pending;
+  }
+  async function refresh(options?: { enumerateDevices?: boolean }) {
+    lifetime.signal.throwIfAborted();
+    if (enumerationPending) return enumerationPending;
+    if (!refreshPending)
+      return startRefresh(options?.enumerateDevices === true);
+    if (!options?.enumerateDevices || refreshEnumerating) return refreshPending;
+    // 用户展开设备列表时需要真实枚举；不能被在途的缓存读取吞掉。
+    const pending = refreshPending
+      .catch(() => lifetime.signal.throwIfAborted())
+      .then(() => {
+        lifetime.signal.throwIfAborted();
+        return startRefresh(true);
+      })
+      .finally(() => {
+        if (enumerationPending === pending) enumerationPending = undefined;
+      });
+    enumerationPending = pending;
+    return pending;
   }
   async function invoke(input: HostInvocation, signal?: AbortSignal) {
     const { actionId, target, params, ...options } = input;
@@ -895,9 +1089,18 @@ export function createHostWorkspace(
           });
         if (lifetime.signal.aborted) throw abortError();
         updateSession(session);
-        // The explicit native action changed this actor's permissions. Read the new catalog/scopes.
-        await refreshPending;
-        await refresh();
+        readers.retryAuthorized(session);
+        // 打开已由 Native 确认；元数据恢复的读失败不能改写这次实际操作的结果。
+        void (async () => {
+          try {
+            await refreshPending;
+          } catch {
+            lifetime.signal.throwIfAborted();
+          }
+          if (!lifetime.signal.aborted) await refresh();
+        })().catch((error: unknown) => {
+          if (!lifetime.signal.aborted && state.error !== error) report(error);
+        });
         return session;
       })();
       pendingTrustedConnections.set(deviceId, pending);
@@ -958,13 +1161,21 @@ export function createHostWorkspace(
     return result.value;
   }
   async function captureStatus(reference: ObjectRef, signal?: AbortSignal) {
+    if (reference.hostId !== connection.attachment.hostId)
+      throw new ContractValidationError();
     const result = await connection.client.query(
       connection.buildQuery("capture.status", referenceTarget(reference), {
         captureRef: reference,
       }),
       signal ?? lifetime.signal,
     );
-    if (result.kind !== "capture_status") throw new ContractValidationError();
+    if (
+      result.kind !== "capture_status" ||
+      !sameTarget(result.value.captureRef, reference) ||
+      (reference.revision !== undefined &&
+        result.value.captureRef.revision !== reference.revision)
+    )
+      throw new ContractValidationError();
     return result.value;
   }
   async function readFile(params: FileReadParams, signal?: AbortSignal) {
@@ -993,6 +1204,12 @@ export function createHostWorkspace(
     params: FileTransferReceiptsParams,
     signal?: AbortSignal,
   ) {
+    const reference = params.receiptsRef;
+    if (
+      reference.hostId !== connection.attachment.hostId ||
+      reference.kind !== "transfer_receipts"
+    )
+      throw new ContractValidationError();
     const result = await rawQuery(
       connection.buildQuery(
         "transfer.receiptsRead",
@@ -1001,7 +1218,12 @@ export function createHostWorkspace(
       ),
       signal,
     );
-    if (result.kind !== "file_transfer_receipts")
+    if (
+      result.kind !== "file_transfer_receipts" ||
+      !sameTarget(result.value.receiptsRef, reference) ||
+      (reference.revision !== undefined &&
+        result.value.receiptsRef.revision !== reference.revision)
+    )
       throw new ContractValidationError();
     return result.value;
   }
@@ -1054,9 +1276,15 @@ export function createHostWorkspace(
       operation = result.value.operation;
       updateOperation(operation);
     }
-    if (operation.error) throw new HostRequestError(operation.error);
-    if (operation.state !== "succeeded")
-      throw failure("OPERATION_ABORTED", "Operation did not succeed");
+    if (operation.error || operation.state !== "succeeded") {
+      const error = operation.error
+        ? new HostRequestError(operation.error)
+        : failure("OPERATION_ABORTED", "Operation did not succeed");
+      throw Object.assign(error, {
+        executionHostId: operation.executionHostId,
+        operationId: operation.operationId,
+      });
+    }
     return operation;
   }
   function open(
@@ -1166,6 +1394,7 @@ export function createHostWorkspace(
     readFileReceipts,
     readReplay,
     loadWorkspace,
+    listWorkspaces,
     saveWorkspace,
     saveFavorites,
     rebindDevice,

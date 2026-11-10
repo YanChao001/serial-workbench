@@ -3,6 +3,7 @@ import { writeFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import { seedWorkbenchFixture } from "./workbench.fixture";
+import { workbenchStreamItems } from "./workbench-stream.fixture";
 
 const runtimeFailures = new WeakMap<Page, string[]>();
 const consoleRecords = new WeakMap<Page, { type: string; text: string }[]>();
@@ -46,6 +47,9 @@ async function expectSenderReachable(page: Page, enabled: boolean) {
   const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
   const send = page.getByRole("button", { name: "Send", exact: true });
   await expect(draft).toBeEditable();
+  await expect(page.locator(".workbench-draft-frame")).toBeInViewport({
+    ratio: 1,
+  });
   await expect(draft).toBeInViewport({ ratio: 1 });
   await expect(send).toBeInViewport({ ratio: 1 });
   if (enabled) {
@@ -82,6 +86,224 @@ async function connect(page: Page) {
   ).toBeEnabled();
 }
 
+test("default terminal keeps byte columns aligned on the send surface", async ({
+  page,
+}, testInfo) => {
+  await seedWorkbenchFixture(page, {});
+  await page.goto("./#/");
+  const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
+  await expect(draft).toBeEditable();
+  const widths = await draft.evaluate((element) => {
+    const style = getComputedStyle(element);
+    const context = document.createElement("canvas").getContext("2d");
+    if (!context) throw new Error("Canvas text measurement is unavailable");
+    context.font = `${style.fontStyle} ${style.fontWeight} ${style.fontSize} ${style.fontFamily}`;
+    return {
+      family: style.fontFamily,
+      size: style.fontSize,
+      narrow: context.measureText("iiiiiiii").width,
+      wide: context.measureText("WWWWWWWW").width,
+    };
+  });
+  expect(widths.narrow).toBeGreaterThan(0);
+  expect(Math.abs(widths.narrow - widths.wide)).toBeLessThan(0.05);
+  await writeFile(
+    testInfo.outputPath("terminal-font-metrics.json"),
+    JSON.stringify(
+      {
+        ...widths,
+        userAgent: await page.evaluate(() => navigator.userAgent),
+        viewport: page.viewportSize(),
+      },
+      null,
+      2,
+    ),
+  );
+});
+
+test("send byte information stays passive while draft conversion preserves the desktop layout", async ({
+  page,
+}, testInfo) => {
+  await page.setViewportSize({ width: 880, height: 600 });
+  await seedWorkbenchFixture(page, {});
+  await page.goto("./#/");
+  await connect(page);
+  const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
+  const geometry = () =>
+    page.evaluate(() => {
+      const rect = (selector: string) => {
+        const box = document.querySelector(selector)!.getBoundingClientRect();
+        return { x: box.x, y: box.y, width: box.width, height: box.height };
+      };
+      return {
+        toolbar: rect(".workbench-compose-toolbar"),
+        draft: rect(".workbench-draft-frame"),
+        send: rect(".workbench-send-button"),
+        receive: rect(".workbench-stream-log"),
+      };
+    });
+  const initial = await geometry();
+  await draft.fill("哈哈创森散地");
+  await expect(page.locator(".workbench-compose-toolbar")).not.toContainText(
+    "E5 93 88",
+  );
+  const bytes = page.locator(".workbench-draft-bytes");
+  await expect(bytes).toHaveText("18 bytes");
+  await expect(bytes).not.toHaveAttribute("tabindex");
+  await expect(
+    page.locator(".workbench-preview-trigger,.workbench-byte-preview"),
+  ).toHaveCount(0);
+  await draft.fill("哈哈创森散地".repeat(80));
+  expect(await geometry()).toEqual(initial);
+  const sender = page.getByRole("region", { name: "Send", exact: true });
+  await sender.getByRole("radio", { name: "HEX", exact: true }).click();
+  await expect(draft).toHaveValue(
+    Array(80)
+      .fill("E5 93 88 E5 93 88 E5 88 9B E6 A3 AE E6 95 A3 E5 9C B0")
+      .join(" "),
+  );
+  await expect(bytes).toHaveText("1440 bytes");
+  expect(await geometry()).toEqual(initial);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await sender.getByRole("radio", { name: "Text", exact: true }).click();
+  await expect(draft).toHaveValue("哈哈创森散地".repeat(80));
+  await draft.focus();
+  await expect(draft).toBeFocused();
+  await page.getByRole("button", { name: "Send", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Receipt", exact: true }),
+  ).toBeEnabled();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    Buffer.from("哈哈创森散地".repeat(80)).toString("base64"),
+  ]);
+  expect(await geometry()).toEqual(initial);
+  await page.screenshot({
+    path: testInfo.outputPath("fixed-send-toolbar.png"),
+  });
+  const receipt = testInfo.outputPath("send-layout.json");
+  await writeFile(
+    receipt,
+    JSON.stringify({ initial, final: await geometry() }, null, 2),
+  );
+  await testInfo.attach("send-layout", {
+    path: receipt,
+    contentType: "application/json",
+  });
+});
+
+for (const method of ["Delete", "close button"] as const) {
+  test(`closing the last view by ${method} returns keyboard focus to the device choice`, async ({
+    page,
+  }) => {
+    await seedWorkbenchFixture(page, {});
+    await page.goto("./#/");
+    await connect(page);
+    const tab = page.getByRole("tab");
+    await expect(tab).toHaveCount(1);
+    if (method === "Delete") await tab.press("Delete");
+    else {
+      const close = page.getByRole("button", {
+        name: "Close view",
+        exact: true,
+      });
+      await close.focus();
+      await page.keyboard.press("Enter");
+    }
+    await expect(tab).toHaveCount(0);
+    const device = page.getByRole("combobox", {
+      name: "Choose device",
+      exact: true,
+    });
+    await expect(device).toBeFocused();
+    await page.keyboard.press("Enter");
+    await expect(page.getByRole("listbox")).toBeVisible();
+  });
+}
+
+for (const language of ["en", "zh"] as const) {
+  test(`live byte presentation keeps receipts and exact time available in ${language}`, async ({
+    page,
+  }, testInfo) => {
+    await page.setViewportSize({ width: 880, height: 600 });
+    await seedWorkbenchFixture(page, { language });
+    await page.goto("./#/");
+    await page.getByRole("button", { name: /Virtual serial$/ }).click();
+    await expect(
+      page.getByRole("button", {
+        name: language === "en" ? "Close session" : "关闭会话",
+        exact: true,
+      }),
+    ).toBeEnabled();
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+      )
+      .toBe(1);
+    await page.locator(".workbench-draft").fill("STATUS?");
+    await page
+      .getByRole("button", {
+        name: language === "en" ? "Send" : "发送",
+        exact: true,
+      })
+      .click();
+    await page
+      .getByRole("button", {
+        name: language === "en" ? "Receipt" : "回执",
+        exact: true,
+      })
+      .click();
+    await expect(
+      page.getByRole("status", {
+        name: language === "en" ? "Receipt" : "回执",
+        exact: true,
+      }),
+    ).toContainText(language === "en" ? "Completed" : "已完成");
+    await page.keyboard.press("Escape");
+    const items: unknown[] = workbenchStreamItems();
+    expect(
+      await page.evaluate(
+        (items) => window.workbenchFixture.emitRaw(items),
+        items,
+      ),
+    ).toBe(1);
+    const log = page.getByRole("log");
+    await expect(log.locator('[data-direction="tx"]')).toHaveCount(1);
+    await expect(log.locator('[data-direction="rx"]')).toHaveCount(1);
+    await expect(log).toContainText("STATUS?");
+    await expect(log).toContainText("OK");
+    await page.screenshot({
+      path: testInfo.outputPath(`stream-${language}-compact.png`),
+      animations: "disabled",
+    });
+    const receipt = log.locator(".workbench-tx-receipt > details");
+    await expect(receipt.locator("summary")).toHaveText(
+      language === "en" ? "Accepted by backend" : "后端已接受",
+    );
+    await expect(receipt.locator(".workbench-tx-facts")).toBeHidden();
+    await receipt.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(receipt.locator(".workbench-tx-facts")).toBeVisible();
+    await expect(receipt).toContainText("[0, 7)");
+    await expect(receipt).toContainText(
+      language === "en"
+        ? "No device acknowledgement provided"
+        : "设备确认未提供",
+    );
+    const time = log.locator(".workbench-stream-time").first();
+    await expect(time.locator("summary")).toHaveText("11:22:33.456Z");
+    await time.locator("summary").focus();
+    await page.keyboard.press("Enter");
+    await expect(time.locator("time")).toBeVisible();
+    await expect(time.locator("time")).toHaveText("2026-11-10T11:22:33.456Z");
+    await page.screenshot({
+      path: testInfo.outputPath(`stream-${language}-details.png`),
+      animations: "disabled",
+    });
+  });
+}
+
 for (const theme of ["light", "dark"] as const) {
   for (const viewport of [
     { width: 1120, height: 744 },
@@ -107,9 +329,12 @@ for (const theme of ["light", "dark"] as const) {
           String(sidebarCollapsed),
         );
         await expectSenderReachable(page, false);
-        await expect(
-          page.getByRole("button", { name: /^Connection parameters/ }),
-        ).toHaveAccessibleName(/^Connection parameters.*9600 \/ 8 none$/);
+        const parameters = page.getByRole("button", {
+          name: "Connection parameters",
+          exact: true,
+        });
+        await parameters.focus();
+        await expect(parameters).toHaveAccessibleDescription(/9600 \/ 8N1/);
         await expect(page.getByRole("tab")).toHaveCount(0);
         await page
           .getByRole("textbox", { name: "Send draft", exact: true })
@@ -130,13 +355,19 @@ for (const theme of ["light", "dark"] as const) {
           .getByRole("textbox", { name: "Send draft", exact: true })
           .fill("STATUS?");
         await expectSenderReachable(page, true);
-        await expect(
-          page.getByRole("button", { name: /^Connection parameters/ }),
-        ).toHaveAccessibleName(/^Connection parameters.*115200 \/ 8 none$/);
+        await parameters.focus();
+        await expect(parameters).toHaveAccessibleDescription(/115200 \/ 8N1/);
         await page.getByRole("button", { name: "Send", exact: true }).click();
+        await page
+          .getByRole("button", { name: "Receipt", exact: true })
+          .click();
         await expect(
           page.getByRole("status", { name: "Receipt", exact: true }),
-        ).toContainText("succeeded");
+        ).toContainText("Completed");
+        await page.keyboard.press("Escape");
+        await expect(
+          page.getByRole("status", { name: "Receipt", exact: true }),
+        ).toHaveCount(0);
         await expectSenderReachable(page, true);
         await page.screenshot({
           path: testInfo.outputPath("connected.png"),
@@ -243,9 +474,12 @@ test("Chinese workbench exposes the approved device and sender labels", async ({
   await expect(
     page.getByRole("button", { name: "\u53d1\u9001", exact: true }),
   ).toBeDisabled();
-  await expect(
-    page.getByRole("button", { name: /^\u8fde\u63a5\u53c2\u6570/ }),
-  ).toHaveAccessibleName(/9600 \/ 8 none$/);
+  const parameters = page.getByRole("button", {
+    name: "连接参数",
+    exact: true,
+  });
+  await parameters.focus();
+  await expect(parameters).toHaveAccessibleDescription(/9600 \/ 8N1/);
   await page.screenshot({
     path: testInfo.outputPath("chinese-unconnected.png"),
   });

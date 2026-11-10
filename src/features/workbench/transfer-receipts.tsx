@@ -3,9 +3,19 @@ import type {
   FileTransferReceiptsResult,
   ObjectRef,
 } from "@serial-workbench/contracts";
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { Info } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import {
+  Popover,
+  PopoverContent,
+  PopoverTrigger,
+} from "@/components/ui/popover";
+import { Textarea } from "@/components/ui/textarea";
+import { nativeErrorCode } from "@/lib/native-error";
 import type { WorkbenchLabels } from "./labels";
+import { WorkbenchIconButton } from "./workbench-icon-button";
+import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 export type ReceiptReader = (
   params: FileTransferReceiptsParams,
   signal?: AbortSignal,
@@ -15,41 +25,90 @@ export type TransferReceiptsProps = {
   read: ReceiptReader;
   labels: WorkbenchLabels;
 };
-export function TransferReceipts({
+export function TransferReceipts(props: TransferReceiptsProps) {
+  const reference = props.receiptsRef;
+  return (
+    <TransferReceiptsView
+      key={JSON.stringify([
+        reference.hostId,
+        reference.kind,
+        reference.id,
+        reference.revision,
+      ])}
+      {...props}
+    />
+  );
+}
+function TransferReceiptsView({
   receiptsRef,
   read,
   labels,
 }: TransferReceiptsProps) {
-  const [page, setPage] = useState<{
+  const [snapshot, setSnapshot] = useState<{
+    read: ReceiptReader;
     result: FileTransferReceiptsResult;
     start: string;
     history: string[];
   }>();
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<string>();
+  const page = snapshot?.read === read ? snapshot : undefined;
+  const [failed, setFailed] = useState<{
+    read: ReceiptReader;
+    code?: string;
+    eventKey?: string;
+  }>();
+  const failure = failed?.read === read ? failed : undefined;
   const pending = useRef<AbortController | null>(null);
-  useEffect(() => () => pending.current?.abort(), []);
+  const request = useRef({ start: "0", history: [] as string[] });
+  const { hostId, kind, id, revision } = receiptsRef;
+  const reference = useMemo(
+    () => ({
+      hostId,
+      kind,
+      id,
+      ...(revision === undefined ? {} : { revision }),
+    }),
+    [hostId, kind, id, revision],
+  );
+  useEffect(() => {
+    setSnapshot(undefined);
+    setFailed(undefined);
+    setBusy(false);
+    request.current = { start: "0", history: [] };
+    return () => {
+      pending.current?.abort();
+      pending.current = null;
+    };
+  }, [reference, read]);
   async function load(start: string, history: string[]) {
-    if (busy) return;
+    if (pending.current) return;
     const controller = new AbortController();
     pending.current = controller;
     setBusy(true);
-    setError(undefined);
+    setFailed(undefined);
+    setSnapshot(undefined);
+    request.current = { start, history };
     try {
       const result = await read(
         {
-          receiptsRef,
+          receiptsRef: reference,
           startOrdinal: start,
           maxReceipts: "32",
           maxBytes: "65536",
         },
         controller.signal,
       );
-      if (!controller.signal.aborted) setPage({ result, start, history });
-    } catch (reason) {
       if (!controller.signal.aborted)
-        setError(reason instanceof Error ? reason.message : String(reason));
+        setSnapshot({ read, result, start, history });
+    } catch (reason: unknown) {
+      if (!controller.signal.aborted)
+        setFailed({
+          read,
+          code: nativeErrorCode(reason),
+          eventKey: operationFailureEventKey(reason),
+        });
     } finally {
+      if (pending.current === controller) pending.current = null;
       if (!controller.signal.aborted) setBusy(false);
     }
   }
@@ -60,39 +119,56 @@ export function TransferReceipts({
           size="sm"
           variant="ghost"
           disabled={busy}
-          onClick={() => void load("0", [])}
+          onClick={() =>
+            void load(
+              failure ? request.current.start : "0",
+              failure ? request.current.history : [],
+            )
+          }
         >
-          {labels.receipt}
+          {failure ? labels.retry : labels.receipt}
         </Button>
-        {page && (
-          <>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy || !page.history.length}
-              onClick={() =>
-                void load(page.history.at(-1)!, page.history.slice(0, -1))
-              }
-            >
-              {labels.previousPage}
-            </Button>
-            <Button
-              size="sm"
-              variant="ghost"
-              disabled={busy || !page.result.hasMore}
-              onClick={() =>
-                void load(page.result.nextOrdinal, [
-                  ...page.history,
-                  page.start,
-                ])
-              }
-            >
-              {labels.nextPage}
-            </Button>
-          </>
-        )}
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !page?.history.length}
+          onClick={() =>
+            page && void load(page.history.at(-1)!, page.history.slice(0, -1))
+          }
+        >
+          {labels.previousPage}
+        </Button>
+        <Button
+          size="sm"
+          variant="ghost"
+          disabled={busy || !page?.result.hasMore}
+          onClick={() =>
+            page &&
+            void load(page.result.nextOrdinal, [...page.history, page.start])
+          }
+        >
+          {labels.nextPage}
+        </Button>
       </div>
-      {error && <p role="alert">{error}</p>}
+      <WorkbenchNotice
+        noticeKey={`receipts:${failure?.code ?? "unknown"}`}
+        eventKey={failure?.eventKey}
+        log={
+          failure
+            ? {
+                module: "transfer",
+                level: "error",
+                code: failure.code,
+                context: labels.receipt,
+                message: labels.operationText.failure(failure.code),
+              }
+            : undefined
+        }
+      >
+        {failure ? (
+          <span role="alert">{labels.operationText.failure(failure.code)}</span>
+        ) : null}
+      </WorkbenchNotice>
       {page && (
         <ul>
           {page.result.receipts.map(({ sourceOffset, receipt }) => (
@@ -103,8 +179,43 @@ export function TransferReceipts({
                 {labels.offset} {sourceOffset}
               </span>{" "}
               <span>
-                {receipt.outcome} [{receipt.byteStart}, {receipt.byteEnd})
+                {labels[receipt.outcome]} [{receipt.byteStart},{" "}
+                {receipt.byteEnd})
               </span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <WorkbenchIconButton label={labels.operationText.details}>
+                    <Info aria-hidden="true" />
+                  </WorkbenchIconButton>
+                </PopoverTrigger>
+                <PopoverContent
+                  align="end"
+                  className="workbench-detail-popover"
+                >
+                  <Textarea
+                    aria-label={labels.operationText.details}
+                    readOnly
+                    value={JSON.stringify(
+                      {
+                        sourceOffset,
+                        receipt: {
+                          ...receipt,
+                          backendError: receipt.backendError
+                            ? {
+                                code: nativeErrorCode(receipt.backendError),
+                                retryable: receipt.backendError.retryable,
+                              }
+                            : undefined,
+                        },
+                      },
+                      null,
+                      2,
+                    )}
+                    onFocus={(event) => event.currentTarget.select()}
+                    className="workbench-log-details"
+                  />
+                </PopoverContent>
+              </Popover>
               {receipt.unknownRanges.map((range) => (
                 <p key={range.start}>
                   {labels.unknownBytes}: [{range.start}, {range.end})
@@ -112,7 +223,9 @@ export function TransferReceipts({
               ))}
               {receipt.backendError && (
                 <p>
-                  {receipt.backendError.code}: {receipt.backendError.message}
+                  {labels.operationText.failure(
+                    nativeErrorCode(receipt.backendError),
+                  )}
                 </p>
               )}
             </li>

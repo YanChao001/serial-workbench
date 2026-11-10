@@ -11,6 +11,7 @@ import {
   type WorkspaceDocumentResult,
   type WorkspaceDocument,
   type ReplayControlParams,
+  type Operation,
 } from "@serial-workbench/contracts";
 import { useI18n } from "@/providers/i18n";
 import { useHost } from "@/providers/host-context";
@@ -19,6 +20,7 @@ import { SettingsContext } from "@/providers/settings-context";
 import { WorkbenchTools } from "@/features/workbench/workbench-tools";
 import { workbenchToolLabels } from "@/features/workbench/tool-labels";
 import type { WorkbenchLabels } from "@/features/workbench/labels";
+import { operationText } from "@/features/workbench/operation-text";
 import { Button } from "@/components/ui/button";
 import {
   createClientDraftStore,
@@ -28,7 +30,7 @@ import {
   readClientWindowState,
   saveClientWindowState,
 } from "@/lib/client-settings";
-import { nativeErrorText } from "@/lib/native-error";
+import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { stateScopeKey } from "@/lib/host-scope";
 import { createWorkbenchFileActions } from "@/features/workbench/file-actions";
 
@@ -188,18 +190,34 @@ export default function Overview({
       });
     return () => controller.abort();
   }, [draftStore, draftAttempt]);
-  function errorCode(error: unknown) {
-    if (
-      typeof error === "object" &&
-      error !== null &&
-      "code" in error &&
-      typeof error.code === "string" &&
-      /^[A-Z][A-Z0-9_]{0,63}$/.test(error.code)
-    )
-      return error.code;
-    return undefined;
+  const hostErrorCode = nativeErrorCode(host.state.error);
+  async function retryHostConnection() {
+    if (retrying || host.state.status === "connecting") return;
+    setRetrying(true);
+    try {
+      await host.refresh();
+    } catch {
+      // Provider 保留真实连接错误；这里只控制当前重试按钮的忙状态。
+    } finally {
+      setRetrying(false);
+    }
   }
-  const hostErrorCode = errorCode(host.state.error);
+  const connectionRecovery =
+    retrying ||
+    host.state.status === "connecting" ||
+    host.state.status === "error"
+      ? {
+          label: retrying
+            ? t("workbench.hostRetrying")
+            : host.state.status === "connecting"
+              ? t("workbench.hostConnecting")
+              : t("workbench.retryHost"),
+          busy: retrying || host.state.status === "connecting",
+          onRetry: () => {
+            void retryHostConnection();
+          },
+        }
+      : undefined;
   const connectionStatus =
     retrying ||
     host.state.status === "connecting" ||
@@ -213,23 +231,6 @@ export default function Overview({
               ? t("workbench.hostConnecting")
               : t("workbench.hostUnavailable")}
         </p>
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={retrying || host.state.status === "connecting"}
-          onClick={async () => {
-            setRetrying(true);
-            try {
-              await host.refresh();
-            } catch {
-              // The Provider keeps the actual connection error and diagnostics.
-            } finally {
-              setRetrying(false);
-            }
-          }}
-        >
-          {t("common.retry")}
-        </Button>
         {host.state.error && (
           <details>
             <summary>{t("common.details")}</summary>
@@ -243,6 +244,8 @@ export default function Overview({
       </div>
     ) : undefined;
   const labels: WorkbenchLabels = {
+    operationText: operationText(t, (code) => nativeErrorText({ code }, t)),
+    logs: t("workbench.logs"),
     captureSource: t("workbench.captureSource"),
     captureFirstRecord: t("workbench.captureFirstRecord"),
     captureTail: t("workbench.captureTail"),
@@ -258,8 +261,20 @@ export default function Overview({
     captureDenied: t("workbench.captureDenied"),
     captureYes: t("workbench.captureYes"),
     captureNo: t("workbench.captureNo"),
+    captureStatusDetails: t("workbench.captureStatusDetails"),
+    stopRequested: t("workbench.stopRequested"),
+    retry: t("common.retry"),
+    captureStates: {
+      recording: t("workbench.captureState.recording"),
+      finalizing: t("workbench.captureState.finalizing"),
+      complete: t("workbench.captureState.complete"),
+      incomplete: t("workbench.captureState.incomplete"),
+      failed: t("workbench.captureState.failed"),
+    },
     closeView: t("workbench.closeView"),
     closeSession: t("workbench.closeSession"),
+    restoreAccess: t("workbench.restoreAccess"),
+    restoringAccess: t("workbench.restoringAccess"),
     operationInput: t("workbench.operationInput"),
     redactedInput: t("workbench.redactedInput"),
     replay: t("workbench.replay"),
@@ -302,6 +317,7 @@ export default function Overview({
     opening: t("workbench.opening"),
     noDevices: t("workbench.noDevices"),
     sessions: t("workbench.sessions"),
+    sessionLabel: t("workbench.sessionLabel"),
     duplicateView: t("workbench.duplicateView"),
     noSession: t("workbench.noSession"),
     bindingUnavailable: t("workbench.bindingUnavailable"),
@@ -327,8 +343,9 @@ export default function Overview({
     sendMode: t("workbench.sendMode"),
     lineEnding: t("workbench.lineEnding"),
     none: t("workbench.none"),
-    preview: t("workbench.preview"),
+    draftByteCount: t("workbench.draftByteCount"),
     invalidHex: t("workbench.invalidHex"),
+    invalidUtf8: t("workbench.invalidUtf8"),
     sending: t("workbench.sending"),
     receipt: t("workbench.receipt"),
     awaitingReceipt: t("workbench.awaitingReceipt"),
@@ -360,6 +377,27 @@ export default function Overview({
     unknownBytes: t("workbench.unknownBytes"),
     peerConfirmed: t("workbench.peerConfirmed"),
     peerUnconfirmed: t("workbench.peerUnconfirmed"),
+    connected: t("workbench.connected"),
+    closed: t("workbench.closed"),
+    closing: t("workbench.closing"),
+    ready: t("workbench.ready"),
+    configurationPending: t("workbench.configurationPending"),
+    controlUnknown: t("workbench.controlUnknown"),
+    queued: t("workbench.queued"),
+    running: t("workbench.running"),
+    cancelRequested: t("workbench.cancelRequested"),
+    succeeded: t("workbench.succeeded"),
+    failed: t("workbench.failed"),
+    cancelled: t("workbench.cancelled"),
+    interrupted: t("workbench.interrupted"),
+    unknown: t("workbench.unknown"),
+    accepted: t("workbench.accepted"),
+    partial: t("workbench.partial"),
+    rejected: t("workbench.rejected"),
+    emptyDraft: t("workbench.emptyDraft"),
+    sendNotAllowed: t("workbench.sendNotAllowed"),
+    streamUnavailable: t("workbench.streamUnavailable"),
+    errorDetails: t("workbench.errorDetails"),
     unavailable: t("workbench.unavailable"),
   };
   return (
@@ -370,7 +408,30 @@ export default function Overview({
     >
       {draftLoad.drafts ? (
         <WorkspaceLayout
+          connectionLog={
+            connectionStatus
+              ? {
+                  module: "connection",
+                  level:
+                    host.state.error || host.state.status === "error"
+                      ? "error"
+                      : "info",
+                  message: retrying
+                    ? t("workbench.hostRetrying")
+                    : host.state.status === "connecting"
+                      ? t("workbench.hostConnecting")
+                      : t("workbench.hostUnavailable"),
+                  code: hostErrorCode,
+                }
+              : undefined
+          }
+          connectionRecovery={connectionRecovery}
           host={host}
+          connectionDefaults={settings?.connections?.values}
+          connectionDefaultsLoading={
+            settings?.connections?.status === "loading"
+          }
+          onRememberConnection={settings?.connections?.remember}
           labels={labels}
           connectionStatus={connectionStatus}
           formatError={(error) => nativeErrorText(error, t)}
@@ -465,6 +526,41 @@ export default function Overview({
               signal,
             );
           }}
+          onCancelOperation={async (operation, signal) => {
+            const input = {
+              actionId: "operation.cancel",
+              target: {
+                hostId: operation.executionHostId,
+                kind: "operation",
+                id: operation.operationId,
+              },
+              params: { reason: "user" },
+            };
+            const check = await host.checkAction(input, signal);
+            signal?.throwIfAborted();
+            if (!check.allowed) throw { code: "PERMISSION_DENIED" };
+            const accepted = await host.invoke(
+              { ...input, executionMode: "independent" },
+              signal,
+            );
+            const receipt = await host.waitForOperation(accepted, signal);
+            signal?.throwIfAborted();
+            if (
+              receipt.actionId !== input.actionId ||
+              receipt.executionHostId !== operation.executionHostId ||
+              receipt.target.hostId !== input.target.hostId ||
+              receipt.target.kind !== input.target.kind ||
+              receipt.target.id !== operation.operationId
+            )
+              throw { code: "CONTRACT_MISMATCH" };
+            if (receipt.state !== "succeeded")
+              throw { code: receipt.error?.code ?? "OPERATION_FAILED" };
+            if (
+              receipt.result?.kind !== "cancellation_requested" ||
+              receipt.result.value.operationId !== operation.operationId
+            )
+              throw { code: "CONTRACT_MISMATCH" };
+          }}
           initialDrafts={draftLoad.drafts}
           onSaveDrafts={draftStore.save}
           readMetrics={host.metrics}
@@ -480,21 +576,46 @@ export default function Overview({
             readRecord: host.readReplayRecord,
             control: replayControl,
           }}
-          onStopCapture={(captureRef, signal) =>
-            host.invoke(
+          onStopCapture={async (captureRef, signal) => {
+            signal?.throwIfAborted();
+            const target = {
+              hostId: captureRef.hostId,
+              kind: captureRef.kind,
+              id: captureRef.id,
+            };
+            const matches = (operation: Operation) =>
+              operation.actionId === "capture.stop" &&
+              operation.executionHostId === target.hostId &&
+              operation.target.hostId === target.hostId &&
+              operation.target.kind === target.kind &&
+              operation.target.id === target.id &&
+              operation.target.sessionId === undefined &&
+              operation.target.sessionEpoch === undefined;
+            const accepted = await host.invoke(
               {
                 actionId: "capture.stop",
-                target: {
-                  hostId: captureRef.hostId,
-                  kind: captureRef.kind,
-                  id: captureRef.id,
-                },
+                target,
                 params: { captureRef },
                 executionMode: "independent",
               },
               signal,
+            );
+            signal?.throwIfAborted();
+            if (!matches(accepted)) throw { code: "CONTRACT_MISMATCH" };
+            const receipt = await host.waitForOperation(accepted, signal);
+            signal?.throwIfAborted();
+            if (
+              receipt.operationId !== accepted.operationId ||
+              !matches(receipt)
             )
-          }
+              throw { code: "CONTRACT_MISMATCH" };
+            if (receipt.state !== "succeeded" || receipt.error)
+              throw {
+                code: receipt.error?.code ?? "OPERATION_ABORTED",
+                executionHostId: receipt.executionHostId,
+                operationId: receipt.operationId,
+              };
+          }}
         />
       ) : (
         <div aria-busy={draftLoad.error === undefined}>
@@ -508,7 +629,7 @@ export default function Overview({
           {draftLoad.error !== undefined && (
             <>
               <p role="alert">
-                {nativeErrorText({ code: errorCode(draftLoad.error) }, t)}
+                {nativeErrorText({ code: nativeErrorCode(draftLoad.error) }, t)}
               </p>
               <Button
                 size="sm"

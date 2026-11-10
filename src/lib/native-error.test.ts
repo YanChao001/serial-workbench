@@ -41,12 +41,13 @@ describe("native error presentation", () => {
       expect(nativeErrorText({ code }, t)).toBe(en["errors.INTERNAL"]);
     },
   );
-  it.each([["NATIVE_BUSY", "nativeError.busy"]] as const)(
-    "presents %s with its stable localized message",
-    (code, key) => {
-      const error = { code, message: "unverified payload details" };
-      expect(nativeErrorText(error, createTranslator(en))).toBe(en[key]);
-      expect(nativeErrorText(error, createTranslator(zhCN))).toBe(zhCN[key]);
-    },
-  );
+  it.each([
+    ["NATIVE_BUSY", "nativeError.busy"],
+    ["ACCESS_DENIED", "nativeError.accessDenied"],
+    ["PERMISSION_DENIED", "nativeError.permissionDenied"],
+  ] as const)("presents %s with its stable localized message", (code, key) => {
+    const error = { code, message: "unverified payload details" };
+    expect(nativeErrorText(error, createTranslator(en))).toBe(en[key]);
+    expect(nativeErrorText(error, createTranslator(zhCN))).toBe(zhCN[key]);
+  });
 });

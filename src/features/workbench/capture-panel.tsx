@@ -2,12 +2,43 @@ import type { Operation, OperationSummary } from "@serial-workbench/contracts";
 import { Button } from "@/components/ui/button";
 import type { WorkbenchLabels } from "./labels";
 import type { HostContextValue } from "@/providers/host-context";
+import { OperationDetails } from "./operation-details";
+import { operationName, operationProgress } from "./operation-text";
 import {
   CaptureStatus,
   LiveCaptureStatus,
   type CaptureStatusReader,
   type CaptureStopper,
 } from "./capture-status";
+
+function CaptureOperationSummary({
+  operation,
+  labels,
+}: {
+  operation: OperationSummary;
+  labels: WorkbenchLabels;
+}) {
+  const text = labels.operationText;
+  const message = operation.errorCode
+    ? text.failure(operation.errorCode)
+    : undefined;
+  return (
+    <li>
+      <div className="workbench-operation-heading">
+        <span className="font-medium">
+          {operationName(operation.actionId, text)}
+        </span>
+        <span>{text.states[operation.state]}</span>
+        <OperationDetails operation={operation} label={text.details} />
+      </div>
+      {operation.progress && (
+        <p>{operationProgress(operation.progress, text)}</p>
+      )}
+      {message && <p className="text-muted-foreground">{message}</p>}
+    </li>
+  );
+}
+
 export function CapturePanel({
   operations,
   summaries,
@@ -37,8 +68,12 @@ export function CapturePanel({
     operation.actionId.startsWith("capture."),
   );
   return (
-    <section aria-label={labels.capture} data-panel-id="capture">
-      <h2>{labels.capture}</h2>
+    <section
+      aria-label={labels.capture}
+      data-panel-id="capture"
+      className="workbench-operations"
+    >
+      <h2 className="sr-only">{labels.capture}</h2>
       <div className="workbench-toolbar">
         <Button
           size="sm"
@@ -64,13 +99,11 @@ export function CapturePanel({
       )}
       <ul>
         {captures.map((operation) => (
-          <li key={operation.operationId}>
-            {operation.actionId} · {operation.state}
-            {operation.progress
-              ? ` · ${operation.progress.completed} ${operation.progress.unit}`
-              : ""}
-            {operation.errorCode && <p role="alert">{operation.errorCode}</p>}
-          </li>
+          <CaptureOperationSummary
+            key={operation.operationId}
+            operation={operation}
+            labels={labels}
+          />
         ))}
       </ul>
       {operations

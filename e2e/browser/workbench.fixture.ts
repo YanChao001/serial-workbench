@@ -10,11 +10,15 @@ import type {
   SessionInputs,
   SessionMetrics,
   HostMetrics,
+  HostError,
   Query,
   Call,
   FileMetadata,
   CaptureTailResult,
+  Cursor,
   WorkspaceDocumentResult,
+  SessionSnapshot,
+  ReplayReadResult,
 } from "@serial-workbench/contracts";
 import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
 import clientDefaults from "../../src/lib/generated/client-defaults.json" with { type: "json" };
@@ -52,7 +56,18 @@ export type CaptureTailFixture = {
   deferred?: string[];
   workspaces?: Record<string, WorkspaceDocument>;
 };
+/** 仅供无头渲染验收：明确的已附着回放和可校验记录，不代表实际 Host/录制文件。 */
+export type ReplayLayoutFixture = {
+  session: SessionSnapshot;
+  page: ReplayReadResult;
+  files: Record<
+    string,
+    { reference: ObjectRef; bytesBase64: string; fingerprint: string }
+  >;
+};
 export type WorkbenchFixture = {
+  rawSubscriptions: string[];
+  emitRaw: (items: unknown[]) => number;
   unexpectedCommands: string[];
   hostQueries: string[];
   queryInputs: Query[];
@@ -88,6 +103,7 @@ export type WorkbenchFixture = {
   releaseHost: () => void;
   releaseDrafts: () => void;
   failRefresh: () => void;
+  failHost: () => number;
 };
 declare global {
   interface Window {
@@ -144,6 +160,7 @@ export async function seedWorkbenchFixture(
     currentPage = "workbench",
     language = "en",
     theme = "light",
+    sharedSettings = {},
     observations,
     readOnly = false,
     captureTarget,
@@ -153,6 +170,8 @@ export async function seedWorkbenchFixture(
     drafts = {},
     workspace,
     captureTails,
+    replay,
+    connectFailure,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -160,6 +179,7 @@ export async function seedWorkbenchFixture(
     currentPage?: "workbench" | "settings";
     language?: "en" | "zh";
     theme?: "light" | "dark";
+    sharedSettings?: Partial<SharedSettings>;
     observations?: ObservationFixture;
     readOnly?: boolean;
     captureTarget?: SelectedFileResource;
@@ -169,6 +189,8 @@ export async function seedWorkbenchFixture(
     drafts?: Record<string, string>;
     workspace?: WorkspaceDocument;
     captureTails?: CaptureTailFixture;
+    replay?: ReplayLayoutFixture;
+    connectFailure?: HostError;
   },
 ) {
   const desktopStatus: DesktopStatus = {
@@ -218,6 +240,55 @@ export async function seedWorkbenchFixture(
     scopeId: "workspace.default",
     target: { hostId, kind: "workspace", id: "default" },
   };
+  const replayScope = replay
+    ? {
+        scopeId: "session.replay-layout",
+        target: {
+          hostId,
+          kind: "session",
+          id: replay.session.sessionId,
+          sessionId: replay.session.sessionId,
+          sessionEpoch: replay.session.sessionEpoch,
+        },
+      }
+    : null;
+  const replayOperation: Operation | null = replay
+    ? {
+        ...fixtureOperation,
+        operationId: "fixture-attached-replay",
+        rootOperationId: "fixture-attached-replay",
+        actionId: "replay.open",
+        target: { hostId, kind: "capture", id: "explicit-replay-layout" },
+        revealTarget: {
+          pageId: "workbench",
+          sessionId: replay.session.sessionId,
+          panelId: "replay",
+        },
+        result: {
+          kind: "opened",
+          value: {
+            sessionId: replay.session.sessionId,
+            sessionEpoch: replay.session.sessionEpoch,
+            revision: replay.session.revision,
+            reused: false,
+          },
+        },
+      }
+    : null;
+  const replaySummary = replayOperation
+    ? {
+        operationId: replayOperation.operationId,
+        executionHostId: replayOperation.executionHostId,
+        actorId: replayOperation.actorId,
+        actionId: replayOperation.actionId,
+        target: replayOperation.target,
+        executionMode: replayOperation.executionMode,
+        state: replayOperation.state,
+        revision: replayOperation.revision,
+        revealTarget: replayOperation.revealTarget,
+        acceptedAt: replayOperation.acceptedAt,
+      }
+    : null;
   const settingsDocument: SettingsDocumentResult = {
     scope: settingsScope,
     document: {
@@ -231,6 +302,7 @@ export async function seedWorkbenchFixture(
         backgroundIntensity,
         motion,
         autoCheckUpdates: false,
+        ...sharedSettings,
       },
     },
   };
@@ -244,7 +316,21 @@ export async function seedWorkbenchFixture(
   const queryResults = {
     "state.scopes": {
       kind: "scopes",
-      value: { scopes: [settingsScope, workspaceScope] },
+      value: {
+        scopes: [
+          settingsScope,
+          workspaceScope,
+          ...(replayScope
+            ? [
+                {
+                  scopeId: "host.operations",
+                  target: { hostId, kind: "host", id: hostId },
+                },
+                replayScope,
+              ]
+            : []),
+        ],
+      },
     },
     "catalog.list": {
       kind: "catalog",
@@ -253,6 +339,20 @@ export async function seedWorkbenchFixture(
     "device.list": {
       kind: "devices",
       value: { devices: [fixtureDevice], stale: false },
+    },
+    "recent.list": {
+      kind: "recent",
+      value: {
+        revision: "1",
+        entries: [
+          {
+            deviceId: fixtureDevice.deviceId,
+            fingerprint: fixtureDevice.fingerprint,
+            configuration: fixtureSession.configuration,
+            openedAt: "2026-11-10T06:15:00Z",
+          },
+        ],
+      },
     },
     "settings.read": { kind: "settings", value: settingsDocument },
     "workspace.read": { kind: "workspace", value: workspaceDocument },
@@ -295,6 +395,11 @@ export async function seedWorkbenchFixture(
     hostStart,
     draftAccess,
     captureProfile: captureTails ?? null,
+    replayProfile: replay ?? null,
+    replayScope,
+    replayOperation,
+    replaySummary,
+    connectFailure: connectFailure ?? null,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -315,6 +420,11 @@ export async function seedWorkbenchFixture(
       hostStart,
       draftAccess,
       captureProfile,
+      replayProfile,
+      replayScope,
+      replayOperation,
+      replaySummary,
+      connectFailure,
     } = JSON.parse(raw) as typeof fixturePayload;
     const retained = JSON.parse(
       sessionStorage.getItem("workbench-native-fixture") ?? "null",
@@ -330,6 +440,27 @@ export async function seedWorkbenchFixture(
       retained?.settings ?? settingsState;
     let currentWorkspace: WorkspaceDocumentResult =
       retained?.workspace ?? workspaceState;
+    const workspaceDocuments = new Map<string, WorkspaceDocumentResult>([
+      [workspaceState.scope.target.id, workspaceState],
+      [currentWorkspace.scope.target.id, currentWorkspace],
+      ...Object.entries(captureProfile?.workspaces ?? {}).map(
+        ([id, value]): [string, WorkspaceDocumentResult] => [
+          id,
+          {
+            scope: {
+              scopeId: "workspace." + id,
+              target: { ...workspaceState.scope.target, id },
+            },
+            document: { revision: "1", value },
+          },
+        ],
+      ),
+    ]);
+    for (const document of workspaceDocuments.values()) {
+      const scopes = hostQueryResults["state.scopes"].value.scopes;
+      if (!scopes.some((scope) => scope.scopeId === document.scope.scopeId))
+        scopes.push(document.scope);
+    }
     let hostAvailability = hostStart;
     let draftAvailability = draftAccess;
     let refreshUnavailable = false;
@@ -346,8 +477,52 @@ export async function seedWorkbenchFixture(
     };
     let nextSubscription = 1;
     const callbacks = new Map<number, (value: unknown) => void>();
+    const rawChannels = new Map<
+      string,
+      { callback: number; index: number; cursor: Cursor; sentBytes: bigint }
+    >();
+    const stateChannels = new Map<
+      string,
+      {
+        callback: number;
+        index: number;
+        requestId: string;
+        scopeId: string;
+        workspace: boolean;
+      }
+    >();
     let nextCallback = 1;
     const fixture: WorkbenchFixture = {
+      rawSubscriptions: [],
+      emitRaw(items) {
+        const bytes = items.reduce<bigint>(
+          (total, item) =>
+            total +
+            BigInt(new TextEncoder().encode(JSON.stringify(item)).byteLength),
+          0n,
+        );
+        for (const [subscriptionId, entry] of rawChannels) {
+          entry.sentBytes += bytes;
+          const previousCursor = entry.cursor;
+          entry.cursor = {
+            ...previousCursor,
+            position: String(
+              BigInt(previousCursor.position) + BigInt(items.length),
+            ),
+          };
+          const batch = {
+            subscriptionId,
+            previousCursor,
+            cursor: entry.cursor,
+            items,
+          };
+          callbacks.get(entry.callback)?.({
+            message: batch,
+            index: entry.index++,
+          });
+        }
+        return rawChannels.size;
+      },
       unexpectedCommands: [],
       hostQueries: [],
       queryInputs: [],
@@ -393,6 +568,25 @@ export async function seedWorkbenchFixture(
       },
       failRefresh() {
         refreshUnavailable = true;
+      },
+      failHost() {
+        let delivered = 0;
+        // 只从实际活跃的工作区 Native 订阅交付故障，交给生产 HostProvider 退休连接。
+        for (const [subscriptionId, entry] of [...stateChannels]) {
+          if (!entry.workspace || !stateChannels.has(subscriptionId)) continue;
+          const callback = callbacks.get(entry.callback);
+          if (!callback) continue;
+          delivered++;
+          callback({
+            message: {
+              channel: "state",
+              requestId: entry.requestId,
+              body: { type: "error", error: startupFailure },
+            },
+            index: entry.index++,
+          });
+        }
+        return delivered;
       },
     };
     const persist = () =>
@@ -457,6 +651,7 @@ export async function seedWorkbenchFixture(
             case "plugin:event|listen":
               return args.handler;
             case "plugin:event|unlisten":
+            case "host_delivery_ack":
             case "plugin:notification|register_listener":
             case "plugin:notification|remove_listener":
             case "complete_frontend_startup":
@@ -523,23 +718,28 @@ export async function seedWorkbenchFixture(
                 kind: string;
                 expectedRevision: string;
                 params: { value: SharedSettings | WorkspaceDocument };
+                workspaceId?: string;
               };
               if (intent.kind === "workspaceSave") {
-                if (
-                  intent.expectedRevision !== currentWorkspace.document.revision
-                )
+                const base = workspaceDocuments.get(
+                  intent.workspaceId ?? workspaceState.scope.target.id,
+                );
+                if (!base) throw { code: "NOT_FOUND" };
+                if (intent.expectedRevision !== base.document.revision)
                   throw { code: "CONFLICT" };
                 const value = intent.params.value as WorkspaceDocument;
                 fixture.workspaceWrites.push(value);
                 currentWorkspace = {
-                  ...currentWorkspace,
+                  ...base,
                   document: {
-                    revision: String(
-                      BigInt(currentWorkspace.document.revision) + 1n,
-                    ),
+                    revision: String(BigInt(base.document.revision) + 1n),
                     value,
                   },
                 };
+                workspaceDocuments.set(
+                  currentWorkspace.scope.target.id,
+                  currentWorkspace,
+                );
                 persist();
                 return {
                   ...sentOperation,
@@ -560,6 +760,7 @@ export async function seedWorkbenchFixture(
             }
             case "host_connect_device":
               fixture.connectCalls.push(String(args.deviceId));
+              if (connectFailure) throw connectFailure;
               return openedSession;
             case "host_raw_request":
             case "host_request": {
@@ -630,6 +831,105 @@ export async function seedWorkbenchFixture(
               const query = request.params;
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
+              if (
+                replayProfile &&
+                query.actionId === "operation.get" &&
+                query.params.operationId === replayOperation?.operationId
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "operation",
+                    value: { operation: replayOperation },
+                  },
+                };
+              if (
+                replayProfile &&
+                query.actionId === "session.get" &&
+                query.target.id === replayProfile.session.sessionId
+              )
+                return {
+                  ok: true,
+                  result: { kind: "session", value: replayProfile.session },
+                };
+              if (replayProfile && query.actionId === "replay.read") {
+                if (
+                  command !== "host_raw_request" ||
+                  query.params.maxRecords !== "100" ||
+                  query.params.maxBytes !== "65536" ||
+                  query.params.sessionId !== replayProfile.session.sessionId ||
+                  query.params.sessionEpoch !==
+                    replayProfile.session.sessionEpoch
+                )
+                  throw new Error(
+                    "Invalid explicit replay.read transport, target or budget",
+                  );
+                return {
+                  ok: true,
+                  result: { kind: "replay_read", value: replayProfile.page },
+                };
+              }
+              if (replayProfile && query.actionId === "file.read") {
+                const file = replayProfile.files[query.target.id];
+                if (
+                  !file ||
+                  command !== "host_raw_request" ||
+                  typeof query.params.offset !== "string" ||
+                  typeof query.params.maxBytes !== "string"
+                )
+                  throw new Error("Unknown explicit replay record");
+                const binary = atob(file.bytesBase64);
+                const offset = BigInt(query.params.offset);
+                const count = BigInt(query.params.maxBytes);
+                if (
+                  offset < 0n ||
+                  offset >= BigInt(binary.length) ||
+                  count <= 0n ||
+                  count > 65536n
+                )
+                  throw new Error("Invalid replay file.read range");
+                const part = binary.slice(
+                  Number(offset),
+                  Number(offset + count),
+                );
+                const next = offset + BigInt(part.length);
+                return {
+                  ok: true,
+                  result: {
+                    kind: "file_read",
+                    value: {
+                      fileRef: file.reference,
+                      offset: String(offset),
+                      nextOffset: String(next),
+                      bytesBase64: btoa(part),
+                      totalBytes: String(binary.length),
+                      fingerprint: file.fingerprint,
+                      atEnd: next === BigInt(binary.length),
+                    },
+                  },
+                };
+              }
+              if (query.actionId === "stream.credit") {
+                const subscriptionId = query.params.subscriptionId;
+                if (typeof subscriptionId !== "string")
+                  throw new Error("Invalid stream credit fixture request");
+                return {
+                  ok: true,
+                  result: {
+                    kind: "stream_credit",
+                    value: {
+                      ackCursor: query.params.ackCursor,
+                      grantedBytesTotal: query.params.grantedBytesTotal,
+                      sentBytesTotal: (
+                        rawChannels.get(subscriptionId)?.sentBytes ?? 0n
+                      ).toString(),
+                      acknowledgedBytesTotal: (
+                        rawChannels.get(subscriptionId)?.sentBytes ?? 0n
+                      ).toString(),
+                    },
+                  },
+                };
+              }
               if (refreshUnavailable && query.actionId === "catalog.list")
                 throw startupFailure;
               if (query.actionId === "capture.tail") {
@@ -660,36 +960,16 @@ export async function seedWorkbenchFixture(
                 };
               }
               if (query.actionId === "workspace.read") {
-                if (query.target.id !== currentWorkspace.scope.target.id) {
-                  const next =
-                    query.target.id === workspaceState.scope.target.id
-                      ? workspaceState.document.value
-                      : captureProfile?.workspaces?.[query.target.id];
-                  if (!next)
-                    throw {
-                      code: "NOT_FOUND",
-                      message: "Unknown explicit workspace fixture",
-                      retryable: false,
-                    };
-                  currentWorkspace = {
-                    scope: {
-                      scopeId: "workspace." + query.target.id,
-                      target: query.target,
-                    },
-                    document: { revision: "1", value: next },
+                const document = workspaceDocuments.get(query.target.id);
+                if (!document)
+                  throw {
+                    code: "NOT_FOUND",
+                    message: "Unknown explicit workspace fixture",
+                    retryable: false,
                   };
-                  const scopes = hostQueryResults["state.scopes"].value.scopes;
-                  if (
-                    !scopes.some(
-                      (scope) =>
-                        scope.scopeId === currentWorkspace.scope.scopeId,
-                    )
-                  )
-                    scopes.push(currentWorkspace.scope);
-                }
                 return {
                   ok: true,
-                  result: { kind: "workspace", value: currentWorkspace },
+                  result: { kind: "workspace", value: document },
                 };
               }
               if (query.actionId === "session.inputs")
@@ -781,18 +1061,57 @@ export async function seedWorkbenchFixture(
                     },
                   },
                 };
+              if (query.actionId === "device.refresh")
+                return {
+                  ok: true,
+                  result: hostQueryResults["device.list"],
+                };
               if (query.actionId === "recent.list")
                 return {
                   ok: true,
-                  result: { kind: "recent", value: { items: [] } },
+                  result: hostQueryResults["recent.list"],
                 };
               if (query.actionId === "state.snapshot") {
                 const scopeId = query.params.scopeId;
+                if (
+                  replayProfile &&
+                  replayScope &&
+                  replayOperation &&
+                  typeof scopeId === "string" &&
+                  (scopeId === "host.operations" ||
+                    scopeId === replayScope.scopeId)
+                )
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "snapshot",
+                      value: {
+                        hostId: hostAttachment.attachment.hostId,
+                        instanceEpoch: hostAttachment.attachment.instanceEpoch,
+                        revision: "1",
+                        cursor: {
+                          hostId: hostAttachment.attachment.hostId,
+                          instanceEpoch:
+                            hostAttachment.attachment.instanceEpoch,
+                          scopeId,
+                          position: "0",
+                        },
+                        state:
+                          scopeId === "host.operations"
+                            ? { items: [replaySummary] }
+                            : replayProfile.session,
+                      },
+                    },
+                  };
                 const state =
                   scopeId === currentSettings.scope.scopeId
                     ? currentSettings
-                    : scopeId === currentWorkspace.scope.scopeId
-                      ? currentWorkspace
+                    : [...workspaceDocuments.values()].some(
+                          (document) => document.scope.scopeId === scopeId,
+                        )
+                      ? [...workspaceDocuments.values()].find(
+                          (document) => document.scope.scopeId === scopeId,
+                        )!
                       : null;
                 if (!state) break;
                 return {
@@ -821,12 +1140,74 @@ export async function seedWorkbenchFixture(
               if (result) return { ok: true, result };
               break;
             }
-            case "host_raw_subscribe":
-            case "host_subscribe":
-              return `workbench-gui-subscription-${nextSubscription++}`;
+            case "host_raw_subscribe": {
+              const request = args.request as Query;
+              const channel = args.channel;
+              const after = request.params.after;
+              if (
+                request.actionId !== "stream.subscribe" ||
+                !after ||
+                typeof after !== "object" ||
+                Array.isArray(after) ||
+                typeof after.hostId !== "string" ||
+                typeof after.instanceEpoch !== "string" ||
+                typeof after.scopeId !== "string" ||
+                typeof after.position !== "string" ||
+                !channel ||
+                typeof channel !== "object" ||
+                !("id" in channel) ||
+                typeof channel.id !== "number"
+              )
+                throw new Error("Invalid raw subscription fixture request");
+              const subscriptionId = `workbench-gui-subscription-${nextSubscription++}`;
+              rawChannels.set(subscriptionId, {
+                callback: channel.id,
+                index: 0,
+                cursor: {
+                  hostId: after.hostId,
+                  instanceEpoch: after.instanceEpoch,
+                  scopeId: after.scopeId,
+                  position: after.position,
+                },
+                sentBytes: 0n,
+              });
+              fixture.rawSubscriptions.push(subscriptionId);
+              return subscriptionId;
+            }
+            case "host_subscribe": {
+              const request = args.request as Query;
+              const channel = args.channel;
+              if (
+                request.actionId !== "state.subscribe" ||
+                typeof request.requestId !== "string" ||
+                typeof request.params.scopeId !== "string" ||
+                !channel ||
+                typeof channel !== "object" ||
+                !("id" in channel) ||
+                typeof channel.id !== "number"
+              )
+                throw new Error("Invalid state subscription fixture request");
+              const subscriptionId = `workbench-gui-subscription-${nextSubscription++}`;
+              stateChannels.set(subscriptionId, {
+                callback: channel.id,
+                index: 0,
+                requestId: request.requestId,
+                scopeId: request.params.scopeId,
+                workspace: request.target.kind === "workspace",
+              });
+              return subscriptionId;
+            }
             case "host_raw_unsubscribe":
-            case "host_unsubscribe":
+              rawChannels.delete(String(args.subscriptionId));
+              fixture.rawSubscriptions = [...rawChannels.keys()];
               return null;
+            case "host_unsubscribe": {
+              const subscriptionId = String(args.subscriptionId);
+              const entry = stateChannels.get(subscriptionId);
+              stateChannels.delete(subscriptionId);
+              if (entry) callbacks.delete(entry.callback);
+              return null;
+            }
             case "client_state_read":
               fixture.clientStateReads++;
               if (draftAvailability === "pending")

@@ -1,12 +1,19 @@
 /// <reference lib="dom" />
 import { writeFile } from "node:fs/promises";
-import { expect, test, type Page, type TestInfo } from "@playwright/test";
+import {
+  expect,
+  test,
+  type Locator,
+  type Page,
+  type TestInfo,
+} from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type { FileMetadata } from "@serial-workbench/contracts";
 import {
   seedWorkbenchFixture,
   type ObservationFixture,
 } from "./workbench.fixture";
+import { en } from "../../src/i18n/en";
 
 // Controlled UI replies, deliberately distinct from real Host or hardware evidence.
 const observations: ObservationFixture = {
@@ -119,14 +126,38 @@ async function openTool(page: Page, name: string) {
     name: "Workspace menu",
     exact: true,
   });
-  await trigger.focus();
-  await trigger.press("Enter");
-  const item = page.getByRole("menuitem", { name, exact: true });
-  await item.focus();
-  await item.press("Enter");
+  await expect(trigger).toBeVisible();
+  const direct = page.getByRole("button", { name, exact: true });
+  if (await direct.isVisible()) await direct.click();
+  else {
+    await trigger.focus();
+    await trigger.press("ArrowDown");
+    await page.getByRole("menuitem", { name, exact: true }).click();
+  }
   const dialog = page.getByRole("dialog", { name, exact: true });
   await expect(dialog).toBeVisible();
   return dialog;
+}
+function metricValue(region: Locator, label: string) {
+  return region
+    .getByText(label, { exact: true })
+    .locator("..")
+    .locator("dd")
+    .first();
+}
+async function workbenchRectangles(page: Page) {
+  return page.evaluate(() =>
+    [
+      ".workbench-stream-log",
+      ".workbench-draft-frame",
+      ".workbench-send-button",
+    ].map((selector) => {
+      const element = document.querySelector(selector);
+      if (!element) throw new Error(`Missing layout region ${selector}`);
+      const { x, y, width, height } = element.getBoundingClientRect();
+      return { x, y, width, height };
+    }),
+  );
 }
 async function scan(page: Page, selector: string, info: TestInfo) {
   const result = await new AxeBuilder({ page })
@@ -297,8 +328,43 @@ for (const readOnly of [false, true])
     await expect(inputs.getByLabel("DSR", { exact: true })).toHaveText("Off");
     await expect(inputs.getByLabel("RI", { exact: true })).toHaveText("On");
     await expect(inputs.getByLabel("CD", { exact: true })).toHaveText("Off");
-    await expect(inputs).toContainText("2026-11-08T12:00:01Z");
-    await expect(inputs).toContainText("123456789 ns");
+    const timestamp = "2026-11-08T12:00:01Z";
+    const sampledAt = inputs.getByLabel("Sampled at", { exact: true });
+    await expect(sampledAt).toHaveAttribute("datetime", timestamp);
+    await expect(sampledAt).toHaveText(
+      await page.evaluate(
+        (value) =>
+          new Date(value).toLocaleTimeString(undefined, { hourCycle: "h23" }),
+        timestamp,
+      ),
+    );
+    const detailsTrigger = inputs.getByRole("button", {
+      name: "View details",
+      exact: true,
+    });
+    await detailsTrigger.click();
+    const details = page.getByRole("textbox", {
+      name: "Actual input samples",
+      exact: true,
+    });
+    await expect(details).toHaveValue(
+      JSON.stringify(observations.inputs, null, 2),
+    );
+    await expect(details).not.toBeEditable();
+    await page.keyboard.press("Escape");
+    await expect(details).toBeHidden();
+    await expect(detailsTrigger).toBeFocused();
+    // Returning from the Popover can reveal its icon's keyboard tooltip. Move
+    // through the real Tab order and verify that layer is gone before testing
+    // the owning dialog's Escape and return-focus behavior.
+    await page.keyboard.press("Tab");
+    await expect(
+      dialog.getByRole("button", {
+        name: en["workbench.closeView"],
+        exact: true,
+      }),
+    ).toBeFocused();
+    await expect(page.getByRole("tooltip")).toHaveCount(0);
     if (readOnly)
       await expect(
         dialog.getByRole("button", { name: "DTR on", exact: true }),
@@ -309,18 +375,30 @@ for (const readOnly of [false, true])
       ).toBeEnabled();
     await expect(
       inputs.getByRole("button", { name: "Refresh inputs", exact: true }),
-    ).toBeEnabled();
+    ).toHaveCount(0);
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.workbenchFixture.queryInputs.filter(
+              (q) => q.actionId === "session.inputs",
+            ).length,
+        ),
+      )
+      .toBeGreaterThanOrEqual(2);
     const requests = await page.evaluate(() =>
       window.workbenchFixture.queryInputs.filter(
         (q) => q.actionId === "session.inputs",
       ),
     );
-    expect(requests[0]?.target).toMatchObject({
-      hostId: "workbench-gui-host",
-      id: "session",
-      sessionId: "session",
-      sessionEpoch: "1",
-    });
+    for (const request of requests)
+      expect(request.target).toEqual({
+        hostId: "workbench-gui-host",
+        kind: "session",
+        id: "session",
+        sessionId: "session",
+        sessionEpoch: "1",
+      });
     expect(
       await page.evaluate(() =>
         window.workbenchFixture.invocations.filter(
@@ -334,6 +412,7 @@ for (const readOnly of [false, true])
     });
     await scan(page, '[role="dialog"]', info);
     await page.keyboard.press("Escape");
+    await expect(dialog).toBeHidden();
     await expect(trigger).toBeFocused();
   });
 
@@ -363,10 +442,36 @@ test("unsupported input sampling displays unknown rather than inferred control-l
     );
   await expect(
     inputs.getByRole("button", { name: "Refresh inputs", exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    inputs.getByRole("button", { name: "View details", exact: true }),
   ).toBeDisabled();
+  await expect(
+    inputs.getByLabel("Sampled at", { exact: true }),
+  ).not.toHaveAttribute("datetime");
   await expect(
     dialog.getByRole("button", { name: "DTR on", exact: true }),
   ).toBeEnabled();
+  const requests = await page.evaluate(() =>
+    window.workbenchFixture.queryInputs.filter(
+      (q) => q.actionId === "session.inputs",
+    ),
+  );
+  expect(requests).toHaveLength(1);
+  expect(requests[0]?.target).toEqual({
+    hostId: "workbench-gui-host",
+    kind: "session",
+    id: "session",
+    sessionId: "session",
+    sessionEpoch: "1",
+  });
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.invocations.filter(
+        (c) => c.actionId === "session.control",
+      ),
+    ),
+  ).toEqual([]);
   await inputs.scrollIntoViewIfNeeded();
   await page.screenshot({ path: info.outputPath("inputs-unsupported.png") });
 });
@@ -382,44 +487,147 @@ for (const theme of ["light", "dark"] as const)
     );
     await seedWorkbenchFixture(page, { theme, observations });
     await openSession(page);
-    const dialog = await openTool(page, "Host metrics");
+    const dialog = await openTool(page, en["workbench.tools.metrics"]);
     const metrics = dialog.getByRole("region", {
-      name: "Session metrics",
+      name: en["workbench.sessionMetrics"],
       exact: true,
     });
-    await expect(metrics).toContainText("9007199254741999");
-    await expect(metrics).toContainText("9007199254742000");
-    await expect(metrics).toContainText("90001");
-    await expect(
-      metrics
-        .getByText("RX bytes across reconnects", { exact: true })
-        .locator("..")
-        .locator("dd"),
-    ).toHaveText("9007199254741999");
-    await expect(
-      metrics
-        .getByText("TX bytes accepted by Host across reconnects", {
-          exact: true,
-        })
-        .locator("..")
-        .locator("dd"),
-    ).toHaveText("9007199254742000");
-    await expect(
-      metrics
-        .getByText("RX I/O errors across reconnects", { exact: true })
-        .locator("..")
-        .locator("dd"),
-    ).toHaveText("7");
+    const received = metricValue(metrics, en["workbench.rxBytes"]);
+    await expect(received).toHaveText("9.01 PB");
+    await expect(received).toHaveAttribute("title", "9007199254741999");
+    const accepted = metricValue(metrics, en["workbench.txAcceptedBytes"]);
+    await expect(accepted).toHaveText("9.01 PB");
+    await expect(accepted).toHaveAttribute("title", "9007199254742000");
+    const duration = metricValue(metrics, en["workbench.connectionDuration"]);
+    await expect(duration).toHaveText("00:01:30");
+    await expect(duration).toHaveAttribute("title", "90001");
+    for (const [label, display, exact] of [
+      [en["workbench.txUnknownBytes"], "111 B", "111"],
+      [en["workbench.rxBytesPerSecond"], "222 B/s", "222"],
+      [en["workbench.txAcceptedBytesPerSecond"], "333 B/s", "333"],
+      [en["workbench.rxReadErrors"], "7", "7"],
+      [en["workbench.txWriteErrors"], "8", "8"],
+    ] as const) {
+      const value = metricValue(metrics, label);
+      await expect(value).toHaveText(display);
+      await expect(value).toHaveAttribute("title", exact);
+    }
+    const updatedAt = metricValue(metrics, en["workbench.observedAt"]);
+    await expect(updatedAt).toHaveAttribute(
+      "title",
+      observations.metrics.observedAt,
+    );
+    await expect(updatedAt.locator("time")).toHaveAttribute(
+      "datetime",
+      observations.metrics.observedAt,
+    );
     await expect(metrics.getByText("Unavailable", { exact: true })).toHaveCount(
       2,
     );
     await expect(
       metrics.getByText("Line framing / parity errors", { exact: true }),
     ).toBeVisible();
+    const host = dialog.getByRole("region", {
+      name: en["workbench.metrics"],
+      exact: true,
+    });
+    const memory = metricValue(host, en["workbench.rss"]);
+    await expect(memory).toHaveText("104.86 MB");
+    await expect(memory).toHaveAttribute("title", "104857600");
+    const peakMemory = metricValue(host, en["workbench.rssPeak"]);
+    await expect(peakMemory).toHaveText("125.83 MB");
+    await expect(peakMemory).toHaveAttribute("title", "125829120");
+    for (const [label, display, exact] of [
+      [en["workbench.sourceMemory"], "13 B / 40 B", "13 / 40"],
+      [en["workbench.readerMemory"], "3 B / 10 B", "3 / 10"],
+      [en["workbench.captureMemory"], "7 B / 16 B", "7 / 16"],
+    ] as const) {
+      const value = metricValue(host, label);
+      await expect(value).toHaveText(display);
+      await expect(value).toHaveAttribute("title", exact);
+    }
+    for (const [raw, display] of [
+      ["20", "20 B"],
+      ["5", "5 B"],
+      ["8", "8 B"],
+    ] as const)
+      await expect(host.locator(`span[title="${raw}"]`)).toHaveText(display);
+    await expect(
+      host.getByRole("button", { name: "Refresh", exact: true }),
+    ).toHaveCount(0);
+    for (const actionId of ["host.metrics", "session.metrics"] as const)
+      await expect
+        .poll(() =>
+          page.evaluate(
+            (action) =>
+              window.workbenchFixture.queryInputs.filter(
+                (q) => q.actionId === action,
+              ).length,
+            actionId,
+          ),
+        )
+        .toBeGreaterThanOrEqual(2);
+    const requests = await page.evaluate(() =>
+      window.workbenchFixture.queryInputs.filter(
+        (q) =>
+          q.actionId === "host.metrics" || q.actionId === "session.metrics",
+      ),
+    );
+    for (const request of requests)
+      expect(request.target).toEqual(
+        request.actionId === "host.metrics"
+          ? {
+              hostId: "workbench-gui-host",
+              kind: "host",
+              id: "workbench-gui-host",
+            }
+          : {
+              hostId: "workbench-gui-host",
+              kind: "session",
+              id: "session",
+              sessionId: "session",
+              sessionEpoch: "1",
+            },
+      );
+    expect(
+      await page.evaluate(() =>
+        window.workbenchFixture.invocations.filter(
+          (call) => call.actionId === "session.control",
+        ),
+      ),
+    ).toEqual([]);
     await expect(
       metrics.getByText("Frame counts", { exact: true }),
     ).toBeVisible();
-    await metrics.scrollIntoViewIfNeeded();
+    const body = dialog.locator(".workbench-dialog-body");
+    await expect(body).toBeFocused();
+    await page.keyboard.press("Tab");
+    await expect(
+      dialog.getByRole("button", {
+        name: en["workbench.closeView"],
+        exact: true,
+      }),
+    ).toBeFocused();
+    await page.keyboard.press("Shift+Tab");
+    await expect(body).toBeFocused();
+    expect(
+      await body.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+    const frame = await dialog.boundingBox();
+    const rectangles = await workbenchRectangles(page);
+    await body.press("Home");
+    await expect
+      .poll(() => body.evaluate((element) => element.scrollTop))
+      .toBe(0);
+    await body.press("PageDown");
+    await expect
+      .poll(() => body.evaluate((element) => element.scrollTop))
+      .toBeGreaterThan(0);
+    await expect(dialog).toBeVisible();
+    expect(await dialog.boundingBox()).toEqual(frame);
+    expect(await workbenchRectangles(page)).toEqual(rectangles);
     await page.screenshot({
       path: info.outputPath(`session-metrics-${theme}.png`),
     });
@@ -461,12 +669,26 @@ test("capture limits send exact MiB bytes and replacement fingerprint remains re
     name: "Start capture",
     exact: true,
   });
-  await expect(start.getByLabel("Capacity (MiB)", { exact: true })).toHaveValue(
-    "1024",
-  );
-  await expect(
-    start.getByLabel("Disk reserve (MiB)", { exact: true }),
-  ).toHaveValue("128");
+  const begin = dialog.getByRole("button", {
+    name: "Start capture",
+    exact: true,
+  });
+  await dialog.getByRole("tab", { name: "Advanced", exact: true }).click();
+  const advanced = dialog.getByRole("tabpanel", {
+    name: "Advanced",
+    exact: true,
+  });
+  const capacity = advanced.getByRole("textbox", {
+    name: "Capacity (MiB)",
+    exact: true,
+  });
+  const reserve = advanced.getByRole("textbox", {
+    name: "Disk reserve (MiB)",
+    exact: true,
+  });
+  await expect(capacity).toHaveValue("1024");
+  await expect(reserve).toHaveValue("128");
+  await dialog.getByRole("tab", { name: "Recording", exact: true }).click();
   await start
     .getByRole("button", { name: "Select capture destination", exact: true })
     .click();
@@ -484,9 +706,15 @@ test("capture limits send exact MiB bytes and replacement fingerprint remains re
     page.getByText("explicit-ui-fixture.swb", { exact: true }),
   ).toBeVisible();
   await expect(dialog).toHaveAccessibleName("Capture and replay tools");
-  await start
-    .getByRole("combobox", { name: "Write mode", exact: true })
-    .selectOption("replace");
+  const writeMode = start.getByRole("combobox", {
+    name: "Write mode",
+    exact: true,
+  });
+  await writeMode.click();
+  const options = page.getByRole("listbox");
+  await expect(options).toHaveAttribute("data-slot", "select-content");
+  await options.getByRole("option", { name: "Replace", exact: true }).click();
+  await expect(writeMode).toHaveText("Replace");
   const fingerprint = start.getByRole("textbox", {
     name: "Expected SHA-256 fingerprint",
     exact: true,
@@ -496,29 +724,35 @@ test("capture limits send exact MiB bytes and replacement fingerprint remains re
   await expect(start.getByLabel("Target revision", { exact: true })).toHaveText(
     "3",
   );
-  await start.getByLabel("Capacity (MiB)", { exact: true }).fill("2.5");
-  await expect(
-    start.getByRole("button", { name: "Start capture", exact: true }),
-  ).toBeDisabled();
-  await start.getByLabel("Capacity (MiB)", { exact: true }).fill("2");
-  await start.getByLabel("Disk reserve (MiB)", { exact: true }).fill("1");
-  await expect(
-    start.getByRole("button", { name: "Start capture", exact: true }),
-  ).toBeDisabled();
+  await dialog.getByRole("tab", { name: "Advanced", exact: true }).click();
+  await capacity.fill("2.5");
+  await expect(capacity).toHaveAttribute("aria-invalid", "true");
+  await expect(begin).toBeDisabled();
+  await capacity.fill("2");
+  await reserve.fill("1");
+  await expect(capacity).toHaveAttribute("aria-invalid", "false");
+  await expect(reserve).toHaveAttribute("aria-invalid", "false");
+  await expect(begin).toBeDisabled();
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.invocations.filter(
+        (call) => call.actionId === "capture.start",
+      ),
+    ),
+  ).toEqual([]);
+  await dialog.getByRole("tab", { name: "Recording", exact: true }).click();
+  await expect(fingerprint).toHaveValue("c".repeat(64));
+  await expect(fingerprint).not.toBeEditable();
   await start
     .getByRole("checkbox", { name: "Confirm replacement", exact: true })
     .check();
-  await expect(
-    start.getByRole("button", { name: "Start capture", exact: true }),
-  ).toBeEnabled();
+  await expect(begin).toBeEnabled();
   await start.scrollIntoViewIfNeeded();
   await page.screenshot({
     path: info.outputPath("capture-mib-fingerprint.png"),
   });
   await scan(page, '[role="dialog"]', info);
-  await start
-    .getByRole("button", { name: "Start capture", exact: true })
-    .click();
+  await begin.click();
   await expect
     .poll(() =>
       page.evaluate(() =>
@@ -534,8 +768,24 @@ test("capture limits send exact MiB bytes and replacement fingerprint remains re
     ),
   );
   expect(call?.params).toMatchObject({
+    mode: "raw",
+    writeMode: "replace",
+    sessionRefs: [
+      {
+        hostId: "workbench-gui-host",
+        kind: "session",
+        id: "session",
+        sessionId: "session",
+        sessionEpoch: "1",
+      },
+    ],
     storageLimits: { capacityBytes: "2097152", reserveBytes: "1048576" },
     expectedFingerprint: "c".repeat(64),
     targetRef: captureTarget.reference,
+  });
+  expect(call?.target).toEqual({
+    hostId: "workbench-gui-host",
+    kind: "file",
+    id: "capture-target",
   });
 });

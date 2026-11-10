@@ -1,12 +1,28 @@
 ﻿import { StrictMode, type ReactNode } from "react";
-import { act, cleanup, renderHook, waitFor } from "@testing-library/react";
+import {
+  act,
+  cleanup,
+  fireEvent,
+  renderHook,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import {
   defaults,
   type Operation,
   type SettingsSnapshot,
   type JsonValue,
+  type OperationSummary,
 } from "@serial-workbench/contracts";
+import { toast } from "sonner";
+import {
+  SettingsPersistence,
+  SettingsPersistenceRetry,
+} from "@/components/settings-persistence";
+import { OperationFailureObserver } from "@/features/workbench/operation-failure-notices";
+import { operation } from "@/features/workbench/test-fixtures";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
 import {
   DEFAULT_SETTINGS,
   settingsDocument,
@@ -33,7 +49,15 @@ const env = vi.hoisted(() => ({
   realBackend: false,
   documentIntent: vi.fn(),
   reportError: vi.fn(),
+  summaries: [] as OperationSummary[],
 }));
+vi.mock("sonner", () => ({
+  toast: { custom: vi.fn(), error: vi.fn(), dismiss: vi.fn() },
+}));
+vi.mock("@/providers/i18n", () => {
+  const t = (key: string) => key;
+  return { useI18n: () => ({ t }) };
+});
 vi.mock("@/lib/report-error", () => ({ reportClientError: env.reportError }));
 vi.mock("@/lib/tauri", () => ({
   isTauri: () => env.native,
@@ -79,20 +103,20 @@ vi.mock("@/lib/tauri", () => ({
   },
 }));
 vi.mock("./host-context", async () => {
-  const { createContext } = await import("react");
-  return {
-    HostContext: createContext({
-      get connection() {
-        return env.connection;
-      },
-      get state() {
-        return {
-          status: env.hostError ? "error" : "ready",
-          error: env.hostError,
-        };
-      },
-    }),
-  };
+  const { createContext, useContext } = await import("react");
+  const HostContext = createContext({
+    get connection() {
+      return env.connection;
+    },
+    get state() {
+      return {
+        status: env.hostError ? "error" : "ready",
+        error: env.hostError,
+        operationSummaries: env.summaries,
+      };
+    },
+  });
+  return { HostContext, useHost: () => useContext(HostContext) };
 });
 vi.mock("@/lib/host-settings", async (importOriginal) => {
   const actual = await importOriginal<typeof import("@/lib/host-settings")>();
@@ -123,6 +147,7 @@ beforeEach(() => {
   env.effects = [];
   env.effectsWait = undefined;
   env.hostError = null;
+  env.summaries = [];
   env.realBackend = false;
   env.documentIntent.mockReset();
   env.choose.mockReset();
@@ -243,6 +268,99 @@ function localHost(generation = "12") {
 }
 
 describe("local shared settings intent through the real synchronization adapter", () => {
+  it.each(["observer-first", "persistence-first"])(
+    "notifies one verified settings failure through the real provider and permanent observer (%s)",
+    async (order) => {
+      localHost();
+      const failed: Operation = {
+        ...operation(`settings-terminal-${order}`),
+        actionId: "settings.save",
+        target: { hostId: "host", kind: "settings", id: "shared" },
+        state: "failed",
+        error: {
+          code: "STORAGE_IO",
+          message: "private user path and storage contents",
+          retryable: false,
+        },
+      };
+      let finish!: (value: Operation) => void;
+      env.documentIntent.mockImplementationOnce(
+        () =>
+          new Promise<Operation>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      const view = renderHook(() => useSettings(), {
+        wrapper: ({ children }: { children: ReactNode }) => (
+          <SettingsProvider>
+            <OperationFailureObserver />
+            <SettingsPersistence compact />
+            <header>
+              <SettingsPersistenceRetry />
+            </header>
+            {children}
+          </SettingsProvider>
+        ),
+      });
+      await waitFor(() =>
+        expect(view.result.current.persistence).toBe("saved"),
+      );
+      act(() => view.result.current.update({ accent: "cyan" }));
+      await waitFor(() => expect(env.documentIntent).toHaveBeenCalledOnce());
+      const observeFailure = (value = failed) => {
+        env.summaries = [{ ...value, errorCode: value.error!.code }];
+        view.rerender();
+      };
+      if (order === "observer-first") observeFailure();
+      await act(async () => finish(failed));
+      await waitFor(() =>
+        expect(view.result.current.persistence).toBe("error"),
+      );
+      if (order === "persistence-first") observeFailure();
+      expect(
+        vi.mocked(toast.error).mock.calls.length +
+          vi.mocked(toast.custom).mock.calls.length,
+      ).toBe(1);
+      expect(
+        getUserLog().reduce((count, entry) => count + entry.count, 0),
+      ).toBe(1);
+      expect(getUserLog()[0]).toMatchObject({
+        module: "settings",
+        code: "STORAGE_IO",
+      });
+      expect(JSON.stringify(getUserLog())).not.toContain("private user path");
+      const previousEvent = view.result.current.persistenceEventKey;
+      expect(previousEvent).toEqual(expect.any(String));
+      const second = { ...failed, operationId: `${failed.operationId}-retry` };
+      env.documentIntent.mockImplementationOnce(
+        () =>
+          new Promise<Operation>((resolve) => {
+            finish = resolve;
+          }),
+      );
+      fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+      await waitFor(() => expect(env.documentIntent).toHaveBeenCalledTimes(2));
+      expect(view.result.current.persistenceEventKey).toBeUndefined();
+      if (order === "observer-first") observeFailure(second);
+      await act(async () => finish(second));
+      await waitFor(() =>
+        expect(view.result.current.persistence).toBe("error"),
+      );
+      if (order === "persistence-first") observeFailure(second);
+      expect(view.result.current.persistenceEventKey).not.toBe(previousEvent);
+      expect(
+        vi.mocked(toast.error).mock.calls.length +
+          vi.mocked(toast.custom).mock.calls.length,
+      ).toBe(2);
+      expect(
+        getUserLog().reduce((count, entry) => count + entry.count, 0),
+      ).toBe(2);
+      expect(
+        screen.getByRole("button", { name: "common.retry" }),
+      ).toBeEnabled();
+      view.unmount();
+    },
+  );
   it("keeps persistence pending until the original native effects receipt completes", async () => {
     let release!: () => void;
     env.effectsWait = new Promise<void>((resolve) => {
@@ -460,6 +578,10 @@ describe("local shared settings intent through the real synchronization adapter"
 });
 afterEach(() => {
   cleanup();
+  clearUserLog();
+  vi.mocked(toast.custom).mockClear();
+  vi.mocked(toast.error).mockClear();
+  vi.mocked(toast.dismiss).mockClear();
   vi.restoreAllMocks();
 });
 

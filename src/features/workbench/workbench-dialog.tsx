@@ -1,5 +1,5 @@
 import type { ComponentProps } from "react";
-import type { Target } from "@serial-workbench/contracts";
+import type { Target, Operation } from "@serial-workbench/contracts";
 import type { HostContextValue, HostState } from "@/providers/host-context";
 import type { WorkbenchLabels } from "./labels";
 import { CapturePanel } from "./capture-panel";
@@ -22,6 +22,43 @@ import {
 } from "@/components/ui/dialog";
 import { UnsavedWorkScope, useRequestLeave } from "@/providers/unsaved-work";
 
+function focusToolContent(content: HTMLElement) {
+  const candidates = content.querySelectorAll<HTMLElement>(
+    ".workbench-dialog-body :is(button, input, select, textarea, a[href], [tabindex], [contenteditable])",
+  );
+  for (const candidate of candidates) {
+    if (
+      candidate.tabIndex < 0 ||
+      candidate.matches(
+        ":disabled, input[type=hidden], .workbench-icon-button",
+      ) ||
+      candidate.closest("[hidden], [inert]") ||
+      getComputedStyle(candidate).visibility !== "visible"
+    )
+      continue;
+    let hidden = false;
+    for (
+      let ancestor: HTMLElement | null = candidate;
+      ancestor;
+      ancestor = ancestor.parentElement
+    ) {
+      if (getComputedStyle(ancestor).display === "none") {
+        hidden = true;
+        break;
+      }
+    }
+    if (hidden) continue;
+    candidate.focus({ preventScroll: true });
+    if (document.activeElement === candidate) {
+      if (candidate instanceof HTMLInputElement) candidate.select();
+      return;
+    }
+  }
+  // 只读工具聚焦滚动区域；辅助图标仍留给主动 Tab，避免提示先消费 Esc。
+  const body = content.querySelector<HTMLElement>(".workbench-dialog-body");
+  (body ?? content).focus({ preventScroll: true });
+}
+
 /** Tool dismissal uses the same registered work and negotiation as leaving the page. */
 export function WorkbenchDialog({
   open,
@@ -43,6 +80,7 @@ export function WorkbenchDialog({
   const id = useId();
   const scope = `${id}:${scopeKey}`;
   const requestLeave = useRequestLeave();
+  const content = useRef<HTMLDivElement | null>(null);
   const pending = useRef<AbortController | null>(null);
   const latest = useRef({ scope, open, onRequestClose });
   latest.current = { scope, open, onRequestClose };
@@ -80,9 +118,16 @@ export function WorkbenchDialog({
       }}
     >
       <DialogContent
+        ref={content}
+        tabIndex={-1}
         className="workbench-dialog"
         aria-describedby={undefined}
         closeLabel={closeLabel}
+        onOpenAutoFocus={(event) => {
+          if (!content.current) return;
+          event.preventDefault();
+          focusToolContent(content.current);
+        }}
         onCloseAutoFocus={(event) => {
           if (returnFocus.current?.isConnected) {
             event.preventDefault();
@@ -93,9 +138,11 @@ export function WorkbenchDialog({
         <DialogHeader>
           <DialogTitle>{title}</DialogTitle>
         </DialogHeader>
-        <UnsavedWorkScope scope={scope}>
-          {typeof children === "function" ? children(negotiate) : children}
-        </UnsavedWorkScope>
+        <div className="workbench-dialog-body" tabIndex={0}>
+          <UnsavedWorkScope scope={scope}>
+            {typeof children === "function" ? children(negotiate) : children}
+          </UnsavedWorkScope>
+        </div>
       </DialogContent>
     </Dialog>
   );
@@ -111,6 +158,8 @@ export function WorkbenchPanels({
   metricsTarget,
   observationKey,
   readFileReceipts,
+  watchActions,
+  onCancelOperation,
 }: {
   kind: string | null;
   state: HostState;
@@ -125,6 +174,11 @@ export function WorkbenchPanels({
   metricsTarget?: Target;
   observationKey?: string;
   readFileReceipts?: ReceiptReader;
+  watchActions?: HostContextValue["watchActions"];
+  onCancelOperation?: (
+    operation: Operation,
+    signal?: AbortSignal,
+  ) => Promise<unknown>;
 }) {
   if (kind === "capture")
     return (
@@ -142,6 +196,9 @@ export function WorkbenchPanels({
         operations={state.operations}
         labels={labels}
         readFileReceipts={readFileReceipts}
+        watchActions={watchActions}
+        onCancelOperation={onCancelOperation}
+        disabled={disabled}
       />
     );
   if (kind === "metrics" && readMetrics && state.status === "ready")

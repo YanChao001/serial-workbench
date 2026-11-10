@@ -497,10 +497,11 @@ describe("设置页", () => {
   });
   it("网络位于设置末段并提供连接深链，浏览器禁用修改且按需说明连接由浏览器控制", async () => {
     render(<SettingsView initial="/settings?focus=networkMode" />);
-    expect(screen.getByText("网络", { exact: true })).toBeVisible();
+    expect(screen.getByRole("group", { name: "网络" })).toBeVisible();
     expect(
       screen
         .getAllByText(/^(应用更新|网络|关于与资源)$/)
+        .filter((element) => !element.closest("nav"))
         .map((element) => element.textContent),
     ).toEqual(["应用更新", "网络", "关于与资源"]);
     expect(document.getElementById("settings-networkMode")).toHaveFocus();

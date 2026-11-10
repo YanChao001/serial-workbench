@@ -284,7 +284,7 @@ export function AppSidebar({
                     to={path}
                     end={exact}
                     aria-label={label ?? t(labelKey)}
-                    className="app-sidebar-link flex h-9 w-10 items-center justify-center rounded-lg"
+                    className="app-sidebar-link flex h-9 min-w-0 flex-1 items-center gap-2.5 overflow-hidden rounded-lg px-3 text-sm"
                     onPointerEnter={() => schedulePreload(preload)}
                     onPointerMove={(event) =>
                       trackTooltip(path, event.currentTarget)
@@ -304,6 +304,9 @@ export function AppSidebar({
                     }}
                   >
                     <Icon className="size-4 shrink-0" aria-hidden="true" />
+                    <span className="app-sidebar-label min-w-0 flex-1 truncate">
+                      {label ?? t(labelKey)}
+                    </span>
                   </NavLink>
                 </TooltipTrigger>
                 {tooltip === path ? (

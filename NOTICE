@@ -7,6 +7,11 @@ See LICENSE for the full license text.
 Third-party components retain their own licenses and notices, as provided
 with the corresponding source files and distribution resources.
 
+The postMessage serializer in src-tauri/src/ipc-transport.js derives from Tauri.
+Copyright 2019-2024 Tauri Programme within The Commons Conservancy.
+This material is used under the Apache License, Version 2.0; see LICENSE.
+Original upstream notices are retained in the source file.
+
 This project derives from Tauri Desktop Starter.
 The inherited starter material is provided under the MIT License.
 Copyright (c) 2026 Tauri Desktop Starter contributors

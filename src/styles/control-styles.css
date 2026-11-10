@@ -21,7 +21,7 @@
   );
   --ui-check-background: var(--control-background);
   --ui-invalid-border: var(--destructive);
-  --ui-invalid-ring: color-mix(in oklab, var(--destructive) 20%, transparent);
+  --ui-focus-color: var(--ring, Highlight);
 }
 :where(body) {
   --muted-foreground: var(--glass-muted-foreground);
@@ -503,7 +503,7 @@
     :focus-visible,
     :active
   )::-webkit-slider-thumb {
-  box-shadow: 0 0 0 3px
+  box-shadow: 0 0 0 1px
     color-mix(in oklab, var(--ring, Highlight) 50%, transparent);
 }
 :where(input[type="range"]):is(
@@ -511,7 +511,7 @@
     :focus-visible,
     :active
   )::-moz-range-thumb {
-  box-shadow: 0 0 0 3px
+  box-shadow: 0 0 0 1px
     color-mix(in oklab, var(--ring, Highlight) 50%, transparent);
 }
 :where(input, textarea)::placeholder {
@@ -546,9 +546,8 @@
   [data-slot="toggle-group-item"],
   [data-slot="tabs-trigger"]
 ):focus-visible {
-  border-color: var(--ring, Highlight);
-  box-shadow: 0 0 0 3px
-    color-mix(in oklab, var(--ring, Highlight) 50%, transparent);
+  border-color: var(--ui-focus-color);
+  box-shadow: var(--tw-shadow, none);
 }
 :where(
     button:not([data-slot]):not([role]):not([data-surface]),
@@ -560,8 +559,8 @@
   ):where(
     :is([data-variant="destructive"], .ui-button-destructive)
   ):focus-visible {
-  border-color: color-mix(in oklab, var(--destructive, Mark) 40%, transparent);
-  box-shadow: 0 0 0 3px var(--ui-invalid-ring);
+  border-color: var(--ui-invalid-border, var(--destructive, Mark));
+  box-shadow: var(--tw-shadow, none);
 }
 :where(input[type="range"]):focus-visible {
   box-shadow: none;
@@ -597,8 +596,8 @@
       [data-slot="tabs-trigger"]
     )
   ):focus-visible {
-  outline: 2px solid var(--ring, Highlight);
-  outline-offset: 2px;
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
 }
 :where(
   button:not([data-slot]):not([role]):not([data-surface]),
@@ -646,11 +645,7 @@
 }
 [aria-invalid="true"] {
   border-color: var(--ui-invalid-border, var(--destructive, Mark));
-  box-shadow: 0 0 0 3px
-    var(
-      --ui-invalid-ring,
-      color-mix(in oklab, var(--destructive, Mark) 20%, transparent)
-    );
+  box-shadow: var(--tw-shadow, none);
 }
 :where(
     input[type="checkbox"],
@@ -920,8 +915,8 @@
     [data-slot="toggle-group-item"],
     [data-slot="tabs-trigger"]
   ):focus-visible {
-    outline: 2px solid Highlight;
-    outline-offset: 2px;
+    outline: 1px solid Highlight;
+    outline-offset: -1px;
   }
 }
 
@@ -1546,9 +1541,10 @@
   color: var(--foreground);
 }
 :where(button[data-surface], a[data-surface]):focus-visible {
-  outline: none;
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
+  border-color: var(--ui-focus-color);
+  box-shadow: var(--tw-shadow, none);
 }
 :where(button:disabled) {
   opacity: 0.5;
@@ -1626,9 +1622,10 @@
   [data-slot="accordion-trigger"],
   .ui-badge
 ):focus-visible {
-  outline: none;
-  border-color: var(--ring);
-  box-shadow: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  outline: 1px solid var(--ui-focus-color);
+  outline-offset: -1px;
+  border-color: var(--ui-focus-color);
+  box-shadow: var(--tw-shadow, none);
 }
 :where([data-slot="select-item"]) {
   min-height: 2rem;

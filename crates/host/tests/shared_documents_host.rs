@@ -623,7 +623,7 @@ async fn workspace_save_is_shared_between_actors_but_independent_between_workspa
     );
     let independent = read(&f.second, &other, "workspace.read", json!({})).await;
     assert_eq!(independent["document"]["revision"], "0");
-    assert_eq!(independent["document"]["value"]["name"], "Workspace");
+    assert_eq!(independent["document"]["value"]["name"], "");
     assert_ne!(independent["scope"]["scopeId"], shared["scope"]["scopeId"]);
     let exported = read(&f.second, &bench, "workspace.export", json!({})).await;
     let operation = invoke(

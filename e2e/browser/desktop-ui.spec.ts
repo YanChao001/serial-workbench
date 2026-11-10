@@ -1011,12 +1011,31 @@ for (const theme of ["light", "dark"]) {
             for (const field of document.querySelectorAll(
               'main :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]):not(:disabled)',
             )) {
-              // 明确透明的内层控件共享父级阅读表面，不再重复叠加底色。
-              if (field.getAttribute("data-surface") === "transparent")
+              // 透明内层沿真实 control 父框核验材质，不能跳过阅读保护。
+              const transparent =
+                field.getAttribute("data-surface") === "transparent";
+              const surface = transparent
+                ? field.parentElement?.closest('[data-surface="control"]')
+                : field;
+              if (!surface) {
+                failures.push(
+                  `field ${field.id}: missing control surface owner`,
+                );
                 continue;
-              const opacity = alpha(field);
+              }
+              if (transparent) {
+                const innerBlur = Number(
+                  getComputedStyle(field).backdropFilter.match(/[\d.]+/)?.[0] ??
+                    0,
+                );
+                if (alpha(field) !== 0 || innerBlur !== 0)
+                  failures.push(
+                    `field ${field.id}: repeats its control surface`,
+                  );
+              }
+              const opacity = alpha(surface);
               const blur = Number(
-                getComputedStyle(field).backdropFilter.match(/[\d.]+/)?.[0] ??
+                getComputedStyle(surface).backdropFilter.match(/[\d.]+/)?.[0] ??
                   0,
               );
               if (
@@ -1406,11 +1425,11 @@ test("the browser fills the viewport with the desktop and keeps narrow navigatio
 });
 
 for (const theme of ["light", "dark"] as const) {
-  test(`compact shell keeps settings at the sidebar foot and starts content with search: ${theme}`, async ({
+  test(`shell keeps a named settings footer and a visible title with search: ${theme}`, async ({
     page,
   }) => {
     await page.setViewportSize({ width: 1280, height: 820 });
-    await seed(page, { theme });
+    await seed(page, { theme, sidebarCollapsed: false });
     await page.goto("./#/settings");
     const sidebar = page.locator("#app-sidebar");
     const navigation = page.locator("#app-sidebar-navigation");
@@ -1420,7 +1439,7 @@ for (const theme of ["light", "dark"] as const) {
       exact: true,
     });
     await expect(settings).toHaveAttribute("aria-current", "page");
-    await expect(settings).toHaveText("");
+    await expect(settings).toHaveText("Settings");
     await expect(settings.locator("svg")).toHaveCount(1);
     await expect(navigation.getByRole("link")).toHaveCount(1);
     await expect(navigation.locator('a[href="#/settings"]')).toHaveCount(0);
@@ -1437,7 +1456,14 @@ for (const theme of ["light", "dark"] as const) {
     await expect(page.locator(".app-route-context")).toHaveCount(0);
     await expect(
       page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
-    ).toHaveClass("sr-only");
+    ).toBeVisible();
+    expect(
+      (
+        await page
+          .getByRole("heading", { name: "Settings", exact: true, level: 1 })
+          .boundingBox()
+      )?.height,
+    ).toBeGreaterThan(18);
     const mainBounds = (await page.locator("main").boundingBox())!;
     const searchBounds = (await page
       .getByRole("searchbox", { name: "Search settings", exact: true })
@@ -1520,7 +1546,11 @@ for (const theme of ["light", "dark"] as const) {
       exact: true,
     });
     await expect(translatedSettings).toHaveAttribute("aria-current", "page");
-    await expect(translatedSettings).toHaveText("");
+    await expect(translatedSettings).toHaveText("设置");
+    await expect(translatedSettings.locator(".app-sidebar-label")).toHaveCSS(
+      "opacity",
+      "0",
+    );
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     await translatedSettings.focus();
     await expect(tooltip).toBeVisible();
@@ -1574,7 +1604,12 @@ for (const theme of ["light", "dark"] as const) {
   }, testInfo) => {
     await page.emulateMedia({ reducedMotion: "no-preference" });
     await page.setViewportSize({ width: 1280, height: 820 });
-    await seed(page, { theme, motion: "full", sidebarWidth: 224 });
+    await seed(page, {
+      theme,
+      motion: "full",
+      sidebarWidth: 224,
+      sidebarCollapsed: false,
+    });
     await page.goto("./#/settings");
     await expect(page.locator("#settings-language")).toBeVisible();
     await page
@@ -1890,7 +1925,7 @@ test("menus and language selection preserve content geometry and scroll position
   page,
 }) => {
   await page.setViewportSize({ width: 1280, height: 820 });
-  await seed(page, { background: "aurora" });
+  await seed(page, { background: "aurora", sidebarCollapsed: false });
   await page.goto("./#/settings");
   await expect(
     page.getByRole("heading", { name: "Settings", exact: true, level: 1 }),
@@ -2132,7 +2167,12 @@ test("immersive edges animate over the content and keep portalled menus usable",
   page,
 }, testInfo) => {
   await page.emulateMedia({ reducedMotion: "no-preference" });
-  await seed(page, { motion: "full", sidebarWidth: 280, background: "aurora" });
+  await seed(page, {
+    motion: "full",
+    sidebarWidth: 280,
+    sidebarCollapsed: false,
+    background: "aurora",
+  });
   await page.goto("./#/settings");
   await page.mouse.move(640, 400);
   await page.keyboard.press("F11");
@@ -2426,7 +2466,7 @@ test.describe("immersive touch navigation", () => {
     await navigation.tap();
     await expect(page.locator("#app-sidebar")).toBeVisible();
     await expect(
-      page.getByRole("button", { name: "Collapse sidebar" }),
+      page.getByRole("button", { name: "Expand sidebar" }),
     ).toBeFocused();
     const chrome = page.getByRole("button", {
       name: "Show menu and window controls",
@@ -2766,7 +2806,11 @@ for (const theme of ["light", "dark"]) {
         const canvas = document.createElement("canvas");
         canvas.width = canvas.height = 1;
         const context = canvas.getContext("2d")!;
-        return [".app-title-bar", ".app-sidebar"].map((selector) => {
+        return [
+          ".app-title-bar",
+          ".app-sidebar",
+          "[data-window-reading-surface]",
+        ].map((selector) => {
           context.clearRect(0, 0, 1, 1);
           context.fillStyle = getComputedStyle(
             document.querySelector(selector)!,
@@ -2775,7 +2819,12 @@ for (const theme of ["light", "dark"]) {
           return context.getImageData(0, 0, 1, 1).data[3]! / 255;
         });
       });
-      for (const opacity of transparency) expect(opacity).toBeCloseTo(0.5, 2);
+      // 导航与页面沿相同材质公式透色，不重新引入额外不透明度下限。
+      for (const opacity of transparency.slice(0, 2)) {
+        expect(opacity).toBeCloseTo(transparency[2]!, 2);
+        expect(opacity).toBeGreaterThan(0);
+        expect(opacity).toBeLessThan(1);
+      }
       await page
         .locator(".skin-gallery")
         .screenshot({ path: testInfo.outputPath("skins-" + theme + ".png") });

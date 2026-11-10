@@ -9,6 +9,7 @@ import type {
   HostContextValue,
 } from "@/providers/host-context";
 import { Button } from "@/components/ui/button";
+import { nativeErrorCode } from "@/lib/native-error";
 import {
   Popover,
   PopoverContent,
@@ -22,6 +23,7 @@ import {
 } from "./capture-record-items";
 import type { WorkbenchLabels } from "./labels";
 import type { StreamPresentationLabels } from "./stream-presentation";
+import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 export type CaptureTailReader = HostContextValue["readCaptureTail"];
 export function CaptureTailPanel({
   reference,
@@ -75,6 +77,7 @@ export function CaptureTailPanel({
     key: string;
     value?: CaptureTailResult;
     code?: string;
+    eventKey?: string;
   }>();
   useEffect(() => {
     if (!ready) {
@@ -112,15 +115,11 @@ export function CaptureTailPanel({
       })
       .catch((reason: unknown) => {
         if (controller.signal.aborted) return;
-        const code =
-          typeof reason === "object" &&
-          reason !== null &&
-          "code" in reason &&
-          typeof reason.code === "string" &&
-          /^[A-Z][A-Z0-9_]{0,63}$/.test(reason.code)
-            ? reason.code
-            : "";
-        setLoaded({ key, code });
+        setLoaded({
+          key,
+          code: nativeErrorCode(reason) ?? "",
+          eventKey: operationFailureEventKey(reason),
+        });
       });
     return () => controller.abort();
   }, [allowed, read, stableRef, key]);
@@ -137,12 +136,21 @@ export function CaptureTailPanel({
       : [],
   )[0];
   const errors: Record<string, string> = {
-    CAPTURE_ACTIVE: labels.captureActive,
     HOST_BUSY: labels.captureBusy,
     SOURCE_CHANGED: labels.captureChanged,
     REVISION_CONFLICT: labels.captureRevision,
-    PERMISSION_DENIED: labels.captureDenied,
   };
+  const statusMessage =
+    result?.code === "CAPTURE_ACTIVE"
+      ? labels.captureActive
+      : result?.code === "PERMISSION_DENIED"
+        ? labels.captureDenied
+        : undefined;
+  const failureMessage =
+    result?.code !== undefined && !statusMessage
+      ? (errors[result.code] ??
+        labels.operationText.failure(result.code || undefined))
+      : undefined;
   return (
     <section
       aria-label={labels.captureTail}
@@ -155,9 +163,23 @@ export function CaptureTailPanel({
       ) : !result ? (
         <p role="status">{labels.captureLoading}</p>
       ) : undefined}
-      {result?.code !== undefined && (
-        <p role="alert">{errors[result.code] ?? labels.unavailable}</p>
-      )}
+      {statusMessage && <p role="status">{statusMessage}</p>}
+      <WorkbenchNotice
+        noticeKey={`capture-tail:${key}:${result?.code ?? ""}`}
+        eventKey={result?.eventKey}
+        log={
+          failureMessage
+            ? {
+                module: "capture",
+                level: "error",
+                code: result?.code || undefined,
+                message: failureMessage,
+              }
+            : undefined
+        }
+      >
+        {failureMessage ? <span role="alert">{failureMessage}</span> : null}
+      </WorkbenchNotice>
       {value && (
         <>
           <div className="flex shrink-0 items-center gap-2 text-sm">
@@ -169,7 +191,7 @@ export function CaptureTailPanel({
             )}
             {unknownTx && (
               <span role="status" aria-label={labels.txUnknownBytes}>
-                TX · {unknownTx}
+                TX · {labels.unknown}
               </span>
             )}
             <Popover>

@@ -45,6 +45,7 @@ const empty = (status: HostState["status"]): HostContextValue => ({
   readFileReceipts: async () => unavailable(),
   readReplay: async () => unavailable(),
   loadWorkspace: async () => unavailable(),
+  listWorkspaces: async () => unavailable(),
   saveWorkspace: async () => unavailable(),
   saveFavorites: async () => unavailable(),
   rebindDevice: async () => unavailable(),
@@ -135,12 +136,23 @@ export function HostProvider({
         attaching = undefined;
       }
     };
-    async function refresh() {
-      if (!workspace || attachmentFailed(workspace.getSnapshot().state.error))
-        return attach();
+    async function refresh(
+      options?: Parameters<HostContextValue["refresh"]>[0],
+    ) {
+      if (!workspace || attachmentFailed(workspace.getSnapshot().state.error)) {
+        await attach();
+        if (
+          options?.enumerateDevices &&
+          active &&
+          workspace &&
+          !attachmentFailed(workspace.getSnapshot().state.error)
+        )
+          await refresh(options);
+        return;
+      }
       const refreshing = workspace;
       try {
-        await refreshing.refresh();
+        await refreshing.refresh(options);
       } catch (error) {
         if (active && workspace === refreshing && attachmentFailed(error)) {
           disposeWorkspace();

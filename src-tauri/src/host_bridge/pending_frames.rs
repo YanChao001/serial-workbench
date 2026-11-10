@@ -11,6 +11,7 @@ const MAX_BYTES: usize = 4 * 1024 * 1024;
 struct RequestFrames {
     frames: Vec<WireFrame>,
     bytes: usize,
+    channels: (u32, Option<u32>),
 }
 
 /// Only an in-flight subscribe request may own frames received before its reply.
@@ -31,9 +32,18 @@ impl PendingFrames {
     pub(super) fn begin(
         inbox: &Arc<Mutex<Self>>,
         request_id: RequestId,
+        channels: (u32, Option<u32>),
     ) -> HostResult<PendingSetup> {
         let mut pending = inbox.lock().expect("pending subscription frames");
-        if pending.requests.contains_key(&request_id) {
+        if let Some(first) = pending.requests.get(&request_id) {
+            // 通道编号只用于区分同一 Native 调用重投与不同调用，不记录请求或目标。
+            log::warn!(
+                "NATIVE_SUBSCRIPTION_CONFLICT first_data={} second_data={} first_lifecycle={:?} second_lifecycle={:?}",
+                first.channels.0,
+                channels.0,
+                first.channels.1,
+                channels.1,
+            );
             return Err(HostError::new(
                 "INVALID_ARGUMENT",
                 "Subscription request is already pending",
@@ -42,9 +52,13 @@ impl PendingFrames {
         if pending.requests.len() >= MAX_ITEMS {
             return Err(exhausted());
         }
-        pending
-            .requests
-            .insert(request_id.clone(), RequestFrames::default());
+        pending.requests.insert(
+            request_id.clone(),
+            RequestFrames {
+                channels,
+                ..Default::default()
+            },
+        );
         Ok(PendingSetup {
             inbox: inbox.clone(),
             request_id,
@@ -131,8 +145,8 @@ mod tests {
     #[test]
     fn failed_setup_releases_its_frames_and_ignores_late_frames() {
         let inbox = Arc::new(Mutex::new(PendingFrames::default()));
-        let failed = PendingFrames::begin(&inbox, request(1)).unwrap();
-        let live = PendingFrames::begin(&inbox, request(2)).unwrap();
+        let failed = PendingFrames::begin(&inbox, request(1), (1, None)).unwrap();
+        let live = PendingFrames::begin(&inbox, request(2), (2, None)).unwrap();
         inbox.lock().unwrap().push(frame(request(1))).unwrap();
         inbox.lock().unwrap().push(frame(request(2))).unwrap();
         drop(failed);
@@ -148,8 +162,8 @@ mod tests {
     #[test]
     fn valid_setup_keeps_the_shared_item_limit_and_returns_capacity_on_drop() {
         let inbox = Arc::new(Mutex::new(PendingFrames::default()));
-        let first = PendingFrames::begin(&inbox, request(1)).unwrap();
-        let second = PendingFrames::begin(&inbox, request(2)).unwrap();
+        let first = PendingFrames::begin(&inbox, request(1), (1, None)).unwrap();
+        let second = PendingFrames::begin(&inbox, request(2), (2, None)).unwrap();
         for index in 0..MAX_ITEMS {
             inbox
                 .lock()
@@ -175,7 +189,7 @@ mod tests {
     #[test]
     fn valid_setup_keeps_the_byte_limit_and_returns_capacity_on_completion() {
         let inbox = Arc::new(Mutex::new(PendingFrames::default()));
-        let setup = PendingFrames::begin(&inbox, request(1)).unwrap();
+        let setup = PendingFrames::begin(&inbox, request(1), (1, None)).unwrap();
         let mut large = frame(request(1));
         let IpcMessage::SubscriptionEnded { error, .. } = &mut large.body else {
             unreachable!()
