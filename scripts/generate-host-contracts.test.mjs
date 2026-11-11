@@ -107,6 +107,120 @@ test("exported positive and negative fixtures are checked during generation", as
   await assert.rejects(buildArtifacts(files), /invalid-positive/);
 });
 
+test("shared Rust definitions stay within the browser validator code budget", async () => {
+  const files = exportedFiles();
+  const properties = Object.fromEntries(
+    Array.from({ length: 40 }, (_, index) => [
+      `field${index}`,
+      { type: "string", minLength: 1, maxLength: 128, pattern: "^[a-z]+$" },
+    ]),
+  );
+  const shared = {
+    type: "object",
+    properties,
+    required: Object.keys(properties),
+    additionalProperties: false,
+  };
+  const root = {
+    type: "object",
+    properties: { value: { $ref: "#/definitions/Payload" } },
+    required: ["value"],
+    additionalProperties: false,
+    definitions: { Payload: shared },
+  };
+  files.set(
+    "schemas.json",
+    JSON.stringify({
+      schemaVersion: 1,
+      protocolVersion: "0.1",
+      schemas: Object.fromEntries(
+        Array.from({ length: 24 }, (_, index) => [
+          index ? `Reply${index}` : "RpcReply",
+          root,
+        ]),
+      ),
+    }),
+  );
+  files.set(
+    "fixtures.json",
+    JSON.stringify({ schemaVersion: 1, valid: [], invalid: [] }),
+  );
+  const artifacts = await buildArtifacts(files);
+  const bytes = Buffer.byteLength(artifacts.get("validators.mjs"));
+  assert.ok(
+    bytes < 160_000,
+    `Repeated schemas must not multiply startup parsing and source-map payloads (actual ${bytes} bytes)`,
+  );
+});
+
+test("pooling preserves conflicting local definitions, recursion and literal $ref data", async () => {
+  const files = exportedFiles();
+  const root = (value) => ({
+    type: "object",
+    properties: {
+      value: { $ref: "#/definitions/Wrapper" },
+      literal: { const: { $ref: "#/definitions/Name" } },
+      node: { $ref: "#/definitions/Node" },
+    },
+    required: ["value", "literal", "node"],
+    additionalProperties: false,
+    definitions: {
+      Name: { const: value },
+      Wrapper: { $ref: "#/definitions/Name" },
+      Node: {
+        type: "object",
+        properties: { next: { $ref: "#/definitions/Node" } },
+        additionalProperties: false,
+      },
+    },
+  });
+  files.set(
+    "schemas.json",
+    JSON.stringify({
+      schemaVersion: 1,
+      protocolVersion: "0.1",
+      schemas: { RpcReply: root("one"), Other: root("two") },
+    }),
+  );
+  files.set(
+    "fixtures.json",
+    JSON.stringify({ schemaVersion: 1, valid: [], invalid: [] }),
+  );
+  const artifacts = await buildArtifacts(files);
+  const directory = await mkdtemp(join(tmpdir(), "host-validator-pool-test-"));
+  try {
+    const output = join(directory, "validators.mjs");
+    await writeFile(output, artifacts.get("validators.mjs"));
+    const { validateRpcReply, validateOther } = await import(
+      pathToFileURL(output).href
+    );
+    const data = {
+      value: "one",
+      literal: { $ref: "#/definitions/Name" },
+      node: { next: { next: {} } },
+    };
+    assert.equal(validateRpcReply(data), true);
+    assert.equal(validateOther(data), false);
+    assert.equal(validateOther({ ...data, value: "two" }), true);
+    assert.equal(validateRpcReply({ ...data, value: "two" }), false);
+    assert.equal(
+      validateRpcReply({ ...data, node: { next: { unknown: true } } }),
+      false,
+    );
+    assert.equal(
+      validateRpcReply({
+        ...data,
+        literal: {
+          $ref: "urn:serial-workbench:shared-contracts#/definitions/Name",
+        },
+      }),
+      false,
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
+
 test("the generator refuses fixture schema names absent from Rust schemas", async () => {
   const files = exportedFiles();
   files.set(

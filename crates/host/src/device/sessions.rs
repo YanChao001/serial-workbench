@@ -417,13 +417,20 @@ impl DeviceService {
             self.check_open(target, &params.configuration, admission)
                 .await?;
         }
+        let explicit_reopen = admission.is_none_or(|request| request.expected_session.is_none());
         if let Some(session) = current.as_ref() {
-            let snapshot = session.snapshot()?;
+            let mut snapshot = session.snapshot()?;
             if snapshot.tx_gate == TxGate::ControlUnknown {
-                return Err(HostError::new(
-                    "CONTROL_UNKNOWN",
-                    "Device requires confirmed line recovery",
-                ));
+                if !explicit_reopen || snapshot.control_state != ControlState::Clear {
+                    return Err(HostError::new(
+                        "CONTROL_UNKNOWN",
+                        "Device requires confirmed line recovery",
+                    ));
+                }
+                // 显式重连也必须等实际资源释放及 owner 退出；旧 TX unknown 不改写。
+                session.close().await?;
+                self.persist(session).await?;
+                snapshot = session.snapshot()?;
             }
             if snapshot.state == SessionState::Closing {
                 return Err(HostError::new(
@@ -466,7 +473,8 @@ impl DeviceService {
         let previous: Option<SessionSnapshot> =
             stored.as_ref().map(|v| decode(&v.value)).transpose()?;
         if previous.as_ref().is_some_and(|v| {
-            v.tx_gate == TxGate::ControlUnknown || v.control_state != ControlState::Clear
+            v.control_state != ControlState::Clear
+                || (v.tx_gate == TxGate::ControlUnknown && !explicit_reopen)
         }) {
             return Err(HostError::new(
                 "CONTROL_UNKNOWN",
@@ -585,10 +593,12 @@ impl DeviceService {
                         },
                         owner_closing,
                     );
-                    if let Err(error) = &result {
-                        let _ = retained_cleanup(error);
-                    }
-                    completed_send.send_replace(Some(result.map_err(|error| *error.error)));
+                    let cleaned = match result {
+                        Ok(()) => Ok(()),
+                        Err(error) => retained_cleanup(&error).unwrap_or(Err(*error.error)),
+                    };
+                    // 这是实际资源清理结果；此前 TX unknown 的业务记录保持独立。
+                    completed_send.send_replace(Some(cleaned));
                     #[cfg(test)]
                     if let Some(gate) = owner_exit_gate {
                         gate.hold();
@@ -602,6 +612,7 @@ impl DeviceService {
         }
         // 发布失败只结束调用等待；owner 保留到实际原生清理结算。
         let prepared: HostResult<_> = async {
+            // 冷启动的隔离记录仅在本次显式打开真实成功后替换，不提前解除持久隔离。
             let (capabilities, opened_at) = opened.await.map_err(|_| unavailable())??;
             if let Some(admission) = admission {
                 self.check_open(target, &params.configuration, admission)
@@ -1609,6 +1620,188 @@ mod mailbox_tests {
     use super::*;
     use crate::{test_support as support, transmission::TransmissionService};
     use std::{future::Future, pin::Pin, task::Poll};
+
+    #[tokio::test]
+    async fn explicit_reopen_after_confirmed_write_cleanup_starts_new_epoch_without_replaying() {
+        let h = support::Harness::new().await;
+        let name = "manual-write-recovery";
+        let target = h.open(name).await;
+        let session = h.host.devices().session(&target).unwrap();
+        h.probe.steps.lock().unwrap().push_back(support::WriteStep {
+            accepted: 0,
+            unknown: true,
+            gate: None,
+            advance_ms: 0,
+        });
+        let original = session
+            .write(
+                WritePayload::owned(Arc::from([1, 2, 3])),
+                Duration::from_secs(1),
+                BackendAdmission {
+                    session_epoch: target.session_epoch.unwrap(),
+                    actor_id: h.actor.id().clone(),
+                    lease_id: None,
+                    lease: Arc::new(Mutex::new(None)),
+                    cancelled: Arc::new(AtomicBool::new(false)),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!original.unknown_ranges.is_empty());
+        session.close().await.unwrap();
+        assert_eq!(
+            session.snapshot().unwrap().control_state,
+            ControlState::Clear
+        );
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
+        let reopened = h
+            .host
+            .devices()
+            .open(
+                &h.device(name),
+                OpenParams {
+                    binding: None,
+                    configuration: SerialConfiguration::default(),
+                },
+            )
+            .await
+            .expect("explicit reopen must recover only after confirmed cleanup");
+        assert!(!reopened.reused);
+        assert_eq!(reopened.session_id, target.id);
+        assert!(reopened.session_epoch > target.session_epoch.unwrap());
+        assert_eq!(h.probe.writes.lock().unwrap().len(), 1);
+        assert!(!original.unknown_ranges.is_empty());
+        h.host.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn explicit_reopen_keeps_quarantine_while_owner_cleanup_is_pending() {
+        let h = support::Harness::new().await;
+        let name = "manual-recovery-pending";
+        let target = h.open(name).await;
+        let session = h.host.devices().session(&target).unwrap();
+        let gate = hold_read(&h).await;
+        session.snapshot.lock().unwrap().tx_gate = TxGate::ControlUnknown;
+        let result = h
+            .host
+            .devices()
+            .open(
+                &h.device(name),
+                OpenParams {
+                    binding: None,
+                    configuration: SerialConfiguration::default(),
+                },
+            )
+            .await;
+        gate.release();
+        assert_eq!(result.unwrap_err().code, "CONTROL_UNKNOWN");
+        assert_eq!(h.probe.opens.load(Ordering::SeqCst), 1);
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
+        session.close().await.unwrap();
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    #[tokio::test]
+    async fn explicit_reopen_does_not_clear_unsettled_line_control() {
+        let h = support::Harness::new().await;
+        let name = "manual-recovery-line-control";
+        let target = h.open(name).await;
+        let session = h.host.devices().session(&target).unwrap();
+        session.close().await.unwrap();
+        {
+            let mut state = session.snapshot.lock().unwrap();
+            state.tx_gate = TxGate::ControlUnknown;
+            state.control_state = ControlState::Asserted;
+        }
+        let error = h
+            .host
+            .devices()
+            .open(
+                &h.device(name),
+                OpenParams {
+                    binding: None,
+                    configuration: SerialConfiguration::default(),
+                },
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "CONTROL_UNKNOWN");
+        assert_eq!(h.probe.opens.load(Ordering::SeqCst), 1);
+        assert_eq!(
+            session.snapshot().unwrap().control_state,
+            ControlState::Asserted
+        );
+        session.snapshot.lock().unwrap().control_state = ControlState::Clear;
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    #[tokio::test]
+    async fn automatic_reopen_cannot_clear_a_confirmed_closed_quarantine() {
+        let h = support::Harness::new().await;
+        let name = "automatic-recovery-quarantine";
+        let target = h.open(name).await;
+        let session = h.host.devices().session(&target).unwrap();
+        session.close().await.unwrap();
+        {
+            let mut state = session.snapshot.lock().unwrap();
+            state.tx_gate = TxGate::ControlUnknown;
+            state.state = SessionState::Disconnected;
+        }
+        let error = h
+            .host
+            .devices()
+            .open_inner(
+                &h.device(name),
+                OpenParams {
+                    binding: None,
+                    configuration: SerialConfiguration::default(),
+                },
+                Some(&OpenAdmission {
+                    actor: h.actor.clone(),
+                    grant_stamp: None,
+                    binding: None,
+                    cancelled: Arc::new(AtomicBool::new(false)),
+                    expected_session: Some((target.id.clone(), target.session_epoch.unwrap())),
+                }),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(error.code, "CONTROL_UNKNOWN");
+        assert_eq!(h.probe.opens.load(Ordering::SeqCst), 1);
+        session.close().await.unwrap();
+        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+    }
+
+    #[tokio::test]
+    async fn explicit_reopen_recovers_persisted_quarantine_only_by_opening_a_new_epoch() {
+        let h = support::Harness::new().await;
+        let name = "manual-recovery-persisted";
+        let device = h.device(name);
+        let target = h.open(name).await;
+        let service = h.host.devices();
+        let session = service.session(&target).unwrap();
+        session.close().await.unwrap();
+        session.snapshot.lock().unwrap().tx_gate = TxGate::ControlUnknown;
+        service.persist(&session).await.unwrap();
+        // 模拟同一持久记录在尚无本进程会话的显式打开路径。
+        service.inner.slots.lock().unwrap().remove(&device.id);
+        service.inner.sessions.lock().unwrap().remove(&target.id);
+        let reopened = service
+            .open(
+                &device,
+                OpenParams {
+                    binding: None,
+                    configuration: SerialConfiguration::default(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(!reopened.reused);
+        assert!(reopened.session_epoch > target.session_epoch.unwrap());
+        assert_eq!(h.probe.opens.load(Ordering::SeqCst), 2);
+        assert!(h.probe.writes.lock().unwrap().is_empty());
+        h.host.shutdown().await.unwrap();
+    }
 
     #[tokio::test]
     async fn completed_close_and_shutdown_wait_for_actual_owner_thread_exit() {

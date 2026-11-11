@@ -359,8 +359,6 @@ export const en = {
   "workbench.expand": "Expand",
   "workbench.saveDrafts": "Save drafts",
   "workbench.disconnected": "Disconnected",
-  "workbench.connectionHelp":
-    "Inspect the reported open error and device access",
   "workbench.encodingHelp": "Switch to HEX to inspect original bytes",
   "workbench.gapHelp": "Inspect reader or capture queue limits",
   "workbench.disconnectHelp":
@@ -465,6 +463,9 @@ export const en = {
   "workbench.tools.flowControl": "Flow control",
   "workbench.tools.readWaitMs": "Read wait (ms)",
   "workbench.tools.writeWaitMs": "Write wait (ms)",
+  "workbench.tools.writeWaitMode": "Send timeout",
+  "workbench.tools.writeWaitAutomatic": "Automatic",
+  "workbench.tools.writeWaitFixed": "Fixed timeout (advanced)",
   "workbench.tools.reconnectBackoffMs": "Reconnect backoff (ms)",
   "workbench.tools.applyConfiguration": "Apply configuration",
   "workbench.tools.resetConfiguration": "Reset configuration",
@@ -649,8 +650,6 @@ export const en = {
   "workbench.tools.unsettledOperations": "Operations still running",
   "workbench.tools.yes": "Yes",
   "workbench.tools.no": "No",
-  "workbench.tools.connectionHelp":
-    "Inspect the reported open error and device access",
   "workbench.tools.encodingHelp": "Switch to HEX to inspect original bytes",
   "workbench.tools.gapHelp": "Inspect reader or capture queue limits",
   "workbench.tools.disconnectHelp":
@@ -705,13 +704,7 @@ export const en = {
   "workbench.tools.absoluteTime": "Absolute",
   "workbench.tools.relativeTime": "Relative",
   "workbench.tools.intervalTime": "Interval",
-  "workbench.tools.timeDetails": "Time details",
-  "workbench.tools.clock": "Clock",
-  "workbench.tools.timeSource": "Time source",
-  "workbench.tools.resolution": "Resolution",
   "workbench.tools.missingTime": "Time unavailable",
-  "workbench.tools.receivedTime": "Received time",
-  "workbench.tools.sourceTime": "Source time",
   "workbench.tools.replay": "Replay",
   "workbench.tools.workspaceId": "Workspace identifier",
   "workbench.tools.load": "Load workspace",
@@ -727,6 +720,22 @@ export const en = {
     "Device list is out of date. Refresh before connecting.",
   "workbench.closeView": "Close view",
   "workbench.closeSession": "Close session",
+  "workbench.disconnect": "Disconnect",
+  "nativeError.deviceBusy":
+    "The device is in use or a previous operation is still finishing. Try again shortly.",
+  "nativeError.hostBusy": "The local service is busy. Try again shortly.",
+  "nativeError.writeTimeout":
+    "The send wait timed out. Check the send details before retrying.",
+  "nativeError.controlUnknown":
+    "The serial operation outcome is unconfirmed. Reconnect before trying again.",
+  "nativeError.devRuntimeMismatch":
+    "The development backend has changed. Stop the previous service, then restart.",
+  "nativeError.readerOverflow":
+    "The receive queue is full and live reception has stopped. Received data is retained. Check the logs.",
+  "nativeError.configurationConflict":
+    "The current connection settings differ from the request. Check the settings and try again.",
+  "workbench.displayedTxBytes": "Displayed confirmed TX bytes",
+  "workbench.displayedRxBytes": "Displayed RX bytes",
   "workbench.restoreAccess": "Restore connection access",
   "workbench.restoringAccess": "Restoring connection access…",
   "settings.mediaUnavailable":

@@ -1,4 +1,11 @@
-import { useEffect, useId, useMemo, useRef, useState } from "react";
+import {
+  useEffect,
+  useLayoutEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   ArrowDown,
   ArrowDownToLine,
@@ -45,6 +52,7 @@ import {
   type StreamPresentationLabels,
 } from "./stream-presentation";
 import { TxReceiptFacts } from "./tx-receipt-facts";
+import { formatByteSize } from "./metric-format";
 export type StreamViewProps = {
   mode?: TerminalMode;
   onReceiveModeChange?: (mode: TerminalMode) => void;
@@ -138,7 +146,7 @@ export function StreamView({
     let previousSource: string | undefined;
     let previousTxEnd: string | undefined;
     let previousTxSource: string | undefined;
-    return projected.map(({ item, itemIndex }, displayIndex) => {
+    const decoded = projected.map(({ item, itemIndex }, displayIndex) => {
       if (item.kind === "reader_gap") {
         decoder = new TextDecoder();
         txDecoder = new TextDecoder();
@@ -196,6 +204,12 @@ export function StreamView({
           text: decoder.decode(bytes, { stream: true }),
           hex: formatHex(bytes),
           offset: event.payload.byteStart,
+          byteEnd: event.payload.byteEnd,
+          source: JSON.stringify([
+            source,
+            event.configurationRevision,
+            event.time.clockId,
+          ]),
         };
       }
       if (event.kind === "tx" || event.kind === "tx_intent") {
@@ -231,11 +245,29 @@ export function StreamView({
         text: event.eventSeq,
       };
     });
-  }, [projected]);
+    const joined: ((typeof decoded)[number] & { itemIndexes: number[] })[] = [];
+    for (const row of decoded) {
+      const previous = joined.at(-1);
+      // Text 展示连续字节；驱动读块不是报文边界，原块及其时间仍在 items 中。
+      if (
+        mode === "text" &&
+        row.kind === "rx" &&
+        previous?.kind === "rx" &&
+        row.source === previous.source &&
+        row.offset === previous.byteEnd &&
+        BigInt(row.byteEnd!) - BigInt(previous.offset!) <= 16384n
+      ) {
+        previous.text += row.text;
+        previous.byteEnd = row.byteEnd;
+        previous.itemIndexes.push(row.itemIndex);
+      } else joined.push({ ...row, itemIndexes: [row.itemIndex] });
+    }
+    return joined;
+  }, [projected, mode]);
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!frozen && viewport.current)
       viewport.current.scrollTop = viewport.current.scrollHeight;
   }, [displayed, frozen]);
@@ -265,6 +297,117 @@ export function StreamView({
       setMatch(null);
     }
   }
+  const totals = useMemo(() => {
+    let rx = 0n,
+      tx = 0n;
+    for (const { item } of projected) {
+      if (item.kind !== "source") continue;
+      const { event } = item;
+      if (event.kind === "rx")
+        rx += BigInt(event.payload.byteEnd) - BigInt(event.payload.byteStart);
+      if (event.kind === "tx")
+        for (const range of event.payload.acceptedRanges)
+          tx += BigInt(range.end) - BigInt(range.start);
+    }
+    return { rx: rx.toString(), tx: tx.toString() };
+  }, [projected]);
+  // 输入和权限续检不重建接收列表；只有源数据或显示偏好改变才重新呈现。
+  const renderedRows = useMemo(
+    () =>
+      rows.map((row) => (
+        <div
+          key={row.itemIndex}
+          ref={(element) => {
+            for (const itemIndex of row.itemIndexes) {
+              if (element) rowRefs.current.set(itemIndex, element);
+              else rowRefs.current.delete(itemIndex);
+            }
+          }}
+          tabIndex={-1}
+          data-offset={row.offset}
+          data-direction={row.kind}
+          data-outcome={row.kind === "tx" ? row.receipt?.outcome : undefined}
+          className={`workbench-stream-row ${row.kind === "gap" ? "workbench-gap" : ""}`}
+        >
+          <span className="workbench-offset sr-only">
+            {labels.offset} {row.offset ?? "—"}
+          </span>
+          <span
+            className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
+          >
+            {replay && presentationLabels
+              ? `${presentationLabels.replay} · `
+              : ""}
+            {row.kind === "rx" && <ArrowDown aria-hidden="true" />}
+            {row.kind === "tx" && (
+              <TxStreamReceipt
+                receipt={row.receipt}
+                byteStart={row.offset!}
+                byteEnd={row.byteEnd!}
+                labels={labels}
+              />
+            )}
+            {row.kind === "rx" || row.kind === "tx" ? (
+              <span className="sr-only">
+                {row.kind === "rx" ? labels.terminal : labels.send}
+              </span>
+            ) : row.kind === "gap" ? (
+              labels.gap
+            ) : (
+              row.kind.toUpperCase()
+            )}
+          </span>
+          {presentationLabels && (
+            <time
+              className="workbench-stream-time"
+              dateTime={times[row.displayIndex]!.absolute ?? undefined}
+            >
+              {timeMode === "absolute"
+                ? times[row.displayIndex]!.absolute
+                  ? compactStreamTime(times[row.displayIndex]!.absolute!)
+                  : presentationLabels.missingTime
+                : (timeMode === "relative"
+                      ? times[row.displayIndex]!.relativeNs
+                      : times[row.displayIndex]!.intervalNs) === null
+                  ? presentationLabels.missingTime
+                  : (timeMode === "relative"
+                      ? times[row.displayIndex]!.relativeNs
+                      : times[row.displayIndex]!.intervalNs) + " ns"}
+            </time>
+          )}
+          <div
+            className="workbench-stream-content"
+            data-mode={mode}
+            style={terminalTypographyStyle(terminalSettings?.typography)}
+          >
+            {row.kind === "rx" || row.kind === "tx" ? (
+              <>
+                <span
+                  className={mode === "hex" ? "sr-only" : "workbench-payload"}
+                >
+                  {row.text}
+                </span>
+                {mode !== "text" && (
+                  <span className="workbench-payload">{row.hex}</span>
+                )}
+              </>
+            ) : (
+              <span className="workbench-payload">{row.text}</span>
+            )}
+          </div>
+        </div>
+      )),
+    [
+      rows,
+      labels,
+      replay,
+      presentationLabels,
+      times,
+      timeMode,
+      mode,
+      terminalSettings,
+    ],
+  );
   return (
     <section
       aria-label={labels.terminal}
@@ -462,133 +605,37 @@ export function StreamView({
           )}
         </form>
       )}
-      <div
-        role="log"
-        aria-label={labels.terminal}
-        aria-live="off"
-        tabIndex={0}
-        ref={viewport}
-        className="workbench-stream-log app-reading-surface app-scroll-region"
-        onScroll={(event) => {
-          const element = event.currentTarget;
-          if (
-            !frozen &&
-            element.scrollHeight - element.scrollTop - element.clientHeight > 24
-          )
-            setFrozen([...items]);
-        }}
-      >
-        {rows.map((row) => (
-          <div
-            key={row.itemIndex}
-            ref={(element) => {
-              if (element) rowRefs.current.set(row.itemIndex, element);
-              else rowRefs.current.delete(row.itemIndex);
-            }}
-            tabIndex={-1}
-            data-offset={row.offset}
-            data-direction={row.kind}
-            className={`workbench-stream-row ${row.kind === "gap" ? "workbench-gap" : ""}`}
-          >
-            <span className="workbench-offset sr-only">
-              {labels.offset} {row.offset ?? "—"}
-            </span>
-            <span
-              className={`workbench-direction ${row.kind === "tx" ? "text-primary" : replay ? "text-muted-foreground" : "text-foreground"}`}
-            >
-              {replay && presentationLabels
-                ? `${presentationLabels.replay} · `
-                : ""}
-              {row.kind === "rx" && <ArrowDown aria-hidden="true" />}
-              {row.kind === "tx" && <ArrowUp aria-hidden="true" />}
-              {row.kind === "gap" ? labels.gap : row.kind.toUpperCase()}
-            </span>
-            {presentationLabels && (
-              <details
-                data-surface="transparent"
-                className="workbench-stream-time text-muted-foreground text-xs"
-              >
-                <summary
-                  data-surface="transparent"
-                  title={presentationLabels.timeDetails}
-                >
-                  {timeMode === "absolute"
-                    ? times[row.displayIndex]!.absolute
-                      ? compactStreamTime(times[row.displayIndex]!.absolute!)
-                      : presentationLabels.missingTime
-                    : (timeMode === "relative"
-                          ? times[row.displayIndex]!.relativeNs
-                          : times[row.displayIndex]!.intervalNs) === null
-                      ? presentationLabels.missingTime
-                      : `${timeMode === "relative" ? times[row.displayIndex]!.relativeNs : times[row.displayIndex]!.intervalNs} ns`}
-                </summary>
-                {times[row.displayIndex]!.time ? (
-                  <>
-                    <p>
-                      <time
-                        dateTime={
-                          times[row.displayIndex]!.absolute ?? undefined
-                        }
-                      >
-                        {times[row.displayIndex]!.absolute ??
-                          presentationLabels.missingTime}
-                      </time>
-                    </p>
-                    <p>
-                      {presentationLabels.clock}:{" "}
-                      {times[row.displayIndex]!.time!.clockId}
-                    </p>
-                    <p>
-                      {presentationLabels.timeSource}:{" "}
-                      {times[row.displayIndex]!.time!.precision.source}
-                    </p>
-                    <p>
-                      {presentationLabels.resolution}:{" "}
-                      {times[row.displayIndex]!.time!.precision.resolutionNs} ns
-                    </p>
-                    <p>
-                      {times[row.displayIndex]!.absoluteSource === "source"
-                        ? presentationLabels.sourceTime
-                        : presentationLabels.receivedTime}
-                    </p>
-                  </>
-                ) : (
-                  <p>{presentationLabels.missingTime}</p>
-                )}
-              </details>
-            )}
-            <div
-              className="workbench-stream-content"
-              data-mode={mode}
-              style={terminalTypographyStyle(terminalSettings?.typography)}
-            >
-              {row.kind === "rx" || row.kind === "tx" ? (
-                <>
-                  <span
-                    className={mode === "hex" ? "sr-only" : "workbench-payload"}
-                  >
-                    {row.text}
-                  </span>
-                  {mode !== "text" && (
-                    <span className="workbench-payload">{row.hex}</span>
-                  )}
-                  {row.kind === "tx" && (
-                    <div className="workbench-tx-receipt text-muted-foreground text-xs">
-                      <TxStreamReceipt
-                        receipt={row.receipt}
-                        byteStart={row.offset!}
-                        byteEnd={row.byteEnd!}
-                        labels={labels}
-                      />
-                    </div>
-                  )}
-                </>
-              ) : (
-                <span className="workbench-payload">{row.text}</span>
-              )}
-            </div>
-          </div>
-        ))}
+      <div className="workbench-receive-frame app-reading-surface">
+        <div
+          role="log"
+          aria-label={labels.terminal}
+          aria-live="off"
+          tabIndex={0}
+          ref={viewport}
+          className="workbench-stream-log app-scroll-region"
+          data-surface="transparent"
+          onScroll={(event) => {
+            const element = event.currentTarget;
+            if (
+              !frozen &&
+              element.scrollHeight - element.scrollTop - element.clientHeight >
+                24
+            )
+              setFrozen([...items]);
+          }}
+        >
+          {renderedRows}
+        </div>
+        <div className="workbench-stream-totals" aria-live="off">
+          <span role="group" aria-label={labels.displayedTxBytes}>
+            <ArrowUp aria-hidden="true" />
+            {formatByteSize(totals.tx)}
+          </span>
+          <span role="group" aria-label={labels.displayedRxBytes}>
+            <ArrowDown aria-hidden="true" />
+            {formatByteSize(totals.rx)}
+          </span>
+        </div>
       </div>
       <WorkbenchNotice
         noticeKey={`gap:${trimmed ?? false}:${labels.gapHelp}`}
@@ -631,21 +678,36 @@ function TxStreamReceipt({
   byteEnd: string;
   labels: WorkbenchLabels;
 }) {
-  if (!receipt)
-    return (
-      <details data-surface="transparent">
-        <summary data-surface="transparent">{labels.awaitingReceipt}</summary>
-        <p>
-          {labels.requestedBytes}: [{byteStart}, {byteEnd})
-        </p>
-      </details>
-    );
   return (
-    <details data-surface="transparent" data-outcome={receipt.outcome}>
-      <summary data-surface="transparent">
-        {workbenchStatus(receipt.outcome, labels)}
-      </summary>
-      <TxReceiptFacts receipt={receipt} labels={labels} />
-    </details>
+    <Popover>
+      <PopoverTrigger asChild>
+        <WorkbenchIconButton
+          label={labels.receipt}
+          className="workbench-direction-button"
+        >
+          <ArrowUp aria-hidden="true" />
+        </WorkbenchIconButton>
+      </PopoverTrigger>
+      <PopoverContent
+        align="start"
+        className="workbench-detail-popover"
+        aria-label={labels.receipt}
+      >
+        <PopoverTitle>{labels.receipt}</PopoverTitle>
+        {receipt ? (
+          <>
+            <p>{workbenchStatus(receipt.outcome, labels)}</p>
+            <TxReceiptFacts receipt={receipt} labels={labels} />
+          </>
+        ) : (
+          <>
+            <p>{labels.awaitingReceipt}</p>
+            <p>
+              {labels.requestedBytes}: [{byteStart}, {byteEnd})
+            </p>
+          </>
+        )}
+      </PopoverContent>
+    </Popover>
   );
 }

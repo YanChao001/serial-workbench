@@ -1,4 +1,4 @@
-import { act, cleanup, render, screen } from "@testing-library/react";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { afterEach, describe, expect, it, vi } from "vitest";
 import { SettingsPersistence } from "./settings-persistence";
 import { toast } from "sonner";
@@ -16,7 +16,7 @@ vi.mock("@/providers/i18n", () => ({
   useI18n: () => ({ t: (key: string) => key }),
 }));
 vi.mock("sonner", () => ({
-  toast: { error: vi.fn(), dismiss: vi.fn() },
+  toast: { custom: vi.fn(), dismiss: vi.fn() },
 }));
 afterEach(() => {
   cleanup();
@@ -42,27 +42,31 @@ describe("设置保存反馈", () => {
     state.persistenceError = "STORAGE_UNAVAILABLE";
     const { container, rerender } = render(<SettingsPersistence compact />);
     expect(container).toBeEmptyDOMElement();
-    expect(toast.error).toHaveBeenCalledWith(
-      "settings.persistenceError",
+    expect(toast.custom).toHaveBeenCalledWith(
+      expect.any(Function),
       expect.objectContaining({
-        id: "settings-persistence",
+        id: expect.any(String),
         duration: 5000,
         closeButton: true,
-        action: expect.objectContaining({ label: "common.retry" }),
       }),
     );
     rerender(<SettingsPersistence compact />);
-    expect(toast.error).toHaveBeenCalledOnce();
+    expect(toast.custom).toHaveBeenCalledOnce();
     expect(getUserLog()).toMatchObject([
       { module: "settings", code: "STORAGE_UNAVAILABLE", count: 1 },
     ]);
-    const retry = vi.mocked(toast.error).mock.calls[0]?.[1]?.action as
-      { onClick(): void } | undefined;
-    act(() => retry?.onClick());
+    const notice = vi.mocked(toast.custom).mock.calls[0]?.[0];
+    if (!notice) throw new Error("Missing persistence notice");
+    const rendered = render(<>{notice("notice")}</>);
+    expect(
+      screen.getByRole("alert").closest(".workbench-notification"),
+    ).toBeVisible();
+    fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
+    rendered.unmount();
     expect(state.retrySave).toHaveBeenCalledOnce();
     state.persistence = "saved";
     rerender(<SettingsPersistence compact />);
-    expect(toast.dismiss).toHaveBeenCalledWith("settings-persistence");
+    expect(toast.dismiss).toHaveBeenCalledWith(expect.any(String));
   });
   it("连接错误由工作台统一通知，设置组件不重复弹出或记录", () => {
     state.persistence = "error";
@@ -70,7 +74,7 @@ describe("设置保存反馈", () => {
     state.persistenceScope = "connection";
     const { container } = render(<SettingsPersistence compact />);
     expect(container).toBeEmptyDOMElement();
-    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.custom).not.toHaveBeenCalled();
     expect(getUserLog()).toHaveLength(0);
   });
   it("页面实例只提供辅助状态，不重复维护全局toast；卸载不撤销有效通知", () => {
@@ -78,7 +82,7 @@ describe("设置保存反馈", () => {
     state.persistenceError = "STORAGE_UNAVAILABLE";
     const view = render(<SettingsPersistence />);
     expect(screen.getByRole("status")).toHaveClass("sr-only");
-    expect(toast.error).not.toHaveBeenCalled();
+    expect(toast.custom).not.toHaveBeenCalled();
     view.unmount();
     expect(toast.dismiss).not.toHaveBeenCalled();
   });
@@ -96,15 +100,15 @@ describe("设置保存反馈", () => {
     state.persistenceError = "FUTURE_FORMAT";
     const view = render(<SettingsPersistence compact />);
     expect(view.container).toBeEmptyDOMElement();
-    expect(toast.error).toHaveBeenCalledWith(
-      "settings.persistenceFuture",
+    expect(toast.custom).toHaveBeenCalledWith(
+      expect.any(Function),
       expect.objectContaining({ duration: 5000, closeButton: true }),
     );
-    expect(vi.mocked(toast.error).mock.calls[0]?.[1]).not.toHaveProperty(
+    expect(vi.mocked(toast.custom).mock.calls[0]?.[1]).not.toHaveProperty(
       "action",
     );
     view.rerender(<SettingsPersistence compact />);
-    expect(toast.error).toHaveBeenCalledOnce();
+    expect(toast.custom).toHaveBeenCalledOnce();
     expect(getUserLog()).toMatchObject([
       { module: "settings", code: "FUTURE_FORMAT" },
     ]);

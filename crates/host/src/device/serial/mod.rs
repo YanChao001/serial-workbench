@@ -102,6 +102,7 @@ impl SerialProvider {
             id: device.device_id.clone(),
             claims: self.claims.clone(),
             isolated: isolated.clone(),
+            released: false,
         };
         let device = device.clone();
         let config = configuration.clone();
@@ -125,13 +126,27 @@ struct SerialClaim {
     id: Id,
     claims: Arc<Mutex<HashMap<Id, Vec<String>>>>,
     isolated: Arc<AtomicBool>,
+    released: bool,
+}
+impl SerialClaim {
+    fn confirm_release(&mut self) -> HostResult<()> {
+        if self.released {
+            return Ok(());
+        }
+        let mut claims = self
+            .claims
+            .lock()
+            .map_err(|_| HostError::new("HOST_BUSY", "Serial reservation is unavailable"))?;
+        claims.remove(&self.id);
+        // 解除后旧 guard 的 Drop 不得再删除随后取得同一设备的新占用。
+        self.released = true;
+        Ok(())
+    }
 }
 impl Drop for SerialClaim {
     fn drop(&mut self) {
-        if !self.isolated.load(Ordering::SeqCst)
-            && let Ok(mut claims) = self.claims.lock()
-        {
-            claims.remove(&self.id);
+        if !self.released && !self.isolated.load(Ordering::SeqCst) {
+            let _ = self.confirm_release();
         }
     }
 }
@@ -464,8 +479,8 @@ mod tests {
         assert!(!report.completed);
         assert_eq!(report.quarantined_sessions, vec![target]);
         assert!(report.unsettled_operation_ids.is_empty());
-        assert_eq!(report.failures.len(), 1);
-        assert_eq!(report.failures[0].code, "CONTROL_UNKNOWN");
+        // 后端已实际退出并确认 close；资源清理成功不改写原 TX 的隔离结果。
+        assert!(report.failures.is_empty());
         assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
     }
 
@@ -704,6 +719,7 @@ struct NativeTransport {
 #[derive(Debug, Default)]
 struct NativeOwner {
     result: Mutex<Option<HostResult<()>>>,
+    cleanup: Mutex<Option<Arc<dyn BackendCleanup>>>,
     join: Mutex<Option<JoinHandle<()>>>,
 }
 impl BackendCleanup for NativeOwner {
@@ -723,6 +739,9 @@ impl BackendCleanup for NativeOwner {
                 *result = Some(failure.clone());
             }
             return Some(failure);
+        }
+        if let Some(cleanup) = self.cleanup.lock().ok()?.as_ref() {
+            return cleanup.poll();
         }
         self.result.lock().ok()?.clone()
     }
@@ -755,7 +774,7 @@ fn start_native(
                     }
                 };
                 if ready.send(Ok(port.capabilities())).is_err() {
-                    return port.close().map_err(|error| *error.error);
+                    return port.close();
                 }
                 loop {
                     if worker_stopping.load(Ordering::SeqCst)
@@ -782,16 +801,23 @@ fn start_native(
                         Ok(NativeRequest::Close(reply)) => {
                             let result = port.close();
                             let _ = reply.send(result.clone());
-                            return result.map_err(|error| *error.error);
+                            return result;
                         }
                         Err(mpsc::RecvTimeoutError::Timeout) => {}
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
                     }
                 }
-                port.close().map_err(|error| *error.error)
+                port.close()
             })();
+            // owner 线程结束不证明借给在途 I/O 的句柄已关闭，继续保有其完成凭证。
+            if let Err(error) = &result
+                && let Some(cleanup) = &error.cleanup
+                && let Ok(mut retained) = worker_owner.cleanup.lock()
+            {
+                *retained = Some(cleanup.clone());
+            }
             if let Ok(mut completed) = worker_owner.result.lock() {
-                *completed = Some(result);
+                *completed = Some(result.map_err(|error| *error.error));
             }
         })
         .map_err(|_| {
@@ -889,11 +915,8 @@ impl Transport for NativeTransport {
         })
     }
     fn close(&mut self) -> BackendResult<()> {
-        if self.isolated.load(Ordering::SeqCst) {
+        if self.isolated.load(Ordering::SeqCst) || self.stopping.load(Ordering::SeqCst) {
             self.stopping.store(true, Ordering::SeqCst);
-            return Err(retained_unknown(&self.owner));
-        }
-        if self.stopping.load(Ordering::SeqCst) {
             return self
                 .owner
                 .poll()

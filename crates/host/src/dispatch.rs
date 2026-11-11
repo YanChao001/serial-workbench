@@ -587,8 +587,23 @@ impl Host {
                 | BuiltinAction::WorkspaceImportPreview
                 | BuiltinAction::SessionMetrics
                 | BuiltinAction::SessionInputs
+                | BuiltinAction::HostMetrics
+                | BuiltinAction::OperationGet
+                | BuiltinAction::StateScopes
+                | BuiltinAction::StateSnapshot
+                | BuiltinAction::StateSubscribe
+                | BuiltinAction::SubscriptionClose
+                | BuiltinAction::StreamCursor
+                | BuiltinAction::StreamRead
+                | BuiltinAction::StreamSubscribe
+                | BuiltinAction::StreamCredit
         ) {
-            self.activity(actor, &query, action)?;
+            // 传输、投影和任务轮询不再观测自身；否则一次更新会放大为整份活动历史。
+            // 显式查询仍保留活动，但序列化/投影提交不能阻塞异步 I/O 调度线程。
+            let host = self.clone();
+            let observer = actor.clone();
+            let observed = query.clone();
+            blocking(move || host.activity(&observer, &observed, action)).await?;
         }
         let result = match action {
             BuiltinAction::ActionCheck => self

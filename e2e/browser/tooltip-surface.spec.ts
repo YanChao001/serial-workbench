@@ -50,7 +50,7 @@ async function expectContinuousSurface(page: Page, tooltip: Locator) {
 }
 
 for (const theme of ["light", "dark"] as const) {
-  test(`translucent tooltip arrows join the body without a darker overlap: ${theme}`, async ({
+  test(`opaque tooltip arrows join the body without a darker overlap: ${theme}`, async ({
     page,
   }) => {
     await seedBrowserSettings(page, {
@@ -79,8 +79,7 @@ for (const theme of ["light", "dark"] as const) {
       context.fillRect(0, 0, 1, 1);
       return context.getImageData(0, 0, 1, 1).data[3]! / 255;
     });
-    expect(alpha).toBeGreaterThan(0);
-    expect(alpha).toBeLessThan(1);
+    expect(alpha).toBe(1);
     await expectContinuousSurface(page, tooltip);
 
     const quickActions = page.locator(".app-title-bar").getByRole("button", {

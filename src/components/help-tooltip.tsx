@@ -22,7 +22,7 @@ export function HelpTooltip({
   children: ReactNode;
 }) {
   return (
-    <TooltipProvider delayDuration={650} skipDelayDuration={0}>
+    <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

@@ -8,7 +8,8 @@ import {
   within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
 import {
   defaults,
   type CaptureStatusResult,
@@ -33,7 +34,9 @@ import {
   session,
   operation,
   actionCatalog,
+  txItem,
 } from "@/features/workbench/test-fixtures";
+import * as streamPresentation from "@/features/workbench/stream-presentation";
 import {
   browserClientStateStore,
   DEFAULT_CLIENT_STATE,
@@ -50,7 +53,11 @@ vi.mock("@/lib/tauri", async (original) => ({
   saveTextExport: vi.fn(),
 }));
 
-afterEach(cleanup);
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+  clearUserLog();
+});
 beforeEach(() => {
   sessionStorage.clear();
   render(<Toaster />);
@@ -172,6 +179,37 @@ function readyHost(): HostContextValue {
     watchSession: vi.fn(() => () => {}),
   };
 }
+it("keeps receive rows unchanged when unrelated Host metadata updates", async () => {
+  const host = readyHost();
+  host.state.streams = new Map([
+    ["session", { items: [txItem("tx")], error: null, trimmed: false }],
+  ]);
+  const time = vi.spyOn(streamPresentation, "compactStreamTime");
+  const content = (value: HostContextValue) => (
+    <I18nContext value={i18n}>
+      <HostContext value={value}>
+        <Overview />
+      </HostContext>
+    </I18nContext>
+  );
+  try {
+    const view = render(content(host));
+    fireEvent.click(
+      await screen.findByRole("button", { name: "Open Virtual serial" }),
+    );
+    await screen.findByText("Hello");
+    time.mockClear();
+    for (let index = 0; index < 20; index++)
+      view.rerender(
+        content({ ...host, state: { ...host.state, operations: [] } }),
+      );
+    expect(time).not.toHaveBeenCalled();
+    expect(screen.getByText("Hello")).toBeVisible();
+  } finally {
+    time.mockRestore();
+  }
+});
+
 function captureStopFixture() {
   const host = readyHost();
   const reference = {
@@ -637,10 +675,18 @@ describe("Serial Workbench 首页", () => {
     fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
       target: { value: "Unsaved local name" },
     });
-    fireEvent.click(
-      screen.getByRole("button", { name: "Export configuration" }),
+    const exportAction = screen.getByRole("button", {
+      name: "Export configuration",
+    });
+    await waitFor(() => expect(exportAction).toBeEnabled());
+    await act(async () => fireEvent.click(exportAction));
+    await waitFor(() =>
+      expect(saveTextExport).toHaveBeenCalledWith(
+        "workspace-configuration.json",
+        "saved envelope",
+      ),
     );
-    expect(await screen.findByRole("alert")).toBeVisible();
+    await waitFor(() => expect(screen.getByRole("alert")).toBeVisible());
     expect(screen.getByRole("alert")).not.toHaveTextContent(
       "File write failed",
     );
@@ -824,7 +870,7 @@ describe("Serial Workbench 首页", () => {
     expect(connect).toHaveBeenCalledOnce();
     view.unmount();
   });
-  it("shows safe localized errors for ordinary menu Refresh failures without pretending the Host disconnected", async () => {
+  it("keeps device-picker refresh failures localized, records their code and preserves the connected draft", async () => {
     const host = readyHost();
     host.refresh = vi.fn().mockRejectedValue(
       new HostRequestError({
@@ -850,8 +896,14 @@ describe("Serial Workbench 首页", () => {
     fireEvent.keyDown(screen.getByRole("combobox", { name: "Choose device" }), {
       key: "Enter",
     });
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "PERMISSION_DENIED",
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(en["nativeError.permissionDenied"]);
+    expect(alert).not.toHaveTextContent("PERMISSION_DENIED");
+    expect(getUserLog()).toContainEqual(
+      expect.objectContaining({
+        code: "PERMISSION_DENIED",
+        message: en["nativeError.permissionDenied"],
+      }),
     );
     fireEvent.keyDown(screen.getByRole("listbox"), { key: "Escape" });
     expect(
@@ -2310,6 +2362,8 @@ it("keeps the same capture observation when its active session parent renders ag
     target,
     configuration: current.configuration,
     configurationKey: "session:1",
+    writeWaitMode: "automatic" as const,
+    onWriteWaitModeChange: vi.fn(),
     onConfigurationChange: vi.fn(),
     onInspectMetrics: vi.fn(),
     onInspectBytes: vi.fn(),

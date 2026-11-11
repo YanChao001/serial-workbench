@@ -4,8 +4,13 @@ import { mkdirSync, readFileSync, renameSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
-import { openDeepLink } from "../helpers.mjs";
-import { hostQuery, nativeValue } from "../settings.mjs";
+import { openDeepLink, reloadDocument } from "../helpers.mjs";
+import {
+  hostQuery,
+  nativeValue,
+  patchSettings,
+  readSettings,
+} from "../settings.mjs";
 
 async function openTool(name) {
   const direct = await $(
@@ -220,8 +225,9 @@ function streamPayloadState(payload) {
     return {
       rows: rows.length,
       txRows: tx.length,
-      acceptedTxRows: tx.filter((row) =>
-        row.querySelector(".workbench-tx-receipt [data-outcome='accepted']"),
+      rxRows: rows.filter((row) => row.dataset.direction === "rx").length,
+      acceptedTxRows: tx.filter(
+        (row) => row.getAttribute("data-outcome") === "accepted",
       ).length,
     };
   }, payload);
@@ -297,7 +303,7 @@ export function workbenchChecks() {
     );
     await browser.keys(Key.Escape);
     await $("[role=dialog]").waitForExist({ reverse: true });
-    await browser.refresh();
+    await reloadDocument(browser);
     const original = await $(
       "//*[@role='tab'][normalize-space()='Original view']",
     );
@@ -363,6 +369,228 @@ export function workbenchChecks() {
     });
     await draft.setValue("UNSENT AFTER RESTART");
     await saveDrafts();
+  });
+
+  it("keeps connected controls usable through rapid theme changes and focus refreshes", async () => {
+    const before = await readSettings();
+    const savedDraftsBefore = (await nativeValue("client_state_read")).state
+      .drafts;
+    const retainedDraft = await (await sendDraft()).getValue();
+    await (await sendDraft()).setValue("RESPONSIVE-NATIVE-LOOP");
+    await browser.execute(
+      () =>
+        new Promise((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(resolve)),
+        ),
+    );
+    await $("button[aria-label='Send']").waitForEnabled();
+    await $("button[aria-label='Close session']").waitForEnabled();
+    await browser.execute(() => {
+      const samples = [];
+      const started = performance.now();
+      const observation = { samples, frame: 0, timedOut: false };
+      window.__workbenchResponsiveness = observation;
+      const sample = () => {
+        const close = document.querySelector(
+          "button[aria-label='Close session']",
+        );
+        const send = document.querySelector("button[aria-label='Send']");
+        samples.push({
+          elapsedMs: performance.now() - started,
+          closeDisabled: !close || close.disabled,
+          sendDisabled: !send || send.disabled,
+        });
+        if (performance.now() - started < 15000)
+          observation.frame = requestAnimationFrame(sample);
+        else observation.timedOut = true;
+      };
+      observation.frame = requestAnimationFrame(sample);
+    });
+    let failure;
+    try {
+      for (let index = 0; index < 8; index++) {
+        await $("button[data-theme-control]").click();
+        await browser.execute(() => window.dispatchEvent(new Event("focus")));
+      }
+      await browser.pause(1200);
+      const selected = await browser.execute(() =>
+        document.documentElement.classList.contains("dark") ? "dark" : "light",
+      );
+      await browser.waitUntil(
+        async () => (await readSettings()).settings.theme === selected,
+      );
+      await $("button[aria-label='Send']").waitForEnabled();
+      await $("button[aria-label='Close session']").waitForEnabled();
+      const notices = await browser.execute(() =>
+        [...document.querySelectorAll(".workbench-notification [role=alert]")]
+          .map((element) => element.textContent?.trim())
+          .filter(Boolean),
+      );
+      assert.deepEqual(
+        notices,
+        [],
+        "Theme changes raised a connection or persistence error",
+      );
+      const observation = await browser.execute(() => {
+        const current = window.__workbenchResponsiveness;
+        cancelAnimationFrame(current.frame);
+        return { samples: current.samples, timedOut: current.timedOut };
+      });
+      const { samples } = observation;
+      assert.equal(
+        observation.timedOut,
+        false,
+        "Theme/focus observation exceeded its bounded sampling period",
+      );
+      assert.ok(samples.length > 5, "Native frame observation did not run");
+      assert.ok(
+        samples.every(
+          (sample) => !sample.closeDisabled && !sample.sendDisabled,
+        ),
+        "Unrelated theme/focus changes disabled connected controls",
+      );
+      await clickEnabled("button[aria-label='Send']");
+      await browser.waitUntil(
+        async () =>
+          (await streamPayloadState("RESPONSIVE-NATIVE-LOOP"))
+            .acceptedTxRows === 1,
+      );
+      await patchSettings({ theme: before.settings.theme });
+      await (await sendDraft()).setValue(retainedDraft);
+      // 恢复已保存的原草稿后应保持干净，不产生一次多余保存。
+      await $("button[aria-label='Save drafts']").waitForEnabled({
+        reverse: true,
+      });
+      assert.equal(await (await sendDraft()).getValue(), retainedDraft);
+      assert.deepEqual(
+        (await nativeValue("client_state_read")).state.drafts,
+        savedDraftsBefore,
+      );
+    } catch (error) {
+      failure = error;
+    } finally {
+      try {
+        const samples = await browser.execute(() => {
+          const observation = window.__workbenchResponsiveness;
+          cancelAnimationFrame(observation.frame);
+          delete window.__workbenchResponsiveness;
+          return {
+            samples: observation.samples,
+            timedOut: observation.timedOut,
+          };
+        });
+        const directory = join(
+          "artifacts",
+          "e2e",
+          process.env.STARTER_E2E_PHASE,
+        );
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(
+          join(directory, "workbench-responsiveness.json"),
+          JSON.stringify(
+            {
+              ...samples,
+              scope: "theme/focus changes before the explicit send",
+              themeClicks: 8,
+              passed: !failure,
+            },
+            null,
+            2,
+          ),
+        );
+      } catch (evidenceError) {
+        if (!failure) failure = evidenceError;
+        else
+          console.warn(
+            "Responsiveness failure evidence could not be completed",
+          );
+      }
+    }
+    if (failure) throw failure;
+  });
+
+  it("sends ten thousand bytes through the real virtual backend without disabling close", async () => {
+    const retainedDraft = await (await sendDraft()).getValue();
+    const payload = ("NATIVE-10000-" + "0123456789".repeat(1000)).slice(
+      0,
+      10000,
+    );
+    await (await sendDraft()).setValue(payload);
+    await $("button[aria-label='Send']").waitForEnabled();
+    await browser.execute(() => {
+      const observation = { samples: [], frame: 0, started: performance.now() };
+      window.__workbenchLargeTx = observation;
+      const sample = () => {
+        observation.samples.push({
+          elapsedMs: performance.now() - observation.started,
+          closeDisabled:
+            document.querySelector("button[aria-label='Close session']")
+              ?.disabled ?? true,
+        });
+        if (performance.now() - observation.started < 15000)
+          observation.frame = requestAnimationFrame(sample);
+      };
+      observation.frame = requestAnimationFrame(sample);
+    });
+    let failure;
+    try {
+      await clickEnabled("button[aria-label='Send']");
+      await browser.waitUntil(async () => {
+        const state = await streamPayloadState(payload);
+        return (
+          state.txRows === 1 && state.acceptedTxRows === 1 && state.rxRows === 1
+        );
+      });
+      const samples = await browser.execute(
+        () => window.__workbenchLargeTx.samples,
+      );
+      assert.ok(samples.length > 0, "Close observation did not sample a frame");
+      assert.ok(
+        samples.every((sample) => !sample.closeDisabled),
+        "The large send disabled close",
+      );
+    } catch (error) {
+      failure = error;
+    } finally {
+      let observation;
+      try {
+        observation = await browser.execute(() => {
+          const observation = window.__workbenchLargeTx;
+          cancelAnimationFrame(observation.frame);
+          delete window.__workbenchLargeTx;
+          return observation.samples;
+        });
+        await (await sendDraft()).setValue(retainedDraft);
+      } catch (cleanupError) {
+        if (!failure) failure = cleanupError;
+        else console.warn("Large send cleanup could not be completed");
+      }
+      try {
+        const directory = join(
+          "artifacts",
+          "e2e",
+          process.env.STARTER_E2E_PHASE,
+        );
+        mkdirSync(directory, { recursive: true });
+        writeFileSync(
+          join(directory, "workbench-large-tx.json"),
+          JSON.stringify(
+            {
+              bytes: 10000,
+              samples: observation,
+              passed: !failure,
+              scope: "Actual Native GUI and virtual Host; no physical hardware",
+            },
+            null,
+            2,
+          ),
+        );
+      } catch (evidenceError) {
+        if (!failure) failure = evidenceError;
+        else console.warn("Large send failure evidence could not be completed");
+      }
+    }
+    if (failure) throw failure;
   });
 
   it("reattaches and subscribes after the owned Host restarts without replaying the draft", async () => {

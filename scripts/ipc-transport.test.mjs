@@ -8,7 +8,7 @@ const source = readFileSync(
   new URL("../src-tauri/src/ipc-transport.js", import.meta.url),
   "utf8",
 );
-function fixture(postMessage) {
+function fixture(postMessage, { invokeKey = "fixture-invoke-key" } = {}) {
   const messages = [];
   let fetches = 0;
   const window = {
@@ -21,17 +21,21 @@ function fixture(postMessage) {
       },
     },
   };
-  runInNewContext(source.replaceAll("__INVOKE_KEY__", '"fixture-invoke-key"'), {
-    window,
-    ArrayBuffer,
-    Uint8Array,
-    Map,
-    fetch() {
-      fetches++;
-      return Promise.reject(new TypeError("Navigation cancelled the reply"));
+  runInNewContext(
+    source.replaceAll("__INVOKE_KEY__", JSON.stringify(invokeKey)),
+    {
+      window,
+      ArrayBuffer,
+      Uint8Array,
+      Map,
+      fetch() {
+        fetches++;
+        return Promise.reject(new TypeError("Navigation cancelled the reply"));
+      },
     },
-  });
+  );
   return {
+    window,
     send: window.__TAURI_INTERNALS__.postMessage,
     messages,
     fetches: () => fetches,
@@ -42,6 +46,16 @@ const command = (payload = {}) => ({
   callback: 11,
   error: 12,
   payload,
+});
+
+test("valid Z85 invoke keys containing a comment terminator initialize and authenticate once", () => {
+  // 合成的 20 字符 Z85 密钥；上游会替换脚本中每一处占位符，包括注释。
+  const invokeKey = "000000000*/000000000";
+  const f = fixture(undefined, { invokeKey });
+  f.send(command());
+  assert.equal(f.messages.length, 1);
+  assert.equal(f.messages[0].__TAURI_INVOKE_KEY__, invokeKey);
+  assert.equal(f.fetches(), 0);
 });
 
 test("Native dispatch has one acceptance path when navigation could cancel a fetch reply", async () => {

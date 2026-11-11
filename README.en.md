@@ -17,6 +17,8 @@ pnpm run doctor
 pnpm app:dev
 ```
 
+If development startup reports an older Host, run `pnpm host:stop`, then `pnpm app:dev`. This gracefully disconnects that Host's sessions while retaining settings and drafts. It does not force-kill a process or start an absent Host.
+
 `pnpm dev` starts the browser preview; system capabilities require the desktop environment. Without npm dependencies, run `node scripts/doctor.mjs` for diagnostics.
 
 ## Development

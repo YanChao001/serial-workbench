@@ -237,6 +237,7 @@ it("correlates a confirmed close failure with the same connection event", async 
   const view = render(<Shell adapter={adapter} onCloseSession={close} />);
   fireEvent.click(screen.getByRole("button", { name: "Open COM14" }));
   const button = await screen.findByRole("button", { name: "Close session" });
+  await waitFor(() => expect(button).toBeEnabled());
   fireEvent.click(button);
   await waitFor(() => expect(close).toHaveBeenCalledOnce());
   adapter.state = {

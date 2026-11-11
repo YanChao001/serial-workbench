@@ -357,3 +357,38 @@ async fn query_activity_memory_is_bounded_and_does_not_store_inputs() {
             .all(|item| item.get("params").is_none() && item.get("requestContext").is_none())
     );
 }
+
+#[tokio::test]
+async fn operation_and_projection_polling_do_not_amplify_the_activity_projection() {
+    let f = Fixture::new();
+    let host = Host::new(f.store.clone(), f.auth.clone()).await.unwrap();
+    let call = f.call(&f.operator, "auth.authorize", serde_json::json!({"clientId":"client", "permissions":["metadata.read"], "targets":[f.target]}));
+    let operation = host.invoke(&f.operator, call).await.unwrap();
+    for _ in 0..20 {
+        host.query(&f.actor, f.query("state.scopes", serde_json::json!({})))
+            .await
+            .unwrap();
+        let mut query = f.query(
+            "operation.get",
+            serde_json::json!({"operationId":operation.operation_id}),
+        );
+        query.actor_id = f.operator.id().clone();
+        host.query(&f.operator, query).await.unwrap();
+    }
+    assert_eq!(
+        host.activity_count(),
+        0,
+        "Transport/projection polling must not publish another activity snapshot for every observation"
+    );
+    host.query(
+        &f.actor,
+        f.query("catalog.list", serde_json::json!({"pageSize":"1"})),
+    )
+    .await
+    .unwrap();
+    assert_eq!(
+        host.activity_count(),
+        1,
+        "Explicit discoverable queries retain their activity record"
+    );
+}

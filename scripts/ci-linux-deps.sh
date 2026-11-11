@@ -1,6 +1,8 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+readonly -a ci_apt_command=(sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
+
 prefer_ubuntu_archive() {
   local apt_directory="${1:-/etc/apt}"
   local config filtered
@@ -21,6 +23,13 @@ prefer_ubuntu_archive() {
   done
 }
 
+prepare_linux_index() {
+  prefer_ubuntu_archive "${1:-/etc/apt}"
+  echo "APT index started: $(date -u +%FT%TZ)"
+  # apt update 默认可在索引下载失败时返回成功，不能据此进入旧索引的下载阶段。
+  "${ci_apt_command[@]}" update --error-on=any
+}
+
 install_linux_dependencies() {
   local mode="${1:-}"
   local apt_directory="${2:-/etc/apt}"
@@ -32,15 +41,12 @@ install_linux_dependencies() {
       ;;
     *) echo "Usage: bash scripts/ci-linux-deps.sh rust|native" >&2; return 2 ;;
   esac
-  prefer_ubuntu_archive "$apt_directory"
-  local apt=(sudo env DEBIAN_FRONTEND=noninteractive apt-get -o Acquire::Retries=1 -o Acquire::http::Timeout=15 -o Acquire::https::Timeout=15)
-  echo "APT index started: $(date -u +%FT%TZ)"
-  "${apt[@]}" update
+  prepare_linux_index "$apt_directory"
   echo "APT download started: $(date -u +%FT%TZ)"
   # 只限下载墙钟；失败不进入 dpkg，安装复用已验证归档且不再访问网络。
-  timeout --signal=TERM --kill-after=10s 480s "${apt[@]}" install -y --no-install-recommends --download-only "${packages[@]}"
+  timeout --signal=TERM --kill-after=10s 480s "${ci_apt_command[@]}" install -y --no-install-recommends --download-only "${packages[@]}"
   echo "APT install started: $(date -u +%FT%TZ)"
-  "${apt[@]}" install -y --no-install-recommends --no-download "${packages[@]}"
+  "${ci_apt_command[@]}" install -y --no-install-recommends --no-download "${packages[@]}"
   echo "APT preparation completed: $(date -u +%FT%TZ)"
 }
 

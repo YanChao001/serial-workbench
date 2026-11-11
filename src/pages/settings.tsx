@@ -602,11 +602,7 @@ export default function Settings() {
                   </button>
                 );
                 return unavailable ? (
-                  <TooltipProvider
-                    key={preset.id}
-                    delayDuration={650}
-                    skipDelayDuration={0}
-                  >
+                  <TooltipProvider key={preset.id}>
                     <Tooltip>
                       <TooltipTrigger asChild>
                         <span

@@ -19,6 +19,8 @@ pnpm app:dev
 
 `pnpm dev` 提供浏览器预览；系统能力使用桌面环境。无 npm 依赖时也可运行 `node scripts/doctor.mjs`。
 
+更新 Host 源码后若提示旧版本仍在运行，先运行 `pnpm host:stop` 正常退出后台，再运行 `pnpm app:dev`。退出会断开该 Host 的会话，设置与草稿保留；命令不会强杀或在 Host 不存在时启动它。
+
 ## 开发入口
 
 - [架构](./docs/architecture.md)：目录职责、Host/桌面边界、数据与恢复。

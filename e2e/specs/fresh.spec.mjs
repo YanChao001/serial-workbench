@@ -16,6 +16,7 @@ import {
   language,
   openDeepLink,
   ready,
+  reloadDocument,
   placeNearWorkAreaCorner,
   recordWindowPlacement,
   windowPlacement,
@@ -627,7 +628,7 @@ describe("Real Tauri desktop", () => {
   for (let reload = 1; reload <= 12; reload++) {
     it(`keeps settings available after main-page reload ${reload}`, async () => {
       if (reload === 1) await openDeepLink("/settings");
-      await browser.refresh();
+      await reloadDocument(browser);
       await ready("main");
       await $("#settings-language button[role=combobox]").waitForEnabled();
       assert.equal((await browser.getWindowHandles()).length, 1);

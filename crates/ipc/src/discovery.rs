@@ -11,6 +11,9 @@ pub struct DiscoveryRecord {
     pub endpoint: String,
     pub pid: u32,
     pub protocol_version: ProtocolVersion,
+    /// 本地开发版本核对提示；不替代身份 pin、OS 对端校验或握手。
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub executable: Option<std::path::PathBuf>,
 }
 impl DiscoveryRecord {
     pub fn read(path: &Path) -> HostResult<Self> {

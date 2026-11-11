@@ -108,6 +108,11 @@ export type SessionControlsLabels = Record<
   failure(code: string | undefined): string;
 };
 export type SessionControlsProps = {
+  writeWaitLabels?: import("./serial-configuration-fields").SerialConfigurationFieldsProps["writeWaitLabels"];
+  writeWaitMode?: import("@/lib/generated/bindings").WriteWaitMode;
+  onWriteWaitModeChange?: (
+    value: import("@/lib/generated/bindings").WriteWaitMode,
+  ) => void;
   onConfigurationApplied?: (
     configuration: SessionSnapshot["configuration"],
   ) => void;
@@ -151,6 +156,9 @@ function ControlsForm({
   waitForOperation,
   watchActions,
   onConfigurationApplied,
+  writeWaitMode,
+  onWriteWaitModeChange,
+  writeWaitLabels,
 }: SessionControlsProps & { session: SessionSnapshot }) {
   const id = useId();
   const [draft, setDraft] = useState(session.configuration);
@@ -495,6 +503,9 @@ function ControlsForm({
             onChange={setDraft}
             labels={labels}
             disabled={disabled || session.readOnly}
+            writeWaitMode={writeWaitMode}
+            onWriteWaitModeChange={onWriteWaitModeChange}
+            writeWaitLabels={writeWaitLabels}
           />
           <p
             className="workbench-configuration-validation"

@@ -85,8 +85,8 @@ try {
   if (!skipBuild) await buildE2E();
   const receipt = readE2EBuildReceipt();
   const binary = receipt.executable;
-  process.once("SIGINT", interrupt);
-  process.once("SIGTERM", interrupt);
+  process.on("SIGINT", interrupt);
+  process.on("SIGTERM", interrupt);
   const temporaryBase = realpathSync(tmpdir());
   dataRoot = mkdtempSync(join(temporaryBase, "starter-e2e-"));
   const profile = join(dataRoot, "host-profile");
@@ -215,8 +215,6 @@ try {
   console.error(error.message);
   process.exitCode = cancellation.signal.aborted ? 130 : 1;
 } finally {
-  process.removeListener("SIGINT", interrupt);
-  process.removeListener("SIGTERM", interrupt);
   try {
     await suiteControl?.close();
   } catch (error) {
@@ -268,4 +266,7 @@ try {
   }
   if (dataRoot && preserveData)
     console.error(`E2E evidence preserved at ${dataRoot}`);
+  // 合作取消覆盖实际资源清理，迟到的信号不能终止仍在回收子进程的负责人。
+  process.removeListener("SIGINT", interrupt);
+  process.removeListener("SIGTERM", interrupt);
 }

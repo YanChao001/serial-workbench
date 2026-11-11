@@ -5,14 +5,16 @@ import type { StreamItem } from "@serial-workbench/contracts";
 import { defaults } from "@serial-workbench/contracts";
 import { StreamView } from "./stream-view";
 import { labels, txItem } from "./test-fixtures";
+import { compactStreamTime } from "./stream-presentation";
 afterEach(cleanup);
 beforeEach(() => {
   render(<Toaster />);
 });
 it("preserves the original TX intent byte range while a receipt is unavailable", () => {
   render(<StreamView items={[txItem("tx_intent", "12")]} labels={labels} />);
+  expect(screen.queryByText(labels.awaitingReceipt)).not.toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: labels.receipt }));
   expect(screen.getByText(labels.awaitingReceipt)).toBeVisible();
-  fireEvent.click(screen.getByText(labels.awaitingReceipt));
   expect(screen.getByText("Requested bytes: [12, 17)")).toBeVisible();
   expect(screen.queryByText(labels.accepted)).not.toBeInTheDocument();
 });
@@ -51,16 +53,19 @@ it.each(["accepted", "partial", "unknown", "rejected"] as const)(
     };
     const view = render(<StreamView items={[intent]} labels={labels} />);
     expect(screen.getByText("Hello")).toBeInTheDocument();
-    expect(screen.getByText(labels.awaitingReceipt)).toBeInTheDocument();
+    expect(screen.queryByText(labels.awaitingReceipt)).not.toBeInTheDocument();
     view.rerender(
       <StreamView items={[intent, gap, receipt]} labels={labels} />,
     );
     expect(screen.getAllByText("Hello")).toHaveLength(1);
     expect(screen.queryByText(labels.awaitingReceipt)).not.toBeInTheDocument();
-    const disclosure = screen.getByText(labels[outcome]);
-    expect(disclosure).toBeVisible();
-    expect(screen.getByText(labels.peerUnconfirmed)).not.toBeVisible();
-    fireEvent.click(disclosure);
+    expect(screen.queryByText(labels[outcome])).not.toBeInTheDocument();
+    expect(screen.queryByText(labels.peerUnconfirmed)).not.toBeInTheDocument();
+    expect(
+      screen.getByRole("log").querySelector('[data-direction="tx"]'),
+    ).toHaveAttribute("data-outcome", outcome);
+    fireEvent.click(screen.getByRole("button", { name: labels.receipt }));
+    expect(screen.getByText(labels[outcome])).toBeVisible();
     expect(screen.getByText(labels.peerUnconfirmed)).toBeInTheDocument();
     expect(screen.getByText(/reader_overflow/)).toBeInTheDocument();
     if (outcome === "partial" || outcome === "unknown")
@@ -99,7 +104,7 @@ it("computes block intervals from visible TX rows rather than hidden receipts", 
   fireEvent.click(screen.getByRole("radio", { name: "Block interval" }));
   const summaries = screen
     .getByRole("log")
-    .querySelectorAll(".workbench-stream-time > summary");
+    .querySelectorAll("time.workbench-stream-time");
   expect(summaries).toHaveLength(2);
   expect(summaries[0]).toHaveTextContent("Unavailable");
   expect(summaries[1]).toHaveTextContent("20 ns");
@@ -165,13 +170,7 @@ const presentationLabels = {
   absoluteTime: "Absolute",
   relativeTime: "Relative",
   intervalTime: "Block interval",
-  timeDetails: "Time details",
-  clock: "Clock",
-  timeSource: "Source",
-  resolution: "Resolution",
   missingTime: "Unavailable",
-  receivedTime: "Received",
-  sourceTime: "Source wall time",
   replay: "Replay",
 };
 const first: StreamItem = {
@@ -193,6 +192,42 @@ const first: StreamItem = {
     payload: { bytesBase64: "SGVsbG8=", byteStart: "0", byteEnd: "5" },
   },
 };
+it("shows contiguous UTF-8 receive fragments as one text stream without changing raw HEX blocks", () => {
+  const bytes = new TextEncoder().encode("中文回环");
+  const cuts = [0, 1, 4, 8, bytes.length];
+  const fragments: StreamItem[] = cuts.slice(0, -1).map((start, index) => {
+    const end = cuts[index + 1]!;
+    return {
+      kind: "source",
+      event: {
+        ...first.event!,
+        kind: "rx",
+        eventSeq: String(index + 1),
+        payload: {
+          bytesBase64: btoa(String.fromCharCode(...bytes.slice(start, end))),
+          byteStart: String(start),
+          byteEnd: String(end),
+        },
+      },
+    };
+  });
+  const original = JSON.stringify(fragments);
+  const view = render(
+    <StreamView items={fragments} labels={labels} mode="text" />,
+  );
+  const received = screen
+    .getByRole("log")
+    .querySelectorAll('[data-direction="rx"]');
+  expect(received).toHaveLength(1);
+  expect(received[0]).toHaveTextContent("中文回环");
+  expect(received[0]).not.toHaveTextContent("�");
+  view.rerender(<StreamView items={fragments} labels={labels} mode="hex" />);
+  expect(
+    screen.getByRole("log").querySelectorAll('[data-direction="rx"]'),
+  ).toHaveLength(4);
+  expect(JSON.stringify(fragments)).toBe(original);
+});
+
 const second: StreamItem = {
   ...first,
   event: {
@@ -202,13 +237,38 @@ const second: StreamItem = {
     payload: { bytesBase64: "V29ybGQ=", byteStart: "5", byteEnd: "10" },
   },
 };
+it.each(["configuration", "epoch", "offset"] as const)(
+  "keeps receive text separated across a changed %s boundary",
+  (boundary) => {
+    const next = structuredClone(second);
+    if (next.kind !== "source" || next.event.kind !== "rx")
+      throw new Error("Expected receive source");
+    if (boundary === "configuration") next.event.configurationRevision = "2";
+    if (boundary === "epoch") next.event.sessionEpoch = "2";
+    if (boundary === "offset") {
+      next.event.payload.byteStart = "6";
+      next.event.payload.byteEnd = "11";
+    }
+    render(<StreamView items={[first, next]} labels={labels} mode="text" />);
+    const received = screen
+      .getByRole("log")
+      .querySelectorAll('[data-direction="rx"]');
+    expect(received).toHaveLength(2);
+    expect(received[0]).toHaveTextContent("Hello");
+    expect(received[1]).toHaveTextContent("World");
+  },
+);
 it.each([
   {
     locale: "en",
     mode: "absolute",
     timeDetails: "Time details",
     missingTime: "Time unavailable",
-    expected: ["00:00:00Z", "00:00:00Z", "Time unavailable"],
+    expected: [
+      compactStreamTime("2026-11-08T00:00:00Z"),
+      compactStreamTime("2026-11-08T00:00:00Z"),
+      "Time unavailable",
+    ],
   },
   {
     locale: "en",
@@ -229,7 +289,11 @@ it.each([
     mode: "absolute",
     timeDetails: "时间详情",
     missingTime: "时间未知",
-    expected: ["00:00:00Z", "00:00:00Z", "时间未知"],
+    expected: [
+      compactStreamTime("2026-11-08T00:00:00Z"),
+      compactStreamTime("2026-11-08T00:00:00Z"),
+      "时间未知",
+    ],
   },
   {
     locale: "zh",
@@ -246,7 +310,7 @@ it.each([
     expected: ["时间未知", "7 ns", "时间未知"],
   },
 ])(
-  "names $locale $mode time disclosures by their visible values",
+  "renders compact $locale $mode time labels without technical disclosures",
   ({ mode, timeDetails, missingTime, expected }) => {
     const later: StreamItem = {
       ...second,
@@ -270,7 +334,8 @@ it.each([
       <StreamView
         items={[first, later, gap]}
         labels={labels}
-        presentationLabels={{ ...presentationLabels, timeDetails, missingTime }}
+        presentationLabels={{ ...presentationLabels, missingTime }}
+        mode="hex"
       />,
     );
     if (mode !== "absolute") {
@@ -285,16 +350,16 @@ it.each([
     }
     const summaries = screen
       .getByRole("log")
-      .querySelectorAll(".workbench-stream-time > summary");
+      .querySelectorAll("time.workbench-stream-time");
     expect(summaries).toHaveLength(3);
+    expect(screen.queryByTitle(timeDetails)).not.toBeInTheDocument();
     summaries.forEach((summary, index) => {
       expect(summary).toHaveTextContent(expected[index]!);
-      expect(summary).toHaveAccessibleName(expected[index]!);
-      expect(summary).toHaveAccessibleDescription(timeDetails);
+      expect(summary).not.toHaveAttribute("title");
     });
   },
 );
-it("shows original event time and precision, and computes exact relative time", () => {
+it("keeps original time in semantic metadata, hides clock internals and computes exact relative time", () => {
   const later: StreamItem = {
     ...second,
     event: {
@@ -321,12 +386,18 @@ it("shows original event time and precision, and computes exact relative time", 
       labels={labels}
       presentationLabels={presentationLabels}
       replay
+      mode="hex"
     />,
   );
-  expect(screen.getAllByText("2026-11-08T00:00:00Z")).toHaveLength(2);
-  expect(screen.getAllByText(/host_read/)).toHaveLength(2);
-  expect(screen.getAllByText(/Resolution: 1 ns/)).toHaveLength(2);
-  expect(screen.getAllByText(/RX/)[0]).toHaveTextContent("Replay");
+  const timestamps = screen
+    .getByRole("log")
+    .querySelectorAll("time.workbench-stream-time");
+  expect(timestamps).toHaveLength(2);
+  for (const timestamp of timestamps)
+    expect(timestamp).toHaveAttribute("datetime", "2026-11-08T00:00:00Z");
+  expect(screen.queryByText(/host_read/)).not.toBeInTheDocument();
+  expect(screen.queryByText(/Resolution: 1 ns/)).not.toBeInTheDocument();
+  expect(screen.getAllByText(/Replay/)[0]).toBeVisible();
   fireEvent.click(screen.getByRole("button", { name: labels.encodingHelp }));
   fireEvent.click(screen.getByRole("radio", { name: "Relative" }));
   expect(screen.getByText("7 ns")).toBeInTheDocument();
@@ -356,7 +427,7 @@ it("freezes rendering while new Host items continue arriving, then resumes lates
   expect(screen.queryByText("World")).not.toBeInTheDocument();
   expect(screen.getByRole("status")).toHaveTextContent("+1");
   fireEvent.click(screen.getByRole("button", { name: "Resume" }));
-  expect(screen.getByText("World")).toBeInTheDocument();
+  expect(screen.getByText("HelloWorld")).toBeInTheDocument();
 });
 it("locates HEX matches by original byte offset and displays a real reader gap", () => {
   const gap: StreamItem = {
@@ -379,7 +450,8 @@ it("locates HEX matches by original byte offset and displays a real reader gap",
   fireEvent.click(screen.getByRole("button", { name: "Find" }));
   expect(screen.getByRole("status")).toHaveTextContent("Offset 5");
   expect(screen.getByText(/reader_overflow/)).toHaveTextContent("[3, 7)");
-  expect(document.querySelector('[data-offset="5"]')).toHaveFocus();
+  expect(document.querySelector('[data-offset="0"]')).toHaveFocus();
+  expect(document.activeElement).toHaveTextContent("HelloWorld");
 });
 
 it("opens search next to the stream and returns focus to its trigger on Escape", () => {

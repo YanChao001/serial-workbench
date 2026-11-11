@@ -120,23 +120,55 @@ impl DesktopHostBridge {
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
         };
-        // 只授权当前业务 actor 的一个文档目标；执行仍走同代次的普通业务连接。
-        let grant = crate::file_resource_commands::invoke_control(
-            self,
-            window,
-            generation,
-            "auth.authorize",
-            serde_json::to_value(AuthorizeParams {
-                client_id: business.client_id,
-                permissions: vec![permission.into()],
-                targets: vec![target],
-                expires_at: None,
-            })
-            .map_err(|_| invalid_document_intent())?,
-        )
-        .await?;
-        if !matches!(grant, ActionResult::AuthorizationChanged(_)) {
-            return Err(HostError::new("INTERNAL", "Invalid authorization response"));
+        // 重复授予相同权限也会退休旧订阅；明确保存先只读验权，缺权才使用控制入口。
+        // 此检查不替代提交时的验权，也不为普通业务调用或读取恢复补授权。
+        let check = Query {
+            protocol_version: call.protocol_version,
+            host_id: call.host_id.clone(),
+            instance_epoch: call.instance_epoch,
+            actor_id: call.actor_id.clone(),
+            request_id: document_request_id()?,
+            action_id: Id::try_from("action.check")?,
+            target: call.target.clone(),
+            params: document_params(ActionCheckParams {
+                action_id: call.action_id.clone(),
+                params: call.params.clone(),
+            })?,
+            reveal_target: call.reveal_target.clone(),
+        };
+        let authorized = match self
+            .request_at_generation(window, generation, RpcRequest::Query(check))
+            .await?
+        {
+            RpcReply::Success { result, .. } => match *result {
+                RpcResult::Query(QueryResult::ActionCheck(result))
+                    if result.action_id == call.action_id && result.target == target =>
+                {
+                    result.allowed
+                }
+                _ => return Err(HostError::new("INTERNAL", "Invalid permission response")),
+            },
+            RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED" => false,
+            RpcReply::Failure { error, .. } => return Err(error),
+        };
+        if !authorized {
+            let grant = crate::file_resource_commands::invoke_control(
+                self,
+                window,
+                generation,
+                "auth.authorize",
+                serde_json::to_value(AuthorizeParams {
+                    client_id: business.client_id,
+                    permissions: vec![permission.into()],
+                    targets: vec![target],
+                    expires_at: None,
+                })
+                .map_err(|_| invalid_document_intent())?,
+            )
+            .await?;
+            if !matches!(grant, ActionResult::AuthorizationChanged(_)) {
+                return Err(HostError::new("INTERNAL", "Invalid authorization response"));
+            }
         }
         match self
             .request_at_generation(window, generation, RpcRequest::Invoke(call))
@@ -488,6 +520,40 @@ mod tests {
             U64::from(0)
         );
         assert_eq!(fixture.auth.current_revision().unwrap(), revision);
+        fixture.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn repeated_explicit_theme_saves_keep_existing_authorization_generation() {
+        let fixture = Fixture::start().await;
+        let mut document = fixture.settings().await.document;
+        let mut granted_revision = None;
+        for theme in [Theme::Dark, Theme::Light, Theme::Dark, Theme::Light] {
+            document.value.theme = theme;
+            let operation = fixture
+                .intent(LocalDocumentIntent::SettingsSave {
+                    expected_revision: document.revision,
+                    params: SettingsSaveParams {
+                        value: document.value.clone(),
+                    },
+                })
+                .await;
+            succeeded(
+                &operation,
+                "settings.save",
+                &fixture.target("settings", "shared"),
+            );
+            document = fixture.settings().await.document;
+            let revision = fixture.auth.current_revision().unwrap();
+            if let Some(granted) = granted_revision {
+                assert_eq!(
+                    revision, granted,
+                    "An already authorized theme save must not retire active subscriptions"
+                );
+            } else {
+                granted_revision = Some(revision);
+            }
+        }
         fixture.shutdown().await;
     }
 

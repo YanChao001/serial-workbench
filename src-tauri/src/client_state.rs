@@ -43,6 +43,21 @@ pub struct ConnectionDefault {
     pub host_id: serial_workbench_core::Id,
     pub device_id: serial_workbench_core::Id,
     pub configuration: serial_workbench_core::SerialConfiguration,
+    #[serde(default, skip_serializing_if = "WriteWaitMode::is_automatic")]
+    #[specta(optional)]
+    pub write_wait_mode: WriteWaitMode,
+}
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "lowercase")]
+pub enum WriteWaitMode {
+    #[default]
+    Automatic,
+    Fixed,
+}
+impl WriteWaitMode {
+    fn is_automatic(&self) -> bool {
+        *self == Self::Automatic
+    }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -200,6 +215,7 @@ mod connection_defaults_tests {
             host_id: serial_workbench_core::Id::try_from("host-a").unwrap(),
             device_id: serial_workbench_core::Id::try_from("device-a").unwrap(),
             configuration: Default::default(),
+            write_wait_mode: WriteWaitMode::Automatic,
         }
     }
 

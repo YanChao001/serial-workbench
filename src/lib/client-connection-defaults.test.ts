@@ -62,14 +62,19 @@ it("restores an exact per-host/device configuration through a new backend withou
   const initial = await backend.read();
   const saved = entry("device-a", "18446744073709551615");
   await backend.save(
-    { [connectionKey(saved.hostId, saved.deviceId)]: saved.configuration },
+    {
+      [connectionKey(saved.hostId, saved.deviceId)]: {
+        configuration: saved.configuration,
+        writeWaitMode: "automatic",
+      },
+    },
     initial.revision,
   );
   expect(
     (await createConnectionDefaultsBackend(h.port).read()).value[
       connectionKey("host-a", "device-a")
     ],
-  ).toEqual(saved.configuration);
+  ).toEqual({ configuration: saved.configuration, writeWaitMode: "automatic" });
   expect(h.snapshot.state.drafts).toEqual(DEFAULT_CLIENT_STATE.drafts);
   expect(h.snapshot.state.preferences).toEqual(
     DEFAULT_CLIENT_STATE.preferences,
@@ -89,7 +94,12 @@ it("merges a different-device update and changed drafts/preferences after a CAS 
     throw { code: "CONFLICT" };
   });
   await backend.save(
-    { [connectionKey("host-a", "device-a")]: entry().configuration },
+    {
+      [connectionKey("host-a", "device-a")]: {
+        configuration: entry().configuration,
+        writeWaitMode: "automatic",
+      },
+    },
     base.revision,
   );
   expect(h.snapshot.state.connectionDefaults).toEqual(
@@ -110,8 +120,10 @@ it("preserves a conflicting change to the same device and does not silently over
   await expect(
     backend.save(
       {
-        [connectionKey("host-a", "device-a")]: entry("device-a", "230400")
-          .configuration,
+        [connectionKey("host-a", "device-a")]: {
+          configuration: entry("device-a", "230400").configuration,
+          writeWaitMode: "automatic",
+        },
       },
       base.revision,
     ),
@@ -132,7 +144,12 @@ it("accepts an already committed identical value after a conflict without writin
   });
   await expect(
     backend.save(
-      { [connectionKey("host-a", "device-a")]: entry().configuration },
+      {
+        [connectionKey("host-a", "device-a")]: {
+          configuration: entry().configuration,
+          writeWaitMode: "automatic",
+        },
+      },
       base.revision,
     ),
   ).resolves.toMatchObject({ revision: "2" });
@@ -155,6 +172,8 @@ it("refuses future formats and malformed or duplicated configurations", async ()
       },
     ],
     null,
+    [{ ...entry(), writeWaitMode: "never" }],
+    [{ ...entry(), writeWaitMode: null }],
   ]) {
     expect(() =>
       parseClientWindowState({ ...DEFAULT_CLIENT_STATE, connectionDefaults }),

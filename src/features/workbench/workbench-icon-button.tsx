@@ -22,7 +22,7 @@ export function WorkbenchIconButton({
   children: ReactNode;
 }) {
   return (
-    <TooltipProvider delayDuration={750} skipDelayDuration={0}>
+    <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
           <Button

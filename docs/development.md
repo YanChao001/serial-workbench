@@ -23,7 +23,11 @@ pnpm app:dev
 
 `app:dev` 在启动 Tauri 前同源构建 Host/CLI，按内容哈希复制到 `.cache/dev-runtime/` 的独立版本目录，再通过副本 CLI `catalog --json` 完成就绪。Host 独立于 GUI，关闭窗口后仍可运行；执行副本避免 Windows 锁住下次 Cargo 要覆盖的产物。副本校验或准备失败停止启动，保留终端错误和已有版本。
 
-已有 profile 的 Host 继续复用，不自动停止在途工作。需要应用新的 Host 实现时，先确认该 profile 的操作已结算，再用 CLI `--profile <实际绝对目录> host stop --json` 正常停止，随后运行 `pnpm app:dev`；窗口代码变化仍由开发工具重建。旧版本留下的 Host 若直接运行在 `target/debug/`，首次迁到副本前也需正常停止以解除占用。
+已有 profile 只复用同一不可变运行目录的 Host。包装器将 `SWB_DEV_EXPECTED_HOST_EXECUTABLE` 传给准备 CLI 和桌面；客户端完成正常认证后核对该实例发布的本地程序路径，旧 Host 或无法证明版本的旧发现记录返回 `DEV_RUNTIME_MISMATCH`，在 GUI 启动前停止，不能把前端更新当成后端已经更新。该本地发现提示不替代 OS 对端校验、身份 pin 或握手。
+
+开发启动不自动停止在途工作。需要应用新的 Host 实现时，先确认该 profile 的操作已结算，再运行 `pnpm host:stop` 正常停止，随后运行 `pnpm app:dev`。停止命令会构建当前 CLI、使用同一启动配置选择 profile，并等待正式退出结果；可用 `pnpm host:stop --profile <实际绝对目录>` 指定实例。该明确入口允许连接实际运行的旧版本，保留身份认证与本地用户控制凭据；Host 不存在时不启动新 Host，正常停止失败也不强杀。正常停止失败须保留隔离责任和证据，不能当成正常回收。同一开发会话需要重新启动 Host 时，客户端使用指定的不可变副本。旧版本若直接运行在 `target/debug/`，首次迁到副本前也需正常停止以解除占用。
+
+Vite 开发模式预构建本地 contracts/host-client 包，避免生成校验器携带巨大内联映射进入窗口；入口及工作台预热以缩短请求瀑布。缓存放在 `.cache/vite-linked/<源码摘要>/`，包源码和清单参与摘要；相关源码变化会合并触发 Vite 重启并重新计算，不能继续复用旧校验器。此重启不更新正在运行的 Host。实现与失效回归见 [vite-linked-packages](../scripts/vite-linked-packages.ts)。生产构建和浏览器产物预览不启用此开发缓存。
 
 准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
@@ -63,7 +67,7 @@ Rust 包、共享 profile 和默认成员读取根 [Cargo.toml](../Cargo.toml)�
 2. `src/routes.tsx` 注册路由、布局、懒加载与导航；共用操作进入 `src/commands/`，同步深链和窗口路由白名单。
 3. 局部草稿由组件拥有，偏好复用 Provider/同步器；未保存工作登记 `useUnsavedWork`，文案补齐中英词典。
 4. 业务能力进入 Host 服务与目录，系统交互进入 Native 服务；命令处理边界适配，手写前端经 `src/lib/tauri.ts`。
-5. Host wire DTO 改变后依次运行 `pnpm contracts:generate`、`pnpm contracts:check`，提交 `packages/contracts/src/generated/`。Rust 同源导出类型、draft-07 schema、目录、默认值及正负 fixture，客户端校验未知输入。
+5. Host wire DTO 改变后依次运行 `pnpm contracts:generate`、`pnpm contracts:check`，提交 `packages/contracts/src/generated/`。Rust 同源导出类型、draft-07 schema、目录、默认值及正负 fixture，客户端校验未知输入。生成器在单一 Ajv root 中复用完全相同的定义以缩减浏览器代码，冲突及依赖保留原命名空间；出现独立 URI/anchor 时回退原编译方式。此优化不改变导出的 Rust schema 或校验规则。
 6. Native 命令/DTO 在 `src-tauri/src/bindings.rs` 注册，依次运行 `pnpm bindings:generate`、`pnpm bindings:check`，提交 `src/lib/generated/`。生成任务和共用 target 的 Cargo 检查顺序执行。
 7. 按[测试范围](./testing.md#日常验证范围)验证规则及真实入口接线；删除功能同步清理所属源码、依赖、权限、专属测试和文档。
 

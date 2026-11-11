@@ -44,7 +44,13 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
         id("serial-workbench-cli"),
         ClientKind::Cli,
     );
-    let client = HostClient::connect_or_start(options.clone()).await?;
+    options.expected_host_executable =
+        std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
+    let client = if matches!(arguments.command, Command::HostStop { .. }) {
+        HostClient::connect(options.clone()).await?
+    } else {
+        HostClient::connect_or_start(options.clone()).await?
+    };
     let client = if matches!(
         arguments.command,
         Command::UserControl { .. } | Command::HostStop { .. }

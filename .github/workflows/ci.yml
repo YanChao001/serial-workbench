@@ -86,7 +86,11 @@ jobs:
       - run: pnpm install --frozen-lockfile
       - name: 构建本次浏览器预览
         run: pnpm build:web
-      - run: pnpm exec playwright install --with-deps --only-shell chromium
+      - name: 准备浏览器依赖与运行时
+        run: |
+          source scripts/ci-linux-deps.sh
+          prepare_linux_index
+          pnpm exec playwright install --with-deps --only-shell chromium
       - run: pnpm exec playwright test
       - name: 保留浏览器截图与失败 trace
         if: always()

@@ -1,12 +1,13 @@
 // Copyright 2019-2024 Tauri Programme within The Commons Conservancy
 // SPDX-License-Identifier: Apache-2.0
 // SPDX-License-Identifier: MIT
-/* global __INVOKE_KEY__, window */
+/* global window */
 
 // 序列化沿用 Tauri 2.12.4 process-ipc-message-fn.js 的 postMessage 路径。
 // 固定单一投递通道，页面导航取消回复时不再重放已经接纳的原生调用。
 (() => {
-  // Builder::invoke_system 填入密钥；放在闭包中，函数源码不能读出密钥值。
+  // Builder 全文替换占位符；只放在表达式中，Z85 密钥可能含注释终止符。
+  // 放在闭包中，函数源码不能读出密钥值。
   const invokeKey = __INVOKE_KEY__;
   Object.defineProperty(window.__TAURI_INTERNALS__, "postMessage", {
     value: ({ cmd, callback, error, payload, options }) => {

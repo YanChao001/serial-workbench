@@ -14,6 +14,7 @@ import type {
   ReplayReadResult,
 } from "@serial-workbench/contracts";
 import { ReplayPanel } from "./replay-panel";
+import { compactStreamTime } from "./stream-presentation";
 import { labels, operation, session } from "./test-fixtures";
 import { Toaster, toast } from "sonner";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
@@ -269,13 +270,7 @@ it("reads only on request, renders checked referenced records, and seeks with th
         absoluteTime: "绝对时间",
         relativeTime: "相对时间",
         intervalTime: "间隔",
-        timeDetails: "时间详情",
-        clock: "时钟",
-        timeSource: "来源",
-        resolution: "精度",
         missingTime: "无时间",
-        receivedTime: "接收时间",
-        sourceTime: "来源时间",
         replay: "回放",
       }}
     />,
@@ -314,12 +309,12 @@ it("reads only on request, renders checked referenced records, and seeks with th
     lineHeight: "1.75",
     fontVariantLigatures: "normal",
   });
-  expect(screen.getByTitle("时间详情")).toHaveTextContent("00:00:00Z");
-  expect(screen.getByTitle("时间详情")).toHaveAccessibleName("00:00:00Z");
-  expect(screen.getByText("2026-11-08T00:00:00Z")).not.toBeVisible();
-  fireEvent.click(screen.getByTitle("时间详情"));
-  expect(screen.getByText("2026-11-08T00:00:00Z")).toBeVisible();
-  expect(screen.getByText("时钟: clock")).toBeInTheDocument();
+  const timestamp = screen.getByRole("log").querySelector("time");
+  expect(timestamp).toHaveAttribute("datetime", "2026-11-08T00:00:00Z");
+  expect(timestamp).toHaveTextContent(
+    compactStreamTime("2026-11-08T00:00:00Z"),
+  );
+  expect(screen.queryByText("时钟: clock")).not.toBeInTheDocument();
   expect(readRecord).toHaveBeenCalledWith(
     page.records[0],
     expect.any(AbortSignal),

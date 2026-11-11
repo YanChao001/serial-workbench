@@ -16,6 +16,7 @@ import standaloneCode from "ajv/dist/standalone/index.js";
 import { build } from "esbuild";
 import { format } from "prettier";
 import { buildEnvironment } from "./build-lib.mjs";
+import { poolContractSchemas } from "./contract-schema-pool.mjs";
 
 const ROOT = resolve(import.meta.dirname, "..");
 const EXPORTED_FILES = [
@@ -56,17 +57,20 @@ export async function buildArtifacts(files) {
   });
   const names = Object.keys(schemas.schemas).sort();
   if (!names.includes("RpcReply")) throw new Error("Missing RpcReply schema");
+  const pooled = poolContractSchemas(schemas.schemas);
+  if (pooled) ajv.addSchema(pooled.schema);
+  const entry = (name) => pooled?.entries[name] ?? name;
   for (const name of names) {
     if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
       throw new Error(`Invalid schema name: ${name}`);
-    ajv.addSchema(schemas.schemas[name], name);
+    if (!pooled) ajv.addSchema(schemas.schemas[name], name);
   }
   for (const [group, expected] of [
     ["valid", true],
     ["invalid", false],
   ]) {
     for (const fixture of fixtures[group]) {
-      const validate = ajv.getSchema(fixture.schema);
+      const validate = ajv.getSchema(entry(fixture.schema));
       if (!validate)
         throw new Error(`Unknown fixture schema: ${fixture.schema}`);
       if (validate(fixture.value) !== expected) {
@@ -78,7 +82,7 @@ export async function buildArtifacts(files) {
   }
   const standalone = standaloneCode(
     ajv,
-    Object.fromEntries(names.map((name) => [`validate${name}`, name])),
+    Object.fromEntries(names.map((name) => [`validate${name}`, entry(name)])),
   );
   const bundled = await build({
     stdin: {

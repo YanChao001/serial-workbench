@@ -570,10 +570,6 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
         {
             continue;
         }
-        let encoding = match &event.frame {
-            EventFrame::Raw { batch, .. } => Some(batch.encoding_lease()?),
-            EventFrame::State(_) | EventFrame::Client { .. } => None,
-        };
         if event.grant.is_some() {
             let invalidated = async {
                 tokio::select! {
@@ -595,8 +591,9 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
             .await
             .map_err(|_| busy())??;
         }
-        drop(encoding);
-        if let EventFrame::Raw { batch, .. } = &event.frame {
+        if let EventFrame::Raw { delivery, batch } = event.frame {
+            // 实际写出已结束；先归还临时预算，再由 mark_written 唤醒待发送者。
+            drop(delivery);
             batch.mark_written()?;
         }
     }
@@ -1282,6 +1279,88 @@ mod tests {
         assert!(
             matches!(frame.body,IpcMessage::SubscriptionEnded {error,..} if error.code=="PERMISSION_DENIED")
         );
+        drop(f.replies);
+        writing.await.unwrap().unwrap();
+        assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+    }
+    #[tokio::test]
+    async fn raw_prepared_batch_remains_writable_when_source_fills_reader_memory() {
+        let mut f = RawTest::new();
+        let after = f.source.initial_cursor();
+        let sub = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: 1048576.into(),
+                    initial_credit_bytes: 1048576.into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        f.context.register_subscription(sub.id().clone()).unwrap();
+        let time: EventTime = serde_json::from_value(serde_json::json!({
+            "clockId":"clock", "sourceMonoNs":"0", "receivedWallTime":"2026-11-07T00:00:00Z",
+            "precision":{"source":"host_read", "resolutionNs":"1", "syncMethod":"host"},
+        }))
+        .unwrap();
+        let meta = crate::stream::SourceMeta {
+            configuration_revision: 1.into(),
+            time,
+        };
+        let (writing, mut input) = f.writer(65536);
+        // 已写出而未 ACK 的批次保有其真实内存，先用正式 writer 建立该压力。
+        for _ in 0..32 {
+            let previous = sub.try_next().await.unwrap().unwrap();
+            sub.deliver(&f.context, &previous).unwrap();
+            tokio::time::timeout(
+                Duration::from_secs(3),
+                read_frame(&mut input, MAX_FRAME_BYTES),
+            )
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
+            f.source
+                .append_rx(meta.clone(), Arc::from([42u8; 16]), None)
+                .unwrap();
+        }
+        let batch = sub.try_next().await.unwrap().unwrap();
+        sub.deliver(&f.context, &batch).unwrap();
+        // 当前线程不让出执行权，固定入队后、writer 再次运行前源继续填充的时序。
+        for _ in 0..2048 {
+            f.source
+                .append_rx(meta.clone(), Arc::from([42u8; 16]), None)
+                .unwrap();
+        }
+        let frame = tokio::time::timeout(
+            Duration::from_secs(3),
+            read_frame(&mut input, MAX_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .expect("A prepared batch must survive later reader queue pressure");
+        assert!(
+            matches!(&frame.body, IpcMessage::RawBatch { batch: delivered } if delivered.cursor == batch.batch().cursor)
+        );
+        f.hub
+            .credit(
+                &f.actor,
+                StreamCreditParams {
+                    subscription_id: sub.id().clone(),
+                    ack_cursor: batch.batch().cursor.clone(),
+                    granted_bytes_total: 1048576.into(),
+                },
+            )
+            .await
+            .unwrap();
+        assert!(f.hub.memory_usage().reader_peak <= 1048576);
+        sub.close();
+        drop(batch);
         drop(f.replies);
         writing.await.unwrap().unwrap();
         assert_eq!(f.hub.memory_usage().reader_bytes, 0);

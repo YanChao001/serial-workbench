@@ -159,7 +159,12 @@ export function SendPanel({
     ) ?? admittedReceipt;
   const error = currentSend?.error;
   const errorCode =
-    error !== undefined ? currentSend?.errorCode : receipt?.error?.code;
+    error !== undefined
+      ? currentSend?.errorCode
+      : (receipt?.error?.code ??
+        (receipt?.result?.kind === "tx"
+          ? receipt.result.value.backendError?.code
+          : undefined));
   const outcome =
     receipt?.result?.kind === "tx"
       ? receipt.result.value.outcome
@@ -170,6 +175,10 @@ export function SendPanel({
           : undefined;
   const receiptFault =
     !busy &&
+    receipt &&
+    receipt.state !== "queued" &&
+    receipt.state !== "running" &&
+    receipt.state !== "cancel_requested" &&
     outcome &&
     (outcome === "partial" || outcome === "unknown" || outcome === "rejected")
       ? errorCode && formatError
@@ -443,6 +452,7 @@ export function SendPanel({
         >
           <Textarea
             id={`${id}-draft`}
+            spellCheck={false}
             data-surface="transparent"
             value={draft}
             onChange={(event) => {

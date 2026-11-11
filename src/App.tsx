@@ -43,7 +43,7 @@ export default function App() {
             >
               <ThemeEffects />
               <OperationFailureObserver />
-              <TooltipProvider delayDuration={200}>
+              <TooltipProvider>
                 {/* HashRouter：生产构建下用的是自定义协议，hash 路由不会出现刷新 404 */}
                 <HashRouter>
                   <CommandsProvider>

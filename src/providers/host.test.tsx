@@ -116,6 +116,58 @@ function port() {
     ack: vi.fn().mockResolvedValue(undefined),
   } satisfies HostNativePort;
 }
+it("publishes connection readiness before unrelated historical projections finish loading", async () => {
+  const connection = await createHostConnection(port());
+  let release!: (
+    value: Awaited<ReturnType<HostConnection["refreshScopes"]>>,
+  ) => void;
+  const scopes = new Promise<
+    Awaited<ReturnType<HostConnection["refreshScopes"]>>
+  >((resolve) => {
+    release = resolve;
+  });
+  const history = vi.spyOn(connection, "refreshScopes").mockReturnValue(scopes);
+  const workspace = createHostWorkspace(connection);
+  const pending = workspace.refresh();
+  try {
+    await waitFor(() => expect(history).toHaveBeenCalled());
+    expect(workspace.getSnapshot().state.status).toBe("ready");
+  } finally {
+    release([]);
+    await pending;
+    workspace.dispose();
+  }
+});
+
+it("does not publish a ready empty workspace before the selected workspace document arrives", async () => {
+  const connection = await createHostConnection(port());
+  const original = connection.client.query.bind(connection.client);
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input, signal) => {
+      if (input.actionId === "workspace.read") await gate;
+      return original(input, signal);
+    });
+  const workspace = createHostWorkspace(connection);
+  const pending = workspace.refresh();
+  try {
+    await waitFor(() =>
+      expect(
+        query.mock.calls.some(([input]) => input.actionId === "workspace.read"),
+      ).toBe(true),
+    );
+    expect(workspace.getSnapshot().state.status).toBe("connecting");
+  } finally {
+    release();
+    await pending;
+    workspace.dispose();
+  }
+});
+
 function Probe() {
   const host = useHost();
   return <span>{host.state.status}</span>;
@@ -1252,6 +1304,38 @@ it("selects the first 128 active-first newest operation metadata entries", async
   workspace.dispose();
 });
 
+it("serves newest operation metadata after the in-flight batch instead of draining an obsolete history round", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const queried: string[] = [];
+  vi.spyOn(connection.client, "query").mockImplementation(async (input) => {
+    const id = input.params.operationId;
+    if (typeof id !== "string") throw new Error("operation id");
+    queried.push(id);
+    if (queried.length <= 8) await gate;
+    return {
+      kind: "operation",
+      value: { operation: { ...operation, operationId: id } },
+    };
+  });
+  const ids = Array.from({ length: 128 }, (_, index) => `older-${index}`);
+  try {
+    metadata(ids);
+    await waitFor(() => expect(queried).toHaveLength(8));
+    metadata(["newest-operation", ...ids]);
+    release();
+    await waitFor(() => expect(queried.length).toBeGreaterThan(8));
+    expect(queried[8]).toBe("newest-operation");
+  } finally {
+    release();
+    workspace.dispose();
+  }
+});
+
 it("does not republish unchanged operation details while still reading each operation with current permissions", async () => {
   const { connection, workspace, operation, metadata } =
     await operationProjection();
@@ -2260,6 +2344,7 @@ it("does not extend existing action validity while a newly visible control is sl
   const gate = new Promise<void>((resolve) => {
     release = resolve;
   });
+  let closeChecked = false;
   native.request.mockImplementation(async (request) => {
     if (
       request.method === "action.query" &&
@@ -2268,7 +2353,8 @@ it("does not extend existing action validity while a newly visible control is sl
       const actionId = request.params.params.actionId;
       if (typeof actionId !== "string")
         throw new Error("fixture action required");
-      if (actionId === "session.tx") await gate;
+      if (actionId === "session.tx" || closeChecked) await gate;
+      if (actionId === "session.close") closeChecked = true;
       return {
         ok: true,
         result: {
@@ -2313,7 +2399,7 @@ it("does not extend existing action validity while a newly visible control is sl
   }
 });
 
-it("discards an old target observer's late grant and keeps only one check in flight", async () => {
+it("discards an old target observer's late grant while a new target checks independently", async () => {
   vi.useFakeTimers();
   const native = port();
   const fallback = native.request.getMockImplementation()!;
@@ -2378,7 +2464,7 @@ it("discards an old target observer's late grant and keeps only one check in fli
   expect(old).toHaveBeenCalledTimes(1);
   expect(observed.at(-1)).toBe(false);
   expect(observed).not.toContain(true);
-  expect(peak).toBe(1);
+  expect(peak).toBe(2);
   workspace.dispose();
   vi.useRealTimers();
 });
@@ -2481,6 +2567,188 @@ it("aborts workspace waiting without resending or treating a late receipt as sav
   workspace.dispose();
 });
 
+it("keeps fresh action observations usable when the already visible window regains focus", async () => {
+  vi.useFakeTimers();
+  const connection = await createHostConnection(port());
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input) => ({
+      kind: "action_check",
+      value: { actionId: "session.close", target: input.target, allowed: true },
+    }));
+  const workspace = createHostWorkspace(connection);
+  const observed: (boolean | null)[] = [];
+  try {
+    workspace.watchActions(
+      [
+        {
+          actionId: "session.close",
+          target: {
+            hostId: "host",
+            kind: "session",
+            id: "s",
+            sessionId: "s",
+            sessionEpoch: "2",
+          },
+          params: {},
+        },
+      ],
+      (values) => observed.push(values[0]?.result?.allowed ?? null),
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed.at(-1)).toBe(true);
+    const beforeFocus = observed.length;
+    await vi.advanceTimersByTimeAsync(100);
+    window.dispatchEvent(new Event("focus"));
+    expect(observed.slice(beforeFocus)).not.toContain(null);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(observed.at(-1)).toBe(true);
+    expect(
+      query.mock.calls.every(([input]) => input.actionId === "action.check"),
+    ).toBe(true);
+  } finally {
+    workspace.dispose();
+    vi.useRealTimers();
+  }
+});
+
+it("makes independent visible actions ready without a serial permission-check waterfall", async () => {
+  vi.useFakeTimers();
+  const connection = await createHostConnection(port());
+  vi.spyOn(connection.client, "query").mockImplementation(async (input) => {
+    await new Promise((resolve) => setTimeout(resolve, 400));
+    return {
+      kind: "action_check",
+      value: {
+        actionId: "workspace.save",
+        target: input.target,
+        allowed: true,
+      },
+    };
+  });
+  const workspace = createHostWorkspace(connection);
+  let observations: readonly (boolean | null)[] = [];
+  try {
+    workspace.watchActions(
+      ["first", "second", "third"].map((id) => ({
+        actionId: "workspace.save",
+        target: { hostId: "host", kind: "workspace", id },
+        params: {},
+      })),
+      (values) => {
+        observations = values.map((value) => value.result?.allowed ?? null);
+      },
+    );
+    await vi.advanceTimersByTimeAsync(450);
+    expect(observations).toEqual([true, true, true]);
+  } finally {
+    workspace.dispose();
+    await vi.advanceTimersByTimeAsync(1000);
+    vi.useRealTimers();
+  }
+});
+
+it("keeps close permission fresh while the same toolbar's send check is still pending", async () => {
+  vi.useFakeTimers();
+  const connection = await createHostConnection(port());
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let closeChecks = 0;
+  vi.spyOn(connection.client, "query").mockImplementation(async (input) => {
+    const actionId = input.params.actionId;
+    if (typeof actionId !== "string") throw new Error("Action required");
+    if (actionId === "session.tx") await waiting;
+    else closeChecks++;
+    return {
+      kind: "action_check",
+      value: { actionId, target: input.target, allowed: true },
+    };
+  });
+  const workspace = createHostWorkspace(connection);
+  let closeAllowed: boolean | null = null;
+  try {
+    workspace.watchActions(
+      ["session.close", "session.tx"].map((actionId) => ({
+        actionId,
+        target: {
+          hostId: "host",
+          kind: "session",
+          id: "s",
+          sessionId: "s",
+          sessionEpoch: "2",
+        },
+        params: {},
+      })),
+      (values) => {
+        closeAllowed = values[0]?.result?.allowed ?? null;
+      },
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(closeAllowed).toBe(true);
+    await vi.advanceTimersByTimeAsync(1500);
+    expect(closeAllowed).toBe(true);
+    expect(closeChecks).toBeGreaterThanOrEqual(3);
+  } finally {
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    workspace.dispose();
+    vi.useRealTimers();
+  }
+});
+
+it("bounds independent checks including retired targets until their real reads finish", async () => {
+  vi.useFakeTimers();
+  const connection = await createHostConnection(port());
+  let release!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  let inFlight = 0;
+  let peak = 0;
+  vi.spyOn(connection.client, "query").mockImplementation(async (input) => {
+    inFlight++;
+    peak = Math.max(peak, inFlight);
+    await waiting;
+    inFlight--;
+    return {
+      kind: "action_check",
+      value: {
+        actionId: "workspace.save",
+        target: input.target,
+        allowed: true,
+      },
+    };
+  });
+  const workspace = createHostWorkspace(connection);
+  const inputs = Array.from({ length: 128 }, (_, index) => ({
+    actionId: "workspace.save",
+    target: { hostId: "host", kind: "workspace", id: `target-${index}` },
+    params: {},
+  }));
+  try {
+    const stop = workspace.watchActions(inputs, () => {});
+    await vi.advanceTimersByTimeAsync(0);
+    expect(inFlight).toBe(4);
+    stop();
+    workspace.watchActions(
+      [{ ...inputs[0]!, target: { ...inputs[0]!.target, id: "new-target" } }],
+      () => {},
+    );
+    await vi.advanceTimersByTimeAsync(0);
+    expect(inFlight).toBe(4);
+    release();
+    await vi.advanceTimersByTimeAsync(0);
+    expect(peak).toBe(4);
+  } finally {
+    release();
+    workspace.dispose();
+    await vi.advanceTimersByTimeAsync(0);
+    vi.useRealTimers();
+  }
+});
+
 it("expires observations while hidden and refreshes on focus without executing an action", async () => {
   vi.useFakeTimers();
   let hidden = false;
@@ -2530,9 +2798,10 @@ it("expires observations while hidden and refreshes on focus without executing a
   expect(observed.at(-1)).toBe(true);
   hidden = true;
   document.dispatchEvent(new Event("visibilitychange"));
-  expect(observed.at(-1)).toBeNull();
+  expect(observed.at(-1)).toBe(true);
   const requests = native.request.mock.calls.length;
   await vi.advanceTimersByTimeAsync(3000);
+  expect(observed.at(-1)).toBeNull();
   expect(native.request.mock.calls.length).toBe(requests);
   hidden = false;
   allowed = false;
@@ -2742,7 +3011,7 @@ it("uses Host query envelopes for recent, JSON export and import preview without
 });
 
 it.each(["two watchers", "one watcher"] as const)(
-  "expires fast observations at 1000ms while a later check is slow across %s",
+  "renews fast observations independently and discards stale slow replies across %s",
   async (grouping) => {
     vi.useFakeTimers();
     let hidden = true;
@@ -2794,15 +3063,22 @@ it.each(["two watchers", "one watcher"] as const)(
       params: {},
     });
     const observed: (boolean | null)[] = [];
+    const slowObserved: (boolean | null)[] = [];
     try {
       workspace.watchActions(
         grouping === "two watchers"
           ? [input("fast")]
           : [input("fast"), input("slow")],
-        (values) => observed.push(values[0]?.result?.allowed ?? null),
+        (values) => {
+          observed.push(values[0]?.result?.allowed ?? null);
+          if (grouping === "one watcher")
+            slowObserved.push(values[1]?.result?.allowed ?? null);
+        },
       );
       if (grouping === "two watchers")
-        workspace.watchActions([input("slow")], () => {});
+        workspace.watchActions([input("slow")], (values) =>
+          slowObserved.push(values[0]?.result?.allowed ?? null),
+        );
       hidden = false;
       window.dispatchEvent(new Event("focus"));
       await vi.advanceTimersByTimeAsync(0);
@@ -2810,17 +3086,18 @@ it.each(["two watchers", "one watcher"] as const)(
       if (grouping === "two watchers") expect(observed.at(-1)).toBe(true);
       allowed = false;
       await vi.advanceTimersByTimeAsync(1000);
-      expect(observed.at(-1)).toBeNull();
+      expect(observed.at(-1)).toBe(false);
       const deadlineIndex = observed.length;
-      expect(checks).toBe(2);
+      expect(checks).toBeGreaterThan(2);
       await vi.advanceTimersByTimeAsync(2000);
-      expect(observed.at(-1)).toBeNull();
-      expect(checks).toBe(2);
+      expect(observed.at(-1)).toBe(false);
+      expect(slowObserved).not.toContain(true);
       release?.();
       await vi.advanceTimersByTimeAsync(0);
       expect(observed.at(-1)).toBe(false);
       expect(observed.slice(deadlineIndex)).not.toContain(true);
-      expect(peak).toBe(1);
+      expect(slowObserved).not.toContain(true);
+      expect(peak).toBe(2);
     } finally {
       workspace.dispose();
       visibility.mockRestore();

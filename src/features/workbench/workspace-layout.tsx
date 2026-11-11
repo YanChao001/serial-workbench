@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { defaults } from "@serial-workbench/contracts";
+import { HostRequestError } from "@serial-workbench/host-client";
 import type {
   SerialConfiguration,
   OperationSummary,
@@ -25,7 +26,9 @@ import type {
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { nativeErrorCode } from "@/lib/native-error";
 import type { UserLogInput, UserLogModule } from "@/lib/user-log";
-import type { ConnectionDefaults } from "@/lib/client-connection-defaults";
+import type { ConnectionConfigurations } from "@/lib/client-connection-defaults";
+import type { WriteWaitMode } from "@/lib/generated/bindings";
+import { sendWaitMs } from "./send-wait";
 import { connectionKey } from "@/lib/client-connection-defaults";
 import type { WorkbenchFailure } from "./workbench-failure";
 import {
@@ -105,6 +108,8 @@ export type WorkbenchToolContext = {
   configurationKey: string;
   configurationDisabled?: boolean;
   onConfigurationChange: (value: SerialConfiguration) => void;
+  writeWaitMode: WriteWaitMode;
+  onWriteWaitModeChange: (value: WriteWaitMode) => void;
   onInspectMetrics: () => void;
   onReconnect?: () => void;
   beforeReplace: () => Promise<boolean>;
@@ -115,12 +120,14 @@ export type WorkbenchToolContext = {
   onInspectBytes: () => void;
 };
 export type WorkspaceLayoutProps = {
-  connectionDefaults?: Readonly<ConnectionDefaults>;
+  connectionDefaults?: Readonly<ConnectionConfigurations>;
+  connectionWaitModes?: Readonly<Record<string, WriteWaitMode>>;
   connectionDefaultsLoading?: boolean;
   onRememberConnection?: (
     hostId: string,
     deviceId: string,
     value: SerialConfiguration,
+    writeWaitMode?: WriteWaitMode,
   ) => void;
   connectionStatus?: ReactNode;
   connectionLog?: UserLogInput;
@@ -236,6 +243,7 @@ export function WorkspaceLayout({
   connectionLog,
   connectionRecovery,
   connectionDefaults,
+  connectionWaitModes,
   connectionDefaultsLoading = false,
   onRememberConnection,
   formatError,
@@ -306,7 +314,7 @@ export function WorkspaceLayout({
   const failure = error
     ? {
         ...error,
-        message: `${formatError?.({ code: error.code }) ?? labels.unavailable}${error.code ? ` (${error.code})` : ""}`,
+        message: formatError?.({ code: error.code }) ?? labels.unavailable,
       }
     : undefined;
   const [openError, setOpenError] = useState(false);
@@ -315,6 +323,9 @@ export function WorkspaceLayout({
     Readonly<Record<string, SerialConfiguration>>
   >({});
   const configurationEdits = useRef(new Map<string, number>());
+  const [writeWaitModes, setWriteWaitModes] = useState<
+    Record<string, WriteWaitMode>
+  >({});
   const [deviceChoice, setDeviceChoice] = useState("");
   const [dialog, setDialog] = useState<
     WorkbenchTool | "capture" | "activity" | "tasks" | "metrics" | "logs" | null
@@ -327,6 +338,11 @@ export function WorkspaceLayout({
   const [savingLayout, setSavingLayout] = useState(false);
   const [unboundSendMode, setUnboundSendMode] = useState<"text" | "hex">();
   const [sendBytes, setSendBytes] = useState<Uint8Array | null>(null);
+  const [checkBytes, setCheckBytes] = useState<Uint8Array | null>(null);
+  useEffect(() => {
+    const timer = setTimeout(() => setCheckBytes(sendBytes), 150);
+    return () => clearTimeout(timer);
+  }, [sendBytes]);
   const [availability, setAvailability] = useState<
     readonly HostActionAvailability[]
   >([]);
@@ -751,7 +767,26 @@ export function WorkspaceLayout({
     );
     setConnectionConfigurations((current) => ({ ...current, [key]: value }));
     const device = state.devices.find((item) => item.deviceId === id);
-    if (device) onRememberConnection?.(device.hostId, id, value);
+    if (device)
+      onRememberConnection?.(device.hostId, id, value, waitModeFor(id));
+  }
+  function waitModeFor(id: string): WriteWaitMode {
+    const key = configurationKeyFor(id);
+    return writeWaitModes[key] ?? connectionWaitModes?.[key] ?? "automatic";
+  }
+  function rememberWaitMode(id: string, mode: WriteWaitMode) {
+    setWriteWaitModes((current) => ({
+      ...current,
+      [configurationKeyFor(id)]: mode,
+    }));
+    const device = state.devices.find((value) => value.deviceId === id);
+    if (device)
+      onRememberConnection?.(
+        device.hostId,
+        id,
+        requestedConfiguration(id),
+        mode,
+      );
   }
   function requestedConfiguration(id: string): SerialConfiguration {
     const device = state.devices.find((value) => value.deviceId === id);
@@ -911,6 +946,12 @@ export function WorkspaceLayout({
   const targetSessionId = session?.sessionId;
   const targetSessionEpoch = session?.sessionEpoch;
   const currentWriteWaitMs = session?.configuration.writeWaitMs;
+  const sendingConfiguration = session?.configuration;
+  const writeWaitMode = session ? waitModeFor(session.deviceId) : "automatic";
+  const checkedWriteWaitMs =
+    sendingConfiguration && checkBytes?.length
+      ? sendWaitMs(sendingConfiguration, checkBytes.length, writeWaitMode)
+      : currentWriteWaitMs;
   const actorId = host.connection?.attachment.actorId ?? "";
   const target = useMemo<Target | undefined>(() => {
     return targetSessionId && targetSessionEpoch && targetHostId
@@ -925,20 +966,21 @@ export function WorkspaceLayout({
   }, [targetHostId, targetSessionId, targetSessionEpoch]);
   const inputs = useMemo<HostActionCheckInput[]>((): HostActionCheckInput[] => {
     const values: HostActionCheckInput[] = [];
-    if (target && currentWriteWaitMs !== undefined)
-      values.push(
-        {
+    if (target && checkedWriteWaitMs !== undefined) {
+      if (checkBytes?.length)
+        values.push({
           actionId: "session.tx",
           target,
           params: {
             bytesBase64: btoa(
-              Array.from(sendBytes ?? [], (byte) =>
-                String.fromCharCode(byte),
-              ).join(""),
+              Array.from(checkBytes, (byte) => String.fromCharCode(byte)).join(
+                "",
+              ),
             ),
-            writeWaitMs: currentWriteWaitMs,
+            writeWaitMs: checkedWriteWaitMs,
           },
-        },
+        });
+      values.push(
         { actionId: "session.close", target, params: {} },
         {
           actionId: "session.takeover",
@@ -949,9 +991,10 @@ export function WorkspaceLayout({
           },
         },
       );
+    }
     if (connectionCloseInput) values.push(connectionCloseInput);
     return values;
-  }, [target, currentWriteWaitMs, sendBytes, actorId, connectionCloseInput]);
+  }, [target, checkedWriteWaitMs, checkBytes, actorId, connectionCloseInput]);
   useEffect(() => {
     setAvailability([]);
     let active = true;
@@ -982,6 +1025,32 @@ export function WorkspaceLayout({
       )
     );
   }
+  function mayAttempt(actionId: string, checkedInput?: HostActionCheckInput) {
+    const input =
+      checkedInput ?? inputs.find((value) => value.actionId === actionId);
+    const actionTarget =
+      input?.target ?? (actionId === "session.tx" ? target : undefined);
+    if (
+      disabled ||
+      !actionTarget ||
+      !state.catalog.some(
+        (spec) =>
+          spec.actionId === actionId &&
+          spec.targetKinds.includes(actionTarget.kind),
+      )
+    )
+      return false;
+    const current =
+      input &&
+      availability.find(
+        (value) => JSON.stringify(value.input) === JSON.stringify(input),
+      );
+    // 未知只允许用户发起真实验权，不是授权票据；明确拒绝仍立即禁用。
+    return (
+      current?.result?.allowed !== false &&
+      nativeErrorCode(current?.error) !== "PERMISSION_DENIED"
+    );
+  }
   const controlsDisabled =
     disabled || !session || session.readOnly || session.state !== "open";
   const connectionReadError = connectionSession
@@ -1003,7 +1072,7 @@ export function WorkspaceLayout({
             (value.result?.allowed === false ||
               nativeErrorCode(value.error) === "PERMISSION_DENIED"),
         )));
-  const sendAllowed = sendBytes !== null && allowed("session.tx") && !isReplay;
+  const sendAllowed = !isReplay && !!target && mayAttempt("session.tx");
   const marker = clearThrough.get(selected ?? "");
   const markerKey = (item: StreamItem) =>
     item.kind === "source"
@@ -1020,7 +1089,10 @@ export function WorkspaceLayout({
         (item) => markerKey(item) === markerKey(marker),
       ) ?? -1)
     : -1;
-  const items = stream?.items.slice(markerIndex + 1) ?? [];
+  const items = useMemo(
+    () => stream?.items.slice(markerIndex + 1) ?? [],
+    [stream?.items, markerIndex],
+  );
   const changeMode = (kind: "receiveMode" | "sendMode", mode: "text" | "hex") =>
     setViewModes((current) => ({
       ...current,
@@ -1184,7 +1256,7 @@ export function WorkspaceLayout({
         canClose={
           !isCapture &&
           !!connectionCloseInput &&
-          allowed("session.close", connectionCloseInput) &&
+          mayAttempt("session.close", connectionCloseInput) &&
           !!onCloseSession &&
           connectionSession?.state !== "closed"
         }
@@ -1269,7 +1341,6 @@ export function WorkspaceLayout({
         {failure && (
           <p className="workbench-error" role="alert">
             {failure.message}
-            {openError ? ` — ${labels.connectionHelp}` : ""}
           </p>
         )}
       </WorkbenchNotice>
@@ -1438,6 +1509,11 @@ export function WorkspaceLayout({
         onSend={async (bytes, signal) => {
           if (isCapture || !session || !target)
             throw new Error(labels.unavailable);
+          const writeWaitMs = sendWaitMs(
+            session.configuration,
+            bytes.length,
+            writeWaitMode,
+          );
           const checked = await host.checkAction(
             {
               actionId: "session.tx",
@@ -1448,13 +1524,18 @@ export function WorkspaceLayout({
                     "",
                   ),
                 ),
-                writeWaitMs: session.configuration.writeWaitMs,
+                writeWaitMs,
               },
             },
             signal,
           );
-          if (!checked.allowed) throw new Error("PERMISSION_DENIED");
-          return host.send(session.sessionId, bytes, signal);
+          if (!checked.allowed)
+            throw new HostRequestError({
+              code: "PERMISSION_DENIED",
+              message: "Sending is not authorized",
+              retryable: false,
+            });
+          return host.send(session.sessionId, bytes, signal, writeWaitMs);
         }}
         onSendFile={
           onSendFile &&
@@ -1605,6 +1686,9 @@ export function WorkspaceLayout({
                 configurationDisabled: !device || disabled,
                 onConfigurationChange: (value) =>
                   rememberConfiguration(deviceId, value),
+                writeWaitMode: waitModeFor(deviceId),
+                onWriteWaitModeChange: (mode) =>
+                  rememberWaitMode(deviceId, mode),
                 onInspectMetrics: () => showDialog("metrics"),
                 onReconnect:
                   !isReplay && !isCapture && !disabled && (session || deviceId)

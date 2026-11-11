@@ -12,12 +12,51 @@ use windows_sys::Win32::{
 };
 
 struct PortResource {
-    handle: OwnedHandle,
+    handle: Option<OwnedHandle>,
     claim: super::SerialClaim,
+    closed: Arc<PortClosed>,
+}
+#[derive(Debug, Default)]
+struct PortClosed {
+    result: std::sync::Mutex<Option<HostResult<()>>>,
+}
+impl BackendCleanup for PortClosed {
+    fn poll(&self) -> Option<HostResult<()>> {
+        self.result.lock().ok()?.clone()
+    }
 }
 impl PortResource {
+    fn new(handle: OwnedHandle, claim: super::SerialClaim) -> Self {
+        Self {
+            handle: Some(handle),
+            claim,
+            closed: Arc::new(PortClosed::default()),
+        }
+    }
     fn raw(&self) -> HANDLE {
-        self.handle.as_raw_handle()
+        self.handle
+            .as_ref()
+            .expect("live port handle")
+            .as_raw_handle()
+    }
+}
+impl Drop for PortResource {
+    fn drop(&mut self) {
+        let Some(handle) = self.handle.take() else {
+            return;
+        };
+        let result = if unsafe { CloseHandle(handle.into_raw_handle()) } == 0 {
+            let error = last_error();
+            self.claim
+                .isolated
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Err(*error.error)
+        } else {
+            self.claim.confirm_release()
+        };
+        if let Ok(mut closed) = self.closed.result.lock() {
+            *closed = Some(result);
+        }
     }
 }
 struct WindowsPort {
@@ -217,10 +256,10 @@ pub(super) fn open(
         return Err(last_error());
     }
     let mut port = WindowsPort {
-        port: Some(Arc::new(PortResource {
-            handle: unsafe { OwnedHandle::from_raw_handle(handle) },
+        port: Some(Arc::new(PortResource::new(
+            unsafe { OwnedHandle::from_raw_handle(handle) },
             claim,
-        })),
+        ))),
         configuration: config.clone(),
     };
     let timeouts = COMMTIMEOUTS {
@@ -457,29 +496,22 @@ impl super::NativePort for WindowsPort {
         let Some(resource) = self.port.take() else {
             return Ok(());
         };
-        match Arc::try_unwrap(resource) {
-            Ok(resource) => {
-                let handle = resource.handle.into_raw_handle();
-                if unsafe { CloseHandle(handle) } == 0 {
-                    resource
-                        .claim
-                        .isolated
-                        .store(true, std::sync::atomic::Ordering::SeqCst);
-                    Err(last_error())
-                } else {
-                    Ok(())
-                }
-            }
-            Err(resource) => {
-                resource
-                    .claim
-                    .isolated
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                Err(HostError::new(
-                    "CONTROL_UNKNOWN",
-                    "A native drain still owns the serial handle",
-                )
-                .into())
+        let closed = resource.closed.clone();
+        resource
+            .claim
+            .isolated
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        // 最后一个 I/O 引用结束后才关闭句柄；凭证本身不保有资源引用。
+        drop(resource);
+        match closed.poll() {
+            Some(Ok(())) => Ok(()),
+            result => {
+                let mut error =
+                    BackendError::from(result.and_then(Result::err).unwrap_or_else(|| {
+                        HostError::new("CONTROL_UNKNOWN", "Native I/O still owns the serial handle")
+                    }));
+                error.cleanup = Some(closed);
+                Err(error)
             }
         }
     }
@@ -919,6 +951,56 @@ fn os_error(code: u32) -> BackendError {
 #[cfg(test)]
 mod tests {
     use super::*;
+    type TestClaims = Arc<std::sync::Mutex<std::collections::HashMap<Id, Vec<String>>>>;
+
+    fn isolated_event_port() -> (WindowsPort, TestClaims) {
+        let id = Id::try_from("isolated-event-port").unwrap();
+        let claims = Arc::new(std::sync::Mutex::new(std::collections::HashMap::from([(
+            id.clone(),
+            vec!["locator:test-event".to_owned()],
+        )])));
+        let handle = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
+        assert!(!handle.is_null());
+        let resource = Arc::new(PortResource::new(
+            unsafe { OwnedHandle::from_raw_handle(handle) },
+            super::super::SerialClaim {
+                id,
+                claims: claims.clone(),
+                isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                released: false,
+            },
+        ));
+        (
+            WindowsPort {
+                port: Some(resource),
+                configuration: SerialConfiguration::default(),
+            },
+            claims,
+        )
+    }
+
+    #[test]
+    fn isolated_serial_handle_releases_claim_on_confirmed_close() {
+        let (mut port, claims) = isolated_event_port();
+        super::super::NativePort::close(&mut port).unwrap();
+        assert!(claims.lock().unwrap().is_empty());
+    }
+
+    #[test]
+    fn isolated_serial_handle_keeps_claim_until_held_io_reference_is_released() {
+        let (mut port, claims) = isolated_event_port();
+        let held_io = port.resource().unwrap().clone();
+        let closing = super::super::NativePort::close(&mut port).unwrap_err();
+        assert_eq!(closing.error.code, "CONTROL_UNKNOWN");
+        assert_eq!(claims.lock().unwrap().len(), 1);
+        let completion = closing
+            .cleanup
+            .expect("deferred close must retain actual completion");
+        assert!(completion.poll().is_none());
+        drop(held_io);
+        assert_eq!(completion.poll(), Some(Ok(())));
+        assert!(claims.lock().unwrap().is_empty());
+    }
 
     struct States {
         reads: std::collections::VecDeque<Result<DCB, u32>>,
