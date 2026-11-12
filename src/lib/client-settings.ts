@@ -144,7 +144,14 @@ export function parseConnectionDefaults(value: unknown): ConnectionDefault[] {
   return value.map((entry: unknown) => {
     if (
       !record(entry) ||
-      !exactKeys(entry, ["hostId", "deviceId", "configuration"])
+      !exactKeys(
+        entry,
+        ["hostId", "deviceId", "configuration"],
+        ["writeWaitMode"],
+      ) ||
+      (entry.writeWaitMode !== undefined &&
+        entry.writeWaitMode !== "automatic" &&
+        entry.writeWaitMode !== "fixed")
     )
       invalidClient();
     try {
@@ -157,7 +164,14 @@ export function parseConnectionDefaults(value: unknown): ConnectionDefault[] {
       const key = JSON.stringify([target.hostId, target.id]);
       if (targets.has(key)) invalidClient();
       targets.add(key);
-      return { hostId: target.hostId, deviceId: target.id, configuration };
+      return {
+        hostId: target.hostId,
+        deviceId: target.id,
+        configuration,
+        ...(entry.writeWaitMode === "fixed"
+          ? { writeWaitMode: "fixed" as const }
+          : {}),
+      };
     } catch {
       invalidClient();
     }

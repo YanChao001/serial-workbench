@@ -28,6 +28,7 @@ import { confirmProjectionHost, HostProjectionError } from "@/lib/host-client";
 import { abortError, waitForHost } from "@/lib/host-native-transport";
 import { reportClientError } from "@/lib/report-error";
 import { createSessionReaders } from "@/lib/host-session-readers";
+import { createHostActionObserver } from "./host-action-observer";
 import { readReplayRecord as readRecord } from "@/lib/host-reader";
 import {
   hostConnectDevice,
@@ -40,7 +41,6 @@ import type {
   HostInvocation,
   HostState,
   HostActionCheckInput,
-  HostActionAvailability,
 } from "./host-context";
 function failure(code: string, message: string) {
   return new HostRequestError({ code, message, retryable: false });
@@ -126,172 +126,9 @@ export function createHostWorkspace(
   let operationIds: string[] | undefined;
   let workspaceSelection = 0;
   let snapshot: HostContextValue;
-  type ActionWatcher = {
-    inputs: readonly HostActionCheckInput[];
-    listener: (values: readonly HostActionAvailability[]) => void;
-  };
-  const actionWatchers = new Set<ActionWatcher>();
-  let checksVersion = 0;
-  let checksRunning = false;
-  let checksRequested = false;
-  let checksTimer: ReturnType<typeof setTimeout> | undefined;
-  let checksRefreshTimer: ReturnType<typeof setTimeout> | undefined;
-  let checksExpiresAt: number | undefined;
-  const checksMaxAgeMs = 1000;
-  const checksRefreshMs = checksMaxAgeMs / 2;
-  const visible = () => typeof document === "undefined" || !document.hidden;
-  function clearChecksTimer() {
-    clearTimeout(checksTimer);
-    clearTimeout(checksRefreshTimer);
-    checksTimer = undefined;
-    checksRefreshTimer = undefined;
-    checksExpiresAt = undefined;
-  }
-  function unknownActions(watcher: ActionWatcher) {
-    watcher.listener(
-      watcher.inputs.map((input) => ({
-        input,
-        result: null,
-        error: null,
-      })),
-    );
-  }
-  function invalidateActions() {
-    checksVersion++;
-    clearChecksTimer();
-    for (const watcher of actionWatchers) unknownActions(watcher);
-    checksRequested =
-      actionWatchers.size > 0 && visible() && !lifetime.signal.aborted;
-    if (checksRequested) void refreshActionChecks();
-  }
-  function changedActionWatchers() {
-    checksVersion++;
-    clearTimeout(checksRefreshTimer);
-    checksRefreshTimer = undefined;
-    checksRequested =
-      actionWatchers.size > 0 && visible() && !lifetime.signal.aborted;
-    // 观察者增减并不改变授权；已有结果仍按原截止时间到期。
-    if (!checksRequested) clearChecksTimer();
-    if (checksRequested) void refreshActionChecks();
-  }
-  async function refreshActionChecks() {
-    if (
-      checksRunning ||
-      !checksRequested ||
-      lifetime.signal.aborted ||
-      !visible()
-    )
-      return;
-    checksRunning = true;
-    checksRequested = false;
-    const version = checksVersion;
-    const startedAt = performance.now();
-    if (checksExpiresAt === undefined) {
-      checksExpiresAt = startedAt + checksMaxAgeMs;
-      checksTimer = setTimeout(invalidateActions, checksMaxAgeMs);
-    }
-    const currentRound = () => {
-      if (version !== checksVersion || lifetime.signal.aborted || !visible())
-        return false;
-      if (checksExpiresAt !== undefined && performance.now() < checksExpiresAt)
-        return true;
-      invalidateActions();
-      return false;
-    };
-    let succeeded = true;
-    const checked = new Map<string, ReturnType<typeof checkAction>>();
-    try {
-      for (const watcher of [...actionWatchers]) {
-        const values: HostActionAvailability[] = [];
-        for (const input of watcher.inputs) {
-          if (!currentRound()) return;
-          if (!actionWatchers.has(watcher)) break;
-          try {
-            const key = JSON.stringify([
-              input.actionId,
-              input.target.hostId,
-              input.target.kind,
-              input.target.id,
-              input.target.sessionId,
-              input.target.sessionEpoch,
-              input.params,
-            ]);
-            let pending = checked.get(key);
-            if (!pending) {
-              pending = checkAction(input);
-              checked.set(key, pending);
-            }
-            values.push({
-              input,
-              result: await pending,
-              error: null,
-            });
-          } catch (error) {
-            succeeded = false;
-            values.push({
-              input,
-              result: null,
-              error: error instanceof Error ? error : new Error(String(error)),
-            });
-          }
-        }
-        if (!currentRound()) return;
-        if (actionWatchers.has(watcher)) {
-          watcher.listener(values);
-        }
-      }
-      // 提前续检不改变旧截止；整轮及时成功后，期限仍从本轮发起时刻计算。
-      if (succeeded && currentRound()) {
-        clearTimeout(checksTimer);
-        checksExpiresAt = startedAt + checksMaxAgeMs;
-        checksTimer = setTimeout(
-          invalidateActions,
-          Math.max(0, checksExpiresAt - performance.now()),
-        );
-        clearTimeout(checksRefreshTimer);
-        checksRefreshTimer = setTimeout(
-          () => {
-            checksRefreshTimer = undefined;
-            if (version !== checksVersion) return;
-            checksRequested =
-              actionWatchers.size > 0 && visible() && !lifetime.signal.aborted;
-            if (checksRequested) void refreshActionChecks();
-          },
-          Math.max(0, startedAt + checksRefreshMs - performance.now()),
-        );
-      }
-    } finally {
-      checksRunning = false;
-      if (checksRequested) void refreshActionChecks();
-    }
-  }
-  function watchActions(
-    inputs: readonly HostActionCheckInput[],
-    listener: ActionWatcher["listener"],
-  ) {
-    if (lifetime.signal.aborted) throw abortError();
-    const count = [...actionWatchers].reduce(
-      (sum, watcher) => sum + watcher.inputs.length,
-      0,
-    );
-    if (count + inputs.length > 128)
-      throw new RangeError("Too many visible action checks");
-    const watcher: ActionWatcher = {
-      inputs: structuredClone(inputs),
-      listener,
-    };
-    actionWatchers.add(watcher);
-    unknownActions(watcher);
-    changedActionWatchers();
-    return () => {
-      if (!actionWatchers.delete(watcher)) return;
-      changedActionWatchers();
-    };
-  }
-  if (typeof document !== "undefined")
-    document.addEventListener("visibilitychange", invalidateActions);
-  if (typeof window !== "undefined")
-    window.addEventListener("focus", invalidateActions);
+  const actionObserver = createHostActionObserver(checkAction, lifetime.signal);
+  const watchActions = actionObserver.watch;
+  const invalidateActions = actionObserver.invalidate;
   const change = (patch: Partial<HostState>) => {
     if (lifetime.signal.aborted) return;
     state = { ...state, ...patch };
@@ -422,6 +259,8 @@ export function createHostWorkspace(
         // Bound simultaneous lookups and collapse changes arriving during a refresh.
         for (let offset = 0; offset < ids.length; offset += 8) {
           if (lifetime.signal.aborted) return;
+          // 已开始的读取真实结束后处理最新元数据，不先排完过时的整轮历史。
+          if (operationIds) break;
           const batch = ids.slice(offset, offset + 8);
           const results = await Promise.allSettled(
             batch.map(async (id) => {
@@ -665,6 +504,7 @@ export function createHostWorkspace(
   async function loadWorkspace(
     workspaceId: string,
     signal?: AbortSignal,
+    options?: { deferProjections?: boolean },
   ): Promise<WorkspaceDocumentResult> {
     const selection = ++workspaceSelection;
     const result = await readWorkspace(workspaceId, signal);
@@ -674,7 +514,7 @@ export function createHostWorkspace(
       !lifetime.signal.aborted
     ) {
       change({ workspace: result });
-      await syncProjections();
+      if (!options?.deferProjections) await syncProjections();
     }
     return result;
   }
@@ -886,12 +726,16 @@ export function createHostWorkspace(
         lifetime.signal,
       );
       if (devices.kind !== "devices") throw new ContractValidationError();
+      // 先恢复选中工作区与草稿归属；历史订阅仍不阻塞设备就绪。
+      if (!state.workspace)
+        await loadWorkspace("default", undefined, { deferProjections: true });
       change({
         devices: devices.value.devices,
         devicesStale: devices.value.stale,
         catalog,
+        // 已认证连接与设备目录已可用；历史投影不阻塞明确的设备连接。
+        status: "ready",
       });
-      if (!state.workspace) await loadWorkspace("default");
       await syncProjections();
       change({ status: "ready", error: null });
     })()
@@ -1342,6 +1186,7 @@ export function createHostWorkspace(
     sessionId: string,
     bytes: Uint8Array,
     signal?: AbortSignal,
+    writeWaitMs?: string,
   ) {
     const session = sessionById(sessionId);
     if (session.readOnly)
@@ -1354,7 +1199,7 @@ export function createHostWorkspace(
         target: sessionTarget(session),
         params: {
           bytesBase64: btoa(binary),
-          writeWaitMs: session.configuration.writeWaitMs,
+          writeWaitMs: writeWaitMs ?? session.configuration.writeWaitMs,
         },
         executionMode: "interactive",
       },
@@ -1422,12 +1267,6 @@ export function createHostWorkspace(
     },
     dispose() {
       lifetime.abort();
-      clearChecksTimer();
-      actionWatchers.clear();
-      if (typeof document !== "undefined")
-        document.removeEventListener("visibilitychange", invalidateActions);
-      if (typeof window !== "undefined")
-        window.removeEventListener("focus", invalidateActions);
       for (const projection of projections.values()) projection.close();
       readers.dispose();
       projections.clear();

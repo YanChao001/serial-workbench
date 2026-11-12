@@ -93,8 +93,14 @@ test("dev builds Host and CLI, authenticates the immutable runtime CLI, then sta
   assert.equal(prepare.opts.cwd, build.opts.cwd);
   assert.equal(tauri.opts.cwd, root);
   assert.deepEqual(build.opts.env, buildEnvironment());
-  assert.equal(prepare.opts.env, build.opts.env);
-  assert.equal(tauri.opts.env, build.opts.env);
+  assert.deepEqual(prepare.opts.env, {
+    ...build.opts.env,
+    SWB_DEV_EXPECTED_HOST_EXECUTABLE: join(
+      runtimeDirectory,
+      "serial-workbench-host.exe",
+    ),
+  });
+  assert.equal(tauri.opts.env, prepare.opts.env);
   for (const call of fixture.calls) {
     assert.equal(call.opts.windowsHide, true);
     assert.equal(call.opts.shell, false);

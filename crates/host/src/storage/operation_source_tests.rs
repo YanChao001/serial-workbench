@@ -101,6 +101,63 @@ impl Fixture {
 }
 
 #[test]
+fn operation_metadata_uses_tx_backend_failure_code_without_revealing_content() {
+    let f = Fixture::new();
+    let mut call = f.call();
+    call.action_id = id("session.tx");
+    call.target = Target {
+        host_id: f.store.identity().unwrap().host_id,
+        kind: ResourceKind::try_from("session").unwrap(),
+        id: id("test-session"),
+        session_id: Some(id("test-session")),
+        session_epoch: Some(1.into()),
+    };
+    call.params =
+        serde_json::from_value(serde_json::json!({ "bytesBase64": "AQI=", "writeWaitMs": "100" }))
+            .unwrap();
+    let Acceptance::New(operation) = f
+        .store
+        .accept(&f.actor, &call, &canonical_digest(&call).unwrap())
+        .unwrap()
+    else {
+        panic!("new operation");
+    };
+    f.store.mark_dispatch(&operation.operation_id).unwrap();
+    f.store
+        .settle(
+            &operation.operation_id,
+            Settlement {
+                state: OperationState::Unknown,
+                error: None,
+                result: Some(ActionResult::Tx(TxReceipt {
+                    operation_id: operation.operation_id.clone(),
+                    session_id: id("test-session"),
+                    session_epoch: 1.into(),
+                    outcome: TxOutcome::Unknown,
+                    bytes_base64: Bytes::try_from("AQI=").unwrap(),
+                    byte_start: 0.into(),
+                    byte_end: 2.into(),
+                    accepted_ranges: vec![],
+                    unknown_ranges: vec![ByteRange {
+                        start: 0.into(),
+                        end: 2.into(),
+                    }],
+                    peer_acknowledged: False,
+                    backend_error: Some(HostError::new("WRITE_TIMEOUT", "private backend details")),
+                })),
+            },
+        )
+        .unwrap();
+    let snapshot = f.store.operation_metadata().unwrap();
+    let parsed: OperationsSnapshot =
+        serde_json::from_value(serde_json::to_value(&snapshot).unwrap()).unwrap();
+    assert_eq!(parsed.items[0].error_code.as_deref(), Some("WRITE_TIMEOUT"));
+    let serialized = serde_json::to_string(&snapshot).unwrap();
+    assert!(!serialized.contains("private backend details"));
+    assert!(!serialized.contains("bytesBase64"));
+}
+
+#[test]
 fn accepted_queued_operation_already_has_immutable_source_authority() {
     let f = Fixture::new();
     let call = f.call();

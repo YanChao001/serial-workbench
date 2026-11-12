@@ -26,6 +26,7 @@ import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { stateScopeKey } from "@/lib/host-scope";
 import { SerialConfigurationFields } from "./serial-configuration-fields";
 import { validSerialConfiguration } from "./serial-configuration";
+import { sendWaitMs } from "./send-wait";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
   Select,
@@ -75,6 +76,11 @@ export function WorkbenchTools({
 }) {
   const { t } = useI18n();
   const labels = useMemo(() => workbenchToolLabels(t), [t]);
+  const writeWaitLabels = {
+    title: t("workbench.tools.writeWaitMode"),
+    automatic: t("workbench.tools.writeWaitAutomatic"),
+    fixed: t("workbench.tools.writeWaitFixed"),
+  };
   const pending = useRef<AbortController | null>(null);
   const [recent, setRecent] = useState<RecentList>();
   const recentReader = useRef(host.recentConnections);
@@ -261,6 +267,9 @@ export function WorkbenchTools({
   if (tool === "parameters")
     return context.session ? (
       <SessionControls
+        writeWaitLabels={writeWaitLabels}
+        writeWaitMode={context.writeWaitMode}
+        onWriteWaitModeChange={context.onWriteWaitModeChange}
         contextKey={generation}
         readInputs={host.sessionInputs}
         session={context.session}
@@ -275,6 +284,9 @@ export function WorkbenchTools({
       />
     ) : (
       <ConnectionOptions
+        writeWaitLabels={writeWaitLabels}
+        writeWaitMode={context.writeWaitMode}
+        onWriteWaitModeChange={context.onWriteWaitModeChange}
         key={context.configurationKey}
         value={context.configuration}
         onApply={context.onConfigurationChange}
@@ -477,10 +489,11 @@ export function WorkbenchTools({
         target={context.target}
         contextKey={`${generation}:${context.session?.sessionId}:${context.session?.sessionEpoch}`}
         labels={labels.transfer}
-        writeWaitMs={
-          context.session?.configuration.writeWaitMs ??
-          defaults.serialConfiguration.writeWaitMs
-        }
+        writeWaitMs={sendWaitMs(
+          context.session?.configuration ?? defaults.serialConfiguration,
+          4096,
+          context.writeWaitMode,
+        )}
         disabled={
           !ready ||
           !context.target ||
@@ -569,11 +582,17 @@ function ConnectionOptions({
   onApply,
   labels,
   disabled,
+  writeWaitMode,
+  onWriteWaitModeChange,
+  writeWaitLabels,
 }: {
   value: SerialConfiguration;
   onApply: (value: SerialConfiguration) => void;
   labels: import("./session-controls").SessionControlsLabels;
   disabled?: boolean;
+  writeWaitMode: WorkbenchToolContext["writeWaitMode"];
+  onWriteWaitModeChange: WorkbenchToolContext["onWriteWaitModeChange"];
+  writeWaitLabels: import("./serial-configuration-fields").SerialConfigurationFieldsProps["writeWaitLabels"];
 }) {
   const [draft, setDraft] = useState(value);
   const dirty = JSON.stringify(value) !== JSON.stringify(draft);
@@ -590,6 +609,9 @@ function ConnectionOptions({
       <fieldset disabled={disabled}>
         <legend className="sr-only">{labels.configuration}</legend>
         <SerialConfigurationFields
+          writeWaitLabels={writeWaitLabels}
+          writeWaitMode={writeWaitMode}
+          onWriteWaitModeChange={onWriteWaitModeChange}
           value={draft}
           onChange={(value) => {
             setDraft(value);

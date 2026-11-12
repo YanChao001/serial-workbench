@@ -10,6 +10,8 @@ pub struct PreparedRawBatch {
     frame: WireFrame,
     bytes: usize,
     _lease: Lease,
+    delivery_bytes: usize,
+    delivery_reservation: Mutex<Option<Lease>>,
     reservation: Arc<ReaderReservation>,
     pub(crate) stamp: Option<GrantStamp>,
     liveness: tokio::sync::watch::Receiver<bool>,
@@ -17,6 +19,8 @@ pub struct PreparedRawBatch {
 }
 struct ReaderReservation {
     _metadata: Lease,
+    // 队首至多一个合并缺口；即使在途批次占满预算，也能如实记录丢弃范围。
+    _gap: Lease,
     _global: Lease,
     budget: Arc<Budget>,
 }
@@ -50,7 +54,7 @@ struct ReaderState {
 struct Queued {
     item: Item,
     cost: usize,
-    _lease: Lease,
+    _lease: Option<Lease>,
 }
 enum Item {
     Source(Arc<SourceEvent>),
@@ -82,17 +86,12 @@ impl PreparedRawBatch {
     pub(crate) fn frame(&self) -> &WireFrame {
         &self.frame
     }
-    pub(crate) fn queue_lease(&self) -> HostResult<RawMemoryLease> {
-        self.reservation.budget.take(1024)
-    }
-    pub(crate) fn encoding_lease(&self) -> HostResult<RawMemoryLease> {
-        let bytes = serial_workbench_ipc::frame::encoded_length(&self.frame, 1024 * 1024)?;
-        self.reservation.budget.take(
-            bytes
-                .checked_mul(2)
-                .and_then(|v| v.checked_add(256))
-                .ok_or_else(limit)?,
-        )
+    pub(crate) fn delivery_lease(&self) -> HostResult<RawMemoryLease> {
+        if let Some(reserved) = self.delivery_reservation.lock().map_err(|_| busy())?.take() {
+            return Ok(reserved);
+        }
+        // 重放也在入队前取得本次输出预算，不让 writer 在开始交付后再竞争内存。
+        self.reservation.budget.take(self.delivery_bytes)
     }
 }
 impl ReaderState {
@@ -108,15 +107,13 @@ impl ReaderState {
         merge_gap(missing, gap);
         true
     }
-    fn prepend_gap(&mut self, budget: &Arc<Budget>, gap: ReaderGap) -> HostResult<()> {
-        let lease = budget.take(1024)?;
+    fn prepend_gap(&mut self, gap: ReaderGap) {
         self.logical += 1024;
         self.queue.push_front(Queued {
             item: Item::Gap(gap),
             cost: 1024,
-            _lease: lease,
+            _lease: None,
         });
-        Ok(())
     }
     fn end(&mut self, error: Option<HostError>) {
         if self.closed {
@@ -161,10 +158,8 @@ impl ReaderInner {
             {
                 state.discard_front(&self.source, &mut missing);
             }
-            if let Some(gap) = missing
-                && state.prepend_gap(&self.budget, gap).is_err()
-            {
-                state.end(Some(overflow()));
+            if let Some(gap) = missing {
+                state.prepend_gap(gap);
             }
         }
         let ended = state.closed;
@@ -187,12 +182,24 @@ impl ReaderInner {
             }
             let cost = event.cost;
             let mut missing: Option<ReaderGap> = None;
-            while state
-                .logical
-                .saturating_add(cost)
-                .saturating_add(if missing.is_some() { 1024 } else { 0 })
-                > self.queue_limit
-            {
+            loop {
+                let fits = state
+                    .logical
+                    .saturating_add(cost)
+                    .saturating_add(if missing.is_some() { 1024 } else { 0 })
+                    <= self.queue_limit;
+                if let Some(lease) = fits.then(|| self.budget.take(1024).ok()).flatten() {
+                    if let Some(gap) = missing {
+                        state.prepend_gap(gap);
+                    }
+                    state.logical += cost;
+                    state.queue.push_back(Queued {
+                        item: Item::Source(event),
+                        cost,
+                        _lease: Some(lease),
+                    });
+                    break;
+                }
                 if self.policy != OverflowPolicy::DropWithGap {
                     state.end(Some(overflow()));
                     self.notify.notify_waiters();
@@ -200,32 +207,12 @@ impl ReaderInner {
                     return;
                 }
                 if !state.discard_front(&self.source, &mut missing) {
-                    state.end(Some(overflow()));
-                    self.notify.notify_waiters();
-                    self.ended.notify_waiters();
-                    return;
-                }
-            }
-            if let Some(gap) = missing
-                && state.prepend_gap(&self.budget, gap).is_err()
-            {
-                state.end(Some(overflow()));
-                self.notify.notify_waiters();
-                self.ended.notify_waiters();
-                return;
-            }
-            match self.budget.take(1024) {
-                Ok(lease) => {
-                    state.logical += cost;
-                    state.queue.push_back(Queued {
-                        item: Item::Source(event),
-                        cost,
-                        _lease: lease,
-                    })
-                }
-                Err(_) => {
-                    state.end(Some(overflow()));
-                    self.ended.notify_waiters();
+                    // 未确认帧不能回收；丢弃本次未交付事件，并用预留的缺口空间合并。
+                    merge_gap(&mut missing, gap_for(&self.source, &event));
+                    if let Some(gap) = missing {
+                        state.prepend_gap(gap);
+                    }
+                    break;
                 }
             }
         }
@@ -285,6 +272,8 @@ impl RawSubscription {
         let Some(front) = state.queue.front() else {
             return Ok(None);
         };
+        // 准备中的局部分配也必须保有全局配额，直到帧和临时预算真实释放。
+        let reservation = state.reservation.as_ref().ok_or_else(busy)?.clone();
         let reserve = front
             .cost
             .checked_mul(4)
@@ -292,6 +281,8 @@ impl RawSubscription {
             .ok_or_else(limit)?;
         let lease = match self.0.budget.take(reserve) {
             Ok(lease) => lease,
+            // 已发未确认的批次仍保有真实内存；等 ACK 归还后重试，不能把背压当故障。
+            Err(_) if !state.replay.is_empty() => return Ok(None),
             Err(error) => {
                 state.end(Some(error.clone()));
                 self.0.ended.notify_waiters();
@@ -356,11 +347,30 @@ impl RawSubscription {
                 batch: Box::new(batch),
             },
         };
+        let delivery_bytes = serial_workbench_ipc::frame::encoded_length(
+            &frame,
+            serial_workbench_ipc::frame::MAX_FRAME_BYTES,
+        )?
+        .checked_mul(2)
+        // 保留原有编码分配余量和 IPC 槽位计费；容量仍来自同一 reader 预算。
+        .and_then(|bytes| bytes.checked_add(256 + 1024))
+        .ok_or_else(limit)?;
+        let delivery = match self.0.budget.take(delivery_bytes) {
+            Ok(delivery) => delivery,
+            Err(_) if !state.replay.is_empty() => return Ok(None),
+            Err(error) => {
+                state.end(Some(error.clone()));
+                self.0.ended.notify_waiters();
+                return Err(error);
+            }
+        };
         let prepared = Arc::new(PreparedRawBatch {
             frame,
             bytes: length,
             _lease: lease,
-            reservation: state.reservation.as_ref().ok_or_else(busy)?.clone(),
+            delivery_bytes,
+            delivery_reservation: Mutex::new(Some(delivery)),
+            reservation,
             stamp: self.0.stamp.clone(),
             liveness: state.liveness.subscribe(),
             reader: Arc::downgrade(&self.0),
@@ -514,6 +524,7 @@ impl StreamHub {
         let budget = Budget::new(queue);
         let reservation = Arc::new(ReaderReservation {
             _metadata: budget.take(4096)?,
+            _gap: budget.take(1024)?,
             _global: global,
             budget: budget.clone(),
         });

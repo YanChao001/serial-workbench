@@ -377,6 +377,55 @@ async fn cancelled_write_owner_releases_shared_waiters_without_sending_the_query
 }
 
 #[tokio::test]
+async fn interrupted_inflight_write_notifies_disconnect_before_the_peer_closes() {
+    let f = Fixture::new().await;
+    let RpcRequest::Query(mut request) = query(FIRST_ID, "operation.get") else {
+        unreachable!()
+    };
+    request.params.insert(
+        "padding".into(),
+        JsonValue::String("x".repeat(MAX_FRAME_BYTES / 2)),
+    );
+    let mut writing = Box::pin(f.client.request(RpcRequest::Query(request)));
+    poll_fn(|cx| {
+        assert!(writing.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    assert!(
+        f.client.writer.try_lock().is_err(),
+        "write must be in progress"
+    );
+    let mut reading = Box::pin(f.client.next_event());
+    poll_fn(|cx| {
+        assert!(reading.as_mut().poll(cx).is_pending());
+        Poll::Ready(())
+    })
+    .await;
+    drop(writing);
+    tokio::time::timeout(Duration::from_secs(2), f.client.wait_for_disconnect())
+        .await
+        .expect("interrupted write must notify without waiting for peer EOF");
+    assert_eq!(
+        tokio::time::timeout(Duration::from_secs(2), reading)
+            .await
+            .unwrap()
+            .unwrap_err()
+            .code,
+        "UNAUTHENTICATED"
+    );
+    // 先结束仍保持打开的对端，再等待实际关闭；通知本身不归还原生资源。
+    let Fixture {
+        client,
+        server,
+        _directory: directory,
+    } = f;
+    drop(server);
+    client.close().await.unwrap();
+    drop(directory);
+}
+
+#[tokio::test]
 async fn same_query_action_and_id_with_different_content_is_still_rejected() {
     let mut f = Fixture::new().await;
     let connection = f.client.clone();

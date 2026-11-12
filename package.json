@@ -48,6 +48,7 @@
     "release:notes": "node scripts/release-lib.mjs notes",
     "tauri": "tauri",
     "app:dev": "node scripts/app-dev.mjs",
+    "host:stop": "node scripts/host-stop.mjs",
     "app:build": "node scripts/app-build.mjs",
     "app:portable": "node scripts/portable.mjs",
     "config:sync": "node scripts/init-project.mjs",

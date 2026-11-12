@@ -44,6 +44,31 @@ function storage() {
   };
 }
 
+it("defaults remembered devices to automatic timing and restores an explicit fixed policy with the same configuration", async () => {
+  const h = storage();
+  const first = renderHook(() => useConnectionPreferences(h.port));
+  await waitFor(() => expect(first.result.current.status).toBe("saved"));
+  act(() => first.result.current.remember("host", "device", config("9600")));
+  await act(async () => first.result.current.flush());
+  expect(first.result.current.waitModes[connectionKey("host", "device")]).toBe(
+    "automatic",
+  );
+  act(() =>
+    first.result.current.remember("host", "device", config("9600"), "fixed"),
+  );
+  await act(async () => first.result.current.flush());
+  expect(h.snapshot.state.connectionDefaults?.[0]?.writeWaitMode).toBe("fixed");
+  first.unmount();
+  const restored = renderHook(() => useConnectionPreferences(h.port));
+  await waitFor(() => expect(restored.result.current.status).toBe("saved"));
+  expect(
+    restored.result.current.waitModes[connectionKey("host", "device")],
+  ).toBe("fixed");
+  expect(
+    restored.result.current.values[connectionKey("host", "device")],
+  ).toEqual(config("9600"));
+});
+
 it("coalesces edits during a real pending save and keeps that save owned after an aborted UI wait", async () => {
   const h = storage();
   let finish!: () => void;

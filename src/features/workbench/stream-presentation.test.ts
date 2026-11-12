@@ -1,6 +1,15 @@
 import { expect, it } from "vitest";
 import type { RawEvent, StreamItem } from "@serial-workbench/contracts";
-import { presentStreamTimes } from "./stream-presentation";
+import { compactStreamTime, presentStreamTimes } from "./stream-presentation";
+
+it("shows local wall time with milliseconds without a UTC suffix", () => {
+  expect(compactStreamTime("2026-11-11T05:50:01.001Z", "Asia/Shanghai")).toBe(
+    "13:50:01.001",
+  );
+  expect(compactStreamTime("2026-11-11T05:50:01.001Z", "UTC")).toBe(
+    "05:50:01.001",
+  );
+});
 
 function source(ns: string, clockId = "clock"): StreamItem {
   const event: RawEvent = {

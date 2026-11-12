@@ -2,6 +2,7 @@ import type { SerialConfiguration } from "@serial-workbench/contracts";
 import { Input } from "@/components/ui/input";
 import { OptionsSelect } from "@/components/options-select";
 import { EditableCombobox } from "@/components/editable-combobox";
+import type { WriteWaitMode } from "@/lib/generated/bindings";
 import {
   BAUD_PRESETS,
   validBaudRate,
@@ -30,6 +31,9 @@ export type SerialConfigurationFieldsProps = {
   labels: SerialConfigurationLabels;
   id: string;
   disabled?: boolean;
+  writeWaitMode?: WriteWaitMode;
+  onWriteWaitModeChange?: (value: WriteWaitMode) => void;
+  writeWaitLabels?: { title: string; automatic: string; fixed: string };
 };
 
 export function SerialConfigurationFields({
@@ -38,6 +42,9 @@ export function SerialConfigurationFields({
   labels,
   id,
   disabled = false,
+  writeWaitMode,
+  onWriteWaitModeChange,
+  writeWaitLabels,
 }: SerialConfigurationFieldsProps) {
   function update<K extends keyof SerialConfiguration>(
     field: K,
@@ -121,8 +128,32 @@ export function SerialConfigurationFields({
           )}
         />
       </div>
-      {(["readWaitMs", "writeWaitMs", "reconnectBackoffMs"] as const).map(
-        (field) => (
+      {writeWaitMode !== undefined && writeWaitLabels && (
+        <div className="workbench-form-row">
+          <label htmlFor={id + "-write-wait-mode"}>
+            {writeWaitLabels.title}
+          </label>
+          <OptionsSelect
+            id={id + "-write-wait-mode"}
+            label={writeWaitLabels.title}
+            value={writeWaitMode}
+            disabled={disabled}
+            onValueChange={(mode) => onWriteWaitModeChange?.(mode)}
+            options={[
+              { value: "automatic", label: writeWaitLabels.automatic },
+              { value: "fixed", label: writeWaitLabels.fixed },
+            ]}
+          />
+        </div>
+      )}
+      {(["readWaitMs", "writeWaitMs", "reconnectBackoffMs"] as const)
+        .filter(
+          (field) =>
+            field !== "writeWaitMs" ||
+            writeWaitMode !== "automatic" ||
+            !validDuration(value.writeWaitMs),
+        )
+        .map((field) => (
           <div className="workbench-form-row" key={field}>
             <label htmlFor={id + "-" + field}>{labels[field]}</label>
             <Input
@@ -134,8 +165,7 @@ export function SerialConfigurationFields({
               onChange={(event) => update(field, event.target.value)}
             />
           </div>
-        ),
-      )}
+        ))}
     </div>
   );
 }

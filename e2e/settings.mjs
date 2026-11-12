@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { browser } from "@wdio/globals";
-import { invoke, ready } from "./helpers.mjs";
+import { invoke, ready, reloadDocument } from "./helpers.mjs";
 
 export async function nativeValue(command, args, onFailure) {
   const reply = await invoke(command, args);
@@ -105,7 +105,7 @@ export async function patchSettings(patch) {
         () => window.__TAURI__.window.getCurrentWindow().label,
       );
       // ClientState 按窗口读取；直接写入后重新加载真实 Provider，不伪造同步事件。
-      await browser.refresh();
+      await reloadDocument(browser);
       await ready(label);
     }
     if (!Object.keys(sharedPatch).length) return readSettings();

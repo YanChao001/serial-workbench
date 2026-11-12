@@ -1207,7 +1207,7 @@ export type ClientWindowState_Deserialize = {
   lastWorkspaceId: string | null;
   drafts: { [key in string]: string };
   gallery?: GalleryEntry_Deserialize[];
-  connectionDefaults?: ConnectionDefault[];
+  connectionDefaults?: ConnectionDefault_Deserialize[];
 };
 
 export type ClientWindowState_Serialize = {
@@ -1219,7 +1219,7 @@ export type ClientWindowState_Serialize = {
   lastWorkspaceId: string | null;
   drafts: { [key in string]: string };
   gallery: GalleryEntry_Serialize[];
-  connectionDefaults?: ConnectionDefault[];
+  connectionDefaults?: ConnectionDefault_Serialize[];
 };
 
 export type ClosedResult = {
@@ -1279,10 +1279,21 @@ export type ConfigureParams = {
   requested: SerialConfiguration;
 };
 
-export type ConnectionDefault = {
+export type ConnectionDefault =
+  ConnectionDefault_Serialize | ConnectionDefault_Deserialize;
+
+export type ConnectionDefault_Deserialize = {
   hostId: Id;
   deviceId: Id;
   configuration: SerialConfiguration;
+  writeWaitMode?: WriteWaitMode;
+};
+
+export type ConnectionDefault_Serialize = {
+  hostId: Id;
+  deviceId: Id;
+  configuration: SerialConfiguration;
+  writeWaitMode?: WriteWaitMode;
 };
 
 export type ContextToken = string;
@@ -3844,6 +3855,8 @@ export type WorkspaceView = {
   sendMode: TerminalMode;
   bindingId: Id;
 };
+
+export type WriteWaitMode = "automatic" | "fixed";
 
 /* Tauri Specta runtime */
 async function typedError<T, E>(

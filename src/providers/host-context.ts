@@ -169,6 +169,7 @@ export type HostContextValue = {
     sessionId: string,
     bytes: Uint8Array,
     signal?: AbortSignal,
+    writeWaitMs?: string,
   ): Promise<Operation>;
   takeover(sessionId: string, signal?: AbortSignal): Promise<Operation>;
   invoke(input: HostInvocation, signal?: AbortSignal): Promise<Operation>;

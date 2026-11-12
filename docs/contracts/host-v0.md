@@ -145,7 +145,7 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 本地增量消息为 `{type:"delta",subscriptionId,delta:Delta}`。错误终止使用 `{type:"subscriptionEnded",subscriptionId,error}`；错误只含稳定 code 与固定说明，不含正文、引用或 details。终止通道只允许本连接已登记的订阅，即使正文权限已撤销也能报告终止；若连接队列连终止通知也无法容纳，则关闭连接，客户端重新附着并取快照。显式 `subscription.close` 返回 `closed:true`，不存在时同样返回；它不停止 Host 业务。队列和历史同时按条数、字节限制，溢出清空该订阅正文并通过独立终止槽报告 `CURSOR_EXPIRED`，不静默跳过增量。
 
-`host.activity` 与 `host.operations` 的公共投影仅发布明确元数据，禁止携带 Call.params、credential、完整 Operation.result 或 error.details。查询活动按 actorId/requestId 复用，当前 Host 保留最多 1024 条最近活动；操作投影从持久 Store 读取最多 256 条在途优先的近期记录，完整保留结果仍通过 operation.get 按当前原始资源权限查询。
+`host.activity` 与 `host.operations` 的公共投影仅发布明确元数据，禁止携带 Call.params、credential、完整 Operation.result 或 error.details。查询活动按 actorId/requestId 复用，当前 Host 保留最多 1024 条最近活动；操作详情轮询、状态投影、Raw 读取/续额及指标等自监控请求不追加活动，避免观察自身产生整份历史更新。操作投影从持久 Store 读取最多 256 条在途优先的近期记录，完整保留结果仍通过 operation.get 按当前原始资源权限查询。
 
 ## 本地 IPC 与用户控制
 

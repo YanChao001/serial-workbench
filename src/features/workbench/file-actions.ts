@@ -1,4 +1,6 @@
 import type { HostContextValue } from "@/providers/host-context";
+import type { WriteWaitMode } from "@/lib/generated/bindings";
+import { sendWaitMs } from "./send-wait";
 import type {
   CaptureStartParams,
   FileTransferParams,
@@ -9,7 +11,11 @@ export type FileActionHost = Pick<
   HostContextValue,
   "state" | "pickFile" | "invoke" | "connection"
 >;
-export function createWorkbenchFileActions(current: () => FileActionHost) {
+export function createWorkbenchFileActions(
+  current: () => FileActionHost,
+  waitMode: (hostId: string, deviceId: string) => WriteWaitMode = () =>
+    "automatic",
+) {
   function sessionTarget(sessionId: string) {
     const host = current();
     const session = host.state.sessions.find(
@@ -91,7 +97,13 @@ export function createWorkbenchFileActions(current: () => FileActionHost) {
         chunkBytes: "4096",
         bytesPerSecond: "0",
         interChunkMs: "0",
-        writeWaitMs: session.configuration.writeWaitMs,
+        writeWaitMs: sendWaitMs(
+          session.configuration,
+          Number(
+            BigInt(selected.length) < 4096n ? BigInt(selected.length) : 4096n,
+          ),
+          waitMode(target.hostId, session.deviceId),
+        ),
       };
       await host.invoke(
         {

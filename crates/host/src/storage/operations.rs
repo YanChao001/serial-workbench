@@ -872,6 +872,14 @@ impl Database {
         let mut items = Vec::new();
         for row in rows {
             let operation = decode(&row.map_err(|_| unavailable())?)?;
+            let error_code = operation
+                .error
+                .as_ref()
+                .or(match operation.result.as_ref() {
+                    Some(ActionResult::Tx(receipt)) => receipt.backend_error.as_ref(),
+                    _ => None,
+                })
+                .map(|error| error.code.clone());
             let mut reveal_target = operation.reveal_target;
             reveal_target.result_ref = None;
             items.push(OperationSummary {
@@ -888,7 +896,7 @@ impl Database {
                 started_at: operation.started_at,
                 settled_at: operation.settled_at,
                 progress: operation.progress,
-                error_code: operation.error.map(|error| error.code),
+                error_code,
             });
         }
         serde_json::from_value(

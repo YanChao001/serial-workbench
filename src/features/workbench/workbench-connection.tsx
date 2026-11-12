@@ -213,6 +213,7 @@ export function WorkbenchConnection({
         hasSessionView ? (
         <WorkbenchIconButton
           label={labels.closeSession}
+          tooltip={labels.disconnect}
           variant="default"
           aria-pressed="true"
           disabled={!canClose || opening !== null}

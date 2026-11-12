@@ -25,6 +25,12 @@ pub fn adjacent_host_executable() -> HostResult<PathBuf> {
         std::env::consts::EXE_SUFFIX
     )))
 }
+fn host_executable(options: &ConnectOptions) -> HostResult<PathBuf> {
+    options
+        .expected_host_executable
+        .clone()
+        .map_or_else(adjacent_host_executable, Ok)
+}
 
 impl HostClient {
     /// Attach first, or start the adjacent Host after the existing OS instance lock proves idle.
@@ -121,7 +127,7 @@ async fn instance_running(options: &ConnectOptions, deadline: Instant) -> HostRe
 
 #[cfg(unix)]
 fn start_host(options: &ConnectOptions) -> HostResult<StartedHost> {
-    let mut command = Command::new(adjacent_host_executable()?);
+    let mut command = Command::new(host_executable(options)?);
     command
         .arg("--profile")
         .arg(&options.profile)
@@ -175,7 +181,7 @@ fn start_host(options: &ConnectOptions) -> HostResult<StartedHost> {
         },
     };
     let flags = windows_creation_flags()?;
-    let executable = adjacent_host_executable()?;
+    let executable = host_executable(options)?;
     let mut application: Vec<u16> = executable.as_os_str().encode_wide().collect();
     let mut command_line = windows_argument(executable.as_os_str())?;
     command_line.extend(" --profile ".encode_utf16());

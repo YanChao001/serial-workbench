@@ -63,7 +63,7 @@ pub(super) enum EventFrame {
         dispatch: Box<crate::client_effects::ClientEffectDispatch>,
     },
     Raw {
-        _slot: crate::stream::RawMemoryLease,
+        delivery: crate::stream::RawMemoryLease,
         batch: Arc<crate::stream::PreparedRawBatch>,
     },
 }
@@ -283,10 +283,10 @@ impl ConnectionContext {
             .map_err(|_| busy())?;
         let stamp = batch.stamp.clone();
         let delivery_liveness = Some(batch.delivery_liveness());
-        let slot = batch.queue_lease()?;
+        let delivery = batch.delivery_lease()?;
         self.events
             .try_send(AuthorizedEvent {
-                frame: EventFrame::Raw { _slot: slot, batch },
+                frame: EventFrame::Raw { delivery, batch },
                 grant: Some(("content.read".into(), target)),
                 _budget: budget,
                 subscriptions: self.subscriptions.clone(),
@@ -379,6 +379,12 @@ impl HostServer {
             endpoint: listener.endpoint().into(),
             pid: std::process::id(),
             protocol_version: ProtocolVersion::V0_1,
+            executable: Some(std::env::current_exe().map_err(|_| {
+                HostError::new(
+                    "STORAGE_UNAVAILABLE",
+                    "Cannot identify the running Host executable",
+                )
+            })?),
         };
         let path = guard.namespace().join("discovery.json");
         blocking(move || discovery.write(&path)).await?;

@@ -549,13 +549,6 @@ async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
     assert!(
         matches!(first.body, IpcMessage::Delta { ref subscription_id, .. } if subscription_id == &subscription)
     );
-    let ended = tokio::time::timeout(Duration::from_secs(3), receive.recv())
-        .await
-        .unwrap()
-        .unwrap();
-    assert!(
-        matches!(ended.body, IpcMessage::SubscriptionEnded { ref subscription_id, ref error } if subscription_id == &subscription && error.code == "CURSOR_EXPIRED")
-    );
     let reply = bridge
         .request(
             "main",
@@ -569,9 +562,93 @@ async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
         .await
         .unwrap();
     assert!(matches!(reply, RpcReply::Success { .. }));
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), receive.recv())
+            .await
+            .is_err(),
+        "state delivery must wait for consumption without retiring the subscription"
+    );
+    assert_eq!(bridge.pending_for_test("main").await.0, 1);
+    bridge
+        .delivery_ack(
+            "main",
+            attached.generation,
+            subscription.clone(),
+            DeliveryStream::Data,
+            1.into(),
+        )
+        .await
+        .unwrap();
+    let second = tokio::time::timeout(Duration::from_secs(3), receive.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        matches!(second.body, IpcMessage::Delta { ref subscription_id, .. } if subscription_id == &subscription)
+    );
+    bridge
+        .delivery_ack(
+            "main",
+            attached.generation,
+            subscription.clone(),
+            DeliveryStream::Data,
+            2.into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bridge.pending_for_test("main").await.0, 0);
+    host.projections()
+        .commit(
+            &Id::try_from("host.devices").unwrap(),
+            Id::try_from("devices.changed").unwrap(),
+            JsonObject::new(),
+            JsonObject::new(),
+        )
+        .unwrap();
+    let third = tokio::time::timeout(Duration::from_secs(3), receive.recv())
+        .await
+        .unwrap()
+        .unwrap();
+    let subscriptions = bridge.inner.lock().await.windows["main"]
+        .subscriptions
+        .clone();
+    let waiting = deliver_state_when_ready(&subscriptions, attached.generation.get(), &third);
+    tokio::pin!(waiting);
+    assert!(
+        tokio::time::timeout(Duration::from_millis(50), waiting.as_mut())
+            .await
+            .is_err()
+    );
+    bridge
+        .unsubscribe("main", subscription.clone())
+        .await
+        .unwrap();
+    assert!(
+        tokio::time::timeout(Duration::from_secs(3), waiting)
+            .await
+            .unwrap()
+            .is_none()
+    );
+    // 关闭仅唤醒等待者；实际已交付的第三条消息仍须由前端确认归还。
+    assert_eq!(bridge.pending_for_test("main").await.0, 1);
+    bridge
+        .delivery_ack(
+            "main",
+            attached.generation,
+            subscription.clone(),
+            DeliveryStream::Data,
+            3.into(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(bridge.pending_for_test("main").await.0, 0);
+    let client = bridge.inner.lock().await.windows["main"].client.clone();
     drop(bridge);
     stop.send(()).unwrap();
     running.await.unwrap().unwrap();
+    tokio::time::timeout(Duration::from_secs(3), client.wait_for_disconnect())
+        .await
+        .unwrap();
 }
 
 #[tokio::test]
@@ -1575,6 +1652,16 @@ fn concurrent_host_terminals_use_normal_budget_then_one_emergency_slot() {
         deliver_state(&mut subscriptions, 1, terminal(id.clone()));
     }
     assert!(!subscriptions.failed);
+    assert_eq!(subscriptions.ledger.lock().unwrap().pending().0, 3);
+    let waiting = try_deliver_state(
+        &mut subscriptions,
+        1,
+        &terminal(ids[2].clone()),
+        StateDeliveryPolicy::WaitForAck,
+    );
+    assert!(matches!(waiting, StateDelivery::Waiting(_)));
+    assert!(!subscriptions.failed);
+    assert!(subscriptions.active.contains_key(&ids[2]));
     assert_eq!(subscriptions.ledger.lock().unwrap().pending().0, 3);
     // 普通预算及唯一应急槽都耗尽后，仍关闭连接，不无限排队。
     deliver_state(&mut subscriptions, 1, terminal(ids[2].clone()));

@@ -156,7 +156,7 @@ for (const sample of [
         receiveToolbar: rect(".workbench-receive-toolbar"),
         composeToolbar: rect(".workbench-compose-toolbar"),
         editor: rect(".workbench-editor"),
-        receive: rect(".workbench-stream-log"),
+        receive: rect(".workbench-receive-frame"),
         send: rect(".workbench-send"),
         input: rect(".workbench-draft-frame"),
         text: rect(".workbench-draft"),

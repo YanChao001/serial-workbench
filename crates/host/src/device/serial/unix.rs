@@ -27,8 +27,53 @@ pub(super) fn last_error() -> BackendError {
 }
 
 struct PortResource {
-    fd: OwnedFd,
+    fd: Option<OwnedFd>,
     claim: super::SerialClaim,
+    closed: Arc<PortClosed>,
+}
+#[derive(Debug, Default)]
+struct PortClosed {
+    result: std::sync::Mutex<Option<HostResult<()>>>,
+}
+impl BackendCleanup for PortClosed {
+    fn poll(&self) -> Option<HostResult<()>> {
+        self.result.lock().ok()?.clone()
+    }
+}
+impl PortResource {
+    fn new(fd: OwnedFd, claim: super::SerialClaim) -> Self {
+        Self {
+            fd: Some(fd),
+            claim,
+            closed: Arc::new(PortClosed::default()),
+        }
+    }
+    fn raw(&self) -> i32 {
+        self.fd
+            .as_ref()
+            .expect("live serial descriptor")
+            .as_raw_fd()
+    }
+}
+impl Drop for PortResource {
+    fn drop(&mut self) {
+        let Some(fd) = self.fd.take() else {
+            return;
+        };
+        // close 失败也不重试 fd；编号可能已经被系统重用。
+        let result = if unsafe { libc::close(fd.into_raw_fd()) } < 0 {
+            let error = last_error();
+            self.claim
+                .isolated
+                .store(true, std::sync::atomic::Ordering::SeqCst);
+            Err(*error.error)
+        } else {
+            self.claim.confirm_release()
+        };
+        if let Ok(mut closed) = self.closed.result.lock() {
+            *closed = Some(result);
+        }
+    }
 }
 struct UnixPort {
     port: Option<Arc<PortResource>>,
@@ -64,7 +109,7 @@ pub(super) fn open(
         return Err(last_error());
     }
     let mut port = UnixPort {
-        port: Some(Arc::new(PortResource { fd: owned, claim })),
+        port: Some(Arc::new(PortResource::new(owned, claim))),
         configuration: config.clone(),
     };
     let application = super::NativePort::configure(&mut port, config)?;
@@ -78,7 +123,7 @@ impl UnixPort {
             .ok_or_else(|| HostError::new("BACKEND_DISCONNECTED", "Serial port is closed").into())
     }
     fn fd(&self) -> BackendResult<i32> {
-        Ok(self.resource()?.fd.as_raw_fd())
+        Ok(self.resource()?.raw())
     }
 }
 fn ready(fd: i32, event: i16, wait: Duration) -> BackendResult<bool> {
@@ -167,7 +212,7 @@ impl super::NativePort for UnixPort {
             isolated,
             move |bytes, deadline, signals, progress| {
                 prepare_cancel_signal();
-                let fd = resource.fd.as_raw_fd();
+                let fd = resource.raw();
                 Ok(write_remaining(
                     &bytes,
                     deadline,
@@ -283,7 +328,7 @@ impl super::NativePort for UnixPort {
         let isolated = resource.claim.isolated.clone();
         Ok(super::start_drain_job(request, isolated, move || {
             prepare_cancel_signal();
-            if unsafe { libc::tcdrain(resource.fd.as_raw_fd()) } < 0 {
+            if unsafe { libc::tcdrain(resource.raw()) } < 0 {
                 Err(last_error())
             } else {
                 Ok(())
@@ -294,29 +339,24 @@ impl super::NativePort for UnixPort {
         let Some(resource) = self.port.take() else {
             return Ok(());
         };
-        match Arc::try_unwrap(resource) {
-            Ok(resource) => {
-                // close 失败也不重试 fd；编号可能已经被系统重用。
-                if unsafe { libc::close(resource.fd.into_raw_fd()) } < 0 {
-                    resource
-                        .claim
-                        .isolated
-                        .store(true, std::sync::atomic::Ordering::SeqCst);
-                    Err(last_error())
-                } else {
-                    Ok(())
-                }
-            }
-            Err(resource) => {
-                resource
-                    .claim
-                    .isolated
-                    .store(true, std::sync::atomic::Ordering::SeqCst);
-                Err(HostError::new(
-                    "CONTROL_UNKNOWN",
-                    "A native drain still owns the serial descriptor",
-                )
-                .into())
+        let closed = resource.closed.clone();
+        resource
+            .claim
+            .isolated
+            .store(true, std::sync::atomic::Ordering::SeqCst);
+        drop(resource);
+        match closed.poll() {
+            Some(Ok(())) => Ok(()),
+            result => {
+                let mut error =
+                    BackendError::from(result.and_then(Result::err).unwrap_or_else(|| {
+                        HostError::new(
+                            "CONTROL_UNKNOWN",
+                            "Native I/O still owns the serial descriptor",
+                        )
+                    }));
+                error.cleanup = Some(closed);
+                Err(error)
             }
         }
     }
@@ -431,6 +471,49 @@ pub(super) fn interrupt_thread(join: &JoinHandle<()>) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    type TestClaims = Arc<std::sync::Mutex<std::collections::HashMap<Id, Vec<String>>>>;
+    fn isolated_descriptor() -> (UnixPort, TestClaims) {
+        let id = Id::try_from("isolated-test-descriptor").unwrap();
+        let claims = Arc::new(std::sync::Mutex::new(std::collections::HashMap::from([(
+            id.clone(),
+            vec!["locator:test-fd".to_owned()],
+        )])));
+        let resource = Arc::new(PortResource::new(
+            tempfile::tempfile().unwrap().into(),
+            super::super::SerialClaim {
+                id,
+                claims: claims.clone(),
+                isolated: Arc::new(std::sync::atomic::AtomicBool::new(true)),
+                released: false,
+            },
+        ));
+        (
+            UnixPort {
+                port: Some(resource),
+                configuration: SerialConfiguration::default(),
+            },
+            claims,
+        )
+    }
+    #[test]
+    fn isolated_descriptor_releases_claim_after_confirmed_close() {
+        let (mut port, claims) = isolated_descriptor();
+        super::super::NativePort::close(&mut port).unwrap();
+        assert!(claims.lock().unwrap().is_empty());
+    }
+    #[test]
+    fn held_io_descriptor_retains_its_claim_until_actual_close() {
+        let (mut port, claims) = isolated_descriptor();
+        let held = port.port.as_ref().unwrap().clone();
+        let error = super::super::NativePort::close(&mut port).unwrap_err();
+        let completion = error.cleanup.expect("retained descriptor completion");
+        assert_eq!(error.error.code, "CONTROL_UNKNOWN");
+        assert!(completion.poll().is_none());
+        assert!(!claims.lock().unwrap().is_empty());
+        drop(held);
+        assert_eq!(completion.poll(), Some(Ok(())));
+        assert!(claims.lock().unwrap().is_empty());
+    }
     fn signals() -> super::super::WriteSignals {
         super::super::WriteSignals {
             cancelled: Arc::new(std::sync::atomic::AtomicBool::new(false)),

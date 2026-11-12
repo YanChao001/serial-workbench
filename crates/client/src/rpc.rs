@@ -212,6 +212,11 @@ pub(crate) struct RpcConnection {
     diagnostic_id: Option<u64>,
 }
 impl RpcConnection {
+    pub async fn wait_for_disconnect(&self) {
+        let mut closed = self.closed.subscribe();
+        let _ = closed.wait_for(|closed| *closed).await;
+    }
+
     pub async fn close(&self) -> HostResult<()> {
         self.healthy.store(false, Ordering::Release);
         self.closed.send_replace(true);
@@ -461,6 +466,7 @@ impl RpcConnection {
                 let writer = writer.as_mut().ok_or_else(disconnected)?;
                 let mut write_guard = WriteGuard {
                     healthy: &self.healthy,
+                    closed: &self.closed,
                     complete: false,
                     diagnostic_id: self.diagnostic_id,
                     channel: channel_label(self.channel),
@@ -533,6 +539,7 @@ impl Drop for PendingGuard {
 }
 struct WriteGuard<'a> {
     healthy: &'a AtomicBool,
+    closed: &'a watch::Sender<bool>,
     complete: bool,
     diagnostic_id: Option<u64>,
     channel: &'static str,
@@ -546,6 +553,7 @@ impl Drop for WriteGuard<'_> {
                 self.channel,
             );
             self.healthy.store(false, Ordering::Release);
+            self.closed.send_replace(true);
         }
     }
 }

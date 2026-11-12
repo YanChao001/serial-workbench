@@ -61,6 +61,12 @@ function fixture(t) {
 printf '\\t%s' "$@" >> "$TEST_LOG"
 printf '\\n' >> "$TEST_LOG"
 for argument in "$@"; do
+  if [[ "$argument" == update && "$TEST_INDEX_FAILURE" != 0 ]]; then
+    for option in "$@"; do
+      if [[ "$option" == --error-on=any ]]; then exit "$TEST_INDEX_FAILURE"; fi
+    done
+    echo 'W: Failed to fetch index; old lists retained' >&2
+  fi
   if [[ "$argument" == --download-only ]]; then exit "$TEST_DOWNLOAD_FAILURE"; fi
 done
 `,
@@ -91,6 +97,7 @@ exec "$@"
           ...process.env,
           TEST_LOG: posix(log),
           TEST_DOWNLOAD_FAILURE: "0",
+          TEST_INDEX_FAILURE: "0",
           TEST_TIMEOUT_FAILURE: "0",
           ...env,
         },
@@ -188,6 +195,7 @@ for (const mode of ["rust", "native"]) {
         "-o",
         "Acquire::https::Timeout=15",
         "update",
+        "--error-on=any",
       ]);
       assert.ok(apt[1].includes("--download-only"));
       assert.ok(apt[2].includes("--no-download"));
@@ -227,6 +235,7 @@ for (const mode of ["rust", "native"]) {
 }
 
 for (const [name, env, code] of [
+  ["index error", { TEST_INDEX_FAILURE: "100" }, 100],
   ["download error", { TEST_DOWNLOAD_FAILURE: "23" }, 23],
   ["download timeout", { TEST_TIMEOUT_FAILURE: "124" }, 124],
 ]) {

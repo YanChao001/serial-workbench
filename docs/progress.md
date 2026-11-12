@@ -1,6 +1,174 @@
 # 开发进度
 
-更新：2026-11-11。M1b 与本轮界面软件切片均已交付；PR #42 已 squash 合入 main。最终完整四目标 CI 的 12 项必需任务全部成功。解锁后的 COM14 开发版短回环及正常关闭复测通过，开发启动就绪仍观察到 7.8—9.4 秒，速度问题未闭合。按用户要求暂停总目标，不推进 M2—M6。最低系统、实际 72h、完整硬件及发行等范围仍未验收；整个目标尚未完成。
+更新：2026-11-12。M1b 与此前界面软件切片已交付，总目标继续推进。PR #45 的 `f1504de` 已获用户普通 GUI/COM5/COM14 实测通过，但完整 CI 的 macOS ARM 启动失败。当前已用合法合成随机密钥及锁定 Tauri 真实脚本稳定复现同一错误，修正注释中的占位符，删除临时诊断接线及无现场依据的容器兜底；本机回归转绿，尚须 ARM 三阶段预检及新候选完整四目标。失败与原始证据保留，本切片尚未合入，最低系统、实际 72h、完整硬件及发行未验收。
+
+## IPC 随机密钥注释缺陷
+
+锁定 Tauri 2.12.4 的 `Builder::invoke_system` 对整段脚本替换认证占位符，随机密钥由 16 字节生成 Z85 字符串。项目传输的 ESLint 全局声明注释也含同一占位符，合法密钥含 `*/` 时会提前终止注释，整段初始化发生 SyntaxError。20 字符合成密钥在旧脚本稳定失败，postMessage 缺失且零投递；配合锁定版本的真实基础与 IPC 调用脚本，得到与 CI 相同的 `window.__TAURI_INTERNALS__.postMessage is not a function`。普通合成值仍只投递一次；没有读取真实运行密钥。
+
+修订只在可执行表达式保留占位符；继续使用上游创建的内部容器，撤回先前没有原生顺序证据的创建兜底及其专属用例。另删除未接线的旧 fetch 传输副本及其 4 个专属测试，避免对失效代码的通过形成误导；当前单一投递、认证、序列化、原生权限、预算与时限不变。实际密钥边界回归先失败后通过，整份 5 项及真实上游双合成值探针转绿；前端单元用例未增加。
+
+两轮 ARM 诊断均未复现随机启动失败：`0685aa8` 有前后探针 16 次正常，`136a3aa` 原样传输、仅测试后只读观察也 16 次正常。第二轮 [43133753285](https://github.com/YanChao001/serial-workbench/actions/runs/43133753285) 的提交树源码指纹重算为 `a75ef6e5b4d08b0a639e0c10d4d750c8cffc7ac29960c37803d6cc1cc0399e62`，与产物一致；先前本机暂存删除前的指纹含缺失路径占位，不能用作干净候选值，已纠正。GUI 哈希与 f1504de 失败产物相同，不能把诊断正常解释为换用了修复程序。两份 artifact 下载 SHA、共 32 份观察、应用退出及 Host 正常关停报告已核对；只计诊断，不计正式验收。
+
+临时探针、冷启动循环、输入参数、工作流分支及测试后快照均已清理，恢复正式工作流及原形态断言；保留测试 runner 合作取消到实际清理结束的责任修正。两轴复核均无剩余发现。完整工程脚本首轮 318 项中 300 通过、14 失败、4 个原条件跳过，135.5 秒；14 项均为本机沙箱拒绝 CIM 查询或自有 Node 夹具 taskkill。核对随机临时目录和进程归属后，仅在允许该操作的环境重跑两个相关文件，29 通过、1 个原平台跳过、零失败，21.0 秒；原 14 个失败名称均匹配通过记录，不计整套重新执行。格式、定向 lint、247 条账本及新增标题链接核对通过，证据为 `.cache/ui-audit/ipc-invoke-key-local-verification.json`，原权限失败仍保留。
+
+下一步对冻结修订执行 ARM 原生三阶段预检，通过后同源完整四目标，原时限和零重试保持。Windows UI 及物理回环通过仍属于用户报告的 f1504de 范围，不扩展为新候选的完整平台或 M6 验收。
+
+## f1504de 实机复测与启动诊断
+
+本节保留初始实测与诊断过程，当前修订及下一步以上节为准。
+
+候选 `f1504ded0bef99600e9078a278fd64b12e5c2ea5` 的 [Windows 全三阶段预检 43124048102](https://github.com/YanChao001/serial-workbench/actions/runs/43124048102) 成功：fresh 28、persisted 2、centered 2 项通过，1 个原平台条件跳过，原 12 次重载全部执行。源码指纹 `d9dd0c13f1a43e8a9adfa467d4c8365ef150f572b337b3037a6b87cfbda0476f` 与收据一致，三份阶段日志大小及摘要匹配，冲突与投递预算故障标记为零。115 次主题/focus 采样没有发送或关闭禁用；正常关闭的 Raw 计数为 1→1，既有 1 条与套件主动停止旧 Host 的时刻一致，不能记成基线为零。产物下载 SHA 与 GitHub digest 一致，3 张截图已逐张查看，验证清单为 `.cache/ui-audit/ci-f1504de-preflight-verification.json`。
+
+用户随后对该候选主工作区的普通 `pnpm app:dev` 实测回复“上述项目全部通过”，对应请求中的 COM5、COM14 分别 10000 字节完整回环、断开重开、密集输入/删除、真实切回窗口和连续切换主题的卡顿/闪灰复测。这是用户报告的 Windows GUI 与物理回环通过；没有自动采集字节摘要或新的启动耗时，不能扩展为双端口并行、故障注入恢复、全部参数/设备矩阵、最低系统或长稳验收。历史 COM5/10800 字节及 COM14/3576 字节失败仍保留。247 条账本继续沿用 PR #45 的对应软件切片证据和未完成状态，不将这次局部通过提升为整项硬件或发行验收。
+
+同候选的[完整 CI 43125243623](https://github.com/YanChao001/serial-workbench/actions/runs/43125243623) 已结束且失败：四个 Rust、Windows/Linux/Intel Native、前端、浏览器和绑定共 10 项必需任务成功，macOS ARM Native 与质量门禁失败。ARM fresh 首项等待真实窗口可见超时 15 秒，0 通过、1 失败，后续场景与阶段未执行。失败截图仍为 `window.__TAURI_INTERNALS__.postMessage` 缺失，日志在窗口创建前记录 Web 内容进程终止，仅有显示兜底，没有 frontend-ready。产物 `13902347517` 下载 SHA 与 GitHub digest 匹配，源码指纹一致，实际 GUI 哈希与旧候选不同；截图已查看，原始现场保留于 `.cache/ui-audit/ci-f1504de-arm-failure/`。Windows 通过及本机脚本顺序反例不能覆盖这次反证，不能认定初始化故障已完全修复。
+
+首轮仅编入 E2E 的临时前后探针区分脚本未进入、执行中断或内部容器被替换；一次构建后最多 16 次独立冷启动，首次失败即停，只采集类型、次数、身份比较与分类错误，不采集密钥或调用正文，并核对实际二进制包含该轮脚本。诊断入口限定实际失败的 ARM，明确标记非验收，不运行正式质量门禁，不代替三阶段预检；普通 GUI/Host 运行代码保持该候选。复核中已修正诊断范围及取消收尾责任，规格/规范剩余发现均为零。定向脚本 11 项、账本校验与测试、lint/格式及 Rust E2E 编译检查通过；工作流自检 6 通过、2 失败，失败均为临时专用模式与正式入口形态断言不符，原断言未放宽。
+
+[诊断 43131504863](https://github.com/YanChao001/serial-workbench/actions/runs/43131504863) 对应 `0685aa8` / 源码 `5d3afe9c7856456a73c2d09af46d8d38b5d1ba9d66d87ba678239af4810c4040`，16 次冷启动全部正常：每次传输进入及完成各 1 次，容器已存在且未替换，postMessage 为函数，分类脚本错误为零。16 份应用实际退出与 Host 正常关停报告已核对，artifact `13905148360` 下载 SHA 匹配。该轮没有复现故障，不能作为已修复依据。下一轮移除初始化前后探针，恢复原样传输，只在测试后读取状态作对照，以排除探针对时序的影响；仍首次失败即停。临时入口定位后全部移除，恢复正式工作流并重新检查，再完成失败目标三阶段预检及冻结候选完整四目标。本机未启动窗口或串口，用户 Host 未停止。
+
+f1504de 完整检查中三个成功 Native 的 9 份日志摘要与源码收据一致，230 次主题/focus 采样无禁用，10000 字节虚拟发送均通过，正常关闭 Raw 均为 0→0；8 张截图本轮逐张查看。Ubuntu 正式离线六场景/18 断言通过，现有验证器核对实际遥测 600.031 秒、包装 607.862 秒及独立网络命名空间/非 root 身份；不计实际 72h。对应证据为 `.cache/ui-audit/ci-f1504de-{passed-native,offline}-verification.json`。
+
+## c2b3b5a 原生启动失败与初始化修订
+
+本节保留上一候选的失败与修订过程，当前出口以上节为准。
+
+候选 `c2b3b5a15fa28ecb83be263aab2dc6c4cac1b17c` 的 [Intel 全三阶段预检 43118609682](https://github.com/YanChao001/serial-workbench/actions/runs/43118609682) 成功，fresh 27、persisted 2、centered 2 项通过、2 个原平台条件跳过，原 12 次重载全部执行。源码指纹 `fe4abb60559cd8d78209848ee1debc41162698c10cf57e3a2652c670aff6ef83` 与产物一致，三份原生日志大小及摘要匹配，冲突和投递预算故障标记为零，正常关闭 Raw 故障为 0→0；主动 Host 重启时的 11 条诊断与正式关停时间一致。产物下载 SHA 与 GitHub digest 一致，3 张截图已逐张查看；只计 Intel 原生预检与虚拟设备，不计完整门槛或 COM。
+
+同候选的[完整 CI 43120301999](https://github.com/YanChao001/serial-workbench/actions/runs/43120301999) 已结束且失败：10 项必需任务成功，Windows Native 及质量门禁失败，四个 Rust、另三个 Native、前端、浏览器与绑定通过。Windows fresh 28、persisted 2 项通过，1 个原平台条件跳过，centered 首项在等待主窗口可见时超时 15 秒，第二项未执行；四目标共 48 次原有重载均通过。失败截图实际为恢复页，报 `window.__TAURI_INTERNALS__.postMessage is not a function`；原生日志只有窗口创建和 3 秒显示兜底，没有 frontend-ready，不能仅归为居中几何断言。Windows 产物 `13900956557` 下载 SHA 匹配，源码收据一致；截图及原始日志保留在 `.cache/ui-audit/ci-c2b3b5a-native/desktop-e2e-x86_64-pc-windows-msvc/`，不能把该阶段改记为通过。
+
+本机用锁定 Tauri 2.12.4 的真实基础脚本、项目传输脚本及真实 IPC 调用脚本构成约 1 秒的反例：基础脚本先执行时正常投递一次，传输先执行时初始化报非对象，后续调用复现截图同一错误且零投递。当前修订在传输初始化时按上游结构创建缺失容器，保留已有容器和插件状态；没有增加业务等待、重试、预算或权限。新增 1 个工程脚本回归先红后绿，整份 5 项及真实双顺序探针、定向 lint/格式通过，规格/规范两轴复核均无剩余发现；前端单元用例未增加。该反例尚未证明 Windows 现场的实际脚本注入顺序，仍须实际 Windows 全三阶段预检及新冻结候选的完整门槛。
+
+该轮前端综合检查通过，浏览器 133 项通过；另三个 Native 的 9 份阶段日志摘要匹配，228 次主题/focus 采样无发送/关闭禁用，10000 字节虚拟发送均通过，8 张截图保留但本轮未逐张复审。Ubuntu 正式离线六场景/18 断言、实际遥测 600.092 秒及包装 615.934 秒已用现有验证器核对。成功范围不覆盖 Windows 启动失败。旧候选 bundle、原失败和探针结果保留；本机未启动窗口或串口，修改前核对只有用户 Host 38520，未停止它。当前证据为 `.cache/ui-audit/ci-c2b3b5a-*` 和 `ipc-bootstrap-*`；下一步冻结初始化修订，执行 Windows 全三阶段预检，通过后同源完整四目标。普通 GUI/COM 与 247 条账本出口仍未闭合。
+
+## e4710a2 四目标失败与重载验证
+
+本节保留上一候选的失败及修订过程，当前出口以上节为准。
+
+候选 `e4710a2be6b7ff9e14e20802f4b87bf205eea3b1` 的[完整 CI 43112354424](https://github.com/YanChao001/serial-workbench/actions/runs/43112354424) 已结束且失败，9 项必需任务成功、3 项失败。四个 Rust、Windows/Linux/arm64 Native、浏览器与绑定成功；前端、Intel Native 及质量门禁失败。冻结源码指纹 `f67ee0b8e01df2429b1a75885b44db9318b77028b70fbf94093ce5c8bc43bcde` 与 Intel 失败产物收据一致，产物 `13897332363` 的下载 SHA256 与 GitHub digest 一致。成功任务不覆盖本轮失败或尚未执行场景。
+
+- 前端为 2138 通过、1 失败，约 48 秒。首页刷新错误的既有测试仍要求普通通知显示内部错误码，与精简提示后的行为不符；本机此前漏跑该首页集成文件。现修订原用例，检查本地化摘要、不泄露私有内容、日志保留错误码且原草稿和连接可用性不变；未增加单元用例。旧断言本机失败，整份首页 58 项修订后通过，类型、定向 lint 和格式通过。
+- Intel Native 在第 4 次主文档重载后的真实可见性查询超时，fresh 阶段 16 通过、1 失败、2 个原平台条件跳过，后续阶段未执行。失败截图显示设置页已渲染，不能据此将失败归为页面空白。锁定版本驱动的刷新调用只发起 `location.reload()` 就返回，旧文档可能提前满足 DOM 就绪条件；这仍是待 Intel 验证的原因假设。
+- 新增一个真实无头 Chromium 导航反例，控制驱动返回后旧文档继续存活：原等待会提前读取文档 1 而失败，修订后等待整份文档替换再读取文档 2，通过耗时约 4 秒。共享重载入口覆盖设置写入、原 12 次重复重载及工作区恢复，原真实 Native 查询、时限和零重试保持不变。该结果只证明导航屏障行为，不计 Intel 原生问题已修复。
+
+上述测试增量的规格、规范两轴复核均无剩余发现；WebDriver 单次投递回归通过，未修改产品运行代码、预算或契约，也未重跑未变 Rust 全集。原 CI、失败反例和首版夹具未命中问题的记录均保留于 `.cache/ui-audit/ci-e4710a2-*`、`notice-copy-overview-*`、`native-reload-*`。下一步冻结修订候选，先执行 Intel Native 全三阶段预检，通过后对同候选执行完整四目标门禁。PR #45 保持草稿，用户普通 GUI/COM 实测继续；247 条账本状态不提升。
+
+## e496cbf 四目标证据与当前出口
+
+候选 `e496cbf55b35b890c756223ab87979d61e95adfe` 的[完整 CI 43099948930](https://github.com/YanChao001/serial-workbench/actions/runs/43099948930) 已成功结束，12 项必需任务全部通过，四个 Rust、四个 Native、前端、浏览器、绑定与质量门禁均实际执行；四目标未签名生产构建完成，不计安装签名或发布。源码指纹 `f45d8b63a32284f168b77136fa19211251ef78a8416599e20db961f1a193ad10` 与当时干净主工作区及 Native 收据一致。此前 `b56b7ea` 的内部启动失败仍保留为未执行，不能改记为通过。
+
+- 浏览器 132 项通过（4.3 分钟）；四目标 Native 共 126 项通过、6 项原平台条件跳过，12 份阶段日志大小及摘要匹配，预算故障标记为零。344 次主题/focus 采样没有发送/关闭禁用；这些 focus 事件不代表真实 OS 切窗。正常关闭无新增 Raw 故障，Intel 的 1 次旧 epoch 失效已匹配套件主动停止旧 Host 的时刻。
+- Ubuntu 正式离线六场景及 18 个断言通过，实际遥测 600.107 秒、包装耗时 608.295 秒；独立网络命名空间、非 root 身份及父环境前后状态已按现有验证器复核。11 个自有进程全部退出，其中 2 个故障/崩溃夹具按记录强制终止，不计全部正常退出或实际 72h。
+- 最终 11 张 Native 窗口内截图及本轮 33 张相关浏览器截图已逐张查看。浏览器 artifact `13891187571` 的下载 SHA256 与 GitHub digest 一致；逐图摘要、原 36 项及追加响应反馈在 `.cache/ui-audit/ui-feedback-e496cbf-audit.{md,json}`，汇总证据为 `ci-e496cbf-final-verification.json`。任务、活动、日志仍需保留各自可见状态和源范围，不能将旧候选补图扩展为当前全部视觉验收。
+
+本轮追加修正只删除通知中重复的通用建议及常显错误码；具体错误仍通过既有本地化映射显示，原有安全日志、错误码和显式诊断详情边界保留，未改 Rust、DTO、权限、资源预算或 Host 生命周期。移除失效文案接线并调整既有回放导入错误测试，不新增测试用例。受影响 82 项 Vitest、类型检查、定向 ESLint、格式、247 条账本及其 28 项校验器测试通过，浏览器预览构建成功；没有重跑未变 Rust 全集。
+
+现有双语故障定位浏览器 4 项场景全部完成且断言通过，4 张新截图已逐张查看，错误码仍能从显式详情读取。运行器在停止其 Vite 预览时等待未结束；`Stop-Process -Id 56584,37388 -ErrorAction Stop` 返回 `NullReferenceException` 且两进程仍存活，核对路径、父子关系和创建时间后，仅通过 `Win32_Process.Terminate` 回收自有预览 PID 56584（返回 0），父 shell 37388 随后退出，运行器最终退出 0。日志记录 4 passed/7.7 分钟，包含退出等待，不能计为自动清理成功或应用响应耗时；最终进程核对仅保留原用户 Host 38520。证据为 `.cache/ui-audit/notice-copy-{targeted-vitest,typecheck,eslint,format,build-web,browser,planning-tests}.log` 和 `notice-copy-browser/`。未自动重启 GUI、打开串口或停止用户 Host。
+
+当前出口仍为最新普通开发版的冷启动、首次连接、大段输入/删除、真实切窗、COM5/COM14 大包回环及故障后恢复的用户实测，以及追加修改对应的正式候选门槛。旧 Host/CLI 的实机回环、CI 虚拟设备及浏览器 fixture 分别保留证据，均不代替该 GUI 出口。PR #45 保持草稿、未合入；247 条需求的软件、硬件和发行状态不因这些局部结果提升。
+
+## fceafcb 四目标结果与 Raw 定向诊断
+
+本节保留定位过程及各旧候选当时的结果；最新四目标状态与未完成出口以上节为准。
+
+候选 `fceafcb93dab3060fd8173ca34bfd6d7c55d68ad` 的[完整 CI 43075168510](https://github.com/YanChao001/serial-workbench/actions/runs/43075168510) 已结束且失败：10 项必需任务成功，Intel macOS Rust 与质量门禁失败。前端、浏览器、绑定、其他三个 Rust 目标和四个 Native 均成功；Ubuntu 正式六场景及实际 600 秒负载执行通过，不代表 72h。原先两种 macOS 的设置落盘场景均已通过；此前[arm64 定向预检 43073048947](https://github.com/YanChao001/serial-workbench/actions/runs/43073048947) 也通过。新失败仍须闭合，不能用其余成功任务替代。
+
+四个 Native 的源码指纹均为 `9d58b1b7ad716d3e620fdd763c41b80208d278ab78d2cc2127218b26e0159d9e`，与本机冻结收据一致；12 份阶段日志的大小与 SHA256 匹配，冲突及投递预算故障标记均为零。Windows/Linux 各 32、两种 macOS 各 31 项通过，另按原平台条件分别跳过 1/1/2/2 项。364 次主题/focus 采样无发送/关闭禁用，四目标 10000 字节虚拟发送通过；11 张实际截图已查看，不作为真实 COM 或原生窗口焦点切换的验收。收据、原日志与截图在 `.cache/ui-audit/ci-fceafcb-native/`，复核清单为 `ci-fceafcb-native-verification.json`。
+
+Intel 的 `host_raw_fragmented_burst_keeps_writer_alive_until_the_slow_reader_acks` 在 `stream_budget.rs:1251/1286` 仍得到 `UNAUTHENTICATED`，该目标 24 通过、1 失败；主动消费 Raw IPC 并未消除断开，先前按 SDK 队列积压解释仍不足。原始日志为 `.cache/ui-audit/ci-fceafcb-mac-intel-rust.log`。该轮仅启用受控关闭原因日志，并增加临时 Intel 单目标诊断，保留原 25 项目标、675×16 字节输入、原时限及资源上限；Windows 单例 10.83 秒通过只证明诊断可执行，不计 Intel 修复。最终候选仍须移除临时日志和诊断接线，再核验完整门槛。
+
+首轮[单包诊断 43081887522](https://github.com/YanChao001/serial-workbench/actions/runs/43081887522) 在 `91eb7fc` 为 25 通过，未复现。Windows 依赖图确认单包与工作区启用特性不同，Intel 两轮测试程序名也不同；这些差异尚未证明断开根因。后续改为保留 `--workspace`、仅选择 `--test stream_budget`，同时记录依赖特性。本机编译收据确认只构建 Host 和该测试目标，不必重建 GUI；相关证据为 `.cache/ui-audit/raw-{diagnostic-feature-comparison-windows,workspace-context-artifacts}.json*` 与 `raw-intel-diagnostic-91eb7fc.log`，不把单次未复现记为修复。
+
+随后[工作区目标诊断 43085205458](https://github.com/YanChao001/serial-workbench/actions/runs/43085205458) 在 `2a063a0` 也为 25 通过，测试程序名已与原失败一致，仍不能认定修复。下一轮恢复原 libtest 输出捕获，撤销全局日志初始化，改为仅在指定诊断环境及用例线程已决定关闭时输出稳定原因；必要时继续恢复原 Intel 流程的前端/程序准备及工作区前序测试。保留既有输入、时限和预算，不重跑其他平台或 Native 场景。原始日志为 `raw-intel-workspace-diagnostic-2a063a0.log`。Ubuntu 正式证据另已核对：六场景、18 断言全部通过，实际包装耗时约 608.46 秒，清单为 `ci-fceafcb-offline-verification.json`。
+
+[保留输出捕获的诊断 43089531672](https://github.com/YanChao001/serial-workbench/actions/runs/43089531672) 在 `bbb486e` 复现原 Raw 失败，25 项中 24 通过、1 失败，目标耗时 8.91 秒。SDK 临时探针记录 Raw `reason=eof`，没有记录 Raw 本地事件队列耗尽；该证据只将下一步收敛到 Host/控制连接的退出路径，尚不能确定根因。原始日志为 `.cache/ui-audit/raw-close-branch-diagnostic-bbb486e.log`。现增加 Host 写出、交付失败和控制连接失效的临时关闭分支探针；已获得可复现的单目标入口，不再恢复无关前端准备及完整工作区前序测试。Windows 原用例 10.80 秒通过、相关 Clippy 通过，不计 Intel 修复；探针及临时工作流在定位后清理。
+
+[Host 边界诊断 43092410105](https://github.com/YanChao001/serial-workbench/actions/runs/43092410105) 在 `cf12825` 为 25 通过、10.96 秒，未复现，不能计为修复。随后本机固定合法时序：真实 writer 先写出 32 个未 ACK 批次，新批已入队后源继续填充 reader；两次均在约 0.2 秒因 `encoding_reservation / LIMIT_EXCEEDED` 断流。单独填充未发送队列的首版反例未失败，也保留其结果，不将其作为红证据。新反例命中真实预算与 writer，不增加等待、扩大队列或模拟序列化结果。
+
+修订将原有编码暂存和 IPC 槽位在准备阶段一并保留，入队移交输出事件，实际写完先归还临时配额再推进已发送边界/唤醒；重放逐次计费，准备中的分配继续持有全局配额。原反例转绿；Host 库 154 通过、1 个原受控入口忽略，最后配额持有/读取等待调整后的 14 项 IPC 通过，原 `--workspace --test stream_budget` 25 项通过、11.30 秒。日志为 `.cache/ui-audit/raw-encoding-pressure-{red-round2,red-repeat,green}.log`、`raw-encoding-{host-lib,ipc-ownership,stream-budget}-green.log`。本机证据尚不证明 Intel 原失败已消除，后续同目标连续五轮，首次失败即停止；其后仍须清理探针并对最终候选完整四目标验收。
+
+该增量 Host 全目标 Clippy 通过，日志为 `raw-encoding-host-clippy.log`。规范轴与规格轴分别静态复核三处 Rust 增量，均无剩余发现；未把该结论扩展到硬件或完整平台验收。格式、247 条账本及质量门禁函数四项通过；工作流结构自检四项因临时 `raw_diagnostic` 条件/任务而失败，日志 `raw-diagnostic-workflow-static-failed.log`，未为临时入口放宽正式断言。定向检查后删除临时任务、输入和探针，再复核该自检；当前不能当作完整门禁通过。
+
+修订候选 `b56b7eac4cdc615ec03b3a2d84fa85829c9bf53d` 的 [Intel 五轮检查 43096138569](https://github.com/YanChao001/serial-workbench/actions/runs/43096138569) 在创建任何 job 前终止为 `startup_failure`；页面明确报告 GitHub 内部错误并建议重试，请求 ID `ea63398a-de0f-11f1-84bd-766776034f32`。对同一运行的一次重试请求也在创建 job 前终止，API 的 run_attempt 仍为 1；没有执行测试，不计软件失败或通过，不继续重复临时入口。原始状态、页面摘要保留在 `.cache/ui-audit/raw-encoding-intel-{run-final,retry-run,startup-failure}.json`。
+
+清理版移除 SDK/Host 临时探针及临时诊断输入、任务和门禁分支，正式 CI 与 SDK 文件分别恢复到 `fceafcb` 中的非诊断版本，修复和真实回归保留。工作流自检及门禁函数共 8 项恢复通过；SDK 库 18 通过、1 原受控入口忽略，Host IPC 14 通过，fmt 与两包库 Clippy 通过。同源 Host/CLI/MCP 构建完成，Host 的 41 个测试目标共 470 通过、2 原受控入口忽略，没有失败，包含原 Raw 目标和跨客户端集成；汇总只取各 Cargo 目标最终结果，避免把受控子进程输出重复计数。日志为 `.cache/ui-audit/raw-diagnostic-workflow-restored-green.log`、`raw-cleanup-{client,ipc,clippy}-green.log`、`raw-cleanup-host-integration.log`，集成汇总为 `raw-cleanup-host-integration-summary.json`。源码树中已无临时 Raw 探针标记。该状态尚须正式四目标验收，不以本机范围替代 Intel 或 Native。
+
+清理版独立 Host/CLI 的 10000 字节虚拟回环通过：TX/RX 全量及 SHA256 一致，会话正常关闭、测试 Host 正常退出，独立进程核对为零。构建前、执行前及执行后源码指纹均为 `2375540f3456c7643b3feb7381972a6faf6a8bfb0257c9d1c297001958e6dd3c`，程序哈希与实际 Windows 11 build 26200、Node/Rust 版本见 `.cache/ui-audit/virtual-ten-thousand-1794429803036/{summary,environment}.json`。仅证明该独立程序的认证 IPC/虚拟设备链路，不计 GUI、COM 或最低系统通过。
+
+## 完整四目标反例与测试审视
+
+冻结候选 `70799dfbe974734cca63f47ebe89644ecdbc99b0` 的[完整四目标 CI 43052024274](https://github.com/YanChao001/serial-workbench/actions/runs/43052024274) 已完成且失败，不合入。Windows Native、Windows Rust、macOS arm64 Rust 成功；Ubuntu 的浏览器、绑定、Rust 和 Native 均在依赖安装阶段遇 DNS 解析失败，未执行的场景不计软件通过或失败。macOS 两个 Native 均在透明度设置落盘等待失败；arm64 截图与收据证明界面 70%、落盘 60%，原生日志同时出现窗口投递预算耗尽及连接退休，不能仅延长等待。Intel Rust 的新增 Raw 碎片压力用例遇 `UNAUTHENTICATED`，仍须区分实际 Host 背压与客户端事件队列。最终状态、各任务原始日志及下载产物保留在 `.cache/ui-audit/ci-70799df-*`；未重新触发整轮来掩盖这轮失败。
+
+前端为 2138 通过、1 失败：权限恢复的测试夹具在输入去抖重新订阅后总是发布允许，覆盖了先前已确认的拒绝，原测试依赖手工事件赶在该变化之前完成。完整用户操作序列重复运行已在本机暴露失败，现夹具保持最近确认的权限，使用现有 user-event 执行完整点击和 Escape；两个场景各重复 13 次通过，整份 62 项重复运行通过，业务断言保留，未增加生产防御或放宽等待。相关日志为 `restore-menu-{user-sequence,stable-permission}.log`、`restore-layout-stable-permission.log`，不把局部结果记为新的完整候选通过。
+
+按 CI 实际报告清点，2139 项分布在 130 文件：契约 871（其中 Rust 导出有效/无效向量 802）、工作台 407、其余 861。数量包含参数化向量，不等同于界面场景数；清点收据为 `.cache/ui-audit/ci-70799df-frontend-test-counts.json`。侧栏测试还存在 `flex`、`items-center`、`px-3` 等实现类名断言，不能证明实际对齐和边距，属于需按行为合并的低价值覆盖。继续按既有测试规范保留用户行为、跨入口契约和真实故障回归，避免以测试数量或脆弱控件事件作为质量目标；测试不在普通应用中运行，运行路径是否过度防御须另查实际调用与耗时。247 条账本的软件、硬件和发行状态未提升。
+
+本轮修正：真实 Host 的窗口投递容量反例已复现后续消息被错误退订，改为等待 ACK 后同一订阅继续；普通查询仍可用，真实退订唤醒等待而不释放未消费消息。规范评审指出容量判断与预留必须原子完成，规格评审还指出在途写入中断未通知断开；均已修正并复核。真实 LocalStream、对端保持打开的取消反例先失败后通过，证明在途写取消会通知失效，不声称已测得部分写入的具体字节数。客户端全套与桌面库 174 项通过，早帧溢出、旧代次及应急终态预算保留；实际资源仍由正式关闭负责。
+
+Intel Raw 用例先前同时积压客户端事件队列，现持续消费 IPC 帧、仅保留最新游标并延后 Host ACK，仍使用相同的 675×16 字节输入、单字节尾块、时限和内存上限；本机定向通过，不作为 Intel CI 已通过。APT 索引失败反例也已红→绿：原 update 在下载错误后返回 0，现立即返回失败，浏览器安装复用同一索引准备，七项脚本检查通过，不声称已解决 runner DNS。日志在 `.cache/ui-audit/`：`native-delivery-credit-{red,green,desktop-lib-round2}.log`、`native-credit-atomic-desktop-green.log`、`write-disconnect-{notify-valid-red,client-green}.log`、`raw-fragment-ack-scope.log` 和 `apt-index-error-{red,green}.log`；首轮 Rust 测试扩展的借用编译错误也已保留并修正。
+
+本轮 `pnpm verify --jobs 3` 全部通过：2139 前端、317 工程脚本、4 原条件跳过及格式/lint/类型/配置/品牌/版本/生产构建，129.9 秒，日志为 `ci-followup-final-verify.log`。同源工作区测试 793 通过、5 个受控子进程入口忽略，268 项 Rust 源文件/构建输入清单在测试前后摘要一致。随后 Clippy 抓到内部交付枚举尺寸不均，仅将退订查询改为按需堆存储，桌面库 174 项重跑及全目标 Clippy 通过；没有重复未变化的 Host/SDK 全集。日志为 `ci-followup-final-workspace-{build,tests,clippy}.log`、`native-credit-boxed-desktop-green.log` 和 `ci-followup-boxed-workspace-clippy.log`，原 Clippy 失败也保留。新候选的 macOS Native 预检与完整四目标结果以 PR #45 实际收据为准，本机结果不覆盖对应平台；132 项无头结果仍按此前未变的前端运行源码范围引用。
+
+## 开发 Host 停止与当前候选
+
+主工作区为 `fix/ui-responsiveness`，基于 `main@6f7d9ca`，同一里程碑集中在 PR #45。前一推送候选 `90cc5b731b535fd870d46e8f37986962ecb77772` 的 [Windows 原生预检 43045847710](https://github.com/YanChao001/serial-workbench/actions/runs/43045847710) 已成功：fresh 28 项、persisted 2 项、centered 2 项，三阶段日志四类冲突均为零；主题切换场景 115 次采样没有发送/关闭禁用，三张截图已查看。产物保留于 `.cache/ui-audit/native-preflight-90cc5b7/`。此预检不代表完整四目标门槛，也不替代普通开发版的真实 COM 回环和交互响应。
+
+按用户要求新增 `pnpm host:stop`：构建当前 CLI，连接实际运行的旧 Host，经原认证和本地用户控制正常退出并等待实际结果；允许显式 `--profile`，不带强杀兜底。实际反例证明旧 CLI 在无 Host 时会尝试启动，现停止路径只连接现有实例；缺少发现记录返回 `STORAGE_UNAVAILABLE`，不启动 Host。脚本三项、CLI 正常停止/实际锁释放与新增无实例回归、客户端连接检查通过，CLI Clippy 与 fmt 通过；包入口在独立空 profile 下也已验证无启动副作用，预期退出码 5。新增命令后的 `pnpm verify --jobs 1` 全部通过：2139 前端、316 工程脚本、4 原条件跳过及格式/lint/类型/配置/品牌/版本/构建，172 秒。相关日志为 `.cache/ui-audit/host-stop-*.log`，最终综合日志为 `host-stop-final-verify.log`；GUI 未变，前轮完整 132 项无头结果仍按其源范围引用。完整四目标结果以 PR #45 的实际候选为准，未齐前不合入。
+
+用户默认旧 Host 50816 经旧 CLI 和新 `pnpm host:stop` 均返回 `HOST_STOP_TIMEOUT`，不计正常退出成功。用户另行明确授权仅强制结束该 PID 后，先单独核对其 `0cccdc15...` 程序路径，再结束并确认进程消失；设置、草稿和失败证据未删除。收据为 `.cache/ui-audit/user-host-50816-{before-authorized-force,authorized-force-result}.json`，两次正常退出失败日志保留。当次未触及独立失败测试 Host 40968；后续正式 CLI 重试仍超时，另行核验程序路径、创建时间、独立 profile 及旧 CPU 证据后，仅强制清理该自有测试进程，原 profile 与日志保留。收据为 `retained-test-host-40968-{before-cleanup,cleanup-result}.json`，不计正常退出成功。用户自行操作 GUI 复测，本轮不擅自启动真实窗口。
+
+## 界面响应修复
+
+2026-11-11 20:05 用户操作独立普通开发版，在 COM5 发送 10800 字节时实际出现 Raw `LIMIT_EXCEEDED`（Raw batch exceeded its byte budget）及“发送：结果未知”，该次 GUI 验收失败，当时尚未冻结或提交修正候选。程序启动到 frontend-ready 为 4625ms（不含此前编译），一次连接原生链路 2620ms，其中两次授权合计 1550ms，首次连接响应仍待优化。现场在 `.cache/ui-audit/serial-recovery-gui-20261111-1945/`；只读落库诊断确认两次 10800 字节操作最终均为 succeeded/accepted、完整范围 `[0,10800)`，自动时限 14063ms，实际约 11.3 秒，未将截图中的显示故障改记为发送超时或驱动故障。
+
+新增反例分别复现：未确认 Raw 批次占据内存时错误结束订阅；继续接收小块时 drop_with_gap 未按实际内存压力保留缺口；运行中的 TX 恢复证据被 GUI 当作未知终态告警。现修订为等待 ACK 归还内存、在既有上限内为队首合并缺口预留空间，并仅对真实操作终态发出发送结果告警。24 项 Raw 预算检查及真实 IPC/编码/读写器的 10800 字节碎片压力定向检查通过；对应前端 109 项通过。原失败日志分别保留于 `raw-credit-memory-red.log`、`raw-credit-memory-round2.log`、`pending-send-notices-red.log`；新增 IPC 场景的生产端等待按 675 次实际 owner 轮询单独设为 20 秒，保留首轮五秒等待失败，未修改产品超时或既有测试预算。后续须完整检查及同源开发版实机复测，不沿用下面旧源的整轮通过。
+
+新增完整无头 UI 首轮为 131 通过/1 失败：持续接收的程序滚动被误当作用户上滚，意外冻结并累计新事件。滚动移至绘制前固定到底部后，定向四项及完整 132/132 通过（5.5 分钟），保留原失败截图与 trace；新证据为 `.cache/ui-audit/raw-backpressure-browser-round15-evidence/`、`raw-backpressure-browser-round15-source-and-assets.json`。完整 Rust 791 通过、5 个受控子进程入口忽略，工作区全目标 Clippy 通过；日志为 `raw-backpressure-workspace-{build,test,clippy}.log`。完整前端 2139 项及对应 103 项组件检查通过。综合检查曾遇沙箱进程读取/回收拒绝；菜单单 click 和关闭通知用例也抓到异步就绪等待缺口，现等待可用后按支持的入口激活，保留原业务断言与失败日志。最终 `pnpm verify --jobs 1` 全部通过（2139 前端、313 工程脚本、4 原条件跳过及格式/lint/类型/配置/品牌/版本/构建，147.5 秒），日志为 `.cache/ui-audit/raw-backpressure-verify-round21.log`。13 项相关需求追加进行中的 PR #45 软件证据，状态、硬件及发行未提升。独立测试 GUI 退出后，自有 Host 41168 已通过正式 CLI 正常退出，失败 profile 继续保留，原用户 Host 未动；其停止记录为 `serial-recovery-gui-20261111-1945/owned-host-stop.log`。
+
+前轮本机 `pnpm verify --jobs 1` 通过：2136 Vitest、313 工程脚本、4 原条件跳过及格式/lint/类型/配置/品牌/版本/构建，143.5 秒；完整无头 `pnpm test:ui` 132/132 通过。日志为 `.cache/ui-audit/serial-recovery-verify-round16.log`、`.cache/ui-audit/serial-recovery-full-ui-round13.log`。Vite 开发内联映射放大了生成校验器的加载；预构建本地包及入口预热后，一次独立无头比较的 JS 解码体积约 42.4→23.7MB，冷加载就绪 2666→2064ms、热加载 1294→608ms。比较保留在 `.cache/ui-audit/vite-startup-output-before/` 与 `vite-startup-output-after/`，不代表整个原生启动耗时；缓存源码失效与重启合并两项脚本回归通过。
+
+用户已确认默认发送时限改为按最终字节及串口格式自动计算，高级模式保留固定时限。当前修订已接入精确验权与实际提交，并按 Host/设备保存模式；Rust ClientState 绑定已重新生成。Windows 实际句柄关闭后释放端口保留，清理仍在途时继续隔离；显式重开须等待真实清理/线程退出并建立新代次，旧未知结果不改写。句柄两项、恢复五项回归及相关 Host/client/IPC 单元检查通过；后续源变化仍须整轮验证。
+
+本轮 `cargo build --locked --workspace --bins`、`cargo test --locked --workspace`（788 通过、5 个受父测试控制的子进程入口忽略）、`cargo fmt --all -- --check`、工作区全目标 Clippy、`pnpm bindings:check` 和 `pnpm contracts:check` 均通过。日志在 `.cache/ui-audit/serial-recovery-workspace-{build,test}.log`、`serial-recovery-workspace-clippy-round2.log`、`serial-recovery-{bindings,contracts}-check.log`。Clippy 抓到一处惰性求值写法后已修正，错误码隐私回归再次通过；Unix 描述符真实释放检查须由 Linux/macOS CI 执行，Windows 结果不覆盖该平台专属代码。
+
+新 Host SHA256 `938ab32e42616f92fa737366ae89cb7d31c953fb552fa9652c9b8ff28c9565bb` 的独立 CLI 实机测试已通过：COM14 与用户另行授权、确认短接的 COM5 均在 9600/8N1 下完成 3576/10000 字节 TX/RX 全量及 SHA256 比对，显式固定 1 秒触发 WRITE_TIMEOUT/unknown 后可手动重开新 epoch、再次收发，原未知回执不变，自有 Host 正常退出。证据分别为 `.cache/ui-audit/physical-large-recovery-1794393940033/summary.json`、`.cache/ui-audit/physical-COM5-large-recovery-1794394112119/summary.json`。此前两次 RX=0 失败及独立系统 RX=0 记录保留；随后独立系统四种参数小回环全部通过，未将早先失败改记为通过。这些结果属于该 Host/CLI 摘要，不代表最新 GUI 或完整硬件矩阵通过。
+
+新增 10000 字节中文无头编辑、主题、设置和 Tooltip 场景在连接及注入 Host 故障后均通过；两组最大帧间隔约 33.4ms，证据在 `.cache/ui-audit/large-chinese-response-evidence/`。开发版本核对已实际对旧 Host 返回 DEV_RUNTIME_MISMATCH，未停止旧后台。开发启动模块加载的局部比较见上文；原生 GUI 连续帧、最新候选启动/切窗/收发与完整四目标 CI 尚未通过本轮验收。
+
+前轮失败现场（保留证据）：用户再次报告大段输入、COM14 大包发送及故障后的全局交互卡顿，当时未冻结或交付候选。2026-11-11 前台时段通过普通 `pnpm app:dev`、独立配置及新 Host 实际复现：9600/8N1、writeWaitMs=1000，发送 3576 字节中文后仅显示 RX 897 字节，TX 为 unknown、Raw 为 CURSOR_EXPIRED；再次显式打开返回 CONTROL_UNKNOWN。首次连接原生阶段为 316ms，失败重开为 198ms，只代表 Native 阶段，不是完整 GUI 响应时延。原生启动 frontend-ready 为 5513ms，编译时间另计。10000 字节实机发送未在这次失败后继续执行；输入 API 返回耗时也不能代替光标连续帧或全局流畅度验证。
+
+复现程序 Host SHA256 `ca49f55ae6f6a8fdc94c10af9d148419865640b2e48fac11445fbd9d2d6352bd`、GUI `6e1a6fc186f4f6731bba64e6b08f67a22b4c47b074c9ac689fedd987ec376538`。源码及配置收据为 `.cache/ui-audit/large-loopback-20261111-1700-source.json`，原生日志、UIA、失败记录在同名前缀目录。对本轮自有 Host 的正常停止返回 HOST_STOP_TIMEOUT（CLI 退出码 5），进程 40968 和隔离责任保留，未强杀。用户原 Host 50816 仍运行旧 `0cccdc15...` 版本，未停止；新源也复现了大包故障，不能只归因于旧后台。窗口退出不更新 Host 的开发流程须补版本核对，用户已确认默认按数据长度和串口格式自动计算时限，高级选项保留固定超时。下一步保留未知发送历史，验证真实句柄/线程清理后才能显式恢复，并单独核对故障后的主题、设置和提示延迟。
+
+此前 `pnpm verify --jobs 1` 已整轮通过（2129 Vitest、311 工程脚本、4 原条件跳过及格式/lint/类型/配置/品牌/版本/构建，150.3 秒），日志为 `.cache/ui-audit/responsiveness-verify-round15.log`。此前通知测试存在未等待导出就绪及跨用例通知残留，已增强实际调用断言和隔离；原失败保留。前述检查不覆盖新暴露的实机超时与恢复缺口，后续修改须按影响重新验证。
+
+2026-11-11 新增十项反馈继续在同一主工作区接续；以下为 `fix/ui-responsiveness@25a50e0` 后的分轮记录，后续提交与门槛以本文开头为准。已实际复现并修正：20 次输入触发接收投影 60 次（现为 0 次）；20 次无关 Host 状态更新重建接收行 20 次（词典引用稳定后为 0 次）；40 次操作/状态轮询生成 40 条活动（现为 0 条，显式目录查询仍记录）；新操作状态等待过时整轮历史读完；工作区文档未到达即提前就绪。226 项相关组件/Host 控制器及随后 91 项首页/回放/接收检查通过，完整本机、最新 Native、COM14 大包与完整 CI 尚未完成，不能提升为验收通过。
+
+当前界面按反馈实现方向图标、发送主题色、行分隔、本机毫秒时间和按需回执，发送草稿默认高度增至 5.5rem，Tooltip 使用不透明背景。按最新补充，当前显示字节统计固定在接收框内部底部，接收内容在上方独立滚动，框外不占行。原始事件时间和 TX/RX 字节不改写。后台权限结果短暂未知可点击发起实际核验，明确拒绝仍禁用；10000 字节的定向界面用例验证核验完成前不调用发送。此前该项观察使用的原 Host PID 47088 属于旧程序；18:18 后重新核对，实际保留的是用户 Host 50816 和前轮自有 Host 40968，均未强杀，不能计为当前修订的同源后端。
+
+独立新 profile、相同 MCP 客户端的实际 Host 元数据对比：旧程序 256 次预热查询 5237.8ms，状态读取约 30.7—50.5ms；新程序分别为 1980.6ms、6.30—7.64ms。这是 JSON 与活动轮询优化的共同效果，不是隔离某一改动的实验，也不等于桌面打开耗时。源码和程序摘要及全部样本见 `.cache/ui-audit/interaction-metadata-bench-20261111/comparison.json`。
+
+实际新 Host/CLI 的独立虚拟回环 10000 字节通过，TX/RX SHA256 一致，回执全量接受，正常关闭会话及自有 Host；Operation 接纳到终态的打开/发送分别为 23/16ms，不含 GUI、授权和程序启动。证据为 `.cache/ui-audit/virtual-ten-thousand-1794382153099/summary.json`，程序摘要与源范围在文件内。
+
+最新浏览器生产包的 9 项定向检查及完整 131 项 UI 均通过，覆盖框内统计、本地时间、10000 字节提交、密集接收编辑/滚动、四种布局及明暗 Tooltip。密集编辑采样 127 帧、发送/关闭变灰 0 帧，自动化连续 36 次输入及 36 次删除共 2030ms；59 个滚动间隔最大 33.4ms。这些数值包含浏览器自动化开销，不是 Native 输入延迟或硬件速率。统计位于接收框内的几何检查及明暗接收截图已核对，证据在 `.cache/ui-audit/browser-round11-evidence/`，源指纹与产物摘要在 `.cache/ui-audit/browser-round11-source-and-assets.json`，完整日志为 `.cache/ui-audit/responsiveness-full-ui-round12.log`（131/131，6.5 分钟）。此前完整 UI 为 125 通过/6 失败：旧边界和半透明断言更新后，像素检查继续抓到真实的 Tooltip 边框接缝，修正箭头后通过；原截图和 trace 保留。上述结果不代表 Native 或 COM14 大包通过。
+
+[Windows 预检 42958694074](https://github.com/YanChao001/serial-workbench/actions/runs/42958694074) 对已提交候选 `25a50e0` 为 6 通过/1 失败：连续主题/焦点场景通过，随后 Host 重启场景读取到空草稿，后续阶段未执行。新的就绪时序反例已在本机红后转绿，修订尚须实际 Native 复核；原失败保留于 `.cache/ui-audit/responsiveness-preflight-25a50e0-failed.log`。
+
+从最新 `main@6f7d9ca` 在主工作区创建 `fix/ui-responsiveness`，接续保留用户数据、原 Host、窗口和编译缓存。新增反馈第六项已明确为“发送时关闭会话也变灰”。当前修正：减少生成校验器的重复代码；设备就绪不等待历史投影；按输入独立续检操作权限；主题保存避免重复授权；Text 连续展示 RX 字节；保存故障复用统一通知；鼠标 Tooltip 使用统一较长延时。
+
+定向反例已实际复现并转绿：主题重复保存导致授权代次增长；慢 TX 检查阻塞关闭续检；焦点事件清空有效观察；历史查询拖延设备就绪；UTF-8 收到拆块后出现多行。相关 Host 前端 79 项、通知/流展示组合 35 项、生成器 7 项以及 Native 文档意图 7 项通过，原失败日志保留在 `.cache/ui-audit/responsiveness-*.log`。新增前端用例已由下述整体验证覆盖，Native 连续主题场景仍待执行。
+
+候选 `e70195b` 已推送至 [PR #45](https://github.com/YanChao001/serial-workbench/pull/45)。[Windows 原生预检 42956572349](https://github.com/YanChao001/serial-workbench/actions/runs/42956572349) 为 5 通过/1 失败，后续阶段未执行：新增用例中八次主题切换和 focus 事件的 113 帧（约 2.01 秒）均保持发送与关闭可用，实际发送得到完成回执；随后恢复已保存原草稿，测试却继续等待本应禁用的保存按钮启用，15 秒超时。现改为检查恢复后无未保存改动且持久草稿未变，未改运行时代码或放宽响应断言；原失败、截图、源码/程序收据及帧记录保留于 `.cache/ui-audit/ci-42956572349/`。修订后仍须新原生预检、完整四目标 CI 与最新普通开发版前台复测。
+
+本机第二轮 `pnpm verify --jobs 1` 全部步骤通过，177.3 秒：129 文件/2115 Vitest、311 工程脚本/4 原条件跳过，以及格式、lint、类型、配置、品牌、版本和 Vite 构建；无头 UI 129/129 通过。第一轮保留侧栏测试仍按旧悬停期限等待、新增测试两处类型写法与一处 lint，以及沙箱 CIM/自有进程检查拒绝的实际失败，未上传 CI 充当本机排错。契约 check 通过。随后仅扩展 Rust JSON 解析优化与对应测试，前述前端结果不替代该后端变化的验证。
+
+完整 Rust 第一轮为 772 通过/2 失败/5 原条件忽略，失败均为客户端首次启动场景；第二次整文件复测还有 4 项失败。相同测试程序单独首次启动通过，外层并发限定为 2 后 13/13 通过、1 个受父用例控制的辅助入口忽略，内部真实并发客户端与十秒启动预算未变。加入 JSON 优化后的完整工作区恢复默认并发，72 组结果为 778 通过/0 失败/5 原条件忽略，含上述首次启动、并发连接和桌面库 174 项；workspace all-targets Clippy、Rust fmt 通过。原失败不改记成功，也不只用定向通过代替最终整轮。
+
+后端实测发现递归通用 JSON 的派生解析成本：相同 1024 条、321,375 字节元数据，原 `JsonObject` 解析约 56—66ms，按节点直接解析后约 5.5—6.4ms；4 项新语义检查通过。使用实际 Host/MCP 持久连接，旧活动较多的测试 profile 中目录查询约 303—394ms，新 profile 约 55—65ms；新解析器在独立 profile 累积 1024 次只读观察后约 144—150ms，权限检查约 5—8ms。不同 profile 的对比只用于定位和观察改善，不能直接计为同环境桌面启动验收。新三程序 source `f4bc8844a75821da72e0c23603d8d6bc90e454ce62f15aea388eb34345de6f6b` 及摘要见 `.cache/ui-audit/responsiveness-visitor-components.json`；两个无 GUI 的诊断 Host 已按其专用 profile 正常停止，记录保留。
+
+2026-11-11 10:50 前台时段中，独立编译候选 source `cc921c99460b762f5dadd28c55029591b9d4d2b7e297efa631c5e3148a5c31fc` 完成 COM14 的 116 字节中文及 virtual:echo 的 16 字节短回环，接收各为连续文本，回执完成。四次主题切换及实际 Alt+Tab 返回的快照中，发送/关闭均可用；11:00 核对两个测试会话已关闭，窗口保留供用户查看，后续用户操作不归入这些测试步骤。首次可操作快照时 COM14 已打开，本轮只直接驱动关闭后重连；原生日志重连为 2814ms，虚拟首次打开 3337ms，速度仍须新后端复核。此前还有两次 `UNSUPPORTED_CAPABILITY` 打开失败，设备/参数未在安全阶段日志中记录，不能猜测原因或记为通过。证据为 `.cache/ui-audit/responsiveness-foreground-20261111-1050/` 的 UIA 记录和日志；原生截图已逐张查看，没有本地 PNG。该候选不含后续 JSON 优化，其 frontend-ready 4445ms 来自带构建负载的独立编译测试版，不能替代 `pnpm app:dev`；快照也不证明不存在瞬间闪灰。
+
+同机无头 Chromium 对真实 Vite 开发模块的三次测量中，校验器源文件从 17,396,748 降至 3,916,475 字节；带开发 source map 的实际模块响应从约 114.7MB 降至 26.5MB，优化后工作台选择器出现为 1.35—2.18 秒。它只覆盖浏览器开发模块加载，不代表桌面启动或 COM14 打开耗时；原生启动 7.8—9.4 秒、首次打开与实际焦点/快速切主题仍须复测。完整本机检查、四目标 CI、PR 和合入待完成，247 条账本范围与状态不提升。
 
 ## 当前基线
 

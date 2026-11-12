@@ -13,6 +13,8 @@ pub struct ConnectOptions {
     pub client_id: Id,
     pub client_kind: ClientKind,
     pub expected_host_id: Option<Id>,
+    /// 开发包装器指定不可变运行产物；普通客户端不限制同 profile 的 Host 构建。
+    pub expected_host_executable: Option<PathBuf>,
     /// 调用方通过明确本地用户入口取得；不能由 clientKind 推导或自动加载。
     pub user_control_credential: Option<ContextToken>,
 }
@@ -23,6 +25,7 @@ impl ConnectOptions {
             client_id,
             client_kind,
             expected_host_id: None,
+            expected_host_executable: None,
             user_control_credential: None,
         }
     }
@@ -136,6 +139,9 @@ impl HostClient {
         {
             return Err(invalid());
         }
+        if let Some(expected) = options.expected_host_executable.as_ref() {
+            verify_runtime_executable(expected, loaded.discovery.executable.as_deref())?;
+        }
         Ok(Self {
             options,
             connection,
@@ -160,12 +166,34 @@ impl HostClient {
     pub async fn next_event(&self) -> HostResult<Option<WireFrame>> {
         self.connection.next_event().await
     }
+    /// 观察现有连接失效；不重连，也不代替实际资源清理。
+    pub async fn wait_for_disconnect(&self) {
+        self.connection.wait_for_disconnect().await;
+    }
     pub fn raw_attachment(&self) -> RawAttachment {
         self.raw.clone()
     }
     pub async fn connect_raw(&self) -> HostResult<RawConnection> {
         RawConnection::connect(self.raw.clone()).await
     }
+}
+
+fn verify_runtime_executable(
+    expected: &std::path::Path,
+    actual: Option<&std::path::Path>,
+) -> HostResult<()> {
+    let matches = expected
+        .canonicalize()
+        .ok()
+        .zip(actual.and_then(|path| path.canonicalize().ok()))
+        .is_some_and(|(expected, actual)| expected == actual);
+    if matches {
+        return Ok(());
+    }
+    Err(HostError::new(
+        "DEV_RUNTIME_MISMATCH",
+        "A different Host build is still running. Run pnpm host:stop, then pnpm app:dev again. Active work is preserved; no Host was stopped automatically.",
+    ))
 }
 
 async fn registration_lock(options: &ConnectOptions) -> HostResult<Option<local::PrivateFileLock>> {
@@ -333,4 +361,30 @@ pub(crate) fn invalid() -> HostError {
 }
 pub(crate) fn disconnected() -> HostError {
     HostError::new("UNAUTHENTICATED", "Local Host connection is closed")
+}
+
+#[cfg(test)]
+mod runtime_tests {
+    use super::*;
+    #[test]
+    fn development_runtime_requires_the_actual_expected_executable_path() {
+        let dir = tempfile::tempdir().unwrap();
+        let expected = dir.path().join("expected-host");
+        let old = dir.path().join("old-host");
+        std::fs::write(&expected, b"current").unwrap();
+        std::fs::write(&old, b"old").unwrap();
+        verify_runtime_executable(&expected, Some(&expected)).unwrap();
+        for actual in [
+            Some(old.as_path()),
+            None,
+            Some(dir.path().join("missing").as_path()),
+        ] {
+            assert_eq!(
+                verify_runtime_executable(&expected, actual)
+                    .unwrap_err()
+                    .code,
+                "DEV_RUNTIME_MISMATCH"
+            );
+        }
+    }
 }

@@ -3,6 +3,15 @@ import type { MessageKey } from "@/i18n/zh-CN";
 import { isRecord } from "./settings-model";
 const ERROR_KEYS: Record<string, MessageKey> = {
   ACCESS_DENIED: "nativeError.accessDenied",
+  DEVICE_BUSY: "nativeError.deviceBusy",
+  HOST_BUSY: "nativeError.hostBusy",
+  WRITE_TIMEOUT: "nativeError.writeTimeout",
+  CONTROL_UNKNOWN: "nativeError.controlUnknown",
+  DEV_RUNTIME_MISMATCH: "nativeError.devRuntimeMismatch",
+  READER_OVERFLOW: "nativeError.readerOverflow",
+  CONFIGURATION_CONFLICT: "nativeError.configurationConflict",
+  UNSUPPORTED_CAPABILITY: "errors.UNSUPPORTED",
+  REVISION_CONFLICT: "errors.CONFLICT",
   PERMISSION_DENIED: "nativeError.permissionDenied",
   CLIPBOARD_WRITE_FAILED: "nativeError.clipboardWriteFailed",
   INVALID_ARGUMENT: "errors.VALIDATION",

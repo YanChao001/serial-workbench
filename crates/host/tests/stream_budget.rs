@@ -29,6 +29,127 @@ fn meta() -> SourceMeta {
         },
     }
 }
+
+#[tokio::test]
+async fn fragmented_raw_delivery_waits_for_ack_when_prepared_memory_is_full() {
+    let f = Fixture::new(StreamLimits::default());
+    let after = f.source.initial_cursor();
+    let reader = f
+        .hub
+        .subscribe(
+            &f.actor,
+            StreamSubscribeParams {
+                scope_id: after.scope_id.clone(),
+                after,
+                queue_bytes: 1048576.into(),
+                initial_credit_bytes: 1048576.into(),
+                overflow_policy: OverflowPolicy::DropWithGap,
+            },
+        )
+        .await
+        .unwrap();
+    let mut sent = Vec::new();
+    let mut paused = false;
+    for _ in 0..200 {
+        f.source
+            .append_rx(meta(), Arc::from([42u8; 16]), None)
+            .unwrap();
+        match reader
+            .try_next()
+            .await
+            .expect("unacknowledged batches must apply backpressure")
+        {
+            Some(batch) => {
+                reader.mark_sent(&batch).unwrap();
+                sent.push(batch);
+            }
+            None => {
+                paused = true;
+                break;
+            }
+        }
+    }
+    assert!(
+        paused,
+        "the physical memory budget must bound prepared batches"
+    );
+    let last = sent.last().unwrap().batch().cursor.clone();
+    f.grant(&reader, last, 1048576).await.unwrap();
+    drop(sent);
+    let resumed = reader
+        .try_next()
+        .await
+        .unwrap()
+        .expect("ack must resume pending delivery");
+    assert!(matches!(
+        &resumed.batch().items[0],
+        StreamItem::Source { .. }
+    ));
+    assert!(f.hub.memory_usage().reader_peak <= 1048576);
+    drop(resumed);
+    reader.close();
+    assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+}
+
+#[tokio::test]
+async fn fragmented_raw_delivery_retains_a_gap_when_queue_memory_fills_behind_unacked_batches() {
+    let f = Fixture::new(StreamLimits::default());
+    let after = f.source.initial_cursor();
+    let reader = f
+        .hub
+        .subscribe(
+            &f.actor,
+            StreamSubscribeParams {
+                scope_id: after.scope_id.clone(),
+                after,
+                queue_bytes: 1048576.into(),
+                initial_credit_bytes: 1048576.into(),
+                overflow_policy: OverflowPolicy::DropWithGap,
+            },
+        )
+        .await
+        .unwrap();
+    let mut sent = Vec::new();
+    for _ in 0..200 {
+        f.source
+            .append_rx(meta(), Arc::from([42u8; 16]), None)
+            .unwrap();
+        let Some(batch) = reader.try_next().await.unwrap() else {
+            break;
+        };
+        reader.mark_sent(&batch).unwrap();
+        sent.push(batch);
+    }
+    assert!(!sent.is_empty());
+    for _ in 0..675 {
+        f.source
+            .append_rx(meta(), Arc::from([43u8; 16]), None)
+            .unwrap();
+    }
+    assert!(
+        reader
+            .try_next()
+            .await
+            .expect("drop_with_gap must survive actual memory pressure")
+            .is_none()
+    );
+    let last = sent.last().unwrap().batch().cursor.clone();
+    f.grant(&reader, last, 1048576).await.unwrap();
+    drop(sent);
+    let resumed = reader
+        .try_next()
+        .await
+        .unwrap()
+        .expect("ACK must resume a bounded queue");
+    assert!(matches!(
+        &resumed.batch().items[0],
+        StreamItem::ReaderGap { .. }
+    ));
+    assert!(f.hub.memory_usage().reader_peak <= 1048576);
+    drop(resumed);
+    reader.close();
+    assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+}
 struct Fixture {
     _dir: tempfile::TempDir,
     hub: StreamHub,
@@ -813,6 +934,7 @@ struct BurstTransport {
 }
 #[derive(Default)]
 struct BurstProbe {
+    chunk_bytes: std::sync::atomic::AtomicUsize,
     remaining: std::sync::atomic::AtomicUsize,
     delivered: std::sync::atomic::AtomicUsize,
     settled: std::sync::atomic::AtomicUsize,
@@ -837,8 +959,9 @@ impl Transport for BurstTransport {
             .is_ok()
         {
             self.probe.delivered.fetch_add(1, Ordering::SeqCst);
+            let chunk = self.probe.chunk_bytes.load(Ordering::SeqCst);
             return Ok(ReadBlock {
-                bytes: Arc::from(vec![37u8; max.min(16384)]),
+                bytes: Arc::from(vec![37u8; max.min(if chunk == 0 { 16384 } else { chunk })]),
                 message: None,
             });
         }
@@ -1094,6 +1217,84 @@ async fn host_raw_read_credit_and_close_use_real_dispatch_and_writer() {
             "subscription.close",
             &f.target,
             serde_json::json!({"subscriptionId":subscription}),
+        )))
+        .await
+        .unwrap(),
+    );
+    until_raw(|| f.host.streams().memory_usage().reader_bytes == 0).await;
+    drop(raw);
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn host_raw_fragmented_burst_keeps_writer_alive_until_the_slow_reader_acks() {
+    use std::sync::atomic::Ordering;
+    let f = LiveRaw::new().await;
+    let raw = Arc::new(f.client.connect_raw().await.unwrap());
+    let after = f.initial();
+    let reply = rpc_success(raw.request(RpcRequest::StreamSubscribe(f.query(
+        &f.client, "stream.subscribe", &f.target,
+        serde_json::json!({"scopeId":after.scope_id,"after":after,"queueBytes":"1048576","initialCreditBytes":"1048576","overflowPolicy":"drop_with_gap"}),
+    ))).await.unwrap());
+    let RpcResult::Subscription(subscription) = reply else {
+        panic!("Expected subscription")
+    };
+    let (observed, mut received) = tokio::sync::watch::channel(None);
+    let source = raw.clone();
+    // 持续消费 IPC 帧，只延后 Host ACK；本用例不积压另一层 SDK 的事件队列。
+    // 仅保留最新游标和尾块标记，不把接收正文搬到额外无界队列。
+    let draining = tokio::spawn(async move {
+        loop {
+            let event = source
+                .next_event()
+                .await
+                .unwrap()
+                .expect("writer must remain connected");
+            let IpcMessage::RawBatch { batch } = event.body else {
+                panic!("Fragmented pressure ended the raw reader: {:?}", event.body)
+            };
+            let marker = batch.items.iter().any(|item| matches!(item,
+                StreamItem::Source { event } if matches!(&event.payload,
+                    RawPayload::Rx(payload) if STANDARD.decode(payload.bytes_base64.as_str()).unwrap().len() == 1)));
+            observed.send_replace(Some((batch.cursor, marker)));
+            if marker {
+                break;
+            }
+        }
+    });
+    f.probe.chunk_bytes.store(16, Ordering::SeqCst);
+    f.probe.remaining.store(675, Ordering::SeqCst);
+    // 675 次真实 owner 轮询超过小用例的五秒预算；只为本次 10800 字节输入等待。
+    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        while f.probe.settled.load(Ordering::SeqCst) != 675 {
+            tokio::task::yield_now().await;
+        }
+    })
+    .await
+    .expect("fragmented input did not finish within its bounded producer budget");
+    // 接收线程继续工作；唯一的一字节尾块证明溢出之后仍能消费新事件。
+    f.probe.chunk_bytes.store(1, Ordering::SeqCst);
+    f.probe.remaining.store(1, Ordering::SeqCst);
+    until_raw(|| f.probe.settled.load(Ordering::SeqCst) == 676).await;
+    tokio::time::timeout(std::time::Duration::from_secs(20), async {
+        loop {
+            received.changed().await.expect("Raw delivery stopped before the tail marker");
+            let (cursor, marker) = received.borrow_and_update().clone().unwrap();
+            rpc_success(raw.request(RpcRequest::StreamCredit(f.query(
+                &f.client, "stream.credit", &f.target,
+                serde_json::json!({"subscriptionId":subscription.subscription_id,"ackCursor":cursor,"grantedBytesTotal":"1048576"}),
+            ))).await.unwrap());
+            if marker { break; }
+        }
+    }).await.unwrap();
+    draining.await.unwrap();
+    assert!(f.host.streams().memory_usage().reader_peak <= 1048576);
+    rpc_success(
+        raw.request(RpcRequest::SubscriptionClose(f.query(
+            &f.client,
+            "subscription.close",
+            &f.target,
+            serde_json::json!({"subscriptionId":subscription.subscription_id}),
         )))
         .await
         .unwrap(),

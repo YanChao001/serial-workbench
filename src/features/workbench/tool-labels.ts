@@ -316,13 +316,7 @@ export function workbenchToolLabels(t: Translate) {
     absoluteTime: t("workbench.tools.absoluteTime"),
     relativeTime: t("workbench.tools.relativeTime"),
     intervalTime: t("workbench.tools.intervalTime"),
-    timeDetails: t("workbench.tools.timeDetails"),
-    clock: t("workbench.tools.clock"),
-    timeSource: t("workbench.tools.timeSource"),
-    resolution: t("workbench.tools.resolution"),
     missingTime: t("workbench.tools.missingTime"),
-    receivedTime: t("workbench.tools.receivedTime"),
-    sourceTime: t("workbench.tools.sourceTime"),
     replay: t("workbench.tools.replay"),
   };
   return {

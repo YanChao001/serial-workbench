@@ -1,6 +1,7 @@
 import { browser, $ } from "@wdio/globals";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+export { reloadDocument } from "./reload-document.ts";
 
 export async function ready(label = "main") {
   await $("#root main").waitForExist();

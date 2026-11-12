@@ -3,7 +3,7 @@ import type { SerialConfiguration } from "@serial-workbench/contracts";
 import {
   connectionKey,
   createConnectionDefaultsBackend,
-  sameConnectionConfiguration,
+  sameConnectionSetting,
   type ConnectionDefaults,
 } from "@/lib/client-connection-defaults";
 import {
@@ -12,6 +12,7 @@ import {
   type ClientSettingsPort,
 } from "@/lib/client-settings";
 import { SettingsSync, type SettingsState } from "@/lib/settings-sync";
+import type { WriteWaitMode } from "@/lib/generated/bindings";
 
 const port: ClientSettingsPort = {
   read: readClientWindowState,
@@ -53,16 +54,21 @@ export function useConnectionPreferences(storage: ClientSettingsPort = port) {
     };
   }, [storage, reload]);
   const remember = useCallback(
-    (hostId: string, deviceId: string, configuration: SerialConfiguration) => {
-      if (
-        sameConnectionConfiguration(
-          latest.current.settings[connectionKey(hostId, deviceId)],
-          configuration,
-        )
-      )
-        return;
+    (
+      hostId: string,
+      deviceId: string,
+      configuration: SerialConfiguration,
+      writeWaitMode?: WriteWaitMode,
+    ) => {
+      const key = connectionKey(hostId, deviceId);
+      const previous = latest.current.settings[key];
+      const setting = {
+        configuration,
+        writeWaitMode: writeWaitMode ?? previous?.writeWaitMode ?? "automatic",
+      };
+      if (sameConnectionSetting(previous, setting)) return;
       setDirty(true);
-      const patch = { [connectionKey(hostId, deviceId)]: configuration };
+      const patch = { [key]: setting };
       if (owner.current) owner.current.update(patch);
       else pending.current = { ...pending.current, ...patch };
     },
@@ -101,7 +107,18 @@ export function useConnectionPreferences(storage: ClientSettingsPort = port) {
   }, []);
   return useMemo(
     () => ({
-      values: state.settings,
+      values: Object.fromEntries(
+        Object.entries(state.settings).map(([key, value]) => [
+          key,
+          value.configuration,
+        ]),
+      ),
+      waitModes: Object.fromEntries(
+        Object.entries(state.settings).map(([key, value]) => [
+          key,
+          value.writeWaitMode,
+        ]),
+      ),
       status: state.status,
       error: state.error,
       dirty,

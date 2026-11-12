@@ -6,6 +6,25 @@ import { zhCN } from "@/i18n/zh-CN";
 import { errorMessage, nativeErrorText } from "./native-error";
 
 describe("native error presentation", () => {
+  it("explains quarantined serial cleanup without guessing a permission or platform problem", () => {
+    expect(
+      nativeErrorText(
+        {
+          code: "CONTROL_UNKNOWN",
+          message: "Native serial resources remain isolated",
+        },
+        createTranslator(zhCN),
+      ),
+    ).toBe("串口操作结果未确认，请重新连接后重试。");
+  });
+  it("explains a busy serial device without exposing backend wording", () => {
+    expect(
+      nativeErrorText(
+        { code: "DEVICE_BUSY", message: "Native serial operation failed" },
+        createTranslator(zhCN),
+      ),
+    ).toBe("设备正在使用或上次操作尚未结束，请稍后重试。");
+  });
   it("uses stable codes and keeps useful Error and string messages", () => {
     const t = createTranslator(en);
     expect(
@@ -43,6 +62,13 @@ describe("native error presentation", () => {
   );
   it.each([
     ["NATIVE_BUSY", "nativeError.busy"],
+    ["DEVICE_BUSY", "nativeError.deviceBusy"],
+    ["HOST_BUSY", "nativeError.hostBusy"],
+    ["DEV_RUNTIME_MISMATCH", "nativeError.devRuntimeMismatch"],
+    ["WRITE_TIMEOUT", "nativeError.writeTimeout"],
+    ["READER_OVERFLOW", "nativeError.readerOverflow"],
+    ["CONFIGURATION_CONFLICT", "nativeError.configurationConflict"],
+    ["UNSUPPORTED_CAPABILITY", "errors.UNSUPPORTED"],
     ["ACCESS_DENIED", "nativeError.accessDenied"],
     ["PERMISSION_DENIED", "nativeError.permissionDenied"],
   ] as const)("presents %s with its stable localized message", (code, key) => {

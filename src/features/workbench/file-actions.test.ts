@@ -68,7 +68,7 @@ it("sends the explicitly selected fixed file revision with exact length and sess
         chunkBytes: "4096",
         bytesPerSecond: "0",
         interChunkMs: "0",
-        writeWaitMs: "100",
+        writeWaitMs: "1356",
       },
     },
     signal,

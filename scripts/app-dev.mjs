@@ -149,16 +149,20 @@ export async function runDev(
       "Cargo Host and CLI executables do not share an output directory",
     );
   const runtime = stageRuntime(root, paths);
+  const developmentOptions = {
+    ...options,
+    env: { ...options.env, SWB_DEV_EXPECTED_HOST_EXECUTABLE: runtime[0] },
+  };
   // 在 Tauri 的 cargo run 创建受限 Job 前，由正式 CLI 认证并准备同一 Host。
   const ready = await run(runtime[1], ["catalog", "--json"], {
-    ...options,
+    ...developmentOptions,
     stdio: ["ignore", "ignore", "inherit"],
   });
   if (ready !== 0) return ready;
   return run(
     process.execPath,
     [require.resolve("@tauri-apps/cli/tauri.js"), "dev", ...args],
-    { ...options, cwd: root },
+    { ...developmentOptions, cwd: root },
   );
 }
 

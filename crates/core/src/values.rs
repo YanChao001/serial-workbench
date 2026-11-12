@@ -5,7 +5,7 @@ use specta::Type;
 use std::{borrow::Cow, collections::BTreeMap};
 
 pub type JsonObject = BTreeMap<String, JsonValue>;
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema, Type)]
 #[serde(untagged)]
 pub enum JsonValue {
     Null(()),
@@ -18,7 +18,7 @@ pub enum JsonValue {
 
 /// schema 元数据可使用小数约束；业务 params 继续使用仅安全整数的 JsonValue。
 pub type SchemaObject = BTreeMap<String, SchemaValue>;
-#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema, Type)]
 #[serde(untagged)]
 pub enum SchemaValue {
     Null(()),
@@ -32,6 +32,80 @@ pub enum SchemaValue {
     Array(Vec<SchemaValue>),
     Object(SchemaObject),
 }
+
+// 递归 untagged 派生会为每个节点反复缓存和尝试其它类型；大投影与目录因此阻塞 RPC。
+// JSON 已提供节点类型，直接分派一次；数字仍交给各自原有的校验器，wire/schema 不变。
+macro_rules! deserialize_json_value {
+    ($name:ident, $number:ty) => {
+        impl<'de> Deserialize<'de> for $name {
+            fn deserialize<D: Deserializer<'de>>(deserializer: D) -> Result<Self, D::Error> {
+                struct ValueVisitor;
+                impl<'de> serde::de::Visitor<'de> for ValueVisitor {
+                    type Value = $name;
+                    fn expecting(&self, formatter: &mut std::fmt::Formatter) -> std::fmt::Result {
+                        formatter.write_str("a JSON value")
+                    }
+                    fn visit_unit<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                        Ok($name::Null(()))
+                    }
+                    fn visit_none<E: serde::de::Error>(self) -> Result<Self::Value, E> {
+                        Ok($name::Null(()))
+                    }
+                    fn visit_bool<E: serde::de::Error>(
+                        self,
+                        value: bool,
+                    ) -> Result<Self::Value, E> {
+                        Ok($name::Bool(value))
+                    }
+                    fn visit_i64<E: serde::de::Error>(self, value: i64) -> Result<Self::Value, E> {
+                        <$number>::deserialize(serde::de::value::I64Deserializer::<E>::new(value))
+                            .map($name::Number)
+                    }
+                    fn visit_u64<E: serde::de::Error>(self, value: u64) -> Result<Self::Value, E> {
+                        <$number>::deserialize(serde::de::value::U64Deserializer::<E>::new(value))
+                            .map($name::Number)
+                    }
+                    fn visit_f64<E: serde::de::Error>(self, value: f64) -> Result<Self::Value, E> {
+                        <$number>::deserialize(serde::de::value::F64Deserializer::<E>::new(value))
+                            .map($name::Number)
+                    }
+                    fn visit_str<E: serde::de::Error>(self, value: &str) -> Result<Self::Value, E> {
+                        Ok($name::String(value.to_owned()))
+                    }
+                    fn visit_string<E: serde::de::Error>(
+                        self,
+                        value: String,
+                    ) -> Result<Self::Value, E> {
+                        Ok($name::String(value))
+                    }
+                    fn visit_seq<A: serde::de::SeqAccess<'de>>(
+                        self,
+                        mut source: A,
+                    ) -> Result<Self::Value, A::Error> {
+                        let mut values = Vec::new();
+                        while let Some(value) = source.next_element::<$name>()? {
+                            values.push(value);
+                        }
+                        Ok($name::Array(values))
+                    }
+                    fn visit_map<A: serde::de::MapAccess<'de>>(
+                        self,
+                        mut source: A,
+                    ) -> Result<Self::Value, A::Error> {
+                        let mut values = BTreeMap::new();
+                        while let Some((key, value)) = source.next_entry::<String, $name>()? {
+                            values.insert(key, value);
+                        }
+                        Ok($name::Object(values))
+                    }
+                }
+                deserializer.deserialize_any(ValueVisitor)
+            }
+        }
+    };
+}
+deserialize_json_value!(JsonValue, SafeInteger);
+deserialize_json_value!(SchemaValue, serde_json::Number);
 
 fn schema_number(_: &mut SchemaGenerator) -> Schema {
     schemars::json_schema!({"type":"number"})

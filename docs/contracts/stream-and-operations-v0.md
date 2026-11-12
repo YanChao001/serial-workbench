@@ -29,6 +29,8 @@ Session 投影包含 `sessionId,deviceId,sessionEpoch,revision,configurationRevi
 
 租约过期或释放不是副作用回滚。清线/后端取消无法确认时，任务发布 unknown 并把资源置 control_unknown；租约可以完成账面结算，但 session 的隔离 gate 不开放，接管者不能立刻写入。关闭共享只释放远端权限，仍有本地使用者的连接/录制保持。恢复跟随和重新授予控制是独立动作，已终结旧队列不复活。
 
+隔离后的显式 `device.open` 是新操作：控制线必须 clear，本进程存在旧 owner 时先确认实际清理和线程退出，再实际独占打开并完整配置新 sessionEpoch；持久隔离记录在新打开成功前保持。原未知操作仍为终态，历史与未知范围不改写，也不补发；后台自动重连不能借此解除隔离。
+
 ## 操作结算
 
 Host 是 Operation 记录权威，owner 指定执行 handler 或受监督插件任务，取消由 owner 结算。客户端 AbortSignal、传输超时、关闭标签只停止调用者等待/订阅；调用 `operation.cancel` 才发出合作取消请求。插件停用必须停止接纳并结算其可归属任务，Rust 自持原始采集不随插件 UI 关闭。子动作使用 [父任务与子动作](./host-v0.md#父任务与子动作) 的 ChildCall 和 admission，父取消关闭新接纳并请求取消全部在途子项；父在已接纳子项全部终态后才结算，未知子效果传播为父 unknown。
@@ -45,6 +47,8 @@ Host 是 Operation 记录权威，owner 指定执行 handler 或受监督插件�
 | `unknown`          | 执行已停止或失去负责人，至少一段副作用无法确定 | 无；追加核实证据，不能重新执行原请求                      |
 
 后五种为结算终态。终态不可回 queued/running，复核作为关联的独立查询/操作记录，原历史保留。unknown 是已结算的不确定结果，不是可安全重试信号。cancel_requested 不提前释放句柄、租约或 worker 配额。取消与完成竞态以负责人的真实回执定终态；取消到达前已完成仍 succeeded。
+
+进行中的 TX 可先持久化尚未知晓范围的恢复证据；即使此时 result 含 unknown 范围，queued/running/cancel_requested 仍未结算。客户端以 Operation 实际终态决定结果告警，不能提前把该恢复证据当作发送未知或失败。
 
 Host 重启核对持久接纳/dispatch/回执记录，把未完成任务标 interrupted 或 unknown；自动发送不恢复运行。Node 主宿主崩溃终结其任务；Rust 原始采集继续。插件自持连接报告 disconnected，恢复产生新 sessionEpoch。完整退出 Host 先停止接纳、协商/结算各 owner 再退出；无法清理的状态持久记录，下一启动保持相应 gate 并提示恢复。
 

@@ -38,9 +38,23 @@ export function workbenchStatus(
   }[status];
 }
 
-export function compactStreamTime(absolute: string): string {
-  // 只收起日期；保留原始时区及精度，完整值仍在时间详情中。
-  return absolute.replace(/^\d{4}-\d{2}-\d{2}T/, "");
+const timeOptions = {
+  hour: "2-digit",
+  minute: "2-digit",
+  second: "2-digit",
+  fractionalSecondDigits: 3,
+  hourCycle: "h23",
+} satisfies Intl.DateTimeFormatOptions;
+const localTime = new Intl.DateTimeFormat("en-GB", timeOptions);
+export function compactStreamTime(absolute: string, timeZone?: string): string {
+  const value = new Date(absolute);
+  if (!Number.isFinite(value.getTime())) return absolute;
+  // 仅转换展示时区；原始 UTC、源时钟和纳秒数据保持不变。
+  return (
+    timeZone
+      ? new Intl.DateTimeFormat("en-GB", { ...timeOptions, timeZone })
+      : localTime
+  ).format(value);
 }
 
 export function terminalTypographyStyle(
@@ -71,13 +85,7 @@ export type StreamPresentationLabels = {
   absoluteTime: string;
   relativeTime: string;
   intervalTime: string;
-  timeDetails: string;
-  clock: string;
-  timeSource: string;
-  resolution: string;
   missingTime: string;
-  receivedTime: string;
-  sourceTime: string;
   replay: string;
 };
 

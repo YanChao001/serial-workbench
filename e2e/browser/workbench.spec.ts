@@ -5,6 +5,8 @@ import AxeBuilder from "@axe-core/playwright";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
+test.use({ timezoneId: "Asia/Shanghai" });
+
 const runtimeFailures = new WeakMap<Page, string[]>();
 const consoleRecords = new WeakMap<Page, { type: string; text: string }[]>();
 test.beforeEach(async ({ page }) => {
@@ -277,13 +279,17 @@ for (const language of ["en", "zh"] as const) {
       path: testInfo.outputPath(`stream-${language}-compact.png`),
       animations: "disabled",
     });
-    const receipt = log.locator(".workbench-tx-receipt > details");
-    await expect(receipt.locator("summary")).toHaveText(
+    const receiptName = language === "en" ? "Receipt" : "回执";
+    const receipt = page.getByRole("dialog", {
+      name: receiptName,
+      exact: true,
+    });
+    await expect(receipt).toHaveCount(0);
+    await log.getByRole("button", { name: receiptName, exact: true }).focus();
+    await page.keyboard.press("Enter");
+    await expect(receipt).toContainText(
       language === "en" ? "Accepted by backend" : "后端已接受",
     );
-    await expect(receipt.locator(".workbench-tx-facts")).toBeHidden();
-    await receipt.locator("summary").focus();
-    await page.keyboard.press("Enter");
     await expect(receipt.locator(".workbench-tx-facts")).toBeVisible();
     await expect(receipt).toContainText("[0, 7)");
     await expect(receipt).toContainText(
@@ -292,11 +298,8 @@ for (const language of ["en", "zh"] as const) {
         : "设备确认未提供",
     );
     const time = log.locator(".workbench-stream-time").first();
-    await expect(time.locator("summary")).toHaveText("11:22:33.456Z");
-    await time.locator("summary").focus();
-    await page.keyboard.press("Enter");
-    await expect(time.locator("time")).toBeVisible();
-    await expect(time.locator("time")).toHaveText("2026-11-10T11:22:33.456Z");
+    await expect(time).toHaveText("19:22:33.456");
+    await expect(time).toHaveAttribute("datetime", "2026-11-10T11:22:33.456Z");
     await page.screenshot({
       path: testInfo.outputPath(`stream-${language}-details.png`),
       animations: "disabled",

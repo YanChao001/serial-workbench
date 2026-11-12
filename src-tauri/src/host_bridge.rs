@@ -40,6 +40,7 @@ pub(crate) struct DeliveryLedger {
     bytes: usize,
     terminal_inflight: bool,
     entries: HashMap<DeliveryKey, DeliveryEntries>,
+    changed: tokio::sync::watch::Sender<()>,
 }
 
 impl DeliveryLedger {
@@ -51,6 +52,7 @@ impl DeliveryLedger {
             bytes: 0,
             terminal_inflight: false,
             entries: HashMap::new(),
+            changed: tokio::sync::watch::channel(()).0,
         }
     }
     fn reserve(&mut self, key: &DeliveryKey, bytes: usize) -> HostResult<u64> {
@@ -78,6 +80,7 @@ impl DeliveryLedger {
         Ok(ordinal)
     }
     fn acknowledge(&mut self, key: &DeliveryKey, ordinal: u64) -> HostResult<()> {
+        let previous_items = self.items;
         let entries = self
             .entries
             .get_mut(key)
@@ -103,6 +106,9 @@ impl DeliveryLedger {
         if entries.closed && entries.pending.is_empty() {
             self.entries.remove(key);
         }
+        if self.items != previous_items {
+            self.changed.send_replace(());
+        }
         Ok(())
     }
     fn close(&mut self, key: &DeliveryKey) {
@@ -112,6 +118,7 @@ impl DeliveryLedger {
                 self.entries.remove(key);
             }
         }
+        self.changed.send_replace(());
     }
     #[cfg(test)]
     fn pending(&self) -> (usize, usize) {
@@ -1275,11 +1282,13 @@ impl DesktopHostBridge {
             }
         }
         let connect = async {
-            let options = serial_workbench_client::ConnectOptions::new(
+            let mut options = serial_workbench_client::ConnectOptions::new(
                 self.profile.clone(),
                 Id::try_from("desktop").expect("desktop identity"),
                 serial_workbench_core::ClientKind::Desktop,
             );
+            options.expected_host_executable =
+                std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
             let fresh = match std::fs::symlink_metadata(self.profile.join("host-v0")) {
                 Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
                 Ok(_) => false,
@@ -1380,28 +1389,34 @@ impl DesktopHostBridge {
                     _ => continue,
                 };
                 let id = id.clone();
-                let mut subscriptions = events.lock().expect("subscription lock");
-                if subscriptions.active.contains_key(&id) {
-                    let close = deliver_state(&mut subscriptions, generation, frame);
-                    let failed = subscriptions.failed;
-                    drop(subscriptions);
-                    if let Some(query) = close {
-                        let client = source.clone();
-                        tokio::spawn(async move {
-                            let _ = close_subscription(client, query, id).await;
-                        });
-                    }
-                    if failed {
-                        break "state_delivery_failed";
-                    }
-                } else if subscriptions
-                    .setups
-                    .lock()
-                    .expect("pending subscription frames")
-                    .push(frame)
-                    .is_err()
                 {
-                    break "pending_frames_overflow";
+                    let subscriptions = events.lock().expect("subscription lock");
+                    if !subscriptions.active.contains_key(&id) {
+                        if subscriptions
+                            .setups
+                            .lock()
+                            .expect("pending subscription frames")
+                            .push(frame)
+                            .is_err()
+                        {
+                            break "pending_frames_overflow";
+                        }
+                        continue;
+                    }
+                }
+                let close = tokio::select! {
+                    result = deliver_state_when_ready(&events, generation, &frame) => result,
+                    _ = source.wait_for_disconnect() => break "event_stream_failed",
+                };
+                let failed = events.lock().expect("subscription lock").failed;
+                if let Some(query) = close {
+                    let client = source.clone();
+                    tokio::spawn(async move {
+                        let _ = close_subscription(client, query, id).await;
+                    });
+                }
+                if failed {
+                    break "state_delivery_failed";
                 }
             };
             // 仅记录固定原因，不包含目标、请求、状态正文或凭据。
@@ -1823,11 +1838,69 @@ fn deliver_raw(
     Some(subscription.query)
 }
 
+enum StateDelivery {
+    Ready(Option<Box<serial_workbench_core::Query>>),
+    Waiting(tokio::sync::watch::Receiver<()>),
+}
+
+#[derive(Clone, Copy)]
+enum StateDeliveryPolicy {
+    WaitForAck,
+    Retire,
+}
+
+async fn deliver_state_when_ready(
+    subscriptions: &std::sync::Arc<std::sync::Mutex<Subscriptions>>,
+    generation: u64,
+    frame: &serial_workbench_core::WireFrame,
+) -> Option<serial_workbench_core::Query> {
+    loop {
+        let delivery = {
+            let mut subscriptions = subscriptions.lock().expect("subscription lock");
+            if subscriptions.failed {
+                return None;
+            }
+            try_deliver_state(
+                &mut subscriptions,
+                generation,
+                frame,
+                StateDeliveryPolicy::WaitForAck,
+            )
+        };
+        match delivery {
+            StateDelivery::Ready(close) => return close.map(|query| *query),
+            StateDelivery::Waiting(mut changed) => {
+                // 等待不持有窗口或订阅锁，取消不提前归还已交付的预算。
+                if changed.changed().await.is_err() {
+                    return None;
+                }
+            }
+        }
+    }
+}
+
 fn deliver_state(
     subscriptions: &mut Subscriptions,
     generation: u64,
     frame: serial_workbench_core::WireFrame,
 ) -> Option<serial_workbench_core::Query> {
+    match try_deliver_state(
+        subscriptions,
+        generation,
+        &frame,
+        StateDeliveryPolicy::Retire,
+    ) {
+        StateDelivery::Ready(close) => close.map(|query| *query),
+        StateDelivery::Waiting(_) => unreachable!("setup delivery must not wait for a reply ACK"),
+    }
+}
+
+fn try_deliver_state(
+    subscriptions: &mut Subscriptions,
+    generation: u64,
+    frame: &serial_workbench_core::WireFrame,
+    policy: StateDeliveryPolicy,
+) -> StateDelivery {
     use serial_workbench_core::IpcMessage;
     let id = match &frame.body {
         IpcMessage::Delta {
@@ -1836,32 +1909,48 @@ fn deliver_state(
         | IpcMessage::SubscriptionEnded {
             subscription_id, ..
         } => subscription_id.clone(),
-        _ => return None,
+        _ => return StateDelivery::Ready(None),
     };
-    let channel = subscriptions.active.get(&id)?.channel.clone();
+    let Some(subscription) = subscriptions.active.get(&id) else {
+        return StateDelivery::Ready(None);
+    };
+    let channel = subscription.channel.clone();
     let key = DeliveryKey {
         generation,
         subscription_id: id.clone(),
         stream: DeliveryStream::Data,
     };
     let size = serial_workbench_ipc::frame::encoded_length(
-        &frame,
+        frame,
         serial_workbench_ipc::frame::MAX_FRAME_BYTES,
     )
     .ok();
     let is_terminal = matches!(frame.body, IpcMessage::SubscriptionEnded { .. });
-    let accepted = size.is_some_and(|size| {
+    let accepted = if let Some(size) = size {
         let mut ledger = subscriptions.ledger.lock().expect("delivery ledger");
-        if is_terminal {
+        let reservation = if is_terminal {
             // 正常终态也消耗普通预算；唯一应急槽只用于普通容量真正耗尽。
             ledger
                 .reserve(&key, size)
                 .or_else(|_| ledger.reserve_terminal(&key, size).map(|_| 0))
-                .is_ok()
         } else {
-            ledger.reserve(&key, size).is_ok()
+            ledger.reserve(&key, size)
+        };
+        match reservation {
+            Ok(_) => true,
+            Err(error)
+                if matches!(policy, StateDeliveryPolicy::WaitForAck)
+                    && error.code == "HOST_BUSY"
+                    && size <= ledger.max_bytes =>
+            {
+                // 预留失败与订阅容量变化共用账本锁，不存在检查后被抢占的空隙。
+                return StateDelivery::Waiting(ledger.changed.subscribe());
+            }
+            Err(_) => false,
         }
-    });
+    } else {
+        false
+    };
     if accepted && channel.send(frame.clone()).is_ok() {
         if matches!(frame.body, IpcMessage::SubscriptionEnded { .. }) {
             subscriptions
@@ -1871,14 +1960,17 @@ fn deliver_state(
                 .close(&key);
             subscriptions.active.remove(&id);
         }
-        return None;
+        return StateDelivery::Ready(None);
     }
-    let subscription = subscriptions.active.remove(&id)?;
+    let subscription = subscriptions
+        .active
+        .remove(&id)
+        .expect("active subscription");
     let terminal = if is_terminal {
         frame.clone()
     } else {
         serial_workbench_core::WireFrame {
-            request_id: frame.request_id,
+            request_id: frame.request_id.clone(),
             channel: serial_workbench_core::IpcChannel::State,
             body: IpcMessage::SubscriptionEnded {
                 subscription_id: id,
@@ -1911,7 +2003,7 @@ fn deliver_state(
         subscriptions.failed = true;
     }
     ledger.close(&key);
-    Some(subscription.query)
+    StateDelivery::Ready(Some(Box::new(subscription.query)))
 }
 
 async fn close_subscription(

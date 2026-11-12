@@ -282,11 +282,19 @@ describe("persisted application sidebar", () => {
       scrollWidth: { configurable: true, value: 155 },
     });
 
-    fireEvent.pointerEnter(control);
-    fireEvent.pointerMove(control, { pointerType: "mouse" });
-    expect(await screen.findByRole("tooltip")).toHaveTextContent(
-      zhCN["nav.overview"],
-    );
+    vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
+    try {
+      fireEvent.pointerEnter(control);
+      fireEvent.pointerMove(control, { pointerType: "mouse" });
+      await act(() => vi.advanceTimersByTimeAsync(999));
+      expect(screen.queryByRole("tooltip")).toBeNull();
+      await act(() => vi.advanceTimersByTimeAsync(1));
+      expect(screen.getByRole("tooltip")).toHaveTextContent(
+        zhCN["nav.overview"],
+      );
+    } finally {
+      vi.useRealTimers();
+    }
     fireEvent.pointerLeave(control);
     fireEvent.focus(control);
     expect(screen.getAllByRole("tooltip")).toHaveLength(1);

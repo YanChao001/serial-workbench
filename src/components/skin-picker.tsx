@@ -34,7 +34,7 @@ export function SkinPicker() {
         <h2>{t("settings.skinGallery")}</h2>
       </legend>
       <div className="space-y-3">
-        <TooltipProvider delayDuration={650} skipDelayDuration={0}>
+        <TooltipProvider>
           <div className="skin-gallery">
             {BUNDLED_WALLPAPERS.map((wallpaper) => {
               const active =

@@ -7,7 +7,11 @@ import {
 } from "@testing-library/react";
 import { afterEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
-import type { Operation, OperationSummary } from "@serial-workbench/contracts";
+import type {
+  Operation,
+  OperationSummary,
+  TxReceipt,
+} from "@serial-workbench/contracts";
 import { createTranslator } from "@/i18n/translate";
 import { en } from "@/i18n/en";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
@@ -45,6 +49,122 @@ function admitted(id: string): Operation {
     },
   };
 }
+
+it.each(["queued", "running", "cancel_requested"] as const)(
+  "does not announce an unsettled %s send's recovery evidence as an unknown result",
+  async (state) => {
+    const queued = admitted(`pending-send-${state}`);
+    const send = vi.fn().mockResolvedValue(queued);
+    const props = {
+      session: session(),
+      draft: "A",
+      labels,
+      onDraftChange: vi.fn(),
+      onSend: send,
+    };
+    const view = render(<SendPanel {...props} />);
+    await act(async () =>
+      fireEvent.click(screen.getByRole("button", { name: "Send" })),
+    );
+    const pendingReceipt: TxReceipt = {
+      operationId: queued.operationId,
+      sessionId: "session",
+      sessionEpoch: "1",
+      outcome: "unknown",
+      bytesBase64: "QQ==",
+      byteStart: "0",
+      byteEnd: "1",
+      acceptedRanges: [],
+      unknownRanges: [{ start: "0", end: "1" }],
+      peerAcknowledged: false,
+    };
+    const progress: Operation = {
+      ...queued,
+      revision: "2",
+      state,
+      result: { kind: "tx", value: pendingReceipt },
+    };
+    view.rerender(<SendPanel {...props} operations={[progress]} />);
+    expect(toast.custom).not.toHaveBeenCalled();
+    expect(getUserLog()).toEqual([]);
+    view.rerender(
+      <SendPanel
+        {...props}
+        operations={[
+          {
+            ...progress,
+            revision: "3",
+            state: "succeeded",
+            result: {
+              kind: "tx",
+              value: {
+                ...pendingReceipt,
+                outcome: "accepted",
+                acceptedRanges: [{ start: "0", end: "1" }],
+                unknownRanges: [],
+              },
+            },
+          },
+        ]}
+      />,
+    );
+    expect(toast.custom).not.toHaveBeenCalled();
+    expect(getUserLog()).toEqual([]);
+    expect(send).toHaveBeenCalledTimes(1);
+  },
+);
+
+it("preserves the backend timeout reason when a send settles with unknown bytes", async () => {
+  const queued = admitted("send-native-timeout");
+  const settled: Operation = {
+    ...queued,
+    state: "unknown",
+    revision: "2",
+    result: {
+      kind: "tx",
+      value: {
+        operationId: queued.operationId,
+        sessionId: "session",
+        sessionEpoch: "1",
+        outcome: "unknown",
+        bytesBase64: "QQ==",
+        byteStart: "0",
+        byteEnd: "1",
+        acceptedRanges: [],
+        unknownRanges: [{ start: "0", end: "1" }],
+        backendError: {
+          code: "WRITE_TIMEOUT",
+          message: "private backend input",
+          retryable: false,
+        },
+        peerAcknowledged: false,
+      },
+    },
+  };
+  render(
+    <SendPanel
+      session={session()}
+      draft="A"
+      labels={labels}
+      onDraftChange={vi.fn()}
+      onSend={vi.fn().mockResolvedValue(settled)}
+      formatError={(error) =>
+        error.code === "WRITE_TIMEOUT" ? "Write wait expired" : "Other failure"
+      }
+    />,
+  );
+  await act(async () =>
+    fireEvent.click(screen.getByRole("button", { name: "Send" })),
+  );
+  expect(getUserLog()).toEqual([
+    expect.objectContaining({
+      code: "WRITE_TIMEOUT",
+      message: "Write wait expired",
+      count: 1,
+    }),
+  ]);
+  expect(JSON.stringify(getUserLog())).not.toContain("private backend input");
+});
 
 it.each(["failed", "unknown"] as const)(
   "shares one real %s send failure event with the permanent observer",
