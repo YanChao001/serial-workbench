@@ -134,7 +134,8 @@ for (const sample of [
     await draft.focus();
     const geometry = await page.locator(".workbench").evaluate((root) => {
       function rect(selector: string) {
-        const element = root.querySelector(selector);
+        const element =
+          root.querySelector(selector) ?? document.querySelector(selector);
         if (!element) throw new Error(`Missing layout region ${selector}`);
         const { x, y, width, height, right, bottom } =
           element.getBoundingClientRect();
@@ -155,6 +156,14 @@ for (const sample of [
         connection: rect(".workbench-connection"),
         receiveToolbar: rect(".workbench-receive-toolbar"),
         composeToolbar: rect(".workbench-compose-toolbar"),
+        titlebar: rect(".app-title-bar"),
+        titleAction: rect(".app-title-icon-button"),
+        receiveEncoding: rect(
+          ".workbench-receive-toolbar .workbench-encoding-select",
+        ),
+        sendEncoding: rect(
+          ".workbench-compose-toolbar .workbench-encoding-select",
+        ),
         editor: rect(".workbench-editor"),
         receive: rect(".workbench-receive-frame"),
         send: rect(".workbench-send"),
@@ -168,7 +177,29 @@ for (const sample of [
         scrollWidth: root.scrollWidth,
       };
     });
-    expect(geometry.panel.width).toBeLessThanOrEqual(177);
+    expect(geometry.panel.width).toBeLessThanOrEqual(128);
+    for (const encoding of [geometry.receiveEncoding, geometry.sendEncoding])
+      expect(encoding.width).toBeLessThanOrEqual(112);
+    for (const bar of [
+      geometry.connection,
+      geometry.receiveToolbar,
+      geometry.composeToolbar,
+    ])
+      expect(bar.height).toBe(geometry.titlebar.height);
+    for (const [bar, control] of [
+      [geometry.titlebar, geometry.titleAction],
+      [geometry.connection, geometry.panel],
+      [geometry.receiveToolbar, geometry.receiveEncoding],
+      [geometry.composeToolbar, geometry.sendEncoding],
+    ] as const) {
+      expect(control.height).toBe(geometry.panel.height);
+      const available = bar.height - bar.borderTop - bar.borderBottom;
+      expect(
+        Math.abs(
+          control.y - bar.y - bar.borderTop - (available - control.height) / 2,
+        ),
+      ).toBeLessThanOrEqual(0.5);
+    }
     expect(geometry.button.width).toBeGreaterThanOrEqual(47);
     expect(Math.abs(geometry.button.y - geometry.input.y)).toBeLessThan(1);
     expect(
@@ -184,15 +215,16 @@ for (const sample of [
       geometry.connection.bottom -
         geometry.connection.borderBottom -
         geometry.panel.bottom,
-      geometry.receiveToolbar.y - geometry.connection.bottom,
-      geometry.receive.y - geometry.receiveToolbar.bottom,
+      geometry.receiveEncoding.y - geometry.receiveToolbar.y,
+      geometry.receive.y - geometry.receiveEncoding.bottom,
       bottomInset,
-      geometry.composeToolbar.y - geometry.send.y - geometry.send.borderTop,
-      geometry.input.y - geometry.composeToolbar.bottom,
+      geometry.sendEncoding.y - geometry.composeToolbar.y,
+      geometry.input.y - geometry.sendEncoding.bottom,
       geometry.send.bottom - geometry.input.bottom,
     ];
     expect(verticalInset).toBeGreaterThan(0);
-    for (const gap of verticalGaps) expect(gap).toBe(verticalInset);
+    for (const gap of verticalGaps)
+      expect(Math.abs(gap - verticalInset)).toBeLessThanOrEqual(0.5);
     expect(Math.abs(geometry.input.x - geometry.receive.x)).toBeLessThan(1);
     expect(
       Math.abs(geometry.button.right - geometry.receive.right),

@@ -103,20 +103,17 @@ async fn metrics_are_shared_and_count_only_unique_final_accepted_and_unknown_ran
     assert_eq!(idle["txWriteErrors"], "3");
     assert_eq!(idle["lineErrorsAvailable"], false);
     assert_eq!(idle["frameCountsAvailable"], false);
-    // 原生关闭成功保留 unknown TX 隔离与证据；仪表查询不能清除此责任。
+    // 真实关闭允许退出，但历史 unknown TX、隔离标记和证据仍须保留。
     let unknown_operation = unknown_operation.unwrap();
-    let error = h.host.shutdown().await.unwrap_err();
-    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-    let report: ShutdownReport =
-        serde_json::from_value(serde_json::to_value(error.details.unwrap()).unwrap()).unwrap();
+    let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
     assert_eq!(
         report,
         ShutdownReport {
             mode: ShutdownMode::CancelAndSettle,
-            completed: false,
+            completed: true,
             excluded_operation_id: None,
             unsettled_operation_ids: vec![],
-            quarantined_sessions: vec![target.clone()],
+            quarantined_sessions: vec![],
             evidence_refs: vec![ObjectRef {
                 host_id: unknown_operation.execution_host_id.clone(),
                 kind: ResourceKind::try_from("operation").unwrap(),
@@ -138,6 +135,7 @@ async fn metrics_are_shared_and_count_only_unique_final_accepted_and_unknown_ran
     assert_eq!(state.tx_gate, TxGate::ControlUnknown);
     assert_eq!(h.probe.close_calls.load(Ordering::SeqCst), 1);
     assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+    h.host.shutdown().await.unwrap();
 }
 
 // Break caught: reconnect resets totals, starts duration before native open, or keeps duration running after disconnect.

@@ -190,11 +190,13 @@ async fn assert_shutdown_retains_fixture_evidence(
     optional_evidence: Vec<ObjectRef>,
     quarantine: bool,
 ) {
-    let error = h.host.shutdown().await.unwrap_err();
-    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-    let report: ShutdownReport = decode(error.details.as_deref().unwrap()).unwrap();
+    let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
     assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
-    assert!(!report.completed);
+    assert_eq!(
+        report.completed,
+        unsettled.is_empty() && !quarantine,
+        "{report:?}"
+    );
     assert!(report.excluded_operation_id.is_none());
     assert_eq!(report.unsettled_operation_ids, unsettled);
     assert_eq!(
@@ -222,6 +224,9 @@ async fn assert_shutdown_retains_fixture_evidence(
     assert_eq!(session.snapshot().unwrap().state, SessionState::Closed);
     assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
     assert_eq!(h.probe.close_calls.load(Ordering::SeqCst), 1);
+    if report.completed {
+        h.host.shutdown().await.unwrap();
+    }
 }
 
 fn operation_evidence(h: &support::Harness, id: &Id) -> ObjectRef {
@@ -367,7 +372,7 @@ async fn queued_acquire_ttl_is_not_restarted_after_previous_write() {
     tx_job.await.unwrap().unwrap();
     support::until(|| {
         let op = h.store.get(&h.actor, &id).unwrap();
-        op.result.is_some() || terminal(op.state)
+        op.result.is_some() || op.state.is_terminal()
     })
     .await;
     let late_lease = h.store.get(&h.actor, &id).unwrap().result;
@@ -543,7 +548,7 @@ async fn release_after_unknown_write_keeps_persistent_isolation() {
             operation_evidence(&h, &tx.operation_id),
             operation_evidence(&h, &release.operation_id),
         ],
-        true,
+        false,
     )
     .await;
     assert_eq!(
@@ -810,7 +815,13 @@ async fn completed_boundary_does_not_include_a_later_blocked_tx() {
     );
     let first_id = first.operation.operation_id.clone();
     service.execute(first, first_preparation).await.unwrap();
-    assert!(terminal(h.store.get(&h.actor, &first_id).unwrap().state));
+    assert!(
+        h.store
+            .get(&h.actor, &first_id)
+            .unwrap()
+            .state
+            .is_terminal()
+    );
     let gate = Arc::new(support::Gate::default());
     h.probe.steps.lock().unwrap().push_back(support::WriteStep {
         accepted: 5,

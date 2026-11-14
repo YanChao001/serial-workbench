@@ -56,7 +56,7 @@ async fn catalog_notifications_follow_visible_tools_and_expiry_on_the_real_conne
         action_id: id("catalog.list"),
         target: target.clone(),
         params: serde_json::from_value(serde_json::json!({"pageSize":"100"})).unwrap(),
-        reveal_target: BuiltinAction::CatalogList.spec().reveal_target,
+        reveal_target: BuiltinAction::CatalogList.spec().reveal_target.clone(),
     };
     let reply = client
         .request(RpcRequest::CatalogList(query))

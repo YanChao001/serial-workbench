@@ -128,7 +128,7 @@ it.each([
     absent: "macosAccessory" as const,
   },
 ])(
-  "selects only $platform guidance from the actual error and keeps the code in details",
+  "selects only $platform guidance and shows the actionable code without exposing raw failure text",
   async ({ platform, expected, absent }) => {
     const retry = vi.fn();
     render(
@@ -143,7 +143,7 @@ it.each([
     expect(screen.getByText(labels.accessDenied)).toBeInTheDocument();
     expect(screen.getByText(labels[expected])).toBeInTheDocument();
     expect(screen.queryByText(labels[absent])).not.toBeInTheDocument();
-    expect(screen.queryByText("ACCESS_DENIED")).not.toBeInTheDocument();
+    expect(screen.getByText("ACCESS_DENIED")).toBeInTheDocument();
     expect(screen.queryByText(failure.message)).not.toBeInTheDocument();
     fireEvent.click(screen.getByRole("button", { name: labels.open }));
     expect(retry).toHaveBeenCalledOnce();

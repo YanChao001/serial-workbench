@@ -12,7 +12,12 @@ import {
 } from "@serial-workbench/contracts";
 import type { SettingsBackend } from "./settings-sync";
 import { settingsErrorCode } from "./settings-sync";
+import { parseU64 } from "./u64";
 import generatedClientDefaults from "./generated/client-defaults.json";
+import {
+  DEFAULT_RECEIVE_HISTORY,
+  parseReceiveHistory,
+} from "./receive-history";
 import { APP_CONFIG } from "@/config/app";
 import { isTauri, readClientState, saveClientState } from "./tauri";
 
@@ -99,16 +104,10 @@ export function createClientSettingsBackend(
             throw error;
           const fresh = await port.read();
           if (fresh.formatVersion !== "0.1") throw { code: "FUTURE_FORMAT" };
-          const keys = Object.keys(original.state.preferences) as Array<
-            keyof ClientPreferences
-          >;
           // 草稿/图库也推进窗口 revision；只合并偏好未变化的其他切片更新。
           if (
-            keys.some(
-              (key) =>
-                fresh.state.preferences[key] !==
-                original.state.preferences[key],
-            )
+            JSON.stringify(parseClientPreferences(fresh.state.preferences)) !==
+            JSON.stringify(parseClientPreferences(original.state.preferences))
           )
             throw error;
           base = fresh;
@@ -180,12 +179,11 @@ export function parseConnectionDefaults(value: unknown): ConnectionDefault[] {
 export function parseClientPreferences(value: unknown): ClientPreferences {
   if (
     !record(value) ||
-    !exactKeys(value, [
-      "menuBar",
-      "windowPosition",
-      "sidebarCollapsed",
-      "sidebarWidth",
-    ]) ||
+    !exactKeys(
+      value,
+      ["menuBar", "windowPosition", "sidebarCollapsed", "sidebarWidth"],
+      ["receiveHistory"],
+    ) ||
     typeof value.menuBar !== "boolean" ||
     typeof value.sidebarCollapsed !== "boolean" ||
     (value.windowPosition !== "remember" &&
@@ -201,6 +199,10 @@ export function parseClientPreferences(value: unknown): ClientPreferences {
     windowPosition: value.windowPosition,
     sidebarCollapsed: value.sidebarCollapsed,
     sidebarWidth: value.sidebarWidth,
+    receiveHistory:
+      value.receiveHistory === undefined
+        ? { ...DEFAULT_RECEIVE_HISTORY }
+        : parseReceiveHistory(value.receiveHistory),
   };
 }
 function parseClientGallery(value: unknown): GalleryEntry[] {
@@ -314,11 +316,7 @@ export function parseClientWindowState(value: unknown): ClientWindowState {
   };
 }
 function revision(value: unknown): string {
-  if (
-    typeof value !== "string" ||
-    !/^(0|[1-9][0-9]*)$/.test(value) ||
-    BigInt(value) > 18446744073709551615n
-  )
+  if (typeof value !== "string" || parseU64(value) === undefined)
     invalidClient();
   return value;
 }

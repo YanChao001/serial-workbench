@@ -125,6 +125,7 @@ pub enum QueryResult {
     Scopes(StateScopesResult),
     Settings(SettingsDocumentResult),
     Workspace(WorkspaceDocumentResult),
+    Workspaces(WorkspaceListResult),
     DocumentJson(DocumentJsonResult),
     StreamRead(StreamReadResult),
     StreamSubscribe(StreamSubscribeResult),
@@ -213,6 +214,7 @@ impl BuiltinAction {
             }};
         }
         match self {
+            Self::WorkspaceList => typed!(WorkspaceListParams),
             Self::ActionCheck => typed!(ActionCheckParams),
             Self::Client(capability) => {
                 ClientEffectAction::from_params(capability, &query.params)?;

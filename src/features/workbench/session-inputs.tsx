@@ -13,6 +13,37 @@ import type { SessionControlsLabels } from "./session-controls";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { WorkbenchNotice } from "./workbench-notice";
 
+type ReadInputs = HostContextValue["sessionInputs"];
+const pendingSamples = new WeakMap<
+  ReadInputs,
+  Map<string, Promise<SessionInputs>>
+>();
+function sampleInputs(
+  read: ReadInputs,
+  target: Target,
+): Promise<SessionInputs> {
+  let samples = pendingSamples.get(read);
+  if (!samples) {
+    samples = new Map();
+    pendingSamples.set(read, samples);
+  }
+  const key = JSON.stringify([
+    target.hostId,
+    target.sessionId,
+    target.sessionEpoch,
+  ]);
+  const existing = samples.get(key);
+  if (existing) return existing;
+  // 关闭面板只解绑显示，实际查询由 Host 的有界预算管理，真实结束后释放占位。
+  const pending = Promise.resolve().then(() => read(target));
+  samples.set(key, pending);
+  const release = () => {
+    if (samples.get(key) === pending) samples.delete(key);
+  };
+  void pending.then(release, release);
+  return pending;
+}
+
 export function SessionInputSamples({
   target,
   read,
@@ -50,7 +81,7 @@ export function SessionInputSamples({
       inflight = true;
       setBusy(true);
       try {
-        const value = await read!(current, controller.signal);
+        const value = await sampleInputs(read!, current);
         if (!controller.signal.aborted) {
           if (value.sessionId !== sessionId || value.sessionEpoch !== epoch)
             throw { code: "EPOCH_MISMATCH" };

@@ -31,6 +31,78 @@ fn meta() -> SourceMeta {
 }
 
 #[tokio::test]
+async fn reader_memory_headroom_retains_fragmented_burst_without_raising_wire_credit() {
+    // Same 1 MiB wire window, but prepared frames and queued events also own memory.
+    for (queue, expect_gap) in [(1048576_u64, true), (4194304, false)] {
+        let f = Fixture::new(StreamLimits::default());
+        let after = f.source.initial_cursor();
+        let reader = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: queue.into(),
+                    initial_credit_bytes: 1048576.into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        let mut held = Vec::new();
+        for _ in 0..128 {
+            f.source
+                .append_rx(meta(), Arc::from([42_u8; 256]), None)
+                .unwrap();
+            if let Some(batch) = reader.try_next().await.unwrap() {
+                reader.mark_sent(&batch).unwrap();
+                held.push(batch);
+            }
+        }
+        let mut received = 0;
+        let mut gap = false;
+        let inspect = |batch: &PreparedRawBatch, received: &mut usize, gap: &mut bool| {
+            for item in &batch.batch().items {
+                match item {
+                    StreamItem::Source { event } => {
+                        if let RawPayload::Rx(payload) = &event.payload {
+                            *received += STANDARD
+                                .decode(payload.bytes_base64.as_str())
+                                .unwrap()
+                                .len();
+                        }
+                    }
+                    StreamItem::ReaderGap { .. } => *gap = true,
+                }
+            }
+        };
+        for batch in &held {
+            inspect(batch, &mut received, &mut gap);
+        }
+        let last = held.last().unwrap().batch().cursor.clone();
+        f.grant(&reader, last, 1048576).await.unwrap();
+        drop(held);
+        while let Some(batch) = reader.try_next().await.unwrap() {
+            inspect(&batch, &mut received, &mut gap);
+            reader.mark_sent(&batch).unwrap();
+            f.grant(&reader, batch.batch().cursor.clone(), 1048576)
+                .await
+                .unwrap();
+        }
+        assert_eq!(gap, expect_gap, "queue={queue}, received={received}");
+        if expect_gap {
+            assert!(received < 32768);
+        } else {
+            assert_eq!(received, 32768);
+        }
+        assert!(f.hub.memory_usage().reader_peak <= queue as usize);
+        reader.close();
+        assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+    }
+}
+
+#[tokio::test]
 async fn fragmented_raw_delivery_waits_for_ack_when_prepared_memory_is_full() {
     let f = Fixture::new(StreamLimits::default());
     let after = f.source.initial_cursor();
@@ -714,9 +786,10 @@ async fn maximum_tx_intent_fits_reader_and_shared_payload_remains_charged() {
         .await;
     let intent = f
         .source
-        .append_tx_intent(meta(), id("max-tx"), Arc::from(vec![42u8; 16384]))
+        .append_tx_intent(meta(), id("max-tx"), Arc::from(vec![42u8; TX_MAX_BYTES]))
         .unwrap();
     let batch = sub.try_next().await.unwrap().unwrap();
+    assert!(serde_json::to_vec(batch.batch()).unwrap().len() <= 256 * 1024);
     assert!(
         matches!(&batch.batch().items[0],StreamItem::Source {event} if matches!(event.payload,RawPayload::TxIntent(_)))
     );
@@ -732,7 +805,7 @@ async fn maximum_tx_intent_fits_reader_and_shared_payload_remains_charged() {
                 outcome: TxOutcome::Accepted,
                 accepted_ranges: vec![ByteRange {
                     start: 0.into(),
-                    end: 16384.into(),
+                    end: (TX_MAX_BYTES as u64).into(),
                 }],
                 unknown_ranges: vec![],
                 backend_error: None,

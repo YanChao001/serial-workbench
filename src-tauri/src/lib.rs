@@ -196,7 +196,7 @@ pub fn run() {
             log::warn!("Tray is unavailable: {error}");
         }
         // 每次启动记一条，既方便对照版本，也顺便验证日志链路是通的
-        log::info!("应用启动 v{}", app.package_info().version);
+        log::info!("Application started v{}", app.package_info().version);
 
         // 启动 WebView2 前完成应用状态初始化；从工作线程创建窗口
         // 使事件循环能够继续接收单实例激活请求
@@ -205,6 +205,15 @@ pub fn run() {
     });
 
     builder
+        .on_page_load(|webview, payload| {
+            if payload.event() == tauri::webview::PageLoadEvent::Started {
+                let app = webview.app_handle();
+                if let Some(window) = app.get_webview_window(webview.label()) {
+                    app.state::<host_bridge::DesktopHostBridge>()
+                        .document_started(&window);
+                }
+            }
+        })
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app = window.app_handle();

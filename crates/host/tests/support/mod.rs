@@ -76,6 +76,7 @@ pub struct Probe {
     pub read_gate: Mutex<Option<Arc<Gate>>>,
     pub read_fails: AtomicBool,
     pub configured_reads: AtomicUsize,
+    pub last_read_wait_ms: std::sync::atomic::AtomicU64,
     pub opens: AtomicUsize,
     pub closes: AtomicUsize,
     pub close_calls: AtomicUsize,
@@ -407,6 +408,9 @@ impl Transport for ScriptedTransport {
         }
     }
     fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock> {
+        self.probe
+            .last_read_wait_ms
+            .store(wait.as_millis() as u64, Ordering::SeqCst);
         let gate = self.probe.read_gate.lock().unwrap().take();
         if let Some(gate) = gate {
             gate.hold();
@@ -439,7 +443,7 @@ impl Transport for ScriptedTransport {
         _: Arc<AtomicBool>,
     ) -> BackendResult<Box<dyn PendingWrite>> {
         *self.probe.write_cancelled.lock().unwrap() = Some(cancelled.clone());
-        assert!(bytes.len() <= 16384);
+        assert!(bytes.len() <= TX_MAX_BYTES);
         self.probe
             .writes
             .lock()

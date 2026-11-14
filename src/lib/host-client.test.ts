@@ -1,6 +1,7 @@
 ﻿import { parseWireFrame } from "@serial-workbench/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { parseReply } from "@serial-workbench/contracts";
+import * as contracts from "@serial-workbench/contracts";
 import type {
   AttachResult,
   Query,
@@ -216,6 +217,73 @@ describe("Host scope directory epoch classification", () => {
   );
 });
 describe("native Host transport", () => {
+  it("validates state frames once at the SDK boundary and rejects an invalid state channel", async () => {
+    const { port, deliver, finish } = setup();
+    const cursor = {
+      hostId: attachment.hostId,
+      instanceEpoch: attachment.instanceEpoch,
+      scopeId: "host.devices",
+      position: "0",
+    };
+    vi.mocked(port.request).mockResolvedValue({
+      ok: true,
+      result: {
+        kind: "snapshot",
+        value: {
+          hostId: attachment.hostId,
+          instanceEpoch: attachment.instanceEpoch,
+          revision: "1",
+          cursor,
+          state: {},
+        },
+      },
+    });
+    const connection = await createHostConnection(port);
+    connection.transport.setScopes([
+      { scopeId: cursor.scopeId, target: query.target },
+    ]);
+    const observed = vi.fn();
+    const pending = connection.client.subscribe(cursor.scopeId, observed);
+    await vi.waitFor(() => expect(port.subscribe).toHaveBeenCalledOnce());
+    finish();
+    const unsubscribe = await pending;
+    const subscriptionQuery = vi.mocked(port.subscribe).mock.calls[0]![0];
+    const delta: WireFrame = {
+      channel: "state",
+      requestId: subscriptionQuery.requestId,
+      body: {
+        type: "delta",
+        subscriptionId: "real-id",
+        delta: {
+          cursor: { ...cursor, position: "1" },
+          previousCursor: cursor,
+          revision: "2",
+          eventType: "devices",
+          payload: {},
+        },
+      },
+    };
+    const validate = vi.spyOn(contracts, "parseWireFrame");
+    try {
+      deliver(delta);
+      expect(observed).toHaveBeenLastCalledWith(
+        expect.objectContaining({ type: "delta" }),
+      );
+      expect(validate).toHaveBeenCalledOnce();
+      validate.mockClear();
+      deliver({ ...delta, channel: "raw" });
+      expect(observed).toHaveBeenLastCalledWith({
+        type: "error",
+        error: expect.objectContaining({ code: "INVALID_STATE_FRAME" }),
+      });
+      expect(validate).toHaveBeenCalledOnce();
+    } finally {
+      validate.mockRestore();
+      unsubscribe();
+      connection.dispose();
+    }
+  });
+
   it("waits for the real subscription ID then consumes before acknowledging its generation", async () => {
     expect(parseWireFrame(frame)).toEqual(frame);
     const { port, deliver, finish } = setup();
@@ -234,6 +302,11 @@ describe("native Host transport", () => {
     const channel = await pending;
     expect(channel.subscriptionId).toBe("real-id");
     expect(received).toEqual([frame]);
+    expect(port.subscribe).toHaveBeenCalledWith(
+      query,
+      expect.any(Function),
+      "8",
+    );
     expect(port.ack).toHaveBeenCalledWith("8", "real-id", "data", "1");
     channel.unsubscribe();
     channel.unsubscribe();
@@ -255,7 +328,7 @@ describe("native Host transport", () => {
     await expect(pending).rejects.toMatchObject({ name: "AbortError" });
     await tick();
     expect(received).not.toHaveBeenCalled();
-    expect(port.unsubscribe).toHaveBeenCalledWith("real-id");
+    expect(port.unsubscribe).toHaveBeenCalledWith("real-id", "8");
     expect(port.ack).toHaveBeenCalledWith("8", "real-id", "data", "1");
   });
   it("never resends an invocation on transport failure", async () => {
@@ -271,6 +344,7 @@ describe("native Host transport", () => {
     };
     await expect(transport.request(request)).rejects.toThrow("disconnected");
     expect(port.request).toHaveBeenCalledTimes(1);
+    expect(port.request).toHaveBeenCalledWith(request, "8");
     expect(port.attachment).not.toHaveBeenCalled();
   });
   it("resolves only Host-authorized scope targets and makes fresh requests with issued context", async () => {
@@ -351,7 +425,7 @@ it("raw data and termination use independent acknowledgements and cleanup", asyn
   expect(port.ack).toHaveBeenCalledWith("8", "raw-id", "data", "1");
   expect(port.ack).toHaveBeenCalledWith("8", "raw-id", "lifecycle", "1");
   channel.unsubscribe();
-  expect(port.rawUnsubscribe).toHaveBeenCalledWith("raw-id");
+  expect(port.rawUnsubscribe).toHaveBeenCalledWith("raw-id", "8");
   expect(port.unsubscribe).not.toHaveBeenCalled();
 });
 
@@ -431,6 +505,6 @@ it("rejects a raw batch whose subscription differs from the native returned ID",
   });
   expect(received).not.toHaveBeenCalled();
   expect(error).toHaveBeenCalledOnce();
-  expect(port.rawUnsubscribe).toHaveBeenCalledWith("real-raw");
+  expect(port.rawUnsubscribe).toHaveBeenCalledWith("real-raw", "8");
   expect(port.ack).toHaveBeenCalledWith("8", "real-raw", "data", "1");
 });

@@ -219,14 +219,15 @@ describe("Host native facade", () => {
       revealTarget: { pageId: "workbench" },
     };
     await expect(
-      hostRequest({ method: "action.query", params: query }),
+      hostRequest({ method: "action.query", params: query }, "3"),
     ).resolves.toEqual(reply);
     bridge.hostSubscribe.mockResolvedValue({ status: "ok", data: "real-id" });
     const listener = vi.fn();
-    await expect(hostSubscribe(query, listener)).resolves.toBe("real-id");
+    await expect(hostSubscribe(query, listener, "3")).resolves.toBe("real-id");
     expect(bridge.hostSubscribe).toHaveBeenCalledWith(
       query,
       expect.objectContaining({ onmessage: listener }),
+      "3",
     );
     bridge.hostDeliveryAck.mockResolvedValue({ status: "ok", data: null });
     await hostDeliveryAck("3", "real-id", "lifecycle", "1");

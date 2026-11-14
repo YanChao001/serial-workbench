@@ -170,6 +170,8 @@ fn view() -> serial_workbench_core::WorkspaceView {
         pinned: false,
         receive_mode: TerminalMode::Text,
         send_mode: TerminalMode::Hex,
+        receive_encoding: Some(TextEncoding::Utf8),
+        send_encoding: TextEncoding::Utf8,
         binding_id: Id::try_from("binding").unwrap(),
     }
 }

@@ -284,7 +284,7 @@ impl TransmissionService {
         let ids = ids.to_vec();
         blocking(move || {
             for id in ids {
-                if !terminal(store.operation_state(&id)?) {
+                if !store.operation_state(&id)?.is_terminal() {
                     return Err(HostError::new(
                         "OWNER_UNAVAILABLE",
                         "Operation owner did not retain a terminal settlement",
@@ -632,7 +632,7 @@ impl TransmissionService {
                     .collect::<HostResult<Vec<_>>>()
             })
             .await?;
-            let waiting = durable.iter().any(|state| !terminal(*state))
+            let waiting = durable.iter().any(|state| !state.is_terminal())
                 || self
                     .tokens
                     .lock()

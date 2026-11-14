@@ -56,6 +56,7 @@ export type DeviceLibraryLabels = Record<
   string
 > & {
   editedWhileSaving?: string;
+  favoritesHelp?: string;
   onlineDevices: string;
   details: string;
   offlineDevice: string;
@@ -407,6 +408,11 @@ function LibraryContent({
           </fieldset>
         </TabsContent>
         <TabsContent value="favorites" className="workbench-tool-page">
+          {labels.favoritesHelp && (
+            <p className="text-sm text-muted-foreground">
+              {labels.favoritesHelp}
+            </p>
+          )}
           <fieldset disabled={blocked}>
             <legend className="sr-only">{labels.favorites}</legend>
             {!document?.bindings.length ? (

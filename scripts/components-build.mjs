@@ -15,6 +15,15 @@ export const COMPONENTS = [
   "serial-workbench-mcp",
 ];
 
+// 桌面和辅助程序使用同一 release 策略，避免两阶段的产物配置漂移。
+export const RELEASE_SPEED_SETTINGS = Object.freeze([
+  "codegen-units=256",
+  'lto="off"',
+  "opt-level=0",
+  "incremental=true",
+  "strip=false",
+]);
+
 export function targetPlatform(target) {
   if (target.includes("-windows-")) return "windows";
   if (target.endsWith("-apple-darwin")) return "macos";
@@ -114,13 +123,7 @@ export async function buildComponents(
   if (plan.explicitTarget) args.push("--target", plan.explicitTarget);
   for (const name of COMPONENTS) args.push("--package", name);
   if (plan.optimize === "speed")
-    for (const setting of [
-      "codegen-units=256",
-      'lto="off"',
-      "opt-level=0",
-      "incremental=true",
-      "strip=false",
-    ])
+    for (const setting of RELEASE_SPEED_SETTINGS)
       args.push("--config", `profile.release.${setting}`);
   const stdout = await run("cargo", args, {
     cwd: join(plan.root, "src-tauri"),

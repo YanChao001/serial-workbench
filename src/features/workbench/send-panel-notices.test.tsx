@@ -20,7 +20,11 @@ import { OperationFailureObserver } from "./operation-failure-notices";
 import { labels, operation, session } from "./test-fixtures";
 
 const observer = vi.hoisted(() => ({
-  state: { status: "ready", operationSummaries: [] as OperationSummary[] },
+  state: {
+    status: "ready",
+    operationSummaries: [] as OperationSummary[],
+    operationSummariesReady: true,
+  },
   connection: { attachment: { hostId: "host", instanceEpoch: "1" } },
 }));
 vi.mock("@/providers/host-context", () => ({ useHost: () => observer }));

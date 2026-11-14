@@ -18,6 +18,54 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
+it("shares one actual pending sample across rapid close and reopen cycles", async () => {
+  let complete!: (
+    value: import("@serial-workbench/contracts").SessionInputs,
+  ) => void;
+  const read = vi.fn(
+    () =>
+      new Promise<import("@serial-workbench/contracts").SessionInputs>(
+        (resolve) => {
+          complete = resolve;
+        },
+      ),
+  );
+  for (let index = 0; index < 15; index++) {
+    const view = render(
+      <SessionInputSamples
+        target={target}
+        read={read}
+        connected
+        labels={controlLabels}
+      />,
+    );
+    await act(async () => {});
+    view.unmount();
+  }
+  render(
+    <SessionInputSamples
+      target={target}
+      read={read}
+      connected
+      labels={controlLabels}
+    />,
+  );
+  expect(read).toHaveBeenCalledOnce();
+  await act(async () => {
+    complete({
+      sessionId: target.sessionId!,
+      sessionEpoch: target.sessionEpoch!,
+      sampledAt: "2026-11-13T08:00:00Z",
+      sampledMonoNs: "1",
+      cts: true,
+      dsr: false,
+      ri: false,
+      cd: true,
+    });
+  });
+  expect(screen.getByLabelText("CTS")).toHaveTextContent(controlLabels.on);
+});
+
 it("reports repeated input sampling failures once through the notification and serial log without adding a layout row", async () => {
   vi.useFakeTimers({ toFake: ["setInterval", "clearInterval"] });
   clearUserLog();

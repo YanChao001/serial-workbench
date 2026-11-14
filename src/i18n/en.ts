@@ -291,6 +291,9 @@ export const en = {
     "Access denied. Check whether the target is in use and review access permissions.",
   "nativeError.permissionDenied":
     "This action is not authorized. Check permissions and try again.",
+  "nativeError.unauthenticated":
+    "Authentication with the local service failed. Reconnect to try again.",
+  "workbench.hostWaiting": "Waiting for the local service to respond.",
   "workbench.sessions": "Sessions",
   "workbench.sessionLabel": "Session",
   "workbench.duplicateView": "New view",
@@ -303,12 +306,56 @@ export const en = {
   "workbench.split": "Split",
   "workbench.freeze": "Freeze",
   "workbench.resume": "Resume",
+  "workbench.displayPaused": "Display paused",
+  "workbench.pendingUpdates": "Pending updates: {count}",
+  "workbench.newUpdates": "Updates: {count}",
+  "workbench.returnToLatest": "Return to latest",
+  "workbench.clearDraft": "Clear send draft",
   "workbench.search": "Search bytes",
+  "workbench.searchCase": "Match case",
+  "workbench.diagnostics.capacity":
+    "Permission records are full, so connection access cannot be confirmed. Keep diagnostic details instead of repeatedly retrying.",
+  "workbench.diagnostics.port": "Port",
+  "workbench.diagnostics.driver": "Driver",
+  "workbench.diagnostics.state": "Connection",
+  "workbench.diagnostics.errorCode": "Error code",
+  "workbench.diagnostics.connected": "Connected",
+  "workbench.diagnostics.disconnected": "Disconnected",
+  "workbench.tools.favoritesHelp":
+    "Favorites belong to this workspace and store a port with its settings. Selecting one fills the port and settings; Connect opens the port.",
+  "nativeError.workspaceDeleted":
+    "This workspace was deleted. Unsaved content can be saved as a new workspace.",
+  "workbench.searchWord": "Whole word",
+  "workbench.searchRegex": "Regular expression",
+  "workbench.searchPrevious": "Previous match",
+  "workbench.searchClose": "Close search",
+  "workbench.searchInvalid": "Invalid expression",
+  "workbench.searchTimeout": "Search timed out. Simplify the expression.",
+  "workbench.searchEncoding": "Invalid text encoding. Use HEX.",
+  "workbench.receiveEncoding": "Receive encoding",
+  "workbench.sendEncoding": "Send encoding",
+  "workbench.encodingAuto": "Auto",
+  "workbench.encodingAutoShort": "Auto",
+  "workbench.encodingPending": "Auto · waiting",
+  "workbench.encodingGuessHelp":
+    "Estimated from a bounded byte sample. Short text and binary data can be ambiguous. Select an encoding manually if needed.",
+  "workbench.invalidEncoding":
+    "These bytes are invalid for the selected encoding. The original draft is kept.",
+  "workbench.unrepresentableEncoding":
+    "Some characters cannot be represented in this encoding. Choose another encoding.",
+  "workbench.encodingLoading": "Loading encoding…",
+  "workbench.encodingLoadFailed":
+    "Encoding could not load. Change the encoding and retry.",
+  "workbench.searchLimit": "Narrow the search range.",
   "workbench.searchMode": "Search mode",
   "workbench.find": "Find next",
   "workbench.noMatches": "No matches",
   "workbench.offset": "Byte offset",
   "workbench.gap": "Gap",
+  "workbench.configurationApplied": "Connection parameters applied",
+  "workbench.configurationUncertain":
+    "Connection parameter change needs confirmation",
+  "workbench.controlEvent": "Serial control event",
   "workbench.emptyStream": "Waiting for bytes",
   "workbench.send": "Send",
   "workbench.unconnectedDraft": "Unconnected draft",
@@ -361,6 +408,12 @@ export const en = {
   "workbench.disconnected": "Disconnected",
   "workbench.encodingHelp": "Switch to HEX to inspect original bytes",
   "workbench.gapHelp": "Inspect reader or capture queue limits",
+  "workbench.historyRetention": "Display retention",
+  "workbench.historyRecords": "Maximum display records",
+  "workbench.historyCapacity": "Cache limit",
+  "workbench.historyHint":
+    "Each port has its own limits. Continuous reads less than 100 ms apart form one display record. Capacity counts RX and TX data bytes, with receipts counted once. Oldest content is removed at either limit. Record to keep the full history.",
+  "workbench.historyTrimmed": "Cache trimmed",
   "workbench.disconnectHelp":
     "Reconnect the device and explicitly reopen the session",
   "workbench.cancel": "Cancel",
@@ -384,6 +437,8 @@ export const en = {
   "workbench.partial": "Partially accepted",
   "workbench.rejected": "Rejected",
   "workbench.emptyDraft": "Enter text or HEX bytes to send",
+  "workbench.sendLimit":
+    "Send up to {limit} at once, including the line ending. Use Send file for larger content.",
   "workbench.sendNotAllowed":
     "Sending is not permitted for this session or byte sequence",
   "workbench.streamUnavailable": "Live data stopped. Existing bytes are kept.",
@@ -401,7 +456,7 @@ export const en = {
   "workbench.unboundDraft":
     "The current draft has no device binding. Connect before saving the window layout. Drafts can be saved separately.",
   "workbench.bindingUnavailable":
-    "This view’s device binding is unavailable. Rebind it before opening.",
+    "This view’s saved device is unavailable. Choose a device above, then connect.",
   "workbench.pinned": "Pinned",
   "workbench.requestedBytes": "Requested bytes",
   "workbench.acceptedBytes": "Bytes accepted by backend",
@@ -561,6 +616,42 @@ export const en = {
   "workbench.tools.configurationTooLarge":
     "The configuration file exceeds this service’s request size limit.",
   "workbench.tools.defaultIcon": "Default icon",
+  "workbench.tools.viewSettings": "View settings",
+  "workbench.tools.newWorkspace": "New workspace",
+  "workbench.tools.addSerialView": "Add serial view",
+  "workbench.tools.removeView": "Remove view",
+  "workbench.tools.availableSerialPorts": "Choose a serial port",
+  "workbench.tools.readWaitHint":
+    "The default is 20 ms for idle reads and cancellation checks. Available data is delivered immediately; a smaller value increases idle wakeups.",
+  "workbench.tools.writeWaitHint":
+    "This is a write deadline, not a delay between sends. The default is 1000 ms. Automatic sends calculate their deadline from the byte count and baud rate; 20 ms is too short for many low-speed writes.",
+  "workbench.tools.reconnectHint":
+    "The initial retry delay defaults to 500 ms and grows after failures. It applies only when automatic reconnection is enabled. A shorter delay opens the device more frequently.",
+  "workbench.tools.createWorkspace": "Create workspace",
+  "workbench.tools.saveWorkspaceAs": "Save workspace as",
+  "workbench.tools.workspaceCopySuffix": "copy",
+  "workbench.tools.newWorkspaceHint":
+    "Create an empty workspace, then add serial views and connection presets here. Saving the workspace does not open its ports.",
+  "workbench.tools.copyWorkspaceHint":
+    "Save these views and presets as a separate workspace, including unsaved edits. The original stays saved as it was. Connections and send drafts are not copied.",
+  "workbench.tools.refreshWorkspaces": "Refresh workspace list",
+  "workbench.tools.moreWorkspaces": "Load more workspaces",
+  "workbench.tools.connectionPreset": "Connection preset",
+  "workbench.tools.workspaceViewsHint":
+    "A workspace restores a group of views and connection presets. Multiple views can share one serial connection, with their own display modes and send drafts.",
+  "workbench.tools.workspaceConfigurationHint":
+    "Used the next time this serial port is opened. To change an active connection, use Connection parameters in the workbench toolbar.",
+  "workbench.tools.saveCurrentLayoutHint":
+    "Save the current tabs, display modes and connection presets to this workspace, keeping presets set in the editor.",
+  "workbench.tools.chooseColor": "Choose view color",
+  "workbench.tools.customIcon": "Custom symbol",
+  "workbench.tools.customIconPlaceholder": "Enter a symbol or emoji, e.g. ★",
+  "workbench.tools.iconTerminal": "Terminal",
+  "workbench.tools.iconPlug": "Serial port",
+  "workbench.tools.iconCpu": "Chip",
+  "workbench.tools.iconRadio": "Wireless",
+  "workbench.tools.iconActivity": "Signal",
+  "workbench.tools.iconWrench": "Tools",
   "workbench.tools.unsupportedConfiguration":
     "Cannot read this configuration. Check its file type and application version.",
   "workbench.tools.workspaceName": "Workspace name",
@@ -575,6 +666,9 @@ export const en = {
   "workbench.tools.sidebarWidth": "Saved sidebar width",
   "workbench.tools.panelHeight": "Saved panel height",
   "workbench.tools.save": "Save workspace",
+  "workbench.tools.removeWorkspace": "Delete workspace",
+  "workbench.tools.removeWorkspaceHelp":
+    "Remove this workspace from the list. Connections and send drafts stay available. The original archive is retained; older window saves cannot restore it.",
   "workbench.tools.reload": "Reload workspace",
   "workbench.tools.discard": "Discard changes",
   "workbench.tools.clone": "Clone view",
@@ -586,7 +680,8 @@ export const en = {
   "workbench.tools.apply": "Apply import",
   "workbench.tools.cancelImport": "Cancel import",
   "workbench.tools.changes": "Import changes",
-  "workbench.tools.noView": "No view selected",
+  "workbench.tools.noView":
+    "Add a serial port below to configure a view. The port stays disconnected until you explicitly open it in the workbench.",
   "workbench.tools.importUnavailable": "Import preview is unavailable",
   "workbench.tools.importJson": "Configuration content",
   "workbench.tools.importFile": "Configuration file",
@@ -692,11 +787,11 @@ export const en = {
     "If the device node is missing, check the connection, kernel logs and the manufacturer's driver requirements. A missing node or access error alone does not identify an app holding the port.",
   "workbench.tools.workspace": "Workspace",
   "workbench.tools.parameters": "Connection parameters",
+  "workbench.tools.controls": "Control lines and receipts",
   "workbench.tools.devices": "Devices",
   "workbench.tools.transfer": "File transfer",
   "workbench.tools.more": "Workspace menu",
   "workbench.tools.displayOptions": "Display options",
-  "workbench.tools.newData": "New events",
   "workbench.tools.clearView": "Clear receive view",
   "workbench.tools.customLineEnding": "Custom line ending",
   "workbench.tools.customLineEndingHex": "Custom line ending (HEX)",
@@ -719,11 +814,15 @@ export const en = {
   "workbench.tools.deviceListStale":
     "Device list is out of date. Refresh before connecting.",
   "workbench.closeView": "Close view",
+  "workbench.closeOtherViews": "Close other views",
+  "workbench.closeAllViews": "Close all views",
   "workbench.closeSession": "Close session",
   "workbench.disconnect": "Disconnect",
   "nativeError.deviceBusy":
     "The device is in use or a previous operation is still finishing. Try again shortly.",
   "nativeError.hostBusy": "The local service is busy. Try again shortly.",
+  "nativeError.limitExceeded":
+    "Resource capacity is full. Check runtime status and release unused resources, then retry.",
   "nativeError.writeTimeout":
     "The send wait timed out. Check the send details before retrying.",
   "nativeError.controlUnknown":

@@ -46,15 +46,29 @@ const timeOptions = {
   hourCycle: "h23",
 } satisfies Intl.DateTimeFormatOptions;
 const localTime = new Intl.DateTimeFormat("en-GB", timeOptions);
+const dateOptions = {
+  year: "numeric",
+  month: "2-digit",
+  day: "2-digit",
+} satisfies Intl.DateTimeFormatOptions;
+const localDate = new Intl.DateTimeFormat("sv-SE", dateOptions);
 export function compactStreamTime(absolute: string, timeZone?: string): string {
   const value = new Date(absolute);
   if (!Number.isFinite(value.getTime())) return absolute;
   // 仅转换展示时区；原始 UTC、源时钟和纳秒数据保持不变。
-  return (
+  const date = (
     timeZone
+      ? new Intl.DateTimeFormat("sv-SE", { ...dateOptions, timeZone })
+      : localDate
+  ).format(value);
+  return (
+    date +
+    " " +
+    (timeZone
       ? new Intl.DateTimeFormat("en-GB", { ...timeOptions, timeZone })
       : localTime
-  ).format(value);
+    ).format(value)
+  );
 }
 
 export function terminalTypographyStyle(

@@ -7,6 +7,110 @@ import type { StreamItem } from "@serial-workbench/contracts";
 
 test.use({ timezoneId: "Asia/Shanghai" });
 
+test("keeps editing responsive while fragmented loopback continues after a reader gap", async ({
+  page,
+}, testInfo) => {
+  test.setTimeout(60000);
+  await page.setViewportSize({ width: 1400, height: 925 });
+  await seedWorkbenchFixture(page, {
+    language: "zh",
+    theme: "dark",
+    backgroundIntensity: 70,
+  });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "打开 Virtual serial", exact: true })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBeGreaterThan(0);
+  const sample = workbenchStreamItems()[2]!;
+  if (sample.kind !== "source" || sample.event.kind !== "rx")
+    throw new Error("RX fixture unavailable");
+  const rx = sample.event;
+  const payload = "哈".repeat(3333) + "a";
+  const gap: StreamItem = {
+    kind: "reader_gap",
+    gap: {
+      hostId: sample.event.hostId,
+      instanceEpoch: sample.event.instanceEpoch,
+      sessionId: sample.event.sessionId,
+      sessionEpoch: sample.event.sessionEpoch,
+      reason: "reader_overflow",
+      missingEventRange: { start: "1", end: "2" },
+    },
+  };
+  await page.evaluate((gap) => window.workbenchFixture.emitRaw([gap]), gap);
+  const direction = page.locator(".workbench-gap .workbench-direction");
+  await expect(direction).toBeVisible();
+  const gapLayout = await direction.evaluate((element) => ({
+    height: element.getBoundingClientRect().height,
+    lineHeight: parseFloat(getComputedStyle(element).lineHeight),
+  }));
+  await page.screenshot({
+    path: testInfo.outputPath("loopback-gap-before.png"),
+  });
+  expect(gapLayout.height).toBeLessThanOrEqual(gapLayout.lineHeight + 1);
+  const bytes = Buffer.from(payload);
+  const delivery = page.evaluate(
+    ({ rx, bytesBase64 }) =>
+      new Promise<number>((resolve) => {
+        const bytes = atob(bytesBase64);
+        const channel = new MessageChannel();
+        let offset = 0;
+        channel.port1.onmessage = () => {
+          if (offset >= bytes.length) {
+            channel.port1.close();
+            channel.port2.close();
+            resolve(offset);
+            return;
+          }
+          window.workbenchFixture.emitRaw([
+            {
+              kind: "source",
+              event: {
+                ...rx,
+                eventSeq: String(offset + 2),
+                payload: {
+                  byteStart: String(offset),
+                  byteEnd: String(offset + 1),
+                  bytesBase64: btoa(bytes[offset]!),
+                },
+              },
+            },
+          ]);
+          offset++;
+          channel.port2.postMessage(null);
+        };
+        channel.port2.postMessage(null);
+      }),
+    { rx, bytesBase64: bytes.toString("base64") },
+  );
+  // 交互断言失败时仍观察页面退出导致的迟拒绝。
+  void delivery.catch(() => {});
+  const draft = page.getByRole("textbox", { name: "发送草稿", exact: true });
+  const started = performance.now();
+  await draft.fill(payload);
+  await draft.pressSequentially("继续编辑", { delay: 0 });
+  await expect(draft).toHaveValue(payload + "继续编辑");
+  const elapsed = performance.now() - started;
+  await writeFile(
+    testInfo.outputPath("fragmented-editing.json"),
+    JSON.stringify({ elapsedMs: elapsed, bytes: bytes.length }),
+  );
+  expect(elapsed).toBeLessThan(1500);
+  expect(await delivery).toBe(bytes.length);
+  await expect(page.getByRole("log")).toContainText("哈a");
+  await expect(
+    page.getByRole("button", { name: "冻结显示", exact: true }),
+  ).toBeVisible();
+  await page.screenshot({
+    path: testInfo.outputPath("loopback-after-gap.png"),
+  });
+});
+
 test("uses the same deliberate mouse hover delay for window and session controls", async ({
   page,
 }) => {
@@ -159,11 +263,10 @@ test("keeps controls and rapid editing responsive with a dense receive history",
   expect(
     samples.filter((sample) => sample.sendDisabled || sample.closeDisabled),
   ).toEqual([]);
-  await log.evaluate((element) => {
-    element.scrollTop = 0;
-  });
+  await log.hover();
+  await page.mouse.wheel(0, -1000000);
   await expect(
-    page.getByRole("button", { name: "Resume", exact: true }),
+    page.getByRole("button", { name: "Return to latest", exact: true }),
   ).toBeVisible();
   await expect(log).toContainText("TAIL-0");
   const scrolling = await log.evaluate(async (element) => {
@@ -204,7 +307,7 @@ test("shows local millisecond times and compact totals while sending exactly ten
   const items: unknown[] = workbenchStreamItems();
   await page.evaluate((items) => window.workbenchFixture.emitRaw(items), items);
   await expect(page.locator("time.workbench-stream-time").first()).toHaveText(
-    "19:22:33.456",
+    "2026-11-10 19:22:33.456",
   );
   await expect(
     page.locator("time.workbench-stream-time").first(),

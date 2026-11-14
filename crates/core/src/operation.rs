@@ -14,6 +14,14 @@ pub enum OperationState {
     Interrupted,
     Unknown,
 }
+impl OperationState {
+    pub fn is_terminal(self) -> bool {
+        matches!(
+            self,
+            Self::Succeeded | Self::Failed | Self::Cancelled | Self::Interrupted | Self::Unknown
+        )
+    }
+}
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum OwnerKind {

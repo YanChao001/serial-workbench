@@ -28,25 +28,12 @@ import { SerialConfigurationFields } from "./serial-configuration-fields";
 import { validSerialConfiguration } from "./serial-configuration";
 import { sendWaitMs } from "./send-wait";
 import { useUnsavedWork } from "@/providers/unsaved-work";
-import {
-  Select,
-  SelectContent,
-  SelectItem,
-  SelectTrigger,
-  SelectValue,
-} from "@/components/ui/select";
-import { FolderOpen, FolderSearch, RotateCw } from "lucide-react";
-import { WorkbenchIconButton } from "./workbench-icon-button";
-import { Input } from "@/components/ui/input";
-import { Button } from "@/components/ui/button";
-import {
-  Popover,
-  PopoverContent,
-  PopoverTrigger,
-} from "@/components/ui/popover";
 import { SessionControls } from "./session-controls";
 import { DeviceLibrary } from "./device-library";
 import { WorkspaceEditor } from "./workspace-editor";
+import { WorkspacePicker } from "./workspace-picker";
+import { addDeviceView, sameWorkspace } from "./workspace-model";
+import { connectionKey } from "@/lib/client-connection-defaults";
 import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
 import { DiagnosticPanel } from "./diagnostic-panel";
@@ -81,23 +68,12 @@ export function WorkbenchTools({
     automatic: t("workbench.tools.writeWaitAutomatic"),
     fixed: t("workbench.tools.writeWaitFixed"),
   };
-  const pending = useRef<AbortController | null>(null);
   const [recent, setRecent] = useState<RecentList>();
   const recentReader = useRef(host.recentConnections);
   recentReader.current = host.recentConnections;
   const [recentLoading, setRecentLoading] = useState(false);
   const [recentError, setRecentError] = useState<string>();
   const [recentReload, setRecentReload] = useState(0);
-  const workspaceReader = useRef(host.listWorkspaces);
-  workspaceReader.current = host.listWorkspaces;
-  const [workspaces, setWorkspaces] = useState<WorkspaceDocumentResult[]>([]);
-  const [workspaceLoading, setWorkspaceLoading] = useState(false);
-  const [workspaceDirectoryError, setWorkspaceDirectoryError] =
-    useState<string>();
-  const [workspaceReload, setWorkspaceReload] = useState(0);
-  const [requestedWorkspaceId, setRequestedWorkspaceId] = useState("");
-  const [workspaceTargetOpen, setWorkspaceTargetOpen] = useState(false);
-  const [error, setError] = useState<string>();
   const [busy, setBusy] = useState(false);
   const ready = host.state.status === "ready";
   const { hostId, kind, id, sessionId, sessionEpoch } = context.target ?? {};
@@ -132,19 +108,39 @@ export function WorkbenchTools({
     host.connection?.generation,
   ]);
   const documentKey = JSON.stringify([generation, stateScopeKey(base?.scope)]);
+  const materialized = useRef<string | undefined>(undefined);
+  const workingSnapshot = useRef<
+    { key: string; value: WorkspaceDocument } | undefined
+  >(undefined);
+  if (
+    tool === "workspace" &&
+    base &&
+    materialized.current !== documentKey &&
+    workingSnapshot.current?.key !== documentKey
+  ) {
+    const current = context.snapshotWorkspace?.(true);
+    if (current) workingSnapshot.current = { key: documentKey, value: current };
+  }
+  const editorDocument =
+    materialized.current !== documentKey &&
+    workingSnapshot.current?.key === documentKey
+      ? workingSnapshot.current.value
+      : draft;
+  useEffect(() => {
+    if (tool !== "workspace" || !base || materialized.current === documentKey)
+      return;
+    const current =
+      workingSnapshot.current?.key === documentKey
+        ? workingSnapshot.current.value
+        : context.snapshotWorkspace?.(true);
+    if (!current) return;
+    materialized.current = documentKey;
+    if (!sameWorkspace(current, draft ?? base.document.value))
+      onChange(current);
+  }, [tool, base, documentKey, context, draft, onChange]);
   useEffect(() => {
     setRecent(undefined);
-    setWorkspaces([]);
-    return () => pending.current?.abort();
   }, [generation]);
-  useEffect(() => {
-    setError(undefined);
-    setBusy(false);
-    return () => {
-      pending.current?.abort();
-      pending.current = null;
-    };
-  }, [tool, generation]);
   useEffect(() => {
     if (tool !== "devices" || !ready) return;
     const controller = new AbortController();
@@ -166,29 +162,6 @@ export function WorkbenchTools({
       });
     return () => controller.abort();
   }, [generation, tool, ready, recentReload]);
-  useEffect(() => {
-    if (tool !== "workspace" || !ready) return;
-    const controller = new AbortController();
-    setWorkspaceLoading(true);
-    setWorkspaceDirectoryError(undefined);
-    void workspaceReader
-      .current(controller.signal)
-      .then(
-        (values) => {
-          if (!controller.signal.aborted) setWorkspaces(values);
-        },
-        (reason) => {
-          if (!controller.signal.aborted)
-            setWorkspaceDirectoryError(
-              nativeErrorCode(reason) ?? "HOST_UNAVAILABLE",
-            );
-        },
-      )
-      .finally(() => {
-        if (!controller.signal.aborted) setWorkspaceLoading(false);
-      });
-    return () => controller.abort();
-  }, [tool, generation, ready, workspaceReload]);
   const invoke: HostContextValue["invoke"] = async (input, signal) => {
     if (
       !host.state.catalog.some(
@@ -203,7 +176,7 @@ export function WorkbenchTools({
       signal,
     );
     signal?.throwIfAborted();
-    if (!check.allowed) throw new Error("PERMISSION_DENIED");
+    if (!check.allowed) throw { code: "PERMISSION_DENIED" };
     return host.invoke(input, signal);
   };
   const call = (
@@ -231,42 +204,24 @@ export function WorkbenchTools({
                 spec.targetKinds.includes(value.input.target.kind),
             )
               ? value
-              : { ...value, result: null },
+              : {
+                  ...value,
+                  result: {
+                    actionId: value.input.actionId,
+                    target: value.input.target,
+                    allowed: false,
+                  },
+                },
           ),
         ),
       ),
     [watchHostActions, catalog],
   );
-  function loadWorkspace(workspaceId: string) {
-    if (pending.current || !ready) return;
-    setBusy(true);
-    setError(undefined);
-    const controller = new AbortController();
-    pending.current = controller;
-    void context
-      .beforeReplace()
-      .then((allowed) => {
-        if (!allowed || controller.signal.aborted) return;
-        return host.loadWorkspace(workspaceId, controller.signal);
-      })
-      .then((result) => {
-        if (result && !controller.signal.aborted) {
-          setWorkspaceTargetOpen(false);
-          onLoaded(result);
-        }
-      })
-      .catch((reason: unknown) => {
-        if (!controller.signal.aborted)
-          setError(nativeErrorCode(reason) ?? "OPERATION_FAILED");
-      })
-      .finally(() => {
-        if (!controller.signal.aborted) setBusy(false);
-        if (pending.current === controller) pending.current = null;
-      });
-  }
-  if (tool === "parameters")
+  if (tool === "controls" && !context.session) return null;
+  if (tool === "parameters" || tool === "controls")
     return context.session ? (
       <SessionControls
+        mode={tool}
         writeWaitLabels={writeWaitLabels}
         writeWaitMode={context.writeWaitMode}
         onWriteWaitModeChange={context.onWriteWaitModeChange}
@@ -346,109 +301,78 @@ export function WorkbenchTools({
   if (tool === "workspace")
     return (
       <div className="workbench-workspace-tool">
-        <div className="workbench-toolbar workbench-workspace-picker">
-          <FolderOpen aria-hidden="true" className="size-4 shrink-0" />
-          <Select
-            value={base?.scope.target.id ?? ""}
-            disabled={!ready || busy || (workspaceLoading && !base)}
-            onValueChange={loadWorkspace}
-          >
-            <SelectTrigger
-              aria-label={t("workbench.tools.chooseWorkspace")}
-              aria-busy={workspaceLoading}
-            >
-              <SelectValue placeholder={t("workbench.tools.chooseWorkspace")} />
-            </SelectTrigger>
-            <SelectContent>
-              {[
-                ...new Map(
-                  [...workspaces, ...(base ? [base] : [])].map((item) => [
-                    item.scope.target.id,
-                    item,
-                  ]),
-                ).values(),
-              ].map((item, index) => (
-                <SelectItem
-                  key={item.scope.target.id}
-                  value={item.scope.target.id}
-                >
-                  {item.document.value.name ||
-                    (item.scope.target.id === "default"
-                      ? t("workbench.tools.defaultWorkspace")
-                      : `${t("workbench.tools.workspace")} ${index + 1}`)}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-          <Popover
-            open={workspaceTargetOpen}
-            onOpenChange={setWorkspaceTargetOpen}
-          >
-            <PopoverTrigger asChild>
-              <WorkbenchIconButton
-                label={t("workbench.tools.openOtherWorkspace")}
-                disabled={!ready || busy}
-              >
-                <FolderSearch aria-hidden="true" />
-              </WorkbenchIconButton>
-            </PopoverTrigger>
-            <PopoverContent
-              className="workbench-detail-popover workbench-workspace-target"
-              aria-label={t("workbench.tools.openOtherWorkspace")}
-            >
-              <label>
-                <span>{t("workbench.tools.workspaceId")}</span>
-                <Input
-                  value={requestedWorkspaceId}
-                  onChange={(event) =>
-                    setRequestedWorkspaceId(event.target.value)
-                  }
-                  autoComplete="off"
-                  maxLength={128}
-                />
-              </label>
-              <Button
-                size="sm"
-                disabled={!ready || busy || !requestedWorkspaceId.trim()}
-                onClick={() => loadWorkspace(requestedWorkspaceId.trim())}
-              >
-                {t("workbench.tools.load")}
-              </Button>
-            </PopoverContent>
-          </Popover>
-          {workspaceDirectoryError && (
-            <WorkbenchIconButton
-              label={t("common.retry")}
-              onClick={() => setWorkspaceReload((value) => value + 1)}
-            >
-              <RotateCw aria-hidden="true" />
-            </WorkbenchIconButton>
-          )}
-        </div>
-        <WorkbenchNotice
-          noticeKey={`workspace-directory:${workspaceReload}:${error ?? workspaceDirectoryError}`}
-          log={{
-            module: "workspace",
-            level: "error",
-            message: nativeErrorText(
-              { code: error ?? workspaceDirectoryError },
-              t,
-            ),
-            code: error ?? workspaceDirectoryError,
+        <WorkspacePicker
+          key={`picker:${documentKey}`}
+          host={host}
+          base={base}
+          value={editorDocument ?? base?.document.value}
+          beforeReplace={context.beforeReplace}
+          onLoaded={onLoaded}
+          onBusyChange={setBusy}
+          onCopySaved={() => {
+            if (base) onChange(base.document.value);
           }}
-        >
-          {error || workspaceDirectoryError ? (
-            <span role="alert">
-              {nativeErrorText({ code: error ?? workspaceDirectoryError }, t)}
-            </span>
-          ) : null}
-        </WorkbenchNotice>
+        />
         {base && (
           <WorkspaceEditor
             key={documentKey}
             base={base}
-            value={draft}
+            value={editorDocument}
+            devices={host.state.devices.map((device) => ({
+              value: device.deviceId,
+              label: device.systemName,
+            }))}
+            onAddDevice={(document, deviceId) => {
+              const device = host.state.devices.find(
+                (item) => item.deviceId === deviceId,
+              );
+              if (!device) return;
+              const configuration =
+                document.bindings.find(
+                  (binding) =>
+                    binding.deviceId === deviceId &&
+                    binding.hostId === device.hostId,
+                )?.configuration ??
+                host.state.sessions.find(
+                  (session) => session.deviceId === deviceId,
+                )?.configuration ??
+                (context.configurationKey ===
+                connectionKey(device.hostId, deviceId)
+                  ? context.configuration
+                  : defaults.serialConfiguration);
+              return addDeviceView(
+                document,
+                device,
+                configuration,
+                context.newViewDefaults?.terminal ?? defaults.settings.terminal,
+                context.newViewDefaults?.color ??
+                  defaults.settings.customAccent,
+              );
+            }}
             labels={labels.workspace}
+            bindingNames={Object.fromEntries(
+              (editorDocument ?? base.document.value).bindings.map(
+                (binding, index) => {
+                  const device = host.state.devices.find(
+                    (item) =>
+                      item.hostId === binding.hostId &&
+                      item.deviceId === binding.deviceId,
+                  );
+                  const alias = (
+                    editorDocument ?? base.document.value
+                  ).views.find(
+                    (view) => view.bindingId === binding.bindingId,
+                  )?.name;
+                  const name =
+                    device?.systemName ??
+                    `${alias || `${labels.workspace.binding} ${index + 1}`} · ${labels.devices.offlineDevice}`;
+                  return [
+                    binding.bindingId,
+                    `${name} · ${binding.configuration.baudRate}`,
+                  ];
+                },
+              ),
+            )}
             disabled={!ready || busy}
             maxImportBytes={host.connection?.attachment.limits.maxRequestBytes}
             onChange={onChange}
@@ -558,8 +482,12 @@ export function WorkbenchTools({
     );
   return (
     <div className="space-y-3">
-      {error && <p role="alert">{error}</p>}
       <DiagnosticPanel
+        device={host.state.devices.find(
+          (device) =>
+            device.deviceId ===
+            (context.session?.deviceId ?? context.openError?.deviceId),
+        )}
         labels={labels.diagnostics}
         items={context.items}
         session={context.session}

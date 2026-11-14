@@ -523,7 +523,7 @@ impl Database {
                     | OperationState::Interrupted
                     | OperationState::Unknown
             ),
-            OperationState::CancelRequested => is_terminal(outcome.state),
+            OperationState::CancelRequested => outcome.state.is_terminal(),
             _ => false,
         };
         if !allowed {
@@ -863,7 +863,27 @@ impl Database {
         let mut statement = self
             .connection
             .prepare(
-                "SELECT operation_json FROM operations ORDER BY terminal ASC,rowid DESC LIMIT 256",
+                // The history is a summary, not a replay of every retained result.
+                // Select only its fields before deserializing: TX bodies, diagnostic
+                // reports and other evidence remain in the authoritative operation.
+                "SELECT json_patch('{}', json_object(
+                    'operationId', json_extract(operation_json,'$.operationId'),
+                    'executionHostId', json_extract(operation_json,'$.executionHostId'),
+                    'actorId', json_extract(operation_json,'$.actorId'),
+                    'actionId', json_extract(operation_json,'$.actionId'),
+                    'target', json_extract(operation_json,'$.target'),
+                    'executionMode', json_extract(operation_json,'$.executionMode'),
+                    'state', json_extract(operation_json,'$.state'),
+                    'revision', json_extract(operation_json,'$.revision'),
+                    'revealTarget', json_remove(json_extract(operation_json,'$.revealTarget'),'$.resultRef'),
+                    'acceptedAt', json_extract(operation_json,'$.acceptedAt'),
+                    'startedAt', json_extract(operation_json,'$.startedAt'),
+                    'settledAt', json_extract(operation_json,'$.settledAt'),
+                    'progress', json_extract(operation_json,'$.progress'),
+                    'errorCode', coalesce(json_extract(operation_json,'$.error.code'),
+                        CASE WHEN json_extract(operation_json,'$.result.kind')='tx'
+                        THEN json_extract(operation_json,'$.result.value.backendError.code') END)
+                )) FROM operations ORDER BY terminal ASC,rowid DESC LIMIT 256",
             )
             .map_err(|_| unavailable())?;
         let rows = statement
@@ -871,33 +891,9 @@ impl Database {
             .map_err(|_| unavailable())?;
         let mut items = Vec::new();
         for row in rows {
-            let operation = decode(&row.map_err(|_| unavailable())?)?;
-            let error_code = operation
-                .error
-                .as_ref()
-                .or(match operation.result.as_ref() {
-                    Some(ActionResult::Tx(receipt)) => receipt.backend_error.as_ref(),
-                    _ => None,
-                })
-                .map(|error| error.code.clone());
-            let mut reveal_target = operation.reveal_target;
-            reveal_target.result_ref = None;
-            items.push(OperationSummary {
-                operation_id: operation.operation_id,
-                execution_host_id: operation.execution_host_id,
-                actor_id: operation.actor_id,
-                action_id: operation.action_id,
-                target: operation.target,
-                execution_mode: operation.execution_mode,
-                state: operation.state,
-                revision: operation.revision,
-                reveal_target,
-                accepted_at: operation.accepted_at,
-                started_at: operation.started_at,
-                settled_at: operation.settled_at,
-                progress: operation.progress,
-                error_code,
-            });
+            let summary: OperationSummary = serde_json::from_str(&row.map_err(|_| unavailable())?)
+                .map_err(|_| unavailable())?;
+            items.push(summary);
         }
         serde_json::from_value(
             serde_json::to_value(OperationsSnapshot { items }).map_err(|_| unavailable())?,
@@ -974,16 +970,6 @@ fn prune_transfer_receipts(connection: &Connection, operation_id: &Id) -> HostRe
     Ok(())
 }
 
-fn is_terminal(state: OperationState) -> bool {
-    matches!(
-        state,
-        OperationState::Succeeded
-            | OperationState::Failed
-            | OperationState::Cancelled
-            | OperationState::Interrupted
-            | OperationState::Unknown
-    )
-}
 fn queued_action(action: &str) -> bool {
     matches!(
         action,

@@ -32,19 +32,17 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { APP_CONFIG } from "@/config/app";
-import {
-  commandAvailable,
-  type AppCommand,
-  type CommandInvocation,
-} from "@/commands/types";
+import { commandAvailable, type AppCommand } from "@/commands/types";
 import { matchesShortcut } from "@/commands/shortcuts";
 import { SETTINGS_SEARCH_ENTRIES } from "@/commands/settings-search";
+import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { useLatestTranslator } from "@/hooks/use-latest-translator";
 import { useThemeSwitch } from "@/hooks/use-theme-switch";
 import { useFullscreen } from "@/hooks/use-fullscreen";
 import { nativeErrorText } from "@/lib/native-error";
 import {
   closeWindow,
+  openSecondaryWindow,
   isTauri,
   minimizeWindow,
   openExternal,
@@ -52,14 +50,14 @@ import {
   toggleMaximizeWindow,
 } from "@/lib/tauri";
 import { useSettings } from "@/providers/settings";
-import { APP_ROUTES } from "@/routes";
+import { APP_ROUTES, settingsLocation } from "@/routes";
 import { CommandsContext } from "./commands-context";
 
 export function CommandsProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
   const { pathname } = useLocation();
   const { settings, update } = useSettings();
-  const { resolvedTheme, setTheme, toggle } = useThemeSwitch();
+  const { setTheme, toggle } = useThemeSwitch();
   const themeToggle = useRef(toggle);
   useLayoutEffect(() => {
     themeToggle.current = toggle;
@@ -97,10 +95,10 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         id: `settings:${entry.id}`,
         labelKey: entry.labelKey,
         group: "appearance" as const,
-        icon: SettingsIcon,
+        icon: SETTINGS_ICONS[entry.id],
         keywords: [...entry.keywords],
         keywordKeys: entry.searchKeys,
-        run: () => navigate(`/settings?focus=${encodeURIComponent(entry.id)}`),
+        run: () => navigate(settingsLocation(entry.id)),
       })),
       {
         id: "open-settings",
@@ -151,10 +149,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         labelKey: "title.toggleTheme",
         group: "appearance",
         icon: SunMoonIcon,
-        run: (invocation) => {
-          if (invocation?.point) themeToggle.current(invocation.point);
-          else setTheme(resolvedTheme === "dark" ? "light" : "dark");
-        },
+        run: () => themeToggle.current(),
       },
       ...(["light", "dark", "system"] as const).map((theme) => ({
         id: `theme-${theme}`,
@@ -233,7 +228,10 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         labelKey: "commands.openWindow",
         group: "tools",
         icon: AppWindowIcon,
-        run: () => navigate("/settings?focus=windows"),
+        run: () =>
+          isTauri()
+            ? openSecondaryWindow()
+            : navigate("/settings?focus=windows"),
       },
       {
         id: "check-updates",
@@ -248,7 +246,6 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       pathname,
       fullscreen,
       changeFullscreen,
-      resolvedTheme,
       setTheme,
       settings.menuBar,
       settings.sidebarCollapsed,
@@ -276,13 +273,14 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const execute = useCallback(
-    async (id: string, invocation?: CommandInvocation) => {
+    async (id: string) => {
       const command = commands.find((item) => item.id === id);
       if (!command || !commandAvailable(command) || running.current.has(id))
         return false;
       running.current.add(id);
       try {
-        await command.run(invocation);
+        const result = command.run();
+        if (result) await result;
         return true;
       } catch (error) {
         toast.error(nativeErrorText(error, t));

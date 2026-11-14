@@ -1,5 +1,6 @@
 import { useId, useRef, useState } from "react";
-import { CheckIcon, PaletteIcon } from "lucide-react";
+import { CheckIcon } from "lucide-react";
+import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { SettingLabel } from "@/components/setting-row";
 import { ColorPicker } from "@/components/color-picker";
 import { Button } from "@/components/ui/button";
@@ -36,7 +37,7 @@ export function AccentPicker() {
       tabIndex={-1}
       className="space-y-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
     >
-      <SettingLabel icon={PaletteIcon} label={t("settings.accent")} />
+      <SettingLabel icon={SETTINGS_ICONS.accent} label={t("settings.accent")} />
       <div className="flex flex-wrap items-center gap-2">
         {PRESET_ACCENTS.map((accent) => {
           const active = settings.accent === accent;

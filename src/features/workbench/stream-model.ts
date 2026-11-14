@@ -1,7 +1,10 @@
 import type { StreamItem } from "@serial-workbench/contracts";
 import { encodeSend } from "@serial-workbench/host-client";
+import { streamSourceKey } from "@/lib/stream-source";
+export { streamSourceKey } from "@/lib/stream-source";
 
 export type StreamMatch = { offset: string; end: string; itemIndex: number };
+
 export function decodeBytes(bytesBase64: string): Uint8Array {
   return Uint8Array.from(atob(bytesBase64), (byte) => byte.charCodeAt(0));
 }
@@ -38,50 +41,98 @@ export function projectStreamItems(items: readonly StreamItem[]) {
   return rows;
 }
 
-export function findStreamMatches(
+export function findNextStreamMatch(
   items: readonly StreamItem[],
   input: string,
   mode: "text" | "hex",
-): StreamMatch[] {
+  afterOffset?: string,
+): StreamMatch | null {
   const needle = encodeSend(input, mode, { kind: "none" });
-  if (!needle.length) return [];
-  const matches: StreamMatch[] = [];
-  let pending: { byte: number; offset: bigint; itemIndex: number }[] = [];
+  const after = afterOffset === undefined ? undefined : BigInt(afterOffset);
+  let first: StreamMatch | null = null;
+  for (const match of streamLiteralMatches(items, needle)) {
+    first ??= match;
+    if (after === undefined || BigInt(match.offset) > after) return match;
+  }
+  return first;
+}
+
+/** 统一接收连续性边界，文本、HEX 与正则搜索共用。 */
+export function* streamSearchChunks(items: readonly StreamItem[]) {
   let previousEnd: bigint | undefined;
-  let previousSession = "";
-  items.forEach((item, itemIndex) => {
-    if (item.kind === "reader_gap" || item.event.kind === "gap") {
-      pending = [];
+  let previousSource = "";
+  for (const [itemIndex, item] of items.entries()) {
+    if (
+      item.kind === "reader_gap" ||
+      item.event.kind === "gap" ||
+      item.event.kind === "configuration_boundary" ||
+      item.event.kind === "lifecycle"
+    ) {
       previousEnd = undefined;
-      return;
+      continue;
     }
-    if (item.event.kind !== "rx") return;
-    const { event } = item;
-    const session = `${event.sessionId}:${event.sessionEpoch}`;
+    if (item.event.kind !== "rx") continue;
+    const event = item.event;
+    const source = JSON.stringify([
+      streamSourceKey(event),
+      event.configurationRevision,
+    ]);
     const start = BigInt(event.payload.byteStart);
-    if (start !== previousEnd || session !== previousSession) pending = [];
-    const bytes = decodeBytes(event.payload.bytesBase64);
+    yield {
+      itemIndex,
+      start,
+      continuous: start === previousEnd && source === previousSource,
+      bytes: decodeBytes(event.payload.bytesBase64),
+    };
+    previousEnd = BigInt(event.payload.byteEnd);
+    previousSource = source;
+  }
+}
+
+/** 惰性 KMP：下一项可提前停止，完整检索也只扫描一次。 */
+export function* streamLiteralMatches(
+  items: readonly StreamItem[],
+  needle: Uint8Array,
+): Generator<StreamMatch> {
+  if (!needle.length) return;
+  // KMP 保留已匹配前缀；重复字节的长查询也只线性扫描接收数据。
+  const prefixes = new Uint32Array(needle.length);
+  for (let index = 1, matched = 0; index < needle.length; index++) {
+    while (matched > 0 && needle[index] !== needle[matched])
+      matched = prefixes[matched - 1]!;
+    if (needle[index] === needle[matched]) matched++;
+    prefixes[index] = matched;
+  }
+  // 环形记录原始块归属，跨块命中仍定位匹配首字节所在的块。
+  const origins = new Uint32Array(needle.length);
+  const needleBytes = BigInt(needle.length);
+  let ringPosition = 0;
+  let matched = 0;
+  const reset = () => {
+    matched = 0;
+    ringPosition = 0;
+  };
+  for (const { itemIndex, start, bytes, continuous } of streamSearchChunks(
+    items,
+  )) {
+    if (!continuous) reset();
     for (let index = 0; index < bytes.length; index++) {
-      pending.push({
-        byte: bytes[index]!,
-        offset: start + BigInt(index),
-        itemIndex,
-      });
-      if (pending.length > needle.length) pending.shift();
-      if (
-        pending.length === needle.length &&
-        pending.every((value, position) => value.byte === needle[position])
-      ) {
-        const first = pending[0]!;
-        matches.push({
-          offset: first.offset.toString(),
-          end: (start + BigInt(index) + 1n).toString(),
-          itemIndex: first.itemIndex,
-        });
+      const byte = bytes[index]!;
+      origins[ringPosition] = itemIndex;
+      ringPosition = (ringPosition + 1) % needle.length;
+      while (matched > 0 && byte !== needle[matched])
+        matched = prefixes[matched - 1]!;
+      if (byte === needle[matched]) matched++;
+      if (matched === needle.length) {
+        const end = start + BigInt(index + 1);
+        const offset = end - needleBytes;
+        yield {
+          offset: offset.toString(),
+          end: end.toString(),
+          itemIndex: origins[ringPosition]!,
+        };
+        matched = prefixes[matched - 1]!;
       }
     }
-    previousEnd = BigInt(event.payload.byteEnd);
-    previousSession = session;
-  });
-  return matches;
+  }
 }

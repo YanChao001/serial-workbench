@@ -59,7 +59,7 @@ describe("设置保存反馈", () => {
     if (!notice) throw new Error("Missing persistence notice");
     const rendered = render(<>{notice("notice")}</>);
     expect(
-      screen.getByRole("alert").closest(".workbench-notification"),
+      screen.getByRole("alert").closest(".app-notification"),
     ).toBeVisible();
     fireEvent.click(screen.getByRole("button", { name: "common.retry" }));
     rendered.unmount();

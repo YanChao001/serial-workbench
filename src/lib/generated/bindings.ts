@@ -73,36 +73,43 @@ export const commands = {
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_document_intent", { generation, intent }),
     ),
-  hostRequest: (request: RpcRequest_Deserialize) =>
+  hostRequest: (request: RpcRequest_Deserialize, generation: U64) =>
     typedError<RpcReply_Serialize, HostError_Serialize>(
-      __TAURI_INVOKE("host_request", { request }),
+      __TAURI_INVOKE("host_request", { request, generation }),
     ),
   hostSubscribe: (
     request: Query_Deserialize,
     channel: Channel<WireFrame_Deserialize>,
+    generation: U64,
   ) =>
     typedError<Id, HostError_Serialize>(
-      __TAURI_INVOKE("host_subscribe", { request, channel }),
+      __TAURI_INVOKE("host_subscribe", { request, channel, generation }),
     ),
-  hostUnsubscribe: (subscriptionId: Id) =>
+  hostUnsubscribe: (subscriptionId: Id, generation: U64) =>
     typedError<null, HostError_Serialize>(
-      __TAURI_INVOKE("host_unsubscribe", { subscriptionId }),
+      __TAURI_INVOKE("host_unsubscribe", { subscriptionId, generation }),
     ),
-  hostRawRequest: (request: RpcRequest_Deserialize) =>
+  hostRawRequest: (request: RpcRequest_Deserialize, generation: U64) =>
     typedError<RpcReply_Serialize, HostError_Serialize>(
-      __TAURI_INVOKE("host_raw_request", { request }),
+      __TAURI_INVOKE("host_raw_request", { request, generation }),
     ),
   hostRawSubscribe: (
     request: Query_Deserialize,
     channel: Channel<RawBatch_Deserialize>,
     lifecycle: Channel<WireFrame_Deserialize>,
+    generation: U64,
   ) =>
     typedError<Id, HostError_Serialize>(
-      __TAURI_INVOKE("host_raw_subscribe", { request, channel, lifecycle }),
+      __TAURI_INVOKE("host_raw_subscribe", {
+        request,
+        channel,
+        lifecycle,
+        generation,
+      }),
     ),
-  hostRawUnsubscribe: (subscriptionId: Id) =>
+  hostRawUnsubscribe: (subscriptionId: Id, generation: U64) =>
     typedError<null, HostError_Serialize>(
-      __TAURI_INVOKE("host_raw_unsubscribe", { subscriptionId }),
+      __TAURI_INVOKE("host_raw_unsubscribe", { subscriptionId, generation }),
     ),
   hostDeliveryAck: (
     generation: U64,
@@ -995,6 +1002,7 @@ export type ClientPreferences = {
   windowPosition: WindowPosition;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
+  receiveHistory?: ReceiveHistory;
 };
 
 /**
@@ -2814,6 +2822,7 @@ export type QueryResult_Deserialize =
   | { kind: "scopes"; value: StateScopesResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
+  | { kind: "workspaces"; value: WorkspaceListResult_Deserialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Deserialize }
   | { kind: "stream_subscribe"; value: StreamSubscribeResult }
@@ -2851,6 +2860,7 @@ export type QueryResult_Serialize =
   | { kind: "scopes"; value: StateScopesResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
+  | { kind: "workspaces"; value: WorkspaceListResult_Serialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Serialize }
   | { kind: "stream_subscribe"; value: StreamSubscribeResult }
@@ -2987,6 +2997,11 @@ export type ReaderGap_Serialize = {
 export type RebindParams = {
   bindingId: Id;
   deviceId: Id;
+};
+
+export type ReceiveHistory = {
+  maxRecords: number;
+  maxBytes: number;
 };
 
 export type RecentConnection =
@@ -3569,6 +3584,9 @@ export type TerminalSettings =
 export type TerminalSettings_Deserialize = {
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
+  /**  None 表示从原始接收字节自动识别。 */
+  receiveEncoding?: TextEncoding | null;
+  sendEncoding?: TextEncoding;
   lineEnding: LineEnding;
   typography?: TerminalTypography_Deserialize;
 };
@@ -3576,6 +3594,9 @@ export type TerminalSettings_Deserialize = {
 export type TerminalSettings_Serialize = {
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
+  /**  None 表示从原始接收字节自动识别。 */
+  receiveEncoding?: TextEncoding | null;
+  sendEncoding?: TextEncoding;
   lineEnding: LineEnding;
   typography?: TerminalTypography_Serialize;
 };
@@ -3596,6 +3617,17 @@ export type TerminalTypography_Serialize = {
   lineHeightPercent: number;
   ligatures: boolean;
 };
+
+export type TextEncoding =
+  | "utf-8"
+  | "gbk"
+  | "gb18030"
+  | "big5"
+  | "shift-jis"
+  | "latin1"
+  | "ascii"
+  | "utf-16le"
+  | "utf-16be";
 
 export type Theme = "light" | "dark" | "system";
 
@@ -3805,6 +3837,7 @@ export type WorkspaceDocumentResult_Serialize = {
 
 export type WorkspaceDocument_Deserialize = {
   name: string;
+  archived?: boolean;
   views: WorkspaceView[];
   bindings: DeviceBinding_Deserialize[];
   favoriteBindingIds: Id[];
@@ -3814,11 +3847,25 @@ export type WorkspaceDocument_Deserialize = {
 
 export type WorkspaceDocument_Serialize = {
   name: string;
+  archived?: boolean;
   views: WorkspaceView[];
   bindings: DeviceBinding_Serialize[];
   favoriteBindingIds: Id[];
   layout: LayoutTemplate;
   captures: ObjectRef_Serialize[];
+};
+
+export type WorkspaceListResult =
+  WorkspaceListResult_Serialize | WorkspaceListResult_Deserialize;
+
+export type WorkspaceListResult_Deserialize = {
+  workspaces: WorkspaceSummary_Deserialize[];
+  nextCursor?: Id | null;
+};
+
+export type WorkspaceListResult_Serialize = {
+  workspaces: WorkspaceSummary_Serialize[];
+  nextCursor?: Id | null;
 };
 
 export type WorkspaceSaveParams =
@@ -3845,6 +3892,21 @@ export type WorkspaceSnapshot_Serialize = {
   value: WorkspaceDocument_Serialize;
 };
 
+export type WorkspaceSummary =
+  WorkspaceSummary_Serialize | WorkspaceSummary_Deserialize;
+
+export type WorkspaceSummary_Deserialize = {
+  scope: StateScopeRef_Deserialize;
+  name: string;
+  revision: U64;
+};
+
+export type WorkspaceSummary_Serialize = {
+  scope: StateScopeRef_Serialize;
+  name: string;
+  revision: U64;
+};
+
 export type WorkspaceView = {
   id: Id;
   name: string;
@@ -3853,6 +3915,8 @@ export type WorkspaceView = {
   pinned: boolean;
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
+  receiveEncoding?: TextEncoding | null;
+  sendEncoding?: TextEncoding;
   bindingId: Id;
 };
 

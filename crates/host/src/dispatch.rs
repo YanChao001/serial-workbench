@@ -55,6 +55,8 @@ struct HostInner {
     catalog_watchers: tokio::sync::Mutex<HashMap<Id, oneshot::Sender<()>>>,
     #[cfg(test)]
     admission_gate: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
+    #[cfg(test)]
+    catalog_gate: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
 }
 struct Jobs {
     closing: bool,
@@ -262,6 +264,8 @@ impl Host {
                 catalog_watchers: tokio::sync::Mutex::new(HashMap::new()),
                 #[cfg(test)]
                 admission_gate: Mutex::new(None),
+                #[cfg(test)]
+                catalog_gate: Mutex::new(None),
             }),
         };
         host.start_operation_projection()?;
@@ -331,6 +335,7 @@ impl Host {
                     "File registration requires user control",
                 ));
             }
+            let mut authorization = None;
             for permission in &spec.permissions {
                 // 引用权限由 FileService 解析到保存的原始授权目标，不能套用派生引用 target。
                 if (action == BuiltinAction::TransferFile && permission == "content.read")
@@ -348,7 +353,12 @@ impl Host {
                 {
                     continue;
                 }
-                auth.require(&actor, permission, &query.target)?;
+                if authorization.is_none() {
+                    authorization = Some(auth.snapshot(&actor)?);
+                }
+                if let Some(authorization) = &authorization {
+                    authorization.require(permission, &query.target)?;
+                }
             }
             action.validate_query_params(&query)?;
             Ok(action)
@@ -540,7 +550,7 @@ impl Host {
             action_id: params.action_id.clone(),
             target: target.clone(),
             params: params.params,
-            reveal_target: spec.reveal_target,
+            reveal_target: spec.reveal_target.clone(),
         };
         let authorization = self.validate(actor, &query, spec.kind).await;
         let auth = self.inner.auth.clone();
@@ -764,13 +774,17 @@ impl Host {
                 let actor = actor.clone();
                 let target = query.target;
                 blocking(move || {
-                    let stamp = auth.capture_grants(&actor)?;
-                    auth.require(&actor, "content.read", &target)?;
+                    let stamp = {
+                        let authorization = auth.snapshot(&actor)?;
+                        authorization.require("content.read", &target)?;
+                        authorization.capture_grants()
+                    };
                     let cursor = streams.current_cursor(&target)?;
+                    let authorization = auth.snapshot(&actor)?;
                     if let Some(stamp) = &stamp {
-                        auth.validate_grants(stamp)?;
+                        authorization.validate_grants(stamp)?;
                     }
-                    auth.require(&actor, "content.read", &target)?;
+                    authorization.require("content.read", &target)?;
                     Ok(QueryResult::StreamCursor(StreamCursorResult {
                         target,
                         cursor,
@@ -789,6 +803,7 @@ impl Host {
             }
             BuiltinAction::SettingsRead
             | BuiltinAction::SettingsExport
+            | BuiltinAction::WorkspaceList
             | BuiltinAction::WorkspaceRead
             | BuiltinAction::WorkspaceExport => {
                 let documents = self.inner.documents.clone();
@@ -1138,14 +1153,28 @@ impl Host {
         &self,
         actor: &AuthenticatedActor,
     ) -> HostResult<crate::registry::CatalogVisibility> {
-        loop {
+        #[cfg(test)]
+        {
+            let gate = self
+                .inner
+                .catalog_gate
+                .lock()
+                .map_err(|_| invalid())?
+                .take();
+            if let Some((entered, wait)) = gate {
+                let _ = entered.send(());
+                let _ = wait.await;
+            }
+        }
+        for attempt in 0..3 {
             let registry = self.inner.registry.clone();
             let actor = actor.clone();
             match blocking(move || registry.visibility(&actor)).await {
-                Err(error) if error.code == "CATALOG_CHANGED" => continue,
+                Err(error) if error.code == "CATALOG_CHANGED" && attempt < 2 => continue,
                 result => return result,
             }
         }
+        unreachable!("the final catalog attempt returns its result")
     }
     async fn ensure_catalog_watch(&self, context: ConnectionContext) -> HostResult<()> {
         if context.channel != IpcChannel::Control || context.is_closed() {
@@ -1154,18 +1183,39 @@ impl Host {
                 "Catalog requires a live control connection",
             ));
         }
-        let mut watchers = self.inner.catalog_watchers.lock().await;
-        if watchers.contains_key(&context.connection_id) {
+        if self
+            .inner
+            .catalog_watchers
+            .lock()
+            .await
+            .contains_key(&context.connection_id)
+        {
             return Ok(());
         }
         let mut changes = self.inner.auth.subscribe_changes();
         changes.borrow_and_update();
-        let mut current = self.catalog_visibility(&context.actor).await?;
+        let mut current = tokio::select! {
+            _ = context.closed() => return Err(HostError::new("CLIENT_CLOSED", "Connection is closed")),
+            result = self.catalog_visibility(&context.actor) => result?,
+        };
         if context.is_closed() {
             return Err(HostError::new("CLIENT_CLOSED", "Connection is closed"));
         }
         let (stop, mut stopped) = oneshot::channel();
+        // 目录计算会访问存储，期间不持有跨客户端的登记表锁。
+        let mut watchers = self.inner.catalog_watchers.lock().await;
+        if context.is_closed() {
+            return Err(HostError::new("CLIENT_CLOSED", "Connection is closed"));
+        }
+        // 关闭先设置 closing 再清登记表，锁内复核避免初始化晚到重新登记。
+        if self.inner.jobs.lock().map_err(|_| busy())?.closing {
+            return Err(busy());
+        }
+        if watchers.contains_key(&context.connection_id) {
+            return Ok(());
+        }
         watchers.insert(context.connection_id.clone(), stop);
+        drop(watchers);
         let host = self.clone();
         tokio::spawn(async move {
             loop {
@@ -1175,8 +1225,13 @@ impl Host {
                     result = changes.changed() => if result.is_err() { break; },
                     _ = host.inner.auth.wait_grant_expiry(current.stamp.as_ref()) => {},
                 }
-                let next = match host.catalog_visibility(&context.actor).await {
+                let next = match tokio::select! {
+                    _ = &mut stopped => break,
+                    _ = context.closed() => break,
+                    result = host.catalog_visibility(&context.actor) => result,
+                } {
                     Ok(next) => next,
+                    Err(error) if error.code == "CATALOG_CHANGED" => continue,
                     Err(_) => break,
                 };
                 if (next.version != current.version || next.token != current.token)
@@ -1368,7 +1423,6 @@ impl Host {
                             })
                             .await;
                             let _ = send.send(Ok(accepted.operation.clone()));
-                            let _ = host.publish_operations().await;
                             host.execute_client_effect(accepted, binding).await;
                             return;
                         }
@@ -1405,7 +1459,8 @@ impl Host {
                             return;
                         }
                         let _ = send.send(Ok(operation.clone()));
-                        let _ = host.publish_operations().await;
+                        // Store changes wake the sole projection owner. Starting the
+                        // action must not wait for the operation-history display.
                         host.execute_short(
                             action,
                             AcceptedCall {
@@ -1524,7 +1579,6 @@ impl Host {
             store.settle(&operation_id, outcome)
         })
         .await;
-        let _ = self.publish_operations().await;
     }
     async fn execute_short(&self, action: BuiltinAction, accepted: AcceptedCall) {
         if action.is_capture_api()
@@ -1550,7 +1604,6 @@ impl Host {
                 store.settle(&operation_id, outcome)
             })
             .await;
-            let _ = self.publish_operations().await;
             return;
         }
         if action == BuiltinAction::OperationCancel {
@@ -1578,7 +1631,6 @@ impl Host {
                 )
             })
             .await;
-            let _ = self.publish_operations().await;
             return;
         }
         let store = self.inner.store.clone();
@@ -1589,8 +1641,9 @@ impl Host {
         let operation_id = accepted.operation.operation_id.clone();
         let result = blocking(move || {
             let check = (|| {
+                let authorization = auth.snapshot(&accepted.actor)?;
                 for permission in &action.spec().permissions {
-                    auth.require(&accepted.actor, permission, &accepted.call.target)?;
+                    authorization.require(permission, &accepted.call.target)?;
                 }
                 if store.identity()?.instance_epoch != accepted.call.instance_epoch {
                     return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
@@ -1714,9 +1767,6 @@ impl Host {
         let stop = action == BuiltinAction::HostShutdown
             && matches!(&result, Ok(operation) if operation.state == OperationState::Succeeded
                 && matches!(operation.result, Some(ActionResult::ShutdownRequested(_))));
-        if result.is_ok() {
-            let _ = self.publish_operations().await;
-        }
         if stop {
             if let Ok(mut jobs) = self.inner.jobs.lock() {
                 jobs.closing = true;
@@ -1999,7 +2049,7 @@ fn call_query(call: &Call) -> Query {
     }
 }
 fn action_reveal(action: BuiltinAction, target: &Target) -> RevealTarget {
-    let mut reveal = action.spec().reveal_target;
+    let mut reveal = action.spec().reveal_target.clone();
     if target.kind.as_str() == "workspace" {
         reveal.workspace_id = Some(target.id.clone());
     }
@@ -2042,6 +2092,88 @@ async fn blocking<T: Send + 'static>(
 mod tests {
     use super::*;
     use crate::ipc::{HostServer, InstanceGuard};
+    #[tokio::test]
+    async fn catalog_initialization_releases_the_map_lock_and_cancels_on_close() {
+        let h = crate::test_support::Harness::new().await;
+        let (first, keep_first) = crate::ipc::test_context(h.actor.clone(), id("first-catalog"));
+        let (second, keep_second) = crate::ipc::test_context(h.actor.clone(), id("second-catalog"));
+        let (entered, wait_entered) = oneshot::channel();
+        let (_release, wait) = oneshot::channel();
+        *h.host.inner.catalog_gate.lock().unwrap() = Some((entered, wait));
+        let host = h.host.clone();
+        let initializing = tokio::spawn(async move { host.ensure_catalog_watch(first).await });
+        wait_entered.await.unwrap();
+        tokio::time::timeout(
+            std::time::Duration::from_secs(3),
+            h.host.ensure_catalog_watch(second),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert_eq!(h.host.inner.catalog_watchers.lock().await.len(), 1);
+        drop(keep_first);
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(3), initializing)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap_err()
+                .code,
+            "CLIENT_CLOSED"
+        );
+        drop(keep_second);
+        tokio::time::timeout(std::time::Duration::from_secs(3), async {
+            while !h.host.inner.catalog_watchers.lock().await.is_empty() {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await
+        .unwrap();
+        h.host.shutdown().await.unwrap();
+    }
+    #[tokio::test]
+    async fn catalog_initialization_cannot_register_after_host_shutdown() {
+        let h = crate::test_support::Harness::new().await;
+        let (context, keep_open) = crate::ipc::test_context(h.actor.clone(), id("closing-catalog"));
+        let (entered, wait_entered) = oneshot::channel();
+        let (release, wait) = oneshot::channel();
+        *h.host.inner.catalog_gate.lock().unwrap() = Some((entered, wait));
+        let host = h.host.clone();
+        let initializing = tokio::spawn(async move { host.ensure_catalog_watch(context).await });
+        wait_entered.await.unwrap();
+        h.host.shutdown().await.unwrap();
+        release.send(()).unwrap();
+        assert_eq!(
+            tokio::time::timeout(std::time::Duration::from_secs(3), initializing)
+                .await
+                .unwrap()
+                .unwrap()
+                .unwrap_err()
+                .code,
+            "HOST_BUSY"
+        );
+        assert!(h.host.inner.catalog_watchers.lock().await.is_empty());
+        drop(keep_open);
+    }
+    #[tokio::test]
+    async fn concurrent_catalog_initialization_registers_only_one_connection_watcher() {
+        let h = crate::test_support::Harness::new().await;
+        let (context, keep_open) = crate::ipc::test_context(h.actor.clone(), id("same-catalog"));
+        let (entered, wait_entered) = oneshot::channel();
+        let (release, wait) = oneshot::channel();
+        *h.host.inner.catalog_gate.lock().unwrap() = Some((entered, wait));
+        let host = h.host.clone();
+        let first = context.clone();
+        let initializing = tokio::spawn(async move { host.ensure_catalog_watch(first).await });
+        wait_entered.await.unwrap();
+        h.host.ensure_catalog_watch(context).await.unwrap();
+        release.send(()).unwrap();
+        initializing.await.unwrap().unwrap();
+        assert_eq!(h.host.inner.catalog_watchers.lock().await.len(), 1);
+        drop(keep_open);
+        h.host.shutdown().await.unwrap();
+        assert!(h.host.inner.catalog_watchers.lock().await.is_empty());
+    }
     #[tokio::test]
     async fn duplicate_transfer_admission_rechecks_source_after_another_call_settles() {
         let h = crate::test_support::Harness::new().await;
@@ -2110,6 +2242,58 @@ mod tests {
         assert!(
             matches!(result, Err(ref error) if error.code == "PERMISSION_DENIED"),
             "admission duplicate must recheck source authority: {result:?}"
+        );
+    }
+    #[tokio::test]
+    async fn device_authorization_settles_while_operation_projection_is_busy() {
+        use crate::test_support as support;
+        let h = support::Harness::new().await;
+        let operator = h
+            .auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("test-user-control").unwrap(),
+            )
+            .unwrap();
+        let target = Target {
+            host_id: h.host_id.clone(),
+            kind: ResourceKind::try_from("host").unwrap(),
+            id: h.host_id.clone(),
+            session_id: None,
+            session_epoch: None,
+        };
+        let projection = h.host.inner.operation_projection.lock().await;
+        let call = h.call_as(
+            &operator,
+            &target,
+            "auth.authorize",
+            serde_json::json!({
+                "clientId":h.actor.client_id(),"permissions":["metadata.read"],"targets":[target],
+            }),
+        );
+        let accepted = h.host.invoke(&operator, call).await.unwrap();
+        let completed = tokio::time::timeout(std::time::Duration::from_secs(1), async {
+            loop {
+                let store = h.store.clone();
+                let actor = operator.clone();
+                let operation_id = accepted.operation_id.clone();
+                let operation =
+                    tokio::task::spawn_blocking(move || store.get(&actor, &operation_id))
+                        .await
+                        .unwrap()
+                        .unwrap();
+                if operation.state == OperationState::Succeeded {
+                    return operation;
+                }
+                tokio::time::sleep(std::time::Duration::from_millis(5)).await;
+            }
+        })
+        .await;
+        drop(projection);
+        h.host.shutdown().await.unwrap();
+        assert!(
+            completed.is_ok(),
+            "Serial connection authorization waited for operation-history display"
         );
     }
     #[tokio::test]
@@ -2619,7 +2803,7 @@ mod tests {
             session_id: None,
             session_epoch: None,
         };
-        let call=Call {protocol_version:ProtocolVersion::V0_1,host_id:identity.host_id,instance_epoch:identity.instance_epoch,actor_id:actor.id().clone(),request_id:RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),request_context:store.issue_context(&actor).unwrap().token,action_id:id("auth.authorize"),target:target.clone(),params:object(serde_json::json!({"clientId":"recipient","permissions":["content.read"],"targets":[target]})).unwrap(),reveal_target:BuiltinAction::Authorize.spec().reveal_target,expected_revision:None,lease_id:None,execution_mode:None};
+        let call=Call {protocol_version:ProtocolVersion::V0_1,host_id:identity.host_id,instance_epoch:identity.instance_epoch,actor_id:actor.id().clone(),request_id:RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),request_context:store.issue_context(&actor).unwrap().token,action_id:id("auth.authorize"),target:target.clone(),params:object(serde_json::json!({"clientId":"recipient","permissions":["content.read"],"targets":[target]})).unwrap(),reveal_target:BuiltinAction::Authorize.spec().reveal_target.clone(),expected_revision:None,lease_id:None,execution_mode:None};
         let selector = OperationGetParams::ByRequest {
             actor_id: actor.id().clone(),
             request_id: call.request_id.clone(),

@@ -37,7 +37,11 @@ fn binary(variable: &str, name: &str) -> PathBuf {
 
 fn query(client: &HostClient, action: &str, target: &Target, params: Value) -> Query {
     let attached = client.attachment();
-    let mut reveal_target = BuiltinAction::find(action).unwrap().spec().reveal_target;
+    let mut reveal_target = BuiltinAction::find(action)
+        .unwrap()
+        .spec()
+        .reveal_target
+        .clone();
     reveal_target.session_id = target.session_id.clone();
     Query {
         protocol_version: attached.protocol_version,

@@ -198,7 +198,7 @@ export function createNativeTransport(
     },
     request(request: RpcRequest, signal?: AbortSignal) {
       if (disposed || signal?.aborted) return Promise.reject(abortError());
-      return waitForHost(port.request(request), signal);
+      return waitForHost(port.request(request, desktop.generation), signal);
     },
     openChannel(
       request: Query,
@@ -206,9 +206,10 @@ export function createNativeTransport(
       signal?: AbortSignal,
     ) {
       return channel<WireFrame>(
-        (data) => port.subscribe(request, data),
-        port.unsubscribe,
-        (value) => onFrame(parseWireFrame(value)),
+        (data) => port.subscribe(request, data, desktop.generation),
+        (id) => port.unsubscribe(id, desktop.generation),
+        // SDK 统一验证状态帧和投影身份；传输层只负责有界交付及确认。
+        onFrame,
         () => {},
         signal,
         (error) =>
@@ -234,8 +235,9 @@ export function createNativeTransport(
       onError?: (error: Error) => void,
     ) {
       return channel<RawBatch>(
-        (data, lifecycle) => port.rawSubscribe(request, data, lifecycle),
-        port.rawUnsubscribe,
+        (data, lifecycle) =>
+          port.rawSubscribe(request, data, lifecycle, desktop.generation),
+        (id) => port.rawUnsubscribe(id, desktop.generation),
         (value, id) => {
           if (value.subscriptionId !== id)
             throw new ContractValidationError("Raw subscription changed");
@@ -256,7 +258,7 @@ export function createNativeTransport(
     },
     rawRequest(request: RpcRequest, signal?: AbortSignal) {
       if (disposed || signal?.aborted) return Promise.reject(abortError());
-      return waitForHost(port.rawRequest(request), signal);
+      return waitForHost(port.rawRequest(request, desktop.generation), signal);
     },
     dispose() {
       disposed = true;

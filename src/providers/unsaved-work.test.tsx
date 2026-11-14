@@ -1,3 +1,4 @@
+import { Activity, useState } from "react";
 import {
   act,
   cleanup,
@@ -80,6 +81,49 @@ describe("unsaved work lifecycle", () => {
     );
   });
   afterEach(cleanup);
+  it("keeps a hidden page's dirty work protected and applies discard to its retained state", async () => {
+    const discarded = vi.fn();
+    function RetainedPage() {
+      const [draft, setDraft] = useState("unsaved connected draft");
+      useUnsavedWork({
+        id: "retained-draft",
+        label: "Retained draft",
+        dirty: draft !== "",
+        discard: () => {
+          discarded();
+          setDraft("");
+        },
+      });
+      return <input aria-label="Retained draft" value={draft} readOnly />;
+    }
+    const tree = (mode: "visible" | "hidden") => (
+      <UnsavedWorkProvider>
+        <Activity mode={mode}>
+          <RetainedPage />
+        </Activity>
+      </UnsavedWorkProvider>
+    );
+    const view = render(tree("visible"));
+    await waitFor(() => expect(native.onLifecycleRequest).toHaveBeenCalled());
+    view.rerender(tree("hidden"));
+    act(() => request?.({ id: 81, action: "quit", windows: ["main"] }));
+    expect(screen.getByRole("dialog")).toHaveTextContent("Retained draft");
+    fireEvent.click(
+      screen.getByRole("button", { name: "Discard and continue" }),
+    );
+    await waitFor(() =>
+      expect(native.respondLifecycle).toHaveBeenCalledWith(81, true),
+    );
+    expect(discarded).toHaveBeenCalledOnce();
+    act(() => finished?.(81));
+    await waitFor(() =>
+      expect(screen.queryByRole("dialog")).not.toBeInTheDocument(),
+    );
+    view.rerender(tree("visible"));
+    expect(screen.getByRole("textbox", { name: "Retained draft" })).toHaveValue(
+      "",
+    );
+  });
   it("offers cancellation or explicit discard for a local draft and awaits discard before leaving", async () => {
     const removal = deferred();
     const discard = vi.fn(() => removal.promise);

@@ -31,7 +31,8 @@ test("reselecting settings preserves its controls and keyboard navigation keeps 
     "aria-current",
     "page",
   );
-  expect(await original.evaluate((element) => element.isConnected)).toBe(false);
+  expect(await original.evaluate((element) => element.isConnected)).toBe(true);
+  await expect(theme).toBeHidden();
   await sidebar.locator('a[href="#/"]').click();
   await expect(page.getByTestId("serial-workbench-shell")).toBeAttached();
   await expect(page.locator("main")).toBeVisible();

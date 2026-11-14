@@ -122,11 +122,26 @@ pub fn schema_for<T: JsonSchema>(dialect: SchemaDialect) -> serde_json::Value {
     serde_json::to_value(schema).expect("schema serializes")
 }
 /// 只有已经实现的 handler 才能进入目录；业务任务在接线时添加目录项。
-pub fn builtin_catalog() -> Vec<ActionSpec> {
-    BuiltinAction::ALL
-        .iter()
-        .map(|action| action.spec())
-        .collect()
+pub fn builtin_catalog() -> &'static [ActionSpec] {
+    builtin_specs(SchemaDialect::Draft07)
+}
+fn builtin_specs(dialect: SchemaDialect) -> &'static [ActionSpec] {
+    static DRAFT07: std::sync::LazyLock<Vec<ActionSpec>> = std::sync::LazyLock::new(|| {
+        BuiltinAction::ALL
+            .into_iter()
+            .map(|action| action.build_spec(SchemaDialect::Draft07))
+            .collect()
+    });
+    static DRAFT202012: std::sync::LazyLock<Vec<ActionSpec>> = std::sync::LazyLock::new(|| {
+        BuiltinAction::ALL
+            .into_iter()
+            .map(|action| action.build_spec(SchemaDialect::Draft202012))
+            .collect()
+    });
+    match dialect {
+        SchemaDialect::Draft07 => &DRAFT07,
+        SchemaDialect::Draft202012 => &DRAFT202012,
+    }
 }
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -163,6 +178,7 @@ pub enum BuiltinAction {
     SettingsSave,
     SettingsExport,
     SettingsImport,
+    WorkspaceList,
     WorkspaceRead,
     WorkspaceSave,
     WorkspaceExport,
@@ -201,7 +217,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 89] = [
+    pub const ALL: [Self; 90] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
@@ -255,6 +271,7 @@ impl BuiltinAction {
         Self::SettingsSave,
         Self::SettingsExport,
         Self::SettingsImport,
+        Self::WorkspaceList,
         Self::WorkspaceRead,
         Self::WorkspaceSave,
         Self::WorkspaceExport,
@@ -326,6 +343,7 @@ impl BuiltinAction {
             Self::SettingsImport => "settings.import",
             Self::ActionCheck => "action.check",
             Self::WorkspaceImportPreview => "workspace.importPreview",
+            Self::WorkspaceList => "workspace.list",
             Self::WorkspaceRead => "workspace.read",
             Self::WorkspaceSave => "workspace.save",
             Self::WorkspaceExport => "workspace.export",
@@ -419,25 +437,14 @@ impl BuiltinAction {
                 | Self::FavoritesSave
         )
     }
-    pub fn spec(self) -> ActionSpec {
-        static SPECS: std::sync::LazyLock<Vec<ActionSpec>> = std::sync::LazyLock::new(|| {
-            BuiltinAction::ALL
-                .into_iter()
-                .map(|action| action.build_spec(SchemaDialect::Draft07))
-                .collect()
-        });
-        SPECS[Self::ALL
+    pub fn spec(self) -> &'static ActionSpec {
+        self.spec_with_dialect(SchemaDialect::Draft07)
+    }
+    pub fn spec_with_dialect(self, dialect: SchemaDialect) -> &'static ActionSpec {
+        &builtin_specs(dialect)[Self::ALL
             .iter()
             .position(|action| *action == self)
             .expect("builtin action")]
-        .clone()
-    }
-    pub fn spec_with_dialect(self, dialect: SchemaDialect) -> ActionSpec {
-        if dialect == SchemaDialect::Draft07 {
-            self.spec()
-        } else {
-            self.build_spec(dialect)
-        }
     }
     fn build_spec(self, dialect: SchemaDialect) -> ActionSpec {
         let action = self.is_device_action()
@@ -605,7 +612,7 @@ impl BuiltinAction {
             meta.state_scopes.clear();
             meta.event_types.clear();
         }
-        if self == Self::CatalogList {
+        if matches!(self, Self::CatalogList | Self::WorkspaceList) {
             // Authentication identifies whose filtered catalog is returned; no global grant is needed.
             meta.permissions.clear();
         }
@@ -787,6 +794,10 @@ impl BuiltinAction {
             Self::WorkspaceImportPreview => ActionSpec::of_with_dialect::<
                 DocumentImportParams,
                 WorkspaceDocument,
+            >(meta, dialect),
+            Self::WorkspaceList => ActionSpec::of_with_dialect::<
+                WorkspaceListParams,
+                WorkspaceListResult,
             >(meta, dialect),
             Self::WorkspaceRead => {
                 ActionSpec::of_with_dialect::<EmptyParams, WorkspaceDocumentResult>(meta, dialect)

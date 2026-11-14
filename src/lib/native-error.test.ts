@@ -6,6 +6,20 @@ import { zhCN } from "@/i18n/zh-CN";
 import { errorMessage, nativeErrorText } from "./native-error";
 
 describe("native error presentation", () => {
+  it.each([zhCN, en])(
+    "explains local service authentication failure without displaying raw details",
+    (messages) => {
+      expect(
+        nativeErrorText(
+          {
+            code: "UNAUTHENTICATED",
+            message: "EXPLICIT_FIXTURE_SECRET C:/private/user",
+          },
+          createTranslator(messages),
+        ),
+      ).toBe(messages["nativeError.unauthenticated"]);
+    },
+  );
   it("explains quarantined serial cleanup without guessing a permission or platform problem", () => {
     expect(
       nativeErrorText(

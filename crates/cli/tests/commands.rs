@@ -184,7 +184,7 @@ impl Fixture {
                         action_id: Id::try_from("operation.get").unwrap(),
                         target: serde_json::from_value(self.target()).unwrap(),
                         params: params.clone(),
-                        reveal_target: BuiltinAction::OperationGet.spec().reveal_target,
+                        reveal_target: BuiltinAction::OperationGet.spec().reveal_target.clone(),
                     }))
                     .await
                     .unwrap();
@@ -583,6 +583,53 @@ async fn host_stop_waits_for_the_attached_instance_lock_to_release() {
     assert_eq!(result["stopped"], true);
     assert!(!serial_workbench_ipc::profile_has_running_host(f.directory.path()).unwrap());
     f.finish().await;
+}
+
+#[tokio::test]
+async fn host_stop_succeeds_when_the_previous_host_has_already_exited() {
+    let f = Fixture::new().await;
+    let stopped = f.json(&["host", "stop", "--json"]).await;
+    assert_eq!(stopped["stopped"], true);
+    assert!(!serial_workbench_ipc::profile_has_running_host(f.directory.path()).unwrap());
+    assert!(f.directory.path().join("host-v0/discovery.json").exists());
+    let again = f.json_at("stop-again", &["host", "stop", "--json"]).await;
+    assert_eq!(again["stopped"], true);
+    assert_eq!(again["alreadyStopped"], true);
+    assert!(again.get("operation").is_none());
+    assert!(!serial_workbench_ipc::profile_has_running_host(f.directory.path()).unwrap());
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn host_stop_keeps_pipe_failure_when_the_instance_lock_is_still_held() {
+    let f = Fixture::new().await;
+    let stopped = f.json(&["host", "stop", "--json"]).await;
+    assert_eq!(stopped["stopped"], true);
+    let path = f.directory.path().join("host-v0/instance.lock");
+    let held = serial_workbench_ipc::try_lock_private_file(&path)
+        .unwrap()
+        .unwrap();
+    // 端点缺失在 Unix 与 Windows 的稳定错误不同；停止命令须保留真实连接失败。
+    let mut options = ConnectOptions::new(
+        f.directory.path().to_path_buf(),
+        Id::try_from("serial-workbench-cli").unwrap(),
+        ClientKind::Cli,
+    );
+    options.user_control_credential =
+        Some(read_user_control_credential(f.directory.path()).unwrap());
+    let expected = match HostClient::connect(options).await {
+        Err(error) => error,
+        Ok(_) => panic!("the stopped Host must not accept a connection"),
+    };
+    let output = f.cli(&["host", "stop", "--json"]).await;
+    let running = serial_workbench_ipc::profile_has_running_host(f.directory.path()).unwrap();
+    drop(held);
+    f.finish().await;
+    assert!(running);
+    assert!(!output.status.success());
+    let reply: Value = serde_json::from_slice(&output.stdout).unwrap();
+    assert_eq!(reply["error"], serde_json::to_value(expected).unwrap());
+    assert_ne!(reply["stopped"], true);
 }
 
 // 暂缓真实停机信号的消费，模拟原实例仍在结算且继续持有 OS 锁。

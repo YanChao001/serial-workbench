@@ -211,13 +211,14 @@ impl StreamHub {
         let actor = actor.clone();
         let target = source.target.clone();
         let stamp = tokio::task::spawn_blocking(move || {
-            let stamp = auth.capture_grants(&actor)?;
-            auth.require(&actor, "content.read", &target)?;
+            let authorization = auth.snapshot(&actor)?;
+            let stamp = authorization.capture_grants();
+            authorization.require("content.read", &target)?;
             Ok::<_, HostError>(stamp)
         })
         .await
         .map_err(|_| busy())??;
-        let result = {
+        let (events, source_next) = {
             let state = source.state.lock().map_err(|_| busy())?;
             let oldest = state.ring.front().map_or(state.next, |event| event.seq);
             if params.start_event_seq.get() < oldest {
@@ -226,49 +227,68 @@ impl StreamHub {
             if params.start_event_seq.get() > state.next {
                 return Err(invalid());
             }
-            let mut result = StreamReadResult {
-                events: vec![],
-                next_event_seq: params.start_event_seq,
-                has_more: false,
-            };
-            for event in state
+            let events = state
                 .ring
                 .iter()
                 .filter(|e| e.seq >= params.start_event_seq.get())
                 .take(params.max_events.get() as usize)
-            {
-                let candidate_bytes = event
-                    .cost
-                    .checked_mul(4)
-                    .and_then(|bytes| bytes.checked_add(8192))
-                    .ok_or_else(limit)?;
-                if output_bytes
-                    .checked_add(candidate_bytes)
-                    .is_none_or(|bytes| bytes > self.inner.limits.reader_bytes)
-                {
-                    if result.events.is_empty() {
-                        return Err(limit());
-                    }
-                    break;
-                }
-                let _candidate = self.inner.reader_budget.take(candidate_bytes)?;
-                let wire = event.wire(&source)?;
-                result.events.push(wire);
-                let previous = result.next_event_seq;
-                result.next_event_seq = (event.seq + 1).into();
-                result.has_more = result.next_event_seq.get() < state.next;
-                if ring::json_len(&result, params.max_bytes.get() as usize).is_err() {
-                    result.events.pop();
-                    result.next_event_seq = previous;
-                    if result.events.is_empty() {
-                        return Err(limit());
-                    }
-                    break;
-                }
-            }
-            result.has_more = result.next_event_seq.get() < state.next;
-            result
+                .cloned()
+                .collect::<Vec<_>>();
+            (events, state.next)
         };
+        // 编码和计量不占用接收源锁；候选引用继续持有源环的真实预算。
+        let mut result = StreamReadResult {
+            events: vec![],
+            next_event_seq: params.start_event_seq,
+            has_more: params.start_event_seq.get() < source_next,
+        };
+        let mut content_bytes = 0usize;
+        for event in events {
+            let candidate_bytes = event
+                .cost
+                .checked_mul(4)
+                .and_then(|bytes| bytes.checked_add(8192))
+                .ok_or_else(limit)?;
+            if output_bytes
+                .checked_add(candidate_bytes)
+                .is_none_or(|bytes| bytes > self.inner.limits.reader_bytes)
+            {
+                if result.events.is_empty() {
+                    return Err(limit());
+                }
+                break;
+            }
+            let _candidate = self.inner.reader_budget.take(candidate_bytes)?;
+            let wire = event.wire(&source)?;
+            let wire_bytes = match ring::json_len(&wire, params.max_bytes.get() as usize) {
+                Ok(bytes) => bytes,
+                Err(_) if result.events.is_empty() => return Err(limit()),
+                Err(_) => break,
+            };
+            let header = StreamReadResult {
+                events: vec![],
+                next_event_seq: (event.seq + 1).into(),
+                has_more: event.seq + 1 < source_next,
+            };
+            let next_content_bytes = content_bytes
+                .checked_add(wire_bytes)
+                .and_then(|bytes| bytes.checked_add(usize::from(!result.events.is_empty())))
+                .ok_or_else(limit)?;
+            let fits = ring::json_len(&header, params.max_bytes.get() as usize)
+                .ok()
+                .and_then(|bytes| bytes.checked_add(next_content_bytes))
+                .is_some_and(|bytes| bytes <= params.max_bytes.get() as usize);
+            if !fits {
+                if result.events.is_empty() {
+                    return Err(limit());
+                }
+                break;
+            }
+            content_bytes = next_content_bytes;
+            result.next_event_seq = header.next_event_seq;
+            result.has_more = header.has_more;
+            result.events.push(wire);
+        }
         if let Some(stamp) = stamp {
             let auth = self.inner.auth.clone();
             tokio::task::spawn_blocking(move || auth.validate_grants(&stamp))

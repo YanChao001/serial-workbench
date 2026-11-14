@@ -1,6 +1,7 @@
 ﻿import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
-import { createHostWorkspace, getHostClient } from "@/lib/host-client";
+import { getHostClient } from "@/lib/host-client";
+import { createHostWorkspace } from "./host-controller";
 import type { HostConnection } from "@/lib/host-client";
 import { isTauri } from "@/lib/tauri";
 import { HostRequestError } from "@serial-workbench/host-client";
@@ -28,6 +29,7 @@ const empty = (status: HostState["status"]): HostContextValue => ({
     sessions: [],
     operations: [],
     operationSummaries: [],
+    operationSummariesReady: false,
     streams: new Map(),
   },
   refresh: async () => unavailable(),

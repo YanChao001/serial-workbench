@@ -189,12 +189,21 @@ pub fn no_clobber(error: std::io::Error) -> HostError {
     }
 }
 pub fn read_json<T: serde::de::DeserializeOwned>(path: &Path) -> HostResult<T> {
-    let mut file = open_read(path)?;
+    let file = open_read(path)?;
     if file.metadata().map_err(io_error)?.len() > MAX_METADATA {
         return Err(corrupt());
     }
+    read_json_content(file)
+}
+fn read_json_content<T: serde::de::DeserializeOwned>(reader: impl Read) -> HostResult<T> {
     let mut data = Vec::new();
-    file.read_to_end(&mut data).map_err(io_error)?;
+    reader
+        .take(MAX_METADATA + 1)
+        .read_to_end(&mut data)
+        .map_err(io_error)?;
+    if data.len() as u64 > MAX_METADATA {
+        return Err(corrupt());
+    }
     serde_json::from_slice(&data).map_err(|_| corrupt())
 }
 pub fn open_read(path: &Path) -> HostResult<File> {
@@ -322,5 +331,33 @@ pub fn available_bytes(path: &Path) -> HostResult<u64> {
             return Err(io_error(std::io::Error::last_os_error()));
         }
         Ok((stat.f_bavail as u64).saturating_mul(stat.f_frsize as u64))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    struct GrowingMetadata {
+        consumed: u64,
+    }
+    impl Read for GrowingMetadata {
+        fn read(&mut self, output: &mut [u8]) -> std::io::Result<usize> {
+            output.fill(b' ');
+            self.consumed += output.len() as u64;
+            Ok(output.len())
+        }
+    }
+    #[test]
+    fn metadata_growth_is_bounded_by_actual_read_bytes() {
+        let mut growing = GrowingMetadata { consumed: 0 };
+        let result: HostResult<serde_json::Value> = read_json_content(&mut growing);
+        assert_eq!(result.unwrap_err().code, "CAPTURE_CORRUPT");
+        assert_eq!(growing.consumed, MAX_METADATA + 1);
+    }
+    #[test]
+    fn metadata_content_accepts_valid_json() {
+        let result: serde_json::Value =
+            read_json_content(b"{\"formatVersion\":\"1\"}".as_slice()).unwrap();
+        assert_eq!(result["formatVersion"], "1");
     }
 }

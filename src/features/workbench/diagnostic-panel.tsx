@@ -1,4 +1,8 @@
-import type { SessionSnapshot, StreamItem } from "@serial-workbench/contracts";
+import type {
+  SessionSnapshot,
+  StreamItem,
+  DeviceDescriptor,
+} from "@serial-workbench/contracts";
 import { Button } from "@/components/ui/button";
 import {
   Popover,
@@ -41,7 +45,19 @@ export type DiagnosticLabels = Record<
   | "linuxGroup"
   | "linuxMissing",
   string
->;
+> &
+  Partial<
+    Record<
+      | "capacity"
+      | "port"
+      | "driver"
+      | "connectionState"
+      | "errorCode"
+      | "connected"
+      | "disconnected",
+      string
+    >
+  >;
 export type DiagnosticPanelProps = {
   labels: DiagnosticLabels;
   items: readonly StreamItem[];
@@ -49,6 +65,7 @@ export type DiagnosticPanelProps = {
   openError?: WorkbenchFailure;
   streamError?: Error | null;
   platform?: Platform;
+  device?: DeviceDescriptor;
   onInspectBytes?: () => void;
   onInspectMetrics?: () => void;
   onReconnect?: () => void;
@@ -68,6 +85,8 @@ function connectionCause(code: string | undefined): keyof DiagnosticLabels {
       return "missingDevice";
     case "CONFIGURATION_CONFLICT":
       return "configurationConflict";
+    case "LIMIT_EXCEEDED":
+      return "capacity";
     case "EPOCH_MISMATCH":
     case "HOST_RESTARTED":
     case "STALE_ATTACHMENT":
@@ -84,6 +103,7 @@ export function DiagnosticPanel({
   openError,
   streamError,
   platform = getPlatform(),
+  device,
   onInspectBytes,
   onInspectMetrics,
   onReconnect,
@@ -124,6 +144,44 @@ export function DiagnosticPanel({
     .join("\n");
   return (
     <section aria-label={labels.diagnostics} className="workbench-diagnostics">
+      <dl className="workbench-diagnostic-facts">
+        {device && (
+          <>
+            <div>
+              <dt>{labels.port ?? labels.diagnostics}</dt>
+              <dd>
+                {device.systemName}
+                {device.description ? ` · ${device.description}` : ""}
+              </dd>
+            </div>
+            {device.driver && (
+              <div>
+                <dt>{labels.driver ?? labels.details}</dt>
+                <dd>{device.driver}</dd>
+              </div>
+            )}
+          </>
+        )}
+        {labels.connectionState && (
+          <div>
+            <dt>{labels.connectionState}</dt>
+            <dd>
+              {session?.state === "open"
+                ? labels.connected
+                : labels.disconnected}
+            </dd>
+          </div>
+        )}
+        {labels.errorCode &&
+          (openError?.code || nativeErrorCode(streamError)) && (
+            <div>
+              <dt>{labels.errorCode}</dt>
+              <dd>
+                <code>{openError?.code ?? nativeErrorCode(streamError)}</code>
+              </dd>
+            </div>
+          )}
+      </dl>
       {!openError && !streamError && !gaps.length && !disconnected && (
         <p>{labels.noIssues}</p>
       )}
@@ -133,7 +191,7 @@ export function DiagnosticPanel({
             {labels.cannotOpen}
             {openError.context ? ` · ${openError.context}` : ""}
           </h3>
-          <p>{labels[cause]}</p>
+          <p>{labels[cause] ?? labels.unknownFailure}</p>
           {platformSteps.length > 0 && (
             <ol>
               {platformSteps.map((step) => (

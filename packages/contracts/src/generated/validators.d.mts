@@ -242,8 +242,11 @@ import type {
   WireFrame,
   WorkspaceDocument,
   WorkspaceDocumentResult,
+  WorkspaceListParams,
+  WorkspaceListResult,
   WorkspaceSaveParams,
   WorkspaceSnapshot,
+  WorkspaceSummary,
   WorkspaceView,
 } from "./types.ts";
 export declare function validateAccent(value: unknown): value is Accent;
@@ -834,12 +837,21 @@ export declare function validateWorkspaceDocument(
 export declare function validateWorkspaceDocumentResult(
   value: unknown,
 ): value is WorkspaceDocumentResult;
+export declare function validateWorkspaceListParams(
+  value: unknown,
+): value is WorkspaceListParams;
+export declare function validateWorkspaceListResult(
+  value: unknown,
+): value is WorkspaceListResult;
 export declare function validateWorkspaceSaveParams(
   value: unknown,
 ): value is WorkspaceSaveParams;
 export declare function validateWorkspaceSnapshot(
   value: unknown,
 ): value is WorkspaceSnapshot;
+export declare function validateWorkspaceSummary(
+  value: unknown,
+): value is WorkspaceSummary;
 export declare function validateWorkspaceView(
   value: unknown,
 ): value is WorkspaceView;

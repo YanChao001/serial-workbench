@@ -1,11 +1,13 @@
 import { expect, it } from "vitest";
-import { defaults } from "@serial-workbench/contracts";
+import { defaults, TX_MAX_BYTES } from "@serial-workbench/contracts";
 import { sendWaitMs } from "./send-wait";
 
 it("budgets 3576 and 10000 bytes at 9600 baud instead of timing out after one second", () => {
   const configuration = { ...defaults.serialConfiguration, baudRate: "9600" };
   expect(sendWaitMs(configuration, 3576)).toBe("4725");
   expect(sendWaitMs(configuration, 10000)).toBe("13022");
+  expect(sendWaitMs(configuration, 16500)).toBe("21485");
+  expect(sendWaitMs(configuration, TX_MAX_BYTES)).toBe("170668");
 });
 
 it("includes data, parity and stop bits and retains explicit fixed timeouts", () => {

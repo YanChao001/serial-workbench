@@ -1,4 +1,4 @@
-use crate::{DeviceBinding, Id, ObjectRef, TerminalMode, U64};
+use crate::{DeviceBinding, Id, ObjectRef, TerminalMode, TextEncoding, U64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -19,12 +19,20 @@ pub struct WorkspaceView {
     pub pinned: bool,
     pub receive_mode: TerminalMode,
     pub send_mode: TerminalMode,
+    #[serde(default = "crate::settings::default_receive_encoding")]
+    #[specta(optional)]
+    pub receive_encoding: Option<TextEncoding>,
+    #[serde(default)]
+    #[specta(optional)]
+    pub send_encoding: TextEncoding,
     pub binding_id: Id,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct WorkspaceDocument {
     pub name: String,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    pub archived: bool,
     pub views: Vec<WorkspaceView>,
     pub bindings: Vec<DeviceBinding>,
     pub favorite_binding_ids: Vec<Id>,
@@ -36,6 +44,7 @@ impl Default for WorkspaceDocument {
         Self {
             // 空名表示尚未命名，客户端只本地化显示，不改写用户名称。
             name: String::new(),
+            archived: false,
             views: Vec::new(),
             bindings: Vec::new(),
             favorite_binding_ids: Vec::new(),

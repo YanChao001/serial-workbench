@@ -1,7 +1,7 @@
 //! 共享文档协调；Store 领域服务仍是唯一解码与 CAS 写入入口。
 use crate::{
     auth::{AuthService, AuthenticatedActor},
-    settings::{SettingsService, import_document},
+    settings::{SettingsService, export_document, import_document},
     state::ProjectionStore,
     storage::{Settlement, Store},
     workspace::WorkspaceService,
@@ -49,6 +49,16 @@ impl Document {
             Self::Workspace(value) => QueryResult::Workspace(value),
         }
     }
+    fn export_json(&self) -> HostResult<String> {
+        match self {
+            Self::Settings(value) => export_document(&value.document.value),
+            Self::Workspace(value) => {
+                let mut document = value.document.value.clone();
+                document.archived = false;
+                export_document(&document)
+            }
+        }
+    }
     fn result(self) -> ActionResult {
         match self {
             Self::Settings(value) => ActionResult::Settings(value),
@@ -70,8 +80,11 @@ impl DocumentService {
             session_id: None,
             session_epoch: None,
         };
-        let stamp = self.auth.capture_grants(actor)?;
-        self.auth.require(actor, "metadata.read", &target)?;
+        let stamp = {
+            let authorization = self.auth.snapshot(actor)?;
+            authorization.require("metadata.read", &target)?;
+            authorization.capture_grants()
+        };
         let document =
             WorkspaceService::new(self.store.clone(), reference.workspace_id.clone()).read()?;
         let binding = document
@@ -80,10 +93,11 @@ impl DocumentService {
             .into_iter()
             .find(|binding| binding.binding_id == reference.binding_id)
             .ok_or_else(|| HostError::new("NOT_FOUND", "Workspace device binding was not found"))?;
+        let authorization = self.auth.snapshot(actor)?;
         if let Some(stamp) = stamp {
-            self.auth.validate_grants(&stamp)?;
+            authorization.validate_grants(&stamp)?;
         }
-        self.auth.require(actor, "metadata.read", &target)?;
+        authorization.require("metadata.read", &target)?;
         Ok(binding)
     }
     pub(crate) fn new(store: Store, auth: AuthService, projections: ProjectionStore) -> Self {
@@ -155,15 +169,20 @@ impl DocumentService {
             return Err(invalid());
         }
         Self::reference(target)?;
-        let stamp = self.auth.capture_grants(actor)?;
-        self.auth.require(actor, "metadata.read", target)?;
-        let value = import_document::<WorkspaceDocument>(&params.json)?;
+        let stamp = {
+            let authorization = self.auth.snapshot(actor)?;
+            authorization.require("metadata.read", target)?;
+            authorization.capture_grants()
+        };
+        let mut value = import_document::<WorkspaceDocument>(&params.json)?;
+        value.archived = false;
         value.validate()?;
         wire_budget(&value)?;
+        let authorization = self.auth.snapshot(actor)?;
         if let Some(stamp) = stamp {
-            self.auth.validate_grants(&stamp)?;
+            authorization.validate_grants(&stamp)?;
         }
-        self.auth.require(actor, "metadata.read", target)?;
+        authorization.require("metadata.read", target)?;
         Ok(value)
     }
     pub(crate) fn query(
@@ -172,30 +191,74 @@ impl DocumentService {
         query: &Query,
         action: BuiltinAction,
     ) -> HostResult<QueryResult> {
+        if action == BuiltinAction::WorkspaceList {
+            if query.target.kind.as_str() != "host" || query.target.id != query.host_id {
+                return Err(invalid());
+            }
+            let params: WorkspaceListParams = decode(&query.params)?;
+            let stamp = self.auth.snapshot(actor)?.capture_grants();
+            let rows = self.store.workspace_page(params.after)?;
+            let next_cursor = (rows.len() == 64).then(|| rows.last().expect("full page").0.clone());
+            let authorization = self.auth.snapshot(actor)?;
+            if let Some(stamp) = &stamp {
+                authorization.validate_grants(stamp)?;
+            }
+            let mut workspaces = Vec::new();
+            for (_, id, revision, name) in rows {
+                let target = Target {
+                    host_id: query.host_id.clone(),
+                    kind: ResourceKind::try_from("workspace")?,
+                    id,
+                    session_id: None,
+                    session_epoch: None,
+                };
+                match authorization.require("metadata.read", &target) {
+                    Ok(()) => workspaces.push(WorkspaceSummary {
+                        scope: Self::reference(&target)?,
+                        name,
+                        revision,
+                    }),
+                    Err(error) if error.code == "PERMISSION_DENIED" => continue,
+                    Err(error) => return Err(error),
+                }
+            }
+            let result = QueryResult::Workspaces(WorkspaceListResult {
+                workspaces,
+                next_cursor,
+            });
+            wire_budget(&result)?;
+            let authorization = self.auth.snapshot(actor)?;
+            if let Some(stamp) = &stamp {
+                authorization.validate_grants(stamp)?;
+            }
+            return Ok(result);
+        }
         let _: EmptyParams = decode(&query.params)?;
         let reference = Self::reference(&query.target)?;
         let lock = self.document_lock(&reference)?;
         let _document = lock.lock().map_err(|_| unavailable())?;
-        let stamp = self.auth.capture_grants(actor)?;
-        self.auth.require(actor, "metadata.read", &query.target)?;
+        let stamp = {
+            let authorization = self.auth.snapshot(actor)?;
+            authorization.require("metadata.read", &query.target)?;
+            authorization.capture_grants()
+        };
         let document = self.load(reference)?;
         self.synchronize(&document)?;
         let result = match action {
             BuiltinAction::SettingsRead | BuiltinAction::WorkspaceRead => document.query(),
-            BuiltinAction::SettingsExport => QueryResult::DocumentJson(DocumentJsonResult {
-                json: SettingsService::new(self.store.clone()).export_json()?,
-            }),
-            BuiltinAction::WorkspaceExport => QueryResult::DocumentJson(DocumentJsonResult {
-                json: WorkspaceService::new(self.store.clone(), query.target.id.clone())
-                    .export_json()?,
-            }),
+            BuiltinAction::SettingsExport | BuiltinAction::WorkspaceExport => {
+                QueryResult::DocumentJson(DocumentJsonResult {
+                    json: document.export_json()?,
+                })
+            }
             _ => return Err(invalid()),
         };
         wire_budget(&result)?;
+        let authorization = self.auth.snapshot(actor)?;
         if let Some(stamp) = &stamp {
-            self.auth.validate_grants(stamp)?;
+            authorization.validate_grants(stamp)?;
         }
-        self.auth.require(actor, "metadata.read", &query.target)?;
+        authorization.require("metadata.read", &query.target)?;
         Ok(result)
     }
     pub(crate) fn execute(
@@ -287,11 +350,14 @@ impl DocumentService {
                 })
             }
             BuiltinAction::WorkspaceSave | BuiltinAction::WorkspaceImport => {
-                let value: WorkspaceDocument = if action == BuiltinAction::WorkspaceSave {
+                let mut value: WorkspaceDocument = if action == BuiltinAction::WorkspaceSave {
                     decode::<WorkspaceSaveParams>(&call.params)?.value
                 } else {
                     import_document(&decode::<DocumentImportParams>(&call.params)?.json)?
                 };
+                if action == BuiltinAction::WorkspaceImport {
+                    value.archived = false;
+                }
                 value.validate()?;
                 Document::Workspace(WorkspaceDocumentResult {
                     document: WorkspaceSnapshot {
@@ -365,14 +431,16 @@ fn object(value: &impl Serialize) -> HostResult<JsonObject> {
 }
 fn wire_budget(value: &impl Serialize) -> HostResult<()> {
     // 为 RpcReply/Operation 信封预留空间；大结果的 ObjectRef 导出由后续 FileService 集成接入。
-    if serde_json::to_vec(value).map_err(|_| invalid())?.len()
-        > serial_workbench_ipc::frame::MAX_FRAME_BYTES - 16 * 1024
-    {
-        return Err(HostError::new(
+    serial_workbench_ipc::frame::encoded_length(
+        value,
+        serial_workbench_ipc::frame::MAX_FRAME_BYTES - 16 * 1024,
+    )
+    .map_err(|_| {
+        HostError::new(
             "LIMIT_EXCEEDED",
             "Document result exceeds the inline response budget",
-        ));
-    }
+        )
+    })?;
     Ok(())
 }
 fn invalid() -> HostError {
@@ -386,4 +454,55 @@ fn unavailable() -> HostError {
         "STORAGE_UNAVAILABLE",
         "Document coordination is unavailable",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn document_export_checks_each_phase_once_and_exports_the_loaded_value() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        let identity = store.begin_instance().unwrap();
+        let auth = AuthService::new(
+            store.clone(),
+            ContextToken::try_from("document-control").unwrap(),
+        );
+        let actor = auth
+            .authenticate(&Id::try_from("document-reader").unwrap(), None)
+            .unwrap()
+            .actor;
+        let projections = ProjectionStore::new(
+            identity.clone(),
+            auth.clone(),
+            crate::state::ProjectionLimits::default(),
+        );
+        let documents = DocumentService::new(store.clone(), auth.clone(), projections);
+        let action = BuiltinAction::SettingsExport;
+        let query = Query {
+            protocol_version: ProtocolVersion::V0_1,
+            host_id: identity.host_id.clone(),
+            instance_epoch: identity.instance_epoch,
+            actor_id: actor.id().clone(),
+            request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+            action_id: action.spec().action_id.clone(),
+            target: Target {
+                host_id: identity.host_id,
+                kind: ResourceKind::try_from("settings").unwrap(),
+                id: Id::try_from("shared").unwrap(),
+                session_id: None,
+                session_epoch: None,
+            },
+            params: JsonObject::new(),
+            reveal_target: action.spec().reveal_target.clone(),
+        };
+        let expected = SettingsService::new(store).export_json().unwrap();
+        let before = auth.document_reads();
+        let QueryResult::DocumentJson(exported) = documents.query(&actor, &query, action).unwrap()
+        else {
+            panic!("expected a document export")
+        };
+        assert_eq!(exported.json, expected);
+        assert_eq!(auth.document_reads() - before, 2);
+    }
 }

@@ -48,6 +48,26 @@ pub struct ConnectionContext {
     pub(super) failed: Arc<tokio::sync::Notify>,
     pub(super) catalog_changed: tokio::sync::watch::Sender<Option<WireFrame>>,
 }
+#[cfg(test)]
+pub(crate) fn test_context(
+    actor: AuthenticatedActor,
+    connection_id: Id,
+) -> (ConnectionContext, impl Send) {
+    let (events, keep_open) = mpsc::channel(16);
+    (
+        ConnectionContext {
+            connection_id,
+            actor,
+            channel: IpcChannel::Control,
+            events,
+            event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
+            subscriptions: Arc::new(Mutex::new(HashSet::new())),
+            failed: Arc::new(tokio::sync::Notify::new()),
+            catalog_changed: tokio::sync::watch::channel(None).0,
+        },
+        keep_open,
+    )
+}
 pub(super) struct AuthorizedEvent {
     pub frame: EventFrame,
     pub grant: Option<(String, Target)>,

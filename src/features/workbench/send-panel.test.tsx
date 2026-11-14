@@ -9,7 +9,7 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { StrictMode, useState } from "react";
-import { defaults } from "@serial-workbench/contracts";
+import { defaults, TX_MAX_BYTES } from "@serial-workbench/contracts";
 import type { Operation } from "@serial-workbench/contracts";
 import type { LineEnding } from "@serial-workbench/contracts";
 import { encodeSend, formatHex } from "@serial-workbench/host-client";
@@ -21,6 +21,95 @@ afterEach(() => {
   cleanup();
   toast.dismiss();
   clearUserLog();
+});
+it("sends a 16.50 KB draft exactly and retains its editable content", async () => {
+  const draft = "1234567890".repeat(1650);
+  const send = vi.fn().mockResolvedValue(operation());
+  render(
+    <SendPanel
+      session={session()}
+      draft={draft}
+      onDraftChange={vi.fn()}
+      labels={labels}
+      onSend={send}
+    />,
+  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
+    "16.50 KB",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(send).toHaveBeenCalledOnce());
+  expect(send.mock.calls[0]![0]).toEqual(new TextEncoder().encode(draft));
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    draft,
+  );
+});
+
+it("includes line endings in the shared TX limit, keeps the byte count and never submits an oversized preview", async () => {
+  const send = vi.fn().mockResolvedValue(operation()),
+    observed = vi.fn();
+  const draft = "A".repeat(TX_MAX_BYTES - 2);
+  const props = {
+    session: session(),
+    onDraftChange: vi.fn(),
+    labels,
+    onSend: send,
+    onPreviewChange: observed,
+    terminalSettings: {
+      ...defaults.settings.terminal,
+      lineEnding: { kind: "crlf" } as const,
+    },
+  };
+  const view = render(
+    <>
+      <Toaster />
+      <SendPanel {...props} draft={draft} />
+    </>,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(send).toHaveBeenCalledOnce());
+  const bytes = send.mock.calls[0]![0] as Uint8Array;
+  expect(bytes.length).toBe(TX_MAX_BYTES);
+  expect([...bytes.slice(-2)]).toEqual([13, 10]);
+  view.rerender(
+    <>
+      <Toaster />
+      <SendPanel {...props} draft={draft + "B"} />
+    </>,
+  );
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    draft + "B",
+  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
+    "131.07 KB",
+  );
+  expect(observed).toHaveBeenLastCalledWith(null);
+  expect(await screen.findByRole("alert")).toHaveTextContent(
+    "Use Send file for larger content",
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  expect(send).toHaveBeenCalledOnce();
+});
+
+it("keeps an unconnected draft editable without offering a transfer that requires a session", () => {
+  const transfer = vi.fn();
+  render(
+    <SendPanel
+      session={undefined}
+      labels={labels}
+      draft="AT"
+      onDraftChange={vi.fn()}
+      onSend={vi.fn()}
+      onOpenTransfer={transfer}
+      transferLabel="Advanced transfer"
+    />,
+  );
+  expect(screen.getByRole("textbox", { name: "Send input" })).toBeEnabled();
+  const button = screen.getByRole("button", { name: "Advanced transfer" });
+  expect(button).toBeDisabled();
+  fireEvent.click(button);
+  expect(transfer).not.toHaveBeenCalled();
 });
 
 it.each([
@@ -222,13 +311,17 @@ it.each([
       />,
     );
     const count = screen.getByLabelText(labels.draftByteCount);
-    expect(count).toHaveTextContent(`${byteCount} bytes`);
+    expect(count).toHaveTextContent(`${byteCount} B`);
     expect(count).not.toHaveAttribute("tabindex");
     expect(count.tagName).toBe("SPAN");
     expect(
       screen.queryByRole("button", { name: /preview/i }),
     ).not.toBeInTheDocument();
     screen.getByRole("button", { name: "Send file" }).focus();
+    await user.tab();
+    expect(
+      screen.getByRole("button", { name: labels.clearDraft }),
+    ).toHaveFocus();
     await user.tab();
     expect(screen.getByRole("textbox", { name: "Send input" })).toHaveFocus();
   },
@@ -496,14 +589,10 @@ it("uses shared send defaults and allows a local mode choice without a controlle
     );
   }
   render(<Consumer />);
-  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
-    "3 bytes",
-  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("3 B");
   fireEvent.click(screen.getByRole("radio", { name: "Text" }));
   expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue("A");
-  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
-    "3 bytes",
-  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("3 B");
 });
 it("sends with the primary Enter shortcut while rejecting IME, repeats and extra modifiers", async () => {
   const send = vi.fn().mockResolvedValue(operation());
@@ -563,9 +652,7 @@ it("reports both converted draft and mode to a controlled owner without reinterp
       onSendModeChange={changed}
     />,
   );
-  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
-    "1 bytes",
-  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("1 B");
   fireEvent.click(screen.getByRole("radio", { name: "Text" }));
   expect(changed).toHaveBeenCalledWith("text");
   expect(draftChanged).toHaveBeenCalledWith("A");
@@ -579,9 +666,7 @@ it("reports both converted draft and mode to a controlled owner without reinterp
       mode="text"
     />,
   );
-  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
-    "1 bytes",
-  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("1 B");
 });
 it("previews and sends the same custom HEX suffix and blocks invalid suffix bytes", async () => {
   const send = vi.fn().mockResolvedValue(operation());
@@ -607,9 +692,7 @@ it("previews and sends the same custom HEX suffix and blocks invalid suffix byte
   fireEvent.click(screen.getByRole("button", { name: "Custom" }));
   const suffix = screen.getByRole("textbox", { name: "Custom ending (HEX)" });
   fireEvent.change(suffix, { target: { value: "00 FF 0A" } });
-  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
-    "4 bytes",
-  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("4 B");
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(send).toHaveBeenCalledOnce());
   expect(Array.from(send.mock.calls[0]![0] as Uint8Array)).toEqual([
@@ -690,9 +773,7 @@ it("uses the exact preview bytes for sending CRLF and preserves the draft", asyn
   fireEvent.keyDown(screen.getByRole("option", { name: "CRLF" }), {
     key: "Enter",
   });
-  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent(
-    "4 bytes",
-  );
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("4 B");
   fireEvent.click(screen.getByRole("button", { name: "Send" }));
   await waitFor(() => expect(send).toHaveBeenCalledTimes(1));
   expect(Array.from(send.mock.calls[0]![0] as Uint8Array)).toEqual([

@@ -150,7 +150,7 @@ test("send byte information stays passive while draft conversion preserves the d
     "E5 93 88",
   );
   const bytes = page.locator(".workbench-draft-bytes");
-  await expect(bytes).toHaveText("18 bytes");
+  await expect(bytes).toHaveText("18 B");
   await expect(bytes).not.toHaveAttribute("tabindex");
   await expect(
     page.locator(".workbench-preview-trigger,.workbench-byte-preview"),
@@ -164,7 +164,7 @@ test("send byte information stays passive while draft conversion preserves the d
       .fill("E5 93 88 E5 93 88 E5 88 9B E6 A3 AE E6 95 A3 E5 9C B0")
       .join(" "),
   );
-  await expect(bytes).toHaveText("1440 bytes");
+  await expect(bytes).toHaveText("1.44 KB");
   expect(await geometry()).toEqual(initial);
   expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
     [],
@@ -298,7 +298,7 @@ for (const language of ["en", "zh"] as const) {
         : "设备确认未提供",
     );
     const time = log.locator(".workbench-stream-time").first();
-    await expect(time).toHaveText("19:22:33.456");
+    await expect(time).toHaveText("2026-11-10 19:22:33.456");
     await expect(time).toHaveAttribute("datetime", "2026-11-10T11:22:33.456Z");
     await page.screenshot({
       path: testInfo.outputPath(`stream-${language}-details.png`),
@@ -336,6 +336,8 @@ for (const theme of ["light", "dark"] as const) {
           name: "Connection parameters",
           exact: true,
         });
+        // 提示响应主动键盘导航，程序恢复焦点不应自动打开提示。
+        await page.keyboard.press("Tab");
         await parameters.focus();
         await expect(parameters).toHaveAccessibleDescription(/9600 \/ 8N1/);
         await expect(page.getByRole("tab")).toHaveCount(0);
@@ -358,6 +360,7 @@ for (const theme of ["light", "dark"] as const) {
           .getByRole("textbox", { name: "Send draft", exact: true })
           .fill("STATUS?");
         await expectSenderReachable(page, true);
+        await page.keyboard.press("Tab");
         await parameters.focus();
         await expect(parameters).toHaveAccessibleDescription(/115200 \/ 8N1/);
         await page.getByRole("button", { name: "Send", exact: true }).click();

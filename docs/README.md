@@ -12,6 +12,7 @@
 | [任务规划](./plan.md)        | M0—M6 路线、当前任务与完成条件           |
 | [开发进度](./progress.md)    | 当前基线、未完成问题和有效验证结果       |
 | [界面审查](./ui-review.md)   | 截图证据、界面问题、复现与修正范围       |
+| [代码审查](./code-audit.md)  | 跨模块问题、交互性能证据与本轮验证边界   |
 
 [需求状态账本](./feature-status.json)分别记录软件、硬件和发行状态。[契约目录](./contracts/README.md)维护 Host、流与操作、录制、Node 扩展和 runtime 分发要求；Rust DTO 与生成结果提供已实现的类型定义。
 

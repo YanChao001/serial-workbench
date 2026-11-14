@@ -44,6 +44,22 @@ fn key(generation: u64, id: &str, stream: DeliveryStream) -> DeliveryKey {
     }
 }
 
+async fn delivery_fixture_host(
+    server: &serial_workbench_host::ipc::HostServer,
+) -> serial_workbench_host::Host {
+    // 账本测试只接收显式提交的帧，后台原生枚举不应改变其容量与顺序。
+    serial_workbench_host::Host::with_runtime(
+        server.store(),
+        server.auth(),
+        std::sync::Arc::new(serial_workbench_host::clock::SystemClock::new().unwrap()),
+        std::sync::Arc::new(|_, _| {
+            unreachable!("delivery ledger fixture must not open a transport")
+        }),
+    )
+    .await
+    .unwrap()
+}
+
 #[test]
 fn closing_and_reconnecting_cannot_release_unacknowledged_window_budget() {
     let mut ledger = DeliveryLedger::new(2, 10);
@@ -477,12 +493,12 @@ async fn internal_generation_attachment_does_not_implicitly_connect() {
 #[tokio::test]
 async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
     use serial_workbench_core::*;
-    use serial_workbench_host::{Host, ipc::HostServer};
+    use serial_workbench_host::ipc::HostServer;
     use std::{sync::Arc, time::Duration};
     use tauri::ipc::{Channel, InvokeResponseBody};
     let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut server = HostServer::bind(directory.path()).await.unwrap();
-    let host = Host::new(server.store(), server.auth()).await.unwrap();
+    let host = delivery_fixture_host(&server).await;
     let (stop, done) = tokio::sync::oneshot::channel();
     let handler = host.clone();
     let running = tokio::spawn(async move {
@@ -569,6 +585,44 @@ async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
         "state delivery must wait for consumption without retiring the subscription"
     );
     assert_eq!(bridge.pending_for_test("main").await.0, 1);
+    // 保留前端未确认状态，连续发布超过 SDK 4MiB 的状态增量；普通查询仍须完成。
+    let mut latest_position = 0;
+    for index in 0..96 {
+        host.projections()
+            .commit(
+                &Id::try_from("host.devices").unwrap(),
+                Id::try_from("devices.changed").unwrap(),
+                JsonObject::new(),
+                JsonObject::from_iter([(
+                    "padding".into(),
+                    JsonValue::String("x".repeat(64 * 1024)),
+                )]),
+            )
+            .unwrap();
+        let request_id = format!("00000000-0000-4000-8000-{:012}", index + 100);
+        let reply = tokio::time::timeout(
+            Duration::from_secs(3),
+            bridge.request(
+                "main",
+                RpcRequest::StateSnapshot(query(
+                    &attached.attachment,
+                    "state.snapshot",
+                    serde_json::json!({"scopeId":"host.devices"}),
+                    &request_id,
+                )),
+            ),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        let RpcReply::Success { result, .. } = reply else {
+            panic!("state pressure disconnected control")
+        };
+        let RpcResult::Snapshot(snapshot) = *result else {
+            panic!("expected snapshot")
+        };
+        latest_position = snapshot.cursor.position.get();
+    }
     bridge
         .delivery_ack(
             "main",
@@ -586,6 +640,10 @@ async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
     assert!(
         matches!(second.body, IpcMessage::Delta { ref subscription_id, .. } if subscription_id == &subscription)
     );
+    let IpcMessage::Delta { ref delta, .. } = second.body else {
+        unreachable!()
+    };
+    let mut observed_position = delta.cursor.position.get();
     bridge
         .delivery_ack(
             "main",
@@ -596,6 +654,34 @@ async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
         )
         .await
         .unwrap();
+    let mut ordinal = 2u64;
+    let mut saw_gap = false;
+    while observed_position < latest_position {
+        let frame = tokio::time::timeout(Duration::from_secs(3), receive.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        let IpcMessage::Delta { delta, .. } = frame.body else {
+            panic!("pressure must preserve the live subscription")
+        };
+        saw_gap |= delta.previous_cursor.position.get() != observed_position;
+        observed_position = delta.cursor.position.get();
+        ordinal += 1;
+        bridge
+            .delivery_ack(
+                "main",
+                attached.generation,
+                subscription.clone(),
+                DeliveryStream::Data,
+                ordinal.into(),
+            )
+            .await
+            .unwrap();
+    }
+    assert!(
+        saw_gap,
+        "pressure must expose the coalesced prefix through its real cursor gap"
+    );
     assert_eq!(bridge.pending_for_test("main").await.0, 0);
     host.projections()
         .commit(
@@ -637,7 +723,7 @@ async fn unacknowledged_frontend_is_bounded_and_control_remains_available() {
             attached.generation,
             subscription.clone(),
             DeliveryStream::Data,
-            3.into(),
+            (ordinal + 1).into(),
         )
         .await
         .unwrap();
@@ -989,12 +1075,12 @@ async fn raw_unsubscribe_rejects_untrusted_window_before_connecting() {
 #[tokio::test]
 async fn old_generation_ack_releases_only_old_delivery_after_reconnect() {
     use serial_workbench_core::*;
-    use serial_workbench_host::{Host, ipc::HostServer};
+    use serial_workbench_host::ipc::HostServer;
     use std::{sync::Arc, time::Duration};
     use tauri::ipc::{Channel, InvokeResponseBody};
     let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut server = HostServer::bind(directory.path()).await.unwrap();
-    let host = Host::new(server.store(), server.auth()).await.unwrap();
+    let host = delivery_fixture_host(&server).await;
     let (stop, done) = tokio::sync::oneshot::channel();
     let handler = host.clone();
     let running = tokio::spawn(async move {
@@ -1565,6 +1651,173 @@ fn late_call_from_old_window_identity_never_resolves_new_instance() {
     windows.identities.insert("main".into(), 200);
     assert_eq!(windows.resolve("main", 100), None);
     assert_eq!(windows.resolve("main", 200), Some(new));
+}
+
+#[test]
+fn document_reload_retires_only_the_old_document_and_keeps_physical_identity() {
+    let mut windows = WindowInstances::new();
+    let old = windows.create("main");
+    windows.identities.insert("main".into(), 100);
+    let closed = windows.subscribe_closed("main", old).unwrap();
+    assert_eq!(windows.replace_document("main", 200), None);
+    assert!(!*closed.borrow());
+    assert_eq!(windows.replace_document("main", 100), Some(old));
+    let current = windows.resolve("main", 100).unwrap();
+    assert_ne!(old, current);
+    assert!(*closed.borrow());
+    assert!(!*windows.subscribe_closed("main", current).unwrap().borrow());
+    windows.destroy("main", old);
+    assert_eq!(windows.resolve("main", 100), Some(current));
+    windows.destroy("main", current);
+    assert_eq!(windows.resolve("main", 100), None);
+}
+
+#[tokio::test]
+async fn reloaded_documents_release_real_subscriptions_and_cannot_spend_the_next_budget() {
+    use serial_workbench_core::*;
+    use serial_workbench_host::ipc::HostServer;
+    use std::{sync::Arc, time::Duration};
+    use tauri::ipc::{Channel, InvokeResponseBody};
+
+    let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let mut server = HostServer::bind(directory.path()).await.unwrap();
+    let host = delivery_fixture_host(&server).await;
+    let (stop, done) = tokio::sync::oneshot::channel();
+    let handler = host.clone();
+    let running = tokio::spawn(async move {
+        server
+            .serve_until(Arc::new(handler), async {
+                let _ = done.await;
+            })
+            .await
+    });
+    // One unacknowledged frame fills a document's budget. Reload must retire
+    // the actual connections, rather than retaining unreachable JS callbacks.
+    let bridge = DesktopHostBridge::new_with_limits(directory.path().into(), 1, 256 * 1024);
+    let mut attached = bridge.attach("main").await.unwrap();
+    bridge
+        .instances
+        .lock()
+        .unwrap()
+        .identities
+        .insert("main".into(), 100);
+    for iteration in 0..16 {
+        let request = query(
+            &attached.attachment,
+            "state.snapshot",
+            serde_json::json!({"scopeId":"host.devices"}),
+            &format!("00000000-0000-4000-8000-{:012}", iteration * 4),
+        );
+        let reply = bridge
+            .request_for_generation(
+                "main",
+                attached.generation,
+                RpcRequest::StateSnapshot(request.clone()),
+            )
+            .await
+            .unwrap();
+        let RpcReply::Success { result, .. } = reply else {
+            panic!("snapshot failed");
+        };
+        let RpcResult::Snapshot(snapshot) = *result else {
+            panic!("expected snapshot");
+        };
+        let (send, mut received) = tokio::sync::mpsc::unbounded_channel();
+        let id = bridge
+            .subscribe_at_generation(
+                "main",
+                attached.generation,
+                query(
+                    &attached.attachment,
+                    "state.subscribe",
+                    serde_json::json!({"scopeId":"host.devices", "after":snapshot.cursor}),
+                    &format!("00000000-0000-4000-8000-{:012}", iteration * 4 + 1),
+                ),
+                Channel::new(move |message| {
+                    if let InvokeResponseBody::Json(json) = message {
+                        let _ = send.send(serde_json::from_str::<WireFrame>(&json).unwrap());
+                    }
+                    Ok(())
+                }),
+            )
+            .await
+            .unwrap();
+        assert_eq!(host.projections().reader_count(), 1);
+        host.projections()
+            .commit(
+                &Id::try_from("host.devices").unwrap(),
+                Id::try_from("devices.changed").unwrap(),
+                JsonObject::new(),
+                serde_json::from_value(serde_json::json!({"fixture":"x".repeat(144 * 1024)}))
+                    .unwrap(),
+            )
+            .unwrap();
+        let frame = tokio::time::timeout(Duration::from_secs(3), received.recv())
+            .await
+            .unwrap()
+            .unwrap();
+        assert!(matches!(frame.body, IpcMessage::Delta { .. }));
+        assert_eq!(bridge.pending_for_test("main").await.0, 1);
+        let old_raw = bridge
+            .raw_link_at_generation("main", attached.generation)
+            .await
+            .unwrap();
+        let old = attached.generation;
+        let retired = bridge.replace_document("main", 100).unwrap();
+        assert!(bridge.attachment_at_generation("main", old).await.is_err());
+        tokio::time::timeout(Duration::from_secs(3), async {
+            while host.projections().reader_count() != 0 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        attached = bridge.attach("main").await.unwrap();
+        assert_ne!(attached.generation, old);
+        assert_eq!(bridge.pending_for_test("main").await, (0, 0));
+        // A late retirement or ACK from the disposed JS realm cannot remove
+        // the replacement connection, nor release any of its delivery budget.
+        bridge.retire_instance("main", retired).await;
+        bridge
+            .attachment_at_generation("main", attached.generation)
+            .await
+            .unwrap();
+        assert!(
+            bridge
+                .delivery_ack("main", old, id, DeliveryStream::Data, 1.into())
+                .await
+                .is_err()
+        );
+        assert_eq!(bridge.pending_for_test("main").await, (0, 0));
+        for result in [
+            bridge
+                .request_for_generation("main", old, RpcRequest::StateSnapshot(request.clone()))
+                .await,
+            bridge
+                .raw_request_for_generation("main", old, RpcRequest::Query(request.clone()))
+                .await,
+        ] {
+            assert!(matches!(result, Err(ref error) if error.code == "EPOCH_MISMATCH"));
+        }
+        assert!(
+            matches!(bridge.subscribe_at_generation("main", old, request.clone(), Channel::new(|_| Ok(()))).await,
+            Err(ref error) if error.code == "EPOCH_MISMATCH")
+        );
+        assert!(
+            matches!(bridge.raw_subscribe_at_generation("main", old, request.clone(), Channel::new(|_| Ok(())), Channel::new(|_| Ok(()))).await,
+            Err(ref error) if error.code == "EPOCH_MISMATCH")
+        );
+        let raw_end = tokio::time::timeout(Duration::from_secs(3), old_raw.connection.next_event())
+            .await
+            .unwrap();
+        assert!(matches!(raw_end, Ok(None) | Err(_)));
+        assert_eq!(host.projections().reader_count(), 0);
+    }
+    let current = bridge.instances.lock().unwrap().active["main"];
+    bridge.destroy_instance_for_test("main", current);
+    bridge.retire_instance("main", current).await;
+    stop.send(()).unwrap();
+    running.await.unwrap().unwrap();
 }
 
 #[test]

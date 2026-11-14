@@ -232,7 +232,7 @@ impl TransmissionService {
             let mut unknown = false;
             for id in affected {
                 let state = store.operation_state(&id)?;
-                if !terminal(state) {
+                if !state.is_terminal() {
                     return Err(HostError::new(
                         "STORAGE_UNAVAILABLE",
                         "Lease work has not durably settled",

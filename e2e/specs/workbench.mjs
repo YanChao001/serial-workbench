@@ -86,9 +86,10 @@ async function openVirtual() {
 }
 
 async function closeVirtualWithoutReaderFault() {
-  const { attachment } = await nativeValue("host_attachment");
+  const { attachment, generation } = await nativeValue("host_attachment");
   async function query(actionId, target, params = {}) {
     const reply = await nativeValue("host_request", {
+      generation,
       request: {
         method: "action.query",
         params: {
@@ -125,8 +126,7 @@ async function closeVirtualWithoutReaderFault() {
   const beforeRawFailures = rawFailures(baseline.recentLogs);
   const probe = `__SWB_E2E_CLOSE_${randomUUID()}`;
   await browser.execute((key) => {
-    const selector =
-      ".workbench-notification, .workbench-stream-error[role=alert]";
+    const selector = ".app-notification, .workbench-stream-error[role=alert]";
     const baseline = new Map(
       [...document.querySelectorAll(selector)].map((node) => [
         node,
@@ -328,6 +328,19 @@ export function workbenchChecks() {
     await apply.waitForEnabled();
     await apply.click();
     await apply.waitForEnabled({ reverse: true });
+    await browser.waitUntil(
+      async () =>
+        (await $("[data-panel-id='session-controls']").getAttribute(
+          "aria-busy",
+        )) === "false",
+    );
+    assert.equal(await (await field("Baud rate")).getValue(), "250000");
+    await browser.keys(Key.Escape);
+    await $("[role=dialog]").waitForExist({ reverse: true });
+    await openTool("Control lines and receipts");
+    await $(
+      "//*[@role='tab'][starts-with(normalize-space(), 'Receipt (')]",
+    ).click();
     await browser.waitUntil(() =>
       browser.execute(() => {
         const tables = document.querySelectorAll(
@@ -356,7 +369,6 @@ export function workbenchChecks() {
         });
       }),
     );
-    assert.equal(await (await field("Baud rate")).getValue(), "250000");
     await browser.keys(Key.Escape);
     await $("[role=dialog]").waitForExist({ reverse: true });
     await $("button[aria-label='Connection parameters']").waitForExist();
@@ -422,7 +434,7 @@ export function workbenchChecks() {
       await $("button[aria-label='Send']").waitForEnabled();
       await $("button[aria-label='Close session']").waitForEnabled();
       const notices = await browser.execute(() =>
-        [...document.querySelectorAll(".workbench-notification [role=alert]")]
+        [...document.querySelectorAll(".app-notification [role=alert]")]
           .map((element) => element.textContent?.trim())
           .filter(Boolean),
       );

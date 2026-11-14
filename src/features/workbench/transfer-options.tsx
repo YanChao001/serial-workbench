@@ -11,14 +11,11 @@ import { Input } from "@/components/ui/input";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { formatByteSize } from "./metric-format";
 import { nativeErrorCode } from "@/lib/native-error";
+import { parseU64, U64_MAX } from "@/lib/u64";
 import { WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { operationProgress, type OperationText } from "./operation-text";
-import {
-  unsigned,
-  useToolAction,
-  useToolDraft,
-} from "./transfer-capture-actions";
+import { useToolAction, useToolDraft } from "./transfer-capture-actions";
 import type {
   HostActionCheckInput,
   HostContextValue,
@@ -116,19 +113,19 @@ function TransferOptionsForm({
     setDraft,
     onSaveDraft,
   );
-  const offset = unsigned(draft.offset),
-    length = unsigned(draft.length);
-  const chunk = unsigned(draft.chunkBytes ?? ""),
-    rate = unsigned(draft.bytesPerSecond);
-  const interval = unsigned(draft.interChunkMs),
-    wait = unsigned(draft.writeWaitMs);
-  const total = source ? unsigned(source.length) : undefined;
+  const offset = parseU64(draft.offset),
+    length = parseU64(draft.length);
+  const chunk = parseU64(draft.chunkBytes ?? ""),
+    rate = parseU64(draft.bytesPerSecond);
+  const interval = parseU64(draft.interChunkMs),
+    wait = parseU64(draft.writeWaitMs);
+  const total = source ? parseU64(source.length) : undefined;
   const valid =
     offset !== undefined &&
     length !== undefined &&
     total !== undefined &&
     offset + length <= total &&
-    offset + length <= 18446744073709551615n &&
+    offset + length <= U64_MAX &&
     chunk !== undefined &&
     chunk > 0n &&
     rate !== undefined &&
@@ -168,8 +165,12 @@ function TransferOptionsForm({
             <div className="workbench-form-row">
               <span>{labels.source}</span>
               <div className="workbench-file-selection">
-                <output aria-label={labels.source} title={source?.name}>
-                  {source?.name ?? "—"}
+                <output
+                  aria-label={labels.source}
+                  title={source?.name}
+                  data-surface="control"
+                >
+                  {source?.name ?? labels.selectSource}
                 </output>
                 <WorkbenchIconButton
                   label={labels.selectSource}

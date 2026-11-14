@@ -270,19 +270,22 @@ export function SettingsProvider({
         windowPosition,
         sidebarCollapsed,
         sidebarWidth,
+        receiveHistory,
         ...shared
       } = normalized;
       if (
         menuBar !== undefined ||
         windowPosition !== undefined ||
         sidebarCollapsed !== undefined ||
-        sidebarWidth !== undefined
+        sidebarWidth !== undefined ||
+        receiveHistory !== undefined
       ) {
         const patch = {
           ...(menuBar !== undefined ? { menuBar } : {}),
           ...(windowPosition !== undefined ? { windowPosition } : {}),
           ...(sidebarCollapsed !== undefined ? { sidebarCollapsed } : {}),
           ...(sidebarWidth !== undefined ? { sidebarWidth } : {}),
+          ...(receiveHistory !== undefined ? { receiveHistory } : {}),
         };
         if (clientSync.current) clientSync.current.update(patch);
         else {

@@ -526,25 +526,35 @@ async function callHost<T>(
 export function hostAttachment(): Promise<DesktopAttachment> {
   return callHost((commands) => commands.hostAttachment());
 }
-export function hostRequest(request: RpcRequest): Promise<RpcReply> {
-  return callHost((commands) => commands.hostRequest(request));
+export function hostRequest(
+  request: RpcRequest,
+  generation: U64,
+): Promise<RpcReply> {
+  return callHost((commands) => commands.hostRequest(request, generation));
 }
-export function hostRawRequest(request: RpcRequest): Promise<RpcReply> {
-  return callHost((commands) => commands.hostRawRequest(request));
+export function hostRawRequest(
+  request: RpcRequest,
+  generation: U64,
+): Promise<RpcReply> {
+  return callHost((commands) => commands.hostRawRequest(request, generation));
 }
 export async function hostSubscribe(
   request: Query,
   onFrame: (frame: WireFrame) => void,
+  generation: U64,
 ): Promise<string> {
   requireDesktop();
   const { Channel } = await import("@tauri-apps/api/core");
   const channel = new Channel<WireFrame>(onFrame);
-  return callHost((commands) => commands.hostSubscribe(request, channel));
+  return callHost((commands) =>
+    commands.hostSubscribe(request, channel, generation),
+  );
 }
 export async function hostRawSubscribe(
   request: Query,
   onBatch: (batch: RawBatch) => void,
   onLifecycle: (frame: WireFrame) => void,
+  generation: U64,
 ): Promise<string> {
   requireDesktop();
   const { Channel } = await import("@tauri-apps/api/core");
@@ -553,16 +563,25 @@ export async function hostRawSubscribe(
       request,
       new Channel<RawBatch>(onBatch),
       new Channel<WireFrame>(onLifecycle),
+      generation,
     ),
   );
 }
-export async function hostUnsubscribe(subscriptionId: string): Promise<void> {
-  await callHost((commands) => commands.hostUnsubscribe(subscriptionId));
+export async function hostUnsubscribe(
+  subscriptionId: string,
+  generation: U64,
+): Promise<void> {
+  await callHost((commands) =>
+    commands.hostUnsubscribe(subscriptionId, generation),
+  );
 }
 export async function hostRawUnsubscribe(
   subscriptionId: string,
+  generation: U64,
 ): Promise<void> {
-  await callHost((commands) => commands.hostRawUnsubscribe(subscriptionId));
+  await callHost((commands) =>
+    commands.hostRawUnsubscribe(subscriptionId, generation),
+  );
 }
 export async function hostDeliveryAck(
   generation: U64,

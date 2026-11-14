@@ -56,6 +56,28 @@ choice!(BackgroundPreset {
 choice!(BackgroundFit { Cover, Contain });
 choice!(TerminalMode { Text, Hex });
 
+#[derive(Debug, Clone, Copy, Default, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "kebab-case")]
+pub enum TextEncoding {
+    #[default]
+    #[serde(rename = "utf-8")]
+    Utf8,
+    Gbk,
+    Gb18030,
+    Big5,
+    ShiftJis,
+    Latin1,
+    Ascii,
+    #[serde(rename = "utf-16le")]
+    Utf16Le,
+    #[serde(rename = "utf-16be")]
+    Utf16Be,
+}
+
+pub(crate) fn default_receive_encoding() -> Option<TextEncoding> {
+    Some(TextEncoding::Utf8)
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "kind", rename_all = "lowercase", deny_unknown_fields)]
 pub enum BackgroundSelection {
@@ -146,6 +168,13 @@ fn terminal_line_height_percent<'de, D: serde::Deserializer<'de>>(d: D) -> Resul
 pub struct TerminalSettings {
     pub receive_mode: TerminalMode,
     pub send_mode: TerminalMode,
+    /// None 表示从原始接收字节自动识别。
+    #[serde(default = "default_receive_encoding")]
+    #[specta(optional)]
+    pub receive_encoding: Option<TextEncoding>,
+    #[serde(default)]
+    #[specta(optional)]
+    pub send_encoding: TextEncoding,
     pub line_ending: LineEnding,
     #[serde(default)]
     #[specta(optional)]
@@ -156,6 +185,8 @@ impl Default for TerminalSettings {
         Self {
             receive_mode: TerminalMode::Text,
             send_mode: TerminalMode::Text,
+            receive_encoding: default_receive_encoding(),
+            send_encoding: TextEncoding::Utf8,
             line_ending: LineEnding::None {},
             typography: TerminalTypography::default(),
         }

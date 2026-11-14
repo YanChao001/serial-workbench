@@ -1,5 +1,5 @@
 use crate::{
-    auth::{AuthService, AuthenticatedActor, GrantStamp, hash},
+    auth::{AuthService, AuthenticatedActor, AuthorizationSnapshot, GrantStamp, hash},
     storage::Store,
 };
 use serial_workbench_core::*;
@@ -25,7 +25,7 @@ pub(crate) struct CatalogVisibility {
 }
 impl Registry {
     pub fn new(store: Store, auth: AuthService) -> HostResult<Self> {
-        let bytes = serde_json::to_vec(&builtin_catalog()).map_err(|_| invalid())?;
+        let bytes = serde_json::to_vec(builtin_catalog()).map_err(|_| invalid())?;
         store.synchronize_catalog(&hash(&bytes))?;
         Ok(Self {
             store,
@@ -43,8 +43,9 @@ impl Registry {
             return Err(invalid());
         }
         let version = self.store.identity()?.catalog_version;
-        let grant_revision = self.auth.grant_revision(actor)?;
-        let stamp = self.auth.capture_grants(actor)?;
+        let authorization = self.auth.snapshot(actor)?;
+        let grant_revision = authorization.grant_revision();
+        let stamp = authorization.capture_grants();
         if params
             .catalog_version
             .is_some_and(|expected| expected != version)
@@ -65,15 +66,17 @@ impl Registry {
                 return Err(changed());
             }
             if let Some(stamp) = &page.stamp {
-                self.auth.validate_grants(stamp).map_err(|_| changed())?;
+                authorization
+                    .validate_grants(stamp)
+                    .map_err(|_| changed())?;
             }
             page.offset
         } else {
             0
         };
-        let items = self.visible_actions(actor)?;
+        let items = self.visible_actions(&authorization)?;
         let has_more = items.len() > offset.saturating_add(size);
-        let items = items.into_iter().skip(offset).take(size).collect();
+        let items = items.into_iter().skip(offset).take(size).cloned().collect();
         if let Some(stamp) = &stamp {
             self.auth.validate_grants(stamp).map_err(|_| changed())?;
         }
@@ -104,7 +107,10 @@ impl Registry {
             next_page_token,
         })
     }
-    fn visible_actions(&self, actor: &AuthenticatedActor) -> HostResult<Vec<ActionSpec>> {
+    fn visible_actions(
+        &self,
+        authorization: &AuthorizationSnapshot,
+    ) -> HostResult<Vec<&'static ActionSpec>> {
         let mut items = Vec::new();
         let catalog = builtin_catalog();
         let operation_resources: Vec<ResourceKind> = catalog
@@ -139,7 +145,7 @@ impl Registry {
                 } else {
                     spec.target_kinds.clone()
                 };
-                visible &= self.auth.can_discover(actor, permission, &target_kinds)?;
+                visible &= authorization.can_discover(permission, &target_kinds);
             }
             if visible {
                 items.push(spec);
@@ -149,9 +155,10 @@ impl Registry {
         Ok(items)
     }
     pub(crate) fn visibility(&self, actor: &AuthenticatedActor) -> HostResult<CatalogVisibility> {
-        let stamp = self.auth.capture_grants(actor)?;
+        let authorization = self.auth.snapshot(actor)?;
+        let stamp = authorization.capture_grants();
         let version = self.store.identity()?.catalog_version;
-        let items = self.visible_actions(actor)?;
+        let items = self.visible_actions(&authorization)?;
         if let Some(stamp) = &stamp {
             self.auth.validate_grants(stamp).map_err(|_| changed())?;
         }
@@ -174,4 +181,40 @@ fn changed() -> HostError {
         "CATALOG_CHANGED",
         "Catalog or current authorization changed",
     )
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn catalog_filtering_shares_one_snapshot_and_keeps_final_persistent_check() {
+        let directory = tempfile::tempdir().unwrap();
+        let store = Store::open(directory.path()).unwrap();
+        store.begin_instance().unwrap();
+        let auth = AuthService::new(
+            store.clone(),
+            ContextToken::try_from("catalog-control").unwrap(),
+        );
+        let actor = auth
+            .authenticate(&Id::try_from("catalog-reader").unwrap(), None)
+            .unwrap()
+            .actor;
+        let registry = Registry::new(store, auth.clone()).unwrap();
+        let before = auth.document_reads();
+        let result = registry
+            .list(
+                &actor,
+                CatalogListParams {
+                    page_size: 100.into(),
+                    page_token: None,
+                    catalog_version: None,
+                },
+            )
+            .unwrap();
+        assert!(!result.items.is_empty());
+        assert_eq!(auth.document_reads() - before, 2);
+        let before = auth.document_reads();
+        registry.visibility(&actor).unwrap();
+        assert_eq!(auth.document_reads() - before, 2);
+    }
 }

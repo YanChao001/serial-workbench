@@ -153,10 +153,11 @@ async function expectRouteReady(page: Page, route: string) {
   else if (route === "/recovery") {
     await expect(page).toHaveURL(/#\/settings\?section=recovery$/);
     await expect(page.locator("#settings-recovery")).toBeFocused();
-    await expect(page.locator("main h1")).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
   } else if (route === "/settings")
-    await expect(page.locator("main h1")).toBeVisible();
-  else await expect(page.locator("main h2").first()).toBeVisible();
+    await expect(page.getByRole("heading", { level: 1 })).toBeVisible();
+  else
+    await expect(page.getByRole("heading", { level: 2 }).first()).toBeVisible();
 }
 
 async function renderedControlPixel(page: Page, locator: Locator) {
@@ -1011,16 +1012,16 @@ for (const theme of ["light", "dark"]) {
             for (const field of document.querySelectorAll(
               'main :is([data-slot="input"], [data-slot="textarea"], [data-slot="select-trigger"]):not(:disabled)',
             )) {
-              // 透明内层沿真实 control 父框核验材质，不能跳过阅读保护。
+              // 透明内层沿外框的实际语义材质核验。
               const transparent =
                 field.getAttribute("data-surface") === "transparent";
               const surface = transparent
-                ? field.parentElement?.closest('[data-surface="control"]')
+                ? field.parentElement?.closest(
+                    '[data-surface="control"], [data-surface="reading"]',
+                  )
                 : field;
               if (!surface) {
-                failures.push(
-                  `field ${field.id}: missing control surface owner`,
-                );
+                failures.push(`field ${field.id}: missing surface owner`);
                 continue;
               }
               if (transparent) {
@@ -1029,9 +1030,7 @@ for (const theme of ["light", "dark"]) {
                     0,
                 );
                 if (alpha(field) !== 0 || innerBlur !== 0)
-                  failures.push(
-                    `field ${field.id}: repeats its control surface`,
-                  );
+                  failures.push(`field ${field.id}: repeats its outer surface`);
               }
               const opacity = alpha(surface);
               const blur = Number(
@@ -1046,6 +1045,17 @@ for (const theme of ["light", "dark"]) {
                 failures.push(
                   `field ${field.id || field.getAttribute("data-slot")}: alpha=${opacity}, blur=${blur}`,
                 );
+            }
+            const draft = document.querySelector(".workbench-draft-frame");
+            const receive = document.querySelector(".workbench-receive-frame");
+            if (draft && receive) {
+              const draftStyle = getComputedStyle(draft);
+              const receiveStyle = getComputedStyle(receive);
+              if (
+                draftStyle.backgroundColor !== receiveStyle.backgroundColor ||
+                draftStyle.backdropFilter !== receiveStyle.backdropFilter
+              )
+                failures.push("send and receive surfaces differ");
             }
             return failures;
           }, exposure);
@@ -1527,6 +1537,9 @@ for (const theme of ["light", "dark"] as const) {
       ).toBeLessThanOrEqual(1);
     }
     await settings.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(settings).toBeFocused();
     const tooltip = page.locator('[data-slot="tooltip-content"]');
     await expect(tooltip).toBeVisible();
     await expect(tooltip).toHaveText("Settings");
@@ -1553,6 +1566,9 @@ for (const theme of ["light", "dark"] as const) {
     );
     await expect(sidebar).toHaveAttribute("data-collapsed", "true");
     await translatedSettings.focus();
+    await page.keyboard.press("Tab");
+    await page.keyboard.press("Shift+Tab");
+    await expect(translatedSettings).toBeFocused();
     await expect(tooltip).toBeVisible();
     await expect(tooltip).toHaveText("设置");
 
@@ -1565,7 +1581,13 @@ for (const theme of ["light", "dark"] as const) {
     await expect(
       page.locator(".app-route-context, main .studio-intro"),
     ).toHaveCount(0);
-    await expect(page.locator("main h1")).toHaveClass("sr-only");
+    await expect(
+      page.getByRole("heading", {
+        name: "串口工作台",
+        exact: true,
+        level: 1,
+      }),
+    ).toHaveClass("sr-only");
   });
 }
 
@@ -1598,136 +1620,177 @@ function expectSidebarEdgesAligned(
   ).toBeLessThanOrEqual(1);
 }
 
+// 默认无头浏览器隐藏滚动条，会漏掉展开瞬间预留滚动条宽度造成的裁剪。
+const sidebarMotionTest = test.extend({
+  launchOptions: { ignoreDefaultArgs: ["--hide-scrollbars"] },
+});
 for (const theme of ["light", "dark"] as const) {
-  test(`sidebar motion keeps the reading surface aligned during collapse, expansion and drag: ${theme}`, async ({
-    page,
-  }, testInfo) => {
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    await page.setViewportSize({ width: 1280, height: 820 });
-    await seed(page, {
-      theme,
-      motion: "full",
-      sidebarWidth: 224,
-      sidebarCollapsed: false,
-    });
-    await page.goto("./#/settings");
-    await expect(page.locator("#settings-language")).toBeVisible();
-    await page
-      .locator("[data-bundled-wallpaper]")
-      .evaluate((node) => (node as HTMLImageElement).decode());
-    await page.evaluate(async () => {
-      await document.fonts.ready;
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
-      );
-    });
-    for (const [action, target] of [
-      ["collapse", 48],
-      ["expand", 224],
-    ] as const) {
-      const frames = await page.evaluate(async () => {
-        const sidebar = document.querySelector<HTMLElement>("#app-sidebar")!;
-        const main = document.querySelector<HTMLElement>("main")!;
-        const reading = document.querySelector<HTMLElement>(
-          "[data-window-reading-surface]",
-        )!;
-        const measure = () => {
-          const bounds = sidebar.getBoundingClientRect();
-          return {
-            width: bounds.width,
-            sidebarRight: bounds.right,
-            mainLeft: main.getBoundingClientRect().left,
-            readingLeft: reading.getBoundingClientRect().left,
-          };
-        };
-        const frames = [measure()];
-        sidebar
-          .querySelector<HTMLButtonElement>("button[aria-expanded]")!
-          .click();
-        await new Promise<void>((resolve) =>
-          requestAnimationFrame(() => resolve()),
-        );
-        const animations = [sidebar, main, reading].flatMap((node) =>
-          node.getAnimations(),
-        );
-        let finished = false;
-        const sampled = new Promise<void>((resolve) => {
-          const sample = () => {
-            frames.push(measure());
-            if (finished) resolve();
-            else requestAnimationFrame(sample);
-          };
-          requestAnimationFrame(sample);
-        });
-        await Promise.all(animations.map((animation) => animation.finished));
-        finished = true;
-        await sampled;
-        return frames;
+  sidebarMotionTest(
+    `sidebar motion keeps the reading surface aligned during collapse, expansion and drag: ${theme}`,
+    async ({ page }, testInfo) => {
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      await page.setViewportSize({ width: 1280, height: 820 });
+      await seed(page, {
+        theme,
+        motion: "full",
+        sidebarWidth: 224,
+        sidebarCollapsed: false,
+        fontSize: "lg",
       });
-      await testInfo.attach(`${action}-geometry-${theme}`, {
-        body: JSON.stringify(frames, null, 2),
-        contentType: "application/json",
-      });
-      const intermediate = frames.filter(
-        (frame) =>
-          Math.abs(frame.width - frames[0]!.width) > 1 &&
-          Math.abs(frame.width - target) > 1,
-      );
-      expect(
-        intermediate.length,
-        `${action} must include an animated intermediate frame`,
-      ).toBeGreaterThan(0);
-      for (const frame of frames) expectSidebarEdgesAligned(frame);
-      expect(frames.at(-1)!.width).toBe(target);
-    }
-
-    // 减少动效与拖动都应在下一帧直接跟随目标，不遗留遮罩过渡。
-    await page.emulateMedia({ reducedMotion: "reduce" });
-    for (const target of [48, 224]) {
+      await page.goto("./#/settings");
+      await expect(page.locator("#settings-language")).toBeVisible();
       await page
-        .locator("#app-sidebar button[aria-expanded]")
-        .evaluate((button) => (button as HTMLButtonElement).click());
-      await page.evaluate(
-        () =>
-          new Promise<void>((resolve) =>
+        .locator("[data-bundled-wallpaper]")
+        .evaluate((node) => (node as HTMLImageElement).decode());
+      await page.evaluate(async () => {
+        await document.fonts.ready;
+        await new Promise<void>((resolve) =>
+          requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
+        );
+      });
+      for (const [action, target] of [
+        ["collapse", 48],
+        ["expand", 224],
+      ] as const) {
+        const frames = await page.evaluate(async () => {
+          const sidebar = document.querySelector<HTMLElement>("#app-sidebar")!;
+          const main = document.querySelector<HTMLElement>("main")!;
+          const reading = document.querySelector<HTMLElement>(
+            "[data-window-reading-surface]",
+          )!;
+          const measure = () => {
+            const bounds = sidebar.getBoundingClientRect();
+            return {
+              width: bounds.width,
+              sidebarRight: bounds.right,
+              mainLeft: main.getBoundingClientRect().left,
+              readingLeft: reading.getBoundingClientRect().left,
+              icons: [...sidebar.querySelectorAll(".app-sidebar-link")].map(
+                (link) => {
+                  const icon = link
+                    .querySelector("svg")!
+                    .getBoundingClientRect();
+                  const clip = link.getBoundingClientRect();
+                  return {
+                    name: link.textContent,
+                    width: icon.width,
+                    visibleWidth: Math.max(
+                      0,
+                      Math.min(icon.right, clip.right) -
+                        Math.max(icon.left, clip.left),
+                    ),
+                  };
+                },
+              ),
+            };
+          };
+          const frames = [measure()];
+          const observer = new MutationObserver(() => frames.push(measure()));
+          observer.observe(sidebar, {
+            attributes: true,
+            attributeFilter: ["data-collapsed"],
+          });
+          sidebar
+            .querySelector<HTMLButtonElement>("button[aria-expanded]")!
+            .click();
+          await new Promise<void>((resolve) =>
             requestAnimationFrame(() => resolve()),
-          ),
-      );
-      const frame = await sidebarEdges(page);
-      expect(frame.width).toBe(target);
-      expectSidebarEdgesAligned(frame);
-    }
-    await page.emulateMedia({ reducedMotion: "no-preference" });
-    const handle = page.locator(
-      '[role="separator"][aria-controls="app-sidebar"]',
-    );
-    const bounds = (await handle.boundingBox())!;
-    const x = bounds.x + bounds.width / 2;
-    const y = bounds.y + 100;
-    await page.mouse.move(x, y);
-    await page.mouse.down();
-    try {
-      for (const delta of [24, 48, 72]) {
-        await page.mouse.move(x + delta, y);
-        await expect(page.locator("#app-sidebar")).toHaveAttribute(
-          "data-resizing",
-          "true",
+          );
+          frames.push(measure());
+          const animations = [sidebar, main, reading].flatMap((node) =>
+            node.getAnimations(),
+          );
+          let finished = false;
+          const sampled = new Promise<void>((resolve) => {
+            const sample = () => {
+              frames.push(measure());
+              if (finished) resolve();
+              else requestAnimationFrame(sample);
+            };
+            requestAnimationFrame(sample);
+          });
+          await Promise.all(animations.map((animation) => animation.finished));
+          finished = true;
+          await sampled;
+          observer.disconnect();
+          return frames;
+        });
+        await testInfo.attach(`${action}-geometry-${theme}`, {
+          body: JSON.stringify(frames, null, 2),
+          contentType: "application/json",
+        });
+        const intermediate = frames.filter(
+          (frame) =>
+            Math.abs(frame.width - frames[0]!.width) > 1 &&
+            Math.abs(frame.width - target) > 1,
+        );
+        expect(
+          intermediate.length,
+          `${action} must include an animated intermediate frame`,
+        ).toBeGreaterThan(0);
+        for (const frame of frames) {
+          expectSidebarEdgesAligned(frame);
+          for (const [index, icon] of frame.icons.entries()) {
+            expect(
+              icon.width,
+              `${action} must keep the ${icon.name} icon at its original width`,
+            ).toBeCloseTo(frames[0]!.icons[index]!.width, 1);
+            expect(
+              icon.visibleWidth,
+              `${action} must not clip the ${icon.name} icon`,
+            ).toBeGreaterThanOrEqual(icon.width - 0.5);
+          }
+        }
+        expect(frames.at(-1)!.width).toBe(target);
+      }
+
+      // 减少动效与拖动都应在下一帧直接跟随目标，不遗留遮罩过渡。
+      await page.emulateMedia({ reducedMotion: "reduce" });
+      for (const target of [48, 224]) {
+        await page
+          .locator("#app-sidebar button[aria-expanded]")
+          .evaluate((button) => (button as HTMLButtonElement).click());
+        await page.evaluate(
+          () =>
+            new Promise<void>((resolve) =>
+              requestAnimationFrame(() => resolve()),
+            ),
         );
         const frame = await sidebarEdges(page);
-        expect(frame.width).toBe(224 + delta);
+        expect(frame.width).toBe(target);
         expectSidebarEdgesAligned(frame);
       }
-    } finally {
-      await page.mouse.up();
-    }
-    await expect(page.locator("#app-sidebar")).toHaveAttribute(
-      "data-resizing",
-      "false",
-    );
-    expectSidebarEdgesAligned(await sidebarEdges(page));
-  });
+      await page.emulateMedia({ reducedMotion: "no-preference" });
+      const handle = page.locator(
+        '[role="separator"][aria-controls="app-sidebar"]',
+      );
+      const bounds = (await handle.boundingBox())!;
+      const x = bounds.x + bounds.width / 2;
+      const y = bounds.y + 100;
+      await page.mouse.move(x, y);
+      await page.mouse.down();
+      try {
+        for (const delta of [24, 48, 72]) {
+          await page.mouse.move(x + delta, y);
+          await expect(page.locator("#app-sidebar")).toHaveAttribute(
+            "data-resizing",
+            "true",
+          );
+          const frame = await sidebarEdges(page);
+          expect(frame.width).toBe(224 + delta);
+          expectSidebarEdgesAligned(frame);
+        }
+      } finally {
+        await page.mouse.up();
+      }
+      await expect(page.locator("#app-sidebar")).toHaveAttribute(
+        "data-resizing",
+        "false",
+      );
+      expectSidebarEdgesAligned(await sidebarEdges(page));
+    },
+  );
 }
-
 test("settings transparency uses regular label typography and recovery remains a reachable group", async ({
   page,
 }) => {

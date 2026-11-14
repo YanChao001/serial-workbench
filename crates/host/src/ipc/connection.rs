@@ -525,9 +525,10 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
             let target = target.clone();
             let stamp = event.stamp.clone();
             if blocking(move || {
-                check.require(&check_actor, &permission, &target)?;
+                let authorization = check.snapshot(&check_actor)?;
+                authorization.require(&permission, &target)?;
                 if let Some(stamp) = stamp {
-                    check.validate_grants(&stamp)?;
+                    authorization.validate_grants(&stamp)?;
                 }
                 Ok(())
             })
@@ -764,6 +765,114 @@ mod tests {
                 reader,
             )
         }
+    }
+    #[tokio::test]
+    async fn client_effect_phases_share_permissions_but_recheck_before_delivery() {
+        let mut f = RawTest::new();
+        f.context.actor = f.operator.clone();
+        f.context.channel = IpcChannel::Control;
+        let effects = crate::client_effects::ClientEffects::new(f.store.clone(), f.auth.clone());
+        let registration = effects
+            .register(
+                &f.context,
+                ClientRegisterParams {
+                    generation: 1.into(),
+                    capabilities: vec![ClientCapability::DiagnosticsRead],
+                },
+            )
+            .unwrap();
+        f.auth
+            .authorize(
+                &f.operator,
+                AuthorizeParams {
+                    client_id: f.actor.client_id().clone(),
+                    permissions: vec!["content.read".into()],
+                    targets: vec![registration.target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        let before = f.auth.document_reads();
+        let prepared = effects
+            .prepare(
+                &f.actor,
+                &registration.target,
+                new_request_id(),
+                ClientEffectAction::DiagnosticsRead {},
+            )
+            .unwrap();
+        assert_eq!(f.auth.document_reads() - before, 1);
+        let before = f.auth.document_reads();
+        let (dispatch, _waiter) = prepared.bind(None).unwrap();
+        assert_eq!(f.auth.document_reads() - before, 1);
+        let before = f.auth.document_reads();
+        dispatch.authorize().unwrap();
+        assert_eq!(f.auth.document_reads() - before, 1);
+        let before = f.auth.document_reads();
+        effects
+            .mark_dispatched(&dispatch.request.delivery_id)
+            .unwrap();
+        assert_eq!(f.auth.document_reads() - before, 1);
+        let before = f.auth.document_reads();
+        assert_eq!(effects.list(&f.actor).unwrap().clients.len(), 1);
+        assert_eq!(f.auth.document_reads() - before, 1);
+        f.auth
+            .revoke(
+                &f.operator,
+                RevokeParams {
+                    actor_id: f.actor.id().clone(),
+                    permissions: vec!["content.read".into()],
+                    targets: vec![registration.target],
+                },
+            )
+            .unwrap();
+        assert_eq!(dispatch.authorize().unwrap_err().code, "PERMISSION_DENIED");
+    }
+    #[tokio::test]
+    async fn raw_preparation_and_final_writer_use_separate_single_read_phases() {
+        let mut f = RawTest::new();
+        let after = f.source.initial_cursor();
+        let before = f.auth.document_reads();
+        let sub = f
+            .hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: (4 * 1024 * 1024).into(),
+                    initial_credit_bytes: (4 * 1024 * 1024).into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                },
+            )
+            .await
+            .unwrap();
+        assert_eq!(f.auth.document_reads() - before, 1);
+        let before = f.auth.document_reads();
+        let batch = sub.try_next().await.unwrap().unwrap();
+        assert_eq!(f.auth.document_reads() - before, 1);
+        f.context.register_subscription(sub.id().clone()).unwrap();
+        sub.deliver(&f.context, &batch).unwrap();
+        let before = f.auth.document_reads();
+        let (writing, mut input) = f.writer(65536);
+        let delivered = tokio::time::timeout(
+            Duration::from_secs(3),
+            read_frame(&mut input, MAX_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+        assert!(matches!(delivered.body, IpcMessage::RawBatch { .. }));
+        assert_eq!(f.auth.document_reads() - before, 1);
+        sub.close();
+        drop(f.replies);
+        drop(f.context);
+        tokio::time::timeout(Duration::from_secs(3), writing)
+            .await
+            .unwrap()
+            .unwrap()
+            .unwrap();
     }
     #[tokio::test]
     async fn zero_byte_grant_revocation_preserves_the_control_connection() {

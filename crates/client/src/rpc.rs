@@ -16,7 +16,7 @@ use std::{
 };
 use tokio::{
     io::WriteHalf,
-    sync::{Mutex, OwnedSemaphorePermit, Semaphore, mpsc, watch},
+    sync::{Mutex, watch},
     task::JoinHandle,
 };
 
@@ -197,15 +197,13 @@ fn diagnostic_error_code(error: &HostError) -> &str {
         "UNKNOWN"
     }
 }
-struct Event {
-    frame: WireFrame,
-    _budget: OwnedSemaphorePermit,
-}
+mod events;
+use events::{EventQueue, PushError};
 pub(crate) struct RpcConnection {
     writer: Mutex<Option<WriteHalf<LocalStream>>>,
     pending: Pending,
     healthy: Arc<AtomicBool>,
-    events: Mutex<mpsc::Receiver<Event>>,
+    events: Arc<EventQueue>,
     reader: Mutex<Option<JoinHandle<()>>>,
     closed: watch::Sender<bool>,
     channel: IpcChannel,
@@ -235,9 +233,7 @@ impl RpcConnection {
         // Dropping both split halves closes the named pipe as well as Unix
         // sockets, including when a late worker still holds Arc<HostClient>.
         self.writer.lock().await.take();
-        let mut events = self.events.lock().await;
-        events.close();
-        while events.try_recv().is_ok() {}
+        self.events.close();
         Ok(())
     }
     pub fn new(stream: LocalStream, channel: IpcChannel) -> Self {
@@ -245,13 +241,13 @@ impl RpcConnection {
         let pending: Pending = Arc::new(StdMutex::new(HashMap::new()));
         let healthy = Arc::new(AtomicBool::new(true));
         let (closed, _) = watch::channel(false);
-        let (events_tx, events_rx) = mpsc::channel(256);
+        let events = Arc::new(EventQueue::new());
+        let reader_events = events.clone();
         let reader_pending = pending.clone();
         let reader_healthy = healthy.clone();
         let reader_closed = closed.clone();
         let diagnostic_id = next_connection_id();
         let reader = tokio::spawn(async move {
-            let budget = Arc::new(Semaphore::new(4 * 1024 * 1024));
             // 每条停止记录只含连接内序号、固定类别和受限错误码。
             let warn_stop = |reason: &str, message: &str, incoming: &str, code: &str| {
                 log::warn!(target: "serial_workbench_client",
@@ -333,20 +329,17 @@ impl RpcConnection {
                     warn_stop("event_encoding_failed", message, incoming, "-");
                     break;
                 };
-                let Ok(permit) = budget.clone().try_acquire_many_owned(size as u32) else {
-                    warn_stop("event_bytes_exhausted", message, incoming, "-");
-                    break;
-                };
-                match events_tx.try_send(Event {
-                    frame,
-                    _budget: permit,
-                }) {
+                match reader_events.push(frame, size) {
                     Ok(()) => {}
-                    Err(mpsc::error::TrySendError::Full(_)) => {
+                    Err(PushError::Bytes) => {
+                        warn_stop("event_bytes_exhausted", message, incoming, "-");
+                        break;
+                    }
+                    Err(PushError::Slots) => {
                         warn_stop("event_slots_exhausted", message, incoming, "-");
                         break;
                     }
-                    Err(mpsc::error::TrySendError::Closed(_)) => {
+                    Err(PushError::Closed) => {
                         warn_stop("event_receiver_closed", message, incoming, "-");
                         break;
                     }
@@ -362,7 +355,7 @@ impl RpcConnection {
             writer: Mutex::new(Some(write)),
             pending,
             healthy,
-            events: Mutex::new(events_rx),
+            events,
             reader: Mutex::new(Some(reader)),
             closed,
             channel,
@@ -496,10 +489,10 @@ impl RpcConnection {
         let event = tokio::select! {
             biased;
             _ = closed.wait_for(|closed| *closed) => return Err(disconnected()),
-            event = async { self.events.lock().await.recv().await } => event,
+            event = self.events.next() => event,
         };
         match event {
-            Some(event) => Ok(Some(event.frame)),
+            Some(frame) => Ok(Some(frame)),
             None if self.healthy.load(Ordering::Acquire) => Ok(None),
             None => Err(disconnected()),
         }

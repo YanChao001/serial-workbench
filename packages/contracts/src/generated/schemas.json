@@ -2407,8 +2407,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -2460,6 +2480,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -2703,6 +2737,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -2791,8 +2828,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -17662,6 +17718,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspaces",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceListResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "document_json",
                   "type": "string"
                 },
@@ -19289,8 +19359,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -19342,6 +19432,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -19492,12 +19596,12 @@
                 {
                   "anyOf": [
                     {
-                      "maxLength": 21844,
+                      "maxLength": 174760,
                       "type": "string"
                     },
                     {
-                      "maxLength": 21848,
-                      "pattern": "==$",
+                      "maxLength": 174764,
+                      "pattern": "=$",
                       "type": "string"
                     }
                   ],
@@ -19645,6 +19749,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -19699,6 +19806,29 @@
           "required": ["document", "scope"],
           "type": "object"
         },
+        "WorkspaceListResult": {
+          "additionalProperties": false,
+          "properties": {
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workspaces": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceSummary"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["workspaces"],
+          "type": "object"
+        },
         "WorkspaceSaveParams": {
           "additionalProperties": false,
           "properties": {
@@ -19722,6 +19852,22 @@
           "required": ["revision", "value"],
           "type": "object"
         },
+        "WorkspaceSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["scope", "name", "revision"],
+          "type": "object"
+        },
         "WorkspaceView": {
           "additionalProperties": false,
           "properties": {
@@ -19743,8 +19889,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -23475,8 +23640,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -23528,6 +23713,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -23771,6 +23970,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -23859,8 +24061,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -25121,8 +25342,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -25175,6 +25416,20 @@
           ],
           "type": "object"
         },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
         "Theme": {
           "enum": ["light", "dark", "system"],
           "type": "string"
@@ -25206,12 +25461,12 @@
                 {
                   "anyOf": [
                     {
-                      "maxLength": 21844,
+                      "maxLength": 174760,
                       "type": "string"
                     },
                     {
-                      "maxLength": 21848,
-                      "pattern": "==$",
+                      "maxLength": 174764,
+                      "pattern": "=$",
                       "type": "string"
                     }
                   ],
@@ -25246,6 +25501,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -25318,8 +25576,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -28359,8 +28636,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -28412,6 +28709,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -28655,6 +28966,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -28743,8 +29057,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -33992,8 +34325,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -34045,6 +34398,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -34195,12 +34562,12 @@
                 {
                   "anyOf": [
                     {
-                      "maxLength": 21844,
+                      "maxLength": 174760,
                       "type": "string"
                     },
                     {
-                      "maxLength": 21848,
-                      "pattern": "==$",
+                      "maxLength": 174764,
+                      "pattern": "=$",
                       "type": "string"
                     }
                   ],
@@ -34348,6 +34715,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -34402,6 +34772,29 @@
           "required": ["document", "scope"],
           "type": "object"
         },
+        "WorkspaceListResult": {
+          "additionalProperties": false,
+          "properties": {
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workspaces": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceSummary"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["workspaces"],
+          "type": "object"
+        },
         "WorkspaceSaveParams": {
           "additionalProperties": false,
           "properties": {
@@ -34425,6 +34818,22 @@
           "required": ["revision", "value"],
           "type": "object"
         },
+        "WorkspaceSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["scope", "name", "revision"],
+          "type": "object"
+        },
         "WorkspaceView": {
           "additionalProperties": false,
           "properties": {
@@ -34446,8 +34855,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -34700,6 +35128,20 @@
             },
             "value": {
               "$ref": "#/definitions/WorkspaceDocumentResult"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "workspaces",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/WorkspaceListResult"
             }
           },
           "required": ["kind", "value"],
@@ -42553,6 +42995,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspaces",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceListResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "document_json",
                   "type": "string"
                 },
@@ -43853,8 +44309,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -43906,6 +44382,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -44056,12 +44546,12 @@
                 {
                   "anyOf": [
                     {
-                      "maxLength": 21844,
+                      "maxLength": 174760,
                       "type": "string"
                     },
                     {
-                      "maxLength": 21848,
-                      "pattern": "==$",
+                      "maxLength": 174764,
+                      "pattern": "=$",
                       "type": "string"
                     }
                   ],
@@ -44209,6 +44699,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -44263,6 +44756,29 @@
           "required": ["document", "scope"],
           "type": "object"
         },
+        "WorkspaceListResult": {
+          "additionalProperties": false,
+          "properties": {
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workspaces": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceSummary"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["workspaces"],
+          "type": "object"
+        },
         "WorkspaceSaveParams": {
           "additionalProperties": false,
           "properties": {
@@ -44286,6 +44802,22 @@
           "required": ["revision", "value"],
           "type": "object"
         },
+        "WorkspaceSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["scope", "name", "revision"],
+          "type": "object"
+        },
         "WorkspaceView": {
           "additionalProperties": false,
           "properties": {
@@ -44307,8 +44839,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -49428,6 +49979,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspaces",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceListResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "document_json",
                   "type": "string"
                 },
@@ -50688,8 +51253,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -50741,6 +51326,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -50891,12 +51490,12 @@
                 {
                   "anyOf": [
                     {
-                      "maxLength": 21844,
+                      "maxLength": 174760,
                       "type": "string"
                     },
                     {
-                      "maxLength": 21848,
-                      "pattern": "==$",
+                      "maxLength": 174764,
+                      "pattern": "=$",
                       "type": "string"
                     }
                   ],
@@ -51044,6 +51643,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -51098,6 +51700,29 @@
           "required": ["document", "scope"],
           "type": "object"
         },
+        "WorkspaceListResult": {
+          "additionalProperties": false,
+          "properties": {
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workspaces": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceSummary"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["workspaces"],
+          "type": "object"
+        },
         "WorkspaceSaveParams": {
           "additionalProperties": false,
           "properties": {
@@ -51121,6 +51746,22 @@
           "required": ["revision", "value"],
           "type": "object"
         },
+        "WorkspaceSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["scope", "name", "revision"],
+          "type": "object"
+        },
         "WorkspaceView": {
           "additionalProperties": false,
           "properties": {
@@ -51142,8 +51783,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -52227,8 +52887,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -52280,6 +52960,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -52586,8 +53280,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -52639,6 +53353,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -52942,8 +53670,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -52995,6 +53743,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -53234,8 +53996,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -53287,6 +54069,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -55797,14 +56593,48 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         }
       },
       "properties": {
         "lineEnding": {
           "$ref": "#/definitions/LineEnding"
         },
+        "receiveEncoding": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TextEncoding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "utf-8",
+          "description": "None 表示从原始接收字节自动识别。"
+        },
         "receiveMode": {
           "$ref": "#/definitions/TerminalMode"
+        },
+        "sendEncoding": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TextEncoding"
+            }
+          ],
+          "default": "utf-8"
         },
         "sendMode": {
           "$ref": "#/definitions/TerminalMode"
@@ -56177,12 +57007,12 @@
             {
               "anyOf": [
                 {
-                  "maxLength": 21844,
+                  "maxLength": 174760,
                   "type": "string"
                 },
                 {
-                  "maxLength": 21848,
-                  "pattern": "==$",
+                  "maxLength": 174764,
+                  "pattern": "=$",
                   "type": "string"
                 }
               ],
@@ -60833,6 +61663,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "workspaces",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/WorkspaceListResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "document_json",
                   "type": "string"
                 },
@@ -62460,8 +63304,28 @@
             "lineEnding": {
               "$ref": "#/definitions/LineEnding"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8",
+              "description": "None 表示从原始接收字节自动识别。"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -62513,6 +63377,20 @@
             "ligatures"
           ],
           "type": "object"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
         },
         "Theme": {
           "enum": ["light", "dark", "system"],
@@ -62663,12 +63541,12 @@
                 {
                   "anyOf": [
                     {
-                      "maxLength": 21844,
+                      "maxLength": 174760,
                       "type": "string"
                     },
                     {
-                      "maxLength": 21848,
-                      "pattern": "==$",
+                      "maxLength": 174764,
+                      "pattern": "=$",
                       "type": "string"
                     }
                   ],
@@ -62816,6 +63694,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -62870,6 +63751,29 @@
           "required": ["document", "scope"],
           "type": "object"
         },
+        "WorkspaceListResult": {
+          "additionalProperties": false,
+          "properties": {
+            "nextCursor": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                },
+                {
+                  "type": "null"
+                }
+              ]
+            },
+            "workspaces": {
+              "items": {
+                "$ref": "#/definitions/WorkspaceSummary"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["workspaces"],
+          "type": "object"
+        },
         "WorkspaceSaveParams": {
           "additionalProperties": false,
           "properties": {
@@ -62893,6 +63797,22 @@
           "required": ["revision", "value"],
           "type": "object"
         },
+        "WorkspaceSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["scope", "name", "revision"],
+          "type": "object"
+        },
         "WorkspaceView": {
           "additionalProperties": false,
           "properties": {
@@ -62914,8 +63834,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -63156,6 +64095,20 @@
           "enum": ["text", "hex"],
           "type": "string"
         },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
         "U64": {
           "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
           "type": "string"
@@ -63181,8 +64134,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -63202,6 +64174,9 @@
         }
       },
       "properties": {
+        "archived": {
+          "type": "boolean"
+        },
         "bindings": {
           "items": {
             "$ref": "#/definitions/DeviceBinding"
@@ -63511,6 +64486,20 @@
           "enum": ["text", "hex"],
           "type": "string"
         },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
         "U64": {
           "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
           "type": "string"
@@ -63518,6 +64507,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -63593,8 +64585,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -63623,6 +64634,145 @@
       },
       "required": ["document", "scope"],
       "title": "WorkspaceDocumentResult",
+      "type": "object"
+    },
+    "WorkspaceListParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "after": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        }
+      },
+      "title": "WorkspaceListParams",
+      "type": "object"
+    },
+    "WorkspaceListResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "StateScopeRef": {
+          "additionalProperties": false,
+          "properties": {
+            "scopeId": {
+              "$ref": "#/definitions/Id"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["scopeId", "target"],
+          "type": "object"
+        },
+        "Target": {
+          "additionalProperties": false,
+          "dependencies": {
+            "sessionEpoch": ["sessionId"],
+            "sessionId": ["sessionEpoch"]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "session"
+              }
+            },
+            "required": ["kind"]
+          },
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "sessionEpoch": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/U64"
+                }
+              ],
+              "default": null
+            },
+            "sessionId": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "then": {
+            "required": ["sessionId", "sessionEpoch"]
+          },
+          "type": "object"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "WorkspaceSummary": {
+          "additionalProperties": false,
+          "properties": {
+            "name": {
+              "type": "string"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "scope": {
+              "$ref": "#/definitions/StateScopeRef"
+            }
+          },
+          "required": ["scope", "name", "revision"],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "nextCursor": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/Id"
+            },
+            {
+              "type": "null"
+            }
+          ]
+        },
+        "workspaces": {
+          "items": {
+            "$ref": "#/definitions/WorkspaceSummary"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["workspaces"],
+      "title": "WorkspaceListResult",
       "type": "object"
     },
     "WorkspaceSaveParams": {
@@ -63832,6 +64982,20 @@
           "enum": ["text", "hex"],
           "type": "string"
         },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
         "U64": {
           "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
           "type": "string"
@@ -63839,6 +65003,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -63901,8 +65068,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -64137,6 +65323,20 @@
           "enum": ["text", "hex"],
           "type": "string"
         },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
+          "type": "string"
+        },
         "U64": {
           "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
           "type": "string"
@@ -64144,6 +65344,9 @@
         "WorkspaceDocument": {
           "additionalProperties": false,
           "properties": {
+            "archived": {
+              "type": "boolean"
+            },
             "bindings": {
               "items": {
                 "$ref": "#/definitions/DeviceBinding"
@@ -64206,8 +65409,27 @@
             "pinned": {
               "type": "boolean"
             },
+            "receiveEncoding": {
+              "anyOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                },
+                {
+                  "type": "null"
+                }
+              ],
+              "default": "utf-8"
+            },
             "receiveMode": {
               "$ref": "#/definitions/TerminalMode"
+            },
+            "sendEncoding": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/TextEncoding"
+                }
+              ],
+              "default": "utf-8"
             },
             "sendMode": {
               "$ref": "#/definitions/TerminalMode"
@@ -64238,6 +65460,98 @@
       "title": "WorkspaceSnapshot",
       "type": "object"
     },
+    "WorkspaceSummary": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "StateScopeRef": {
+          "additionalProperties": false,
+          "properties": {
+            "scopeId": {
+              "$ref": "#/definitions/Id"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["scopeId", "target"],
+          "type": "object"
+        },
+        "Target": {
+          "additionalProperties": false,
+          "dependencies": {
+            "sessionEpoch": ["sessionId"],
+            "sessionId": ["sessionEpoch"]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "session"
+              }
+            },
+            "required": ["kind"]
+          },
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "sessionEpoch": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/U64"
+                }
+              ],
+              "default": null
+            },
+            "sessionId": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "then": {
+            "required": ["sessionId", "sessionEpoch"]
+          },
+          "type": "object"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "name": {
+          "type": "string"
+        },
+        "revision": {
+          "$ref": "#/definitions/U64"
+        },
+        "scope": {
+          "$ref": "#/definitions/StateScopeRef"
+        }
+      },
+      "required": ["scope", "name", "revision"],
+      "title": "WorkspaceSummary",
+      "type": "object"
+    },
     "WorkspaceView": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -64248,6 +65562,20 @@
         },
         "TerminalMode": {
           "enum": ["text", "hex"],
+          "type": "string"
+        },
+        "TextEncoding": {
+          "enum": [
+            "utf-8",
+            "gbk",
+            "gb18030",
+            "big5",
+            "shift-jis",
+            "latin1",
+            "ascii",
+            "utf-16le",
+            "utf-16be"
+          ],
           "type": "string"
         }
       },
@@ -64270,8 +65598,27 @@
         "pinned": {
           "type": "boolean"
         },
+        "receiveEncoding": {
+          "anyOf": [
+            {
+              "$ref": "#/definitions/TextEncoding"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": "utf-8"
+        },
         "receiveMode": {
           "$ref": "#/definitions/TerminalMode"
+        },
+        "sendEncoding": {
+          "allOf": [
+            {
+              "$ref": "#/definitions/TextEncoding"
+            }
+          ],
+          "default": "utf-8"
         },
         "sendMode": {
           "$ref": "#/definitions/TerminalMode"

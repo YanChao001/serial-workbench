@@ -21,7 +21,6 @@ import { readWithAuthorizationRecovery } from "./host-read-recovery";
 import type { HostNativePort } from "./host-native-transport";
 export { createNativeTransport } from "./host-native-transport";
 export type { HostNativePort } from "./host-native-transport";
-export { createHostWorkspace } from "@/providers/host-controller";
 /** 投影目标换代不等于 Host 实例失效；仍保留原错误供模块恢复或明确重试。 */
 export class HostProjectionError extends Error {
   readonly code: string;

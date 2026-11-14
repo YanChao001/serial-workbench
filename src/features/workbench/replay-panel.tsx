@@ -19,6 +19,7 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { nativeErrorCode } from "@/lib/native-error";
+import { parseU64 } from "@/lib/u64";
 import { captureRecordItems } from "./capture-record-items";
 import { StreamView } from "./stream-view";
 import { WorkbenchIconButton } from "./workbench-icon-button";
@@ -125,8 +126,7 @@ export function ReplayPanel({
         setExpanded({});
       }
     });
-  const validSeek =
-    /^(0|[1-9][0-9]*)$/.test(seek) && BigInt(seek) <= 18446744073709551615n;
+  const validSeek = parseU64(seek) !== undefined;
   return (
     <section aria-label={labels.replay} className="workbench-replay">
       <div className="workbench-toolbar workbench-replay-toolbar">

@@ -1,12 +1,22 @@
+import { DEFAULT_CUSTOM_ACCENT } from "@/lib/accent-colors";
 import { useEffect, useId, useRef } from "react";
-import type { ObjectRef, WorkspaceView } from "@serial-workbench/contracts";
-import { PinIcon, TerminalIcon, Plus, X } from "lucide-react";
+import type {
+  DeviceDescriptor,
+  ObjectRef,
+  SessionSnapshot,
+  WorkspaceView,
+} from "@serial-workbench/contracts";
+import { PinIcon, Plus, X } from "lucide-react";
+import { WorkspaceViewIcon } from "./workspace-view-icon";
 import { Button } from "@/components/ui/button";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { WorkbenchLabels } from "./labels";
+import { distinctWorkspaceLabels } from "./workspace-model";
 export type SessionTab = {
   id: string;
   sessionId?: string;
+  /** Last confirmed view source, retained for reconnect/layout only, never access. */
+  source?: { device: DeviceDescriptor; session: SessionSnapshot };
   view?: WorkspaceView;
   captureRef?: ObjectRef;
 };
@@ -32,6 +42,11 @@ export function SessionTabs({
   onEmptyFocus?: () => void;
 }) {
   const id = useId();
+  const names = new Map(
+    distinctWorkspaceLabels(
+      tabs.map((tab) => ({ value: tab.id, label: name(tab) })),
+    ).map((item) => [item.value, item.label]),
+  );
   const pendingFocus = useRef<string | null>(null);
   const tablist = useRef<HTMLDivElement | null>(null);
   useEffect(() => {
@@ -61,7 +76,7 @@ export function SessionTabs({
       >
         {tabs.map((tab, index) => (
           <Button
-            variant={tab.id === selected ? "secondary" : "ghost"}
+            variant={tab.id === selected ? "secondary" : "outline"}
             size="sm"
             key={tab.id}
             role="tab"
@@ -95,13 +110,16 @@ export function SessionTabs({
               <span
                 aria-hidden="true"
                 className="workbench-view-color"
-                style={{ backgroundColor: tab.view.color }}
+                style={{
+                  backgroundColor:
+                    tab.view.color.toUpperCase() === DEFAULT_CUSTOM_ACCENT
+                      ? "var(--primary)"
+                      : tab.view.color,
+                }}
               />
             )}
-            {tab.view?.icon === "terminal" ? (
-              <TerminalIcon aria-hidden="true" />
-            ) : tab.view?.icon ? (
-              <span aria-hidden="true">{tab.view.icon}</span>
+            {tab.view?.icon ? (
+              <WorkspaceViewIcon value={tab.view.icon} />
             ) : null}
             {tab.view?.pinned && (
               <>
@@ -109,13 +127,7 @@ export function SessionTabs({
                 <span className="sr-only">{labels.pinned} </span>
               </>
             )}
-            {name(tab)}
-            {!tab.view &&
-            tab.sessionId &&
-            tabs.filter((candidate) => candidate.sessionId === tab.sessionId)
-              .length > 1
-              ? ` (${index + 1})`
-              : ""}
+            {names.get(tab.id)}
           </Button>
         ))}
       </div>

@@ -117,23 +117,39 @@ export function createHostWorkspace(
     sessions: [],
     operations: [],
     operationSummaries: [],
+    operationSummariesReady: false,
     streams: new Map(),
   };
   let refreshPending: Promise<void> | undefined;
   let refreshEnumerating = false;
   let enumerationPending: Promise<void> | undefined;
   let operationsRefreshing = false;
-  let operationIds: string[] | undefined;
+  let operationRefresh:
+    { summaries: HostState["operationSummaries"]; all: boolean } | undefined;
+  const shouldRestartOperations = (all: boolean) =>
+    operationRefresh !== undefined && (!all || operationRefresh.all);
   let workspaceSelection = 0;
   let snapshot: HostContextValue;
+  let streamNotification: ReturnType<typeof setTimeout> | undefined;
   const actionObserver = createHostActionObserver(checkAction, lifetime.signal);
   const watchActions = actionObserver.watch;
   const invalidateActions = actionObserver.invalidate;
-  const change = (patch: Partial<HostState>) => {
+  const notify = () => {
+    clearTimeout(streamNotification);
+    streamNotification = undefined;
+    if (!lifetime.signal.aborted) for (const listener of listeners) listener();
+  };
+  const change = (
+    patch: Partial<HostState>,
+    deferStreamNotification = false,
+  ) => {
     if (lifetime.signal.aborted) return;
     state = { ...state, ...patch };
     snapshot = { ...actions, state, connection };
-    for (const listener of listeners) listener();
+    // 原始快照和 ACK 即时推进；小读块只合并界面通知，避免每块重渲染整个工作台。
+    if (deferStreamNotification) {
+      streamNotification ??= setTimeout(notify, 16);
+    } else notify();
   };
   const readers = createSessionReaders(
     connection,
@@ -141,9 +157,10 @@ export function createHostWorkspace(
       const streams = new Map(state.streams);
       if (view) streams.set(sessionId, view);
       else streams.delete(sessionId);
-      change({ streams });
+      change({ streams }, view !== undefined && view.error === null);
     },
     (session) => pendingTrustedConnections.get(session.deviceId),
+    updateSession,
   );
   const report = (error: unknown) => {
     reportClientError(
@@ -245,22 +262,41 @@ export function createHostWorkspace(
       }
     }
   }
-  async function operationMetadata(value: unknown) {
+  async function operationMetadata(value: unknown, freshSnapshot: boolean) {
     // Host orders active operations first, newest first within each group.
     const summaries = parseOperationsSnapshot(value).items.slice(0, 128);
-    change({ operationSummaries: summaries });
-    operationIds = summaries.map((item) => item.operationId);
+    // 设备先就绪；首份有效操作投影到达后，通知才能建立历史基线。
+    change({ operationSummaries: summaries, operationSummariesReady: true });
+    operationRefresh = {
+      summaries,
+      all: freshSnapshot || operationRefresh?.all === true,
+    };
     if (operationsRefreshing) return;
     operationsRefreshing = true;
     try {
-      while (operationIds && !lifetime.signal.aborted) {
-        const ids = operationIds;
-        operationIds = undefined;
+      while (operationRefresh && !lifetime.signal.aborted) {
+        const refresh = operationRefresh;
+        operationRefresh = undefined;
+        const details = new Map(
+          state.operations.map((value) => [value.operationId, value]),
+        );
+        const ids = refresh.summaries
+          .filter((summary) => {
+            const known = details.get(summary.operationId);
+            return (
+              refresh.all ||
+              !known ||
+              known.executionHostId !== summary.executionHostId ||
+              BigInt(known.revision) < BigInt(summary.revision)
+            );
+          })
+          .map((summary) => summary.operationId);
         // Bound simultaneous lookups and collapse changes arriving during a refresh.
         for (let offset = 0; offset < ids.length; offset += 8) {
           if (lifetime.signal.aborted) return;
-          // 已开始的读取真实结束后处理最新元数据，不先排完过时的整轮历史。
-          if (operationIds) break;
+          // 新授权快照必须全量复核；普通增量不能中途取消这一轮脱敏读取。
+          // 其余在途轮次按最新投影合并，已开始的读取仍实际结束后再切换。
+          if (shouldRestartOperations(refresh.all)) break;
           const batch = ids.slice(offset, offset + 8);
           const results = await Promise.allSettled(
             batch.map(async (id) => {
@@ -422,7 +458,9 @@ export function createHostWorkspace(
               )
                 change({ workspace: parsed.value });
             } else if (scope.scopeId === "host.operations")
-              void operationMetadata(payload).catch(report);
+              void operationMetadata(payload, event.type === "snapshot").catch(
+                report,
+              );
             else if (scope.scopeId === "host.devices" && event.type === "delta")
               void refresh().catch(report);
           },
@@ -470,36 +508,34 @@ export function createHostWorkspace(
       throw new ContractValidationError("Workspace belongs to another target");
     return result.value;
   }
-  async function listWorkspaces(
-    signal?: AbortSignal,
-  ): Promise<WorkspaceDocumentResult[]> {
-    const scopes = await connection.refreshScopes(signal ?? lifetime.signal);
-    const ids = [
-      ...new Set(
-        scopes
-          .filter(
-            (scope) =>
-              scope.target.hostId === connection.attachment.hostId &&
-              scope.target.kind === "workspace",
-          )
-          .map((scope) => scope.target.id),
+  async function listWorkspaces(signal?: AbortSignal, after?: string) {
+    const waiting = signal
+      ? AbortSignal.any([signal, lifetime.signal])
+      : lifetime.signal;
+    const result = await connection.client.query(
+      connection.buildQuery(
+        "workspace.list",
+        connection.hostTarget,
+        after ? { after } : {},
       ),
-    ];
-    if (ids.length > 128)
-      throw failure(
-        "LIMIT_EXCEEDED",
-        "Workspace directory exceeds the UI budget",
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (result.kind !== "workspaces") throw new ContractValidationError();
+    if (
+      result.value.workspaces.some(
+        ({ scope }) =>
+          scope.target.hostId !== connection.attachment.hostId ||
+          scope.target.kind !== "workspace" ||
+          scope.target.sessionId !== undefined ||
+          scope.target.sessionEpoch !== undefined,
+      ) ||
+      (after && result.value.nextCursor === after)
+    )
+      throw new ContractValidationError(
+        "Workspace directory contains an invalid target or cursor",
       );
-    const documents: WorkspaceDocumentResult[] = [];
-    for (const id of ids) {
-      lifetime.signal.throwIfAborted();
-      signal?.throwIfAborted();
-      const document = await readWorkspace(id, signal);
-      lifetime.signal.throwIfAborted();
-      signal?.throwIfAborted();
-      documents.push(document);
-    }
-    return documents;
+    return result.value;
   }
   async function loadWorkspace(
     workspaceId: string,
@@ -508,15 +544,19 @@ export function createHostWorkspace(
   ): Promise<WorkspaceDocumentResult> {
     const selection = ++workspaceSelection;
     const result = await readWorkspace(workspaceId, signal);
+    const selected =
+      result.document.value.archived && workspaceId !== "default"
+        ? await readWorkspace("default", signal)
+        : result;
     if (
       selection === workspaceSelection &&
       !signal?.aborted &&
       !lifetime.signal.aborted
     ) {
-      change({ workspace: result });
+      change({ workspace: selected });
       if (!options?.deferProjections) await syncProjections();
     }
-    return result;
+    return selected;
   }
   async function saveWorkspace(
     base: WorkspaceDocumentResult,
@@ -1183,12 +1223,22 @@ export function createHostWorkspace(
     return waitForHost(pending, signal);
   }
   async function send(
-    sessionId: string,
+    target: Target,
     bytes: Uint8Array,
     signal?: AbortSignal,
     writeWaitMs?: string,
   ) {
-    const session = sessionById(sessionId);
+    const session = sessionById(target.id);
+    if (
+      target.hostId !== connection.attachment.hostId ||
+      target.kind !== "session" ||
+      target.id !== target.sessionId ||
+      target.sessionEpoch !== session.sessionEpoch
+    )
+      throw failure(
+        "EPOCH_MISMATCH",
+        "Session connection changed before sending",
+      );
     if (session.readOnly)
       throw failure("PERMISSION_DENIED", "Session is read only");
     let binary = "";
@@ -1196,7 +1246,7 @@ export function createHostWorkspace(
     return invoke(
       {
         actionId: "session.tx",
-        target: sessionTarget(session),
+        target: { ...target },
         params: {
           bytesBase64: btoa(binary),
           writeWaitMs: writeWaitMs ?? session.configuration.writeWaitMs,
@@ -1267,6 +1317,7 @@ export function createHostWorkspace(
     },
     dispose() {
       lifetime.abort();
+      clearTimeout(streamNotification);
       for (const projection of projections.values()) projection.close();
       readers.dispose();
       projections.clear();

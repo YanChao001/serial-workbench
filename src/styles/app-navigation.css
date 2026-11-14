@@ -1,11 +1,17 @@
 .app-sidebar-top {
-  height: 40px;
+  height: var(--app-chrome-height);
   padding: 0 1.25rem;
 }
 
 .app-sidebar-navigation {
   padding: 0 0.5rem 0.75rem;
+  overflow-x: hidden;
   scrollbar-gutter: stable;
+}
+
+/* 展开首帧先预留滚动条，导航项仍需保有折叠时的宽度，避免挤扁图标。 */
+.app-sidebar-navigation .app-sidebar-link {
+  min-width: calc(var(--app-sidebar-collapsed-width) - 1px - 1rem);
 }
 
 .app-sidebar-group + .app-sidebar-group {
@@ -153,7 +159,7 @@
 
 .app-title-menu-trigger {
   display: inline-flex;
-  height: 32px;
+  height: var(--app-toolbar-control-size);
   align-items: center;
   justify-content: center;
   border-radius: var(--radius-md);
@@ -181,7 +187,13 @@
   transform: translateY(0.5px);
 }
 .app-title-language[data-size="sm"] {
-  height: 32px;
+  height: var(--app-toolbar-control-size);
+}
+
+.app-title-icon-button,
+.app-title-bar [data-window-control] {
+  height: var(--app-toolbar-control-size);
+  align-self: center;
 }
 
 .settings-studio {

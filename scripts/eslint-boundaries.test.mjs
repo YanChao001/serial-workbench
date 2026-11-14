@@ -4,6 +4,62 @@ import { ESLint } from "eslint";
 
 const eslint = new ESLint();
 
+test("custom notifications cannot bypass the shared content container", async () => {
+  const source =
+    'import { toast } from "sonner";\nexport const notify = () => toast.custom(() => <div>Failure</div>);';
+  const [feature] = await eslint.lintText(source, {
+    filePath: "src/components/notification-probe.tsx",
+  });
+  assert.ok(
+    feature.messages.some(
+      (message) => message.ruleId === "no-restricted-properties",
+    ),
+  );
+  const [shared] = await eslint.lintText(source, {
+    filePath: "src/lib/notifications.tsx",
+  });
+  assert.ok(
+    shared.messages.every(
+      (message) => message.ruleId !== "no-restricted-properties",
+    ),
+  );
+});
+
+test("notification details use the shared floating panel instead of resizing the toast", async () => {
+  for (const source of [
+    ...["WorkbenchNotice", "NotificationContent"].map(
+      (component) =>
+        `export const Probe = () => <${component}><div><details><summary>Details</summary>Failure</details></div></${component}>;`,
+    ),
+    "export const Probe = () => notifyCustom(() => <details><summary>Details</summary>Failure</details>);",
+    'import { toast } from "sonner";\nexport const Probe = () => toast.error("Failure", { description: <details><summary>Details</summary>Failure</details> });',
+  ]) {
+    const [result] = await eslint.lintText(source, {
+      filePath: "src/components/notification-probe.tsx",
+    });
+    assert.equal(result.fatalErrorCount, 0);
+    assert.ok(
+      result.messages.some((message) =>
+        message.message.includes("NotificationDetails"),
+      ),
+    );
+  }
+  for (const source of [
+    'export const Probe = () => <NotificationContent><NotificationDetails label="Details">Failure</NotificationDetails></NotificationContent>;',
+    "export const Probe = () => <section><details><summary>Advanced</summary>Configuration</details></section>;",
+  ]) {
+    const [result] = await eslint.lintText(source, {
+      filePath: "src/components/notification-probe.tsx",
+    });
+    assert.equal(result.fatalErrorCount, 0);
+    assert.ok(
+      result.messages.every(
+        (message) => !message.message.includes("NotificationDetails"),
+      ),
+    );
+  }
+});
+
 test("upstream UI components still enforce the native facade boundary", async () => {
   for (const source of [
     'import { invoke } from "@tauri-apps/api/core";\nexport const Probe = () => <button onClick={() => invoke("unsafe")}>Run</button>;',

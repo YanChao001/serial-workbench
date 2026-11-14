@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import tailwindcss from "@tailwindcss/vite";
 import react from "@vitejs/plugin-react";
 import { defineConfig } from "vite";
-import { linkedPackagesDevConfig } from "./scripts/vite-linked-packages";
+import { linkedPackagesDevConfig } from "./scripts/vite-linked-packages.ts";
 
 const host = process.env.TAURI_DEV_HOST;
 
@@ -63,11 +63,18 @@ export default defineConfig(({ mode, command, isPreview }) => {
         : []),
     ],
 
-    resolve: { alias: { "@": path.resolve(import.meta.dirname, "./src") } },
+    resolve: {
+      alias: {
+        "@": path.resolve(import.meta.dirname, "./src"),
+        buffer: "buffer/",
+        string_decoder: "string_decoder/",
+      },
+    },
 
     // 浏览器预览与桌面共用入口；相对地址支持项目子路径和独立域名。
     base: mode === "web-preview" ? "./" : "/",
     build: { outDir: mode === "web-preview" ? "dist-web" : "dist" },
+    worker: { format: "es" },
 
     // 保留终端输出，便于查看 Tauri 开发与构建过程中的 Rust 错误。
     clearScreen: false,

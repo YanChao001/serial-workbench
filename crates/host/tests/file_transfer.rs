@@ -31,6 +31,20 @@ fn params(reference: &ObjectRef) -> serde_json::Value {
     })
 }
 
+fn receipts(h: &Harness, reference: &ObjectRef) -> FileTransferReceiptsResult {
+    FileService::new(h.store.clone(), h.auth.clone(), h.store.identity().unwrap())
+        .read_receipts(
+            FileTransferReceiptsParams {
+                receipts_ref: reference.clone(),
+                start_ordinal: 0.into(),
+                max_receipts: 256.into(),
+                max_bytes: 50000.into(),
+            },
+            &h.actor,
+        )
+        .unwrap()
+}
+
 #[tokio::test]
 async fn file_transfer_preserves_partial_and_cancel() {
     let mut h = Harness::new().await;
@@ -215,13 +229,16 @@ async fn file_transfer_unknown_chunk_preserves_evidence_and_stops_tail() {
     let ActionResult::FileTransfer(result) = done.result.as_ref().unwrap() else {
         panic!("transfer evidence")
     };
-    let error = h.host.shutdown().await.unwrap_err();
-    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-    let report: ShutdownReport =
-        serde_json::from_value(serde_json::to_value(error.details.unwrap()).unwrap()).unwrap();
-    assert!(!report.completed);
+    let journal = receipts(&h, &result.receipts_ref);
+    assert_eq!(journal.count, U64::from(2));
+    assert_eq!(journal.receipts.len(), 2);
+    assert_eq!(journal.receipts[1].receipt.outcome, TxOutcome::Unknown);
+    assert!(!journal.receipts[1].receipt.unknown_ranges.is_empty());
+    let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
+    assert!(report.completed, "{report:?}");
     assert!(report.unsettled_operation_ids.is_empty());
-    assert!(report.quarantined_sessions.contains(&target));
+    assert!(report.quarantined_sessions.is_empty());
+    assert!(report.failures.is_empty());
     assert!(report.evidence_refs.contains(&ObjectRef {
         host_id: done.execution_host_id.clone(),
         kind: ResourceKind::try_from("operation").unwrap(),
@@ -229,6 +246,20 @@ async fn file_transfer_unknown_chunk_preserves_evidence_and_stops_tail() {
         revision: Some(done.revision),
     }));
     assert!(report.evidence_refs.contains(&result.receipts_ref));
+    assert_eq!(h.store.get(&h.actor, &done.operation_id).unwrap(), done);
+    assert_eq!(receipts(&h, &result.receipts_ref), journal);
+    let session = h.host.devices().snapshot(&target).await.unwrap();
+    assert_eq!(session.state, SessionState::Closed);
+    assert_eq!(session.tx_gate, TxGate::ControlUnknown);
+    assert_eq!(
+        h.probe
+            .close_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(h.probe.closes.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(h.write_count(), 2);
+    h.host.shutdown().await.unwrap();
 }
 
 #[tokio::test]
@@ -552,13 +583,24 @@ async fn journal_commit_failure_preserves_actual_chunk_prefix() {
     assert_eq!(result.unknown, U64::from(0));
     assert_eq!(result.receipts_ref.revision, None);
     assert_eq!(h.write_count(), 1);
-    let error = h.host.shutdown().await.unwrap_err();
-    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-    let report: ShutdownReport =
-        serde_json::from_value(serde_json::to_value(error.details.unwrap()).unwrap()).unwrap();
-    assert!(!report.completed);
+    let journal = receipts(&h, &result.receipts_ref);
+    assert_eq!(journal.count, U64::from(1));
+    assert!(!journal.sealed);
+    assert_eq!(journal.receipts.len(), 1);
+    assert_eq!(journal.receipts[0].receipt.outcome, TxOutcome::Unknown);
+    assert!(journal.receipts[0].receipt.accepted_ranges.is_empty());
+    assert_eq!(
+        journal.receipts[0].receipt.unknown_ranges,
+        vec![ByteRange {
+            start: 0.into(),
+            end: 2.into(),
+        }]
+    );
+    let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
+    assert!(report.completed, "{report:?}");
     assert!(report.unsettled_operation_ids.is_empty());
-    assert!(report.quarantined_sessions.contains(&target));
+    assert!(report.quarantined_sessions.is_empty());
+    assert!(report.failures.is_empty());
     assert!(report.evidence_refs.contains(&ObjectRef {
         host_id: done.execution_host_id.clone(),
         kind: ResourceKind::try_from("operation").unwrap(),
@@ -566,4 +608,18 @@ async fn journal_commit_failure_preserves_actual_chunk_prefix() {
         revision: Some(done.revision),
     }));
     assert!(report.evidence_refs.contains(&result.receipts_ref));
+    assert_eq!(h.store.get(&h.actor, &done.operation_id).unwrap(), done);
+    assert_eq!(receipts(&h, &result.receipts_ref), journal);
+    let session = h.host.devices().snapshot(&target).await.unwrap();
+    assert_eq!(session.state, SessionState::Closed);
+    assert_eq!(session.tx_gate, TxGate::ControlUnknown);
+    assert_eq!(
+        h.probe
+            .close_calls
+            .load(std::sync::atomic::Ordering::SeqCst),
+        1
+    );
+    assert_eq!(h.probe.closes.load(std::sync::atomic::Ordering::SeqCst), 1);
+    assert_eq!(h.write_count(), 1);
+    h.host.shutdown().await.unwrap();
 }

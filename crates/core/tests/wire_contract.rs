@@ -2,6 +2,31 @@ use serde_json::{Value, json};
 use serial_workbench_core::{Call, ChildCall, Operation, RpcReply, U64};
 
 #[test]
+fn terminal_encodings_default_to_utf8_and_preserve_explicit_auto_detection() {
+    use serial_workbench_core::{TerminalSettings, TextEncoding, WorkspaceView};
+    let old = json!({"receiveMode":"text","sendMode":"text","lineEnding":{"kind":"none"}});
+    let settings: TerminalSettings = serde_json::from_value(old).unwrap();
+    assert_eq!(settings.receive_encoding, Some(TextEncoding::Utf8));
+    assert_eq!(settings.send_encoding, TextEncoding::Utf8);
+    let mut value = serde_json::to_value(settings).unwrap();
+    value["receiveEncoding"] = Value::Null;
+    value["sendEncoding"] = json!("gbk");
+    let selected: TerminalSettings = serde_json::from_value(value.clone()).unwrap();
+    assert_eq!(selected.receive_encoding, None);
+    assert_eq!(selected.send_encoding, TextEncoding::Gbk);
+    assert_eq!(serde_json::to_value(selected).unwrap(), value);
+    value["sendEncoding"] = json!("auto");
+    assert!(serde_json::from_value::<TerminalSettings>(value).is_err());
+    let view: WorkspaceView = serde_json::from_value(json!({
+        "id":"view", "name":"View", "color":"#7C3AED", "icon":"terminal", "pinned":false,
+        "receiveMode":"text", "sendMode":"text", "bindingId":"binding",
+    }))
+    .unwrap();
+    assert_eq!(view.receive_encoding, Some(TextEncoding::Utf8));
+    assert_eq!(view.send_encoding, TextEncoding::Utf8);
+}
+
+#[test]
 fn query_action_results_and_selectors_are_concrete() {
     use serial_workbench_core::*;
     let value =
@@ -25,6 +50,20 @@ fn query_action_results_and_selectors_are_concrete() {
             .code,
         "INVALID_ARGUMENT"
     );
+}
+
+#[test]
+fn builtin_specs_borrow_the_same_immutable_cache_for_both_dialects() {
+    use serial_workbench_core::*;
+    for (index, action) in BuiltinAction::ALL.into_iter().enumerate() {
+        assert!(std::ptr::eq(action.spec(), &builtin_catalog()[index]));
+        let modern = action.spec_with_dialect(SchemaDialect::Draft202012);
+        assert!(std::ptr::eq(
+            modern,
+            action.spec_with_dialect(SchemaDialect::Draft202012)
+        ));
+        assert_eq!(modern.action_id, action.spec().action_id);
+    }
 }
 
 #[test]

@@ -5,17 +5,7 @@ import {
   RotateCcwIcon,
   SunIcon,
   ChevronDownIcon,
-  LanguagesIcon,
-  SunMoonIcon,
-  SquareIcon,
-  TypeIcon,
-  ALargeSmallIcon,
-  ActivityIcon,
-  MenuIcon,
-  PanelLeftCloseIcon,
   MoveHorizontalIcon,
-  LocateIcon,
-  GlobeIcon,
 } from "lucide-react";
 import { toast } from "sonner";
 import { LanguageSwitch } from "@/components/language-switch";
@@ -76,6 +66,7 @@ import {
   type WindowGeometry,
 } from "@/lib/tauri";
 import { nativeErrorText } from "@/lib/native-error";
+import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { cn } from "@/lib/utils";
 import { DiagnosticsContent } from "./diagnostics";
 import { focusSetting } from "@/commands/settings-search";
@@ -327,7 +318,7 @@ export default function Settings() {
         <div className="settings-list">
           <SettingRow
             id="settings-language"
-            icon={LanguagesIcon}
+            icon={SETTINGS_ICONS.language}
             label={t("common.language")}
           >
             <LanguageSwitch />
@@ -337,7 +328,10 @@ export default function Settings() {
             tabIndex={-1}
             className="space-y-2 rounded-md focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
           >
-            <SettingLabel icon={SunMoonIcon} label={t("settings.theme")} />
+            <SettingLabel
+              icon={SETTINGS_ICONS.theme}
+              label={t("settings.theme")}
+            />
             <div className="grid grid-cols-3 gap-2">
               {THEMES.map((item) => {
                 const active = theme === item.value;
@@ -367,7 +361,7 @@ export default function Settings() {
 
           <SettingRow
             id="settings-radius"
-            icon={SquareIcon}
+            icon={SETTINGS_ICONS.radius}
             label={t("settings.radius")}
           >
             <ToggleGroup
@@ -393,7 +387,7 @@ export default function Settings() {
 
           <SettingRow
             id="settings-font"
-            icon={TypeIcon}
+            icon={SETTINGS_ICONS.font}
             label={t("settings.font")}
           >
             <Select
@@ -419,7 +413,7 @@ export default function Settings() {
 
           <SettingRow
             id="settings-fontSize"
-            icon={ALargeSmallIcon}
+            icon={SETTINGS_ICONS.fontSize}
             label={t("settings.fontSize")}
           >
             <ToggleGroup
@@ -445,7 +439,7 @@ export default function Settings() {
 
           <SettingRow
             id="settings-motion"
-            icon={ActivityIcon}
+            icon={SETTINGS_ICONS.motion}
             label={t("settings.motion")}
           >
             <ToggleGroup
@@ -490,7 +484,7 @@ export default function Settings() {
         <div className="settings-list">
           <SettingRow
             id="settings-menuBar"
-            icon={MenuIcon}
+            icon={SETTINGS_ICONS.menuBar}
             label={t("settings.menuBar")}
           >
             <Switch
@@ -500,7 +494,7 @@ export default function Settings() {
             />
           </SettingRow>
           <SettingRow
-            icon={PanelLeftCloseIcon}
+            icon={SETTINGS_ICONS.layout}
             label={t("settings.sidebarCollapsed")}
           >
             <Switch
@@ -662,7 +656,7 @@ export default function Settings() {
           </div>
           <SettingRow
             id="settings-windowPosition"
-            icon={LocateIcon}
+            icon={SETTINGS_ICONS.windowPosition}
             label={t("settings.windowPosition")}
           >
             <ToggleGroup
@@ -698,7 +692,7 @@ export default function Settings() {
         <div className="settings-list">
           <SettingRow
             id="settings-networkMode"
-            icon={GlobeIcon}
+            icon={SETTINGS_ICONS.networkMode}
             label={t("settings.networkMode")}
             hint={!native ? t("settings.networkModeBrowserHint") : undefined}
           >

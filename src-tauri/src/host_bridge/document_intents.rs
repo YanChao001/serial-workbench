@@ -232,6 +232,22 @@ mod tests {
     use serial_workbench_host::{Host, ipc::HostServer};
     use std::{sync::Arc, time::Duration};
 
+    struct DocumentDevices;
+
+    impl serial_workbench_host::device::DeviceProvider for DocumentDevices {
+        fn enumerate(&self) -> HostResult<Vec<DeviceDescriptor>> {
+            Ok(vec![])
+        }
+
+        fn open(
+            &self,
+            _: &DeviceDescriptor,
+            _: &SerialConfiguration,
+        ) -> BackendResult<Box<dyn Transport>> {
+            unreachable!("document intents must not open a hardware transport")
+        }
+    }
+
     struct Fixture {
         bridge: DesktopHostBridge,
         attached: super::super::DesktopAttachment,
@@ -249,7 +265,15 @@ mod tests {
             let mut server = HostServer::bind(directory.path()).await.unwrap();
             let store = server.store();
             let auth = server.auth();
-            let host = Host::new(store.clone(), auth.clone()).await.unwrap();
+            // 保留真实目录的 virtual:echo 重绑定，文档测试不枚举机器上的原生设备。
+            let host = Host::with_device_provider(
+                store.clone(),
+                auth.clone(),
+                Arc::new(serial_workbench_host::clock::SystemClock::new().unwrap()),
+                Arc::new(DocumentDevices),
+            )
+            .await
+            .unwrap();
             let (stop, done) = tokio::sync::oneshot::channel();
             let running = tokio::spawn(async move {
                 server
@@ -314,7 +338,11 @@ mod tests {
         }
 
         async fn settle(&self, mut operation: Operation) -> Operation {
-            tokio::time::timeout(Duration::from_secs(5), async {
+            let started = std::time::Instant::now();
+            let mut observations = 0;
+            let mut pending_request = None;
+            let mut last_request_elapsed = Duration::ZERO;
+            let settled = tokio::time::timeout(Duration::from_secs(5), async {
                 while matches!(
                     operation.state,
                     OperationState::Queued
@@ -331,6 +359,7 @@ mod tests {
                             "requestContext": self.attached.attachment.request_context,
                         }),
                     );
+                    pending_request = Some(std::time::Instant::now());
                     let RpcResult::Operation(result) = self
                         .request(RpcRequest::OperationGet(request))
                         .await
@@ -338,12 +367,26 @@ mod tests {
                     else {
                         panic!("Expected persisted operation");
                     };
+                    last_request_elapsed = pending_request.take().unwrap().elapsed();
+                    observations += 1;
                     operation = result.operation;
                 }
-                operation
             })
-            .await
-            .expect("Host must settle document operation")
+            .await;
+            // 失败只使用已观察的状态；不在超时后追加可能再次阻塞的数据库或 IPC 查询。
+            assert!(
+                settled.is_ok(),
+                "Host must settle document operation: id={} action={} state={:?} revision={} observations={} last_request_elapsed={:?} pending_request_elapsed={:?} elapsed={:?}",
+                operation.operation_id,
+                operation.action_id,
+                operation.state,
+                operation.revision,
+                observations,
+                last_request_elapsed,
+                pending_request.map(|started| started.elapsed()),
+                started.elapsed(),
+            );
+            operation
         }
 
         async fn settings(&self) -> SettingsDocumentResult {

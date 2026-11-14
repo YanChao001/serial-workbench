@@ -40,6 +40,7 @@ function host(): WorkbenchHost {
       sessions: [],
       operations: [],
       operationSummaries: [],
+      operationSummariesReady: true,
       streams: new Map(),
       catalog: actionCatalog,
       devicesStale: false,
@@ -117,6 +118,52 @@ function nativeFailure(operationId: string) {
     },
   });
 }
+
+it("shows connection progress until Native confirms the session", async () => {
+  const adapter = host();
+  let resolve!: (value: ReturnType<typeof session>) => void;
+  adapter.trustedConnect = vi.fn(
+    () =>
+      new Promise<ReturnType<typeof session>>((done) => {
+        resolve = done;
+      }),
+  );
+  const view = render(<Shell adapter={adapter} />);
+  const button = screen.getByRole("button", { name: "Open COM14" });
+  fireEvent.click(button);
+  expect(button).toBeDisabled();
+  expect(button).toHaveAttribute("aria-busy", "true");
+  expect(button).not.toHaveAttribute("aria-pressed", "true");
+  adapter.state = { ...adapter.state, sessions: [session()] };
+  view.rerender(<Shell adapter={adapter} />);
+  expect(button).toHaveAttribute("aria-busy", "true");
+  expect(button).not.toHaveAttribute("aria-pressed", "true");
+  await act(async () => resolve(session()));
+  expect(
+    screen.getByRole("button", { name: labels.closeSession }),
+  ).toHaveAttribute("aria-pressed", "true");
+  expect(screen.queryByRole("button", { busy: true })).not.toBeInTheDocument();
+});
+
+it("dispatches a send without waiting for a redundant preview request", async () => {
+  const adapter = host();
+  adapter.state = { ...adapter.state, sessions: [session()] };
+  render(<Shell adapter={adapter} />);
+  fireEvent.click(screen.getByRole("button", { name: "Open COM14" }));
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: labels.closeSession }),
+    ).toBeInTheDocument(),
+  );
+  adapter.checkAction = vi.fn<WorkbenchHost["checkAction"]>(
+    () => new Promise(() => {}),
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: labels.draft }), {
+    target: { value: "fast" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: labels.send }));
+  await waitFor(() => expect(adapter.send).toHaveBeenCalledOnce());
+});
 
 it.each(["local-first", "projection-first"] as const)(
   "notifies one actual COM-style open failure once across Native and projection (%s)",

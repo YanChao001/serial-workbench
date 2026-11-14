@@ -81,7 +81,20 @@ impl RequestHandler for ChangeBeforeDelivery {
                             AuthorizeParams {
                                 client_id: context.actor.client_id().clone(),
                                 permissions: vec!["metadata.read".into()],
-                                targets: vec![query.target],
+                                targets: vec![
+                                    query.target.clone(),
+                                    Target {
+                                        host_id: query.target.host_id.clone(),
+                                        kind: ResourceKind::try_from("device").unwrap(),
+                                        id: Id::try_from(
+                                            format!("delivery-change-{}", query.request_id)
+                                                .as_str(),
+                                        )
+                                        .unwrap(),
+                                        session_id: None,
+                                        session_epoch: None,
+                                    },
+                                ],
                                 expires_at: None,
                             },
                         )?;

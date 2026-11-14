@@ -1,5 +1,7 @@
 # Host v0
 
+工作区文档新增可选 `archived`（缺省为 `false`）。设为 `true` 的 CAS 保存保留原件并原子移出工作区目录；后续覆盖返回 `WORKSPACE_DELETED`，默认工作区禁止删除。导入、导出与另存副本不传播此生命周期标记。没有新增删除 RPC 或绕过 revision 检查的接口。
+
 本文定义独立 Host v0 契约，实施阶段与权威来源见 [索引](./README.md)。GUI、CLI、MCP、Node 后台和远端转发调用相同业务 handler；客户端适配器只负责认证、传输、呈现与客户端系统交互。
 
 ## Wire 基元与身份
@@ -62,6 +64,8 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 
 `host.shutdown` 在完成持久接纳、派发和 `shutdown_requested` 结果结算后才请求停止接纳，并依次等待可归属任务、设备 owner 与数据库检查点完成，最后释放实例锁。回执表示已持久请求停止，不表示实例已经退出。CLI 等待原 hostId/instanceEpoch 实际结束后才报告该实例停止；已认证请求后的断连不能导致重发。原 profile 的 OS 锁释放可确认停止，发现新 epoch 也可确认旧实例结束，但新实例仍运行时不能报告整个服务关闭。
 
+CLI `host stop` 在连接前先核验受保护的 OS 实例锁。已释放时返回 `{"stopped":true,"alreadyStopped":true}`，不启动 Host、不创建 profile、不读取用户控制凭据或伪造 Operation；旧发现记录保留。连接管道不可用时可再核验一次锁，仍持锁则保留 `HOST_BUSY`，认证及存储核验错误不得转换为成功。此结果属于 CLI 状态报告，不改变 `host.shutdown` 的接纳与实际退出契约。
+
 ## 调用、结果与错误
 
 `Query={protocolVersion,hostId,instanceEpoch,actorId,requestId,actionId,target,params,revealTarget}`；`Call` 在 Query 上增加必填 `requestContext: string` 以及可选 `expectedRevision: U64,leaseId: Id,executionMode: interactive|independent`。actionId 为目录稳定 ID；params 为该动作输入 schema 的对象。外部副作用使用 Call，已接纳任务的子动作使用下述 ChildCall；查询的 requestId 只关联活动，不建立副作用去重。会话修改、设置与工作区保存必须带 expectedRevision；无需 CAS 的动作由目录 schema 明确声明。
@@ -118,6 +122,10 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 本规范选择有期限接纳上下文和窗口内持久去重，保证历史可回收且旧请求不能重新执行。operation.get 先找持久记录；存在则按当前权限返回，令牌到期不妨碍查询；不存在且给出了旧/退休上下文时返回 RESULT_EXPIRED（表示已无法从保留记录确定原结果，不表示未执行）。未带上下文且 operationId 未找到返回 NOT_FOUND，不能据此重发。备份恢复必须保留去重记录与实例代次；无法证明旧运行身份已退出或代次不回退时，恢复为新 Host 身份并重新配对。副作用结果 unknown 保持到结果保留期限，后续证据通过 revision 追加核实记录；不改写历史 TX，不把 unknown 自动变成未执行。
 
 设置/工作区/插件公开配置分别拥有格式版本与 revision，按 expectedRevision CAS 原子替换。格式校验、迁移与备份失败保留原件；未来格式普通保存返回 FUTURE_FORMAT。持久布局是模板，运行队列/租约不从模板恢复执行。共享提交先持久化再发布对应 revision；客户端草稿冲突保留并由用户合并。
+
+`workspace.list` 是以执行 Host 为目标的只读目录查询。`params={after?: Id}`，结果为 `WorkspaceListResult={workspaces: WorkspaceSummary[],nextCursor?: Id}`，摘要包含 `scope/name/revision`；`action.query` 的判别包装为 `kind: workspaces`。每页最多扫描 64 个已保存工作区，只返回调用者具有 `metadata.read` 权限的条目，空页仍可能带继续游标。游标是不透明的存储顺序标记，不携带被过滤工作区的标识；客户端不得据其构造资源 Target。目录跨 Host 实例保留，不依赖文档投影是否已注册，列举不隐式打开文档或连接设备。
+
+新建与另存为复用 `workspace.save`，对独立新标识提交 `expectedRevision: 0`，保存冲突不能覆盖已有文档。持久目录身份与文档 CAS 在同一次事务提交，名称与版本从相应文档读取，失败不得生成空目录项。复制视图和设备绑定时生成独立身份并重映射内部引用，实际会话、发送草稿和授权不随模板复制。
 
 ## 父任务与子动作
 

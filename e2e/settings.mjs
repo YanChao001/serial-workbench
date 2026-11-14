@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isDeepStrictEqual } from "node:util";
 import { browser } from "@wdio/globals";
 import { invoke, ready, reloadDocument } from "./helpers.mjs";
 
@@ -21,6 +22,7 @@ export async function hostQuery(actionId, kind, id, params = {}, observed) {
   const reply = await nativeValue(
     "host_request",
     {
+      generation,
       request: {
         method: "action.query",
         params: {
@@ -73,23 +75,18 @@ export async function readSettings(observed) {
 }
 
 export async function patchSettings(patch) {
-  const clientKeys = [
-    "menuBar",
-    "windowPosition",
-    "sidebarCollapsed",
-    "sidebarWidth",
-  ];
   for (let attempt = 0; attempt < 3; attempt++) {
     const snapshot = await readSettings();
+    const clientKeys = new Set(Object.keys(snapshot.client.state.preferences));
     const clientPatch = Object.fromEntries(
       Object.entries(patch).filter(
         ([key, value]) =>
-          clientKeys.includes(key) &&
-          snapshot.client.state.preferences[key] !== value,
+          clientKeys.has(key) &&
+          !isDeepStrictEqual(snapshot.client.state.preferences[key], value),
       ),
     );
     const sharedPatch = Object.fromEntries(
-      Object.entries(patch).filter(([key]) => !clientKeys.includes(key)),
+      Object.entries(patch).filter(([key]) => !clientKeys.has(key)),
     );
     if (Object.keys(clientPatch).length) {
       const reply = await invoke("client_state_save", {

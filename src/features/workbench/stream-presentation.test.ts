@@ -4,10 +4,10 @@ import { compactStreamTime, presentStreamTimes } from "./stream-presentation";
 
 it("shows local wall time with milliseconds without a UTC suffix", () => {
   expect(compactStreamTime("2026-11-11T05:50:01.001Z", "Asia/Shanghai")).toBe(
-    "13:50:01.001",
+    "2026-11-11 13:50:01.001",
   );
   expect(compactStreamTime("2026-11-11T05:50:01.001Z", "UTC")).toBe(
-    "05:50:01.001",
+    "2026-11-11 05:50:01.001",
   );
 });
 

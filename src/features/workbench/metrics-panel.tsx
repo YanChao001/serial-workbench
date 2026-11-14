@@ -81,14 +81,19 @@ export function MetricsPanel({
           ).map(([key, name]) => (
             <div key={key}>
               <dt>{name}</dt>
-              <dd title={`${value[key].usedBytes} / ${value[key].limitBytes}`}>
-                {formatByteSize(value[key].usedBytes)} /{" "}
-                {formatByteSize(value[key].limitBytes)}
-              </dd>
-              <dd>
-                {labels.peak}:{" "}
-                <span title={value[key].peakBytes}>
-                  {formatByteSize(value[key].peakBytes)}
+              <dd
+                className="workbench-metric-budget"
+                title={`${value[key].usedBytes} / ${value[key].limitBytes}`}
+              >
+                <span>
+                  {formatByteSize(value[key].usedBytes)} /{" "}
+                  {formatByteSize(value[key].limitBytes)}
+                </span>
+                <span className="workbench-metric-peak">
+                  {labels.peak}:{" "}
+                  <span title={value[key].peakBytes}>
+                    {formatByteSize(value[key].peakBytes)}
+                  </span>
                 </span>
               </dd>
             </div>

@@ -32,6 +32,54 @@ async function selectOption(label: string, name: string) {
   await user.click(screen.getByRole("combobox", { name: label }));
   await user.click(await screen.findByRole("option", { name }));
 }
+it("keeps a new recording ready when unrelated destination metadata arrives", async () => {
+  let finish!: (
+    value: import("@serial-workbench/contracts").FileMetadata,
+  ) => void;
+  const watch = vi.fn<typeof allowControlActions>((inputs, listener) => {
+    if (watch.mock.calls.length === 1)
+      return allowControlActions(inputs, listener);
+    return () => {};
+  });
+  render(
+    <CaptureTools
+      contextKey="host:new-recording"
+      labels={toolLabels}
+      sessionRefs={[
+        {
+          hostId: "host",
+          kind: "session",
+          id: "session",
+          sessionId: "session",
+          sessionEpoch: "1",
+        },
+      ]}
+      pickFile={async () => selectedFile}
+      readMetadata={() =>
+        new Promise((resolve) => {
+          finish = resolve;
+        })
+      }
+      watchActions={watch}
+      onStart={vi.fn().mockResolvedValue(operation())}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Select capture target" }),
+  );
+  const start = screen.getByRole("button", { name: "Start capture" });
+  await waitFor(() => expect(start).toBeEnabled());
+  await act(async () =>
+    finish({
+      fileRef: selectedFile.reference,
+      purpose: "capture_target",
+      length: "0",
+      fingerprint: "a".repeat(64),
+    }),
+  );
+  expect(start).toBeEnabled();
+  expect(watch).toHaveBeenCalledOnce();
+});
 it("uses the shared popup for recording mode and replay timing without starting a task", async () => {
   const start = vi.fn();
   const replay = vi.fn();

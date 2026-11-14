@@ -30,6 +30,7 @@ import { parse as parseToml } from "smol-toml";
 import { checkVersions } from "./version.mjs";
 import { fileSha256 } from "./artifact-lib.mjs";
 import {
+  RELEASE_SPEED_SETTINGS,
   buildComponents,
   inspectComponents,
   stageComponents,
@@ -154,13 +155,7 @@ export function parseBuildArgs(args) {
 export function cargoBuildArgs(options, packageName = "serial-workbench") {
   const args = ["--package", packageName, "--message-format=json"];
   if (options.optimize === "speed") {
-    for (const setting of [
-      "codegen-units=256",
-      'lto="off"',
-      "opt-level=0",
-      "incremental=true",
-      "strip=false",
-    ]) {
+    for (const setting of RELEASE_SPEED_SETTINGS) {
       args.push("--config", `profile.release.${setting}`);
     }
   }
@@ -205,13 +200,6 @@ function readJsonConfig(path) {
   if (!object(config))
     optionError(`Configuration must be a JSON object: ${path}`);
   return config;
-}
-
-function platformForTarget(target) {
-  if (target.includes("-windows-")) return "windows";
-  if (target.endsWith("-apple-darwin")) return "macos";
-  if (target.includes("-linux-") && !target.includes("android")) return "linux";
-  optionError(`app:build only supports desktop targets: ${target}`);
 }
 
 export function safeBinaryName(name) {
@@ -260,7 +248,7 @@ export function prepareBuild(
     ?.trim();
   if (!host) throw new Error("Cannot read the rustc host target");
   const target = options.target ?? host;
-  const platform = platformForTarget(target);
+  const platform = targetPlatform(target);
   const version = checkVersions(root);
   const tauriDir = join(root, "src-tauri");
   const config = effectiveConfig(
@@ -466,7 +454,7 @@ export function locateBuildOutput(plan, executables) {
   if (parts.at(-1) !== "release" || parts.length > 2)
     optionError("Cannot determine the release build output directory");
   const target = parts.length === 2 ? parts[0] : plan.host;
-  const platform = platformForTarget(target);
+  const platform = targetPlatform(target);
   if (plan.explicitTarget && target !== plan.explicitTarget)
     throw new Error("Cargo output target does not match the requested target");
   if (platform !== plan.platform) {

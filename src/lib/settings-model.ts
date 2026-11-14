@@ -4,6 +4,11 @@
   type SharedSettings,
 } from "@serial-workbench/contracts";
 import { APP_CONFIG } from "@/config/app";
+import {
+  DEFAULT_RECEIVE_HISTORY,
+  parseReceiveHistory,
+  setReceiveHistoryLimits,
+} from "./receive-history";
 import { customAccentPalette, normalizeAccentColor } from "@/lib/accent-colors";
 import { getLocale } from "@/i18n/registry";
 import { isTauri } from "@/lib/tauri";
@@ -62,6 +67,7 @@ export function clientPreferences(value: AppSettings): ClientPreferences {
     windowPosition: value.windowPosition,
     sidebarCollapsed: value.sidebarCollapsed,
     sidebarWidth: value.sidebarWidth,
+    receiveHistory: value.receiveHistory ?? { ...DEFAULT_RECEIVE_HISTORY },
   };
 }
 export function sharedSettings(value: AppSettings): SharedSettings {
@@ -70,6 +76,7 @@ export function sharedSettings(value: AppSettings): SharedSettings {
     windowPosition: _windowPosition,
     sidebarCollapsed: _sidebarCollapsed,
     sidebarWidth: _sidebarWidth,
+    receiveHistory: _receiveHistory,
     ...shared
   } = value;
   return parseSharedSettings(shared);
@@ -80,6 +87,8 @@ export function normalizeSettingsPatch(
 ): Partial<AppSettings> {
   if (!isRecord(patch)) invalid();
   const selected = { ...patch };
+  if (selected.receiveHistory !== undefined)
+    selected.receiveHistory = parseReceiveHistory(selected.receiveHistory);
   if (selected.customAccent !== undefined)
     selected.customAccent =
       normalizeAccentColor(selected.customAccent) ?? invalid();
@@ -152,6 +161,7 @@ export function applySettings(
   settings: AppSettings,
   { includeTheme = true }: { includeTheme?: boolean } = {},
 ) {
+  setReceiveHistoryLimits(settings.receiveHistory ?? DEFAULT_RECEIVE_HISTORY);
   const root = document.documentElement;
   // 首屏在 React 挂载前应用主题；运行时由 next-themes 统一提交，保留过渡旧帧。
   if (includeTheme) {

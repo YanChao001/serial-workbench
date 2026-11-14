@@ -15,6 +15,43 @@ fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
 }
 
+#[tokio::test]
+async fn workspace_directory_discovers_unread_documents_and_filters_private_names() {
+    let f = Fixture::new(0).await;
+    for name in ["visible", "private"] {
+        serial_workbench_host::workspace::WorkspaceService::new(f.store.clone(), id(name))
+            .save(
+                0.into(),
+                WorkspaceDocument {
+                    name: name.into(),
+                    ..Default::default()
+                },
+            )
+            .unwrap();
+    }
+    f.grant(
+        "document-a",
+        "metadata.read",
+        &f.target("workspace", "visible"),
+    );
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.first.attachment().actor_id.clone(),
+                permissions: vec!["metadata.read".into()],
+                targets: vec![f.target("workspace", "private")],
+            },
+        )
+        .unwrap();
+    let result = read(&f.first, &f.host_target(), "workspace.list", json!({})).await;
+    assert_eq!(result["workspaces"].as_array().unwrap().len(), 1);
+    assert_eq!(result["workspaces"][0]["name"], "visible");
+    assert_eq!(result["workspaces"][0]["scope"]["target"]["id"], "visible");
+    assert!(result["workspaces"][0].get("document").is_none());
+    f.finish().await;
+}
+
 struct Fixture {
     _dir: tempfile::TempDir,
     first: HostClient,
@@ -1146,6 +1183,8 @@ async fn workspace_import_preview_rejects_future_or_invalid_references() {
         pinned: false,
         receive_mode: TerminalMode::Text,
         send_mode: TerminalMode::Text,
+        receive_encoding: Some(TextEncoding::Utf8),
+        send_encoding: TextEncoding::Utf8,
         binding_id: id("binding"),
     };
     let mut dangling = preview_document("Dangling");

@@ -1,12 +1,160 @@
-import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import {
+  cleanup,
+  fireEvent,
+  render,
+  screen,
+  waitFor,
+} from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
-import { Toaster } from "sonner";
+import { Toaster, toast } from "sonner";
 import type { StreamItem } from "@serial-workbench/contracts";
 import { defaults } from "@serial-workbench/contracts";
 import { StreamView } from "./stream-view";
 import { labels, txItem } from "./test-fixtures";
 import { compactStreamTime } from "./stream-presentation";
-afterEach(cleanup);
+it("notifies live configuration changes without adding rows to received data", async () => {
+  const source = txItem("tx");
+  if (source.kind !== "source") throw new Error("Missing source");
+  const items: StreamItem[] = [
+    {
+      kind: "source",
+      event: {
+        ...source.event,
+        eventSeq: "6387",
+        kind: "configuration_boundary",
+        payload: {
+          revision: "2",
+          certainty: "confirmed",
+          receiptRef: { hostId: "host", kind: "operation", id: "configure" },
+        },
+      },
+    },
+    {
+      kind: "source",
+      event: {
+        ...source.event,
+        kind: "lifecycle",
+        payload: { state: "closed" },
+      },
+    },
+  ];
+  const view = render(<StreamView items={items} labels={labels} />);
+  const log = screen.getByRole("log");
+  expect(log).not.toHaveTextContent("Connection parameters applied");
+  expect(
+    await screen.findByText("Connection parameters applied"),
+  ).toBeVisible();
+  expect(screen.getByText(labels.closed)).toBeVisible();
+  expect(log).not.toHaveTextContent("CONFIGURATION_BOUNDARY");
+  expect(log).not.toHaveTextContent("LIFECYCLE");
+  expect(screen.queryByText("6387")).not.toBeInTheDocument();
+  view.rerender(<StreamView items={[...items]} labels={{ ...labels }} />);
+  const duplicate = render(<StreamView items={items} labels={labels} />);
+  expect(screen.getAllByText("Connection parameters applied")).toHaveLength(1);
+  view.unmount();
+  duplicate.unmount();
+  render(<StreamView items={items} labels={labels} />);
+  expect(screen.getAllByText("Connection parameters applied")).toHaveLength(1);
+});
+
+it("keeps configuration boundaries readable in replay without replaying notifications", () => {
+  const source = txItem("tx");
+  if (source.kind !== "source") throw new Error("Missing source");
+  const item: StreamItem = {
+    kind: "source",
+    event: {
+      ...source.event,
+      sessionId: "configuration-replay",
+      kind: "configuration_boundary",
+      payload: {
+        revision: "2",
+        certainty: "uncertain",
+        receiptRef: { hostId: "host", kind: "operation", id: "configure" },
+      },
+    },
+  };
+  render(<StreamView items={[item]} labels={labels} replay />);
+  expect(screen.getByRole("log")).toHaveTextContent(
+    labels.configurationUncertain,
+  );
+  expect(document.querySelector("[data-sonner-toast]")).not.toBeInTheDocument();
+});
+
+it("notifies the latest configuration state per batch and recognizes a new source epoch", async () => {
+  const source = txItem("tx");
+  if (source.kind !== "source") throw new Error("Missing source");
+  const boundary = (
+    seq: string,
+    certainty: "confirmed" | "uncertain",
+    epoch = "1",
+  ): StreamItem => ({
+    kind: "source",
+    event: {
+      ...source.event,
+      sessionId: "configuration-epochs",
+      sessionEpoch: epoch,
+      eventSeq: seq,
+      kind: "configuration_boundary",
+      payload: {
+        revision: seq,
+        certainty,
+        receiptRef: {
+          hostId: "host",
+          kind: "operation",
+          id: `configure-${seq}`,
+        },
+      },
+    },
+  });
+  const items = [boundary("1", "confirmed"), boundary("2", "uncertain")];
+  const view = render(<StreamView items={items} labels={labels} />);
+  expect(screen.getByRole("log")).not.toHaveTextContent(
+    labels.configurationUncertain,
+  );
+  expect(await screen.findByText(labels.configurationUncertain)).toBeVisible();
+  expect(
+    screen.queryByText(labels.configurationApplied),
+  ).not.toBeInTheDocument();
+  view.rerender(
+    <StreamView
+      items={[...items, boundary("1", "confirmed", "2")]}
+      labels={labels}
+    />,
+  );
+  expect(await screen.findByText(labels.configurationApplied)).toBeVisible();
+});
+it("reinterprets original GBK bytes and keeps a character split across RX chunks", async () => {
+  const source = txItem("tx");
+  if (source.kind !== "source") throw new Error("Missing source");
+  const rx = (bytes: number[], start: string): StreamItem => ({
+    kind: "source",
+    event: {
+      ...source.event,
+      kind: "rx",
+      payload: {
+        bytesBase64: btoa(String.fromCharCode(...bytes)),
+        byteStart: start,
+        byteEnd: String(Number(start) + bytes.length),
+      },
+    },
+  });
+  const items = [rx([0xc4], "0"), rx([0xe3, 0xba, 0xc3], "1")];
+  const view = render(
+    <StreamView items={items} labels={labels} encoding="gbk" />,
+  );
+  expect(await screen.findByText("你好")).toBeVisible();
+  view.rerender(<StreamView items={items} labels={labels} encoding="utf-8" />);
+  expect(screen.queryByText("你好")).not.toBeInTheDocument();
+  expect(
+    items[0]?.kind === "source" &&
+      items[0].event.kind === "rx" &&
+      items[0].event.payload.bytesBase64,
+  ).toBe("xA==");
+});
+afterEach(() => {
+  cleanup();
+  toast.dismiss();
+});
 beforeEach(() => {
   render(<Toaster />);
 });
@@ -30,10 +178,13 @@ it("keeps stopped stream bytes and offers recovery before the technical error de
   const fault = await screen.findByRole("alert");
   expect(fault).toHaveTextContent(labels.streamUnavailable);
   expect(fault).toHaveTextContent(labels.disconnectHelp);
-  const technical = screen.getByText("Subscription source epoch ended");
-  expect(technical).not.toBeVisible();
+  expect(
+    screen.queryByText("Subscription source epoch ended"),
+  ).not.toBeInTheDocument();
   fireEvent.click(screen.getByText(labels.errorDetails));
-  expect(technical).toBeVisible();
+  expect(
+    screen.getByRole("region", { name: labels.errorDetails }),
+  ).toHaveTextContent("Subscription source epoch ended");
 });
 it.each(["accepted", "partial", "unknown", "rejected"] as const)(
   "updates TX bytes in place with their %s receipt and preserves a gap",
@@ -425,11 +576,46 @@ it("freezes rendering while new Host items continue arriving, then resumes lates
   fireEvent.click(screen.getByRole("button", { name: "Freeze" }));
   view.rerender(<StreamView items={[first, second]} labels={labels} />);
   expect(screen.queryByText("World")).not.toBeInTheDocument();
-  expect(screen.getByRole("status")).toHaveTextContent("+1");
+  const totals = screen.getByRole("group", {
+    name: labels.displayedRxBytes,
+  }).parentElement;
+  expect(totals).toHaveTextContent("Display paused");
+  expect(totals).toHaveTextContent("Pending updates: 1");
+  expect(screen.queryByText("+1")).not.toBeInTheDocument();
   fireEvent.click(screen.getByRole("button", { name: "Resume" }));
+  expect(totals).not.toHaveTextContent("Display paused");
   expect(screen.getByText("HelloWorld")).toBeInTheDocument();
 });
-it("locates HEX matches by original byte offset and displays a real reader gap", () => {
+it("applies a reduced retention limit to a paused view and explains normal display eviction", async () => {
+  const separated: StreamItem = {
+    ...second,
+    event: {
+      ...second.event,
+      time: { ...second.event.time, sourceMonoNs: "500000000" },
+    },
+  };
+  const view = render(
+    <StreamView
+      items={[first, separated]}
+      labels={labels}
+      historyLimits={{ maxRecords: 2, maxBytes: 1024 * 1024 }}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.freeze }));
+  view.rerender(
+    <StreamView
+      items={[second]}
+      labels={labels}
+      trimmed
+      historyLimits={{ maxRecords: 1, maxBytes: 1024 * 1024 }}
+    />,
+  );
+  expect(await screen.findByText("World")).toBeVisible();
+  expect(screen.queryByText("HelloWorld")).not.toBeInTheDocument();
+  expect(screen.getByText(labels.historyTrimmed)).toBeVisible();
+  expect(screen.queryByText(labels.gapHelp)).not.toBeInTheDocument();
+});
+it("locates HEX matches by original byte offset and displays a real reader gap", async () => {
   const gap: StreamItem = {
     kind: "reader_gap",
     gap: {
@@ -447,11 +633,16 @@ it("locates HEX matches by original byte offset and displays a real reader gap",
   fireEvent.change(screen.getByRole("textbox", { name: "Search bytes" }), {
     target: { value: "57 6f" },
   });
+  screen.getByRole("textbox", { name: "Search bytes" }).focus();
   fireEvent.click(screen.getByRole("button", { name: "Find" }));
-  expect(screen.getByRole("status")).toHaveTextContent("Offset 5");
+  await waitFor(() =>
+    expect(screen.getByRole("status")).toHaveTextContent("Offset 5"),
+  );
   expect(screen.getByText(/reader_overflow/)).toHaveTextContent("[3, 7)");
-  expect(document.querySelector('[data-offset="0"]')).toHaveFocus();
-  expect(document.activeElement).toHaveTextContent("HelloWorld");
+  expect(screen.getByRole("textbox", { name: "Search bytes" })).toHaveFocus();
+  expect(document.querySelector('[data-offset="0"]')).toHaveTextContent(
+    "HelloWorld",
+  );
 });
 
 it("opens search next to the stream and returns focus to its trigger on Escape", () => {
@@ -494,7 +685,6 @@ it("clears a frozen view without keeping its old snapshot on screen", () => {
     onClearView: clear,
     displayLabels: {
       displayOptions: "Display options",
-      newData: "New events",
       clearView: "Clear view",
     },
   };
@@ -577,16 +767,156 @@ it("discards a frozen snapshot and decoder state when the replay reader generati
   expect(screen.getByText("World")).toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
 });
-it("scrolling away from the end freezes rendering without changing the input stream", () => {
+it("keeps receiving live while reviewing history and follows again after returning to latest", () => {
   const view = render(<StreamView items={[first]} labels={labels} />);
+  const log = screen.getByRole("log");
+  let height = 1000;
+  let top = 800;
+  Object.defineProperties(log, {
+    scrollHeight: { get: () => height },
+    clientHeight: { value: 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  view.rerender(<StreamView items={[first]} labels={labels} />);
+  height = 1400;
+  fireEvent.scroll(log);
+  expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
+  fireEvent.wheel(log, { deltaY: -40 });
+  log.scrollTop = 760;
+  fireEvent.scroll(log);
+  view.rerender(<StreamView items={[first, second]} labels={labels} />);
+  expect(log).toHaveTextContent("World");
+  expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
+  expect(
+    screen.getByRole("button", { name: labels.returnToLatest }),
+  ).toBeVisible();
+  expect(screen.getByText("Updates: 1")).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("button", { name: "Return to latest" }));
+  expect(
+    screen.queryByRole("button", { name: labels.returnToLatest }),
+  ).not.toBeInTheDocument();
+  expect(log.scrollTop).toBe(1200);
+});
+
+it("does not freeze when clicking receive text is followed by layout growth", () => {
+  render(<StreamView items={[first]} labels={labels} />);
+  const log = screen.getByRole("log");
+  let height = 1000;
+  Object.defineProperties(log, {
+    scrollHeight: { get: () => height },
+    clientHeight: { value: 200 },
+    scrollTop: { value: 800, writable: true },
+  });
+  fireEvent.pointerDown(screen.getByText("Hello"), { pointerType: "mouse" });
+  height = 1400;
+  fireEvent.scroll(log);
+  fireEvent.pointerUp(window);
+  expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: labels.returnToLatest }),
+  ).not.toBeInTheDocument();
+});
+
+it("keeps history review when layout changes reach the end without a downward user gesture", () => {
+  const view = render(<StreamView items={[first]} labels={labels} />);
+  const log = screen.getByRole("log");
+  let height = 1000;
+  let top = 800;
+  Object.defineProperties(log, {
+    scrollHeight: { get: () => height },
+    clientHeight: { value: 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  fireEvent.wheel(log, { deltaY: -8 });
+  log.scrollTop = 792;
+  fireEvent.scroll(log);
+  const latest = screen.getByRole("button", { name: labels.returnToLatest });
+  expect(latest).toBeVisible();
+  height = 992;
+  view.rerender(<StreamView items={[first, second]} labels={labels} />);
+  fireEvent.scroll(log);
+  expect(latest).toBeVisible();
+  expect(latest).toHaveTextContent("Updates: 1");
+  expect(log).toHaveTextContent("World");
+  fireEvent.keyDown(log, { key: "End", ctrlKey: true });
+  expect(latest).not.toBeInTheDocument();
+});
+
+it("enters history when a passive upward wheel arrives after the browser already reached the top", () => {
+  render(<StreamView items={[first]} labels={labels} />);
   const log = screen.getByRole("log");
   Object.defineProperties(log, {
     scrollHeight: { value: 1000 },
     clientHeight: { value: 200 },
-    scrollTop: { value: 10, writable: true },
+    scrollTop: { value: 0, writable: true },
   });
-  fireEvent.scroll(log);
-  view.rerender(<StreamView items={[first, second]} labels={labels} />);
-  expect(screen.queryByText("World")).not.toBeInTheDocument();
-  expect(screen.getByRole("button", { name: "Resume" })).toBeInTheDocument();
+  fireEvent.wheel(log, { deltaY: -1000000 });
+  expect(
+    screen.getByRole("button", { name: labels.returnToLatest }),
+  ).toBeVisible();
+  expect(screen.getByRole("button", { name: labels.freeze })).toBeVisible();
 });
+
+it("does not carry a wheel event without scrolling into a later receive update", () => {
+  const view = render(<StreamView items={[first]} labels={labels} />);
+  const log = screen.getByRole("log");
+  let height = 200;
+  let top = 0;
+  Object.defineProperties(log, {
+    scrollHeight: { get: () => height },
+    clientHeight: { value: 200 },
+    scrollTop: {
+      get: () => top,
+      set: (value: number) => {
+        top = Math.max(0, Math.min(value, height - 200));
+      },
+    },
+  });
+  fireEvent.wheel(log, { deltaY: -40 });
+  height = 1000;
+  view.rerender(<StreamView items={[first, second]} labels={labels} />);
+  height = 1400;
+  fireEvent.scroll(log);
+  expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
+  expect(log).toHaveTextContent("World");
+  expect(
+    screen.queryByRole("button", { name: labels.returnToLatest }),
+  ).not.toBeInTheDocument();
+});
+
+it.each([false, true])(
+  "enters history on the first small scrollbar movement only while dragging: released=%s",
+  (released) => {
+    render(<StreamView items={[first]} labels={labels} />);
+    const log = screen.getByRole("log");
+    Object.defineProperties(log, {
+      scrollHeight: { value: 1000 },
+      clientHeight: { value: 200 },
+      scrollTop: { value: 800, writable: true },
+    });
+    fireEvent.pointerDown(log);
+    if (released) fireEvent.pointerUp(window);
+    log.scrollTop = 790;
+    fireEvent.scroll(log);
+    expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: labels.returnToLatest }) !== null,
+    ).toBe(!released);
+    log.scrollTop = 700;
+    fireEvent.scroll(log);
+    expect(screen.getByRole("button", { name: "Freeze" })).toBeInTheDocument();
+    expect(
+      screen.queryByRole("button", { name: labels.returnToLatest }) !== null,
+    ).toBe(!released);
+  },
+);

@@ -46,15 +46,11 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
     );
     options.expected_host_executable =
         std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
-    let client = if matches!(arguments.command, Command::HostStop { .. }) {
-        HostClient::connect(options.clone()).await?
-    } else {
-        HostClient::connect_or_start(options.clone()).await?
-    };
-    let client = if matches!(
-        arguments.command,
-        Command::UserControl { .. } | Command::HostStop { .. }
-    ) {
+    if let Command::HostStop { request_id } = &arguments.command {
+        return stop_existing_host(options, request_id.clone()).await;
+    }
+    let client = HostClient::connect_or_start(options.clone()).await?;
+    let client = if matches!(arguments.command, Command::UserControl { .. }) {
         drop(client);
         // 只有显式本地用户入口读取该凭据，clientKind 本身不授予权限。
         options.user_control_credential = Some(read_user_control_credential(profile)?);
@@ -167,9 +163,7 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
                 )))
                 .await?
         }
-        Command::HostStop { request_id } => {
-            return stop_host(&client, profile, request_id).await;
-        }
+        Command::HostStop { .. } => unreachable!("Host stop precedes client bootstrap"),
     };
     encode_reply(reply)
 }
@@ -219,7 +213,7 @@ fn call(
 }
 fn reveal(action_id: &Id, target: &Target) -> RevealTarget {
     let mut reveal = BuiltinAction::find(action_id.as_str())
-        .map(|action| action.spec().reveal_target)
+        .map(|action| action.spec().reveal_target.clone())
         .unwrap_or_else(|_| RevealTarget {
             page_id: id("workbench"),
             workspace_id: None,
@@ -255,6 +249,29 @@ fn encode_reply(reply: RpcReply) -> HostResult<serde_json::Value> {
 }
 fn id(value: &str) -> Id {
     Id::try_from(value).expect("builtin Id")
+}
+
+async fn stop_existing_host(
+    mut options: ConnectOptions,
+    request_id: RequestId,
+) -> HostResult<serde_json::Value> {
+    let already_stopped = || serde_json::json!({"stopped":true,"alreadyStopped":true});
+    // 发现记录可能落后于进程退出；只有受保护的 OS 锁能确认当前无需停机。
+    if !serial_workbench_ipc::profile_has_running_host(&options.profile)? {
+        return Ok(already_stopped());
+    }
+    options.user_control_credential = Some(read_user_control_credential(&options.profile)?);
+    match HostClient::connect(options.clone()).await {
+        Ok(client) => stop_host(&client, &options.profile, request_id).await,
+        // 探测后 Host 可能刚好退出；仅重核管道连接失败，不掩盖认证或目录错误。
+        Err(error)
+            if error.code == "HOST_BUSY"
+                && !serial_workbench_ipc::profile_has_running_host(&options.profile)? =>
+        {
+            Ok(already_stopped())
+        }
+        Err(error) => Err(error),
+    }
 }
 
 async fn stop_host(

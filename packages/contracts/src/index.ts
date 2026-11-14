@@ -25,6 +25,7 @@ import {
 import generatedDefaults from "./generated/defaults.json";
 
 export type * from "./generated/types.ts";
+export { TX_MAX_BYTES } from "./generated/types.ts";
 
 export class ContractValidationError extends Error {
   constructor(message = "Invalid Host RPC reply") {
