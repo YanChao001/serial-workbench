@@ -30,6 +30,7 @@ import { stateScopeKey } from "@/lib/host-scope";
 import { createWorkbenchFileActions } from "@/features/workbench/file-actions";
 import { connectionKey } from "@/lib/client-connection-defaults";
 import { HostConnectionNotice } from "@/features/workbench/host-connection-notice";
+import { WorkbenchNotice } from "@/features/workbench/workbench-notice";
 import { settingsLocation } from "@/routes";
 
 export default function Overview({
@@ -84,7 +85,6 @@ export default function Overview({
       request: 0,
     };
   const renderIdentity = { ...activeIdentity.current };
-  const receiptEvidence = useRef(new Map<string, WorkspaceDocumentResult>());
   function acknowledge(
     result: WorkspaceDocumentResult,
     expected: { key: string; generation: number; request?: number } = {
@@ -93,10 +93,6 @@ export default function Overview({
     },
     select = false,
   ) {
-    receiptEvidence.current.set(
-      JSON.stringify([attachmentKey, scopeOf(result)]),
-      result,
-    );
     const current = activeIdentity.current;
     if (
       current.key !== expected.key ||
@@ -241,7 +237,9 @@ export default function Overview({
         }
         description={
           retrying || host.state.status === "connecting"
-            ? t("workbench.hostWaiting")
+            ? draftLoad.drafts === undefined && draftLoad.error === undefined
+              ? t("workbench.draftLoading")
+              : t("workbench.hostWaiting")
             : nativeErrorText({ code: hostErrorCode }, t)
         }
         labels={{
@@ -337,6 +335,7 @@ export default function Overview({
       duplicateView: t("workbench.duplicateView"),
       noSession: t("workbench.noSession"),
       bindingUnavailable: t("workbench.bindingUnavailable"),
+      bindingUnmatched: t("workbench.bindingUnmatched"),
       pinned: t("workbench.pinned"),
       readOnly: t("workbench.readOnly"),
       takeover: t("workbench.takeover"),
@@ -456,245 +455,235 @@ export default function Overview({
       data-testid="serial-workbench-shell"
       aria-label={t("shell.title")}
     >
-      {draftLoad.drafts ? (
-        <WorkspaceLayout
-          connectionLog={
-            connectionStatus
-              ? {
-                  module: "connection",
-                  level:
-                    host.state.error || host.state.status === "error"
-                      ? "error"
-                      : "info",
-                  message: retrying
-                    ? t("workbench.hostRetrying")
-                    : host.state.status === "connecting"
-                      ? t("workbench.hostConnecting")
-                      : t("workbench.hostUnavailable"),
-                  code: hostErrorCode,
-                }
-              : undefined
-          }
-          connectionRecovery={connectionRecovery}
-          host={host}
-          connectionDefaults={settings?.connections?.values}
-          connectionWaitModes={settings?.connections?.waitModes}
-          connectionDefaultsLoading={
-            settings?.connections?.status === "loading"
-          }
-          onRememberConnection={settings?.connections?.remember}
-          labels={labels}
-          connectionStatus={connectionStatus}
-          formatError={(error) => nativeErrorText(error, t)}
-          unboundDraftMessage={t("workbench.unboundDraft")}
-          initialWorkspace={workspaceDraft ?? workspaceBase?.document.value}
-          preserveWorkspacePresets={workspaceDraft !== undefined}
-          workspaceKey={workspaceScope}
-          workspaceRevision={workspaceBase?.document.revision}
-          workspaceSelection={renderIdentity.generation}
-          readCaptureTail={host.readCaptureTail}
-          terminalSettings={terminal}
-          receiveHistory={settings?.settings.receiveHistory}
-          onReceiveHistoryChange={
-            settings
-              ? (value) => settings.update({ receiveHistory: value })
-              : undefined
-          }
-          onSaveWindowLayout={
-            workspaceBase
-              ? async (value, signal) => {
-                  const expected = {
-                    ...activeIdentity.current,
-                    request: activeIdentity.current.request + 1,
-                  };
-                  activeIdentity.current = expected;
-                  const before = latestWorkspaceDrafts.current[workspaceScope];
-                  const result = await host.saveWorkspace(
-                    workspaceBase,
-                    value,
-                    signal,
-                  );
-                  if (signal?.aborted) {
-                    receiptEvidence.current.set(
-                      JSON.stringify([attachmentKey, scopeOf(result)]),
-                      result,
-                    );
-                    return;
-                  }
-                  if (!acknowledge(result, expected)) return;
-                  if (latestWorkspaceDrafts.current[workspaceScope] === before)
-                    setWorkspaceDrafts((current) => ({
-                      ...current,
-                      [workspaceScope]: result.document.value,
-                    }));
-                }
-              : undefined
-          }
-          presentationLabels={toolLabels.presentation}
-          toolLabels={toolLabels.layout}
-          renderTool={(tool, context) => (
-            <WorkbenchTools
-              tool={tool}
-              context={context}
-              host={host}
-              base={workspaceBase}
-              draft={workspaceDraft ?? workspaceBase?.document.value}
-              onChange={setWorkspaceDraft}
-              onAcknowledged={(result) => {
-                if (acknowledge(result))
-                  setWorkspaceDrafts((current) => {
-                    if (
-                      !sameWorkspace(
-                        current[workspaceScope],
-                        result.document.value,
-                      )
-                    )
-                      return current;
-                    const next = { ...current };
-                    delete next[workspaceScope];
-                    return next;
-                  });
-              }}
-              onLoaded={(result) => {
-                acknowledge(
-                  result,
-                  {
-                    key: renderIdentity.key,
-                    generation: renderIdentity.generation,
-                  },
-                  true,
+      <WorkspaceLayout
+        draftsReady={draftLoad.drafts !== undefined}
+        connectionLog={
+          connectionStatus
+            ? {
+                module: "connection",
+                level:
+                  host.state.error || host.state.status === "error"
+                    ? "error"
+                    : "info",
+                message: retrying
+                  ? t("workbench.hostRetrying")
+                  : host.state.status === "connecting"
+                    ? t("workbench.hostConnecting")
+                    : t("workbench.hostUnavailable"),
+                code: hostErrorCode,
+              }
+            : undefined
+        }
+        connectionRecovery={connectionRecovery}
+        host={host}
+        connectionDefaults={settings?.connections?.values}
+        connectionWaitModes={settings?.connections?.waitModes}
+        connectionDefaultsLoading={settings?.connections?.status === "loading"}
+        onRememberConnection={settings?.connections?.remember}
+        labels={labels}
+        connectionStatus={connectionStatus}
+        formatError={(error) => nativeErrorText(error, t)}
+        unboundDraftMessage={t("workbench.unboundDraft")}
+        initialWorkspace={workspaceDraft ?? workspaceBase?.document.value}
+        savedWorkspace={workspaceBase?.document.value}
+        preserveWorkspacePresets={workspaceDraft !== undefined}
+        workspaceKey={workspaceScope}
+        draftScopeKey={
+          workspaceBase ? stateScopeKey(workspaceBase.scope) : undefined
+        }
+        workspaceRevision={workspaceBase?.document.revision}
+        workspaceSelection={renderIdentity.generation}
+        readCaptureTail={host.readCaptureTail}
+        terminalSettings={terminal}
+        receiveHistory={settings?.settings.receiveHistory}
+        onReceiveHistoryChange={
+          settings
+            ? (value) => settings.update({ receiveHistory: value })
+            : undefined
+        }
+        onSaveWindowLayout={
+          workspaceBase
+            ? async (value, signal) => {
+                const expected = {
+                  ...activeIdentity.current,
+                  request: activeIdentity.current.request + 1,
+                };
+                activeIdentity.current = expected;
+                const before = latestWorkspaceDrafts.current[workspaceScope];
+                const result = await host.saveWorkspace(
+                  workspaceBase,
+                  value,
+                  signal,
                 );
-              }}
-            />
-          )}
-          onCloseSession={(sessionId, signal) => {
-            const session = host.state.sessions.find(
-              (value) => value.sessionId === sessionId,
-            );
-            const hostId =
-              host.state.devices.find(
-                (value) => value.deviceId === session?.deviceId,
-              )?.hostId ?? host.connection?.attachment.hostId;
-            if (!session || !hostId)
-              return Promise.reject(new Error("SESSION_NOT_FOUND"));
-            return host.invoke(
-              {
-                actionId: "session.close",
-                target: {
-                  hostId,
-                  kind: "session",
-                  id: sessionId,
-                  sessionId,
-                  sessionEpoch: session.sessionEpoch,
+                if (signal?.aborted) return;
+                if (!acknowledge(result, expected)) return;
+                if (latestWorkspaceDrafts.current[workspaceScope] === before)
+                  setWorkspaceDrafts((current) => ({
+                    ...current,
+                    [workspaceScope]: result.document.value,
+                  }));
+              }
+            : undefined
+        }
+        presentationLabels={toolLabels.presentation}
+        toolLabels={toolLabels.layout}
+        renderTool={(tool, context) => (
+          <WorkbenchTools
+            tool={tool}
+            context={context}
+            host={host}
+            base={workspaceBase}
+            draft={workspaceDraft ?? workspaceBase?.document.value}
+            onChange={setWorkspaceDraft}
+            onAcknowledged={(result) => {
+              if (acknowledge(result))
+                setWorkspaceDrafts((current) => {
+                  if (
+                    !sameWorkspace(
+                      current[workspaceScope],
+                      result.document.value,
+                    )
+                  )
+                    return current;
+                  const next = { ...current };
+                  delete next[workspaceScope];
+                  return next;
+                });
+            }}
+            onLoaded={(result) => {
+              acknowledge(
+                result,
+                {
+                  key: renderIdentity.key,
+                  generation: renderIdentity.generation,
                 },
-                params: {},
-                executionMode: "interactive",
-              },
-              signal,
-            );
-          }}
-          onCancelOperation={async (operation, signal) => {
-            const input = {
-              actionId: "operation.cancel",
+                true,
+              );
+            }}
+          />
+        )}
+        onCloseSession={(sessionId, signal) => {
+          const session = host.state.sessions.find(
+            (value) => value.sessionId === sessionId,
+          );
+          const hostId =
+            host.state.devices.find(
+              (value) => value.deviceId === session?.deviceId,
+            )?.hostId ?? host.connection?.attachment.hostId;
+          if (!session || !hostId)
+            return Promise.reject(new Error("SESSION_NOT_FOUND"));
+          return host.invoke(
+            {
+              actionId: "session.close",
               target: {
-                hostId: operation.executionHostId,
-                kind: "operation",
-                id: operation.operationId,
+                hostId,
+                kind: "session",
+                id: sessionId,
+                sessionId,
+                sessionEpoch: session.sessionEpoch,
               },
-              params: { reason: "user" },
+              params: {},
+              executionMode: "interactive",
+            },
+            signal,
+          );
+        }}
+        onCancelOperation={async (operation, signal) => {
+          const input = {
+            actionId: "operation.cancel",
+            target: {
+              hostId: operation.executionHostId,
+              kind: "operation",
+              id: operation.operationId,
+            },
+            params: { reason: "user" },
+          };
+          const check = await host.checkAction(input, signal);
+          signal?.throwIfAborted();
+          if (!check.allowed) throw { code: "PERMISSION_DENIED" };
+          const accepted = await host.invoke(
+            { ...input, executionMode: "independent" },
+            signal,
+          );
+          const receipt = await host.waitForOperation(accepted, signal);
+          signal?.throwIfAborted();
+          if (
+            receipt.actionId !== input.actionId ||
+            receipt.executionHostId !== operation.executionHostId ||
+            receipt.target.hostId !== input.target.hostId ||
+            receipt.target.kind !== input.target.kind ||
+            receipt.target.id !== operation.operationId
+          )
+            throw { code: "CONTRACT_MISMATCH" };
+          if (receipt.state !== "succeeded")
+            throw { code: receipt.error?.code ?? "OPERATION_FAILED" };
+          if (
+            receipt.result?.kind !== "cancellation_requested" ||
+            receipt.result.value.operationId !== operation.operationId
+          )
+            throw { code: "CONTRACT_MISMATCH" };
+        }}
+        initialDrafts={draftLoad.drafts}
+        onSaveDrafts={draftStore.save}
+        readMetrics={host.metrics}
+        readSessionMetrics={host.sessionMetrics}
+        readFileReceipts={host.readFileReceipts}
+        readCaptureStatus={host.captureStatus}
+        readOperationInput={host.operationInput}
+        onSendFile={files.send}
+        onStartCapture={files.capture}
+        onOpenReplay={files.replay}
+        replay={{
+          read: host.readReplay,
+          readRecord: host.readReplayRecord,
+          control: replayControl,
+        }}
+        onStopCapture={async (captureRef, signal) => {
+          signal?.throwIfAborted();
+          const target = {
+            hostId: captureRef.hostId,
+            kind: captureRef.kind,
+            id: captureRef.id,
+          };
+          const matches = (operation: Operation) =>
+            operation.actionId === "capture.stop" &&
+            operation.executionHostId === target.hostId &&
+            operation.target.hostId === target.hostId &&
+            operation.target.kind === target.kind &&
+            operation.target.id === target.id &&
+            operation.target.sessionId === undefined &&
+            operation.target.sessionEpoch === undefined;
+          const accepted = await host.invoke(
+            {
+              actionId: "capture.stop",
+              target,
+              params: { captureRef },
+              executionMode: "independent",
+            },
+            signal,
+          );
+          signal?.throwIfAborted();
+          if (!matches(accepted)) throw { code: "CONTRACT_MISMATCH" };
+          const receipt = await host.waitForOperation(accepted, signal);
+          signal?.throwIfAborted();
+          if (receipt.operationId !== accepted.operationId || !matches(receipt))
+            throw { code: "CONTRACT_MISMATCH" };
+          if (receipt.state !== "succeeded" || receipt.error)
+            throw {
+              code: receipt.error?.code ?? "OPERATION_ABORTED",
+              executionHostId: receipt.executionHostId,
+              operationId: receipt.operationId,
             };
-            const check = await host.checkAction(input, signal);
-            signal?.throwIfAborted();
-            if (!check.allowed) throw { code: "PERMISSION_DENIED" };
-            const accepted = await host.invoke(
-              { ...input, executionMode: "independent" },
-              signal,
-            );
-            const receipt = await host.waitForOperation(accepted, signal);
-            signal?.throwIfAborted();
-            if (
-              receipt.actionId !== input.actionId ||
-              receipt.executionHostId !== operation.executionHostId ||
-              receipt.target.hostId !== input.target.hostId ||
-              receipt.target.kind !== input.target.kind ||
-              receipt.target.id !== operation.operationId
-            )
-              throw { code: "CONTRACT_MISMATCH" };
-            if (receipt.state !== "succeeded")
-              throw { code: receipt.error?.code ?? "OPERATION_FAILED" };
-            if (
-              receipt.result?.kind !== "cancellation_requested" ||
-              receipt.result.value.operationId !== operation.operationId
-            )
-              throw { code: "CONTRACT_MISMATCH" };
-          }}
-          initialDrafts={draftLoad.drafts}
-          onSaveDrafts={draftStore.save}
-          readMetrics={host.metrics}
-          readSessionMetrics={host.sessionMetrics}
-          readFileReceipts={host.readFileReceipts}
-          readCaptureStatus={host.captureStatus}
-          readOperationInput={host.operationInput}
-          onSendFile={files.send}
-          onStartCapture={files.capture}
-          onOpenReplay={files.replay}
-          replay={{
-            read: host.readReplay,
-            readRecord: host.readReplayRecord,
-            control: replayControl,
-          }}
-          onStopCapture={async (captureRef, signal) => {
-            signal?.throwIfAborted();
-            const target = {
-              hostId: captureRef.hostId,
-              kind: captureRef.kind,
-              id: captureRef.id,
-            };
-            const matches = (operation: Operation) =>
-              operation.actionId === "capture.stop" &&
-              operation.executionHostId === target.hostId &&
-              operation.target.hostId === target.hostId &&
-              operation.target.kind === target.kind &&
-              operation.target.id === target.id &&
-              operation.target.sessionId === undefined &&
-              operation.target.sessionEpoch === undefined;
-            const accepted = await host.invoke(
-              {
-                actionId: "capture.stop",
-                target,
-                params: { captureRef },
-                executionMode: "independent",
-              },
-              signal,
-            );
-            signal?.throwIfAborted();
-            if (!matches(accepted)) throw { code: "CONTRACT_MISMATCH" };
-            const receipt = await host.waitForOperation(accepted, signal);
-            signal?.throwIfAborted();
-            if (
-              receipt.operationId !== accepted.operationId ||
-              !matches(receipt)
-            )
-              throw { code: "CONTRACT_MISMATCH" };
-            if (receipt.state !== "succeeded" || receipt.error)
-              throw {
-                code: receipt.error?.code ?? "OPERATION_ABORTED",
-                executionHostId: receipt.executionHostId,
-                operationId: receipt.operationId,
-              };
-          }}
-        />
-      ) : (
-        <div aria-busy={draftLoad.error === undefined}>
-          <h1 className="sr-only">{labels.title}</h1>
-          {connectionStatus}
-          <p role="status">
-            {draftLoad.error === undefined
-              ? t("workbench.draftLoading")
-              : t("workbench.draftLoadFailed")}
-          </p>
-          {draftLoad.error !== undefined && (
+        }}
+      />
+      <WorkbenchNotice
+        noticeKey={`drafts:${draftLoad.error === undefined ? "loading" : nativeErrorCode(draftLoad.error)}`}
+        duration={Infinity}
+      >
+        {draftLoad.drafts === undefined &&
+          (draftLoad.error !== undefined ? (
             <>
+              <p>{t("workbench.draftLoadFailed")}</p>
               <p role="alert">
                 {nativeErrorText({ code: nativeErrorCode(draftLoad.error) }, t)}
               </p>
@@ -715,9 +704,10 @@ export default function Overview({
                 {t("shell.diagnostics")}
               </a>
             </>
-          )}
-        </div>
-      )}
+          ) : !connectionRecovery?.busy ? (
+            <p role="status">{t("workbench.draftLoading")}</p>
+          ) : null)}
+      </WorkbenchNotice>
     </section>
   );
 }

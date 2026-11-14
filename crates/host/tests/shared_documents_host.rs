@@ -634,6 +634,12 @@ async fn workspace_save_is_shared_between_actors_but_independent_between_workspa
     let before = read(&f.first, &bench, "workspace.read", json!({})).await;
     let mut value = before["document"]["value"].clone();
     value["name"] = json!("UART bench");
+    value["bindings"] = json!([{
+        "bindingId":"port-choice", "hostId":bench.host_id, "deviceId":"old-device",
+        "portName":"COM5",
+        "fingerprint":{"transport":"serial","evidence":"unreliable"},
+        "configuration":SerialConfiguration::default(), "reconnect":ReconnectPolicy::default()
+    }]);
     let operation = invoke(
         &f.first,
         call(
@@ -649,6 +655,10 @@ async fn workspace_save_is_shared_between_actors_but_independent_between_workspa
     assert_eq!(operation.state, OperationState::Succeeded);
     let shared = read(&f.second, &bench, "workspace.read", json!({})).await;
     assert_eq!(shared["document"]["value"]["name"], "UART bench");
+    assert_eq!(
+        shared["document"]["value"]["bindings"][0]["portName"],
+        "COM5"
+    );
     assert_eq!(shared["document"]["revision"], "1");
     assert_eq!(
         serde_json::to_value(operation.result.unwrap()).unwrap()["value"],
@@ -1164,6 +1174,7 @@ async fn workspace_import_preview_rejects_future_or_invalid_references() {
         binding_id: id("binding"),
         host_id: target.host_id.clone(),
         device_id: id("virtual:echo"),
+        port_name: Some("virtual:echo".into()),
         fingerprint: DeviceFingerprint {
             transport: DeviceTransportKind::Virtual,
             vid: None,

@@ -57,6 +57,364 @@ function workspacePreset(
     "#2266AA",
   )!.document;
 }
+function deviceSelectionFixture() {
+  const adapter = host();
+  const first = { ...adapter.state.devices[0]!, systemName: "COM5" };
+  const second = { ...first, deviceId: "second-device", systemName: "COM14" };
+  const secondSession = {
+    ...session("second-session"),
+    deviceId: second.deviceId,
+  };
+  adapter.state.devices = [first, second];
+  adapter.state.sessions = [session(), secondSession];
+  adapter.open = vi.fn((deviceId: string) =>
+    Promise.resolve(deviceId === second.deviceId ? secondSession : session()),
+  );
+  const primary = workspacePreset(adapter, "9600", first.deviceId);
+  const secondary = workspacePreset(adapter, "115200", second.deviceId);
+  const document: WorkspaceDocument = {
+    ...primary,
+    bindings: [...primary.bindings, ...secondary.bindings],
+    views: [
+      { ...primary.views[0]!, id: "primary-view", name: "COM5 primary" },
+      { ...secondary.views[0]!, id: "secondary-view", name: "COM14 secondary" },
+    ],
+  };
+  return { adapter, first, second, secondSession, document };
+}
+
+it("device selection follows saved-view tabs after an explicit replacement choice", async () => {
+  const { adapter, document } = deviceSelectionFixture();
+  adapter.state.sessions = [];
+  render(
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+    />,
+  );
+  const picker = screen.getByRole("combobox", { name: labels.devices });
+  expect(picker).toHaveTextContent("COM5");
+  const user = userEvent.setup();
+  await user.click(picker);
+  await user.click(screen.getByRole("option", { name: "COM14" }));
+  expect(picker).toHaveTextContent("COM14");
+  fireEvent.click(screen.getByRole("tab", { name: "COM14 secondary" }));
+  expect(picker).toHaveTextContent("COM14");
+  fireEvent.click(screen.getByRole("tab", { name: "COM5 primary" }));
+  expect(picker).toHaveTextContent("COM5");
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+});
+it("device selection ignores a vanished replacement choice and falls back to its current view", async () => {
+  const { adapter, first, document } = deviceSelectionFixture();
+  adapter.state.sessions = [];
+  const content = () => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+    />
+  );
+  const mounted = render(content());
+  const picker = screen.getByRole("combobox", { name: labels.devices });
+  const user = userEvent.setup();
+  await user.click(picker);
+  await user.click(screen.getByRole("option", { name: "COM14" }));
+  adapter.state = { ...adapter.state, devices: [first] };
+  mounted.rerender(content());
+  expect(picker).toHaveTextContent("COM5");
+  expect(screen.getByRole("button", { name: "Open COM5" })).toBeEnabled();
+  expect(adapter.open).not.toHaveBeenCalled();
+});
+it("device selection drops a closed view's replacement choice when its neighbor becomes active", async () => {
+  const { adapter, first, document } = deviceSelectionFixture();
+  adapter.state.sessions = [];
+  adapter.state.devices = [
+    ...adapter.state.devices,
+    { ...first, deviceId: "third-device", systemName: "COM7" },
+  ];
+  render(
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+    />,
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "COM14 secondary" }));
+  const picker = screen.getByRole("combobox", { name: labels.devices });
+  const user = userEvent.setup();
+  await user.click(picker);
+  await user.click(screen.getByRole("option", { name: "COM7" }));
+  fireEvent.click(screen.getByRole("button", { name: "Close view" }));
+  expect(
+    screen.getByRole("tab", { name: "COM5 primary", selected: true }),
+  ).toBeInTheDocument();
+  expect(picker).toHaveTextContent("COM5");
+  expect(adapter.open).not.toHaveBeenCalled();
+});
+it("device selection recovers a unique serial fingerprint after device identity and port name change without opening", async () => {
+  const { adapter, first, second, document } = deviceSelectionFixture();
+  const fingerprint = {
+    transport: "serial" as const,
+    evidence: "serialNumber" as const,
+    vid: 0x1a86,
+    pid: 0x7523,
+    serialNumber: "board-5",
+  };
+  document.bindings[0]!.fingerprint = fingerprint;
+  adapter.state.sessions = [];
+  adapter.state.devices = [
+    second,
+    {
+      ...first,
+      deviceId: "replacement-device",
+      systemName: "COM9",
+      fingerprint,
+    },
+  ];
+  render(
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+    />,
+  );
+  expect(
+    screen.getByRole("combobox", { name: labels.devices }),
+  ).toHaveTextContent("COM9");
+  expect(screen.getByRole("button", { name: "Open COM9" })).toBeEnabled();
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Open COM9" }));
+  await waitFor(() =>
+    expect(adapter.open).toHaveBeenCalledWith(
+      "replacement-device",
+      expect.any(AbortSignal),
+      expect.objectContaining({ baudRate: "9600" }),
+    ),
+  );
+});
+it("device selection waits for a missing saved binding to appear without choosing the first port", () => {
+  const { adapter, first, second, document } = deviceSelectionFixture();
+  adapter.state.sessions = [];
+  adapter.state.devices = [second];
+  const content = () => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+    />
+  );
+  const mounted = render(content());
+  const picker = screen.getByRole("combobox", { name: labels.devices });
+  expect(picker).not.toHaveTextContent("COM14");
+  expect(screen.getByRole("button", { name: /^Open(?: |$)/ })).toBeDisabled();
+  adapter.state = { ...adapter.state, devices: [second, first] };
+  mounted.rerender(content());
+  expect(picker).toHaveTextContent("COM5");
+  expect(screen.getByRole("button", { name: "Open COM5" })).toBeEnabled();
+  expect(adapter.open).not.toHaveBeenCalled();
+});
+it("device selection preselects a weak legacy COM5 view and opens only on request with its saved preset", async () => {
+  const { adapter, first, second, document } = deviceSelectionFixture();
+  const fingerprint = {
+    transport: "serial" as const,
+    evidence: "unreliable" as const,
+  };
+  document.views[0]!.name = "COM5";
+  document.bindings[0]!.fingerprint = fingerprint;
+  Reflect.deleteProperty(document.bindings[0]!, "portName");
+  adapter.state.sessions = [];
+  adapter.state.devices = [
+    second,
+    { ...first, deviceId: "current-com5", fingerprint },
+  ];
+  adapter.open = vi
+    .fn()
+    .mockResolvedValue({ ...session(), deviceId: "current-com5" });
+  const save = vi.fn();
+  const original = structuredClone(document);
+  render(
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+      onSaveWindowLayout={save}
+    />,
+  );
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+  expect(document).toEqual(original);
+  expect(
+    screen.getByRole("combobox", { name: labels.devices }),
+  ).toHaveTextContent(/^COM5$/);
+  const open = screen.getByRole("button", { name: "Open COM5" });
+  expect(open).toBeEnabled();
+  fireEvent.click(open);
+  await waitFor(() =>
+    expect(adapter.open).toHaveBeenCalledWith(
+      "current-com5",
+      expect.any(AbortSignal),
+      expect.objectContaining({ baudRate: "9600" }),
+    ),
+  );
+  expect(adapter.open).toHaveBeenCalledOnce();
+  expect(adapter.send).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+});
+it("device selection keeps an explicit weak port hint across tab selection and custom view renaming", async () => {
+  const { adapter, first, second, document } = deviceSelectionFixture();
+  const fingerprint = {
+    transport: "serial" as const,
+    evidence: "unreliable" as const,
+  };
+  document.views[0]!.name = "传感器";
+  Object.assign(document.bindings[0]!, { portName: "COM5", fingerprint });
+  adapter.state.sessions = [];
+  adapter.state.devices = [
+    second,
+    { ...first, deviceId: "current-com5", fingerprint },
+  ];
+  adapter.open = vi
+    .fn()
+    .mockResolvedValue({ ...session(), deviceId: "current-com5" });
+  const save = vi.fn();
+  const content = (value: WorkspaceDocument) => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={value}
+      workspaceKey="port-hint"
+      onSaveWindowLayout={save}
+    />
+  );
+  const mounted = render(content(document));
+  const picker = screen.getByRole("combobox", { name: labels.devices });
+  expect(picker).toHaveTextContent(/^COM5$/);
+  fireEvent.click(screen.getByRole("tab", { name: "COM14 secondary" }));
+  expect(picker).toHaveTextContent(/^COM14$/);
+  fireEvent.click(screen.getByRole("tab", { name: "传感器" }));
+  expect(picker).toHaveTextContent(/^COM5$/);
+  const renamed: WorkspaceDocument = {
+    ...document,
+    views: document.views.map((view, index) =>
+      index === 0 ? { ...view, name: "温度传感器" } : view,
+    ),
+  };
+  mounted.rerender(content(renamed));
+  expect(
+    screen.getByRole("tab", { name: "温度传感器", selected: true }),
+  ).toBeInTheDocument();
+  expect(picker).toHaveTextContent(/^COM5$/);
+  mounted.unmount();
+  render(content(renamed));
+  expect(
+    screen.getByRole("combobox", { name: labels.devices }),
+  ).toHaveTextContent(/^COM5$/);
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+  const open = screen.getByRole("button", { name: "Open COM5" });
+  expect(open).toBeEnabled();
+  fireEvent.click(open);
+  await waitFor(() =>
+    expect(adapter.open).toHaveBeenCalledWith(
+      "current-com5",
+      expect.any(AbortSignal),
+      expect.objectContaining({ baudRate: "9600" }),
+    ),
+  );
+  expect(adapter.open).toHaveBeenCalledOnce();
+  expect(adapter.send).not.toHaveBeenCalled();
+  expect(save).not.toHaveBeenCalled();
+});
+it.each([
+  "no port hint",
+  "foreign Host",
+  "different transport",
+  "ambiguous port name",
+] as const)(
+  "device selection leaves a weak port hint unmatched with %s",
+  async (mismatch) => {
+    const { adapter, first, second, document } = deviceSelectionFixture();
+    const fingerprint = {
+      transport: "serial" as const,
+      evidence: "unreliable" as const,
+    };
+    adapter.state.sessions = [];
+    Object.assign(document.bindings[0]!, { portName: "COM5", fingerprint });
+    adapter.state.devices = [
+      { ...first, deviceId: "current-com5", fingerprint },
+      second,
+    ];
+    if (mismatch === "no port hint") {
+      Reflect.deleteProperty(document.bindings[0]!, "portName");
+      document.views[0]!.name = "Sensor primary";
+    } else if (mismatch === "foreign Host") {
+      document.bindings[0]!.hostId = "foreign-host";
+    } else if (mismatch === "different transport") {
+      adapter.state.devices[0]!.fingerprint = {
+        transport: "virtual",
+        evidence: "unreliable",
+      };
+    } else if (mismatch === "ambiguous port name") {
+      adapter.state.devices = [
+        ...adapter.state.devices,
+        { ...first, deviceId: "second-com5", fingerprint },
+      ];
+    }
+    render(
+      <WorkspaceLayout
+        host={adapter}
+        labels={labels}
+        initialWorkspace={document}
+      />,
+    );
+    const picker = screen.getByRole("combobox", { name: labels.devices });
+    expect(picker).toHaveTextContent(labels.bindingUnmatched);
+    expect(picker).not.toHaveTextContent("COM14");
+    expect(screen.getByRole("button", { name: /^Open(?: |$)/ })).toBeDisabled();
+    const user = userEvent.setup();
+    await user.click(picker);
+    const unavailable = screen.getByRole("option", {
+      name: (name) => name.endsWith(labels.bindingUnmatched),
+    });
+    expect(unavailable).toHaveAttribute("aria-disabled", "true");
+    expect(unavailable).toHaveAttribute("data-state", "checked");
+    for (const candidate of screen.getAllByRole("option", { name: "COM5" }))
+      expect(candidate).toHaveAttribute("data-state", "unchecked");
+    expect(adapter.open).not.toHaveBeenCalled();
+    expect(adapter.send).not.toHaveBeenCalled();
+  },
+);
+it("device selection follows its confirmed running source before an unsaved template binding", async () => {
+  const { adapter, document, secondSession } = deviceSelectionFixture();
+  render(
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      initialWorkspace={document}
+    />,
+  );
+  const picker = screen.getByRole("combobox", { name: labels.devices });
+  const user = userEvent.setup();
+  await user.click(picker);
+  await user.click(screen.getByRole("option", { name: "COM14" }));
+  fireEvent.click(screen.getByRole("button", { name: "Open COM14" }));
+  await waitFor(() =>
+    expect(adapter.watchSession).toHaveBeenCalledWith(
+      secondSession.sessionId,
+      expect.any(Function),
+    ),
+  );
+  fireEvent.click(screen.getByRole("tab", { name: "COM5 primary" }));
+  expect(picker).toHaveTextContent("COM14");
+  expect(document.bindings[0]!.deviceId).toBe("device");
+  expect(adapter.open).toHaveBeenCalledOnce();
+  expect(adapter.send).not.toHaveBeenCalled();
+});
 
 it("uses the selected workspace connection preset ahead of remembered device preferences", async () => {
   const adapter = host();
@@ -1158,6 +1516,259 @@ it("saves the current window layout only on explicit save and keeps later runtim
   );
   expect(screen.getAllByRole("tab")).toHaveLength(2);
 });
+it("keeps formats edited while a layout save waits for its late receipt", async () => {
+  const adapter = host();
+  const original = workspacePreset(adapter, "9600");
+  let finish!: () => void;
+  const waiting = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const save = vi
+    .fn()
+    .mockReturnValueOnce(waiting)
+    .mockResolvedValue(undefined);
+  const tools = workbenchToolLabels(createTranslator(en)).layout;
+  const content = (document: WorkspaceDocument) => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      workspaceKey="late-layout-formats"
+      initialWorkspace={document}
+      toolLabels={tools}
+      onSaveWindowLayout={save}
+    />
+  );
+  const mounted = render(content(original));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Send encoding" }));
+  await user.click(screen.getByRole("option", { name: "GBK" }));
+  fireEvent.click(screen.getByRole("button", { name: "Save current layout" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  const committed = save.mock.calls[0]![0] as WorkspaceDocument;
+  const submitted = structuredClone(committed);
+  expect(committed.views[0]).toMatchObject({
+    sendMode: "text",
+    sendEncoding: "gbk",
+  });
+  await user.click(screen.getByRole("combobox", { name: "Send encoding" }));
+  await user.click(screen.getByRole("option", { name: "ASCII" }));
+  const hex = within(screen.getByRole("region", { name: "Send" })).getByRole(
+    "radio",
+    { name: "HEX" },
+  );
+  await waitFor(() => expect(hex).toBeEnabled());
+  await user.click(hex);
+  expect(hex).toBeChecked();
+  expect(committed).toEqual(submitted);
+  mounted.rerender(content(committed));
+  await act(async () => finish());
+  expect(
+    screen.getByRole("combobox", { name: "Send encoding" }),
+  ).toHaveTextContent("ASCII");
+  expect(
+    within(screen.getByRole("region", { name: "Send" })).getByRole("radio", {
+      name: "HEX",
+    }),
+  ).toBeChecked();
+  const saveButton = screen.getByRole("button", {
+    name: "Save current layout",
+  });
+  await waitFor(() => expect(saveButton).toBeEnabled());
+  fireEvent.click(saveButton);
+  await waitFor(() => expect(save).toHaveBeenCalledTimes(2));
+  const latest = save.mock.calls[1]![0] as WorkspaceDocument;
+  expect(latest.views[0]).toMatchObject({
+    sendMode: "hex",
+    sendEncoding: "ascii",
+  });
+  expect(committed).toEqual(submitted);
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+});
+it("applies same-workspace editor formats ahead of earlier runtime overrides when saving the layout", async () => {
+  const adapter = host();
+  const original = workspacePreset(adapter, "9600");
+  const save = vi.fn().mockResolvedValue(undefined);
+  const tools = workbenchToolLabels(createTranslator(en)).layout;
+  const content = (document: WorkspaceDocument) => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      workspaceKey="editing-formats"
+      initialWorkspace={document}
+      toolLabels={tools}
+      onSaveWindowLayout={save}
+    />
+  );
+  const mounted = render(content(original));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Receive encoding" }));
+  await user.click(screen.getByRole("option", { name: "GBK" }));
+  await user.click(screen.getByRole("combobox", { name: "Send encoding" }));
+  await user.click(screen.getByRole("option", { name: "Latin-1" }));
+  await user.click(
+    within(screen.getByRole("region", { name: "Receive" })).getByRole("radio", {
+      name: "HEX",
+    }),
+  );
+  await user.click(
+    within(screen.getByRole("region", { name: "Send" })).getByRole("radio", {
+      name: "HEX",
+    }),
+  );
+  expect(
+    screen.getByRole("combobox", { name: "Receive encoding" }),
+  ).toHaveTextContent("GBK");
+  expect(
+    screen.getByRole("combobox", { name: "Send encoding" }),
+  ).toHaveTextContent("Latin-1");
+  const materialized: WorkspaceDocument = {
+    ...original,
+    views: original.views.map((view) => ({
+      ...view,
+      receiveMode: "hex",
+      sendMode: "hex",
+      receiveEncoding: "gbk",
+      sendEncoding: "latin1",
+    })),
+  };
+  mounted.rerender(content(materialized));
+  mounted.rerender(
+    content({
+      ...materialized,
+      views: materialized.views.map((view) => ({
+        ...view,
+        receiveMode: "text",
+        sendMode: "text",
+        receiveEncoding: "ascii",
+        sendEncoding: "utf-16le",
+      })),
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save current layout" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  const snapshot = save.mock.calls[0]![0] as WorkspaceDocument;
+  expect(snapshot.views[0]).toMatchObject({
+    receiveMode: "text",
+    sendMode: "text",
+    receiveEncoding: "ascii",
+    sendEncoding: "utf-16le",
+  });
+  expect(
+    within(screen.getByRole("region", { name: "Receive" })).getByRole("radio", {
+      name: "Text",
+    }),
+  ).toBeChecked();
+  expect(
+    within(screen.getByRole("region", { name: "Send" })).getByRole("radio", {
+      name: "Text",
+    }),
+  ).toBeChecked();
+  expect(
+    screen.getByRole("combobox", { name: "Receive encoding" }),
+  ).toHaveTextContent("ASCII");
+  expect(
+    screen.getByRole("combobox", { name: "Send encoding" }),
+  ).toHaveTextContent("UTF-16 LE");
+  expect(adapter.open).not.toHaveBeenCalled();
+  expect(adapter.send).not.toHaveBeenCalled();
+});
+it("keeps runtime formats when same-workspace view metadata changes without a format edit", async () => {
+  const adapter = host();
+  const original = workspacePreset(adapter, "9600");
+  const save = vi.fn().mockResolvedValue(undefined);
+  const tools = workbenchToolLabels(createTranslator(en)).layout;
+  const content = (document: WorkspaceDocument) => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      workspaceKey="editing-view-name"
+      initialWorkspace={document}
+      toolLabels={tools}
+      onSaveWindowLayout={save}
+    />
+  );
+  const mounted = render(content(original));
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Receive encoding" }));
+  await user.click(screen.getByRole("option", { name: "GBK" }));
+  await user.click(
+    within(screen.getByRole("region", { name: "Receive" })).getByRole("radio", {
+      name: "HEX",
+    }),
+  );
+  mounted.rerender(
+    content({
+      ...original,
+      views: original.views.map((view) => ({ ...view, name: "Renamed view" })),
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Save current layout" }));
+  await waitFor(() => expect(save).toHaveBeenCalledOnce());
+  const snapshot = save.mock.calls[0]![0] as WorkspaceDocument;
+  expect(snapshot.views[0]).toMatchObject({
+    name: "Renamed view",
+    receiveMode: "hex",
+    receiveEncoding: "gbk",
+  });
+  expect(
+    within(screen.getByRole("region", { name: "Receive" })).getByRole("radio", {
+      name: "HEX",
+    }),
+  ).toBeChecked();
+  expect(
+    screen.getByRole("combobox", { name: "Receive encoding" }),
+  ).toHaveTextContent("GBK");
+});
+it.each(["add", "remove", "replace"] as const)(
+  "keeps a same-workspace capture import %s when saving the current layout",
+  async (change) => {
+    const adapter = host();
+    const previous = {
+      hostId: "host",
+      kind: "capture",
+      id: "before-import",
+      revision: "1",
+    };
+    const imported = {
+      hostId: "host",
+      kind: "capture",
+      id: "after-import",
+      revision: "2",
+    };
+    const original: WorkspaceDocument = {
+      ...workspacePreset(adapter, "9600"),
+      captures: change === "add" ? [] : [previous],
+    };
+    const next: WorkspaceDocument = {
+      ...original,
+      captures: change === "remove" ? [] : [imported],
+    };
+    const save = vi.fn().mockResolvedValue(undefined);
+    const tools = workbenchToolLabels(createTranslator(en)).layout;
+    const content = (document: WorkspaceDocument) => (
+      <WorkspaceLayout
+        host={adapter}
+        labels={labels}
+        workspaceKey="importing-captures"
+        initialWorkspace={document}
+        toolLabels={tools}
+        onSaveWindowLayout={save}
+      />
+    );
+    const mounted = render(content(original));
+    mounted.rerender(content(next));
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save current layout" }),
+    );
+    await waitFor(() => expect(save).toHaveBeenCalledOnce());
+    const snapshot = save.mock.calls[0]![0] as WorkspaceDocument;
+    expect(snapshot.captures).toEqual(next.captures);
+    expect(snapshot.views).toHaveLength(1);
+    expect(adapter.open).not.toHaveBeenCalled();
+    expect(adapter.send).not.toHaveBeenCalled();
+  },
+);
 it("clears only the current view and shows new data after the bounded reader trims the cleared marker", async () => {
   const adapter = host();
   const toolLabels = workbenchToolLabels(createTranslator(en)).layout;

@@ -1,5 +1,35 @@
 # 界面审查
 
+## 2026-11-15 COM5 可用端口恢复
+
+用户截图中的 COM5 已在当前设备目录，但旧绑定因 Host 设备 ID 变化而被标成“不可用”。已用旧弱指纹、无新增字段的工作区复现。当前预选按保存的端口位置定位唯一的同 Host、同类传输端口，旧文档可使用原 COM5 视图名；真正未匹配时才显示“未匹配”。此处选择当前端口，实际连接仍重新验权，不继承旧设备权限。
+
+集成回归验证保存端口名、自定义视图名、切换及重载，预选不触发打开、发送或文档写入，明确连接保留原 9600 预设。下节“不可用”截图属于已修正的旧策略，不能用作当前选择行为的验收。
+
+正式 Web 构建的八项工作区及七项 Host 不可用场景全部通过，无跳过。已查看 `artifacts/workspace-port-delivered/new-cases/` 中的 `weak-port-name-catalog-zh-light.png`、`weak-port-explicitly-connected-zh-light.png` 和 `missing-and-cross-host-ports-unmatched-en-dark.png`：中文目录只有一个选中的实际 COM5，改名保存并重载后“回环串口”仍选择 COM5；跨 Host 的 Remote COM5 保持未匹配，当前本地 COM5 仍可明确选择。英文强身份目录位于 `artifacts/workspace-port-delivered/regressions/`。证据与源码/产物/截图哈希见 `.cache/workspace-port-delivered-validation.json`；浏览器夹具不计为真实串口验收。
+
+最终追加已连接旧文档的编辑器预览保护：打开编辑器不补元数据、不产生假未保存，关闭不协商；显式保存才补端口名。真实 Overview 集成反例先红后绿，未修改测试超时。模板修正后重新构建，同组十五项浏览器再次全部通过，已查看新的中文改名并连接截图；最终截图位于 `artifacts/workspace-port-preview-preserved/`，源码、产物和 29 张截图哈希见 `.cache/workspace-port-preview-preserved-validation.json`。先前截图原件保留，未占用真实 GUI 或串口。
+
+## 2026-11-15 串口标签与设备选择
+
+选中 COM5 标签后左侧仍显示“选择设备”，源自绑定 ID 已不在当前目录时直接回退空值，以及旧的手动替代选择未在所有选择路径失效。现在同 Host 精确设备优先，重启换 ID 后仅按唯一强硬件身份恢复预选；参数仍来自当前视图，选择不打开串口。未匹配时保留原标签及“不可用”项，禁用并选中该占位项；目录实际端口另列供明确重选，不按相同 COM 名冒认设备。
+
+新增中英浏览器场景实际操作了刷新目录、COM5/Virtual 标签切换、弱身份占位及人工重选，分别查看主工具栏和展开列表。两项新场景及十二项工作区/失联回归全部通过。截图位于 `artifacts/workspace-selector-delivered/new-cases-confirmed/`，包括 `restarted-serial-catalog-en-dark.png` 和 `weak-serial-catalog-zh-light.png`；构建、类型、静态检查和原件范围见[进度](./progress.md#2026-11-15-追加串口标签与设备选择联动)。
+
+## 2026-11-15 工作区操作梳理
+
+隔离无头浏览器按连续使用流程完成：新建 Lab A、添加 Controller、克隆 Sensor、保存、改名后丢弃、另存 Lab B、移除 B 的视图并保存、返回 A、一次连接供两个视图使用且正文独立、切换后恢复原稿、关闭视图、删除 B 并返回默认工作区。删除的延迟加载场景实际通过，不按静态推测修改。跨工作区相同视图 ID 的正文串用与格式覆盖反例先复现，再验证独立保存及工作台/编辑器编码一致。
+
+编辑器现初始定位活动视图，收发格式与编码各为紧凑一组。去掉无固定行为的开关、内部标识入口及未启用重连时的间隔，保留名称、外观、设备和实际连接预设。已查看英文深色 1280px 和中文浅色 640×720 的第二视图截图；窄屏表单内部滚动，无横向溢出，操作栏右对齐。最终截图在 `artifacts/workspace-redesign-delivered/`，包含 `lab-a-two-saved-views.png` 与 `workspace-zh-light-narrow-second-view.png`。共享一份预设时显示真实端口，多份预设才加视图别名，避免第二视图误显示第一视图名称。
+
+既有十四项工具布局场景均通过，复合格式行检查同步包含两个编码控件；原有右边缘 1px、滚条间距 8px、按钮高度差 1px 和响应断点门槛不变。原探针不认识新的共享行以及“格式与编码必须等宽”的附加假设已纠正，保留不重叠、容器边缘和全部原门槛。未使用真实用户窗口或串口作为隔离夹具。
+
+## 2026-11-14 启动先显示工作台
+
+初始草稿尚未读取时，首页原先用等待说明替换整页工作台，读取结束才挂载控件。现收发区域及工具栏首帧显示，本地草稿和 Host 连接并行，进度复用右下角通知。读取期间正文与格式不可修改；读取成功后可在 Host 仍连接时编辑本地草稿，后续成功或失败不重建收发区域。失败及未来格式保留原稿、重试和诊断入口。
+
+七项 Host 不可用无头场景通过，覆盖双延迟、超过六秒的持续进度、连接成功与失败、重试及草稿保护。已查看同轮构建的 pending/connected 成对截图，收发区域 DOM、位置和尺寸保持一致，通知不挤占正文。日志为 `.cache/startup-frozen-web-build.log` 和 `.cache/startup-frozen-browser.log`；截图位于 `artifacts/startup-frozen-browser/host-unavailable-startup-k-f402a-and-Host-connect-separately-chromium/startup-{pending,connected}-workbench.png`。本轮未启动真实窗口、操作既有 Host 或测试硬件。
+
 ## 2026-11-14 工作区连接与视图复用
 
 原生复现保存的 COM5 视图绑定失效后，选择当前设备并连接会新增同名运行标签，旧标签始终离线。初始单元反例另复现连接第二个保存视图时选择跳回首个。现只在成功的显式连接回执后接入当前离线视图，保留身份、名称、格式、草稿及连接预设；设备已在其他标签打开时，当前离线视图的按钮执行接入，关联后才显示断开。活动 A 连接 B 保留 A 的视图。拒绝、迟到回执及 Host 换代保留原有边界。

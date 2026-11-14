@@ -34,6 +34,10 @@ pnpm verify --jobs 1
 
 verify 的实际步骤见 [verify.mjs](../scripts/verify.mjs)，本轮日志写入 `.cache/verify/`。浏览器、预览端口和报告目录不并发运行；Cargo/生成任务共用 target 时顺序执行。
 
+含输入延迟、帧间隔门槛的 UI 检查与本轮 Cargo、生成及静态检查顺序执行，记录浏览器 worker 数及实际负载。并行负载下的失败保留原件，独立重测仍执行原场景与门槛，不拼接两种环境的性能结果。
+
+连接操作的点击完成不代表会话和活动草稿就绪，写稿前等待实际连接与所属标签。连续输入基准单独在 `e2e/browser/composer-input-latency.spec.ts` 运行，关闭会向被测页面注入快照/录屏工作的 tracing，保留失败截图、完整延迟样本及原输入量/CPU 降速/阈值；功能场景继续保留完整跟踪。CPU profile 和长帧观察用于独立诊断，不混入正式性能结果。
+
 工程脚本的文件级并发固定为 4，避免高核数 Windows 上大量文件同时启动系统探针；`verify --jobs 1` 只控制检查组，不能限制组内并发。此限制保留全部用例和原有探针期限；实际超时仍报失败，不跳过进程核对。
 
 组件测试 mock `@/lib/tauri`，门面契约测试再 mock 底层 Tauri API。脚本/进程测试使用自建临时目录和持有的进程，Host 使用独立 profile；测试失败保留必要现场，不触及真实用户数据。
@@ -58,6 +62,8 @@ pnpm test:ui
 真实桌面通过 `pnpm e2e:build` 与 `pnpm test:e2e --interactive --skip-build` 运行 `e2e/specs/`，使用测试配置和 WebDriver。构建包含相邻同源 Host/CLI/MCP，收据校验源码、target/profile 与程序哈希；runner 使用独立 Host profile、持有 PID、正常 CLI 认证及实际退出，失败保留现场。工作台场景在同一窗口内请求 runner 重启其持有的 Host，核对旧实例退出、新 epoch、显式重新附着、订阅及未发送草稿。
 
 WebDriver 不自动重发失败或超时的命令：脚本报错前可能已执行原生副作用。`e2e/webdriver-transport.test.mjs` 用实际驱动配置及独立 HTTP 夹具验证一次投递，日常检查不启动原生窗口；界面等待仍由各用例的只读观察条件负责。
+
+新窗口启动观察在原 `waitforTimeout` 内核对目标窗口文档、工作台 shell 与 IPC；单次只读脚本预算不超过一秒，超时后重新观察，非超时驱动错误直接失败，结束后恢复原脚本超时。`e2e/native-ready.test.mjs` 使用真实 WebDriverIO 客户端和 HTTP 夹具覆盖丢失读取、错误文档、持续未就绪及超时恢复，不代替 Native 全场景验收。
 
 主文档刷新使用 [reloadDocument](../e2e/reload-document.ts)，先观察旧文档被替换，再执行原有界面与 Native 就绪检查。驱动刷新返回不代表导航完成，不能让旧 DOM 提前满足新文档条件；对应浏览器反例只验证该屏障，不替代真实 Native 重载场景。
 

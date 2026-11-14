@@ -26,13 +26,12 @@ import {
   CopyPlus,
   FolderOpen,
   FolderPlus,
-  FolderSearch,
   RotateCw,
   FolderMinus,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { WorkbenchNotice } from "./workbench-notice";
-import { copyWorkspace } from "./workspace-model";
+import { copyWorkspace, distinctWorkspaceLabels } from "./workspace-model";
 
 /** 目录只读取摘要；明确选择后才加载文档，创建只复用工作区 CAS 保存。 */
 export function WorkspacePicker({
@@ -67,8 +66,6 @@ export function WorkspacePicker({
   const [failure, setFailure] = useState(0);
   const [creation, setCreation] = useState<"new" | "copy" | null>(null);
   const [name, setName] = useState("");
-  const [requestedId, setRequestedId] = useState("");
-  const [targetOpen, setTargetOpen] = useState(false);
   const [removing, setRemoving] = useState(false);
   const currentBase = useRef(base);
   currentBase.current = base;
@@ -165,7 +162,6 @@ export function WorkspacePicker({
     void run(async (signal) => {
       const loaded = await host.loadWorkspace(id, signal);
       signal.throwIfAborted();
-      setTargetOpen(false);
       onLoaded(loaded);
     }, true);
   }
@@ -244,15 +240,18 @@ export function WorkspacePicker({
             <SelectValue placeholder={t("workbench.tools.chooseWorkspace")} />
           </SelectTrigger>
           <SelectContent>
-            {entries.map((item, index) => (
-              <SelectItem
-                key={item.scope.target.id}
-                value={item.scope.target.id}
-              >
-                {item.name ||
+            {distinctWorkspaceLabels(
+              entries.map((item, index) => ({
+                value: item.scope.target.id,
+                label:
+                  item.name ||
                   (item.scope.target.id === "default"
                     ? t("workbench.tools.defaultWorkspace")
-                    : `${t("workbench.tools.workspace")} ${index + 1}`)}
+                    : `${t("workbench.tools.workspace")} ${index + 1}`),
+              })),
+            ).map((item) => (
+              <SelectItem key={item.value} value={item.value}>
+                {item.label}
               </SelectItem>
             ))}
           </SelectContent>
@@ -328,37 +327,6 @@ export function WorkspacePicker({
                 )}
               </Button>
             </form>
-          </PopoverContent>
-        </Popover>
-        <Popover open={targetOpen} onOpenChange={setTargetOpen}>
-          <PopoverTrigger asChild>
-            <WorkbenchIconButton
-              label={t("workbench.tools.openOtherWorkspace")}
-              disabled={!ready || busy}
-            >
-              <FolderSearch aria-hidden="true" />
-            </WorkbenchIconButton>
-          </PopoverTrigger>
-          <PopoverContent
-            className="workbench-detail-popover workbench-workspace-target"
-            aria-label={t("workbench.tools.openOtherWorkspace")}
-          >
-            <label>
-              <span>{t("workbench.tools.workspaceId")}</span>
-              <Input
-                value={requestedId}
-                onChange={(event) => setRequestedId(event.target.value)}
-                autoComplete="off"
-                maxLength={118}
-              />
-            </label>
-            <Button
-              size="sm"
-              disabled={!ready || busy || !requestedId.trim()}
-              onClick={() => load(requestedId.trim())}
-            >
-              {t("workbench.tools.load")}
-            </Button>
           </PopoverContent>
         </Popover>
         <Popover open={removing} onOpenChange={setRemoving}>

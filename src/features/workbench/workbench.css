@@ -801,19 +801,6 @@
   min-width: 0;
   text-align: start;
 }
-.workbench-workspace-target {
-  display: grid;
-  gap: 0.75rem;
-}
-.workbench-workspace-target > label {
-  display: grid;
-  grid-template-columns: 8rem minmax(0, 1fr);
-  gap: 0.75rem;
-  align-items: center;
-}
-.workbench-workspace-target > .ui-button {
-  justify-self: end;
-}
 .workbench-dialog:has(.workbench-workspace-tool) {
   width: min(52rem, calc(100vw - 2rem));
   height: min(36rem, calc(100dvh - 3rem));
@@ -940,6 +927,13 @@
   align-items: center;
   gap: 0.375rem;
 }
+.workbench-workspace-format-controls {
+  display: grid;
+  grid-template-columns: minmax(4.5rem, 0.75fr) minmax(0, 1fr);
+  align-items: center;
+  gap: 0.375rem;
+  min-width: 0;
+}
 .workbench-workspace-color input {
   min-width: 0;
   flex: 1;
@@ -998,9 +992,6 @@
 }
 .workbench-workspace-save {
   order: 1;
-}
-.workbench-workspace-pinned [role="switch"] {
-  justify-self: end;
 }
 .workbench-workspace-view-actions {
   display: flex;

@@ -33,6 +33,7 @@ export type SerialConfigurationFieldsProps = {
   labels: SerialConfigurationLabels;
   id: string;
   disabled?: boolean;
+  showReconnectBackoff?: boolean;
   writeWaitMode?: WriteWaitMode;
   onWriteWaitModeChange?: (value: WriteWaitMode) => void;
   writeWaitLabels?: { title: string; automatic: string; fixed: string };
@@ -44,6 +45,7 @@ export function SerialConfigurationFields({
   labels,
   id,
   disabled = false,
+  showReconnectBackoff = true,
   writeWaitMode,
   onWriteWaitModeChange,
   writeWaitLabels,
@@ -157,9 +159,10 @@ export function SerialConfigurationFields({
       {(["readWaitMs", "writeWaitMs", "reconnectBackoffMs"] as const)
         .filter(
           (field) =>
-            field !== "writeWaitMs" ||
-            writeWaitMode !== "automatic" ||
-            !validDuration(value.writeWaitMs),
+            (field !== "reconnectBackoffMs" || showReconnectBackoff) &&
+            (field !== "writeWaitMs" ||
+              writeWaitMode !== "automatic" ||
+              !validDuration(value.writeWaitMs)),
         )
         .map((field) => (
           <div className="workbench-form-row" key={field}>

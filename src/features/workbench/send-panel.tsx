@@ -85,6 +85,8 @@ function sameReceiptIdentity(value: Operation, admitted: Operation): boolean {
 export type SendPanelProps = {
   /** 只约束发送能力；本地草稿仍可编辑。 */
   readOnly?: boolean;
+  /** 本地草稿尚未恢复时锁定编辑及变换，不影响离线草稿的正常编辑能力。 */
+  draftReadOnly?: boolean;
   draftCaption?: string;
   draftActions?: ReactNode;
   onSaveDrafts?: () => void;
@@ -119,6 +121,7 @@ export type SendPanelProps = {
 };
 export function SendPanel({
   readOnly = false,
+  draftReadOnly = false,
   draftCaption,
   draftActions,
   onSaveDrafts,
@@ -310,23 +313,26 @@ export function SendPanel({
   }, [preview]);
   useEffect(() => () => previewCallback.current?.(null), []);
   const disabled =
+    draftReadOnly ||
     readOnly ||
     permissionAllowed === false ||
     !session ||
     session.readOnly ||
     session.state !== "open" ||
     session.txGate !== "ready";
-  const disabledReason = readOnly
-    ? labels.readOnly
-    : !session || session.state !== "open"
-      ? (disconnectedReason ?? labels.disconnected)
-      : session.readOnly
-        ? labels.readOnly
-        : session.txGate !== "ready"
-          ? workbenchStatus(session.txGate, labels)
-          : permissionAllowed === false && preview.bytes.length > 0
-            ? labels.sendNotAllowed
-            : undefined;
+  const disabledReason = draftReadOnly
+    ? labels.unavailable
+    : readOnly
+      ? labels.readOnly
+      : !session || session.state !== "open"
+        ? (disconnectedReason ?? labels.disconnected)
+        : session.readOnly
+          ? labels.readOnly
+          : session.txGate !== "ready"
+            ? workbenchStatus(session.txGate, labels)
+            : permissionAllowed === false && preview.bytes.length > 0
+              ? labels.sendNotAllowed
+              : undefined;
   const sendHint =
     disabledReason ??
     (preview.invalid
@@ -371,6 +377,7 @@ export function SendPanel({
       >
         <h2 className="sr-only">{labels.send}</h2>
         <ToggleGroup
+          disabled={draftReadOnly}
           type="single"
           size="sm"
           variant="outline"
@@ -409,6 +416,7 @@ export function SendPanel({
           ))}
         </ToggleGroup>
         <TextEncodingSelect
+          disabled={draftReadOnly}
           value={encoding}
           label={labels.sendEncoding}
           onChange={(value) => {
@@ -419,6 +427,7 @@ export function SendPanel({
           }}
         />
         <Select
+          disabled={draftReadOnly}
           value={ending.kind}
           onValueChange={(kind) => {
             if (
@@ -451,7 +460,10 @@ export function SendPanel({
         {presentationLabels && ending.kind === "custom" && (
           <Popover>
             <PopoverTrigger asChild>
-              <WorkbenchIconButton label={presentationLabels.customLineEnding}>
+              <WorkbenchIconButton
+                label={presentationLabels.customLineEnding}
+                disabled={draftReadOnly}
+              >
                 <Settings2 aria-hidden="true" />
               </WorkbenchIconButton>
             </PopoverTrigger>
@@ -464,6 +476,7 @@ export function SendPanel({
               <label className="workbench-custom-ending">
                 {presentationLabels.customLineEndingHex}
                 <Input
+                  disabled={draftReadOnly}
                   value={suffixHex}
                   onChange={(event) => setCustomHex(event.target.value)}
                   aria-invalid={preview.invalid}
@@ -480,7 +493,7 @@ export function SendPanel({
         {onSaveDrafts && (
           <WorkbenchIconButton
             label={labels.saveDrafts}
-            disabled={!draftsDirty}
+            disabled={draftReadOnly || !draftsDirty}
             onClick={onSaveDrafts}
           >
             <Save aria-hidden="true" />
@@ -517,7 +530,11 @@ export function SendPanel({
             label={transferLabel ?? labels.sendFile}
             onClick={onOpenTransfer}
             disabled={
-              !session || session.state !== "open" || readOnly || fileBusy
+              draftReadOnly ||
+              !session ||
+              session.state !== "open" ||
+              readOnly ||
+              fileBusy
             }
           >
             <Settings2 aria-hidden="true" />
@@ -527,7 +544,11 @@ export function SendPanel({
           label={labels.sendFile}
           onClick={onSendFile}
           disabled={
-            !session || session.state !== "open" || !onSendFile || fileBusy
+            draftReadOnly ||
+            !session ||
+            session.state !== "open" ||
+            !onSendFile ||
+            fileBusy
           }
           tooltip={!onSendFile ? labels.fileUnavailable : labels.sendFile}
         >
@@ -535,7 +556,7 @@ export function SendPanel({
         </WorkbenchIconButton>
         <WorkbenchIconButton
           label={labels.clearDraft}
-          disabled={emptyDraft}
+          disabled={draftReadOnly || emptyDraft}
           onClick={() => {
             setConversionError(undefined);
             onDraftChange("");
@@ -569,6 +590,7 @@ export function SendPanel({
       transferLabel,
       session,
       readOnly,
+      draftReadOnly,
       fileBusy,
       onSendFile,
       emptyDraft,
@@ -602,11 +624,13 @@ export function SendPanel({
           data-invalid={preview.invalid || undefined}
         >
           <Textarea
+            readOnly={draftReadOnly}
             ref={draftInput}
             id={`${id}-draft`}
             spellCheck={false}
             data-surface="transparent"
             onChange={(event) => {
+              if (draftReadOnly) return;
               setConversionError(undefined);
               onDraftChange(event.target.value);
             }}

@@ -19,6 +19,7 @@ export function TextEncodingSelect({
   automatic,
   automaticValue,
   hint,
+  disabled,
 }: {
   value: TextEncoding | null;
   onChange: (encoding: TextEncoding | null) => void;
@@ -26,9 +27,11 @@ export function TextEncodingSelect({
   automatic?: string;
   automaticValue?: string;
   hint?: string;
+  disabled?: boolean;
 }) {
   return (
     <Select
+      disabled={disabled}
       value={value ?? "auto"}
       onValueChange={(next) => {
         if (next === "auto" && automatic) onChange(null);

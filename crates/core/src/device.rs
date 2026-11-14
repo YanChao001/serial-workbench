@@ -126,6 +126,14 @@ pub struct DeviceBinding {
     pub binding_id: Id,
     pub host_id: Id,
     pub device_id: Id,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "non_null_option"
+    )]
+    #[schemars(with = "String")]
+    #[specta(type = String, optional)]
+    pub port_name: Option<String>,
     pub fingerprint: DeviceFingerprint,
     pub configuration: SerialConfiguration,
     pub reconnect: ReconnectPolicy,
@@ -149,6 +157,14 @@ pub struct RecentList {
 
 impl DeviceBinding {
     pub fn validate(&self) -> crate::HostResult<()> {
+        if self.port_name.as_ref().is_some_and(|name| {
+            name.trim().is_empty() || name.len() > 1024 || name.chars().any(char::is_control)
+        }) {
+            return Err(crate::HostError::new(
+                "INVALID_ARGUMENT",
+                "Invalid device port selection",
+            ));
+        }
         if self.reconnect.enabled
             && self.reconnect.max_delay_ms.get() < self.configuration.reconnect_backoff_ms.get()
         {

@@ -1,5 +1,83 @@
 # 开发进度
 
+## 2026-11-15 总目标接续与当前交付
+
+总目标保持执行。目标接续时主工作区为 `fix/startup-shell`，基线 HEAD、本地 main 及远端 main 均为 `97ccd7b373068db972d93703d219eaf950f9c3d5`，该切片当时尚未提交且无对应 PR。接续启动、工作区及端口定位的现有修改，保留 `.cache/git-backups/`、既有证据、`feature/m2-node-runtime`、用户数据与正在运行的开发 Host。后续切片从最新 main 创建短期分支。
+
+交付由 [PR #47](https://github.com/YanChao001/serial-workbench/pull/47) 跟踪，完整四目标候选及最终结果以该 PR 的检查记录为准；本机门槛已通过，完整四目标尚未验收。16 个相关软件项已登记该 PR 证据，247 条账本仍为 76 个 `in-progress`、168 个 `not-started`、3 个 `not-applicable`，未提升硬件或发行状态。首个冻结候选在本机检查后仅补工程文档与需求证据，运行输入、构建产物和三入口程序保持检查时的内容；下述 CI 后续修正只涉及原生测试的启动观察。
+
+规范与需求两轴静态复审分别完成：需求轴无确定发现；规范轴发现已移除开关的专属 CSS 残留，已清理，文档字段及标签呈现保留。两处后续浏览器测试修正再经两轴增量复核，均无新发现，原行为与门槛保留。本机阶段出口已通过；冻结候选后建立 PR 并运行完整四目标 CI，满足门槛再 squash。此前定向证据仍按下列各自源范围使用；Node/runtime、最低系统、72h、硬件、LAN 双机、签名与发行状态不提升。
+
+首轮[完整四目标 CI 43636914474](https://github.com/YanChao001/serial-workbench/actions/runs/43636914474) 验证 `b828550`，源码指纹为 `2513bd489c86960a00fe25d55b96e1830a94cae5956720395237382f852453b1`。十项必需任务成功，包括四目标 Rust、Windows/Linux/Intel macOS 原生、绑定、前端及 199 项浏览器；Ubuntu 离线六场景、18 条断言及 T06 实际 600.02 秒通过，11 个自有进程全部退出。ARM macOS centered 阶段的次窗口首个 DOM 查询约 30 秒超时，失败截图也超时，质量门禁失败。fresh、persisted 已通过，不能据此计 ARM 原生完整通过。原始日志和 artifact 保留。
+
+同一提交、相同四程序哈希的 [ARM 全场景预检 43639802476](https://github.com/YanChao001/serial-workbench/actions/runs/43639802476) 随后通过：fresh 27 项、persisted 2 项、centered 2 项，保留两项平台条件跳过。未据此断言渲染故障已修复；上游注册终止回调时打印的 `web content process terminated` 也不是实际崩溃证据。已确认原就绪观察的 15 秒门槛会被一次默认 30 秒脚本查询阻塞，测试现仅对启动只读探针设置单次短预算，在原总门槛内重新观察目标窗口的文档、shell 和 IPC，结束后恢复原业务脚本超时；非超时错误直接失败，业务命令不重发。实际 WebDriverIO/HTTP 夹具先复现旧观察失败，再验证丢失一次读取、文档身份、持续未就绪和超时恢复；原一次投递回归也通过。修正候选仍须经 ARM 全场景预检与完整四目标门禁，不能用前一候选或预检拼接验收。
+
+新增观察回归与原一次投递共五项通过，相关 lint、脚本类型、格式和 247 项账本校验通过，两轴增量复审无确定发现。追加脚本全量在沙箱内为 309 通过、14 失败、4 条件跳过；失败均为 Windows CIM 进程查询或受控进程 taskkill 被拒绝。沙箱外定向重测受影响的 `scripts/clean.test.mjs` 与 `e2e/process.test.mjs` 为 29 通过、0 失败、1 个既有 Unix 条件跳过，不改记首次失败。日志为 `.cache/pr47-native-ready-{red-confirmed,green}.log`、`.cache/pr47-ci-followup-scripts.log` 和 `.cache/pr47-ci-followup-permission-repeat.log`；未重跑无变化的本机 Rust 与浏览器全集。
+
+原生观察修正候选 `bfa0a75`（源码 `4057f81d17ddc1b13105394322e3f74e14ba8fb5bf91e63ac387dc67f9d35dda`）在 [ARM 三阶段预检 43641370964](https://github.com/YanChao001/serial-workbench/actions/runs/43641370964) 通过，随后[完整四目标 43641793324](https://github.com/YanChao001/serial-workbench/actions/runs/43641793324) 十二项必需任务全部成功。十二份原生日志的源码、摘要与零意外 RPC 冲突已核对；Ubuntu 离线证据重新经仓库 validator 验证，六场景、18 断言、实际 600.07 秒、602 次控制查询及 11 个自有进程退出通过。该轮浏览器实际为 198 通过、1 flaky：连续输入首次恰好缺少连接完成前预填的 96 KiB，随后 40 次输入正文完整，重试 P95 44.4ms。保留首次失败，补实际连接和活动标签屏障后再冻结候选，不据重试结果合入。
+
+本机连接与正文重复检查通过，初轮九项为八通过、一项输入 P95 273.8ms 失败；该轮与静态检查并行，随后独立性能复测仍为一通过、两失败（237.2/314.1ms），不能只归因并行负载。CPU profile 记录到 tracing 的 `captureSnapshot/visitNode` 在被测线程工作；关闭 DOM 快照仍有五次中一次 136.1ms 失败，长帧诊断也有一次 102.3ms 超标。性能场景现独立到 `composer-input-latency.spec.ts`，测量关闭 tracing，失败仍保留截图和完整样本；其他功能场景保持完整跟踪。无额外调试观察器的五次独立、零重试测量全部通过，P95 66.2—97.1ms，保留原 40 次输入、四倍 CPU 降速、字节量与 100ms 门槛；不混用诊断条件的结果。证据为 `.cache/pr47-composer-*.log` 与 `artifacts/pr47-composer-*`，新增变化仅为浏览器测试和配套文档，产品代码、原生观察及产物未变，下一出口仍为新冻结候选的完整四目标。
+
+迁移后的中英文清稿、保存及发送两项在默认完整跟踪下通过，浏览器发现仍为 199 项、36 文件；相关 lint、脚本类型、格式、账本与差异检查通过，两轴增量复审无确定发现。最终本机证据为 `.cache/evidence/startup-shell/composer-observation-validation.json`、`.cache/pr47-composer-drafts-final.log` 及 `.cache/pr47-composer-test-discovery.log`，未重跑无变化的 Rust/前端单元全集。
+
+初次环境诊断发现默认 Node 22.22.2、pnpm 12.14.0 低于仓库要求，已使用仓库缓存 Node 26.13.0 和固定 pnpm 12.16.1，`pnpm install --frozen-lockfile` 通过。默认 Git Schannel 返回 `SEC_E_NO_CREDENTIALS`，改用单次 `http.sslBackend=openssl` 后远端查询成功；沙箱内 fetch 无权写 `.git/FETCH_HEAD`、pnpm 无权打开用户级工具链锁，使用已授权范围的沙箱外命令后 fetch 与冻结安装成功，未修改全局配置或清除缓存。
+
+本轮 `pnpm verify --jobs 1` 全部通过（228.9 秒）：2427 项前端、319 项工程脚本通过，4 项保留 Unix 进程组、Windows 符号链接权限及独立前台安装器条件跳过；格式、lint、类型、配置、品牌、版本及桌面前端构建通过。独立缓存中的同源 Host/CLI/MCP 构建及完整 Rust 工作区测试通过，73 个目标汇总 843 通过、0 失败、5 个受控子进程入口忽略；Rust 格式通过。编译使用单任务并保留缓存，测试构建耗时 31 分 30 秒。日志为 `.cache/startup-delivery-verify.log`、`.cache/verify/run-51PL18/` 和 `.cache/startup-delivery-rust-*.log`。
+
+完整 UI 首轮 198 通过、1 失败，录制场景仍按旧的无 scope 草稿键断言；改为核对实际保存正文，保留切换和重载的独立恢复检查，定向 1 项通过。第二轮在两 worker 与 Rust 编译同时运行时为 196 通过、3 失败：连续输入 P95 为 294.5ms（门槛 100ms）、故障响应最大帧间隔 633.3ms（门槛 500ms），另有大包用例未等待实际连接及选中标签就绪，失败时显示 0 B。大包用例补上就绪屏障，原边界重复三次通过。首轮、第二轮及定向原件分别保留在 `.cache/startup-delivery-browser.log`、`startup-delivery-browser-final.log`、`startup-delivery-capture-confirmed.log`、`startup-delivery-large-send-confirmed.log` 和对应 `artifacts/startup-delivery-*`。第二轮宽屏英文深色端口目录与窄屏中文浅色编辑器已实际查看，视觉检查不计为该轮整体通过。
+
+结束全部 Rust/生成检查后，单 worker 独立完整 UI 为 199/199 通过、零跳过，12.8 分钟。40 次真实输入、四倍 CPU 降速保留，P95 为 79.2ms；已连接与注入 Host 故障后的最大帧间隔均约 33.4ms，分别满足原 100ms P95 及 500ms 最大间隔门槛。相关测试类型、lint、格式及差异检查通过。源码、dist/dist-web 与同源三程序在本轮 UI 前后哈希完全一致，源码指纹为 `de573e29f7da09cd4e435f5196fd53d2acf7beca65ae2a1179b6b2af2371169e`；证据为 `.cache/evidence/startup-shell/local-validation.json`、`before-isolated-ui.json`、`after-local-checks.json`、`.cache/startup-delivery-browser-isolated.log` 及 `artifacts/startup-delivery-browser-isolated/`。本机并行运行的失败不改记为通过；完整四目标 CI 继续按工作流原配置验证冻结候选。
+
+M2 准备目录中的四目标 Node 归档已重新计算哈希，与此前已验签收据全部相同，见 `.cache/m2-preparation/continuation-hashcheck-20261115.json`。这只确认已有缓存字节，不代表 Task14 实现、正式安装布局、离线加载或最低系统验收完成。
+
+## 2026-11-15 追加：COM5 端口预选与定位保存
+
+上一轮把硬件身份确认当成了端口选择的条件，导致 Host 换代后即使当前目录已有 COM5，弱指纹的旧绑定仍显示“COM5 · 不可用”。真实浏览器反例已复现。现区分端口位置与硬件身份：同 Host、同传输的唯一当前端口可恢复预选；绑定新增可选 `portName`，既有文档无此字段时可用原视图名中的端口名定位。已存在的显式端口有歧义时不自动选择；真正未匹配的占位文案改为“未匹配”。
+
+创建视图、明确重绑定及用户显式保存记录端口位置，编辑器打开和标签切换不自动写文档。保存前改名可参考同身份绑定的原已保存视图名，避免首次改名丢失位置；补全不替换设备 ID、指纹、连接参数或权限。实际连接仍使用当前设备重新验权，Host 硬件身份匹配与自动重连规则不变。保存回执使用补全后的提交快照，保留晚到编辑。
+
+初轮前端单元 142 文件、2425 项全部通过，应用与脚本类型及全库 ESLint 通过。Core 63 项和 Host 五个相关目标 72 项通过；契约生成及检查通过。原无字段读取、端口字段校验、文档保存/导入、明确重绑定，以及相同 COM 名但拓扑改变仍不得自动接纳均有覆盖。未操作用户窗口、既有 Host 或真实串口；新增字段的保存需使用同版 Host。
+
+正式 Web 两阶段构建后，八项工作区流程与七项 Host 不可用场景共十五项全部通过，无跳过。实际走通旧 COM5 无端口字段启动预选、编辑器改名、保存补全端口位置、重载后自定义标签预选及明确连接当前设备的完整链路；保存保留旧设备 ID、指纹及 9600 预设，自动恢复不写工作区或发送内容。中英目录及连接后截图已查看，目录只出现一个实际 COM5。Native 绑定生成及检查、全工作区全目标 Clippy（`-D warnings`）、Rust 格式、最终两套 TypeScript 类型、改动格式与差异检查均通过。构建后的前端源变化仅为两处可选字段类型声明；证据为 `.cache/workspace-port-delivered-validation.json`、`.cache/workspace-port-delivered-{new,regressions}.log` 及 `artifacts/workspace-port-delivered/`，Rust 日志为 `.cache/port-name-*.log`。
+
+最后复核又发现已连接的旧绑定在编辑器预览时补入端口名，会产生只有元数据变化的假未保存。两处模板断言及真实 Overview/Tools/Editor 用例先红后绿；预览现在保留既有端口名或缺失状态，明确保存、新建及实际替换目标仍记录当前端口。集成验证正常关闭无需保存协商，主动布局保存才补字段，原文档不变。相关 73 项单元及追加编辑器用例通过。修正后重新两阶段构建及同组十五项浏览器全部通过，构建后运行源码哈希无变化；最终浏览器包为 `.cache/workspace-port-preview-preserved-validation.json`、`.cache/workspace-port-preview-preserved-browser.log` 和 `artifacts/workspace-port-preview-preserved/`，前一轮原件保留。
+
+追加全量检查曾出现一项晚保存回执测试失败：编码模块尚未准备好，测试直接点击了禁用的 HEX，未实际产生待保留编辑。独立用例及原 96 项模块在原门槛通过；测试现先等待控件可用，并在回执到来前确认 HEX 已选中，不扩大超时或删减后续断言。失败记录保留在 `.cache/port-locator-final-all-unit.log`，定向与整模块复查分别为 `.cache/port-locator-late-receipt-repeat.log`、`.cache/port-locator-layout-repeat.log`。
+
+最终全量 142 文件、2427 项前端单元全部通过，日志为 `.cache/port-locator-final-all-unit-verified.log`；最终全库 ESLint、相关格式及差异检查通过。浏览器最终构建后的最后变动仅为上述测试就绪断言与文档，没有运行源码修改。
+
+## 2026-11-15 追加：串口标签与设备选择联动
+
+本节记录上一轮验证；其中把端口预选限制为强身份且显示“不可用”的策略，已由上节修正。
+
+标签切换原有联动只认精确设备 ID，Host 新实例的物理设备目录可能分配新 ID，保存绑定随之匹配失败，工具栏便显示空的“选择设备”。另有手动替代目标已离开目录仍压住有效绑定，以及关闭、克隆、活动定位等选择路径未统一结束旧替代选择的问题。现手动选择绑定到工作区及当前标签，失效时归还选择权；按已确认运行来源或保存绑定恢复对应端口，ID 换代时只在同 Host、非 stale 目录中采用唯一强序列号证据。
+
+预选的强身份条件与 Host 保持一致，包括未知字段候选的歧义、VID/PID、拓扑及 Unicode 空白判空；该客户端辅助函数不提供权限或连接凭据，Host 在实际连接时继续独立校验。无法确认时保留标签名及“不可用”的禁用项，目录迟到后重新匹配，用户仍可明确选择替代设备。没有增加后台匹配请求、自动打开、自动发送或持久绑定写入，恢复预选保留原视图预设。
+
+相关三文件 189 项单元通过，包含 36 项身份匹配边界及八项选择联动；八项定向追加验证还确认显式打开使用恢复前的 9600 预设。应用与脚本类型、定向 ESLint、格式和差异检查通过。身份恢复已有先红后绿证据，旧手动选择的集成保护用例在新源码直接通过，未为取得红灯而临时向用户开发窗口热更新旧行为。本轮没有 Rust、原生命令或公共契约变化。
+
+正式 Web 两阶段构建通过，新增强身份恢复及弱身份人工选择两项浏览器场景，加原五项工作区及七项 Host 不可用场景共十四项全部通过，无跳过。展开目录与主工具栏的中英截图已查看；不可用绑定是 checked/disabled 的独立占位项，目录中的同名实际设备仍可主动选择，选择及标签切换不产生连接、发送或工作区保存。证据为 `.cache/workspace-selector-delivered-validation.json`、`.cache/workspace-selector-delivered-{new-confirmed,regressions}.log` 与 `artifacts/workspace-selector-delivered/`，未使用真实用户窗口或串口。
+
+## 2026-11-15 追加：工作区操作与草稿归属
+
+在隔离浏览器中连续实际操作新建、添加及克隆视图、保存、丢弃、另存、移除视图、切换、共用连接的独立发送草稿、关闭视图和删除工作区。先排除了删除后延迟加载必然取消的静态误判；该完整父级流程与默认工作区回退实际通过。确认并修复跨工作区相同视图 ID 串用正文、编辑器格式被运行覆盖压住、同 scope 导入的录制引用被旧标签反写，以及干净编辑器接收外部 revision 后产生假未保存和旧 CAS 的问题。
+
+编辑器初始定位当前标签，后续可独立选择其他视图。收发格式与各自编码并排，接收支持自动识别，HEX 往返保留编码；删除没有固定行为的开关及按内部标识打开的普通入口，未启用重连策略时隐藏间隔。目录同名项和绑定的视图别名用于显示区分，保留原始名称及已有文档字段。工作区仍是视图及连接预设，配置操作不隐式打开设备、发送或重配实际连接。
+
+持久草稿按稳定 scope 与视图隔离，失联保留原归属；旧键只认领到当前视图，当前及已保存正文分别转换并原子发布，不能将未保存的新文字当成确认值。旧窗口草稿的特殊初始化仅适用于首次归属，不能给后续同 ID 工作区重复播种。Native 和浏览器只将身份键预算增至 1024 UTF-8 字节，正文、条数及总文件预算不变；真实 554 字节标识、1024/1025 字节边界、重开恢复、原件及未来格式保护均已验证，Native ClientState 模块 20 项通过。
+
+延迟保存回执的反例另确认新选 ASCII/HEX 会被已提交的 GBK/Text 覆盖。现记录提交时的不可变格式快照，仅结清此后未改变的覆盖；提交内容、后续输入与下次保存分别验证，旧逻辑一项红灯、修复后与原格式/录制边界共六项通过。红灯、原件和旧候选失败证据保留在 `.cache/`，未通过扩大超时或跳过场景消除失败。
+
+最终前端单元 141 个文件、2349 项全部通过，应用和脚本类型、全库 ESLint、改动格式与差异检查通过。Native ClientState 20 项通过；工作流与 Host 不可用的十二项在同轮正式 Web 构建通过，既有十四项工具布局保留原门槛通过。最后的绑定标签显示修正只在同设备多份预设时加视图别名，两阶段正式 Web 重建及五项工作流再验全部通过（32.1 秒），源码变化检查为空。宽屏英文深色和窄屏中文浅色的第二视图截图已查看；最新源镜像及构建/截图哈希为 `.cache/workspace-redesign-delivered-validation.json`，此前完整范围为 `.cache/workspace-redesign-final-validation.json`。本轮未启动真实 GUI、操作既有 Host 或测试串口硬件，也未重复完整四目标里程碑 CI。
+
+## 2026-11-14 追加：启动先显示工作台
+
+启动闪屏的直接原因是首页在本地草稿读取完成前用等待说明替换整页工作台。现完整工具栏、接收区和发送区先挂载，本地草稿读取及 Host 连接并行，进度复用右下角共享通知。首次读取前锁定正文、格式及工作区修改；成功后一次性恢复全部草稿与已保存基线，Host 成功、失败或重试均不重建收发区域。未来格式、读取失败和恢复隔离继续保留原件及原有门禁，录制工作区先到达时也保留未连接草稿的初始选择。
+
+提前挂载另暴露通知的退出竞态：旧通知延迟删除可移除立即出现的新错误，同一逻辑键的重试也可能沿用旧寿命。共享通知现在按逻辑身份及显示时长分配独立实例，正文更新不重置计时；连接进度持续至完成，失败和重试各自使用正确寿命。相关反例先红后绿；初轮旧首页断言将“控件存在”视为“恢复完成”，已改为等待实际恢复值或启用状态，默认超时不变。
+
+最终前端单元 140 个文件、2311 项全部通过；应用与脚本类型、全库 ESLint、相关格式和差异检查通过。Web 构建及七项 Host 不可用浏览器场景通过，包含双延迟、超过六秒的持续进度、成功/失败/重试、同 DOM 及几何、离线编辑和原稿保护，成对截图已查看。有效日志为 `.cache/startup-all-unit-verified.log`、`.cache/startup-types-verified.log`、`.cache/startup-types-node-verified.log`、`.cache/startup-lint-verified.log` 和 `.cache/startup-frozen-browser.log`，截图见[界面审查](./ui-review.md#2026-11-14-启动先显示工作台)。本轮未启动真实窗口或操作既有 Host/硬件，无 Rust、IPC 契约及绑定变化。
+
 ## 2026-11-14 追加：稳定性修复交付检查
 
 本轮在 `main@9ddb5d8` 上集中交付后续串口、Host/RPC、工作区与界面修复，使用短期分支 `fix/workbench-stability`。累计差异已按权限、协议、资源退出、共享草稿及视图复用进行独立自审，未发现阻塞项；不将规划中的 M2 Node/runtime 记为已实现。
@@ -17,6 +95,8 @@
 同轮 Windows 文档操作出现一次五秒等待超时，精确用例及整模块在原门槛复测通过，未定位到生产 CAS 缺陷。文档测试改用固定设备 provider，保留真实运行时、virtual:echo 目录重绑定、IPC、CAS 及权限断言，排除无关原生枚举；超时只打印已缓存操作状态、轮询数和在途 RPC 耗时，不追加查询或扩大五秒门槛。其后先执行 Linux 原生预检，再验证冻结修订的完整四目标。
 
 修订后的 Rust 工作区、冻结候选、完整四目标 CI 和合入树证据统一记录在 [PR #46](https://github.com/YanChao001/serial-workbench/pull/46)，未取得结果前不引用旧 PR 的成功代替通过。本轮交付检查不启动用户 GUI、不停止既有 Host，也不扩大此前短回环为完整硬件、72 小时、LAN 双机或发行验收。
+
+PR #46 已 squash 合入 `main@97ccd7b`。冻结候选 `00071ab` 的[最终完整 CI 43596079750](https://github.com/YanChao001/serial-workbench/actions/runs/43596079750) 的 12 项必需任务全部成功，四个 Rust 与四个 Native 任务实际执行；Ubuntu 正式六场景/18 断言运行 600.0278 秒、取得 602 个样本，产出及观测均为 6,911,868 B，11 个自有进程全部退出。合入树与候选树相同，源码指纹为 `cd41e0f407ddfae8ee9f2a55e491849401ca25a0687d93e392c2a617f2db7ff1`，自有修复分支已清理，原 M2 分支保留。
 
 ## 2026-11-14 追加：工作区连接与视图复用
 

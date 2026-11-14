@@ -1,6 +1,63 @@
 use serde_json::{Value, json};
 use serial_workbench_core::{Call, ChildCall, Operation, RpcReply, U64};
 
+fn port_name_binding() -> Value {
+    json!({
+        "bindingId":"binding", "hostId":"host", "deviceId":"old-device",
+        "fingerprint":{"transport":"serial","evidence":"unreliable"},
+        "configuration":serial_workbench_core::SerialConfiguration::default(),
+        "reconnect":serial_workbench_core::ReconnectPolicy::default()
+    })
+}
+
+#[test]
+fn device_binding_port_name_is_optional_non_null_and_keeps_unknown_fields_closed() {
+    use serial_workbench_core::DeviceBinding;
+    let original = port_name_binding();
+    let binding: DeviceBinding = serde_json::from_value(original.clone()).unwrap();
+    assert_eq!(serde_json::to_value(binding).unwrap(), original);
+    let mut selected = original.clone();
+    selected["portName"] = json!("COM5");
+    let binding: DeviceBinding = serde_json::from_value(selected.clone()).unwrap();
+    binding.validate().unwrap();
+    assert_eq!(serde_json::to_value(binding).unwrap(), selected);
+    selected["portName"] = Value::Null;
+    assert!(serde_json::from_value::<DeviceBinding>(selected).is_err());
+    let mut unknown = original;
+    unknown["portNmae"] = json!("COM5");
+    assert!(serde_json::from_value::<DeviceBinding>(unknown).is_err());
+}
+
+#[test]
+fn device_binding_port_name_validates_utf8_bytes_without_accepting_blank_or_controls() {
+    use serial_workbench_core::DeviceBinding;
+    let limit = format!("{}a", "口".repeat(341));
+    assert_eq!(limit.len(), 1024);
+    let mut value = port_name_binding();
+    value["portName"] = json!(limit);
+    serde_json::from_value::<DeviceBinding>(value.clone())
+        .unwrap()
+        .validate()
+        .unwrap();
+    for invalid in [
+        "".into(),
+        " \u{a0}".into(),
+        "COM5\n".into(),
+        "COM\0".into(),
+        format!("{limit}b"),
+    ] {
+        value["portName"] = json!(invalid);
+        assert_eq!(
+            serde_json::from_value::<DeviceBinding>(value.clone())
+                .unwrap()
+                .validate()
+                .unwrap_err()
+                .code,
+            "INVALID_ARGUMENT"
+        );
+    }
+}
+
 #[test]
 fn terminal_encodings_default_to_utf8_and_preserve_explicit_auto_detection() {
     use serial_workbench_core::{TerminalSettings, TextEncoding, WorkspaceView};

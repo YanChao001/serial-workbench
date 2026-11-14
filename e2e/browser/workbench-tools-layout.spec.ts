@@ -274,14 +274,16 @@ test("a new workspace can configure and distinguish serial views without connect
   await page
     .getByRole("option", { name: "Virtual serial (2)", exact: true })
     .click();
-  const switchBox = await editor
-    .getByRole("switch", { name: "已固定", exact: true })
+  const encodingBox = await editor
+    .getByRole("combobox", { name: "接收编码", exact: true })
     .boundingBox();
   const inputBox = await editor
     .getByRole("textbox", { name: "视图名称", exact: true })
     .boundingBox();
   expect(
-    Math.abs(switchBox!.x + switchBox!.width - inputBox!.x - inputBox!.width),
+    Math.abs(
+      encodingBox!.x + encodingBox!.width - inputBox!.x - inputBox!.width,
+    ),
   ).toBeLessThan(2);
   await editor.getByRole("button", { name: "移除视图", exact: true }).click();
   await expect(
@@ -538,6 +540,18 @@ for (const sample of [
       }),
     ).toHaveValue("Controller");
     await expect(
+      dialog.getByRole("combobox", {
+        name: t("workbench.receiveEncoding"),
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
+      dialog.getByRole("combobox", {
+        name: t("workbench.sendEncoding"),
+        exact: true,
+      }),
+    ).toBeVisible();
+    await expect(
       dialog
         .getByRole("combobox", {
           name: t("workbench.tools.chooseWorkspace"),
@@ -560,20 +574,42 @@ for (const sample of [
         configuration: configuration.toJSON(),
         scrollbarInset: element.getBoundingClientRect().right - scroll.right,
         controlGaps: [
-          ...element.querySelectorAll(
-            '.workbench-workspace-editor [role="combobox"]',
+          ...new Set(
+            [
+              ...element.querySelectorAll(
+                '.workbench-workspace-editor [role="combobox"]',
+              ),
+            ]
+              .filter(
+                (control) => !control.closest(".workbench-workspace-add-view"),
+              )
+              .map(
+                (control) =>
+                  control.closest(".workbench-workspace-format-controls") ??
+                  control,
+              ),
           ),
-        ]
-          .filter(
-            (control) => !control.closest(".workbench-workspace-add-view"),
-          )
-          .map((control) => {
-            const row = control.closest("label, .workbench-form-row")!;
-            return (
-              row.getBoundingClientRect().right -
-              control.getBoundingClientRect().right
-            );
-          }),
+        ].map((control) => {
+          const row = control.closest(
+            "label, .workbench-form-row, .workbench-workspace-row",
+          )!;
+          return (
+            row.getBoundingClientRect().right -
+            control.getBoundingClientRect().right
+          );
+        }),
+        formatGroups: [
+          ...element.querySelectorAll(".workbench-workspace-format-controls"),
+        ].map((group) => {
+          const controls = [...group.querySelectorAll('[role="combobox"]')];
+          const mode = controls[0]!.getBoundingClientRect();
+          const encoding = controls[1]!.getBoundingClientRect();
+          return {
+            leftInset: mode.left - group.getBoundingClientRect().left,
+            gap: encoding.left - mode.right,
+            rightInset: group.getBoundingClientRect().right - encoding.right,
+          };
+        }),
         actions: [
           ...element.querySelectorAll(".workbench-workspace-actions > button"),
         ].map((button) => button.getBoundingClientRect().height),
@@ -586,6 +622,12 @@ for (const sample of [
     expect(geometry.scrollbarInset).toBeLessThanOrEqual(8);
     for (const gap of geometry.controlGaps)
       expect(Math.abs(gap)).toBeLessThanOrEqual(1);
+    expect(geometry.formatGroups).toHaveLength(2);
+    for (const group of geometry.formatGroups) {
+      expect(Math.abs(group.leftInset)).toBeLessThanOrEqual(1);
+      expect(group.gap).toBeGreaterThanOrEqual(0);
+      expect(Math.abs(group.rightInset)).toBeLessThanOrEqual(1);
+    }
     expect(
       Math.max(...geometry.actions) - Math.min(...geometry.actions),
     ).toBeLessThan(1);
@@ -639,9 +681,6 @@ for (const sample of [
     });
     await chip.click();
     await dialog
-      .getByRole("switch", { name: t("workbench.tools.pinned"), exact: true })
-      .click();
-    await dialog
       .getByRole("button", { name: t("workbench.tools.save"), exact: true })
       .click();
     await expect
@@ -650,7 +689,7 @@ for (const sample of [
           () => window.workbenchFixture.workspaceWrites.at(-1)?.views[0],
         ),
       )
-      .toMatchObject({ icon: "cpu", pinned: true, color: selectedColor });
+      .toMatchObject({ icon: "cpu", pinned: false, color: selectedColor });
     await dialog.press("Escape");
     await expect(dialog).toHaveCount(0);
     await expect(
@@ -779,8 +818,11 @@ for (const sample of [
       t("workbench.tools.defaultWorkspace"),
     );
     await expect(
-      dialog.getByRole("textbox", {
-        name: t("workbench.tools.workspaceId"),
+      dialog.getByRole("button", {
+        name:
+          sample.language === "zh"
+            ? "按标识打开工作区"
+            : "Open workspace by identifier",
         exact: true,
       }),
     ).toHaveCount(0);

@@ -1,6 +1,6 @@
 # 任务规划
 
-需求定义见[需求](./requirements.md)，实际状态见[进度](./progress.md)与[账本](./feature-status.json)。M1b 与此前界面响应修正已交付合入；当前从 `main@9ddb5d8` 完成串口、工作区与界面稳定性修复的 PR 和完整 CI，交付后接续 M2 Task14 的 Node/runtime 切片，随后按阶段出口推进 M2—M6。产品范围与验收标准变更仍由用户确认。
+需求定义见[需求](./requirements.md)，实际状态见[进度](./progress.md)与[账本](./feature-status.json)。M1b、界面响应及串口稳定性修复已交付合入 `main@97ccd7b`；当前短期分支 `fix/startup-shell` 集中修正启动等待及工作区操作、设置和草稿归属，之后接续 M2 Task14 的 Node/runtime 切片，随后按阶段出口推进 M2—M6。产品范围与验收标准变更仍由用户确认。
 
 ## 阶段路线
 
@@ -39,7 +39,9 @@ M6 先完成全部纳入的软件项和 T01—T14，再集中硬件与发行验�
 
 PR #45 已 squash 合入 `main@9ddb5d8`。验收候选 `25834bc` 的 ARM 原生预检、完整四目标 12 项必需任务均成功；合入树与源码指纹相同，本轮自有分支已清理。用户报告 f1504de 的 COM5/COM14 各 10000 字节回环、重开与密集交互通过，源范围及历史失败见[交付证据](./progress.md#pr45-交付与-m2-接续)。
 
-当前分支 `fix/workbench-stability` 在主仓库工作区集中交付串口收发、Host/RPC 生命周期、工作区视图复用、编码、输入响应及统一界面反馈修复。先完成本地综合检查、差异自审和冻结候选的完整四目标 CI，再经 PR squash 合入；本轮不计为 Node/runtime 实现。原 `feature/m2-node-runtime` 分支保留，后续 Task14 从最新 main 接续。
+[PR #46](https://github.com/YanChao001/serial-workbench/pull/46) 已 squash 合入 `main@97ccd7b`，交付串口收发、Host/RPC 生命周期、工作区视图复用、编码、输入响应及统一界面反馈修复。[完整四目标 CI 43596079750](https://github.com/YanChao001/serial-workbench/actions/runs/43596079750) 的 12 项必需任务全部成功，合入树与冻结候选相同，自有修复分支已清理。当前 `fix/startup-shell` 让工作台在本地恢复和 Host 连接期间先显示，并修正工作区实际操作中复现的草稿串用、格式覆盖及配置缺项；按相关前端与 Native 存储边界检查，不计为 Node/runtime 实现。原 `feature/m2-node-runtime` 分支保留，后续 Task14 从最新 main 接续。
+
+2026-11-15 总目标继续执行，接续时已核对本地及远端 `main` 均为 `97ccd7b373068db972d93703d219eaf950f9c3d5`。当前切片在原分支完成已有修改的本机出口：2427 项前端、319 项脚本、843 项 Rust、199 项独立完整无头 UI 通过，保留所属条件跳过及两轮 UI 失败原件；规范与需求两轴增量复审闭合。[PR #47](https://github.com/YanChao001/serial-workbench/pull/47) 首轮完整四目标的 ARM 次窗口就绪观察失败已修正，修正候选 `bfa0a75` 的 ARM 三阶段预检及完整四目标十二项必需任务成功；该轮浏览器仍有一项首次失败后重试通过，现补实际连接/标签就绪屏障并隔离性能测量的 tracing 开销。新变化仅为浏览器测试与文档，原生代码与场景不变；下一出口为新冻结候选的完整四目标，实际结果见[本轮进度](./progress.md#2026-11-15-总目标接续与当前交付)。之后才 squash，核对合入树并回到 main，再从最新 main 创建 Task14 分支。指定备份、旧 M2 分支、用户 Host 及数据保留。
 
 下一切片沿 Node v0 合同建立 Rust 权威 DTO、完整性/来源验证与安装事务，再接正式离线 runtime、可信后台、worker、隔离 Web UI 及三个参考插件；Rust 继续拥有设备、录制、授权与 Operation 证据。共享 Node 故障按合同中断相关扩展任务，worker 故障按所属任务结算；执行信任与设备 API scope 分开，安装不执行包代码。
 

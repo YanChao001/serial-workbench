@@ -708,6 +708,24 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         &["description", "manufacturer", "driver"],
     )?;
     f.object::<DeviceList>("device-list", devices.clone(), &[])?;
+    let mut port_selection = serde_json::to_value(WorkspaceDocument::default())?;
+    port_selection["bindings"] = json!([{
+        "bindingId":"binding", "hostId":"host", "deviceId":"old-device",
+        "portName":"COM5", "fingerprint":{"transport":"serial","evidence":"unreliable"},
+        "configuration":SerialConfiguration::default(), "reconnect":ReconnectPolicy::default()
+    }]);
+    f.add::<WorkspaceDocument>("workspace-binding-port-name", port_selection.clone(), true)?;
+    port_selection["bindings"][0]
+        .as_object_mut()
+        .unwrap()
+        .remove("portName");
+    f.add::<WorkspaceDocument>(
+        "workspace-binding-no-port-name",
+        port_selection.clone(),
+        true,
+    )?;
+    port_selection["bindings"][0]["portName"] = Value::Null;
+    f.add::<WorkspaceDocument>("workspace-binding-null-port-name", port_selection, false)?;
     f.object::<DeviceBindingReference>(
         "device-binding-reference",
         json!({"workspaceId":"workspace","bindingId":"binding"}),

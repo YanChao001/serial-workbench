@@ -127,6 +127,8 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 
 新建与另存为复用 `workspace.save`，对独立新标识提交 `expectedRevision: 0`，保存冲突不能覆盖已有文档。持久目录身份与文档 CAS 在同一次事务提交，名称与版本从相应文档读取，失败不得生成空目录项。复制视图和设备绑定时生成独立身份并重映射内部引用，实际会话、发送草稿和授权不随模板复制。
 
+工作区 `DeviceBinding.portName` 是可选的端口位置意图，用于恢复同 Host 下的界面预选；它不是设备身份、访问权限或自动重连证据。值非空白、不含控制字符且不超过 1024 UTF-8 字节；缺失时省略，显式 `null` 拒绝。普通工作区保存及导入只持久化该元数据，不枚举或打开端口；显式 `device.rebind` 从当前已核验目录的 `systemName` 更新它。实际打开仍按当前目标验权并核对绑定、指纹与目录状态，强弱身份及 `REQUIRES_REBIND` 规则不因端口同名放宽。
+
 ## 父任务与子动作
 
 Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执行 hostId、instanceEpoch、parentOperationId、rootOperationId、actorId、executionMode 和本次 owner 实例。凭据只交给该执行上下文，不能从公开 Operation 取回，也不能通过提交 parentOperationId 自行领取。它证明任务归属，权限仍取当前调用者授权、插件授权与父任务受控 scope 的交集；Host 在子动作接纳与实际副作用前分别复核。

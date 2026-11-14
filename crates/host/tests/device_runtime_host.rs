@@ -233,6 +233,7 @@ impl Fixture {
             binding_id: id("binding"),
             host_id: self.host().host_id,
             device_id: id("old-device"),
+            port_name: Some("COM42".into()),
             fingerprint: self.provider.enumerate().unwrap()[0].fingerprint.clone(),
             configuration: SerialConfiguration::default(),
             reconnect: ReconnectPolicy::default(),
@@ -369,6 +370,10 @@ async fn host_favorites_and_rebind_share_document_cas_and_preserve_binding_prefe
     assert_eq!(
         saved.document.value.bindings[0].device_id,
         id("virtual:echo")
+    );
+    assert_eq!(
+        serde_json::to_value(&saved.document.value.bindings[0]).unwrap()["portName"],
+        "virtual:echo"
     );
     assert_eq!(
         saved.document.value.bindings[0].configuration,

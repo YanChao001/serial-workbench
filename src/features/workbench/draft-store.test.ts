@@ -35,3 +35,56 @@ it("preserves edits made while an older save snapshot is in flight", () => {
   expect(store.snapshot()).toEqual(saving);
   expect(store.isDirty()).toBe(false);
 });
+
+it("reidentifies current and saved drafts atomically without confirming newer input", () => {
+  const store = createDraftStore({ legacy: "OLD" });
+  store.change("legacy", "NEW");
+  const observations: { value: string; dirty: boolean }[] = [];
+  store.subscribe(() =>
+    observations.push({ value: store.get("scoped"), dirty: store.isDirty() }),
+  );
+  store.reidentify((drafts) => ({ scoped: drafts.legacy! }));
+  expect(store.snapshot()).toEqual({ scoped: "NEW" });
+  expect(store.isDirty()).toBe(true);
+  expect(observations).toEqual([{ value: "NEW", dirty: true }]);
+  store.discard();
+  expect(store.snapshot()).toEqual({ scoped: "OLD" });
+  expect(store.isDirty()).toBe(false);
+});
+
+it("preserves a saved empty draft during reidentification and skips unchanged publications", () => {
+  const store = createDraftStore({ legacy: "" });
+  const observations: { keys: string[]; dirty: boolean }[] = [];
+  store.subscribe(() =>
+    observations.push({
+      keys: Object.keys(store.snapshot()),
+      dirty: store.isDirty(),
+    }),
+  );
+  store.reidentify((drafts) => ({ scoped: drafts.legacy! }));
+  expect(store.snapshot()).toEqual({ scoped: "" });
+  expect(store.isDirty()).toBe(false);
+  expect(observations).toEqual([{ keys: ["scoped"], dirty: false }]);
+  store.reidentify((drafts) => ({ ...drafts }));
+  expect(observations).toHaveLength(1);
+});
+
+it("keeps both draft snapshots when an identity transform fails before publication", () => {
+  const store = createDraftStore({ legacy: "OLD" });
+  store.change("legacy", "NEW");
+  let notifications = 0;
+  store.subscribe(() => {
+    notifications += 1;
+  });
+  expect(() =>
+    store.reidentify((drafts) => {
+      if (drafts.legacy === "OLD") throw new Error("Saved draft rejected");
+      return { scoped: drafts.legacy! };
+    }),
+  ).toThrow("Saved draft rejected");
+  expect(store.snapshot()).toEqual({ legacy: "NEW" });
+  expect(store.isDirty()).toBe(true);
+  expect(notifications).toBe(0);
+  store.discard();
+  expect(store.snapshot()).toEqual({ legacy: "OLD" });
+});

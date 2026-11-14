@@ -91,6 +91,7 @@ export const labels: WorkbenchLabels = {
   readerMemory: "Reader memory",
   captureMemory: "Capture queue memory",
   peak: "Peak",
+  bindingUnmatched: "Select a port",
   bindingUnavailable:
     "This view’s device binding is unavailable. Rebind it before opening.",
   pinned: "Pinned",

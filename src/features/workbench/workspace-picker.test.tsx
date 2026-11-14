@@ -80,6 +80,37 @@ async function createForm(label: string, name: string) {
   );
   return popover;
 }
+it("distinguishes workspaces with the same name without renaming their documents", async () => {
+  const f = fixture();
+  f.host.listWorkspaces.mockResolvedValue({
+    workspaces: [
+      { scope: base.scope, name: "Original", revision: "7" },
+      {
+        scope: {
+          ...base.scope,
+          target: { ...base.scope.target, id: "another" },
+        },
+        name: "Original",
+        revision: "1",
+      },
+    ],
+  });
+  await waitFor(() =>
+    expect(
+      screen.getByRole("button", { name: "Refresh workspace list" }),
+    ).toBeEnabled(),
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: "Refresh workspace list" }),
+  );
+  await waitFor(() => expect(f.host.listWorkspaces).toHaveBeenCalledTimes(2));
+  fireEvent.click(screen.getByRole("combobox", { name: "Choose workspace" }));
+  expect(
+    await screen.findByRole("option", { name: "Original (1)" }),
+  ).toBeVisible();
+  expect(screen.getByRole("option", { name: "Original (2)" })).toBeVisible();
+  expect(f.host.saveWorkspace).not.toHaveBeenCalled();
+});
 it("deletes only after leave negotiation, archives the current revision and selects the default workspace", async () => {
   const f = fixture();
   fireEvent.click(screen.getByRole("button", { name: "Delete workspace" }));

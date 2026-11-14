@@ -4888,6 +4888,47 @@
       }
     },
     {
+      "name": "workspace-binding-null-port-name",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [
+          {
+            "bindingId": "binding",
+            "configuration": {
+              "baudRate": "9600",
+              "dataBits": "8",
+              "flowControl": "none",
+              "parity": "none",
+              "readWaitMs": "20",
+              "reconnectBackoffMs": "500",
+              "stopBits": "one",
+              "writeWaitMs": "1000"
+            },
+            "deviceId": "old-device",
+            "fingerprint": {
+              "evidence": "unreliable",
+              "transport": "serial"
+            },
+            "hostId": "host",
+            "portName": null,
+            "reconnect": {
+              "enabled": false,
+              "maxAttempts": "10",
+              "maxDelayMs": "30000"
+            }
+          }
+        ],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "",
+        "views": []
+      }
+    },
+    {
       "name": "device-binding-reference-unknown-field",
       "schema": "DeviceBindingReference",
       "value": {
@@ -10870,6 +10911,87 @@
           }
         ],
         "stale": false
+      }
+    },
+    {
+      "name": "workspace-binding-port-name",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [
+          {
+            "bindingId": "binding",
+            "configuration": {
+              "baudRate": "9600",
+              "dataBits": "8",
+              "flowControl": "none",
+              "parity": "none",
+              "readWaitMs": "20",
+              "reconnectBackoffMs": "500",
+              "stopBits": "one",
+              "writeWaitMs": "1000"
+            },
+            "deviceId": "old-device",
+            "fingerprint": {
+              "evidence": "unreliable",
+              "transport": "serial"
+            },
+            "hostId": "host",
+            "portName": "COM5",
+            "reconnect": {
+              "enabled": false,
+              "maxAttempts": "10",
+              "maxDelayMs": "30000"
+            }
+          }
+        ],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "",
+        "views": []
+      }
+    },
+    {
+      "name": "workspace-binding-no-port-name",
+      "schema": "WorkspaceDocument",
+      "value": {
+        "bindings": [
+          {
+            "bindingId": "binding",
+            "configuration": {
+              "baudRate": "9600",
+              "dataBits": "8",
+              "flowControl": "none",
+              "parity": "none",
+              "readWaitMs": "20",
+              "reconnectBackoffMs": "500",
+              "stopBits": "one",
+              "writeWaitMs": "1000"
+            },
+            "deviceId": "old-device",
+            "fingerprint": {
+              "evidence": "unreliable",
+              "transport": "serial"
+            },
+            "hostId": "host",
+            "reconnect": {
+              "enabled": false,
+              "maxAttempts": "10",
+              "maxDelayMs": "30000"
+            }
+          }
+        ],
+        "captures": [],
+        "favoriteBindingIds": [],
+        "layout": {
+          "panelHeight": 240,
+          "sidebarWidth": 224
+        },
+        "name": "",
+        "views": []
       }
     },
     {

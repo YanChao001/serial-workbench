@@ -206,6 +206,9 @@
               "hostId": {
                 "$ref": "#/definitions/Id"
               },
+              "portName": {
+                "type": "string"
+              },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
               }
@@ -20813,6 +20816,9 @@
               "hostId": {
                 "$ref": "#/definitions/Id"
               },
+              "portName": {
+                "type": "string"
+              },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
               }
@@ -21263,6 +21269,9 @@
               },
               "hostId": {
                 "$ref": "#/definitions/Id"
+              },
+              "portName": {
+                "type": "string"
               },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
@@ -24782,6 +24791,9 @@
               "hostId": {
                 "$ref": "#/definitions/Id"
               },
+              "portName": {
+                "type": "string"
+              },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
               }
@@ -25211,6 +25223,9 @@
               "hostId": {
                 "$ref": "#/definitions/Id"
               },
+              "portName": {
+                "type": "string"
+              },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
               }
@@ -25552,6 +25567,9 @@
               },
               "hostId": {
                 "$ref": "#/definitions/Id"
+              },
+              "portName": {
+                "type": "string"
               },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
@@ -26025,6 +26043,9 @@
               },
               "hostId": {
                 "$ref": "#/definitions/Id"
+              },
+              "portName": {
+                "type": "string"
               },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
@@ -28196,6 +28217,9 @@
               },
               "hostId": {
                 "$ref": "#/definitions/Id"
+              },
+              "portName": {
+                "type": "string"
               },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"
@@ -30629,6 +30653,9 @@
               },
               "hostId": {
                 "$ref": "#/definitions/Id"
+              },
+              "portName": {
+                "type": "string"
               },
               "reconnect": {
                 "$ref": "#/definitions/ReconnectPolicy"

@@ -215,7 +215,7 @@ fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
         ));
     }
     for (id, text) in &state.drafts {
-        bounded_text(id, 128, "Draft identity")?;
+        bounded_text(id, 1024, "Draft identity")?;
         if id.is_empty() || id.chars().any(char::is_control) {
             return Err(NativeError::new(
                 ErrorCode::InvalidArgument,
@@ -509,6 +509,86 @@ mod tests {
             saved
         );
         assert_eq!(fs::read(legacy).unwrap(), b"broken v7 user original");
+    }
+    #[test]
+    fn scoped_workspace_draft_round_trips_with_full_length_resource_identities() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let workspace = "w".repeat(118);
+        let scope = serde_json::to_string(&serde_json::json!([
+            format!("workspace:{workspace}"),
+            "h".repeat(128),
+            "workspace",
+            workspace,
+            null,
+            null
+        ]))
+        .unwrap();
+        let key = format!(
+            "view/{}",
+            serde_json::to_string(&(scope, "v".repeat(128))).unwrap()
+        );
+        assert_eq!(key.len(), 554);
+        let mut state = store.snapshot("main").unwrap().state;
+        state
+            .drafts
+            .insert(key.clone(), "UNSENT scoped draft".into());
+
+        let saved = store.save("main", state, 0.into()).unwrap();
+        let reopened = ClientStateStore::open(path).unwrap();
+        assert_eq!(reopened.snapshot("main").unwrap(), saved);
+        assert_eq!(saved.state.drafts[&key], "UNSENT scoped draft");
+        assert!(
+            reopened
+                .snapshot("secondary")
+                .unwrap()
+                .state
+                .drafts
+                .is_empty()
+        );
+    }
+    #[test]
+    fn draft_identity_utf8_byte_limit_preserves_saved_state_when_exceeded() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let scope = format!("{}abc", "草".repeat(336));
+        let key = format!("view/{}", serde_json::to_string(&(&scope, "v")).unwrap());
+        assert_eq!(key.len(), 1024);
+        assert!(key.chars().count() < 1024);
+        let mut state = store.snapshot("main").unwrap().state;
+        state
+            .drafts
+            .insert(key.clone(), "UNSENT boundary draft".into());
+        let saved = store.save("main", state, 0.into()).unwrap();
+        let original = fs::read(&path).unwrap();
+
+        let over_limit = format!(
+            "view/{}",
+            serde_json::to_string(&(format!("{scope}d"), "v")).unwrap()
+        );
+        assert_eq!(over_limit.len(), 1025);
+        let mut invalid = saved.state.clone();
+        invalid.drafts.remove(&key);
+        invalid
+            .drafts
+            .insert(over_limit, "must not replace saved draft".into());
+        assert_eq!(
+            store
+                .save("main", invalid, saved.revision)
+                .unwrap_err()
+                .code,
+            ErrorCode::InputTooLong
+        );
+        assert_eq!(fs::read(&path).unwrap(), original);
+        assert_eq!(
+            ClientStateStore::open(path)
+                .unwrap()
+                .snapshot("main")
+                .unwrap(),
+            saved
+        );
     }
     #[test]
     fn independent_windows_and_separately_opened_stores_enforce_revision_cas() {

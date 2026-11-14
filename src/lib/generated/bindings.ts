@@ -1398,6 +1398,7 @@ export type DeviceBinding_Deserialize = {
   bindingId: Id;
   hostId: Id;
   deviceId: Id;
+  portName?: string;
   fingerprint: DeviceFingerprint_Deserialize;
   configuration: SerialConfiguration;
   reconnect: ReconnectPolicy;
@@ -1407,6 +1408,7 @@ export type DeviceBinding_Serialize = {
   bindingId: Id;
   hostId: Id;
   deviceId: Id;
+  portName?: string;
   fingerprint: DeviceFingerprint_Serialize;
   configuration: SerialConfiguration;
   reconnect: ReconnectPolicy;

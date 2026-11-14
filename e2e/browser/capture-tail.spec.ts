@@ -477,8 +477,8 @@ test("saved recording refs restore readonly Raw tails, retain drafts, and persis
   await expect
     .poll(() =>
       page.evaluate(() =>
-        window.workbenchFixture.clientStateWrites.some(
-          (s) => s.drafts["session-session"] === "DEVICE EDIT KEPT",
+        window.workbenchFixture.clientStateWrites.some((s) =>
+          Object.values(s.drafts).includes("DEVICE EDIT KEPT"),
         ),
       ),
     )
@@ -516,7 +516,7 @@ test("saved recording refs restore readonly Raw tails, retain drafts, and persis
         window.workbenchFixture.clientStateWrites.some(
           (s) =>
             s.drafts.unconnected === "CAPTURE UNBOUND SAVED" &&
-            s.drafts["session-session"] === "DEVICE EDIT KEPT",
+            Object.values(s.drafts).includes("DEVICE EDIT KEPT"),
         ),
       ),
     )
@@ -524,9 +524,9 @@ test("saved recording refs restore readonly Raw tails, retain drafts, and persis
   const persistedDrafts = await page.evaluate(
     () => window.workbenchFixture.clientStateWrites.at(-1)?.drafts,
   );
-  expect(Object.keys(persistedDrafts ?? {}).sort()).toEqual([
-    "session-session",
-    "unconnected",
+  expect(Object.values(persistedDrafts ?? {}).sort()).toEqual([
+    "CAPTURE UNBOUND SAVED",
+    "DEVICE EDIT KEPT",
   ]);
   await expect(panel(page)).toContainText("reader_overflow");
   const informationTrigger = panel(page).getByRole("button", {

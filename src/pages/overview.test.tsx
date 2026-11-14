@@ -25,7 +25,10 @@ import {
   type ClientDraftPort,
 } from "@/features/workbench/client-drafts";
 import { snapshotWindowLayout } from "@/features/workbench/window-layout-template";
+import { viewDraftKey } from "@/features/workbench/draft-identity";
+import { stateScopeKey } from "@/lib/host-scope";
 import { HostProvider } from "@/providers/host";
+import { UnsavedWorkProvider } from "@/providers/unsaved-work";
 import { SettingsProvider } from "@/providers/settings";
 import { HostContext, type HostContextValue } from "@/providers/host-context";
 import Overview from "./overview";
@@ -62,10 +65,13 @@ beforeEach(() => {
 });
 const i18n = { language: "en" as const, t: createTranslator(en) };
 const chinese = { language: "zh" as const, t: createTranslator(zhCN) };
+async function clickEnabledButton(name: string) {
+  const button = await screen.findByRole("button", { name });
+  await waitFor(() => expect(button).toBeEnabled());
+  fireEvent.click(button);
+}
 async function connectVirtualSerial() {
-  fireEvent.click(
-    await screen.findByRole("button", { name: "Open Virtual serial" }),
-  );
+  await clickEnabledButton("Open Virtual serial");
   await waitFor(() =>
     expect(screen.getByRole("button", { name: "Close session" })).toBeEnabled(),
   );
@@ -103,6 +109,13 @@ function localSnapshot(drafts: Record<string, string>): ClientStateSnapshot {
     revision: "4",
     state: { ...structuredClone(DEFAULT_CLIENT_STATE), drafts },
   };
+}
+function expectDraftLocked(input: HTMLElement) {
+  expect(
+    input.hasAttribute("disabled") ||
+      input.hasAttribute("readonly") ||
+      input.closest("[inert]") !== null,
+  ).toBe(true);
 }
 
 it("shows already restored drafts immediately when returning to the workbench", async () => {
@@ -288,7 +301,7 @@ async function openCaptureStop(host: HostContextValue) {
       </HostContext>
     </I18nContext>,
   );
-  fireEvent.click(await screen.findByRole("button", { name: "Capture" }));
+  await clickEnabledButton("Capture");
   const stop = await screen.findByRole("button", { name: "Stop capture" });
   await waitFor(() => expect(stop).toBeEnabled());
   return stop;
@@ -432,43 +445,6 @@ describe("Serial Workbench 首页", () => {
     ).toBeVisible();
     expect(within(dialog).queryByRole("button", { name: "Cancel" })).toBeNull();
   });
-  it("keeps direct access to a stored workspace outside this Host's registered directory in an on-demand tool", async () => {
-    const host = readyHost();
-    host.state.workspace = workspace("current", "Current bench");
-    host.loadWorkspace = vi
-      .fn()
-      .mockResolvedValue(workspace("stored-identifier", "Stored bench"));
-    render(
-      <I18nContext value={i18n}>
-        <HostContext value={host}>
-          <Overview />
-        </HostContext>
-      </I18nContext>,
-    );
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
-    expect(
-      screen.queryByRole("textbox", { name: "Workspace identifier" }),
-    ).toBeNull();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open workspace by identifier" }),
-    );
-    fireEvent.change(
-      screen.getByRole("textbox", { name: "Workspace identifier" }),
-      { target: { value: "stored-identifier" } },
-    );
-    fireEvent.click(
-      screen.getByRole("button", { name: en["workbench.tools.load"] }),
-    );
-    await waitFor(() =>
-      expect(host.loadWorkspace).toHaveBeenCalledWith(
-        "stored-identifier",
-        expect.any(AbortSignal),
-      ),
-    );
-    expect(host.trustedConnect).not.toHaveBeenCalled();
-    expect(host.invoke).not.toHaveBeenCalled();
-    expect(host.send).not.toHaveBeenCalled();
-  });
   it("keeps workspace focus during a directory read and closes after reloading the same template", async () => {
     const host = readyHost();
     host.connection = await attachment("1");
@@ -485,7 +461,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     const choice = screen.getByRole("combobox", { name: "Choose workspace" });
     expect(choice).toBeEnabled();
     expect(choice).toHaveAttribute("aria-busy", "true");
@@ -506,6 +482,70 @@ describe("Serial Workbench 首页", () => {
     await waitFor(() =>
       expect(screen.queryByRole("dialog", { name: "Workspace" })).toBeNull(),
     );
+  });
+  it("keeps a connected legacy workspace clean when opening its editor and enriches ports only on explicit layout save", async () => {
+    const host = readyHost();
+    host.connection = await attachment("1");
+    const base = workspace("connected-legacy", "Legacy bench");
+    base.document.value = snapshotWindowLayout(
+      base.document.value,
+      [{ id: "legacy-view", sessionId: "session" }],
+      host.state.sessions,
+      host.state.devices,
+      defaults.settings.terminal,
+      {},
+    );
+    base.document.value.views[0]!.name = "Controller";
+    Reflect.deleteProperty(base.document.value.bindings[0]!, "portName");
+    const original = structuredClone(base.document.value);
+    host.state.workspace = base;
+    host.saveWorkspace = vi.fn(async (current, value) => ({
+      ...current,
+      document: { revision: "2", value },
+    }));
+    const draftStore = createClientDraftStore({
+      read: async () => localSnapshot({}),
+      save: vi.fn(),
+    });
+    render(
+      <I18nContext value={i18n}>
+        <UnsavedWorkProvider>
+          <HostContext value={host}>
+            <Overview draftStore={draftStore} />
+          </HostContext>
+        </UnsavedWorkProvider>
+      </I18nContext>,
+    );
+    await connectVirtualSerial();
+    expect(host.saveWorkspace).not.toHaveBeenCalled();
+    await clickEnabledButton("Workspace");
+    const editor = screen.getByRole("dialog", { name: "Workspace" });
+    expect(
+      within(editor).getByRole("button", { name: "Save workspace" }),
+    ).toBeDisabled();
+    expect(base.document.value).toEqual(original);
+    fireEvent.keyDown(editor, { key: "Escape" });
+    await waitFor(() => expect(screen.queryByRole("dialog")).toBeNull());
+    expect(host.saveWorkspace).not.toHaveBeenCalled();
+    fireEvent.click(
+      screen.getByRole("button", { name: "Save current layout" }),
+    );
+    await waitFor(() => expect(host.saveWorkspace).toHaveBeenCalledOnce());
+    expect(host.saveWorkspace).toHaveBeenCalledWith(
+      base,
+      {
+        ...original,
+        bindings: original.bindings.map((binding) => ({
+          ...binding,
+          portName: "Virtual serial",
+        })),
+      },
+      expect.any(AbortSignal),
+    );
+    expect(base.document.value).toEqual(original);
+    expect(host.trustedConnect).toHaveBeenCalledOnce();
+    expect(host.send).not.toHaveBeenCalled();
+    expect(host.invoke).not.toHaveBeenCalled();
   });
   it("keeps the active session and draft when the same scope arrives with reordered JSON fields", async () => {
     const host = readyHost();
@@ -615,7 +655,7 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content());
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     expect(screen.getByRole("combobox", { name: "Views" })).toBeInTheDocument();
     fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
       target: { value: "Original view" },
@@ -672,7 +712,7 @@ describe("Serial Workbench 首页", () => {
           </HostContext>
         </I18nContext>,
       );
-      fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+      await clickEnabledButton("Workspace");
       fireEvent.click(
         screen.getByRole("button", { name: "Export configuration" }),
       );
@@ -703,7 +743,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
       target: { value: "Unsaved local name" },
     });
@@ -743,7 +783,7 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content(host));
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     fireEvent.click(
       screen.getByRole("button", { name: "Export configuration" }),
     );
@@ -808,6 +848,7 @@ describe("Serial Workbench 首页", () => {
       new Promise(() => {}),
     );
     let failRefresh = false;
+    const loadedWorkspace = workspace("default", "Bench");
     vi.spyOn(connection.client, "query").mockImplementation(async (query) => {
       switch (query.actionId) {
         case "catalog.list":
@@ -822,7 +863,7 @@ describe("Serial Workbench 首页", () => {
             value: { devices: readyHost().state.devices, stale: false },
           };
         case "workspace.read":
-          return { kind: "workspace", value: workspace("default", "Bench") };
+          return { kind: "workspace", value: loadedWorkspace };
         case "action.check":
           return {
             kind: "action_check",
@@ -872,7 +913,9 @@ describe("Serial Workbench 首页", () => {
       projection({ type: "error", error: new Error("late old projection") }),
     );
     expect(
-      screen.getByText("The local service could not connect. Please retry."),
+      await screen.findByText(
+        "The local service could not connect. Please retry.",
+      ),
     ).toBeVisible();
     expect(
       screen.queryByText(/cargo run|private-token|D:\/private/),
@@ -896,7 +939,12 @@ describe("Serial Workbench 首页", () => {
     await waitFor(() =>
       expect(port.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          drafts: { "session-session": "CURRENT EDIT" },
+          drafts: {
+            [viewDraftKey(
+              stateScopeKey(loadedWorkspace.scope),
+              "session-session",
+            )]: "CURRENT EDIT",
+          },
         }),
         "4",
       ),
@@ -1022,9 +1070,11 @@ describe("Serial Workbench 首页", () => {
         </HostProvider>
       </I18nContext>,
     );
-    expect(
-      await screen.findByRole("textbox", { name: "发送草稿" }),
-    ).toHaveValue("RESTORED");
+    await waitFor(() =>
+      expect(screen.getByRole("textbox", { name: "发送草稿" })).toHaveValue(
+        "RESTORED",
+      ),
+    );
     expect(await screen.findByText("正在连接本机服务…")).toBeVisible();
     expect(screen.getByRole("button", { name: "发送" })).toBeDisabled();
     expect(
@@ -1033,6 +1083,132 @@ describe("Serial Workbench 首页", () => {
     expect(connect).toHaveBeenCalledOnce();
     await act(async () => connecting.reject(startupError()));
   });
+  it.each(["ready", "failed"] as const)(
+    "keeps the full workbench mounted through delayed draft recovery and a %s Host startup",
+    async (outcome) => {
+      const reading = deferred<ClientStateSnapshot>();
+      const connecting =
+        deferred<Awaited<ReturnType<typeof createHostConnection>>>();
+      const connect = vi.fn(() => connecting.promise);
+      const port = { read: vi.fn(() => reading.promise), save: vi.fn() };
+      const connection = await attachment("9");
+      vi.spyOn(connection, "refreshScopes").mockResolvedValue([]);
+      vi.spyOn(connection.client, "query").mockImplementation(async (query) => {
+        switch (query.actionId) {
+          case "catalog.list":
+            return {
+              kind: "catalog",
+              value: { catalogVersion: "1", items: actionCatalog },
+            };
+          case "device.list":
+            return {
+              kind: "devices",
+              value: { devices: readyHost().state.devices, stale: false },
+            };
+          case "workspace.read":
+            return { kind: "workspace", value: workspace("default", "Bench") };
+          case "action.check":
+            return {
+              kind: "action_check",
+              value: {
+                actionId: String(query.params.actionId),
+                target: query.target,
+                allowed: true,
+              },
+            };
+          default:
+            throw new Error(`Unexpected startup query ${query.actionId}`);
+        }
+      });
+      const view = render(
+        <I18nContext value={i18n}>
+          <HostProvider desktop connect={connect}>
+            <Overview draftStore={createClientDraftStore(port)} />
+          </HostProvider>
+        </I18nContext>,
+      );
+      const shell = screen.getByTestId("serial-workbench-shell");
+      const draft = screen.getByRole("textbox", { name: "Send draft" });
+      const receive = screen.getByRole("region", { name: "Receive" });
+      expect(receive).toBeVisible();
+      expectDraftLocked(draft);
+      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+      expect(
+        screen.getByRole("button", { name: "Save drafts" }),
+      ).toBeDisabled();
+      const progress = await screen.findByText(
+        "Connecting to the local service…",
+      );
+      expect(progress.closest("[data-sonner-toast]")).not.toBeNull();
+      expect(
+        within(shell).queryByText("Waiting for the local service to respond."),
+      ).not.toBeInTheDocument();
+      expect(port.save).not.toHaveBeenCalled();
+
+      await act(async () =>
+        reading.resolve(localSnapshot({ unconnected: "RESTORED ORIGINAL" })),
+      );
+      expect(screen.getByRole("textbox", { name: "Send draft" })).toBe(draft);
+      expect(screen.getByRole("region", { name: "Receive" })).toBe(receive);
+      expect(draft).toHaveValue("RESTORED ORIGINAL");
+      expect(draft).toBeEnabled();
+      expect(draft).not.toHaveAttribute("readonly");
+      expect(draft.closest("[inert]")).toBeNull();
+      fireEvent.change(draft, { target: { value: "EDITED WHILE CONNECTING" } });
+      expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+      expect(
+        screen.getByRole("combobox", { name: "Choose device" }),
+      ).toBeDisabled();
+
+      await act(async () => {
+        if (outcome === "ready") connecting.resolve(connection);
+        else connecting.reject(startupError());
+      });
+      await waitFor(() =>
+        expect(
+          screen.queryByText("Connecting to the local service…"),
+        ).not.toBeInTheDocument(),
+      );
+      expect(screen.getByRole("textbox", { name: "Send draft" })).toBe(draft);
+      expect(screen.getByRole("region", { name: "Receive" })).toBe(receive);
+      expect(draft).toHaveValue("EDITED WHILE CONNECTING");
+      if (outcome === "ready") {
+        await waitFor(() =>
+          expect(
+            screen.getByRole("button", { name: "Open Virtual serial" }),
+          ).toBeEnabled(),
+        );
+        expect(
+          screen.queryByText(
+            "The local service could not connect. Please retry.",
+          ),
+        ).not.toBeInTheDocument();
+      } else {
+        const failure = await screen.findByText(
+          "The local service could not connect. Please retry.",
+        );
+        expect(failure.closest("[data-sonner-toast]")).not.toBeNull();
+        expect(
+          screen.getByRole("button", {
+            name: "Retry local service connection",
+          }),
+        ).toBeEnabled();
+        expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+      }
+      expect(port.save).not.toHaveBeenCalled();
+      expect(connect).toHaveBeenCalledOnce();
+      view.unmount();
+      expect(
+        screen.queryByText("Connecting to the local service…"),
+      ).not.toBeInTheDocument();
+      expect(
+        screen.queryByText(
+          "The local service could not connect. Please retry.",
+        ),
+      ).not.toBeInTheDocument();
+      if (outcome === "failed") connection.dispose();
+    },
+  );
   it("waits for the real local draft read before exposing editing or saving", async () => {
     const reading = deferred<ClientStateSnapshot>();
     const port = { read: vi.fn(() => reading.promise), save: vi.fn() };
@@ -1045,13 +1221,11 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>,
     );
     await waitFor(() => expect(port.read).toHaveBeenCalledOnce());
-    expect(screen.getByText("正在恢复本地草稿…")).toBeVisible();
-    expect(
-      screen.queryByRole("textbox", { name: "发送草稿" }),
-    ).not.toBeInTheDocument();
-    expect(
-      screen.queryByRole("button", { name: "保存草稿" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(screen.getByText("正在恢复本地草稿…")).toBeVisible(),
+    );
+    expectDraftLocked(screen.getByRole("textbox", { name: "发送草稿" }));
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     expect(port.save).not.toHaveBeenCalled();
     await act(async () =>
       reading.resolve(localSnapshot({ unconnected: "ORIGINAL" })),
@@ -1060,6 +1234,85 @@ describe("Serial Workbench 首页", () => {
       await screen.findByRole("textbox", { name: "发送草稿" }),
     ).toHaveValue("ORIGINAL");
     expect(port.save).not.toHaveBeenCalled();
+  });
+  it("hydrates every saved view after the Host is ready without replacing the editor or dropping other draft keys", async () => {
+    const host = readyHost();
+    const document = snapshotWindowLayout(
+      { ...defaults.workspace, name: "Recovered bench" },
+      [
+        { id: "first", sessionId: "session" },
+        { id: "second", sessionId: "session" },
+      ],
+      host.state.sessions,
+      host.state.devices,
+      defaults.settings.terminal,
+      {},
+    );
+    document.views[0]!.name = "First saved view";
+    document.views[1]!.name = "Second saved view";
+    host.state.workspace = {
+      ...workspace("default", "Recovered bench"),
+      document: { revision: "1", value: document },
+    };
+    const draftScope = stateScopeKey(host.state.workspace.scope);
+    const reading = deferred<ClientStateSnapshot>();
+    const port = {
+      read: vi.fn(() => reading.promise),
+      save: vi.fn<ClientDraftPort["save"]>(async (state) =>
+        localSnapshot(state.drafts),
+      ),
+    };
+    render(
+      <I18nContext value={i18n}>
+        <HostContext value={host}>
+          <Overview draftStore={createClientDraftStore(port)} />
+        </HostContext>
+      </I18nContext>,
+    );
+    const draft = screen.getByRole("textbox", { name: "Send draft" });
+    const receive = screen.getByRole("region", { name: "Receive" });
+    expectDraftLocked(draft);
+    expect(screen.getByRole("button", { name: "Save drafts" })).toBeDisabled();
+    const tools = ["Workspace", "Devices", "Capture and replay tools"];
+    for (const name of tools)
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    expect(port.save).not.toHaveBeenCalled();
+    await act(async () =>
+      reading.resolve(
+        localSnapshot({
+          unconnected: "UNBOUND SAVED",
+          first: "FIRST SAVED",
+          second: "SECOND SAVED",
+        }),
+      ),
+    );
+    expect(screen.getByRole("textbox", { name: "Send draft" })).toBe(draft);
+    expect(screen.getByRole("region", { name: "Receive" })).toBe(receive);
+    for (const name of tools)
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    fireEvent.click(screen.getByRole("tab", { name: "First saved view" }));
+    expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
+      "FIRST SAVED",
+    );
+    fireEvent.click(screen.getByRole("tab", { name: "Second saved view" }));
+    const selectedDraft = screen.getByRole("textbox", { name: "Send draft" });
+    expect(selectedDraft).toHaveValue("SECOND SAVED");
+    fireEvent.change(selectedDraft, { target: { value: "SECOND EDIT" } });
+    fireEvent.click(screen.getByRole("button", { name: "Save drafts" }));
+    await waitFor(() =>
+      expect(port.save).toHaveBeenCalledWith(
+        expect.objectContaining({
+          drafts: {
+            unconnected: "UNBOUND SAVED",
+            [viewDraftKey(draftScope, "first")]: "FIRST SAVED",
+            [viewDraftKey(draftScope, "second")]: "SECOND EDIT",
+          },
+        }),
+        "4",
+      ),
+    );
+    expect(host.trustedConnect).not.toHaveBeenCalled();
+    expect(host.send).not.toHaveBeenCalled();
   });
   it("preserves unread and future local drafts until an explicit successful recovery", async () => {
     const snapshot = localSnapshot({ unconnected: "ORIGINAL" });
@@ -1079,24 +1332,25 @@ describe("Serial Workbench 首页", () => {
         </HostProvider>
       </I18nContext>,
     );
-    expect(
-      await screen.findByText(
-        "本地草稿未恢复，原件已保留。请重试或前往设置中的诊断与恢复。",
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("textbox", { name: "发送草稿" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "本地草稿未恢复，原件已保留。请重试或前往设置中的诊断与恢复。",
+        ),
+      ).toBeVisible(),
+    );
+    expectDraftLocked(screen.getByRole("textbox", { name: "发送草稿" }));
+    expect(screen.getByRole("button", { name: "保存草稿" })).toBeDisabled();
     fireEvent.click(screen.getByRole("button", { name: "重试恢复草稿" }));
     await waitFor(() => expect(port.read).toHaveBeenCalledTimes(2));
-    expect(
-      screen.getByText(
-        "本地草稿未恢复，原件已保留。请重试或前往设置中的诊断与恢复。",
-      ),
-    ).toBeVisible();
-    expect(
-      screen.queryByRole("textbox", { name: "发送草稿" }),
-    ).not.toBeInTheDocument();
+    await waitFor(() =>
+      expect(
+        screen.getByText(
+          "本地草稿未恢复，原件已保留。请重试或前往设置中的诊断与恢复。",
+        ),
+      ).toBeVisible(),
+    );
+    expectDraftLocked(screen.getByRole("textbox", { name: "发送草稿" }));
     expect(port.save).not.toHaveBeenCalled();
     fireEvent.click(screen.getByRole("button", { name: "重试恢复草稿" }));
     expect(
@@ -1168,6 +1422,7 @@ describe("Serial Workbench 首页", () => {
       ...workspace("default", "Restored bench"),
       document: { revision: "1", value: document },
     };
+    const draftScope = stateScopeKey(online.state.workspace.scope);
     view.rerender(content(online));
     expect(
       screen.getByRole("button", { name: "Workspace" }),
@@ -1225,8 +1480,8 @@ describe("Serial Workbench 首页", () => {
         expect.objectContaining({
           drafts: {
             unconnected: "LOCAL AFTER WORKSPACE",
-            "view/unconnected": "REAL SECOND EDIT",
-            "saved-view": "SAVED VIEW DRAFT",
+            [viewDraftKey(draftScope, "unconnected")]: "REAL SECOND EDIT",
+            [viewDraftKey(draftScope, "saved-view")]: "SAVED VIEW DRAFT",
           },
         }),
         "1",
@@ -1295,6 +1550,7 @@ describe("Serial Workbench 首页", () => {
         ...workspace("default", "Restored bench"),
         document: { revision: "1", value: document },
       };
+      const draftScope = stateScopeKey(host.state.workspace.scope);
       const port = {
         read: vi.fn().mockResolvedValue(
           localSnapshot({
@@ -1325,7 +1581,7 @@ describe("Serial Workbench 首页", () => {
           expect.objectContaining({
             drafts: {
               unconnected: "LOCAL ORIGINAL",
-              "view/unconnected": "VIEW CHANGED",
+              [viewDraftKey(draftScope, "unconnected")]: "VIEW CHANGED",
             },
           }),
           "4",
@@ -1349,6 +1605,7 @@ describe("Serial Workbench 首页", () => {
       ...workspace("default", "Bench"),
       document: { revision: "1", value: document },
     };
+    const draftScope = stateScopeKey(online.state.workspace.scope);
     const offline = readyHost();
     offline.state = {
       ...offline.state,
@@ -1390,7 +1647,9 @@ describe("Serial Workbench 首页", () => {
     await waitFor(() =>
       expect(port.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          drafts: { "view/unconnected": "ATTACH LOCAL" },
+          drafts: {
+            [viewDraftKey(draftScope, "unconnected")]: "ATTACH LOCAL",
+          },
         }),
         "4",
       ),
@@ -1401,6 +1660,7 @@ describe("Serial Workbench 首页", () => {
     const online = readyHost();
     online.connection = await attachment("ready");
     online.state.workspace = workspace("default", "Bench");
+    const draftScope = stateScopeKey(online.state.workspace.scope);
     const port = {
       read: vi.fn().mockResolvedValue(localSnapshot({})),
       save: vi.fn().mockResolvedValue(localSnapshot({})),
@@ -1436,7 +1696,9 @@ describe("Serial Workbench 首页", () => {
     await waitFor(() =>
       expect(port.save).toHaveBeenCalledWith(
         expect.objectContaining({
-          drafts: { "session-session": "CURRENT EDIT" },
+          drafts: {
+            [viewDraftKey(draftScope, "session-session")]: "CURRENT EDIT",
+          },
         }),
         "4",
       ),
@@ -1480,7 +1742,7 @@ describe("Serial Workbench 首页", () => {
     fireEvent.click(
       await screen.findByRole("button", { name: "Save current layout" }),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     await chooseWorkspace("Bench B");
     await waitFor(() => expect(host.loadWorkspace).toHaveBeenCalled());
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -1722,7 +1984,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     fireEvent.change(screen.getByRole("textbox", { name: "Workspace name" }), {
       target: { value: "Submitted" },
     });
@@ -1783,7 +2045,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Workspace" }));
+    await clickEnabledButton("Workspace");
     await chooseWorkspace("Other bench");
     await waitFor(() =>
       expect(host.loadWorkspace).toHaveBeenCalledWith(
@@ -1847,7 +2109,7 @@ describe("Serial Workbench 首页", () => {
       "source",
       expect.any(AbortSignal),
     );
-    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await clickEnabledButton("Capture");
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Start capture" }),
@@ -1911,7 +2173,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(await screen.findByRole("button", { name: "Capture" }));
+    await clickEnabledButton("Capture");
     const stop = await screen.findByRole("button", { name: "Stop capture" });
     await waitFor(() => expect(stop).toBeEnabled());
     fireEvent.click(stop);
@@ -2083,7 +2345,7 @@ describe("Serial Workbench 首页", () => {
     );
     expect(signal?.aborted).toBe(true);
     await act(async () => waiting.resolve({ ...accepted, state: "succeeded" }));
-    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await clickEnabledButton("Capture");
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Stop capture" }),
@@ -2551,8 +2813,7 @@ it.each(["quick", "tools"])(
     );
     const view = render(content());
     await connectVirtualSerial();
-    if (entry === "quick")
-      fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    if (entry === "quick") await clickEnabledButton("Capture");
     else {
       fireEvent.pointerDown(
         screen.getByRole("button", { name: "Workspace menu" }),
@@ -2680,7 +2941,7 @@ it.each(["owned-reference", "pending-status"])(
     );
     const view = render(content());
     await connectVirtualSerial();
-    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await clickEnabledButton("Capture");
     fireEvent.click(screen.getByRole("button", { name: "Start capture" }));
     await waitFor(() =>
       expect(host.invoke).toHaveBeenCalledWith(
@@ -2795,7 +3056,7 @@ it.each(["workspace", "attachment", "selection"])(
     );
     const view = render(content());
     await connectVirtualSerial();
-    fireEvent.click(screen.getByRole("button", { name: "Capture" }));
+    await clickEnabledButton("Capture");
     fireEvent.click(screen.getByRole("button", { name: "Start capture" }));
     await waitFor(() => expect(host.invoke).toHaveBeenCalledOnce());
     fireEvent.keyDown(screen.getByRole("dialog"), { key: "Escape" });
@@ -2813,7 +3074,7 @@ it.each(["workspace", "attachment", "selection"])(
       view.rerender(content());
     } else {
       host.loadWorkspace = vi.fn().mockResolvedValue(base);
-      fireEvent.click(screen.getByRole("button", { name: "Workspace" }));
+      await clickEnabledButton("Workspace");
       fireEvent.click(
         screen.getByRole("button", { name: en["workbench.tools.reload"] }),
       );
@@ -2885,8 +3146,9 @@ it("edits and restores the unconnected draft from a capture without persisting t
     },
     before.revision,
   );
+  const recovery = deferred<ClientStateSnapshot>();
   const draftStore = createClientDraftStore({
-    read: async () => storage.read(),
+    read: () => recovery.promise,
     save: async (value, revision) => storage.save(value, revision),
   });
   const content = () => (
@@ -2897,6 +3159,14 @@ it("edits and restores the unconnected draft from a capture without persisting t
     </I18nContext>
   );
   const view = render(content());
+  expectDraftLocked(screen.getByRole("textbox", { name: "Send draft" }));
+  await act(async () => recovery.resolve(storage.read()));
+  expect(
+    screen.getByRole("tab", { name: "Send draft", selected: true }),
+  ).toBeInTheDocument();
+  expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
+    "UNBOUND",
+  );
   fireEvent.click(await screen.findByRole("tab", { name: /Recording 1/ }));
   const input = screen.getByRole("textbox", { name: "Send draft" });
   expect(input).toHaveValue("UNBOUND");
@@ -2914,7 +3184,7 @@ it("edits and restores the unconnected draft from a capture without persisting t
   await waitFor(() =>
     expect(storage.read().state.drafts).toEqual({
       unconnected: "UNBOUND EDIT",
-      "saved-device": "DEVICE",
+      [viewDraftKey(stateScopeKey(base.scope), "saved-device")]: "DEVICE",
     }),
   );
   expect(
