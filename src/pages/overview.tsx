@@ -16,32 +16,26 @@ import {
 import { useI18n } from "@/providers/i18n";
 import { useHost } from "@/providers/host-context";
 import { WorkspaceLayout } from "@/features/workbench/workspace-layout";
+import { sameWorkspace } from "@/features/workbench/workspace-model";
 import { SettingsContext } from "@/providers/settings-context";
 import { WorkbenchTools } from "@/features/workbench/workbench-tools";
 import { workbenchToolLabels } from "@/features/workbench/tool-labels";
 import type { WorkbenchLabels } from "@/features/workbench/labels";
 import { operationText } from "@/features/workbench/operation-text";
 import { Button } from "@/components/ui/button";
-import {
-  createClientDraftStore,
-  type ClientDraftStore,
-} from "@/features/workbench/client-drafts";
-import {
-  readClientWindowState,
-  saveClientWindowState,
-} from "@/lib/client-settings";
+import type { ClientDraftStore } from "@/features/workbench/client-drafts";
+import { useClientDraftStore } from "@/providers/client-drafts-context";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { stateScopeKey } from "@/lib/host-scope";
 import { createWorkbenchFileActions } from "@/features/workbench/file-actions";
 import { connectionKey } from "@/lib/client-connection-defaults";
+import { HostConnectionNotice } from "@/features/workbench/host-connection-notice";
+import { settingsLocation } from "@/routes";
 
-const windowDraftStore = createClientDraftStore({
-  read: readClientWindowState,
-  save: saveClientWindowState,
-});
 export default function Overview({
-  draftStore = windowDraftStore,
+  draftStore: suppliedDraftStore,
 }: { draftStore?: ClientDraftStore } = {}) {
+  const draftStore = useClientDraftStore(suppliedDraftStore);
   const { t } = useI18n();
   const host = useHost();
   const settings = useContext(SettingsContext);
@@ -133,11 +127,15 @@ export default function Overview({
   const workspaceDraft = workspaceDrafts[workspaceScope];
   const setWorkspaceDraft = useCallback(
     (value: WorkspaceDocument) =>
-      setWorkspaceDrafts((current) => ({
-        ...current,
-        [workspaceScope]: value,
-      })),
-    [workspaceScope],
+      setWorkspaceDrafts((current) => {
+        if (sameWorkspace(value, workspaceBase?.document.value)) {
+          const next = { ...current };
+          delete next[workspaceScope];
+          return next;
+        }
+        return { ...current, [workspaceScope]: value };
+      }),
+    [workspaceScope, workspaceBase?.document.value],
   );
   const terminal = settings?.settings.terminal ?? defaults.settings.terminal;
   const currentHost = useRef(host);
@@ -184,7 +182,7 @@ export default function Overview({
   const [draftLoad, setDraftLoad] = useState<{
     drafts?: Record<string, string>;
     error?: unknown;
-  }>({});
+  }>(() => ({ drafts: draftStore.getSnapshot() }));
   const [draftAttempt, setDraftAttempt] = useState(0);
   const [retrying, setRetrying] = useState(false);
   useEffect(() => {
@@ -232,25 +230,28 @@ export default function Overview({
     host.state.status === "connecting" ||
     host.state.status === "error" ||
     host.state.error ? (
-      <div className="px-3 py-2 text-sm space-y-2">
-        <p role={host.state.error && !retrying ? "alert" : "status"}>
-          {retrying
+      <HostConnectionNotice
+        busy={retrying || host.state.status === "connecting"}
+        title={
+          retrying
             ? t("workbench.hostRetrying")
             : host.state.status === "connecting"
               ? t("workbench.hostConnecting")
-              : t("workbench.hostUnavailable")}
-        </p>
-        {host.state.error && (
-          <details>
-            <summary>{t("common.details")}</summary>
-            {hostErrorCode && <code>{hostErrorCode}</code>}
-            <p>{nativeErrorText({ code: hostErrorCode }, t)}</p>
-            <a className="underline" href="#/settings">
-              {t("shell.diagnostics")}
-            </a>
-          </details>
-        )}
-      </div>
+              : t("workbench.hostUnavailable")
+        }
+        description={
+          retrying || host.state.status === "connecting"
+            ? t("workbench.hostWaiting")
+            : nativeErrorText({ code: hostErrorCode }, t)
+        }
+        labels={{
+          retry: t("common.retry"),
+          diagnostics: t("shell.diagnostics"),
+          code: t("logs.code"),
+        }}
+        errorCode={hostErrorCode}
+        onRetry={() => void retryHostConnection()}
+      />
     ) : undefined;
   const labels = useMemo<WorkbenchLabels>(
     () => ({
@@ -282,6 +283,8 @@ export default function Overview({
         failed: t("workbench.captureState.failed"),
       },
       closeView: t("workbench.closeView"),
+      closeOtherViews: t("workbench.closeOtherViews"),
+      closeAllViews: t("workbench.closeAllViews"),
       closeSession: t("workbench.closeSession"),
       disconnect: t("workbench.disconnect"),
       displayedTxBytes: t("workbench.displayedTxBytes"),
@@ -343,12 +346,39 @@ export default function Overview({
       split: t("workbench.split"),
       freeze: t("workbench.freeze"),
       resume: t("workbench.resume"),
+      displayPaused: t("workbench.displayPaused"),
+      pendingUpdates: t("workbench.pendingUpdates"),
+      newUpdates: t("workbench.newUpdates"),
+      returnToLatest: t("workbench.returnToLatest"),
+      clearDraft: t("workbench.clearDraft"),
       search: t("workbench.search"),
+      searchCase: t("workbench.searchCase"),
+      searchWord: t("workbench.searchWord"),
+      searchRegex: t("workbench.searchRegex"),
+      searchPrevious: t("workbench.searchPrevious"),
+      searchClose: t("workbench.searchClose"),
+      searchInvalid: t("workbench.searchInvalid"),
+      searchTimeout: t("workbench.searchTimeout"),
+      searchEncoding: t("workbench.searchEncoding"),
+      receiveEncoding: t("workbench.receiveEncoding"),
+      sendEncoding: t("workbench.sendEncoding"),
+      encodingAuto: t("workbench.encodingAuto"),
+      encodingAutoShort: t("workbench.encodingAutoShort"),
+      encodingPending: t("workbench.encodingPending"),
+      encodingGuessHelp: t("workbench.encodingGuessHelp"),
+      invalidEncoding: t("workbench.invalidEncoding"),
+      unrepresentableEncoding: t("workbench.unrepresentableEncoding"),
+      encodingLoading: t("workbench.encodingLoading"),
+      encodingLoadFailed: t("workbench.encodingLoadFailed"),
+      searchLimit: t("workbench.searchLimit"),
       searchMode: t("workbench.searchMode"),
       find: t("workbench.find"),
       noMatches: t("workbench.noMatches"),
       offset: t("workbench.offset"),
       gap: t("workbench.gap"),
+      configurationApplied: t("workbench.configurationApplied"),
+      configurationUncertain: t("workbench.configurationUncertain"),
+      controlEvent: t("workbench.controlEvent"),
       emptyStream: t("workbench.emptyStream"),
       send: t("workbench.send"),
       draft: t("workbench.draft"),
@@ -380,6 +410,11 @@ export default function Overview({
       disconnected: t("workbench.disconnected"),
       encodingHelp: t("workbench.encodingHelp"),
       gapHelp: t("workbench.gapHelp"),
+      historyRetention: t("workbench.historyRetention"),
+      historyRecords: t("workbench.historyRecords"),
+      historyCapacity: t("workbench.historyCapacity"),
+      historyHint: t("workbench.historyHint"),
+      historyTrimmed: t("workbench.historyTrimmed"),
       disconnectHelp: t("workbench.disconnectHelp"),
       cancel: t("workbench.cancel"),
       status: t("workbench.status"),
@@ -407,6 +442,7 @@ export default function Overview({
       partial: t("workbench.partial"),
       rejected: t("workbench.rejected"),
       emptyDraft: t("workbench.emptyDraft"),
+      sendLimit: t("workbench.sendLimit"),
       sendNotAllowed: t("workbench.sendNotAllowed"),
       streamUnavailable: t("workbench.streamUnavailable"),
       errorDetails: t("workbench.errorDetails"),
@@ -452,13 +488,17 @@ export default function Overview({
           formatError={(error) => nativeErrorText(error, t)}
           unboundDraftMessage={t("workbench.unboundDraft")}
           initialWorkspace={workspaceDraft ?? workspaceBase?.document.value}
+          preserveWorkspacePresets={workspaceDraft !== undefined}
           workspaceKey={workspaceScope}
           workspaceRevision={workspaceBase?.document.revision}
           workspaceSelection={renderIdentity.generation}
           readCaptureTail={host.readCaptureTail}
           terminalSettings={terminal}
-          viewColor={
-            settings?.settings.customAccent ?? defaults.settings.customAccent
+          receiveHistory={settings?.settings.receiveHistory}
+          onReceiveHistoryChange={
+            settings
+              ? (value) => settings.update({ receiveHistory: value })
+              : undefined
           }
           onSaveWindowLayout={
             workspaceBase
@@ -501,7 +541,19 @@ export default function Overview({
               draft={workspaceDraft ?? workspaceBase?.document.value}
               onChange={setWorkspaceDraft}
               onAcknowledged={(result) => {
-                acknowledge(result);
+                if (acknowledge(result))
+                  setWorkspaceDrafts((current) => {
+                    if (
+                      !sameWorkspace(
+                        current[workspaceScope],
+                        result.document.value,
+                      )
+                    )
+                      return current;
+                    const next = { ...current };
+                    delete next[workspaceScope];
+                    return next;
+                  });
               }}
               onLoaded={(result) => {
                 acknowledge(
@@ -656,7 +708,10 @@ export default function Overview({
               >
                 {t("workbench.retryDrafts")}
               </Button>
-              <a className="underline" href="#/settings">
+              <a
+                className="underline"
+                href={`#${settingsLocation("recovery")}`}
+              >
                 {t("shell.diagnostics")}
               </a>
             </>

@@ -1,5 +1,6 @@
 import type { SerialConfiguration } from "@serial-workbench/contracts";
 import { Input } from "@/components/ui/input";
+import { HelpTooltip } from "@/components/help-tooltip";
 import { OptionsSelect } from "@/components/options-select";
 import { EditableCombobox } from "@/components/editable-combobox";
 import type { WriteWaitMode } from "@/lib/generated/bindings";
@@ -24,7 +25,8 @@ export type SerialConfigurationLabels = Record<
   | "xonXoff"
   | "dsrDtr",
   string
->;
+> &
+  Partial<Record<"readWaitHint" | "writeWaitHint" | "reconnectHint", string>>;
 export type SerialConfigurationFieldsProps = {
   value: SerialConfiguration;
   onChange(value: SerialConfiguration): void;
@@ -46,10 +48,16 @@ export function SerialConfigurationFields({
   onWriteWaitModeChange,
   writeWaitLabels,
 }: SerialConfigurationFieldsProps) {
+  const hints = {
+    readWaitMs: labels.readWaitHint,
+    writeWaitMs: labels.writeWaitHint,
+    reconnectBackoffMs: labels.reconnectHint,
+  };
   function update<K extends keyof SerialConfiguration>(
     field: K,
     next: SerialConfiguration[K],
   ) {
+    if (value[field] === next) return;
     onChange({ ...value, [field]: next });
   }
   return (
@@ -155,7 +163,14 @@ export function SerialConfigurationFields({
         )
         .map((field) => (
           <div className="workbench-form-row" key={field}>
-            <label htmlFor={id + "-" + field}>{labels[field]}</label>
+            <div className="flex items-center gap-1">
+              <label htmlFor={id + "-" + field}>{labels[field]}</label>
+              {hints[field] && (
+                <HelpTooltip label={`${labels[field]}?`}>
+                  {hints[field]}
+                </HelpTooltip>
+              )}
+            </div>
             <Input
               id={id + "-" + field}
               inputMode="numeric"

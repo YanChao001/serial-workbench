@@ -1,11 +1,5 @@
-import {
-  Suspense,
-  useLayoutEffect,
-  useRef,
-  useState,
-  type CSSProperties,
-} from "react";
-import { Outlet, useLocation } from "react-router-dom";
+import { useLayoutEffect, useRef, useState, type CSSProperties } from "react";
+import { useLocation } from "react-router-dom";
 import { AppSidebar } from "@/components/app-sidebar";
 import { TitleBar } from "@/components/title-bar";
 import { WindowBackground } from "@/components/window-background";
@@ -18,8 +12,7 @@ import { cn } from "@/lib/utils";
 import { SIDEBAR_COLLAPSED_WIDTH } from "@/lib/settings-model";
 import { useAppChrome } from "@/hooks/use-app-chrome";
 import "@/styles/app-navigation.css";
-import { PageLoading } from "@/components/page-loading";
-import { RouteErrorBoundary } from "@/components/route-error-boundary";
+import { CachedOutlet } from "./cached-outlet";
 
 /** 感知路由的应用布局；页面失败时保留导航能力 */
 export function AppShell() {
@@ -69,11 +62,7 @@ export function AppShell() {
         tabIndex={0}
       >
         <div className="app-page-content" data-content-layout={contentLayout}>
-          <Suspense key={pathname} fallback={<PageLoading />}>
-            <RouteErrorBoundary>
-              <Outlet />
-            </RouteErrorBoundary>
-          </Suspense>
+          <CachedOutlet />
         </div>
       </main>
     </div>

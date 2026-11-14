@@ -51,7 +51,7 @@ for (const language of ["en", "zh"] as const) {
     const bodyHex = "EF BB BF E4 B8 B2 E5 8F A3 0A 41";
     const bodyWithNulHex = "EF BB BF 00 E4 B8 B2 E5 8F A3 0A 41";
     await input.fill(body);
-    await expect(count).toHaveText(chinese ? "13 字节" : "13 bytes");
+    await expect(count).toHaveText("13 B");
     await hex.click();
     await expect(input).toHaveValue(bodyHex);
     await text.click();
@@ -62,7 +62,7 @@ for (const language of ["en", "zh"] as const) {
     await expect(input).toHaveValue("\uFEFF\u0000串口\nA");
     await hex.click();
     await expect(input).toHaveValue(bodyWithNulHex);
-    await expect(count).toHaveText(chinese ? "14 字节" : "14 bytes");
+    await expect(count).toHaveText("14 B");
     expect(
       await page.evaluate(() => window.workbenchFixture.sentBytes),
     ).toEqual([]);

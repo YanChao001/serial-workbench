@@ -18,6 +18,7 @@ import type {
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { OptionsSelect } from "@/components/options-select";
 import { nativeErrorCode } from "@/lib/native-error";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
@@ -103,11 +104,15 @@ export type SessionControlsLabels = Record<
   | "dsrDtr",
   string
 > & {
+  readWaitHint?: string;
+  writeWaitHint?: string;
+  reconnectHint?: string;
   operationText: OperationText;
   gates: Record<SessionSnapshot["txGate"], string>;
   failure(code: string | undefined): string;
 };
 export type SessionControlsProps = {
+  mode?: "parameters" | "controls";
   writeWaitLabels?: import("./serial-configuration-fields").SerialConfigurationFieldsProps["writeWaitLabels"];
   writeWaitMode?: import("@/lib/generated/bindings").WriteWaitMode;
   onWriteWaitModeChange?: (
@@ -138,7 +143,7 @@ type ControlAction =
 export function SessionControls(props: SessionControlsProps) {
   return props.session ? (
     <ControlsForm
-      key={`${props.contextKey}:${props.target?.hostId}:${props.session.sessionId}:${props.session.sessionEpoch}`}
+      key={`${props.mode ?? "parameters"}:${props.contextKey}:${props.target?.hostId}:${props.session.sessionId}:${props.session.sessionEpoch}`}
       {...props}
       session={props.session}
     />
@@ -146,6 +151,7 @@ export function SessionControls(props: SessionControlsProps) {
 }
 
 function ControlsForm({
+  mode = "parameters",
   readInputs,
   session,
   target,
@@ -169,7 +175,7 @@ function ControlsForm({
   const [throughOperation, setThroughOperation] = useState("");
   const [direction, setDirection] = useState<PurgeParams["direction"]>("both");
   const [scope, setScope] = useState<PurgeParams["scope"]>("both");
-  const [busy, setBusy] = useState(false);
+  const [locallyBusy, setBusy] = useState(false);
   const [error, setError] = useState<{
     code: string;
     eventKey?: string;
@@ -210,14 +216,40 @@ function ControlsForm({
           },
     [hostId, session.sessionId, session.sessionEpoch],
   );
+  const sessionOperations = operations.filter(
+    (operation) =>
+      operation.target.hostId === actionTarget?.hostId &&
+      operation.target.kind === "session" &&
+      operation.target.id === session.sessionId &&
+      operation.target.sessionId === session.sessionId &&
+      operation.target.sessionEpoch === session.sessionEpoch &&
+      [
+        "session.configure",
+        "session.control",
+        "session.break",
+        "session.purge",
+        "tx.drain",
+        "tx.waitBoundary",
+      ].includes(operation.actionId),
+  );
+  const busy =
+    locallyBusy ||
+    sessionOperations.some((operation) =>
+      ["queued", "running", "cancel_requested"].includes(operation.state),
+    );
   const inputs = useMemo<readonly HostActionCheckInput[]>(() => {
-    if (!actionTarget) return [];
+    if (!actionTarget || disabled || session.state !== "open") return [];
     const actions: ControlAction[] = [];
-    if (!invalid)
-      actions.push({
-        actionId: "session.configure",
-        params: { requested: draft },
-      });
+    if (mode === "parameters")
+      return invalid
+        ? []
+        : [
+            {
+              actionId: "session.configure",
+              params: { requested: draft },
+              target: actionTarget,
+            },
+          ];
     for (const line of ["dtr", "rts"] as const)
       for (const value of [true, false])
         actions.push({ actionId: "session.control", params: { line, value } });
@@ -251,6 +283,9 @@ function ControlsForm({
     writeWait,
     throughOperation,
     queueWait,
+    mode,
+    disabled,
+    session.state,
   ]);
   const [availability, setAvailability] = useState<{
     inputs: readonly HostActionCheckInput[];
@@ -324,7 +359,8 @@ function ControlsForm({
     return availability.values.some(
       (value) =>
         JSON.stringify(value.input) === key &&
-        value.result?.allowed === true &&
+        // 观察过期不能吞掉用户点击；工具入口对本次输入重新检查，Host 接纳仍验权。
+        value.result?.allowed !== false &&
         !value.error,
     );
   }
@@ -355,21 +391,30 @@ function ControlsForm({
           operationId: operation.operationId,
           executionHostId: operation.executionHostId,
         };
+      const terminal = await waitForOperation(operation, combined);
+      combined.throwIfAborted();
+      if (
+        !mounted.current ||
+        terminal.operationId !== operation.operationId ||
+        terminal.actionId !== action.actionId ||
+        terminal.executionHostId !== actionTarget.hostId ||
+        terminal.target.hostId !== actionTarget.hostId ||
+        terminal.target.kind !== actionTarget.kind ||
+        terminal.target.id !== actionTarget.id ||
+        terminal.target.sessionId !== actionTarget.sessionId ||
+        terminal.target.sessionEpoch !== actionTarget.sessionEpoch
+      )
+        throw { code: "INVALID_OPERATION_RESULT" };
+      if (terminal.error)
+        throw {
+          code: terminal.error.code,
+          operationId: terminal.operationId,
+          executionHostId: terminal.executionHostId,
+        };
+      if (terminal.state !== "succeeded")
+        throw { code: "INVALID_OPERATION_RESULT" };
       if (action.actionId === "session.configure") {
-        const terminal = await waitForOperation(operation, combined);
-        combined.throwIfAborted();
         if (
-          !mounted.current ||
-          terminal.operationId !== operation.operationId ||
-          terminal.actionId !== action.actionId ||
-          terminal.executionHostId !== actionTarget.hostId ||
-          terminal.target.hostId !== actionTarget.hostId ||
-          terminal.target.kind !== actionTarget.kind ||
-          terminal.target.id !== actionTarget.id ||
-          terminal.target.sessionId !== actionTarget.sessionId ||
-          terminal.target.sessionEpoch !== actionTarget.sessionEpoch ||
-          terminal.state !== "succeeded" ||
-          terminal.error ||
           terminal.result?.kind !== "configuration" ||
           CONFIG_FIELDS.some(
             (field) =>
@@ -379,7 +424,7 @@ function ControlsForm({
           )
         )
           throw {
-            code: terminal.error?.code ?? "INVALID_OPERATION_RESULT",
+            code: "INVALID_OPERATION_RESULT",
           };
         const receipt = terminal.result.value;
         if (
@@ -412,7 +457,7 @@ function ControlsForm({
         });
         return terminal;
       }
-      return operation;
+      return terminal;
     } finally {
       if (pending.current === controller) pending.current = null;
       if (mounted.current && !controller.signal.aborted) setBusy(false);
@@ -443,27 +488,10 @@ function ControlsForm({
   useUnsavedWork({
     id: `session-configuration-${session.sessionId}-${session.sessionEpoch}`,
     label: labels.configuration,
-    dirty,
+    dirty: mode === "parameters" && dirty,
     discard: () => setDraft(submitted),
   });
-  const receipts = operations
-    .filter(
-      (operation) =>
-        operation.target.hostId === actionTarget?.hostId &&
-        operation.target.kind === "session" &&
-        operation.target.id === session.sessionId &&
-        operation.target.sessionId === session.sessionId &&
-        operation.target.sessionEpoch === session.sessionEpoch &&
-        [
-          "session.configure",
-          "session.control",
-          "session.break",
-          "session.purge",
-          "tx.drain",
-          "tx.waitBoundary",
-        ].includes(operation.actionId),
-    )
-    .slice(0, 12);
+  const receipts = sessionOperations.slice(0, 12);
   // 历史回执继续可读；只有本次用户请求的失败属于当前故障。
   const fault = error;
   return (
@@ -495,252 +523,278 @@ function ControlsForm({
         {session.txGate !== "ready" && (
           <p role="status">{labels.gates[session.txGate]}</p>
         )}
-        <fieldset disabled={disabled || session.readOnly}>
-          <legend>{labels.configuration}</legend>
-          <SerialConfigurationFields
-            id={id}
-            value={draft}
-            onChange={setDraft}
-            labels={labels}
-            disabled={disabled || session.readOnly}
-            writeWaitMode={writeWaitMode}
-            onWriteWaitModeChange={onWriteWaitModeChange}
-            writeWaitLabels={writeWaitLabels}
-          />
-          <p
-            className="workbench-configuration-validation"
-            role={invalid ? "alert" : undefined}
-          >
-            {invalid ? labels.invalidConfiguration : ""}
-          </p>
-        </fieldset>
-        <fieldset disabled={disabled || session.readOnly || busy}>
-          <legend>{labels.controlLines}</legend>
-          <div className="flex flex-wrap gap-2">
-            {(["dtr", "rts"] as const).map((line) =>
-              ([true, false] as const).map((value) => (
-                <Button
-                  key={`${line}-${value}`}
-                  size="sm"
-                  variant="outline"
-                  disabled={
-                    !canAct({
-                      actionId: "session.control",
-                      params: { line, value },
-                    })
-                  }
-                  onClick={() =>
-                    run(() =>
-                      act({
-                        actionId: "session.control",
-                        params: { line, value },
-                      }),
-                    )
-                  }
-                >
-                  {
-                    labels[
-                      line === "dtr"
-                        ? value
-                          ? "dtrOn"
-                          : "dtrOff"
-                        : value
-                          ? "rtsOn"
-                          : "rtsOff"
-                    ]
-                  }
-                </Button>
-              )),
-            )}
-          </div>
-          {(session.configuration.flowControl === "rtsCts" ||
-            session.configuration.flowControl === "dsrDtr") && (
-            <p className="text-xs text-muted-foreground">
-              {labels.flowOwnsLine}
+        {mode === "parameters" && (
+          <fieldset disabled={disabled || session.readOnly}>
+            <legend>{labels.configuration}</legend>
+            <SerialConfigurationFields
+              id={id}
+              value={draft}
+              onChange={setDraft}
+              labels={labels}
+              disabled={disabled || session.readOnly}
+              writeWaitMode={writeWaitMode}
+              onWriteWaitModeChange={onWriteWaitModeChange}
+              writeWaitLabels={writeWaitLabels}
+            />
+            <p
+              className="workbench-configuration-validation"
+              role={invalid ? "alert" : undefined}
+            >
+              {invalid ? labels.invalidConfiguration : ""}
             </p>
-          )}
-          <div className="workbench-form-fields mt-2">
-            <label>
-              {labels.breakDuration}
-              <Input
-                inputMode="numeric"
-                value={breakDuration}
-                aria-invalid={!validDuration(breakDuration)}
-                onChange={(event) => setBreakDuration(event.target.value)}
-              />
-            </label>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                !canAct({
-                  actionId: "session.break",
-                  params: { durationMs: breakDuration },
-                })
-              }
-              onClick={() =>
-                run(() =>
-                  act({
-                    actionId: "session.break",
-                    params: { durationMs: breakDuration },
-                  }),
-                )
-              }
-            >
-              {labels.finiteBreak}
-            </Button>
-            <label>
-              {labels.purgeDirection}
-              <OptionsSelect<PurgeParams["direction"]>
-                label={labels.purgeDirection}
-                value={direction}
-                onValueChange={setDirection}
-                disabled={disabled || session.readOnly || busy}
-                options={(["rx", "tx", "both"] as const).map((value) => ({
-                  value,
-                  label: labels[value],
-                }))}
-              />
-            </label>
-            <label>
-              {labels.purgeScope}
-              <OptionsSelect<PurgeParams["scope"]>
-                label={labels.purgeScope}
-                value={scope}
-                onValueChange={setScope}
-                disabled={disabled || session.readOnly || busy}
-                options={(["application", "driver", "both"] as const).map(
-                  (value) => ({
-                    value,
-                    label: labels[value],
-                  }),
-                )}
-              />
-            </label>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                !canAct({
-                  actionId: "session.purge",
-                  params: { direction, scope },
-                })
-              }
-              onClick={() =>
-                run(() =>
-                  act({
-                    actionId: "session.purge",
-                    params: { direction, scope },
-                  }),
-                )
-              }
-            >
-              {labels.purge}
-            </Button>
-            <label>
-              {labels.drain} · {labels.writeWaitMs}
-              <Input
-                inputMode="numeric"
-                value={writeWait}
-                aria-invalid={!validDuration(writeWait)}
-                onChange={(event) => setWriteWait(event.target.value)}
-              />
-            </label>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                !canAct({
-                  actionId: "tx.drain",
-                  params: { writeWaitMs: writeWait },
-                })
-              }
-              onClick={() =>
-                run(() =>
-                  act({
-                    actionId: "tx.drain",
-                    params: { writeWaitMs: writeWait },
-                  }),
-                )
-              }
-            >
-              {labels.drain}
-            </Button>
-            <label>
-              {labels.throughOperation}
-              <Input
-                value={throughOperation}
-                onChange={(event) => setThroughOperation(event.target.value)}
-              />
-            </label>
-            <label>
-              {labels.queueWaitMs}
-              <Input
-                inputMode="numeric"
-                value={queueWait}
-                aria-invalid={!validDuration(queueWait)}
-                onChange={(event) => setQueueWait(event.target.value)}
-              />
-            </label>
-            <Button
-              size="sm"
-              variant="outline"
-              disabled={
-                !canAct({
-                  actionId: "tx.waitBoundary",
-                  params: {
-                    throughOperationId: throughOperation,
-                    queueWaitMs: queueWait,
-                  },
-                })
-              }
-              onClick={() =>
-                run(() =>
-                  act({
-                    actionId: "tx.waitBoundary",
-                    params: {
-                      throughOperationId: throughOperation,
-                      queueWaitMs: queueWait,
-                    },
-                  }),
-                )
-              }
-            >
-              {labels.waitBoundary}
-            </Button>
-          </div>
-        </fieldset>
-        <SessionInputSamples
-          target={actionTarget}
-          read={readInputs}
-          connected={!disabled && session.state === "open"}
-          labels={labels}
-        />
-        <SessionControlReceipts operations={receipts} labels={labels} />
+          </fieldset>
+        )}
+        {mode === "controls" && (
+          <Tabs defaultValue="controls" className="workbench-session-tools">
+            <TabsList>
+              <TabsTrigger value="controls">{labels.controlLines}</TabsTrigger>
+              <TabsTrigger value="receipts">
+                {labels.receipt} ({receipts.length})
+              </TabsTrigger>
+            </TabsList>
+            <TabsContent value="controls" className="space-y-4">
+              <>
+                <fieldset disabled={disabled || session.readOnly || busy}>
+                  <legend>{labels.controlLines}</legend>
+                  <div className="flex flex-wrap gap-2">
+                    {(["dtr", "rts"] as const).map((line) =>
+                      ([true, false] as const).map((value) => (
+                        <Button
+                          key={`${line}-${value}`}
+                          size="sm"
+                          variant="outline"
+                          disabled={
+                            !canAct({
+                              actionId: "session.control",
+                              params: { line, value },
+                            })
+                          }
+                          onClick={() =>
+                            run(() =>
+                              act({
+                                actionId: "session.control",
+                                params: { line, value },
+                              }),
+                            )
+                          }
+                        >
+                          {
+                            labels[
+                              line === "dtr"
+                                ? value
+                                  ? "dtrOn"
+                                  : "dtrOff"
+                                : value
+                                  ? "rtsOn"
+                                  : "rtsOff"
+                            ]
+                          }
+                        </Button>
+                      )),
+                    )}
+                  </div>
+                  {(session.configuration.flowControl === "rtsCts" ||
+                    session.configuration.flowControl === "dsrDtr") && (
+                    <p className="text-xs text-muted-foreground">
+                      {labels.flowOwnsLine}
+                    </p>
+                  )}
+                  <div className="workbench-form-fields mt-2">
+                    <label>
+                      {labels.breakDuration}
+                      <Input
+                        inputMode="numeric"
+                        value={breakDuration}
+                        aria-invalid={!validDuration(breakDuration)}
+                        onChange={(event) =>
+                          setBreakDuration(event.target.value)
+                        }
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !canAct({
+                          actionId: "session.break",
+                          params: { durationMs: breakDuration },
+                        })
+                      }
+                      onClick={() =>
+                        run(() =>
+                          act({
+                            actionId: "session.break",
+                            params: { durationMs: breakDuration },
+                          }),
+                        )
+                      }
+                    >
+                      {labels.finiteBreak}
+                    </Button>
+                    <label>
+                      {labels.purgeDirection}
+                      <OptionsSelect<PurgeParams["direction"]>
+                        label={labels.purgeDirection}
+                        value={direction}
+                        onValueChange={setDirection}
+                        disabled={disabled || session.readOnly || busy}
+                        options={(["rx", "tx", "both"] as const).map(
+                          (value) => ({
+                            value,
+                            label: labels[value],
+                          }),
+                        )}
+                      />
+                    </label>
+                    <label>
+                      {labels.purgeScope}
+                      <OptionsSelect<PurgeParams["scope"]>
+                        label={labels.purgeScope}
+                        value={scope}
+                        onValueChange={setScope}
+                        disabled={disabled || session.readOnly || busy}
+                        options={(
+                          ["application", "driver", "both"] as const
+                        ).map((value) => ({
+                          value,
+                          label: labels[value],
+                        }))}
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !canAct({
+                          actionId: "session.purge",
+                          params: { direction, scope },
+                        })
+                      }
+                      onClick={() =>
+                        run(() =>
+                          act({
+                            actionId: "session.purge",
+                            params: { direction, scope },
+                          }),
+                        )
+                      }
+                    >
+                      {labels.purge}
+                    </Button>
+                    <label>
+                      {labels.drain} · {labels.writeWaitMs}
+                      <Input
+                        inputMode="numeric"
+                        value={writeWait}
+                        aria-invalid={!validDuration(writeWait)}
+                        onChange={(event) => setWriteWait(event.target.value)}
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !canAct({
+                          actionId: "tx.drain",
+                          params: { writeWaitMs: writeWait },
+                        })
+                      }
+                      onClick={() =>
+                        run(() =>
+                          act({
+                            actionId: "tx.drain",
+                            params: { writeWaitMs: writeWait },
+                          }),
+                        )
+                      }
+                    >
+                      {labels.drain}
+                    </Button>
+                    <label>
+                      {labels.throughOperation}
+                      <Input
+                        value={throughOperation}
+                        onChange={(event) =>
+                          setThroughOperation(event.target.value)
+                        }
+                      />
+                    </label>
+                    <label>
+                      {labels.queueWaitMs}
+                      <Input
+                        inputMode="numeric"
+                        value={queueWait}
+                        aria-invalid={!validDuration(queueWait)}
+                        onChange={(event) => setQueueWait(event.target.value)}
+                      />
+                    </label>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      disabled={
+                        !canAct({
+                          actionId: "tx.waitBoundary",
+                          params: {
+                            throughOperationId: throughOperation,
+                            queueWaitMs: queueWait,
+                          },
+                        })
+                      }
+                      onClick={() =>
+                        run(() =>
+                          act({
+                            actionId: "tx.waitBoundary",
+                            params: {
+                              throughOperationId: throughOperation,
+                              queueWaitMs: queueWait,
+                            },
+                          }),
+                        )
+                      }
+                    >
+                      {labels.waitBoundary}
+                    </Button>
+                  </div>
+                </fieldset>
+                <SessionInputSamples
+                  target={actionTarget}
+                  read={readInputs}
+                  connected={!disabled && session.state === "open"}
+                  labels={labels}
+                />
+              </>
+            </TabsContent>
+            <TabsContent value="receipts">
+              <SessionControlReceipts operations={receipts} labels={labels} />
+            </TabsContent>
+          </Tabs>
+        )}
       </div>
-      <div className="workbench-tool-footer">
-        <Button
-          size="sm"
-          variant="outline"
-          disabled={!dirty}
-          onClick={() => setDraft(submitted)}
-        >
-          {labels.resetConfiguration}
-        </Button>
-        <Button
-          size="sm"
-          disabled={
-            !dirty ||
-            !canAct({
-              actionId: "session.configure",
-              params: { requested: draft },
-            })
-          }
-          onClick={() => run(() => apply())}
-        >
-          {labels.applyConfiguration}
-        </Button>
-      </div>
+      {mode === "parameters" && (
+        <div className="workbench-tool-footer">
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!dirty}
+            onClick={() => setDraft(submitted)}
+          >
+            {labels.resetConfiguration}
+          </Button>
+          <Button
+            size="sm"
+            disabled={
+              !dirty ||
+              !canAct({
+                actionId: "session.configure",
+                params: { requested: draft },
+              })
+            }
+            onClick={() => run(() => apply())}
+          >
+            {labels.applyConfiguration}
+          </Button>
+        </div>
+      )}
     </section>
   );
 }

@@ -62,6 +62,7 @@ impl Drop for PortResource {
 struct WindowsPort {
     port: Option<Arc<PortResource>>,
     configuration: SerialConfiguration,
+    pending_read_error: Option<BackendError>,
 }
 
 enum IoBuffer<'a> {
@@ -261,15 +262,17 @@ pub(super) fn open(
             claim,
         ))),
         configuration: config.clone(),
+        pending_read_error: None,
     };
-    let timeouts = COMMTIMEOUTS {
-        ReadIntervalTimeout: u32::MAX,
-        ReadTotalTimeoutMultiplier: u32::MAX,
-        ReadTotalTimeoutConstant: 20,
-        WriteTotalTimeoutMultiplier: 0,
-        WriteTotalTimeoutConstant: 0,
-    };
-    if unsafe { SetCommTimeouts(handle, &timeouts) } == 0 {
+    // 为一次最大手动发送的硬件回环预留驱动队列，吸收编码、落盘及调度期间的突发数据。
+    if unsafe {
+        SetupComm(
+            port.resource()?.raw(),
+            TX_MAX_BYTES as u32,
+            TX_MAX_BYTES as u32,
+        )
+    } == 0
+    {
         return Err(last_error());
     }
     let application = super::NativePort::configure(&mut port, config)?;
@@ -314,32 +317,16 @@ impl super::NativePort for WindowsPort {
         super::serial_capabilities()
     }
     fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock> {
+        if let Some(error) = self.pending_read_error.take() {
+            return Err(error);
+        }
         self.status()?;
-        if limit == 0 {
-            return Ok(ReadBlock {
-                bytes: Arc::from([]),
-                message: None,
-            });
-        }
-        let mut bytes = vec![0; limit.min(16384)];
-        match Self::io(
-            self.resource()?,
-            IoBuffer::Read(&mut bytes),
-            wait + Duration::from_millis(25),
-            None,
-            None,
-        ) {
-            IoCompletion::Completed(count) => {
-                bytes.truncate(count);
-                Ok(ReadBlock {
-                    bytes: bytes.into(),
-                    message: None,
-                })
-            }
-            IoCompletion::Unconfirmed(code) | IoCompletion::NotSubmitted(code) => {
-                Err(os_error(code))
-            }
-        }
+        let resource = self.resource()?.clone();
+        let (block, error) = read_burst(limit, wait, |bytes, budget| {
+            Self::io(&resource, IoBuffer::Read(bytes), budget, None, None)
+        })?;
+        self.pending_read_error = error;
+        Ok(block)
     }
     fn begin_write(
         &mut self,
@@ -417,6 +404,10 @@ impl super::NativePort for WindowsPort {
     }
     fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication> {
         let observed = apply_configuration(&mut Win32Api(self.resource()?.raw()), config)?;
+        let timeouts = read_timeouts(config.read_wait_ms.get());
+        if unsafe { SetCommTimeouts(self.resource()?.raw(), &timeouts) } == 0 {
+            return Err(last_error());
+        }
         self.configuration = observed.clone();
         super::configuration_receipt(config, &observed)
     }
@@ -515,6 +506,57 @@ impl super::NativePort for WindowsPort {
             }
         }
     }
+}
+
+fn read_timeouts(wait_ms: u64) -> COMMTIMEOUTS {
+    COMMTIMEOUTS {
+        // 首字节立即交付给读取循环；连续块在总读取预算内合批，2ms 空闲后交付短包。
+        ReadIntervalTimeout: u32::MAX,
+        ReadTotalTimeoutMultiplier: u32::MAX,
+        ReadTotalTimeoutConstant: wait_ms.clamp(1, 2) as u32,
+        WriteTotalTimeoutMultiplier: 0,
+        WriteTotalTimeoutConstant: 0,
+    }
+}
+
+fn read_burst(
+    limit: usize,
+    wait: Duration,
+    mut read: impl FnMut(&mut [u8], Duration) -> IoCompletion,
+) -> BackendResult<(ReadBlock, Option<BackendError>)> {
+    let mut bytes = vec![0; limit.min(16384)];
+    let deadline = Instant::now() + wait;
+    let mut received = 0;
+    let mut error = None;
+    while received < bytes.len() {
+        let budget =
+            deadline.saturating_duration_since(Instant::now()) + Duration::from_millis(100);
+        match read(&mut bytes[received..], budget) {
+            IoCompletion::Completed(count) => {
+                received += count;
+                if count == 0 || Instant::now() >= deadline {
+                    break;
+                }
+            }
+            IoCompletion::Unconfirmed(code) | IoCompletion::NotSubmitted(code) => {
+                let failure = os_error(code);
+                if received == 0 {
+                    return Err(failure);
+                }
+                // 已完成的前缀先交付，下一次读取再报告后续错误。
+                error = Some(failure);
+                break;
+            }
+        }
+    }
+    bytes.truncate(received);
+    Ok((
+        ReadBlock {
+            bytes: bytes.into(),
+            message: None,
+        },
+        error,
+    ))
 }
 
 fn last_error() -> BackendError {
@@ -951,6 +993,43 @@ fn os_error(code: u32) -> BackendError {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn receive_burst_collects_fragments_and_retains_a_completed_prefix_before_failure() {
+        let mut calls = 0;
+        let (block, error) = read_burst(16, Duration::from_secs(1), |bytes, _| {
+            calls += 1;
+            match calls {
+                1 => {
+                    bytes[..2].copy_from_slice(&[1, 2]);
+                    IoCompletion::Completed(2)
+                }
+                2 => {
+                    bytes[..3].copy_from_slice(&[3, 4, 5]);
+                    IoCompletion::Completed(3)
+                }
+                _ => IoCompletion::Unconfirmed(ERROR_ACCESS_DENIED),
+            }
+        })
+        .unwrap();
+        assert_eq!(&*block.bytes, &[1, 2, 3, 4, 5]);
+        assert!(error.is_some());
+        assert_eq!(calls, 3);
+        let (block, error) =
+            read_burst(0, Duration::ZERO, |_, _| panic!("zero limit submitted I/O")).unwrap();
+        assert!(block.bytes.is_empty());
+        assert!(error.is_none());
+    }
+
+    #[test]
+    fn continuous_reads_have_a_short_finite_first_byte_wait() {
+        for (requested, actual) in [(0, 1), (1, 1), (5, 2), (20, 2), (500, 2)] {
+            let timeouts = read_timeouts(requested);
+            assert_eq!(timeouts.ReadIntervalTimeout, u32::MAX);
+            assert_eq!(timeouts.ReadTotalTimeoutMultiplier, u32::MAX);
+            assert_eq!(timeouts.ReadTotalTimeoutConstant, actual);
+        }
+    }
     type TestClaims = Arc<std::sync::Mutex<std::collections::HashMap<Id, Vec<String>>>>;
 
     fn isolated_event_port() -> (WindowsPort, TestClaims) {
@@ -974,6 +1053,7 @@ mod tests {
             WindowsPort {
                 port: Some(resource),
                 configuration: SerialConfiguration::default(),
+                pending_read_error: None,
             },
             claims,
         )

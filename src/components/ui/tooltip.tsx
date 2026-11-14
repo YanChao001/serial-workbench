@@ -4,11 +4,47 @@ import * as React from "react"
 import { cn } from "cn"
 import { Tooltip as TooltipPrimitive } from "radix-ui"
 
+const navigationKeys = new Set([
+  "Tab",
+  "ArrowUp",
+  "ArrowDown",
+  "ArrowLeft",
+  "ArrowRight",
+  "Home",
+  "End",
+  "PageUp",
+  "PageDown",
+])
+let focusFromNavigation = true
+let providerCount = 0
+
+function handleKeyDown(event: KeyboardEvent) {
+  focusFromNavigation = navigationKeys.has(event.key)
+}
+function handlePointerDown() {
+  focusFromNavigation = false
+}
+function observeFocusIntent() {
+  // 工具栏存在嵌套 Provider，整个文档只登记一组监听，且不触发渲染。
+  if (providerCount++ === 0) {
+    document.addEventListener("keydown", handleKeyDown, true)
+    document.addEventListener("pointerdown", handlePointerDown, true)
+  }
+  return () => {
+    if (--providerCount === 0) {
+      document.removeEventListener("keydown", handleKeyDown, true)
+      document.removeEventListener("pointerdown", handlePointerDown, true)
+      focusFromNavigation = true
+    }
+  }
+}
+
 function TooltipProvider({
   delayDuration = 1000,
   skipDelayDuration = 0,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Provider>) {
+  React.useEffect(observeFocusIntent, [])
   return (
     <TooltipPrimitive.Provider
       data-slot="tooltip-provider"
@@ -26,9 +62,20 @@ function Tooltip({
 }
 
 function TooltipTrigger({
+  onFocus,
   ...props
 }: React.ComponentProps<typeof TooltipPrimitive.Trigger>) {
-  return <TooltipPrimitive.Trigger data-slot="tooltip-trigger" {...props} />
+  return (
+    <TooltipPrimitive.Trigger
+      data-slot="tooltip-trigger"
+      {...props}
+      onFocus={(event) => {
+        onFocus?.(event)
+        // 点击、Esc 关闭浮层后的恢复焦点不代表查看提示；主动键盘导航仍即时显示。
+        if (!focusFromNavigation) event.preventDefault()
+      }}
+    />
+  )
 }
 
 function TooltipContent({

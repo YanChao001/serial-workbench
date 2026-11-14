@@ -31,9 +31,9 @@ import type {
   SessionMetrics,
   SessionInputs,
   SerialConfiguration,
-  StreamItem,
   WorkspaceDocument,
   WorkspaceDocumentResult,
+  WorkspaceListResult,
   Target,
 } from "@serial-workbench/contracts";
 
@@ -44,9 +44,10 @@ export type HostInvocation = Pick<
   Required<Pick<Call, "executionMode">>;
 
 export type HostStreamView = {
-  items: readonly StreamItem[];
+  items: readonly import("@/lib/receive-history").HistoryStreamItem[];
   error: Error | null;
   trimmed: boolean;
+  removed?: import("@/lib/receive-history").HistoryPosition;
 };
 export type HostActionCheckInput = ActionCheckParams & { target: Target };
 export type HostActionAvailability = {
@@ -63,6 +64,7 @@ export type HostState = {
   sessions: SessionSnapshot[];
   operations: Operation[];
   operationSummaries: OperationSummary[];
+  operationSummariesReady: boolean;
   streams: ReadonlyMap<string, HostStreamView>;
   workspace?: WorkspaceDocumentResult;
 };
@@ -119,8 +121,11 @@ export type HostContextValue = {
     workspaceId: string,
     signal?: AbortSignal,
   ): Promise<WorkspaceDocumentResult>;
-  /** 当前 Host 已注册且可见的 scope；重启后可能尚未读取其他持久工作区。 */
-  listWorkspaces(signal?: AbortSignal): Promise<WorkspaceDocumentResult[]>;
+  /** 持久工作区的有界名称目录，按调用方权限过滤。 */
+  listWorkspaces(
+    signal?: AbortSignal,
+    after?: string,
+  ): Promise<WorkspaceListResult>;
   /** Explicit user gesture; resolves only with this save's successful receipt. */
   saveWorkspace(
     base: WorkspaceDocumentResult,
@@ -166,7 +171,7 @@ export type HostContextValue = {
     configuration?: SerialConfiguration,
   ): Promise<SessionSnapshot>;
   send(
-    sessionId: string,
+    target: Target,
     bytes: Uint8Array,
     signal?: AbortSignal,
     writeWaitMs?: string,

@@ -60,6 +60,7 @@
   --surface-sidebar: oklch(0.985 0 0);
   --surface-muted: oklch(0.97 0 0);
   --app-chrome-height: 40px;
+  --app-toolbar-control-size: 32px;
   --app-font-sans: "Geist Variable", sans-serif;
   --control-input-font-size: 1rem;
   --control-input-line-height: 1.5rem;
@@ -309,6 +310,51 @@ html[data-font-size="lg"] {
 .toaster[data-sonner-toaster] {
   font-family: var(--font-sans);
 }
+.toaster .cn-toast {
+  width: 100%;
+  min-width: 0;
+  max-width: 100%;
+  overflow-wrap: anywhere;
+}
+.toaster .cn-toast[data-styled="false"] > * {
+  min-width: 0;
+  max-width: 100%;
+}
+.toaster .cn-toast [data-content] {
+  max-height: min(24rem, 70dvh);
+  overflow: auto;
+}
+.app-notification {
+  width: 100%;
+  min-width: 0;
+  max-height: min(24rem, 70dvh);
+  overflow: auto;
+  overflow-wrap: anywhere;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 0.75rem;
+  background: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: 0 4px 16px #0002;
+  font-size: 0.8125rem;
+}
+.app-notification-details {
+  /* 详情需要位于通知层之上，与现有 Tooltip 使用相同的最上层。 */
+  z-index: 2147483647;
+  width: min(24rem, calc(100vw - 2rem));
+  max-height: min(20rem, var(--radix-popover-content-available-height));
+  min-height: 0;
+}
+.app-notification-details-text {
+  min-width: 0;
+  min-height: 0;
+  max-height: min(12rem, 40dvh);
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  font-size: 0.75rem;
+  line-height: 1.5;
+}
 .toaster .cn-toast[data-styled="true"] {
   font-size: 0.8125rem;
 }
@@ -356,6 +402,7 @@ html[data-font-size="lg"] {
 }
 .app-title-bar {
   position: relative;
+  height: var(--app-chrome-height);
   z-index: 1;
 }
 .app-title-bar {
@@ -404,41 +451,12 @@ html[data-motion="reduced"] {
 html[data-motion="reduced"] .app-scroll-region {
   overscroll-behavior-y: none;
 }
-html[data-motion="reduced"] *,
-html[data-motion="reduced"] *::before,
-html[data-motion="reduced"] *::after {
-  animation-duration: 1ms !important;
-  animation-delay: 0ms !important;
-  animation-iteration-count: 1 !important;
-  transition-duration: 1ms !important;
-}
-
+/* 动画与过渡的减少动效规则统一由共享 control-styles 维护。 */
 @media (prefers-reduced-motion: reduce) {
   html,
   .app-scroll-region {
     overscroll-behavior-y: none;
   }
-  *,
-  *::before,
-  *::after {
-    animation-duration: 1ms !important;
-    animation-delay: 0ms !important;
-    animation-iteration-count: 1 !important;
-    transition-duration: 1ms !important;
-  }
-}
-
-/* 主题切换的圆形扩散：让新视图盖在旧视图上 */
-::view-transition-old(root),
-::view-transition-new(root) {
-  animation: none;
-  mix-blend-mode: normal;
-}
-::view-transition-old(root) {
-  z-index: 1;
-}
-::view-transition-new(root) {
-  z-index: 2;
 }
 
 /* next-themes 暂停颜色过渡时，主题按钮仍保留同一日月变换。 */

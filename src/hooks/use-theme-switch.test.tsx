@@ -1,277 +1,181 @@
 import { act, cleanup, renderHook } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import {
-  THEME_REVEAL_EVENT,
-  useSynchronizedTheme,
-  useThemeSwitch,
-} from "./use-theme-switch";
+import { useSynchronizedTheme, useThemeSwitch } from "./use-theme-switch";
 import { STORAGE_KEY, THEME_STORAGE_KEY } from "@/lib/settings-model";
+import * as themeReveal from "./theme-reveal";
 
-const { setTheme, update, motion } = vi.hoisted(() => ({
+const { setTheme, update, state } = vi.hoisted(() => ({
   setTheme: vi.fn(),
   update: vi.fn(),
-  motion: {
-    value: "full",
+  state: {
     theme: "light",
     resolved: "light",
-    savedTheme: null as string | null,
+    saved: "light",
     persistence: "saved",
     native: false,
   },
 }));
-
 vi.mock("next-themes", () => ({
   useTheme: () => ({
-    theme: motion.theme,
-    resolvedTheme: motion.resolved,
+    theme: state.theme,
+    resolvedTheme: state.resolved,
     setTheme,
   }),
 }));
 vi.mock("@/providers/settings", () => ({
   useSettings: () => ({
-    settings: {
-      motion: motion.value,
-      theme: motion.savedTheme ?? motion.theme,
-    },
-    persistence: motion.persistence,
+    settings: { theme: state.saved },
+    persistence: state.persistence,
     update,
   }),
 }));
-vi.mock("@/lib/tauri", () => ({ isTauri: () => motion.native }));
+vi.mock("@/lib/tauri", () => ({ isTauri: () => state.native }));
 
-describe("useThemeSwitch", () => {
-  beforeEach(() => {
-    motion.value = "full";
-    motion.theme = "light";
-    motion.resolved = "light";
-    motion.savedTheme = null;
-    motion.persistence = "saved";
-    motion.native = false;
-    setTheme.mockClear();
-    update.mockClear();
-    vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+beforeEach(() => {
+  Object.assign(state, {
+    theme: "light",
+    resolved: "light",
+    saved: "light",
+    persistence: "saved",
+    native: false,
   });
+  setTheme.mockClear();
+  update.mockClear();
+  vi.stubGlobal("matchMedia", vi.fn().mockReturnValue({ matches: false }));
+});
+afterEach(() => {
+  cleanup();
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+  Reflect.deleteProperty(document, "startViewTransition");
+});
 
-  afterEach(() => {
-    cleanup();
-    vi.unstubAllGlobals();
-    vi.restoreAllMocks();
-    Reflect.deleteProperty(document, "startViewTransition");
-    Reflect.deleteProperty(document.documentElement, "animate");
-  });
-
-  function mockTransition(ready: Promise<void> = Promise.resolve()) {
-    const animate = vi.fn();
-    const start = vi.fn((callback: () => void) => {
-      callback();
-      return { ready };
-    });
+describe("immediate theme choices", () => {
+  it("never captures the interactive document while changing a theme", () => {
+    const start = vi.fn();
     Object.defineProperty(document, "startViewTransition", {
       value: start,
       configurable: true,
     });
-    Object.defineProperty(document.documentElement, "animate", {
-      value: animate,
-      configurable: true,
-    });
-    return { start, animate };
-  }
-
-  it("开启系统减少动态效果时直接切换，跳过 JS 动画", () => {
-    const { start, animate } = mockTransition();
-    vi.mocked(window.matchMedia).mockReturnValue({
-      matches: true,
-    } as MediaQueryList);
-    const { result } = renderHook(() => useThemeSwitch());
-    act(() => result.current.toggle({ clientX: 10, clientY: 20 }));
-    expect(setTheme).toHaveBeenCalledWith("dark");
-    expect(start).not.toHaveBeenCalled();
-    expect(animate).not.toHaveBeenCalled();
-  });
-
-  it("动画被跳过时处理 ready 拒绝，主题仍切换成功", async () => {
-    const { animate } = mockTransition(
-      Promise.reject(new DOMException("skipped", "AbortError")),
-    );
-    const { result } = renderHook(() => useThemeSwitch());
-    await act(async () => result.current.toggle({ clientX: 10, clientY: 20 }));
-    expect(setTheme).toHaveBeenCalledWith("dark");
-    expect(animate).not.toHaveBeenCalled();
-  });
-  it("prepares opaque children before changing the theme using the same circular reveal", async () => {
-    const { animate } = mockTransition();
-    const order: string[] = [];
-    const listener = vi.fn((event: Event) => {
-      order.push("prepare");
-      expect((event as CustomEvent).detail).toMatchObject({
-        clientX: 10,
-        clientY: 20,
-        duration: 520,
-        easing: "ease-in-out",
-      });
-    });
-    window.addEventListener(THEME_REVEAL_EVENT, listener);
-    setTheme.mockImplementationOnce(() => {
-      order.push("apply");
-    });
-    try {
-      const { result } = renderHook(() => useThemeSwitch());
-      await act(async () =>
-        result.current.toggle({ clientX: 10, clientY: 20 }),
-      );
-      expect(order).toEqual(["prepare", "apply"]);
-      expect(animate).toHaveBeenCalledOnce();
-    } finally {
-      window.removeEventListener(THEME_REVEAL_EVENT, listener);
-    }
-  });
-
-  it("没有 View Transitions 时仍能切换主题", () => {
-    const { result } = renderHook(() => useThemeSwitch());
-    act(() => result.current.toggle({ clientX: 10, clientY: 20 }));
-    expect(setTheme).toHaveBeenCalledWith("dark");
-  });
-
-  it("用户关闭动效时跳过 View Transition", () => {
-    const { start } = mockTransition();
-    motion.value = "reduced";
-    const { result } = renderHook(() => useThemeSwitch());
-    act(() => result.current.toggle({ clientX: 10, clientY: 20 }));
-    expect(setTheme).toHaveBeenCalledWith("dark");
-    expect(start).not.toHaveBeenCalled();
-  });
-
-  it("persists supported theme choices and ignores invalid runtime values", () => {
-    motion.theme = "system";
-    const { result } = renderHook(() => useThemeSwitch());
-    expect(result.current.theme).toBe("system");
-    act(() => result.current.setTheme("dark"));
+    const { result } = renderHook(useThemeSwitch);
+    act(() => result.current.toggle());
     expect(update).toHaveBeenCalledExactlyOnceWith({ theme: "dark" });
     expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
-    act(() => result.current.setTheme("unknown"));
-    expect(update).toHaveBeenCalledOnce();
-    expect(setTheme).toHaveBeenCalledOnce();
-  });
-
-  it("toggles from the resolved system appearance and persists the result", () => {
-    motion.theme = "system";
-    motion.resolved = "dark";
-    const { result } = renderHook(() => useThemeSwitch());
-    act(() => result.current.toggle({ clientX: 10, clientY: 20 }));
-    expect(update).toHaveBeenCalledWith({ theme: "light" });
-    expect(setTheme).toHaveBeenCalledWith("light");
-  });
-
-  function deferredTransition() {
-    const animate = vi.fn();
-    const skip = vi.fn();
-    const start = vi.fn((callback: () => void) => ({
-      ready: Promise.resolve().then(callback),
-      skipTransition: skip,
-    }));
-    Object.defineProperty(document, "startViewTransition", {
-      value: start,
-      configurable: true,
-    });
-    Object.defineProperty(document.documentElement, "animate", {
-      value: animate,
-      configurable: true,
-    });
-    return { start, animate, skip };
-  }
-
-  it("animates an accepted remote theme around this window's theme button without writing settings back", async () => {
-    motion.native = true;
-    const { start, animate } = deferredTransition();
-    const button = document.createElement("button");
-    button.dataset.themeControl = "";
-    document.body.append(button);
-    vi.spyOn(button, "getBoundingClientRect").mockReturnValue({
-      left: 740,
-      top: 0,
-      width: 40,
-      height: 40,
-    } as DOMRect);
-    const prepare = vi.fn();
-    window.addEventListener(THEME_REVEAL_EVENT, prepare);
-    try {
-      const { rerender } = renderHook(useSynchronizedTheme);
-      expect(start).not.toHaveBeenCalled();
-      motion.savedTheme = "dark";
-      rerender();
-      expect(prepare).toHaveBeenCalledOnce();
-      expect(
-        (prepare.mock.calls.at(0)?.[0] as CustomEvent).detail,
-      ).toMatchObject({
-        clientX: 760,
-        clientY: 20,
-      });
-      expect(setTheme).not.toHaveBeenCalled();
-      await act(async () => {});
-      expect(start).toHaveBeenCalledOnce();
-      expect(animate).toHaveBeenCalledOnce();
-      expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
-      expect(update).not.toHaveBeenCalled();
-      motion.theme = "dark";
-      motion.resolved = "dark";
-      rerender();
-      expect(start).toHaveBeenCalledOnce();
-    } finally {
-      button.remove();
-      window.removeEventListener(THEME_REVEAL_EVENT, prepare);
-    }
-  });
-
-  it("applies the first native snapshot without an entrance reveal", () => {
-    motion.native = true;
-    motion.persistence = "loading";
-    const { start } = deferredTransition();
-    const { rerender } = renderHook(useSynchronizedTheme);
-    motion.savedTheme = "dark";
-    motion.persistence = "saved";
-    rerender();
-    expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
     expect(start).not.toHaveBeenCalled();
   });
-
-  it.each(["hidden", "app-reduced", "system-reduced"])(
-    "applies a synchronized theme without animation when %s",
-    (mode) => {
-      motion.native = true;
-      const { start } = deferredTransition();
-      const { rerender } = renderHook(useSynchronizedTheme);
-      if (mode === "hidden")
-        vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-      if (mode === "app-reduced") motion.value = "reduced";
-      if (mode === "system-reduced")
-        vi.mocked(window.matchMedia).mockReturnValue({
-          matches: true,
-        } as MediaQueryList);
-      motion.savedTheme = "dark";
-      rerender();
-      expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
-      expect(start).not.toHaveBeenCalled();
+  it.each([2, 3, 10])(
+    "commits all %s rapid clicks in order before React renders again",
+    (count) => {
+      const { result } = renderHook(useThemeSwitch);
+      act(() => {
+        for (let index = 0; index < count; index++) result.current.toggle();
+      });
+      expect(update.mock.calls).toEqual(
+        Array.from({ length: count }, (_, index) => [
+          { theme: index % 2 ? "light" : "dark" },
+        ]),
+      );
+      expect(setTheme).toHaveBeenCalledTimes(count);
+      expect(setTheme).toHaveBeenLastCalledWith(count % 2 ? "dark" : "light");
     },
   );
-
-  it("keeps the system choice without revealing an unchanged resolved appearance", () => {
-    motion.native = true;
-    const { start } = deferredTransition();
-    const { rerender } = renderHook(useSynchronizedTheme);
-    motion.savedTheme = "system";
+  it("animates every toggle before the resolved appearance renders again", () => {
+    const reveal = vi
+      .spyOn(themeReveal, "startThemeReveal")
+      .mockImplementation((commit) => {
+        commit();
+        return undefined;
+      });
+    const { result } = renderHook(useThemeSwitch);
+    act(() => {
+      for (let index = 0; index < 4; index++) result.current.toggle();
+    });
+    expect(reveal.mock.calls.map(([, enabled]) => enabled)).toEqual([
+      true,
+      true,
+      true,
+      true,
+    ]);
+  });
+  it("toggles from the resolved system appearance", () => {
+    state.theme = state.saved = "system";
+    state.resolved = "dark";
+    const { result } = renderHook(useThemeSwitch);
+    act(() => result.current.toggle());
+    expect(setTheme).toHaveBeenCalledExactlyOnceWith("light");
+  });
+  it("persists explicit choices, ignores invalid values, and uses the latest explicit intention", () => {
+    const { result } = renderHook(useThemeSwitch);
+    act(() => {
+      result.current.toggle();
+      result.current.setTheme("system");
+      result.current.setTheme("invalid");
+      result.current.toggle();
+    });
+    expect(update.mock.calls).toEqual([
+      [{ theme: "dark" }],
+      [{ theme: "system" }],
+      [{ theme: "dark" }],
+    ]);
+    expect(setTheme).toHaveBeenLastCalledWith("dark");
+  });
+  it("uses an accepted remote appearance for the next local toggle", () => {
+    const { result, rerender } = renderHook(useThemeSwitch);
+    act(() => result.current.toggle());
+    state.theme = state.saved = state.resolved = "light";
+    state.saved = "system";
     rerender();
-    expect(setTheme).toHaveBeenCalledExactlyOnceWith("system");
-    expect(start).not.toHaveBeenCalled();
+    act(() => result.current.toggle());
+    expect(setTheme.mock.calls).toEqual([["dark"], ["dark"]]);
+  });
+});
+
+describe("synchronized theme", () => {
+  it("waits for the first native snapshot and does not write it back", () => {
+    state.native = true;
+    state.persistence = "loading";
+    state.saved = "dark";
+    const { rerender } = renderHook(useSynchronizedTheme);
+    expect(setTheme).not.toHaveBeenCalled();
+    state.persistence = "saved";
+    rerender();
+    expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
     expect(update).not.toHaveBeenCalled();
   });
-
   it.each([true, false])(
-    "reserves the theme cache for first paint while leaving other storage events untouched (native=%s)",
+    "applies accepted changes immediately even when hidden (hidden=%s)",
+    (hidden) => {
+      vi.spyOn(document, "visibilityState", "get").mockReturnValue(
+        hidden ? "hidden" : "visible",
+      );
+      state.native = true;
+      const { rerender } = renderHook(useSynchronizedTheme);
+      state.saved = "dark";
+      rerender();
+      expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
+      state.theme = "dark";
+      state.saved = "light";
+      rerender();
+      expect(setTheme.mock.calls).toEqual([["dark"], ["light"]]);
+      expect(update).not.toHaveBeenCalled();
+    },
+  );
+  it("leaves no pending application after unmount", async () => {
+    const { rerender, unmount } = renderHook(useSynchronizedTheme);
+    state.saved = "dark";
+    rerender();
+    unmount();
+    state.saved = "light";
+    await act(async () => {});
+    expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
+  });
+  it.each([true, false])(
+    "uses the theme cache only for first paint (native=%s)",
     (native) => {
-      motion.native = native;
+      state.native = native;
       const { unmount } = renderHook(useSynchronizedTheme);
-      const cacheListener = vi.fn();
-      window.addEventListener("storage", cacheListener);
+      const received = vi.fn();
+      window.addEventListener("storage", received);
       try {
         window.dispatchEvent(
           new StorageEvent("storage", {
@@ -279,9 +183,9 @@ describe("useThemeSwitch", () => {
             newValue: "dark",
           }),
         );
-        expect(cacheListener).not.toHaveBeenCalled();
+        expect(received).not.toHaveBeenCalled();
         window.dispatchEvent(new StorageEvent("storage", { key: STORAGE_KEY }));
-        expect(cacheListener).toHaveBeenCalledOnce();
+        expect(received).toHaveBeenCalledOnce();
         unmount();
         window.dispatchEvent(
           new StorageEvent("storage", {
@@ -289,98 +193,10 @@ describe("useThemeSwitch", () => {
             newValue: "dark",
           }),
         );
-        expect(cacheListener).toHaveBeenCalledTimes(2);
+        expect(received).toHaveBeenCalledTimes(2);
       } finally {
-        window.removeEventListener("storage", cacheListener);
+        window.removeEventListener("storage", received);
       }
     },
   );
-
-  it("cancels a pending synchronized reveal on unmount", async () => {
-    motion.native = true;
-    const { start, animate, skip } = deferredTransition();
-    const { rerender, unmount } = renderHook(useSynchronizedTheme);
-    motion.savedTheme = "dark";
-    rerender();
-    expect(start).toHaveBeenCalledOnce();
-    unmount();
-    await act(async () => {});
-    expect(skip).toHaveBeenCalledOnce();
-    expect(animate).not.toHaveBeenCalled();
-    expect(setTheme).not.toHaveBeenCalled();
-  });
-
-  it("discards an older remote reveal if the latest revision returns to the current appearance", async () => {
-    motion.native = true;
-    const { start, animate, skip } = deferredTransition();
-    const { rerender } = renderHook(useSynchronizedTheme);
-    motion.savedTheme = "dark";
-    rerender();
-    motion.savedTheme = "light";
-    rerender();
-    await act(async () => {});
-    expect(start).toHaveBeenCalledOnce();
-    expect(skip).toHaveBeenCalledOnce();
-    expect(animate).not.toHaveBeenCalled();
-    expect(setTheme).not.toHaveBeenCalled();
-  });
-
-  it("keeps the latest choice when toggled again before the first snapshot commits", async () => {
-    const { start, skip } = deferredTransition();
-    const { result } = renderHook(useThemeSwitch);
-    act(() => {
-      result.current.toggle({ clientX: 10, clientY: 20 });
-      result.current.toggle({ clientX: 10, clientY: 20 });
-    });
-    await act(async () => {});
-    expect(start).toHaveBeenCalledTimes(2);
-    expect(skip).toHaveBeenCalledOnce();
-    expect(update).toHaveBeenCalledExactlyOnceWith({ theme: "light" });
-    expect(setTheme).toHaveBeenCalledExactlyOnceWith("light");
-  });
-
-  it("keeps an explicit theme choice when an earlier toggle has not committed yet", async () => {
-    const { skip, animate } = deferredTransition();
-    const { result } = renderHook(useThemeSwitch);
-    act(() => {
-      result.current.toggle({ clientX: 10, clientY: 20 });
-      result.current.setTheme("system");
-    });
-    await act(async () => {});
-    expect(skip).toHaveBeenCalledOnce();
-    expect(animate).not.toHaveBeenCalled();
-    expect(update).toHaveBeenCalledExactlyOnceWith({ theme: "system" });
-    expect(setTheme).toHaveBeenCalledExactlyOnceWith("system");
-  });
-
-  it("commits a selected theme and releases the reveal when the document becomes hidden", async () => {
-    const { animate, skip } = deferredTransition();
-    const { result } = renderHook(useThemeSwitch);
-    act(() => result.current.toggle({ clientX: 10, clientY: 20 }));
-    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
-    act(() => document.dispatchEvent(new Event("visibilitychange")));
-    await act(async () => {});
-    expect(setTheme).toHaveBeenCalledExactlyOnceWith("dark");
-    expect(skip).toHaveBeenCalledOnce();
-    expect(animate).not.toHaveBeenCalled();
-  });
-
-  it("bases the next local toggle on the applied remote theme after its previous reveal was superseded", async () => {
-    motion.native = true;
-    deferredTransition();
-    const { result, rerender } = renderHook(() => {
-      useSynchronizedTheme();
-      return useThemeSwitch();
-    });
-    act(() => result.current.toggle({ clientX: 10, clientY: 20 }));
-    motion.savedTheme = "system";
-    rerender();
-    await act(async () => {});
-    expect(setTheme).toHaveBeenCalledExactlyOnceWith("system");
-    expect(update).not.toHaveBeenCalled();
-    motion.theme = "system";
-    rerender();
-    await act(async () => result.current.toggle({ clientX: 10, clientY: 20 }));
-    expect(update).toHaveBeenCalledExactlyOnceWith({ theme: "dark" });
-  });
 });

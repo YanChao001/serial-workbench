@@ -54,6 +54,31 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         ..Fixtures::default()
     };
     let capture_ref = json!({"hostId":"host","kind":"capture","id":"capture"});
+    for (name, receive, send, valid) in [
+        ("terminal-gbk", json!("gbk"), json!("gbk"), true),
+        ("terminal-auto", Value::Null, json!("utf-16be"), true),
+        (
+            "terminal-invalid-codec",
+            json!("utf-7"),
+            json!("utf-8"),
+            false,
+        ),
+        (
+            "terminal-invalid-send-auto",
+            Value::Null,
+            json!("auto"),
+            false,
+        ),
+    ] {
+        f.add::<TerminalSettings>(
+            name,
+            json!({
+                "receiveMode": "text", "sendMode": "text", "lineEnding": {"kind": "none"},
+                "receiveEncoding": receive, "sendEncoding": send,
+            }),
+            valid,
+        )?;
+    }
     f.add::<CaptureTailParams>(
         "capture-tail-defaults",
         json!({"captureRef":capture_ref}),
@@ -574,6 +599,13 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         workspace_document.clone(),
         &[],
     )?;
+    f.object::<WorkspaceListParams>("workspace-list-params", json!({}), &[])?;
+    f.object::<WorkspaceSummary>(
+        "workspace-summary",
+        json!({"scope":workspace_document["scope"],"name":"Bench","revision":"2"}),
+        &[],
+    )?;
+    f.object::<WorkspaceListResult>("workspace-list", json!({"workspaces":[]}), &[])?;
     f.object::<DocumentImportParams>("document-import", json!({"json":"{}"}), &[])?;
     f.object::<DocumentJsonResult>("document-json", json!({"json":"{}"}), &[])?;
     f.object::<QueryResult>(
@@ -697,9 +729,24 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         (
             "tx-limit-16385",
             format!("{}AAA=", "AAAA".repeat(5461)),
+            true,
+        ),
+        ("tx-draft-16500", "MTIz".repeat(5500), true),
+        (
+            "tx-limit-maximum",
+            format!("{}AAA=", "AAAA".repeat(TX_MAX_BYTES / 3)),
+            true,
+        ),
+        (
+            "tx-limit-over-one",
+            "AAAA".repeat(TX_MAX_BYTES / 3 + 1),
             false,
         ),
-        ("tx-limit-16386", "AAAA".repeat(5462), false),
+        (
+            "tx-limit-over-two",
+            format!("{}AA==", "AAAA".repeat(TX_MAX_BYTES / 3 + 1)),
+            false,
+        ),
         ("tx-empty", String::new(), false),
     ] {
         f.add::<TxParams>(name, json!({"bytesBase64":bytes,"writeWaitMs":"1"}), valid)?;
@@ -996,6 +1043,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         StateScopesResult,
         SettingsDocumentResult,
         WorkspaceDocumentResult,
+        WorkspaceSummary,
+        WorkspaceListParams,
+        WorkspaceListResult,
         DocumentImportParams,
         DocumentJsonResult,
         StreamCursorResult,
@@ -1130,7 +1180,9 @@ fn main() -> Result<(), Box<dyn Error>> {
         Cancellation,
         ActionSpec
     );
-    let ts = specta_typescript::Typescript::default().export(&types, specta_serde::PhasesFormat)?;
+    let mut ts =
+        specta_typescript::Typescript::default().export(&types, specta_serde::PhasesFormat)?;
+    ts.push_str(&format!("\n/** 单次手动 TX 的最终字节上限，来源为 Rust 契约。 */\nexport const TX_MAX_BYTES = {TX_MAX_BYTES};\n"));
     let fixtures = fixtures()?;
     let documents = [
         (

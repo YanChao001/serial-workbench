@@ -23,6 +23,7 @@ function port(): FileActionHost {
       sessions: [session()],
       operations: [],
       operationSummaries: [],
+      operationSummariesReady: true,
       streams: new Map(),
     },
     pickFile: vi.fn().mockResolvedValue({

@@ -9,8 +9,13 @@ import type {
 } from "@serial-workbench/contracts";
 import type { ProjectionEvent } from "@serial-workbench/host-client";
 import { HostRequestError } from "@serial-workbench/host-client";
+import {
+  DEFAULT_RECEIVE_HISTORY,
+  setReceiveHistoryLimits,
+} from "./receive-history";
 import fixtures from "../../packages/contracts/src/generated/fixtures.json";
-import { createHostConnection, createHostWorkspace } from "./host-client";
+import { createHostConnection } from "./host-client";
+import { createHostWorkspace } from "@/providers/host-controller";
 import type { HostNativePort } from "./host-client";
 import { reportClientError } from "./report-error";
 vi.mock("./report-error", () => ({ reportClientError: vi.fn() }));
@@ -20,7 +25,12 @@ function fixture(schema: string): unknown {
   if (!value) throw new Error(`Fixture missing: ${schema}`);
   return value.value;
 }
-async function setupReader() {
+async function setupReader(
+  limits: {
+    maxReaderQueueBytes?: string;
+    maxBatchBytes?: string;
+  } = {},
+) {
   const sessionReply = parseReply({
     ok: true,
     result: { kind: "session", value: fixture("SessionSnapshot") },
@@ -48,6 +58,7 @@ async function setupReader() {
       maxReaderQueueBytes: "1000000",
       resultRetentionMs: "1000",
       maxLeaseTtlMs: "1000",
+      ...limits,
     },
   };
   const target = () => ({
@@ -230,9 +241,84 @@ async function setupReader() {
   };
 }
 describe("Host raw reader owner", () => {
+  it("reserves advertised reader memory separately from the delivery credit window", async () => {
+    const h = await setupReader({
+      maxReaderQueueBytes: "4194304",
+      maxBatchBytes: "262144",
+    });
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    try {
+      await waitFor(() => expect(h.deliveries).toHaveLength(1));
+      expect(h.deliveries[0]!.query.params).toMatchObject({
+        queueBytes: "4194304",
+        initialCreditBytes: "1048576",
+      });
+      h.batch(0, "0", "1");
+      await waitFor(() =>
+        expect(h.native.rawRequest).toHaveBeenCalledWith(
+          expect.objectContaining({
+            params: expect.objectContaining({
+              actionId: "stream.credit",
+              params: expect.objectContaining({ grantedBytesTotal: "1048576" }),
+            }),
+          }),
+          "3",
+        ),
+      );
+    } finally {
+      stop();
+      await h.workspace.dispose();
+    }
+  });
+  it.each(["stream.cursor", "stream.credit"])(
+    "identifies invalid %s replies without recording received payloads",
+    async (actionId) => {
+      vi.mocked(reportClientError).mockClear();
+      const h = await setupReader();
+      const fallback = vi.mocked(h.native.rawRequest).getMockImplementation()!;
+      vi.mocked(h.native.rawRequest).mockImplementation(
+        (request, generation) =>
+          request.method === "action.query" &&
+          request.params.actionId === actionId
+            ? Promise.resolve(
+                parseReply({ ok: true, result: { closed: true } }),
+              )
+            : fallback(request, generation),
+      );
+      const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+      try {
+        if (actionId === "stream.credit") {
+          await waitFor(() => expect(h.deliveries).toHaveLength(1));
+          h.batch(0, "0", "1");
+        }
+        await waitFor(() => expect(reportClientError).toHaveBeenCalledOnce());
+        expect(reportClientError).toHaveBeenCalledWith(
+          { message: "CONTRACT_INVALID" },
+          expect.stringContaining(`"actionId":"${actionId}"`),
+        );
+        expect(
+          h.workspace.getSnapshot().state.streams.get(h.session.sessionId)
+            ?.error?.message,
+        ).toBe(`Invalid Host RPC reply (${actionId})`);
+        expect(
+          vi
+            .mocked(h.native.request)
+            .mock.calls.filter(
+              ([request]) =>
+                request.method === "action.query" &&
+                request.params.actionId === "session.get",
+            ),
+        ).toHaveLength(0);
+      } finally {
+        stop();
+        h.workspace.dispose();
+      }
+    },
+  );
   it.each([
     ["stream.cursor", "EPOCH_MISMATCH"],
     ["stream.cursor", "BACKEND_DISCONNECTED"],
+    ["stream.cursor", "HOST_BUSY"],
     ["stream.credit", "EPOCH_MISMATCH"],
     ["stream.subscribe", "EPOCH_MISMATCH"],
   ])(
@@ -263,26 +349,28 @@ describe("Host raw reader owner", () => {
             finish = resolve;
           }),
       );
-      vi.mocked(h.native.request).mockImplementation((request) =>
+      vi.mocked(h.native.request).mockImplementation((request, generation) =>
         request.method === "action.query" &&
         request.params.actionId === "session.get"
           ? confirmation()
-          : originalControl(request),
+          : originalControl(request, generation),
       );
       const originalRaw = vi
         .mocked(h.native.rawRequest)
         .getMockImplementation()!;
-      vi.mocked(h.native.rawRequest).mockImplementation(async (request) =>
-        request.method === "action.query" && request.params.actionId === action
-          ? parseReply({
-              ok: false,
-              error: {
-                code,
-                message: "remote source closed",
-                retryable: false,
-              },
-            })
-          : originalRaw(request),
+      vi.mocked(h.native.rawRequest).mockImplementation(
+        async (request, generation) =>
+          request.method === "action.query" &&
+          request.params.actionId === action
+            ? parseReply({
+                ok: false,
+                error: {
+                  code,
+                  message: "remote source closed",
+                  retryable: false,
+                },
+              })
+            : originalRaw(request, generation),
       );
       if (action === "stream.subscribe")
         vi.mocked(h.native.rawSubscribe).mockRejectedValue(
@@ -321,7 +409,8 @@ describe("Host raw reader owner", () => {
       );
       await waitFor(() => {
         expect(controlSignals[0]?.aborted).toBe(true);
-        if (old) expect(h.native.rawUnsubscribe).toHaveBeenCalledWith(old.id);
+        if (old)
+          expect(h.native.rawUnsubscribe).toHaveBeenCalledWith(old.id, "3");
         expect(
           h.workspace.getSnapshot().state.streams.get(h.session.sessionId)
             ?.error,
@@ -345,7 +434,7 @@ describe("Host raw reader owner", () => {
     await waitFor(() => expect(h.deliveries).toHaveLength(1));
     h.batch(0, "0", "1");
     h.updateSession({ ...h.session, state: "closed", revision: "2" });
-    expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-0");
+    expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-0", "3");
     const old = h.deliveries[0]!;
     old.lifecycle({
       requestId: old.query.requestId,
@@ -388,11 +477,11 @@ describe("Host raw reader owner", () => {
         result: { kind: "session", value: { ...h.session, state: "closed" } },
       }),
     );
-    vi.mocked(h.native.request).mockImplementation((request) =>
+    vi.mocked(h.native.request).mockImplementation((request, generation) =>
       request.method === "action.query" &&
       request.params.actionId === "session.get"
         ? confirm()
-        : fallback(request),
+        : fallback(request, generation),
     );
     const stop = h.workspace.watchSession(h.session.sessionId, () => {});
     await waitFor(() => expect(h.deliveries).toHaveLength(1));
@@ -414,12 +503,18 @@ describe("Host raw reader owner", () => {
     old.lifecycle(terminal);
     old.lifecycle(terminal);
     await waitFor(() =>
-      expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-0"),
+      expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-0", "3"),
     );
     expect(confirm).toHaveBeenCalledOnce();
     expect(
       h.workspace.getSnapshot().state.streams.get(h.session.sessionId),
     ).toMatchObject({ error: null, items: [expect.any(Object)] });
+    expect(
+      h.workspace
+        .getSnapshot()
+        .state.sessions.find((value) => value.sessionId === h.session.sessionId)
+        ?.state,
+    ).toBe("closed");
     expect(reportClientError).not.toHaveBeenCalled();
     stop();
     h.workspace.dispose();
@@ -443,6 +538,7 @@ describe("Host raw reader owner", () => {
     "disconnected",
     "wrong-session",
     "wrong-epoch",
+    "older-revision",
     "query-failed",
   ])(
     "preserves the original terminal error when closed cannot be confirmed: %s",
@@ -472,15 +568,17 @@ describe("Host raw reader owner", () => {
           },
         });
       });
-      vi.mocked(h.native.request).mockImplementation((request) =>
+      vi.mocked(h.native.request).mockImplementation((request, generation) =>
         request.method === "action.query" &&
         request.params.actionId === "session.get"
           ? confirm()
-          : fallback(request),
+          : fallback(request, generation),
       );
       const stop = h.workspace.watchSession(h.session.sessionId, () => {});
       await waitFor(() => expect(h.deliveries).toHaveLength(1));
       h.batch(0, "0", "1");
+      if (result === "older-revision")
+        h.updateSession({ ...h.session, revision: "2" });
       const old = h.deliveries[0]!;
       old.lifecycle({
         requestId: old.query.requestId,
@@ -521,11 +619,11 @@ describe("Host raw reader owner", () => {
             resolve = done;
           }),
       );
-      vi.mocked(h.native.request).mockImplementation((request) =>
+      vi.mocked(h.native.request).mockImplementation((request, generation) =>
         request.method === "action.query" &&
         request.params.actionId === "session.get"
           ? confirm()
-          : fallback(request),
+          : fallback(request, generation),
       );
       const stop = h.workspace.watchSession(h.session.sessionId, () => {});
       await waitFor(() => expect(h.deliveries).toHaveLength(1));
@@ -621,24 +719,26 @@ describe("Host raw reader owner", () => {
   it("does not retire a live raw reader when unrelated controls or same-epoch metadata change", async () => {
     const h = await setupReader();
     const fallback = vi.mocked(h.native.request).getMockImplementation()!;
-    vi.mocked(h.native.request).mockImplementation(async (request) => {
-      if (
-        request.method === "action.query" &&
-        request.params.actionId === "action.check"
-      ) {
-        const actionId = request.params.params.actionId;
-        if (typeof actionId !== "string")
-          throw new Error("fixture action required");
-        return {
-          ok: true,
-          result: {
-            kind: "action_check",
-            value: { actionId, target: request.params.target, allowed: true },
-          },
-        };
-      }
-      return fallback(request);
-    });
+    vi.mocked(h.native.request).mockImplementation(
+      async (request, generation) => {
+        if (
+          request.method === "action.query" &&
+          request.params.actionId === "action.check"
+        ) {
+          const actionId = request.params.params.actionId;
+          if (typeof actionId !== "string")
+            throw new Error("fixture action required");
+          return {
+            ok: true,
+            result: {
+              kind: "action_check",
+              value: { actionId, target: request.params.target, allowed: true },
+            },
+          };
+        }
+        return fallback(request, generation);
+      },
+    );
     const stop = h.workspace.watchSession(h.session.sessionId, () => {});
     try {
       await waitFor(() => expect(h.deliveries).toHaveLength(1));
@@ -1194,6 +1294,184 @@ describe("Host raw reader owner", () => {
       h.workspace.dispose();
     }
   });
+  it("coalesces fragmented receive notifications while preserving snapshots and immediate errors", async () => {
+    const h = await setupReader();
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    await waitFor(() => expect(h.deliveries).toHaveLength(1));
+    const changed = vi.fn();
+    const unsubscribe = h.workspace.subscribe(changed);
+    vi.useFakeTimers();
+    try {
+      for (let index = 0; index < 100; index++)
+        h.batch(0, String(index), String(index + 1));
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.items,
+      ).toHaveLength(100);
+      expect(changed.mock.calls.length).toBeLessThanOrEqual(1);
+      await vi.advanceTimersByTimeAsync(16);
+      expect(changed).toHaveBeenCalledOnce();
+      h.deliveries[0]!.lifecycle({
+        requestId: h.deliveries[0]!.query.requestId,
+        channel: "raw",
+        body: {
+          type: "subscriptionEnded",
+          subscriptionId: h.deliveries[0]!.id,
+          error: {
+            code: "SOURCE_ENDED",
+            message: "Fixture ended",
+            retryable: false,
+          },
+        },
+      });
+      expect(changed).toHaveBeenCalledTimes(2);
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.error,
+      ).toMatchObject({ code: "SOURCE_ENDED" });
+      h.workspace.dispose();
+      await vi.runAllTimersAsync();
+      expect(changed).toHaveBeenCalledTimes(2);
+    } finally {
+      unsubscribe();
+      stop();
+      h.workspace.dispose();
+      vi.useRealTimers();
+    }
+  });
+
+  it("combines ACK and credit without a redundant round trip while the reader has batch headroom", async () => {
+    const h = await setupReader();
+    h.connection.attachment.limits.maxBatchBytes = "262144";
+    const fallback = vi.mocked(h.native.rawRequest).getMockImplementation()!;
+    const credits: { position: string; grant: string }[] = [];
+    vi.mocked(h.native.rawRequest).mockImplementation(
+      async (request, generation) => {
+        if (
+          request.method !== "action.query" ||
+          request.params.actionId !== "stream.credit"
+        )
+          return fallback(request, generation);
+        const { ackCursor, grantedBytesTotal } = request.params.params;
+        if (
+          typeof ackCursor !== "object" ||
+          !ackCursor ||
+          Array.isArray(ackCursor) ||
+          typeof ackCursor.position !== "string" ||
+          typeof grantedBytesTotal !== "string"
+        )
+          throw new Error("credit fixture");
+        credits.push({
+          position: ackCursor.position,
+          grant: grantedBytesTotal,
+        });
+        const bytes = (BigInt(ackCursor.position) * 640n).toString();
+        return parseReply({
+          ok: true,
+          result: {
+            kind: "stream_credit",
+            value: {
+              ackCursor,
+              grantedBytesTotal,
+              sentBytesTotal: bytes,
+              acknowledgedBytesTotal: bytes,
+            },
+          },
+        });
+      },
+    );
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    try {
+      await waitFor(() => expect(h.deliveries).toHaveLength(1));
+      h.batch(0, "0", "1");
+      await waitFor(() => expect(credits.length).toBeGreaterThan(0));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(credits).toEqual([{ position: "1", grant: "1000000" }]);
+      h.batch(0, "1", "2");
+      await waitFor(() =>
+        expect(credits.some((value) => value.position === "2")).toBe(true),
+      );
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(credits).toEqual([
+        { position: "1", grant: "1000000" },
+        { position: "2", grant: "1000640" },
+      ]);
+    } finally {
+      stop();
+      h.workspace.dispose();
+    }
+  });
+
+  it("tops up a starved credit window once and waits for later data ACKs", async () => {
+    const h = await setupReader();
+    h.connection.attachment.limits.maxBatchBytes = "262144";
+    const fallback = vi.mocked(h.native.rawRequest).getMockImplementation()!;
+    const grants: string[] = [];
+    vi.mocked(h.native.rawRequest).mockImplementation(
+      async (request, generation) => {
+        if (
+          request.method !== "action.query" ||
+          request.params.actionId !== "stream.credit"
+        )
+          return fallback(request, generation);
+        const { ackCursor, grantedBytesTotal } = request.params.params;
+        if (typeof grantedBytesTotal !== "string")
+          throw new Error("credit fixture");
+        grants.push(grantedBytesTotal);
+        return parseReply({
+          ok: true,
+          result: {
+            kind: "stream_credit",
+            value: {
+              ackCursor,
+              grantedBytesTotal,
+              sentBytesTotal: "1000000",
+              acknowledgedBytesTotal: "640",
+            },
+          },
+        });
+      },
+    );
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    try {
+      await waitFor(() => expect(h.deliveries).toHaveLength(1));
+      h.batch(0, "0", "1");
+      await waitFor(() => expect(grants).toEqual(["1000000", "1000640"]));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      expect(grants).toHaveLength(2);
+      expect(
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.error,
+      ).toBeNull();
+    } finally {
+      stop();
+      h.workspace.dispose();
+    }
+  });
+
+  it("resizes an active display cache without restarting its Raw subscription", async () => {
+    setReceiveHistoryLimits({ maxRecords: 5000, maxBytes: 4 * 1024 * 1024 });
+    const h = await setupReader();
+    const stop = h.workspace.watchSession(h.session.sessionId, () => {});
+    try {
+      await waitFor(() => expect(h.deliveries).toHaveLength(1));
+      h.batch(0, "0", "1500", 1500);
+      const stream = () =>
+        h.workspace.getSnapshot().state.streams.get(h.session.sessionId);
+      expect(stream()?.items).toHaveLength(1500);
+      expect(stream()?.trimmed).toBe(false);
+      setReceiveHistoryLimits({ maxRecords: 1000, maxBytes: 1024 * 1024 });
+      expect(stream()?.items).toHaveLength(1000);
+      expect(stream()?.trimmed).toBe(true);
+      setReceiveHistoryLimits({ maxRecords: 5000, maxBytes: 4 * 1024 * 1024 });
+      h.batch(0, "1500", "1600", 100);
+      expect(stream()?.items).toHaveLength(1100);
+      expect(stream()?.error).toBeNull();
+      expect(h.deliveries).toHaveLength(1);
+    } finally {
+      stop();
+      h.workspace.dispose();
+      setReceiveHistoryLimits(DEFAULT_RECEIVE_HISTORY);
+    }
+  });
+
   it("retains a bounded display tail and replenishes Host credit using Host byte accounting", async () => {
     const h = await setupReader();
     const stop = h.workspace.watchSession(h.session.sessionId, () => {});
@@ -1219,6 +1497,7 @@ describe("Host raw reader owner", () => {
             params: expect.objectContaining({ grantedBytesTotal: "1000640" }),
           }),
         }),
+        "3",
       ),
     );
     expect(h.native.ack).toHaveBeenCalledWith("3", "raw-0", "data", "1");
@@ -1243,7 +1522,7 @@ describe("Host raw reader owner", () => {
       revision: (BigInt(h.session.revision) + 1n).toString(),
     });
     await waitFor(() => expect(h.deliveries).toHaveLength(2));
-    expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-0");
+    expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-0", "3");
     h.batch(0, "1", "2");
     expect(
       h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.items,
@@ -1253,9 +1532,9 @@ describe("Host raw reader owner", () => {
       h.workspace.getSnapshot().state.streams.get(h.session.sessionId)?.items,
     ).toHaveLength(1);
     first();
-    expect(h.native.rawUnsubscribe).not.toHaveBeenCalledWith("raw-1");
+    expect(h.native.rawUnsubscribe).not.toHaveBeenCalledWith("raw-1", "3");
     second();
-    expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-1");
+    expect(h.native.rawUnsubscribe).toHaveBeenCalledWith("raw-1", "3");
     h.workspace.dispose();
   });
   it("rechecks repeated authorization changes from the last raw cursor without reviving old queues", async () => {

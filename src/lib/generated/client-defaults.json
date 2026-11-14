@@ -3,7 +3,11 @@
     "menuBar": true,
     "windowPosition": "remember",
     "sidebarCollapsed": true,
-    "sidebarWidth": 224
+    "sidebarWidth": 224,
+    "receiveHistory": {
+      "maxRecords": 1024,
+      "maxBytes": 1048576
+    }
   },
   "currentPage": "workbench",
   "focusedPanelId": null,

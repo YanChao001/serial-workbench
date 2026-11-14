@@ -7,7 +7,6 @@ import type {
   Cursor,
   Query,
   SessionSnapshot,
-  StreamItem,
   Target,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
@@ -16,6 +15,13 @@ import type { HostStreamView } from "@/providers/host-context";
 import { nativeErrorCode } from "./native-error";
 import { reportClientError } from "./report-error";
 import { waitForHost } from "./host-native-transport";
+import { parseU64 } from "./u64";
+import {
+  ReceiveHistoryBuffer,
+  receiveHistoryLimits,
+  subscribeReceiveHistoryLimits,
+  type ReceiveHistory,
+} from "./receive-history";
 function failure(code: string, message: string) {
   return new HostRequestError({ code, message, retryable: false });
 }
@@ -24,10 +30,14 @@ class RemoteRawFailure extends Error {
     super("Remote Raw request failed");
   }
 }
+class RawReplyContractError extends ContractValidationError {
+  constructor(readonly actionId: string) {
+    super(`Invalid Host RPC reply (${actionId})`);
+  }
+}
 type ReaderResume = {
   view: HostStreamView;
-  retained: Array<{ item: StreamItem; size: number }>;
-  retainedBytes: number;
+  history: ReceiveHistoryBuffer;
   cursor?: Cursor;
   recoveries: number;
 };
@@ -38,6 +48,7 @@ export function createSessionReaders(
   pendingAuthorization?: (
     session: SessionSnapshot,
   ) => Promise<unknown> | undefined,
+  onConfirmedSession?: (session: SessionSnapshot) => void,
 ) {
   let disposed = false;
   const readers = new Map<
@@ -49,7 +60,9 @@ export function createSessionReaders(
       snapshot: () => ReaderResume;
       authorizedAgain: () => void;
       failureCode: () => string | undefined;
+      observeRevision: (revision: SessionSnapshot["revision"]) => void;
       retire: () => void;
+      resize: (limits: Readonly<ReceiveHistory>) => void;
     }
   >();
   function sessionTarget(session: SessionSnapshot): Target {
@@ -67,10 +80,18 @@ export function createSessionReaders(
       .catch((error: unknown) => {
         throw new RemoteRawFailure(error);
       });
-    const reply = parseReply(value);
+    let reply: ReturnType<typeof parseReply>;
+    try {
+      reply = parseReply(value);
+    } catch (error) {
+      if (error instanceof ContractValidationError)
+        throw new RawReplyContractError(query.actionId);
+      throw error;
+    }
     if (!reply.ok)
       throw new RemoteRawFailure(new HostRequestError(reply.error));
-    if (!("kind" in reply.result)) throw new ContractValidationError();
+    if (!("kind" in reply.result))
+      throw new RawReplyContractError(query.actionId);
     return reply.result;
   }
   function startReader(
@@ -81,12 +102,14 @@ export function createSessionReaders(
     const controller = new AbortController();
     let authorizedAgain = false;
     let closed = session.state === "closed";
+    let latestRevision = session.revision;
     let checkingTerminal = false;
     let terminalChecked = false;
     const originalHost = connection.attachment.hostId;
     const originalInstance = connection.attachment.instanceEpoch;
     const originalGeneration = connection.generation;
     const originalTarget = sessionTarget(session);
+    const history = resume?.history ?? new ReceiveHistoryBuffer();
     const entry = {
       epoch: session.sessionEpoch,
       controller,
@@ -95,14 +118,27 @@ export function createSessionReaders(
         authorizedAgain = true;
       },
       failureCode: () => nativeErrorCode(view.error),
+      observeRevision: (revision: SessionSnapshot["revision"]) => {
+        if (BigInt(revision) > BigInt(latestRevision))
+          latestRevision = revision;
+      },
       retire: () => {
         closed = true;
         controller.abort();
       },
+      resize: (limits: Readonly<ReceiveHistory>) => {
+        if (!owned() || !history.setLimits(limits)) return;
+        view = {
+          ...view,
+          items: history.items(),
+          trimmed: history.trimmed,
+          removed: { ...history.removed },
+        };
+        publish();
+      },
       snapshot: (): ReaderResume => ({
         view: { ...view, error: null },
-        retained,
-        retainedBytes,
+        history,
         cursor: resumeCursor,
         recoveries: 0,
       }),
@@ -116,8 +152,6 @@ export function createSessionReaders(
       error: null,
       trimmed: false,
     };
-    const retained = resume?.retained ?? [];
-    let retainedBytes = resume?.retainedBytes ?? 0;
     let resumeCursor = resume?.cursor;
     let recoveries = resume?.recoveries ?? 0;
     let authorized = false;
@@ -141,22 +175,30 @@ export function createSessionReaders(
         controller.abort();
         startReader(session, notifications, {
           view,
-          retained,
-          retainedBytes,
+          history,
           cursor: resumeCursor,
           recoveries: recoveries + 1,
         });
         return;
       }
       const numeric = (value: string) =>
-        /^(0|[1-9][0-9]{0,19})$/.test(value) &&
-        BigInt(value) <= 18446744073709551615n
-          ? value
-          : undefined;
+        parseU64(value) !== undefined ? value : undefined;
       reportClientError(
-        { message: nativeErrorCode(error) ?? "UNKNOWN" },
+        {
+          message:
+            nativeErrorCode(error) ??
+            (error instanceof ContractValidationError
+              ? "CONTRACT_INVALID"
+              : "UNKNOWN"),
+        },
         JSON.stringify({
           scope: "Host raw reader",
+          actionId:
+            error instanceof RawReplyContractError ? error.actionId : undefined,
+          contractMessage:
+            error instanceof ContractValidationError
+              ? error.message
+              : undefined,
           generation: numeric(connection.generation),
           instanceEpoch: numeric(connection.attachment.instanceEpoch),
           sessionEpoch: numeric(session.sessionEpoch),
@@ -207,9 +249,12 @@ export function createSessionReaders(
             reply.result.kind === "session" &&
             reply.result.value.sessionId === session.sessionId &&
             reply.result.value.sessionEpoch === session.sessionEpoch &&
+            BigInt(reply.result.value.revision) >= BigInt(latestRevision) &&
             reply.result.value.state === "closed"
           ) {
             entry.retire();
+            // 同一身份的 Control 证据也要更新连接控件，避免仍显示可发送/断开。
+            onConfirmedSession?.(reply.result.value);
             return;
           }
         } catch {
@@ -228,7 +273,11 @@ export function createSessionReaders(
         return;
       }
       const code = nativeErrorCode(error.original);
-      if (code === "EPOCH_MISMATCH" || code === "BACKEND_DISCONNECTED")
+      if (
+        code === "EPOCH_MISMATCH" ||
+        code === "BACKEND_DISCONNECTED" ||
+        code === "HOST_BUSY"
+      )
         confirmClosedTerminal(error.original);
       else fail(error.original);
     };
@@ -256,7 +305,7 @@ export function createSessionReaders(
         controller.signal,
       );
       if (reference.kind !== "stream_cursor")
-        throw new ContractValidationError();
+        throw new RawReplyContractError("stream.cursor");
       if (!current()) return;
       const { target, cursor } = reference.value;
       if (
@@ -271,6 +320,9 @@ export function createSessionReaders(
       const queue = BigInt(connection.attachment.limits.maxReaderQueueBytes);
       const windowBytes = queue < 1048576n ? queue : 1048576n;
       let grant = windowBytes;
+      let acknowledgedBytes = 0n;
+      const maxBatch = BigInt(connection.attachment.limits.maxBatchBytes);
+      const headroom = maxBatch < windowBytes ? maxBatch : windowBytes;
       let last = resumeCursor ?? cursor;
       if (
         last.hostId !== cursor.hostId ||
@@ -290,6 +342,7 @@ export function createSessionReaders(
           while (pendingCredit && current()) {
             const ackCursor = pendingCredit;
             pendingCredit = undefined;
+            grant = acknowledgedBytes + windowBytes;
             const acknowledged = await rawQuery(
               connection.buildQuery("stream.credit", target, {
                 subscriptionId: identity.subscriptionId,
@@ -299,17 +352,32 @@ export function createSessionReaders(
               controller.signal,
             );
             if (acknowledged.kind !== "stream_credit")
-              throw new ContractValidationError();
-            grant =
-              BigInt(acknowledged.value.acknowledgedBytesTotal) + windowBytes;
-            await rawQuery(
-              connection.buildQuery("stream.credit", target, {
-                subscriptionId: identity.subscriptionId,
-                ackCursor,
-                grantedBytesTotal: grant.toString(),
-              }),
-              controller.signal,
-            );
+              throw new RawReplyContractError("stream.credit");
+            const receipt = acknowledged.value;
+            const nextAcknowledged = BigInt(receipt.acknowledgedBytesTotal);
+            const sent = BigInt(receipt.sentBytesTotal);
+            if (
+              receipt.ackCursor.hostId !== ackCursor.hostId ||
+              receipt.ackCursor.instanceEpoch !== ackCursor.instanceEpoch ||
+              receipt.ackCursor.scopeId !== ackCursor.scopeId ||
+              receipt.ackCursor.position !== ackCursor.position ||
+              BigInt(receipt.grantedBytesTotal) !== grant ||
+              nextAcknowledged < acknowledgedBytes ||
+              nextAcknowledged > sent ||
+              sent > grant
+            )
+              throw new ContractValidationError(
+                "Raw credit acknowledgement changed",
+              );
+            acknowledgedBytes = nextAcknowledged;
+            // 下一次 ACK 携带上次 Host 会计确定的额度；只有不足一个最大批次时
+            // 才单独补额度，避免逐个小读块固定进行两次 IPC 往返。
+            if (
+              !pendingCredit &&
+              acknowledgedBytes + windowBytes > grant &&
+              grant - sent < headroom
+            )
+              pendingCredit = ackCursor;
           }
         } finally {
           creditInFlight = false;
@@ -318,7 +386,9 @@ export function createSessionReaders(
       const request = connection.buildQuery("stream.subscribe", target, {
         scopeId: cursor.scopeId,
         after: last,
-        queueBytes: windowBytes.toString(),
+        // queueBytes 同时承担当次 reader 的队列、待确认帧及编码内存，
+        // 不能缩成 wire credit；碎片数据的内存开销远高于正文。
+        queueBytes: queue.toString(),
         initialCreditBytes: windowBytes.toString(),
         overflowPolicy: "drop_with_gap",
       });
@@ -355,20 +425,16 @@ export function createSessionReaders(
                 identity.instanceEpoch !== cursor.instanceEpoch
               )
                 throw failure("EPOCH_MISMATCH", "Raw stream session changed");
-              const size = new TextEncoder().encode(
-                JSON.stringify(item),
-              ).byteLength;
-              retained.push({ item, size });
-              retainedBytes += size;
-              while (retained.length > 1024 || retainedBytes > 1048576) {
-                const removed = retained.shift();
-                if (removed) retainedBytes -= removed.size;
-                view = { ...view, trimmed: true };
-              }
             }
+            history.append(batch.items);
             last = batch.cursor;
             resumeCursor = last;
-            view = { ...view, items: retained.map((value) => value.item) };
+            view = {
+              ...view,
+              items: history.items(),
+              trimmed: history.trimmed,
+              removed: { ...history.removed },
+            };
             publish();
             pendingCredit = batch.cursor;
             void credit().catch(failRemoteRequest);
@@ -379,7 +445,9 @@ export function createSessionReaders(
               frame.requestId !== request.requestId ||
               frame.channel !== "raw"
             )
-              throw new ContractValidationError();
+              throw new ContractValidationError(
+                `Raw lifecycle identity changed (${frame.channel}/${frame.body.type})`,
+              );
             if (frame.body.type === "subscriptionEnded") {
               if (
                 identity.subscriptionId &&
@@ -435,6 +503,10 @@ export function createSessionReaders(
       }
     };
   }
+  const unsubscribeLimits = subscribeReceiveHistoryLimits(() => {
+    for (const reader of readers.values())
+      reader.resize(receiveHistoryLimits());
+  });
   return {
     watch,
     /** 只在用户显式授权成功后恢复已停止的同代 reader，不重放任何写入。 */
@@ -458,6 +530,7 @@ export function createSessionReaders(
       const reader = readers.get(session.sessionId);
       if (!reader) return;
       if (reader.epoch === session.sessionEpoch) {
+        reader.observeRevision(session.revision);
         if (session.state === "closed") reader.retire();
         return;
       }
@@ -468,6 +541,7 @@ export function createSessionReaders(
     },
     dispose() {
       disposed = true;
+      unsubscribeLimits();
       for (const reader of readers.values()) reader.controller.abort();
       readers.clear();
     },

@@ -84,6 +84,51 @@ async fn settle_closes_admission_and_retains_the_accepted_write_until_its_receip
 }
 
 #[tokio::test]
+async fn confirmed_close_allows_shutdown_without_rewriting_an_unknown_transmission() {
+    let h = support::Harness::new().await;
+    let target = h.open("shutdown-closed-unknown-write").await;
+    h.probe.steps.lock().unwrap().push_back(support::WriteStep {
+        accepted: 2,
+        unknown: true,
+        gate: None,
+        advance_ms: 0,
+    });
+    let operation = h
+        .invoke(h.call(
+            &target,
+            "session.tx",
+            json!({"bytesBase64":"AQIDBAU=","writeWaitMs":"100"}),
+        ))
+        .await;
+    let before = h.wait(&operation.operation_id).await;
+    assert_eq!(before.state, OperationState::Unknown);
+    assert_eq!(support::receipt(&before).outcome, TxOutcome::Unknown);
+    let close = h.invoke(h.call(&target, "session.close", json!({}))).await;
+    assert_eq!(
+        h.wait(&close.operation_id).await.state,
+        OperationState::Succeeded
+    );
+    assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+
+    let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
+    let after = h.wait(&operation.operation_id).await;
+    assert_eq!(
+        after, before,
+        "shutdown must preserve the original unknown receipt"
+    );
+    assert_eq!(
+        h.host.devices().snapshot(&target).await.unwrap().tx_gate,
+        TxGate::ControlUnknown
+    );
+    assert!(
+        report.completed,
+        "confirmed cleanup must allow process exit: {report:?}"
+    );
+    assert!(report.quarantined_sessions.is_empty());
+    h.host.shutdown().await.unwrap();
+}
+
+#[tokio::test]
 async fn cancel_and_settle_reports_failed_clear_without_erasing_unknown_evidence() {
     let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let profile = dir.path().canonicalize().unwrap();
@@ -318,13 +363,19 @@ async fn cancelling_a_native_write_retains_the_unknown_receipt_and_is_bounded() 
     .await;
     gate.release();
     let report = outcome.unwrap().unwrap();
-    assert!(!report.completed);
-    assert!(report.quarantined_sessions.contains(&target));
+    assert!(
+        report.completed,
+        "the completed backend cleanup must allow exit: {report:?}"
+    );
+    assert!(report.quarantined_sessions.is_empty());
     let settled = h.wait(&operation.operation_id).await;
     assert_eq!(settled.state, OperationState::Unknown);
     assert_eq!(support::receipt(&settled).outcome, TxOutcome::Unknown);
     assert!(!support::receipt(&settled).unknown_ranges.is_empty());
     assert_eq!(h.write_count(), 1);
+    assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
+    h.host.shutdown().await.unwrap();
+    assert_eq!(h.wait(&operation.operation_id).await, settled);
 }
 
 async fn wait_as(

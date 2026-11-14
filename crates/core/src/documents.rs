@@ -29,6 +29,26 @@ pub struct WorkspaceDocumentResult {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceSummary {
+    pub scope: StateScopeRef,
+    pub name: String,
+    pub revision: crate::U64,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceListParams {
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub after: Option<Id>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct WorkspaceListResult {
+    pub workspaces: Vec<WorkspaceSummary>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    pub next_cursor: Option<Id>,
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct DocumentImportParams {
     pub json: String,
 }

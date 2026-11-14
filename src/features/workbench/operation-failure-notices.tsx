@@ -102,7 +102,9 @@ export function OperationFailureObserver() {
     : undefined;
   return (
     <OperationFailureNotices
-      ready={host.state.status === "ready"}
+      ready={
+        host.state.status === "ready" && host.state.operationSummariesReady
+      }
       scopeKey={scopeKey}
       operations={host.state.operationSummaries}
       text={text}

@@ -89,13 +89,23 @@ fn configuration_receipt_requires_the_complete_requested_configuration() {
 }
 
 #[test]
+fn manual_tx_accepts_a_16_point_5_kb_ascii_draft() {
+    let value = json!({"bytesBase64":"MTIz".repeat(5500),"writeWaitMs":"22000"});
+    let actual = serde_json::from_value::<TxParams>(value);
+    assert!(actual.is_ok(), "16.50 KB draft rejected: {actual:?}");
+}
+
+#[test]
 fn tx_params_limit_decoded_bytes_even_when_base64_lengths_match() {
-    // 16384 和 16385 字节的 Base64 编码均为 21848 字符。
-    let maximum = format!("{}AA==", "AAAA".repeat(5461));
-    let over_one = format!("{}AAA=", "AAAA".repeat(5461));
+    // 最大值和紧邻的超限值仍占相同的 Base64 字符数。
+    let maximum = format!("{}AAA=", "AAAA".repeat(TX_MAX_BYTES / 3));
+    let over_one = "AAAA".repeat(TX_MAX_BYTES / 3 + 1);
     assert_eq!(maximum.len(), over_one.len());
     roundtrip::<TxParams>(json!({"bytesBase64":maximum,"writeWaitMs":"1"}));
-    for invalid in [over_one, "AAAA".repeat(5462)] {
+    for invalid in [
+        over_one,
+        format!("{}AA==", "AAAA".repeat(TX_MAX_BYTES / 3 + 1)),
+    ] {
         assert!(
             serde_json::from_value::<TxParams>(json!({"bytesBase64":invalid,"writeWaitMs":"1"}))
                 .is_err(),

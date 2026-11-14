@@ -37,6 +37,28 @@ function configurationContent() {
   return screen.getByRole("textbox", { name: "Configuration content" });
 }
 
+it("does not mark an unchanged native round-trip document dirty when JSON object keys are reordered", () => {
+  const original = base();
+  const { bindings, ...rest } = original.document.value;
+  const value = {
+    bindings,
+    ...rest,
+  };
+  expect(JSON.stringify(value)).not.toBe(
+    JSON.stringify(original.document.value),
+  );
+  render(
+    <WorkspaceEditor
+      base={original}
+      value={value}
+      labels={labels}
+      onSave={vi.fn()}
+    />,
+  );
+  expect(screen.getByRole("button", { name: labels.save })).toBeDisabled();
+  expect(screen.getByRole("button", { name: labels.discard })).toBeDisabled();
+});
+
 it("rejects a configuration file beyond the attached request budget before reading it", async () => {
   const file = new File(["x".repeat(32)], "large.json");
   const read = vi.fn().mockResolvedValue("unread content");
@@ -309,7 +331,12 @@ it("saves edited view, connection and panel configuration with the original docu
   fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
     target: { value: "Motor 2" },
   });
-  fireEvent.click(screen.getByRole("checkbox", { name: "Pinned" }));
+  fireEvent.click(screen.getByRole("switch", { name: "Pinned" }));
+  fireEvent.click(screen.getByRole("button", { name: "Icon" }));
+  fireEvent.click(screen.getByRole("button", { name: "cpu" }));
+  fireEvent.change(screen.getByRole("textbox", { name: "Color" }), {
+    target: { value: "#3366AA" },
+  });
   fireEvent.change(screen.getByLabelText("Baud rate"), {
     target: { value: "57600" },
   });
@@ -323,7 +350,14 @@ it("saves edited view, connection and panel configuration with the original docu
     original,
     expect.objectContaining({
       layout: { sidebarWidth: 224, panelHeight: 192 },
-      views: [expect.objectContaining({ name: "Motor 2", pinned: true })],
+      views: [
+        expect.objectContaining({
+          name: "Motor 2",
+          pinned: true,
+          icon: "cpu",
+          color: "#3366AA",
+        }),
+      ],
       bindings: [
         expect.objectContaining({
           configuration: expect.objectContaining({ baudRate: "57600" }),
@@ -451,7 +485,7 @@ it("clones complete view configuration into new identities through the controlle
   expect(latest.views).toHaveLength(2);
   expect(latest.views[1]).toEqual(
     expect.objectContaining({
-      name: "Motor",
+      name: "Motor (2)",
       receiveMode: "text",
       sendMode: "hex",
       color: "#2266aa",

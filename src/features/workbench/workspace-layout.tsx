@@ -4,10 +4,10 @@ import {
   useRef,
   useMemo,
   useState,
+  useSyncExternalStore,
   type ReactNode,
 } from "react";
 import { defaults } from "@serial-workbench/contracts";
-import { HostRequestError } from "@serial-workbench/host-client";
 import type {
   SerialConfiguration,
   OperationSummary,
@@ -16,7 +16,7 @@ import type {
   SessionSnapshot,
   TerminalSettings,
   Target,
-  StreamItem,
+  TextEncoding,
 } from "@serial-workbench/contracts";
 import type {
   HostActionAvailability,
@@ -51,8 +51,19 @@ import {
   type CaptureTracker,
 } from "./use-capture-operations";
 import { SessionTabs, type SessionTab } from "./session-tabs";
-import { StreamView } from "./stream-view";
-import { SendPanel } from "./send-panel";
+import { connectSessionTabs, reconcileWorkspaceTabs } from "./workspace-model";
+import { CONFIG_FIELDS } from "./serial-configuration";
+import { StreamView, type StreamViewProps } from "./stream-view";
+import { receiveEncodingFor } from "@/lib/text-encoding";
+import { streamSourceKey } from "@/lib/stream-source";
+import {
+  historyAfter,
+  historyPosition,
+  historyTrimmedAfter,
+  type HistoryPosition,
+} from "@/lib/receive-history";
+import { WorkspaceSendPanel } from "./workspace-send-panel";
+import { createDraftStore } from "./draft-store";
 import { ActivityPanel } from "./activity-panel";
 import { WorkbenchLogPanel } from "./workbench-log-panel";
 import type { ReceiptReader } from "./transfer-receipts";
@@ -68,6 +79,17 @@ import {
 import "./workbench.css";
 
 type TabNameSource = { sourceKey?: string; sessionKey?: string; name?: string };
+function sameActionInput(
+  left: HostActionCheckInput,
+  right: HostActionCheckInput,
+) {
+  return (
+    left === right ||
+    (left.actionId === right.actionId &&
+      JSON.stringify(left) === JSON.stringify(right))
+  );
+}
+
 type FriendlyTabName = { sourceKey: string; sessionKey: string; name: string };
 function retainedTabName(
   retained: FriendlyTabName | undefined,
@@ -97,6 +119,7 @@ export type WorkbenchHost = Pick<
 export type WorkbenchTool =
   | "workspace"
   | "parameters"
+  | "controls"
   | "devices"
   | "transfer"
   | "captureTools"
@@ -113,6 +136,10 @@ export type WorkbenchToolContext = {
   onInspectMetrics: () => void;
   onReconnect?: () => void;
   beforeReplace: () => Promise<boolean>;
+  snapshotWorkspace?: (
+    preservePresets?: boolean,
+  ) => WorkspaceDocument | undefined;
+  newViewDefaults?: { terminal: TerminalSettings; color: string };
   target?: Target;
   isReplay: boolean;
   items: readonly import("@serial-workbench/contracts").StreamItem[];
@@ -120,6 +147,8 @@ export type WorkbenchToolContext = {
   onInspectBytes: () => void;
 };
 export type WorkspaceLayoutProps = {
+  receiveHistory?: StreamViewProps["historyLimits"];
+  onReceiveHistoryChange?: StreamViewProps["onHistoryLimitsChange"];
   connectionDefaults?: Readonly<ConnectionConfigurations>;
   connectionWaitModes?: Readonly<Record<string, WriteWaitMode>>;
   connectionDefaultsLoading?: boolean;
@@ -154,14 +183,13 @@ export type WorkspaceLayoutProps = {
     | "more"
     | "chooseDevice"
     | "displayOptions"
-    | "newData"
     | "clearView"
     | "customLineEnding"
     | "customLineEndingHex"
     | "saveCurrentLayout"
     | "deviceListStale",
     string
-  >;
+  > & { saveCurrentLayoutHint?: string };
   renderTool?: (
     tool: WorkbenchTool,
     context: WorkbenchToolContext,
@@ -173,6 +201,7 @@ export type WorkspaceLayoutProps = {
   readOperationInput?: OperationInputReader;
   replay?: Pick<ReplayPanelProps, "read" | "readRecord" | "control">;
   initialWorkspace?: WorkspaceDocument;
+  preserveWorkspacePresets?: boolean;
   initialDrafts?: Readonly<Record<string, string>>;
   host: WorkbenchHost;
   labels: WorkbenchLabels;
@@ -199,7 +228,7 @@ export type WorkspaceLayoutProps = {
 // Host view IDs cannot contain '/', so this key cannot alias another view ID.
 const UNCONNECTED_VIEW_DRAFT = "view/unconnected";
 function restoreViewDraftIdentity(
-  drafts: Record<string, string>,
+  drafts: Readonly<Record<string, string>>,
   workspace: WorkspaceDocument | undefined,
   initialUnconnected: string | undefined,
 ) {
@@ -212,9 +241,12 @@ function restoreViewDraftIdentity(
   return drafts;
 }
 export function WorkspaceLayout({
+  receiveHistory,
+  onReceiveHistoryChange,
   host,
   labels,
   initialWorkspace,
+  preserveWorkspacePresets,
   initialDrafts = {},
   onSendFile,
   onStartCapture,
@@ -277,12 +309,55 @@ export function WorkspaceLayout({
       ),
     [watchActions, catalog],
   );
+  const nativeOwnershipKey = JSON.stringify([
+    host.connection?.attachment.hostId,
+    host.connection?.attachment.instanceEpoch,
+    host.connection?.generation,
+    host.connection?.attachment.actorId,
+    host.connection?.attachment.clientId,
+  ]);
+  const openedHere = useRef({
+    key: nativeOwnershipKey,
+    sessions: new Map<string, string>(),
+  });
+  if (openedHere.current.key !== nativeOwnershipKey)
+    openedHere.current = { key: nativeOwnershipKey, sessions: new Map() };
+  const existingLocalConnection = useCallback(
+    (binding: WorkspaceDocument["bindings"][number] | undefined) => {
+      if (!binding) return;
+      return state.sessions.find(
+        (session) =>
+          session.state === "open" &&
+          openedHere.current.sessions.get(session.sessionId) ===
+            session.sessionEpoch &&
+          state.devices.some(
+            (device) =>
+              device.deviceId === session.deviceId &&
+              device.deviceId === binding.deviceId &&
+              device.hostId === binding.hostId,
+          ),
+      );
+    },
+    [state.sessions, state.devices],
+  );
+  const restoreWorkspaceViews = useCallback(
+    (document: WorkspaceDocument | undefined) => {
+      return workspaceTabs(document).map((tab) => {
+        const binding = document?.bindings.find(
+          (item) => item.bindingId === tab.view?.bindingId,
+        );
+        const active = existingLocalConnection(binding);
+        return active ? { ...tab, sessionId: active.sessionId } : tab;
+      });
+    },
+    [existingLocalConnection],
+  );
   const localDraftTabId = useRef<string | undefined>(undefined);
   const [{ tabs, selected }, setViews] = useState<{
     tabs: SessionTab[];
     selected?: string;
   }>(() => {
-    const restored = workspaceTabs(initialWorkspace);
+    const restored = restoreWorkspaceViews(initialWorkspace);
     if (initialWorkspace?.captures.length && initialDrafts.unconnected) {
       let localId = "unconnected";
       while (restored.some((tab) => tab.id === localId))
@@ -292,19 +367,21 @@ export function WorkspaceLayout({
     }
     return { tabs: restored, selected: restored[0]?.id };
   });
-  const [drafts, setDrafts] = useState<Record<string, string>>(() =>
-    restoreViewDraftIdentity(
-      { ...initialDrafts },
-      initialWorkspace,
-      initialDrafts.unconnected,
+  const [draftStore] = useState(() =>
+    createDraftStore(
+      restoreViewDraftIdentity(
+        { ...initialDrafts },
+        initialWorkspace,
+        initialDrafts.unconnected,
+      ),
     ),
   );
-  const [savedDrafts, setSavedDrafts] = useState<Record<string, string>>(() =>
-    restoreViewDraftIdentity(
-      { ...initialDrafts },
-      initialWorkspace,
-      initialDrafts.unconnected,
-    ),
+  const setDrafts = draftStore.update;
+  const setSavedDrafts = draftStore.setSaved;
+  const dirty = useSyncExternalStore(
+    draftStore.subscribe,
+    draftStore.isDirty,
+    draftStore.isDirty,
   );
   const [opening, setOpening] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
@@ -332,17 +409,22 @@ export function WorkspaceLayout({
   >(null);
   const dialogTrigger = useRef<HTMLElement | null>(null);
   const [clearThrough, setClearThrough] = useState<
-    ReadonlyMap<string, StreamItem | undefined>
+    ReadonlyMap<string, { source: string; position: HistoryPosition }>
   >(new Map());
   const [viewModes, setViewModes] = useState<WindowViewModes>({});
   const [savingLayout, setSavingLayout] = useState(false);
   const [unboundSendMode, setUnboundSendMode] = useState<"text" | "hex">();
-  const [sendBytes, setSendBytes] = useState<Uint8Array | null>(null);
+  const [unboundSendEncoding, setUnboundSendEncoding] =
+    useState<TextEncoding>();
+  const unboundFormat = useRef({
+    mode: unboundSendMode,
+    encoding: unboundSendEncoding,
+  });
+  unboundFormat.current = {
+    mode: unboundSendMode,
+    encoding: unboundSendEncoding,
+  };
   const [checkBytes, setCheckBytes] = useState<Uint8Array | null>(null);
-  useEffect(() => {
-    const timer = setTimeout(() => setCheckBytes(sendBytes), 150);
-    return () => clearTimeout(timer);
-  }, [sendBytes]);
   const [availability, setAvailability] = useState<
     readonly HostActionAvailability[]
   >([]);
@@ -361,6 +443,7 @@ export function WorkspaceLayout({
   );
   const previousWorkspace = useRef({
     key: workspaceKey,
+    selection: workspaceSelection,
     document: initialWorkspace,
   });
   useEffect(() => {
@@ -383,16 +466,24 @@ export function WorkspaceLayout({
         initialDrafts.unconnected,
       ),
     );
+    const drafts = draftStore.snapshot();
     const before = previousWorkspace.current;
     previousWorkspace.current = {
       key: workspaceKey,
+      selection: workspaceSelection,
       document: initialWorkspace,
     };
-    if (before.key !== workspaceKey) {
+    if (
+      before.key !== workspaceKey ||
+      before.selection !== workspaceSelection
+    ) {
       focusRevision.current++;
       setFollowing(false);
+      setDeviceChoice("");
+      setViewModes({});
+      setConnectionConfigurations({});
       setViews((current) => {
-        const restored = workspaceTabs(initialWorkspace);
+        const restored = restoreWorkspaceViews(initialWorkspace);
         if (
           !before.document &&
           initialWorkspace &&
@@ -426,13 +517,94 @@ export function WorkspaceLayout({
         }
         return { tabs: restored, selected: restored[0]?.id };
       });
+    } else if (initialWorkspace && before.document !== initialWorkspace) {
+      const previousViewIds = new Set(
+        before.document?.views.map((view) => view.id),
+      );
+      setViews((current) => {
+        const updated = new Map(
+          reconcileWorkspaceTabs(
+            current.tabs,
+            before.document,
+            initialWorkspace,
+          ).map((tab) => [tab.id, tab]),
+        );
+        const next: SessionTab[] = [];
+        for (const tab of current.tabs) {
+          if (!tab.view) {
+            const replacement = updated.get(tab.id);
+            const binding = initialWorkspace.bindings.find(
+              (item) => item.bindingId === replacement?.view?.bindingId,
+            );
+            const active = state.sessions.find(
+              (item) => item.sessionId === tab.sessionId,
+            );
+            const matches =
+              binding &&
+              active &&
+              state.devices.some(
+                (item) =>
+                  item.deviceId === active.deviceId &&
+                  item.deviceId === binding.deviceId &&
+                  item.hostId === binding.hostId,
+              );
+            next.push(
+              replacement
+                ? {
+                    ...replacement,
+                    ...(matches ? { sessionId: tab.sessionId } : {}),
+                  }
+                : tab,
+            );
+            continue;
+          }
+          const replacement = updated.get(tab.id);
+          if (replacement) {
+            const binding = initialWorkspace.bindings.find(
+              (item) => item.bindingId === replacement.view?.bindingId,
+            );
+            const active = replacement.sessionId
+              ? undefined
+              : existingLocalConnection(binding);
+            next.push(
+              active
+                ? { ...replacement, sessionId: active.sessionId }
+                : replacement,
+            );
+          } else if (!previousViewIds.has(tab.id)) next.push(tab);
+        }
+        // 新增的文档视图加入标签，已被用户关闭的既有视图保持关闭。
+        const visibleIds = new Set(next.map((tab) => tab.id));
+        for (const tab of updated.values()) {
+          if (!previousViewIds.has(tab.id) && !visibleIds.has(tab.id)) {
+            const binding = initialWorkspace.bindings.find(
+              (item) => item.bindingId === tab.view?.bindingId,
+            );
+            const active = existingLocalConnection(binding);
+            next.push(active ? { ...tab, sessionId: active.sessionId } : tab);
+          }
+        }
+        return {
+          tabs: next,
+          selected: next.some((tab) => tab.id === current.selected)
+            ? current.selected
+            : next[0]?.id,
+        };
+      });
     }
   }, [
     workspaceKey,
+    workspaceSelection,
     initialWorkspace,
     state.status,
-    drafts,
+    state.sessions,
+    state.devices,
+    draftStore,
+    setDrafts,
+    setSavedDrafts,
     initialDrafts.unconnected,
+    existingLocalConnection,
+    restoreWorkspaceViews,
   ]);
   const captureOwnerScope = JSON.stringify([
     workspaceKey,
@@ -456,6 +628,9 @@ export function WorkspaceLayout({
       }),
   );
   const selectedTab = tabs.find((tab) => tab.id === selected);
+  const selectedBinding = initialWorkspace?.bindings.find(
+    (binding) => binding.bindingId === selectedTab?.view?.bindingId,
+  );
   const isCapture = !!selectedTab?.captureRef;
   const draftKey = isCapture
     ? "unconnected"
@@ -571,7 +746,10 @@ export function WorkspaceLayout({
             id !== undefined &&
             !replayIds.has(id) &&
             state.status === "ready" &&
-            state.sessions.some((session) => session.sessionId === id),
+            state.sessions.some(
+              (session) =>
+                session.sessionId === id && session.state !== "closed",
+            ),
         ),
     ),
   ]
@@ -606,30 +784,44 @@ export function WorkspaceLayout({
     };
   }, []);
   const selectSession = useCallback(
-    (id: string, deviceId?: string) => {
+    (
+      id: string,
+      deviceId?: string,
+      preferredViewId?: string,
+      openedSession?: SessionSnapshot,
+    ) => {
       const device = state.devices.find(
         (value) =>
           value.deviceId ===
           (deviceId ??
             state.sessions.find((value) => value.sessionId === id)?.deviceId),
       );
-      const bindingIds =
-        initialWorkspace?.bindings
-          .filter(
-            (binding) =>
-              binding.deviceId === device?.deviceId &&
-              binding.hostId === device?.hostId,
-          )
-          .map((binding) => binding.bindingId) ?? [];
-      const matchingTab = tabs.find(
-        (tab) =>
-          tab.sessionId === id ||
-          bindingIds.includes(tab.view?.bindingId ?? ""),
+      const connected = connectSessionTabs(
+        tabs,
+        initialWorkspace,
+        id,
+        device,
+        state.sessions,
+        preferredViewId,
+        openedSession,
       );
+      const matchingTab = tabs.find((tab) => tab.id === connected.selected);
       const draftKey =
         matchingTab?.view?.id === "unconnected"
           ? UNCONNECTED_VIEW_DRAFT
-          : (matchingTab?.id ?? "session-" + id);
+          : connected.selected;
+      if (!matchingTab) {
+        const format = unboundFormat.current;
+        setViewModes((current) => ({
+          ...current,
+          [connected.selected]: {
+            ...current.unconnected,
+            ...(format.mode ? { sendMode: format.mode } : {}),
+            ...(format.encoding ? { sendEncoding: format.encoding } : {}),
+            ...current[connected.selected],
+          },
+        }));
+      }
       setDrafts((current) => {
         if (
           current[draftKey] !== undefined ||
@@ -655,43 +847,23 @@ export function WorkspaceLayout({
                 !!tab.sessionId,
             ),
           };
-        const existing = current.tabs.find((tab) => tab.sessionId === id);
-        if (existing) {
-          return current.selected === existing.id
-            ? current
-            : { ...current, selected: existing.id };
-        }
-        const device = state.devices.find(
-          (value) =>
-            value.deviceId ===
-            (deviceId ??
-              state.sessions.find((value) => value.sessionId === id)?.deviceId),
+        const next = connectSessionTabs(
+          current.tabs,
+          initialWorkspace,
+          id,
+          device,
+          state.sessions,
+          preferredViewId,
+          openedSession,
         );
-        const bindings =
-          initialWorkspace?.bindings.filter(
-            (binding) =>
-              binding.deviceId === device?.deviceId &&
-              binding.hostId === device?.hostId,
-          ) ?? [];
-        const restored = current.tabs.find((tab) =>
-          bindings.some((binding) => binding.bindingId === tab.view?.bindingId),
-        );
-        if (restored)
-          return {
-            selected: restored.id,
-            tabs: current.tabs.map((tab) =>
-              bindings.some(
-                (binding) => binding.bindingId === tab.view?.bindingId,
-              )
-                ? { ...tab, sessionId: id }
-                : tab,
-            ),
-          };
-        const tab = { id: `session-${id}`, sessionId: id };
-        return { tabs: [...current.tabs, tab], selected: tab.id };
+        return next.selected === current.selected &&
+          next.tabs.length === current.tabs.length &&
+          next.tabs.every((tab, index) => tab === current.tabs[index])
+          ? current
+          : next;
       });
     },
-    [initialWorkspace, state.devices, state.sessions, tabs],
+    [initialWorkspace, state.devices, state.sessions, tabs, setDrafts],
   );
   const activitySessionId = useCallback(
     (summary: OperationSummary) => {
@@ -740,17 +912,16 @@ export function WorkspaceLayout({
   ]);
   const saveDrafts = async (signal?: AbortSignal) => {
     if (!onSaveDrafts) throw new Error(labels.unavailable);
-    const snapshot = { ...drafts };
+    const snapshot = { ...draftStore.snapshot() };
     await onSaveDrafts(snapshot, signal);
     if (!signal?.aborted) setSavedDrafts(snapshot);
   };
-  const dirty = JSON.stringify(drafts) !== JSON.stringify(savedDrafts);
   useUnsavedWork({
     id: "workbench-drafts",
     label: labels.draft,
     dirty,
     save: saveDrafts,
-    discard: () => setDrafts(savedDrafts),
+    discard: draftStore.discard,
   });
   function configurationKeyFor(id: string) {
     const device = state.devices.find((value) => value.deviceId === id);
@@ -765,7 +936,10 @@ export function WorkspaceLayout({
       key,
       (configurationEdits.current.get(key) ?? 0) + 1,
     );
-    setConnectionConfigurations((current) => ({ ...current, [key]: value }));
+    setConnectionConfigurations((current) => ({
+      ...current,
+      [configurationDraftKeyFor(id)]: value,
+    }));
     const device = state.devices.find((item) => item.deviceId === id);
     if (device)
       onRememberConnection?.(device.hostId, id, value, waitModeFor(id));
@@ -788,21 +962,39 @@ export function WorkspaceLayout({
         mode,
       );
   }
-  function requestedConfiguration(id: string): SerialConfiguration {
+  function bindingForDevice(id: string) {
     const device = state.devices.find((value) => value.deviceId === id);
     const bindings =
       initialWorkspace?.bindings.filter(
         (binding) =>
           binding.deviceId === id && binding.hostId === device?.hostId,
       ) ?? [];
-    const binding =
+    return (
+      (deviceChoice === id &&
+      (session?.state !== "open" || session.deviceId === id)
+        ? selectedBinding
+        : undefined) ??
       bindings.find(
         (value) => value.bindingId === selectedTab?.view?.bindingId,
-      ) ?? bindings[0];
+      ) ??
+      bindings[0]
+    );
+  }
+  function configurationDraftKeyFor(id: string) {
+    const binding = bindingForDevice(id);
+    return JSON.stringify([
+      workspaceKey,
+      configurationKeyFor(id),
+      binding?.bindingId,
+      binding && CONFIG_FIELDS.map((field) => binding.configuration[field]),
+    ]);
+  }
+  function requestedConfiguration(id: string): SerialConfiguration {
+    const binding = bindingForDevice(id);
     return (
-      connectionConfigurations[configurationKeyFor(id)] ??
-      connectionDefaults?.[configurationKeyFor(id)] ??
+      connectionConfigurations[configurationDraftKeyFor(id)] ??
       binding?.configuration ??
+      connectionDefaults?.[configurationKeyFor(id)] ??
       state.sessions.find((value) => value.deviceId === id)?.configuration ??
       defaults.serialConfiguration
     );
@@ -830,9 +1022,6 @@ export function WorkspaceLayout({
       (value) => value.deviceId === deviceId && value.state === "open",
     );
     if (opening !== null || state.status !== "ready") return;
-    // 已存在的视图可先展示元数据；内容仍由 Host 验权，下面的显式授权不能跳过。
-    if (existing && !existing.readOnly)
-      selectSession(existing.sessionId, existing.deviceId);
     const revision = focusRevision.current;
     const controller = new AbortController();
     pending.current.add(controller);
@@ -850,6 +1039,13 @@ export function WorkspaceLayout({
           ? existing.configuration
           : requestedConfiguration(deviceId),
       );
+      // 只沿用本窗口明确打开且实例/会话代次一致的连接，不为其他会话补授权。
+      if (
+        controller.signal.aborted ||
+        openedHere.current.key !== nativeOwnershipKey
+      )
+        return;
+      openedHere.current.sessions.set(opened.sessionId, opened.sessionEpoch);
       if (
         !controller.signal.aborted &&
         !opened.readOnly &&
@@ -860,7 +1056,14 @@ export function WorkspaceLayout({
         rememberConfiguration(deviceId, opened.configuration);
       }
       if (!controller.signal.aborted && revision === focusRevision.current)
-        selectSession(opened.sessionId, opened.deviceId);
+        selectSession(
+          opened.sessionId,
+          opened.deviceId,
+          session?.state !== "open" || session.deviceId === opened.deviceId
+            ? selected
+            : undefined,
+          opened,
+        );
     } catch (reason) {
       if (!controller.signal.aborted) {
         setOpenError(true);
@@ -905,12 +1108,21 @@ export function WorkspaceLayout({
     selectSession(id);
   }
   const disabled = state.status !== "ready" || connectionDefaultsLoading;
+  const viewDevice = selectedTab?.source?.device ?? selectedBinding;
+  const boundDevice =
+    viewDevice &&
+    state.devices.find(
+      (device) =>
+        device.deviceId === viewDevice.deviceId &&
+        device.hostId === viewDevice.hostId,
+    );
   const deviceId =
     deviceChoice ||
     state.devices.find((device) => device.deviceId === session?.deviceId)
       ?.deviceId ||
-    state.devices[0]?.deviceId ||
-    "";
+    (viewDevice
+      ? (boundDevice?.deviceId ?? "")
+      : (state.devices[0]?.deviceId ?? ""));
   const device = state.devices.find((value) => value.deviceId === deviceId);
   const connectionSession = state.sessions.find(
     (value) => value.deviceId === deviceId && value.state === "open",
@@ -1019,7 +1231,7 @@ export function WorkspaceLayout({
       ) &&
       availability.some(
         (value) =>
-          JSON.stringify(value.input) === JSON.stringify(input) &&
+          sameActionInput(value.input, input) &&
           value.result?.allowed === true &&
           value.error === null,
       )
@@ -1042,9 +1254,7 @@ export function WorkspaceLayout({
       return false;
     const current =
       input &&
-      availability.find(
-        (value) => JSON.stringify(value.input) === JSON.stringify(input),
-      );
+      availability.find((value) => sameActionInput(value.input, input));
     // 未知只允许用户发起真实验权，不是授权票据；明确拒绝仍立即禁用。
     return (
       current?.result?.allowed !== false &&
@@ -1067,61 +1277,83 @@ export function WorkspaceLayout({
       (!!connectionCloseInput &&
         availability.some(
           (value) =>
-            JSON.stringify(value.input) ===
-              JSON.stringify(connectionCloseInput) &&
+            sameActionInput(value.input, connectionCloseInput) &&
             (value.result?.allowed === false ||
               nativeErrorCode(value.error) === "PERMISSION_DENIED"),
         )));
   const sendAllowed = !isReplay && !!target && mayAttempt("session.tx");
-  const marker = clearThrough.get(selected ?? "");
-  const markerKey = (item: StreamItem) =>
-    item.kind === "source"
-      ? JSON.stringify([
-          item.event.hostId,
-          item.event.instanceEpoch,
-          item.event.sessionId,
-          item.event.sessionEpoch,
-          item.event.eventSeq,
-        ])
-      : JSON.stringify(item);
-  const markerIndex = marker
-    ? (stream?.items.findIndex(
-        (item) => markerKey(item) === markerKey(marker),
-      ) ?? -1)
-    : -1;
+  const cleared = clearThrough.get(selected ?? "");
+  const firstItem = stream?.items[0];
+  const streamIdentity =
+    firstItem?.kind === "source" ? firstItem.event : firstItem?.gap;
+  const historySource = streamIdentity ? streamSourceKey(streamIdentity) : "";
+  const marker =
+    cleared?.source === historySource ? cleared?.position : undefined;
   const items = useMemo(
-    () => stream?.items.slice(markerIndex + 1) ?? [],
-    [stream?.items, markerIndex],
+    () => historyAfter(stream?.items ?? [], marker),
+    [stream?.items, marker],
   );
-  const changeMode = (kind: "receiveMode" | "sendMode", mode: "text" | "hex") =>
+  const changeViewFormat = (patch: WindowViewModes[string]) =>
     setViewModes((current) => ({
       ...current,
       [selected ?? "unconnected"]: {
         ...current[selected ?? "unconnected"],
-        [kind]: mode,
+        ...patch,
       },
     }));
+  const receiveEncoding = receiveEncodingFor(
+    viewModes[selected ?? "unconnected"]?.receiveEncoding,
+    selectedTab?.view?.receiveEncoding,
+    terminalSettings?.receiveEncoding,
+  );
+  const sendEncoding =
+    (usesUnconnectedDraft
+      ? unboundSendEncoding
+      : (viewModes[selected ?? "unconnected"]?.sendEncoding ??
+        selectedTab?.view?.sendEncoding)) ??
+    terminalSettings?.sendEncoding ??
+    "utf-8";
+  function snapshotWorkspace(preservePresets = preserveWorkspacePresets) {
+    if (
+      !initialWorkspace ||
+      previousWorkspace.current.key !== workspaceKey ||
+      previousWorkspace.current.selection !== workspaceSelection
+    )
+      return;
+    return snapshotWindowLayout(
+      {
+        ...initialWorkspace,
+        captures: tabs.flatMap((tab) =>
+          tab.captureRef ? [tab.captureRef] : [],
+        ),
+      },
+      tabs.filter(
+        (tab) =>
+          !tab.captureRef &&
+          (tab.view ||
+            tab.source ||
+            initialWorkspace.views.some((view) => view.id === tab.id) ||
+            state.sessions.some(
+              (session) =>
+                session.sessionId === tab.sessionId &&
+                state.devices.some(
+                  (device) => device.deviceId === session.deviceId,
+                ),
+            )),
+      ),
+      state.sessions,
+      state.devices,
+      terminalSettings ?? defaults.settings.terminal,
+      viewModes,
+      viewColor,
+      preservePresets,
+    );
+  }
   async function saveWindowLayout() {
     if (!initialWorkspace || !onSaveWindowLayout || savingLayout) return;
     setSavingLayout(true);
     const aborted = await act((signal) =>
-      onSaveWindowLayout(
-        snapshotWindowLayout(
-          {
-            ...initialWorkspace,
-            captures: tabs.flatMap((tab) =>
-              tab.captureRef ? [tab.captureRef] : [],
-            ),
-          },
-          tabs.filter((tab) => !tab.captureRef),
-          state.sessions,
-          state.devices,
-          terminalSettings ?? defaults.settings.terminal,
-          viewModes,
-          viewColor,
-        ),
-        signal,
-      ),
+      onSaveWindowLayout(snapshotWorkspace() ?? initialWorkspace, signal),
     );
     if (!aborted) setSavingLayout(false);
   }
@@ -1198,13 +1430,40 @@ export function WorkspaceLayout({
         labels={labels}
         toolLabels={toolLabels}
         workspaceName={initialWorkspace?.name ?? ""}
+        onCloseOtherViews={
+          tabs.length > 1
+            ? () => {
+                focusRevision.current++;
+                setFollowing(false);
+                setViews((current) => ({
+                  tabs: current.tabs.filter(
+                    (tab) => tab.id === current.selected,
+                  ),
+                  selected: current.selected,
+                }));
+              }
+            : undefined
+        }
+        onCloseAllViews={
+          tabs.length
+            ? () => {
+                focusRevision.current++;
+                setFollowing(false);
+                setViews({ tabs: [], selected: undefined });
+                focusConnection();
+              }
+            : undefined
+        }
         devices={state.devices}
         deviceId={deviceId}
         device={device}
         session={connectionSession}
-        hasSessionView={tabs.some(
-          (tab) => tab.sessionId === connectionSession?.sessionId,
-        )}
+        viewSessionId={
+          isCapture
+            ? tabs.find((tab) => tab.sessionId === connectionSession?.sessionId)
+                ?.sessionId
+            : session?.sessionId
+        }
         viewTabs={
           <SessionTabs
             onEmptyFocus={focusConnection}
@@ -1242,7 +1501,14 @@ export function WorkspaceLayout({
             }}
             onDuplicate={() => {
               if (!disabled && session && sessionId) {
-                const tab = { id: `view-${crypto.randomUUID()}`, sessionId };
+                const device = state.devices.find(
+                  (value) => value.deviceId === session.deviceId,
+                );
+                const tab = {
+                  id: `view-${crypto.randomUUID()}`,
+                  sessionId,
+                  source: device ? { device, session } : selectedTab?.source,
+                };
                 setViews({ tabs: [...tabs, tab], selected: tab.id });
               }
             }}
@@ -1261,6 +1527,13 @@ export function WorkspaceLayout({
           connectionSession?.state !== "closed"
         }
         canRestoreAccess={canRestoreAccess}
+        canControl={
+          !disabled &&
+          !isCapture &&
+          !!connectionTarget &&
+          connectionSession?.state === "open" &&
+          !replayIds.has(connectionSession.sessionId)
+        }
         canSave={
           !disabled &&
           !hasUnboundDraft &&
@@ -1277,7 +1550,11 @@ export function WorkspaceLayout({
         }
         canReplay={!disabled && !choosing && !!onOpenReplay}
         toolsAvailable={!!renderTool}
-        onDeviceChange={setDeviceChoice}
+        onDeviceChange={(id) => {
+          focusRevision.current++;
+          setFollowing(false);
+          setDeviceChoice(id);
+        }}
         onTool={showDialog}
         onOpen={() => void open(deviceId)}
         onClose={() =>
@@ -1376,18 +1653,37 @@ export function WorkspaceLayout({
               viewModes[selected ?? "unconnected"]?.receiveMode ??
               selectedTab?.view?.receiveMode
             }
-            onReceiveModeChange={(mode) => changeMode("receiveMode", mode)}
+            onReceiveModeChange={(mode) =>
+              changeViewFormat({ receiveMode: mode })
+            }
+            encoding={receiveEncoding}
+            sendEncoding={sendEncoding}
+            onEncodingChange={(value) =>
+              changeViewFormat({ receiveEncoding: value })
+            }
             initialMode={selectedTab?.view?.receiveMode}
             terminalSettings={terminalSettings}
             presentationLabels={presentationLabels}
             labels={labels}
             error={stream?.error}
-            trimmed={stream?.trimmed}
+            trimmed={
+              stream?.removed
+                ? historyTrimmedAfter(stream.removed, marker)
+                : !!stream?.trimmed && !marker
+            }
+            historyLimits={receiveHistory}
+            onHistoryLimitsChange={onReceiveHistoryChange}
             onOpenCapture={() => showDialog("capture")}
             onOpenActivity={() => showDialog("activity")}
             onClearView={() =>
               setClearThrough((current) =>
-                new Map(current).set(selected ?? "", stream?.items.at(-1)),
+                new Map(current).set(selected ?? "", {
+                  source: historySource,
+                  position: historyPosition(
+                    stream?.items ?? [],
+                    stream?.removed,
+                  ),
+                }),
               )
             }
             captureActive={state.operations.some(
@@ -1398,7 +1694,6 @@ export function WorkspaceLayout({
               toolLabels
                 ? {
                     displayOptions: toolLabels.displayOptions,
-                    newData: toolLabels.newData,
                     clearView: toolLabels.clearView,
                   }
                 : undefined
@@ -1406,13 +1701,18 @@ export function WorkspaceLayout({
           />
         )}
       </div>
-      <SendPanel
+      <WorkspaceSendPanel
         formatError={formatError}
         deviceName={
           state.devices.find((value) => value.deviceId === session?.deviceId)
             ?.systemName
         }
         readOnly={isCapture}
+        disconnectedReason={
+          selectedTab?.view && !session && !boundDevice
+            ? labels.bindingUnavailable
+            : undefined
+        }
         draftsDirty={dirty}
         onSaveDrafts={
           onSaveDrafts
@@ -1483,7 +1783,13 @@ export function WorkspaceLayout({
         onSendModeChange={(mode) =>
           usesUnconnectedDraft
             ? setUnboundSendMode(mode)
-            : changeMode("sendMode", mode)
+            : changeViewFormat({ sendMode: mode })
+        }
+        encoding={sendEncoding}
+        onEncodingChange={(value) =>
+          usesUnconnectedDraft
+            ? setUnboundSendEncoding(value)
+            : changeViewFormat({ sendEncoding: value })
         }
         terminalSettings={terminalSettings}
         presentationLabels={
@@ -1496,14 +1802,9 @@ export function WorkspaceLayout({
         }
         session={session}
         permissionAllowed={sendAllowed}
-        onPreviewChange={setSendBytes}
-        draft={drafts[draftKey] ?? ""}
-        onDraftChange={(value) =>
-          setDrafts((current) => ({
-            ...current,
-            [draftKey]: value,
-          }))
-        }
+        onPreviewChange={setCheckBytes}
+        drafts={draftStore}
+        draftKey={draftKey}
         labels={labels}
         operations={state.operations}
         onSend={async (bytes, signal) => {
@@ -1514,28 +1815,8 @@ export function WorkspaceLayout({
             bytes.length,
             writeWaitMode,
           );
-          const checked = await host.checkAction(
-            {
-              actionId: "session.tx",
-              target,
-              params: {
-                bytesBase64: btoa(
-                  Array.from(bytes, (byte) => String.fromCharCode(byte)).join(
-                    "",
-                  ),
-                ),
-                writeWaitMs,
-              },
-            },
-            signal,
-          );
-          if (!checked.allowed)
-            throw new HostRequestError({
-              code: "PERMISSION_DENIED",
-              message: "Sending is not authorized",
-              retryable: false,
-            });
-          return host.send(session.sessionId, bytes, signal, writeWaitMs);
+          // 预览只服务界面提示；实际 invoke 仍由 Host 验权，且绑定点击时的会话代次。
+          return host.send(target, bytes, signal, writeWaitMs);
         }}
         onSendFile={
           onSendFile &&
@@ -1548,6 +1829,8 @@ export function WorkspaceLayout({
             : undefined
         }
         fileBusy={choosing}
+        onOpenTransfer={renderTool ? () => showDialog("transfer") : undefined}
+        transferLabel={toolLabels?.transfer}
       />
       <WorkbenchDialog
         open={dialog !== null}
@@ -1677,10 +1960,15 @@ export function WorkspaceLayout({
                 trackCapture,
                 session: isCapture
                   ? undefined
-                  : dialog === "parameters"
+                  : dialog === "parameters" || dialog === "controls"
                     ? connectionSession
                     : session,
                 beforeReplace,
+                snapshotWorkspace,
+                newViewDefaults: {
+                  terminal: terminalSettings ?? defaults.settings.terminal,
+                  color: viewColor ?? defaults.settings.customAccent,
+                },
                 configuration: connectionConfiguration,
                 configurationKey: configurationKeyFor(deviceId),
                 configurationDisabled: !device || disabled,
@@ -1696,19 +1984,19 @@ export function WorkspaceLayout({
                     : undefined,
                 target: isCapture
                   ? undefined
-                  : dialog === "parameters"
+                  : dialog === "parameters" || dialog === "controls"
                     ? connectionTarget
                     : target,
                 isReplay:
                   isCapture ||
-                  (dialog === "parameters"
+                  (dialog === "parameters" || dialog === "controls"
                     ? !!connectionSession &&
                       replayIds.has(connectionSession.sessionId)
                     : isReplay),
                 items,
                 openError: openError ? failure : undefined,
                 onInspectBytes: () => {
-                  changeMode("receiveMode", "hex");
+                  changeViewFormat({ receiveMode: "hex" });
                   setDialog(null);
                 },
               })}

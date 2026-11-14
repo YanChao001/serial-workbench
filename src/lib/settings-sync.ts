@@ -4,6 +4,7 @@
   U64,
 } from "@serial-workbench/contracts";
 import { operationFailureEventKey } from "./operation-failure";
+import { parseU64 } from "./u64";
 
 export type PersistenceStatus = "loading" | "saving" | "saved" | "error";
 export type SettingsState<T = SharedSettings> = {
@@ -91,10 +92,7 @@ export class SettingsSync<T extends object = SharedSettings> {
     this.emit();
   }
   private accept(snapshot: SettingsDocument<T>) {
-    if (
-      !/^(0|[1-9][0-9]*)$/.test(snapshot.revision) ||
-      BigInt(snapshot.revision) > 18446744073709551615n
-    )
+    if (parseU64(snapshot.revision) === undefined)
       throw { code: "INVALID_DOCUMENT" };
     if (
       this.revision !== undefined &&

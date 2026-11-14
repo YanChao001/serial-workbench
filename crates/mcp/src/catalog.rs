@@ -33,13 +33,8 @@ pub(crate) fn tool(spec: &ActionSpec) -> HostResult<Tool> {
     let typed =
         BuiltinAction::find(spec.action_id.as_str())?.spec_with_dialect(SchemaDialect::Draft202012);
     let action = spec.kind == ActionKind::Action;
-    let mut wire = if action {
-        schema_for::<Call>(SchemaDialect::Draft202012)
-    } else {
-        schema_for::<Query>(SchemaDialect::Draft202012)
-    };
-    let mut params = serde_json::to_value(typed.input_schema).map_err(|_| invalid_schema())?;
-    scope_refs(&mut wire, "Wire");
+    let wire = wire_schema(action);
+    let mut params = serde_json::to_value(&typed.input_schema).map_err(|_| invalid_schema())?;
     scope_refs(&mut params, "Params");
     let mut input = json!({
         "$schema":"https://json-schema.org/draft/2020-12/schema",
@@ -64,9 +59,17 @@ pub(crate) fn tool(spec: &ActionSpec) -> HostResult<Tool> {
         }
     }
     let output = if action {
-        schema_for::<Operation>(SchemaDialect::Draft202012)
+        static OPERATION: std::sync::LazyLock<Value> =
+            std::sync::LazyLock::new(|| schema_for::<Operation>(SchemaDialect::Draft202012));
+        OPERATION.clone()
     } else {
-        serde_json::to_value(typed.output_schema).map_err(|_| invalid_schema())?
+        serde_json::to_value(&typed.output_schema).map_err(|_| invalid_schema())?
+    };
+    let Value::Object(input) = input else {
+        return Err(invalid_schema());
+    };
+    let Value::Object(output) = output else {
+        return Err(invalid_schema());
     };
     Ok(Tool::new(
         tool_name(spec.action_id.as_str())?,
@@ -78,12 +81,22 @@ pub(crate) fn tool(spec: &ActionSpec) -> HostResult<Tool> {
         } else {
             format!("{}. Returns its bounded query result.", spec.action_id)
         },
-        input.as_object().ok_or_else(invalid_schema)?.clone(),
+        input,
     )
-    .with_raw_output_schema(Arc::new(
-        output.as_object().ok_or_else(invalid_schema)?.clone(),
-    ))
+    .with_raw_output_schema(Arc::new(output))
     .with_annotations(ToolAnnotations::new().read_only(!action)))
+}
+
+fn wire_schema(action: bool) -> &'static Value {
+    fn scoped(mut schema: Value) -> Value {
+        scope_refs(&mut schema, "Wire");
+        schema
+    }
+    static CALL: std::sync::LazyLock<Value> =
+        std::sync::LazyLock::new(|| scoped(schema_for::<Call>(SchemaDialect::Draft202012)));
+    static QUERY: std::sync::LazyLock<Value> =
+        std::sync::LazyLock::new(|| scoped(schema_for::<Query>(SchemaDialect::Draft202012)));
+    if action { &CALL } else { &QUERY }
 }
 
 /// 嵌入独立 schema 时重定位根引用，不复制或改写领域约束。
@@ -154,7 +167,7 @@ mod tests {
         let mut names = HashSet::new();
         for action in BuiltinAction::ALL {
             let spec = action.spec();
-            let tool = tool(&spec).unwrap();
+            let tool = tool(spec).unwrap();
             assert!(names.insert(tool.name.clone()));
             assert_eq!(resolve(&tool.name), Some(action));
             let input = Value::Object(tool.input_schema.as_ref().clone());
@@ -174,7 +187,7 @@ mod tests {
                 assert_eq!(
                     output,
                     serde_json::to_value(
-                        action
+                        &action
                             .spec_with_dialect(SchemaDialect::Draft202012)
                             .output_schema
                     )

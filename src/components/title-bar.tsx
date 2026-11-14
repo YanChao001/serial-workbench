@@ -8,6 +8,8 @@ import {
   SunIcon,
   SearchIcon,
   XIcon,
+  ExpandIcon,
+  AppWindowIcon,
 } from "lucide-react";
 import { APP_CONFIG } from "@/config/app";
 import appIcon from "../../resources/branding/app-icon.svg";
@@ -106,7 +108,15 @@ export function TitleBar() {
   return (
     <div
       data-tauri-drag-region
-      className="app-title-bar flex h-10 shrink-0 select-none items-stretch border-b"
+      className="app-title-bar flex shrink-0 select-none items-stretch border-b"
+      onMouseDownCapture={(event) => {
+        if (
+          event.detail > 1 &&
+          event.target instanceof Element &&
+          event.target.closest("button,[role=button]")
+        )
+          event.preventDefault();
+      }}
     >
       <div
         data-native-traffic-lights={native && mac ? "" : undefined}
@@ -229,7 +239,7 @@ export function TitleBar() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-10 rounded-none"
+              className="app-title-icon-button w-10 rounded-none"
               aria-label={t("commands.open")}
               onClick={() => void execute("command-palette")}
             >
@@ -248,14 +258,10 @@ export function TitleBar() {
             <Button
               variant="ghost"
               size="icon"
-              className="size-10 rounded-none"
+              className="app-title-icon-button w-10 rounded-none"
               aria-label={t("title.toggleTheme")}
               data-theme-control
-              onClick={(event) =>
-                void execute("toggle-theme", {
-                  point: { clientX: event.clientX, clientY: event.clientY },
-                })
-              }
+              onClick={() => void execute("toggle-theme")}
             >
               <SunIcon className="size-4 rotate-0 scale-100 transition-transform dark:-rotate-90 dark:scale-0" />
               <MoonIcon className="absolute size-4 rotate-90 scale-0 transition-transform dark:rotate-0 dark:scale-100" />
@@ -266,25 +272,49 @@ export function TitleBar() {
           </TooltipContent>
         </Tooltip>
 
-        {fullscreen ? (
+        {native && (
           <Tooltip disableHoverableContent>
             <TooltipTrigger asChild>
               <Button
                 variant="ghost"
                 size="icon"
-                className="size-10 rounded-none"
-                aria-label={t("title.exitFullscreen")}
-                aria-keyshortcuts="F11 Escape"
-                onClick={() => void execute("exit-fullscreen")}
+                className="app-title-icon-button w-10 rounded-none"
+                aria-label={t("commands.openWindow")}
+                onClick={() => void execute("open-window")}
               >
-                <MinimizeIcon className="size-4" />
+                <AppWindowIcon className="size-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom">
+              {t("commands.openWindow")}
+            </TooltipContent>
+          </Tooltip>
+        )}
+        {
+          <Tooltip disableHoverableContent>
+            <TooltipTrigger asChild>
+              <Button
+                variant="ghost"
+                size="icon"
+                className="app-title-icon-button w-10 rounded-none"
+                aria-label={t(
+                  fullscreen ? "title.exitFullscreen" : "title.fullscreen",
+                )}
+                aria-keyshortcuts="F11 Escape"
+                onClick={() => void execute("toggle-fullscreen")}
+              >
+                {fullscreen ? (
+                  <MinimizeIcon className="size-4" />
+                ) : (
+                  <ExpandIcon className="size-4" />
+                )}
               </Button>
             </TooltipTrigger>
             <TooltipContent side="bottom">
               {t("title.fullscreenHint")}
             </TooltipContent>
           </Tooltip>
-        ) : null}
+        }
 
         {native && !mac ? (
           <>

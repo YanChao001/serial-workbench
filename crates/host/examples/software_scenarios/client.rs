@@ -41,7 +41,10 @@ pub(super) fn query(
     params: Value,
 ) -> Result<Query> {
     let a = client.attachment();
-    let mut reveal = checked(BuiltinAction::find(action))?.spec().reveal_target;
+    let mut reveal = checked(BuiltinAction::find(action))?
+        .spec()
+        .reveal_target
+        .clone();
     reveal.session_id = target.session_id.clone();
     Ok(Query {
         protocol_version: a.protocol_version,

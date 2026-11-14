@@ -311,13 +311,33 @@ for (const readOnly of [false, true])
     await page.setViewportSize({ width: 880, height: 600 });
     await seedWorkbenchFixture(page, { theme: "dark", observations, readOnly });
     await openSession(page);
-    const trigger = page.getByRole("button", {
+    let trigger = page.getByRole("button", {
       name: /^Connection parameters/,
     });
     await trigger.focus();
     await trigger.press("Enter");
-    const dialog = page.getByRole("dialog", {
+    let dialog = page.getByRole("dialog", {
       name: "Connection parameters",
+      exact: true,
+    });
+    await expect
+      .poll(() =>
+        page.evaluate(
+          () =>
+            window.workbenchFixture.queryInputs.filter(
+              (query) => query.actionId === "session.inputs",
+            ).length,
+        ),
+      )
+      .toBe(0);
+    await dialog.press("Escape");
+    trigger = page.getByRole("button", {
+      name: "Control lines and receipts",
+      exact: true,
+    });
+    await trigger.click();
+    dialog = page.getByRole("dialog", {
+      name: "Control lines and receipts",
       exact: true,
     });
     const inputs = dialog.getByRole("region", {
@@ -424,9 +444,11 @@ test("unsupported input sampling displays unknown rather than inferred control-l
     observations: { ...observations, inputs: "unsupported" },
   });
   await openSession(page);
-  await page.getByRole("button", { name: /^Connection parameters/ }).click();
+  await page
+    .getByRole("button", { name: "Control lines and receipts", exact: true })
+    .click();
   const dialog = page.getByRole("dialog", {
-    name: "Connection parameters",
+    name: "Control lines and receipts",
     exact: true,
   });
   const inputs = dialog.getByRole("region", {
@@ -543,7 +565,8 @@ for (const theme of ["light", "dark"] as const)
       [en["workbench.captureMemory"], "7 B / 16 B", "7 / 16"],
     ] as const) {
       const value = metricValue(host, label);
-      await expect(value).toHaveText(display);
+      await expect(value.locator(":scope > span").first()).toHaveText(display);
+      await expect(value).toHaveCSS("white-space", "nowrap");
       await expect(value).toHaveAttribute("title", exact);
     }
     for (const [raw, display] of [

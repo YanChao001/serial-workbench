@@ -40,7 +40,8 @@ vi.mock("@/lib/tauri", () => ({
   openExternal: vi.fn(),
 }));
 vi.mock("sonner", () => ({ toast: { error: vi.fn(), success: vi.fn() } }));
-vi.mock("@/routes", () => ({
+vi.mock("@/routes", async (importOriginal) => ({
+  ...(await importOriginal<typeof import("@/routes")>()),
   APP_ROUTES: [
     { path: "/", labelKey: "nav.overview", icon: () => null },
     {
@@ -129,6 +130,30 @@ function Harness({
 }
 
 describe("unified application commands", () => {
+  it("accepts consecutive synchronous theme choices without waiting for a microtask", () => {
+    function RapidChoices() {
+      const { execute } = useCommands();
+      return (
+        <button
+          onClick={() => {
+            void execute("toggle-theme");
+            void execute("toggle-theme");
+          }}
+        >
+          Rapid theme choices
+        </button>
+      );
+    }
+    render(
+      <Harness>
+        <RapidChoices />
+      </Harness>,
+    );
+    fireEvent.click(
+      screen.getByRole("button", { name: "Rapid theme choices" }),
+    );
+    expect(theme.toggle).toHaveBeenCalledTimes(2);
+  });
   beforeEach(() => {
     localStorage.clear();
     sessionStorage.clear();

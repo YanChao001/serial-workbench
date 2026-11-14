@@ -7,7 +7,9 @@ import {
   createBrowserClientStateStore,
   createClientSettingsBackend,
   parseClientWindowState,
+  parseClientPreferences,
 } from "./client-settings";
+import { DEFAULT_RECEIVE_HISTORY } from "./receive-history";
 import { createClientGallery } from "./client-gallery";
 import { createClientDraftStore } from "@/features/workbench/client-drafts";
 import { SettingsSync } from "./settings-sync";
@@ -17,6 +19,7 @@ const state: ClientWindowState = {
     windowPosition: "remember",
     sidebarCollapsed: false,
     sidebarWidth: 224,
+    receiveHistory: { ...DEFAULT_RECEIVE_HISTORY },
   },
   currentPage: "workbench",
   focusedPanelId: "terminal",
@@ -68,6 +71,34 @@ function setup() {
     },
   };
 }
+
+it("defaults display retention in existing preferences and protects a concurrent retention change", async () => {
+  const { receiveHistory: _omitted, ...oldPreferences } = state.preferences;
+  expect(parseClientPreferences(oldPreferences).receiveHistory).toEqual(
+    DEFAULT_RECEIVE_HISTORY,
+  );
+  const env = setup();
+  const backend = createClientSettingsBackend(env.port);
+  const original = await backend.read();
+  const fresh = await env.port.read();
+  const receiveHistory = { maxRecords: 5000, maxBytes: 4 * 1024 * 1024 };
+  await env.port.save(
+    {
+      ...fresh.state,
+      preferences: { ...fresh.state.preferences, receiveHistory },
+    },
+    fresh.revision,
+  );
+  await expect(
+    backend.save(
+      { ...original.value, windowPosition: "center" },
+      original.revision,
+    ),
+  ).rejects.toMatchObject({ code: "CONFLICT" });
+  expect((await env.port.read()).state.preferences.receiveHistory).toEqual(
+    receiveHistory,
+  );
+});
 describe("client preference persistence", () => {
   it("accepts a client gallery of pinned Host file references without embedding media", () => {
     const gallery = [

@@ -2645,6 +2645,7 @@ export type QueryResult_Deserialize =
   | { kind: "scopes"; value: StateScopesResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
+  | { kind: "workspaces"; value: WorkspaceListResult_Deserialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Deserialize }
   | { kind: "stream_subscribe"; value: StreamSubscribeResult }
@@ -2682,6 +2683,7 @@ export type QueryResult_Serialize =
   | { kind: "scopes"; value: StateScopesResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
+  | { kind: "workspaces"; value: WorkspaceListResult_Serialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Serialize }
   | { kind: "stream_subscribe"; value: StreamSubscribeResult }
@@ -3520,6 +3522,9 @@ export type TerminalSettings =
 export type TerminalSettings_Deserialize = {
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
+  /**  None 表示从原始接收字节自动识别。 */
+  receiveEncoding?: TextEncoding | null;
+  sendEncoding?: TextEncoding;
   lineEnding: LineEnding;
   typography?: TerminalTypography_Deserialize;
 };
@@ -3527,6 +3532,9 @@ export type TerminalSettings_Deserialize = {
 export type TerminalSettings_Serialize = {
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
+  /**  None 表示从原始接收字节自动识别。 */
+  receiveEncoding?: TextEncoding | null;
+  sendEncoding?: TextEncoding;
   lineEnding: LineEnding;
   typography?: TerminalTypography_Serialize;
 };
@@ -3547,6 +3555,17 @@ export type TerminalTypography_Serialize = {
   lineHeightPercent: number;
   ligatures: boolean;
 };
+
+export type TextEncoding =
+  | "utf-8"
+  | "gbk"
+  | "gb18030"
+  | "big5"
+  | "shift-jis"
+  | "latin1"
+  | "ascii"
+  | "utf-16le"
+  | "utf-16be";
 
 export type TextExportParams =
   TextExportParams_Serialize | TextExportParams_Deserialize;
@@ -3726,6 +3745,7 @@ export type WorkspaceDocumentResult_Serialize = {
 
 export type WorkspaceDocument_Deserialize = {
   name: string;
+  archived?: boolean;
   views: WorkspaceView[];
   bindings: DeviceBinding_Deserialize[];
   favoriteBindingIds: Id[];
@@ -3735,11 +3755,36 @@ export type WorkspaceDocument_Deserialize = {
 
 export type WorkspaceDocument_Serialize = {
   name: string;
+  archived?: boolean;
   views: WorkspaceView[];
   bindings: DeviceBinding_Serialize[];
   favoriteBindingIds: Id[];
   layout: LayoutTemplate;
   captures: ObjectRef_Serialize[];
+};
+
+export type WorkspaceListParams =
+  WorkspaceListParams_Serialize | WorkspaceListParams_Deserialize;
+
+export type WorkspaceListParams_Deserialize = {
+  after?: Id | null;
+};
+
+export type WorkspaceListParams_Serialize = {
+  after?: Id | null;
+};
+
+export type WorkspaceListResult =
+  WorkspaceListResult_Serialize | WorkspaceListResult_Deserialize;
+
+export type WorkspaceListResult_Deserialize = {
+  workspaces: WorkspaceSummary_Deserialize[];
+  nextCursor?: Id | null;
+};
+
+export type WorkspaceListResult_Serialize = {
+  workspaces: WorkspaceSummary_Serialize[];
+  nextCursor?: Id | null;
 };
 
 export type WorkspaceSaveParams =
@@ -3766,6 +3811,21 @@ export type WorkspaceSnapshot_Serialize = {
   value: WorkspaceDocument_Serialize;
 };
 
+export type WorkspaceSummary =
+  WorkspaceSummary_Serialize | WorkspaceSummary_Deserialize;
+
+export type WorkspaceSummary_Deserialize = {
+  scope: StateScopeRef_Deserialize;
+  name: string;
+  revision: U64;
+};
+
+export type WorkspaceSummary_Serialize = {
+  scope: StateScopeRef_Serialize;
+  name: string;
+  revision: U64;
+};
+
 export type WorkspaceView = {
   id: Id;
   name: string;
@@ -3774,5 +3834,10 @@ export type WorkspaceView = {
   pinned: boolean;
   receiveMode: TerminalMode;
   sendMode: TerminalMode;
+  receiveEncoding?: TextEncoding | null;
+  sendEncoding?: TextEncoding;
   bindingId: Id;
 };
+
+/** 单次手动 TX 的最终字节上限，来源为 Rust 契约。 */
+export const TX_MAX_BYTES = 131072;

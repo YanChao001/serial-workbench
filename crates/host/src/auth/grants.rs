@@ -1,5 +1,5 @@
-use super::AuthenticatedActor;
-use crate::storage::Store;
+use super::{AuthenticatedActor, HostIdentity};
+use crate::storage::{DocumentRead, Store};
 use serde::{Deserialize, Serialize};
 use serial_workbench_core::*;
 use serial_workbench_ipc::identity::{credential_verifier, random_token, verify_credential};
@@ -7,6 +7,8 @@ use std::{
     collections::BTreeMap,
     sync::{Arc, Mutex},
 };
+
+type GrantSnapshot = (U64, Arc<GrantDocument>);
 
 pub struct Authentication {
     pub actor: AuthenticatedActor,
@@ -26,14 +28,36 @@ pub struct AuthService {
     serial: Arc<Mutex<()>>,
     clock: Arc<dyn Clock>,
     changes: tokio::sync::watch::Sender<U64>,
+    cached: Arc<Mutex<Option<GrantSnapshot>>>,
+    #[cfg(test)]
+    document_reads: Arc<std::sync::atomic::AtomicUsize>,
 }
-#[derive(Serialize, Deserialize)]
+/// 单次同步验权视图；后续交付或写入必须重新载入当前授权。
+pub(crate) struct AuthorizationSnapshot {
+    identity: HostIdentity,
+    actor: AuthenticatedActor,
+    grants: Option<ClientGrants>,
+    clock: Arc<dyn Clock>,
+}
+struct ClientGrants {
+    document: Arc<GrantDocument>,
+    client_id: Id,
+}
+impl ClientGrants {
+    fn record(&self) -> &ClientRecord {
+        self.document
+            .clients
+            .get(&self.client_id)
+            .expect("validated client record")
+    }
+}
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct GrantDocument {
     format_version: U64,
     clients: BTreeMap<Id, ClientRecord>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct ClientRecord {
     actor_id: Id,
@@ -41,7 +65,7 @@ struct ClientRecord {
     verifier: ContextToken,
     rules: Vec<Rule>,
 }
-#[derive(Serialize, Deserialize)]
+#[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 struct Rule {
     permission: String,
@@ -64,6 +88,9 @@ const PERMISSIONS: &[&str] = &[
     "workspace.modify",
     "settings.modify",
 ];
+// 会话代次及历史结果需要保留精确授权；容量不能只够数十次连接。
+const MAX_CLIENT_RULES: usize = 4096;
+const MAX_TOTAL_RULES: usize = 32768;
 impl AuthService {
     pub fn new(store: Store, control: ContextToken) -> Self {
         Self::with_clock(
@@ -79,17 +106,30 @@ impl AuthService {
             serial: Arc::new(Mutex::new(())),
             clock,
             changes: tokio::sync::watch::channel(U64::from(0)).0,
+            cached: Arc::new(Mutex::new(None)),
+            #[cfg(test)]
+            document_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
         }
     }
-    fn load(&self) -> HostResult<(U64, GrantDocument)> {
-        let Some(document) = self.store.read_document(&document_id())? else {
-            return Ok((
-                0.into(),
-                GrantDocument {
+    fn load(&self) -> HostResult<GrantSnapshot> {
+        #[cfg(test)]
+        self.document_reads
+            .fetch_add(1, std::sync::atomic::Ordering::Relaxed);
+        let mut cached = self.cached.lock().map_err(|_| corrupt())?;
+        let document = match self.store.read_document_if_changed(
+            &document_id(),
+            cached.as_ref().map(|(revision, _)| *revision),
+        )? {
+            DocumentRead::Unchanged => return cached.clone().ok_or_else(corrupt),
+            DocumentRead::Missing => {
+                let empty = Arc::new(GrantDocument {
                     format_version: 1.into(),
                     clients: BTreeMap::new(),
-                },
-            ));
+                });
+                *cached = Some((0.into(), empty.clone()));
+                return Ok((0.into(), empty));
+            }
+            DocumentRead::Changed(document) => document,
         };
         let data: GrantDocument =
             serde_json::from_value(serde_json::to_value(document.value).map_err(|_| corrupt())?)
@@ -100,9 +140,34 @@ impl AuthService {
                 "Unsupported authorization format",
             ));
         }
+        let data = Arc::new(data);
+        *cached = Some((document.revision, data.clone()));
         Ok((document.revision, data))
     }
     fn save(&self, revision: U64, document: GrantDocument) -> HostResult<U64> {
+        let count = document
+            .clients
+            .values()
+            .map(|record| record.rules.len())
+            .sum::<usize>();
+        if count > MAX_TOTAL_RULES {
+            let cached = self.cached.lock().map_err(|_| corrupt())?;
+            let previous =
+                cached
+                    .as_ref()
+                    .filter(|(known, _)| *known == revision)
+                    .map(|(_, document)| {
+                        document
+                            .clients
+                            .values()
+                            .map(|record| record.rules.len())
+                            .sum::<usize>()
+                    });
+            // 已存在的大存档仍可撤权；容量限制只禁止继续增长。
+            if previous.is_none_or(|previous| count > previous) {
+                return Err(limit());
+            }
+        }
         let value = serde_json::from_value(serde_json::to_value(document).map_err(|_| corrupt())?)
             .map_err(|_| corrupt())?;
         Ok(self
@@ -116,7 +181,7 @@ impl AuthService {
         credential: Option<&ContextToken>,
     ) -> HostResult<Authentication> {
         let _guard = self.serial.lock().map_err(|_| corrupt())?;
-        let (revision, mut document) = self.load()?;
+        let (revision, document) = self.load()?;
         if let Some(record) = document.clients.get(client_id) {
             if !credential.is_some_and(|credential| verify_credential(&record.verifier, credential))
             {
@@ -139,6 +204,7 @@ impl AuthService {
         if document.clients.len() >= 1024 {
             return Err(limit());
         }
+        let mut document = (*document).clone();
         let identity = self.store.identity()?;
         let credential = random_token();
         let actor_id = Id::try_from(uuid::Uuid::new_v4().to_string().as_str())?;
@@ -180,14 +246,12 @@ impl AuthService {
         ))
     }
     fn operator_id(&self) -> HostResult<Id> {
+        self.operator_id_for(&self.store.identity()?.host_id)
+    }
+    fn operator_id_for(&self, host_id: &Id) -> HostResult<Id> {
         use sha2::Digest as _;
         let digest = sha2::Sha256::digest(
-            format!(
-                "{}:{}",
-                self.store.identity()?.host_id,
-                self.control_verifier.as_str()
-            )
-            .as_bytes(),
+            format!("{}:{}", host_id, self.control_verifier.as_str()).as_bytes(),
         );
         let mut bytes: [u8; 16] = digest[..16].try_into().expect("digest prefix");
         bytes[6] = (bytes[6] & 0x0f) | 0x40;
@@ -208,6 +272,44 @@ impl AuthService {
     pub fn subscribe_changes(&self) -> tokio::sync::watch::Receiver<U64> {
         self.changes.subscribe()
     }
+    pub(crate) fn snapshot(&self, actor: &AuthenticatedActor) -> HostResult<AuthorizationSnapshot> {
+        let identity = self.store.identity()?;
+        self.snapshot_with_identity(actor, identity)
+    }
+    fn snapshot_with_identity(
+        &self,
+        actor: &AuthenticatedActor,
+        identity: HostIdentity,
+    ) -> HostResult<AuthorizationSnapshot> {
+        let grants = if actor.is_user_control() {
+            if actor.id() != &self.operator_id_for(&identity.host_id)? {
+                return Err(denied());
+            }
+            None
+        } else {
+            let (_, document) = self.load()?;
+            document
+                .clients
+                .get(actor.client_id())
+                .filter(|record| &record.actor_id == actor.id())
+                .ok_or_else(denied)?;
+            Some(ClientGrants {
+                client_id: actor.client_id().clone(),
+                document,
+            })
+        };
+        Ok(AuthorizationSnapshot {
+            identity,
+            actor: actor.clone(),
+            grants,
+            clock: self.clock.clone(),
+        })
+    }
+    #[cfg(test)]
+    pub(crate) fn document_reads(&self) -> usize {
+        self.document_reads
+            .load(std::sync::atomic::Ordering::Relaxed)
+    }
     /// 仅判断动作能力是否可发现，不公开授权范围或资源是否存在。
     pub fn can_discover(
         &self,
@@ -215,32 +317,7 @@ impl AuthService {
         permission: &str,
         target_kinds: &[ResourceKind],
     ) -> HostResult<bool> {
-        if actor.is_user_control() {
-            self.require_control(actor)?;
-            return Ok(["auth.manage", "metadata.read"].contains(&permission));
-        }
-        let (_, document) = self.load()?;
-        let record = document
-            .clients
-            .get(actor.client_id())
-            .filter(|record| &record.actor_id == actor.id())
-            .ok_or_else(denied)?;
-        for rule in &record.rules {
-            if rule.permission != permission || !rule.allowed {
-                continue;
-            }
-            if rule.target.kind.as_str() == "host" {
-                // host范围允许该能力；具体资源上的窄拒绝仍在真正调用时复核。
-                if self.require(actor, permission, &rule.target).is_ok() {
-                    return Ok(true);
-                }
-            } else if target_kinds.contains(&rule.target.kind)
-                && self.require(actor, permission, &rule.target).is_ok()
-            {
-                return Ok(true);
-            }
-        }
-        Ok(false)
+        Ok(self.snapshot(actor)?.can_discover(permission, target_kinds))
     }
     /// 持有创建时的期限快照；中间唤醒只读 Clock，不重新查询授权或存储。
     pub(crate) async fn wait_grant_expiry(&self, stamp: Option<&GrantStamp>) {
@@ -250,47 +327,13 @@ impl AuthService {
         }
     }
     pub fn grant_revision(&self, actor: &AuthenticatedActor) -> HostResult<U64> {
-        if actor.is_user_control() {
-            self.require_control(actor)?;
-            return Ok(0.into());
-        }
-        self.load()?
-            .1
-            .clients
-            .get(actor.client_id())
-            .filter(|record| &record.actor_id == actor.id())
-            .map(|record| record.grant_revision)
-            .ok_or_else(denied)
+        Ok(self.snapshot(actor)?.grant_revision())
     }
     pub(crate) fn capture_grants(
         &self,
         actor: &AuthenticatedActor,
     ) -> HostResult<Option<GrantStamp>> {
-        if actor.is_user_control() {
-            self.require_control(actor)?;
-            return Ok(None);
-        }
-        let (_, document) = self.load()?;
-        let record = document
-            .clients
-            .get(actor.client_id())
-            .filter(|record| &record.actor_id == actor.id())
-            .ok_or_else(denied)?;
-        let epoch = self.store.identity()?.instance_epoch;
-        let now = self.clock.mono_ns();
-        let deadline_ns = record
-            .rules
-            .iter()
-            .filter(|rule| rule.allowed && rule.epoch == Some(epoch))
-            .filter_map(|rule| rule.deadline_ns.map(U64::get))
-            .filter(|deadline| *deadline > now)
-            .min();
-        Ok(Some(GrantStamp {
-            client_id: actor.client_id().clone(),
-            actor_id: actor.id().clone(),
-            revision: record.grant_revision,
-            deadline_ns,
-        }))
+        Ok(self.snapshot(actor)?.capture_grants())
     }
     pub(crate) fn validate_grants(&self, stamp: &GrantStamp) -> HostResult<()> {
         let (_, document) = self.load()?;
@@ -318,41 +361,9 @@ impl AuthService {
     ) -> HostResult<()> {
         target.validate()?;
         let identity = self.store.identity()?;
-        if target.host_id != identity.host_id {
-            return Err(HostError::new(
-                "HOST_ID_MISMATCH",
-                "Target belongs to a different Host",
-            ));
-        }
-        if actor.is_user_control() {
-            self.require_control(actor)?;
-            return if ["auth.manage", "metadata.read"].contains(&permission) {
-                Ok(())
-            } else {
-                Err(denied())
-            };
-        }
-        let (_, document) = self.load()?;
-        let record = document
-            .clients
-            .get(actor.client_id())
-            .filter(|record| &record.actor_id == actor.id())
-            .ok_or_else(denied)?;
-        // 最新匹配规则生效。撤销可覆盖较宽的授权，但不会改变其他资源。
-        for rule in record.rules.iter().rev() {
-            if rule.permission != permission || !scope_matches(&rule.target, target) {
-                continue;
-            }
-            if let Some(deadline) = rule.deadline_ns
-                && (rule.epoch != Some(identity.instance_epoch)
-                    || self.clock.mono_ns() >= deadline.get())
-            {
-                // 最新匹配规则失效后仍遮蔽该范围，不能重新继承更旧的宽授权。
-                return Err(denied());
-            }
-            return if rule.allowed { Ok(()) } else { Err(denied()) };
-        }
-        Err(denied())
+        verify_host(&identity, target)?;
+        self.snapshot_with_identity(actor, identity)?
+            .require(permission, target)
     }
     pub fn authorize(
         &self,
@@ -390,14 +401,16 @@ impl AuthService {
                     .map(|identity| identity.instance_epoch)
             })
             .transpose()?;
-        let (revision, mut document) = self.load()?;
+        let (revision, document) = self.load()?;
+        let mut document = (*document).clone();
         let record = document
             .clients
             .get_mut(&params.client_id)
             .ok_or_else(denied)?;
+        let mut changed = false;
         for permission in params.permissions {
             for target in &params.targets {
-                set_rule(
+                changed |= set_rule(
                     record,
                     Rule {
                         permission: permission.clone(),
@@ -410,6 +423,9 @@ impl AuthService {
                 )?;
             }
         }
+        if !changed {
+            return Ok(record.grant_revision);
+        }
         record.grant_revision = record.grant_revision.checked_next()?;
         let grant_revision = record.grant_revision;
         let committed = self.save(revision, document)?;
@@ -420,15 +436,17 @@ impl AuthService {
         self.require_control(actor)?;
         let _guard = self.serial.lock().map_err(|_| corrupt())?;
         self.validate_scopes(&params.permissions, &params.targets)?;
-        let (revision, mut document) = self.load()?;
+        let (revision, document) = self.load()?;
+        let mut document = (*document).clone();
         let record = document
             .clients
             .values_mut()
             .find(|record| record.actor_id == params.actor_id)
             .ok_or_else(denied)?;
+        let mut changed = false;
         for permission in params.permissions {
             for target in &params.targets {
-                set_rule(
+                changed |= set_rule(
                     record,
                     Rule {
                         permission: permission.clone(),
@@ -440,6 +458,9 @@ impl AuthService {
                     },
                 )?;
             }
+        }
+        if !changed {
+            return Ok(record.grant_revision);
         }
         record.grant_revision = record.grant_revision.checked_next()?;
         let grant_revision = record.grant_revision;
@@ -471,6 +492,90 @@ impl AuthService {
         Ok(())
     }
 }
+impl AuthorizationSnapshot {
+    pub(crate) fn grant_revision(&self) -> U64 {
+        self.grants
+            .as_ref()
+            .map_or(0.into(), |grants| grants.record().grant_revision)
+    }
+    pub(crate) fn capture_grants(&self) -> Option<GrantStamp> {
+        let grants = self.grants.as_ref()?;
+        let now = self.clock.mono_ns();
+        let deadline_ns = grants
+            .record()
+            .rules
+            .iter()
+            .filter(|rule| rule.allowed && rule.epoch == Some(self.identity.instance_epoch))
+            .filter_map(|rule| rule.deadline_ns.map(U64::get))
+            .filter(|deadline| *deadline > now)
+            .min();
+        Some(GrantStamp {
+            client_id: self.actor.client_id().clone(),
+            actor_id: self.actor.id().clone(),
+            revision: grants.record().grant_revision,
+            deadline_ns,
+        })
+    }
+    pub(crate) fn validate_grants(&self, stamp: &GrantStamp) -> HostResult<()> {
+        if self.actor.client_id() != &stamp.client_id
+            || self.actor.id() != &stamp.actor_id
+            || self.grant_revision() != stamp.revision
+            || stamp
+                .deadline_ns
+                .is_some_and(|deadline| self.clock.mono_ns() >= deadline)
+        {
+            Err(denied())
+        } else {
+            Ok(())
+        }
+    }
+    pub(crate) fn require(&self, permission: &str, target: &Target) -> HostResult<()> {
+        target.validate()?;
+        verify_host(&self.identity, target)?;
+        let Some(grants) = &self.grants else {
+            return if ["auth.manage", "metadata.read"].contains(&permission) {
+                Ok(())
+            } else {
+                Err(denied())
+            };
+        };
+        // 最新匹配规则生效；失效的窄规则仍遮蔽更旧的宽授权。
+        for rule in grants.record().rules.iter().rev() {
+            if rule.permission != permission || !scope_matches(&rule.target, target) {
+                continue;
+            }
+            if let Some(deadline) = rule.deadline_ns
+                && (rule.epoch != Some(self.identity.instance_epoch)
+                    || self.clock.mono_ns() >= deadline.get())
+            {
+                return Err(denied());
+            }
+            return if rule.allowed { Ok(()) } else { Err(denied()) };
+        }
+        Err(denied())
+    }
+    pub(crate) fn can_discover(&self, permission: &str, target_kinds: &[ResourceKind]) -> bool {
+        let Some(grants) = &self.grants else {
+            return ["auth.manage", "metadata.read"].contains(&permission);
+        };
+        grants.record().rules.iter().any(|rule| {
+            rule.permission == permission
+                && rule.allowed
+                && (rule.target.kind.as_str() == "host" || target_kinds.contains(&rule.target.kind))
+                && self.require(permission, &rule.target).is_ok()
+        })
+    }
+}
+fn verify_host(identity: &HostIdentity, target: &Target) -> HostResult<()> {
+    if target.host_id != identity.host_id {
+        Err(HostError::new(
+            "HOST_ID_MISMATCH",
+            "Target belongs to a different Host",
+        ))
+    } else {
+        Ok(())
+    }
+}
 fn document_id() -> Id {
     Id::try_from("auth:grants").expect("static Id")
 }
@@ -486,15 +591,31 @@ fn host_target(host_id: Id) -> Target {
 fn scope_matches(scope: &Target, target: &Target) -> bool {
     scope.host_id == target.host_id && (scope.kind.as_str() == "host" || scope == target)
 }
-fn set_rule(record: &mut ClientRecord, rule: Rule) -> HostResult<()> {
+fn set_rule(record: &mut ClientRecord, rule: Rule) -> HostResult<bool> {
+    if let Some(index) = record
+        .rules
+        .iter()
+        .rposition(|old| old.permission == rule.permission && old.target == rule.target)
+    {
+        let shadowed = record.rules[index + 1..].iter().any(|later| {
+            later.permission == rule.permission
+                && later.target.host_id == rule.target.host_id
+                && (later.target.kind.as_str() == "host"
+                    || rule.target.kind.as_str() == "host"
+                    || later.target == rule.target)
+        });
+        if record.rules[index] == rule && !shadowed {
+            return Ok(false);
+        }
+    }
     record
         .rules
         .retain(|old| old.permission != rule.permission || old.target != rule.target);
-    if record.rules.len() >= 256 {
+    if record.rules.len() >= MAX_CLIENT_RULES {
         return Err(limit());
     }
     record.rules.push(rule);
-    Ok(())
+    Ok(true)
 }
 fn unauthenticated() -> HostError {
     HostError::new("UNAUTHENTICATED", "Client credential is invalid")
@@ -543,6 +664,126 @@ mod tests {
             ),
             target,
         )
+    }
+    #[test]
+    fn unchanged_grants_reuse_authority_but_later_overlapping_rules_still_require_regrant() {
+        let (_directory, auth, host) = setup();
+        let client = auth.authenticate(&id("steady"), None).unwrap().actor;
+        let control = auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("independent-user-control-secret").unwrap(),
+            )
+            .unwrap();
+        let device = Target {
+            kind: ResourceKind::try_from("device").unwrap(),
+            id: id("COM3"),
+            ..host.clone()
+        };
+        let params = AuthorizeParams {
+            client_id: client.client_id().clone(),
+            permissions: vec!["content.read".into()],
+            targets: vec![device.clone()],
+            expires_at: None,
+        };
+        let revision = auth.authorize(&control, params.clone()).unwrap();
+        let stamp = auth.capture_grants(&client).unwrap().unwrap();
+        let before = auth.load().unwrap().1;
+        assert_eq!(auth.authorize(&control, params.clone()).unwrap(), revision);
+        assert!(Arc::ptr_eq(&before, &auth.load().unwrap().1));
+        auth.validate_grants(&stamp).unwrap();
+        auth.revoke(
+            &control,
+            RevokeParams {
+                actor_id: client.id().clone(),
+                permissions: params.permissions.clone(),
+                targets: vec![host.clone()],
+            },
+        )
+        .unwrap();
+        assert!(auth.require(&client, "content.read", &device).is_err());
+        assert!(auth.authorize(&control, params).unwrap() > revision);
+        auth.require(&client, "content.read", &device).unwrap();
+        assert!(auth.validate_grants(&stamp).is_err());
+        // 重新授予宽范围必须覆盖更晚的窄撤权，不能错误地当作幂等。
+        let broad = AuthorizeParams {
+            client_id: client.client_id().clone(),
+            permissions: vec!["content.read".into()],
+            targets: vec![host],
+            expires_at: None,
+        };
+        auth.authorize(&control, broad.clone()).unwrap();
+        auth.revoke(
+            &control,
+            RevokeParams {
+                actor_id: client.id().clone(),
+                permissions: broad.permissions.clone(),
+                targets: vec![device.clone()],
+            },
+        )
+        .unwrap();
+        assert!(auth.require(&client, "content.read", &device).is_err());
+        auth.authorize(&control, broad).unwrap();
+        auth.require(&client, "content.read", &device).unwrap();
+    }
+    #[test]
+    fn device_connection_can_add_exact_permissions_after_many_previous_sessions() {
+        let (_directory, auth, target) = setup();
+        let client = auth.authenticate(&id("desktop"), None).unwrap().actor;
+        let control = auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("independent-user-control-secret").unwrap(),
+            )
+            .unwrap();
+        for first in (0..254).step_by(64) {
+            auth.authorize(
+                &control,
+                AuthorizeParams {
+                    client_id: client.client_id().clone(),
+                    permissions: vec!["metadata.read".into()],
+                    targets: (first..(first + 64).min(254))
+                        .map(|index| Target {
+                            host_id: target.host_id.clone(),
+                            kind: ResourceKind::try_from("device").unwrap(),
+                            id: id(&format!("previous-{index}")),
+                            session_id: None,
+                            session_epoch: None,
+                        })
+                        .collect(),
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        }
+        let selected = Target {
+            host_id: target.host_id,
+            kind: ResourceKind::try_from("device").unwrap(),
+            id: id("selected-COM3"),
+            session_id: None,
+            session_epoch: None,
+        };
+        auth.authorize(
+            &control,
+            AuthorizeParams {
+                client_id: client.client_id().clone(),
+                permissions: vec!["metadata.read".into(), "device.modify".into()],
+                targets: vec![selected.clone()],
+                expires_at: None,
+            },
+        )
+        .expect("A normal connection must not exhaust permission records after prior sessions");
+        auth.require(&client, "device.modify", &selected).unwrap();
+        let other = Target {
+            id: id("unselected-COM5"),
+            ..selected
+        };
+        assert_eq!(
+            auth.require(&client, "device.modify", &other)
+                .unwrap_err()
+                .code,
+            "PERMISSION_DENIED"
+        );
     }
     #[test]
     fn new_client_is_metadata_only_and_credential_is_required_on_reconnect() {
@@ -659,6 +900,73 @@ mod tests {
         fn wall_time(&self) -> Timestamp {
             Timestamp::try_from("2000-01-01T00:00:00Z").unwrap()
         }
+    }
+    #[test]
+    fn one_phase_reads_once_but_new_phases_recheck_revocation_and_regrant() {
+        let (_directory, auth, target) = setup();
+        let client = auth.authenticate(&id("phase-reader"), None).unwrap().actor;
+        let control = auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("independent-user-control-secret").unwrap(),
+            )
+            .unwrap();
+        let params = AuthorizeParams {
+            client_id: client.client_id().clone(),
+            permissions: vec!["content.read".into()],
+            targets: vec![target.clone()],
+            expires_at: None,
+        };
+        auth.authorize(&control, params.clone()).unwrap();
+        let before = auth.document_reads();
+        let stamp = {
+            let phase = auth.snapshot(&client).unwrap();
+            let stamp = phase.capture_grants().unwrap();
+            phase.require("content.read", &target).unwrap();
+            phase.validate_grants(&stamp).unwrap();
+            assert!(phase.can_discover("content.read", &[]));
+            assert_eq!(auth.document_reads() - before, 1);
+            stamp
+        };
+        auth.revoke(
+            &control,
+            RevokeParams {
+                actor_id: client.id().clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![target.clone()],
+            },
+        )
+        .unwrap();
+        let revoked = auth.snapshot(&client).unwrap();
+        assert!(revoked.validate_grants(&stamp).is_err());
+        assert!(revoked.require("content.read", &target).is_err());
+        drop(revoked);
+        auth.authorize(&control, params).unwrap();
+        let regranted = auth.snapshot(&client).unwrap();
+        regranted.require("content.read", &target).unwrap();
+        assert!(regranted.validate_grants(&stamp).is_err());
+    }
+    #[test]
+    fn snapshot_rechecks_clock_and_keeps_expired_narrow_rule_shadowing() {
+        let (_directory, initial, host) = setup();
+        let clock = Arc::new(ManualClock(std::sync::atomic::AtomicU64::new(0)));
+        let auth = AuthService::with_clock(
+            initial.store.clone(),
+            ContextToken::try_from("independent-user-control-secret").unwrap(),
+            clock.clone(),
+        );
+        let (client, resource, other) = temporary_resource_regrant(&auth, &host);
+        let before = auth.document_reads();
+        let phase = auth.snapshot(&client).unwrap();
+        let stamp = phase.capture_grants().unwrap();
+        phase.require("content.read", &resource).unwrap();
+        clock
+            .0
+            .store(10_000_000_000, std::sync::atomic::Ordering::SeqCst);
+        assert!(phase.require("content.read", &resource).is_err());
+        assert!(phase.validate_grants(&stamp).is_err());
+        phase.require("content.read", &other).unwrap();
+        assert_eq!(auth.document_reads() - before, 1);
     }
     #[test]
     fn expired_resource_regrant_still_masks_permanent_host_grant() {

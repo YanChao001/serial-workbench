@@ -281,7 +281,7 @@ for (const sample of [
       }),
     ).toBeEnabled();
     const rectangles = await workbenchRectangles(page);
-    const parameters = await openTool(page, t("workbench.tools.parameters"));
+    const parameters = await openTool(page, t("workbench.tools.controls"));
     await expect(
       parameters.locator('select:not([aria-hidden="true"]),datalist'),
     ).toHaveCount(0);

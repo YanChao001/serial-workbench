@@ -42,15 +42,13 @@ import {
   DEFAULT_CLIENT_STATE,
   type ClientStateSnapshot,
 } from "@/lib/client-settings";
-import {
-  createHostConnection,
-  createHostWorkspace,
-  type HostNativePort,
-} from "@/lib/host-client";
-import { saveTextExport } from "@/lib/tauri";
+import { createHostConnection, type HostNativePort } from "@/lib/host-client";
+import { createHostWorkspace } from "@/providers/host-controller";
+import { hostConnectDevice, saveTextExport } from "@/lib/tauri";
 vi.mock("@/lib/tauri", async (original) => ({
   ...(await original<typeof import("@/lib/tauri")>()),
   saveTextExport: vi.fn(),
+  hostConnectDevice: vi.fn(),
 }));
 
 afterEach(() => {
@@ -64,6 +62,14 @@ beforeEach(() => {
 });
 const i18n = { language: "en" as const, t: createTranslator(en) };
 const chinese = { language: "zh" as const, t: createTranslator(zhCN) };
+async function connectVirtualSerial() {
+  fireEvent.click(
+    await screen.findByRole("button", { name: "Open Virtual serial" }),
+  );
+  await waitFor(() =>
+    expect(screen.getByRole("button", { name: "Close session" })).toBeEnabled(),
+  );
+}
 async function chooseWorkspace(name: string) {
   const select = screen.getByRole("combobox", { name: "Choose workspace" });
   await waitFor(() => expect(select).toBeEnabled());
@@ -75,6 +81,7 @@ async function chooseWorkspace(name: string) {
 }
 async function expectWorkspaceName(name: string) {
   const entry = screen.getByRole("button", { name: "Workspace" });
+  fireEvent.keyDown(document, { key: "Tab" });
   fireEvent.focus(entry);
   await waitFor(() =>
     expect(entry).toHaveAccessibleDescription(`Workspace: ${name}`),
@@ -97,6 +104,32 @@ function localSnapshot(drafts: Record<string, string>): ClientStateSnapshot {
     state: { ...structuredClone(DEFAULT_CLIENT_STATE), drafts },
   };
 }
+
+it("shows already restored drafts immediately when returning to the workbench", async () => {
+  const host = readyHost();
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(localSnapshot({ unconnected: "AT?" }))
+    .mockImplementation(() => new Promise<ClientStateSnapshot>(() => {}));
+  const store = createClientDraftStore({ read, save: vi.fn() });
+  const content = (workbench: boolean) => (
+    <I18nContext value={i18n}>
+      <HostContext value={host}>
+        {workbench ? <Overview draftStore={store} /> : <p>Settings page</p>}
+      </HostContext>
+    </I18nContext>
+  );
+  const view = render(content(true));
+  expect(
+    await screen.findByRole("textbox", { name: "Send draft" }),
+  ).toHaveValue("AT?");
+  view.rerender(content(false));
+  view.rerender(content(true));
+  expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
+    "AT?",
+  );
+  expect(read).toHaveBeenCalledTimes(1);
+});
 const startupError = () =>
   new HostRequestError({
     code: "HOST_START_FAILED",
@@ -122,6 +155,7 @@ function readyHost(): HostContextValue {
       sessions: [currentSession],
       operations: [],
       operationSummaries: [],
+      operationSummariesReady: true,
       streams: new Map(),
       catalog: actionCatalog,
       devicesStale: false,
@@ -129,7 +163,7 @@ function readyHost(): HostContextValue {
     refresh: vi.fn(),
     operationInput: vi.fn(),
     pickFile: vi.fn(),
-    trustedConnect: vi.fn(),
+    trustedConnect: vi.fn().mockResolvedValue(currentSession),
     metrics: vi.fn().mockRejectedValue(new Error("METRICS_UNAVAILABLE")),
     captureStatus: vi.fn(),
     readCaptureTail: vi.fn(),
@@ -145,7 +179,7 @@ function readyHost(): HostContextValue {
     takeover: vi.fn(),
     invoke: vi.fn(),
     loadWorkspace: vi.fn(),
-    listWorkspaces: vi.fn().mockResolvedValue([]),
+    listWorkspaces: vi.fn().mockResolvedValue({ workspaces: [] }),
     saveWorkspace: vi.fn(),
     saveFavorites: vi.fn(),
     rebindDevice: vi.fn(),
@@ -194,9 +228,7 @@ it("keeps receive rows unchanged when unrelated Host metadata updates", async ()
   );
   try {
     const view = render(content(host));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     await screen.findByText("Hello");
     time.mockClear();
     for (let index = 0; index < 20; index++)
@@ -346,7 +378,11 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content());
-    fireEvent.click(await screen.findByRole("button", { name: "Tasks" }));
+    fireEvent.pointerDown(
+      await screen.findByRole("button", { name: en["workbench.tools.more"] }),
+      { button: 0, ctrlKey: false },
+    );
+    fireEvent.click(await screen.findByRole("menuitem", { name: "Tasks" }));
     const dialog = screen.getByRole("dialog", { name: "Tasks" });
     const cancel = within(dialog).getByRole("button", { name: "Cancel" });
     expect(dialog).not.toHaveTextContent("private-task-id");
@@ -440,9 +476,7 @@ describe("Serial Workbench 首页", () => {
     host.state.workspace = base;
     host.loadWorkspace = vi.fn().mockResolvedValue(base);
     const directory =
-      deferred<
-        import("@serial-workbench/contracts").WorkspaceDocumentResult[]
-      >();
+      deferred<import("@serial-workbench/contracts").WorkspaceListResult>();
     host.listWorkspaces = vi.fn().mockReturnValue(directory.promise);
     render(
       <I18nContext value={i18n}>
@@ -456,7 +490,7 @@ describe("Serial Workbench 首页", () => {
     expect(choice).toBeEnabled();
     expect(choice).toHaveAttribute("aria-busy", "true");
     await waitFor(() => expect(choice).toHaveFocus());
-    await act(async () => directory.resolve([]));
+    await act(async () => directory.resolve({ workspaces: [] }));
     fireEvent.click(
       screen.getByRole("button", { name: en["workbench.tools.reload"] }),
     );
@@ -495,9 +529,7 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content(host));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     await waitFor(() =>
       expect(
         screen.getByRole("button", { name: "Close session" }),
@@ -736,6 +768,7 @@ describe("Serial Workbench 首页", () => {
   it("keeps current editing and disables Host actions when menu Refresh loses an established attachment", async () => {
     const connection = await attachment("8");
     const current = session();
+    vi.mocked(hostConnectDevice).mockResolvedValueOnce(current);
     const scope = {
       scopeId: "session/current",
       target: {
@@ -820,6 +853,7 @@ describe("Serial Workbench 首页", () => {
     });
     await waitFor(() => expect(open).toBeEnabled());
     fireEvent.click(open);
+    await screen.findByRole("tab", { selected: true });
     const tabId = screen.getByRole("tab", { selected: true }).id;
     fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
       target: { value: "CURRENT EDIT" },
@@ -887,9 +921,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
       target: { value: "CURRENT EDIT" },
     });
@@ -968,11 +1000,10 @@ describe("Serial Workbench 首页", () => {
     );
     expect(port.save).not.toHaveBeenCalled();
     expect(connect).toHaveBeenCalledTimes(2);
-    fireEvent.click(screen.getByText("查看详情"));
     expect(screen.getByText("HOST_START_FAILED")).toBeVisible();
     expect(screen.getByRole("link", { name: "诊断与恢复" })).toHaveAttribute(
       "href",
-      "#/settings",
+      "#/settings?focus=recovery",
     );
   });
   it("shows recovered local drafts during the first Host connection", async () => {
@@ -1204,9 +1235,7 @@ describe("Serial Workbench 首页", () => {
     expect(online.trustedConnect).not.toHaveBeenCalled();
     expect(online.send).not.toHaveBeenCalled();
     expect(online.invoke).not.toHaveBeenCalled();
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     expect(
       screen.queryByRole("tab", { name: "Send draft" }),
     ).not.toBeInTheDocument();
@@ -1350,9 +1379,7 @@ describe("Serial Workbench 首页", () => {
     expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
       "ATTACH LOCAL",
     );
-    fireEvent.click(
-      screen.getByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     expect(
       screen.queryByRole("tab", { name: "Send draft" }),
     ).not.toBeInTheDocument();
@@ -1387,9 +1414,7 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content(online));
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     fireEvent.change(screen.getByRole("textbox", { name: "Send draft" }), {
       target: { value: "CURRENT EDIT" },
     });
@@ -1438,7 +1463,13 @@ describe("Serial Workbench 首页", () => {
         }),
     );
     host.loadWorkspace = vi.fn().mockResolvedValue(next);
-    host.listWorkspaces = vi.fn().mockResolvedValue([first, next]);
+    host.listWorkspaces = vi.fn().mockResolvedValue({
+      workspaces: [first, next].map((item) => ({
+        scope: item.scope,
+        name: item.document.value.name,
+        revision: item.document.revision,
+      })),
+    });
     render(
       <I18nContext value={i18n}>
         <HostContext value={host}>
@@ -1510,9 +1541,21 @@ describe("Serial Workbench 首页", () => {
         systemName: "Other serial",
       },
     ];
-    host.trustedConnect = vi.fn().mockResolvedValue({
-      ...session("other-session"),
-      deviceId: "other-device",
+    host.trustedConnect = vi.fn(async (deviceId: string) => {
+      const opened =
+        deviceId === "device"
+          ? session()
+          : {
+              ...session("other-session"),
+              deviceId: "other-device",
+            };
+      host.state.sessions = [
+        ...host.state.sessions.filter(
+          (value) => value.sessionId !== opened.sessionId,
+        ),
+        opened,
+      ];
+      return opened;
     });
     render(
       <I18nContext value={i18n}>
@@ -1521,9 +1564,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     const choice = screen.getByRole("combobox", { name: "Choose device" });
     choice.focus();
     fireEvent.keyDown(choice, { key: "ArrowDown" });
@@ -1555,6 +1596,11 @@ describe("Serial Workbench 首页", () => {
       ),
     );
     expect(host.invoke).not.toHaveBeenCalled();
+    await screen.findByRole("tab", { name: "Other serial" });
+    expect(screen.getAllByRole("tab")).toHaveLength(2);
+    expect(
+      screen.getByRole("tab", { name: "Virtual serial" }),
+    ).toBeInTheDocument();
   });
   it("applies requested serial parameters to the next explicit native connection", async () => {
     const host = readyHost();
@@ -1711,9 +1757,15 @@ describe("Serial Workbench 首页", () => {
       },
       document: { revision: "1", value: defaults.workspace },
     };
-    host.listWorkspaces = vi
-      .fn()
-      .mockResolvedValue([workspace("next", "Other bench", "3")]);
+    host.listWorkspaces = vi.fn().mockResolvedValue({
+      workspaces: [
+        {
+          scope: workspace("next", "Other bench").scope,
+          name: "Other bench",
+          revision: "3",
+        },
+      ],
+    });
     host.loadWorkspace = vi.fn().mockResolvedValue({
       scope: {
         scopeId: "workspace/next",
@@ -1771,9 +1823,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     fireEvent.click(screen.getByRole("button", { name: "Send file" }));
     await waitFor(() =>
       expect(host.invoke).toHaveBeenCalledWith(
@@ -2061,9 +2111,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
       "STATUS?",
     );
@@ -2097,6 +2145,7 @@ describe("Serial Workbench 首页", () => {
         sessions: [currentSession],
         operations: [],
         operationSummaries: [],
+        operationSummariesReady: true,
         streams: new Map(),
         catalog: actionCatalog,
         devicesStale: false,
@@ -2104,7 +2153,7 @@ describe("Serial Workbench 首页", () => {
       refresh: vi.fn(),
       operationInput: vi.fn(),
       pickFile: vi.fn(),
-      trustedConnect: vi.fn(),
+      trustedConnect: vi.fn().mockResolvedValue(currentSession),
       metrics: vi.fn().mockRejectedValue(new Error("METRICS_UNAVAILABLE")),
       captureStatus: vi.fn(),
       readCaptureTail: vi.fn(),
@@ -2120,7 +2169,7 @@ describe("Serial Workbench 首页", () => {
       takeover: vi.fn(),
       invoke: vi.fn(),
       loadWorkspace: vi.fn(),
-      listWorkspaces: vi.fn().mockResolvedValue([]),
+      listWorkspaces: vi.fn().mockResolvedValue({ workspaces: [] }),
       saveWorkspace: vi.fn(),
       saveFavorites: vi.fn(),
       rebindDevice: vi.fn(),
@@ -2160,6 +2209,7 @@ describe("Serial Workbench 首页", () => {
       watchSession: vi.fn(() => () => {}),
     };
     const draftStore = {
+      getSnapshot: () => undefined,
       read: vi.fn(async () => ({ "session-session": "STATUS?" })),
       save: vi.fn().mockResolvedValue(undefined),
     };
@@ -2170,9 +2220,7 @@ describe("Serial Workbench 首页", () => {
         </HostContext>
       </I18nContext>,
     );
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     expect(screen.getByRole("textbox", { name: "Send draft" })).toHaveValue(
       "STATUS?",
     );
@@ -2197,6 +2245,7 @@ describe("Serial Workbench 首页", () => {
         sessions: [],
         operations: [],
         operationSummaries: [],
+        operationSummariesReady: false,
         streams: new Map(),
         catalog: actionCatalog,
         devicesStale: false,
@@ -2220,7 +2269,7 @@ describe("Serial Workbench 首页", () => {
       takeover: vi.fn(),
       invoke: vi.fn(),
       loadWorkspace: vi.fn(),
-      listWorkspaces: vi.fn().mockResolvedValue([]),
+      listWorkspaces: vi.fn().mockResolvedValue({ workspaces: [] }),
       saveWorkspace: vi.fn(),
       saveFavorites: vi.fn(),
       rebindDevice: vi.fn(),
@@ -2501,9 +2550,7 @@ it.each(["quick", "tools"])(
       </I18nContext>
     );
     const view = render(content());
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     if (entry === "quick")
       fireEvent.click(screen.getByRole("button", { name: "Capture" }));
     else {
@@ -2632,9 +2679,7 @@ it.each(["owned-reference", "pending-status"])(
       </I18nContext>
     );
     const view = render(content());
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     fireEvent.click(screen.getByRole("button", { name: "Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "Start capture" }));
     await waitFor(() =>
@@ -2749,9 +2794,7 @@ it.each(["workspace", "attachment", "selection"])(
       </I18nContext>
     );
     const view = render(content());
-    fireEvent.click(
-      await screen.findByRole("button", { name: "Open Virtual serial" }),
-    );
+    await connectVirtualSerial();
     fireEvent.click(screen.getByRole("button", { name: "Capture" }));
     fireEvent.click(screen.getByRole("button", { name: "Start capture" }));
     await waitFor(() => expect(host.invoke).toHaveBeenCalledOnce());

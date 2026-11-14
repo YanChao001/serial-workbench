@@ -6,11 +6,20 @@ import type {
   TerminalSettings,
   WorkspaceDocument,
   WorkspaceView,
+  TextEncoding,
 } from "@serial-workbench/contracts";
 import type { SessionTab } from "./session-tabs";
 import { addSessionView } from "./workspace-model";
 export type WindowViewModes = Readonly<
-  Record<string, { receiveMode?: TerminalMode; sendMode?: TerminalMode }>
+  Record<
+    string,
+    {
+      receiveMode?: TerminalMode;
+      sendMode?: TerminalMode;
+      receiveEncoding?: TextEncoding | null;
+      sendEncoding?: TextEncoding;
+    }
+  >
 >;
 
 /** A template snapshot is built only for the user's explicit save action. */
@@ -22,17 +31,30 @@ export function snapshotWindowLayout(
   terminal: TerminalSettings,
   modes: WindowViewModes,
   viewColor = defaults.settings.customAccent,
+  preservePresets = false,
 ): WorkspaceDocument {
   let result: WorkspaceDocument = { ...document, views: [] };
   const views: WorkspaceView[] = [];
   for (const tab of tabs) {
     let view = tab.view ?? document.views.find((view) => view.id === tab.id);
-    const session = sessions.find(
-      (session) => session.sessionId === tab.sessionId,
-    );
-    const device = devices.find(
-      (device) => device.deviceId === session?.deviceId,
-    );
+    const session =
+      sessions.find(
+        (session) =>
+          session.sessionId === tab.sessionId &&
+          (!tab.source ||
+            (session.sessionEpoch === tab.source.session.sessionEpoch &&
+              devices.some(
+                (device) =>
+                  device.deviceId === session.deviceId &&
+                  device.hostId === tab.source?.device.hostId,
+              ))),
+      ) ?? tab.source?.session;
+    const device =
+      devices.find(
+        (device) =>
+          device.deviceId === session?.deviceId &&
+          (!tab.source || device.hostId === tab.source.device.hostId),
+      ) ?? tab.source?.device;
     if (!view && session && device) {
       const added = addSessionView(
         { ...result, views: [] },
@@ -48,10 +70,33 @@ export function snapshotWindowLayout(
     }
     if (!view) throw new Error("VIEW_BINDING_UNAVAILABLE");
     if (session && device) {
+      const previousBindingId = view.bindingId;
+      const binding = result.bindings.find(
+        (binding) => binding.bindingId === previousBindingId,
+      );
+      if (!binding) throw new Error("VIEW_BINDING_UNAVAILABLE");
+      if (
+        binding.hostId !== device.hostId ||
+        binding.deviceId !== device.deviceId
+      ) {
+        // A toolbar connection rebinds this view only when the layout is saved.
+        // Keep other views and favorite presets on their original device.
+        const replacement = {
+          ...binding,
+          bindingId: crypto.randomUUID(),
+          hostId: device.hostId,
+          deviceId: device.deviceId,
+          fingerprint: device.fingerprint,
+          configuration: session.configuration,
+        };
+        result = { ...result, bindings: [...result.bindings, replacement] };
+        view = { ...view, bindingId: replacement.bindingId };
+      }
       const bindingId = view.bindingId;
       result = {
         ...result,
         bindings: result.bindings.map((binding) =>
+          !preservePresets &&
           binding.bindingId === bindingId &&
           binding.deviceId === device.deviceId &&
           binding.hostId === device.hostId
@@ -62,7 +107,19 @@ export function snapshotWindowLayout(
     }
     const receiveMode = modes[tab.id]?.receiveMode ?? view.receiveMode;
     const sendMode = modes[tab.id]?.sendMode ?? view.sendMode;
-    views.push({ ...view, id: tab.id, receiveMode, sendMode });
+    const receiveEncoding =
+      modes[tab.id]?.receiveEncoding === undefined
+        ? view.receiveEncoding
+        : modes[tab.id]?.receiveEncoding;
+    const sendEncoding = modes[tab.id]?.sendEncoding ?? view.sendEncoding;
+    views.push({
+      ...view,
+      id: tab.id,
+      receiveMode,
+      sendMode,
+      receiveEncoding,
+      sendEncoding,
+    });
   }
   return { ...result, views };
 }

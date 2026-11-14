@@ -168,7 +168,7 @@ pub(crate) struct DesktopHostBridge {
 struct BridgeState {
     next_generation: u64,
     windows: HashMap<String, BridgeWindow>,
-    ledgers: HashMap<String, std::sync::Arc<std::sync::Mutex<DeliveryLedger>>>,
+    ledgers: HashMap<String, (u64, std::sync::Arc<std::sync::Mutex<DeliveryLedger>>)>,
 }
 #[derive(Default)]
 struct WindowInstances {
@@ -218,6 +218,12 @@ impl WindowInstances {
             return None;
         }
         self.active.get(window).copied()
+    }
+    fn replace_document(&mut self, window: &str, identity: usize) -> Option<u64> {
+        let previous = self.resolve(window, identity)?;
+        self.create(window);
+        self.identities.insert(window.to_owned(), identity);
+        Some(previous)
     }
 }
 struct BridgeWindow {
@@ -269,6 +275,29 @@ impl Drop for BridgeWindow {
             pump.abort();
         }
     }
+}
+
+impl BridgeWindow {
+    async fn stop(mut self) {
+        self.pump.abort();
+        let _ = (&mut self.pump).await;
+        if let Some(pump) = self.effects_pump.take() {
+            pump.abort();
+            let _ = pump.await;
+        }
+        let _ = self.client.close().await;
+        let _ = self.control.close().await;
+        let raw = self.raw.lock().await.take();
+        if let Some(link) = raw {
+            let _ = link.connection.close().await;
+        }
+    }
+}
+
+fn native_window_identity(window: &tauri::WebviewWindow) -> usize {
+    use tauri::Manager;
+    let table = window.resources_table();
+    std::ptr::from_ref(&*table) as usize
 }
 
 impl DesktopHostBridge {
@@ -455,46 +484,102 @@ impl DesktopHostBridge {
             .app_handle()
             .get_webview_window(window.label())
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
-        let requested = {
-            let table = window.resources_table();
-            std::ptr::from_ref(&*table)
-        };
-        let registered = {
-            let table = current.resources_table();
-            std::ptr::from_ref(&*table)
-        };
+        let requested = native_window_identity(window);
+        let registered = native_window_identity(&current);
         if requested != registered {
             return Err(HostError::new("EPOCH_MISMATCH", "Window instance changed"));
         }
         let instances = self.instances.lock().expect("window instances");
         instances
-            .resolve(window.label(), requested as usize)
+            .resolve(window.label(), requested)
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance changed"))
     }
     pub(crate) fn register_new_window(&self, window: &tauri::WebviewWindow) -> HostResult<()> {
-        use tauri::Manager;
         crate::commands::require_host_window(window.label())
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let label = window.label().to_owned();
-        let identity = {
-            let table = window.resources_table();
-            std::ptr::from_ref(&*table) as usize
-        };
-        let instance = {
+        let identity = native_window_identity(window);
+        {
             let mut instances = self.instances.lock().expect("window instances");
-            let instance = instances.create(&label);
+            instances.create(&label);
             instances.identities.insert(label.clone(), identity);
-            instance
-        };
-        self.bind_instance_listener(window, label, instance);
+        }
+        self.bind_instance_listener(window, label, identity);
         Ok(())
     }
-    fn bind_instance_listener(&self, window: &tauri::WebviewWindow, label: String, instance: u64) {
+    pub(crate) fn document_started(&self, window: &tauri::WebviewWindow) {
+        use tauri::Manager;
+        if let Some(previous) =
+            self.replace_document(window.label(), native_window_identity(window))
+        {
+            if let Some(tickets) = window
+                .app_handle()
+                .try_state::<crate::media_protocol::MediaTickets>()
+            {
+                tickets.destroy_window(window.label(), previous);
+            }
+            window
+                .app_handle()
+                .state::<crate::lifecycle::LifecycleState>()
+                .remove_window(window.label());
+        }
+    }
+    fn replace_document(&self, window: &str, identity: usize) -> Option<u64> {
+        let previous = self
+            .instances
+            .lock()
+            .expect("window instances")
+            .replace_document(window, identity)?;
+        let bridge = self.clone();
+        let label = window.to_owned();
+        tauri::async_runtime::spawn(async move {
+            bridge.retire_instance(&label, previous).await;
+        });
+        Some(previous)
+    }
+    async fn retire_instance(&self, label: &str, instance: u64) {
+        let connected = {
+            let mut state = self.inner.lock().await;
+            if state
+                .ledgers
+                .get(label)
+                .is_some_and(|(owner, _)| *owner == instance)
+            {
+                state.ledgers.remove(label);
+            }
+            if state
+                .windows
+                .get(label)
+                .is_some_and(|connected| connected.instance == instance)
+            {
+                state.windows.remove(label)
+            } else {
+                None
+            }
+        };
+        if let Some(connected) = connected {
+            connected.stop().await;
+        }
+    }
+    fn bind_instance_listener(
+        &self,
+        window: &tauri::WebviewWindow,
+        label: String,
+        identity: usize,
+    ) {
         use tauri::Manager;
         let bridge = self.clone();
         let app = window.app_handle().clone();
         window.on_window_event(move |event| {
             if matches!(event, tauri::WindowEvent::Destroyed) {
+                let Some(instance) = bridge
+                    .instances
+                    .lock()
+                    .expect("window instances")
+                    .resolve(&label, identity)
+                else {
+                    return;
+                };
                 if let Some(tickets) = app.try_state::<crate::media_protocol::MediaTickets>() {
                     tickets.destroy_window(&label, instance);
                 }
@@ -506,31 +591,7 @@ impl DesktopHostBridge {
                 let bridge = bridge.clone();
                 let label = label.clone();
                 tauri::async_runtime::spawn(async move {
-                    let connected = {
-                        let mut state = bridge.inner.lock().await;
-                        if state
-                            .windows
-                            .get(&label)
-                            .is_some_and(|connected| connected.instance == instance)
-                        {
-                            state.ledgers.remove(&label);
-                            state.windows.remove(&label)
-                        } else {
-                            None
-                        }
-                    };
-                    if let Some(connected) = connected {
-                        let client = connected.client.clone();
-                        let control = connected.control.clone();
-                        let raw = connected.raw.clone();
-                        drop(connected);
-                        let _ = client.close().await;
-                        let _ = control.close().await;
-                        let raw_link = raw.lock().await.take();
-                        if let Some(raw) = raw_link {
-                            let _ = raw.connection.close().await;
-                        }
-                    }
+                    bridge.retire_instance(&label, instance).await;
                 });
             }
         });
@@ -587,7 +648,13 @@ impl DesktopHostBridge {
     }
     #[cfg(test)]
     async fn pending_for_test(&self, window: &str) -> (usize, usize) {
-        let ledger = self.inner.lock().await.ledgers.get(window).cloned();
+        let ledger = self
+            .inner
+            .lock()
+            .await
+            .ledgers
+            .get(window)
+            .map(|(_, ledger)| ledger.clone());
         ledger
             .map(|ledger| ledger.lock().expect("delivery ledger").pending())
             .unwrap_or_default()
@@ -631,10 +698,23 @@ impl DesktopHostBridge {
         self.raw_subscribe_for_instance(window, instance, query, channel, lifecycle)
             .await
     }
+    #[cfg(test)]
     async fn raw_subscribe_for_instance(
         &self,
         window: &str,
         instance: u64,
+        query: serial_workbench_core::Query,
+        channel: tauri::ipc::Channel<serial_workbench_core::RawBatch>,
+        lifecycle: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
+    ) -> HostResult<Id> {
+        let attached = self.attachment_for_instance(window, instance).await?;
+        self.raw_subscribe_at_generation(window, attached.generation, query, channel, lifecycle)
+            .await
+    }
+    async fn raw_subscribe_at_generation(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
         query: serial_workbench_core::Query,
         channel: tauri::ipc::Channel<serial_workbench_core::RawBatch>,
         lifecycle: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
@@ -646,11 +726,11 @@ impl DesktopHostBridge {
         let (send, receive) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
             let result = bridge
-                .raw_subscribe_inner(&window, instance, query, channel, lifecycle)
+                .raw_subscribe_inner(&window, generation, query, channel, lifecycle)
                 .await;
             if let Err(Ok(id)) = send.send(result) {
                 let _ = bridge
-                    .raw_unsubscribe_for_instance(&window, instance, id)
+                    .raw_unsubscribe_at_generation(&window, generation, id)
                     .await;
             }
         });
@@ -673,10 +753,21 @@ impl DesktopHostBridge {
         self.raw_unsubscribe_for_instance(window, instance, id)
             .await
     }
+    #[cfg(test)]
     async fn raw_unsubscribe_for_instance(
         &self,
         window: &str,
         instance: u64,
+        id: Id,
+    ) -> HostResult<()> {
+        let attached = self.attachment_for_instance(window, instance).await?;
+        self.raw_unsubscribe_at_generation(window, attached.generation, id)
+            .await
+    }
+    async fn raw_unsubscribe_at_generation(
+        &self,
+        window: &str,
+        requested_generation: serial_workbench_core::U64,
         id: Id,
     ) -> HostResult<()> {
         use serial_workbench_core::{RpcReply, RpcRequest};
@@ -687,7 +778,14 @@ impl DesktopHostBridge {
             let connected = state
                 .windows
                 .get(window)
-                .filter(|connected| connected.instance == instance)
+                .filter(|connected| {
+                    connected.generation == requested_generation.get()
+                        && self
+                            .instances
+                            .lock()
+                            .expect("window instances")
+                            .current(window, connected.instance)
+                })
                 .ok_or_else(|| {
                     HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
                 })?;
@@ -742,10 +840,21 @@ impl DesktopHostBridge {
         self.raw_request_for_instance(window, instance, request)
             .await
     }
+    #[cfg(test)]
     async fn raw_request_for_instance(
         &self,
         window: &str,
         instance: u64,
+        request: serial_workbench_core::RpcRequest,
+    ) -> HostResult<serial_workbench_core::RpcReply> {
+        let attached = self.attachment_for_instance(window, instance).await?;
+        self.raw_request_for_generation(window, attached.generation, request)
+            .await
+    }
+    async fn raw_request_for_generation(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
         request: serial_workbench_core::RpcRequest,
     ) -> HostResult<serial_workbench_core::RpcReply> {
         use serial_workbench_core::RpcRequest;
@@ -759,23 +868,22 @@ impl DesktopHostBridge {
                 "Request requires a bridge subscription command",
             ));
         }
-        let attachment = self.attachment_for_instance(window, instance).await?;
-        self.raw_request_at_generation(window, attachment.generation, request)
+        self.raw_request_at_generation(window, generation, request)
             .await
     }
     async fn raw_subscribe_inner(
         &self,
         window: &str,
-        instance: u64,
+        generation: serial_workbench_core::U64,
         query: serial_workbench_core::Query,
         channel: tauri::ipc::Channel<serial_workbench_core::RawBatch>,
         lifecycle: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
     ) -> HostResult<Id> {
         use serial_workbench_core::{RpcReply, RpcRequest, RpcResult};
-        let attached = self.attachment_for_instance(window, instance).await?;
-        let raw = self
-            .raw_link_at_generation(window, attached.generation)
+        let instance = self
+            .window_instance_at_generation(window, generation)
             .await?;
+        let raw = self.raw_link_at_generation(window, generation).await?;
         let setup = PendingFrames::begin(
             &raw.subscriptions.lock().expect("raw subscriptions").setups,
             query.request_id.clone(),
@@ -803,7 +911,7 @@ impl DesktopHostBridge {
                 .windows
                 .get(window)
                 .filter(|connected| {
-                    connected.generation == attached.generation.get()
+                    connected.generation == generation.get()
                         && connected.instance == instance
                         && self
                             .instances
@@ -849,9 +957,7 @@ impl DesktopHostBridge {
                 } => subscription_id == &id,
                 _ => false,
             };
-            if matches
-                && let Some(query) =
-                    deliver_raw(&mut subscriptions, attached.generation.get(), frame)
+            if matches && let Some(query) = deliver_raw(&mut subscriptions, generation.get(), frame)
             {
                 let connection = raw.connection.clone();
                 let id = id.clone();
@@ -923,7 +1029,7 @@ impl DesktopHostBridge {
             (
                 connected.client.clone(),
                 connected.raw.clone(),
-                state.ledgers.get(window).expect("window ledger").clone(),
+                state.ledgers.get(window).expect("window ledger").1.clone(),
             )
         };
         let raw = {
@@ -1041,7 +1147,7 @@ impl DesktopHostBridge {
             .await
             .ledgers
             .get(window)
-            .cloned()
+            .map(|(_, ledger)| ledger.clone())
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?;
         ledger.lock().expect("delivery ledger").acknowledge(
             &DeliveryKey {
@@ -1268,7 +1374,7 @@ impl DesktopHostBridge {
             .expect("window instances")
             .subscribe_closed(window, instance)
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
-        {
+        let retired = {
             let mut state = self.inner.lock().await;
             if let Some(connected) = state.windows.get(window) {
                 if connected.instance == instance {
@@ -1277,9 +1383,14 @@ impl DesktopHostBridge {
                         generation: connected.generation.into(),
                     });
                 }
-                state.windows.remove(window);
                 state.ledgers.remove(window);
+                state.windows.remove(window)
+            } else {
+                None
             }
+        };
+        if let Some(retired) = retired {
+            retired.stop().await;
         }
         let connect = async {
             let mut options = serial_workbench_client::ConnectOptions::new(
@@ -1351,15 +1462,26 @@ impl DesktopHostBridge {
             attachment: client.attachment().clone(),
             generation: generation.into(),
         };
+        if state
+            .ledgers
+            .get(window)
+            .is_some_and(|(owner, _)| *owner != instance)
+        {
+            state.ledgers.remove(window);
+        }
         let ledger = state
             .ledgers
             .entry(window.to_owned())
             .or_insert_with(|| {
-                std::sync::Arc::new(std::sync::Mutex::new(DeliveryLedger::new(
-                    self.delivery_limits.0,
-                    self.delivery_limits.1,
-                )))
+                (
+                    instance,
+                    std::sync::Arc::new(std::sync::Mutex::new(DeliveryLedger::new(
+                        self.delivery_limits.0,
+                        self.delivery_limits.1,
+                    ))),
+                )
             })
+            .1
             .clone();
         let subscriptions = std::sync::Arc::new(std::sync::Mutex::new(Subscriptions {
             active: HashMap::new(),
@@ -1486,6 +1608,7 @@ impl DesktopHostBridge {
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
         self.request_for_instance(window, instance, request).await
     }
+    #[cfg(test)]
     async fn request_for_instance(
         &self,
         window: &str,
@@ -1574,10 +1697,22 @@ impl DesktopHostBridge {
         self.subscribe_for_instance(window, instance, query, channel)
             .await
     }
+    #[cfg(test)]
     async fn subscribe_for_instance(
         &self,
         window: &str,
         instance: u64,
+        query: serial_workbench_core::Query,
+        channel: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
+    ) -> HostResult<Id> {
+        let attached = self.attachment_for_instance(window, instance).await?;
+        self.subscribe_at_generation(window, attached.generation, query, channel)
+            .await
+    }
+    async fn subscribe_at_generation(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
         query: serial_workbench_core::Query,
         channel: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
     ) -> HostResult<Id> {
@@ -1588,10 +1723,12 @@ impl DesktopHostBridge {
         let (send, receive) = tokio::sync::oneshot::channel();
         tokio::spawn(async move {
             let result = bridge
-                .subscribe_inner(&window, instance, query, channel)
+                .subscribe_inner(&window, generation, query, channel)
                 .await;
             if let Err(Ok(id)) = send.send(result) {
-                let _ = bridge.unsubscribe_for_instance(&window, instance, id).await;
+                let _ = bridge
+                    .unsubscribe_at_generation(&window, generation, id)
+                    .await;
             }
         });
         receive
@@ -1601,14 +1738,16 @@ impl DesktopHostBridge {
     async fn subscribe_inner(
         &self,
         window: &str,
-        instance: u64,
+        requested_generation: serial_workbench_core::U64,
         query: serial_workbench_core::Query,
         channel: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
     ) -> HostResult<Id> {
         use serial_workbench_core::{RpcReply, RpcRequest, RpcResult};
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
-        let attached = self.attachment_for_instance(window, instance).await?;
+        let instance = self
+            .window_instance_at_generation(window, requested_generation)
+            .await?;
         let (client, subscriptions, generation) = {
             let state = self.inner.lock().await;
             let connected = state
@@ -1616,7 +1755,7 @@ impl DesktopHostBridge {
                 .get(window)
                 .filter(|connected| {
                     connected.instance == instance
-                        && connected.generation == attached.generation.get()
+                        && connected.generation == requested_generation.get()
                 })
                 .ok_or_else(|| {
                     HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
@@ -1709,10 +1848,21 @@ impl DesktopHostBridge {
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
         self.unsubscribe_for_instance(window, instance, id).await
     }
+    #[cfg(test)]
     async fn unsubscribe_for_instance(
         &self,
         window: &str,
         instance: u64,
+        id: Id,
+    ) -> HostResult<()> {
+        let attached = self.attachment_for_instance(window, instance).await?;
+        self.unsubscribe_at_generation(window, attached.generation, id)
+            .await
+    }
+    async fn unsubscribe_at_generation(
+        &self,
+        window: &str,
+        requested_generation: serial_workbench_core::U64,
         id: Id,
     ) -> HostResult<()> {
         crate::commands::require_host_window(window)
@@ -1722,7 +1872,14 @@ impl DesktopHostBridge {
             let connected = state
                 .windows
                 .get(window)
-                .filter(|connected| connected.instance == instance)
+                .filter(|connected| {
+                    connected.generation == requested_generation.get()
+                        && self
+                            .instances
+                            .lock()
+                            .expect("window instances")
+                            .current(window, connected.instance)
+                })
                 .ok_or_else(|| HostError::new("UNAUTHENTICATED", "Window disconnected"))?;
             (
                 connected.client.clone(),
@@ -2088,11 +2245,12 @@ pub(crate) async fn host_attachment(
 pub(crate) async fn host_request(
     window: tauri::WebviewWindow,
     request: serial_workbench_core::RpcRequest,
+    generation: serial_workbench_core::U64,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<serial_workbench_core::RpcReply> {
-    let instance = state.bind_window(&window)?;
+    state.bind_window(&window)?;
     state
-        .request_for_instance(window.label(), instance, request)
+        .request_for_generation(window.label(), generation, request)
         .await
 }
 
@@ -2102,11 +2260,12 @@ pub(crate) async fn host_subscribe(
     window: tauri::WebviewWindow,
     request: serial_workbench_core::Query,
     channel: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
+    generation: serial_workbench_core::U64,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<Id> {
-    let instance = state.bind_window(&window)?;
+    state.bind_window(&window)?;
     state
-        .subscribe_for_instance(window.label(), instance, request, channel)
+        .subscribe_at_generation(window.label(), generation, request, channel)
         .await
 }
 
@@ -2115,11 +2274,12 @@ pub(crate) async fn host_subscribe(
 pub(crate) async fn host_unsubscribe(
     window: tauri::WebviewWindow,
     subscription_id: Id,
+    generation: serial_workbench_core::U64,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<()> {
-    let instance = state.bind_window(&window)?;
+    state.bind_window(&window)?;
     state
-        .unsubscribe_for_instance(window.label(), instance, subscription_id)
+        .unsubscribe_at_generation(window.label(), generation, subscription_id)
         .await
 }
 
@@ -2128,11 +2288,12 @@ pub(crate) async fn host_unsubscribe(
 pub(crate) async fn host_raw_request(
     window: tauri::WebviewWindow,
     request: serial_workbench_core::RpcRequest,
+    generation: serial_workbench_core::U64,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<serial_workbench_core::RpcReply> {
-    let instance = state.bind_window(&window)?;
+    state.bind_window(&window)?;
     state
-        .raw_request_for_instance(window.label(), instance, request)
+        .raw_request_for_generation(window.label(), generation, request)
         .await
 }
 #[tauri::command]
@@ -2142,11 +2303,12 @@ pub(crate) async fn host_raw_subscribe(
     request: serial_workbench_core::Query,
     channel: tauri::ipc::Channel<serial_workbench_core::RawBatch>,
     lifecycle: tauri::ipc::Channel<serial_workbench_core::WireFrame>,
+    generation: serial_workbench_core::U64,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<Id> {
-    let instance = state.bind_window(&window)?;
+    state.bind_window(&window)?;
     state
-        .raw_subscribe_for_instance(window.label(), instance, request, channel, lifecycle)
+        .raw_subscribe_at_generation(window.label(), generation, request, channel, lifecycle)
         .await
 }
 #[tauri::command]
@@ -2154,11 +2316,12 @@ pub(crate) async fn host_raw_subscribe(
 pub(crate) async fn host_raw_unsubscribe(
     window: tauri::WebviewWindow,
     subscription_id: Id,
+    generation: serial_workbench_core::U64,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<()> {
-    let instance = state.bind_window(&window)?;
+    state.bind_window(&window)?;
     state
-        .raw_unsubscribe_for_instance(window.label(), instance, subscription_id)
+        .raw_unsubscribe_at_generation(window.label(), generation, subscription_id)
         .await
 }
 #[tauri::command]

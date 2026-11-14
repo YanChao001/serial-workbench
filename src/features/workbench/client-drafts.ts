@@ -29,6 +29,16 @@ function wait<T>(pending: Promise<T>, signal?: AbortSignal): Promise<T> {
   });
 }
 export function createClientDraftStore(port: ClientDraftPort) {
+  let current: { revision: string; drafts: Record<string, string> } | undefined;
+  let initialRead: Promise<Record<string, string>> | undefined;
+  function remember(snapshot: ClientStateSnapshot) {
+    if (!current || BigInt(snapshot.revision) >= BigInt(current.revision))
+      current = {
+        revision: snapshot.revision,
+        drafts: { ...snapshot.state.drafts },
+      };
+    return { ...current.drafts };
+  }
   async function readState(signal?: AbortSignal) {
     signal?.throwIfAborted();
     const snapshot = await wait(port.read(), signal);
@@ -36,8 +46,19 @@ export function createClientDraftStore(port: ClientDraftPort) {
     return snapshot;
   }
   return {
+    getSnapshot(): Record<string, string> | undefined {
+      return current && { ...current.drafts };
+    },
     async read(signal?: AbortSignal): Promise<Record<string, string>> {
-      return { ...(await readState(signal)).state.drafts };
+      signal?.throwIfAborted();
+      if (current) return { ...current.drafts };
+      if (!initialRead)
+        initialRead = readState()
+          .then(remember)
+          .finally(() => {
+            initialRead = undefined;
+          });
+      return { ...(await wait(initialRead, signal)) };
     },
     async save(
       drafts: Readonly<Record<string, string>>,
@@ -47,10 +68,15 @@ export function createClientDraftStore(port: ClientDraftPort) {
         const base = await readState(signal);
         signal?.throwIfAborted();
         try {
-          await wait(
-            port.save({ ...base.state, drafts: { ...drafts } }, base.revision),
-            signal,
-          );
+          // 取消等待不撤销已提交的保存；真实回执仍更新窗口缓存。
+          const saved = port
+            .save({ ...base.state, drafts: { ...drafts } }, base.revision)
+            .then((snapshot) => {
+              if (snapshot.formatVersion !== "0.1")
+                throw new Error("FUTURE_FORMAT");
+              remember(snapshot);
+            });
+          await wait(saved, signal);
           return;
         } catch (error) {
           if (

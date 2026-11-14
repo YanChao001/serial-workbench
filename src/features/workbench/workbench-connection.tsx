@@ -9,7 +9,7 @@ import {
   Unplug,
   Settings2,
   MoreHorizontal,
-  Terminal,
+  Play,
   Save,
   Usb,
   FileUp,
@@ -19,6 +19,10 @@ import {
   Gauge,
   RotateCw,
   ScrollText,
+  PanelsTopLeft,
+  LoaderCircle,
+  X,
+  Cable,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import {
@@ -45,7 +49,7 @@ export function WorkbenchConnection({
   deviceId,
   device,
   session,
-  hasSessionView = false,
+  viewSessionId,
   viewTabs,
   configuration,
   opening,
@@ -53,6 +57,7 @@ export function WorkbenchConnection({
   disabled,
   devicesStale,
   canClose,
+  canControl,
   canRestoreAccess,
   canSave,
   canTakeover,
@@ -67,6 +72,8 @@ export function WorkbenchConnection({
   onUnavailableFocus,
   onTakeover,
   onReplay,
+  onCloseOtherViews,
+  onCloseAllViews,
 }: {
   recovery?: WorkspaceLayoutProps["connectionRecovery"];
   labels: WorkbenchLabels;
@@ -76,7 +83,7 @@ export function WorkbenchConnection({
   deviceId: string;
   device?: DeviceDescriptor;
   session?: SessionSnapshot;
-  hasSessionView?: boolean;
+  viewSessionId?: string;
   viewTabs?: ReactNode;
   configuration: SerialConfiguration;
   opening: string | null;
@@ -84,6 +91,7 @@ export function WorkbenchConnection({
   disabled: boolean;
   devicesStale: boolean;
   canClose: boolean;
+  canControl: boolean;
   canRestoreAccess: boolean;
   canSave: boolean;
   canTakeover: boolean;
@@ -101,6 +109,8 @@ export function WorkbenchConnection({
   onRefresh: () => void;
   onTakeover: () => void;
   onReplay: () => void;
+  onCloseOtherViews?: () => void;
+  onCloseAllViews?: () => void;
 }) {
   const [deviceListOpen, setDeviceListOpen] = useState(false);
   const header = useRef<HTMLElement | null>(null);
@@ -149,7 +159,7 @@ export function WorkbenchConnection({
         disabled={!toolsAvailable}
         onClick={(event) => onTool("workspace", event.currentTarget)}
       >
-        <Terminal aria-hidden="true" />
+        <PanelsTopLeft aria-hidden="true" />
       </WorkbenchIconButton>
       <Select
         open={deviceListOpen && !disabled}
@@ -166,8 +176,15 @@ export function WorkbenchConnection({
           className="workbench-device-select"
           aria-label={toolLabels?.chooseDevice ?? labels.devices}
         >
-          <Plug aria-hidden="true" />
-          <SelectValue placeholder={labels.noDevices} />
+          <SelectValue
+            placeholder={
+              devices.length
+                ? (toolLabels?.chooseDevice ?? labels.devices)
+                : labels.noDevices
+            }
+          >
+            {devices.find((value) => value.deviceId === deviceId)?.systemName}
+          </SelectValue>
         </SelectTrigger>
         <SelectContent
           position="popper"
@@ -184,8 +201,14 @@ export function WorkbenchConnection({
             </p>
           )}
           {devices.map((value) => (
-            <SelectItem key={value.deviceId} value={value.deviceId}>
-              {value.systemName}
+            <SelectItem
+              className="workbench-port-option"
+              key={value.deviceId}
+              value={value.deviceId}
+            >
+              <span className="workbench-port-label" title={value.systemName}>
+                <span>{value.systemName}</span>
+              </span>
             </SelectItem>
           ))}
         </SelectContent>
@@ -193,6 +216,7 @@ export function WorkbenchConnection({
       <WorkbenchIconButton
         disabled={!toolsAvailable || readOnly}
         label={parameterPurpose}
+        aria-description={parameterSummary}
         tooltip={`${parameterPurpose}: ${parameterSummary}`}
         onClick={(event) => onTool("parameters", event.currentTarget)}
       >
@@ -210,7 +234,7 @@ export function WorkbenchConnection({
         </WorkbenchIconButton>
       ) : session?.state === "open" &&
         session.deviceId === deviceId &&
-        hasSessionView ? (
+        session.sessionId === viewSessionId ? (
         <WorkbenchIconButton
           label={labels.closeSession}
           tooltip={labels.disconnect}
@@ -223,19 +247,44 @@ export function WorkbenchConnection({
         </WorkbenchIconButton>
       ) : (
         <WorkbenchIconButton
-          variant={session?.state === "open" ? "default" : "outline"}
-          aria-pressed={session?.state === "open" ? true : undefined}
+          variant="outline"
+          aria-busy={opening === deviceId || undefined}
           disabled={opening !== null || disabled || !device || devicesStale}
           label={labels.open + " " + (device?.systemName ?? "")}
-          tooltip={opening ? labels.opening : labels.open}
+          tooltip={
+            opening
+              ? labels.opening
+              : !device
+                ? (toolLabels?.chooseDevice ?? labels.devices)
+                : labels.open
+          }
           onClick={onOpen}
         >
-          <Plug aria-hidden="true" />
+          {opening === deviceId ? (
+            <LoaderCircle
+              aria-hidden="true"
+              className="animate-spin motion-reduce:animate-none"
+            />
+          ) : (
+            <Plug aria-hidden="true" />
+          )}
         </WorkbenchIconButton>
       )}
       <WorkbenchIconButton
+        label={toolLabels?.controls ?? labels.receipt}
+        disabled={!toolsAvailable || !canControl}
+        onClick={(event) => onTool("controls", event.currentTarget)}
+      >
+        <Cable aria-hidden="true" />
+      </WorkbenchIconButton>
+      <WorkbenchIconButton
         disabled={!canSave}
         label={toolLabels?.saveCurrentLayout ?? labels.saveDrafts}
+        tooltip={
+          toolLabels?.saveCurrentLayoutHint ??
+          toolLabels?.saveCurrentLayout ??
+          labels.saveDrafts
+        }
         onClick={onSave}
       >
         <Save aria-hidden="true" />
@@ -244,9 +293,7 @@ export function WorkbenchConnection({
         {(
           [
             ["devices", Usb],
-            ["transfer", FileUp],
             ["captureTools", Clapperboard],
-            ["diagnostics", Stethoscope],
           ] as const
         ).map(([tool, Icon]) => (
           <WorkbenchIconButton
@@ -258,24 +305,6 @@ export function WorkbenchConnection({
             <Icon aria-hidden="true" />
           </WorkbenchIconButton>
         ))}
-        <WorkbenchIconButton
-          label={labels.tasks}
-          onClick={(event) => onTool("tasks", event.currentTarget)}
-        >
-          <ListTodo aria-hidden="true" />
-        </WorkbenchIconButton>
-        <WorkbenchIconButton
-          label={labels.metrics}
-          onClick={(event) => onTool("metrics", event.currentTarget)}
-        >
-          <Gauge aria-hidden="true" />
-        </WorkbenchIconButton>
-        <WorkbenchIconButton
-          label={labels.logs}
-          onClick={(event) => onTool("logs", event.currentTarget)}
-        >
-          <ScrollText aria-hidden="true" />
-        </WorkbenchIconButton>
       </div>
       <div className="workbench-view-tabs">{viewTabs}</div>
       <DropdownMenu>
@@ -293,6 +322,7 @@ export function WorkbenchConnection({
               disabled={disabled || opening !== null || devicesStale}
               onSelect={onOpen}
             >
+              <Plug aria-hidden="true" />
               {opening === deviceId
                 ? labels.restoringAccess
                 : labels.restoreAccess}
@@ -301,39 +331,74 @@ export function WorkbenchConnection({
           {commonOverflow &&
             toolsAvailable &&
             (
-              ["devices", "transfer", "captureTools", "diagnostics"] as const
-            ).map((tool) => (
+              [
+                ["devices", Usb],
+                ["captureTools", Clapperboard],
+              ] as const
+            ).map(([tool, Icon]) => (
               <DropdownMenuItem
                 key={tool}
                 onSelect={() => onTool(tool, menuTrigger.current)}
               >
+                <Icon aria-hidden="true" />
                 {toolLabels?.[tool] ?? tool}
               </DropdownMenuItem>
             ))}
-          {commonOverflow && (
+          {
             <>
+              <DropdownMenuItem
+                onSelect={() => onTool("diagnostics", menuTrigger.current)}
+              >
+                <Stethoscope aria-hidden="true" />
+                {toolLabels?.diagnostics ?? labels.title}
+              </DropdownMenuItem>
+              <DropdownMenuItem
+                onSelect={() => onTool("transfer", menuTrigger.current)}
+              >
+                <FileUp aria-hidden="true" />
+                {toolLabels?.transfer ?? labels.sendFile}
+              </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => onTool("tasks", menuTrigger.current)}
               >
+                <ListTodo aria-hidden="true" />
                 {labels.tasks}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => onTool("metrics", menuTrigger.current)}
               >
+                <Gauge aria-hidden="true" />
                 {labels.metrics}
               </DropdownMenuItem>
               <DropdownMenuItem
                 onSelect={() => onTool("logs", menuTrigger.current)}
               >
+                <ScrollText aria-hidden="true" />
                 {labels.logs}
               </DropdownMenuItem>
             </>
-          )}
+          }
           <DropdownMenuItem disabled={!canTakeover} onSelect={onTakeover}>
+            <Settings2 aria-hidden="true" />
             {labels.takeover}
           </DropdownMenuItem>
           <DropdownMenuItem disabled={!canReplay} onSelect={onReplay}>
+            <Play aria-hidden="true" />
             {labels.openReplay}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!onCloseOtherViews}
+            onSelect={onCloseOtherViews}
+          >
+            <PanelsTopLeft aria-hidden="true" />
+            {labels.closeOtherViews}
+          </DropdownMenuItem>
+          <DropdownMenuItem
+            disabled={!onCloseAllViews}
+            onSelect={onCloseAllViews}
+          >
+            <X aria-hidden="true" />
+            {labels.closeAllViews}
           </DropdownMenuItem>
         </DropdownMenuContent>
       </DropdownMenu>

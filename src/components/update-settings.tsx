@@ -1,14 +1,10 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
 import { cn } from "cn";
-import {
-  DownloadIcon,
-  RotateCcwIcon,
-  ExternalLinkIcon,
-  RefreshCwIcon,
-} from "lucide-react";
+import { DownloadIcon, RotateCcwIcon, ExternalLinkIcon } from "lucide-react";
 import { ExternalLink } from "@/components/external-link";
 import { SettingRow } from "@/components/setting-row";
+import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Switch } from "@/components/ui/switch";
@@ -293,7 +289,7 @@ export function UpdateSettings() {
           </div>
           <SettingRow
             id="settings-updates-auto"
-            icon={RefreshCwIcon}
+            icon={SETTINGS_ICONS.autoUpdates}
             label={
               <label htmlFor="auto-check-updates">
                 {t("updates.autoCheck")}

@@ -76,6 +76,25 @@ export default tseslint.config(
     },
   },
   {
+    files: ["src/**/*.{ts,tsx}"],
+    ignores: [
+      "src/lib/notifications.tsx",
+      "src/**/*.test.{ts,tsx}",
+      "src/**/*.spec.{ts,tsx}",
+    ],
+    rules: {
+      "no-restricted-properties": [
+        "error",
+        {
+          object: "toast",
+          property: "custom",
+          message:
+            "自定义通知使用 lib/notifications 的 notifyCustom，统一尺寸与正文容器。",
+        },
+      ],
+    },
+  },
+  {
     // 架构约束：系统能力只能从 lib/tauri.ts 出去。
     // 将 architecture.md 中的模块边界要求落实为静态检查。
     files: ["src/**/*.{ts,tsx}", "packages/*/src/**/*.{ts,tsx}"],
@@ -112,6 +131,12 @@ export default tseslint.config(
           selector:
             "Program > :not(ImportDeclaration):not(ExpressionStatement[directive]) ~ ImportDeclaration",
           message: "导入声明统一放在模块顶部。",
+        },
+        {
+          selector:
+            ":matches(JSXElement[openingElement.name.name='WorkbenchNotice'], JSXElement[openingElement.name.name='NotificationContent'], CallExpression[callee.name='notifyCustom'], CallExpression[callee.object.name='toast']) JSXOpeningElement[name.name='details']",
+          message:
+            "通知详情使用共享 NotificationDetails，避免原位展开改变通知尺寸。",
         },
         {
           selector: String.raw`ImportExpression[source.value=/^@tauri-apps\//]`,

@@ -4,7 +4,6 @@ use serde::Serialize;
 use serial_workbench_core::*;
 use std::{
     collections::{BTreeMap, VecDeque},
-    io::{self, Write},
     sync::{Arc, Mutex, MutexGuard, Weak},
 };
 use tokio::sync::{Notify, watch};
@@ -732,10 +731,11 @@ async fn check(
     let target = target.clone();
     let permission = permission.to_owned();
     tokio::task::spawn_blocking(move || {
-        let stamp = auth.capture_grants(&actor)?;
-        auth.require(&actor, &permission, &target)?;
+        let authorization = auth.snapshot(&actor)?;
+        let stamp = authorization.capture_grants();
+        authorization.require(&permission, &target)?;
         if let Some(stamp) = &stamp {
-            auth.validate_grants(stamp)?;
+            authorization.validate_grants(stamp)?;
         }
         Ok(stamp)
     })
@@ -754,12 +754,13 @@ async fn recheck(
     let target = target.clone();
     let permission = permission.to_owned();
     tokio::task::spawn_blocking(move || {
+        let authorization = auth.snapshot(&actor)?;
         if let Some(stamp) = &stamp {
-            auth.validate_grants(stamp)?;
+            authorization.validate_grants(stamp)?;
         }
-        auth.require(&actor, &permission, &target)?;
+        authorization.require(&permission, &target)?;
         if let Some(stamp) = &stamp {
-            auth.validate_grants(stamp)?;
+            authorization.validate_grants(stamp)?;
         }
         Ok(())
     })
@@ -835,31 +836,8 @@ fn limit() -> HostError {
 fn unavailable() -> HostError {
     HostError::new("STORAGE_UNAVAILABLE", "Projection state is unavailable")
 }
-struct ByteCounter {
-    bytes: usize,
-    limit: usize,
-}
-impl Write for ByteCounter {
-    fn write(&mut self, buffer: &[u8]) -> io::Result<usize> {
-        let total = self
-            .bytes
-            .checked_add(buffer.len())
-            .filter(|total| *total <= self.limit)
-            .ok_or_else(|| io::Error::other("Projection byte capacity exceeded"))?;
-        self.bytes = total;
-        Ok(buffer.len())
-    }
-    fn flush(&mut self) -> io::Result<()> {
-        Ok(())
-    }
-}
 fn encoded_length(value: &impl Serialize, limit_bytes: usize) -> HostResult<usize> {
-    let mut counter = ByteCounter {
-        bytes: 0,
-        limit: limit_bytes,
-    };
-    serde_json::to_writer(&mut counter, value).map_err(|_| limit())?;
-    Ok(counter.bytes)
+    serial_workbench_ipc::frame::encoded_length(value, limit_bytes).map_err(|_| limit())
 }
 
 #[cfg(test)]
@@ -912,6 +890,20 @@ mod tests {
             )
             .unwrap();
         (directory, projections, auth, actor, target)
+    }
+    #[tokio::test]
+    async fn each_projection_authorization_phase_reads_grants_once() {
+        let (_directory, _projections, auth, actor, target) = delivery_fixture();
+        let before = auth.document_reads();
+        let stamp = check(&auth, &actor, &target, "metadata.read")
+            .await
+            .unwrap();
+        assert_eq!(auth.document_reads() - before, 1);
+        let before = auth.document_reads();
+        recheck(&auth, &actor, &target, "metadata.read", stamp)
+            .await
+            .unwrap();
+        assert_eq!(auth.document_reads() - before, 1);
     }
     #[tokio::test]
     async fn delivery_liveness_rebind_invalidates_old_guard_before_next_and_new_reader_is_live() {

@@ -4,7 +4,7 @@ use tokio::io::{AsyncRead, AsyncReadExt, AsyncWrite, AsyncWriteExt};
 pub const MAX_FRAME_BYTES: usize = 1_048_576;
 
 /// 只计数、不分配正文，用于在序列化或排队前取得字节预算。
-pub fn encoded_length(frame: &WireFrame, max_bytes: usize) -> HostResult<usize> {
+pub fn encoded_length(value: &impl serde::Serialize, max_bytes: usize) -> HostResult<usize> {
     struct Counter {
         length: usize,
         limit: usize,
@@ -25,7 +25,7 @@ pub fn encoded_length(frame: &WireFrame, max_bytes: usize) -> HostResult<usize> 
         length: 0,
         limit: max_bytes,
     };
-    serde_json::to_writer(&mut counter, frame).map_err(|_| too_large())?;
+    serde_json::to_writer(&mut counter, value).map_err(|_| too_large())?;
     Ok(counter.length)
 }
 
@@ -124,6 +124,31 @@ mod tests {
             channel: IpcChannel::Control,
             body: IpcMessage::RawAttached {},
         }
+    }
+    #[test]
+    fn encoded_budget_counts_escaping_and_stops_serializing_at_the_limit() {
+        let value = serde_json::json!({"text":"\"\\\n"});
+        let bytes = serde_json::to_vec(&value).unwrap();
+        assert_eq!(encoded_length(&value, bytes.len()).unwrap(), bytes.len());
+        assert!(encoded_length(&value, bytes.len() - 1).is_err());
+        struct Sequence(std::cell::Cell<usize>);
+        impl serde::Serialize for Sequence {
+            fn serialize<S: serde::Serializer>(&self, serializer: S) -> Result<S::Ok, S::Error> {
+                use serde::ser::SerializeSeq;
+                let mut sequence = serializer.serialize_seq(Some(10_000))?;
+                for _ in 0..10_000 {
+                    self.0.set(self.0.get() + 1);
+                    sequence.serialize_element("data")?;
+                }
+                sequence.end()
+            }
+        }
+        let sequence = Sequence(std::cell::Cell::new(0));
+        assert_eq!(
+            encoded_length(&sequence, 32).unwrap_err().code,
+            "LIMIT_EXCEEDED"
+        );
+        assert!(sequence.0.get() < 10_000);
     }
     #[tokio::test]
     async fn bounded_frame_roundtrip_and_clean_eof() {

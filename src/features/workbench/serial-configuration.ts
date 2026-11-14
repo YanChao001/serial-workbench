@@ -1,4 +1,5 @@
 import type { SerialConfiguration } from "@serial-workbench/contracts";
+import { parseU64, U64_MAX } from "@/lib/u64";
 
 export const CONFIG_FIELDS = [
   "baudRate",
@@ -26,18 +27,15 @@ export const BAUD_PRESETS = [
 
 // 表单只限制 wire 数字的可表示范围；驱动组合及执行语义仍由 Host 裁定。
 export function validInteger(value: string, maximum: bigint) {
-  return (
-    /^[1-9][0-9]*$/.test(value) &&
-    value.length <= 20 &&
-    BigInt(value) <= maximum
-  );
+  const parsed = parseU64(value);
+  return parsed !== undefined && parsed > 0n && parsed <= maximum;
 }
 export function validDuration(value: string) {
   return validInteger(value, 2147483647n);
 }
 
 export function validBaudRate(value: string) {
-  return validInteger(value, 18446744073709551615n);
+  return validInteger(value, U64_MAX);
 }
 
 export function validSerialConfiguration(value: SerialConfiguration): boolean {

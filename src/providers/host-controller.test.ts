@@ -466,6 +466,7 @@ it("reads capture tails through Raw with current attachment and rejects foreign 
         },
       }),
     }),
+    "8",
   );
   raw.mockResolvedValue({
     ok: true,
@@ -627,6 +628,7 @@ it("accepts matching transfer receipts and the current revision for an unversion
           params: receiptParams(live),
         }),
       }),
+      "8",
     );
   } finally {
     workspace.dispose();

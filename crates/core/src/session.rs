@@ -2,6 +2,10 @@ use crate::*;
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
+
+/// 手动发送的最终字节上限；单条 TX 编码后仍须适配默认 Raw 批次与源环预算。
+pub const TX_MAX_BYTES: usize = 128 * 1024;
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum TxOutcome {
@@ -316,16 +320,23 @@ fn tx_bytes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Bytes, 
     let value = Bytes::deserialize(deserializer)?;
     let text = value.as_str();
     let decoded = text.len() / 4 * 3 - text.bytes().rev().take_while(|byte| *byte == b'=').count();
-    if !(1..=16384).contains(&decoded) {
-        return Err(serde::de::Error::custom(
-            "TX must contain 1 through 16384 decoded bytes",
-        ));
+    if !(1..=TX_MAX_BYTES).contains(&decoded) {
+        return Err(serde::de::Error::custom(format!(
+            "TX must contain 1 through {TX_MAX_BYTES} decoded bytes"
+        )));
     }
     Ok(value)
 }
 fn tx_bytes_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
-    // 最后一个四字符组只能表示一个字节，16384/16385的Base64总长度相同。
-    schemars::json_schema!({"allOf":[generator.subschema_for::<Bytes>(),{"type":"string","minLength":4,"anyOf":[{"type":"string","maxLength":21844},{"type":"string","maxLength":21848,"pattern":"==$"}]}]})
+    let complete = TX_MAX_BYTES / 3 * 4;
+    let maximum = TX_MAX_BYTES.div_ceil(3) * 4;
+    // 相同的 Base64 字符数可表示不同字节数；尾部 padding 也必须满足上限。
+    if TX_MAX_BYTES.is_multiple_of(3) {
+        schemars::json_schema!({"allOf":[generator.subschema_for::<Bytes>(),{"type":"string","minLength":4,"maxLength":maximum}]})
+    } else {
+        let padding = if TX_MAX_BYTES % 3 == 1 { "==$" } else { "=$" };
+        schemars::json_schema!({"allOf":[generator.subschema_for::<Bytes>(),{"type":"string","minLength":4,"anyOf":[{"type":"string","maxLength":complete},{"type":"string","maxLength":maximum,"pattern":padding}]}]})
+    }
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

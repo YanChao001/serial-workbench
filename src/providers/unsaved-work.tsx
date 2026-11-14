@@ -369,6 +369,31 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
     },
     [errorToastId],
   );
+  const presented = useRef<
+    | {
+        request: LeaveRequest;
+        labels: string[];
+        canSave: boolean;
+        count: number;
+      }
+    | undefined
+  >(undefined);
+  if (
+    request &&
+    (presented.current?.request !== request ||
+      (!busy && !waiting && !executing))
+  ) {
+    const work = [...items.current.values()]
+      .filter((entry) => belongsTo(entry, request))
+      .map((entry) => entry.work);
+    if (work.length || presented.current?.request !== request)
+      presented.current = {
+        request,
+        labels: work.map((work) => work.label),
+        canSave: work.every((work) => Boolean(work.save)),
+        count: request.kind === "native" ? request.value.windows.length : 1,
+      };
+  }
   return (
     <Context.Provider value={registry}>
       {children}
@@ -401,18 +426,14 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
             <DialogTitle>{t("lifecycle.title")}</DialogTitle>
             <DialogDescription>
               {t("lifecycle.description", {
-                count:
-                  request?.kind === "native" ? request.value.windows.length : 1,
+                count: presented.current?.count ?? 1,
               })}
             </DialogDescription>
           </DialogHeader>
           <ul className="list-inside list-disc text-sm">
-            {[...items.current.values()]
-              .filter((v) => request && belongsTo(v, request))
-              .map((v) => v.work)
-              .map((v) => (
-                <li key={v.id}>{v.label}</li>
-              ))}
+            {presented.current?.labels.map((label, index) => (
+              <li key={`${index}:${label}`}>{label}</li>
+            ))}
           </ul>
           <div
             className="h-16 overflow-y-auto text-sm"
@@ -450,10 +471,7 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
             >
               {t("lifecycle.discard")}
             </Button>
-            {![...items.current.values()].some(
-              (entry) =>
-                request && belongsTo(entry, request) && !entry.work.save,
-            ) && (
+            {presented.current?.canSave && (
               <Button
                 disabled={busy || waiting}
                 onClick={() => void answer("save")}

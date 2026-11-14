@@ -20,8 +20,6 @@ export function VideoBackground({
   const [failed, setFailed] = useState(false);
   const { active } = useMotionActivity(player, enabled);
   const translate = useLatestTranslator();
-  const translateRef = useRef(translate);
-  translateRef.current = translate;
   useEffect(() => {
     const element = player.current;
     if (!element) return;
@@ -41,7 +39,7 @@ export function VideoBackground({
       element.pause();
       setPlaying(false);
       setFailed(true);
-      toast.error(translateRef.current("settings.videoPlaybackError"));
+      toast.error(translate("settings.videoPlaybackError"));
     };
     element.addEventListener("error", fail);
     element.muted = true;
@@ -56,7 +54,7 @@ export function VideoBackground({
       element.removeEventListener("error", fail);
       element.pause();
     };
-  }, [active, failed, resource.url]);
+  }, [active, failed, resource.url, translate]);
   return (
     <video
       ref={player}

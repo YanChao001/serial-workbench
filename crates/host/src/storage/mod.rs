@@ -45,6 +45,12 @@ pub struct Store {
     request_diagnostics: Arc<RequestDiagnostics>,
 }
 
+pub(crate) enum DocumentRead {
+    Unchanged,
+    Missing,
+    Changed(StoredDocument),
+}
+
 #[cfg(test)]
 #[derive(Default)]
 struct RequestDiagnostics {
@@ -340,6 +346,36 @@ impl Store {
         let id = id.clone();
         self.request(move |database| database.read_document(&id))
     }
+    /// 在同一个存储任务中核对 revision；未改变的文档不读取或解析正文。
+    pub(crate) fn read_document_if_changed(
+        &self,
+        id: &Id,
+        known_revision: Option<U64>,
+    ) -> HostResult<DocumentRead> {
+        let id = id.clone();
+        self.request(move |database| {
+            use rusqlite::OptionalExtension;
+            let revision: Option<String> = database
+                .connection
+                .query_row(
+                    "SELECT revision FROM documents WHERE id=?1",
+                    [id.as_str()],
+                    |row| row.get(0),
+                )
+                .optional()
+                .map_err(|_| unavailable())?;
+            match revision {
+                None => Ok(DocumentRead::Missing),
+                Some(revision) if Some(db::counter(&revision)?) == known_revision => {
+                    Ok(DocumentRead::Unchanged)
+                }
+                Some(_) => database
+                    .read_document(&id)?
+                    .map(DocumentRead::Changed)
+                    .ok_or_else(unavailable),
+            }
+        })
+    }
     pub fn compare_and_swap_document(
         &self,
         id: &Id,
@@ -351,6 +387,30 @@ impl Store {
             database.compare_and_swap_document(&id, expected_revision, value)
         })
     }
+    pub(crate) fn compare_and_swap_workspace(
+        &self,
+        id: &Id,
+        expected: U64,
+        value: JsonObject,
+        workspace_id: &Id,
+    ) -> HostResult<StoredDocument> {
+        let id = id.clone();
+        let workspace_id = workspace_id.clone();
+        self.request(move |database| {
+            database.compare_and_swap_workspace(&id, expected, value, &workspace_id)
+        })
+    }
+    pub(crate) fn register_workspace(&self, id: &Id, workspace_id: &Id) -> HostResult<()> {
+        let id = id.clone();
+        let workspace_id = workspace_id.clone();
+        self.request(move |database| database.register_workspace(&id, &workspace_id))
+    }
+    pub(crate) fn workspace_page(
+        &self,
+        after: Option<Id>,
+    ) -> HostResult<Vec<(Id, Id, U64, String)>> {
+        self.request(move |database| database.workspace_page(after.as_ref()))
+    }
 }
 
 fn unavailable() -> HostError {
@@ -359,6 +419,8 @@ fn unavailable() -> HostError {
 
 #[cfg(test)]
 mod client_receipt_tests;
+#[cfg(test)]
+mod operation_metadata_tests;
 #[cfg(test)]
 mod operation_progress_tests;
 #[cfg(test)]

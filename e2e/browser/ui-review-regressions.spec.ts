@@ -177,9 +177,7 @@ for (const language of ["zh", "en"] as const) {
       exact: true,
     });
     await input.fill("你好\nA");
-    await expect(page.locator(".workbench-draft-bytes")).toHaveText(
-      language === "zh" ? "8 字节" : "8 bytes",
-    );
+    await expect(page.locator(".workbench-draft-bytes")).toHaveText("8 B");
     await expect(
       page.locator(".workbench-preview-trigger,.workbench-byte-preview"),
     ).toHaveCount(0);
@@ -216,9 +214,7 @@ for (const language of ["zh", "en"] as const) {
     expect(geometry.count.right).toBeLessThan(geometry.frame.right - 8);
     await send.getByRole("radio", { name: "HEX", exact: true }).click();
     await expect(input).toHaveValue("E4 BD A0 E5 A5 BD 0A 41");
-    await expect(page.locator(".workbench-draft-bytes")).toHaveText(
-      language === "zh" ? "8 字节" : "8 bytes",
-    );
+    await expect(page.locator(".workbench-draft-bytes")).toHaveText("8 B");
     const converted = await frame.boundingBox();
     expect(converted?.y).toBe(geometry.frame.y);
     expect(converted?.height).toBe(geometry.frame.height);

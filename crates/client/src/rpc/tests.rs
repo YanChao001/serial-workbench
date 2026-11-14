@@ -11,6 +11,72 @@ struct Fixture {
     client: Arc<RpcConnection>,
     server: LocalStream,
 }
+
+#[tokio::test]
+async fn state_event_byte_pressure_preserves_control_replies_and_latest_cursor() {
+    let mut f = Fixture::new().await;
+    let connection = f.client.clone();
+    let request =
+        tokio::spawn(async move { connection.request(query(FIRST_ID, "device.list")).await });
+    let pending = f.received().await;
+    for position in 1..=6u64 {
+        let cursor = |position: u64| Cursor {
+            host_id: Id::try_from("private-host").unwrap(),
+            instance_epoch: 1.into(),
+            scope_id: Id::try_from("settings.shared").unwrap(),
+            position: position.into(),
+        };
+        let frame = WireFrame {
+            request_id: RequestId::try_from(SECOND_ID).unwrap(),
+            channel: IpcChannel::State,
+            body: IpcMessage::Delta {
+                subscription_id: Id::try_from("settings-reader").unwrap(),
+                delta: Box::new(Delta {
+                    cursor: cursor(position),
+                    previous_cursor: cursor(position - 1),
+                    revision: position.into(),
+                    event_type: Id::try_from("settings.changed").unwrap(),
+                    payload: JsonObject::from_iter([(
+                        "padding".into(),
+                        JsonValue::String("x".repeat(MAX_FRAME_BYTES * 3 / 4)),
+                    )]),
+                }),
+            },
+        };
+        tokio::time::timeout(
+            Duration::from_secs(3),
+            write_frame(&mut f.server, &frame, MAX_FRAME_BYTES),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+    }
+    f.reply(&pending).await;
+    let result = tokio::time::timeout(Duration::from_secs(3), request)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        result.is_ok(),
+        "state pressure must not disconnect control: {result:?}"
+    );
+    assert_success(result.unwrap());
+    let latest = tokio::time::timeout(Duration::from_secs(3), f.client.next_event())
+        .await
+        .unwrap()
+        .unwrap()
+        .unwrap();
+    let IpcMessage::Delta { delta, .. } = latest.body else {
+        panic!("expected the latest state delta")
+    };
+    assert_eq!(delta.cursor.position.get(), 6);
+    assert_eq!(
+        delta.previous_cursor.position.get(),
+        5,
+        "a dropped prefix must remain detectable by the projection reader"
+    );
+    f.close().await;
+}
 impl Fixture {
     async fn new() -> Self {
         static NEXT_ENDPOINT: AtomicU64 = AtomicU64::new(1);

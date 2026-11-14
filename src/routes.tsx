@@ -8,6 +8,12 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import type { MessageKey as DictKey } from "@/i18n/zh-CN";
+import type { SettingsEntryId } from "@/lib/settings-icons";
+
+/** 设置入口共用的定位地址；页面与命令不各自拼接查询参数。 */
+export function settingsLocation(focus?: SettingsEntryId): string {
+  return focus ? `/settings?focus=${encodeURIComponent(focus)}` : "/settings";
+}
 
 type PageComponent = ComponentType | LazyExoticComponent<ComponentType>;
 
@@ -33,6 +39,8 @@ export type AppRoute = {
   component: PageComponent;
   /** 内容区布局；默认文档流，工作台占满可用高度并在内部滚动。 */
   contentLayout?: "document" | "workspace";
+  /** 串口接收等窗口任务在切页后继续运行，其他页面隐藏时暂停副作用。 */
+  keepRunning?: boolean;
   /** 导航意图只预载模块，不挂载页面或执行数据 / 原生操作。 */
   preload?: () => void;
   /**
@@ -75,6 +83,7 @@ export const APP_ROUTES: AppRoute[] = [
     icon: LayoutDashboardIcon,
     ...lazyPage(() => import("@/pages/overview")),
     contentLayout: "workspace",
+    keepRunning: true,
     index: true,
     exact: true,
   },
@@ -111,7 +120,7 @@ export const APP_ROUTES: AppRoute[] = [
     hidden: true,
   },
   {
-    path: "/settings",
+    path: settingsLocation(),
     labelKey: "nav.settings",
     group: "system",
     navigationPlacement: "footer",

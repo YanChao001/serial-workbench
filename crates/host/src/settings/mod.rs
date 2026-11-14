@@ -73,7 +73,7 @@ fn decode<T: DeserializeOwned>(json: serde_json::Value) -> HostResult<T> {
     }
     serde_json::from_value(object["value"].clone()).map_err(|_| invalid())
 }
-fn encode<T: Serialize + DeserializeOwned>(value: T) -> HostResult<(JsonObject, T)> {
+pub(crate) fn encode<T: Serialize + DeserializeOwned>(value: T) -> HostResult<(JsonObject, T)> {
     let json = serde_json::to_value(value).map_err(|_| invalid())?;
     let value = serde_json::from_value(json.clone()).map_err(|_| invalid())?;
     let envelope = serde_json::json!({"formatVersion": "0.1", "value": json});

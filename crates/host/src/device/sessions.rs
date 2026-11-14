@@ -849,13 +849,17 @@ impl DeviceService {
                 failure.get_or_insert(error);
             }
         }
-        for session in self.sessions()? {
-            if session.snapshot()?.state == SessionState::Closed
-                && session.join.lock().map_err(|_| unavailable())?.is_none()
-            {
+        let sessions = self.sessions()?;
+        for session in &sessions {
+            session.request_close()?;
+        }
+        for session in sessions {
+            if session.cleanup_confirmed()? {
                 continue;
             }
-            if let Err(error) = session.close().await {
+            // The Host owns this wait across its settlement budgets. A UI
+            // close timeout is not a terminal result of native cleanup.
+            if let Err(error) = session.finish_close().await {
                 failure.get_or_insert(error);
             }
             if let Err(error) = self.persist(&session).await {
@@ -1000,6 +1004,28 @@ impl Session {
     }
 
     pub async fn close(&self) -> HostResult<()> {
+        self.request_close()?;
+        match tokio::time::timeout(Duration::from_millis(250), self.finish_close()).await {
+            Ok(result) => result,
+            Err(_) => {
+                let error =
+                    HostError::new("CONTROL_UNKNOWN", "Native owner cleanup is not confirmed");
+                if let Ok(mut state) = self.snapshot.lock() {
+                    state.tx_gate = TxGate::ControlUnknown;
+                }
+                let _ = self.source.fail(error.clone());
+                Err(error)
+            }
+        }
+    }
+
+    pub(crate) fn cleanup_confirmed(&self) -> HostResult<bool> {
+        Ok(self.snapshot()?.state == SessionState::Closed
+            && self.completed.borrow().as_ref().is_some_and(Result::is_ok)
+            && self.join.lock().map_err(|_| unavailable())?.is_none())
+    }
+
+    fn request_close(&self) -> HostResult<()> {
         self.closing.store(true, Ordering::SeqCst);
         {
             let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
@@ -1013,32 +1039,20 @@ impl Session {
         let (send, _) = oneshot::channel();
         // 仅唤醒提示；关闭责任由独立 sideband 承载，不依赖业务邮箱空位。
         let _ = self.sender.try_send(BackendCommand::Close(send));
+        Ok(())
+    }
+
+    async fn finish_close(&self) -> HostResult<()> {
         let mut completed = self.completed.clone();
-        let result = tokio::time::timeout(Duration::from_millis(250), async {
-            let result = completed
-                .wait_for(Option::is_some)
-                .await
-                .map_err(|_| unavailable())?
-                .clone()
-                .unwrap_or_else(|| Err(unavailable()));
-            // A completed backend result may precede the owner thread's return.
-            // Keep its JoinHandle owned until actual exit, including Closed retries.
-            wait_owner_exit(&self.join).await?;
-            Ok::<_, HostError>(result)
-        })
-        .await;
-        let result = match result {
-            Ok(Ok(result)) => result,
-            _ => {
-                let error =
-                    HostError::new("CONTROL_UNKNOWN", "Native owner cleanup is not confirmed");
-                if let Ok(mut state) = self.snapshot.lock() {
-                    state.tx_gate = TxGate::ControlUnknown;
-                }
-                let _ = self.source.fail(error.clone());
-                return Err(error);
-            }
-        };
+        let result = completed
+            .wait_for(Option::is_some)
+            .await
+            .map_err(|_| unavailable())?
+            .clone()
+            .unwrap_or_else(|| Err(unavailable()));
+        // The native cleanup receipt and the owner thread's actual exit are
+        // both required, including retries after a Closed snapshot was emitted.
+        wait_owner_exit(&self.join).await?;
         {
             let mut state = self.snapshot.lock().map_err(|_| unavailable())?;
             // The owner may have finished before this explicit close request.
@@ -1141,6 +1155,7 @@ fn owner_loop(
     let mut writing: Option<PendingWriteReply> = None;
     let mut pending: Option<PendingDrainReply> = None;
     let mut close_reply = None;
+    let mut receive_ready = false;
     loop {
         // 领域期限先请求取消；poll 仍优先收取已存在的完成证据。
         let write_cleanup_expired = writing.as_mut().is_some_and(|pending| {
@@ -1286,7 +1301,14 @@ fn owner_loop(
             }
             break;
         }
-        match receiver.recv_timeout(Duration::from_millis(1)) {
+        // 连续接收立即进入下一次读，避免 Windows 的短等待被系统时钟粒度放大。
+        // 每个读块前仍处理一个控制命令，空闲后恢复等待以防非阻塞后端空转。
+        let mailbox_wait = if receive_ready {
+            Duration::ZERO
+        } else {
+            Duration::from_millis(1)
+        };
+        match receiver.recv_timeout(mailbox_wait) {
             Ok(BackendCommand::SampleInputs(sample)) => {
                 sample.complete(backend.as_mut(), &snapshot, clock.as_ref(), &closing);
             }
@@ -1423,7 +1445,14 @@ fn owner_loop(
         if closing.load(Ordering::SeqCst) {
             continue;
         }
-        match backend.read(16 * 1024, Duration::from_millis(20)) {
+        // 空闲读取采用已提交的等待策略，控制轮次仍封顶以保证关闭与取消响应。
+        let wait_ms = match snapshot.lock() {
+            Ok(value) => value.configuration.read_wait_ms.get().min(20),
+            Err(_) => break,
+        };
+        let read = backend.read(16 * 1024, Duration::from_millis(wait_ms));
+        receive_ready = read.as_ref().is_ok_and(|block| !block.bytes.is_empty());
+        match read {
             Ok(block) if !block.bytes.is_empty() => {
                 observability
                     .lock()
@@ -1622,6 +1651,72 @@ mod mailbox_tests {
     use std::{future::Future, pin::Pin, task::Poll};
 
     #[tokio::test]
+    async fn continuous_receive_drains_without_an_idle_mailbox_wait_and_still_closes() {
+        let h = support::Harness::new().await;
+        h.probe.drain_started.store(true, Ordering::SeqCst);
+        let target = h.open("continuous-receive").await;
+        let drained = tokio::time::timeout(Duration::from_millis(500), async {
+            while h.probe.rx_during_drain.load(Ordering::SeqCst) < 1000 {
+                tokio::task::yield_now().await;
+            }
+        })
+        .await;
+        h.probe.drain_release.store(true, Ordering::SeqCst);
+        let session = h.host.devices().session(&target).unwrap();
+        session.close().await.unwrap();
+        assert!(
+            drained.is_ok(),
+            "continuous data was delayed by idle mailbox waits"
+        );
+    }
+
+    #[tokio::test]
+    async fn configured_read_wait_reaches_backend_without_expanding_owner_control_budget() {
+        let h = support::Harness::new().await;
+        let configuration = SerialConfiguration {
+            read_wait_ms: DurationMs::try_from(U64::from(5)).unwrap(),
+            ..Default::default()
+        };
+        let opened = h
+            .host
+            .devices()
+            .open(
+                &h.device("read-wait-policy"),
+                OpenParams {
+                    binding: None,
+                    configuration,
+                },
+            )
+            .await
+            .unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while h.probe.last_read_wait_ms.load(Ordering::SeqCst) != 5 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        let target = Target {
+            host_id: h.host_id.clone(),
+            kind: ResourceKind::try_from("session").unwrap(),
+            id: opened.session_id.clone(),
+            session_id: Some(opened.session_id),
+            session_epoch: Some(opened.session_epoch),
+        };
+        let session = h.host.devices().session(&target).unwrap();
+        session.snapshot.lock().unwrap().configuration.read_wait_ms =
+            DurationMs::try_from(U64::from(500)).unwrap();
+        tokio::time::timeout(Duration::from_secs(1), async {
+            while h.probe.last_read_wait_ms.load(Ordering::SeqCst) != 20 {
+                tokio::time::sleep(Duration::from_millis(5)).await;
+            }
+        })
+        .await
+        .unwrap();
+        session.close().await.unwrap();
+    }
+
+    #[tokio::test]
     async fn explicit_reopen_after_confirmed_write_cleanup_starts_new_epoch_without_replaying() {
         let h = support::Harness::new().await;
         let name = "manual-write-recovery";
@@ -1698,7 +1793,7 @@ mod mailbox_tests {
         assert_eq!(h.probe.opens.load(Ordering::SeqCst), 1);
         assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
         session.close().await.unwrap();
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
     #[tokio::test]
@@ -1732,7 +1827,7 @@ mod mailbox_tests {
             ControlState::Asserted
         );
         session.snapshot.lock().unwrap().control_state = ControlState::Clear;
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
     #[tokio::test]
@@ -1769,7 +1864,7 @@ mod mailbox_tests {
         assert_eq!(error.code, "CONTROL_UNKNOWN");
         assert_eq!(h.probe.opens.load(Ordering::SeqCst), 1);
         session.close().await.unwrap();
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
     #[tokio::test]
@@ -1800,6 +1895,40 @@ mod mailbox_tests {
         assert!(reopened.session_epoch > target.session_epoch.unwrap());
         assert_eq!(h.probe.opens.load(Ordering::SeqCst), 2);
         assert!(h.probe.writes.lock().unwrap().is_empty());
+        h.host.shutdown().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn shutdown_retains_the_owner_beyond_the_ui_close_wait_and_accepts_its_late_exit() {
+        let h = support::Harness::new().await;
+        let exited = Arc::new(support::Gate::default());
+        *h.host.devices().inner.owner_exit_gate.lock().unwrap() = Some(exited.clone());
+        let target = h.open("shutdown-late-owner-exit").await;
+        let devices = h.host.devices().clone();
+        let session = devices.session(&target).unwrap();
+        let first = session.close().await;
+        exited.entered().await;
+        assert_eq!(first.unwrap_err().code, "CONTROL_UNKNOWN");
+        assert!(session.completed.borrow().as_ref().unwrap().is_ok());
+
+        let shutdown_devices = devices.clone();
+        let shutdown = tokio::spawn(async move { shutdown_devices.shutdown().await });
+        tokio::time::sleep(Duration::from_millis(300)).await;
+        let prematurely_finished = shutdown.is_finished();
+        exited.release();
+        let result = tokio::time::timeout(Duration::from_secs(2), shutdown)
+            .await
+            .unwrap()
+            .unwrap();
+        // Reap even on the old implementation's failing path.
+        session.close().await.unwrap();
+        assert!(
+            !prematurely_finished,
+            "Host shutdown must retain a live native owner"
+        );
+        result.expect("the UI close timeout must not become a permanent cleanup failure");
+        assert!(session.join.lock().unwrap().is_none());
+        assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
         h.host.shutdown().await.unwrap();
     }
 
@@ -1920,7 +2049,7 @@ mod mailbox_tests {
             }]
         );
         assert_eq!(result.error.unwrap().code, "WRITE_TIMEOUT");
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
     #[tokio::test]
@@ -1975,7 +2104,7 @@ mod mailbox_tests {
                 ..
             }
         ));
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
     #[tokio::test]
@@ -2015,7 +2144,7 @@ mod mailbox_tests {
             }
         ));
         assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
     #[tokio::test]
@@ -2031,19 +2160,17 @@ mod mailbox_tests {
             "close waited indefinitely for the blocked owner"
         );
         assert_eq!(result.unwrap().unwrap_err().code, "CONTROL_UNKNOWN");
-        assert_shutdown_retains_known_closed_quarantine(&h, &target).await;
+        assert_shutdown_preserves_closed_unknown_evidence(&h, &target).await;
     }
 
-    async fn assert_shutdown_retains_known_closed_quarantine(
+    async fn assert_shutdown_preserves_closed_unknown_evidence(
         h: &support::Harness,
         target: &Target,
     ) {
-        let error = h.host.shutdown().await.unwrap_err();
-        assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-        let report: ShutdownReport = decode(error.details.as_deref().unwrap()).unwrap();
+        let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
         assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
-        assert!(!report.completed);
-        assert_eq!(report.quarantined_sessions, vec![target.clone()]);
+        assert!(report.completed, "{report:?}");
+        assert!(report.quarantined_sessions.is_empty());
         assert!(report.unsettled_operation_ids.is_empty());
         assert!(report.failures.is_empty());
         let session = h.host.devices().session(target).unwrap();
@@ -2051,6 +2178,7 @@ mod mailbox_tests {
         assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
         assert_eq!(session.snapshot().unwrap().state, SessionState::Closed);
         assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
+        h.host.shutdown().await.unwrap();
     }
 
     async fn poll_pending<T>(future: Pin<&mut impl Future<Output = T>>) {

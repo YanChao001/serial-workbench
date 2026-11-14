@@ -7,10 +7,11 @@ import { useI18n } from "@/providers/i18n";
 type ColorPickerProps = {
   value: HslColor;
   onValueChange: (value: HslColor) => void;
+  label?: string;
 };
 
 /** 复用应用滑条的键盘与指针交互，颜色渐变只影响本控件的轨道。 */
-export function ColorPicker({ value, onValueChange }: ColorPickerProps) {
+export function ColorPicker({ value, onValueChange, label }: ColorPickerProps) {
   const { t } = useI18n();
   const id = useId();
   const tracks = [
@@ -40,7 +41,7 @@ export function ColorPicker({ value, onValueChange }: ColorPickerProps) {
   return (
     <div
       role="group"
-      aria-label={t("settings.customAccentPicker")}
+      aria-label={label ?? t("settings.customAccentPicker")}
       className="space-y-2"
     >
       {tracks.map((track) => (

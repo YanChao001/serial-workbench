@@ -1,4 +1,4 @@
-import { lazy, useEffect, useRef } from "react";
+import { lazy, useEffect, useRef, useState } from "react";
 import {
   act,
   cleanup,
@@ -111,12 +111,54 @@ describe("应用内容导航", () => {
     vi.unstubAllGlobals();
   });
 
+  it("工作台切页保留组件、DOM 和收数订阅，不在返回时重开读者", () => {
+    const mounted = vi.fn();
+    const subscribed = vi.fn();
+    const stopped = vi.fn();
+    function ConnectedPage() {
+      const [draft, setDraft] = useState(() => {
+        mounted();
+        return "";
+      });
+      useEffect(() => {
+        subscribed();
+        return stopped;
+      }, []);
+      return (
+        <input
+          aria-label="Connected draft"
+          value={draft}
+          onChange={(event) => setDraft(event.target.value)}
+        />
+      );
+    }
+    render(
+      <MemoryRouter>
+        <Routes>
+          <Route element={<AppShell />}>
+            <Route index element={<ConnectedPage />} />
+            <Route path="settings" element={<Page />} />
+          </Route>
+        </Routes>
+      </MemoryRouter>,
+    );
+    const draft = screen.getByRole("textbox", { name: "Connected draft" });
+    fireEvent.change(draft, { target: { value: "unsaved connected draft" } });
+    fireEvent.click(screen.getByRole("link", { name: "/settings" }));
+    expect(stopped).not.toHaveBeenCalled();
+    fireEvent.click(screen.getByRole("link", { name: "/" }));
+    expect(screen.getByRole("textbox", { name: "Connected draft" })).toBe(
+      draft,
+    );
+    expect(draft).toHaveValue("unsaved connected draft");
+    expect(mounted).toHaveBeenCalledOnce();
+    expect(subscribed).toHaveBeenCalledOnce();
+  });
+
   it("按当前路由切换工作台和文档布局，设置子页使用文档默认值", () => {
     renderShell("/settings/appearance");
     const main = screen.getByRole("main");
-    const pageContent = screen.getByRole("heading", {
-      name: "Page content",
-    }).parentElement?.parentElement;
+    const pageContent = main.querySelector(".app-page-content");
     expect(main).toHaveAttribute("data-content-layout", "document");
     expect(pageContent).toHaveAttribute("data-content-layout", "document");
 

@@ -33,7 +33,9 @@
       "lineEnding": {
         "kind": "none"
       },
+      "receiveEncoding": "utf-8",
       "receiveMode": "text",
+      "sendEncoding": "utf-8",
       "sendMode": "text",
       "typography": {
         "fontFamily": "ui-monospace",

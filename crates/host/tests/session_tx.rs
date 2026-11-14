@@ -1,3 +1,4 @@
+use base64::{Engine, engine::general_purpose::STANDARD};
 use serial_workbench_core::*;
 use serial_workbench_host::{
     auth::AuthService,
@@ -12,6 +13,71 @@ use std::sync::{
     atomic::{AtomicUsize, Ordering},
 };
 mod support;
+
+#[tokio::test]
+async fn large_manual_drafts_keep_one_operation_exact_bytes_and_readable_raw_evidence() {
+    for length in [16500, TX_MAX_BYTES] {
+        let h = support::Harness::new().await;
+        let target = h.open("large-manual-draft").await;
+        let bytes: Vec<u8> = (0..length).map(|i| b'0' + (i % 10) as u8).collect();
+        let base64 = STANDARD.encode(&bytes);
+        let call = h.call(
+            &target,
+            "session.tx",
+            serde_json::json!({"bytesBase64":base64,"writeWaitMs":"180000"}),
+        );
+        let admitted = h.invoke(call.clone()).await;
+        let done = h.wait(&admitted.operation_id).await;
+        let receipt = support::receipt(&done);
+        assert_eq!(
+            done.state,
+            OperationState::Succeeded,
+            "length={length}, error={:?}",
+            receipt.backend_error
+        );
+        assert_eq!(receipt.outcome, TxOutcome::Accepted);
+        assert_eq!(receipt.bytes_base64.as_str(), base64);
+        assert_eq!(
+            receipt.accepted_ranges,
+            vec![ByteRange {
+                start: 0.into(),
+                end: (length as u64).into()
+            }]
+        );
+        assert_eq!(h.probe.writes.lock().unwrap()[0].1, bytes);
+        assert_eq!(h.invoke(call).await.operation_id, done.operation_id);
+        assert_eq!(h.write_count(), 1);
+
+        let mut next = 1.into();
+        let mut events = Vec::new();
+        for _ in 0..8 {
+            let (page, _lease) = h
+                .host
+                .streams()
+                .read_prepared(
+                    &h.actor,
+                    StreamReadParams {
+                        session_id: target.id.clone(),
+                        session_epoch: target.session_epoch.unwrap(),
+                        start_event_seq: next,
+                        max_events: 100.into(),
+                        max_bytes: 262144.into(),
+                    },
+                )
+                .await
+                .unwrap()
+                .into_parts();
+            next = page.next_event_seq;
+            events.extend(page.events);
+            if !page.has_more {
+                break;
+            }
+        }
+        assert!(events.iter().any(|event| matches!(&event.payload, RawPayload::TxIntent(intent) if intent.operation_id == done.operation_id && intent.bytes_base64.as_str() == base64)));
+        assert!(events.iter().any(|event| matches!(&event.payload, RawPayload::Tx(final_tx) if final_tx.operation_id == done.operation_id && final_tx.bytes_base64.as_str() == base64)));
+        h.host.shutdown().await.unwrap();
+    }
+}
 
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
@@ -238,10 +304,7 @@ async fn unknown_write_preserves_prefix_and_does_not_replay() {
         }]
     );
     assert_eq!(h.write_count(), 1);
-    let error = h.host.shutdown().await.unwrap_err();
-    assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-    let report: ShutdownReport =
-        serde_json::from_value(serde_json::to_value(error.details.unwrap()).unwrap()).unwrap();
+    let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
     let persisted = h.store.get(&h.actor, &op.operation_id).unwrap();
     assert_eq!(
         persisted, op,
@@ -251,10 +314,10 @@ async fn unknown_write_preserves_prefix_and_does_not_replay() {
         report,
         ShutdownReport {
             mode: ShutdownMode::CancelAndSettle,
-            completed: false,
+            completed: true,
             excluded_operation_id: None,
             unsettled_operation_ids: vec![],
-            quarantined_sessions: vec![target.clone()],
+            quarantined_sessions: vec![],
             evidence_refs: vec![ObjectRef {
                 host_id: persisted.execution_host_id.clone(),
                 kind: ResourceKind::try_from("operation").unwrap(),
@@ -270,6 +333,7 @@ async fn unknown_write_preserves_prefix_and_does_not_replay() {
     assert_eq!(h.probe.close_calls.load(Ordering::SeqCst), 1);
     assert_eq!(h.probe.closes.load(Ordering::SeqCst), 1);
     assert_eq!(h.write_count(), 1);
+    h.host.shutdown().await.unwrap();
 }
 
 #[tokio::test]

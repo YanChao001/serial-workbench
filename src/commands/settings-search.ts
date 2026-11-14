@@ -2,9 +2,10 @@ import type { Translate } from "@/i18n/translate";
 import type { MessageKey as DictKey } from "@/i18n/zh-CN";
 import { BACKGROUND_METADATA, BACKGROUND_STYLES } from "@/lib/backgrounds";
 import { ACCENTS } from "@/lib/accent-colors";
+import type { SettingsEntryId } from "@/lib/settings-icons";
 
 export type SettingsSearchEntry = {
-  id: string;
+  id: SettingsEntryId;
   anchor: string;
   labelKey: DictKey;
   descriptionKey?: DictKey;
@@ -336,7 +337,10 @@ export function searchSettings(
 export function focusSetting(anchor: string): boolean {
   const target = document.getElementById(anchor);
   if (!target) return false;
-  target.scrollIntoView({ block: "center", behavior: "auto" });
+  target.scrollIntoView({
+    block: target.matches("section, fieldset") ? "start" : "center",
+    behavior: "auto",
+  });
   target.focus({ preventScroll: true });
   return true;
 }

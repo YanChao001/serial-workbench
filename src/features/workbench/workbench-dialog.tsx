@@ -78,7 +78,10 @@ export function WorkbenchDialog({
   children: ReactNode | ((requestReplace: () => Promise<boolean>) => ReactNode);
 }) {
   const id = useId();
-  const scope = `${id}:${scopeKey}`;
+  const retained = useRef({ title, scopeKey, children });
+  if (open) retained.current = { title, scopeKey, children };
+  const shown = open ? { title, scopeKey, children } : retained.current;
+  const scope = `${id}:${shown.scopeKey}`;
   const requestLeave = useRequestLeave();
   const content = useRef<HTMLDivElement | null>(null);
   const pending = useRef<AbortController | null>(null);
@@ -136,11 +139,13 @@ export function WorkbenchDialog({
         }}
       >
         <DialogHeader>
-          <DialogTitle>{title}</DialogTitle>
+          <DialogTitle>{shown.title}</DialogTitle>
         </DialogHeader>
         <div className="workbench-dialog-body" tabIndex={0}>
           <UnsavedWorkScope scope={scope}>
-            {typeof children === "function" ? children(negotiate) : children}
+            {typeof shown.children === "function"
+              ? shown.children(negotiate)
+              : shown.children}
           </UnsavedWorkScope>
         </div>
       </DialogContent>

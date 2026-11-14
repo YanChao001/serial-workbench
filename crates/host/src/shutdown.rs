@@ -279,15 +279,18 @@ impl Host {
             .operations
             .iter()
             .filter(|operation| {
-                Some(&operation.operation_id) != excluded.as_ref() && !terminal(operation.state)
+                Some(&operation.operation_id) != excluded.as_ref() && !operation.state.is_terminal()
             })
             .map(|operation| operation.operation_id.clone())
             .collect::<Vec<_>>();
         let mut quarantined_sessions = Vec::new();
         for session in self.inner.devices.sessions()? {
             let snapshot = session.snapshot()?;
-            if snapshot.tx_gate == TxGate::ControlUnknown
-                || snapshot.control_state == ControlState::Unknown
+            // Historical TX uncertainty stays in the session and receipt. It
+            // only blocks process exit while the native resource is unconfirmed.
+            // Unsettled physical control lines remain a separate responsibility.
+            if snapshot.control_state != ControlState::Clear
+                || (snapshot.tx_gate == TxGate::ControlUnknown && !session.cleanup_confirmed()?)
             {
                 quarantined_sessions.push(Target {
                     host_id: self.inner.devices.inner.identity.host_id.clone(),
@@ -475,13 +478,6 @@ fn remember_operations(state: &mut ShutdownState, operations: Vec<Operation>) ->
     }
     state.operations = operations;
     Ok(())
-}
-
-fn terminal(state: OperationState) -> bool {
-    !matches!(
-        state,
-        OperationState::Queued | OperationState::Running | OperationState::CancelRequested
-    )
 }
 
 fn incomplete(message: &str) -> HostError {

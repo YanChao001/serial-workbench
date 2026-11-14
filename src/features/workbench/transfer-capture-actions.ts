@@ -67,9 +67,3 @@ export function useToolDraft<T>(
     discard: () => discard(saved),
   });
 }
-
-export function unsigned(value: string): bigint | undefined {
-  if (!/^(0|[1-9][0-9]*)$/.test(value)) return;
-  const parsed = BigInt(value);
-  return parsed <= 18446744073709551615n ? parsed : undefined;
-}

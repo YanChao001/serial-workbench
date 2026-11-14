@@ -1,4 +1,9 @@
-﻿import { StrictMode } from "react";
+import {
+  StrictMode,
+  useEffect,
+  useLayoutEffect,
+  useSyncExternalStore,
+} from "react";
 import {
   act,
   fireEvent,
@@ -7,11 +12,18 @@ import {
   waitFor,
 } from "@testing-library/react";
 import { describe, expect, it, vi } from "vitest";
+import { toast } from "sonner";
 import { HostProvider } from "./host";
+import { OperationFailureObserver } from "@/features/workbench/operation-failure-notices";
+import { clearUserLog, getUserLog } from "@/lib/user-log";
+import { I18nContext } from "./i18n-context";
+import { createTranslator } from "@/i18n/translate";
+import { en } from "@/i18n/en";
 import { CaptureTailPanel } from "@/features/workbench/capture-tail-panel";
 import { labels as workbenchLabels } from "@/features/workbench/test-fixtures";
-import { useHost } from "./host-context";
-import { createHostConnection, createHostWorkspace } from "@/lib/host-client";
+import { HostContext, useHost } from "./host-context";
+import { createHostConnection } from "@/lib/host-client";
+import { createHostWorkspace } from "./host-controller";
 import type { HostConnection, HostNativePort } from "@/lib/host-client";
 import fixtures from "../../packages/contracts/src/generated/fixtures.json";
 import { parseReply } from "@serial-workbench/contracts";
@@ -25,6 +37,8 @@ import type {
   WorkspaceDocumentResult,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
+
+vi.mock("sonner", () => ({ toast: { custom: vi.fn(), dismiss: vi.fn() } }));
 
 function fixture(schema: string): unknown {
   const found = fixtures.valid.find((value) => value.schema === schema);
@@ -205,7 +219,7 @@ async function sessionProjectionRace(
     deliveries.push({ query, deliver, id });
     return id;
   });
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (request.method !== "action.query") throw new Error("read-only fixture");
     const query = request.params;
     if (query.actionId === "state.scopes") {
@@ -307,7 +321,7 @@ async function sessionProjectionRace(
         },
       });
     }
-    return fallback(request);
+    return fallback(request, generation);
   });
   const connection = await createHostConnection(native);
   // 只覆盖工作区恢复阶段，不把构造连接的首个目录读取伪造成失败。
@@ -512,7 +526,7 @@ describe("session projection epoch recovery", () => {
         }),
       );
       await waitFor(() => expect(h.deliveries).toHaveLength(2));
-      expect(h.native.unsubscribe).toHaveBeenCalledWith(old.id);
+      expect(h.native.unsubscribe).toHaveBeenCalledWith(old.id, "1");
       expect(h.deliveries[1]?.query.target.sessionEpoch).toBe(
         h.session().sessionEpoch,
       );
@@ -640,14 +654,14 @@ describe("session projection epoch recovery", () => {
           },
         }),
       );
-      h.native.request.mockImplementation(async (request) => {
+      h.native.request.mockImplementation(async (request, generation) => {
         if (
           request.method === "action.query" &&
           request.params.actionId === "catalog.list" &&
           request.params.params.pageSize === "1"
         )
           return failedProbe();
-        return original(request);
+        return original(request, generation);
       });
       const active = h.deliveries.at(-1)!;
       h.advance();
@@ -782,6 +796,19 @@ describe("HostProvider lifecycle", () => {
       expect.any(AbortSignal),
     );
     expect(workspace.getSnapshot().connection).toBe(connection);
+    await expect(
+      workspace.send(
+        {
+          hostId: "host",
+          kind: "session",
+          id: session.sessionId,
+          sessionId: session.sessionId,
+          sessionEpoch: "999",
+        },
+        new Uint8Array([1]),
+      ),
+    ).rejects.toMatchObject({ code: "EPOCH_MISMATCH" });
+    expect(invoke).toHaveBeenCalledTimes(1);
     invoke.mockRejectedValueOnce(
       new HostRequestError({
         code: "PERMISSION_DENIED",
@@ -790,7 +817,16 @@ describe("HostProvider lifecycle", () => {
       }),
     );
     await expect(
-      workspace.send(session.sessionId, new Uint8Array([1])),
+      workspace.send(
+        {
+          hostId: "host",
+          kind: "session",
+          id: session.sessionId,
+          sessionId: session.sessionId,
+          sessionEpoch: session.sessionEpoch,
+        },
+        new Uint8Array([1]),
+      ),
     ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
     expect(invoke).toHaveBeenCalledTimes(2);
     workspace.dispose();
@@ -963,13 +999,53 @@ async function establishedProvider() {
     current: () => current!,
     lateProjection: () =>
       projection({ type: "error", error: new Error("late old projection") }),
+    failProjection: (error: Error) => projection({ type: "error", error }),
   };
 }
+
+it("keeps an old render's action effect safe when its Host retires during commit", async () => {
+  const established = await establishedProvider();
+  const failure = new HostRequestError({
+    code: "UNAUTHENTICATED",
+    message: "Owned Host stopped",
+    retryable: true,
+  });
+  const query = vi.spyOn(established.connection.client, "query");
+  const dispose = vi.spyOn(established.connection, "dispose");
+  const observed = vi.fn();
+  const pendingInput = {
+    actionId: "session.open",
+    target: established.connection.hostTarget,
+    params: {},
+  };
+  function OldRender() {
+    const watch = established.current().watchActions;
+    useLayoutEffect(() => established.failProjection(failure), []);
+    useEffect(() => watch([pendingInput], observed), [watch]);
+    return <input aria-label="Preserved draft" defaultValue="UNSENT" />;
+  }
+  // 固定交错：渲染捕获旧观察器，layout 阶段退休 Host，随后提交旧 passive effect。
+  const committed = render(<OldRender />);
+  expect(screen.getByRole("textbox", { name: "Preserved draft" })).toHaveValue(
+    "UNSENT",
+  );
+  expect(established.current().state.status).toBe("error");
+  expect(established.current().state.error).toBe(failure);
+  expect(dispose).toHaveBeenCalledOnce();
+  expect(observed).toHaveBeenCalledExactlyOnceWith([
+    { input: pendingInput, result: null, error: null },
+  ]);
+  expect(query).not.toHaveBeenCalled();
+  expect(established.connect).toHaveBeenCalledOnce();
+  committed.unmount();
+  established.view.unmount();
+});
 
 it.each(["HOST_START_FAILED", "UNAUTHENTICATED", "EPOCH_MISMATCH"])(
   "retires a %s attachment and restores reads only after explicit Retry",
   async (code) => {
     const established = await establishedProvider();
+    const retiredWatch = established.current().watchActions;
     const failure = new HostRequestError({
       code,
       message:
@@ -991,6 +1067,23 @@ it.each(["HOST_START_FAILED", "UNAUTHENTICATED", "EPOCH_MISMATCH"])(
     expect(dispose).toHaveBeenCalledOnce();
     expect(established.stop).toHaveBeenCalledOnce();
     expect(established.connect).toHaveBeenCalledOnce();
+    const observed = vi.fn();
+    const pendingInput = {
+      actionId: "session.open",
+      target: established.connection.hostTarget,
+      params: {},
+    };
+    function LateCommittedWatcher() {
+      useEffect(() => retiredWatch([pendingInput], observed), []);
+      return <span>Preserved draft</span>;
+    }
+    // Host 退休后仍可能提交持有旧快照的被动 effect；它不能使路由进入错误边界。
+    const late = render(<LateCommittedWatcher />);
+    expect(screen.getByText("Preserved draft")).toBeInTheDocument();
+    expect(observed).toHaveBeenCalledExactlyOnceWith([
+      { input: pendingInput, result: null, error: null },
+    ]);
+    late.unmount();
     const native = port();
     const old = await native.attachment();
     native.attachment.mockResolvedValue({
@@ -1128,7 +1221,21 @@ it("loads workspace configuration without opening devices and saves against the 
     chooseFile: vi.fn(),
     applyDocumentIntent,
   });
-  expect(await workspace.listWorkspaces()).toEqual([document]);
+  const directory = {
+    workspaces: [
+      {
+        scope: document.scope,
+        name: document.document.value.name,
+        revision: document.document.revision,
+      },
+    ],
+  };
+  query.mockResolvedValueOnce({ kind: "workspaces", value: directory });
+  expect(await workspace.listWorkspaces()).toEqual(directory);
+  expect(query).toHaveBeenCalledWith(
+    expect.objectContaining({ actionId: "workspace.list" }),
+    expect.any(AbortSignal),
+  );
   expect(workspace.getSnapshot().state.workspace).toBeUndefined();
   expect(invoke).not.toHaveBeenCalled();
   const loaded = await workspace.loadWorkspace("chosen");
@@ -1243,38 +1350,128 @@ async function operationProjection() {
     connection,
     workspace,
     operation,
-    metadata(ids: string[], source = operation) {
-      publish({
-        type: "snapshot",
-        snapshot: {
+    metadata(
+      ids: string[],
+      source = operation,
+      options?: { delta?: boolean; revisions?: Record<string, string> },
+    ) {
+      const snapshot = {
+        hostId: connection.attachment.hostId,
+        instanceEpoch: connection.attachment.instanceEpoch,
+        revision: "1",
+        cursor: {
           hostId: connection.attachment.hostId,
           instanceEpoch: connection.attachment.instanceEpoch,
-          revision: "1",
-          cursor: {
-            hostId: connection.attachment.hostId,
-            instanceEpoch: connection.attachment.instanceEpoch,
-            scopeId: "host.operations",
-            position: "1",
-          },
-          state: {
-            items: ids.map((operationId) => ({
-              operationId,
-              executionHostId: source.executionHostId,
-              actorId: source.actorId,
-              actionId: source.actionId,
-              target: source.target,
-              executionMode: source.executionMode,
-              state: source.state,
-              revision: source.revision,
-              revealTarget: source.revealTarget,
-              acceptedAt: source.acceptedAt,
-            })),
-          },
+          scopeId: "host.operations",
+          position: "1",
         },
-      });
+        state: {
+          items: ids.map((operationId) => ({
+            operationId,
+            executionHostId: source.executionHostId,
+            actorId: source.actorId,
+            actionId: source.actionId,
+            target: source.target,
+            executionMode: source.executionMode,
+            state: source.state,
+            revision: options?.revisions?.[operationId] ?? source.revision,
+            revealTarget: source.revealTarget,
+            acceptedAt: source.acceptedAt,
+            ...(source.error ? { errorCode: source.error.code } : {}),
+          })),
+        },
+      };
+      if (options?.delta) {
+        publish({
+          type: "delta",
+          delta: {
+            cursor: snapshot.cursor,
+            previousCursor: { ...snapshot.cursor, position: "0" },
+            revision: "1",
+            eventType: "operations",
+            payload: snapshot.state,
+          },
+        });
+      } else
+        publish({
+          type: "snapshot",
+          snapshot,
+        });
     },
   };
 }
+
+it.each([false, true])(
+  "keeps delayed startup history quiet and reports a later capture failure (persisted failures: %s)",
+  async (persisted) => {
+    const { connection, workspace, operation, metadata } =
+      await operationProjection();
+    const failure = {
+      ...operation,
+      actionId: "capture.start",
+      state: "failed" as const,
+      error: {
+        code: "PERMISSION_DENIED",
+        message: "Fixture denied",
+        retryable: false,
+      },
+    };
+    vi.spyOn(connection.client, "query").mockResolvedValue({
+      kind: "operation",
+      value: { operation: failure },
+    });
+    function Observer() {
+      const value = useSyncExternalStore(
+        workspace.subscribe,
+        workspace.getSnapshot,
+      );
+      return (
+        <HostContext value={value}>
+          <I18nContext value={{ language: "en", t: createTranslator(en) }}>
+            <OperationFailureObserver />
+          </I18nContext>
+        </HostContext>
+      );
+    }
+    clearUserLog();
+    vi.mocked(toast.custom).mockClear();
+    const view = render(
+      <StrictMode>
+        <Observer />
+      </StrictMode>,
+    );
+    try {
+      expect(workspace.getSnapshot().state.status).toBe("ready");
+      expect(workspace.getSnapshot().state.operationSummaries).toEqual([]);
+      const history = persisted
+        ? ["old-capture-1", "old-capture-2", "old-capture-3"]
+        : [];
+      await act(async () => metadata(history, failure));
+      expect(workspace.getSnapshot().state.operationSummaries).toHaveLength(
+        history.length,
+      );
+      expect(toast.custom).not.toHaveBeenCalled();
+      expect(getUserLog()).toEqual([]);
+
+      await act(async () =>
+        metadata([`new-capture-failure-${persisted}`, ...history], failure),
+      );
+      expect(toast.custom).toHaveBeenCalledOnce();
+      expect(getUserLog()).toEqual([
+        expect.objectContaining({
+          module: "capture",
+          code: "PERMISSION_DENIED",
+          count: 1,
+        }),
+      ]);
+    } finally {
+      view.unmount();
+      workspace.dispose();
+      clearUserLog();
+      vi.mocked(toast.custom).mockClear();
+    }
+  },
+);
 
 it("selects the first 128 active-first newest operation metadata entries", async () => {
   const { connection, workspace, operation, metadata } =
@@ -1330,6 +1527,124 @@ it("serves newest operation metadata after the in-flight batch instead of draini
     release();
     await waitFor(() => expect(queried.length).toBeGreaterThan(8));
     expect(queried[8]).toBe("newest-operation");
+  } finally {
+    release();
+    workspace.dispose();
+  }
+});
+
+it("reads only changed operation details for a delta but reauthorizes all details for a fresh snapshot", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  const ids = Array.from(
+    { length: 128 },
+    (_, index) => `delta-detail-${index}`,
+  );
+  const changedId = ids[0]!;
+  let revision = operation.revision;
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input) => {
+      const id = input.params.operationId;
+      if (typeof id !== "string") throw new Error("operation id");
+      return {
+        kind: "operation",
+        value: {
+          operation: {
+            ...operation,
+            operationId: id,
+            revision: id === changedId ? revision : operation.revision,
+          },
+        },
+      };
+    });
+  try {
+    metadata(ids);
+    await waitFor(() =>
+      expect(workspace.getSnapshot().state.operations).toHaveLength(128),
+    );
+    query.mockClear();
+    revision = String(BigInt(revision) + 1n);
+    const options = { delta: true, revisions: { [changedId]: revision } };
+    metadata(ids, operation, options);
+    await waitFor(() =>
+      expect(
+        workspace
+          .getSnapshot()
+          .state.operations.find((value) => value.operationId === changedId)
+          ?.revision,
+      ).toBe(revision),
+    );
+    expect(query).toHaveBeenCalledTimes(1);
+    query.mockClear();
+    metadata(ids, operation, options);
+    expect(query).not.toHaveBeenCalled();
+    metadata(ids, operation, { delta: true });
+    expect(query).not.toHaveBeenCalled();
+    metadata(ids, operation, { revisions: options.revisions });
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(128));
+  } finally {
+    workspace.dispose();
+  }
+});
+
+it("finishes fresh authorization reads even if an unchanged delta arrives mid-refresh", async () => {
+  const { connection, workspace, operation, metadata } =
+    await operationProjection();
+  const ids = Array.from(
+    { length: 16 },
+    (_, index) => `authorized-detail-${index}`,
+  );
+  let sanitize = false;
+  let release!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    release = resolve;
+  });
+  const query = vi
+    .spyOn(connection.client, "query")
+    .mockImplementation(async (input) => {
+      const id = input.params.operationId;
+      if (typeof id !== "string") throw new Error("operation id");
+      if (sanitize) await gate;
+      return {
+        kind: "operation",
+        value: {
+          operation: {
+            ...operation,
+            operationId: id,
+            error: {
+              code: "STORAGE_IO",
+              message: "write failed",
+              retryable: false,
+              ...(sanitize
+                ? {}
+                : { details: { privateDiagnostic: "old details" } }),
+            },
+          },
+        },
+      };
+    });
+  try {
+    metadata(ids);
+    await waitFor(() =>
+      expect(workspace.getSnapshot().state.operations).toHaveLength(16),
+    );
+    query.mockClear();
+    sanitize = true;
+    metadata(ids);
+    await waitFor(() => expect(query).toHaveBeenCalledTimes(8));
+    metadata(ids, operation, { delta: true });
+    release();
+    await waitFor(() =>
+      expect(
+        workspace
+          .getSnapshot()
+          .state.operations.every(
+            (value) => value.error?.details === undefined,
+          ),
+      ).toBe(true),
+    );
+    expect(query).toHaveBeenCalledTimes(16);
   } finally {
     release();
     workspace.dispose();
@@ -1756,7 +2071,16 @@ it("uses the native user entry only for explicit connection and deduplicates sim
     }),
   );
   await expect(
-    workspace.send(session.sessionId, new Uint8Array([1])),
+    workspace.send(
+      {
+        hostId: "host",
+        kind: "session",
+        id: session.sessionId,
+        sessionId: session.sessionId,
+        sessionEpoch: session.sessionEpoch,
+      },
+      new Uint8Array([1]),
+    ),
   ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
   expect(userActions.connectDevice).toHaveBeenCalledTimes(1);
   await expect(workspace.pickFile("source")).resolves.toBeNull();
@@ -2154,7 +2478,7 @@ it.each(["operationId", "target"] as const)(
 it("exposes the real catalog and stale devices without inventing global write permission", async () => {
   const native = port();
   const fallback = native.request.getMockImplementation()!;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "device.list"
@@ -2163,7 +2487,7 @@ it("exposes the real catalog and stale devices without inventing global write pe
         ok: true,
         result: { kind: "devices", value: { devices: [], stale: true } },
       };
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   await workspace.refresh();
@@ -2177,7 +2501,7 @@ it("checks the exact action and complete target and rejects a receipt for an old
   const native = port();
   const fallback = native.request.getMockImplementation()!;
   let epoch = "2";
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "action.check"
@@ -2193,7 +2517,7 @@ it("checks the exact action and complete target and rejects a receipt for an old
           },
         },
       };
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   const input = {
@@ -2222,7 +2546,7 @@ it("refreshes visible target rights after revocation even when catalog remains u
   const native = port();
   const fallback = native.request.getMockImplementation()!;
   let allowed = true;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "action.check"
@@ -2238,7 +2562,7 @@ it("refreshes visible target rights after revocation even when catalog remains u
           },
         },
       };
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   const observed: (boolean | null)[] = [];
@@ -2263,7 +2587,7 @@ it("refreshes visible target rights after revocation even when catalog remains u
   allowed = false;
   await vi.advanceTimersByTimeAsync(1000);
   expect(observed.at(-1)).toBe(false);
-  expect(observed).toEqual([null, true, false, false]);
+  expect(observed).toEqual([null, true, false]);
   stop();
   const calls = native.request.mock.calls.length;
   await vi.advanceTimersByTimeAsync(2000);
@@ -2276,7 +2600,7 @@ it("keeps an existing unexpired action observation while unrelated controls subs
   vi.useFakeTimers();
   const native = port();
   const fallback = native.request.getMockImplementation()!;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "action.check"
@@ -2292,7 +2616,7 @@ it("keeps an existing unexpired action observation while unrelated controls subs
         },
       };
     }
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   const target = {
@@ -2345,7 +2669,7 @@ it("does not extend existing action validity while a newly visible control is sl
     release = resolve;
   });
   let closeChecked = false;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "action.check"
@@ -2363,7 +2687,7 @@ it("does not extend existing action validity while a newly visible control is sl
         },
       };
     }
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   const target = {
@@ -2406,7 +2730,7 @@ it("discards an old target observer's late grant while a new target checks indep
   let release: (() => void) | undefined;
   let active = 0;
   let peak = 0;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "action.check"
@@ -2430,7 +2754,7 @@ it("discards an old target observer's late grant while a new target checks indep
         },
       };
     }
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   const old = vi.fn();
@@ -2758,7 +3082,7 @@ it("expires observations while hidden and refreshes on focus without executing a
   const native = port();
   const fallback = native.request.getMockImplementation()!;
   let allowed = true;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (
       request.method === "action.query" &&
       request.params.actionId === "action.check"
@@ -2774,7 +3098,7 @@ it("expires observations while hidden and refreshes on focus without executing a
           },
         },
       };
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   const observed: (boolean | null)[] = [];
@@ -2964,7 +3288,7 @@ it("uses Host query envelopes for recent, JSON export and import preview without
   const native = port();
   const fallback = native.request.getMockImplementation()!;
   const candidate = workspaceFixture().document.value;
-  native.request.mockImplementation(async (request) => {
+  native.request.mockImplementation(async (request, generation) => {
     if (request.method === "action.query") {
       if (request.params.actionId === "recent.list")
         return {
@@ -2982,7 +3306,7 @@ it("uses Host query envelopes for recent, JSON export and import preview without
           result: { kind: "workspace_import_preview", value: candidate },
         };
     }
-    return fallback(request);
+    return fallback(request, generation);
   });
   const workspace = createHostWorkspace(await createHostConnection(native));
   await expect(workspace.recentConnections()).resolves.toEqual({
@@ -3026,7 +3350,7 @@ it.each(["two watchers", "one watcher"] as const)(
     let inFlight = 0;
     let peak = 0;
     let checks = 0;
-    native.request.mockImplementation(async (request) => {
+    native.request.mockImplementation(async (request, generation) => {
       if (
         request.method === "action.query" &&
         request.params.actionId === "action.check"
@@ -3054,7 +3378,7 @@ it.each(["two watchers", "one watcher"] as const)(
           },
         };
       }
-      return fallback(request);
+      return fallback(request, generation);
     });
     const workspace = createHostWorkspace(await createHostConnection(native));
     const input = (id: string) => ({

@@ -151,10 +151,10 @@ impl McpBridge {
                 actor_id: attach.actor_id.clone(),
                 request_id: input.request_id.unwrap_or_else(request_id),
                 request_context: attach.request_context.clone(),
-                action_id: spec.action_id,
+                action_id: spec.action_id.clone(),
                 target: input.target,
                 params: input.params,
-                reveal_target: spec.reveal_target,
+                reveal_target: spec.reveal_target.clone(),
                 expected_revision: input.expected_revision,
                 lease_id: input.lease_id,
                 execution_mode: input.execution_mode,
@@ -475,7 +475,7 @@ fn query(client: &HostClient, action: BuiltinAction, input: ToolInput) -> Query 
         action_id: Id::try_from(action.action_id()).expect("builtin action"),
         target: input.target,
         params: input.params,
-        reveal_target: action.spec().reveal_target,
+        reveal_target: action.spec().reveal_target.clone(),
     }
 }
 fn request_id() -> RequestId {

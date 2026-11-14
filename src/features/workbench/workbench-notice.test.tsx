@@ -132,6 +132,28 @@ it("does not replay an unchanged error when its parent renders new content nodes
   });
 });
 
+it.each([false, true])(
+  "does not keep broadcasting dismissals on stream updates after an empty notice (previous error: %s)",
+  (previousError) => {
+    const content = (present: boolean) => (
+      <WorkbenchNotice
+        noticeKey="stream:reader"
+        log={{ module: "display", level: "error", message: "Reader stopped" }}
+      >
+        {present && <p>Reader stopped</p>}
+      </WorkbenchNotice>
+    );
+    const view = render(content(previousError));
+    view.rerender(content(false));
+    const closed = vi.mocked(toast.dismiss).mock.calls.length;
+    for (let tick = 0; tick < 100; tick++) view.rerender(content(false));
+    expect(toast.dismiss).toHaveBeenCalledTimes(closed);
+    expect(closed).toBe(previousError ? 1 : 0);
+    view.unmount();
+    expect(toast.dismiss).toHaveBeenCalledTimes(closed);
+  },
+);
+
 it("notifies a subsequent failed attempt after the previous error was cleared", () => {
   const view = render(
     <WorkbenchNotice noticeKey="open:ACCESS_DENIED">

@@ -1,7 +1,7 @@
-﻿import type { WorkspaceDocument } from "@serial-workbench/contracts";
+import type { WorkspaceDocument } from "@serial-workbench/contracts";
 
 export type WorkspaceImportChange = {
-  section: keyof WorkspaceDocument;
+  section: Exclude<keyof WorkspaceDocument, "archived">;
   key: string;
   kind: "added" | "removed" | "changed";
   before?: unknown;
@@ -42,7 +42,7 @@ export function diffWorkspaceImport(
 ): WorkspaceImportChange[] {
   const changes: WorkspaceImportChange[] = [];
   function compare(
-    section: keyof WorkspaceDocument,
+    section: Exclude<keyof WorkspaceDocument, "archived">,
     key: string,
     before: unknown,
     after: unknown,
@@ -51,7 +51,7 @@ export function diffWorkspaceImport(
       changes.push({ section, key, kind: "changed", before, after });
   }
   function collection<T>(
-    section: keyof WorkspaceDocument,
+    section: Exclude<keyof WorkspaceDocument, "archived">,
     before: T[],
     after: T[],
     identity: (value: T) => string,

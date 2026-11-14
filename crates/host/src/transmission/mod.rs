@@ -328,7 +328,7 @@ impl TransmissionService {
         let actor = accepted.actor.clone();
         let mut settled = blocking(move || {
             let current = store.get(&actor, &id)?;
-            if terminal(current.state) {
+            if current.state.is_terminal() {
                 return Ok(current);
             }
             let settlement = match result {
@@ -803,7 +803,7 @@ impl TransmissionService {
             let actor_copy = actor.clone();
             let key = id.clone();
             let current = blocking(move || store.get(&actor_copy, &key)).await?;
-            if terminal(current.state) {
+            if current.state.is_terminal() {
                 self.pending_cancels
                     .lock()
                     .map_err(|_| invalid())?
@@ -869,7 +869,7 @@ impl TransmissionService {
                     .lock()
                     .map_err(|_| invalid())?
                     .remove(id);
-                if terminal(latest.state) {
+                if latest.state.is_terminal() {
                     return Ok(latest);
                 }
                 if self.tokens.lock().map_err(|_| invalid())?.contains_key(id) {
@@ -919,12 +919,6 @@ impl TransmissionService {
             _ => Err(invalid()),
         }
     }
-}
-fn terminal(state: OperationState) -> bool {
-    !matches!(
-        state,
-        OperationState::Queued | OperationState::Running | OperationState::CancelRequested
-    )
 }
 fn cancelled() -> HostError {
     HostError::new("CANCELLED", "Operation cancelled before remaining work")
@@ -1014,21 +1008,7 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
             object(&params)
         }
         BuiltinAction::DeviceOpen => norm::<OpenParams>(&call.params),
-        BuiltinAction::SessionTx => {
-            let params: TxParams = decode(&call.params)?;
-            let length = params.bytes_base64.as_str().len() / 4 * 3
-                - params
-                    .bytes_base64
-                    .as_str()
-                    .bytes()
-                    .rev()
-                    .take_while(|b| *b == b'=')
-                    .count();
-            if length > 16384 {
-                return Err(HostError::new("LIMIT_EXCEEDED", "TX exceeds 16 KiB"));
-            }
-            object(&params)
-        }
+        BuiltinAction::SessionTx => norm::<TxParams>(&call.params),
         BuiltinAction::SessionConfigure => {
             if call.expected_revision.is_none() {
                 return Err(invalid());

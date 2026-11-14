@@ -58,7 +58,7 @@ describe("Real Tauri desktop", () => {
         async () => (await readSettings()).settings.language === locale,
       );
       assert.equal(
-        await $("main h1").getText(),
+        await $(".settings-header h1").getText(),
         locale === "zh" ? "\u8bbe\u7f6e" : "Settings",
       );
     }
@@ -603,23 +603,28 @@ describe("Real Tauri desktop", () => {
 
   it("renders diagnostic JSON as highlighted inert text", async () => {
     await openDeepLink("/diagnostics");
-    await $("details:has([data-testid=diagnostics-report]) > summary").click();
-    await browser.waitUntil(async () =>
-      (await $("[data-testid=diagnostics-report]").getText()).includes(
-        "appVersion",
-      ),
+    const diagnostics = await $(
+      ".studio-page:not(.settings-studio):has([data-testid=diagnostics-report])",
     );
-    const report = await $("[data-testid=diagnostics-report]").getText();
+    await diagnostics.waitForDisplayed();
+    await diagnostics
+      .$("details:has([data-testid=diagnostics-report]) > summary")
+      .click();
+    const block = await diagnostics.$("[data-testid=diagnostics-report]");
+    await block.waitForDisplayed();
+    await browser.waitUntil(async () =>
+      (await block.getText()).includes("appVersion"),
+    );
+    const report = await block.getText();
     assert.equal(typeof JSON.parse(report).appVersion, "string");
-    const colors = await browser.execute(() => {
-      const block = document.querySelector("[data-testid=diagnostics-report]");
+    const colors = await browser.execute((block) => {
       const key = block.querySelector("[data-token=property]");
       return {
         keys: block.querySelectorAll("[data-token=property]").length,
         key: key && getComputedStyle(key).color,
         plain: getComputedStyle(block).color,
       };
-    });
+    }, block);
     assert.ok(colors.keys > 0);
     assert.notEqual(colors.key, colors.plain);
   });

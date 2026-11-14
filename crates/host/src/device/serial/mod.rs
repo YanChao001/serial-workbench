@@ -468,20 +468,16 @@ mod tests {
         assert_eq!(result.accepted_ranges, [range(0, 2)]);
         assert_eq!(result.unknown_ranges, [range(2, 5)]);
         assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
-        // 迟到的线程退出不能把已经发布的隔离状态改写为确认关闭。
-        let error = h.host.shutdown().await.unwrap_err();
-        assert_eq!(error.code, "SHUTDOWN_INCOMPLETE");
-        let report: ShutdownReport = serde_json::from_value(
-            serde_json::to_value(error.details.as_deref().unwrap()).unwrap(),
-        )
-        .unwrap();
+        // 实际清理及线程退出允许关停，但不能改写已发布的 TX unknown。
+        let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
         assert_eq!(report.mode, ShutdownMode::CancelAndSettle);
-        assert!(!report.completed);
-        assert_eq!(report.quarantined_sessions, vec![target]);
+        assert!(report.completed, "{report:?}");
+        assert!(report.quarantined_sessions.is_empty());
         assert!(report.unsettled_operation_ids.is_empty());
         // 后端已实际退出并确认 close；资源清理成功不改写原 TX 的隔离结果。
         assert!(report.failures.is_empty());
         assert_eq!(session.snapshot().unwrap().tx_gate, TxGate::ControlUnknown);
+        h.host.shutdown().await.unwrap();
     }
 
     #[test]
@@ -877,7 +873,10 @@ impl Transport for NativeTransport {
         self.capabilities.clone()
     }
     fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock> {
-        self.call(wait, |reply| NativeRequest::Read(limit, wait, reply))
+        // 原生读还需收取取消完成，调度余量覆盖该阶段后才隔离 owner。
+        self.call(wait + Duration::from_millis(150), |reply| {
+            NativeRequest::Read(limit, wait, reply)
+        })
     }
     fn begin_write(
         &mut self,

@@ -2,6 +2,7 @@ use serial_workbench_core::*;
 use std::{
     collections::BTreeMap,
     ffi::OsString,
+    io::Read,
     path::{Path, PathBuf},
 };
 
@@ -23,6 +24,7 @@ Commands:
 All results are JSON. Authorize/revoke accept the Core AuthorizeParams/RevokeParams JSON.
 Only authorize, revoke, and host stop use local user-control credentials.
 Host stop waits for the attached Host instance to end; another instance may start.
+When the profile lock is free, host stop reports alreadyStopped without starting a Host.
 Invoke returns the accepted Operation without waiting or retrying; use operation get.
 Context saves the Host-issued AttachResult as a new UTF-8 JSON file; it never overwrites.
 Reuse the same context file and request Id for retries. Old/expired contexts are not refreshed.
@@ -279,8 +281,16 @@ fn file<T: serde::de::DeserializeOwned>(
     let path = options
         .remove(key)
         .ok_or_else(|| invalid(format!("Missing {key}")))?;
-    let bytes =
-        std::fs::read(Path::new(&path)).map_err(|_| invalid(format!("Cannot read {key} file")))?;
+    let mut bytes = Vec::new();
+    std::fs::File::open(Path::new(&path))
+        .and_then(|file| {
+            file.take(serial_workbench_ipc::frame::MAX_FRAME_BYTES as u64 + 1)
+                .read_to_end(&mut bytes)
+        })
+        .map_err(|_| invalid(format!("Cannot read {key} file")))?;
+    if bytes.len() > serial_workbench_ipc::frame::MAX_FRAME_BYTES {
+        return Err(invalid(format!("{key} file exceeds the IPC frame budget")));
+    }
     serde_json::from_slice(&bytes).map_err(|error| invalid(format!("Invalid {key} JSON: {error}")))
 }
 pub fn object(value: impl serde::Serialize) -> HostResult<JsonObject> {
@@ -299,4 +309,24 @@ pub fn new_request_id() -> RequestId {
 }
 fn invalid(message: impl Into<String>) -> HostError {
     HostError::new("INVALID_ARGUMENT", message)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    #[test]
+    fn json_file_enforces_actual_byte_budget_and_accepts_boundary() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join("params.json");
+        let mut bytes = vec![b' '; serial_workbench_ipc::frame::MAX_FRAME_BYTES];
+        bytes[..2].copy_from_slice(b"{}");
+        std::fs::write(&path, &bytes).unwrap();
+        let options = || BTreeMap::from([("--params-json".into(), path.clone().into_os_string())]);
+        assert!(file::<JsonObject>(&mut options(), "--params-json").is_ok());
+        bytes.push(b' ');
+        std::fs::write(&path, &bytes).unwrap();
+        let error = file::<JsonObject>(&mut options(), "--params-json").unwrap_err();
+        assert_eq!(error.code, "INVALID_ARGUMENT");
+        assert!(error.message.contains("budget"));
+    }
 }

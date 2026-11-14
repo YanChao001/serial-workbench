@@ -29,13 +29,10 @@ import { Textarea } from "@/components/ui/textarea";
 import { OperationDetails } from "./operation-details";
 import type { OperationText } from "./operation-text";
 import { nativeErrorCode } from "@/lib/native-error";
+import { parseU64, U64_MAX } from "@/lib/u64";
 import { WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
-import {
-  unsigned,
-  useToolAction,
-  useToolDraft,
-} from "./transfer-capture-actions";
+import { useToolAction, useToolDraft } from "./transfer-capture-actions";
 import type {
   HostActionCheckInput,
   HostContextValue,
@@ -224,22 +221,20 @@ function CaptureToolsForm({
     draft.writeMode !== "replace" || (metadata !== undefined && confirmed);
   const overflowPolicy: OverflowPolicy = "stop";
   const storageLimits = useMemo<CaptureStorageLimits | undefined>(() => {
-    const capacity = unsigned(draft.capacityMiB),
-      reserve = unsigned(draft.reserveMiB);
+    const capacity = parseU64(draft.capacityMiB),
+      reserve = parseU64(draft.reserveMiB);
     if (capacity === undefined || capacity === 0n || reserve === undefined)
       return;
     const capacityBytes = capacity * 1048576n,
       reserveBytes = reserve * 1048576n;
-    if (
-      capacityBytes > 18446744073709551615n ||
-      reserveBytes > 18446744073709551615n
-    )
-      return;
+    if (capacityBytes > U64_MAX || reserveBytes > U64_MAX) return;
     return {
       capacityBytes: capacityBytes.toString(),
       reserveBytes: reserveBytes.toString(),
     };
   }, [draft.capacityMiB, draft.reserveMiB]);
+  const expectedFingerprint =
+    draft.writeMode === "replace" ? metadata?.fingerprint : undefined;
   const startParams = useMemo(
     () =>
       target && sessionRefs.length && replacementReady && storageLimits
@@ -250,9 +245,7 @@ function CaptureToolsForm({
             overflowPolicy,
             writeMode: draft.writeMode,
             storageLimits,
-            ...(draft.writeMode === "replace"
-              ? { expectedFingerprint: metadata?.fingerprint }
-              : {}),
+            ...(draft.writeMode === "replace" ? { expectedFingerprint } : {}),
           }
         : undefined,
     [
@@ -260,7 +253,7 @@ function CaptureToolsForm({
       sessionRefs,
       replacementReady,
       draft.writeMode,
-      metadata,
+      expectedFingerprint,
       overflowPolicy,
       storageLimits,
     ],
@@ -370,7 +363,9 @@ function CaptureToolsForm({
               <div className="workbench-form-row">
                 <span>{labels.targetFile}</span>
                 <div className="workbench-file-selection">
-                  <output title={target?.name}>{target?.name ?? "—"}</output>
+                  <output title={target?.name} data-surface="control">
+                    {target?.name ?? labels.selectTarget}
+                  </output>
                   <WorkbenchIconButton
                     label={labels.selectTarget}
                     variant="outline"
@@ -437,7 +432,9 @@ function CaptureToolsForm({
               <div className="workbench-form-row">
                 <span>{labels.sourceFile}</span>
                 <div className="workbench-file-selection">
-                  <output title={source?.name}>{source?.name ?? "—"}</output>
+                  <output title={source?.name} data-surface="control">
+                    {source?.name ?? labels.selectCapture}
+                  </output>
                   <WorkbenchIconButton
                     label={labels.selectCapture}
                     variant="outline"
@@ -464,7 +461,9 @@ function CaptureToolsForm({
               <div className="workbench-form-row">
                 <span>{labels.destinationFile}</span>
                 <div className="workbench-file-selection">
-                  <output title={target?.name}>{target?.name ?? "—"}</output>
+                  <output title={target?.name} data-surface="control">
+                    {target?.name ?? labels.selectTarget}
+                  </output>
                   <WorkbenchIconButton
                     label={labels.selectTarget}
                     variant="outline"

@@ -1,6 +1,6 @@
 //! Bounded, connection-scoped owner for fixed client platform effects.
 use crate::{
-    auth::{AuthService, AuthenticatedActor, GrantStamp, hash},
+    auth::{AuthService, AuthenticatedActor, AuthorizationSnapshot, GrantStamp, hash},
     ipc::ConnectionContext,
     settings::SettingsService,
     storage::Store,
@@ -75,10 +75,15 @@ impl PreparedClientEffect {
             }
             request.operation_id = Some(actual.operation_id);
         }
-        self.owner
-            .require_action(&authority.actor, &authority.target, &request.action)?;
-        if let Some(stamp) = &authority.stamp {
-            self.owner.auth.validate_grants(stamp)?;
+        {
+            let authorization = self.owner.authorize_action(
+                &authority.actor,
+                &authority.target,
+                &request.action,
+            )?;
+            if let Some(stamp) = &authority.stamp {
+                authorization.validate_grants(stamp)?;
+            }
         }
         let bytes = encoded_request_bytes(&request)?;
         let mut state = self.owner.inner.lock().map_err(|_| busy())?;
@@ -239,14 +244,17 @@ impl ClientEffects {
         request_id: RequestId,
         action: ClientEffectAction,
     ) -> HostResult<PreparedClientEffect> {
-        self.require_action(actor, target, &action)?;
         let identity = self.store.identity()?;
+        let stamp = {
+            let authorization = self.authorize_action(actor, target, &action)?;
+            authorization.capture_grants()
+        };
         let capability = action.capability();
         let authority = ClientEffectAuthority {
             actor: actor.clone(),
             target: target.clone(),
             capability,
-            stamp: self.auth.capture_grants(actor)?,
+            stamp,
         };
         let mut state = self.inner.lock().map_err(|_| busy())?;
         if state.closing {
@@ -403,6 +411,7 @@ impl ClientEffects {
         Ok(ClosedResult { closed: True })
     }
     pub fn list(&self, actor: &AuthenticatedActor) -> HostResult<ClientListResult> {
+        let authorization = self.auth.snapshot(actor).ok();
         let state = self.inner.lock().map_err(|_| busy())?;
         let mut clients = Vec::new();
         for entry in state
@@ -410,9 +419,11 @@ impl ClientEffects {
             .values()
             .filter(|entry| entry.live && !entry.context.is_closed())
         {
-            if self
-                .auth
-                .require(actor, "metadata.read", &entry.registration.target)
+            let Some(authorization) = &authorization else {
+                continue;
+            };
+            if authorization
+                .require("metadata.read", &entry.registration.target)
                 .is_err()
             {
                 continue;
@@ -423,7 +434,7 @@ impl ClientEffects {
                 capability
                     .permissions()
                     .iter()
-                    .all(|permission| self.auth.require(actor, permission, &target).is_ok())
+                    .all(|permission| authorization.require(permission, &target).is_ok())
             });
             clients.push(ClientListItem {
                 registration,
@@ -445,7 +456,7 @@ impl ClientEffects {
         target: &Target,
         action: &ClientEffectAction,
     ) -> HostResult<()> {
-        self.require_action(actor, target, action)?;
+        self.authorize_action(actor, target, action)?;
         let state = self.inner.lock().map_err(|_| busy())?;
         if state.closing {
             return Err(busy());
@@ -479,13 +490,13 @@ impl ClientEffects {
         {
             return Err(epoch());
         }
-        self.require_action(
+        let authorization = self.authorize_action(
             &dispatch.authority.actor,
             &dispatch.authority.target,
             &dispatch.request.action,
         )?;
         if let Some(stamp) = &dispatch.authority.stamp {
-            self.auth.validate_grants(stamp)?;
+            authorization.validate_grants(stamp)?;
         }
         let state = self.inner.lock().map_err(|_| busy())?;
         if state.closing && !is_excluded(&state, dispatch.request.operation_id.as_ref()) {
@@ -529,13 +540,13 @@ impl ClientEffects {
                 if !entry.live || entry.context.is_closed() {
                     return Err(disconnected());
                 }
-                self.require_action(
+                let authorization = self.authorize_action(
                     &pending.authority.actor,
                     &pending.authority.target,
                     &pending.request.action,
                 )?;
                 if let Some(stamp) = &pending.authority.stamp {
-                    self.auth.validate_grants(stamp)?;
+                    authorization.validate_grants(stamp)?;
                 }
                 pending.dispatched = true;
                 return Ok(());
@@ -850,12 +861,12 @@ impl ClientEffects {
         self.auth.require(&context.actor, "auth.manage", &target)?;
         Ok(identity)
     }
-    fn require_action(
+    fn authorize_action(
         &self,
         actor: &AuthenticatedActor,
         target: &Target,
         action: &ClientEffectAction,
-    ) -> HostResult<()> {
+    ) -> HostResult<AuthorizationSnapshot> {
         action.validate()?;
         target.validate()?;
         if target.kind.as_str() != "client"
@@ -864,10 +875,11 @@ impl ClientEffects {
         {
             return Err(invalid());
         }
+        let authorization = self.auth.snapshot(actor)?;
         for permission in action.capability().permissions() {
-            self.auth.require(actor, permission, target)?;
+            authorization.require(permission, target)?;
         }
-        Ok(())
+        Ok(authorization)
     }
     fn observe(
         &self,

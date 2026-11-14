@@ -2,7 +2,7 @@ import {
   cleanup,
   act,
   fireEvent,
-  render,
+  render as renderComponent,
   screen,
   waitFor,
   within,
@@ -27,6 +27,88 @@ import {
   controlLabels,
   target,
 } from "./session-controls.test-fixtures";
+
+// 参数与控制通过各自的正常面板入口验收。
+const render = renderComponent;
+function openReceipts() {
+  fireEvent.mouseDown(screen.getByRole("tab", { name: /^Receipt \(/ }), {
+    button: 0,
+    ctrlKey: false,
+  });
+}
+
+it("holds control buttons until the admitted operation actually finishes", async () => {
+  const accepted = {
+    ...operation(),
+    target,
+    actionId: "session.control",
+    state: "queued" as const,
+  };
+  const invoke = vi.fn().mockResolvedValue(accepted);
+  let finish!: (value: Operation) => void;
+  const waitForOperation = vi.fn(
+    () =>
+      new Promise<Operation>((resolve) => {
+        finish = resolve;
+      }),
+  );
+  render(
+    <SessionControls
+      mode="controls"
+      session={session()}
+      target={target}
+      operations={[]}
+      labels={controlLabels}
+      invoke={invoke}
+      watchActions={allowControlActions}
+      waitForOperation={waitForOperation}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "DTR on" }));
+  await waitFor(() => expect(waitForOperation).toHaveBeenCalledOnce());
+  for (let index = 0; index < 20; index++)
+    fireEvent.click(screen.getByRole("button", { name: "RTS on" }));
+  expect(invoke).toHaveBeenCalledOnce();
+  expect(screen.getByRole("button", { name: "DTR on" })).toBeDisabled();
+  await act(async () => finish({ ...accepted, state: "succeeded" }));
+  expect(screen.getByRole("button", { name: "DTR on" })).toBeEnabled();
+});
+
+it("keeps parameters separate from the connected controls and receipts", () => {
+  const readInputs = vi.fn();
+  const view = renderComponent(
+    <SessionControls
+      mode="parameters"
+      session={session()}
+      target={target}
+      operations={[]}
+      labels={controlLabels}
+      invoke={vi.fn()}
+      watchActions={allowControlActions}
+      readInputs={readInputs}
+      waitForOperation={async (value) => value}
+    />,
+  );
+  expect(screen.getByLabelText("Baud rate")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "DTR on" }),
+  ).not.toBeInTheDocument();
+  expect(readInputs).not.toHaveBeenCalled();
+  view.rerender(
+    <SessionControls
+      mode="controls"
+      session={session()}
+      target={target}
+      operations={[]}
+      labels={controlLabels}
+      invoke={vi.fn()}
+      watchActions={allowControlActions}
+      waitForOperation={async (value) => value}
+    />,
+  );
+  expect(screen.queryByLabelText("Baud rate")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "DTR on" })).toBeInTheDocument();
+});
 
 beforeEach(() => render(<Toaster />));
 afterEach(() => {
@@ -298,9 +380,18 @@ it.each([
     ).toBeEnabled();
   },
 );
-const setup = (value = session()) => {
-  const invoke = vi.fn().mockResolvedValue(operation());
+const setup = (
+  value = session(),
+  mode: "parameters" | "controls" = "controls",
+) => {
+  const invoke = vi.fn(async (input: HostInvocation) => ({
+    ...operation(),
+    actionId: input.actionId,
+    target: input.target,
+    state: "succeeded" as const,
+  }));
   const props = {
+    mode,
     session: value,
     target,
     operations: [],
@@ -370,7 +461,7 @@ it("registers only the unsubmitted configuration and aborts a pending apply on u
 });
 
 it("submits a custom baud and independent timeouts with the exact session revision", async () => {
-  const { invoke } = setup();
+  const { invoke } = setup(session(), "parameters");
   fireEvent.change(screen.getByLabelText("Baud rate"), {
     target: { value: "250000" },
   });
@@ -408,6 +499,7 @@ it("routes an action failure to the serial log and floating notification using o
   });
   const view = render(
     <SessionControls
+      mode="controls"
       waitForOperation={async (value) => value}
       session={session()}
       target={target}
@@ -453,15 +545,18 @@ it("keeps a historical failed receipt readable without making it a current fault
     invoke: vi.fn(),
     watchActions: allowControlActions,
   };
-  const view = render(<SessionControls {...props} />);
+  const view = render(<SessionControls mode="controls" {...props} />);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
+  openReceipts();
   const receipts = screen.getByRole("region", { name: "Receipt" });
   expect(receipts).toHaveTextContent(controlLabels.controlLines);
   expect(receipts).toHaveTextContent(controlLabels.operationText.states.failed);
   expect(receipts).not.toHaveTextContent(result.operationId);
   expect(receipts).not.toHaveTextContent(result.actionId);
   expect(receipts).not.toHaveTextContent("private device path");
-  view.rerender(<SessionControls {...props} operations={[{ ...result }]} />);
+  view.rerender(
+    <SessionControls mode="controls" {...props} operations={[{ ...result }]} />,
+  );
   expect(getUserLog()).toEqual([]);
   fireEvent.click(
     within(receipts).getByRole("button", { name: controlLabels.details }),
@@ -502,7 +597,7 @@ it("clears the current request fault after a successful retry while preserving t
     invoke,
     waitForOperation: async (value: Operation) => value,
   };
-  const view = render(<SessionControls {...props} />);
+  const view = render(<SessionControls mode="controls" {...props} />);
   fireEvent.click(screen.getByRole("button", { name: "DTR on" }));
   await screen.findByRole("alert");
   fireEvent.click(screen.getByRole("button", { name: "DTR off" }));
@@ -510,18 +605,19 @@ it("clears the current request fault after a successful retry while preserving t
     expect(screen.queryByRole("alert")).not.toBeInTheDocument(),
   );
   expect(invoke).toHaveBeenCalledTimes(2);
+  openReceipts();
   expect(screen.getByRole("region", { name: "Receipt" })).toHaveTextContent(
     controlLabels.operationText.states.failed,
   );
   expect(getUserLog()[0]?.count).toBe(1);
   view.unmount();
-  render(<SessionControls {...props} />);
+  render(<SessionControls mode="controls" {...props} />);
   expect(screen.queryByRole("alert")).not.toBeInTheDocument();
   expect(getUserLog()[0]?.count).toBe(1);
 });
 
 it("blocks invalid numeric models and respects configuration and unknown control gates", () => {
-  const { invoke, props, rerender } = setup();
+  const { invoke, props, rerender } = setup(session(), "parameters");
   fireEvent.change(screen.getByLabelText("Baud rate"), {
     target: { value: "0" },
   });
@@ -532,6 +628,7 @@ it("blocks invalid numeric models and respects configuration and unknown control
     <SessionControls
       waitForOperation={async (value) => value}
       {...props}
+      mode="controls"
       session={{
         ...session(),
         txGate: "control_unknown",
@@ -563,6 +660,7 @@ it("shows requested configuration separately from unknown actual fields and real
   };
   render(
     <SessionControls
+      mode="controls"
       waitForOperation={async (value) => value}
       session={session()}
       target={target}
@@ -572,6 +670,7 @@ it("shows requested configuration separately from unknown actual fields and real
       invoke={vi.fn()}
     />,
   );
+  openReceipts();
   expect(
     screen.getByRole("table", { name: "Configuration receipt" }),
   ).toHaveTextContent("115200");
@@ -659,72 +758,50 @@ it("disables read-only and flow-owned line controls and displays shared BREAK un
     />,
   );
   expect(screen.getByRole("button", { name: "DTR on" })).toBeDisabled();
+  openReceipts();
   expect(screen.getByLabelText("BREAK receipt")).toHaveTextContent("unknown");
   expect(screen.queryByText(receipt.operationId)).not.toBeInTheDocument();
 });
 
-it("keeps unknown or denied actions non-executable while drafts stay editable", async () => {
-  const observer = observeControlActions();
-  const invoke = vi.fn();
-  const work = new Map<string, UnsavedWork>();
-  render(
-    <UnsavedWorkContext.Provider
-      value={{
-        requestLeave: async () => true,
-        releaseScope: () => {},
-        register: (value) => {
-          work.set(value.id, value);
-        },
-        unregister: (id) => {
-          work.delete(id);
-        },
-      }}
-    >
+it.each(["parameters", "controls"] as const)(
+  "keeps unknown or denied %s actions non-executable while drafts stay editable",
+  (mode) => {
+    const observer = observeControlActions();
+    const invoke = vi.fn();
+    render(
       <SessionControls
-        waitForOperation={async (value) => value}
+        mode={mode}
         session={session()}
         target={target}
         operations={[]}
         labels={controlLabels}
         invoke={invoke}
         watchActions={observer.watchActions}
-      />
-    </UnsavedWorkContext.Provider>,
-  );
-  fireEvent.change(screen.getByLabelText("Baud rate"), {
-    target: { value: "57600" },
-  });
-  fireEvent.change(screen.getByLabelText("Through operation"), {
-    target: { value: "transmit-1" },
-  });
-  expect(screen.getByLabelText("Baud rate")).toBeEnabled();
-  for (const name of [
-    "Apply configuration",
-    "DTR on",
-    "Finite BREAK",
-    "Purge queues",
-    "Drain",
-    "Wait boundary",
-  ]) {
-    expect(screen.getByRole("button", { name })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name }));
-  }
-  const latest = observer.subscriptions.at(-1)!;
-  act(() => observer.publish(latest, () => false));
-  for (const name of [
-    "Apply configuration",
-    "DTR on",
-    "Finite BREAK",
-    "Purge queues",
-    "Drain",
-    "Wait boundary",
-  ]) {
-    expect(screen.getByRole("button", { name })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name }));
-  }
-  expect([...work.values()][0]?.save).toBeUndefined();
-  expect(invoke).not.toHaveBeenCalled();
-});
+        waitForOperation={async (value) => value}
+      />,
+    );
+    if (mode === "parameters")
+      fireEvent.change(screen.getByLabelText("Baud rate"), {
+        target: { value: "57600" },
+      });
+    else
+      fireEvent.change(screen.getByLabelText("Through operation"), {
+        target: { value: "transmit-1" },
+      });
+    const names =
+      mode === "parameters"
+        ? ["Apply configuration"]
+        : ["DTR on", "Finite BREAK", "Purge queues", "Drain", "Wait boundary"];
+    for (const name of names)
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+    act(() => observer.publish(observer.subscriptions.at(-1)!, () => false));
+    for (const name of names) {
+      expect(screen.getByRole("button", { name })).toBeDisabled();
+      fireEvent.click(screen.getByRole("button", { name }));
+    }
+    expect(invoke).not.toHaveBeenCalled();
+  },
+);
 
 it("authorizes each exact action independently with current requested parameters", async () => {
   const observer = observeControlActions();
@@ -736,23 +813,14 @@ it("authorizes each exact action independently with current requested parameters
       watchActions={observer.watchActions}
     />,
   );
-  fireEvent.change(screen.getByLabelText("Baud rate"), {
-    target: { value: "57600" },
-  });
+
   fireEvent.change(screen.getByLabelText("Through operation"), {
     target: { value: "transmit-9" },
   });
   const latest = observer.subscriptions.at(-1)!;
-  expect(latest.inputs).toHaveLength(9);
+  expect(latest.inputs).toHaveLength(8);
   expect(latest.inputs).toEqual(
     expect.arrayContaining([
-      {
-        actionId: "session.configure",
-        params: {
-          requested: { ...session().configuration, baudRate: "57600" },
-        },
-        target,
-      },
       { actionId: "session.break", params: { durationMs: "100" }, target },
       {
         actionId: "session.purge",
@@ -778,7 +846,6 @@ it("authorizes each exact action independently with current requested parameters
   );
   expect(screen.getByRole("button", { name: "DTR on" })).toBeEnabled();
   for (const name of [
-    "Apply configuration",
     "DTR off",
     "RTS on",
     "Finite BREAK",
@@ -798,6 +865,56 @@ it("authorizes each exact action independently with current requested parameters
   });
 });
 
+it.each(["parameters", "controls"] as const)(
+  "accepts a fresh checked invocation when the %s observation expires",
+  async (mode) => {
+    const observer = observeControlActions();
+    const invoke = vi.fn().mockRejectedValue({ code: "PERMISSION_DENIED" });
+    render(
+      <SessionControls
+        mode={mode}
+        session={session()}
+        target={target}
+        operations={[]}
+        labels={controlLabels}
+        invoke={invoke}
+        watchActions={observer.watchActions}
+        waitForOperation={async (value) => value}
+      />,
+    );
+    if (mode === "parameters")
+      fireEvent.change(screen.getByLabelText("Baud rate"), {
+        target: { value: "57600" },
+      });
+    const subscription = observer.subscriptions.at(-1)!;
+    const name = mode === "parameters" ? "Apply configuration" : "DTR on";
+    act(() => observer.publish(subscription, () => true));
+    expect(screen.getByRole("button", { name })).toBeEnabled();
+    act(() => observer.publish(subscription, () => null));
+    expect(screen.getByRole("button", { name })).toBeEnabled();
+    fireEvent.click(screen.getByRole("button", { name }));
+    await waitFor(() => expect(invoke).toHaveBeenCalledOnce());
+    expect(invoke.mock.calls[0]?.[0]).toMatchObject({
+      actionId: mode === "parameters" ? "session.configure" : "session.control",
+      target,
+      expectedRevision: "1",
+      params:
+        mode === "parameters"
+          ? { requested: { ...session().configuration, baudRate: "57600" } }
+          : { line: "dtr", value: true },
+    });
+    await waitFor(() =>
+      expect(screen.getByRole("alert")).toHaveTextContent(
+        controlLabels.failure("PERMISSION_DENIED"),
+      ),
+    );
+    act(() => observer.publish(subscription, () => false));
+    expect(screen.getByRole("button", { name })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name }));
+    expect(invoke).toHaveBeenCalledOnce();
+  },
+);
+
 it.each([
   ["Baud rate", "57600", "Apply configuration", "session.configure"],
   ["BREAK duration (ms)", "200", "Finite BREAK", "session.break"],
@@ -810,7 +927,10 @@ it.each([
   "clears old allowed observation when %s changes",
   async (label, value, button, actionId) => {
     const observer = observeControlActions();
-    const { props, rerender, invoke } = setup();
+    const { props, rerender, invoke } = setup(
+      session(),
+      actionId === "session.configure" ? "parameters" : "controls",
+    );
     rerender(
       <SessionControls
         waitForOperation={async (value) => value}
@@ -818,12 +938,14 @@ it.each([
         watchActions={observer.watchActions}
       />,
     );
-    fireEvent.change(screen.getByLabelText("Baud rate"), {
-      target: { value: "230400" },
-    });
-    fireEvent.change(screen.getByLabelText("Through operation"), {
-      target: { value: "transmit-1" },
-    });
+    if (actionId === "session.configure")
+      fireEvent.change(screen.getByLabelText("Baud rate"), {
+        target: { value: "230400" },
+      });
+    if (actionId !== "session.configure")
+      fireEvent.change(screen.getByLabelText("Through operation"), {
+        target: { value: "transmit-1" },
+      });
     const old = observer.subscriptions.at(-1)!;
     act(() => observer.publish(old, (input) => input.actionId === actionId));
     expect(screen.getByRole("button", { name: button })).toBeEnabled();
@@ -850,6 +972,7 @@ it.each([
 it("isolates old target and epoch callbacks and disposes StrictMode observations", async () => {
   const observer = observeControlActions();
   const props = {
+    mode: "controls" as const,
     session: session(),
     target,
     operations: [],
@@ -940,6 +1063,7 @@ it("samples actual modem inputs on opening the controls", async () => {
   });
   render(
     <SessionControls
+      mode="controls"
       waitForOperation={async (value) => value}
       session={session()}
       target={target}
@@ -950,9 +1074,7 @@ it("samples actual modem inputs on opening the controls", async () => {
       {...{ readInputs }}
     />,
   );
-  await waitFor(() =>
-    expect(readInputs).toHaveBeenCalledWith(target, expect.any(AbortSignal)),
-  );
+  await waitFor(() => expect(readInputs).toHaveBeenCalledWith(target));
   await waitFor(() =>
     expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
       "dateTime",
@@ -963,7 +1085,7 @@ it("samples actual modem inputs on opening the controls", async () => {
   expect(screen.queryByText("123 ns")).not.toBeInTheDocument();
 });
 
-it("polls inputs every 500ms without redundant refresh, one inflight read, and unmount cancellation", async () => {
+it("polls inputs every 500ms with one actual inflight read and detaches on unmount", async () => {
   vi.useFakeTimers();
   try {
     const sample = {
@@ -990,6 +1112,7 @@ it("polls inputs every 500ms without redundant refresh, one inflight read, and u
       });
     const view = render(
       <SessionControls
+        mode="controls"
         waitForOperation={async (value) => value}
         session={session()}
         target={target}
@@ -1024,7 +1147,7 @@ it("polls inputs every 500ms without redundant refresh, one inflight read, and u
     });
     expect(readInputs).toHaveBeenCalledTimes(3);
     view.unmount();
-    expect(pending?.aborted).toBe(true);
+    expect(pending).toBeUndefined();
     await act(async () => finish(sample));
   } finally {
     vi.useRealTimers();
@@ -1057,6 +1180,7 @@ it("clears old input booleans on an unsupported result and retries only after ep
         sampledAt: "2026-11-08T00:00:01Z",
       });
     const props = {
+      mode: "controls" as const,
       target,
       operations: [],
       labels: {
@@ -1139,6 +1263,7 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
       sampledAt: "2026-11-08T00:00:01Z",
     });
   const props = {
+    mode: "controls" as const,
     target,
     operations: [],
     labels: controlLabels,
@@ -1168,7 +1293,7 @@ it("discards a late old-epoch input sample and clears all booleans while disconn
       "2026-11-08T00:00:01Z",
     ),
   );
-  expect(oldSignal?.aborted).toBe(true);
+  expect(oldSignal).toBeUndefined();
   await act(async () => finish(sample));
   expect(screen.getByLabelText("Sampled at")).toHaveAttribute(
     "dateTime",

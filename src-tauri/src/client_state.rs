@@ -15,11 +15,28 @@ pub enum WindowPosition {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReceiveHistory {
+    pub max_records: u32,
+    pub max_bytes: u32,
+}
+impl Default for ReceiveHistory {
+    fn default() -> Self {
+        Self {
+            max_records: 1024,
+            max_bytes: 1024 * 1024,
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientPreferences {
     pub menu_bar: bool,
     pub window_position: WindowPosition,
     pub sidebar_collapsed: bool,
     pub sidebar_width: u16,
+    #[serde(default)]
+    #[specta(optional)]
+    pub receive_history: ReceiveHistory,
 }
 impl Default for ClientPreferences {
     fn default() -> Self {
@@ -28,6 +45,7 @@ impl Default for ClientPreferences {
             window_position: WindowPosition::Remember,
             sidebar_collapsed: true,
             sidebar_width: 224,
+            receive_history: ReceiveHistory::default(),
         }
     }
 }
@@ -133,6 +151,8 @@ fn corrupt(message: &str) -> NativeError {
 fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
     use crate::error::bounded_text;
     if !(180..=360).contains(&state.preferences.sidebar_width)
+        || !(1..=20_000).contains(&state.preferences.receive_history.max_records)
+        || !(1024 * 1024..=16 * 1024 * 1024).contains(&state.preferences.receive_history.max_bytes)
         || !matches!(
             state.current_page.as_str(),
             "workbench" | "settings" | "diagnostics" | "recovery"
@@ -415,6 +435,28 @@ mod tests {
     use super::*;
     use std::fs;
     #[test]
+    fn receive_history_restores_missing_preferences_and_validates_bounds() {
+        let mut value = serde_json::to_value(ClientPreferences::default()).unwrap();
+        value.as_object_mut().unwrap().remove("receiveHistory");
+        let restored: ClientPreferences = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.receive_history, ReceiveHistory::default());
+        for (records, bytes, valid) in [
+            (1, 1024 * 1024, true),
+            (20000, 16 * 1024 * 1024, true),
+            (0, 1024 * 1024, false),
+            (20001, 1024 * 1024, false),
+            (1024, 0, false),
+            (1024, 17 * 1024 * 1024, false),
+        ] {
+            let mut state = ClientWindowState::default();
+            state.preferences.receive_history = ReceiveHistory {
+                max_records: records,
+                max_bytes: bytes,
+            };
+            assert_eq!(validate_state(&state).is_ok(), valid);
+        }
+    }
+    #[test]
     fn compact_navigation_is_only_the_default_for_new_window_state() {
         let dir = tempfile::tempdir().unwrap();
         let path = dir.path().join(CLIENT_STATE_FILE);
@@ -423,11 +465,20 @@ mod tests {
         assert!(state.preferences.sidebar_collapsed);
         state.preferences.sidebar_collapsed = false;
         state.preferences.sidebar_width = 300;
+        state.preferences.receive_history = ReceiveHistory {
+            max_records: 5000,
+            max_bytes: 4 * 1024 * 1024,
+        };
         store.save("main", state, 0.into()).unwrap();
         let reopened = ClientStateStore::open(path).unwrap();
         let saved = reopened.snapshot("main").unwrap();
         assert!(!saved.state.preferences.sidebar_collapsed);
         assert_eq!(saved.state.preferences.sidebar_width, 300);
+        assert_eq!(saved.state.preferences.receive_history.max_records, 5000);
+        assert_eq!(
+            saved.state.preferences.receive_history.max_bytes,
+            4 * 1024 * 1024
+        );
         assert!(
             reopened
                 .snapshot("secondary")

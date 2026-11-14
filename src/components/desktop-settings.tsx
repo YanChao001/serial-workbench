@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { MonitorIcon, PowerIcon, PanelTopIcon } from "lucide-react";
+import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { toast } from "sonner";
 import { ResourceError } from "@/components/native-page";
 import { SettingRow } from "@/components/setting-row";
@@ -95,7 +95,7 @@ export function DesktopSettings() {
       <div className="settings-list">
         <SettingRow
           id="settings-autostart"
-          icon={PowerIcon}
+          icon={SETTINGS_ICONS.autostart}
           label={t("desktop.autostart")}
         >
           <Switch
@@ -109,7 +109,7 @@ export function DesktopSettings() {
         </SettingRow>
         <SettingRow
           id="settings-background"
-          icon={PanelTopIcon}
+          icon={SETTINGS_ICONS.background}
           label={t("desktop.background")}
           hint={
             native && data && !data.trayAvailable
@@ -132,7 +132,7 @@ export function DesktopSettings() {
         </SettingRow>
         <SettingRow
           id="settings-windows"
-          icon={MonitorIcon}
+          icon={SETTINGS_ICONS.windows}
           label={t("desktop.windows")}
         >
           <Button

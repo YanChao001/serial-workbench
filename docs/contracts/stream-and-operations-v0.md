@@ -84,7 +84,9 @@ M1a Host 的源环预算为每会话 16 MiB、全 Host 128 MiB；reader 为每�
 
 ## 发送回执
 
-`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64`。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..16384，Host 解码并验证长度后冻结最终字节及摘要；回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
+`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64`。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..131072（128 KiB），由 Rust `TX_MAX_BYTES` 统一约束 DTO、schema、源环接纳和生成的客户端常量；Host 验证后冻结最终字节及摘要。回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
+
+手动发送作为一次 Host 操作参与队列仲裁，客户端不拆成多次独立调用；128 KiB 的单条 TX 意图和最终回执分别适配默认 256 KiB Raw 批次，分页读取保留完整字节。源环、reader 和发送队列仍按既有预算接纳；更大内容使用文件传输。GUI 按编码和行尾后的最终长度检查，超限保留草稿与字节计数，明确提示上限，不提交无效操作或权限预检。
 
 TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,byteStart,byteEnd,acceptedRanges,unknownRanges,backendError?,peerAcknowledged}`。outcome=`accepted|partial|rejected|unknown`；各 range 为相对于本次 bytes 的 `{start,end}` U64 区间，互不相交且不超长度。accepted 表示整个字节序列已被后端接受；partial 表示仅部分已接受、其余确定未接受；rejected 表示全未接受；unknown 表示至少一段无法判断，保留已知接受区间。peerAcknowledged 固定 false，只有上层协议另出应答证据可确认对端；驱动接受不表示线路已发完。
 

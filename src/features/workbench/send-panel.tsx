@@ -1,19 +1,29 @@
 import {
   useEffect,
   useId,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
   type ReactNode,
 } from "react";
-import { FileUp, Send, Save, Settings2, ReceiptText } from "lucide-react";
+import {
+  Eraser,
+  FileUp,
+  Send,
+  Save,
+  Settings2,
+  ReceiptText,
+} from "lucide-react";
 import type {
   LineEnding,
   Operation,
   SessionSnapshot,
   TerminalSettings,
   TerminalMode,
+  TextEncoding,
 } from "@serial-workbench/contracts";
+import { TX_MAX_BYTES } from "@serial-workbench/contracts";
 import { encodeSend, formatHex, parseHex } from "@serial-workbench/host-client";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { useComposerToastOffset } from "./use-composer-toast-offset";
@@ -23,6 +33,7 @@ import {
   WorkbenchNotice,
 } from "./workbench-notice";
 import { nativeErrorCode } from "@/lib/native-error";
+import { formatByteSize } from "./metric-format";
 import {
   Popover,
   PopoverContent,
@@ -50,6 +61,9 @@ import {
 } from "./stream-presentation";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { convertSendDraft } from "./send-draft-conversion";
+import { TextEncodingSelect } from "./text-encoding-select";
+import { encodeTextSend, TextEncodingError } from "@/lib/text-encoding";
+import { useTextEncoding } from "@/hooks/use-text-encoding";
 const SEND_SHORTCUT: Shortcut = {
   key: "Enter",
   primary: true,
@@ -78,6 +92,8 @@ export type SendPanelProps = {
   mode?: TerminalMode;
   /** 与同一事件中的 onDraftChange 一并提交转换后的模式与正文。 */
   onSendModeChange?: (mode: TerminalMode) => void;
+  encoding?: TextEncoding;
+  onEncodingChange?: (encoding: TextEncoding) => void;
   terminalSettings?: TerminalSettings;
   presentationLabels?: {
     customLineEnding: string;
@@ -93,10 +109,13 @@ export type SendPanelProps = {
   onPreviewChange?: (bytes: Uint8Array | null) => void;
   permissionAllowed?: boolean;
   onSendFile?: () => void;
+  onOpenTransfer?: () => void;
+  transferLabel?: string;
   fileBusy?: boolean;
   operations?: readonly Operation[];
   formatError?: (error: { code?: string }) => string;
   deviceName?: string;
+  disconnectedReason?: string;
 };
 export function SendPanel({
   readOnly = false,
@@ -112,25 +131,45 @@ export function SendPanel({
   onPreviewChange,
   permissionAllowed,
   onSendFile,
+  onOpenTransfer,
+  transferLabel,
   fileBusy = false,
   operations = [],
   formatError,
   deviceName,
+  disconnectedReason,
   initialMode = "text",
   mode: controlledMode,
   onSendModeChange,
+  encoding: controlledEncoding,
+  onEncodingChange,
   terminalSettings,
   presentationLabels,
 }: SendPanelProps) {
   const composer = useComposerToastOffset();
+  const draftInput = useRef<HTMLTextAreaElement>(null);
+  const currentDraft = useRef(draft);
+  currentDraft.current = draft;
+  useLayoutEffect(() => {
+    const input = draftInput.current;
+    // 原生编辑已同步正文；仅在切换草稿或转换格式时写回，避免长文本逐字重排 defaultValue。
+    if (input && input.value !== draft) input.value = draft;
+  }, [draft]);
   const id = useId();
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [conversionError, setConversionError] = useState<
-    "INVALID_HEX" | "INVALID_UTF8"
+    "INVALID_HEX" | "INVALID_UTF8" | "INVALID_ENCODING" | "UNREPRESENTABLE"
   >();
   const [localMode, setMode] = useState<TerminalMode | null>(null);
   const mode =
     controlledMode ?? localMode ?? terminalSettings?.sendMode ?? initialMode;
+  const [localEncoding, setEncoding] = useState<TextEncoding>();
+  const encoding =
+    controlledEncoding ??
+    localEncoding ??
+    terminalSettings?.sendEncoding ??
+    "utf-8";
+  const encodingStatus = useTextEncoding(encoding);
   const [localEnding, setEnding] = useState<LineEnding | null>(null);
   const ending = localEnding ?? terminalSettings?.lineEnding ?? NO_LINE_ENDING;
   const [customHex, setCustomHex] = useState<string | null>(null);
@@ -208,8 +247,14 @@ export function SendPanel({
   }, [sessionScope]);
   const endingKind = ending.kind;
   const customSuffixHex = endingKind === "custom" ? suffixHex : "";
-  const preview = useMemo(() => {
+  const preview = useMemo<{
+    bytes: Uint8Array;
+    invalid: boolean;
+    reason?: "unrepresentable" | "loading" | "hex" | "limit";
+  }>(() => {
     try {
+      if (mode !== "hex" && encodingStatus !== "ready")
+        return { bytes: new Uint8Array(), invalid: true, reason: "loading" };
       const suffix: LineEnding =
         endingKind === "custom"
           ? {
@@ -221,11 +266,41 @@ export function SendPanel({
               ),
             }
           : { kind: endingKind };
-      return { bytes: encodeSend(draft, mode, suffix), invalid: false };
-    } catch {
-      return { bytes: new Uint8Array(), invalid: true };
+      const bytes = encodeTextSend(draft, mode, suffix, encoding);
+      return {
+        bytes,
+        invalid: bytes.length > TX_MAX_BYTES,
+        reason: bytes.length > TX_MAX_BYTES ? "limit" : undefined,
+      };
+    } catch (error) {
+      return {
+        bytes: new Uint8Array(),
+        invalid: true,
+        reason: error instanceof TextEncodingError ? error.code : "hex",
+      };
     }
-  }, [draft, mode, endingKind, customSuffixHex]);
+  }, [draft, mode, endingKind, customSuffixHex, encoding, encodingStatus]);
+  const previewError =
+    preview.reason === "limit"
+      ? labels.sendLimit.replace(
+          "{limit}",
+          formatByteSize(String(TX_MAX_BYTES)),
+        )
+      : preview.reason === "loading"
+        ? encodingStatus === "error"
+          ? labels.encodingLoadFailed
+          : labels.encodingLoading
+        : preview.reason === "unrepresentable"
+          ? labels.unrepresentableEncoding
+          : labels.invalidHex;
+  const conversionMessage =
+    conversionError === "INVALID_HEX"
+      ? labels.invalidHex
+      : conversionError === "UNREPRESENTABLE"
+        ? labels.unrepresentableEncoding
+        : conversionError === "INVALID_ENCODING"
+          ? labels.invalidEncoding
+          : labels.invalidUtf8;
   const previewCallback = useRef(onPreviewChange);
   useEffect(() => {
     previewCallback.current = onPreviewChange;
@@ -244,7 +319,7 @@ export function SendPanel({
   const disabledReason = readOnly
     ? labels.readOnly
     : !session || session.state !== "open"
-      ? labels.disconnected
+      ? (disconnectedReason ?? labels.disconnected)
       : session.readOnly
         ? labels.readOnly
         : session.txGate !== "ready"
@@ -255,7 +330,7 @@ export function SendPanel({
   const sendHint =
     disabledReason ??
     (preview.invalid
-      ? labels.invalidHex
+      ? previewError
       : busy
         ? labels.sending
         : !preview.bytes.length
@@ -287,13 +362,9 @@ export function SendPanel({
       if (pending.current === controller) pending.current = null;
     }
   }
-  return (
-    <section
-      ref={composer}
-      aria-label={labels.send}
-      className="workbench-send"
-      data-panel-id="send"
-    >
+  const emptyDraft = draft.length === 0;
+  const toolbar = useMemo(
+    () => (
       <div
         className="workbench-toolbar workbench-compose-toolbar"
         data-surface="transparent"
@@ -309,7 +380,12 @@ export function SendPanel({
           onValueChange={(value) => {
             if (value !== "text" && value !== "hex") return;
             if (value === mode) return;
-            const converted = convertSendDraft(draft, mode, value);
+            const converted = convertSendDraft(
+              currentDraft.current,
+              mode,
+              value,
+              encoding,
+            );
             if (!converted.ok) {
               setConversionError(converted.code);
               return;
@@ -321,11 +397,27 @@ export function SendPanel({
           }}
         >
           {(["text", "hex"] as const).map((value) => (
-            <ToggleGroupItem key={value} value={value}>
+            <ToggleGroupItem
+              key={value}
+              value={value}
+              disabled={
+                mode === "text" && value !== mode && encodingStatus !== "ready"
+              }
+            >
               {labels[value]}
             </ToggleGroupItem>
           ))}
         </ToggleGroup>
+        <TextEncodingSelect
+          value={encoding}
+          label={labels.sendEncoding}
+          onChange={(value) => {
+            if (!value) return;
+            setEncoding(value);
+            setConversionError(undefined);
+            onEncodingChange?.(value);
+          }}
+        />
         <Select
           value={ending.kind}
           onValueChange={(kind) => {
@@ -420,6 +512,17 @@ export function SendPanel({
             </PopoverContent>
           )}
         </Popover>
+        {onOpenTransfer && (
+          <WorkbenchIconButton
+            label={transferLabel ?? labels.sendFile}
+            onClick={onOpenTransfer}
+            disabled={
+              !session || session.state !== "open" || readOnly || fileBusy
+            }
+          >
+            <Settings2 aria-hidden="true" />
+          </WorkbenchIconButton>
+        )}
         <WorkbenchIconButton
           label={labels.sendFile}
           onClick={onSendFile}
@@ -430,7 +533,55 @@ export function SendPanel({
         >
           <FileUp aria-hidden="true" />
         </WorkbenchIconButton>
+        <WorkbenchIconButton
+          label={labels.clearDraft}
+          disabled={emptyDraft}
+          onClick={() => {
+            setConversionError(undefined);
+            onDraftChange("");
+            draftInput.current?.focus();
+          }}
+        >
+          <Eraser aria-hidden="true" />
+        </WorkbenchIconButton>
       </div>
+    ),
+    [
+      id,
+      mode,
+      encodingStatus,
+      encoding,
+      onDraftChange,
+      onSendModeChange,
+      onEncodingChange,
+      ending.kind,
+      suffixHex,
+      presentationLabels,
+      preview.invalid,
+      draftActions,
+      onSaveDrafts,
+      draftsDirty,
+      receiptOpen,
+      receipt,
+      receiptId,
+      labels,
+      onOpenTransfer,
+      transferLabel,
+      session,
+      readOnly,
+      fileBusy,
+      onSendFile,
+      emptyDraft,
+    ],
+  );
+  return (
+    <section
+      ref={composer}
+      aria-label={labels.send}
+      className="workbench-send"
+      data-panel-id="send"
+    >
+      {toolbar}
       <span role="status" className="sr-only">
         {receipt
           ? `${labels.receipt}: ${workbenchStatus(receipt.state, labels)}`
@@ -447,14 +598,14 @@ export function SendPanel({
         </label>
         <div
           className="workbench-draft-frame"
-          data-surface="control"
+          data-surface="reading"
           data-invalid={preview.invalid || undefined}
         >
           <Textarea
+            ref={draftInput}
             id={`${id}-draft`}
             spellCheck={false}
             data-surface="transparent"
-            value={draft}
             onChange={(event) => {
               setConversionError(undefined);
               onDraftChange(event.target.value);
@@ -483,7 +634,9 @@ export function SendPanel({
             className="workbench-draft-bytes"
             aria-label={labels.draftByteCount}
           >
-            {preview.invalid ? "—" : preview.bytes.length} {labels.bytes}
+            {preview.invalid && preview.reason !== "limit"
+              ? "—"
+              : formatByteSize(String(preview.bytes.length))}
           </span>
         </div>
         <WorkbenchIconButton
@@ -501,13 +654,22 @@ export function SendPanel({
         </WorkbenchIconButton>
         {preview.invalid && (
           <span id={`${id}-invalid`} className="sr-only">
-            {labels.invalidHex}
+            {previewError}
           </span>
         )}
       </div>
       <div className="sr-only">
         <span id={`${id}-send-reason`}>{sendHint}</span>
       </div>
+      <WorkbenchNotice
+        noticeKey={`draft-validation:${encoding}:${preview.reason ?? "none"}:${encodingStatus}`}
+      >
+        {preview.reason === "limit" ||
+        preview.reason === "unrepresentable" ||
+        (preview.reason === "loading" && encodingStatus === "error") ? (
+          <p role="alert">{previewError}</p>
+        ) : null}
+      </WorkbenchNotice>
       <WorkbenchNotice
         noticeKey={`draft-conversion:${conversionError ?? "none"}`}
         log={
@@ -516,21 +678,12 @@ export function SendPanel({
                 module: "serial",
                 level: "error",
                 code: conversionError,
-                message:
-                  conversionError === "INVALID_HEX"
-                    ? labels.invalidHex
-                    : labels.invalidUtf8,
+                message: conversionMessage,
               }
             : undefined
         }
       >
-        {conversionError ? (
-          <p role="alert">
-            {conversionError === "INVALID_HEX"
-              ? labels.invalidHex
-              : labels.invalidUtf8}
-          </p>
-        ) : null}
+        {conversionError ? <p role="alert">{conversionMessage}</p> : null}
       </WorkbenchNotice>
       <WorkbenchNotice
         eventKey={noticeEventKey}

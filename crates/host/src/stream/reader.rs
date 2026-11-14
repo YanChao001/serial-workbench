@@ -231,10 +231,11 @@ impl ReaderInner {
         let target = self.source.target.clone();
         let stamp = self.stamp.clone();
         let result = tokio::task::spawn_blocking(move || {
+            let authorization = auth.snapshot(&actor)?;
             if let Some(stamp) = stamp {
-                auth.validate_grants(&stamp)?;
+                authorization.validate_grants(&stamp)?;
             }
-            auth.require(&actor, "content.read", &target)
+            authorization.require("content.read", &target)
         })
         .await
         .map_err(|_| busy())?;
@@ -498,10 +499,11 @@ impl StreamHub {
         let check_actor = actor.clone();
         let target = source.target.clone();
         let stamp = tokio::task::spawn_blocking(move || {
-            let stamp = auth.capture_grants(&check_actor)?;
-            auth.require(&check_actor, "content.read", &target)?;
+            let authorization = auth.snapshot(&check_actor)?;
+            let stamp = authorization.capture_grants();
+            authorization.require("content.read", &target)?;
             if let Some(stamp) = &stamp {
-                auth.validate_grants(stamp)?;
+                authorization.validate_grants(stamp)?;
             }
             Ok::<_, HostError>(stamp)
         })

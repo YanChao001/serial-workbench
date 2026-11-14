@@ -113,6 +113,7 @@ vi.mock("./host-context", async () => {
         status: env.hostError ? "error" : "ready",
         error: env.hostError,
         operationSummaries: env.summaries,
+        operationSummariesReady: true,
       };
     },
   });

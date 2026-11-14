@@ -158,7 +158,7 @@ describe("settings search metadata", () => {
   });
 
   it("scrolls and transfers focus to the matching setting", () => {
-    const target = document.createElement("section");
+    const target = document.createElement("button");
     target.id = "settings-language";
     target.tabIndex = -1;
     target.scrollIntoView = vi.fn();
@@ -170,6 +170,19 @@ describe("settings search metadata", () => {
     });
     expect(target).toHaveFocus();
     expect(focusSetting("missing")).toBe(false);
+  });
+  it("keeps a settings group's heading at the start rather than centering a potentially taller panel", () => {
+    const target = document.createElement("fieldset");
+    target.id = "settings-recovery";
+    target.tabIndex = -1;
+    target.scrollIntoView = vi.fn();
+    document.body.append(target);
+    expect(focusSetting(target.id)).toBe(true);
+    expect(target.scrollIntoView).toHaveBeenCalledWith({
+      block: "start",
+      behavior: "auto",
+    });
+    expect(target).toHaveFocus();
   });
   it("finds update checks, the startup preference and current version in both languages", () => {
     for (const [query, id, anchor] of [

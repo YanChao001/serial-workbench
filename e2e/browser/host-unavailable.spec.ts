@@ -12,6 +12,7 @@ const zh = {
   draft: "\u53d1\u9001\u8349\u7a3f",
   send: "\u53d1\u9001",
   saveDrafts: "\u4fdd\u5b58\u8349\u7a3f",
+  clearDraft: "\u6e05\u7a7a\u53d1\u9001\u8349\u7a3f",
   retryHost: "\u91cd\u8bd5\u8fde\u63a5\u672c\u673a\u670d\u52a1",
   details: "\u67e5\u770b\u8be6\u60c5",
   logs: "\u65e5\u5fd7",
@@ -219,6 +220,12 @@ test("first Host failure keeps recovered Chinese drafts editable and exposes saf
   await draft.fill("0123456789".repeat(24));
   await draft.focus();
   await draft.press("Shift+Tab");
+  const clearDraft = page.getByRole("button", {
+    name: zh.clearDraft,
+    exact: true,
+  });
+  await expect(clearDraft).toBeFocused();
+  await clearDraft.press("Shift+Tab");
   await expect(
     page.getByRole("button", { name: zh.saveDrafts, exact: true }),
   ).toBeFocused();
@@ -229,7 +236,7 @@ test("first Host failure keeps recovered Chinese drafts editable and exposes saf
   await expect(draft).toHaveValue(
     Array(24).fill("30 31 32 33 34 35 36 37 38 39").join(" "),
   );
-  await expect(page.locator(".workbench-draft-bytes")).toHaveText("240 字节");
+  await expect(page.locator(".workbench-draft-bytes")).toHaveText("240 B");
   await expect(
     page.locator(".workbench-preview-trigger,.workbench-byte-preview"),
   ).toHaveCount(0);

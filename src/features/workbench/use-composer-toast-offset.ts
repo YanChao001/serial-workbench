@@ -12,7 +12,7 @@ export function useComposerToastOffset() {
     let current = "";
     const measure = () => {
       const inset =
-        Number.parseFloat(getComputedStyle(element).paddingBottom) || 0;
+        Number.parseFloat(getComputedStyle(element).paddingInlineStart) || 8;
       const next = `${Math.max(16, Math.ceil(window.innerHeight - element.getBoundingClientRect().top + inset))}px`;
       if (next !== current) {
         current = next;

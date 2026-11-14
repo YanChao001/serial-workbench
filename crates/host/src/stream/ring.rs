@@ -176,7 +176,7 @@ impl StreamSource {
         meta: SourceMeta,
         bytes: Arc<[u8]>,
     ) -> HostResult<PreparedTxIntent> {
-        if bytes.is_empty() || bytes.len() > 16384 {
+        if bytes.is_empty() || bytes.len() > TX_MAX_BYTES {
             return Err(limit());
         }
         let metadata = meta_cost(&meta)?;

@@ -82,10 +82,16 @@ export function createHostActionObserver(
     }
     emit(changed);
     if (visible()) {
-      for (const entry of entries.values()) {
+      // 慢查询完成时旧条目可能已到续检时间，按 Map 顺序会让它立即
+      // 抢回名额。先服务等待最久的到期输入，避免后来的参数检查饥饿。
+      const ready = [...entries.values()]
+        .filter(
+          (entry) =>
+            entry.watchers.size && !entry.pending && entry.dueAt <= now,
+        )
+        .sort((left, right) => left.dueAt - right.dueAt);
+      for (const entry of ready) {
         if (inFlight >= concurrency) break;
-        if (!entry.watchers.size || entry.pending || entry.dueAt > now)
-          continue;
         start(entry);
       }
     }
@@ -115,9 +121,16 @@ export function createHostActionObserver(
           if (disposed || version !== entry.version) return;
           entry.dueAt = startedAt + refreshMs;
           if (performance.now() < startedAt + maxAgeMs) {
+            // checkAction 已核对 actionId 和完整 target；同一输入的续检只可能改变 allowed。
+            // 有效期仍按这次查询刷新，界面仅在可见结果变化时接收新状态。
+            const unchanged =
+              entry.value?.error === null &&
+              entry.value.result?.allowed === result.allowed;
             entry.expiresAt = startedAt + maxAgeMs;
-            entry.value = { input: entry.input, result, error: null };
-            emit(entry.watchers);
+            if (!unchanged) {
+              entry.value = { input: entry.input, result, error: null };
+              emit(entry.watchers);
+            }
           }
         },
         (error) => {
@@ -179,7 +192,11 @@ export function createHostActionObserver(
       inputs: readonly HostActionCheckInput[],
       listener: Watcher["listener"],
     ) {
-      signal.throwIfAborted();
+      // Host 可在旧渲染提交 effect 前退休；晚注册只撤销可执行性，不重新占用检查资源。
+      if (disposed || signal.aborted) {
+        listener(inputs.map((input) => ({ input, result: null, error: null })));
+        return () => {};
+      }
       if (inputCount + inputs.length > 128)
         throw new RangeError("Too many visible action checks");
       const copy = structuredClone(inputs);

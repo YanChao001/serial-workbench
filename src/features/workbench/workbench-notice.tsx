@@ -7,6 +7,7 @@ import {
   type ReactNode,
 } from "react";
 import { toast } from "sonner";
+import { notifyCustom } from "@/lib/notifications";
 import { recordUserLog, type UserLogInput } from "@/lib/user-log";
 export {
   operationFailureKey,
@@ -22,14 +23,11 @@ function emitEvent(eventKey: string, children: ReactNode, log?: UserLogInput) {
   if (events.size > EVENT_LIMIT) events.delete(events.values().next().value!);
   if (log) recordUserLog(log, eventKey);
   // 真实事件的五秒寿命不随工具关闭、路由切换或 StrictMode 的清理重置。
-  toast.custom(
-    () => (
-      <div className="workbench-notification" data-surface="popover">
-        {children}
-      </div>
-    ),
-    { id: eventKey, duration: 5000, closeButton: true },
-  );
+  notifyCustom(() => children, {
+    id: eventKey,
+    duration: 5000,
+    closeButton: true,
+  });
 }
 
 export function notifyWorkbenchFailure(eventKey: string, log: UserLogInput) {
@@ -77,11 +75,7 @@ function NoticeContent({
     content.getSnapshot,
     () => null,
   );
-  return (
-    <div className="workbench-notification" data-surface="popover">
-      {value}
-    </div>
-  );
+  return <>{value}</>;
 }
 
 /** 通知使用应用现有右下角浮层，连接和动作状态不参与工作台尺寸计算。 */
@@ -110,17 +104,19 @@ export function WorkbenchNotice({
     // 更新已显示内容不重发通知，也不延长其寿命。
     content.update(children);
     if (!children) {
-      if (active.current) episode.current++;
-      active.current = false;
+      if (active.current) {
+        episode.current++;
+        active.current = false;
+        toast.dismiss(id);
+      }
       shown.current = undefined;
-      toast.dismiss(id);
       return;
     }
     active.current = true;
     if (shown.current === noticeKey) return;
     shown.current = noticeKey;
     if (log) recordUserLog(log, `${id}:${noticeKey}:${episode.current}`);
-    toast.custom(() => <NoticeContent content={content} />, {
+    notifyCustom(() => <NoticeContent content={content} />, {
       id,
       duration: 5000,
       closeButton: true,
@@ -130,7 +126,10 @@ export function WorkbenchNotice({
     () => () => {
       content.update(null);
       shown.current = undefined;
-      toast.dismiss(id);
+      if (active.current) {
+        active.current = false;
+        toast.dismiss(id);
+      }
     },
     [content, id],
   );

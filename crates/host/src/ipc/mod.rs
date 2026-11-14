@@ -3,6 +3,8 @@ mod connection;
 mod protocol;
 mod server;
 use serial_workbench_core::{HostError, HostResult};
+#[cfg(test)]
+pub(crate) use server::test_context;
 pub use server::{ConnectionContext, HandlerFuture, HandlerReply, HostServer, RequestHandler};
 use std::{
     fs,
