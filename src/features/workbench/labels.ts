@@ -81,6 +81,7 @@ export type WorkbenchLabels = Record<
   | "duplicateView"
   | "noSession"
   | "bindingUnavailable"
+  | "bindingUnmatched"
   | "pinned"
   | "readOnly"
   | "takeover"

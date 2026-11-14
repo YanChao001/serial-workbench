@@ -17191,6 +17191,7 @@ function validate350(
         key0 === "deviceId" ||
         key0 === "fingerprint" ||
         key0 === "hostId" ||
+        key0 === "portName" ||
         key0 === "reconnect"
       )) {
         const err6 = {
@@ -17288,6 +17289,23 @@ function validate350(
         errors = vErrors.length;
       }
     }
+    if (data.portName !== void 0 && func0.call(data, "portName")) {
+      if (typeof data.portName !== "string") {
+        const err7 = {
+          instancePath: instancePath + "/portName",
+          schemaPath: "#/properties/portName/type",
+          keyword: "type",
+          params: { type: "string" },
+          message: "must be string",
+        };
+        if (vErrors === null) {
+          vErrors = [err7];
+        } else {
+          vErrors.push(err7);
+        }
+        errors++;
+      }
+    }
     if (data.reconnect !== void 0 && func0.call(data, "reconnect")) {
       if (
         !validate375(data.reconnect, {
@@ -17305,7 +17323,7 @@ function validate350(
       }
     }
   } else {
-    const err7 = {
+    const err8 = {
       instancePath,
       schemaPath: "#/type",
       keyword: "type",
@@ -17313,9 +17331,9 @@ function validate350(
       message: "must be object",
     };
     if (vErrors === null) {
-      vErrors = [err7];
+      vErrors = [err8];
     } else {
-      vErrors.push(err7);
+      vErrors.push(err8);
     }
     errors++;
   }

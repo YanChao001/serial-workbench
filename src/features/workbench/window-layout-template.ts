@@ -86,8 +86,11 @@ export function snapshotWindowLayout(
           bindingId: crypto.randomUUID(),
           hostId: device.hostId,
           deviceId: device.deviceId,
+          portName: device.systemName,
           fingerprint: device.fingerprint,
-          configuration: session.configuration,
+          configuration: preservePresets
+            ? binding.configuration
+            : session.configuration,
         };
         result = { ...result, bindings: [...result.bindings, replacement] };
         view = { ...view, bindingId: replacement.bindingId };
@@ -96,11 +99,15 @@ export function snapshotWindowLayout(
       result = {
         ...result,
         bindings: result.bindings.map((binding) =>
-          !preservePresets &&
           binding.bindingId === bindingId &&
           binding.deviceId === device.deviceId &&
-          binding.hostId === device.hostId
-            ? { ...binding, configuration: session.configuration }
+          binding.hostId === device.hostId &&
+          !preservePresets
+            ? {
+                ...binding,
+                portName: device.systemName,
+                configuration: session.configuration,
+              }
             : binding,
         ),
       };

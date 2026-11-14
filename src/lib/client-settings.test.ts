@@ -12,6 +12,8 @@ import {
 import { DEFAULT_RECEIVE_HISTORY } from "./receive-history";
 import { createClientGallery } from "./client-gallery";
 import { createClientDraftStore } from "@/features/workbench/client-drafts";
+import { viewDraftKey } from "@/features/workbench/draft-identity";
+import { stateScopeKey } from "./host-scope";
 import { SettingsSync } from "./settings-sync";
 const state: ClientWindowState = {
   preferences: {
@@ -290,6 +292,117 @@ describe("client preference persistence", () => {
 });
 
 describe("browser ClientState isolation", () => {
+  it("saves and restores workspace-scoped draft identities longer than legacy view IDs without normalizing their text", () => {
+    sessionStorage.clear();
+    const key = viewDraftKey(
+      stateScopeKey({
+        scopeId: "workspace:12345678-1234-1234-1234-123456789abc",
+        target: {
+          hostId: "abcdefgh-1234-1234-1234-123456789abc",
+          kind: "workspace",
+          id: "12345678-1234-1234-1234-123456789abc",
+        },
+      }),
+      "view-87654321-4321-4321-4321-cba987654321",
+    );
+    expect(new TextEncoder().encode(key).length).toBeGreaterThan(128);
+    const drafts = { ...state.drafts, [key]: "第一行\r\nsecond line\r\n" };
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "scoped-draft-client",
+      state,
+    );
+    const saved = store.save({ ...state, drafts }, "0");
+    const reloaded = createBrowserClientStateStore(
+      sessionStorage,
+      "scoped-draft-client",
+      state,
+    ).read();
+    expect(saved.state.drafts).toEqual(drafts);
+    expect(reloaded).toEqual(saved);
+    expect(reloaded.revision).toBe("1");
+  });
+  it("accepts draft identities and text exactly at their UTF-8 byte limits", () => {
+    sessionStorage.clear();
+    const key = "稿".repeat(341) + "a";
+    const text = "汉".repeat(21845) + "x";
+    expect(new TextEncoder().encode(key)).toHaveLength(1024);
+    expect(new TextEncoder().encode(text)).toHaveLength(65536);
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "draft-byte-limits",
+      state,
+    );
+    store.save({ ...state, drafts: { [key]: text } }, "0");
+    expect(store.read().state.drafts).toEqual({ [key]: text });
+  });
+  it.each([
+    {
+      limit: "1025-byte identity",
+      drafts: { ["稿".repeat(341) + "ab"]: "unsent" },
+    },
+    {
+      limit: "129 drafts",
+      drafts: Object.fromEntries(
+        Array.from({ length: 129 }, (_, index) => [`view-${index}`, ""]),
+      ),
+    },
+    {
+      limit: "65537-byte text",
+      drafts: { view: "汉".repeat(21845) + "xy" },
+    },
+  ])("rejects $limit without changing the saved original", ({ drafts }) => {
+    sessionStorage.clear();
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "draft-byte-limits",
+      state,
+    );
+    const saved = store.save(state, "0");
+    const original = sessionStorage.getItem("draft-byte-limits");
+    expect(() => store.save({ ...state, drafts }, saved.revision)).toThrow();
+    expect(sessionStorage.getItem("draft-byte-limits")).toBe(original);
+    expect(store.read()).toEqual(saved);
+  });
+  it("keeps the total ClientState byte budget when each draft fits its individual limit", () => {
+    sessionStorage.clear();
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "draft-total-limit",
+      state,
+    );
+    const saved = store.save(state, "0");
+    const original = sessionStorage.getItem("draft-total-limit");
+    const drafts = Object.fromEntries(
+      Array.from({ length: 8 }, (_, index) => [
+        `view-${index}`,
+        "0".repeat(65536),
+      ]),
+    );
+    expect(() => store.save({ ...state, drafts }, saved.revision)).toThrow();
+    expect(sessionStorage.getItem("draft-total-limit")).toBe(original);
+    expect(store.read()).toEqual(saved);
+  });
+  it("does not overwrite an otherwise valid future-format document containing long draft identities", () => {
+    sessionStorage.clear();
+    const raw = JSON.stringify({
+      formatVersion: "0.2",
+      revision: "7",
+      state: {
+        ...state,
+        drafts: { ["view/" + "a".repeat(200)]: "original\r\n" },
+      },
+    });
+    sessionStorage.setItem("future-scoped-drafts", raw);
+    const store = createBrowserClientStateStore(
+      sessionStorage,
+      "future-scoped-drafts",
+      state,
+    );
+    expect(() => store.read()).toThrow();
+    expect(() => store.save(state, "7")).toThrow();
+    expect(sessionStorage.getItem("future-scoped-drafts")).toBe(raw);
+  });
   it("normalizes the optional gallery input to the complete native output shape", async () => {
     const { createBrowserClientStateStore } = await import("./client-settings");
     sessionStorage.clear();

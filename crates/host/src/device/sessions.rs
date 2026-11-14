@@ -3049,6 +3049,7 @@ mod responsibility_budget_tests {
                         binding_id: reference.binding_id.clone(),
                         host_id: descriptor.host_id,
                         device_id: descriptor.device_id,
+                        port_name: Some(descriptor.system_name),
                         fingerprint: descriptor.fingerprint,
                         configuration: SerialConfiguration::default(),
                         reconnect: ReconnectPolicy {

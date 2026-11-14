@@ -249,6 +249,7 @@ async fn attach(
         binding_id: id("probe"),
         host_id: h.host_id.clone(),
         device_id: device.device_id.clone(),
+        port_name: Some(device.system_name.clone()),
         fingerprint: device.fingerprint.clone(),
         configuration: SerialConfiguration::default(),
         reconnect: ReconnectPolicy {

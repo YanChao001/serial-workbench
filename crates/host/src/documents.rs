@@ -324,6 +324,7 @@ impl DocumentService {
                         .ok_or_else(invalid)?;
                     binding.host_id = descriptor.host_id;
                     binding.device_id = descriptor.device_id;
+                    binding.port_name = Some(descriptor.system_name);
                     binding.fingerprint = descriptor.fingerprint;
                 }
                 value.validate()?;

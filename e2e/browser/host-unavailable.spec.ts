@@ -6,6 +6,8 @@ import defaults from "../../packages/contracts/src/generated/defaults.json" with
 import type { WorkspaceDocument } from "@serial-workbench/contracts";
 import { validateSerialConfiguration } from "../../packages/contracts/src/generated/validators.mjs";
 import { seedWorkbenchFixture } from "./workbench.fixture";
+import { stateScopeKey } from "../../src/lib/host-scope";
+import { viewDraftKey } from "../../src/features/workbench/draft-identity";
 
 // Only the Native boundary is controlled. Production providers and draft storage run unchanged.
 const zh = {
@@ -31,6 +33,14 @@ const zh = {
 const serialConfiguration = defaults.serialConfiguration;
 if (!validateSerialConfiguration(serialConfiguration))
   throw new Error("Invalid generated serial fixture");
+const defaultWorkspaceDraftScope = stateScopeKey({
+  scopeId: "workspace.default",
+  target: {
+    hostId: "workbench-gui-host",
+    kind: "workspace",
+    id: "default",
+  },
+});
 
 test("Host retry remains reachable after the transient failure notification expires", async ({
   page,
@@ -56,6 +66,91 @@ test("Host retry remains reachable after the transient failure notification expi
     await page.evaluate(() => window.workbenchFixture.attachmentCalls),
   ).toBe(2);
   await expect(page.getByRole("tab")).toHaveCount(0);
+});
+
+test("startup keeps the complete workbench and editor geometry while local drafts and Host connect separately", async ({
+  page,
+}, info) => {
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    theme: "dark",
+    sidebarCollapsed: true,
+    hostStart: "pending",
+    draftAccess: "pending",
+    drafts: { unconnected: "ORIGINAL BEFORE STARTUP" },
+  });
+  await page.clock.install();
+  await page.goto("./#/");
+  const draft = page.getByRole("textbox", {
+    name: /^(Send draft|发送草稿)$/,
+    exact: true,
+  });
+  await expect(draft).toBeVisible();
+  await expect(draft).not.toBeEditable();
+  const originalNode = await draft.elementHandle();
+  const rectangles = () =>
+    page.evaluate(() =>
+      [
+        ".workbench-stream-log",
+        ".workbench-draft",
+        ".workbench-send-button",
+      ].map((selector) => {
+        const element = document.querySelector(selector);
+        if (!element) throw new Error(`Missing ${selector}`);
+        const { x, y, width, height } = element.getBoundingClientRect();
+        return { x, y, width, height };
+      }),
+    );
+  const before = await rectangles();
+  const progress = page
+    .locator("[data-sonner-toast]")
+    .filter({ hasText: /正在连接本机服务|Connecting to the local service/ });
+  await expect(progress).toBeVisible();
+  await page.clock.fastForward(6000);
+  await expect(progress).toBeVisible();
+  await page.screenshot({
+    path: info.outputPath("startup-pending-workbench.png"),
+  });
+  await expect(page.getByTestId("serial-workbench-shell")).not.toContainText(
+    /正在等待本机服务响应|Waiting for the local service to respond/,
+  );
+  await expect(
+    page.getByRole("button", { name: /^(Save drafts|保存草稿)$/, exact: true }),
+  ).toBeDisabled();
+  await page.evaluate(() => window.workbenchFixture.releaseDrafts());
+  await expect(draft).toHaveValue("ORIGINAL BEFORE STARTUP");
+  await expect(draft).toBeEditable();
+  expect(
+    await draft.evaluate((node, original) => node === original, originalNode),
+  ).toBe(true);
+  expect(await rectangles()).toEqual(before);
+  await draft.fill("EDITED WHILE HOST CONNECTS");
+  await expect(
+    page.getByRole("button", { name: /^(Send|发送)$/, exact: true }),
+  ).toBeDisabled();
+  await expect(progress).toBeVisible();
+  await page.evaluate(() => window.workbenchFixture.releaseHost());
+  await expect(
+    page.getByRole("button", { name: "Open Virtual serial", exact: true }),
+  ).toBeEnabled();
+  await expect(progress).toHaveCount(0);
+  await expect(draft).toHaveValue("EDITED WHILE HOST CONNECTS");
+  expect(
+    await draft.evaluate((node, original) => node === original, originalNode),
+  ).toBe(true);
+  expect(await rectangles()).toEqual(before);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.clientStateWrites),
+  ).toEqual([]);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectCalls),
+  ).toEqual([]);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await page.screenshot({
+    path: info.outputPath("startup-connected-workbench.png"),
+  });
 });
 const workspace: WorkspaceDocument = {
   ...defaults.workspace,
@@ -384,13 +479,18 @@ test("pending first connection retains the unbound draft across late workspace a
   await page.getByRole("button", { name: "Save drafts", exact: true }).click();
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        window.workbenchFixture.clientStateWrites.some(
-          (s) =>
-            s.drafts.unconnected === "LOCAL EDIT AGAIN" &&
-            s.drafts["saved-view"] === "SAVED VIEW DRAFT" &&
-            s.drafts["view/unconnected"] === "REAL VIEW EDIT",
-        ),
+      page.evaluate(
+        ({ saved, sameName }) =>
+          window.workbenchFixture.clientStateWrites.some(
+            (s) =>
+              s.drafts.unconnected === "LOCAL EDIT AGAIN" &&
+              s.drafts[saved] === "SAVED VIEW DRAFT" &&
+              s.drafts[sameName] === "REAL VIEW EDIT",
+          ),
+        {
+          saved: viewDraftKey(defaultWorkspaceDraftScope, "saved-view"),
+          sameName: viewDraftKey(defaultWorkspaceDraftScope, "unconnected"),
+        },
       ),
     )
     .toBe(true);
@@ -428,7 +528,7 @@ test("pending first connection retains the unbound draft across late workspace a
 });
 
 for (const access of ["pending", "failed"] as const)
-  test(`local draft ${access} cannot expose or save an empty editor before explicit recovery`, async ({
+  test(`local draft ${access} keeps the visible editor locked until explicit recovery`, async ({
     page,
   }, info) => {
     await page.setViewportSize({ width: 880, height: 600 });
@@ -443,12 +543,12 @@ for (const access of ["pending", "failed"] as const)
         exact: true,
       }),
     ).toBeVisible();
-    await expect(
-      page.getByRole("textbox", { name: zh.draft, exact: true }),
-    ).toHaveCount(0);
+    const draft = page.getByRole("textbox", { name: zh.draft, exact: true });
+    await expect(draft).toBeVisible();
+    await expect(draft).not.toBeEditable();
     await expect(
       page.getByRole("button", { name: zh.saveDrafts, exact: true }),
-    ).toHaveCount(0);
+    ).toBeDisabled();
     expect(
       await page.evaluate(() => window.workbenchFixture.clientStateWrites),
     ).toEqual([]);
@@ -525,10 +625,12 @@ test("an established Host losing its attachment preserves the current tab and dr
   await page.getByRole("button", { name: "Save drafts", exact: true }).click();
   await expect
     .poll(() =>
-      page.evaluate(() =>
-        window.workbenchFixture.clientStateWrites.some(
-          (s) => s.drafts["session-session"] === "CURRENT EDIT",
-        ),
+      page.evaluate(
+        (draftKey) =>
+          window.workbenchFixture.clientStateWrites.some(
+            (s) => s.drafts[draftKey] === "CURRENT EDIT",
+          ),
+        viewDraftKey(defaultWorkspaceDraftScope, "session-session"),
       ),
     )
     .toBe(true);

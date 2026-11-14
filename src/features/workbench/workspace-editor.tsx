@@ -1,4 +1,4 @@
-import { useEffect, useId, useRef, useState } from "react";
+import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import type {
   SerialConfiguration,
   WorkspaceDocument,
@@ -6,7 +6,6 @@ import type {
   WorkspaceView,
 } from "@serial-workbench/contracts";
 import { Button } from "@/components/ui/button";
-import { Switch } from "@/components/ui/switch";
 import { ColorPicker } from "@/components/color-picker";
 import { HelpTooltip } from "@/components/help-tooltip";
 import {
@@ -29,6 +28,7 @@ import {
 } from "@/components/ui/select";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { stateScopeKey } from "@/lib/host-scope";
+import { receiveEncodingFor } from "@/lib/text-encoding";
 import { diffWorkspaceImport } from "./workspace-import";
 import {
   SerialConfigurationFields,
@@ -59,6 +59,7 @@ import {
   Minus,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
+import { TextEncodingSelect } from "./text-encoding-select";
 
 export type WorkspaceEditorLabels = {
   configurationLabels: SerialConfigurationLabels;
@@ -74,9 +75,11 @@ export type WorkspaceEditorLabels = {
   viewName: string;
   color: string;
   icon: string;
-  pinned: string;
   receiveMode: string;
   sendMode: string;
+  receiveEncoding?: string;
+  sendEncoding?: string;
+  encodingAuto?: string;
   text: string;
   hex: string;
   binding: string;
@@ -135,6 +138,7 @@ export type WorkspaceEditorLabels = {
 export type WorkspaceEditorProps = {
   base: WorkspaceDocumentResult;
   value?: WorkspaceDocument;
+  initialSelectedViewId?: string;
   selectedViewId?: string;
   bindingNames?: Readonly<Record<string, string>>;
   devices?: readonly { value: string; label: string }[];
@@ -205,6 +209,7 @@ export function WorkspaceEditor(props: WorkspaceEditorProps) {
 function WorkspaceEditorDraft({
   base,
   value,
+  initialSelectedViewId,
   selectedViewId,
   bindingNames,
   devices = [],
@@ -224,7 +229,7 @@ function WorkspaceEditorDraft({
   const [addingDevice, setAddingDevice] = useState("");
   const [local, setLocal] = useState(base.document.value);
   const [localSelection, setLocalSelection] = useState(
-    selectedViewId ?? base.document.value.views[0]?.id,
+    selectedViewId ?? initialSelectedViewId ?? base.document.value.views[0]?.id,
   );
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string>();
@@ -244,7 +249,30 @@ function WorkspaceEditorDraft({
   const pending = useRef<AbortController | null>(null);
   const draft = value ?? local;
   const latest = useRef(draft);
+  const previousDraft = latest.current;
   latest.current = draft;
+  const [observedRevision, setObservedRevision] = useState(
+    base.document.revision,
+  );
+  if (observedRevision !== base.document.revision) {
+    // 受控正文可能与外部快照一起变化，先核对更新前的草稿，避免把新快照误记为本地编辑。
+    // 保存中已观察到的版本不在解除 busy 后追认，实际保存终态仍拥有自己的 CAS 基线。
+    setObservedRevision(base.document.revision);
+    if (
+      BigInt(base.document.revision) > BigInt(original.document.revision) &&
+      !pending.current &&
+      !importPending.current &&
+      !(importOpen && importJson) &&
+      sameWorkspace(previousDraft, original.document.value) &&
+      (value === undefined
+        ? sameWorkspace(draft, original.document.value)
+        : sameWorkspace(value, base.document.value))
+    ) {
+      setOriginal(base);
+      setLocal(base.document.value);
+      setSaved(false);
+    }
+  }
   const id = useId();
   const view =
     draft.views.find(
@@ -280,6 +308,7 @@ function WorkspaceEditorDraft({
     [],
   );
   function change(next: WorkspaceDocument) {
+    latest.current = next;
     setLocal(next);
     onChange?.(next);
     setSaved(false);
@@ -508,9 +537,9 @@ function WorkspaceEditorDraft({
     current: string,
     options: readonly { value: string; label: string }[],
     onValueChange: (next: string) => void,
-  ) => (
-    <label className="grid min-w-0 gap-1 text-sm">
-      <span>{label}</span>
+    encodingControl?: ReactNode,
+  ) => {
+    const control = (
       <Select value={current} onValueChange={onValueChange} disabled={locked}>
         <SelectTrigger aria-label={label}>
           <SelectValue />
@@ -523,8 +552,21 @@ function WorkspaceEditorDraft({
           ))}
         </SelectContent>
       </Select>
-    </label>
-  );
+    );
+    return (
+      <div className="workbench-workspace-row text-sm">
+        <span>{label}</span>
+        {encodingControl ? (
+          <div className="workbench-workspace-format-controls grid min-w-0 grid-cols-2 gap-2">
+            {control}
+            {encodingControl}
+          </div>
+        ) : (
+          control
+        )}
+      </div>
+    );
+  };
   return (
     <section
       aria-label={labels.title}
@@ -665,20 +707,6 @@ function WorkspaceEditorDraft({
                       onValueChange={(icon) => editView({ icon })}
                     />
                   </div>
-                  <label
-                    htmlFor={`${id}-pinned`}
-                    className="workbench-workspace-pinned text-sm"
-                  >
-                    <span>{labels.pinned}</span>
-                    <Switch
-                      id={`${id}-pinned`}
-                      checked={view.pinned}
-                      onCheckedChange={(checked) =>
-                        editView({ pinned: checked })
-                      }
-                      disabled={locked}
-                    />
-                  </label>
                   {choice(
                     labels.receiveMode,
                     view.receiveMode,
@@ -687,11 +715,33 @@ function WorkspaceEditorDraft({
                       if (mode === "text" || mode === "hex")
                         editView({ receiveMode: mode });
                     },
+                    <TextEncodingSelect
+                      value={receiveEncodingFor(view.receiveEncoding)}
+                      label={labels.receiveEncoding ?? "Receive encoding"}
+                      automatic={labels.encodingAuto ?? "Auto detect"}
+                      disabled={locked}
+                      onChange={(receiveEncoding) =>
+                        editView({ receiveEncoding })
+                      }
+                    />,
                   )}
-                  {choice(labels.sendMode, view.sendMode, modes, (mode) => {
-                    if (mode === "text" || mode === "hex")
-                      editView({ sendMode: mode });
-                  })}
+                  {choice(
+                    labels.sendMode,
+                    view.sendMode,
+                    modes,
+                    (mode) => {
+                      if (mode === "text" || mode === "hex")
+                        editView({ sendMode: mode });
+                    },
+                    <TextEncodingSelect
+                      value={view.sendEncoding ?? "utf-8"}
+                      label={labels.sendEncoding ?? "Send encoding"}
+                      disabled={locked}
+                      onChange={(sendEncoding) => {
+                        if (sendEncoding) editView({ sendEncoding });
+                      }}
+                    />,
+                  )}
                   {choice(
                     labels.binding,
                     view.bindingId,
@@ -793,6 +843,7 @@ function WorkspaceEditorDraft({
                   id={id + "-binding"}
                   value={binding.configuration}
                   labels={labels.configurationLabels}
+                  showReconnectBackoff={binding.reconnect.enabled}
                   onChange={(value) => editConfiguration(value)}
                 />
               </fieldset>

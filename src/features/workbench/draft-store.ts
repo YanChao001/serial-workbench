@@ -25,6 +25,17 @@ export function createDraftStore(initial: Drafts) {
     current = { ...next };
     publish();
   };
+  const reidentify = (transform: (drafts: Drafts) => Drafts) => {
+    // 身份认领分别保留当前正文与已保存正文；两次变换都成功后才提交并通知。
+    const nextCurrent = transform(current);
+    const nextSaved = transform(saved);
+    const currentChanged = !sameDrafts(current, nextCurrent);
+    const savedChanged = !sameDrafts(saved, nextSaved);
+    if (!currentChanged && !savedChanged) return;
+    if (currentChanged) current = { ...nextCurrent };
+    if (savedChanged) saved = { ...nextSaved };
+    publish();
+  };
   return {
     snapshot: () => current,
     get: (key: string) => (Object.hasOwn(current, key) ? current[key]! : ""),
@@ -35,7 +46,13 @@ export function createDraftStore(initial: Drafts) {
         listeners.delete(listener);
       };
     },
+    restoreSaved: (drafts: Drafts) => {
+      current = { ...drafts };
+      saved = current;
+      publish();
+    },
     update,
+    reidentify,
     change: (key: string, value: string) =>
       update({ ...current, [key]: value }),
     setSaved: (value: DraftUpdate) => {

@@ -169,4 +169,31 @@ it("notifies a subsequent failed attempt after the previous error was cleared", 
     </WorkbenchNotice>,
   );
   expect(toast.custom).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(toast.custom).mock.calls[0]?.[1]?.id).not.toBe(
+    vi.mocked(toast.custom).mock.calls[1]?.[1]?.id,
+  );
+});
+
+it("keeps a long retry visible and restores the error lifetime without changing its logical key", () => {
+  const content = (duration: number, text: string) => (
+    <WorkbenchNotice noticeKey="connection:HOST_BUSY" duration={duration}>
+      <p>{text}</p>
+    </WorkbenchNotice>
+  );
+  const view = render(content(5000, "Service unavailable"));
+  const id = vi.mocked(toast.custom).mock.calls[0]?.[1]?.id;
+  view.rerender(content(Infinity, "Connecting"));
+  expect(toast.custom).toHaveBeenCalledTimes(2);
+  expect(vi.mocked(toast.custom).mock.calls[1]?.[1]).toMatchObject({
+    duration: Infinity,
+  });
+  const retryId = vi.mocked(toast.custom).mock.calls[1]?.[1]?.id;
+  expect(retryId).not.toBe(id);
+  expect(toast.dismiss).toHaveBeenCalledWith(id);
+  view.rerender(content(5000, "Service unavailable"));
+  expect(toast.custom).toHaveBeenCalledTimes(3);
+  expect(vi.mocked(toast.custom).mock.calls[2]?.[1]).toMatchObject({
+    duration: 5000,
+  });
+  expect(vi.mocked(toast.custom).mock.calls[2]?.[1]?.id).not.toBe(retryId);
 });

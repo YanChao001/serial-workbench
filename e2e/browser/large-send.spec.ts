@@ -23,6 +23,15 @@ test("sends a 16.50 KB draft and the exact maximum, then explains oversized fina
       exact: true,
     })
     .click();
+  await expect(
+    page.getByRole("button", {
+      name: words["workbench.closeSession"],
+      exact: true,
+    }),
+  ).toBeEnabled();
+  await expect(
+    page.getByRole("tab", { name: "Virtual serial", exact: true }),
+  ).toHaveAttribute("aria-selected", "true");
   const sender = page.getByRole("region", {
     name: words["workbench.send"],
     exact: true,

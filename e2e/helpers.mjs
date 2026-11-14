@@ -1,14 +1,11 @@
 import { browser, $ } from "@wdio/globals";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
+import { waitForNativeDocument } from "./native-ready.mjs";
 export { reloadDocument } from "./reload-document.ts";
 
 export async function ready(label = "main") {
-  await $("#root main").waitForExist();
-  await browser.waitUntil(
-    () => browser.execute(() => Boolean(globalThis.__TAURI_INTERNALS__)),
-    { timeoutMsg: "Tauri IPC did not initialize" },
-  );
+  await waitForNativeDocument(browser, label);
   await browser.waitUntil(
     async () =>
       (await invoke("plugin:window|is_visible", { label })).value === true,

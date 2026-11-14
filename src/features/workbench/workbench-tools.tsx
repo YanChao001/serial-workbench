@@ -32,7 +32,12 @@ import { SessionControls } from "./session-controls";
 import { DeviceLibrary } from "./device-library";
 import { WorkspaceEditor } from "./workspace-editor";
 import { WorkspacePicker } from "./workspace-picker";
-import { addDeviceView, sameWorkspace } from "./workspace-model";
+import {
+  addDeviceView,
+  enrichWorkspacePorts,
+  sameWorkspace,
+} from "./workspace-model";
+import { resolveViewDevice } from "./view-device";
 import { connectionKey } from "@/lib/client-connection-defaults";
 import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
@@ -318,6 +323,7 @@ export function WorkbenchTools({
             key={documentKey}
             base={base}
             value={editorDocument}
+            initialSelectedViewId={context.selectedViewId}
             devices={host.state.devices.map((device) => ({
               value: device.deviceId,
               label: device.systemName,
@@ -353,19 +359,30 @@ export function WorkbenchTools({
             bindingNames={Object.fromEntries(
               (editorDocument ?? base.document.value).bindings.map(
                 (binding, index) => {
-                  const device = host.state.devices.find(
-                    (item) =>
-                      item.hostId === binding.hostId &&
-                      item.deviceId === binding.deviceId,
-                  );
                   const alias = (
                     editorDocument ?? base.document.value
                   ).views.find(
                     (view) => view.bindingId === binding.bindingId,
                   )?.name;
+                  const device = resolveViewDevice(
+                    binding,
+                    host.state.devices,
+                    host.state.devicesStale,
+                    alias,
+                  );
                   const name =
-                    device?.systemName ??
-                    `${alias || `${labels.workspace.binding} ${index + 1}`} · ${labels.devices.offlineDevice}`;
+                    (device &&
+                    alias &&
+                    alias !== device.systemName &&
+                    (editorDocument ?? base.document.value).bindings.some(
+                      (other) =>
+                        other.bindingId !== binding.bindingId &&
+                        other.hostId === binding.hostId &&
+                        other.deviceId === binding.deviceId,
+                    )
+                      ? `${alias} · ${device.systemName}`
+                      : device?.systemName) ??
+                    `${alias || binding.portName || `${labels.workspace.binding} ${index + 1}`} · ${t("workbench.bindingUnmatched")}`;
                   return [
                     binding.bindingId,
                     `${name} · ${binding.configuration.baudRate}`,
@@ -377,7 +394,18 @@ export function WorkbenchTools({
             maxImportBytes={host.connection?.attachment.limits.maxRequestBytes}
             onChange={onChange}
             onAcknowledged={onAcknowledged}
-            onSave={host.saveWorkspace}
+            onSave={(current, value, signal) =>
+              host.saveWorkspace(
+                current,
+                enrichWorkspacePorts(
+                  value,
+                  host.state.devices,
+                  host.state.devicesStale,
+                  current.document.value,
+                ),
+                signal,
+              )
+            }
             onReload={async (signal) => {
               const result = await host.loadWorkspace(
                 base.scope.target.id,

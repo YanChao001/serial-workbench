@@ -286,7 +286,7 @@ export function parseClientWindowState(value: unknown): ClientWindowState {
     if (
       !key ||
       /\p{Cc}/u.test(key) ||
-      new TextEncoder().encode(key).length > 128 ||
+      new TextEncoder().encode(key).length > 1024 ||
       typeof draft !== "string" ||
       draft.includes("\0") ||
       new TextEncoder().encode(draft).length > 65536

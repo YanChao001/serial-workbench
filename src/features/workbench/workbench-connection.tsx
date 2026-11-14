@@ -47,6 +47,7 @@ export function WorkbenchConnection({
   workspaceName,
   devices,
   deviceId,
+  unmatchedDeviceName,
   device,
   session,
   viewSessionId,
@@ -81,6 +82,7 @@ export function WorkbenchConnection({
   workspaceName: string;
   devices: readonly DeviceDescriptor[];
   deviceId: string;
+  unmatchedDeviceName?: string;
   device?: DeviceDescriptor;
   session?: SessionSnapshot;
   viewSessionId?: string;
@@ -142,6 +144,7 @@ export function WorkbenchConnection({
   ];
   const parameterSummary = `${configuration.baudRate} / ${configuration.dataBits}${parity}${stopBits}`;
   const parameterPurpose = toolLabels?.parameters ?? labels.status;
+  const unmatchedSelection = "unmatched/device";
   return (
     <header
       ref={header}
@@ -163,7 +166,7 @@ export function WorkbenchConnection({
       </WorkbenchIconButton>
       <Select
         open={deviceListOpen && !disabled}
-        value={deviceId}
+        value={deviceId || (unmatchedDeviceName ? unmatchedSelection : "")}
         onValueChange={onDeviceChange}
         onOpenChange={(open) => {
           setDeviceListOpen(open);
@@ -183,7 +186,10 @@ export function WorkbenchConnection({
                 : labels.noDevices
             }
           >
-            {devices.find((value) => value.deviceId === deviceId)?.systemName}
+            {unmatchedDeviceName
+              ? `${unmatchedDeviceName} · ${labels.bindingUnmatched}`
+              : devices.find((value) => value.deviceId === deviceId)
+                  ?.systemName}
           </SelectValue>
         </SelectTrigger>
         <SelectContent
@@ -195,6 +201,11 @@ export function WorkbenchConnection({
             }
           }}
         >
+          {unmatchedDeviceName && (
+            <SelectItem value={unmatchedSelection} disabled>
+              {unmatchedDeviceName} · {labels.bindingUnmatched}
+            </SelectItem>
+          )}
           {devices.length === 0 && (
             <p className="px-3 py-2 text-sm text-muted-foreground">
               {labels.noDevices}
@@ -255,7 +266,9 @@ export function WorkbenchConnection({
             opening
               ? labels.opening
               : !device
-                ? (toolLabels?.chooseDevice ?? labels.devices)
+                ? unmatchedDeviceName
+                  ? labels.bindingUnavailable
+                  : (toolLabels?.chooseDevice ?? labels.devices)
                 : labels.open
           }
           onClick={onOpen}

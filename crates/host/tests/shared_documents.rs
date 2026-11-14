@@ -148,6 +148,7 @@ fn binding() -> serial_workbench_core::DeviceBinding {
         binding_id: Id::try_from("binding").unwrap(),
         host_id: Id::try_from("host").unwrap(),
         device_id: Id::try_from("device").unwrap(),
+        port_name: Some("virtual:echo".into()),
         fingerprint: DeviceFingerprint {
             transport: DeviceTransportKind::Virtual,
             vid: None,
@@ -213,6 +214,11 @@ fn workspace_rejects_invalid_references_and_reconnect_policy_without_writing() {
     invalid_reconnect.bindings[0].reconnect.max_delay_ms =
         DurationMs::try_from(U64::from(1)).unwrap();
     invalid.push(invalid_reconnect);
+    for port_name in [String::new(), "COM5\n".into(), "p".repeat(1025)] {
+        let mut invalid_port = valid.clone();
+        invalid_port.bindings[0].port_name = Some(port_name);
+        invalid.push(invalid_port);
+    }
     for candidate in invalid {
         assert_eq!(
             workspace

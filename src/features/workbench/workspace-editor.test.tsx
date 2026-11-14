@@ -1,4 +1,4 @@
-import { StrictMode, useState } from "react";
+import { StrictMode, useState, type ContextType } from "react";
 import {
   act,
   cleanup,
@@ -143,7 +143,6 @@ const labels: WorkspaceEditorLabels = {
   viewName: "View name",
   color: "Color",
   icon: "Icon",
-  pinned: "Pinned",
   receiveMode: "Receive mode",
   sendMode: "Send mode",
   text: "Text",
@@ -216,6 +215,266 @@ function base(): WorkspaceDocumentResult {
     },
   };
 }
+
+async function selectSetting(label: string, value: string) {
+  const trigger = screen.getByRole("combobox", { name: label });
+  trigger.focus();
+  fireEvent.keyDown(trigger, { key: "ArrowDown" });
+  const option = await screen.findByRole("option", {
+    name: value,
+  });
+  option.focus();
+  fireEvent.keyDown(option, { key: "Enter" });
+}
+
+it("saves independent encodings with the selected view through HEX mode round trips", async () => {
+  const original = base();
+  const onSave = vi.fn(
+    async (snapshot: WorkspaceDocumentResult, value: WorkspaceDocument) => ({
+      ...snapshot,
+      document: { revision: "8", value },
+    }),
+  );
+  render(
+    <WorkspaceEditor
+      base={original}
+      selectedViewId="view"
+      labels={labels}
+      onSave={onSave}
+    />,
+  );
+  expect(
+    screen.getByRole("combobox", { name: "Receive encoding" }),
+  ).toHaveTextContent("UTF-8");
+  expect(
+    screen.getByRole("combobox", { name: "Send encoding" }),
+  ).toHaveTextContent("UTF-8");
+  await selectSetting("Receive encoding", "Auto detect");
+  await selectSetting("Send encoding", "GBK");
+  await selectSetting(labels.receiveMode, labels.hex);
+  await selectSetting(labels.sendMode, labels.text);
+  expect(
+    screen.getByRole("combobox", { name: "Receive encoding" }),
+  ).toHaveTextContent("Auto detect");
+  expect(
+    screen.getByRole("combobox", { name: "Send encoding" }),
+  ).toHaveTextContent("GBK");
+  await selectSetting(labels.receiveMode, labels.text);
+  await selectSetting(labels.sendMode, labels.hex);
+  fireEvent.click(screen.getByRole("button", { name: labels.save }));
+  await screen.findByRole("status");
+  const saved = onSave.mock.calls[0]?.[1];
+  expect(saved?.views).toEqual([
+    expect.objectContaining({
+      id: "view",
+      receiveMode: "text",
+      sendMode: "hex",
+      receiveEncoding: null,
+      sendEncoding: "gbk",
+    }),
+  ]);
+  expect(saved?.bindings).toEqual(original.document.value.bindings);
+  expect(onSave.mock.calls[0]?.[0]).toBe(original);
+});
+
+it("adopts a clean external revision for lifecycle discard and subsequent saves", async () => {
+  const original = base();
+  const remote: WorkspaceDocumentResult = {
+    ...original,
+    document: {
+      revision: "8",
+      value: { ...original.document.value, name: "Updated elsewhere" },
+    },
+  };
+  let work: UnsavedWork | undefined;
+  const onSave = vi.fn(
+    async (snapshot: WorkspaceDocumentResult, value: WorkspaceDocument) => ({
+      ...snapshot,
+      document: { revision: "9", value },
+    }),
+  );
+  const registry: ContextType<typeof UnsavedWorkContext> = {
+    requestLeave: async () => true,
+    releaseScope: () => {},
+    register: (next) => {
+      work = next;
+    },
+    unregister: () => {},
+  };
+  function ControlledEditor({
+    snapshot,
+  }: {
+    snapshot: WorkspaceDocumentResult;
+  }) {
+    const [value, setValue] = useState<WorkspaceDocument>();
+    return (
+      <WorkspaceEditor
+        base={snapshot}
+        value={value ?? snapshot.document.value}
+        labels={labels}
+        onChange={setValue}
+        onSave={onSave}
+      />
+    );
+  }
+  const content = (snapshot: WorkspaceDocumentResult) => (
+    <UnsavedWorkContext value={registry}>
+      <ControlledEditor snapshot={snapshot} />
+    </UnsavedWorkContext>
+  );
+  const rendered = render(content(original));
+  rendered.rerender(content(remote));
+  await waitFor(() => expect(work?.dirty).toBe(false));
+  expect(screen.getByRole("button", { name: labels.save })).toBeDisabled();
+  fireEvent.change(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+    {
+      target: { value: "Unsubmitted local edit" },
+    },
+  );
+  await waitFor(() => expect(work?.dirty).toBe(true));
+  await act(async () => work?.discard());
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveValue("Updated elsewhere");
+  fireEvent.change(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+    {
+      target: { value: "Saved after the update" },
+    },
+  );
+  await act(async () => work?.save?.(new AbortController().signal));
+  expect(onSave).toHaveBeenCalledWith(
+    remote,
+    expect.objectContaining({ name: "Saved after the update" }),
+    expect.any(AbortSignal),
+  );
+  expect(work?.dirty).toBe(false);
+});
+
+it("uses the initial view once while allowing later view selection", async () => {
+  const original = base();
+  const first = original.document.value.views[0]!;
+  original.document.value.views.push(
+    { ...first, id: "second", name: "Second view" },
+    { ...first, id: "third", name: "Third view" },
+  );
+  const content = (initialSelectedViewId: string) => (
+    <WorkspaceEditor
+      base={original}
+      initialSelectedViewId={initialSelectedViewId}
+      labels={labels}
+    />
+  );
+  const rendered = render(content("second"));
+  expect(screen.getByRole("textbox", { name: labels.viewName })).toHaveValue(
+    "Second view",
+  );
+  await selectSetting(labels.viewName, "Motor");
+  expect(screen.getByRole("textbox", { name: labels.viewName })).toHaveValue(
+    "Motor",
+  );
+  rendered.rerender(content("third"));
+  expect(screen.getByRole("textbox", { name: labels.viewName })).toHaveValue(
+    "Motor",
+  );
+});
+
+it("preserves edited fields and the original CAS revision when a newer base arrives", async () => {
+  const original = base();
+  const remote: WorkspaceDocumentResult = {
+    ...original,
+    document: {
+      revision: "8",
+      value: { ...original.document.value, name: "Updated elsewhere" },
+    },
+  };
+  const onSave = vi.fn(
+    async (snapshot: WorkspaceDocumentResult, value: WorkspaceDocument) => ({
+      ...snapshot,
+      document: { revision: "9", value },
+    }),
+  );
+  const content = (snapshot: WorkspaceDocumentResult) => (
+    <WorkspaceEditor base={snapshot} labels={labels} onSave={onSave} />
+  );
+  const rendered = render(content(original));
+  fireEvent.change(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+    {
+      target: { value: "Local draft" },
+    },
+  );
+  rendered.rerender(content(remote));
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveValue("Local draft");
+  fireEvent.click(screen.getByRole("button", { name: labels.save }));
+  await screen.findByRole("status");
+  expect(onSave.mock.calls[0]?.[0]).toBe(original);
+  expect(onSave.mock.calls[0]?.[1].name).toBe("Local draft");
+});
+
+it("keeps a pending save and later input separate from an external revision", async () => {
+  const original = base();
+  const remote: WorkspaceDocumentResult = {
+    ...original,
+    document: {
+      revision: "9",
+      value: { ...original.document.value, name: "Updated elsewhere" },
+    },
+  };
+  let finish!: (result: WorkspaceDocumentResult) => void;
+  const onSave = vi
+    .fn<NonNullable<WorkspaceEditorProps["onSave"]>>()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          finish = resolve;
+        }),
+    )
+    .mockRejectedValue({ code: "REVISION_CONFLICT" });
+  const content = (snapshot: WorkspaceDocumentResult) => (
+    <WorkspaceEditor base={snapshot} labels={labels} onSave={onSave} />
+  );
+  const rendered = render(content(original));
+  fireEvent.change(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+    {
+      target: { value: "Submitted draft" },
+    },
+  );
+  fireEvent.click(screen.getByRole("button", { name: labels.save }));
+  const submitted = onSave.mock.calls[0]![1];
+  const signal = onSave.mock.calls[0]?.[2];
+  rendered.rerender(content(remote));
+  expect(signal?.aborted).toBe(false);
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveValue("Submitted draft");
+  fireEvent.change(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+    {
+      target: { value: "Typed while saving" },
+    },
+  );
+  await act(async () =>
+    finish({
+      ...original,
+      document: { revision: "8", value: submitted },
+    }),
+  );
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveValue("Typed while saving");
+  fireEvent.click(screen.getByRole("button", { name: labels.save }));
+  await screen.findByRole("alert");
+  expect(onSave.mock.calls[1]?.[0].document.revision).toBe("8");
+  expect(onSave.mock.calls[1]?.[1].name).toBe("Typed while saving");
+  expect(
+    screen.getByRole("textbox", { name: labels.workspaceName }),
+  ).toHaveValue("Typed while saving");
+});
 
 it("localizes only the placeholder of an unnamed workspace without changing the stored name", () => {
   const original = base();
@@ -331,7 +590,6 @@ it("saves edited view, connection and panel configuration with the original docu
   fireEvent.change(screen.getByRole("textbox", { name: "View name" }), {
     target: { value: "Motor 2" },
   });
-  fireEvent.click(screen.getByRole("switch", { name: "Pinned" }));
   fireEvent.click(screen.getByRole("button", { name: "Icon" }));
   fireEvent.click(screen.getByRole("button", { name: "cpu" }));
   fireEvent.change(screen.getByRole("textbox", { name: "Color" }), {
@@ -353,7 +611,6 @@ it("saves edited view, connection and panel configuration with the original docu
       views: [
         expect.objectContaining({
           name: "Motor 2",
-          pinned: true,
           icon: "cpu",
           color: "#3366AA",
         }),

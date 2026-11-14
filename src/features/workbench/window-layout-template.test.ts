@@ -56,6 +56,7 @@ it("snapshots only current window tabs and modes without changing the saved temp
     expect.objectContaining({
       hostId: "host",
       deviceId: "device",
+      portName: "Virtual serial",
       configuration: current.configuration,
     }),
   );
@@ -139,6 +140,7 @@ it("retains runtime views in a saved layout after their closed session metadata 
   expect(result.bindings[0]).toMatchObject({
     hostId: "host",
     deviceId: "device",
+    portName: "COM5",
     configuration: source.session.configuration,
   });
   const foreign = snapshotWindowLayout(
@@ -156,6 +158,7 @@ it("retains runtime views in a saved layout after their closed session metadata 
   );
   expect(foreign.bindings[0]).toMatchObject({
     hostId: "host",
+    portName: "COM5",
     configuration: source.session.configuration,
   });
 });
@@ -165,6 +168,7 @@ it("saves an explicitly rebound view without rebinding sibling views or their fa
     bindingId: "previous-binding",
     hostId: "retired-host",
     deviceId: "retired-device",
+    portName: "COM3",
     fingerprint: {
       transport: "serial" as const,
       evidence: "unreliable" as const,
@@ -223,12 +227,32 @@ it("saves an explicitly rebound view without rebinding sibling views or their fa
   ).toMatchObject({
     hostId: device.hostId,
     deviceId: device.deviceId,
+    portName: "COM5",
     fingerprint: device.fingerprint,
     configuration: current.configuration,
   });
   expect(result.views[1]).toEqual(sibling);
   expect(result.bindings[0]).toEqual(binding);
   expect(result.favoriteBindingIds).toEqual(base.favoriteBindingIds);
+  expect(base).toEqual(original);
+  const preserved = snapshotWindowLayout(
+    base,
+    [{ id: view.id, view, sessionId: current.sessionId }],
+    [current],
+    [device],
+    defaults.settings.terminal,
+    {},
+    defaults.settings.customAccent,
+    true,
+  );
+  expect(
+    preserved.bindings.find(
+      (item) => item.bindingId === preserved.views[0]?.bindingId,
+    ),
+  ).toMatchObject({
+    portName: "COM5",
+    configuration: binding.configuration,
+  });
   expect(base).toEqual(original);
 });
 it("saves the real current serial configuration of an attached saved view", () => {
@@ -240,6 +264,7 @@ it("saves the real current serial configuration of an attached saved view", () =
     bindingId: "saved-binding",
     hostId: "host",
     deviceId: "device",
+    portName: "COM3",
     fingerprint: {
       transport: "virtual" as const,
       evidence: "unreliable" as const,
@@ -261,7 +286,7 @@ it("saves the real current serial configuration of an attached saved view", () =
   const device = {
     hostId: "host",
     deviceId: "device",
-    systemName: "Virtual",
+    systemName: "COM5",
     fingerprint: binding.fingerprint,
     capabilities: current.capabilities,
   };
@@ -274,6 +299,7 @@ it("saves the real current serial configuration of an attached saved view", () =
     {},
   );
   expect(result.bindings[0]?.configuration.baudRate).toBe("230400");
+  expect(result.bindings[0]).toMatchObject({ portName: "COM5" });
   const edited = {
     ...base,
     bindings: [
@@ -294,7 +320,106 @@ it("saves the real current serial configuration of an attached saved view", () =
     true,
   );
   expect(preset.bindings[0]?.configuration.baudRate).toBe("9600");
+  expect(preset.bindings[0]).toMatchObject({ portName: "COM3" });
   expect(base.bindings[0]?.configuration.baudRate).toBe(
     defaults.serialConfiguration.baudRate,
   );
+});
+
+it("does not add a port hint to an attached legacy binding while previewing preserved presets", () => {
+  const current = session();
+  const device = {
+    hostId: "host",
+    deviceId: "device",
+    systemName: "COM5",
+    fingerprint: {
+      transport: "virtual" as const,
+      evidence: "unreliable" as const,
+    },
+    capabilities: current.capabilities,
+  };
+  const document = snapshotWindowLayout(
+    defaults.workspace,
+    [{ id: "saved", sessionId: current.sessionId }],
+    [current],
+    [device],
+    defaults.settings.terminal,
+    {},
+  );
+  Reflect.deleteProperty(document.bindings[0]!, "portName");
+  const original = structuredClone(document);
+  const tabs = [
+    { id: "saved", view: document.views[0], sessionId: current.sessionId },
+  ];
+
+  const preview = snapshotWindowLayout(
+    document,
+    tabs,
+    [current],
+    [device],
+    defaults.settings.terminal,
+    {},
+    defaults.settings.customAccent,
+    true,
+  );
+  expect(preview).toEqual(original);
+  expect(preview.bindings[0]).toBe(document.bindings[0]);
+  expect(preview.bindings[0]).not.toHaveProperty("portName");
+
+  const saved = snapshotWindowLayout(
+    document,
+    tabs,
+    [current],
+    [device],
+    defaults.settings.terminal,
+    {},
+  );
+  expect(saved.bindings[0]).toEqual({
+    ...document.bindings[0],
+    portName: "COM5",
+  });
+  expect(document).toEqual(original);
+});
+
+it("leaves the original port hints untouched if a later view cannot be saved", () => {
+  const current = session();
+  const device = {
+    hostId: "host",
+    deviceId: "device",
+    systemName: "COM3",
+    fingerprint: {
+      transport: "virtual" as const,
+      evidence: "unreliable" as const,
+    },
+    capabilities: current.capabilities,
+  };
+  const document = snapshotWindowLayout(
+    defaults.workspace,
+    [{ id: "saved", sessionId: current.sessionId }],
+    [current],
+    [device],
+    defaults.settings.terminal,
+    {},
+  );
+  const original = structuredClone(document);
+  const view = document.views[0]!;
+  expect(() =>
+    snapshotWindowLayout(
+      document,
+      [
+        { id: view.id, view, sessionId: current.sessionId },
+        {
+          id: "unresolvable",
+          view: { ...view, id: "unresolvable", bindingId: "missing-binding" },
+          sessionId: current.sessionId,
+        },
+      ],
+      [current],
+      [{ ...device, systemName: "COM5" }],
+      defaults.settings.terminal,
+      {},
+    ),
+  ).toThrow("VIEW_BINDING_UNAVAILABLE");
+  expect(document).toEqual(original);
+  expect(document.bindings[0]).toMatchObject({ portName: "COM3" });
 });

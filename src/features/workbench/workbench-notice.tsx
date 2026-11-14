@@ -2,7 +2,6 @@ import {
   useEffect,
   useId,
   useRef,
-  useState,
   useSyncExternalStore,
   type ReactNode,
 } from "react";
@@ -84,54 +83,75 @@ export function WorkbenchNotice({
   noticeKey,
   log,
   eventKey,
+  duration = 5000,
 }: {
   children: ReactNode;
   noticeKey: string;
   log?: UserLogInput;
   /** 真实操作身份；同一事件跨工具重开和多个展示入口只通知、入账一次。 */
   eventKey?: string;
+  /** 持续状态可延长至完成；独立事件仍沿用五秒寿命。 */
+  duration?: number;
 }) {
   const id = useId();
-  const [content] = useState(noticeContent);
-  const shown = useRef<string | undefined>(undefined);
-  const active = useRef(false);
+  const active = useRef<{
+    id: string;
+    content: ReturnType<typeof noticeContent>;
+    shown: string;
+    duration: number;
+  } | null>(null);
+  const identity = useRef(0);
   const episode = useRef(0);
   useEffect(() => {
     if (eventKey) {
       if (children) emitEvent(eventKey, children, log);
       return;
     }
-    // 更新已显示内容不重发通知，也不延长其寿命。
-    content.update(children);
     if (!children) {
       if (active.current) {
         episode.current++;
-        active.current = false;
-        toast.dismiss(id);
+        active.current.content.update(null);
+        toast.dismiss(active.current.id);
+        active.current = null;
       }
-      shown.current = undefined;
       return;
     }
-    active.current = true;
-    if (shown.current === noticeKey) return;
-    shown.current = noticeKey;
+    const previous = active.current;
+    // 相同状态只更新正文；用户关闭或自动结束后，不因普通重渲染再次弹出。
+    if (previous?.shown === noticeKey && previous.duration === duration) {
+      previous.content.update(children);
+      return;
+    }
+    if (previous) {
+      previous.content.update(null);
+      toast.dismiss(previous.id);
+    }
+    // 状态或寿命变化属于新一轮；旧退出动画和到期回调不能删除或缩短新通知。
+    const entry = {
+      id: `${id}:${identity.current++}`,
+      content: noticeContent(),
+      shown: noticeKey,
+      duration,
+    };
+    active.current = entry;
+    entry.content.update(children);
     if (log) recordUserLog(log, `${id}:${noticeKey}:${episode.current}`);
-    notifyCustom(() => <NoticeContent content={content} />, {
-      id,
-      duration: 5000,
+    const owned = entry;
+    notifyCustom(() => <NoticeContent content={owned.content} />, {
+      id: owned.id,
+      duration,
       closeButton: true,
     });
-  }, [children, content, id, log, noticeKey, eventKey]);
+  }, [children, id, log, noticeKey, eventKey, duration]);
   useEffect(
     () => () => {
-      content.update(null);
-      shown.current = undefined;
       if (active.current) {
-        active.current = false;
-        toast.dismiss(id);
+        active.current.content.update(null);
+        toast.dismiss(active.current.id);
+        active.current = null;
       }
     },
-    [content, id],
+    [id],
   );
   return null;
 }

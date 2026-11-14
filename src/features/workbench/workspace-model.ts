@@ -6,6 +6,7 @@ import type {
   SerialConfiguration,
 } from "@serial-workbench/contracts";
 import type { SessionTab } from "./session-tabs";
+import { resolveViewDevice } from "./view-device";
 
 /** DTO object key order may change across the native JSON round trip. */
 export function sameWorkspace(
@@ -69,6 +70,53 @@ export function distinctWorkspaceLabels(
     return { ...item, label };
   });
 }
+
+/** 显式保存可补全端口位置，但不改写硬件身份。 */
+export function enrichWorkspacePorts(
+  document: WorkspaceDocument,
+  devices: readonly DeviceDescriptor[],
+  stale = false,
+  previousDocument?: WorkspaceDocument,
+): WorkspaceDocument {
+  const bindings = document.bindings.map((binding) => {
+    const resolveNames = (views: WorkspaceDocument["views"]) => {
+      const candidates = new Set<DeviceDescriptor>();
+      for (const view of views) {
+        if (view.bindingId !== binding.bindingId) continue;
+        const candidate = resolveViewDevice(binding, devices, stale, view.name);
+        if (candidate) candidates.add(candidate);
+      }
+      return candidates;
+    };
+    const current = resolveViewDevice(binding, devices, stale);
+    let candidates = current
+      ? new Set([current])
+      : resolveNames(document.views);
+    if (candidates.size === 0 && previousDocument) {
+      const previous = previousDocument.bindings.find(
+        (value) => value.bindingId === binding.bindingId,
+      );
+      if (
+        previous &&
+        previous.hostId === binding.hostId &&
+        previous.deviceId === binding.deviceId &&
+        sameJsonValue(previous.fingerprint, binding.fingerprint)
+      )
+        candidates = resolveNames(previousDocument.views);
+    }
+    const candidate =
+      candidates.size === 1 ? candidates.values().next().value : undefined;
+    return candidate && binding.portName !== candidate.systemName
+      ? { ...binding, portName: candidate.systemName }
+      : binding;
+  });
+  return bindings.every(
+    (binding, index) => binding === document.bindings[index],
+  )
+    ? document
+    : { ...document, bindings };
+}
+
 export function addDeviceView(
   document: WorkspaceDocument,
   device: DeviceDescriptor,
@@ -88,6 +136,7 @@ export function addDeviceView(
           bindingId,
           hostId: device.hostId,
           deviceId: device.deviceId,
+          portName: device.systemName,
           fingerprint: device.fingerprint,
           configuration,
           reconnect: { enabled: false, maxDelayMs: "30000", maxAttempts: "10" },
@@ -157,6 +206,7 @@ export function addSessionView(
     bindingId: crypto.randomUUID(),
     hostId: device.hostId,
     deviceId: device.deviceId,
+    portName: device.systemName,
     fingerprint: device.fingerprint,
     configuration: session.configuration,
     reconnect: { enabled: false, maxDelayMs: "30000", maxAttempts: "10" },

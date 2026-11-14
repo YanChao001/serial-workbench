@@ -791,6 +791,7 @@ mod tests {
                 binding_id: binding_id.clone(),
                 host_id: fixture.attached.attachment.host_id.clone(),
                 device_id: Id::try_from("absent-device").unwrap(),
+                port_name: Some("virtual:echo".into()),
                 fingerprint: DeviceFingerprint {
                     transport: DeviceTransportKind::Virtual,
                     vid: None,
