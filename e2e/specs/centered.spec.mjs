@@ -8,15 +8,31 @@ import {
   invoke,
   windowPlacement,
   placeNearWorkAreaCorner,
+  recordWindowPlacement,
 } from "../helpers.mjs";
 
 const execute = promisify(execFile);
+
+async function waitForCenteredWindow(checkpoint) {
+  const samples = [];
+  const started = performance.now();
+  try {
+    await browser.waitUntil(async () => {
+      const placement = await windowPlacement();
+      samples.push({ elapsedMs: performance.now() - started, ...placement });
+      if (samples.length > 32) samples.shift();
+      return placement.centered;
+    });
+  } finally {
+    recordWindowPlacement(checkpoint, { samples });
+  }
+}
 
 describe("Centered window startup", () => {
   it("centers a restarted main window and a newly created secondary window", async () => {
     await ready();
     assert.equal((await readSettings()).settings.windowPosition, "center");
-    await browser.waitUntil(async () => (await windowPlacement()).centered);
+    await waitForCenteredWindow("centered-main");
     const geometry = (await invoke("get_window_geometry")).value;
     assert.equal(
       geometry.width,
@@ -36,7 +52,8 @@ describe("Centered window startup", () => {
     );
     await browser.switchToWindow(secondary);
     await ready("secondary");
-    await browser.waitUntil(async () => (await windowPlacement()).centered);
+    assert.equal((await readSettings()).settings.windowPosition, "center");
+    await waitForCenteredWindow("centered-secondary");
     await browser.switchToWindow(main);
   });
 

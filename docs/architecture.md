@@ -26,6 +26,12 @@
 
 根 [Cargo.toml](../Cargo.toml) 管理全部 Rust 包和共享 profile，使用唯一的根 Cargo.lock。无头包能够独立构建和测试；`src-tauri/target/` 是配置的共享编译输出位置。
 
+M2 已建立 [Host runtime 资源边界](../crates/host/src/node_runtime/mod.rs)：从自身安装位置定位资源，将磁盘描述与编译时固定矩阵比较，验证文件后只运行固定的 Node 自检脚本。它不依赖桌面框架，公共错误保留稳定 code/原因，原始输出只进入私有诊断；Windows 持有文件及祖先目录保护句柄，Linux 使用封印执行/加载快照，macOS 使用同次构建绑定的收紧签名和恢复前的内核身份核对，避免校验后重解同名路径而执行另一份内容。进程 owner 在真实退出并归并输出读者后结算。准备与构建共用来源、摘要及 Linux SONAME 规则，原始来源、准备后身份和正式发行签名分别留证，具体布局、预算与验收范围见 [runtime 分发契约](./contracts/runtime-distribution.md#host-校验与自检基础)。
+
+[Node 包安装基础](../crates/host/src/node_packages/install.rs)消费同一已验证归档，复用 PathGuard 完成受预算的解包及无覆盖发布，由现有 SQLite 文档 CAS 决定唯一可见版本；旧代码、失败输入和插件私有数据分别保留。来源仓库独立保存当前认可公钥及历史材料，按实际公钥身份验证签名；来源验签不授予执行信任。执行确认绑定当前内容和 revision，符合来源/协议/runtime/权限条件的升级才继承信任；`enabled` 只表示持久意图，不表示贡献已注册。
+
+[已安装内容证明](../crates/host/src/node_packages/installed.rs)重新核对已提交记录、原始归档和实际代码树，保持字节、来源、路径与 revision 的绑定，Windows owner 持有文件/目录保护句柄直到实际退出。共享 Node/worker 监督、效果边界的当前授权和插件业务入口继续按 Task14.3—14.5 接线，基础层不执行安装包代码，见 [Node 安装事务契约](./contracts/node-extension-v0.md#安装事务与执行信任基础)。
+
 ## 客户端入口
 
 前端由 `main.tsx`、`App.tsx` 组装 Provider、HashRouter 和边界。路由、懒加载、预载、导航位置与布局统一在 [routes.tsx](../src/routes.tsx)，菜单、命令面板和快捷键复用 `src/commands/`。
@@ -54,7 +60,7 @@
 
 已确认草稿的内存快照由窗口级 [ClientDraftsProvider](../src/providers/client-drafts.tsx) 持有，首次成功恢复及实际保存回执更新；组件重建时可同步读取，避免再次进入恢复提示。已访问的工作台路由另由缓存布局保留未保存正文和 DOM。首次失败不缓存空草稿，取消一个读取等待不取消其他等待者。保存始终读取最新 ClientState 并执行 revision CAS 与未来格式检查，取消等待后的实际回执仍更新缓存；旧读取不能覆盖新 revision。实现见 [client-drafts](../src/features/workbench/client-drafts.ts)。
 
-工作台正在编辑的正文由自身的 [draft-store](../src/features/workbench/draft-store.ts) 同步持有，各视图独立；编辑区订阅当前视图的字符串，工作台外层只订阅脏状态变化。文本框保留浏览器原生编辑值，输入事件同步更新数据源；外部重置、格式转换或视图切换只在正文确实不同时于布局阶段写回，避免 React 每键同步 `defaultValue` 导致长文本重复排版，同值更新保留选区及输入法过程。保存动作现场取得最新快照，迟到的保存确认不清除后续编辑；放弃回到已确认快照。它不替代窗口级已保存草稿缓存或 Native CAS。权限预览在 [workspace-send-panel](../src/features/workbench/workspace-send-panel.tsx) 合并连续输入，新正文立即使旧参数的预检查失效，真实发送仍使用当前字节并由 Host 重新验权。发送工具栏只随格式、回执等实际依赖变化重绘，Text/HEX 转换读取草稿原文，保留浏览器文本框会规范化的 CRLF 等字节差异。
+工作台正在编辑的正文由自身的 [draft-store](../src/features/workbench/draft-store.ts) 同步持有，各视图独立；编辑区订阅当前视图的字符串，工作台外层只订阅脏状态变化。文本框保留浏览器原生编辑值，输入事件同步更新数据源；外部重置、格式转换或视图切换只在正文确实不同时于布局阶段写回，避免 React 每键同步 `defaultValue` 导致长文本重复排版，同值更新保留选区及输入法过程。保存动作现场取得最新快照，迟到的保存确认不清除后续编辑；放弃回到已确认快照。它不替代窗口级已保存草稿缓存或 Native CAS。前端内部编码预览捕获不可变正文及行尾，ASCII/UTF-8 的准确长度不要求提前分配完整字节，复杂编码沿原校验；读取总是返回独立字节副本。[workspace-send-panel](../src/features/workbench/workspace-send-panel.tsx) 在输入停顿后才读取权限预览，新正文立即使旧参数的预检查失效；真实发送立即读取当前快照并由 Host 重新验权。发送工具栏只随格式、回执等实际依赖变化重绘，Text/HEX 转换读取草稿原文，保留浏览器文本框会规范化的 CRLF 等字节差异。
 
 视图标识只保证文档内唯一，持久草稿键由稳定 scope 与视图标识共同构成，不能使用 Host attachment generation；导入、CLI 保存或不同工作区的同名标识不共享正文。窗口未连接稿独立，已有旧键只在首次认领所属视图时转入相应键，已归属稿优先，其他原稿保留。失联保留标签时也保留最后稳定归属。Native 与浏览器的草稿身份字段均限制为 1024 UTF-8 字节，其余正文、条数及总文件预算不变，见 [draft-identity](../src/features/workbench/draft-identity.ts)。
 

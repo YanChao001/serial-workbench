@@ -95,6 +95,17 @@ pub struct WriteStep {
 }
 pub struct Profile(Option<tempfile::TempDir>);
 impl Profile {
+    pub fn isolated(prefix: &str) -> Self {
+        let evidence =
+            std::path::Path::new(env!("CARGO_MANIFEST_DIR")).join("../../artifacts/rust-failures");
+        std::fs::create_dir_all(&evidence).unwrap();
+        Self(Some(
+            tempfile::Builder::new()
+                .prefix(prefix)
+                .tempdir_in(evidence.canonicalize().unwrap())
+                .unwrap(),
+        ))
+    }
     pub fn path(&self) -> &std::path::Path {
         self.0.as_ref().unwrap().path()
     }

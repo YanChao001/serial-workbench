@@ -1,7 +1,8 @@
 import { beforeAll, expect, it } from "vitest";
-import type { TextEncoding } from "@serial-workbench/contracts";
+import type { LineEnding, TextEncoding } from "@serial-workbench/contracts";
 import {
   createTextDecoder,
+  createTextSendPreview,
   encodeText,
   encodeTextSend,
   prepareTextEncoding,
@@ -27,6 +28,17 @@ it.each([
   (encoding, text, expected) => {
     const bytes = encodeText(text, encoding);
     expect([...bytes]).toEqual(expected);
+    const preview = createTextSendPreview(
+      text,
+      "text",
+      { kind: "none" },
+      encoding,
+    );
+    expect(preview.byteLength).toBe(expected.length);
+    const observed = preview.readBytes();
+    expect([...observed]).toEqual(expected);
+    observed.fill(0);
+    expect([...preview.readBytes()]).toEqual(expected);
     const decoder = createTextDecoder(encoding, { fatal: true });
     expect(
       decoder.decode(bytes.slice(0, 1), { stream: true }) +
@@ -40,6 +52,40 @@ it.each([
     });
   },
 );
+it("captures custom suffixes before callers mutate them and isolates subsequent byte readers", () => {
+  const ending: LineEnding = { kind: "custom", bytesBase64: "/wA=" };
+  const preview = createTextSendPreview("A", "text", ending, "utf-8");
+  ending.bytesBase64 = "AA==";
+  expect(preview.byteLength).toBe(3);
+  const observed = preview.readBytes();
+  expect([...observed]).toEqual([65, 255, 0]);
+  observed.fill(0);
+  expect([...preview.readBytes()]).toEqual([65, 255, 0]);
+  expect(Object.isFrozen(preview)).toBe(true);
+});
+it("rejects every isolated UTF-16 surrogate instead of silently sending replacement bytes", () => {
+  for (let code = 0xd800; code <= 0xdfff; code++) {
+    const text = `A${String.fromCharCode(code)}Z`;
+    expect(() => encodeText(text, "utf-8")).toThrow("unrepresentable");
+    expect(() =>
+      createTextSendPreview(text, "text", { kind: "none" }, "utf-8"),
+    ).toThrow("unrepresentable");
+  }
+});
+it.each([
+  ["first supplementary scalar", "\ud800\udc00"],
+  ["last supplementary scalar", "\udbff\udfff"],
+  ["adjacent pairs", "\ud800\udfff\udbff\udc00"],
+  ["BMP boundaries", "\ud7ff\ue000"],
+  ["BOM, NUL and replacement scalar", "\ufeff\u0000\ufffd"],
+  ["mixed text", "A你好🙂Z"],
+])("preserves exact UTF-8 for %s", (_name, text) => {
+  const bytes = encodeText(text, "utf-8");
+  expect(bytes).toEqual(new TextEncoder().encode(text));
+  expect(new TextDecoder("utf-8", { ignoreBOM: true }).decode(bytes)).toBe(
+    text,
+  );
+});
 it("supports GB18030 supplementary characters while GBK rejects unrepresentable text", () => {
   const bytes = encodeText("中文😀", "gb18030");
   expect(createTextDecoder("gb18030", { fatal: true }).decode(bytes)).toBe(

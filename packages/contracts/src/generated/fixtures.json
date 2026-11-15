@@ -1,6 +1,678 @@
 {
   "invalid": [
     {
+      "name": "node-runtime-private-library-unknown",
+      "schema": "NodeRuntimeLibraryRelease",
+      "value": {
+        "architecture": "amd64",
+        "artifacts": [
+          {
+            "filename": "pool/main/g/gcc-12/libatomic1_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+            "kind": "binary",
+            "package": "libatomic1",
+            "sha256": "56573c81b5dd84817882400cfea49fe671f5e6cfdd0f88b5d3a894c08b150462",
+            "size": "10470",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12-base_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+            "kind": "binary",
+            "package": "gcc-12-base",
+            "sha256": "7f9253b7e0976f0526fc21346c73ee006e185a7b2f2f865048ea78a2af55bc8d",
+            "size": "215782",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0.orig.tar.gz",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "62b0fc89b6d41f9df2470d0fb4995f6ff5885f910518a2c6a44a6888ea5a9ea1",
+            "size": "91555468",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.debian.tar.xz",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "44074c3d5e7d97365f1f7b45291ade2ee40ed6300176530d912e7cc0ceba77ab",
+            "size": "587456",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.dsc",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "ec040a1fa94186bd53535f7156e086e67863bb55836ae7fd7fef64f1ab66b04d",
+            "size": "27845",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          }
+        ],
+        "copyright": {
+          "archivePath": "usr/share/doc/gcc-12-base/copyright",
+          "resourcePath": "licenses/libatomic/COPYRIGHT",
+          "sha256": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3",
+          "size": "68194"
+        },
+        "copyrightSourcePath": "resources/runtime/libatomic.COPYRIGHT",
+        "gplLicense": {
+          "archivePath": "gcc-12.3.0/COPYING3",
+          "resourcePath": "licenses/libatomic/GPL-3.0",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "size": "35147"
+        },
+        "gplSourcePath": "resources/runtime/libatomic.GPL-3.0",
+        "id": "libatomic1-jammy-12.3.0-22.04.3",
+        "library": {
+          "archivePath": "usr/lib/x86_64-linux-gnu/libatomic.so.1.2.0",
+          "resourcePath": "lib/libatomic.so.1.2.0",
+          "sha256": "d4a3c900a38ad280bb34003fbf8326fff53229d4bc4fc368bd48783b74680a36",
+          "size": "30960"
+        },
+        "libraryMode": "0644",
+        "licenseExpression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+        "schemaVersion": "0.1",
+        "sonameLink": {
+          "resourcePath": "lib/libatomic.so.1",
+          "target": "libatomic.so.1.2.0"
+        },
+        "systemLibrary": true,
+        "target": "x86_64-unknown-linux-gnu",
+        "upstream": {
+          "baseUrl": "https://archive.ubuntu.com/ubuntu/",
+          "inRelease": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-InRelease.asc",
+            "repositoryPath": "dists/jammy-updates/InRelease",
+            "sha256": "78ed02b1a3b2dcc42d375d46596f619a99c08cdd3f251827ca2fe2bd77b04cd0",
+            "size": "128049"
+          },
+          "keyring": {
+            "bundledPath": "resources/runtime/ubuntu-archive-keyring.gpg",
+            "repositoryPath": "project/ubuntu-archive-keyring.gpg",
+            "sha256": "80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31",
+            "size": "3607"
+          },
+          "packageIndex": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-Packages.gz",
+            "repositoryPath": "dists/jammy-updates/main/binary-amd64/Packages.gz",
+            "sha256": "d9fbef673ec326e877b75c5901df1012bd55031ea658adb47b5518aa731c5102",
+            "size": "4846936"
+          },
+          "signerFingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+          "sourceIndex": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-Sources.gz",
+            "repositoryPath": "dists/jammy-updates/main/source/Sources.gz",
+            "sha256": "fd6a6e8181d37d023f0e1a3c65a4ae829fbdce878d08d7617f7148023682f956",
+            "size": "760754"
+          }
+        },
+        "version": "12.3.0-1ubuntu1~22.04.3"
+      }
+    },
+    {
+      "name": "node-runtime-private-library-numeric-size",
+      "schema": "NodeRuntimeLibraryRelease",
+      "value": {
+        "architecture": "amd64",
+        "artifacts": [
+          {
+            "filename": "pool/main/g/gcc-12/libatomic1_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+            "kind": "binary",
+            "package": "libatomic1",
+            "sha256": "56573c81b5dd84817882400cfea49fe671f5e6cfdd0f88b5d3a894c08b150462",
+            "size": "10470",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12-base_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+            "kind": "binary",
+            "package": "gcc-12-base",
+            "sha256": "7f9253b7e0976f0526fc21346c73ee006e185a7b2f2f865048ea78a2af55bc8d",
+            "size": "215782",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0.orig.tar.gz",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "62b0fc89b6d41f9df2470d0fb4995f6ff5885f910518a2c6a44a6888ea5a9ea1",
+            "size": "91555468",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.debian.tar.xz",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "44074c3d5e7d97365f1f7b45291ade2ee40ed6300176530d912e7cc0ceba77ab",
+            "size": "587456",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.dsc",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "ec040a1fa94186bd53535f7156e086e67863bb55836ae7fd7fef64f1ab66b04d",
+            "size": "27845",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          }
+        ],
+        "copyright": {
+          "archivePath": "usr/share/doc/gcc-12-base/copyright",
+          "resourcePath": "licenses/libatomic/COPYRIGHT",
+          "sha256": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3",
+          "size": "68194"
+        },
+        "copyrightSourcePath": "resources/runtime/libatomic.COPYRIGHT",
+        "gplLicense": {
+          "archivePath": "gcc-12.3.0/COPYING3",
+          "resourcePath": "licenses/libatomic/GPL-3.0",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "size": "35147"
+        },
+        "gplSourcePath": "resources/runtime/libatomic.GPL-3.0",
+        "id": "libatomic1-jammy-12.3.0-22.04.3",
+        "library": {
+          "archivePath": "usr/lib/x86_64-linux-gnu/libatomic.so.1.2.0",
+          "resourcePath": "lib/libatomic.so.1.2.0",
+          "sha256": "d4a3c900a38ad280bb34003fbf8326fff53229d4bc4fc368bd48783b74680a36",
+          "size": 30960
+        },
+        "libraryMode": "0644",
+        "licenseExpression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+        "schemaVersion": "0.1",
+        "sonameLink": {
+          "resourcePath": "lib/libatomic.so.1",
+          "target": "libatomic.so.1.2.0"
+        },
+        "target": "x86_64-unknown-linux-gnu",
+        "upstream": {
+          "baseUrl": "https://archive.ubuntu.com/ubuntu/",
+          "inRelease": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-InRelease.asc",
+            "repositoryPath": "dists/jammy-updates/InRelease",
+            "sha256": "78ed02b1a3b2dcc42d375d46596f619a99c08cdd3f251827ca2fe2bd77b04cd0",
+            "size": "128049"
+          },
+          "keyring": {
+            "bundledPath": "resources/runtime/ubuntu-archive-keyring.gpg",
+            "repositoryPath": "project/ubuntu-archive-keyring.gpg",
+            "sha256": "80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31",
+            "size": "3607"
+          },
+          "packageIndex": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-Packages.gz",
+            "repositoryPath": "dists/jammy-updates/main/binary-amd64/Packages.gz",
+            "sha256": "d9fbef673ec326e877b75c5901df1012bd55031ea658adb47b5518aa731c5102",
+            "size": "4846936"
+          },
+          "signerFingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+          "sourceIndex": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-Sources.gz",
+            "repositoryPath": "dists/jammy-updates/main/source/Sources.gz",
+            "sha256": "fd6a6e8181d37d023f0e1a3c65a4ae829fbdce878d08d7617f7148023682f956",
+            "size": "760754"
+          }
+        },
+        "version": "12.3.0-1ubuntu1~22.04.3"
+      }
+    },
+    {
+      "name": "node-runtime-unknown-substitution",
+      "schema": "NodeRuntimeRelease",
+      "value": {
+        "id": "node-26.13.0",
+        "modulesAbi": "147",
+        "nodeApiVersion": "10",
+        "schemaVersion": "0.1",
+        "systemNode": true,
+        "targets": [
+          {
+            "arch": "x64",
+            "archive": {
+              "format": "zip",
+              "name": "node-v26.13.0-win-x64.zip",
+              "sha256": "dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a",
+              "size": "41157375",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-win-x64.zip"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-win-x64/node.exe",
+              "resourcePath": "runtime/node/26.13.0/x86_64-pc-windows-msvc/bin/node.exe",
+              "sha256": "14319838b3f355e0398c13569a90270bce4fc68f25189f58c59b03dadae0e6d5",
+              "size": "100097864"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-win-x64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/x86_64-pc-windows-msvc/LICENSE",
+              "sha256": "cbc91dba25c546898544155e1c0fce897f00e3f1df0afc795b8da891d38f92d9",
+              "size": "159309"
+            },
+            "platform": "win32",
+            "requiredPrivateLibraries": [],
+            "target": "x86_64-pc-windows-msvc"
+          },
+          {
+            "arch": "arm64",
+            "archive": {
+              "format": "tarGz",
+              "name": "node-v26.13.0-darwin-arm64.tar.gz",
+              "sha256": "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6",
+              "size": "58334661",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-darwin-arm64/bin/node",
+              "resourcePath": "runtime/node/26.13.0/aarch64-apple-darwin/bin/node",
+              "sha256": "533bd644c5ae0e0ea3a80e433aad16b817447ccba1e1eea701875eac80cb75d4",
+              "size": "147346864"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-darwin-arm64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/aarch64-apple-darwin/LICENSE",
+              "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c",
+              "size": "156386"
+            },
+            "platform": "darwin",
+            "requiredPrivateLibraries": [],
+            "target": "aarch64-apple-darwin"
+          },
+          {
+            "arch": "x64",
+            "archive": {
+              "format": "tarGz",
+              "name": "node-v26.13.0-darwin-x64.tar.gz",
+              "sha256": "525c9b29bb0263d687de60a4cec0e2a6db876a8eb032369e5795eca71e7c358e",
+              "size": "59802926",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-x64.tar.gz"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-darwin-x64/bin/node",
+              "resourcePath": "runtime/node/26.13.0/x86_64-apple-darwin/bin/node",
+              "sha256": "d5891b4336441138426c7cb3920d3b140f4dde1c3dfb3d7152873941e65a3b05",
+              "size": "150084448"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-darwin-x64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/x86_64-apple-darwin/LICENSE",
+              "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c",
+              "size": "156386"
+            },
+            "platform": "darwin",
+            "requiredPrivateLibraries": [],
+            "target": "x86_64-apple-darwin"
+          },
+          {
+            "arch": "x64",
+            "archive": {
+              "format": "tarXz",
+              "name": "node-v26.13.0-linux-x64.tar.xz",
+              "sha256": "d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997",
+              "size": "34083252",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-linux-x64.tar.xz"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-linux-x64/bin/node",
+              "resourcePath": "runtime/node/26.13.0/x86_64-unknown-linux-gnu/bin/node",
+              "sha256": "0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b",
+              "size": "150319296"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-linux-x64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/x86_64-unknown-linux-gnu/LICENSE",
+              "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c",
+              "size": "156386"
+            },
+            "platform": "linux",
+            "requiredPrivateLibraries": ["lib/libatomic.so.1"],
+            "target": "x86_64-unknown-linux-gnu"
+          }
+        ],
+        "upstream": {
+          "checksumsSha256": "1670dd3eebeb6be820e78faf68b9caf33b7434d55701249138fb426103bca1a0",
+          "checksumsUrl": "https://nodejs.org/download/release/v26.13.0/SHASUMS256.txt.asc",
+          "keyringCommit": "481637f813e912c4aa3622d7964ab426c97b8e8d",
+          "keyringSha256": "610b8d249da3d5733f5a128def2dd0294dbbf5b5713e6ca2529db8db419dee00",
+          "keyringUrl": "https://raw.githubusercontent.com/nodejs/release-keys/481637f813e912c4aa3622d7964ab426c97b8e8d/gpg/pubring.kbx",
+          "publicKeyPath": "resources/runtime/node-release-key.gpg",
+          "publicKeySha256": "226f5400928425e9094e3d994ef17247816df382e19369f4dd32401d729e1370",
+          "signerFingerprint": "C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C"
+        },
+        "version": "26.13.0"
+      }
+    },
+    {
+      "name": "node-runtime-numeric-abi",
+      "schema": "NodeRuntimeSelfTest",
+      "value": {
+        "arch": "x64",
+        "execPath": "R/runtime/node/26.13.0/x86_64-pc-windows-msvc/bin/node.exe",
+        "modulesAbi": 147,
+        "nodeApiVersion": "10",
+        "platform": "win32",
+        "version": "26.13.0"
+      }
+    },
+    {
+      "name": "node-package-manifest-unknown-field",
+      "schema": "NodePackageManifest",
+      "value": {
+        "activation": ["startup"],
+        "contributes": {
+          "actions": [],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "dataSchemaVersion": "1",
+        "dependencies": [],
+        "description": "参考包",
+        "displayName": "离线终端",
+        "hostProtocolVersion": "0.1",
+        "id": "example.terminal",
+        "license": "MIT",
+        "main": "dist/main.mjs",
+        "notices": ["许可证/LICENSE.txt"],
+        "permissions": {
+          "executionPurposes": ["terminal"],
+          "externalTools": [],
+          "hostApi": []
+        },
+        "platformResources": [],
+        "runtimeRef": "node-26.13.0",
+        "schemaVersion": "0.1",
+        "scripts": {
+          "postinstall": "forbidden"
+        },
+        "version": "1.2.3-beta.1+build.7",
+        "webUi": {
+          "entry": "界面/index.html"
+        }
+      }
+    },
+    {
+      "name": "node-package-manifest-null-ui",
+      "schema": "NodePackageManifest",
+      "value": {
+        "activation": ["startup"],
+        "contributes": {
+          "actions": [],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "dataSchemaVersion": "1",
+        "dependencies": [],
+        "description": "参考包",
+        "displayName": "离线终端",
+        "hostProtocolVersion": "0.1",
+        "id": "example.terminal",
+        "license": "MIT",
+        "main": "dist/main.mjs",
+        "notices": ["许可证/LICENSE.txt"],
+        "permissions": {
+          "executionPurposes": ["terminal"],
+          "externalTools": [],
+          "hostApi": []
+        },
+        "platformResources": [],
+        "runtimeRef": "node-26.13.0",
+        "schemaVersion": "0.1",
+        "version": "1.2.3-beta.1+build.7",
+        "webUi": null
+      }
+    },
+    {
+      "name": "node-package-manifest-future-schema",
+      "schema": "NodePackageManifest",
+      "value": {
+        "activation": ["startup"],
+        "contributes": {
+          "actions": [],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "dataSchemaVersion": "1",
+        "dependencies": [],
+        "description": "参考包",
+        "displayName": "离线终端",
+        "hostProtocolVersion": "0.1",
+        "id": "example.terminal",
+        "license": "MIT",
+        "main": "dist/main.mjs",
+        "notices": ["许可证/LICENSE.txt"],
+        "permissions": {
+          "executionPurposes": ["terminal"],
+          "externalTools": [],
+          "hostApi": []
+        },
+        "platformResources": [],
+        "runtimeRef": "node-26.13.0",
+        "schemaVersion": "0.2",
+        "version": "1.2.3-beta.1+build.7",
+        "webUi": {
+          "entry": "界面/index.html"
+        }
+      }
+    },
+    {
+      "name": "node-package-manifest-foreign-protocol",
+      "schema": "NodePackageManifest",
+      "value": {
+        "activation": ["startup"],
+        "contributes": {
+          "actions": [],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "dataSchemaVersion": "1",
+        "dependencies": [],
+        "description": "参考包",
+        "displayName": "离线终端",
+        "hostProtocolVersion": "1.0",
+        "id": "example.terminal",
+        "license": "MIT",
+        "main": "dist/main.mjs",
+        "notices": ["许可证/LICENSE.txt"],
+        "permissions": {
+          "executionPurposes": ["terminal"],
+          "externalTools": [],
+          "hostApi": []
+        },
+        "platformResources": [],
+        "runtimeRef": "node-26.13.0",
+        "schemaVersion": "0.1",
+        "version": "1.2.3-beta.1+build.7",
+        "webUi": {
+          "entry": "界面/index.html"
+        }
+      }
+    },
+    {
+      "name": "node-package-version-\"1.0.0-alpha.01\"",
+      "schema": "NodePackageVersion",
+      "value": "1.0.0-alpha.01"
+    },
+    {
+      "name": "node-package-version-\"01.2.3\"",
+      "schema": "NodePackageVersion",
+      "value": "01.2.3"
+    },
+    {
+      "name": "node-package-version-\"1.2\"",
+      "schema": "NodePackageVersion",
+      "value": "1.2"
+    },
+    {
+      "name": "node-package-version-\"latest\"",
+      "schema": "NodePackageVersion",
+      "value": "latest"
+    },
+    {
+      "name": "node-package-version-\"18446744073709551616.0.0\"",
+      "schema": "NodePackageVersion",
+      "value": "18446744073709551616.0.0"
+    },
+    {
+      "name": "node-package-version-\"1.0.0\\n\"",
+      "schema": "NodePackageVersion",
+      "value": "1.0.0\n"
+    },
+    {
+      "name": "node-package-id-\"unqualified\"",
+      "schema": "NodePackageId",
+      "value": "unqualified"
+    },
+    {
+      "name": "node-package-id-\"example..terminal\"",
+      "schema": "NodePackageId",
+      "value": "example..terminal"
+    },
+    {
+      "name": "node-package-id-\"example.terminal\\n\"",
+      "schema": "NodePackageId",
+      "value": "example.terminal\n"
+    },
+    {
+      "name": "node-package-path-\"../escape.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "../escape.mjs"
+    },
+    {
+      "name": "node-package-path-\"/absolute.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "/absolute.mjs"
+    },
+    {
+      "name": "node-package-path-\"C:/outside.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "C:/outside.mjs"
+    },
+    {
+      "name": "node-package-path-\"dist\\\\main.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "dist\\main.mjs"
+    },
+    {
+      "name": "node-package-path-\"dist//main.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "dist//main.mjs"
+    },
+    {
+      "name": "node-package-path-\"dist/../main.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "dist/../main.mjs"
+    },
+    {
+      "name": "node-package-path-\"dist/main.mjs\\n\"",
+      "schema": "NodePackagePath",
+      "value": "dist/main.mjs\n"
+    },
+    {
+      "name": "node-package-integrity-numeric-size",
+      "schema": "NodePackageIntegrity",
+      "value": {
+        "files": [
+          {
+            "path": "dist/main.mjs",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": 1
+          },
+          {
+            "path": "manifest.json",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "2"
+          },
+          {
+            "path": "界面/index.html",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "1"
+          },
+          {
+            "path": "许可证/LICENSE.txt",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "1"
+          }
+        ],
+        "id": "example.terminal",
+        "keyId": "local-unverified",
+        "schemaVersion": "0.1",
+        "source": "local",
+        "version": "1.2.3-beta.1+build.7"
+      }
+    },
+    {
+      "name": "node-package-signature-noncanonical",
+      "schema": "NodePackageSignature",
+      "value": {
+        "algorithm": "Ed25519",
+        "keyId": "release-key",
+        "signatureBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAB=="
+      }
+    },
+    {
+      "name": "node-package-signature-unknown-algorithm",
+      "schema": "NodePackageSignature",
+      "value": {
+        "algorithm": "none",
+        "keyId": "release-key",
+        "signatureBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    },
+    {
+      "name": "node-package-signature-trailing-newline",
+      "schema": "NodePackageSignature",
+      "value": {
+        "algorithm": "Ed25519",
+        "keyId": "release-key",
+        "signatureBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA==\n"
+      }
+    },
+    {
+      "name": "node-package-signature-self-trust",
+      "schema": "NodePackageSignature",
+      "value": {
+        "algorithm": "Ed25519",
+        "keyId": "release-key",
+        "publicKey": "cannot-establish-trust",
+        "signatureBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    },
+    {
+      "name": "node-package-registration-replaced-metadata",
+      "schema": "NodePackageRegistration",
+      "value": {
+        "contributes": {
+          "actions": [
+            {
+              "actionId": "example.terminal.open",
+              "permissions": []
+            }
+          ],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "id": "example.terminal",
+        "version": "1.2.3-beta.1+build.7"
+      }
+    },
+    {
       "name": "terminal-invalid-codec",
       "schema": "TerminalSettings",
       "value": {
@@ -9033,6 +9705,379 @@
   ],
   "schemaVersion": 1,
   "valid": [
+    {
+      "name": "node-runtime-private-library",
+      "schema": "NodeRuntimeLibraryRelease",
+      "value": {
+        "architecture": "amd64",
+        "artifacts": [
+          {
+            "filename": "pool/main/g/gcc-12/libatomic1_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+            "kind": "binary",
+            "package": "libatomic1",
+            "sha256": "56573c81b5dd84817882400cfea49fe671f5e6cfdd0f88b5d3a894c08b150462",
+            "size": "10470",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12-base_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+            "kind": "binary",
+            "package": "gcc-12-base",
+            "sha256": "7f9253b7e0976f0526fc21346c73ee006e185a7b2f2f865048ea78a2af55bc8d",
+            "size": "215782",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0.orig.tar.gz",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "62b0fc89b6d41f9df2470d0fb4995f6ff5885f910518a2c6a44a6888ea5a9ea1",
+            "size": "91555468",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.debian.tar.xz",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "44074c3d5e7d97365f1f7b45291ade2ee40ed6300176530d912e7cc0ceba77ab",
+            "size": "587456",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          },
+          {
+            "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.dsc",
+            "kind": "correspondingSource",
+            "package": "gcc-12",
+            "sha256": "ec040a1fa94186bd53535f7156e086e67863bb55836ae7fd7fef64f1ab66b04d",
+            "size": "27845",
+            "version": "12.3.0-1ubuntu1~22.04.3"
+          }
+        ],
+        "copyright": {
+          "archivePath": "usr/share/doc/gcc-12-base/copyright",
+          "resourcePath": "licenses/libatomic/COPYRIGHT",
+          "sha256": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3",
+          "size": "68194"
+        },
+        "copyrightSourcePath": "resources/runtime/libatomic.COPYRIGHT",
+        "gplLicense": {
+          "archivePath": "gcc-12.3.0/COPYING3",
+          "resourcePath": "licenses/libatomic/GPL-3.0",
+          "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903",
+          "size": "35147"
+        },
+        "gplSourcePath": "resources/runtime/libatomic.GPL-3.0",
+        "id": "libatomic1-jammy-12.3.0-22.04.3",
+        "library": {
+          "archivePath": "usr/lib/x86_64-linux-gnu/libatomic.so.1.2.0",
+          "resourcePath": "lib/libatomic.so.1.2.0",
+          "sha256": "d4a3c900a38ad280bb34003fbf8326fff53229d4bc4fc368bd48783b74680a36",
+          "size": "30960"
+        },
+        "libraryMode": "0644",
+        "licenseExpression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+        "schemaVersion": "0.1",
+        "sonameLink": {
+          "resourcePath": "lib/libatomic.so.1",
+          "target": "libatomic.so.1.2.0"
+        },
+        "target": "x86_64-unknown-linux-gnu",
+        "upstream": {
+          "baseUrl": "https://archive.ubuntu.com/ubuntu/",
+          "inRelease": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-InRelease.asc",
+            "repositoryPath": "dists/jammy-updates/InRelease",
+            "sha256": "78ed02b1a3b2dcc42d375d46596f619a99c08cdd3f251827ca2fe2bd77b04cd0",
+            "size": "128049"
+          },
+          "keyring": {
+            "bundledPath": "resources/runtime/ubuntu-archive-keyring.gpg",
+            "repositoryPath": "project/ubuntu-archive-keyring.gpg",
+            "sha256": "80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31",
+            "size": "3607"
+          },
+          "packageIndex": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-Packages.gz",
+            "repositoryPath": "dists/jammy-updates/main/binary-amd64/Packages.gz",
+            "sha256": "d9fbef673ec326e877b75c5901df1012bd55031ea658adb47b5518aa731c5102",
+            "size": "4846936"
+          },
+          "signerFingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+          "sourceIndex": {
+            "bundledPath": "resources/runtime/ubuntu-jammy-Sources.gz",
+            "repositoryPath": "dists/jammy-updates/main/source/Sources.gz",
+            "sha256": "fd6a6e8181d37d023f0e1a3c65a4ae829fbdce878d08d7617f7148023682f956",
+            "size": "760754"
+          }
+        },
+        "version": "12.3.0-1ubuntu1~22.04.3"
+      }
+    },
+    {
+      "name": "node-runtime-release",
+      "schema": "NodeRuntimeRelease",
+      "value": {
+        "id": "node-26.13.0",
+        "modulesAbi": "147",
+        "nodeApiVersion": "10",
+        "schemaVersion": "0.1",
+        "targets": [
+          {
+            "arch": "x64",
+            "archive": {
+              "format": "zip",
+              "name": "node-v26.13.0-win-x64.zip",
+              "sha256": "dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a",
+              "size": "41157375",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-win-x64.zip"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-win-x64/node.exe",
+              "resourcePath": "runtime/node/26.13.0/x86_64-pc-windows-msvc/bin/node.exe",
+              "sha256": "14319838b3f355e0398c13569a90270bce4fc68f25189f58c59b03dadae0e6d5",
+              "size": "100097864"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-win-x64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/x86_64-pc-windows-msvc/LICENSE",
+              "sha256": "cbc91dba25c546898544155e1c0fce897f00e3f1df0afc795b8da891d38f92d9",
+              "size": "159309"
+            },
+            "platform": "win32",
+            "requiredPrivateLibraries": [],
+            "target": "x86_64-pc-windows-msvc"
+          },
+          {
+            "arch": "arm64",
+            "archive": {
+              "format": "tarGz",
+              "name": "node-v26.13.0-darwin-arm64.tar.gz",
+              "sha256": "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6",
+              "size": "58334661",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-darwin-arm64/bin/node",
+              "resourcePath": "runtime/node/26.13.0/aarch64-apple-darwin/bin/node",
+              "sha256": "533bd644c5ae0e0ea3a80e433aad16b817447ccba1e1eea701875eac80cb75d4",
+              "size": "147346864"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-darwin-arm64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/aarch64-apple-darwin/LICENSE",
+              "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c",
+              "size": "156386"
+            },
+            "platform": "darwin",
+            "requiredPrivateLibraries": [],
+            "target": "aarch64-apple-darwin"
+          },
+          {
+            "arch": "x64",
+            "archive": {
+              "format": "tarGz",
+              "name": "node-v26.13.0-darwin-x64.tar.gz",
+              "sha256": "525c9b29bb0263d687de60a4cec0e2a6db876a8eb032369e5795eca71e7c358e",
+              "size": "59802926",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-x64.tar.gz"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-darwin-x64/bin/node",
+              "resourcePath": "runtime/node/26.13.0/x86_64-apple-darwin/bin/node",
+              "sha256": "d5891b4336441138426c7cb3920d3b140f4dde1c3dfb3d7152873941e65a3b05",
+              "size": "150084448"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-darwin-x64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/x86_64-apple-darwin/LICENSE",
+              "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c",
+              "size": "156386"
+            },
+            "platform": "darwin",
+            "requiredPrivateLibraries": [],
+            "target": "x86_64-apple-darwin"
+          },
+          {
+            "arch": "x64",
+            "archive": {
+              "format": "tarXz",
+              "name": "node-v26.13.0-linux-x64.tar.xz",
+              "sha256": "d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997",
+              "size": "34083252",
+              "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-linux-x64.tar.xz"
+            },
+            "executable": {
+              "archivePath": "node-v26.13.0-linux-x64/bin/node",
+              "resourcePath": "runtime/node/26.13.0/x86_64-unknown-linux-gnu/bin/node",
+              "sha256": "0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b",
+              "size": "150319296"
+            },
+            "license": {
+              "archivePath": "node-v26.13.0-linux-x64/LICENSE",
+              "resourcePath": "runtime/node/26.13.0/x86_64-unknown-linux-gnu/LICENSE",
+              "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c",
+              "size": "156386"
+            },
+            "platform": "linux",
+            "requiredPrivateLibraries": ["lib/libatomic.so.1"],
+            "target": "x86_64-unknown-linux-gnu"
+          }
+        ],
+        "upstream": {
+          "checksumsSha256": "1670dd3eebeb6be820e78faf68b9caf33b7434d55701249138fb426103bca1a0",
+          "checksumsUrl": "https://nodejs.org/download/release/v26.13.0/SHASUMS256.txt.asc",
+          "keyringCommit": "481637f813e912c4aa3622d7964ab426c97b8e8d",
+          "keyringSha256": "610b8d249da3d5733f5a128def2dd0294dbbf5b5713e6ca2529db8db419dee00",
+          "keyringUrl": "https://raw.githubusercontent.com/nodejs/release-keys/481637f813e912c4aa3622d7964ab426c97b8e8d/gpg/pubring.kbx",
+          "publicKeyPath": "resources/runtime/node-release-key.gpg",
+          "publicKeySha256": "226f5400928425e9094e3d994ef17247816df382e19369f4dd32401d729e1370",
+          "signerFingerprint": "C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C"
+        },
+        "version": "26.13.0"
+      }
+    },
+    {
+      "name": "node-runtime-self-test",
+      "schema": "NodeRuntimeSelfTest",
+      "value": {
+        "arch": "x64",
+        "execPath": "R/runtime/node/26.13.0/x86_64-pc-windows-msvc/bin/node.exe",
+        "modulesAbi": "147",
+        "nodeApiVersion": "10",
+        "platform": "win32",
+        "version": "26.13.0"
+      }
+    },
+    {
+      "name": "node-package-manifest",
+      "schema": "NodePackageManifest",
+      "value": {
+        "activation": ["startup"],
+        "contributes": {
+          "actions": [],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "dataSchemaVersion": "1",
+        "dependencies": [],
+        "description": "参考包",
+        "displayName": "离线终端",
+        "hostProtocolVersion": "0.1",
+        "id": "example.terminal",
+        "license": "MIT",
+        "main": "dist/main.mjs",
+        "notices": ["许可证/LICENSE.txt"],
+        "permissions": {
+          "executionPurposes": ["terminal"],
+          "externalTools": [],
+          "hostApi": []
+        },
+        "platformResources": [],
+        "runtimeRef": "node-26.13.0",
+        "schemaVersion": "0.1",
+        "version": "1.2.3-beta.1+build.7",
+        "webUi": {
+          "entry": "界面/index.html"
+        }
+      }
+    },
+    {
+      "name": "node-package-version-\"1.2.3-beta.1+build.7\"",
+      "schema": "NodePackageVersion",
+      "value": "1.2.3-beta.1+build.7"
+    },
+    {
+      "name": "node-package-version-\"18446744073709551615.0.0\"",
+      "schema": "NodePackageVersion",
+      "value": "18446744073709551615.0.0"
+    },
+    {
+      "name": "node-package-version-\"1.0.0-9999999999999999999999999999999999999999\"",
+      "schema": "NodePackageVersion",
+      "value": "1.0.0-9999999999999999999999999999999999999999"
+    },
+    {
+      "name": "node-package-id-\"example.terminal\"",
+      "schema": "NodePackageId",
+      "value": "example.terminal"
+    },
+    {
+      "name": "node-package-id-\"vendor.package-name_2\"",
+      "schema": "NodePackageId",
+      "value": "vendor.package-name_2"
+    },
+    {
+      "name": "node-package-path-\"界面/index.html\"",
+      "schema": "NodePackagePath",
+      "value": "界面/index.html"
+    },
+    {
+      "name": "node-package-path-\"dist/main.mjs\"",
+      "schema": "NodePackagePath",
+      "value": "dist/main.mjs"
+    },
+    {
+      "name": "node-package-integrity",
+      "schema": "NodePackageIntegrity",
+      "value": {
+        "files": [
+          {
+            "path": "dist/main.mjs",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "1"
+          },
+          {
+            "path": "manifest.json",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "2"
+          },
+          {
+            "path": "界面/index.html",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "1"
+          },
+          {
+            "path": "许可证/LICENSE.txt",
+            "sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+            "size": "1"
+          }
+        ],
+        "id": "example.terminal",
+        "keyId": "local-unverified",
+        "schemaVersion": "0.1",
+        "source": "local",
+        "version": "1.2.3-beta.1+build.7"
+      }
+    },
+    {
+      "name": "node-package-signature",
+      "schema": "NodePackageSignature",
+      "value": {
+        "algorithm": "Ed25519",
+        "keyId": "release-key",
+        "signatureBase64": "AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=="
+      }
+    },
+    {
+      "name": "node-package-registration",
+      "schema": "NodePackageRegistration",
+      "value": {
+        "contributes": {
+          "actions": [],
+          "configuration": [],
+          "parsers": [],
+          "queries": [],
+          "themes": [],
+          "transports": [],
+          "views": []
+        },
+        "id": "example.terminal",
+        "version": "1.2.3-beta.1+build.7"
+      }
+    },
     {
       "name": "terminal-gbk",
       "schema": "TerminalSettings",

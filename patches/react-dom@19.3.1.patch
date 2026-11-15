@@ -1,0 +1,64 @@
+diff --git a/cjs/react-dom-client.development.js b/cjs/react-dom-client.development.js
+index 90a9293eb9d445819cfd7cdecc909a68e68973d2..1f81a740a807b3de9c0319539be5a775f67d80f9 100644
+--- a/cjs/react-dom-client.development.js
++++ b/cjs/react-dom-client.development.js
+@@ -2038,8 +2038,10 @@
+         element.defaultValue !== value && (element.defaultValue = value);
+         return;
+       }
+-      element.defaultValue =
++      defaultValue =
+         null != defaultValue ? "" + getToStringValue(defaultValue) : "";
++      element.defaultValue !== defaultValue &&
++        (element.defaultValue = defaultValue);
+     }
+     function initTextarea(element, value, defaultValue, children) {
+       if (null == value) {
+diff --git a/cjs/react-dom-client.production.js b/cjs/react-dom-client.production.js
+index 9c66e78ba70a6ce5270bbbfc2e7e25f86dd2d64b..54e8c6cf1a980b2d9c28e34aab008ec7b2e1c4c2 100644
+--- a/cjs/react-dom-client.production.js
++++ b/cjs/react-dom-client.production.js
+@@ -1392,8 +1392,10 @@ function updateTextarea(element, value, defaultValue) {
+     element.defaultValue !== value && (element.defaultValue = value);
+     return;
+   }
+-  element.defaultValue =
++  defaultValue =
+     null != defaultValue ? "" + getToStringValue(defaultValue) : "";
++  element.defaultValue !== defaultValue &&
++    (element.defaultValue = defaultValue);
+ }
+ function initTextarea(element, value, defaultValue, children) {
+   if (null == value) {
+diff --git a/cjs/react-dom-profiling.development.js b/cjs/react-dom-profiling.development.js
+index 148ba0ffd9262a0c0c99b06f5e4ce75b86a243f5..a315f81d1385d003dd29a40132a3a45229727c9b 100644
+--- a/cjs/react-dom-profiling.development.js
++++ b/cjs/react-dom-profiling.development.js
+@@ -2046,8 +2046,10 @@
+         element.defaultValue !== value && (element.defaultValue = value);
+         return;
+       }
+-      element.defaultValue =
++      defaultValue =
+         null != defaultValue ? "" + getToStringValue(defaultValue) : "";
++      element.defaultValue !== defaultValue &&
++        (element.defaultValue = defaultValue);
+     }
+     function initTextarea(element, value, defaultValue, children) {
+       if (null == value) {
+diff --git a/cjs/react-dom-profiling.profiling.js b/cjs/react-dom-profiling.profiling.js
+index 0cfceafc08812f93611d6c5fde82333d88aead84..b8031c8651635b480d69287ea2872bab384871a3 100644
+--- a/cjs/react-dom-profiling.profiling.js
++++ b/cjs/react-dom-profiling.profiling.js
+@@ -1489,8 +1489,10 @@ function updateTextarea(element, value, defaultValue) {
+     element.defaultValue !== value && (element.defaultValue = value);
+     return;
+   }
+-  element.defaultValue =
++  defaultValue =
+     null != defaultValue ? "" + getToStringValue(defaultValue) : "";
++  element.defaultValue !== defaultValue &&
++    (element.defaultValue = defaultValue);
+ }
+ function initTextarea(element, value, defaultValue, children) {
+   if (null == value) {

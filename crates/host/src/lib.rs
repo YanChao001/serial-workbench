@@ -11,6 +11,8 @@ pub mod files;
 pub mod ipc;
 mod limits;
 pub mod metrics;
+pub mod node_packages;
+pub mod node_runtime;
 pub mod registry;
 pub mod settings;
 pub mod state;

@@ -31,7 +31,11 @@ export function targetPlatform(target) {
   throw new Error(`Unsupported desktop target: ${target}`);
 }
 
-function validateBinary(path, target, platform) {
+export function validateBinary(
+  path,
+  target,
+  platform = targetPlatform(target),
+) {
   if (!existsSync(path)) throw new Error(`Missing component: ${path}`);
   const data = readFileSync(path);
   const arch = target.split("-")[0];
@@ -125,9 +129,14 @@ export async function buildComponents(
   if (plan.optimize === "speed")
     for (const setting of RELEASE_SPEED_SETTINGS)
       args.push("--config", `profile.release.${setting}`);
+  const componentEnvironment = { ...plan.env };
+  delete componentEnvironment.SWB_RESOURCE_PRODUCT_NAME;
+  const productName = plan.config?.productName ?? plan.package?.name;
+  if (typeof productName === "string")
+    componentEnvironment.SWB_RESOURCE_PRODUCT_NAME = productName;
   const stdout = await run("cargo", args, {
     cwd: join(plan.root, "src-tauri"),
-    env: plan.env,
+    env: componentEnvironment,
     encoding: "utf8",
     maxBuffer: 128 * 1024 * 1024,
     stdio: ["ignore", "pipe", "inherit"],

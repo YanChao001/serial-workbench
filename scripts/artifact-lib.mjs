@@ -84,13 +84,13 @@ function contained(root, path) {
 }
 
 /** 发布目录始终留在仓库内，且不通过 junction / symlink 写入其他目录。 */
-function publicationPath(root, path) {
+export function publicationPath(root, path) {
   const base = realpathSync(root);
   const target = resolve(base, path);
-  if (target === base || !contained(base, target))
+  if (relative(base, target) === "" || !contained(base, target))
     throw new Error("Publication path is outside the project directory");
   let current = target;
-  while (current !== base) {
+  while (relative(base, current) !== "") {
     try {
       if (lstatSync(current).isSymbolicLink())
         throw new Error(

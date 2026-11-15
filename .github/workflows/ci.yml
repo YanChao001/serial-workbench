@@ -1,5 +1,5 @@
 name: 里程碑检查
-run-name: ${{ inputs.native_preflight && format('原生预检 {0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || '完整四目标检查' }} · ${{ github.ref_name }}
+run-name: ${{ inputs.runtime_preflight && format('运行时预检 {0}', inputs.runtime_preflight_target || 'all') || inputs.native_preflight && format('原生预检 {0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || '完整四目标检查' }} · ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -13,6 +13,22 @@ on:
         description: 仅执行所选目标的原生全场景预检，不作为里程碑验收
         type: boolean
         default: false
+        required: true
+      runtime_preflight:
+        description: 仅验证固定运行时来源、原生启动与故障，不作为里程碑验收
+        type: boolean
+        default: false
+        required: true
+      runtime_preflight_target:
+        description: 运行时预检目标；all 执行四目标，不启动桌面
+        type: choice
+        default: all
+        options:
+          - all
+          - x86_64-unknown-linux-gnu
+          - x86_64-pc-windows-msvc
+          - aarch64-apple-darwin
+          - x86_64-apple-darwin
         required: true
       native_preflight_target:
         description: 原生预检目标；完整四目标模式不使用此选项
@@ -29,12 +45,12 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ inputs.native_preflight && format('preflight-{0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || 'full' }}
+  group: ci-${{ github.ref }}-${{ inputs.runtime_preflight && format('runtime-{0}', inputs.runtime_preflight_target || 'all') || inputs.native_preflight && format('preflight-{0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || 'full' }}
   cancel-in-progress: false
 
 jobs:
   frontend:
-    if: ${{ !inputs.native_preflight }}
+    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
     name: 前端校验
     runs-on: ubuntu-22.04
     timeout-minutes: 25
@@ -69,7 +85,7 @@ jobs:
           retention-days: 7
 
   browser-smoke:
-    if: ${{ !inputs.native_preflight }}
+    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
     name: 浏览器生产构建冒烟与无障碍
     runs-on: ubuntu-22.04
     timeout-minutes: 25
@@ -101,7 +117,7 @@ jobs:
           if-no-files-found: ignore
 
   rust:
-    if: ${{ !inputs.native_preflight }}
+    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
     name: Rust 校验（${{ matrix.platform }}）
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
@@ -202,11 +218,78 @@ jobs:
           if-no-files-found: error
           retention-days: 7
 
+      - name: 准备 macOS 发行来源验签工具
+        if: runner.os == 'macOS'
+        shell: bash
+        timeout-minutes: 10
+        run: |
+          if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
+          gpgv --version
+
       - name: 构建未签名原生程序（不打包、不发布）
         run: pnpm app:build --no-bundle --target ${{ matrix.target }} --optimize speed
 
+      - name: 构建无界面 runtime 验收入口
+        shell: bash
+        run: |
+          unset SWB_NODE_RUNTIME_BUILD_IMAGE
+          binding="$PWD/src-tauri/target/${{ matrix.target }}/release/runtime/node-image.json"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then export SWB_NODE_RUNTIME_BUILD_IMAGE="$binding"; fi
+          cargo build --locked -p serial-workbench-host --example node_runtime_probe
+
+      - name: 验证原生 runtime 安装布局与故障
+        id: node-runtime
+        shell: bash
+        env:
+          SWB_NODE_RUNTIME_TEST_ROOT: ${{ github.workspace }}/src-tauri/target/${{ matrix.target }}/release
+        run: |
+          unset SWB_NODE_RUNTIME_BUILD_IMAGE
+          binding="$PWD/src-tauri/target/${{ matrix.target }}/release/runtime/node-image.json"
+          if [[ "$RUNNER_OS" == "macOS" ]]; then export SWB_NODE_RUNTIME_BUILD_IMAGE="$binding"; fi
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          pnpm test:runtime --target '${{ matrix.target }}' --resources 'src-tauri/target/${{ matrix.target }}/release' --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/node-runtime
+          cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
+
+      - name: 保留 runtime 验收收据与原始输出
+        if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: node-runtime-${{ matrix.target }}
+          path: |
+            artifacts/node-runtime/**/suite.json
+            artifacts/node-runtime/**/failure.json
+            artifacts/node-runtime/**/receipt.json
+            artifacts/node-runtime/**/command.stdout
+            artifacts/node-runtime/**/command.stderr
+            .cache/node-runtime/layouts/**/runtime-preparation.json
+            .cache/node-runtime/layouts/**/node-resigning.json
+            .cache/node-runtime/layouts/**/node-sign*.stdout
+            .cache/node-runtime/layouts/**/node-sign*.stderr
+            .cache/node-runtime/layouts/**/resources/runtime/node-image.json
+            artifacts/node-runtime/**/command-error.txt
+            artifacts/node-runtime/**/probe.stdout
+            artifacts/node-runtime/**/probe.stderr
+            artifacts/node-runtime/**/probe-io.txt
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
+
+      - name: 保留 runtime 失败夹具与来源现场
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: node-runtime-failures-${{ matrix.target }}
+          path: |
+            artifacts/node-runtime
+            .cache/node-runtime
+            artifacts/rust-failures/node-runtime-*/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
   bindings:
-    if: ${{ !inputs.native_preflight }}
+    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
     name: IPC 绑定校验
     runs-on: ubuntu-22.04
     timeout-minutes: 45
@@ -242,8 +325,16 @@ jobs:
           pnpm contracts:check
           pnpm bindings:check
 
+  runtime-preflight:
+    if: inputs.runtime_preflight
+    name: 运行时预检（非里程碑验收）
+    uses: ./.github/workflows/runtime-preflight.yml
+    with:
+      target: ${{ inputs.runtime_preflight_target || 'all' }}
+      conflicting_preflight: ${{ inputs.native_preflight }}
+
   native-preflight:
-    if: inputs.native_preflight
+    if: inputs.native_preflight && !inputs.runtime_preflight
     name: 原生全场景预检（${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}）
     uses: ./.github/workflows/native-e2e.yml
     with:
@@ -251,7 +342,7 @@ jobs:
       target: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
 
   desktop-e2e:
-    if: inputs.desktop_e2e && !inputs.native_preflight
+    if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight
     name: 真实桌面 E2E（${{ matrix.platform }}）
     strategy:
       fail-fast: false
@@ -272,7 +363,7 @@ jobs:
 
   quality-gate:
     name: ${{ inputs.native_preflight && '原生预检结果（非里程碑验收）' || '质量门禁' }}
-    if: always()
+    if: always() && !inputs.runtime_preflight
     needs:
       [frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight]
     runs-on: ubuntu-22.04

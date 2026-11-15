@@ -53,6 +53,7 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         schema_version: 1,
         ..Fixtures::default()
     };
+    node_package_fixtures(&mut f)?;
     let capture_ref = json!({"hostId":"host","kind":"capture","id":"capture"});
     for (name, receive, send, valid) in [
         ("terminal-gbk", json!("gbk"), json!("gbk"), true),
@@ -939,6 +940,150 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
     Ok(())
 }
 
+fn node_package_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
+    let library = serde_json::to_value(bundled_node_runtime_library())?;
+    f.add::<NodeRuntimeLibraryRelease>("node-runtime-private-library", library.clone(), true)?;
+    let mut invalid = library.clone();
+    invalid["systemLibrary"] = json!(true);
+    f.add::<NodeRuntimeLibraryRelease>("node-runtime-private-library-unknown", invalid, false)?;
+    let mut invalid = library;
+    invalid["library"]["size"] = json!(30960);
+    f.add::<NodeRuntimeLibraryRelease>(
+        "node-runtime-private-library-numeric-size",
+        invalid,
+        false,
+    )?;
+    let runtime = serde_json::to_value(bundled_node_runtime_release())?;
+    f.add::<NodeRuntimeRelease>("node-runtime-release", runtime.clone(), true)?;
+    let mut invalid = runtime;
+    invalid["systemNode"] = json!(true);
+    f.add::<NodeRuntimeRelease>("node-runtime-unknown-substitution", invalid, false)?;
+    let probe = json!({"version":"26.13.0","platform":"win32","arch":"x64","modulesAbi":"147","nodeApiVersion":"10","execPath":"R/runtime/node/26.13.0/x86_64-pc-windows-msvc/bin/node.exe"});
+    f.add::<NodeRuntimeSelfTest>("node-runtime-self-test", probe.clone(), true)?;
+    let mut invalid = probe;
+    invalid["modulesAbi"] = json!(147);
+    f.add::<NodeRuntimeSelfTest>("node-runtime-numeric-abi", invalid, false)?;
+    let manifest = json!({
+        "schemaVersion":"0.1","id":"example.terminal","version":"1.2.3-beta.1+build.7",
+        "displayName":"离线终端","description":"参考包","license":"MIT",
+        "notices":["许可证/LICENSE.txt"],"hostProtocolVersion":"0.1",
+        "runtimeRef":"node-26.13.0","main":"dist/main.mjs","webUi":{"entry":"界面/index.html"},
+        "dependencies":[],"platformResources":[],"activation":["startup"],
+        "permissions":{"hostApi":[],"executionPurposes":["terminal"],"externalTools":[]},
+        "contributes":{"actions":[],"queries":[],"transports":[],"parsers":[],"views":[],"themes":[],"configuration":[]},
+        "dataSchemaVersion":"1"
+    });
+    parse_node_manifest(&serde_json::to_vec(&manifest)?)?;
+    f.add::<NodePackageManifest>("node-package-manifest", manifest.clone(), true)?;
+    for (name, field, value) in [
+        (
+            "unknown-field",
+            "scripts",
+            json!({"postinstall":"forbidden"}),
+        ),
+        ("null-ui", "webUi", Value::Null),
+        ("future-schema", "schemaVersion", json!("0.2")),
+        ("foreign-protocol", "hostProtocolVersion", json!("1.0")),
+    ] {
+        let mut invalid = manifest.clone();
+        invalid[field] = value;
+        f.add::<NodePackageManifest>(&format!("node-package-manifest-{name}"), invalid, false)?;
+    }
+    for (value, valid) in [
+        ("1.2.3-beta.1+build.7", true),
+        ("18446744073709551615.0.0", true),
+        ("1.0.0-9999999999999999999999999999999999999999", true),
+        ("1.0.0-alpha.01", false),
+        ("01.2.3", false),
+        ("1.2", false),
+        ("latest", false),
+        ("18446744073709551616.0.0", false),
+        ("1.0.0\n", false),
+    ] {
+        f.add::<NodePackageVersion>(
+            &format!("node-package-version-{value:?}"),
+            json!(value),
+            valid,
+        )?;
+    }
+    for (value, valid) in [
+        ("example.terminal", true),
+        ("vendor.package-name_2", true),
+        ("unqualified", false),
+        ("example..terminal", false),
+        ("example.terminal\n", false),
+    ] {
+        f.add::<NodePackageId>(&format!("node-package-id-{value:?}"), json!(value), valid)?;
+    }
+    for (value, valid) in [
+        ("界面/index.html", true),
+        ("dist/main.mjs", true),
+        ("../escape.mjs", false),
+        ("/absolute.mjs", false),
+        ("C:/outside.mjs", false),
+        ("dist\\main.mjs", false),
+        ("dist//main.mjs", false),
+        ("dist/../main.mjs", false),
+        ("dist/main.mjs\n", false),
+    ] {
+        f.add::<NodePackagePath>(&format!("node-package-path-{value:?}"), json!(value), valid)?;
+    }
+    let integrity = json!({
+        "schemaVersion":"0.1","id":"example.terminal","version":"1.2.3-beta.1+build.7",
+        "source":"local","keyId":"local-unverified",
+        "files":[
+            {"path":"dist/main.mjs","size":"1","sha256":"0".repeat(64)},
+            {"path":"manifest.json","size":"2","sha256":"0".repeat(64)},
+            {"path":"界面/index.html","size":"1","sha256":"0".repeat(64)},
+            {"path":"许可证/LICENSE.txt","size":"1","sha256":"0".repeat(64)}
+        ]
+    });
+    validate_node_package_metadata(
+        &parse_node_manifest(&serde_json::to_vec(&manifest)?)?,
+        &parse_node_integrity(&serde_json::to_vec(&integrity)?)?,
+    )?;
+    f.add::<NodePackageIntegrity>("node-package-integrity", integrity.clone(), true)?;
+    let mut invalid = integrity;
+    invalid["files"][0]["size"] = json!(1);
+    f.add::<NodePackageIntegrity>("node-package-integrity-numeric-size", invalid, false)?;
+    let signature = json!({
+        "algorithm":"Ed25519","keyId":"release-key","signatureBase64":format!("{}==", "A".repeat(86))
+    });
+    f.add::<NodePackageSignature>("node-package-signature", signature.clone(), true)?;
+    for (name, field, value) in [
+        (
+            "noncanonical",
+            "signatureBase64",
+            json!(format!("{}B==", "A".repeat(85))),
+        ),
+        ("unknown-algorithm", "algorithm", json!("none")),
+        (
+            "trailing-newline",
+            "signatureBase64",
+            json!(format!("{}==\n", "A".repeat(86))),
+        ),
+        ("self-trust", "publicKey", json!("cannot-establish-trust")),
+    ] {
+        let mut invalid = signature.clone();
+        invalid[field] = value;
+        f.add::<NodePackageSignature>(&format!("node-package-signature-{name}"), invalid, false)?;
+    }
+    let registration = json!({
+        "id":"example.terminal","version":"1.2.3-beta.1+build.7",
+        "contributes":{"actions":[],"queries":[],"transports":[],"parsers":[],"views":[],"themes":[],"configuration":[]}
+    });
+    f.add::<NodePackageRegistration>("node-package-registration", registration.clone(), true)?;
+    let mut invalid = registration;
+    invalid["contributes"]["actions"] =
+        json!([{"actionId":"example.terminal.open","permissions":[]}]);
+    f.add::<NodePackageRegistration>(
+        "node-package-registration-replaced-metadata",
+        invalid,
+        false,
+    )?;
+    Ok(())
+}
+
 fn main() -> Result<(), Box<dyn Error>> {
     let args = std::env::args_os().skip(1).collect::<Vec<_>>();
     if args.len() != 2 || args[0] != "--out" {
@@ -1196,11 +1341,25 @@ fn main() -> Result<(), Box<dyn Error>> {
         ActionKind,
         ExecutionLocation,
         Cancellation,
-        ActionSpec
+        ActionSpec,
+        NodePackageId,
+        NodePackageVersion,
+        NodePackagePath,
+        NodePackageManifest,
+        NodePackageIntegrity,
+        NodePackageSignature,
+        NodePackageRegistration,
+        NodeRuntimeRelease,
+        NodeRuntimeSelfTest,
+        NodeRuntimeLibraryRelease
     );
     let mut ts =
         specta_typescript::Typescript::default().export(&types, specta_serde::PhasesFormat)?;
     ts.push_str(&format!("\n/** 单次手动 TX 的最终字节上限，来源为 Rust 契约。 */\nexport const TX_MAX_BYTES = {TX_MAX_BYTES};\n"));
+    ts.push_str(&format!(
+        "\n/** 正式 Node 包的签名域前缀，来源为 Rust 契约。 */\nexport const NODE_PACKAGE_SIGNATURE_PREFIX = {};\n",
+        serde_json::to_string(std::str::from_utf8(NODE_PACKAGE_SIGNATURE_PREFIX)?)?
+    ));
     let fixtures = fixtures()?;
     let documents = [
         (

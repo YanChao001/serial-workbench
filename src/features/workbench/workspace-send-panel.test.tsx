@@ -14,6 +14,46 @@ import { labels, operation, session } from "./test-fixtures";
 afterEach(() => {
   cleanup();
   vi.useRealTimers();
+  vi.restoreAllMocks();
+});
+
+it("encodes ASCII permission previews after the quiet interval and sends current edits immediately", async () => {
+  vi.useFakeTimers();
+  const encoded = vi.spyOn(TextEncoder.prototype, "encode");
+  const drafts = createDraftStore({ first: "A" });
+  const send = vi.fn().mockResolvedValue(operation());
+  const observed = vi.fn();
+  render(
+    <WorkspaceSendPanel
+      drafts={drafts}
+      draftKey="first"
+      session={session()}
+      labels={labels}
+      onSend={send}
+      onPreviewChange={observed}
+    />,
+  );
+  encoded.mockClear();
+  const input = screen.getByRole("textbox", { name: labels.draft });
+  fireEvent.input(input, { target: { value: "AT" } });
+  fireEvent.input(input, { target: { value: "AT+GMR" } });
+  expect(drafts.get("first")).toBe("AT+GMR");
+  expect(screen.getByLabelText(labels.draftByteCount)).toHaveTextContent("6 B");
+  expect(
+    encoded.mock.calls.filter(([text]) => text === "AT" || text === "AT+GMR"),
+  ).toHaveLength(0);
+  act(() => vi.advanceTimersByTime(149));
+  expect(observed).toHaveBeenLastCalledWith(null);
+  await act(async () => {
+    fireEvent.click(screen.getByRole("button", { name: labels.send }));
+  });
+  const expected = new Uint8Array([65, 84, 43, 71, 77, 82]);
+  expect(send.mock.calls[0]?.[0]).toEqual(expected);
+  act(() => vi.advanceTimersByTime(1));
+  expect(observed).toHaveBeenLastCalledWith(expected);
+  expect(encoded.mock.calls.filter(([text]) => text === "AT+GMR")).toHaveLength(
+    2,
+  );
 });
 
 it("updates current draft text while the workspace only observes dirty state transitions", () => {

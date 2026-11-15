@@ -1,0 +1,143 @@
+name: 固定运行时专项预检（非里程碑验收）
+
+on:
+  workflow_call:
+    inputs:
+      target:
+        type: string
+        default: all
+      conflicting_preflight:
+        type: boolean
+        default: false
+
+permissions:
+  contents: read
+
+jobs:
+  plan:
+    runs-on: ubuntu-22.04
+    timeout-minutes: 5
+    outputs:
+      matrix: ${{ steps.matrix.outputs.matrix }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: 限定目标与互斥模式
+        id: matrix
+        env:
+          RUNTIME_TARGET: ${{ inputs.target }}
+          CONFLICTING_PREFLIGHT: ${{ inputs.conflicting_preflight }}
+        run: |
+          node --input-type=module <<'NODE'
+          import { appendFileSync } from 'node:fs';
+          import { loadNodeRuntimeRelease } from './scripts/node-runtime-source.mjs';
+          if (process.env.CONFLICTING_PREFLIGHT !== 'false') throw new Error('Preflight modes are mutually exclusive');
+          const platforms = {
+            'x86_64-unknown-linux-gnu': 'ubuntu-22.04',
+            'x86_64-pc-windows-msvc': 'windows-2022',
+            'aarch64-apple-darwin': 'macos-15',
+            'x86_64-apple-darwin': 'macos-15-intel',
+          };
+          const release = loadNodeRuntimeRelease(process.cwd());
+          const requested = process.env.RUNTIME_TARGET;
+          if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
+          const include = Object.entries(platforms)
+            .filter(([target]) => requested === 'all' || requested === target)
+            .map(([target, platform]) => {
+              if (!release.targets.some(spec => spec.target === target)) throw new Error('Runtime target is missing from pinned release');
+              return { target, platform };
+            });
+          appendFileSync(process.env.GITHUB_OUTPUT, `matrix=${JSON.stringify({ include })}\n`);
+          NODE
+
+  runtime:
+    name: 运行时预检（${{ matrix.target }}）
+    needs: plan
+    runs-on: ${{ matrix.platform }}
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      CARGO_INCREMENTAL: "0"
+      MACOSX_DEPLOYMENT_TARGET: "14.0"
+      RUNTIME_TARGET: ${{ matrix.target }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: pnpm/action-setup@ea17c68df8912ef543352723c149a84f56e3d413 # v6.1.0
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+          cache: pnpm
+          cache-dependency-path: |
+            pnpm-lock.yaml
+            packages/*/package.json
+      - name: 安装依赖
+        run: pnpm install --frozen-lockfile
+      - name: 安装 Rust 工具链
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: . -> src-tauri/target
+          key: native-${{ matrix.target }}
+          cache-on-failure: true
+      - name: 准备 macOS 验签工具
+        if: runner.os == 'macOS'
+        run: |
+          if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
+          gpgv --version
+      - name: 验签并准备固定原生运行时
+        run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 构建无界面 runtime 验收入口
+        run: cargo build --locked -p serial-workbench-host --example node_runtime_probe
+      - name: 验证原生 runtime 安装布局与故障
+        id: node-runtime
+        shell: bash
+        run: |
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          pnpm test:runtime --target "$RUNTIME_TARGET" --resources "$SWB_NODE_RUNTIME_TEST_ROOT" --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/runtime-preflight
+          cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
+      - name: 保留 runtime 专项收据与签名来源
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-preflight-${{ matrix.target }}
+          path: |
+            artifacts/runtime-preflight/**/suite.json
+            artifacts/runtime-preflight/**/failure.json
+            artifacts/runtime-preflight/**/receipt.json
+            artifacts/runtime-preflight/**/command.stdout
+            artifacts/runtime-preflight/**/command.stderr
+            artifacts/runtime-preflight/**/command-error.txt
+            artifacts/runtime-preflight/**/probe.stdout
+            artifacts/runtime-preflight/**/probe.stderr
+            artifacts/runtime-preflight/**/probe-io.txt
+            .cache/node-runtime/layouts/**/runtime-preparation.json
+            .cache/node-runtime/layouts/**/node-resigning.json
+            .cache/node-runtime/layouts/**/node-sign*.stdout
+            .cache/node-runtime/layouts/**/node-sign*.stderr
+            .cache/node-runtime/layouts/**/resources/runtime/node-image.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+      - name: 保留 runtime 失败夹具与来源现场
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: runtime-preflight-failures-${{ matrix.target }}
+          path: |
+            artifacts/runtime-preflight
+            .cache/node-runtime
+            artifacts/rust-failures/node-runtime-*/**
+          include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+      - name: 标记专项验证范围
+        if: always()
+        shell: bash
+        run: echo '运行时专项预检只验证固定来源、原生启动与故障，不验证桌面、安装器、离线软件全集或里程碑完整门禁。' >> "$GITHUB_STEP_SUMMARY"

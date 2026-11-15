@@ -30,6 +30,11 @@ import { parse as parseToml } from "smol-toml";
 import { checkVersions } from "./version.mjs";
 import { fileSha256 } from "./artifact-lib.mjs";
 import {
+  buildNodeRuntime,
+  runtimeBundleConfig,
+} from "./node-runtime-build.mjs";
+import { stageNodeRuntime } from "./node-runtime-layout.mjs";
+import {
   RELEASE_SPEED_SETTINGS,
   buildComponents,
   inspectComponents,
@@ -496,17 +501,26 @@ export async function buildApplication(
   {
     buildComponents: build = buildComponents,
     stageComponents: stage = stageComponents,
+    buildNodeRuntime: runtimeBuild = buildNodeRuntime,
     runTauri: run = runTauri,
   } = {},
 ) {
   console.log(`Build optimization: ${plan.optimize} (release)`);
+  const runtime = await runtimeBuild(plan);
+  delete plan.env.SWB_NODE_RUNTIME_BUILD_IMAGE;
+  if (runtime.imageBinding)
+    plan.env.SWB_NODE_RUNTIME_BUILD_IMAGE = runtime.imageBinding;
   const components = await build(plan);
+  if (components.target && components.target !== plan.target)
+    throw new Error("Built components differ from the prepared runtime target");
   if (components.target) configureBuildTarget(plan, components.target);
   const externalBin = [
     ...(plan.config.bundle?.externalBin ?? []),
     ...stage(plan, components),
   ];
-  const config = JSON.stringify({ bundle: { externalBin } });
+  const config = JSON.stringify({
+    bundle: { externalBin, ...runtimeBundleConfig(plan, runtime) },
+  });
   const separator = plan.buildArgs.indexOf("--");
   const args = [
     ...plan.buildArgs.slice(0, separator),
@@ -523,7 +537,9 @@ export async function buildApplication(
       built.target !== components.target)
   )
     throw new Error("Desktop and component Cargo outputs do not match");
-  return { ...built, components };
+  if (plan.platform === "linux" || plan.platform === "macos")
+    stageNodeRuntime(plan, runtime, built.outputDir);
+  return { ...built, components, runtime };
 }
 
 function bundleExists(path) {

@@ -88,6 +88,10 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
         "WireFrame",
         "AuthorizeParams",
         "RevokeParams",
+        "NodePackageManifest",
+        "NodePackageIntegrity",
+        "NodePackageSignature",
+        "NodePackageRegistration",
     ] {
         assert!(types.contains(&format!("export type {name} =")));
         assert!(schemas["schemas"][name].is_object());
@@ -102,6 +106,10 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
         "ipc-authenticateUserControl",
         "authorize",
         "revoke",
+        "node-package-manifest",
+        "node-package-integrity",
+        "node-package-signature",
+        "node-package-registration",
     ] {
         assert!(
             fixtures["valid"]
@@ -115,6 +123,10 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
         "ipc-rawAttached-unknown",
         "ipc-user-control-null-credential",
         "authorize-null-expiry",
+        "node-package-manifest-unknown-field",
+        "node-package-integrity-numeric-size",
+        "node-package-signature-noncanonical",
+        "node-package-registration-replaced-metadata",
     ] {
         assert!(
             fixtures["invalid"]

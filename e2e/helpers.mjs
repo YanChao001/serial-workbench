@@ -170,6 +170,7 @@ export function windowPlacement() {
       win.scaleFactor(),
     ]);
     return {
+      label: win.label,
       position,
       outerSize: size,
       workAreas: monitors.map(({ workArea }) => workArea),

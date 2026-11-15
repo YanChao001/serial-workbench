@@ -1,0 +1,103 @@
+{
+  "schemaVersion": "0.1",
+  "id": "libatomic1-jammy-12.3.0-22.04.3",
+  "version": "12.3.0-1ubuntu1~22.04.3",
+  "target": "x86_64-unknown-linux-gnu",
+  "architecture": "amd64",
+  "licenseExpression": "GPL-3.0-or-later WITH GCC-exception-3.1",
+  "upstream": {
+    "baseUrl": "https://archive.ubuntu.com/ubuntu/",
+    "signerFingerprint": "F6ECB3762474EDA9D21B7022871920D1991BC93C",
+    "keyring": {
+      "repositoryPath": "project/ubuntu-archive-keyring.gpg",
+      "bundledPath": "resources/runtime/ubuntu-archive-keyring.gpg",
+      "size": "3607",
+      "sha256": "80a36b0a6de2f69f49d2df75ef473ccde121e9e190b9ea01d20a4f63778d5c31"
+    },
+    "inRelease": {
+      "repositoryPath": "dists/jammy-updates/InRelease",
+      "bundledPath": "resources/runtime/ubuntu-jammy-InRelease.asc",
+      "size": "128049",
+      "sha256": "78ed02b1a3b2dcc42d375d46596f619a99c08cdd3f251827ca2fe2bd77b04cd0"
+    },
+    "packageIndex": {
+      "repositoryPath": "dists/jammy-updates/main/binary-amd64/Packages.gz",
+      "bundledPath": "resources/runtime/ubuntu-jammy-Packages.gz",
+      "size": "4846936",
+      "sha256": "d9fbef673ec326e877b75c5901df1012bd55031ea658adb47b5518aa731c5102"
+    },
+    "sourceIndex": {
+      "repositoryPath": "dists/jammy-updates/main/source/Sources.gz",
+      "bundledPath": "resources/runtime/ubuntu-jammy-Sources.gz",
+      "size": "760754",
+      "sha256": "fd6a6e8181d37d023f0e1a3c65a4ae829fbdce878d08d7617f7148023682f956"
+    }
+  },
+  "artifacts": [
+    {
+      "kind": "binary",
+      "package": "libatomic1",
+      "version": "12.3.0-1ubuntu1~22.04.3",
+      "filename": "pool/main/g/gcc-12/libatomic1_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+      "size": "10470",
+      "sha256": "56573c81b5dd84817882400cfea49fe671f5e6cfdd0f88b5d3a894c08b150462"
+    },
+    {
+      "kind": "binary",
+      "package": "gcc-12-base",
+      "version": "12.3.0-1ubuntu1~22.04.3",
+      "filename": "pool/main/g/gcc-12/gcc-12-base_12.3.0-1ubuntu1~22.04.3_amd64.deb",
+      "size": "215782",
+      "sha256": "7f9253b7e0976f0526fc21346c73ee006e185a7b2f2f865048ea78a2af55bc8d"
+    },
+    {
+      "kind": "correspondingSource",
+      "package": "gcc-12",
+      "version": "12.3.0-1ubuntu1~22.04.3",
+      "filename": "pool/main/g/gcc-12/gcc-12_12.3.0.orig.tar.gz",
+      "size": "91555468",
+      "sha256": "62b0fc89b6d41f9df2470d0fb4995f6ff5885f910518a2c6a44a6888ea5a9ea1"
+    },
+    {
+      "kind": "correspondingSource",
+      "package": "gcc-12",
+      "version": "12.3.0-1ubuntu1~22.04.3",
+      "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.debian.tar.xz",
+      "size": "587456",
+      "sha256": "44074c3d5e7d97365f1f7b45291ade2ee40ed6300176530d912e7cc0ceba77ab"
+    },
+    {
+      "kind": "correspondingSource",
+      "package": "gcc-12",
+      "version": "12.3.0-1ubuntu1~22.04.3",
+      "filename": "pool/main/g/gcc-12/gcc-12_12.3.0-1ubuntu1~22.04.3.dsc",
+      "size": "27845",
+      "sha256": "ec040a1fa94186bd53535f7156e086e67863bb55836ae7fd7fef64f1ab66b04d"
+    }
+  ],
+  "library": {
+    "archivePath": "usr/lib/x86_64-linux-gnu/libatomic.so.1.2.0",
+    "resourcePath": "lib/libatomic.so.1.2.0",
+    "size": "30960",
+    "sha256": "d4a3c900a38ad280bb34003fbf8326fff53229d4bc4fc368bd48783b74680a36"
+  },
+  "libraryMode": "0644",
+  "sonameLink": {
+    "resourcePath": "lib/libatomic.so.1",
+    "target": "libatomic.so.1.2.0"
+  },
+  "copyright": {
+    "archivePath": "usr/share/doc/gcc-12-base/copyright",
+    "resourcePath": "licenses/libatomic/COPYRIGHT",
+    "size": "68194",
+    "sha256": "da8191658b3452ce9caf31638ba61dab31a38c619fa39df119812e050f592fd3"
+  },
+  "copyrightSourcePath": "resources/runtime/libatomic.COPYRIGHT",
+  "gplLicense": {
+    "archivePath": "gcc-12.3.0/COPYING3",
+    "resourcePath": "licenses/libatomic/GPL-3.0",
+    "size": "35147",
+    "sha256": "8ceb4b9ee5adedde47b31e975c1d90c73ad27b6b165a1dcd80c7c545eb65b903"
+  },
+  "gplSourcePath": "resources/runtime/libatomic.GPL-3.0"
+}

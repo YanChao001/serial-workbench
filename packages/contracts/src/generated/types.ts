@@ -2284,6 +2284,297 @@ export type Motion = "full" | "reduced";
 
 export type NetworkMode = "system" | "direct";
 
+export type NodeContributionSelection = {
+  actions: Id[];
+  queries: Id[];
+  transports: Id[];
+  parsers: Id[];
+  views: Id[];
+  themes: Id[];
+  configuration: Id[];
+};
+
+export type NodeHostApiScope = {
+  permissions: string[];
+  targetKinds: ResourceKind[];
+};
+
+export type NodePackageContributions =
+  NodePackageContributions_Serialize | NodePackageContributions_Deserialize;
+
+export type NodePackageContributions_Deserialize = {
+  actions: ActionSpec_Deserialize[];
+  queries: ActionSpec_Deserialize[];
+  transports: ActionSpec_Deserialize[];
+  parsers: ActionSpec_Deserialize[];
+  views: NodePackageView[];
+  themes: NodePackageTheme[];
+  configuration: ActionSpec_Deserialize[];
+};
+
+export type NodePackageContributions_Serialize = {
+  actions: ActionSpec_Serialize[];
+  queries: ActionSpec_Serialize[];
+  transports: ActionSpec_Serialize[];
+  parsers: ActionSpec_Serialize[];
+  views: NodePackageView[];
+  themes: NodePackageTheme[];
+  configuration: ActionSpec_Serialize[];
+};
+
+export type NodePackageDependency = {
+  name: string;
+  version: NodePackageVersion;
+  path: NodePackagePath;
+  license: string;
+};
+
+export type NodePackageFile = {
+  path: NodePackagePath;
+  size: U64;
+  sha256: Digest;
+};
+
+export type NodePackageId = string;
+
+export type NodePackageIntegrity = {
+  schemaVersion: NodePackageSchemaVersion;
+  id: NodePackageId;
+  version: NodePackageVersion;
+  source: Id;
+  keyId: Id;
+  files: NodePackageFile[];
+};
+
+export type NodePackageManifest =
+  NodePackageManifest_Serialize | NodePackageManifest_Deserialize;
+
+export type NodePackageManifest_Deserialize = {
+  schemaVersion: NodePackageSchemaVersion;
+  id: NodePackageId;
+  version: NodePackageVersion;
+  displayName: string;
+  description: string;
+  license: string;
+  notices: NodePackagePath[];
+  hostProtocolVersion: ProtocolVersion;
+  runtimeRef: Id;
+  main: NodePackagePath;
+  webUi?: NodePackageWebUi;
+  dependencies: NodePackageDependency[];
+  platformResources: NodePackageResource_Deserialize[];
+  activation: Id[];
+  permissions: NodePackagePermissions;
+  contributes: NodePackageContributions_Deserialize;
+  dataSchemaVersion: string;
+};
+
+export type NodePackageManifest_Serialize = {
+  schemaVersion: NodePackageSchemaVersion;
+  id: NodePackageId;
+  version: NodePackageVersion;
+  displayName: string;
+  description: string;
+  license: string;
+  notices: NodePackagePath[];
+  hostProtocolVersion: ProtocolVersion;
+  runtimeRef: Id;
+  main: NodePackagePath;
+  webUi?: NodePackageWebUi;
+  dependencies: NodePackageDependency[];
+  platformResources: NodePackageResource_Serialize[];
+  activation: Id[];
+  permissions: NodePackagePermissions;
+  contributes: NodePackageContributions_Serialize;
+  dataSchemaVersion: string;
+};
+
+export type NodePackagePath = string;
+
+export type NodePackagePermissions = {
+  hostApi: NodeHostApiScope[];
+  executionPurposes: string[];
+  externalTools: Id[];
+};
+
+/**  登记只选择 manifest 中的贡献；目录元数据始终读取已验证的原声明。 */
+export type NodePackageRegistration = {
+  id: NodePackageId;
+  version: NodePackageVersion;
+  contributes: NodeContributionSelection;
+};
+
+export type NodePackageResource =
+  NodePackageResource_Serialize | NodePackageResource_Deserialize;
+
+export type NodePackageResourceKind = "nativeAddon" | "tool" | "data";
+
+export type NodePackageResource_Deserialize = {
+  id: Id;
+  target: NodePackageTarget;
+  path: NodePackagePath;
+  kind: NodePackageResourceKind;
+  version: string;
+  runtimeRef?: Id;
+};
+
+export type NodePackageResource_Serialize = {
+  id: Id;
+  target: NodePackageTarget;
+  path: NodePackagePath;
+  kind: NodePackageResourceKind;
+  version: string;
+  runtimeRef?: Id;
+};
+
+export type NodePackageSchemaVersion = "0.1";
+
+export type NodePackageSignature = {
+  algorithm: NodePackageSignatureAlgorithm;
+  keyId: Id;
+  signatureBase64: NodePackageSignatureBytes;
+};
+
+export type NodePackageSignatureAlgorithm = "Ed25519";
+
+export type NodePackageSignatureBytes = string;
+
+export type NodePackageTarget =
+  | "x86_64-pc-windows-msvc"
+  | "aarch64-apple-darwin"
+  | "x86_64-apple-darwin"
+  | "x86_64-unknown-linux-gnu";
+
+export type NodePackageTheme = {
+  id: Id;
+  path: NodePackagePath;
+  resourceSchema: { [key in string]: SchemaValue };
+  configurationActionId: Id;
+};
+
+export type NodePackageVersion = string;
+
+export type NodePackageView = {
+  id: Id;
+  actionId: Id;
+  stateScopes: string[];
+};
+
+export type NodePackageWebUi = {
+  entry: NodePackagePath;
+};
+
+export type NodeRuntimeArch = "x64" | "arm64";
+
+export type NodeRuntimeArchive = {
+  name: NodePackagePath;
+  url: string;
+  format: NodeRuntimeArchiveFormat;
+  size: U64;
+  sha256: Digest;
+};
+
+export type NodeRuntimeArchiveFormat = "zip" | "tarGz" | "tarXz";
+
+export type NodeRuntimeFile = {
+  archivePath: NodePackagePath;
+  resourcePath: NodePackagePath;
+  size: U64;
+  sha256: Digest;
+};
+
+export type NodeRuntimeLibraryLink = {
+  resourcePath: NodePackagePath;
+  target: NodePackagePath;
+};
+
+export type NodeRuntimeLibraryRelease = {
+  schemaVersion: NodePackageSchemaVersion;
+  id: Id;
+  version: string;
+  target: NodePackageTarget;
+  architecture: string;
+  licenseExpression: string;
+  upstream: NodeRuntimeLibraryUpstream;
+  artifacts: NodeRuntimeSourceArtifact[];
+  library: NodeRuntimeFile;
+  libraryMode: string;
+  sonameLink: NodeRuntimeLibraryLink;
+  copyright: NodeRuntimeFile;
+  copyrightSourcePath: NodePackagePath;
+  gplLicense: NodeRuntimeFile;
+  gplSourcePath: NodePackagePath;
+};
+
+export type NodeRuntimeLibraryUpstream = {
+  baseUrl: string;
+  signerFingerprint: string;
+  keyring: NodeRuntimeRepositoryFile;
+  inRelease: NodeRuntimeRepositoryFile;
+  packageIndex: NodeRuntimeRepositoryFile;
+  sourceIndex: NodeRuntimeRepositoryFile;
+};
+
+export type NodeRuntimePlatform = "win32" | "darwin" | "linux";
+
+export type NodeRuntimeRelease = {
+  schemaVersion: NodePackageSchemaVersion;
+  id: Id;
+  version: NodePackageVersion;
+  modulesAbi: U64;
+  nodeApiVersion: U64;
+  upstream: NodeRuntimeUpstream;
+  targets: NodeRuntimeTarget[];
+};
+
+export type NodeRuntimeRepositoryFile = {
+  repositoryPath: NodePackagePath;
+  bundledPath: NodePackagePath;
+  size: U64;
+  sha256: Digest;
+};
+
+export type NodeRuntimeSelfTest = {
+  version: NodePackageVersion;
+  platform: NodeRuntimePlatform;
+  arch: NodeRuntimeArch;
+  modulesAbi: U64;
+  nodeApiVersion: U64;
+  execPath: string;
+};
+
+export type NodeRuntimeSourceArtifact = {
+  kind: NodeRuntimeSourceArtifactKind;
+  package: Id;
+  version: string;
+  filename: NodePackagePath;
+  size: U64;
+  sha256: Digest;
+};
+
+export type NodeRuntimeSourceArtifactKind = "binary" | "correspondingSource";
+
+export type NodeRuntimeTarget = {
+  target: NodePackageTarget;
+  platform: NodeRuntimePlatform;
+  arch: NodeRuntimeArch;
+  archive: NodeRuntimeArchive;
+  executable: NodeRuntimeFile;
+  license: NodeRuntimeFile;
+  requiredPrivateLibraries: NodePackagePath[];
+};
+
+export type NodeRuntimeUpstream = {
+  keyringCommit: Id;
+  keyringUrl: string;
+  keyringSha256: Digest;
+  signerFingerprint: string;
+  publicKeyPath: NodePackagePath;
+  publicKeySha256: Digest;
+  checksumsUrl: string;
+  checksumsSha256: Digest;
+};
+
 export type ObjectReadResult =
   ObjectReadResult_Serialize | ObjectReadResult_Deserialize;
 
@@ -3843,3 +4134,7 @@ export type WorkspaceView = {
 
 /** 单次手动 TX 的最终字节上限，来源为 Rust 契约。 */
 export const TX_MAX_BYTES = 131072;
+
+/** 正式 Node 包的签名域前缀，来源为 Rust 契约。 */
+export const NODE_PACKAGE_SIGNATURE_PREFIX =
+  "serial-workbench-node-package-v0\n";

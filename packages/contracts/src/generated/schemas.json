@@ -20604,6 +20604,1199 @@
       "title": "NetworkMode",
       "type": "string"
     },
+    "NodePackageId": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "maxLength": 128,
+      "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+      "title": "NodePackageId",
+      "type": "string"
+    },
+    "NodePackageIntegrity": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageFile": {
+          "additionalProperties": false,
+          "properties": {
+            "path": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "size": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["path", "size", "sha256"],
+          "type": "object"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodePackagePath": {
+          "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+          "type": "string"
+        },
+        "NodePackageSchemaVersion": {
+          "enum": ["0.1"],
+          "type": "string"
+        },
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "files": {
+          "items": {
+            "$ref": "#/definitions/NodePackageFile"
+          },
+          "type": "array"
+        },
+        "id": {
+          "$ref": "#/definitions/NodePackageId"
+        },
+        "keyId": {
+          "$ref": "#/definitions/Id"
+        },
+        "schemaVersion": {
+          "$ref": "#/definitions/NodePackageSchemaVersion"
+        },
+        "source": {
+          "$ref": "#/definitions/Id"
+        },
+        "version": {
+          "$ref": "#/definitions/NodePackageVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "version",
+        "source",
+        "keyId",
+        "files"
+      ],
+      "title": "NodePackageIntegrity",
+      "type": "object"
+    },
+    "NodePackageManifest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "ActionKind": {
+          "enum": ["query", "action"],
+          "type": "string"
+        },
+        "ActionSpec": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "cancellation": {
+              "$ref": "#/definitions/Cancellation"
+            },
+            "eventTypes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "executionLocation": {
+              "$ref": "#/definitions/ExecutionLocation"
+            },
+            "inputSchema": {
+              "additionalProperties": {
+                "$ref": "#/definitions/SchemaValue"
+              },
+              "type": "object"
+            },
+            "kind": {
+              "$ref": "#/definitions/ActionKind"
+            },
+            "outputSchema": {
+              "additionalProperties": {
+                "$ref": "#/definitions/SchemaValue"
+              },
+              "type": "object"
+            },
+            "permissions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            },
+            "stateScopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "targetKinds": {
+              "items": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "actionId",
+            "kind",
+            "inputSchema",
+            "outputSchema",
+            "targetKinds",
+            "executionLocation",
+            "permissions",
+            "stateScopes",
+            "eventTypes",
+            "cancellation",
+            "revealTarget"
+          ],
+          "type": "object"
+        },
+        "Cancellation": {
+          "enum": ["none", "cooperative"],
+          "type": "string"
+        },
+        "ExecutionLocation": {
+          "enum": ["resource_host", "client"],
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodeHostApiScope": {
+          "additionalProperties": false,
+          "properties": {
+            "permissions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "targetKinds": {
+              "items": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["permissions", "targetKinds"],
+          "type": "object"
+        },
+        "NodePackageContributions": {
+          "additionalProperties": false,
+          "properties": {
+            "actions": {
+              "items": {
+                "$ref": "#/definitions/ActionSpec"
+              },
+              "type": "array"
+            },
+            "configuration": {
+              "items": {
+                "$ref": "#/definitions/ActionSpec"
+              },
+              "type": "array"
+            },
+            "parsers": {
+              "items": {
+                "$ref": "#/definitions/ActionSpec"
+              },
+              "type": "array"
+            },
+            "queries": {
+              "items": {
+                "$ref": "#/definitions/ActionSpec"
+              },
+              "type": "array"
+            },
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/NodePackageTheme"
+              },
+              "type": "array"
+            },
+            "transports": {
+              "items": {
+                "$ref": "#/definitions/ActionSpec"
+              },
+              "type": "array"
+            },
+            "views": {
+              "items": {
+                "$ref": "#/definitions/NodePackageView"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "actions",
+            "queries",
+            "transports",
+            "parsers",
+            "views",
+            "themes",
+            "configuration"
+          ],
+          "type": "object"
+        },
+        "NodePackageDependency": {
+          "additionalProperties": false,
+          "properties": {
+            "license": {
+              "type": "string"
+            },
+            "name": {
+              "type": "string"
+            },
+            "path": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "version": {
+              "$ref": "#/definitions/NodePackageVersion"
+            }
+          },
+          "required": ["name", "version", "path", "license"],
+          "type": "object"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodePackagePath": {
+          "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+          "type": "string"
+        },
+        "NodePackagePermissions": {
+          "additionalProperties": false,
+          "properties": {
+            "executionPurposes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            },
+            "externalTools": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "hostApi": {
+              "items": {
+                "$ref": "#/definitions/NodeHostApiScope"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["hostApi", "executionPurposes", "externalTools"],
+          "type": "object"
+        },
+        "NodePackageResource": {
+          "additionalProperties": false,
+          "properties": {
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/NodePackageResourceKind"
+            },
+            "path": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "runtimeRef": {
+              "$ref": "#/definitions/Id"
+            },
+            "target": {
+              "$ref": "#/definitions/NodePackageTarget"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": ["id", "target", "path", "kind", "version"],
+          "type": "object"
+        },
+        "NodePackageResourceKind": {
+          "enum": ["nativeAddon", "tool", "data"],
+          "type": "string"
+        },
+        "NodePackageSchemaVersion": {
+          "enum": ["0.1"],
+          "type": "string"
+        },
+        "NodePackageTarget": {
+          "enum": [
+            "x86_64-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu"
+          ],
+          "type": "string"
+        },
+        "NodePackageTheme": {
+          "additionalProperties": false,
+          "properties": {
+            "configurationActionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "path": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "resourceSchema": {
+              "additionalProperties": {
+                "$ref": "#/definitions/SchemaValue"
+              },
+              "type": "object"
+            }
+          },
+          "required": ["id", "path", "resourceSchema", "configurationActionId"],
+          "type": "object"
+        },
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        },
+        "NodePackageView": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "stateScopes": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["id", "actionId", "stateScopes"],
+          "type": "object"
+        },
+        "NodePackageWebUi": {
+          "additionalProperties": false,
+          "properties": {
+            "entry": {
+              "$ref": "#/definitions/NodePackagePath"
+            }
+          },
+          "required": ["entry"],
+          "type": "object"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "ProtocolVersion": {
+          "enum": ["0.1"],
+          "type": "string"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "RevealTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "pageId": {
+              "$ref": "#/definitions/Id"
+            },
+            "panelId": {
+              "$ref": "#/definitions/Id"
+            },
+            "resultRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "workspaceId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["pageId"],
+          "type": "object"
+        },
+        "SchemaValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "type": "number"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/SchemaValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/SchemaValue"
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "activation": {
+          "items": {
+            "$ref": "#/definitions/Id"
+          },
+          "type": "array"
+        },
+        "contributes": {
+          "$ref": "#/definitions/NodePackageContributions"
+        },
+        "dataSchemaVersion": {
+          "type": "string"
+        },
+        "dependencies": {
+          "items": {
+            "$ref": "#/definitions/NodePackageDependency"
+          },
+          "type": "array"
+        },
+        "description": {
+          "type": "string"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "hostProtocolVersion": {
+          "$ref": "#/definitions/ProtocolVersion"
+        },
+        "id": {
+          "$ref": "#/definitions/NodePackageId"
+        },
+        "license": {
+          "type": "string"
+        },
+        "main": {
+          "$ref": "#/definitions/NodePackagePath"
+        },
+        "notices": {
+          "items": {
+            "$ref": "#/definitions/NodePackagePath"
+          },
+          "type": "array"
+        },
+        "permissions": {
+          "$ref": "#/definitions/NodePackagePermissions"
+        },
+        "platformResources": {
+          "items": {
+            "$ref": "#/definitions/NodePackageResource"
+          },
+          "type": "array"
+        },
+        "runtimeRef": {
+          "$ref": "#/definitions/Id"
+        },
+        "schemaVersion": {
+          "$ref": "#/definitions/NodePackageSchemaVersion"
+        },
+        "version": {
+          "$ref": "#/definitions/NodePackageVersion"
+        },
+        "webUi": {
+          "$ref": "#/definitions/NodePackageWebUi"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "version",
+        "displayName",
+        "description",
+        "license",
+        "notices",
+        "hostProtocolVersion",
+        "runtimeRef",
+        "main",
+        "dependencies",
+        "platformResources",
+        "activation",
+        "permissions",
+        "contributes",
+        "dataSchemaVersion"
+      ],
+      "title": "NodePackageManifest",
+      "type": "object"
+    },
+    "NodePackagePath": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+      "title": "NodePackagePath",
+      "type": "string"
+    },
+    "NodePackageRegistration": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodeContributionSelection": {
+          "additionalProperties": false,
+          "properties": {
+            "actions": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "configuration": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "parsers": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "queries": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "transports": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            },
+            "views": {
+              "items": {
+                "$ref": "#/definitions/Id"
+              },
+              "type": "array"
+            }
+          },
+          "required": [
+            "actions",
+            "queries",
+            "transports",
+            "parsers",
+            "views",
+            "themes",
+            "configuration"
+          ],
+          "type": "object"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        }
+      },
+      "description": "登记只选择 manifest 中的贡献；目录元数据始终读取已验证的原声明。",
+      "properties": {
+        "contributes": {
+          "$ref": "#/definitions/NodeContributionSelection"
+        },
+        "id": {
+          "$ref": "#/definitions/NodePackageId"
+        },
+        "version": {
+          "$ref": "#/definitions/NodePackageVersion"
+        }
+      },
+      "required": ["id", "version", "contributes"],
+      "title": "NodePackageRegistration",
+      "type": "object"
+    },
+    "NodePackageSignature": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageSignatureAlgorithm": {
+          "enum": ["Ed25519"],
+          "type": "string"
+        },
+        "NodePackageSignatureBytes": {
+          "pattern": "^[A-Za-z0-9+/]{85}[AQgw]==$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "algorithm": {
+          "$ref": "#/definitions/NodePackageSignatureAlgorithm"
+        },
+        "keyId": {
+          "$ref": "#/definitions/Id"
+        },
+        "signatureBase64": {
+          "$ref": "#/definitions/NodePackageSignatureBytes"
+        }
+      },
+      "required": ["algorithm", "keyId", "signatureBase64"],
+      "title": "NodePackageSignature",
+      "type": "object"
+    },
+    "NodePackageVersion": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+      "title": "NodePackageVersion",
+      "type": "string"
+    },
+    "NodeRuntimeLibraryRelease": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackagePath": {
+          "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+          "type": "string"
+        },
+        "NodePackageSchemaVersion": {
+          "enum": ["0.1"],
+          "type": "string"
+        },
+        "NodePackageTarget": {
+          "enum": [
+            "x86_64-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu"
+          ],
+          "type": "string"
+        },
+        "NodeRuntimeFile": {
+          "additionalProperties": false,
+          "properties": {
+            "archivePath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "resourcePath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "size": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["archivePath", "resourcePath", "size", "sha256"],
+          "type": "object"
+        },
+        "NodeRuntimeLibraryLink": {
+          "additionalProperties": false,
+          "properties": {
+            "resourcePath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "target": {
+              "$ref": "#/definitions/NodePackagePath"
+            }
+          },
+          "required": ["resourcePath", "target"],
+          "type": "object"
+        },
+        "NodeRuntimeLibraryUpstream": {
+          "additionalProperties": false,
+          "properties": {
+            "baseUrl": {
+              "type": "string"
+            },
+            "inRelease": {
+              "$ref": "#/definitions/NodeRuntimeRepositoryFile"
+            },
+            "keyring": {
+              "$ref": "#/definitions/NodeRuntimeRepositoryFile"
+            },
+            "packageIndex": {
+              "$ref": "#/definitions/NodeRuntimeRepositoryFile"
+            },
+            "signerFingerprint": {
+              "type": "string"
+            },
+            "sourceIndex": {
+              "$ref": "#/definitions/NodeRuntimeRepositoryFile"
+            }
+          },
+          "required": [
+            "baseUrl",
+            "signerFingerprint",
+            "keyring",
+            "inRelease",
+            "packageIndex",
+            "sourceIndex"
+          ],
+          "type": "object"
+        },
+        "NodeRuntimeRepositoryFile": {
+          "additionalProperties": false,
+          "properties": {
+            "bundledPath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "repositoryPath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "size": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["repositoryPath", "bundledPath", "size", "sha256"],
+          "type": "object"
+        },
+        "NodeRuntimeSourceArtifact": {
+          "additionalProperties": false,
+          "properties": {
+            "filename": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "kind": {
+              "$ref": "#/definitions/NodeRuntimeSourceArtifactKind"
+            },
+            "package": {
+              "$ref": "#/definitions/Id"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "size": {
+              "$ref": "#/definitions/U64"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "kind",
+            "package",
+            "version",
+            "filename",
+            "size",
+            "sha256"
+          ],
+          "type": "object"
+        },
+        "NodeRuntimeSourceArtifactKind": {
+          "enum": ["binary", "correspondingSource"],
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "architecture": {
+          "type": "string"
+        },
+        "artifacts": {
+          "items": {
+            "$ref": "#/definitions/NodeRuntimeSourceArtifact"
+          },
+          "type": "array"
+        },
+        "copyright": {
+          "$ref": "#/definitions/NodeRuntimeFile"
+        },
+        "copyrightSourcePath": {
+          "$ref": "#/definitions/NodePackagePath"
+        },
+        "gplLicense": {
+          "$ref": "#/definitions/NodeRuntimeFile"
+        },
+        "gplSourcePath": {
+          "$ref": "#/definitions/NodePackagePath"
+        },
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "library": {
+          "$ref": "#/definitions/NodeRuntimeFile"
+        },
+        "libraryMode": {
+          "type": "string"
+        },
+        "licenseExpression": {
+          "type": "string"
+        },
+        "schemaVersion": {
+          "$ref": "#/definitions/NodePackageSchemaVersion"
+        },
+        "sonameLink": {
+          "$ref": "#/definitions/NodeRuntimeLibraryLink"
+        },
+        "target": {
+          "$ref": "#/definitions/NodePackageTarget"
+        },
+        "upstream": {
+          "$ref": "#/definitions/NodeRuntimeLibraryUpstream"
+        },
+        "version": {
+          "type": "string"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "version",
+        "target",
+        "architecture",
+        "licenseExpression",
+        "upstream",
+        "artifacts",
+        "library",
+        "libraryMode",
+        "sonameLink",
+        "copyright",
+        "copyrightSourcePath",
+        "gplLicense",
+        "gplSourcePath"
+      ],
+      "title": "NodeRuntimeLibraryRelease",
+      "type": "object"
+    },
+    "NodeRuntimeRelease": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackagePath": {
+          "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+          "type": "string"
+        },
+        "NodePackageSchemaVersion": {
+          "enum": ["0.1"],
+          "type": "string"
+        },
+        "NodePackageTarget": {
+          "enum": [
+            "x86_64-pc-windows-msvc",
+            "aarch64-apple-darwin",
+            "x86_64-apple-darwin",
+            "x86_64-unknown-linux-gnu"
+          ],
+          "type": "string"
+        },
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        },
+        "NodeRuntimeArch": {
+          "enum": ["x64", "arm64"],
+          "type": "string"
+        },
+        "NodeRuntimeArchive": {
+          "additionalProperties": false,
+          "properties": {
+            "format": {
+              "$ref": "#/definitions/NodeRuntimeArchiveFormat"
+            },
+            "name": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "size": {
+              "$ref": "#/definitions/U64"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["name", "url", "format", "size", "sha256"],
+          "type": "object"
+        },
+        "NodeRuntimeArchiveFormat": {
+          "enum": ["zip", "tarGz", "tarXz"],
+          "type": "string"
+        },
+        "NodeRuntimeFile": {
+          "additionalProperties": false,
+          "properties": {
+            "archivePath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "resourcePath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "sha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "size": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["archivePath", "resourcePath", "size", "sha256"],
+          "type": "object"
+        },
+        "NodeRuntimePlatform": {
+          "enum": ["win32", "darwin", "linux"],
+          "type": "string"
+        },
+        "NodeRuntimeTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "arch": {
+              "$ref": "#/definitions/NodeRuntimeArch"
+            },
+            "archive": {
+              "$ref": "#/definitions/NodeRuntimeArchive"
+            },
+            "executable": {
+              "$ref": "#/definitions/NodeRuntimeFile"
+            },
+            "license": {
+              "$ref": "#/definitions/NodeRuntimeFile"
+            },
+            "platform": {
+              "$ref": "#/definitions/NodeRuntimePlatform"
+            },
+            "requiredPrivateLibraries": {
+              "items": {
+                "$ref": "#/definitions/NodePackagePath"
+              },
+              "type": "array"
+            },
+            "target": {
+              "$ref": "#/definitions/NodePackageTarget"
+            }
+          },
+          "required": [
+            "target",
+            "platform",
+            "arch",
+            "archive",
+            "executable",
+            "license",
+            "requiredPrivateLibraries"
+          ],
+          "type": "object"
+        },
+        "NodeRuntimeUpstream": {
+          "additionalProperties": false,
+          "properties": {
+            "checksumsSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "checksumsUrl": {
+              "type": "string"
+            },
+            "keyringCommit": {
+              "$ref": "#/definitions/Id"
+            },
+            "keyringSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "keyringUrl": {
+              "type": "string"
+            },
+            "publicKeyPath": {
+              "$ref": "#/definitions/NodePackagePath"
+            },
+            "publicKeySha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "signerFingerprint": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "keyringCommit",
+            "keyringUrl",
+            "keyringSha256",
+            "signerFingerprint",
+            "publicKeyPath",
+            "publicKeySha256",
+            "checksumsUrl",
+            "checksumsSha256"
+          ],
+          "type": "object"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "id": {
+          "$ref": "#/definitions/Id"
+        },
+        "modulesAbi": {
+          "$ref": "#/definitions/U64"
+        },
+        "nodeApiVersion": {
+          "$ref": "#/definitions/U64"
+        },
+        "schemaVersion": {
+          "$ref": "#/definitions/NodePackageSchemaVersion"
+        },
+        "targets": {
+          "items": {
+            "$ref": "#/definitions/NodeRuntimeTarget"
+          },
+          "type": "array"
+        },
+        "upstream": {
+          "$ref": "#/definitions/NodeRuntimeUpstream"
+        },
+        "version": {
+          "$ref": "#/definitions/NodePackageVersion"
+        }
+      },
+      "required": [
+        "schemaVersion",
+        "id",
+        "version",
+        "modulesAbi",
+        "nodeApiVersion",
+        "upstream",
+        "targets"
+      ],
+      "title": "NodeRuntimeRelease",
+      "type": "object"
+    },
+    "NodeRuntimeSelfTest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "NodePackageVersion": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+          "type": "string"
+        },
+        "NodeRuntimeArch": {
+          "enum": ["x64", "arm64"],
+          "type": "string"
+        },
+        "NodeRuntimePlatform": {
+          "enum": ["win32", "darwin", "linux"],
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "arch": {
+          "$ref": "#/definitions/NodeRuntimeArch"
+        },
+        "execPath": {
+          "type": "string"
+        },
+        "modulesAbi": {
+          "$ref": "#/definitions/U64"
+        },
+        "nodeApiVersion": {
+          "$ref": "#/definitions/U64"
+        },
+        "platform": {
+          "$ref": "#/definitions/NodeRuntimePlatform"
+        },
+        "version": {
+          "$ref": "#/definitions/NodePackageVersion"
+        }
+      },
+      "required": [
+        "version",
+        "platform",
+        "arch",
+        "modulesAbi",
+        "nodeApiVersion",
+        "execPath"
+      ],
+      "title": "NodeRuntimeSelfTest",
+      "type": "object"
+    },
     "ObjectReadResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,

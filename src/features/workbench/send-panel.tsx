@@ -62,7 +62,11 @@ import {
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { convertSendDraft } from "./send-draft-conversion";
 import { TextEncodingSelect } from "./text-encoding-select";
-import { encodeTextSend, TextEncodingError } from "@/lib/text-encoding";
+import {
+  createTextSendPreview,
+  TextEncodingError,
+  type TextSendPreview,
+} from "@/lib/text-encoding";
 import { useTextEncoding } from "@/hooks/use-text-encoding";
 const SEND_SHORTCUT: Shortcut = {
   key: "Enter",
@@ -107,8 +111,8 @@ export type SendPanelProps = {
   onDraftChange: (value: string) => void;
   labels: WorkbenchLabels;
   onSend: (bytes: Uint8Array, signal?: AbortSignal) => Promise<Operation>;
-  /** 最终编码与行尾后的字节副本；非法输入和卸载时为 null。 */
-  onPreviewChange?: (bytes: Uint8Array | null) => void;
+  /** 最终编码与行尾的不可变快照，按需读取字节副本；非法输入和卸载时为 null。 */
+  onPreviewChange?: (preview: TextSendPreview | null) => void;
   permissionAllowed?: boolean;
   onSendFile?: () => void;
   onOpenTransfer?: () => void;
@@ -251,13 +255,13 @@ export function SendPanel({
   const endingKind = ending.kind;
   const customSuffixHex = endingKind === "custom" ? suffixHex : "";
   const preview = useMemo<{
-    bytes: Uint8Array;
+    prepared?: TextSendPreview;
     invalid: boolean;
     reason?: "unrepresentable" | "loading" | "hex" | "limit";
   }>(() => {
     try {
       if (mode !== "hex" && encodingStatus !== "ready")
-        return { bytes: new Uint8Array(), invalid: true, reason: "loading" };
+        return { invalid: true, reason: "loading" };
       const suffix: LineEnding =
         endingKind === "custom"
           ? {
@@ -269,15 +273,14 @@ export function SendPanel({
               ),
             }
           : { kind: endingKind };
-      const bytes = encodeTextSend(draft, mode, suffix, encoding);
+      const prepared = createTextSendPreview(draft, mode, suffix, encoding);
       return {
-        bytes,
-        invalid: bytes.length > TX_MAX_BYTES,
-        reason: bytes.length > TX_MAX_BYTES ? "limit" : undefined,
+        prepared,
+        invalid: prepared.byteLength > TX_MAX_BYTES,
+        reason: prepared.byteLength > TX_MAX_BYTES ? "limit" : undefined,
       };
     } catch (error) {
       return {
-        bytes: new Uint8Array(),
         invalid: true,
         reason: error instanceof TextEncodingError ? error.code : "hex",
       };
@@ -309,7 +312,9 @@ export function SendPanel({
     previewCallback.current = onPreviewChange;
   }, [onPreviewChange]);
   useEffect(() => {
-    previewCallback.current?.(preview.invalid ? null : preview.bytes.slice());
+    previewCallback.current?.(
+      preview.invalid ? null : (preview.prepared ?? null),
+    );
   }, [preview]);
   useEffect(() => () => previewCallback.current?.(null), []);
   const disabled =
@@ -330,7 +335,8 @@ export function SendPanel({
           ? labels.readOnly
           : session.txGate !== "ready"
             ? workbenchStatus(session.txGate, labels)
-            : permissionAllowed === false && preview.bytes.length > 0
+            : permissionAllowed === false &&
+                (preview.prepared?.byteLength ?? 0) > 0
               ? labels.sendNotAllowed
               : undefined;
   const sendHint =
@@ -339,18 +345,19 @@ export function SendPanel({
       ? previewError
       : busy
         ? labels.sending
-        : !preview.bytes.length
+        : !preview.prepared?.byteLength
           ? labels.emptyDraft
           : `${formatShortcut(SEND_SHORTCUT)} ${labels.send}`);
   async function send() {
-    if (disabled || preview.invalid || busy || !preview.bytes.length) return;
+    const prepared = preview.prepared;
+    if (disabled || preview.invalid || busy || !prepared?.byteLength) return;
     const controller = new AbortController();
     pending.current = controller;
     setSendState({ scope: sessionScope, busy: true, receipt: admittedReceipt });
     const isCurrent = () =>
       !controller.signal.aborted && pending.current === controller;
     try {
-      const result = await onSend(preview.bytes, controller.signal);
+      const result = await onSend(prepared.readBytes(), controller.signal);
       if (isCurrent())
         setSendState({ scope: sessionScope, busy: false, receipt: result });
     } catch (reason) {
@@ -660,7 +667,7 @@ export function SendPanel({
           >
             {preview.invalid && preview.reason !== "limit"
               ? "—"
-              : formatByteSize(String(preview.bytes.length))}
+              : formatByteSize(String(preview.prepared?.byteLength ?? 0))}
           </span>
         </div>
         <WorkbenchIconButton
@@ -671,7 +678,7 @@ export function SendPanel({
           aria-describedby={`${id}-send-reason`}
           onClick={() => void send()}
           disabled={
-            disabled || preview.invalid || !preview.bytes.length || busy
+            disabled || preview.invalid || !preview.prepared?.byteLength || busy
           }
         >
           <Send aria-hidden="true" />

@@ -81,7 +81,9 @@ WebDriver 不自动重发失败或超时的命令：脚本报错前可能已执�
 
 原生链路故障先本机定向复现并收齐本轮 CI 的实际失败，再手动运行 `ci.yml` 的 `native_preflight=true`；`native_preflight_target` 默认 Ubuntu x64，可选择实际失败的 Windows x64、macOS arm64/x64，执行与完整检查相同的 fresh、persisted、centered 三阶段。通过后，对冻结候选以 `native_preflight=false`、`desktop_e2e=true` 运行完整四目标门禁。预检结果单独命名，不计里程碑验收；两种模式均保留原生收据和测试日志。原生驱动的 DOM 点击与真实指针事件有差异，菜单可使用产品提供的键盘入口；标签切换须等待选中状态及对应草稿完成渲染，不复用切换前的元素快照。不得通过直接修改应用状态绕过交互。
 
-预检并发按 ref/target 隔离，完整模式仍按 ref 串行。Linux Rust、绑定及 Native 共用[依赖脚本](../scripts/ci-linux-deps.sh)，浏览器安装也先使用其索引准备；非交互且不安装推荐包，只将已知 Azure 镜像 URI 改为 Ubuntu 官方源，保留安全源、签名、Xvfb/xauth、CJK 字体、调试符号及媒体解码必需包。索引任一下载错误立即失败，不沿用旧索引进入下载。下载阶段单独限 480 秒，成功后从已下载归档安装；不在 dpkg 阶段套额外超时。环境准备预算 12 分钟，软件测试预算不变。安装超时单独记录，离线场景只有实际执行后才上传证据，实际执行却缺失仍报错；未执行不能计为软件失败或通过，同候选预检通过也不能覆盖完整模式的实际失败。
+固定 Node/runtime 来源、签名身份或原生启动故障可用 `ci.yml` 的 `runtime_preflight=true` 定向验证，`runtime_preflight_target` 默认 `all`，也可选上述四目标之一。它复用正式准备链、Host 探针、安装布局/故障套件及显式原生回归，只构建无界面 Host 入口；不运行桌面、安装器或离线软件全集。不得同时启用 `native_preflight`。收据使用 `runtime-preflight-*` 独立名称，不生成里程碑质量门禁；最终仍须以两个 preflight 均为 `false`、`desktop_e2e=true` 对冻结候选执行完整四目标门禁。
+
+预检并发按 ref/类型/target 隔离，完整模式仍按 ref 串行。Linux Rust、绑定及 Native 共用[依赖脚本](../scripts/ci-linux-deps.sh)，浏览器安装也先使用其索引准备；非交互且不安装推荐包，只将已知 Azure 镜像 URI 改为 Ubuntu 官方源，保留安全源、签名、Xvfb/xauth、CJK 字体、调试符号及媒体解码必需包。索引任一下载错误立即失败，不沿用旧索引进入下载。下载阶段单独限 480 秒，成功后从已下载归档安装；不在 dpkg 阶段套额外超时。环境准备预算 12 分钟，软件测试预算不变。安装超时单独记录，离线场景只有实际执行后才上传证据，实际执行却缺失仍报错；未执行不能计为软件失败或通过，同候选预检通过也不能覆盖完整模式的实际失败。
 
 ## Rust 与生成
 

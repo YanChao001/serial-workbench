@@ -136,6 +136,39 @@ describe("App process restart", () => {
       async () => (await readSettings()).settings?.windowPosition === "center",
     );
     assert.deepEqual((await windowPlacement()).position, before);
+    const main = await browser.getWindowHandle();
+    let secondary;
+    try {
+      assert.equal((await invoke("open_secondary_window")).ok, true);
+      await browser.waitUntil(
+        async () => (await browser.getWindowHandles()).length === 2,
+      );
+      secondary = (await browser.getWindowHandles()).find(
+        (handle) => handle !== main,
+      );
+      assert.ok(secondary);
+      await browser.switchToWindow(secondary);
+      await ready("secondary");
+      // ClientState 按窗口保存；主窗口的居中选择不配置次窗口。
+      assert.equal((await readSettings()).settings.windowPosition, "remember");
+      await navigate("/settings");
+      await $("[data-window-position=center]").click();
+      await browser.waitUntil(
+        async () => (await readSettings()).settings.windowPosition === "center",
+      );
+    } finally {
+      await browser.switchToWindow(main);
+      if (secondary && (await browser.getWindowHandles()).includes(secondary)) {
+        assert.equal(
+          (await invoke("plugin:window|close", { label: "secondary" })).ok,
+          true,
+        );
+        await browser.waitUntil(
+          async () => (await browser.getWindowHandles()).length === 1,
+        );
+      }
+    }
+    assert.equal((await readSettings()).settings.windowPosition, "center");
     assert.equal(
       (await invoke("plugin:window-state|save_window_state", { flags: 2 })).ok,
       true,

@@ -17,6 +17,12 @@ import { Toaster, toast } from "sonner";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
 import { SendPanel } from "./send-panel";
 import { labels, operation, session } from "./test-fixtures";
+import type { TextSendPreview } from "@/lib/text-encoding";
+
+function readPreview(observe: (bytes: Uint8Array | null) => void) {
+  return (preview: TextSendPreview | null) =>
+    observe(preview?.readBytes() ?? null);
+}
 afterEach(() => {
   cleanup();
   toast.dismiss();
@@ -54,7 +60,7 @@ it("includes line endings in the shared TX limit, keeps the byte count and never
     onDraftChange: vi.fn(),
     labels,
     onSend: send,
-    onPreviewChange: observed,
+    onPreviewChange: readPreview(observed),
     terminalSettings: {
       ...defaults.settings.terminal,
       lineEnding: { kind: "crlf" } as const,
@@ -142,7 +148,7 @@ it.each([
           }}
           labels={labels}
           onSend={send}
-          onPreviewChange={observed}
+          onPreviewChange={readPreview(observed)}
         />
       );
     }
@@ -224,7 +230,7 @@ it.each([
           onSendModeChange={setMode}
           labels={labels}
           onSend={send}
-          onPreviewChange={observed}
+          onPreviewChange={readPreview(observed)}
         />
       );
     }
@@ -475,7 +481,7 @@ it("notifies the final bytes across conversion, line ending and custom HEX chang
     onDraftChange: vi.fn(),
     labels,
     onSend: vi.fn(),
-    onPreviewChange: preview,
+    onPreviewChange: readPreview(preview),
     presentationLabels: {
       customLineEnding: "Custom",
       customLineEndingHex: "Custom ending (HEX)",
@@ -538,7 +544,7 @@ it("keeps preview notifications stable with StrictMode, inline callbacks and fre
             ...defaults.settings.terminal,
             lineEnding: { kind: "crlf" },
           }}
-          onPreviewChange={(next) => setBytes(next)}
+          onPreviewChange={(next) => setBytes(next?.readBytes() ?? null)}
         />
       </>
     );
@@ -561,8 +567,8 @@ it("isolates preview observers from the exact bytes sent to the Host", async () 
       labels={labels}
       onDraftChange={vi.fn()}
       onSend={send}
-      onPreviewChange={(bytes) => {
-        if (bytes) bytes[0] = 0;
+      onPreviewChange={(preview) => {
+        if (preview) preview.readBytes()[0] = 0;
       }}
     />,
   );
