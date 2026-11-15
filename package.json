@@ -34,6 +34,7 @@
     "format:check": "prettier --check . \"!.cache/**\"",
     "test": "vitest run",
     "test:scripts": "node --test --test-concurrency=4 scripts/*.test.mjs e2e/*.test.mjs",
+    "test:runtime": "node scripts/test-node-runtime.mjs",
     "test:installer": "node scripts/installer-layout.test.mjs",
     "test:watch": "vitest",
     "test:coverage": "vitest run --coverage",
@@ -53,6 +54,8 @@
     "app:portable": "node scripts/portable.mjs",
     "config:sync": "node scripts/init-project.mjs",
     "contracts:generate": "node scripts/generate-host-contracts.mjs",
+    "runtime:fetch": "node scripts/node-runtime-download.mjs",
+    "runtime:prepare": "node scripts/node-runtime-prepare.mjs",
     "contracts:check": "node scripts/generate-host-contracts.mjs --check"
   },
   "dependencies": {

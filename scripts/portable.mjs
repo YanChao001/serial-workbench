@@ -1,6 +1,6 @@
 #!/usr/bin/env node
 /** 构建便携版，或用有效收据复用先前编译；分发到 artifacts/<版本>/<target>/portable。 */
-import { relative, resolve } from "node:path";
+import { join, relative, resolve } from "node:path";
 import { pathToFileURL } from "node:url";
 import { artifactDirectory, publishArtifacts } from "./artifact-lib.mjs";
 import { buildApplication, prepareBuild } from "./build-lib.mjs";
@@ -12,10 +12,13 @@ import {
 
 export function portableArtifactEntries(
   root,
-  { executable, executableName, readme, components },
+  { executable, executableName, readme, components, runtime },
 ) {
+  if (!runtime?.resources)
+    throw new Error("Portable distribution requires bundled runtime resources");
   return [
     { source: executable, path: executableName },
+    { source: join(runtime.resources, "runtime"), path: "runtime" },
     ...(components
       ? [
           ...components.files,
@@ -92,6 +95,7 @@ manifest.json 记录版本、目标平台和文件 SHA-256，可用于检查分�
       executableName,
       readme,
       components: built.components,
+      runtime: built.runtime,
     }),
   });
   console.log(`Portable build created: ${relative(root, output)}`);

@@ -155,3 +155,34 @@ export function encodeTextSend(
   result.set(suffix, body.length);
   return result;
 }
+
+export type TextSendPreview = Readonly<{
+  byteLength: number;
+  /** 每次读取独立副本，调用者不能修改后续发送或预检查的字节。 */
+  readBytes: () => Uint8Array;
+}>;
+
+/** 捕获正文及行尾快照；常见 ASCII 的准确长度不要求提前分配完整发送字节。 */
+export function createTextSendPreview(
+  draft: string,
+  mode: TerminalMode,
+  ending: LineEnding,
+  encoding: TextEncoding,
+): TextSendPreview {
+  const capturedEnding = { ...ending };
+  if (mode === "text" && encoding === "utf-8" && !/\P{ASCII}/u.test(draft)) {
+    const suffixLength =
+      capturedEnding.kind === "none"
+        ? 0
+        : encodeSend("", "text", capturedEnding).length;
+    return Object.freeze({
+      byteLength: draft.length + suffixLength,
+      readBytes: () => encodeTextSend(draft, mode, capturedEnding, encoding),
+    });
+  }
+  const bytes = encodeTextSend(draft, mode, capturedEnding, encoding);
+  return Object.freeze({
+    byteLength: bytes.length,
+    readBytes: () => bytes.slice(),
+  });
+}

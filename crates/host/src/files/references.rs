@@ -1396,6 +1396,10 @@ fn open_guard_directory(parent: &File, path: &Path) -> HostResult<File> {
     }
 }
 impl PathGuard {
+    pub(crate) fn open_existing_directory(&mut self) -> HostResult<()> {
+        self.directory = Some(open_guard_directory(&self.parent, &self.path)?);
+        Ok(())
+    }
     pub(crate) fn release_directory(&mut self) {
         self.directory.take();
     }
@@ -1498,6 +1502,28 @@ impl PathGuard {
         #[cfg(windows)]
         {
             create_regular(&self.path)
+        }
+    }
+    /// 不可变代码校验持有该句柄，Windows 在 owner 退出前拒绝写入及删除共享。
+    pub(crate) fn open_pinned_file(&self) -> HostResult<File> {
+        #[cfg(unix)]
+        {
+            self.open_file()
+        }
+        #[cfg(windows)]
+        {
+            use std::os::windows::fs::{MetadataExt, OpenOptionsExt};
+            let file = OpenOptions::new()
+                .read(true)
+                .share_mode(1)
+                .custom_flags(0x00200000)
+                .open(&self.path)
+                .map_err(io_error)?;
+            let metadata = file.metadata().map_err(io_error)?;
+            if !metadata.is_file() || metadata.file_attributes() & 0x400 != 0 {
+                return Err(invalid());
+            }
+            Ok(file)
         }
     }
     fn open_file(&self) -> HostResult<File> {

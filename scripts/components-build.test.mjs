@@ -57,7 +57,7 @@ test("desktop and all components accept equivalent real Cargo paths but reject d
     metadata: { target_directory: alias },
     package: { id: "app" },
     binary: { name: "desktop" },
-    config: {},
+    config: { productName: "Custom Product" },
     buildArgs: ["--no-bundle", "--"],
     bundleArgs: [],
   };
@@ -65,10 +65,17 @@ test("desktop and all components accept equivalent real Cargo paths but reject d
   const built = await buildApplication(plan, {
     buildComponents: async (current) => {
       receipt = await components.buildComponents(current, {
-        run: async () => messages,
+        run: async (_command, _args, options) => {
+          assert.equal(options.env.SWB_RESOURCE_PRODUCT_NAME, "Custom Product");
+          assert.equal(current.env.SWB_RESOURCE_PRODUCT_NAME, undefined);
+          return messages;
+        },
       });
       return receipt;
     },
+    buildNodeRuntime: async () => ({
+      resources: join(root, "runtime-fixture"),
+    }),
     runTauri: async () => [desktop],
   });
   assert.equal(built.outputDir, realpathSync(output));
@@ -88,6 +95,9 @@ test("desktop and all components accept equivalent real Cargo paths but reject d
       { ...plan, explicitTarget: undefined },
       {
         buildComponents: async () => receipt,
+        buildNodeRuntime: async () => ({
+          resources: join(root, "runtime-fixture"),
+        }),
         runTauri: async () => [different],
       },
     ),

@@ -1,7 +1,9 @@
 import { createHash, randomUUID } from "node:crypto";
 import {
   mkdirSync,
+  lstatSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   renameSync,
   existsSync,
@@ -9,7 +11,8 @@ import {
   writeFileSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
-import { fileSha256 } from "./artifact-lib.mjs";
+import { fileSha256, publicationPath } from "./artifact-lib.mjs";
+import { projectFile } from "./fs-utils.mjs";
 import { inspectComponents } from "./components-build.mjs";
 import { configureBuildTarget } from "./build-lib.mjs";
 
@@ -29,6 +32,44 @@ export function portableFileName(value) {
 
 function receiptPath(plan) {
   return join(plan.metadata.target_directory, ".starter-portable.json");
+}
+
+function runtimeFiles(plan, runtime) {
+  if (typeof runtime?.resources !== "string")
+    throw new Error("Missing portable runtime resources");
+  const resources = publicationPath(plan.root, runtime.resources);
+  if (!lstatSync(resources).isDirectory())
+    throw new Error("Invalid portable runtime directory");
+  const files = [];
+  let nodes = 0,
+    size = 0;
+  const visit = (directory) => {
+    for (const name of readdirSync(directory).sort()) {
+      if (++nodes > 10_000)
+        throw new Error("Portable runtime file budget exceeded");
+      const file = join(directory, name),
+        info = lstatSync(file);
+      if (info.isSymbolicLink())
+        throw new Error("Portable runtime links are not allowed");
+      if (info.isDirectory()) {
+        visit(file);
+        continue;
+      }
+      if (!info.isFile()) throw new Error("Invalid portable runtime file");
+      size += info.size;
+      if (size > 512 * 1024 * 1024)
+        throw new Error("Portable runtime byte budget exceeded");
+      projectFile(plan.root, relative(plan.root, file));
+      files.push({
+        path: relative(resources, file).split(sep).join("/"),
+        size: String(info.size),
+        sha256: fileSha256(file),
+      });
+    }
+  };
+  visit(resources);
+  if (!files.length) throw new Error("Empty portable runtime resources");
+  return files;
 }
 
 function fingerprint(plan) {
@@ -70,6 +111,8 @@ export function recordPortableBuild(plan, built) {
     executable: realpathSync(built.executable),
     sha256: fileSha256(built.executable),
     components: components.manifest,
+    runtime: built.runtime,
+    runtimeFiles: runtimeFiles(plan, built.runtime),
     componentsSha256: createHash("sha256")
       .update(`${JSON.stringify(components.manifest, null, 2)}\n`)
       .digest("hex"),
@@ -112,6 +155,11 @@ export function loadPortableBuild(plan) {
     configureBuildTarget(plan, receipt.target);
     const components = inspectComponents(plan, dirname(executable));
     if (
+      JSON.stringify(receipt.runtimeFiles) !==
+      JSON.stringify(runtimeFiles(plan, receipt.runtime))
+    )
+      throw new Error("The runtime or license files have changed");
+    if (
       !offset ||
       offset === ".." ||
       offset.startsWith(`..${sep}`) ||
@@ -134,6 +182,7 @@ export function loadPortableBuild(plan) {
       outputDir: dirname(executable),
       target: receipt.target,
       components,
+      runtime: receipt.runtime,
     };
   } catch (error) {
     throw new Error(

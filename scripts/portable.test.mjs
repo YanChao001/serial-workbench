@@ -44,6 +44,13 @@ function fixture(t) {
     outputDir: dirname(executable),
     target: "x86_64-pc-windows-msvc",
   };
+  const resources = join(root, "runtime-resources");
+  mkdirSync(join(resources, "runtime"), { recursive: true });
+  writeFileSync(
+    join(resources, "runtime", "node-release.json"),
+    "runtime fixture",
+  );
+  built.runtime = { resources };
   const pe = Buffer.alloc(128);
   pe.write("MZ");
   pe.writeUInt32LE(64, 60);
@@ -66,6 +73,7 @@ test("portable distribution includes complete project licenses and existing thir
     executable: built.executable,
     executableName: "Serial Workbench.exe",
     readme: "Portable distribution fixture\n",
+    runtime: built.runtime,
   });
   const output = publishArtifacts(root, {
     version: plan.version,
@@ -198,6 +206,7 @@ test("portable distribution puts components and their manifest beside the client
     executableName: "Desktop.exe",
     readme: "fixture",
     components: built.components,
+    runtime: built.runtime,
   });
   const output = publishArtifacts(root, {
     version: "1.2.3",
@@ -211,6 +220,24 @@ test("portable distribution puts components and their manifest beside the client
     JSON.parse(readFileSync(join(output, "components.json"), "utf8")),
     built.components.manifest,
   );
+  assert.equal(
+    readFileSync(join(output, "runtime", "node-release.json"), "utf8"),
+    "runtime fixture",
+  );
+});
+
+test("skip-build rejects missing runtime receipts and changed runtime or license bytes", (t) => {
+  const { plan, built } = fixture(t);
+  assert.throws(
+    () => recordPortableBuild(plan, { ...built, runtime: undefined }),
+    /runtime/i,
+  );
+  recordPortableBuild(plan, built);
+  writeFileSync(
+    join(built.runtime.resources, "runtime", "node-release.json"),
+    "altered runtime",
+  );
+  assert.throws(() => loadPortableBuild(plan), /runtime.*changed/i);
 });
 
 test("skip-build reuses the receipt target without guessing the current host", (t) => {

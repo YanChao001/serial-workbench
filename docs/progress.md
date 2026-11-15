@@ -1,6 +1,82 @@
 # 开发进度
 
+## M2 Task14 当前执行
+
+当前候选 `8dd51d2` 的[完整四目标 CI 43701104800](https://github.com/YanChao001/serial-workbench/actions/runs/43701104800) 已结束且失败：十项必需任务成功，浏览器输入性能及汇总门禁失败。四目标 Rust/runtime 与四目标 Native 均通过，次窗口准备修正已跨平台验证，十二份 Native 阶段收据均有实际观察且冲突为零；此前相同候选的 [Linux Native 专项 43700556471](https://github.com/YanChao001/serial-workbench/actions/runs/43700556471) 也通过三个阶段。Ubuntu 正式六场景/18 断言、实际 600.098 秒、602 样本及 11 个自有进程退出通过。浏览器为 198 通过、1 项失败，输入 P95 首次 151ms、重试 213.6ms，超过原 100ms 门槛；不以其余检查成功或重试替代该失败，PR #48 尚不可合入。
+
+本机原生产输入场景五轮为 1 通过、4 失败，确认不只发生于 CI 并行。ReactDOM 19.3.1 同值默认值补丁的三个兼容回归先为 1 失败、2 通过，修正后与发送面板相关 45 项通过；实际生产产物的独立探针也确认默认值重复写入为零。该补丁单独运行原场景十轮仍为 7 通过、3 失败，不能视为已解决全部延迟。锁文件归一化比较确认仅增加精确补丁及 peer 上下文摘要，没有依赖版本、完整性或图的其他变更，冻结安装通过。
+
+当前未提交输入优化改用不可变编码预览快照：ASCII/UTF-8 准确字节数不提前分配完整正文，权限预览在原有 150ms 停顿后才编码，发送立即读取当前快照；复杂编码、HEX、非法 Unicode 和自定义行尾沿原校验。实际调用端的编码频率用例先红（编辑期间已有两次编码），修正后相关 81 项通过，覆盖同步保存/计数、立即发送、原有延迟预览、行尾捕获、字节副本隔离及全部孤立代理项。两轴增量复审无确定 P1/P2，但原性能十轮仍为 7 通过、3 失败，P95 最高 127.8ms，尚不可据功能结果合入。日志 `.cache/m2-lazy-preview-{red,related,build}.log`、`.cache/m2-composer-lazy-preview-original.log` 及对应 `artifacts/m2-composer-*/` 保留；原场景、40 样本、四倍 CPU 限速及 100ms 门槛不变。
+
+当前源码的 `pnpm verify --jobs 1` 最终九步骤通过：2483 项应用/契约、351 项工程脚本通过和 5 项条件跳过，以及格式、lint、双项目类型、配置、品牌、版本与构建，202.6 秒，日志 `.cache/m2-lazy-full-verify-retry.log`、`.cache/verify/run-9IhATH/`。首轮 188.0 秒的综合检查因账本误放 CI 地址而失败（只允许 PR/Release 入口），已恢复 PR #48 引用并复核 247 ID，不修改校验规则，原失败日志保留。随后独立运行 `pnpm test:ui` 为 199 项一次通过、无失败/重试，两个 worker、7.1 分钟；40 样本输入 P95 62.2ms，日志 `.cache/m2-lazy-full-ui.log`。此前波动与十轮失败不改记通过，PERF/M6 状态不提升；仅补预览入口的孤立代理项断言后进行编码定向复核，产品运行代码不变。当前准备冻结候选并重新执行完整四目标门禁，未通过前不合入。
+
+`useDeferredValue` 预览实验的相关 49 项通过，但原输入场景十轮全部超标（P95 110.6—135.6ms），因此已撤回；源码与四个“原生输入已变、旧 props 尚未替换”防陈旧发送用例保存在 `.cache/git-backups/m2-rejected-deferred-preview-*`，不纳入交付。后续继续定位字节统计与编辑区布局关系，不因功能用例通过而保留性能倒退的方案。
+
+字节统计独立定位的诊断五轮通过且正文几何不变，但实际 CSS 原场景十轮仍有三轮失败，已撤回。通知合并单独九轮通过/一轮失败，配合工具栏依赖调整为七轮通过/三轮失败；UTF-8 校验替换为六轮通过/四轮失败，也已撤回并保留候选，当前通知时机和完整校验沿原实现。完全移除应用后的同尺寸原生 textarea 五轮通过，P95 38.2—89.4ms；实际样式确认外框有 18px 背景模糊，单独禁用后的五轮仍有两轮失败，未据此修改产品外观。时间线中部分输入 rAF 样本跨过下一条 CDP 输入及其处理，仍须区分应用更新与浏览器调度，不宣称已经证明单一根因或 PERF/M6 通过。
+
+候选 `0ee66bc` 的[完整四目标 CI 43697432043](https://github.com/YanChao001/serial-workbench/actions/runs/43697432043) 已结束且失败：十项必需任务成功，Linux Native 的新建次窗口居中断言及汇总门禁失败。四目标 runtime 套件共 41 场景通过，显式原生回归为 Windows 6、Linux 11、macOS 各 8 项；11 份已完成 Native 阶段冲突收据为零，Linux centered 阶段未完成。浏览器 199 项无重试通过、P95 66.7ms；Ubuntu 离线六场景/18 断言、600.10 秒、602 样本及 11 个自有进程退出通过。原始日志、摘要核对后的 artifact 和已查看截图保留在 `.cache/evidence/m2-node-packages/ci-43697432043/`，本轮不可合入。
+
+诊断候选 `e7a4d42` 的[Linux Native 专项 43699294177](https://github.com/YanChao001/serial-workbench/actions/runs/43699294177) 再次在同点失败。几何快照显示主窗口为 Center、次窗口按 Remember 回到 `(0,0)`，尺寸、窗口标签和 1280×1024 工作区一致；原生日志明确次窗口 `center=false`。根因是测试准备遗漏：ClientState 按窗口保存，persisted 只改主窗口，centered 却也要求次窗口居中。现让次窗口经自己的设置 UI 保存 Center、关闭并在下一进程重建后先核对该偏好，再保留原几何断言。测试保留最多 32 个位置样本以避免缺失失败观察；临时 Rust 诊断已全部清理，产品几何源码与 `0ee66bc` 完全相同。修正已由上述同候选专项及四目标 Native 验证，整体出口仍受浏览器性能失败阻挡。
+
+基础 A 候选 `42e4e5b` 的[完整四目标 CI 43692198286](https://github.com/YanChao001/serial-workbench/actions/runs/43692198286) 已结束，最终门禁失败。前端、绑定、浏览器、Windows/Linux Rust 和四目标 Native 通过；两套 macOS 均在已有效验签后未找到 `verified.txt`，实际 GnuPG 2.5.24/2.5.21 将文件保留为 `.part`，运行时原生步骤未执行。已下载并核对小型 artifact 摘要，Windows/Linux runtime 套件分别十/十一场景通过，均明确未运行真实安装器、系统网络隔离或 GUI；不能据此补记 macOS 成功。原始日志、收据和来源失败现场保留在 `.cache/evidence/m2-node-packages/ci-43692198286/`。
+
+验签输出现改用有界 stdout，机器状态与工具日志分离，仍要求原固定摘要、成功退出及预期 `VALIDSIG`，满足后才自行提交明文字节；不读取或提升残留 `.part`。实际 Node/Ubuntu 验签及输出/失败回归、CI 模式回归合计 19 项通过，新增固定运行时专项预检及 actionlint 通过，两轴增量复核无确定 P1/P2。修正候选随后先验证四目标 runtime 专项，再执行最终冻结候选的完整门禁；专项结果不代替原出口。
+
+候选 `3fe6391` 的[首轮 runtime 专项 43696099436](https://github.com/YanChao001/serial-workbench/actions/runs/43696099436) 中 Linux 与 macOS 两架构通过，Windows 在准备阶段选中 Git Bash 的 GNU tar，将盘符路径当作远程地址而失败，未执行其后原生套件。准备逻辑已从 Bash 内联移到原生 shell 调用的同一 Node 脚本，与正式构建使用一致的系统工具环境；本机实际离线准备、格式/lint/actionlint 和十项 CI 模式/门禁回归通过。随后只针对该 Windows 失败运行专项，最终候选仍须完成四目标完整门禁，不拼接专项结果作为验收。
+
+本轮本机综合检查中应用/契约 2471 项及格式、lint、类型、配置、品牌、版本检查通过；脚本组 337 通过、14 失败、5 条件跳过，失败均涉及沙箱拒绝 Windows WMI 查询或自有测试进程回收。核对两个已记录 PID 均已退出，同源码在沙箱外重跑脚本组为 351 通过、0 失败、5 条件跳过（84.0 秒）；保留失败的完整检查及重跑日志 `.cache/m2-node-package-gpg-preflight-{verify-retry,scripts-unsandboxed}.log`，不改记首轮整体成功。源码/契约及 Rust 输入未变的已通过检查不重复执行。
+
+基础 A 首候选 `854bc7f` 由 [PR #48](https://github.com/YanChao001/serial-workbench/pull/48) 跟踪，需求轴无确定发现；规范轴指出 Unix 校验与随后启动之间未绑定内容。修正加入替换/原地改写原生反例：Linux 以分块核哈希后的封印匿名快照执行 Node/私有库，macOS 对准备副本收紧签名并将新身份编入同套 Host，在恢复暂停子进程前核对内核 CDHASH/flags；Windows 复用 PathGuard 固定祖先目录。最新 Windows 包回归 35 项、runtime 6 项及十场景夹具通过，准备/签名策略/构建接线 19 项通过；签名工具的单元夹具不计原生 macOS 签名通过。修正后的两轴复核及四目标结果以 PR 实际检查为准，不预记 Unix 平台通过或基础 A 已合入。
+
+当前主工作区为 `feature/m2-node-packages`，基线为 PR #47 合入后的 `main@3c65809`。[基础 A 工程节点](./plan.md#当前执行与下一步)候选包含正式包元数据/验证、固定 runtime、安装/来源/执行信任及已安装内容复核库层，由待修正验收的 [PR #48](https://github.com/YanChao001/serial-workbench/pull/48) 跟踪。Windows 本机出口通过，最终四目标仍待冻结候选实证；后续从最新 main 接后台与 SDK B，再完成参考验收 C，闭合 Task14 的完整业务出口。AUTO-13 登记该基础切片的软件证据并保持 in-progress，247 条账本保持 77/167/3，未标通过；硬件及发行不提升。
+
+修正后 `pnpm verify --jobs 1` 通过：应用/契约 2471 项，工程脚本 346 项通过、5 项平台/安装器条件跳过，格式、类型、lint、配置与构建通过（304.6 秒）。工作区 Clippy（`--all-targets -D warnings`）及包/runtime 定向 35+6 项通过；日志为 `.cache/m2-node-package-runtime-identity-{verify,clippy,targeted}.log`。首候选完整 Rust 工作区为 897 项通过、7 项忽略，原契约/绑定生成一致性通过；其中两个 Windows runtime 原生用例随后显式运行，其余五项为父测试调用的受控子进程入口。首候选独立无头 UI 为 199 项通过、无失败/重试（7.2 分钟、两个 worker），40 样本连续输入 P95 89.3ms；复审修正未改其前端及生成契约输入，不重复运行该全集，也不据单轮通过提升 PERF/M6 全项或删除 PR47 波动历史。最终跨目标工作区、原生场景及门禁由本轮完整 CI 确认，逐文件摘要、原始日志及环境信息在 `.cache/evidence/m2-node-packages/`。
+
+完整 Rust 首轮默认并行编译因 Windows 分页文件不足（OS 1455、mmap 失败）退出 101，保留原始日志 `.cache/m2-node-package-foundation-rust-tests.log`；源码未改，以 `-j 2` 重跑实际退出 0，日志为 `-rust-tests-j2.log`，不把资源失败改记通过。后续本机 Cargo 限制两个编译任务并顺序执行，保留编译缓存。脚本的 5 项跳过分别为 Unix 后代进程清理、Windows 文件符号链接权限、两个真实 NSIS 安装器条件用例和 Unix SONAME 暂存；不代替其原生验收。
+
+本轮同时修复开发依赖审计发现的两个 moderate 公告：通过既有 pnpm overrides 将受影响的 glob/minimatch 分别约束至 14.0.2/11.0.1，更新对应锁定链；WDIO、Mocha、ESLint 等开发工具根版本未变，未增加产品运行时依赖。核对新增传递包的 BlueOak-1.0.0 许可、Node 引擎与无 install/postinstall 钩子后，冻结安装及完整综合检查通过。镜像审计端点不支持 audit，改用单次官方 registry 请求，未改用户 registry 配置；修复后官方审计各严重性均为 0，原始修复前后报告为 `.cache/m2-node-package-foundation-pnpm-audit-{official,fixed}.json`，原锁与摘要已备份。同期官方 RustSec 快照 `4ef2df8` 下当前锁与 main 的审计均退出 0、无 vulnerability，仍有相同的 8 项既有 warning，详见下方审计历史；未将 warning 视为零风险。
+
+四目标来源矩阵与最小公开验签密钥已放入 [`resources/runtime`](../resources/runtime/README.md)，Rust 为字段、目标及固定布局权威。四归档、Node 与完整 LICENSE 的大小/摘要及静态 ABI 分别核对。准备器从已验签缓存建立唯一资源目录；Windows 已在中文/空格路径、伪 PATH Node、继承恶意 `NODE_OPTIONS` 和加载路径的条件下，以固定绝对路径运行得到 26.13.0、modules 147、Node-API 10，子进程真实退出。新下载器从官方来源重新取得 41,157,375 字节 Windows 归档并核对锁定摘要，耗时约 93 秒。证据为 `.cache/evidence/m2-node-packages/windows-runtime-{prepared-final,download}.json`。这不属于断网、最低系统或安装签名验收；Host 插件后台监督、其他三目标实际运行、Linux 私有库加载及最终安装布局继续实施。
+
+Linux 私有库已核对 Ubuntu Jammy 官方签名与 Packages/Sources 摘要链。`libatomic1`、`gcc-12-base 12.3.0-1ubuntu1~22.04.3` 和完整 orig/debian/dsc 源码均按已签索引验证；未安装或执行包脚本。Rust 私有库 DTO 同时约束二进制、来源、许可与 SONAME；准备器收集 ELF64 x86_64 `libatomic.so.1.2.0`（30,960 字节，SHA-256 `d4a3c900a38ad280bb34003fbf8326fff53229d4bc4fc368bd48783b74680a36`）、链接、实际 copyright 与从对应 GCC 源码取得的完整 GPLv3 原文。原 copyright 的公共许可路径不能代替离线完整许可。公开签名索引快照随仓库保留，二进制及完整源码留在缓存并由准备器收集至分发材料。Windows tar 全量扫描源码曾因其他文件名编码失败，改为仅提取指定许可并在找到后停止，退出 0 且原始摘要匹配，失败原件保留。真实动态依赖/私有加载、最低系统及最终包交付仍待验，原始材料在 `.cache/m2-preparation/libatomic-jammy-ri8nVR/`。
+
+应用和便携构建已接入同一下载/准备入口，来源材料位于 `R/runtime/materials/node-26.13.0/`，与 Node/许可一同归档。原有 Tauri 资源 map 及 list 的文件、目录和 glob 路径保留；便携复用收据增加全部运行时/许可/来源文件摘要，遗漏或被改写时明确拒绝。Windows 实际 `app:build --no-bundle --optimize speed` 通过；输出目录内 Node、完整 LICENSE、公钥和已签清单的摘要，以及三个 Rust 辅助程序与暂存组件的一致性已核对。从该实际资源目录直接运行 Node 得到 26.13.0 / ABI 147 / Node-API 10 并退出 0。证据为 `.cache/evidence/m2-node-packages/windows-{runtime-build,built-runtime}.json`；构建只禁止补下载，未隔离系统网络。未启动 GUI、安装器或 Host Node 监督器，不作为整套离线或最低系统验收。
+
+Host 层已实现安装位置定位、固定描述/文件摘要/架构校验、路径链接拒绝及有界自检；公共错误保留稳定 code/原因，原始输出进入私有诊断。实际 Windows 验收入口调用该 Rust API，在独立中文/空格安装布局夹具中完成 10 个场景，包含注入环境、缺失、ABI/字节篡改、错架构、目录链接、取消及预算；验证进程退出、文件保护句柄释放和夹具字节恢复。复审修正后同源重建入口的证据为 `.cache/evidence/m2-node-packages/host-runtime/x86_64-pc-windows-msvc-TqY28O/suite.json`，原 IXtFzr/MNDriB/pERHai 轮保留。它复用已验证的资源字节，未运行真实安装器或 GUI，也未隔离系统网络；插件业务、共享 Node/worker 监督及三入口继续实施。
+
+Linux 构建使用打包器目录映射和保持链接的未打包暂存，保留 SONAME、模式及字节，输入/输出目录链接不能导向其他数据。首轮实际验收器误将整个 Cargo 输出纳入 runtime 预算而在准备阶段失败；已将检查限定于所属 `runtime/` 命名空间，512 MiB 预算未扩大，新增回归通过。准备阶段失败也保留收据，原始失败及旧验收器源码保存在同一证据目录。其他目标的真正链接/加载与最终安装布局仍待其环境验收。
+
+完整四目标工作流已接入同源无界面 runtime 入口、原生安装布局/故障场景及显式原生测试，并保留收据、原始输出和失败现场；macOS 在缺少 gpgv 时先准备来源验签工具。这是待执行的 CI 接线，候选远端检查尚待运行；不据此补记其他目标、真实安装器或断网环境通过。
+
+Task14.3 安装库层已通过 10 个新增边界用例：真实解包且不执行入口/安装钩子、默认停用、摘要/revision 绑定的执行信任与启停、相容签名升级、权限缩小/扩大、撤权持久化、实际密钥/本地来源/runtime 变化、未来格式写保护、失败升级保留，以及安装阶段重新执行路径节点和元数据预算。包验证 12 项一同回归，阶段合计 22 项通过；旧代码与独立数据原件未被失败升级改写。
+
+来源仓库随后新增 4 项边界用例通过，阶段合计 26 项回归及 Host 本机 Clippy 通过。仓库用实际当前认可公钥验签、前后复核认可身份，替换/撤销保留旧公钥材料但拒绝旧身份，弱密钥、过期 revision、公钥/指纹篡改和未来格式均拒绝且保留原件。来源认可不建立执行信任。
+
+已安装内容复核新增 9 个 Windows 用例，最近合计 35 项通过：有效安装、不执行代码、同长度正文/元数据篡改、缺失/额外条目、原 ZIP 替换/缺失/硬链接、代码硬链接、来源撤销、记录与 manifest 不符、取消/预算/预期身份，以及实际文件/目录保护句柄释放与 junction 子目录/根拒绝。Unix 符号链接用例已接入，尚未在本机运行。内容证明绑定原始归档、已提交记录、实际代码树和结束时的 revision/当前来源；它不表示后台已激活。当前尚未接入 Host 管理目录、实际接纳/效果边界的认可与授权检查、并发安装调度及共享 Node/worker owner 结算，继续由后台与 SDK B 完成。
+
+复核首轮分别漏查代码及原 ZIP 的硬链接，已用真实链接计数修正并保留红绿日志。原始 profile 为 `artifacts/rust-failures/node-installed-hardlink-ZwxUAb/` 与 `node-installed-archive-hardlink-o9LzQN/`，对应源码指纹、原始日志和测试程序在 `.cache/evidence/m2-node-packages/installed-{hardlink,archive}-failure/`，未把红灯计为通过。
+
+安装阶段较严预算曾复现隐式目录和元数据漏查，均已修正并保留红绿日志。早期新增安装红灯使用普通 TempDir，目录随 panic 清理，只有原日志及源码/工具历史可查，未宣称完整现场仍在。后续安装测试改用仓库已有失败 profile 保留机制；元数据预算红灯的实际 profile、原 ZIP、数据库、源码和测试程序分别保留于 `artifacts/rust-failures/node-install-metadata-e8vFpE/` 与 `.cache/evidence/m2-node-packages/install-metadata-failure/`。
+
+## PR47 交付与 Task14 接续
+
+2026-11-15，[PR #47](https://github.com/YanChao001/serial-workbench/pull/47) 已 squash 合入 `main@3c658091ef0d9f60db762e63c8c2072616cbb5f6`。冻结候选为 `8aa9f2797d47cc1c1de2e419dd81a1efbd61401e`，合入树与候选完全一致，源码指纹同为 `1d124ebc3b928af20083595675efdde5324103dce49656fcdf3dbc99cbbe9d5f`；主工作区已回到干净 main 核对，再从最新 main 创建 `feature/m2-node-packages`。本轮修复分支及其过期跟踪引用已清理，`feature/m2-node-runtime@9ddb5d8`、`.cache/git-backups/`、原用户 Host、数据与编译缓存保留。
+
+[完整四目标 CI 43645620280](https://github.com/YanChao001/serial-workbench/actions/runs/43645620280) 十二项必需任务全部成功，四个 Rust 与四个 Native 目标实际执行。十二份原生阶段日志的源码、摘要及零意外 RPC 冲突已核对；Ubuntu 离线六场景、18 条断言、T06 实际 600.09 秒、602 次控制查询及 11 个自有进程退出通过。既有平台 fullscreen 与驱动 wheel 条件跳过继续按其适用范围保留。
+
+浏览器实际为 198 通过、1 flaky：首次输入 P95 124.6ms 超过原 100ms 门槛，既定一次重试为 88.7ms 通过；两轮均保留 40 样本、四倍 CPU 降速、trace off 和两个 worker。额外独立 CPU 诊断为五通过、一项 105.9ms 超标，不计正式验收；根因尚未确定，未据 Native 对照或本机五次通过推断为纯 runner 噪声，也未宣称稳定满足 100ms。两轴按既定门禁和重试政策复核无确定交付阻断，性能限制继续保留，PERF 全项及 M6 状态未提升。最终证据为 `.cache/evidence/startup-shell/{composer-final-gate,composer-full-ci-inspection,composer-additional-diagnostic,merged-main}.json`，本轮原始失败、重试及构建日志保留。
+
+Task14.1 开始实现 Rust 权威 manifest、完整性、签名与动态贡献 DTO 及同源 schema/SDK，先建立元数据和包验证边界，再按计划接正式 runtime、原子安装与信任、共享 Node/worker 监督、三入口/隔离 Web UI 和三个参考包。公共 DTO 进入现有 Core 导出链，Host 拥有来源、文件与安装责任；安装只验证与提交，不执行包代码。当前尚无已交付 Node/runtime 能力，AUTO-13 按已实现的 SDK 元数据基础改为软件 `in-progress`，247 条账本为 77 个 `in-progress`、167 个 `not-started`、3 个 `not-applicable`，尚无本轮 PR 证据，其他软件、硬件及发行项不提升。M6 独立环境清单已异步询问，软件任务继续执行。
+
+当前未提交实现已具备严格原始 JSON 元数据入口、SemVer precedence、载荷引用和动态贡献子集校验，四类 DTO 及基础值已纳入 Rust 同源 TypeScript/schema/fixture 导出。定向 Core 包测试 9 项、导出测试 2 项、TypeScript 契约测试 928 项与类型检查通过；原始失败与后续通过日志保留在 `.cache/m2-node-package-*.log`。这只证明元数据与生成链切片；Host 只读 ZIP/密码学来源验证正在实现，正式 runtime、安装事务及执行入口仍未完成，尚无本轮 PR 或四目标 CI 验收。
+
+随后 Host 只读 ZIP/密码学来源验证 11 项定向用例通过，覆盖 Unicode、目录别名、缺失/额外载荷、篡改、重复键、ZIP 头不一致、原始链接/重解析属性、错来源/弱密钥与字节/时间/取消预算；真实公钥指纹和原始 integrity 字节已绑定。曾复现 DOS 创建标记掩盖 Unix 链接高位，现同时检查原始属性及库解码结果，保留失败和修复后日志。core/host 全目标 Clippy（`-D warnings`）及契约生成一致性通过；这未代替正式包安装与执行验收。
+
+Cargo 审计首次获取 RustSec 失败；改经 Git 获取官方快照 `4ef2df8e806a65e2f1ecc14f56f51249062b23d6`（2026-11-13）后，当前锁和 `main@3c65809` 的审计均退出 0，8 个 warning 的包、版本、种类及 ID 完全相同。它们为 paste、proc-macro-error、zbus_names、zvariant、zvariant_derive 的未维护，glib/rustix 的 unsound 提示及 async-executor yanked；未记为零风险或新增依赖已完成四目标验收。原始/快照/基线日志分别为 `.cache/m2-node-package-cargo-audit{,-snapshot,-main}.log`。
+
 ## 2026-11-15 总目标接续与当前交付
+
+本节保留候选冻结时的检查与失败历史，最终合入和当前执行见[上节](#pr47-交付与-task14-接续)。
 
 总目标保持执行。目标接续时主工作区为 `fix/startup-shell`，基线 HEAD、本地 main 及远端 main 均为 `97ccd7b373068db972d93703d219eaf950f9c3d5`，该切片当时尚未提交且无对应 PR。接续启动、工作区及端口定位的现有修改，保留 `.cache/git-backups/`、既有证据、`feature/m2-node-runtime`、用户数据与正在运行的开发 Host。后续切片从最新 main 创建短期分支。
 

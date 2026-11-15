@@ -9,6 +9,13 @@
 *.jpg binary
 *.woff2 binary
 
+# 已锁定的密码学输入保留上游原始字节
+resources/runtime/*.gpg -text
+resources/runtime/*.asc -text
+resources/runtime/*.gz -text
+resources/runtime/*.COPYRIGHT -text
+resources/runtime/*.GPL-3.0 -text
+
 # Windows 脚本保留 CRLF，否则 cmd/powershell 解析异常
 *.bat text eol=crlf
 *.cmd text eol=crlf

@@ -354,7 +354,7 @@ test("bundle directory junctions cannot redirect backup or deletion", async (t) 
   assert.equal(readFileSync(join(outside, "keep"), "utf8"), "do not delete");
 });
 
-test("desktop build waits for components and passes the same target and sidecars to Tauri", async (t) => {
+test("desktop build prepares the same runtime resources before Tauri and retains existing resources", async (t) => {
   const root = fixture(t);
   const outputDir = join(root, "target", "x86_64-pc-windows-msvc", "release");
   mkdirSync(outputDir, { recursive: true });
@@ -371,25 +371,52 @@ test("desktop build waits for components and passes the same target and sidecars
     metadata: { target_directory: join(root, "target") },
     package: { id: "app" },
     binary: { name: "desktop" },
-    config: {},
+    config: { bundle: { resources: { "../LICENSE": "LICENSE" } } },
     buildArgs: ["--no-bundle", "--"],
     bundleArgs: [],
   };
   const order = [];
   const built = await buildTools.buildApplication(plan, {
-    buildComponents: async () => {
+    buildComponents: async (selected) => {
       order.push("components");
+      assert.equal(
+        selected.env.SWB_NODE_RUNTIME_BUILD_IMAGE,
+        join(root, "runtime-resources", "runtime", "node-image.json"),
+      );
       return { files: [], manifest: { components: [] } };
     },
     stageComponents: () => ["sidecar"],
+    buildNodeRuntime: async (selected) => {
+      order.push("runtime");
+      assert.equal(selected.target, plan.target);
+      return {
+        resources: join(root, "runtime-resources"),
+        manifest: { runtimeRef: "fixed-runtime" },
+        imageBinding: join(
+          root,
+          "runtime-resources",
+          "runtime",
+          "node-image.json",
+        ),
+      };
+    },
     runTauri: async (_plan, _command, args) => {
       order.push("tauri");
       assert.ok(!args.includes("--target"));
       assert.match(args.join(" "), /sidecar/);
+      const generated = JSON.parse(args[args.indexOf("--config") + 1]);
+      assert.equal(generated.bundle.resources["../LICENSE"], "LICENSE");
+      assert.equal(
+        generated.bundle.resources[
+          join(root, "runtime-resources").replaceAll("\\", "/") + "/"
+        ],
+        "",
+      );
       return [executable];
     },
   });
-  assert.deepEqual(order, ["components", "tauri"]);
+  assert.deepEqual(order, ["runtime", "components", "tauri"]);
+  assert.equal(built.runtime.manifest.runtimeRef, "fixed-runtime");
   assert.equal(built.target, plan.target);
   assert.match(plan.bundleArgs.join(" "), /sidecar/);
 });

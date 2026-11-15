@@ -8,6 +8,8 @@
 
 pnpm 在项目内的 `.pnpm-store/` 保存依赖缓存，随项目保持在同一磁盘，配置见 [pnpm-workspace.yaml](../pnpm-workspace.yaml)。该目录由 Git、格式检查和文件监听排除；工具版本由 packageManager 固定，版本更新提示关闭，升级按依赖评审统一处理。
 
+ReactDOM 19.3.1 的[本地补丁](../patches/react-dom@19.3.1.patch)通过 pnpm `patchedDependencies` 绑定精确版本和锁文件摘要，在四套 client/profiling 构建中跳过 textarea 未变默认值的重复写入，保留初始化、当前值与默认值变更语义。维护时使用 `pnpm patch react-dom@19.3.1` 和 `pnpm patch-commit`，提交补丁、工作区配置及锁文件，不直接修改 `node_modules`。升级 ReactDOM 前检查上游是否已修复，移除或迁移补丁后验证原生编辑、外部默认值变更/表单 reset、受控输入以及[原输入性能场景](./testing.md#前端与脚本)；冻结安装必须重新应用同一摘要。
+
 格式命令在展开文件路径时显式排除 `.cache/`，避免遍历其中由不同 Windows 执行身份创建的私有测试 profile；不修改其访问权限，失败现场继续保留。源码、测试和工程文档仍执行原有格式检查。
 
 ```sh
@@ -121,6 +123,10 @@ Rust 包、共享 profile 和默认成员读取根 [Cargo.toml](../Cargo.toml)�
 
 新依赖评估用途、替代方案、许可、平台、包体与安装脚本，提交最小清单/锁差异。锁冲突先合并清单，再用规定工具链基于已有锁重新解析；避免删除锁文件整体升级。
 
+M2 包契约直接复用锁中 `semver 1.0.28`，用于完整版本解析与忽略 build metadata 的升级比较，避免按字符串排序或自写另一套 SemVer 解析器。来源为 crates.io 上游 `dtolnay/semver`，许可 MIT OR Apache-2.0，纯 Rust、无 build script 或安装钩子，支持全部四目标；本轮仅增加 core 的直接依赖边，不新增锁定包或分发资源。正则 schema 与 Rust 解析共用 fixture 核对边界。
+
+Host 正式包只读验证固定 `zip 9.5.1`（MIT，上游 zip-rs/zip2；关闭默认特性，仅启用纯 Rust Deflate 后端）、`ed25519-dalek 3.0.0`（BSD-3-Clause，上游 dalek-cryptography/curve25519-dalek；关闭默认特性，用 `verify_strict` 验签，不启用 legacy/hazmat）及 `unicode-normalization 0.1.25`（MIT OR Apache-2.0，上游 unicode-rs/unicode-normalization）。三者直接包均无 build script 或安装钩子；传递的 curve25519-dalek 构建脚本只按工具链/目标选择计算后端，已核对，无下载或系统修改。复用现有 SHA-2、flate2/zlib-rs 等锁版本，新增依赖节点及 getrandom/zeroize 的特性边以 Cargo.lock 为准。选择成熟归档、签名与 Unicode 实现，避免手写解压器、密码算法或规范化表；四目标产物体积与实际运行仍须本轮 CI/分发验收，不能用本机编译代替。
+
 ## 构建与发布
 
 当前发布/Pages 模板停用，签名和更新配置待启用。手动 CI 见[测试](./testing.md#持续集成)；正式分发前按本节准备并验收。
@@ -136,6 +142,8 @@ pnpm app:portable
 版本脚本同步 npm/workspace、Tauri、Cargo 共享版本与锁文件。MSI/NSIS 的版本范围及预发布限制由 [version.mjs](../scripts/version.mjs) 校验，不能仅靠选择其他 bundle 绕过配置约束；已发布版本号不复用。
 
 构建按 Cargo 真实输出收集桌面、Host、CLI、MCP 与组件清单。`--optimize size|speed` 均为 release，默认 size，speed 缩短编译但增大产物并改变优化；参数见脚本 `--help`。I8 路径边界及四目标未签名原生构建已通过，源范围见[进度](./progress.md#m1b-问题闭合)。
+
+M2 构建现接入固定 Node 下载/验签和资源准备，构建机需要 `gpgv` 与系统 `tar`，Linux 另需 `dpkg-deb`；最终用户无需这些工具。缓存、独立准备命令、Linux 对应源码与许可、`SWB_RUNTIME_OFFLINE=1` 及便携复用检查见 [runtime 输入](../resources/runtime/README.md)。Windows 资源准备已有本机自检证据，最终各目标安装布局、Host 启动与离线运行继续按阶段验收。
 
 交付从 `artifacts/<version>/<target-triple>/installers/` 或 `portable/` 取文件，manifest 记录版本、target 和文件 SHA-256。同一版本/target 的该类产物整体替换，保留其他版本和另一类，失败恢复旧 bundle。Windows 产出 NSIS/MSI，macOS app/DMG，Linux 格式由 Tauri bundle.targets 决定。
 

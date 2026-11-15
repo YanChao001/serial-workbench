@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
-import { resolve } from "node:path";
+import { spawnSync } from "node:child_process";
+import { mkdirSync, mkdtempSync, readFileSync } from "node:fs";
+import { join, relative, resolve } from "node:path";
 import test from "node:test";
+import { removeProjectPath } from "./fs-utils.mjs";
 
 const root = resolve(import.meta.dirname, "..");
 const read = (name) => readFileSync(resolve(root, name), "utf8");
@@ -33,7 +35,7 @@ test("CI and audit run only on manual dispatch and use read-only repository perm
   assert.match(ci, /desktop_e2e:[\s\S]*?type: boolean\n {8}default: true/);
   assert.match(
     job("desktop-e2e"),
-    /^ {4}if: inputs\.desktop_e2e && !inputs\.native_preflight$/m,
+    /^ {4}if: inputs\.desktop_e2e && !inputs\.native_preflight && !inputs\.runtime_preflight$/m,
   );
 });
 
@@ -70,7 +72,7 @@ test("both native matrices cover all four targets without scope or tree reuse", 
   for (const name of ["frontend", "browser-smoke", "rust", "bindings"]) {
     assert.match(
       job(name),
-      /^ {4}if: \$\{\{ !inputs\.native_preflight \}\}$/m,
+      /^ {4}if: \$\{\{ !inputs\.native_preflight && !inputs\.runtime_preflight \}\}$/m,
       name,
     );
   }
@@ -93,7 +95,7 @@ test("preflight shares the full native runner and retains successful source rece
     "x86_64-apple-darwin": "macos-15-intel",
   });
   const targetInput = ci.match(
-    / {6}native_preflight_target:\n([\s\S]*?)(?=\n\S)/,
+    / {6}native_preflight_target:\n([\s\S]*?)(?=\n {6}\w|\n\S)/,
   )?.[1];
   assert.ok(targetInput);
   assert.match(targetInput, /type: choice/);
@@ -130,7 +132,10 @@ test("preflight shares the full native runner and retains successful source rece
 });
 
 test("the gate always gathers every job, and all jobs have a time budget", () => {
-  assert.match(job("quality-gate"), /if: always\(\)/);
+  assert.match(
+    job("quality-gate"),
+    /if: always\(\) && !inputs\.runtime_preflight/,
+  );
   assert.match(
     job("quality-gate"),
     /needs:\s*\[frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight\]/,
@@ -141,9 +146,100 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   for (const [, name] of ci.matchAll(/^ {2}([\w-]+):\n/g)) {
     if (name === "workflow_dispatch") continue;
-    const runner = ["desktop-e2e", "native-preflight"].includes(name)
-      ? job("desktop-e2e", native)
-      : job(name);
+    const runner =
+      name === "runtime-preflight"
+        ? read(".github/workflows/runtime-preflight.yml")
+        : ["desktop-e2e", "native-preflight"].includes(name)
+          ? job("desktop-e2e", native)
+          : job(name);
     assert.match(runner, /timeout-minutes: \d+/, name);
+  }
+});
+
+test("runtime diagnostics cannot replace the full milestone gate or launch desktop jobs", () => {
+  const runtime = read(".github/workflows/runtime-preflight.yml");
+  assert.match(job("runtime-preflight"), /if: inputs\.runtime_preflight/);
+  assert.match(
+    job("runtime-preflight"),
+    /uses: \.\/.github\/workflows\/runtime-preflight\.yml/,
+  );
+  assert.match(
+    job("native-preflight"),
+    /if: inputs\.native_preflight && !inputs\.runtime_preflight/,
+  );
+  assert.match(runtime, /workflow_call:/);
+  assert.doesNotMatch(
+    runtime,
+    /workflow_dispatch:|pnpm app:build|pnpm test:e2e|contents: write/,
+  );
+  assert.match(
+    runtime,
+    /cargo build --locked -p serial-workbench-host --example node_runtime_probe/,
+  );
+  assert.match(
+    runtime,
+    /cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1/,
+  );
+  assert.match(runtime, /name: runtime-preflight-\$\{\{ matrix\.target \}\}/);
+  assert.match(runtime, /fail-fast: false/);
+  assert.match(
+    ci,
+    /runtime_preflight:[\s\S]*?type: boolean\n {8}default: false/,
+  );
+});
+
+test("runtime preflight executes a fixed four-target plan and rejects conflicting or unknown input", (t) => {
+  const runtime = read(".github/workflows/runtime-preflight.yml");
+  const script = runtime
+    .match(/node --input-type=module <<'NODE'\n([\s\S]*?) {10}NODE/)?.[1]
+    .replace(/^ {10}/gm, "");
+  assert.ok(script);
+  const parent = join(root, ".cache/script-tests");
+  mkdirSync(parent, { recursive: true });
+  const directory = mkdtempSync(join(parent, "runtime-plan-"));
+  t.after(() => {
+    if (t.passed) removeProjectPath(root, relative(root, directory));
+  });
+  const run = (target, conflict = "false") => {
+    const output = join(directory, `${target}-${conflict}.txt`);
+    const result = spawnSync(process.execPath, ["--input-type=module"], {
+      cwd: root,
+      input: script,
+      encoding: "utf8",
+      timeout: 10_000,
+      env: {
+        ...process.env,
+        RUNTIME_TARGET: target,
+        CONFLICTING_PREFLIGHT: conflict,
+        GITHUB_OUTPUT: output,
+      },
+      windowsHide: true,
+    });
+    return { result, output };
+  };
+  const all = run("all");
+  assert.equal(all.result.status, 0, all.result.stderr);
+  const matrix = JSON.parse(
+    readFileSync(all.output, "utf8").trim().slice("matrix=".length),
+  );
+  assert.deepEqual(matrix.include, [
+    { target: "x86_64-unknown-linux-gnu", platform: "ubuntu-22.04" },
+    { target: "x86_64-pc-windows-msvc", platform: "windows-2022" },
+    { target: "aarch64-apple-darwin", platform: "macos-15" },
+    { target: "x86_64-apple-darwin", platform: "macos-15-intel" },
+  ]);
+  const one = run("aarch64-apple-darwin");
+  assert.equal(one.result.status, 0, one.result.stderr);
+  assert.equal(
+    JSON.parse(readFileSync(one.output, "utf8").trim().slice(7)).include.length,
+    1,
+  );
+  for (const [target, conflict, message] of [
+    ["all", "true", /mutually exclusive/],
+    ["unknown", "false", /Unsupported runtime preflight target/],
+  ]) {
+    const { result } = run(target, conflict);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, message);
   }
 });

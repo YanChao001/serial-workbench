@@ -1,0 +1,119 @@
+{
+  "schemaVersion": "0.1",
+  "id": "node-26.13.0",
+  "version": "26.13.0",
+  "modulesAbi": "147",
+  "nodeApiVersion": "10",
+  "upstream": {
+    "keyringCommit": "481637f813e912c4aa3622d7964ab426c97b8e8d",
+    "keyringUrl": "https://raw.githubusercontent.com/nodejs/release-keys/481637f813e912c4aa3622d7964ab426c97b8e8d/gpg/pubring.kbx",
+    "keyringSha256": "610b8d249da3d5733f5a128def2dd0294dbbf5b5713e6ca2529db8db419dee00",
+    "signerFingerprint": "C82FA3AE1CBEDC6BE46B9360C43CEC45C17AB93C",
+    "publicKeyPath": "resources/runtime/node-release-key.gpg",
+    "publicKeySha256": "226f5400928425e9094e3d994ef17247816df382e19369f4dd32401d729e1370",
+    "checksumsUrl": "https://nodejs.org/download/release/v26.13.0/SHASUMS256.txt.asc",
+    "checksumsSha256": "1670dd3eebeb6be820e78faf68b9caf33b7434d55701249138fb426103bca1a0"
+  },
+  "targets": [
+    {
+      "target": "x86_64-pc-windows-msvc",
+      "platform": "win32",
+      "arch": "x64",
+      "archive": {
+        "name": "node-v26.13.0-win-x64.zip",
+        "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-win-x64.zip",
+        "format": "zip",
+        "size": "41157375",
+        "sha256": "dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a"
+      },
+      "executable": {
+        "archivePath": "node-v26.13.0-win-x64/node.exe",
+        "resourcePath": "runtime/node/26.13.0/x86_64-pc-windows-msvc/bin/node.exe",
+        "size": "100097864",
+        "sha256": "14319838b3f355e0398c13569a90270bce4fc68f25189f58c59b03dadae0e6d5"
+      },
+      "license": {
+        "archivePath": "node-v26.13.0-win-x64/LICENSE",
+        "resourcePath": "runtime/node/26.13.0/x86_64-pc-windows-msvc/LICENSE",
+        "size": "159309",
+        "sha256": "cbc91dba25c546898544155e1c0fce897f00e3f1df0afc795b8da891d38f92d9"
+      },
+      "requiredPrivateLibraries": []
+    },
+    {
+      "target": "aarch64-apple-darwin",
+      "platform": "darwin",
+      "arch": "arm64",
+      "archive": {
+        "name": "node-v26.13.0-darwin-arm64.tar.gz",
+        "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz",
+        "format": "tarGz",
+        "size": "58334661",
+        "sha256": "d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6"
+      },
+      "executable": {
+        "archivePath": "node-v26.13.0-darwin-arm64/bin/node",
+        "resourcePath": "runtime/node/26.13.0/aarch64-apple-darwin/bin/node",
+        "size": "147346864",
+        "sha256": "533bd644c5ae0e0ea3a80e433aad16b817447ccba1e1eea701875eac80cb75d4"
+      },
+      "license": {
+        "archivePath": "node-v26.13.0-darwin-arm64/LICENSE",
+        "resourcePath": "runtime/node/26.13.0/aarch64-apple-darwin/LICENSE",
+        "size": "156386",
+        "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c"
+      },
+      "requiredPrivateLibraries": []
+    },
+    {
+      "target": "x86_64-apple-darwin",
+      "platform": "darwin",
+      "arch": "x64",
+      "archive": {
+        "name": "node-v26.13.0-darwin-x64.tar.gz",
+        "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-x64.tar.gz",
+        "format": "tarGz",
+        "size": "59802926",
+        "sha256": "525c9b29bb0263d687de60a4cec0e2a6db876a8eb032369e5795eca71e7c358e"
+      },
+      "executable": {
+        "archivePath": "node-v26.13.0-darwin-x64/bin/node",
+        "resourcePath": "runtime/node/26.13.0/x86_64-apple-darwin/bin/node",
+        "size": "150084448",
+        "sha256": "d5891b4336441138426c7cb3920d3b140f4dde1c3dfb3d7152873941e65a3b05"
+      },
+      "license": {
+        "archivePath": "node-v26.13.0-darwin-x64/LICENSE",
+        "resourcePath": "runtime/node/26.13.0/x86_64-apple-darwin/LICENSE",
+        "size": "156386",
+        "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c"
+      },
+      "requiredPrivateLibraries": []
+    },
+    {
+      "target": "x86_64-unknown-linux-gnu",
+      "platform": "linux",
+      "arch": "x64",
+      "archive": {
+        "name": "node-v26.13.0-linux-x64.tar.xz",
+        "url": "https://nodejs.org/download/release/v26.13.0/node-v26.13.0-linux-x64.tar.xz",
+        "format": "tarXz",
+        "size": "34083252",
+        "sha256": "d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997"
+      },
+      "executable": {
+        "archivePath": "node-v26.13.0-linux-x64/bin/node",
+        "resourcePath": "runtime/node/26.13.0/x86_64-unknown-linux-gnu/bin/node",
+        "size": "150319296",
+        "sha256": "0adde40d1b7dfa57c8bc83cbc319758c3ec6ebba21363bb2fa752ea6b267ad1b"
+      },
+      "license": {
+        "archivePath": "node-v26.13.0-linux-x64/LICENSE",
+        "resourcePath": "runtime/node/26.13.0/x86_64-unknown-linux-gnu/LICENSE",
+        "size": "156386",
+        "sha256": "8e603aa87c70d36e497004f0dec63111511cb61b7d65ace12e10ea791599286c"
+      },
+      "requiredPrivateLibraries": ["lib/libatomic.so.1"]
+    }
+  ]
+}

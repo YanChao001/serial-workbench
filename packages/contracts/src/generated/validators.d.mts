@@ -122,6 +122,16 @@ import type {
   MessageFragment,
   Motion,
   NetworkMode,
+  NodePackageId,
+  NodePackageIntegrity,
+  NodePackageManifest,
+  NodePackagePath,
+  NodePackageRegistration,
+  NodePackageSignature,
+  NodePackageVersion,
+  NodeRuntimeLibraryRelease,
+  NodeRuntimeRelease,
+  NodeRuntimeSelfTest,
   ObjectReadResult,
   ObjectRef,
   OpenParams,
@@ -549,6 +559,36 @@ export declare function validateMotion(value: unknown): value is Motion;
 export declare function validateNetworkMode(
   value: unknown,
 ): value is NetworkMode;
+export declare function validateNodePackageId(
+  value: unknown,
+): value is NodePackageId;
+export declare function validateNodePackageIntegrity(
+  value: unknown,
+): value is NodePackageIntegrity;
+export declare function validateNodePackageManifest(
+  value: unknown,
+): value is NodePackageManifest;
+export declare function validateNodePackagePath(
+  value: unknown,
+): value is NodePackagePath;
+export declare function validateNodePackageRegistration(
+  value: unknown,
+): value is NodePackageRegistration;
+export declare function validateNodePackageSignature(
+  value: unknown,
+): value is NodePackageSignature;
+export declare function validateNodePackageVersion(
+  value: unknown,
+): value is NodePackageVersion;
+export declare function validateNodeRuntimeLibraryRelease(
+  value: unknown,
+): value is NodeRuntimeLibraryRelease;
+export declare function validateNodeRuntimeRelease(
+  value: unknown,
+): value is NodeRuntimeRelease;
+export declare function validateNodeRuntimeSelfTest(
+  value: unknown,
+): value is NodeRuntimeSelfTest;
 export declare function validateObjectReadResult(
   value: unknown,
 ): value is ObjectReadResult;

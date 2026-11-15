@@ -1,6 +1,6 @@
 # Node 扩展合同 v0
 
-- 状态：M0 设计合同；正式离线加载、后台和 Web UI SDK 在 M2 实现，M3 参考场景通过后冻结 v1。
+- 状态：v0 合同；M2 Task14.1 已开始实现 Rust 元数据 DTO 与生成 schema，正式离线加载、后台和 Web UI SDK 仍在 M2 实现，M3 参考场景通过后冻结 v1。
 - 依据：[架构取舍](../architecture.md#关键取舍)与[产品需求](../requirements.md)。
 - 分发运行时的精确版本、四目标来源、完整性与固定启动位置只在 [runtime 分发基线](./runtime-distribution.md) 维护。
 
@@ -40,6 +40,20 @@
 
 每项业务贡献引用 [公共目录项](./host-v0.md) 的 `actionId,kind,inputSchema,outputSchema,targetKinds,executionLocation,permissions,stateScopes,eventTypes,cancellation,revealTarget`，不另起字段名。动作、查询、设置、视图背后的业务、插件管理和工作区操作同时向 GUI/CLI/MCP 开放。纯主题资源声明资源 schema 与配置入口；视图引用动作和状态，不建立 UI-only 业务。动态注册的内容须是已校验 manifest 中声明的子集，不得扩大权限。
 
+Rust 来源为 [`node_package.rs`](../../crates/core/src/node_package.rs)。包 ID 使用至少两段点分命名空间，每段仅 ASCII 字母、数字、`_`、`-`，总长不超过 128 字节。贡献 ID 使用 `<包 ID>.` 前缀且后缀非空，全部类别之间不得重复；不能覆盖内置目录 ID。包和锁定依赖的版本采用完整 SemVer，升级比较忽略 build metadata；相同 precedence 的构建标识变化不构成升级。`dataSchemaVersion` 独立使用非空字符串。
+
+嵌套声明采用以下结构，所有列出的数组均必需，无条目时为空；可选字段只能省略，不能写 `null`：
+
+| 声明                                                           | v0 形状与绑定                                                                                                                                                                                                                                    |
+| -------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
+| `permissions`                                                  | `{hostApi:[{permissions:string[],targetKinds:ResourceKind[]}],executionPurposes:string[],externalTools:Id[]}`。目标 scope 不得为空，执行用途必须有非空声明；工具 ID 必须引用 `platformResources` 中的 `tool`。声明不授予执行信任或 API 权限。    |
+| `contributes.actions/queries/transports/parsers/configuration` | `ActionSpec[]`。actions、transports、parsers 的 `kind` 为 `action`，queries 为 `query`；configuration 可分别声明读与写。                                                                                                                         |
+| `contributes.views`                                            | `{id,actionId,stateScopes:string[]}[]`。必须有 `webUi`，引用本包声明的 action，stateScopes 是该 action 声明的子集。                                                                                                                              |
+| `contributes.themes`                                           | `{id,path,resourceSchema,configurationActionId}[]`。path 引用包内载荷，resourceSchema 使用公共 schema 对象，配置入口必须在 configuration 中声明。                                                                                                |
+| 动态登记                                                       | `{id,version,contributes:{actions:Id[],queries:Id[],transports:Id[],parsers:Id[],views:Id[],themes:Id[],configuration:Id[]}}`。身份精确匹配 manifest，各类别只选择原声明中不重复的 ID；目录与权限元数据仍读取已验证的 manifest，不接受后台替换。 |
+
+`NodePackagePath` 只接受规范的 POSIX 相对路径，保留 Unicode，拒绝空组件、`.`、`..`、反斜杠、冒号及控制字符。Core 的 JSON 原始字节入口在构造对象前拒绝任意层级的重复键；生成 schema 用于已解析值的结构校验，重复键及跨字段/跨文件引用仍由 Host 调用 Core 语义校验。文件系统大小写别名、链接/重解析点、归档条目与字节预算必须由 Host 安装边界另行验证，不能仅凭 schema 判为可安装。
+
 包内 native addon、外部工具及其动态库按目标分包；目标缺少资源、ABI 不匹配或依赖不完整时，在执行前返回结构化不可用原因，不尝试在线编译。运行时只从应用发行目录的固定路径启动；PATH、用户 Node、NODE_OPTIONS 与插件提供的启动参数不能替换 Host 所选 runtime。
 
 ### 完整性与来源
@@ -49,6 +63,34 @@
 `integrity.json` 使用 `{schemaVersion,id,version,source,keyId,files}`，schemaVersion 为 `"0.1"`；files 按路径字节序排列，每项 `{path,size,sha256}`，size 为 U64，包含 manifest 与全部载荷，不包含 integrity.json 和 signature.json 本身。签名覆盖 ASCII 前缀 `serial-workbench-node-package-v0\n` 与 integrity.json 原始 UTF-8 字节的拼接。`signature.json` 为 `{algorithm:"Ed25519",keyId,signatureBase64}`；密钥必须从安装来源已认可的信任记录取得，keyId 与完整性清单一致，不能由包自带公钥建立可信来源。未知算法、密钥、重复路径或摘要不符拒绝可信安装。归档摘要另记录在下载/安装收据中，包路径、字节预算与所有条目在解压前后分别核对。M2 提供签名、篡改、解压越界和离线金样。
 
 无已认可签名的本地包可携带完整性清单而省略 signature.json，显示为本地未验证来源；首次启用由用户确认完整 Node 执行权限，不能伪装成原可信发布者的升级。下载索引签名不替代实际包摘要核对。市场目录的过期与撤销规则在 M2 市场入口建立时另行版本化。
+
+Host 的只读验证实现位于 [`node_packages`](../../crates/host/src/node_packages/)，不写安装目录、不启动 Node。v0 打包采用单磁盘 ZIP32、Stored/Deflate 和 UTF-8 名称；既定预算内无需 ZIP64，未知压缩/加密/特殊条目拒绝。默认上限为归档 256 MiB、归档条目和隐式目录/文件节点各 10,000 个、单文件 64 MiB、展开总计 512 MiB、各主元数据 1 MiB（签名 8 KiB）、路径 1024 UTF-8 字节、单组件 255 字节及 30 秒；读入和哈希分块复核取消/期限，Host 接入时另持有并发容量直到任务真实退出。ZIP 库核对局部头、中央目录、重复名称和重叠，Host 额外核对原始类型属性、重解析标记、所有层级的大小写/Unicode 规范化别名及文件目录冲突。
+
+验签使用来源记录提供的固定公钥及 Ed25519 strict verification，保留实际公钥 SHA-256、source/keyId 与归档摘要；签名针对原始 integrity 字节，不对解析后对象重排再签。Local 路径始终返回未验证来源，包自述或未知签名不会建立可信身份。验证结果持有不可变归档字节，后续安装消费同一内容；来源文件更换不改变已验证输入。只读验证不建立执行信任，安装与来源仓库基础见下节；管理入口的当前授权复核及执行生命周期继续按 Task14 接线。
+
+### 安装事务与执行信任基础
+
+Host 库层实现位于 [`node_packages/install.rs`](../../crates/host/src/node_packages/install.rs)。调用方在有界阻塞任务中消费已验证归档，先读取现有安装文档并检查 revision/格式，再解包至独立暂存目录、分块核对实际字节并同步文件。代码以唯一对象目录无覆盖发布，SQLite 条件提交后才成为可见安装版本；未提交对象不能用于激活。安装不执行后台、依赖钩子或 npm，也不访问插件私有数据。
+
+所属命名空间为 `host-v0/node-packages/`：`objects/<UUID>` 保存已发布代码，`staging/<UUID>` 保留原始输入、安装收据及失败的暂存内容。原子提交使用现有 Store 的 `node-packages:installed` 文档和 revision，文档 `formatVersion` 为 U64 字符串 `"1"`；未知格式在写入和解包前拒绝，保留原件。目录操作复用已打开父目录的 PathGuard，拒绝链接/重解析点和路径替换；旧代码对象在升级或失败后保留，后续清理不能连带删除用户数据。文件与目录同步、取消和解压预算由实际安装任务承担；CAS 成功后不再把迟到取消报告为未安装，诊断写入失败也不改写已提交结果。
+
+首次安装保持停用、无执行信任，即使来源验签成功。执行信任确认绑定当前归档摘要、权限声明和已验证来源；启停、确认、撤权都要求当前 revision 和摘要。`enabled` 是持久启用意图，不表示后台已经注册成功。只有可信 Host 的用户确认入口可调用确认方法；它未向 RPC 开放，也不授予设备或其他 Host API scope。
+
+升级要求严格更高的 SemVer precedence。同一已验证 source/keyId/实际公钥指纹、相同协议/runtime 且新权限声明未扩大时，才可继承旧执行信任和启用意图；Host API 声明按 permission 与 target kind 的实际配对比较，不受数组分组影响。未验证本地新版、来源/密钥/runtime 变化或范围扩大均保持停用并重新确认。撤销执行信任同时清除启用意图，保留来源验证、代码和私有数据。实际接入时，调用方须先关闭新任务/效果接纳、结算旧 owner，再提交停用、撤权或升级；当前库层验证不能代替共享 Node/worker 的停止与资源归还验收。
+
+来源仓库位于 [`source_store.rs`](../../crates/host/src/node_packages/source_store.rs)，复用 Store 的 `node-packages:sources` 文档与 revision CAS，`formatVersion` 为 U64 字符串 `"1"`，写入上限 1 MiB。每组 source/keyId 只有一个当前认可公钥；替换或撤销后保留历史公钥与指纹，历史记录不再用于新的可信验证。读取复核真实公钥、指纹、唯一性和弱密钥，损坏时拒绝覆盖，未来格式保持原件。
+
+仓库验证入口先选取当前认可公钥，使用实际 Ed25519 签名验证归档，再复核当前认可身份；`require_current` 只报告本次观察的认可状态。认可来源不建立执行确认或 Host API scope。当前库层尚未提供 RPC 管理动作，安装/激活前的最终认可与授权检查、撤权通知及运行中 owner 停止仍须由管理器统一协调，不能把历史验签回执当作持续有效的执行授权。
+
+### 已安装内容复核
+
+[`installed.rs`](../../crates/host/src/node_packages/installed.rs)提供激活前的内容证明。`verify_installed` 绑定包 ID、预期安装 revision 和原始归档摘要，重新读取所属暂存记录中的原 ZIP，按同一预算验证完整性及实际当前认可的签名；本地未验证来源保持该身份。归档中的完整 manifest 和来源回执必须与已提交记录一致，不能从被改写的安装目录重新建立基准。
+
+随后核对实际代码目录的所有文件、元数据、显式及隐式目录，拒绝缺失、未列出条目、类型变化、链接和重解析点；原始 ZIP 与代码文件的真实链接计数必须为一。实际字节大小和摘要逐块比对，Unix 文件权限按安装时的只读/可执行模式复核。macOS 比较目录项时处理文件系统的 Unicode 分解表示，原包仍须通过规范化别名拒绝。结束前再次检查安装 revision 和当前来源认可，失败不改写安装记录、归档或代码。
+
+Windows 的证明对象持有拒绝写入/删除共享的文件句柄及目录保护句柄，调用方须把证明交给实际执行 owner，在 Node 真正退出后才释放。Unix 逐文件校验后关闭文件，代码目录仍按 Host 的不可变对象模型使用。停止、预算和未知格式按已有稳定 code 拒绝，公共错误不含私有路径。
+
+内容证明不表示后台已激活，也不建立执行授权。管理器还须在实际接纳与效果边界复核执行信任、当前授权、runtime/协议及 owner 代次，并协调停用、撤权和升级；这些接线及共享 Node/worker 生命周期继续由 Task14 后续节点完成。
 
 ## 3. 后台生命周期与状态
 
