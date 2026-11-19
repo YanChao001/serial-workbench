@@ -73,6 +73,7 @@ package=$(dpkg-deb --field "$deb" Package)
 dpkg-query -W -f='${Status} ${Version}\n' "$package"
 dpkg-query -L "$package"
 sha256sum /usr/bin/serial-workbench{,-host,-cli,-mcp} "/usr/lib/$name/runtime/node-release.json"
+find "/usr/lib/$name/runtime" -type l -printf '%P -> %l\n'
 
 # 去掉管理员身份与环境。测试使用安装版的程序和资源，工作目录与 PATH 不提供 Node 后备。
 cd "$scratch"

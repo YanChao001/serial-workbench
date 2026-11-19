@@ -1,6 +1,27 @@
-import { globSync, lstatSync, statSync } from "node:fs";
-import { isAbsolute, join, parse, resolve, sep } from "node:path";
+import { execFileSync } from "node:child_process";
+import {
+  globSync,
+  lstatSync,
+  mkdtempSync,
+  readlinkSync,
+  renameSync,
+  rmSync,
+  statSync,
+  symlinkSync,
+  unlinkSync,
+} from "node:fs";
+import {
+  dirname,
+  isAbsolute,
+  join,
+  parse,
+  posix,
+  resolve,
+  sep,
+} from "node:path";
+import { fileSha256 } from "./artifact-lib.mjs";
 import { fetchNodeRuntimeSources } from "./node-runtime-download.mjs";
+import { inspectNodeRuntimeLayout } from "./node-runtime-layout.mjs";
 import { prepareNodeRuntime } from "./node-runtime-prepare.mjs";
 import { loadNodeRuntimeRelease } from "./node-runtime-source.mjs";
 import { validateNodePackagePath } from "../packages/contracts/src/generated/validators.mjs";
@@ -81,10 +102,7 @@ export function runtimeResourceMap(plan, runtime) {
     : { ...resources, [runtime.resources.replaceAll("\\", "/") + "/"]: "" };
 }
 
-/** Linux 的逐文件资源复制会解引用链接，使用打包器已有的整目录复制入口。 */
-export function runtimeBundleConfig(plan, runtime) {
-  const resources = runtimeResourceMap(plan, runtime);
-  if (plan.platform !== "linux") return { resources };
+function linuxRuntimeProductName(plan) {
   const productName = plan.config.productName ?? plan.package?.name;
   if (
     !validateNodePackagePath(productName) ||
@@ -92,6 +110,14 @@ export function runtimeBundleConfig(plan, runtime) {
     Buffer.byteLength(productName) > 255
   )
     throw new Error("Invalid runtime product directory");
+  return productName;
+}
+
+/** Linux 的逐文件资源复制会解引用链接，使用打包器已有的整目录复制入口。 */
+export function runtimeBundleConfig(plan, runtime) {
+  const resources = runtimeResourceMap(plan, runtime);
+  if (plan.platform !== "linux") return { resources };
+  const productName = linuxRuntimeProductName(plan);
   const destination = `/usr/lib/${productName}/runtime`,
     source = join(runtime.resources, "runtime");
   const linux = {};
@@ -107,4 +133,41 @@ export function runtimeBundleConfig(plan, runtime) {
     linux[type] = { files: { ...original, [destination]: source } };
   }
   return { resources, linux };
+}
+
+/** Tauri 2.12 的 Debian tar 会解引用 SONAME。按已验证的资源布局复原后再归档。 */
+export function preserveDebianRuntimeLink(plan, runtime, deb) {
+  const expected = inspectNodeRuntimeLayout(plan, runtime.resources);
+  const link = expected.find((entry) => entry.link);
+  if (!link) return;
+  const path = posix.join(posix.dirname(link.path), link.link);
+  const library = expected.find((entry) => entry.path === path);
+  if (!library?.sha256) throw new Error("Missing verified SONAME library");
+
+  const staging = mkdtempSync(join(dirname(deb), ".runtime-deb-"));
+  try {
+    const data = join(staging, "package");
+    execFileSync("dpkg-deb", ["--raw-extract", deb, data], { env: plan.env });
+    const resources = join(data, "usr", "lib", linuxRuntimeProductName(plan));
+    const alias = join(resources, link.path);
+    const info = lstatSync(alias);
+    if (fileSha256(join(resources, path)) !== library.sha256)
+      throw new Error(
+        "Packaged SONAME library differs from the verified runtime",
+      );
+    if (info.isSymbolicLink() && readlinkSync(alias) === link.link) return;
+    if (!info.isFile() || fileSha256(alias) !== library.sha256)
+      throw new Error("Unexpected SONAME alias in the Debian package");
+    unlinkSync(alias);
+    symlinkSync(link.link, alias);
+    const repaired = join(staging, "package.deb");
+    execFileSync(
+      "dpkg-deb",
+      ["-Zgzip", "--root-owner-group", "--build", data, repaired],
+      { env: plan.env, stdio: "inherit" },
+    );
+    renameSync(repaired, deb);
+  } finally {
+    rmSync(staging, { recursive: true, force: true });
+  }
 }

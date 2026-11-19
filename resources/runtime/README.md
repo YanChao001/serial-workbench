@@ -25,7 +25,7 @@ Linux 另提供 `--artifacts .cache/node-runtime/sources/libatomic1-jammy-12.3.0
 
 `app:build` 与 `app:portable` 自动执行同一下载/准备链，将 `resources/` 映射为应用资源根；原有 Tauri 资源保留。设置 `SWB_RUNTIME_OFFLINE=1` 可禁止构建时补下载，此设置不等于操作系统断网验收。便携版 `--skip-build` 同时核对运行时、许可与来源材料摘要，不能复用遗漏运行时的旧收据。构建机需要 GPG 和归档工具，最终用户不依赖这些开发工具。
 
-Linux 打包保留 SONAME 链接、模式和摘要；核对实际私有库加载，不以文件存在代替。macOS 在副本上使用固定 entitlements 做 ad hoc 签名，原件和准备后身份分别留存。构建 Host、probe 或原生测试前，将 `SWB_NODE_RUNTIME_BUILD_IMAGE` 设为同一资源内 `runtime/node-image.json` 的绝对路径；这不是 Developer ID 签名或公证。
+Linux 打包保留 SONAME 链接、模式和摘要。Tauri 的 Debian 数据归档会解引用符号链接，构建脚本匹配已验证的库摘要后在 `.deb` 中复原相对链接，再归档和记录最终摘要。Debian 专项使用实际安装目录核对私有库加载。macOS 在副本上使用固定 entitlements 做 ad hoc 签名，原件和准备后身份分别留存。构建 Host、probe 或原生测试前，将 `SWB_NODE_RUNTIME_BUILD_IMAGE` 设为同一资源内 `runtime/node-image.json` 的绝对路径；这不是 Developer ID 签名或公证。
 
 ## 验证实际输出
 
