@@ -84,6 +84,10 @@
 
 **私有管道性能复测（候选，Windows）**。改为入队与结果就绪唤醒，Unix 等待管道可读写。Windows 两轮同场景的 66 次留存发布由 3.180、3.221 秒降至 0.176、0.163 秒，均检查 Raw、控制、录制及实际 CLI/MCP 读页。Host 与 Node 自动恢复各通过一次，Raw 四名额压力和撤权后实际回收分别通过。保留 5 秒 Operation 等待和 100 毫秒无头输入门槛。记录见同目录 `derived-pipe-baseline-windows-{1,2}.log`、`derived-pipe-wakeup-windows-{1,2}.log`、`owner-restored-generation-windows.log` 和 `raw-wakeup-and-revocation-windows.log`。后续先在实际架构分别运行 Host 管道和 macOS 签名定向套件，再复验完整四目标门禁。
 
+**定向预检结果（`353df06`）**。Apple Silicon 的派生、Raw 及两项自动恢复均通过，66 次留存发布耗时 0.108 秒。Intel 的签名后台单项通过，安装布局探针查询进程签名状态和代码目录均返回 `ESRCH`，探针确认已回收。Windows 基础桌面用例通过，签名终端在关窗持续录制、重开及停止录制后未能展开撤权菜单，实际文件对话框分支未运行。本机单 worker 的无头草稿输入 p95 为 117.7 毫秒，原生文本框对照为 112.1 毫秒，每组各有两个 100 毫秒及以上样本。保留失败收据、截图及 `focused-ci-353df06-checkpoint.json`。[Apple Silicon](https://github.com/YanChao001/serial-workbench/actions/runs/44549651778) · [Intel macOS](https://github.com/YanChao001/serial-workbench/actions/runs/44549659285) · [Windows](https://github.com/YanChao001/serial-workbench/actions/runs/44549668063)
+
+**录制工具还焦与验签退出状态（候选）**。嵌入式 WebDriver 在发出 DOM 点击后才请求焦点，旧版录制工具会把先前获得焦点的元素作为还焦目标。本机同样的无头点击已复现还焦失败。录制工具现直接记住打开它的按钮，原生用例等待还焦后再进入插件页，核对「更多操作」按钮已获焦且菜单展开再撤权。新版浏览器产物通过录制和插件页的 10 项相关用例。macOS 监护通过已有私有通道补记恢复运行前观察到的退出原因，探针保留首个 I/O 错误与回收诊断。仍按原门槛复验签名和真实桌面。源码、截图及结果见同目录 `capture-focus-baseline.log`、`capture-focus-baseline`、`capture-focus-build.log` 与 `capture-focus-candidate.log`。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

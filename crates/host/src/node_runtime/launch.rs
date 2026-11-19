@@ -135,12 +135,7 @@ impl VerifiedNodeRuntime {
             #[cfg(target_os = "macos")]
             {
                 self.image
-                    .authenticate(child.id(), &control, &mut diagnostics)
-                    .inspect_err(|_| {
-                        if let Some(detail) = &diagnostics.io_error {
-                            eprintln!("node_runtime_backend_authentication_failed {detail}");
-                        }
-                    })?;
+                    .authenticate(child.id(), &control, &mut diagnostics)?;
                 child.resume()?;
             }
             Ok(())
@@ -161,6 +156,13 @@ impl VerifiedNodeRuntime {
                     Err(_) => {
                         return Err(failure("NODE_OWNER_EXIT_UNCONFIRMED", "backendStartupReap"));
                     }
+                }
+            }
+            #[cfg(target_os = "macos")]
+            {
+                diagnostics.record_startup_exit(&child);
+                if let Some(detail) = &diagnostics.io_error {
+                    eprintln!("node_runtime_backend_launch_diagnostic {detail}");
                 }
             }
             return Err(error);

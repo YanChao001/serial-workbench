@@ -1867,7 +1867,7 @@ export function WorkspaceLayout({
             }
             historyLimits={receiveHistory}
             onHistoryLimitsChange={onReceiveHistoryChange}
-            onOpenCapture={() => showDialog("capture")}
+            onOpenCapture={(trigger) => showDialog("capture", trigger)}
             onOpenActivity={() => showDialog("activity")}
             onClearView={() =>
               setClearThrough((current) =>

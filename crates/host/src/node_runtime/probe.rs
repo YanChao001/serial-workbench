@@ -27,6 +27,25 @@ pub struct NodeRuntimeProbeDiagnostics {
     pub image_signature_flags: Option<u32>,
     pub image_sealed: bool,
 }
+impl NodeRuntimeProbeDiagnostics {
+    fn append_io_error(&mut self, detail: &str) {
+        if let Some(error) = &mut self.io_error {
+            error.push_str("; ");
+            error.push_str(detail);
+        } else {
+            self.io_error = Some(detail.to_owned());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn record_startup_exit(&mut self, child: &RuntimeChild) {
+        if let Some((code, status)) = child.startup_exit() {
+            self.append_io_error(&format!(
+                "Node exit observed before resume: si_code={code} si_status={status}"
+            ));
+        }
+    }
+}
 #[derive(Debug)]
 pub struct NodeRuntimeProbeReport {
     pub outcome: HostResult<NodeRuntimeSelfTest>,
@@ -113,7 +132,7 @@ impl ProbeOwner {
                 diagnostics.reaped = true;
             }
             Err(error) => {
-                diagnostics.io_error = Some(error.to_string());
+                diagnostics.append_io_error(&error.to_string());
                 diagnostics.reaped = self.child.is_closed();
                 if !diagnostics.reaped {
                     return;
@@ -209,6 +228,8 @@ impl VerifiedNodeRuntime {
                 diagnostics.process_id = Some(owner.child.id());
             }
             owner.finish(true, diagnostics);
+            #[cfg(target_os = "macos")]
+            diagnostics.record_startup_exit(&owner.child);
             return Err(error);
         }
         diagnostics.process_id = Some(owner.child.id());
@@ -219,6 +240,7 @@ impl VerifiedNodeRuntime {
             .and_then(|()| owner.child.resume())
         {
             owner.finish(true, diagnostics);
+            diagnostics.record_startup_exit(&owner.child);
             return Err(error);
         }
         let budget = Arc::new(OutputBudget {

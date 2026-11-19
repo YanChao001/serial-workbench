@@ -28,6 +28,7 @@ pub(super) struct Node {
     observer: Option<(u32, u64)>,
     raw_status: Option<i32>,
     launch_error: Option<i32>,
+    startup_exit: Option<(i32, i32)>,
 }
 impl Prepared {
     pub(super) fn configure(command: &mut Command, exec: SuspendedExec) -> io::Result<Self> {
@@ -180,6 +181,7 @@ impl Prepared {
             observer: None,
             raw_status: None,
             launch_error: None,
+            startup_exit: None,
         }
     }
 }
@@ -230,6 +232,9 @@ impl Node {
     pub(super) fn observer_id(&self) -> u32 {
         self.observer.map_or(0, |(pid, _)| pid)
     }
+    pub(super) fn startup_exit(&self) -> Option<(i32, i32)> {
+        self.startup_exit
+    }
     pub(super) fn wait_observer(&mut self) -> io::Result<()> {
         while self.observer.is_none() {
             match self.read() {
@@ -257,7 +262,7 @@ impl Node {
                     if self.received == self.bytes.len() {
                         self.received = 0;
                         self.messages += 1;
-                        if self.messages > 4 {
+                        if self.messages > 5 {
                             return Err(io::ErrorKind::InvalidData.into());
                         }
                         let tag = u32::from_ne_bytes(
@@ -274,6 +279,10 @@ impl Node {
                             2 => self.node_id.replace(value).is_some(),
                             3 => self.raw_status.replace(value as i32).is_some(),
                             4 => self.launch_error.replace(value as i32).is_some(),
+                            5 => self
+                                .startup_exit
+                                .replace((value as i32, identity as i32))
+                                .is_some(),
                             _ => true,
                         };
                         if duplicate {
@@ -498,7 +507,7 @@ unsafe fn send(fd: RawFd, mut bytes: &[u8]) -> bool {
     true
 }
 unsafe fn send_record(fd: RawFd, tag: u32, value: u32, identity: u64) -> bool {
-    // 最多四条独立的定长记录均小于PIPE_BUF，Node/监护/观察者的消息不会交错。
+    // 最多五条独立的定长记录均小于PIPE_BUF，Node/监护/观察者的消息不会交错。
     let mut record = [0u8; 16];
     record[..4].copy_from_slice(&tag.to_ne_bytes());
     record[4..8].copy_from_slice(&value.to_ne_bytes());
@@ -636,6 +645,9 @@ unsafe fn supervise(parent: libc::pid_t, node: libc::pid_t, observer: libc::pid_
         }
         if info.si_pid == node {
             unsafe {
+                if !resumed {
+                    send_record(1, 5, info.si_code as u32, info.si_status as u32 as u64);
+                }
                 finish(node, observer, true);
             }
         }

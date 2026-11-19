@@ -107,6 +107,10 @@ impl RuntimeChild {
             .resume()
             .map_err(|_| failure("NODE_RUNTIME_START_FAILED", "processResume"))
     }
+    #[cfg(target_os = "macos")]
+    pub(super) fn startup_exit(&self) -> Option<(i32, i32)> {
+        self.supervisor.startup_exit()
+    }
     pub(crate) fn kill(&mut self) -> io::Result<()> {
         if self.closed {
             return Ok(());

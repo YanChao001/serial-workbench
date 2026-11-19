@@ -687,6 +687,18 @@ test("capture limits send exact MiB bytes and replacement fingerprint remains re
   await unboundDialog.press("Escape");
   await expect(unboundDialog).toHaveCount(0);
   await openSession(page);
+  const capture = page.getByRole("button", { name: "Capture", exact: true });
+  await page.getByRole("textbox", { name: "Send draft", exact: true }).focus();
+  // A programmatic click opens the tool without moving focus first.
+  await capture.dispatchEvent("click");
+  const captureDialog = page.getByRole("dialog", {
+    name: "Capture",
+    exact: true,
+  });
+  await expect(captureDialog).toBeVisible();
+  await captureDialog.press("Escape");
+  await expect(capture).toBeFocused();
+
   const dialog = await openTool(page, "Capture and replay tools");
   const start = dialog.getByRole("group", {
     name: "Start capture",

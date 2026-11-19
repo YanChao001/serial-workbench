@@ -372,6 +372,9 @@ describe("Signed terminal on the real desktop", () => {
     ).waitForDisplayed();
     await browser.keys(Key.Escape);
     await $("[role='dialog']").waitForDisplayed({ reverse: true });
+    await browser.waitUntil(() => captureButton().isFocused(), {
+      timeoutMsg: "Closing recording details did not restore capture focus",
+    });
     await showTerminalDetails();
     assert.ok(
       !windowEvents().some(
@@ -382,9 +385,15 @@ describe("Signed terminal on the real desktop", () => {
       "The reopened reader must stay live until revocation",
     );
     const actions = button("More actions");
-    await actions.waitForDisplayed();
-    await actions.click();
+    await click(actions);
+    await browser.waitUntil(() => actions.isFocused(), {
+      timeoutMsg: "The plugin actions button did not receive keyboard focus",
+    });
     await browser.keys(Key.ArrowDown);
+    await browser.waitUntil(
+      async () => (await actions.getAttribute("aria-expanded")) === "true",
+      { timeoutMsg: "The focused plugin actions menu did not open" },
+    );
     await click(byText("*[@role='menuitem']", "Remove plugin trust"));
     await click(dialogButton("Remove plugin trust"));
     await button("Trust this plugin").waitForDisplayed();
