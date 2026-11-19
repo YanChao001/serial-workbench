@@ -4,6 +4,7 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
+import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
@@ -31,6 +32,57 @@ const option = (text) => byText("*[@role='option']", text);
 const dialogButton = (text) => byText("button", text, "//*[@role='dialog']");
 const field = (suffix) => $(`main input[id$='-${suffix}']`);
 
+async function selectFile(element, action, path) {
+  if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS !== "1") {
+    await click(element);
+    return;
+  }
+  const pid = Number(process.env.STARTER_E2E_APP_PID);
+  assert.ok(
+    Number.isSafeInteger(pid) && pid > 0,
+    "Missing owned application PID",
+  );
+  const script = fileURLToPath(
+    new URL("../windows-terminal-picker.ps1", import.meta.url),
+  );
+  const [{ stdout }] = await Promise.all([
+    execute(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-MTA",
+        "-File",
+        script,
+        "-ApplicationPid",
+        String(pid),
+        "-Action",
+        action,
+        "-FilePath",
+        path,
+      ],
+      { timeout: 30000, windowsHide: true },
+    ),
+    click(element),
+  ]);
+  const evidence = JSON.parse(stdout);
+  assert.equal(evidence.action, action);
+  assert.equal(evidence.applicationPid, pid);
+  assert.equal(evidence.path, path);
+  assert.equal(evidence.returnedFocus, true);
+  if (action === "Save") {
+    assert.equal(
+      evidence.owner,
+      readJson(file("native-picker-open.json")).owner,
+    );
+  }
+  writeFileSync(
+    file(`native-picker-${action.toLowerCase()}.json`),
+    JSON.stringify(evidence, null, 2),
+    { flag: "wx" },
+  );
+}
+
 async function showTerminalDetails() {
   await navigate("/plugins");
   const row = $(
@@ -52,7 +104,7 @@ async function install(fixture) {
   await click(button("Install plugin"));
   await click($("[role='dialog'] [role='combobox']"));
   await click(option(fixture.source));
-  await click(dialogButton("Choose plugin file"));
+  await selectFile(dialogButton("Choose plugin file"), "Open", fixture.archive);
   await byText(
     "*",
     `Signature verified · ${fixture.source}`,
@@ -148,7 +200,7 @@ async function readerBytes() {
 
 async function startCapture(capturePath) {
   await click(captureButton());
-  await click(dialogButton("Start capture"));
+  await selectFile(dialogButton("Start capture"), "Save", capturePath);
   await grantActiveOutputRead(capturePath);
   await dialogButton("Stop capture").waitForEnabled();
   await browser.keys(Key.Escape);

@@ -72,6 +72,10 @@
 
 **草稿事件分段诊断**。同一生产浏览器产物、同一文本框，以单 worker 交替测量正常事件与仅保留原生编辑。正常路径的事件处理 p95 为 16.0、23.9 毫秒，输入到下一帧为 72.6、76.2 毫秒。仅保留原生编辑时测得 77.6、123.1 毫秒。绕过事件处理后仍出现慢帧，继续测量浏览器布局与帧等待。原始结果为同目录的 `composer-dispatch-{1,2,3,4}.log`；绕过应用事件的测量只用于诊断。
 
+**Windows 实际文件对话框（候选）**。在独立 Windows 原生预检保留原签名终端夹具，并另外用系统对话框运行同一场景。辅助程序观察已持有的应用 PID、窗口所有者以及对话框关闭后的实际前台焦点。安装和保存路径、录制、重开与撤权由该次场景核对。此入口待托管 Windows 实跑。本机前台观察和缩放验收仍按原记录核对。
+
+**macOS 定向预检结果（`6078e4d`）**。Intel 的安装布局、签名运行和回收本轮通过，运行时单项 9 项、签名后台 109 项通过。随后 73 项原生 Host 套件在 25 分钟作业时限到达前未全部完成。Apple Silicon 首次排队 15 分钟后被取消，未获得 runner，已重试同一提交。关键收据和日志见同目录的 `intel-preflight-6078e4d-receipts`、`intel-preflight-6078e4d.log` 与 `mac-arm-preflight-cancelled-job.json`。[Intel 预检](https://github.com/YanChao001/serial-workbench/actions/runs/44534980614) · [Apple Silicon 预检](https://github.com/YanChao001/serial-workbench/actions/runs/44534992880)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

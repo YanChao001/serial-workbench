@@ -114,6 +114,32 @@ for (const mode of ["--terminal-manual", "--terminal-automated"]) {
   });
 }
 
+test("native picker automation refuses the local desktop before build or launch", () => {
+  const result = spawnSync(
+    process.execPath,
+    [
+      fileURLToPath(new URL("./run.mjs", import.meta.url)),
+      "--interactive",
+      "--terminal-automated",
+    ],
+    {
+      env: {
+        ...process.env,
+        GITHUB_ACTIONS: "",
+        SWB_E2E_WINDOWS_NATIVE_PICKERS: "1",
+        SWB_TEST_SIGNED_TERMINAL_RECEIPT: "relative.json",
+      },
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 15000,
+    },
+  );
+  assert.equal(result.error, undefined);
+  assert.equal(result.status, 1);
+  assert.match(result.stderr, /independent Windows CI terminal scenario/);
+  assert.equal(result.stdout, "");
+});
+
 test("ordinary script checks skip native installer executables before probing tools, including CI", () => {
   const env = {
     ...process.env,

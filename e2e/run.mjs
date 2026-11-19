@@ -91,6 +91,17 @@ try {
   );
   const manual = phases.includes("terminal-manual");
   const automated = phases.includes("terminal-automated");
+  const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
+  if (
+    nativePickers &&
+    (!automated ||
+      process.platform !== "win32" ||
+      process.env.GITHUB_ACTIONS !== "true")
+  ) {
+    throw new Error(
+      "Native file dialog automation requires the independent Windows CI terminal scenario.",
+    );
+  }
   const terminalFixture =
     manual || automated
       ? readTerminalFixture(process.env.SWB_TEST_SIGNED_TERMINAL_RECEIPT)
@@ -205,6 +216,7 @@ try {
       logPath: join(phaseArtifacts, "native.log"),
     });
     owned.push(app);
+    if (nativePickers) env.STARTER_E2E_APP_PID = String(app.child.pid);
     let runner;
     try {
       await waitForWebDriver(app, port, cancellation.signal);

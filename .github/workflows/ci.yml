@@ -443,6 +443,7 @@ jobs:
     with:
       platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[inputs.native_preflight_target || 'x86_64-unknown-linux-gnu'] }}
       target: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
+      native_file_dialogs: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' }}
 
   desktop-e2e:
     if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight

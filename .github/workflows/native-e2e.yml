@@ -9,6 +9,9 @@ on:
       target:
         type: string
         required: true
+      native_file_dialogs:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -76,6 +79,12 @@ jobs:
         run: |
           pnpm test:e2e --interactive --skip-build
           pnpm test:e2e --interactive --skip-build --terminal-automated
+
+      - name: Windows 实际文件对话框与焦点
+        if: runner.os == 'Windows' && inputs.native_file_dialogs
+        env:
+          SWB_E2E_WINDOWS_NATIVE_PICKERS: "1"
+        run: pnpm test:e2e --interactive --skip-build --terminal-automated
 
       - name: 桌面 E2E（Linux）
         if: runner.os == 'Linux'

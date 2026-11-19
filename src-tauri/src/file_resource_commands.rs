@@ -553,10 +553,13 @@ pub async fn choose_file_resource(
 
 #[cfg(feature = "e2e")]
 fn e2e_picker_path(role: FileResourceRole) -> HostResult<Option<PathBuf>> {
+    let native_terminal_picker = cfg!(target_os = "windows")
+        && std::env::var("SWB_E2E_WINDOWS_NATIVE_PICKERS").as_deref() == Ok("1");
     let (directory, file) = match role {
         FileResourceRole::Media => ("STARTER_TEST_DATA_DIR", "e2e-background.png"),
         FileResourceRole::Source | FileResourceRole::CaptureTarget
-            if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("terminal-automated") =>
+            if !native_terminal_picker
+                && std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("terminal-automated") =>
         {
             let file = match role {
                 FileResourceRole::Source => "reference-terminal.zip",

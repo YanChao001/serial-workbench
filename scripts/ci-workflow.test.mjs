@@ -118,6 +118,15 @@ test("preflight shares the full native runner and retains successful source rece
     preflight,
     /target: \$\{\{ inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu' \}\}/,
   );
+  assert.match(
+    preflight,
+    /native_file_dialogs: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' \}\}/,
+  );
+  assert.doesNotMatch(job("desktop-e2e"), /native_file_dialogs/);
+  assert.match(
+    native,
+    /if: runner\.os == 'Windows' && inputs\.native_file_dialogs\n\s+env:\n\s+SWB_E2E_WINDOWS_NATIVE_PICKERS: "1"\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
+  );
   const triggers = native.split(/^on:\s*$/m)[1]?.split(/^\S/m)[0];
   assert.deepEqual(
     [...triggers.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1]),
