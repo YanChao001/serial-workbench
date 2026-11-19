@@ -88,6 +88,8 @@
 
 **录制工具还焦与验签退出状态（候选）**。嵌入式 WebDriver 在发出 DOM 点击后才请求焦点，旧版录制工具会把先前获得焦点的元素作为还焦目标。本机同样的无头点击已复现还焦失败。录制工具现直接记住打开它的按钮，原生用例等待还焦后再进入插件页，核对「更多操作」按钮已获焦且菜单展开再撤权。新版浏览器产物通过录制和插件页的 10 项相关用例。macOS 监护通过已有私有通道补记恢复运行前观察到的退出原因，探针保留首个 I/O 错误与回收诊断。仍按原门槛复验签名和真实桌面。源码、截图及结果见同目录 `capture-focus-baseline.log`、`capture-focus-baseline`、`capture-focus-build.log` 与 `capture-focus-candidate.log`。
 
+**新版定向复验（`c28e1bf`）**。本机 `pnpm verify --jobs 1` 通过，192.1 秒。受限环境首轮有两项自有进程终止脚本失败并挂起，已保存 `.cache/verify/run-FqGcc0` 并确认自有测试树退出。Intel 的签名后台单项、原生安装布局和诊断场景通过，本轮未复现 `ESRCH`。Windows 基础桌面和原生签名终端通过，实际回放 69 字节；额外的真实打开对话框取得了确认控件，但 UI Automation 未提供文件名 ValuePattern，未选择 ZIP，也未执行真实保存。备用路径仅枚举已确认的所属对话框的子窗口，在已知文件名控件下用 Win32 写入并读回路径，仍检查确认前后的实际前台窗口。证据见同目录 `capture-focus-c28e1bf-verify-native-process.log` 和 `windows-c28e1bf`。[Windows 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44555182966) · [Intel macOS 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44555191954)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

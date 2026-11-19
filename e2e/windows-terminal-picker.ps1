@@ -16,6 +16,7 @@ Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 public static class TerminalPickerWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -23,6 +24,52 @@ public static class TerminalPickerWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr dialog, int id);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
+    [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
+    [DllImport("user32.dll", CharSet = CharSet.Unicode)]
+    private static extern int GetClassName(IntPtr window, StringBuilder name, int capacity);
+    private delegate bool EnumerateWindow(IntPtr window, IntPtr extra);
+    [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumerateWindow callback, IntPtr extra);
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr WriteText(IntPtr window, uint message, UIntPtr size, string value, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
+    private static extern IntPtr ReadText(IntPtr window, uint message, UIntPtr size, StringBuilder value, uint flags, uint timeout, out UIntPtr result);
+
+    public static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid) {
+        const int fileNameComboId = 1148;
+        const int fileNameEditId = 1152;
+        IntPtr result = IntPtr.Zero;
+        var name = new StringBuilder(32);
+        EnumChildWindows(dialog, (child, extra) => {
+            uint pid;
+            GetWindowThreadProcessId(child, out pid);
+            if (pid != applicationPid || GetClassName(child, name, name.Capacity) == 0 || name.ToString() != "Edit") {
+                return true;
+            }
+            for (IntPtr control = child; control != dialog && control != IntPtr.Zero; control = GetParent(control)) {
+                int id = GetDlgCtrlID(control);
+                if (id == fileNameComboId || id == fileNameEditId) {
+                    result = child;
+                    return false;
+                }
+            }
+            return true;
+        }, IntPtr.Zero);
+        return result;
+    }
+
+    public static bool SetFileName(IntPtr edit, string path) {
+        const uint abortIfHung = 2;
+        const uint setText = 0x000C;
+        const uint getText = 0x000D;
+        UIntPtr result;
+        if (WriteText(edit, setText, UIntPtr.Zero, path, abortIfHung, 1000, out result) == IntPtr.Zero || result == UIntPtr.Zero) {
+            return false;
+        }
+        var actual = new StringBuilder(path.Length + 2);
+        return ReadText(edit, getText, new UIntPtr((uint)actual.Capacity), actual, abortIfHung, 1000, out result) != IntPtr.Zero
+            && actual.ToString() == path;
+    }
 }
 '@
 
@@ -94,16 +141,24 @@ if (!$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePatte
         [void]$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)
     }
 }
-if (!$fileValue -or !$confirmAction) {
+$nativeEdit = if (!$fileValue) { [TerminalPickerWindow]::FileNameEdit($handle, $ApplicationPid) } else { [IntPtr]::Zero }
+if ((!$fileValue -and $nativeEdit -eq [IntPtr]::Zero) -or !$confirmAction) {
     $controls = $dialog.FindAll($scope, [Windows.Automation.Condition]::TrueCondition) | Where-Object {
         $_.Current.AutomationId -notlike 'System.*' -and
             $_.Current.ControlType -in [Windows.Automation.ControlType]::Edit, [Windows.Automation.ControlType]::ComboBox, [Windows.Automation.ControlType]::Button
     } | Select-Object -Last 16 | ForEach-Object {
         '{0}/{1}/{2}' -f $_.Current.ControlType.ProgrammaticName, $_.Current.AutomationId, $_.Current.Name
     }
-    throw "The owned $Action dialog did not expose Value=$([bool]$fileValue) Invoke=$([bool]$confirmAction). Controls: $($controls -join ' | ')"
+    throw "The owned $Action dialog did not expose Value=$([bool]$fileValue) NativeEdit=$($nativeEdit -ne [IntPtr]::Zero) Invoke=$([bool]$confirmAction). Controls: $($controls -join ' | ')"
 }
-$fileValue.SetValue($FilePath)
+if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
+    throw "The owned $Action dialog lost foreground focus before entering the path."
+}
+if ($fileValue) {
+    $fileValue.SetValue($FilePath)
+} elseif (![TerminalPickerWindow]::SetFileName($nativeEdit, $FilePath)) {
+    throw "The owned $Action dialog did not retain its filename."
+}
 if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
     throw "The owned $Action dialog lost foreground focus before confirmation."
 }
@@ -118,6 +173,7 @@ while ($clock.Elapsed.TotalSeconds -lt 5) {
             dialog = $handle.ToInt64()
             owner = $owner.ToInt64()
             path = $FilePath
+            input = if ($fileValue) { 'automation-value' } else { 'native-edit' }
             returnedFocus = $true
         } | ConvertTo-Json -Compress
         exit 0
