@@ -120,7 +120,7 @@ export function register(context) {
       } catch (error) {
         if (error.code !== "CANCELLED" && !task.signal.aborted) throw error;
         if (!task.signal.aborted)
-          await new Promise(resolve => task.signal.addEventListener("abort", resolve, {once:true}));
+          throw Error("The Host must abort the task before rejecting its data request");
         event("read-cancelled");
       }
       task.signal.throwIfAborted();

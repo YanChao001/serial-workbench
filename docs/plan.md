@@ -44,6 +44,8 @@
 
 **Windows 新版真实文件选择（`d5eaa63`）**。在已安排的本机前台，以普通桌面权限和独立 Host profile 打开真实 ZIP 对话框。返回主窗后已确认插件名称、版本和等待授权状态。随后连接 Virtual Echo 时 Windows 报主窗未响应，录制保存对话框未到达。截图、Host 日志和退出记录见 `artifacts/e2e/signed-terminal-limited-kE5a0S` 和 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/checkpoint.json`。随后发现并终止仍在占用内存的测试诊断 PowerShell，系统可用内存由约 4.0 GiB 恢复至 18.3 GiB。测试应用、Host 和临时启动任务已退出。窗口未响应的原因仍待复验。
 
+**自动化任务取消（第二轮 CI）**。Windows 正式运行时中的签名参考包通过匹配、不匹配和超时场景，等待应答时的取消被记为 `NODE_ACTION_FAILED`。同版本 Node bootstrap 用受控私有帧复现 Raw `CANCELLED` 回执先到、取消控制帧尚未到达的情形。修复前回报 `action_failed`，修复后回报 `action_cancelled`。Host 仍核对是否已接受实际取消，保留等待真实终态和已经发生的晚成功。原生 Raw 回归现要求任务信号先于拒绝可见。日志见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/repaired-ci-rust-windows.log` 和同目录的 `raw-cancel-red.log`、`raw-cancel-green.log`，关联 AUTO-05、AUTO-13。完整参考包和多平台回归待同一候选通过。[第二轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44493616201)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

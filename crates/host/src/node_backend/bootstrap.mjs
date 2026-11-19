@@ -1110,6 +1110,8 @@ function dispatchData(message, lane) {
   try {
     checkTask(pending.message, pending.task);
     if (!message.reply.ok) {
+      // 数据通道可能先收到 Host 的取消回执，再收到控制帧。先关闭任务准入并通知处理器。
+      if (message.reply.error.code === "CANCELLED") stopTask(pending.task);
       throw Object.assign(
         new Error(message.reply.error.message),
         message.reply.error,

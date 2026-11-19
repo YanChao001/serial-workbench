@@ -753,6 +753,12 @@ impl Owner {
             ActionOutcome::Cancelled => Err(pending
                 .cancelling
                 .map(|(_, cause)| cause)
+                // 任务数据回执可先于监督轮的取消控制帧到达 Node。仅接受 Host 此刻已确认的取消。
+                .or_else(|| {
+                    (pending.authorize)()
+                        .err()
+                        .filter(|error| error.code == "CANCELLED")
+                })
                 .unwrap_or_else(|| {
                     // 插件自行声称取消不能代替Host请求，也不能留下不可结算的Running。
                     error("NODE_ACTION_FAILED", "backendUnexpectedActionCancellation")
