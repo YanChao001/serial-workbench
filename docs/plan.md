@@ -173,7 +173,7 @@ Windows `pnpm verify` 通过，前端 2558 项通过，脚本 353 项通过、4 
 
 原生平台验收使用独立环境或安排好的前台时段。检查实际 WebView 隔离、Tauri 全局、子 frame 导航、旧端口投递与关窗资源回收，并核对焦点、语言、主题和缩放。参见 [锁定版 Wry 的 WebView 构建接口](https://docs.rs/wry/0.57.0/wry/struct.WebViewBuilder.html)和 [HTML 消息端口](https://html.spec.whatwg.org/multipage/web-messaging.html#message-channels)。
 
-**仍需观察。** 安装准备超时和关停压力失败尚未确认修复。候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。草稿输入两轮通过的 p95 为 96.4、95.6 毫秒，距门槛约 4 毫秒。三轮超标原样本各有两个达到或超过 100 毫秒，当前第二慢值分别为 100.4、116.8、117.7 毫秒，最邻近秩重算为 71.8、76.5、81.8 毫秒。其中一轮原生对照的第二慢值也达到 112.1 毫秒。原样本位于 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `runtime-supervision-exact-ui-failure`、`composer-read-exact-ui-failure` 和 `composer-input-latency-353df06`。两种公式分别允许 40 个样本中有一个或两个达到或超过门槛。单次差异足以翻转该轮结果，实际体验预算仍需在代表性环境中用多轮样本校准。按[设计与复核测试门槛](./testing.md#设计与复核测试门槛)继续评估，原验收记录保留。
+**仍需观察。** 安装准备超时和关停压力失败尚未确认修复。候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。草稿输入的 100 毫秒硬门槛待复核。40 次采样中一条记录即可让两种 p95 算法判出不同结果，原生文本框对照也曾超标。评估时先确定代表性环境及会影响用户的性能回归，再决定门槛是否适合做 CI 硬门禁。原判定与样本保存在 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `runtime-supervision-exact-ui-failure`、`composer-read-exact-ui-failure` 和 `composer-input-latency-353df06`。取舍见[设计与复核测试门槛](./testing.md#设计与复核测试门槛)。
 
 ## 阶段路线
 
