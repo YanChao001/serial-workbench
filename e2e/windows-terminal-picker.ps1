@@ -15,8 +15,10 @@ if (![IO.Path]::IsPathRooted($FilePath)) {
 Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
 using System;
+using System.Collections.Generic;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.RegularExpressions;
 
 public static class TerminalPickerWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
@@ -48,10 +50,12 @@ public static class TerminalPickerWindow {
         return PostMessage(window, buttonClick, UIntPtr.Zero, IntPtr.Zero);
     }
 
-    public static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid) {
+    public static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid, bool captureSave) {
         const int fileNameComboId = 1148;
         const int fileNameEditId = 1152;
         IntPtr result = IntPtr.Zero;
+        IntPtr suggestedName = IntPtr.Zero;
+        int suggestedNames = 0;
         var name = new StringBuilder(32);
         EnumChildWindows(dialog, (child, extra) => {
             uint pid;
@@ -66,22 +70,50 @@ public static class TerminalPickerWindow {
                     return false;
                 }
             }
+            if (captureSave && Regex.IsMatch(ReadFileName(child, 256), @"\A[0-9]{8}T[0-9]{6}Z_.+_[0-9a-f]{12}(\.swb)?\z")) {
+                suggestedName = child;
+                suggestedNames++;
+            }
             return true;
         }, IntPtr.Zero);
-        return result;
+        if (result != IntPtr.Zero) return result;
+        return suggestedNames == 1 ? suggestedName : IntPtr.Zero;
+    }
+
+    public static string NativeInputControls(IntPtr dialog, uint applicationPid) {
+        var inputs = new List<string>();
+        EnumChildWindows(dialog, (child, extra) => {
+            uint pid;
+            GetWindowThreadProcessId(child, out pid);
+            if (pid == applicationPid) {
+                string name = WindowClass(child);
+                if (name.IndexOf("edit", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                    name.IndexOf("combo", StringComparison.OrdinalIgnoreCase) >= 0) {
+                    inputs.Add(name + "/" + GetDlgCtrlID(child) + "/" + GetDlgCtrlID(GetParent(child)));
+                }
+            }
+            return inputs.Count < 16;
+        }, IntPtr.Zero);
+        return string.Join(" | ", inputs);
+    }
+
+    private static string ReadFileName(IntPtr edit, int capacity) {
+        const uint abortIfHung = 2;
+        const uint getText = 0x000D;
+        UIntPtr result;
+        var actual = new StringBuilder(capacity);
+        return ReadText(edit, getText, new UIntPtr((uint)capacity), actual, abortIfHung, 1000, out result) == IntPtr.Zero
+            ? "" : actual.ToString();
     }
 
     public static bool SetFileName(IntPtr edit, string path) {
         const uint abortIfHung = 2;
         const uint setText = 0x000C;
-        const uint getText = 0x000D;
         UIntPtr result;
         if (WriteText(edit, setText, UIntPtr.Zero, path, abortIfHung, 1000, out result) == IntPtr.Zero || result == UIntPtr.Zero) {
             return false;
         }
-        var actual = new StringBuilder(path.Length + 2);
-        return ReadText(edit, getText, new UIntPtr((uint)actual.Capacity), actual, abortIfHung, 1000, out result) != IntPtr.Zero
-            && actual.ToString() == path;
+        return ReadFileName(edit, path.Length + 2) == path;
     }
 }
 '@
@@ -154,7 +186,15 @@ if (!$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePatte
         [void]$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)
     }
 }
-$nativeEdit = if (!$fileValue) { [TerminalPickerWindow]::FileNameEdit($handle, $ApplicationPid) } else { [IntPtr]::Zero }
+$nativeEdit = [IntPtr]::Zero
+if (!$fileValue) {
+    # The Save dialog can expose a different native tree. Match the app's prefilled capture name.
+    do {
+        $nativeEdit = [TerminalPickerWindow]::FileNameEdit($handle, $ApplicationPid, $Action -eq 'Save')
+        if ($nativeEdit -ne [IntPtr]::Zero) { break }
+        Start-Sleep -Milliseconds 50
+    } while ($clock.Elapsed.TotalSeconds -lt 15 -and [TerminalPickerWindow]::GetForegroundWindow() -eq $handle)
+}
 if ((!$fileValue -and $nativeEdit -eq [IntPtr]::Zero) -or !$confirmAction) {
     $controls = $dialog.FindAll($scope, [Windows.Automation.Condition]::TrueCondition) | Where-Object {
         $_.Current.AutomationId -notlike 'System.*' -and
@@ -162,7 +202,8 @@ if ((!$fileValue -and $nativeEdit -eq [IntPtr]::Zero) -or !$confirmAction) {
     } | Select-Object -Last 16 | ForEach-Object {
         '{0}/{1}/{2}' -f $_.Current.ControlType.ProgrammaticName, $_.Current.AutomationId, $_.Current.Name
     }
-    throw "The owned $Action dialog did not expose Value=$([bool]$fileValue) NativeEdit=$($nativeEdit -ne [IntPtr]::Zero) Invoke=$([bool]$confirmAction). Controls: $($controls -join ' | ')"
+    $nativeInputs = [TerminalPickerWindow]::NativeInputControls($handle, $ApplicationPid)
+    throw "The owned $Action dialog did not expose Value=$([bool]$fileValue) NativeEdit=$($nativeEdit -ne [IntPtr]::Zero) Invoke=$([bool]$confirmAction). Controls: $($controls -join ' | '). Native inputs: $nativeInputs"
 }
 if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
     throw "The owned $Action dialog lost foreground focus before entering the path."
