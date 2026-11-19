@@ -21,6 +21,7 @@ use crate::{
     node_view::test_support::TestView,
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
+use rmcp::{RoleClient, ServiceExt, service::RunningService, transport::TokioChildProcess};
 use serial_workbench_client::{ConnectOptions, HostClient};
 use serial_workbench_core::*;
 use serial_workbench_host::{
@@ -758,6 +759,21 @@ async fn with_embedded_host(exercise: impl AsyncFnOnce(&Path)) {
     exercise(profile.path()).await;
     stop.send(()).unwrap();
     running.await.unwrap().unwrap();
+}
+
+async fn start_reference_mcp(profile: &Path) -> RunningService<RoleClient, ()> {
+    let mut command = tokio::process::Command::new(parity_clients::binary(
+        "SWB_TEST_MCP_BIN",
+        "serial-workbench-mcp",
+    ));
+    command.arg("--profile").arg(profile).kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    let transport = TokioChildProcess::new(command).expect("Start actual MCP stdio program");
+    tokio::time::timeout(Duration::from_secs(10), ().serve(transport))
+        .await
+        .expect("MCP initialization timed out")
+        .unwrap()
 }
 
 fn signed_reference(variable: &str) -> SignedReference {

@@ -1,7 +1,6 @@
 use super::*;
-use rmcp::{ServiceExt, transport::TokioChildProcess};
 use serde_json::{Value, json};
-use tokio::{process::Command, time::timeout};
+use tokio::time::timeout;
 
 const SAMPLE: &str = "swb.reference.chart.sample";
 
@@ -117,18 +116,7 @@ async fn verify_mcp_pages(
     session: &Target,
     pages: [(Value, &DerivedReadResult); 2],
 ) {
-    let mut command = Command::new(parity_clients::binary(
-        "SWB_TEST_MCP_BIN",
-        "serial-workbench-mcp",
-    ));
-    command.arg("--profile").arg(profile).kill_on_drop(true);
-    #[cfg(windows)]
-    command.creation_flags(0x0800_0000);
-    let transport = TokioChildProcess::new(command).expect("Start actual MCP stdio program");
-    let sdk = timeout(Duration::from_secs(10), ().serve(transport))
-        .await
-        .expect("MCP initialization timed out")
-        .unwrap();
+    let sdk = start_reference_mcp(profile).await;
     let replies = timeout(Duration::from_secs(10), async {
         let mut replies = Vec::with_capacity(pages.len());
         for (params, expected) in pages {

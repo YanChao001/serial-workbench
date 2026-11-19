@@ -708,13 +708,20 @@ impl AuthorizationSnapshot {
         if rule.allowed { Ok(()) } else { Err(denied()) }
     }
     pub(crate) fn can_discover(&self, permission: &str, target_kinds: &[ResourceKind]) -> bool {
+        self.can_discover_on(permission, |kind| target_kinds.contains(kind))
+    }
+    pub(crate) fn can_discover_on(
+        &self,
+        permission: &str,
+        includes_kind: impl Fn(&ResourceKind) -> bool,
+    ) -> bool {
         let Some(grants) = &self.grants else {
             return ["auth.manage", "metadata.read"].contains(&permission);
         };
         grants.record().rules.iter().any(|rule| {
             rule.permission == permission
                 && rule.allowed
-                && (rule.target.kind.as_str() == "host" || target_kinds.contains(&rule.target.kind))
+                && (rule.target.kind.as_str() == "host" || includes_kind(&rule.target.kind))
                 && self.require(permission, &rule.target).is_ok()
         })
     }

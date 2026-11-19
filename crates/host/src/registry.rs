@@ -128,8 +128,16 @@ impl Registry {
             .collect();
         for spec in catalog {
             let mut visible = true;
+            let action = BuiltinAction::find(spec.action_id.as_str()).ok();
             for permission in &spec.permissions {
-                let action = BuiltinAction::find(spec.action_id.as_str()).ok();
+                if matches!(
+                    action,
+                    Some(BuiltinAction::FileMetadata | BuiltinAction::FileRead)
+                ) {
+                    // 历史插件结果沿用原动作资源的权限，其类型可不同于结果引用。
+                    visible &= authorization.can_discover_on(permission, |_| true);
+                    continue;
+                }
                 let target_kinds = if matches!(
                     action,
                     Some(BuiltinAction::OperationGet | BuiltinAction::OperationInput)

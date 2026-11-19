@@ -54,7 +54,7 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 
 关停是业务动作：本地用户控制连接发送 `method: "action.invoke"`、`actionId: "host.shutdown"`，目标为 Host，参数为空。接纳返回 Operation，领域结果带 `instanceEpoch`；CLI 的 `host stop` 还会等待实例实际退出。
 
-读取文件或插件结果引用使用 `action.query` 调用 `file.read`，传 `fileRef,offset,maxBytes`，并按返回的 `nextOffset` 分块读取。wire DTO 虽保留 `object.read`，当前内置目录没有这个业务 ID，不应作为客户端读文件入口。
+读取文件或插件结果引用使用 `action.query` 调用 `file.read`，传 `fileRef,offset,maxBytes`，并按返回的 `nextOffset` 分块读取。持有可作为插件结果来源的相应权限时，目录公布通用的 `file.metadata` 或 `file.read` 动作定义。实际查询核对具体引用及原动作目标的当前授权。wire DTO 虽保留 `object.read`，当前内置目录没有这个业务 ID，不应作为客户端读文件入口。
 
 `limits` 必含 `maxRequestBytes,maxPageItems,maxBatchBytes,maxReaderQueueBytes,resultRetentionMs,maxLeaseTtlMs`（均 U64），在 attach 前也对握手限流限长；具体容量由 M1 实测配置并在 handshake 返回。maxLeaseTtlMs 不得超过 `"2147483647"`，时限单位、范围与计时器转换见 [发送回执](./stream-and-operations-v0.md#发送回执)。v0 `resultRetentionMs` 最小值为 `"604800000"`（终态后七天），在途 operation 不因保留期淘汰。超出接纳容量返回 `HOST_BUSY`/`LIMIT_EXCEEDED`，不能先执行再丢去重记录。
 

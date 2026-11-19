@@ -26,7 +26,7 @@
 
 **C 图表后台和留存视图（候选，Windows）**。签名包将 Virtual Echo 的拆分 RX 发布为 `1.25`、`-2`、`3.5` V，保留三段原始字节范围。真实桌面桥与重开视图读取同一完成任务的样本，撤权后禁止视图读页。实际 CLI 读到相同首页，官方 MCP SDK 通过同源 stdio 程序读到两页，数值、会话代次和来源范围与桌面桥一致。图表和终端可以在工作台已占用 Raw 通道时打开。无头 Chromium 验证隔离视图显示缺口和样本。三入口证据见 `.cache/evidence/m2-node-backend/chart-mcp-parity-20261120/checkpoint.json`，视图原验证见 `.cache/evidence/m2-node-backend/reference-chart-view-20261119/checkpoint.json`。这次覆盖 AUTO-13 和 VIZ-16 的软件部分。原生图表窗口、实时采样、三平台离线安装及完整 C 场景继续验收。
 
-**C 自动化后台参考包（工作树，Windows）**。公开 SDK 提交同一会话的发送子动作，按实际发送回执和 RX 来源范围核对每步应答。实际签名包在嵌入式 Rust Host 上通过双步骤匹配。应答不符、收到前缀后超时、等待应答时取消都只执行首步。取消用例先等真实 RX，再核对取消接纳回执和父动作终态。Virtual Echo 录制回放逐字节核对 32 字节和会话代次，覆盖 IO-10、AUTO-05 和 AUTO-13 的软件部分。见 `.cache/evidence/m2-node-backend/reference-automation-20261119/checkpoint.json`。窗口、多入口与三平台离线安装仍待验收。
+**C 自动化后台参考包（候选，Windows）**。公开 SDK 提交同一会话的发送子动作，按实际发送回执和 RX 来源范围核对每步应答。实际签名包在嵌入式 Rust Host 上通过双步骤匹配。应答不符、收到前缀后超时、等待应答时取消都只执行首步。取消用例先等真实 RX，再核对取消接纳回执和父动作终态。Virtual Echo 录制回放逐字节核对 32 字节和会话代次。实际 MCP 程序随后执行一步，CLI 读到同一结果字节和来源。Host 目录现能按会话读取授权公布结果读取工具，撤权后 MCP 无法调用，CLI 的独立授权继续有效。覆盖 IO-10、AUTO-05、AUTO-13 和 SEC-12 的软件部分。首轮目录错误和三项定向复验见 `.cache/evidence/m2-node-backend/automation-client-parity-20261120/checkpoint.json`，录制原证据见 `.cache/evidence/m2-node-backend/reference-automation-20261119/checkpoint.json`。窗口、三平台离线安装及完整 C 场景继续验收。
 
 **四目标签名包用例（工作树）**。在现有四目标 CI 的原生 runtime 验收步骤中加入图表和自动化，三种参考包共用一次签名工具构建。任务分别保留签名包、签名收据与实际用例日志。Windows 本机用已构建的 runtime、正式 Host、CLI 和 MCP 复跑了三包签名与四个真实 Host 用例。首次本机复跑的伴随程序路径配置失败也已保留。见 `.cache/evidence/m2-node-backend/reference-ci-recheck-20261119/checkpoint.json`。四目标托管 CI 仍待运行。
 

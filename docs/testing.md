@@ -167,14 +167,14 @@ pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts
 
 ## 自动化参考包后台应答
 
-执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。把签名 stdout 保存为收据，将 `SWB_TEST_SIGNED_AUTOMATION_RECEIPT` 设为其绝对路径。
+执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。把签名 stdout 保存为收据，将 `SWB_TEST_SIGNED_AUTOMATION_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 分别指向同源 CLI 和 MCP 程序。
 
 ```sh
 cargo run --locked -p serial-workbench-host --example sign_reference_automation -- .cache/plugin-sdk/examples/reference-automation/main.js <测试种子文件> <新ZIP绝对路径> automation-reference local-acceptance
 cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --nocapture
 ```
 
-用例在 Virtual Echo 会话核对两次应答和 RX 范围，再分别验证应答不符、收到前缀后超时和等待应答时取消。结果区分超时和应答不符，取消请求与父动作实际停止分别核对。三种情况下都只接纳首个发送子动作。独立发送仍可使用同一会话，停止录制后逐字节核对全部 32 字节。
+用例在 Virtual Echo 会话核对两次应答和 RX 范围，再分别验证应答不符、收到前缀后超时和等待应答时取消。结果区分超时和应答不符，取消请求与父动作实际停止分别核对。三种情况下都只接纳首个发送子动作。独立发送仍可使用同一会话，停止录制后逐字节核对全部 32 字节。真实 MCP 程序在同一会话另执行一步，CLI 读取同一结果引用并核对正文。撤销 MCP 的会话读取权限后复查结果读取工具和 CLI 的独立读取权。
 
 `node --test scripts/node-backend-cancellation.test.mjs` 向实际 Node bootstrap 先发送带 `CANCELLED` 的 Raw 回执，并验证任务在收到取消控制帧之前已报告取消。真实 Host 中的授权复核、父动作终态和录制连续性仍由原生用例验证。
 
