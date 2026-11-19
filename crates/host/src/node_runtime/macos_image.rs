@@ -103,7 +103,9 @@ impl MacRuntimeImage {
                 std::mem::size_of::<u32>(),
             )
         };
+        let status_errno = (read_status != 0).then(|| io::Error::last_os_error().raw_os_error());
         let read_hash = unsafe { csops(pid, 5, cdhash.as_mut_ptr().cast(), cdhash.len()) };
+        let hash_errno = (read_hash != 0).then(|| io::Error::last_os_error().raw_os_error());
         const REQUIRED: u32 = 0x1 | 0x100 | 0x200 | 0x10000; // VALID / HARD / KILL / RUNTIME
         const DISALLOWED: u32 = 0x4 | 0x20 | 0x10000000; // GET_TASK_ALLOW / INVALID_ALLOWED / DEBUGGED
         let actual: String = cdhash.iter().map(|byte| format!("{byte:02x}")).collect();
@@ -112,6 +114,13 @@ impl MacRuntimeImage {
         }
         if read_hash == 0 {
             diagnostics.image_cdhash = Some(actual.clone());
+        }
+        if read_status != 0 || read_hash != 0 {
+            diagnostics.io_error = Some(format!(
+                "csops status: return={read_status} errno={:?}, cdhash: return={read_hash} errno={:?}",
+                status_errno.flatten(),
+                hash_errno.flatten(),
+            ));
         }
         if read_status != 0
             || read_hash != 0

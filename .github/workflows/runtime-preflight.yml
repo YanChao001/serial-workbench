@@ -146,6 +146,7 @@ jobs:
             artifacts/rust-failures/node-runtime-*/**
             artifacts/rust-failures/node-backend-*/**
             artifacts/rust-failures/host-node-backend-*/**
+            artifacts/rust-failures/host-node-task-derived-*/derived.events
             artifacts/rust-failures/macos-node-before-auth-*/**
           include-hidden-files: true
           if-no-files-found: ignore

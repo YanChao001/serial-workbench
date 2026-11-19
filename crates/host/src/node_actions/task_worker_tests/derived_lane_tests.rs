@@ -138,9 +138,14 @@ async fn native_node_task_derived_lane_preserves_raw_control_and_capture() {
     );
     assert_eq!(next.samples, all.samples[1..]);
 
+    let retention_started = std::time::Instant::now();
     let repeated = fixture.invoke(&fixture.client, call("retention")).await;
     let repeated = fixture.wait(&fixture.client, &repeated.operation_id).await;
     assert_eq!(repeated.state, OperationState::Succeeded, "{repeated:?}");
+    eprintln!(
+        "task_derived_retention publications=66 elapsed_ms={}",
+        retention_started.elapsed().as_millis()
+    );
     let expired = failure(
         reader_raw
             .request(read(&reader, &repeated.operation_id, 0, 16))
@@ -386,7 +391,13 @@ export function register(context) {
     }
     if (mode === "retention") {
       let receipt;
-      for (let i = 0; i < 66; i++) receipt = await task.streams.publishDerived(params);
+      const started = performance.now();
+      for (let count = 1; count <= 66; count++) {
+        receipt = await task.streams.publishDerived(params);
+        if (count === 1 || count % 16 === 0 || count === 66) {
+          event("retention:" + count + ":" + Math.round(performance.now() - started));
+        }
+      }
       return {receipt};
     }
     const pending = Array.from({length:4}, () => task.streams.publishDerived(params));

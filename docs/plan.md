@@ -68,6 +68,10 @@
 
 **恢复夹具在途查询（候选）**。Windows CI 恢复测试报告本地连接关闭。客户端禁止在请求帧部分写入后继续复用连接，夹具现在保留竞争中未完成的查询，继续检查旧恢复与新启用的顺序、实际代次与重放。改动前本机短测另有一次等待超时，保留的 SQLite 记录显示该启用随后成功。修订后本机定向复跑三次均通过，完整候选待验。见同目录的 `recovery-query-baseline-profile.json` 与 `recovery-query-preserved-result.json`。[Windows 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565/job/135550786712)
 
+**macOS 两处失败复验（候选）**。Intel 的安装布局收据为 `NODE_RUNTIME_INTEGRITY_FAILED`，原因 `processSignature`，未读到签名状态和代码目录摘要，已回收子进程。补记两次系统调用的各自错误码到私有诊断。arm64 失败数据库显示并发发布已结算，随后用于验证留存和游标过期的 66 次顺序发布仍在运行。增加分段进度并保留对应失败日志。Windows 定向场景通过，66 次耗时 3.108 秒，因缺少伴随二进制跳过本次 CLI、MCP 分支。5 秒等待期限及原有断言继续适用。原始摘录及本机日志见同目录的 `intel-startup-excerpt`、`arm64-derived-excerpt` 和 `derived-retention-timing-windows.log`，两个 macOS 目标待定向复验。[Intel 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565/job/135550786626) · [arm64 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565/job/135550786477)
+
+**草稿事件分段诊断**。同一生产浏览器产物、同一文本框，以单 worker 交替测量正常事件与仅保留原生编辑。正常路径的事件处理 p95 为 16.0、23.9 毫秒，输入到下一帧为 72.6、76.2 毫秒。仅保留原生编辑时测得 77.6、123.1 毫秒。绕过事件处理后仍出现慢帧，继续测量浏览器布局与帧等待。原始结果为同目录的 `composer-dispatch-{1,2,3,4}.log`；绕过应用事件的测量只用于诊断。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

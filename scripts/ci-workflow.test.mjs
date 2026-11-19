@@ -245,6 +245,11 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     ]) {
       assert.ok(workflow.includes(`artifacts/rust-failures/${prefix}*/**`));
     }
+    assert.ok(
+      workflow.includes(
+        "artifacts/rust-failures/host-node-task-derived-*/derived.events",
+      ),
+    );
   }
   assert.match(
     ci,
