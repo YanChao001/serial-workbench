@@ -160,9 +160,10 @@ test("E2E rejects changed source, missing or substituted adjacent components and
   writeFileSync(node, "prepared fixture bytes");
   const examples = join(output, "examples");
   mkdirSync(examples);
-  const terminalTools = [
+  const referenceTools = [
     "sign_reference_terminal",
     "terminal_capture_check",
+    "sign_reference_chart",
   ].map((name) => {
     const path = join(examples, name + ".exe");
     writeFileSync(path, name);
@@ -172,24 +173,24 @@ test("E2E rejects changed source, missing or substituted adjacent components and
     ...receipt,
     source: e2eBuild.e2eSourceIdentity(root),
     nodeRuntime: inspectNodeRuntimeLayout({ root, target }, output),
-    terminalTools,
+    referenceTools,
   };
   save(provisioned);
   assert.deepEqual(
     e2eBuild.readE2EBuildReceipt(root, { withNodeRuntime: true }),
     provisioned,
   );
-  save({ ...provisioned, terminalTools: terminalTools.slice(0, 1) });
+  save({ ...provisioned, referenceTools: referenceTools.slice(0, 2) });
   assert.throws(
     () => e2eBuild.readE2EBuildReceipt(root, { withNodeRuntime: true }),
-    /E2E 终端验收工具收据失效/,
+    /E2E 签名参考包验收工具收据失效/,
   );
   save(provisioned);
-  const verifier = terminalTools[1];
+  const verifier = referenceTools[1];
   writeFileSync(verifier.path, "wrong candidate");
   assert.throws(
     () => e2eBuild.readE2EBuildReceipt(root),
-    /E2E 终端验收工具收据失效/,
+    /E2E 签名参考包验收工具收据失效/,
   );
   writeFileSync(verifier.path, verifier.name);
   writeFileSync(node, "prepared fixture data!");
@@ -236,6 +237,8 @@ test("E2E builds desktop and adjacent entrypoints in one locked Cargo selection"
       "sign_reference_terminal",
       "--example",
       "terminal_capture_check",
+      "--example",
+      "sign_reference_chart",
     ],
   );
 });

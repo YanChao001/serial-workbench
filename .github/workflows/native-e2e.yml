@@ -12,6 +12,9 @@ on:
       native_file_dialogs:
         type: boolean
         default: false
+      chart_only:
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -27,7 +30,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 构建 Windows 文件对话框辅助程序
-        if: runner.os == 'Windows' && inputs.native_file_dialogs
+        if: runner.os == 'Windows' && inputs.native_file_dialogs && !inputs.chart_only
         shell: powershell
         timeout-minutes: 2
         run: |
@@ -69,45 +72,57 @@ jobs:
       - name: 构建测试专用桌面应用
         run: pnpm e2e:build --with-node-runtime
 
-      - name: 准备桌面验收用签名终端
+      - name: 准备桌面验收用签名参考包
         shell: bash
+        env:
+          REFERENCE: ${{ inputs.chart_only && 'chart' || 'terminal' }}
         run: |
           pnpm plugin-sdk:fixture
-          mkdir -p artifacts/e2e/terminal-fixture
-          output="$(node -p 'require("node:path").resolve("artifacts/e2e/terminal-fixture")')"
+          output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/e2e/$REFERENCE-fixture")"
+          mkdir -p "$output"
           seed="$(mktemp)"
           trap 'rm -f -- "$seed"' EXIT
           node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), {mode:0o600})' "$seed"
           suffix=""
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
-          "src-tauri/target/e2e/${{ inputs.target }}/debug/examples/sign_reference_terminal$suffix" \
-            ".cache/plugin-sdk/examples/reference-terminal/main.js" "$seed" \
-            "$output/reference-terminal.zip" terminal-reference native-ci > "$output/signed-terminal.json"
-          echo "SWB_TEST_SIGNED_TERMINAL_RECEIPT=$output/signed-terminal.json" >> "$GITHUB_ENV"
+          "src-tauri/target/e2e/${{ inputs.target }}/debug/examples/sign_reference_$REFERENCE$suffix" \
+            ".cache/plugin-sdk/examples/reference-$REFERENCE/main.js" "$seed" \
+            "$output/reference-$REFERENCE.zip" "$REFERENCE-reference" native-ci > "$output/signed-$REFERENCE.json"
+          receipt="SWB_TEST_SIGNED_$(printf '%s' "$REFERENCE" | tr '[:lower:]' '[:upper:]')_RECEIPT"
+          echo "$receipt=$output/signed-$REFERENCE.json" >> "$GITHUB_ENV"
 
       - name: 桌面 E2E（Windows / macOS）
-        if: runner.os != 'Linux'
+        if: runner.os != 'Linux' && !inputs.chart_only
         run: pnpm test:e2e --interactive --skip-build
 
       - name: 签名终端与文件选择夹具（Windows / macOS）
-        if: runner.os != 'Linux' && !(runner.os == 'Windows' && inputs.native_file_dialogs)
+        if: runner.os != 'Linux' && !inputs.chart_only && !(runner.os == 'Windows' && inputs.native_file_dialogs)
         run: pnpm test:e2e --interactive --skip-build --terminal-automated
 
       - name: Windows 实际文件对话框与焦点
-        if: runner.os == 'Windows' && inputs.native_file_dialogs
+        if: runner.os == 'Windows' && inputs.native_file_dialogs && !inputs.chart_only
         env:
           SWB_E2E_WINDOWS_NATIVE_PICKERS: "1"
         run: pnpm test:e2e --interactive --skip-build --terminal-automated
+
+      - name: 签名图表实际窗口（Windows / macOS）
+        if: runner.os != 'Linux' && inputs.chart_only
+        run: pnpm test:e2e --interactive --skip-build --chart-automated
 
       - name: 桌面 E2E（Linux）
         if: runner.os == 'Linux'
         env:
           WEBKIT_DMABUF_RENDERER_FORCE_SHM: "1"
+          CHART_ONLY: ${{ inputs.chart_only }}
         run: |
           mkdir -p artifacts/e2e/crash
           sudo sysctl -w "kernel.core_pattern=$GITHUB_WORKSPACE/artifacts/e2e/crash/core.%p"
           ulimit -c unlimited
-          dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
+          if [[ "$CHART_ONLY" == true ]]; then
+            dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build --chart-automated'
+          else
+            dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
+          fi
 
       - name: 保存 Linux 应用崩溃的原生线程栈
         if: failure() && runner.os == 'Linux'
@@ -119,7 +134,7 @@ jobs:
           binary="$(node --input-type=module -e 'import { readE2EBuild } from "./e2e/build.mjs"; process.stdout.write(readE2EBuild());')"
           shopt -s nullglob
           found=0
-          for native_log in artifacts/e2e/*/native.log artifacts/e2e/signed-terminal-*/terminal-*/native.log; do
+          for native_log in artifacts/e2e/*/native.log artifacts/e2e/signed-*/*-automated/native.log; do
             pid="$(sed -n 's/.*owned-process-exit .* pid=\([0-9][0-9]*\)$/\1/p' "$native_log" | tail -n 1)"
             [[ "$pid" =~ ^[0-9]+$ ]] || continue
             core="artifacts/e2e/crash/core.$pid"

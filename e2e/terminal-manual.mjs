@@ -16,10 +16,10 @@ const INPUTS = [
   ["afterReopen", "terminal-reader-reopened\n"],
 ];
 
-export function readTerminalFixture(receiptPath) {
+export function readSignedReferenceFixture(receiptPath, reference) {
   if (!receiptPath || !isAbsolute(receiptPath))
     throw new Error(
-      "Set SWB_TEST_SIGNED_TERMINAL_RECEIPT to an absolute signed terminal receipt path.",
+      `Set SWB_TEST_SIGNED_${reference.toUpperCase()}_RECEIPT to an absolute signed ${reference} receipt path.`,
     );
   const { archive, archiveSha256, sourceApproval } = JSON.parse(
     readFileSync(receiptPath, "utf8"),
@@ -31,20 +31,22 @@ export function readTerminalFixture(receiptPath) {
     !/^[0-9a-f]{64}$/.test(archiveSha256) ||
     !validateNodeSourceApproveParams(sourceApproval)
   )
-    throw new Error("Invalid signed terminal receipt.");
+    throw new Error(`Invalid signed ${reference} receipt.`);
   const key = Buffer.from(sourceApproval.publicKey);
   if (
     createHash("sha256").update(key).digest("hex") !==
     sourceApproval.publicKeySha256
   )
-    throw new Error("Signed terminal public key does not match its receipt.");
+    throw new Error(
+      `Signed ${reference} public key does not match its receipt.`,
+    );
   const archiveInfo = lstatSync(archive);
   if (
     !archiveInfo.isFile() ||
     archiveInfo.isSymbolicLink() ||
     fileSha256(archive) !== archiveSha256
   )
-    throw new Error("Signed terminal archive does not match its receipt.");
+    throw new Error(`Signed ${reference} archive does not match its receipt.`);
   return {
     archive,
     archiveSha256,
@@ -53,13 +55,24 @@ export function readTerminalFixture(receiptPath) {
   };
 }
 
-export function prepareTerminalEvidence(fixture, directory) {
-  const archive = join(directory, "reference-terminal.zip");
+export function prepareSignedReferenceEvidence(fixture, directory, reference) {
+  const archive = join(directory, `reference-${reference}.zip`);
   copyFileSync(fixture.archive, archive, constants.COPYFILE_EXCL);
   if (fileSha256(archive) !== fixture.archiveSha256)
     throw new Error(
-      "Signed terminal archive changed during evidence preparation.",
+      `Signed ${reference} archive changed during evidence preparation.`,
     );
+  return {
+    archive,
+    archiveSha256: fixture.archiveSha256,
+    source: fixture.sourceApproval.source,
+    keyId: fixture.sourceApproval.keyId,
+    publicKeyHex: fixture.publicKeyHex,
+  };
+}
+
+export function prepareTerminalEvidence(fixture, directory) {
+  const signed = prepareSignedReferenceEvidence(fixture, directory, "terminal");
   const capture = join(directory, "terminal.swbcap");
   const expected = join(directory, "expected-rx.bin");
   const writes = Object.fromEntries(
@@ -71,11 +84,7 @@ export function prepareTerminalEvidence(fixture, directory) {
     { flag: "wx" },
   );
   const plan = {
-    archive,
-    archiveSha256: fixture.archiveSha256,
-    source: fixture.sourceApproval.source,
-    keyId: fixture.sourceApproval.keyId,
-    publicKeyHex: fixture.publicKeyHex,
+    ...signed,
     capture,
     expected,
     writes,

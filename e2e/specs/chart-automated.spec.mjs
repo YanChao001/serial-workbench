@@ -1,0 +1,99 @@
+import assert from "node:assert/strict";
+import { readFileSync, writeFileSync } from "node:fs";
+import { join } from "node:path";
+import { browser } from "@wdio/globals";
+import { language, navigate, ready } from "../helpers.mjs";
+import { nativeValue } from "../settings.mjs";
+import {
+  button,
+  click,
+  installPlugin,
+  sendHex,
+  showPluginDetails,
+} from "./reference-plugin.mjs";
+import { openVirtual } from "./workbench.mjs";
+
+const directory = process.env.STARTER_E2E_CHART_DIR;
+const source = () =>
+  readFileSync(join(directory, "chart-automated", "native.log"), "utf8");
+
+async function waitForMatch(find, timeoutMsg) {
+  let match;
+  await browser.waitUntil(() => Boolean((match = find(source()))), {
+    timeoutMsg,
+  });
+  return match;
+}
+
+async function openChart(previous) {
+  await showPluginDetails("Serial Workbench Chart");
+  await click(button("Open plugin"));
+  const [, view] = await waitForMatch(
+    (log) =>
+      Array.from(
+        log.matchAll(/e2e_chart_window view=(node-view-[\w-]+) event=shown/g),
+      ).find(([, id]) => id !== previous),
+    "The isolated native chart window was not shown",
+  );
+  await button("Open plugin").waitForEnabled();
+  return view;
+}
+
+async function acceptedSamples(view, until) {
+  return waitForMatch((log) => {
+    const pages = Array.from(
+      log.matchAll(
+        /e2e_chart view=(node-view-[\w-]+) operation=([\w-]+) position=(\d+) values=(\[[^\n]*\])/g,
+      ),
+    ).filter(([, id]) => id === view);
+    if (Number(pages.at(-1)?.[3]) !== until) return undefined;
+    const operation = pages[0][2];
+    assert.ok(pages.every(([, , id]) => id === operation));
+    return {
+      operation,
+      values: pages.flatMap(([, , , , values]) => JSON.parse(values)),
+    };
+  }, `The packaged chart did not acknowledge ${until} samples`);
+}
+
+describe("Signed chart on the real desktop", () => {
+  it("plots while sampling and reopens the same result after visiting the workbench", async () => {
+    const fixture = JSON.parse(
+      readFileSync(join(directory, "chart-inputs.json"), "utf8"),
+    );
+    await ready();
+    await language("en");
+    await navigate("/");
+    await openVirtual();
+    await installPlugin(fixture);
+
+    const first = await openChart();
+    await sendHex(Buffer.from("1.25\n").toString("hex"));
+    const live = await acceptedSamples(first, 1);
+    assert.deepEqual(live.values, [1.25]);
+    await nativeValue("host_close_node_view", { id: first });
+    await waitForMatch(
+      (log) => log.includes(`e2e_chart_window view=${first} event=closed`),
+      "The native chart window was not destroyed",
+    );
+    await sendHex(Buffer.from("-2\n").toString("hex"));
+    await sendHex(Buffer.from("3.5\n").toString("hex"));
+
+    const reopened = await openChart(first);
+    const retained = await acceptedSamples(reopened, 3);
+    assert.deepEqual(retained, {
+      operation: live.operation,
+      values: [1.25, -2, 3.5],
+    });
+    await nativeValue("host_close_node_view", { id: reopened });
+    await waitForMatch(
+      (log) => log.includes(`e2e_chart_window view=${reopened} event=closed`),
+      "The reopened chart was not destroyed",
+    );
+    writeFileSync(
+      join(directory, "chart-window.json"),
+      JSON.stringify({ first, reopened, live, retained }, null, 2),
+      { flag: "wx" },
+    );
+  });
+});

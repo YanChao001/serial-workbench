@@ -11,6 +11,7 @@ test("desktop runs require an explicit foreground choice, including reused build
     ["--with-node-runtime"],
     ["--terminal-manual"],
     ["--terminal-automated"],
+    ["--chart-automated"],
   ])
     assert.throws(() => parseE2EOptions(args), /默认不启动/);
   const phases = ["fresh", "persisted", "centered"];
@@ -42,6 +43,10 @@ test("desktop runs require an explicit foreground choice, including reused build
     parseE2EOptions(["--interactive", "--skip-build", "--terminal-automated"]),
     { skipBuild: true, withNodeRuntime: true, phases: ["terminal-automated"] },
   );
+  assert.deepEqual(
+    parseE2EOptions(["--interactive", "--skip-build", "--chart-automated"]),
+    { skipBuild: true, withNodeRuntime: true, phases: ["chart-automated"] },
+  );
 });
 
 test("invalid foreground flags fail without enabling the desktop runner", () => {
@@ -67,6 +72,7 @@ for (const args of [
   ["--skip-build"],
   ["--terminal-manual"],
   ["--terminal-automated"],
+  ["--chart-automated"],
 ]) {
   test(`the CLI refuses ${args.join(" ") || "a default run"} before build lookup or launch`, () => {
     const result = spawnSync(
@@ -88,8 +94,13 @@ for (const args of [
   });
 }
 
-for (const mode of ["--terminal-manual", "--terminal-automated"]) {
-  test(`native terminal run ${mode} requires its signed input before build or launch`, () => {
+for (const mode of [
+  "--terminal-manual",
+  "--terminal-automated",
+  "--chart-automated",
+]) {
+  const name = mode.startsWith("--chart-") ? "chart" : "terminal";
+  test(`native ${name} run ${mode} requires its signed input before build or launch`, () => {
     const result = spawnSync(
       process.execPath,
       [
@@ -100,7 +111,7 @@ for (const mode of ["--terminal-manual", "--terminal-automated"]) {
       {
         env: {
           ...process.env,
-          SWB_TEST_SIGNED_TERMINAL_RECEIPT: "relative.json",
+          [`SWB_TEST_SIGNED_${name.toUpperCase()}_RECEIPT`]: "relative.json",
         },
         encoding: "utf8",
         windowsHide: true,
@@ -109,7 +120,7 @@ for (const mode of ["--terminal-manual", "--terminal-automated"]) {
     );
     assert.equal(result.error, undefined);
     assert.equal(result.status, 1);
-    assert.match(result.stderr, /absolute signed terminal receipt path/);
+    assert.ok(result.stderr.includes(`absolute signed ${name} receipt path`));
     assert.equal(result.stdout, "");
   });
 }

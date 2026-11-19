@@ -30,7 +30,11 @@ const require = createRequire(import.meta.url);
 export const root = resolve(import.meta.dirname, "..");
 const targetDirectory = join(root, "src-tauri", "target", "e2e");
 const receiptPath = join(targetDirectory, "build.json");
-const TERMINAL_TOOLS = ["sign_reference_terminal", "terminal_capture_check"];
+const REFERENCE_TOOLS = [
+  "sign_reference_terminal",
+  "terminal_capture_check",
+  "sign_reference_chart",
+];
 
 function binaryPath(output, target, name) {
   return join(output, `${name}${target.includes("-windows-") ? ".exe" : ""}`);
@@ -149,7 +153,7 @@ export function e2eBuildArgs(
     // Tauri CLI 已提供 --bins，透传部分只补同图构建的相邻包。
     ...COMPONENTS.flatMap((name) => ["--package", name]),
     ...(withNodeRuntime
-      ? TERMINAL_TOOLS.flatMap((name) => ["--example", name])
+      ? REFERENCE_TOOLS.flatMap((name) => ["--example", name])
       : []),
   ];
 }
@@ -239,8 +243,8 @@ export async function buildE2E({ withNodeRuntime = false } = {}) {
   if (source !== e2eSourceIdentity())
     throw new Error("E2E source changed during build; rebuild the candidate");
   const components = binaryReceipts(COMPONENTS, output, host);
-  const terminalTools = runtime
-    ? binaryReceipts(TERMINAL_TOOLS, join(output, "examples"), host)
+  const referenceTools = runtime
+    ? binaryReceipts(REFERENCE_TOOLS, join(output, "examples"), host)
     : undefined;
   mkdirSync(targetDirectory, { recursive: true });
   writeFileSync(
@@ -254,7 +258,7 @@ export async function buildE2E({ withNodeRuntime = false } = {}) {
         sha256: fileSha256(executable),
         components,
         nodeRuntime,
-        terminalTools,
+        referenceTools,
       },
       null,
       2,
@@ -291,14 +295,14 @@ export function readE2EBuildReceipt(
   if (receipt.nodeRuntime !== undefined) {
     if (
       !binariesMatch(
-        receipt.terminalTools,
-        TERMINAL_TOOLS,
+        receipt.referenceTools,
+        REFERENCE_TOOLS,
         join(expected, "examples"),
         receipt.target,
       )
     )
       throw new Error(
-        "E2E 终端验收工具收据失效，请重新运行 pnpm e2e:build --with-node-runtime。",
+        "E2E 签名参考包验收工具收据失效，请重新运行 pnpm e2e:build --with-node-runtime。",
       );
     const plan = { root: projectRoot, target: receipt.target };
     try {

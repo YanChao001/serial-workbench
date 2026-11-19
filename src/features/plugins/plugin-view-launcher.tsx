@@ -19,6 +19,9 @@ import { useI18n } from "@/providers/i18n";
 import { useHost } from "@/providers/host-context";
 import type { HostConnection } from "@/lib/host-client";
 
+type DerivedFeed = { key: string; operationId: string };
+const derivedFeeds = new WeakMap<HostConnection, Map<string, DerivedFeed>>();
+
 function sessionKey(session: SessionSnapshot) {
   return JSON.stringify([session.sessionId, session.sessionEpoch]);
 }
@@ -41,7 +44,6 @@ export function PluginViewLauncher({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const pending = useRef<AbortController | null>(null);
-  const derivedFeed = useRef<{ key: string; operationId: string } | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
 
   const available = views.filter((view) =>
@@ -65,18 +67,12 @@ export function PluginViewLauncher({
     setError(null);
     const feedKey =
       view.feed === "derived"
-        ? JSON.stringify([
-            connection.generation,
-            archiveSha256,
-            sessionKey(session),
-            view.id,
-          ])
+        ? JSON.stringify([archiveSha256, sessionKey(session), view.id])
         : null;
+    const remembered = feedKey && derivedFeeds.get(connection)?.get(packageId);
+    let operationId =
+      remembered && remembered.key === feedKey ? remembered.operationId : null;
     try {
-      let operationId =
-        feedKey && derivedFeed.current?.key === feedKey
-          ? derivedFeed.current.operationId
-          : null;
       if (!operationId) {
         const accepted = await invoke(
           {
@@ -108,7 +104,12 @@ export function PluginViewLauncher({
             "Plugin archive changed while opening a view",
           );
         operationId = operation.operationId;
-        if (feedKey) derivedFeed.current = { key: feedKey, operationId };
+        if (feedKey) {
+          const feeds =
+            derivedFeeds.get(connection) ?? new Map<string, DerivedFeed>();
+          feeds.set(packageId, { key: feedKey, operationId });
+          derivedFeeds.set(connection, feeds);
+        }
       }
       const opened = await hostOpenNodeView(
         connection.generation,
@@ -119,8 +120,9 @@ export function PluginViewLauncher({
       );
       if (owner.signal.aborted) await hostCloseNodeView(opened);
     } catch (reason) {
-      if (feedKey && derivedFeed.current?.key === feedKey)
-        derivedFeed.current = null;
+      const feeds = derivedFeeds.get(connection);
+      if (feedKey && feeds?.get(packageId)?.operationId === operationId)
+        feeds.delete(packageId);
       if (!owner.signal.aborted) setError(reason);
     } finally {
       pending.current = null;

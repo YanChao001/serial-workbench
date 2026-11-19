@@ -10,26 +10,23 @@ import { Key } from "webdriverio";
 import { language, navigate, ready } from "../helpers.mjs";
 import { hostQuery, nativeValue } from "../settings.mjs";
 import { openVirtual } from "./workbench.mjs";
+import {
+  button,
+  byText,
+  click,
+  dialogButton,
+  installPlugin,
+  sendHex,
+  showPluginDetails,
+} from "./reference-plugin.mjs";
 
 const execute = promisify(execFile);
 const directory = process.env.STARTER_E2E_TERMINAL_DIR;
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const file = (name) => join(directory, name);
 
-function byText(tag, text, within = "") {
-  return $(`${within}//${tag}[normalize-space()=${JSON.stringify(text)}]`);
-}
-
-async function click(element) {
-  await element.waitForDisplayed();
-  await element.waitForEnabled();
-  await element.click();
-}
-
-const button = (text) => byText("button", text);
-const option = (text) => byText("*[@role='option']", text);
-const dialogButton = (text) => byText("button", text, "//*[@role='dialog']");
-const field = (suffix) => $(`main input[id$='-${suffix}']`);
+const showTerminalDetails = () =>
+  showPluginDetails("Serial Workbench Terminal");
 
 async function selectFile(element, action, path) {
   if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS !== "1") {
@@ -73,43 +70,6 @@ async function selectFile(element, action, path) {
     JSON.stringify(evidence, null, 2),
     { flag: "wx" },
   );
-}
-
-async function showTerminalDetails() {
-  await navigate("/plugins");
-  const row = $(
-    "//button[@aria-expanded and .//*[normalize-space()='Serial Workbench Terminal']]",
-  );
-  await row.waitForDisplayed();
-  if ((await row.getAttribute("aria-expanded")) === "false") await row.click();
-}
-
-async function install(fixture) {
-  await navigate("/plugins");
-  await click(button("Manage sources"));
-  await field("source").setValue(fixture.source);
-  await field("key").setValue(fixture.keyId);
-  await field("public").setValue(fixture.publicKeyHex);
-  await click(button("Add source"));
-  await click(dialogButton("Trust this source"));
-  await byText("*", fixture.source).waitForDisplayed();
-  await click(button("Install plugin"));
-  await click($("[role='dialog'] [role='combobox']"));
-  await click(option(fixture.source));
-  await selectFile(dialogButton("Choose plugin file"), "Open", fixture.archive);
-  await byText(
-    "*",
-    `Signature verified · ${fixture.source}`,
-  ).waitForDisplayed();
-  await click(button("Trust this plugin"));
-  await byText(
-    "*",
-    "Read serial data",
-    "//*[@role='dialog']",
-  ).waitForDisplayed();
-  await click(dialogButton("Trust this plugin"));
-  await click(button("Enable"));
-  await button("Open plugin").waitForEnabled();
 }
 
 function windowEvents() {
@@ -282,29 +242,7 @@ async function grantActiveOutputRead(capturePath) {
 }
 
 async function send(hex) {
-  await navigate("/");
-  const hexMode = byText(
-    "*[@role='radio']",
-    "HEX",
-    "//*[@data-panel-id='send']",
-  );
-  await hexMode.waitForDisplayed();
-  if ((await hexMode.getAttribute("aria-checked")) === "false")
-    await hexMode.click();
-  const draft = $(".workbench-draft");
-  await draft.waitForDisplayed();
-  await draft.setValue(hex.match(/../g).join(" "));
-  await click($("button[aria-label='Send']"));
-  const marker = Buffer.from(hex, "hex").toString("utf8").trim();
-  await browser.waitUntil(() =>
-    browser.execute(
-      (expected) =>
-        document
-          .querySelector(".workbench-receive-frame")
-          ?.innerText.includes(expected),
-      marker,
-    ),
-  );
+  await sendHex(hex);
   assert.equal(await captureButton().getAttribute("aria-pressed"), "true");
 }
 
@@ -317,7 +255,7 @@ describe("Signed terminal on the real desktop", () => {
     await language("en");
     await navigate("/");
     await openVirtual();
-    await install(fixture);
+    await installPlugin(fixture, selectFile);
     await navigate("/");
     await startCapture(fixture.capture);
     const baseline = await readerBytes();

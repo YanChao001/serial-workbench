@@ -21,8 +21,9 @@ import { Resvg } from "@resvg/resvg-js";
 import { parseE2EOptions } from "./run-options.mjs";
 import { checkNativeRequestDiagnostics } from "./native-log-evidence.mjs";
 import {
+  prepareSignedReferenceEvidence,
   prepareTerminalEvidence,
-  readTerminalFixture,
+  readSignedReferenceFixture,
 } from "./terminal-manual.mjs";
 import {
   spawnOwned,
@@ -92,6 +93,7 @@ try {
   );
   const manual = phases.includes("terminal-manual");
   const automated = phases.includes("terminal-automated");
+  const chart = phases.includes("chart-automated");
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&
@@ -114,8 +116,17 @@ try {
   }
   const terminalFixture =
     manual || automated
-      ? readTerminalFixture(process.env.SWB_TEST_SIGNED_TERMINAL_RECEIPT)
+      ? readSignedReferenceFixture(
+          process.env.SWB_TEST_SIGNED_TERMINAL_RECEIPT,
+          "terminal",
+        )
       : null;
+  const chartFixture = chart
+    ? readSignedReferenceFixture(
+        process.env.SWB_TEST_SIGNED_CHART_RECEIPT,
+        "chart",
+      )
+    : null;
   if (!skipBuild) await buildE2E({ withNodeRuntime });
   const receipt = readE2EBuildReceipt(root, { withNodeRuntime });
   const binary = receipt.executable;
@@ -146,6 +157,19 @@ try {
     terminal = prepareTerminalEvidence(terminalFixture, artifacts);
     console.log(`Signed terminal inputs: ${terminal.path}`);
   }
+  if (chartFixture) {
+    artifacts = mkdtempSync(join(artifacts, "signed-chart-"));
+    const inputs = prepareSignedReferenceEvidence(
+      chartFixture,
+      artifacts,
+      "chart",
+    );
+    writeFileSync(
+      join(artifacts, "chart-inputs.json"),
+      JSON.stringify(inputs, null, 2),
+      { flag: "wx" },
+    );
+  }
   writeFileSync(
     join(artifacts, "candidate.json"),
     JSON.stringify(receipt, null, 2),
@@ -159,8 +183,11 @@ try {
     JSON.parse(
       readFileSync(join(profile, "host-v0", "discovery.json"), "utf8"),
     );
-  const hostEvidence = join(artifacts, "terminal-host.json");
-  if (terminal) {
+  const hostEvidence = join(
+    artifacts,
+    terminal ? "terminal-host.json" : "host.json",
+  );
+  if (terminal || chart) {
     const { hostId, instanceEpoch, pid } = hostDiscovery();
     writeFileSync(
       hostEvidence,
@@ -220,6 +247,7 @@ try {
       env.STARTER_E2E_TERMINAL_DIR = artifacts;
       env.STARTER_E2E_TERMINAL_CLI = suiteCli;
     }
+    if (chart) env.STARTER_E2E_CHART_DIR = artifacts;
     const app = spawnOwned(binary, [], {
       cwd: root,
       env,
@@ -250,7 +278,7 @@ try {
           {
             cwd: root,
             env,
-            ...(automated
+            ...(automated || chart
               ? { logPath: join(phaseArtifacts, "webdriver.log") }
               : {}),
           },
@@ -282,7 +310,7 @@ try {
   }
   if (terminal) {
     await stopSuiteHost();
-    const verifier = receipt.terminalTools.find(
+    const verifier = receipt.referenceTools.find(
       ({ name }) => name === "terminal_capture_check",
     );
     const check = spawnOwned(

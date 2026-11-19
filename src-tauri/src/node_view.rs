@@ -103,14 +103,15 @@ fn trace_terminal_view(
     rx_bytes: usize,
     digest: Option<&str>,
 ) {
-    if matches!(
-        std::env::var("STARTER_E2E_PHASE").as_deref(),
-        Ok("terminal-automated")
-    ) {
-        let digest = digest.unwrap_or("-");
-        log::info!(
-            "e2e_terminal view={label} event={event} position={position} rx_bytes={rx_bytes} digest={digest}"
-        );
+    match std::env::var("STARTER_E2E_PHASE").as_deref() {
+        Ok("terminal-automated") => {
+            let digest = digest.unwrap_or("-");
+            log::info!(
+                "e2e_terminal view={label} event={event} position={position} rx_bytes={rx_bytes} digest={digest}"
+            );
+        }
+        Ok("chart-automated") => log::info!("e2e_chart_window view={label} event={event}"),
+        _ => {}
     }
 }
 

@@ -557,6 +557,11 @@ fn e2e_picker_path(role: FileResourceRole) -> HostResult<Option<PathBuf>> {
         && std::env::var("SWB_E2E_WINDOWS_NATIVE_PICKERS").as_deref() == Ok("1");
     let (directory, file) = match role {
         FileResourceRole::Media => ("STARTER_TEST_DATA_DIR", "e2e-background.png"),
+        FileResourceRole::Source
+            if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("chart-automated") =>
+        {
+            ("STARTER_E2E_CHART_DIR", "reference-chart.zip")
+        }
         FileResourceRole::Source | FileResourceRole::CaptureTarget
             if !native_terminal_picker
                 && std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("terminal-automated") =>

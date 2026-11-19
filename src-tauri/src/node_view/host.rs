@@ -343,7 +343,11 @@ impl ViewHost {
     pub(super) async fn open_stream(&self) -> HostResult<ViewStream> {
         if self.entry.view.feed == Some(NodePackageViewFeed::Derived) {
             self.authorize().await?;
-            Ok(ViewStream::Derived(DerivedReader { position: 0.into() }))
+            Ok(ViewStream::Derived(DerivedReader {
+                position: 0.into(),
+                #[cfg(feature = "e2e")]
+                e2e_trace: None,
+            }))
         } else {
             Ok(ViewStream::Raw(Box::new(self.subscribe().await?)))
         }
@@ -358,11 +362,22 @@ pub(super) enum ViewStream {
 impl ViewStream {
     #[cfg(feature = "e2e")]
     pub(super) fn with_e2e_label(mut self, label: String) -> Self {
-        if let Self::Raw(reader) = &mut self {
-            reader.e2e_trace = Some(RawTrace {
-                label,
-                digest: Sha256::default(),
-            });
+        match &mut self {
+            Self::Raw(reader) => {
+                reader.e2e_trace = Some(RawTrace {
+                    label,
+                    digest: Sha256::default(),
+                })
+            }
+            Self::Derived(reader)
+                if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("chart-automated") =>
+            {
+                reader.e2e_trace = Some(DerivedTrace {
+                    label,
+                    awaiting: None,
+                });
+            }
+            Self::Derived(_) => {}
         }
         self
     }
@@ -389,10 +404,36 @@ impl ViewStream {
 
 pub(super) struct DerivedReader {
     position: U64,
+    #[cfg(feature = "e2e")]
+    e2e_trace: Option<DerivedTrace>,
+}
+
+#[cfg(feature = "e2e")]
+struct DerivedTrace {
+    label: String,
+    awaiting: Option<DerivedReadResult>,
 }
 
 impl DerivedReader {
     async fn next(&mut self, host: &ViewHost) -> HostResult<Option<(U64, U64, DerivedReadResult)>> {
+        // 壳只有收到 iframe 的页确认后才继续请求 next.js。
+        #[cfg(feature = "e2e")]
+        if let Some(trace) = &mut self.e2e_trace
+            && let Some(page) = trace.awaiting.take()
+        {
+            let values = serde_json::json!(
+                page.samples
+                    .iter()
+                    .map(|sample| &sample.value)
+                    .collect::<Vec<_>>()
+            );
+            log::info!(
+                "e2e_chart view={} operation={} position={} values={values}",
+                trace.label,
+                page.operation_id,
+                page.next_position.get()
+            );
+        }
         host.authorize().await?;
         let mut after = self.position;
         let waiting_for_first_sample = after.get() == 0 && host.sampling().await?;
@@ -432,6 +473,10 @@ impl DerivedReader {
                     }
                     let previous = self.position;
                     self.position = page.next_position;
+                    #[cfg(feature = "e2e")]
+                    if let Some(trace) = &mut self.e2e_trace {
+                        trace.awaiting = Some(page.clone());
+                    }
                     return Ok(Some((previous, after, page)));
                 }
                 Err(error) if error.code == "NOT_FOUND" && waiting_for_first_sample => {

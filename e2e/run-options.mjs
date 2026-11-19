@@ -1,10 +1,12 @@
 /** 原生窗口测试会主动激活窗口，必须在启动构建或进程前明确选择前台运行。 */
 export function parseE2EOptions(args) {
-  const terminalPhases = ["terminal-manual", "terminal-automated"].filter(
-    (phase) => args.includes(`--${phase}`),
-  );
+  const referencePhases = [
+    "terminal-manual",
+    "terminal-automated",
+    "chart-automated",
+  ].filter((phase) => args.includes(`--${phase}`));
   if (
-    terminalPhases.length > 1 ||
+    referencePhases.length > 1 ||
     args.some(
       (arg) =>
         ![
@@ -13,11 +15,12 @@ export function parseE2EOptions(args) {
           "--with-node-runtime",
           "--terminal-manual",
           "--terminal-automated",
+          "--chart-automated",
         ].includes(arg),
     )
   )
     throw new Error(
-      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime | --terminal-manual | --terminal-automated].",
+      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime | --terminal-manual | --terminal-automated | --chart-automated].",
     );
   if (!args.includes("--interactive"))
     throw new Error(
@@ -27,10 +30,10 @@ export function parseE2EOptions(args) {
   return {
     skipBuild: args.includes("--skip-build"),
     withNodeRuntime:
-      terminalPhases.length > 0 || args.includes("--with-node-runtime"),
+      referencePhases.length > 0 || args.includes("--with-node-runtime"),
     phases:
-      terminalPhases.length > 0
-        ? terminalPhases
+      referencePhases.length > 0
+        ? referencePhases
         : ["fresh", "persisted", "centered"],
   };
 }

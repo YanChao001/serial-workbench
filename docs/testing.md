@@ -165,6 +165,8 @@ pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts
 
 桌面桥接用例在生产 Operation 运行中开启图表。首个样本发布前视图保持等待，输入两个完整样本后先读取这两项，再发送最后一段并经同一视图读完。重开后对照留存页，撤销执行信任后复查读页。无头 Chromium 用实际壳和图表脚本验证 iframe 隔离、留存缺口、曲线与样本值。原生图表窗口仍需按 C 的完整场景验收。
 
+实际图表窗口可在[手动 CI](../.github/workflows/ci.yml)选择 `native_preflight=true`、目标和 `native_preflight_chart=true`。独立桌面上经插件页安装签名包，开窗后切回工作台发送一组电压。第一个样本获实际隔离 iframe 确认后关闭图表，再发送两个样本。回到插件页重开并核对三项样本、采样任务一致及两次窗口退出。收据与原始日志保存在 `artifacts/e2e/signed-chart-*`。此入口用于图表场景，完整四目标仍按阶段出口执行。
+
 ## 自动化参考包后台应答
 
 执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。把签名 stdout 保存为收据，将 `SWB_TEST_SIGNED_AUTOMATION_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 分别指向同源 CLI 和 MCP 程序。

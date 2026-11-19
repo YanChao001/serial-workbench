@@ -128,11 +128,11 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(
     native,
-    /if: runner\.os != 'Linux' && !\(runner\.os == 'Windows' && inputs\.native_file_dialogs\)\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
+    /if: runner\.os != 'Linux' && !inputs\.chart_only && !\(runner\.os == 'Windows' && inputs\.native_file_dialogs\)\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
   );
   assert.match(
     native,
-    /if: runner\.os == 'Windows' && inputs\.native_file_dialogs\n\s+env:\n\s+SWB_E2E_WINDOWS_NATIVE_PICKERS: "1"\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
+    /if: runner\.os == 'Windows' && inputs\.native_file_dialogs && !inputs\.chart_only\n\s+env:\n\s+SWB_E2E_WINDOWS_NATIVE_PICKERS: "1"\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
   );
   const triggers = native.split(/^on:\s*$/m)[1]?.split(/^\S/m)[0];
   assert.deepEqual(
@@ -143,7 +143,15 @@ test("preflight shares the full native runner and retains successful source rece
   assert.match(native, /保留原生收据、截图与测试日志\n {8}if: always\(\)/);
   assert.match(
     native,
-    /if: runner\.os != 'Linux'\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
+    /if: runner\.os != 'Linux' && !inputs\.chart_only\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
+  );
+  assert.match(
+    preflight,
+    /chart_only: \$\{\{ inputs\.native_preflight_chart \}\}/,
+  );
+  assert.match(
+    native,
+    /if: runner\.os != 'Linux' && inputs\.chart_only\n\s+run: pnpm test:e2e --interactive --skip-build --chart-automated/,
   );
   assert.match(
     job("quality-gate"),
