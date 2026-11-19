@@ -643,7 +643,13 @@ unsafe fn supervise(parent: libc::pid_t, node: libc::pid_t, observer: libc::pid_
                 finish(node, observer, false);
             }
         }
-        if info.si_pid == node {
+        // Intel macOS 的 WEXITED 实测也报告过映像初始暂停。仅在收到终态时回收 Node。
+        if info.si_pid == node
+            && matches!(
+                info.si_code,
+                libc::CLD_EXITED | libc::CLD_KILLED | libc::CLD_DUMPED
+            )
+        {
             unsafe {
                 if !resumed {
                     send_record(1, 5, info.si_code as u32, info.si_status as u32 as u64);

@@ -1043,12 +1043,12 @@ describe("Serial Workbench 首页", () => {
     expect(await screen.findByText("正在重新连接本机服务…")).toBeVisible();
     expect(button).toBeDisabled();
     await act(async () => retry.reject(startupError()));
+    expect(await screen.findByText("HOST_START_FAILED")).toBeVisible();
     expect(screen.getByRole("textbox", { name: "发送草稿" })).toHaveValue(
       "KEEP ME",
     );
     expect(port.save).not.toHaveBeenCalled();
     expect(connect).toHaveBeenCalledTimes(2);
-    expect(screen.getByText("HOST_START_FAILED")).toBeVisible();
     expect(screen.getByRole("link", { name: "诊断与恢复" })).toHaveAttribute(
       "href",
       "#/settings?focus=recovery",

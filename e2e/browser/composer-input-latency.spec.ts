@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { expect, test } from "@playwright/test";
+import { expect, test, type CDPSession, type Locator } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
@@ -54,6 +54,46 @@ test("continuous key repeat and bulk insertions paint promptly without losing dr
       throw new Error("Missing input samples");
     return value as number[];
   });
+  const nativeSamples =
+    process.env.SWB_TEST_COMPOSER_NATIVE_CONTROL === "1"
+      ? await measureNativeControl(draft, client, initial, block)
+      : undefined;
+  await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
+  const sorted = [...samples].sort((a, b) => a - b);
+  const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? Infinity;
+  const evidence = {
+    scope:
+      "Headless Chromium with 4x CPU throttle; real repeated keydown and CDP bulk text insertion, no system clipboard or hardware",
+    samples,
+    nativeSamples,
+    p95,
+    max: Math.max(...samples),
+    trace: "off",
+    workers: info.config.workers,
+  };
+  await writeFile(
+    info.outputPath("composer-input-latency.json"),
+    JSON.stringify(evidence, null, 2),
+  );
+  const sortedNative = nativeSamples?.sort((a, b) => a - b);
+  console.log(
+    JSON.stringify({
+      p95,
+      max: evidence.max,
+      samples: samples.length,
+      nativeP95: sortedNative?.[Math.floor(sortedNative.length * 0.95)],
+    }),
+  );
+  expect(samples).toHaveLength(40);
+  expect(p95).toBeLessThan(100);
+});
+
+async function measureNativeControl(
+  draft: Locator,
+  client: CDPSession,
+  initial: string,
+  block: string,
+) {
   await draft.evaluate((element, initial) => {
     if (!(element instanceof HTMLTextAreaElement))
       throw new Error("Missing textarea");
@@ -82,11 +122,12 @@ test("continuous key repeat and bulk insertions paint promptly without losing dr
     native.focus();
     native.setSelectionRange(initial.length, initial.length);
   }, initial);
-  for (let index = 0; index < 32; index++) await page.keyboard.down("0");
-  await page.keyboard.up("0");
+  const keyboard = draft.page().keyboard;
+  for (let index = 0; index < 32; index++) await keyboard.down("0");
+  await keyboard.up("0");
   for (let index = 0; index < 8; index++)
     await client.send("Input.insertText", { text: block });
-  const nativeSamples = await page.evaluate(async () => {
+  return draft.page().evaluate(async () => {
     await new Promise<void>((resolve) =>
       requestAnimationFrame(() => requestAnimationFrame(() => resolve())),
     );
@@ -95,33 +136,4 @@ test("continuous key repeat and bulk insertions paint promptly without losing dr
       throw new Error("Missing native samples");
     return value as number[];
   });
-  await client.send("Emulation.setCPUThrottlingRate", { rate: 1 });
-  const sorted = [...samples].sort((a, b) => a - b);
-  const p95 = sorted[Math.floor(sorted.length * 0.95)] ?? Infinity;
-  const evidence = {
-    scope:
-      "Headless Chromium with 4x CPU throttle; real repeated keydown and CDP bulk text insertion, no system clipboard or hardware",
-    samples,
-    nativeSamples,
-    p95,
-    max: Math.max(...samples),
-    trace: "off",
-    workers: info.config.workers,
-  };
-  await writeFile(
-    info.outputPath("composer-input-latency.json"),
-    JSON.stringify(evidence, null, 2),
-  );
-  console.log(
-    JSON.stringify({
-      p95,
-      max: evidence.max,
-      samples: samples.length,
-      nativeP95: [...nativeSamples].sort((a, b) => a - b)[
-        Math.floor(nativeSamples.length * 0.95)
-      ],
-    }),
-  );
-  expect(samples).toHaveLength(40);
-  expect(p95).toBeLessThan(100);
-});
+}

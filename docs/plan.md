@@ -104,6 +104,12 @@
 
 **发送字节编码（候选）**。权限预检和真实发送共用同一 Base64 编码路径。支持原生方法的浏览器直接编码字节，旧版 WebView 分段生成字节字符串。360,464 字节样本的 Node 微基准中，原权限预检转换中位数 11.8 毫秒，原生路径约 0.05 毫秒。两条路径与旧编码字节一致，112 项相关单元用例和类型检查通过。同条件单 worker 无头输入定向对照的 p95 为 150、45.5 毫秒，原生对照也有慢帧。作为定向证据保存，完整无头 UI 仍须复验。见同目录 `draft-base64-{focused,browser-baseline,browser-candidate}.log`。
 
+**Windows 真实文件与录制（`2505273`）**。实际选中签名 ZIP、保存到 `terminal.swbcap`，两次均还焦到同一所有者窗口。关窗录制、重开和撤权通过。回放核对同一会话的 3 个 RX 事件和 69 个字节。收据见同目录 `windows-2505273/signed-terminal-KFOjf8`。[Windows 原生预检](https://github.com/YanChao001/serial-workbench/actions/runs/44576692235)
+
+**同源综合与四目标 CI（`2505273`）**。本机 `pnpm verify --jobs 1` 通过，用时 156.5 秒。无头 Chromium 本机通过 202 项，输入 p95 为 106 毫秒。托管通过全部 203 项，输入 p95 为 38.9 毫秒。常规套件现只测实际编辑器，原生对照按需运行。两种模式定向实测分别得到 40 与 80 次采样，应用 p95 分别为 100.2 毫秒（失败）及 95.8 毫秒（通过），保留 `composer-control-opt-*`。托管前端综合测试同步读取异步通知失败，改为等待提示显示后继续原断言，本机相关 62 项通过。Intel 原生桌面在启用终端时记录 `CLD_STOPPED` 后误走退出回收，保留 `intel-2505273/signed-terminal-4Ew4s6/host-0.log`、失败截图和退出记录，候选仅按退出事件收尾，待同架构验证。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661)
+
+同轮 Windows Rust 在传输进度订阅的 500 毫秒夹具期限退出。候选将首块之后的发送排到观察窗口之外，收到已持久化的首块进度后立即取消，仍验证订阅在传输进行期间发布。本机 `operation_visibility_host` 的 8 项均通过。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108268)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
