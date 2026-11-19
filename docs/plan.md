@@ -116,6 +116,10 @@
 
 **本机候选与 Windows 缩放**。`4222ccb` 的 `pnpm verify --jobs 1` 用时 157.7 秒，无头 UI 203 项全部通过。应用输入 p95 为 98.9 毫秒，最慢一次为 183 毫秒，样本见 `4222ccb-headless-ui`。下一候选将 Windows 隔离视图缩放快捷键与主窗口对齐，桌面编译检查通过，实际焦点与可读性待原生观察。完整四目标的 Windows 作业在既有桌面构建中执行真实文件对话框场景，复用上轮通过的测试入口。编译收据见 `windows-plugin-zoom-check.log`。
 
+**合并 Windows 桌面验证（`4b66269`）**。一次构建完成系统对话框完整场景，实际打开和保存均还焦到同一所有者，录制回放校验 69 字节。收据在 `windows-4b66269/signed-terminal-1l4mCP`。本机 `pnpm verify --jobs 1` 通过，159.4 秒，无头 UI 203 项通过，输入 p95 为 98.4 毫秒。托管首跑 125.9 毫秒，自动重试 79.1 毫秒，报告一项不稳定，原始样本在 `hosted-4b66269-browser`。Apple Silicon 桌面因未分配托管 runner 而取消，用例未执行。[四目标运行](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155)
+
+同轮 Windows Rust 的来源撤权先通过撤权、安装中断及权限错误检查，终态之后的字节计数受调度影响而失败。移除四项集成用例重复检查的归档读取字节数，继续验证权限、终态及安装结果。分块取消仍由受控读取用例验证。本机这五项定向用例通过，日志为 `cold-proof-stop-regressions.log` 和 `cold-proof-block-cancellation.log`。[Windows 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790851900)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

@@ -2273,7 +2273,6 @@ async fn start_large_package_install(
     serial_workbench_core::Operation,
     serial_workbench_core::Target,
     serial_workbench_host::auth::AuthenticatedActor,
-    u64,
     tokio::sync::OwnedSemaphorePermit,
 ) {
     start_large_package_install_from(h, false).await
@@ -2286,7 +2285,6 @@ async fn start_large_package_install_from(
     serial_workbench_core::Operation,
     serial_workbench_core::Target,
     serial_workbench_host::auth::AuthenticatedActor,
-    u64,
     tokio::sync::OwnedSemaphorePermit,
 ) {
     use serial_workbench_core::*;
@@ -2356,7 +2354,7 @@ async fn start_large_package_install_from(
         h.host.files().file_read_bytes() < length,
         "The stop must start during the real cold proof"
     );
-    (accepted, target, operator, length, fixture)
+    (accepted, target, operator, fixture)
 }
 
 async fn approve_test_source(
@@ -2657,7 +2655,7 @@ async fn source_revocation_during_trusted_install_cold_proof_is_not_blocked_by_i
     use serial_workbench_core::*;
     let h = support::Harness::new().await;
     let (operator, target, fingerprint) = approve_test_source(&h).await;
-    let (accepted, _, _, length, _fixture) = start_large_package_install_from(&h, true).await;
+    let (accepted, _, _, _fixture) = start_large_package_install_from(&h, true).await;
     let mut revoke = h.call_as(
         &operator,
         &target,
@@ -2682,7 +2680,6 @@ async fn source_revocation_during_trusted_install_cold_proof_is_not_blocked_by_i
         stopped.error
     );
     assert_eq!(stopped.error.unwrap().code, "PERMISSION_DENIED");
-    assert!(h.host.files().file_read_bytes() < length);
     let store = h.store.clone();
     let (installed, sources) = tokio::task::spawn_blocking(move || {
         (
@@ -2952,7 +2949,7 @@ async fn user_approved_source_enables_verified_install_but_never_grants_executio
 async fn revoking_install_management_during_cold_proof_settles_interrupted_and_releases_capacity() {
     use serial_workbench_core::*;
     let h = support::Harness::new().await;
-    let (accepted, target, operator, length, _fixture) = start_large_package_install(&h).await;
+    let (accepted, target, operator, _fixture) = start_large_package_install(&h).await;
     let auth = h.auth.clone();
     let actor = h.actor.clone();
     let revoked_target = target.clone();
@@ -2978,7 +2975,6 @@ async fn revoking_install_management_during_cold_proof_settles_interrupted_and_r
         completed.error
     );
     assert_eq!(completed.error.unwrap().code, "PERMISSION_DENIED");
-    assert!(h.host.files().file_read_bytes() < length);
     let store = h.store.clone();
     let auth = h.auth.clone();
     let actor = h.actor.clone();
@@ -3031,7 +3027,7 @@ async fn revoking_install_management_during_cold_proof_settles_interrupted_and_r
 async fn shutdown_during_install_cold_proof_waits_for_actual_work_and_preserves_its_stop_reason() {
     use serial_workbench_core::*;
     let h = support::Harness::new().await;
-    let (accepted, _, _, length, _fixture) = start_large_package_install(&h).await;
+    let (accepted, _, _, _fixture) = start_large_package_install(&h).await;
     let report = h.host.quiesce(ShutdownMode::CancelAndSettle).await.unwrap();
     assert!(report.completed, "{report:?}");
     assert!(report.unsettled_operation_ids.is_empty());
@@ -3044,7 +3040,6 @@ async fn shutdown_during_install_cold_proof_waits_for_actual_work_and_preserves_
         completed.error
     );
     assert_eq!(completed.error.unwrap().code, "HOST_CLOSING");
-    assert!(h.host.files().file_read_bytes() < length);
     let store = h.store.clone();
     let snapshot =
         tokio::task::spawn_blocking(move || NodePackageInstaller::read_snapshot(&store).unwrap())
@@ -3059,7 +3054,7 @@ async fn shutdown_during_install_cold_proof_waits_for_actual_work_and_preserves_
 async fn user_cancel_during_install_cold_proof_keeps_the_cancel_requested_terminal_path() {
     use serial_workbench_core::*;
     let h = support::Harness::new().await;
-    let (accepted, _, _, length, _fixture) = start_large_package_install(&h).await;
+    let (accepted, _, _, _fixture) = start_large_package_install(&h).await;
     let cancellation = h.cancel(&accepted).await;
     assert_eq!(cancellation.state, OperationState::Succeeded);
     let completed = h.wait(&accepted.operation_id).await;
@@ -3070,7 +3065,6 @@ async fn user_cancel_during_install_cold_proof_keeps_the_cancel_requested_termin
         completed.error
     );
     assert_eq!(completed.error.unwrap().code, "CANCELLED");
-    assert!(h.host.files().file_read_bytes() < length);
     let store = h.store.clone();
     let snapshot =
         tokio::task::spawn_blocking(move || NodePackageInstaller::read_snapshot(&store).unwrap())
