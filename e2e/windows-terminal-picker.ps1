@@ -24,6 +24,7 @@ public static class TerminalPickerWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr dialog, int id);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -34,6 +35,18 @@ public static class TerminalPickerWindow {
     private static extern IntPtr WriteText(IntPtr window, uint message, UIntPtr size, string value, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern IntPtr ReadText(IntPtr window, uint message, UIntPtr size, StringBuilder value, uint flags, uint timeout, out UIntPtr result);
+    [DllImport("user32.dll", EntryPoint = "PostMessageW", ExactSpelling = true, SetLastError = true)]
+    private static extern bool PostMessage(IntPtr window, uint message, UIntPtr parameter, IntPtr extra);
+
+    public static string WindowClass(IntPtr window) {
+        var name = new StringBuilder(64);
+        return GetClassName(window, name, name.Capacity) == 0 ? "" : name.ToString();
+    }
+
+    public static bool ClickButton(IntPtr window) {
+        const uint buttonClick = 0x00F5;
+        return PostMessage(window, buttonClick, UIntPtr.Zero, IntPtr.Zero);
+    }
 
     public static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid) {
         const int fileNameComboId = 1148;
@@ -162,11 +175,21 @@ if ($fileValue) {
 if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
     throw "The owned $Action dialog lost foreground focus before confirmation."
 }
-$confirmAction.Invoke()
+$confirmation = 'automation-invoke'
+$buttonHandle = [TerminalPickerWindow]::GetDlgItem($handle, 1)
+if ($nativeEdit -ne [IntPtr]::Zero -and (Test-ApplicationWindow $buttonHandle) -and
+    [TerminalPickerWindow]::WindowClass($buttonHandle) -eq 'Button') {
+    if (![TerminalPickerWindow]::ClickButton($buttonHandle)) {
+        throw "The owned $Action dialog could not queue its native confirmation."
+    }
+    $confirmation = 'native-button'
+} else {
+    $confirmAction.Invoke()
+}
 
 $clock.Restart()
 while ($clock.Elapsed.TotalSeconds -lt 5) {
-    if (![TerminalPickerWindow]::IsWindow($handle) -and [TerminalPickerWindow]::GetForegroundWindow() -eq $owner) {
+    if (![TerminalPickerWindow]::IsWindowVisible($handle) -and [TerminalPickerWindow]::GetForegroundWindow() -eq $owner) {
         [ordered]@{
             action = $Action
             applicationPid = $ApplicationPid
@@ -174,10 +197,16 @@ while ($clock.Elapsed.TotalSeconds -lt 5) {
             owner = $owner.ToInt64()
             path = $FilePath
             input = if ($fileValue) { 'automation-value' } else { 'native-edit' }
+            confirmation = $confirmation
             returnedFocus = $true
         } | ConvertTo-Json -Compress
         exit 0
     }
     Start-Sleep -Milliseconds 50
 }
-throw "The $Action dialog did not close and return foreground focus to its owner."
+$foreground = [TerminalPickerWindow]::GetForegroundWindow()
+$visible = [TerminalPickerWindow]::IsWindowVisible($handle)
+$live = [TerminalPickerWindow]::IsWindow($handle)
+$isOwner = $foreground -eq $owner
+$foregroundClass = [TerminalPickerWindow]::WindowClass($foreground)
+throw "The $Action dialog did not close with focus returned. Confirmation=$confirmation; dialogExists=$live; dialogVisible=$visible; ownerForeground=$isOwner; foregroundClass=$foregroundClass."

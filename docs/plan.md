@@ -90,6 +90,8 @@
 
 **新版定向复验（`c28e1bf`）**。本机 `pnpm verify --jobs 1` 通过，192.1 秒。受限环境首轮有两项自有进程终止脚本失败并挂起，已保存 `.cache/verify/run-FqGcc0` 并确认自有测试树退出。Intel 的签名后台单项、原生安装布局和诊断场景通过，本轮未复现 `ESRCH`。Windows 基础桌面和原生签名终端通过，实际回放 69 字节；额外的真实打开对话框取得了确认控件，但 UI Automation 未提供文件名 ValuePattern，未选择 ZIP，也未执行真实保存。备用路径仅枚举已确认的所属对话框的子窗口，在已知文件名控件下用 Win32 写入并读回路径，仍检查确认前后的实际前台窗口。证据见同目录 `capture-focus-c28e1bf-verify-native-process.log` 和 `windows-c28e1bf`。[Windows 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44555182966) · [Intel macOS 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44555191954)
 
+**无头 UI 与 Windows 真实文件名（`dab02d5`）**。本机无头 Chromium 203 项通过，输入 p95 为 96.4 毫秒。托管 Windows 基础桌面和签名终端复跑通过，再次逐字节验证 69 字节回放。真实对话框已通过原生编辑框写入和读回 ZIP 路径，确认后未同时观察到对话框关闭和所有者复得前台焦点，真实保存未执行。候选补记对话框可见性与前台所有者，并为原生编辑框使用同一对话框的原生确认按钮。证据见同目录 `dab02d5-headless-ui.log`、`dab02d5-headless-ui` 和 `windows-dab02d5`。[真实对话框复验](https://github.com/YanChao001/serial-workbench/actions/runs/44557849724)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
