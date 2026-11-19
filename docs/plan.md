@@ -120,7 +120,9 @@
 
 同轮 Windows Rust 的来源撤权先通过撤权、安装中断及权限错误检查，终态之后的字节计数受调度影响而失败。移除四项集成用例重复检查的归档读取字节数，继续验证权限、终态及安装结果。分块取消仍由受控读取用例验证。本机这五项定向用例通过，日志为 `cold-proof-stop-regressions.log` 和 `cold-proof-block-cancellation.log`。[Windows 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790851900)
 
-同轮 Intel Rust 通过 109 项签名后台和 73 项 Host 专项，监护故障用例在准备后原生屏障就绪前超时。安装布局根是 Cargo release 目录，夹具曾整体复制该目录，失败产物约 1.27 GB。夹具现只复制验证器实际读取的 `runtime/`，监护故障注入和实际退出检查照原用例执行，耗时与结果待同架构复验。[Intel 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852222)
+同轮 Intel Rust 通过 109 项签名后台和 73 项 Host 专项，监护故障用例在准备后原生屏障就绪前超时。安装布局根是 Cargo release 目录，夹具曾整体复制该目录，失败产物约 1.27 GB。`b692f6e` 只复制验证器实际读取的 `runtime/`，同架构预检通过 109 项签名后台、73 项 Host 专项及 2 项 CLI/MCP。三项监护与回收用例均通过，共用时 18.6 秒。[Intel 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852222) · [Intel 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44598756495)
+
+同轮 Apple Silicon 签名后台 109 项通过。H14/H15 用例观察到撤销会话发送权后，排队发送停止、新键被拒绝、旧水位保持，父任务自身结算为成功。原用例又要求父任务中断，口径待用户确认。本机实验及失败证据保存在 `h14-h15-narrow-revocation.log` 和 `h14-h15-proposed-acceptance.patch`，实验补丁未提交。[Apple Silicon 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852361)
 
 ## 验证基线
 
