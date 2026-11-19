@@ -6,7 +6,7 @@
 
 1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、缩放、慢读者及其他平台原生观察。处理草稿输入延迟，核实 Windows 主窗与隔离插件窗口的缩放行为。候选验收保留安装准备和关停压力的未决记录。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
-3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。继续 Windows x64 离线安装及实际图表窗口。Windows 需可断网的独立环境并能在断网时操作控制台。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
+3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 离线安装需可断网的独立环境并能在断网时操作控制台。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 
@@ -24,7 +24,9 @@
 
 **插件安装和授权界面（工作树，Windows）**。已安装列表显示名称、版本和状态，展开行查看来源与操作。「管理来源」默认收起。授权弹窗显示签名来源、工作台能力和本机执行风险。无头 Chromium 用受控桌面 IPC 核对选择签名来源、安装、信任后显式启用、撤权和安装失败提示，覆盖英文暗色与中文窄窗口。嵌入式 Rust Host 用实际签名终端包复核安装回执与列表的名称和版本、撤权后重新启用和 69 字节录制连续性。原生文件选择和新版原生窗口仍待复验。AUTO-13 和 SEC-07 的此次软件证据见 `.cache/evidence/m2-node-backend/plugin-install-ui-20261119/checkpoint.json`。
 
-**C 图表实时采样和留存视图（候选，Windows）**。签名包将 Virtual Echo 的拆分 RX 发布为 `1.25`、`-2`、`3.5` V，保留三段原始字节范围。桌面桥可在取样任务运行中打开视图，先等待输入，再读到两个样本，任务结算后在同一视图读到第三个。重开、CLI 和实际 MCP 读页对照同一数值、会话代次及来源范围。撤权后禁止视图读页。图表和终端可以在工作台已占用 Raw 通道时打开。无头 Chromium 验证隔离视图显示缺口和样本。修复前拒绝打开及复验见 `.cache/evidence/m2-node-backend/chart-live-sampling-20261120/checkpoint.json`，视图原验证见 `.cache/evidence/m2-node-backend/reference-chart-view-20261119/checkpoint.json`。这次覆盖 AUTO-13 和 VIZ-16 的软件部分。原生图表窗口、三平台离线安装及完整 C 场景继续验收。
+**C 图表实时采样和留存视图（候选，Windows）**。签名包将 Virtual Echo 的拆分 RX 发布为 `1.25`、`-2`、`3.5` V，保留三段原始字节范围。桌面桥可在取样任务运行中打开视图，先等待输入，再读到两个样本，任务结算后在同一视图读到第三个。重开、CLI 和实际 MCP 读页对照同一数值、会话代次及来源范围。撤权后禁止视图读页。图表和终端可以在工作台已占用 Raw 通道时打开。无头 Chromium 验证隔离视图显示缺口和样本。修复前拒绝打开及复验见 `.cache/evidence/m2-node-backend/chart-live-sampling-20261120/checkpoint.json`，视图原验证见 `.cache/evidence/m2-node-backend/reference-chart-view-20261119/checkpoint.json`。这次覆盖 AUTO-13 和 VIZ-16 的软件部分。
+
+**C 原生图表窗口（`bfd5767`）**。Windows WebView2、Linux WebKitGTK 和 Apple Silicon WKWebView 分别通过签名安装与实际隔离窗口场景。工作台发送的第一项 `1.25` V 在开窗时由 iframe 确认，关窗后发送的两项在重开时一并读出。切换工作台与插件页后仍使用同一采样任务，各自两次窗口都正常关闭。三份 `chart-window.json`、构建收据和原始日志见 `.cache/evidence/m2-node-backend/native-chart-window-20261120/checkpoint.json`。这是 AUTO-13 和 VIZ-16 的软件证据。此轮运行图表专项，四目标候选与实机继续按阶段验收。[Windows](https://github.com/YanChao001/serial-workbench/actions/runs/44633063233/job/135944487697) · [Linux](https://github.com/YanChao001/serial-workbench/actions/runs/44634041074/job/135947868169) · [Apple Silicon](https://github.com/YanChao001/serial-workbench/actions/runs/44634047514/job/135947888641)
 
 **C 自动化后台参考包（候选，Windows）**。公开 SDK 提交同一会话的发送子动作，按实际发送回执和 RX 来源范围核对每步应答。实际签名包在嵌入式 Rust Host 上通过双步骤匹配。应答不符、收到前缀后超时、等待应答时取消都只执行首步。取消用例先等真实 RX，再核对取消接纳回执和父动作终态。Virtual Echo 录制回放逐字节核对 32 字节和会话代次。实际 MCP 程序随后执行一步，CLI 读到同一结果字节和来源。Host 目录现能按会话读取授权公布结果读取工具，撤权后 MCP 无法调用，CLI 的独立授权继续有效。覆盖 IO-10、AUTO-05、AUTO-13 和 SEC-12 的软件部分。首轮目录错误和三项定向复验见 `.cache/evidence/m2-node-backend/automation-client-parity-20261120/checkpoint.json`，录制原证据见 `.cache/evidence/m2-node-backend/reference-automation-20261119/checkpoint.json`。窗口、三平台离线安装及完整 C 场景继续验收。
 
