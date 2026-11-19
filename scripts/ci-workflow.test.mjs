@@ -69,7 +69,13 @@ test("both native matrices cover all four targets without scope or tree reuse", 
     );
   }
   assert.doesNotMatch(ci, /docs_only|rust_required|reused_run|needs: changes/);
-  for (const name of ["frontend", "browser-smoke", "rust", "bindings"]) {
+  for (const name of [
+    "frontend",
+    "browser-smoke",
+    "rust",
+    "linux-node-backend",
+    "bindings",
+  ]) {
     assert.match(
       job(name),
       /^ {4}if: \$\{\{ !inputs\.native_preflight && !inputs\.runtime_preflight \}\}$/m,
@@ -138,7 +144,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   assert.match(
     job("quality-gate"),
-    /needs:\s*\[frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight\]/,
+    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,?\s*\]/,
   );
   assert.match(
     job("quality-gate"),
@@ -154,6 +160,28 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
           : job(name);
     assert.match(runner, /timeout-minutes: \d+/, name);
   }
+});
+
+test("Linux verified backend checks are required and use an independent fixed runtime", () => {
+  const backend = job("linux-node-backend");
+  assert.match(backend, /runs-on: ubuntu-22\.04/);
+  assert.match(backend, /timeout-minutes: 60/);
+  assert.match(backend, /RUNTIME_TARGET: x86_64-unknown-linux-gnu/);
+  assert.match(backend, /node scripts\/ci-prepare-node-runtime\.mjs/);
+  const suite =
+    "cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture";
+  assert.ok(backend.includes(suite));
+  assert.match(
+    job("rust"),
+    /if \[\[ "\$RUNNER_OS" != "Linux" \]\]; then\n\s+cargo test --locked -p serial-workbench-host --test node_packages verified_backend_/,
+  );
+  assert.ok(job("rust").includes("--duration-seconds 600"));
+  assert.doesNotMatch(
+    backend,
+    /pnpm app:build|pnpm test:e2e|ci-linux-deps\.sh/,
+  );
+  assert.match(backend, /shell: bash/);
+  assert.match(backend, /if: always\(\)/);
 });
 
 test("runtime diagnostics cannot replace the full milestone gate or launch desktop jobs", () => {

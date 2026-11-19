@@ -250,7 +250,9 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           pnpm test:runtime --target '${{ matrix.target }}' --resources 'src-tauri/target/${{ matrix.target }}/release' --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/node-runtime
           cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
-          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture
+          if [[ "$RUNNER_OS" != "Linux" ]]; then
+            cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture
+          fi
           export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
           export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
           cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
@@ -336,6 +338,58 @@ jobs:
           if-no-files-found: ignore
           retention-days: 7
 
+  linux-node-backend:
+    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
+    name: Linux x64 签名插件后台
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      RUNTIME_TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: 安装 Rust 工具链
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: . -> src-tauri/target
+          key: node-backend-${{ env.RUNTIME_TARGET }}
+          cache-on-failure: true
+      - name: 验签并准备固定原生运行时
+        run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 验证签名插件后台
+        shell: bash
+        run: |
+          mkdir -p artifacts/linux-node-backend
+          echo "source=$GITHUB_SHA target=$RUNTIME_TARGET" | tee artifacts/linux-node-backend/results.log
+          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee -a artifacts/linux-node-backend/results.log
+      - name: 保留测试输出与运行时来源
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-node-backend-x64
+          path: |
+            artifacts/linux-node-backend/results.log
+            .cache/node-runtime/layouts/**/runtime-preparation.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+      - name: 保留失败夹具
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-node-backend-failures-x64
+          path: |
+            artifacts/rust-failures/node-backend-*/**
+            artifacts/rust-failures/host-node-backend-*/**
+          if-no-files-found: ignore
+          retention-days: 7
+
   bindings:
     if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
     name: IPC 绑定校验
@@ -413,7 +467,15 @@ jobs:
     name: ${{ inputs.native_preflight && '原生预检结果（非里程碑验收）' || '质量门禁' }}
     if: always() && !inputs.runtime_preflight
     needs:
-      [frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight]
+      [
+        frontend,
+        browser-smoke,
+        rust,
+        linux-node-backend,
+        bindings,
+        desktop-e2e,
+        native-preflight,
+      ]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:

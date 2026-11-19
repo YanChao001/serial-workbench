@@ -4,7 +4,14 @@ import { pathToFileURL } from "node:url";
 export function qualityGateFailures(needs, { desktopE2E = true } = {}) {
   if (typeof desktopE2E !== "boolean")
     throw new Error("desktopE2E must be a boolean");
-  return ["frontend", "browser-smoke", "rust", "bindings", "desktop-e2e"]
+  return [
+    "frontend",
+    "browser-smoke",
+    "rust",
+    "linux-node-backend",
+    "bindings",
+    "desktop-e2e",
+  ]
     .filter((job) => {
       const result = needs[job]?.result;
       return (

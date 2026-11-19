@@ -50,6 +50,8 @@
 
 **第三轮四目标 CI（`2d81948`）**。四个目标的签名终端原生桌面场景均通过，确认录制中追加读取权、关闭与重开、撤权、正常关停，以及各自同一会话的 69 字节回放。无头 Chromium 203 项通过，草稿输入 p95 为 51.7 毫秒。四目标桌面 Rust 缓存均命中，Windows 和 Linux 的桌面构建与签名准备分别耗时 171 秒和 97 秒。Windows 的 `device_runtime` 单元测试发现上一轮正在结束的枚举可能满足较新的手动刷新，得到旧 COM 号。目录刷新按请求开始时的枚举代次等待新结果，保留单一枚举线程。新增夹具暂停已取得旧编号的枚举并等待复验，关联 CONN-02 的软件证据。完整运行时专项和 Windows 原生文件保存对话框仍需复验。[第三轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44502225790)
 
+**设备刷新与 Ubuntu CI（候选）**。`6fb7fd7` 的 Windows `device_runtime` 17 项通过，包含固定旧枚举与新请求顺序的回归，日志见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/device-refresh-runtime.log`。第二轮 Ubuntu 的 workspace 测试、离线负载、未签名构建分别耗时 358、616、214 秒，原生运行时检查又运行 2036 秒后被作业上限中止。Linux x64 的 108 项 `verified_backend_` 用例移到独立必跑作业，同时保留原测试顺序、断言和作业上限。门禁用例核对漏跑或失败会拒绝候选，远程实际执行、覆盖及耗时待验证。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
@@ -61,7 +63,7 @@
 
 LOG-08 的 M1 软件证据覆盖已合入的只读回放，M4 还需验证变速、单步和断点。AUTO-13 在 14.4 已有后台作者示例、CLI、实际 MCP 产品、桌面桥和无头 iframe/Raw 证据。原生窗口继续在 B 验收，v1 冻结在 M3。两项均按完整需求更新账本。
 
-上述 B 结果来自 `feature/m2-node-backend` 的未提交实现，尚无该候选的 PR 或完整四目标 CI。本机原始收据位于 `.cache/evidence/m2-node-backend/` 下的 `exact-matrix-local-progress.json`、`dynamic-mcp-local-progress.json` 和 `node-sdk-local-progress.json`；失败、源码快照和程序摘要保留在对应收据及其备份中。
+基线表中的 14.3 与 14.4 收据采集于 `feature/m2-node-backend` 提交前。候选验收跟进 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49)。本机原始收据位于 `.cache/evidence/m2-node-backend/` 下的 `exact-matrix-local-progress.json`、`dynamic-mcp-local-progress.json` 和 `node-sdk-local-progress.json`。对应收据及备份保留了失败、源码快照和程序摘要。
 
 **桌面管理切片（工作树，Windows）：** 原生桥接测试确认普通桌面身份不能认可来源，独立用户控制连接可以提交，业务连接可以读取终态回执。签名终端包通过实际安装、普通 MCP 身份的目录隐藏与确认请求拒绝、本机确认和显式启用，撤销执行信任后运行状态回到 `inactive`。文件选择使用夹具，MCP 身份直接连接 Host。无头 Chromium smoke 通过 3 项，覆盖插件导航及预览中的桌面要求。ZIP、程序摘要及首轮目录回执夹具失败见 `.cache/evidence/m2-node-backend/terminal-management-632b0246c226464e863b80436173ad26/checkpoint.json`，归档 SHA-256 为 `055735e6cfe205b1a4a7e580b823b487a8f99039791ead5a46ea3607c983e05a`。AUTO-13、FUT-07、SEC-07 和 SEC-12 按完整需求继续追踪。真实桌面、iframe、关页录制及三入口数据对照仍待验收。
 

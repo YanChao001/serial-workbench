@@ -213,6 +213,8 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 [手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
 
+完整模式将 Linux x64 的 `verified_backend_` 用例放在独立必跑作业。该作业按同一候选验签并准备固定运行时，串行执行原筛选范围，保存候选 SHA、完整测试输出、运行时收据和失败夹具。Ubuntu Rust 作业仍覆盖 workspace、离线六场景和 600 秒负载，并在同次未签名构建上验证运行时安装布局及三个签名参考包。两个作业均须通过，单项断言和原 60 分钟作业上限继续适用。
+
 ## M3 契约冻结
 
 以至少两个仅使用公开 SDK 的参考插件验证终端、协议事务、长脚本、网络和独占工具交接、合成 UART 波形及图表离屏导出。核对 schema 与类型、获准入口的结果、revision/epoch、撤权、取消、unknown、写盘恢复及未来格式。完成不兼容版本拒绝、实际 MCP 产品客户端、正式 Node 离线包、后台整套升级和故障回收后冻结 v1。
