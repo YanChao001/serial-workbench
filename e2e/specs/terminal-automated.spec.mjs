@@ -4,7 +4,6 @@ import { createHash } from "node:crypto";
 import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
-import { fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
@@ -42,26 +41,14 @@ async function selectFile(element, action, path) {
     Number.isSafeInteger(pid) && pid > 0,
     "Missing owned application PID",
   );
-  const script = fileURLToPath(
-    new URL("../windows-terminal-picker.ps1", import.meta.url),
-  );
   const [{ stdout }] = await Promise.all([
     execute(
-      "powershell.exe",
-      [
-        "-NoProfile",
-        "-NonInteractive",
-        "-MTA",
-        "-File",
-        script,
-        "-ApplicationPid",
-        String(pid),
-        "-Action",
-        action,
-        "-FilePath",
-        path,
-      ],
-      { timeout: 30000, windowsHide: true },
+      process.env.SWB_E2E_WINDOWS_PICKER_BIN,
+      [String(pid), action, path],
+      {
+        timeout: 30000,
+        windowsHide: true,
+      },
     ).catch((error) => {
       throw new Error(
         `Native ${action} picker failed (exit=${error.code}, signal=${error.signal}, killed=${error.killed}): ${error.message}`,

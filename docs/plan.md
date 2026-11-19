@@ -96,7 +96,7 @@
 
 **Windows 原生控件复验（`534bbd5`）**。本机 `pnpm verify --jobs 1` 通过，185.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程到 30 秒上限未返回，未执行保存输入。移除 UI Automation 查询，沿用已观察到的 Win32 原生编辑框和确认按钮，记录找窗、控件、输入与确认的进度及子进程退出原因。保留原超时、所有者焦点及 Host 实际录制目标校验。证据见同目录 `windows-534bbd5` 与 `534bbd5-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44564679118)
 
-**Windows 辅助进程启动（`659c43f`）**。本机 `pnpm verify --jobs 1` 通过，190.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程在 30 秒后被终止，初始化后的首条进度未出现。下一轮先分开观察 PowerShell 启动和内嵌 C# 编译，再核对对话框操作。真实保存未执行。证据见同目录 `windows-659c43f/signed-terminal-uJ7TBb` 与 `659c43f-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44567109656)
+**Windows 辅助进程启动（`659c43f`）**。本机 `pnpm verify --jobs 1` 通过，190.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程在 30 秒后被终止，初始化后的首条进度未出现，真实保存未执行。候选将对话框辅助程序提前编译并在桌面构建前自检，打开和保存通过已有 Win32 路径直接调用同一程序，便于定位准备与实际窗口操作。本机确认可编译出辅助程序，原生行为待托管复验。证据见同目录 `windows-659c43f/signed-terminal-uJ7TBb` 与 `659c43f-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44567109656)
 
 ## 验证基线
 

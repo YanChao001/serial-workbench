@@ -1,4 +1,5 @@
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -9,7 +10,7 @@ import {
 import { createRequire } from "node:module";
 import { createServer } from "node:net";
 import { tmpdir } from "node:os";
-import { dirname, join, resolve } from "node:path";
+import { dirname, isAbsolute, join, resolve } from "node:path";
 import { buildE2E, readE2EBuildReceipt, root } from "./build.mjs";
 import {
   waitForSuiteHost,
@@ -100,6 +101,15 @@ try {
   ) {
     throw new Error(
       "Native file dialog automation requires the independent Windows CI terminal scenario.",
+    );
+  }
+  const picker = process.env.SWB_E2E_WINDOWS_PICKER_BIN;
+  if (
+    nativePickers &&
+    (!picker || !isAbsolute(picker) || !existsSync(picker))
+  ) {
+    throw new Error(
+      "Missing the compiled Windows picker helper from this run.",
     );
   }
   const terminalFixture =
