@@ -94,6 +94,8 @@
 
 **Windows 实际文件对话框（`405e584`）**。本机 `pnpm verify --jobs 1` 通过，184.1 秒。托管真实打开和保存均取得原生收据，焦点回到同一所有者窗口。录制实际写到保存框预填的默认 `.swb` 文件，指定的录制目标未生效。修订向保存框发送逐字符输入、读回文本后再确认，由 Host 继续核对实际登记的录制路径。原有选择夹具场景的 69 字节回放通过；真实保存路径、同轮回放和四目标候选仍待验收。证据见同目录 `windows-405e584/signed-terminal-CEPdfL` 与 `405e584-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44562449533)
 
+**Windows 原生控件复验（`534bbd5`）**。本机 `pnpm verify --jobs 1` 通过，185.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程到 30 秒上限未返回，未执行保存输入。移除 UI Automation 查询，沿用已观察到的 Win32 原生编辑框和确认按钮，记录找窗、控件、输入与确认的进度及子进程退出原因。保留原超时、所有者焦点及 Host 实际录制目标校验。证据见同目录 `windows-534bbd5` 与 `534bbd5-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44564679118)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

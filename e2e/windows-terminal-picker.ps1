@@ -12,7 +12,6 @@ if (![IO.Path]::IsPathRooted($FilePath)) {
     throw 'A full fixture path is required.'
 }
 
-Add-Type -AssemblyName UIAutomationClient, UIAutomationTypes
 Add-Type @'
 using System;
 using System.Collections.Generic;
@@ -27,6 +26,7 @@ public static class TerminalPickerWindow {
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
     [DllImport("user32.dll")] public static extern bool IsWindowVisible(IntPtr window);
+    [DllImport("user32.dll")] public static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -140,90 +140,40 @@ function Test-ApplicationWindow([IntPtr]$Handle) {
 }
 
 $clock = [Diagnostics.Stopwatch]::StartNew()
-$dialog = $null
+$handle = [IntPtr]::Zero
+[Console]::Error.WriteLine("Waiting for the owned native $Action dialog")
 while ($clock.Elapsed.TotalSeconds -lt 15) {
-    $handle = [TerminalPickerWindow]::GetForegroundWindow()
-    if (Test-ApplicationWindow $handle) {
-        $owner = [TerminalPickerWindow]::GetWindow($handle, 4)
+    $candidate = [TerminalPickerWindow]::GetForegroundWindow()
+    if ((Test-ApplicationWindow $candidate) -and [TerminalPickerWindow]::WindowClass($candidate) -eq '#32770') {
+        $owner = [TerminalPickerWindow]::GetWindow($candidate, 4)
         if (Test-ApplicationWindow $owner) {
-            $candidate = [Windows.Automation.AutomationElement]::FromHandle($handle)
-            if ($candidate.Current.ClassName -eq '#32770') {
-                $dialog = $candidate
-                break
-            }
+            $handle = $candidate
+            break
         }
     }
     Start-Sleep -Milliseconds 50
 }
-if (!$dialog) { throw "No foreground $Action file dialog owned by application $ApplicationPid." }
-
-$scope = [Windows.Automation.TreeScope]::Descendants
-$edit = [Windows.Automation.PropertyCondition]::new(
-    [Windows.Automation.AutomationElement]::ControlTypeProperty,
-    [Windows.Automation.ControlType]::Edit
-)
-function Find-DialogItem([string]$Id) {
-    $property = [Windows.Automation.AutomationElement]::AutomationIdProperty
-    $item = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($property, $Id))
-    if ($item) { return $item }
-    $controlId = 0
-    if ([int]::TryParse($Id, [ref]$controlId)) {
-        $child = [TerminalPickerWindow]::GetDlgItem($handle, $controlId)
-        if ($child -ne [IntPtr]::Zero) {
-            return [Windows.Automation.AutomationElement]::FromHandle($child)
-        }
-    }
-}
-
-# A filename host can expose Value directly without exposing a child edit.
-$fileValue = $null
-foreach ($key in 'FileNameControlHost', '1148', '1152') {
-    $fileName = Find-DialogItem $key
-    if (!$fileName) { continue }
-    if ($fileName.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue)) { break }
-    $nested = $fileName.FindFirst($scope, $edit)
-    if ($nested -and $nested.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue)) { break }
-}
-if (!$fileValue) {
-    foreach ($candidate in $dialog.FindAll($scope, $edit)) {
-        if ($candidate.Current.Name -match '^File name\s*:?\s*$' -and
-            $candidate.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue)) { break }
-    }
-}
-
-$confirm = Find-DialogItem '1'
-$confirmAction = $null
-if (!$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)) {
-    $name = [Windows.Automation.AutomationElement]::NameProperty
-    $confirm = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($name, $Action))
-    if ($confirm) {
-        [void]$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)
-    }
-}
+if ($handle -eq [IntPtr]::Zero) { throw "No foreground $Action file dialog owned by application $ApplicationPid." }
+[Console]::Error.WriteLine("Found owned native $Action dialog")
 $nativeEdit = [IntPtr]::Zero
-if (!$fileValue -or $Action -eq 'Save') {
-    # The Save dialog can expose a different native tree. Match the app's prefilled capture name.
-    do {
-        $nativeEdit = [TerminalPickerWindow]::FileNameEdit($handle, $ApplicationPid, $Action -eq 'Save')
-        if ($nativeEdit -ne [IntPtr]::Zero) { break }
-        Start-Sleep -Milliseconds 50
-    } while ($clock.Elapsed.TotalSeconds -lt 15 -and [TerminalPickerWindow]::GetForegroundWindow() -eq $handle)
-}
-if ((!$fileValue -and $nativeEdit -eq [IntPtr]::Zero) -or !$confirmAction) {
-    $controls = $dialog.FindAll($scope, [Windows.Automation.Condition]::TrueCondition) | Where-Object {
-        $_.Current.AutomationId -notlike 'System.*' -and
-            $_.Current.ControlType -in [Windows.Automation.ControlType]::Edit, [Windows.Automation.ControlType]::ComboBox, [Windows.Automation.ControlType]::Button
-    } | Select-Object -Last 16 | ForEach-Object {
-        '{0}/{1}/{2}' -f $_.Current.ControlType.ProgrammaticName, $_.Current.AutomationId, $_.Current.Name
-    }
+$buttonReady = $false
+do {
+    $nativeEdit = [TerminalPickerWindow]::FileNameEdit($handle, $ApplicationPid, $Action -eq 'Save')
+    $buttonHandle = [TerminalPickerWindow]::GetDlgItem($handle, 1)
+    $buttonReady = (Test-ApplicationWindow $buttonHandle) -and [TerminalPickerWindow]::WindowClass($buttonHandle) -eq 'Button'
+    if ($nativeEdit -ne [IntPtr]::Zero -and $buttonReady) { break }
+    Start-Sleep -Milliseconds 50
+} while ($clock.Elapsed.TotalSeconds -lt 15 -and [TerminalPickerWindow]::GetForegroundWindow() -eq $handle)
+if ($nativeEdit -eq [IntPtr]::Zero -or !$buttonReady) {
     $nativeInputs = [TerminalPickerWindow]::NativeInputControls($handle, $ApplicationPid)
-    throw "The owned $Action dialog did not expose Value=$([bool]$fileValue) NativeEdit=$($nativeEdit -ne [IntPtr]::Zero) Invoke=$([bool]$confirmAction). Controls: $($controls -join ' | '). Native inputs: $nativeInputs"
+    throw "The owned $Action dialog did not expose a filename edit and confirmation button. Native inputs: $nativeInputs"
 }
-if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
+[Console]::Error.WriteLine("Found $Action filename edit and confirmation button")
+if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle -or
+    [TerminalPickerWindow]::GetWindow($handle, 4) -ne $owner -or !(Test-ApplicationWindow $nativeEdit)) {
     throw "The owned $Action dialog lost foreground focus before entering the path."
 }
-$input = 'automation-value'
-if ($Action -eq 'Save' -and $nativeEdit -ne [IntPtr]::Zero) {
+if ($Action -eq 'Save') {
     # Typing notifies the Save dialog of edits to its prefilled filename.
     if (![TerminalPickerWindow]::QueueFileNameCharacters($nativeEdit, $FilePath)) {
         throw "The owned $Action dialog could not queue the filename characters."
@@ -236,28 +186,21 @@ if ($Action -eq 'Save' -and $nativeEdit -ne [IntPtr]::Zero) {
     } while ($entry.Elapsed.TotalSeconds -lt 2 -and [TerminalPickerWindow]::GetForegroundWindow() -eq $handle)
     if (!$entered) { throw "The owned $Action dialog did not receive the typed filename." }
     $input = 'native-characters'
-} elseif ($fileValue) {
-    $fileValue.SetValue($FilePath)
 } else {
     if (![TerminalPickerWindow]::SetFileName($nativeEdit, $FilePath)) {
         throw "The owned $Action dialog did not retain its filename."
     }
     $input = 'native-edit'
 }
-if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
-    throw "The owned $Action dialog lost foreground focus before confirmation."
+if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle -or !(Test-ApplicationWindow $buttonHandle) -or
+    ![TerminalPickerWindow]::IsWindowEnabled($buttonHandle)) {
+    throw "The owned $Action dialog lost foreground focus or its confirmation button became unavailable."
 }
-$confirmation = 'automation-invoke'
-$buttonHandle = [TerminalPickerWindow]::GetDlgItem($handle, 1)
-if ($nativeEdit -ne [IntPtr]::Zero -and (Test-ApplicationWindow $buttonHandle) -and
-    [TerminalPickerWindow]::WindowClass($buttonHandle) -eq 'Button') {
-    if (![TerminalPickerWindow]::ClickButton($buttonHandle)) {
-        throw "The owned $Action dialog could not queue its native confirmation."
-    }
-    $confirmation = 'native-button'
-} else {
-    $confirmAction.Invoke()
+[Console]::Error.WriteLine("Verified $Action filename")
+if (![TerminalPickerWindow]::ClickButton($buttonHandle)) {
+    throw "The owned $Action dialog could not queue its native confirmation."
 }
+[Console]::Error.WriteLine("Queued $Action confirmation")
 
 $clock.Restart()
 while ($clock.Elapsed.TotalSeconds -lt 5) {
@@ -269,7 +212,7 @@ while ($clock.Elapsed.TotalSeconds -lt 5) {
             owner = $owner.ToInt64()
             path = $FilePath
             input = $input
-            confirmation = $confirmation
+            confirmation = 'native-button'
             returnedFocus = $true
         } | ConvertTo-Json -Compress
         exit 0
@@ -281,4 +224,4 @@ $visible = [TerminalPickerWindow]::IsWindowVisible($handle)
 $live = [TerminalPickerWindow]::IsWindow($handle)
 $isOwner = $foreground -eq $owner
 $foregroundClass = [TerminalPickerWindow]::WindowClass($foreground)
-throw "The $Action dialog did not close with focus returned. Confirmation=$confirmation; dialogExists=$live; dialogVisible=$visible; ownerForeground=$isOwner; foregroundClass=$foregroundClass."
+throw "The $Action dialog did not close with focus returned. dialogExists=$live; dialogVisible=$visible; ownerForeground=$isOwner; foregroundClass=$foregroundClass."

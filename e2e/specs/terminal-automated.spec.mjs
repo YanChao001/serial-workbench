@@ -62,7 +62,12 @@ async function selectFile(element, action, path) {
         path,
       ],
       { timeout: 30000, windowsHide: true },
-    ),
+    ).catch((error) => {
+      throw new Error(
+        `Native ${action} picker failed (exit=${error.code}, signal=${error.signal}, killed=${error.killed}): ${error.message}`,
+        { cause: error },
+      );
+    }),
     click(element),
   ]);
   const evidence = JSON.parse(stdout);
