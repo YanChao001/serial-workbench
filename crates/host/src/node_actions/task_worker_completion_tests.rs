@@ -193,14 +193,24 @@ async fn native_node_task_worker_failed_handler_has_a_bounded_native_cleanup() {
         r#"import {{appendFileSync,writeFileSync,existsSync}} from 'node:fs';
 import {{isMainThread}} from 'node:worker_threads';import {{spawnSync}} from 'node:child_process';
 const event=s=>appendFileSync({events},s+'\n');
-if(!isMainThread){{event('worker-enter');spawnSync(process.execPath,['-e',{child}],{{windowsHide:true,stdio:'ignore'}});event('native-returned');}}
+if(!isMainThread){{
+  event('worker-enter');
+  // Linux 的 process.execPath 是匿名映像名称，通过 proc 引用同一个已验证映像。
+  const executable=process.platform==='linux'?'/proc/'+process.pid+'/exe':process.execPath;
+  const result=spawnSync(executable,['-e',{child}],{{windowsHide:true,stdio:'ignore',timeout:45_000}});
+  event('native-returned:'+(result.error?.code??result.status??result.signal));
+}}
 export function register(context){{
   writeFileSync({node_pid},String(process.pid));let calls=0;
   context.actions.register('example.terminal.compute',async call=>{{
     if(call.params.value===0)return {{value:0,calls:++calls}};
     const worker=context.workers.start('dist/main.mjs');
-    void worker.finished.then(()=>event('worker-finished'));
-    while(!existsSync({child_pid}))await new Promise(resolve=>setTimeout(resolve,5));
+    let workerExited=false;
+    void worker.finished.then(()=>{{workerExited=true;event('worker-finished');}});
+    while(!existsSync({child_pid})){{
+      if(workerExited)throw new Error('controlled native child returned before startup');
+      await new Promise(resolve=>setTimeout(resolve,5));
+    }}
     event('handler-failed');throw new Error('controlled handler failure during native work');
   }});return ()=>event('dispose');
 }}"#,
@@ -233,9 +243,10 @@ export function register(context){{
             .state,
         OperationState::Succeeded
     );
+    let active = read_events(&events);
     assert!(
-        !read_events(&events).contains("worker-finished"),
-        "This fixture must actually hold native cleanup"
+        !active.contains("native-returned:") && !active.contains("worker-finished"),
+        "This fixture must actually hold native cleanup: events={active:?}"
     );
     assert!(!node.exited() && !child.exited());
     // 原5秒清理期限后仍需物理回收；此观察预算不改变普通Operation的5秒门槛。
@@ -259,7 +270,7 @@ export function register(context){{
         settled.error.as_ref().unwrap().code,
         "NODE_BACKEND_INTERRUPTED"
     );
-    assert!(!frozen.contains("worker-finished"));
+    assert!(!frozen.contains("native-returned:") && !frozen.contains("worker-finished"));
     assert_eq!(fixture.invoke(&fixture.client, original).await, settled);
     child.reap_adopted_after_observation();
     let _profile = fixture.finish().await;

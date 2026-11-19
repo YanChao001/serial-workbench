@@ -58,6 +58,10 @@
 
 **独立 Linux 签名后台作业首跑（`d69ebea`）**。108 项均执行完毕，用例总耗时约 39 分钟，106 项通过。容量释放后启用仍停在 Running，兼容升级后注册仍停在 Starting。该作业取自摘要优化前的候选。失败日志保存为同目录的 `split-ci-linux-backend.log`，优化后的同源候选仍须通过这两项及完整四目标门禁。[独立 Linux 作业](https://github.com/YanChao001/serial-workbench/actions/runs/44510694314/job/135519288809)
 
+**Ubuntu 原生清理夹具（候选）**。`d69ebea` 的 Ubuntu 核心作业通过离线六场景与 600 秒负载。在 worker 原生清理用例里，子进程返回时还未写出启动标记，随后断言超时，作业未完成余下用例。夹具在 Linux 通过活动进程的 `/proc/<pid>/exe` 引用同一个密封 Node 映像，并在子进程提前返回时记录状态和结束等待。Windows 固定 Node 定向用例通过，确认真实回收、操作终态和重放，Ubuntu 原生结果待复验。日志为同目录的 `split-ci-rust-linux.log` 和 `worker-native-cleanup-windows.log`。[Ubuntu 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44510694314/job/135519288903)
+
+**本机综合及无头 UI（`8cbc7e7`）**。Windows `pnpm verify --jobs 1` 通过。无头 Chromium 202 项通过，草稿输入 p95 为 100.4 毫秒，未达原 100 毫秒门槛。两次超阈值均出现在大段插入，纯原生文本框对照也出现一次 272.9 毫秒尖峰。保留各次样本和截图，继续定位应用开销及帧调度。当前远程 Ubuntu 签名后台、Rust、桌面、绑定及浏览器作业在下载依赖时退出，对应测试未运行。证据为同目录的 `runtime-supervision-exact-{verify,ui}-result.json`、`runtime-supervision-exact-ui-failure` 及五份 `runtime-supervision-*-first.log`。[同源四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
