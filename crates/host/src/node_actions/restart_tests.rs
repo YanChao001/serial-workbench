@@ -472,15 +472,25 @@ async fn native_node_recovery_failure_cannot_overwrite_a_new_explicit_activation
     );
     request.expected_revision = Some(3.into());
     let accepted = fixture.invoke(&replacement, request).await;
-    let joined = tokio::select! {
-        _=joining.entered()=>true,
-        _=fixture.wait(&replacement,&accepted.operation_id)=>false,
+    let (joined, activated) = {
+        let activation = fixture.wait(&replacement, &accepted.operation_id);
+        tokio::pin!(activation);
+        // 等待进入恢复槽位时，保留可能正在写入的查询及其连接。
+        let early = tokio::select! {
+            _ = joining.entered() => None,
+            result = &mut activation => Some(result),
+        };
+        let joined = early.is_none();
+        joining.release();
+        publishing.release();
+        scanned.entered().await;
+        scanned.release();
+        let activated = match early {
+            Some(result) => result,
+            None => activation.await,
+        };
+        (joined, activated)
     };
-    joining.release();
-    publishing.release();
-    scanned.entered().await;
-    scanned.release();
-    let activated = fixture.wait(&replacement, &accepted.operation_id).await;
     let QueryResult::NodePackageRuntime(status) = fixture
         .query(
             &replacement,

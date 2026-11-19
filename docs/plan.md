@@ -64,6 +64,10 @@
 
 **草稿输入全文读取（候选）**。两轮无头诊断均测到 40 次输入触发 120 次文本框全文读取。输入事件已获得原生正文，复用该值后两轮均为 80 次。外部草稿切换、清空及格式转换继续同步到文本框。草稿与工作台 67 项相关测试通过。带读取探针的 p95 样本为基线 78.3、69.9 毫秒及候选 77.0、70.4 毫秒，留作诊断；100 毫秒门槛继续用于原全量 UI。诊断日志为同目录的 `composer-draft-read-{baseline,candidate}.log`。
 
+**定向及完整候选结果**。`a9993db` 的 Linux 原生预检中，108 项签名后台和 73 项原生 Host 用例通过，确认实际回收 Node 及其子进程。摘要优化后的 Windows 后台 108 项通过，套件耗时由 847.08 秒降至 212.49 秒；macOS arm64 后台 109 项通过，两端原有启用及升级异常均复验通过。原生后续阶段仍有 Windows 恢复夹具连接关闭、macOS arm64 派生动作等待超时及 Intel macOS 安装布局启动失败。`b244f58` 本机综合校验通过，全量无头 UI 202 项通过，草稿输入 p95 为 116.8 毫秒，原生对照为 36.9 毫秒。保留同目录 `composer-read-exact-ui-failure` 的完整样本。[Linux 预检](https://github.com/YanChao001/serial-workbench/actions/runs/44524927406) · [四目标候选 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565)
+
+**恢复夹具在途查询（候选）**。Windows CI 恢复测试报告本地连接关闭。客户端禁止在请求帧部分写入后继续复用连接，夹具现在保留竞争中未完成的查询，继续检查旧恢复与新启用的顺序、实际代次与重放。改动前本机短测另有一次等待超时，保留的 SQLite 记录显示该启用随后成功。修订后本机定向复跑三次均通过，完整候选待验。见同目录的 `recovery-query-baseline-profile.json` 与 `recovery-query-preserved-result.json`。[Windows 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565/job/135550786712)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
