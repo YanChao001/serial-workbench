@@ -146,7 +146,7 @@ mod tests {
 
     #[test]
     fn pages_retain_the_verified_digest_and_reject_same_length_replacement() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let page = NODE_VIEW_ASSET_CHUNK_BYTES;
         let mut html = vec![b'a'; page + 3];
         html[page..].copy_from_slice(b"end");

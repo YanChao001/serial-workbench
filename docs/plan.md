@@ -40,6 +40,10 @@
 
 **合并桌面验收构建（候选）**。首轮 CI 中的独立签名工具构建重复编译 Windows 的 91 个和 Linux 的 85 个 crate，分别耗时 121 秒和 65 秒。Windows 本机实跑验证一次 Tauri 构建可同时产出桌面程序、签名工具和录制核对工具。四目标流程已改为复用这批工具，收据同时核对两个工具的路径和摘要。下一轮记录工具编译、缓存和桌面各阶段耗时。原桌面测试、签名流程和录制回放门槛均纳入本轮复验。
 
+**第二轮四目标 CI（`d5eaa63`）**。无头 Chromium 203 项通过，草稿输入 p95 为 68.6 毫秒。Windows x64 和 Linux x64 原生桌面复跑通过。桌面与签名准备总耗时分别由 518 秒降到 356 秒、由 338 秒降到 232 秒，两台 runner 均命中 pnpm 缓存，Rust 桌面缓存未命中。两种 macOS 架构的单元测试发现本地 IPC 和插件资源夹具经临时目录别名访问被拒绝，测试改用已解析的临时根。两种架构的原生签名终端均在撤权步骤失败，Host 报无法确认 Node 退出。arm64 产物确认录制中追加读取权和关窗回收已通过，Host 关停超时。`artifacts/e2e` 收据、截图和私有日志保留到本地证据目录。针对 XNU 对仅留 zombie 的进程组可能返回 `EPERM` 的行为，修正停止判定并增加待实际运行的回归。继续核对两种架构的撤权及正常退出。[第二轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44493616201)
+
+**Windows 新版真实文件选择（`d5eaa63`）**。在已安排的本机前台，以普通桌面权限和独立 Host profile 打开真实 ZIP 对话框。返回主窗后已确认插件名称、版本和等待授权状态。随后连接 Virtual Echo 时 Windows 报主窗未响应，录制保存对话框未到达。截图、Host 日志和退出记录见 `artifacts/e2e/signed-terminal-limited-kE5a0S` 和 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/checkpoint.json`。随后发现并终止仍在占用内存的测试诊断 PowerShell，系统可用内存由约 4.0 GiB 恢复至 18.3 GiB。测试应用、Host 和临时启动任务已退出。窗口未响应的原因仍待复验。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

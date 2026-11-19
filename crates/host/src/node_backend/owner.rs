@@ -1000,8 +1000,15 @@ impl Owner {
         }
         let process_id = self.process.child.id();
         let status = self.process.stop();
-        if status.is_err() && cause.is_none() {
-            cause = Some(error("NODE_BACKEND_INTERRUPTED", "backendReap"));
+        if let Err(reap_error) = &status {
+            eprintln!(
+                "node_backend_reap_failed os_error={:?} reaped={}",
+                reap_error.raw_os_error(),
+                self.process.child.is_closed()
+            );
+            if cause.is_none() {
+                cause = Some(error("NODE_BACKEND_INTERRUPTED", "backendReap"));
+            }
         }
         NodeBackendExit {
             process_id,

@@ -355,40 +355,59 @@ pub(super) fn owner_exited(pid: u32) -> io::Result<bool> {
     }
 }
 pub(super) fn stop_group(pid: u32) -> io::Result<()> {
-    if unsafe { libc::kill(-(pid as libc::pid_t), libc::SIGKILL) } != 0 {
+    let group = pid as libc::pid_t;
+    if unsafe { libc::kill(-group, libc::SIGKILL) } != 0 {
         let error = io::Error::last_os_error();
-        if error.raw_os_error() != Some(libc::ESRCH) {
-            return Err(error);
+        match error.raw_os_error() {
+            Some(libc::ESRCH) => {}
+            // Darwin 的 POSIX kill 会跳过 zombie，组存在但没有可投递成员时返回 EPERM。
+            // 只继续回收已无活动成员的组，真正的权限错误仍返回给调用方。
+            Some(libc::EPERM) if !group_has_live_members(group)? => {}
+            _ => return Err(error),
         }
     }
     // 若监护仅被暂停，恢复它完成对子进程的wait。仍由Host持有其未reap身份。
-    let _ = unsafe { libc::kill(pid as libc::pid_t, libc::SIGCONT) };
+    let _ = unsafe { libc::kill(group, libc::SIGCONT) };
     Ok(())
 }
+fn group_has_live_members(group: libc::pid_t) -> io::Result<bool> {
+    let mut members = vec![0; 8];
+    loop {
+        let count = read_group(group, &mut members)?;
+        for &pid in &members[..count] {
+            // getpgid 只查询活动 PID。数字 PID 已被其他组复用时也不能算作本组成员。
+            let actual = unsafe { libc::getpgid(pid) };
+            if actual == group {
+                return Ok(true);
+            }
+            if actual < 0 {
+                let error = io::Error::last_os_error();
+                if error.raw_os_error() != Some(libc::ESRCH) {
+                    return Err(error);
+                }
+            }
+        }
+        if count < members.len() {
+            return Ok(false);
+        }
+        members.resize(members.len() * 2, 0);
+    }
+}
+fn read_group(group: libc::pid_t, members: &mut [libc::pid_t]) -> io::Result<usize> {
+    let size = libc::c_int::try_from(std::mem::size_of_val(members))
+        .map_err(|_| io::Error::from_raw_os_error(libc::EOVERFLOW))?;
+    let count = unsafe { libc::proc_listpgrppids(group, members.as_mut_ptr().cast(), size) };
+    usize::try_from(count).map_err(|_| io::Error::last_os_error())
+}
 pub(super) fn wait_group_gone(pid: u32) -> io::Result<()> {
+    let group = pid as libc::pid_t;
     loop {
         // libproc也枚举zombie。监护可能尚未离组；只允许该未reap锚自身留在组中。
         // 两个槽能区分唯一锚与锚之外的成员，避免早期监护死亡时等待自己的zombie。
-        let mut members: [libc::pid_t; 2] = [0; 2];
-        unsafe {
-            *libc::__error() = 0;
-        }
-        let count = unsafe {
-            libc::proc_listpgrppids(
-                pid as libc::pid_t,
-                members.as_mut_ptr().cast(),
-                std::mem::size_of_val(&members) as libc::c_int,
-            )
-        };
-        let error = io::Error::last_os_error();
-        if (count == 0 && error.raw_os_error() == Some(0))
-            // proc_listpgrppids把底层字节数换算为PID个数，唯一锚返回1。
-            || (count == 1 && members[0] == pid as libc::pid_t)
-        {
+        let mut members = [0; 2];
+        let count = read_group(group, &mut members)?;
+        if count == 0 || (count == 1 && members[0] == group) {
             return Ok(());
-        }
-        if count <= 0 && error.raw_os_error() != Some(0) {
-            return Err(error);
         }
         thread::sleep(Duration::from_millis(5));
     }

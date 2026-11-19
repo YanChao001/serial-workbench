@@ -180,7 +180,7 @@ mod tests {
 
     #[tokio::test]
     async fn local_source_review_uses_control_while_business_identity_can_only_read_the_receipt() {
-        let directory = tempfile::tempdir().unwrap();
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(directory.path()).await.unwrap();
         let host = Arc::new(Host::new(server.store(), server.auth()).await.unwrap());
         let (stop, stopped) = tokio::sync::oneshot::channel();

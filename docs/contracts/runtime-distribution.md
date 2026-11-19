@@ -74,6 +74,8 @@ macOS子进程以原生 `SETEXEC|START_SUSPENDED` 在用户代码运行前暂停
 
 实现保留未reap的直接监护A的PID作为Node组锚。原生观察者B先在A原组内发布PID及内核唯一身份，再自行建立私有组；A确认该屏障后才fork Node，并迁入B组。Host组死亡时A/B仍负责清理；A单独死亡时B结束Node组，整个原生组死亡时由仍持有A锚的Host结束Node组。Host确认Node组清空、B唯一身份连同zombie已回收后，最后wait A；未发布身份的B仍在A原组，其退出由组枚举涵盖。Host的SIGCHLD忽略/SA_NOCLDWAIT策略在启动前拒绝，不修改Host全局策略。最多四条16字节原生记录传送身份、Node PID、原始终态和exec errno；真实启动错误在清理后按稳定code返回，errno仅留私有诊断和日志，不能误报成签名不符。两个原生进程纳入B的RSS验收范围。
 
+macOS 上，POSIX `kill` 对只剩 zombie 的进程组可能返回 `EPERM`。Host 用组枚举和 `getpgid` 确认组中已无活动进程后继续等待，最终仍须确认 Node 组与观察者均已回收。存在活动组员或内核查询失败时保留错误，避免将真正的信号权限问题视为停止成功。[XNU 组信号实现](https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/bsd/kern/kern_sig.c#L1571-L1619)
+
 | code                              | 含义                                                  |
 | --------------------------------- | ----------------------------------------------------- |
 | `NODE_RUNTIME_MISSING`            | 必需资源根、描述或 Node 不存在                        |
