@@ -96,6 +96,8 @@
 
 **Windows 原生控件复验（`534bbd5`）**。本机 `pnpm verify --jobs 1` 通过，185.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程到 30 秒上限未返回，未执行保存输入。移除 UI Automation 查询，沿用已观察到的 Win32 原生编辑框和确认按钮，记录找窗、控件、输入与确认的进度及子进程退出原因。保留原超时、所有者焦点及 Host 实际录制目标校验。证据见同目录 `windows-534bbd5` 与 `534bbd5-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44564679118)
 
+**Windows 辅助进程启动（`659c43f`）**。本机 `pnpm verify --jobs 1` 通过，190.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程在 30 秒后被终止，初始化后的首条进度未出现。下一轮先分开观察 PowerShell 启动和内嵌 C# 编译，再核对对话框操作。真实保存未执行。证据见同目录 `windows-659c43f/signed-terminal-uJ7TBb` 与 `659c43f-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44567109656)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
@@ -139,7 +141,7 @@ Windows `pnpm verify` 通过，前端 2558 项通过，脚本 353 项通过、4 
 
 原生平台验收使用独立环境或安排好的前台时段。检查实际 WebView 隔离、Tauri 全局、子 frame 导航、旧端口投递与关窗资源回收，并核对焦点、语言、主题和缩放。参见 [锁定版 Wry 的 WebView 构建接口](https://docs.rs/wry/0.57.0/wry/struct.WebViewBuilder.html)和 [HTML 消息端口](https://html.spec.whatwg.org/multipage/web-messaging.html#message-channels)。
 
-**仍需观察：** 安装准备超时和关停压力失败尚未确认修复；保留原门槛，在重新复现或候选验收时调查，不用单项重跑覆盖整组失败。大草稿输入即便单轮通过，也曾在同一场景十轮中三次超过 100 ms；保留四倍 CPU 降速、40 样本和原重试策略，不据此提升性能需求状态。schema 逻辑额度和 Node 采样也不证明全局 CPU 或完整进程树峰值 RSS；仍需在候选上测量。
+**仍需观察。** 安装准备超时和关停压力失败尚未确认修复。候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。草稿输入两轮通过的 p95 为 96.4、95.6 毫秒，距门槛约 4 毫秒。三轮超标原样本各有两个达到或超过 100 毫秒，当前第二慢值分别为 100.4、116.8、117.7 毫秒，最邻近秩重算为 71.8、76.5、81.8 毫秒。其中一轮原生对照的第二慢值也达到 112.1 毫秒。原样本位于 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `runtime-supervision-exact-ui-failure`、`composer-read-exact-ui-failure` 和 `composer-input-latency-353df06`。两种公式分别允许 40 个样本中有一个或两个达到或超过门槛。单次差异足以翻转该轮结果，实际体验预算仍需在代表性环境中用多轮样本校准。按[设计与复核测试门槛](./testing.md#设计与复核测试门槛)继续评估，原验收记录保留。
 
 ## 阶段路线
 
