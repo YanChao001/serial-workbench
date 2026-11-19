@@ -42,9 +42,13 @@
 
 **第二轮四目标 CI（`d5eaa63`）**。无头 Chromium 203 项通过，草稿输入 p95 为 68.6 毫秒。Windows x64 和 Linux x64 原生桌面复跑通过。桌面与签名准备总耗时分别由 518 秒降到 356 秒、由 338 秒降到 232 秒，两台 runner 均命中 pnpm 缓存，Rust 桌面缓存未命中。两种 macOS 架构的单元测试发现本地 IPC 和插件资源夹具经临时目录别名访问被拒绝，测试改用已解析的临时根。两种架构的原生签名终端均在撤权步骤失败，Host 报无法确认 Node 退出。arm64 产物确认录制中追加读取权和关窗回收已通过，Host 关停超时。`artifacts/e2e` 收据、截图和私有日志保留到本地证据目录。针对 XNU 对仅留 zombie 的进程组可能返回 `EPERM` 的行为，修正停止判定并增加待实际运行的回归。继续核对两种架构的撤权及正常退出。[第二轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44493616201)
 
+同轮 Ubuntu x64 的 workspace、离线六场景含 600 秒负载和 11 项固定运行时用例通过。Rust 作业随后达到 60 分钟上限。日志在终止前标出了初始图容量回收和签名升级后保存 Schema 重放两项失败，用例的完整断言仍待取得。产物见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/second-host-offline-linux/` 和同目录的 `repaired-ci-rust-linux.log`。
+
 **Windows 新版真实文件选择（`d5eaa63`）**。在已安排的本机前台，以普通桌面权限和独立 Host profile 打开真实 ZIP 对话框。返回主窗后已确认插件名称、版本和等待授权状态。随后连接 Virtual Echo 时 Windows 报主窗未响应，录制保存对话框未到达。截图、Host 日志和退出记录见 `artifacts/e2e/signed-terminal-limited-kE5a0S` 和 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/checkpoint.json`。随后发现并终止仍在占用内存的测试诊断 PowerShell，系统可用内存由约 4.0 GiB 恢复至 18.3 GiB。测试应用、Host 和临时启动任务已退出。窗口未响应的原因仍待复验。
 
 **自动化任务取消（第二轮 CI）**。Windows 正式运行时中的签名参考包通过匹配、不匹配和超时场景，等待应答时的取消被记为 `NODE_ACTION_FAILED`。同版本 Node bootstrap 用受控私有帧复现 Raw `CANCELLED` 回执先到、取消控制帧尚未到达的情形。修复前回报 `action_failed`，修复后回报 `action_cancelled`。Host 仍核对是否已接受实际取消，保留等待真实终态和已经发生的晚成功。原生 Raw 回归现要求任务信号先于拒绝可见。日志见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/repaired-ci-rust-windows.log` 和同目录的 `raw-cancel-red.log`、`raw-cancel-green.log`，关联 AUTO-05、AUTO-13。完整参考包和多平台回归待同一候选通过。[第二轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44493616201)
+
+**第三轮四目标 CI（`2d81948`）**。四个目标的签名终端原生桌面场景均通过，确认录制中追加读取权、关闭与重开、撤权、正常关停，以及各自同一会话的 69 字节回放。无头 Chromium 203 项通过，草稿输入 p95 为 51.7 毫秒。四目标桌面 Rust 缓存均命中，Windows 和 Linux 的桌面构建与签名准备分别耗时 171 秒和 97 秒。Windows 的 `device_runtime` 单元测试发现上一轮正在结束的枚举可能满足较新的手动刷新，得到旧 COM 号。目录刷新按请求开始时的枚举代次等待新结果，保留单一枚举线程。新增夹具暂停已取得旧编号的枚举并等待复验，关联 CONN-02 的软件证据。完整运行时专项和 Windows 原生文件保存对话框仍需复验。[第三轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44502225790)
 
 ## 验证基线
 

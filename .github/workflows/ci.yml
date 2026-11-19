@@ -250,7 +250,7 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           pnpm test:runtime --target '${{ matrix.target }}' --resources 'src-tauri/target/${{ matrix.target }}/release' --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/node-runtime
           cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
-          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1
+          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture
           export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
           export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
           cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
