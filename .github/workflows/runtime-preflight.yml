@@ -178,7 +178,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: 保留 runtime 失败夹具与来源现场
-        if: failure()
+        if: failure() && inputs.suite != 'linux-offline-installer'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-preflight-failures-${{ matrix.target }}

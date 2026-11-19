@@ -15,8 +15,11 @@ version=$(node -p 'require("./package.json").version')
 name=$(node -p 'require("./app.config.json").name')
 dist="$PWD/artifacts/$version/$target/installers"
 shopt -s nullglob
-packages=("$dist"/*.deb)
-[[ ${#packages[@]} == 1 ]]
+packages=("$dist/deb"/*.deb)
+if [[ ${#packages[@]} != 1 ]]; then
+  printf 'Expected one Debian package in %s/deb, found %s\n' "$dist" "${#packages[@]}" >&2
+  exit 1
+fi
 deb=${packages[0]}
 cp -- "$dist/components.json" "$output/components.json"
 sha256sum -- "$deb" > "$output/installer.sha256.txt"
