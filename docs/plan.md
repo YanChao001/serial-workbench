@@ -62,6 +62,8 @@
 
 **本机综合及无头 UI（`8cbc7e7`）**。Windows `pnpm verify --jobs 1` 通过。无头 Chromium 202 项通过，草稿输入 p95 为 100.4 毫秒，未达原 100 毫秒门槛。两次超阈值均出现在大段插入，纯原生文本框对照也出现一次 272.9 毫秒尖峰。保留各次样本和截图，继续定位应用开销及帧调度。当前远程 Ubuntu 签名后台、Rust、桌面、绑定及浏览器作业在下载依赖时退出，对应测试未运行。证据为同目录的 `runtime-supervision-exact-{verify,ui}-result.json`、`runtime-supervision-exact-ui-failure` 及五份 `runtime-supervision-*-first.log`。[同源四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565)
 
+**草稿输入全文读取（候选）**。两轮无头诊断均测到 40 次输入触发 120 次文本框全文读取。输入事件已获得原生正文，复用该值后两轮均为 80 次。外部草稿切换、清空及格式转换继续同步到文本框。草稿与工作台 67 项相关测试通过。带读取探针的 p95 样本为基线 78.3、69.9 毫秒及候选 77.0、70.4 毫秒，留作诊断；100 毫秒门槛继续用于原全量 UI。诊断日志为同目录的 `composer-draft-read-{baseline,candidate}.log`。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

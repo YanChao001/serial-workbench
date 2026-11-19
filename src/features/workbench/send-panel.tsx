@@ -155,12 +155,15 @@ export function SendPanel({
 }: SendPanelProps) {
   const composer = useComposerToastOffset();
   const draftInput = useRef<HTMLTextAreaElement>(null);
+  const displayedDraft = useRef<string | undefined>(undefined);
   const currentDraft = useRef(draft);
   currentDraft.current = draft;
   useLayoutEffect(() => {
     const input = draftInput.current;
-    // 原生编辑已同步正文；仅在切换草稿或转换格式时写回，避免长文本逐字重排 defaultValue。
-    if (input && input.value !== draft) input.value = draft;
+    // 输入事件已记录原生正文，渲染后无需再次读取整个长草稿。
+    if (!input || displayedDraft.current === draft) return;
+    if (input.value !== draft) input.value = draft;
+    displayedDraft.current = draft;
   }, [draft]);
   const id = useId();
   const [receiptOpen, setReceiptOpen] = useState(false);
@@ -638,8 +641,10 @@ export function SendPanel({
             data-surface="transparent"
             onChange={(event) => {
               if (draftReadOnly) return;
+              const value = event.currentTarget.value;
+              displayedDraft.current = value;
               setConversionError(undefined);
-              onDraftChange(event.target.value);
+              onDraftChange(value);
             }}
             aria-invalid={preview.invalid}
             aria-describedby={
