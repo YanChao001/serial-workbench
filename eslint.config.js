@@ -53,12 +53,13 @@ export default tseslint.config(
     languageOptions: { globals: globals.browser },
   },
   {
-    // 构建脚本与配置文件是 Node 环境
+    // 构建脚本、配置及 Host 后台引导运行于 Node。
     files: [
       "*.config.{js,ts}",
       "scripts/**/*.mjs",
       "e2e/**/*.mjs",
       "wdio*.mjs",
+      "crates/host/src/node_backend/**/*.mjs",
     ],
     languageOptions: { globals: globals.node },
   },

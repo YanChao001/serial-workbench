@@ -467,6 +467,23 @@ impl StreamHub {
         actor: &AuthenticatedActor,
         params: StreamSubscribeParams,
     ) -> HostResult<RawSubscription> {
+        self.subscribe_reader(actor, params, None).await
+    }
+    pub(crate) async fn subscribe_capture(
+        &self,
+        actor: &AuthenticatedActor,
+        params: StreamSubscribeParams,
+        destination: Target,
+    ) -> HostResult<RawSubscription> {
+        self.subscribe_reader(actor, params, Some(destination))
+            .await
+    }
+    async fn subscribe_reader(
+        &self,
+        actor: &AuthenticatedActor,
+        params: StreamSubscribeParams,
+        recording_destination: Option<Target>,
+    ) -> HostResult<RawSubscription> {
         let queue = usize::try_from(params.queue_bytes.get()).map_err(|_| invalid())?;
         if queue == 0
             || queue > self.inner.limits.reader_bytes
@@ -500,6 +517,11 @@ impl StreamHub {
         let target = source.target.clone();
         let stamp = tokio::task::spawn_blocking(move || {
             let authorization = auth.snapshot(&check_actor)?;
+            if let Some(destination) = recording_destination {
+                return authorization
+                    .capture_recording_grants(&target, &destination)
+                    .map(Some);
+            }
             let stamp = authorization.capture_grants();
             authorization.require("content.read", &target)?;
             if let Some(stamp) = &stamp {

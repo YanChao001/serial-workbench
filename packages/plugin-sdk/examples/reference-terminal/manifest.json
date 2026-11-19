@@ -1,0 +1,77 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.reference.terminal",
+  "version": "0.1.0",
+  "displayName": "Serial Workbench Terminal",
+  "description": "Read-only terminal for a Host session",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "webUi": {
+    "entry": "ui/index.html"
+  },
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["content.read"],
+        "targetKinds": ["session"]
+      }
+    ],
+    "executionPurposes": ["terminal"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [
+      {
+        "actionId": "swb.reference.terminal.open",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string"
+            },
+            "sessionEpoch": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]*)$"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "plugins",
+          "panelId": "swb.reference.terminal.view"
+        }
+      }
+    ],
+    "queries": [],
+    "transports": [],
+    "parsers": [],
+    "views": [
+      {
+        "id": "swb.reference.terminal.view",
+        "actionId": "swb.reference.terminal.open",
+        "stateScopes": []
+      }
+    ],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

@@ -5,6 +5,7 @@ use serial_workbench_core::{Clock, ContextToken, Digest, HostError, HostResult, 
 use sha2::{Digest as _, Sha256};
 
 use super::{AuthenticatedActor, HostIdentity};
+mod task;
 
 const ACCEPTANCE_NS: u64 = 86_400_000_000_000;
 const PAYLOAD_LEN: usize = 113;

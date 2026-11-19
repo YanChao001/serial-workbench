@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { type Page } from "@playwright/test";
+import { catalog, clientDefaults, defaults } from "./json-fixtures";
 import { TX_MAX_BYTES } from "../../packages/contracts/src/generated/types";
 import type {
   QueryResult,
@@ -15,14 +16,15 @@ import type {
   Query,
   Call,
   FileMetadata,
+  NodePackageInstallation,
+  NodePackageSourceKey,
+  NodePackageSummary,
   CaptureTailResult,
   Cursor,
   WorkspaceDocumentResult,
   SessionSnapshot,
   ReplayReadResult,
 } from "@serial-workbench/contracts";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
-import clientDefaults from "../../src/lib/generated/client-defaults.json" with { type: "json" };
 import type {
   ClientStateSnapshot,
   ClientWindowState,
@@ -30,13 +32,13 @@ import type {
   DesktopStatus,
   DiagnosticsReport,
   HostSettingsEffectsReceipt,
+  LocalNodeIntent,
   WindowGeometry,
   SelectedFileResource,
   CaptureNameHint,
 } from "../../src/lib/generated/bindings";
 
 import { session, operation } from "../../src/features/workbench/test-fixtures";
-import catalog from "../../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import { validateActionSpec } from "../../packages/contracts/src/generated/validators.mjs";
 import type { DeviceDescriptor, Operation } from "@serial-workbench/contracts";
 
@@ -72,6 +74,9 @@ export type WorkbenchFixture = {
   endRaw: (error: HostError) => number;
   unexpectedCommands: string[];
   hostQueries: string[];
+  pluginIntents: LocalNodeIntent[];
+  pluginInstallFailure: boolean;
+  limitPluginReads: boolean;
   queryInputs: Query[];
   configureCheckDelayMs: number;
   configureAllowed: boolean;
@@ -179,6 +184,7 @@ export async function seedWorkbenchFixture(
     replay,
     connectFailure,
     connectionDefaults,
+    plugin,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -200,6 +206,11 @@ export async function seedWorkbenchFixture(
     replay?: ReplayLayoutFixture;
     connectFailure?: HostError;
     connectionDefaults?: ClientWindowState["connectionDefaults"];
+    plugin?: {
+      archive: SelectedFileResource;
+      installation: NodePackageInstallation;
+      source: NodePackageSourceKey;
+    };
   },
 ) {
   const desktopStatus: DesktopStatus = {
@@ -412,6 +423,7 @@ export async function seedWorkbenchFixture(
     replayOperation,
     replaySummary,
     connectFailure: connectFailure ?? null,
+    plugin,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -439,7 +451,11 @@ export async function seedWorkbenchFixture(
       replayOperation,
       replaySummary,
       connectFailure,
+      plugin,
     } = JSON.parse(raw) as typeof fixturePayload;
+    let pluginRevision = 0;
+    let activePluginReads = 0;
+    let pluginSummary: NodePackageSummary | undefined;
     const retained = JSON.parse(
       sessionStorage.getItem("workbench-native-fixture") ?? "null",
     ) as {
@@ -567,6 +583,9 @@ export async function seedWorkbenchFixture(
       },
       unexpectedCommands: [],
       hostQueries: [],
+      pluginIntents: [],
+      pluginInstallFailure: false,
+      limitPluginReads: false,
       queryInputs: [],
       configureCheckDelayMs: 0,
       configureAllowed: true,
@@ -726,6 +745,7 @@ export async function seedWorkbenchFixture(
               });
               if (args.role === "captureTarget" && captureTarget)
                 return captureTarget;
+              if (args.role === "source" && plugin) return plugin.archive;
               if (args.role !== "media") break;
               const selected = fixture.mediaQueue.shift();
               if (!selected) return null;
@@ -759,6 +779,65 @@ export async function seedWorkbenchFixture(
             case "media_release":
               fixture.releasedMedia.push(String(args.ticket));
               return null;
+            case "host_apply_node_intent": {
+              if (!plugin) break;
+              const intent = args.intent as LocalNodeIntent;
+              fixture.pluginIntents.push(intent);
+              if (intent.kind === "install" && fixture.pluginInstallFailure)
+                throw {
+                  code: "INVALID_ARGUMENT",
+                  message: plugin.installation.archiveSha256,
+                  retryable: false,
+                };
+              if (intent.expectedRevision !== String(pluginRevision))
+                throw new Error("Unexpected plugin revision");
+              const { archiveSha256, manifest, verifiedSource } =
+                plugin.installation;
+              if (intent.kind === "install") {
+                pluginSummary = {
+                  id: manifest.id,
+                  displayName: manifest.displayName,
+                  version: manifest.version,
+                  archiveSha256,
+                  enabled: false,
+                  executionApproved: false,
+                  sourceVerified: Boolean(verifiedSource),
+                };
+              } else {
+                if (
+                  !pluginSummary ||
+                  !("archiveSha256" in intent.params) ||
+                  intent.params.archiveSha256 !== archiveSha256
+                )
+                  throw new Error("Unexpected plugin archive");
+                if (intent.kind === "confirmExecutionTrust")
+                  pluginSummary.executionApproved = true;
+                if (intent.kind === "setEnabled")
+                  pluginSummary.enabled = intent.params.enabled;
+                if (intent.kind === "revokeExecutionTrust") {
+                  pluginSummary.executionApproved = false;
+                  pluginSummary.enabled = false;
+                }
+              }
+              const revision = String(++pluginRevision);
+              const operationId = "fixture-plugin-operation-" + revision;
+              const hostId = sentOperation.executionHostId;
+              return {
+                ...sentOperation,
+                state: "succeeded",
+                operationId,
+                rootOperationId: operationId,
+                actionId: "node.packages." + intent.kind,
+                target: { kind: "host", hostId, id: hostId },
+                result: {
+                  kind:
+                    intent.kind === "install"
+                      ? "node_package_installed"
+                      : "node_package_changed",
+                  value: { revision, package: pluginSummary },
+                },
+              };
+            }
             case "host_apply_document_intent": {
               const intent = args.intent as {
                 kind: string;
@@ -906,6 +985,95 @@ export async function seedWorkbenchFixture(
               const query = request.params;
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
+              if (
+                fixture.limitPluginReads &&
+                (query.actionId.startsWith("node.packages.") ||
+                  query.actionId === "node.sources.list")
+              ) {
+                if (activePluginReads >= 2)
+                  return {
+                    ok: false,
+                    error: {
+                      code: "HOST_BUSY",
+                      message: "Plugin read capacity is occupied",
+                      retryable: true,
+                    },
+                  };
+                activePluginReads++;
+                await new Promise((resolve) => setTimeout(resolve, 50));
+                activePluginReads--;
+              }
+              if (plugin && query.actionId === "node.packages.list")
+                return {
+                  ok: true,
+                  result: {
+                    kind: "node_packages",
+                    value: {
+                      revision: String(pluginRevision),
+                      packages: pluginSummary ? [pluginSummary] : [],
+                    },
+                  },
+                };
+              if (plugin && query.actionId === "node.sources.list")
+                return {
+                  ok: true,
+                  result: {
+                    kind: "node_package_sources",
+                    value: { revision: "1", keys: [plugin.source] },
+                  },
+                };
+              if (pluginSummary && query.actionId === "node.packages.runtime")
+                return {
+                  ok: true,
+                  result: {
+                    kind: "node_package_runtime",
+                    value: {
+                      id: pluginSummary.id,
+                      archiveSha256: pluginSummary.archiveSha256,
+                      phase: pluginSummary.enabled ? "active" : "inactive",
+                      generation: "1",
+                    },
+                  },
+                };
+              if (
+                plugin &&
+                pluginSummary &&
+                query.actionId === "node.packages.detailsRead"
+              ) {
+                const { archiveSha256, manifest, verifiedSource } =
+                  plugin.installation;
+                const bytes = new TextEncoder().encode(
+                  JSON.stringify({
+                    ...plugin.installation,
+                    enabled: pluginSummary.enabled,
+                    executionTrust: pluginSummary.executionApproved
+                      ? {
+                          archiveSha256,
+                          verifiedSource,
+                          permissions: manifest.permissions,
+                        }
+                      : null,
+                  }),
+                );
+                const digest = await crypto.subtle.digest("SHA-256", bytes);
+                return {
+                  ok: true,
+                  result: {
+                    kind: "node_package_details",
+                    value: {
+                      revision: String(pluginRevision),
+                      id: manifest.id,
+                      archiveSha256,
+                      offset: "0",
+                      totalBytes: String(bytes.length),
+                      bytesBase64: btoa(String.fromCharCode(...bytes)),
+                      jsonSha256: Array.from(new Uint8Array(digest), (byte) =>
+                        byte.toString(16).padStart(2, "0"),
+                      ).join(""),
+                    },
+                  },
+                };
+              }
               if (
                 replayProfile &&
                 query.actionId === "operation.get" &&

@@ -1,11 +1,14 @@
 mod context;
 mod grants;
 mod identity;
+mod task_scope;
 pub use context::{ContextSigner, RequestContext, ValidatedContext};
 pub(crate) use context::{add_wall_seconds, hash};
 pub use grants::{AuthService, Authentication};
 pub(crate) use grants::{AuthorizationSnapshot, GrantStamp};
+pub(crate) use identity::ActorReference;
 pub use identity::{AuthenticatedActor, HostIdentity};
+pub(crate) use task_scope::TaskAuthority;
 
 #[cfg(test)]
 pub(crate) fn actor(id: &str) -> AuthenticatedActor {

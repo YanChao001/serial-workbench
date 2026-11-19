@@ -518,12 +518,8 @@ pub async fn choose_file_resource(
             select_path(window.label(), || {
                 // 测试构建只替换系统对话框，后续文件检查、登记和授权仍走正式链路。
                 #[cfg(feature = "e2e")]
-                if matches!(role, FileResourceRole::Media) {
-                    let root = std::env::var_os("STARTER_TEST_DATA_DIR")
-                        .map(PathBuf::from)
-                        .filter(|path| path.is_absolute())
-                        .ok_or_else(invalid)?;
-                    return Ok(Some(root.join("e2e-background.png")));
+                if let Some(path) = e2e_picker_path(role)? {
+                    return Ok(Some(path));
                 }
                 let dialog = app.dialog().file().set_parent(&window);
                 let selected = match role {
@@ -553,6 +549,28 @@ pub async fn choose_file_resource(
         .map_err(|_| invalid())?
     })
     .await
+}
+
+#[cfg(feature = "e2e")]
+fn e2e_picker_path(role: FileResourceRole) -> HostResult<Option<PathBuf>> {
+    let (directory, file) = match role {
+        FileResourceRole::Media => ("STARTER_TEST_DATA_DIR", "e2e-background.png"),
+        FileResourceRole::Source | FileResourceRole::CaptureTarget
+            if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("terminal-automated") =>
+        {
+            let file = match role {
+                FileResourceRole::Source => "reference-terminal.zip",
+                _ => "terminal.swbcap",
+            };
+            ("STARTER_E2E_TERMINAL_DIR", file)
+        }
+        _ => return Ok(None),
+    };
+    let root = std::env::var_os(directory)
+        .map(PathBuf::from)
+        .filter(|path| path.is_absolute())
+        .ok_or_else(invalid)?;
+    Ok(Some(root.join(file)))
 }
 
 #[cfg(test)]

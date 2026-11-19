@@ -1,6 +1,8 @@
 #[cfg(windows)]
 use std::fs::OpenOptions;
 // 位置授权与捕获资源分离；私有 parentRef 只复用现有授权，不自动授予内容读取。
+#[path = "plugin_results.rs"]
+mod plugin_results;
 use crate::transmission::file_transfer::ReceiptJournalManifest;
 use crate::{
     auth::{AuthService, AuthenticatedActor, HostIdentity},
@@ -115,6 +117,9 @@ impl FileService {
     ) -> HostResult<FileReadResult> {
         if params.max_bytes.get() == 0 || params.max_bytes.get() > 65536 {
             return Err(invalid());
+        }
+        if let Some(result) = self.read_plugin_result(&params, actor)? {
+            return Ok(result);
         }
         let (bytes, total, fingerprint) = if params.file_ref.kind.as_str() == "capture_record" {
             let document = self.record_document(&params.file_ref, actor, "content.read")?;
@@ -512,6 +517,9 @@ impl FileService {
         permission: &str,
         fixed_content: bool,
     ) -> HostResult<Target> {
+        if let Some(target) = self.plugin_result_authority(reference, actor, permission)? {
+            return Ok(target);
+        }
         if reference.kind.as_str() == "capture_record" {
             return Ok(self
                 .record_document(reference, actor, permission)?
@@ -574,6 +582,9 @@ impl FileService {
         reference: &ObjectRef,
         actor: &AuthenticatedActor,
     ) -> HostResult<FileMetadata> {
+        if let Some(metadata) = self.plugin_result_metadata(reference, actor, "metadata.read")? {
+            return Ok(metadata);
+        }
         let d = self.document(reference, actor, "metadata.read")?;
         let mut result = reference.clone();
         result.revision = if d.live {
@@ -594,6 +605,9 @@ impl FileService {
         reference: &ObjectRef,
         actor: &AuthenticatedActor,
     ) -> HostResult<ObjectRef> {
+        if let Some(metadata) = self.plugin_result_metadata(reference, actor, "content.read")? {
+            return Ok(metadata.file_ref);
+        }
         let document = self.document(reference, actor, "content.read")?;
         let mut current = reference.clone();
         current.revision = if document.live {
@@ -778,6 +792,16 @@ impl FileService {
         reference: &ObjectRef,
         actor: &AuthenticatedActor,
     ) -> HostResult<FixedFile> {
+        self.open_fixed_checked(reference, actor, || Ok(()))
+    }
+    /// 证明获取本身也分块接受所属任务的取消、期限与授权控制。
+    pub fn open_fixed_checked(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+        mut check: impl FnMut() -> HostResult<()>,
+    ) -> HostResult<FixedFile> {
+        check()?;
         let d = self.document(reference, actor, "content.read")?;
         if d.purpose != FilePurpose::ReadFile {
             return Err(invalid());
@@ -814,7 +838,7 @@ impl FileService {
         } else {
             let proof_size = d.length.get().div_ceil(BLOCK as u64) * 32;
             let lease = self.reserve_proof(proof_size)?;
-            let (digest, blocks) = hash_reader(&mut file, &self.read_bytes)?;
+            let (digest, blocks) = hash_reader_checked(&mut file, &self.read_bytes, &mut check)?;
             if digest != d.fingerprint
                 || change_stamp(&file)? != stamp
                 || file_identity(&file)? != d.identity
@@ -845,6 +869,7 @@ impl FileService {
             proof
         };
         self.require_reference(reference, actor, "content.read")?;
+        check()?;
         if change_stamp(&file)? != proof.stamp {
             return Err(changed());
         }
@@ -860,6 +885,18 @@ impl FileService {
             actor: actor.clone(),
             _guard: guard,
         })
+    }
+    /// 内容消费者在打开和哈希前检查所属字节预算；不额外要求元数据权限。
+    pub(crate) fn read_file_length(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<u64> {
+        let document = self.document(reference, actor, "content.read")?;
+        if document.purpose != FilePurpose::ReadFile {
+            return Err(invalid());
+        }
+        Ok(document.length.get())
     }
     fn reserve_proof(&self, bytes: u64) -> HostResult<Option<ProofLease>> {
         if bytes > PROOF_BUDGET {
@@ -945,6 +982,7 @@ fn revision_changed() -> HostError {
     HostError::new("REVISION_CONFLICT", "Capture content revision changed")
 }
 impl FixedFile {
+    pub const MAX_CHUNK_BYTES: usize = BLOCK;
     pub fn len(&self) -> u64 {
         self.length
     }
@@ -1006,6 +1044,14 @@ impl FixedFile {
     }
 }
 fn hash_reader(file: &mut File, read_bytes: &AtomicU64) -> HostResult<(Digest, Vec<[u8; 32]>)> {
+    hash_reader_checked(file, read_bytes, &mut || Ok(()))
+}
+fn hash_reader_checked(
+    file: &mut File,
+    read_bytes: &AtomicU64,
+    check: &mut dyn FnMut() -> HostResult<()>,
+) -> HostResult<(Digest, Vec<[u8; 32]>)> {
+    check()?;
     file.seek(SeekFrom::Start(0)).map_err(io_error)?;
     let initial_length = file.metadata().map_err(io_error)?.len();
     if initial_length > MAX_FILE {
@@ -1018,8 +1064,10 @@ fn hash_reader(file: &mut File, read_bytes: &AtomicU64) -> HostResult<(Digest, V
         let mut bytes = vec![0; BLOCK];
         let mut n = 0;
         while n < BLOCK {
+            check()?;
             let read = file.read(&mut bytes[n..]).map_err(io_error)?;
             read_bytes.fetch_add(read as u64, Ordering::Relaxed);
+            check()?;
             if read == 0 {
                 break;
             }
@@ -1035,9 +1083,11 @@ fn hash_reader(file: &mut File, read_bytes: &AtomicU64) -> HostResult<(Digest, V
         if total > initial_length {
             return Err(changed());
         }
+        check()?;
         hash.update(&bytes[..n]);
         blocks.push(Sha256::digest(&bytes[..n]).into());
     }
+    check()?;
     Ok((
         Digest::try_from(format!("{:x}", hash.finalize()).as_str())?,
         blocks,

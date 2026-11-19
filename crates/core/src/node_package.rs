@@ -263,6 +263,20 @@ pub struct NodePackageView {
     pub id: Id,
     pub action_id: Id,
     pub state_scopes: Vec<String>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "NodePackageViewFeed")]
+    #[specta(type = NodePackageViewFeed, optional)]
+    pub feed: Option<NodePackageViewFeed>,
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum NodePackageViewFeed {
+    Derived,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]

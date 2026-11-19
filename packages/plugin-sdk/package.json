@@ -1,0 +1,16 @@
+{
+  "name": "@serial-workbench/plugin-sdk",
+  "version": "0.1.0",
+  "private": true,
+  "license": "Apache-2.0",
+  "type": "module",
+  "exports": {
+    "./node": {
+      "types": "./src/node.ts"
+    },
+    "./web": "./src/web.ts"
+  },
+  "dependencies": {
+    "@serial-workbench/contracts": "workspace:*"
+  }
+}

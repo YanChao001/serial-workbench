@@ -1,8 +1,8 @@
 /// <reference lib="dom" />
+import { defaults } from "./json-fixtures";
 import { expect, test, type Locator } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import type { WorkspaceDocument } from "@serial-workbench/contracts";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
 import { validateSerialConfiguration } from "../../packages/contracts/src/generated/validators.mjs";
 import { en } from "../../src/i18n/en";
 import { zhCN } from "../../src/i18n/zh-CN";

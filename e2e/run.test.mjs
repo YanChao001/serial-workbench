@@ -5,21 +5,43 @@ import test from "node:test";
 import { parseE2EOptions } from "./run-options.mjs";
 
 test("desktop runs require an explicit foreground choice, including reused builds", () => {
-  for (const args of [[], ["--skip-build"]])
+  for (const args of [
+    [],
+    ["--skip-build"],
+    ["--with-node-runtime"],
+    ["--terminal-manual"],
+    ["--terminal-automated"],
+  ])
     assert.throws(() => parseE2EOptions(args), /默认不启动/);
   const phases = ["fresh", "persisted", "centered"];
   assert.deepEqual(parseE2EOptions(["--interactive"]), {
     skipBuild: false,
+    withNodeRuntime: false,
     phases,
   });
   assert.deepEqual(parseE2EOptions(["--interactive", "--skip-build"]), {
     skipBuild: true,
+    withNodeRuntime: false,
     phases,
   });
   assert.deepEqual(parseE2EOptions(["--skip-build", "--interactive"]), {
     skipBuild: true,
+    withNodeRuntime: false,
     phases,
   });
+  assert.deepEqual(
+    parseE2EOptions(["--interactive", "--skip-build", "--with-node-runtime"]),
+    { skipBuild: true, withNodeRuntime: true, phases },
+  );
+  assert.deepEqual(parseE2EOptions(["--interactive", "--terminal-manual"]), {
+    skipBuild: false,
+    withNodeRuntime: true,
+    phases: ["terminal-manual"],
+  });
+  assert.deepEqual(
+    parseE2EOptions(["--interactive", "--skip-build", "--terminal-automated"]),
+    { skipBuild: true, withNodeRuntime: true, phases: ["terminal-automated"] },
+  );
 });
 
 test("invalid foreground flags fail without enabling the desktop runner", () => {
@@ -29,9 +51,23 @@ test("invalid foreground flags fail without enabling the desktop runner", () => 
     ["--interactive", "--previews"],
   ])
     assert.throws(() => parseE2EOptions(args), /Usage/);
+  assert.throws(
+    () =>
+      parseE2EOptions([
+        "--interactive",
+        "--terminal-manual",
+        "--terminal-automated",
+      ]),
+    /Usage/,
+  );
 });
 
-for (const args of [[], ["--skip-build"]]) {
+for (const args of [
+  [],
+  ["--skip-build"],
+  ["--terminal-manual"],
+  ["--terminal-automated"],
+]) {
   test(`the CLI refuses ${args.join(" ") || "a default run"} before build lookup or launch`, () => {
     const result = spawnSync(
       process.execPath,
@@ -48,6 +84,32 @@ for (const args of [[], ["--skip-build"]]) {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /默认不启动/);
     assert.match(result.stderr, /pnpm test:ui/);
+    assert.equal(result.stdout, "");
+  });
+}
+
+for (const mode of ["--terminal-manual", "--terminal-automated"]) {
+  test(`native terminal run ${mode} requires its signed input before build or launch`, () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        fileURLToPath(new URL("./run.mjs", import.meta.url)),
+        "--interactive",
+        mode,
+      ],
+      {
+        env: {
+          ...process.env,
+          SWB_TEST_SIGNED_TERMINAL_RECEIPT: "relative.json",
+        },
+        encoding: "utf8",
+        windowsHide: true,
+        timeout: 15000,
+      },
+    );
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /absolute signed terminal receipt path/);
     assert.equal(result.stdout, "");
   });
 }

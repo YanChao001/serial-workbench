@@ -121,6 +121,8 @@ export function createHostWorkspace(
     streams: new Map(),
   };
   let refreshPending: Promise<void> | undefined;
+  let catalogPending: Promise<void> | undefined;
+  let catalogDirty = false;
   let refreshEnumerating = false;
   let enumerationPending: Promise<void> | undefined;
   let operationsRefreshing = false;
@@ -739,25 +741,67 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
+  async function readCatalog(): Promise<ActionSpec[]> {
+    const items: ActionSpec[] = [];
+    let next: { pageToken: string; catalogVersion: string } | undefined;
+    do {
+      const result = await connection.client.query(
+        connection.buildQuery("catalog.list", connection.hostTarget, {
+          pageSize: "100",
+          ...next,
+        }),
+        lifetime.signal,
+      );
+      if (result.kind !== "catalog") throw new ContractValidationError();
+      const { catalogVersion, nextPageToken } = result.value;
+      items.push(...result.value.items);
+      next = nextPageToken
+        ? { pageToken: nextPageToken, catalogVersion }
+        : undefined;
+    } while (next);
+    return items;
+  }
+
+  function refreshCatalog(invalidated = false): Promise<void> {
+    lifetime.signal.throwIfAborted();
+    if (invalidated) catalogDirty = true;
+    if (catalogPending) return catalogPending;
+    catalogDirty = true;
+    catalogPending = (async () => {
+      let retries = 0;
+      try {
+        while (catalogDirty && !lifetime.signal.aborted) {
+          catalogDirty = false;
+          try {
+            const catalog = await readCatalog();
+            if (!catalogDirty) change({ catalog });
+            retries = 0;
+          } catch (error) {
+            if (catalogDirty) continue;
+            if (
+              !(error instanceof HostRequestError) ||
+              error.code !== "CATALOG_CHANGED" ||
+              retries >= 2
+            )
+              throw error;
+            retries++;
+            catalogDirty = true;
+          }
+        }
+      } finally {
+        catalogPending = undefined;
+      }
+    })();
+    return catalogPending;
+  }
+
   function startRefresh(enumerateDevices: boolean) {
     // 元数据刷新是一次新的明确尝试；自动投影重建沿用 owner 的剩余预算。
     projectionFailures = 0;
     failedProjectionScopes.clear();
     const pending = (async () => {
-      const catalog: ActionSpec[] = [];
-      let pageToken: string | undefined;
-      do {
-        const result = await connection.client.query(
-          connection.buildQuery("catalog.list", connection.hostTarget, {
-            pageSize: "100",
-            ...(pageToken ? { pageToken } : {}),
-          }),
-          lifetime.signal,
-        );
-        if (result.kind !== "catalog") throw new ContractValidationError();
-        catalog.push(...result.value.items);
-        pageToken = result.value.nextPageToken;
-      } while (pageToken);
+      await catalogListener;
+      await refreshCatalog();
       const devices = await connection.client.query(
         connection.buildQuery(
           enumerateDevices ? "device.refresh" : "device.list",
@@ -772,7 +816,6 @@ export function createHostWorkspace(
       change({
         devices: devices.value.devices,
         devicesStale: devices.value.stale,
-        catalog,
         // 已认证连接与设备目录已可用；历史投影不阻塞明确的设备连接。
         status: "ready",
       });
@@ -1306,6 +1349,22 @@ export function createHostWorkspace(
     watchSession,
   };
   snapshot = { state, ...actions, connection };
+  const catalogListener = connection
+    .onCatalogChanged(() => {
+      if (lifetime.signal.aborted) return;
+      invalidateActions();
+      void refreshCatalog(true).catch((error: unknown) => {
+        if (!lifetime.signal.aborted) report(error);
+      });
+    })
+    .then((stop) => {
+      if (lifetime.signal.aborted) stop();
+      else lifetime.signal.addEventListener("abort", stop, { once: true });
+    })
+    .catch((error: unknown) => {
+      if (!lifetime.signal.aborted)
+        reportClientError(error, "Host catalog notifications");
+    });
   return {
     ...actions,
     getSnapshot: () => snapshot,

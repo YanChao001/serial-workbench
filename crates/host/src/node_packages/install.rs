@@ -1,13 +1,13 @@
 //! 安装先发布独立代码对象，再由 SQLite CAS 决定可见版本；孤立对象不是已安装版本。
 use super::{
-    Control, NodePackageLimits, VerifiedNodePackage, VerifiedNodePackageSource, failure, invalid,
-    limit, paths::PackagePaths,
+    Control, NodeExecutionTrust, NodePackageLimits, VerifiedNodePackage, VerifiedNodePackageSource,
+    failure, invalid, limit, paths::PackagePaths,
 };
 use crate::{files::references::PathGuard, storage::Store};
 use serde::{Deserialize, Serialize};
 use serial_workbench_core::{
-    Digest, HostError, HostResult, Id, JsonObject, NodePackageId, NodePackageManifest,
-    NodePackagePermissions, U64,
+    Digest, HostError, HostResult, Id, NodePackageId, NodePackageInstallation, NodePackageManifest,
+    NodePackagePermissions, NodePackageSummary, SchemaObject, U64,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
@@ -19,12 +19,13 @@ use std::{
 };
 use zip::ZipArchive;
 
+mod uninstall;
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NodeExecutionTrust {
-    pub archive_sha256: Digest,
-    pub permissions: NodePackagePermissions,
-    pub verified_source: Option<VerifiedNodePackageSource>,
+pub(crate) struct ActivationAuthority {
+    pub actor: crate::auth::ActorReference,
+    pub instance_epoch: U64,
 }
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
@@ -35,7 +36,50 @@ pub struct InstalledNodePackage {
     pub verified_source: Option<VerifiedNodePackageSource>,
     pub enabled: bool,
     pub execution_trust: Option<NodeExecutionTrust>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub(super) activation_authority: Option<ActivationAuthority>,
     object_id: uuid::Uuid,
+}
+impl InstalledNodePackage {
+    pub(crate) fn object_id(&self) -> uuid::Uuid {
+        self.object_id
+    }
+}
+impl From<InstalledNodePackage> for NodePackageInstallation {
+    fn from(package: InstalledNodePackage) -> Self {
+        Self {
+            manifest: package.manifest,
+            archive_sha256: package.archive_sha256,
+            verified_source: package.verified_source,
+            enabled: package.enabled,
+            execution_trust: package.execution_trust,
+        }
+    }
+}
+
+impl From<InstalledNodePackage> for NodePackageSummary {
+    fn from(package: InstalledNodePackage) -> Self {
+        let mut display_name = package.manifest.display_name;
+        if let Some((boundary, _)) = display_name.char_indices().nth(96) {
+            display_name.truncate(boundary);
+            display_name.push('…');
+        }
+        let version = package.manifest.version.as_str();
+        let execution_approved = package.execution_trust.as_ref().is_some_and(|trust| {
+            trust.archive_sha256 == package.archive_sha256
+                && trust.permissions == package.manifest.permissions
+                && trust.verified_source == package.verified_source
+        });
+        Self {
+            id: package.manifest.id,
+            display_name: Some(display_name),
+            version: (version.len() <= 128).then(|| version.to_owned()),
+            archive_sha256: package.archive_sha256,
+            enabled: package.enabled,
+            source_verified: package.verified_source.is_some(),
+            execution_approved,
+        }
+    }
 }
 
 #[derive(Debug, Clone, PartialEq)]
@@ -77,6 +121,10 @@ pub struct NodePackageInstaller {
     store: Store,
     profile: PathBuf,
 }
+pub(super) struct InstallLifecycle<A, B> {
+    pub authorize: A,
+    pub before_commit: B,
+}
 impl NodePackageInstaller {
     pub fn new(store: Store, profile: &Path) -> HostResult<Self> {
         if !profile.is_absolute() {
@@ -88,8 +136,8 @@ impl NodePackageInstaller {
         })
     }
 
-    fn load(&self) -> HostResult<(U64, InstallDocument)> {
-        let Some(stored) = self.store.read_document(&document_id())? else {
+    fn load(store: &Store) -> HostResult<(U64, InstallDocument)> {
+        let Some(stored) = store.read_schema_document(&document_id())? else {
             return Ok((0.into(), InstallDocument::default()));
         };
         // 先识别格式，未来字段即使无法解码也不能被当前版本覆盖。
@@ -108,7 +156,12 @@ impl NodePackageInstaller {
     }
 
     pub fn snapshot(&self) -> HostResult<NodePackageSnapshot> {
-        let (revision, document) = self.load()?;
+        Self::read_snapshot(&self.store)
+    }
+
+    /// 只读取同一安装文档，不定位资源、不打开包代码或启动 Node。
+    pub fn read_snapshot(store: &Store) -> HostResult<NodePackageSnapshot> {
+        let (revision, document) = Self::load(store)?;
         Ok(NodePackageSnapshot {
             revision,
             packages: document.packages.into_values().collect(),
@@ -126,7 +179,7 @@ impl NodePackageInstaller {
     ) -> HostResult<super::VerifiedNodeInstallation> {
         let control = Control::new(cancel, limits.timeout)?;
         control.check()?;
-        let (revision, mut document) = self.load()?;
+        let (revision, mut document) = Self::load(&self.store)?;
         if revision != expected_revision {
             return Err(conflict());
         }
@@ -143,7 +196,7 @@ impl NodePackageInstaller {
             &control,
         )?;
         control.check()?;
-        let (current_revision, current) = self.load()?;
+        let (current_revision, current) = Self::load(&self.store)?;
         if current_revision != revision
             || current.packages.get(id.as_str()) != Some(verified.package())
         {
@@ -163,7 +216,17 @@ impl NodePackageInstaller {
         expected_revision: U64,
         archive_sha256: &Digest,
     ) -> HostResult<NodePackageSnapshot> {
-        let (revision, mut document) = self.load()?;
+        self.confirm_execution_trust_authorized(id, expected_revision, archive_sha256, || Ok(()))
+    }
+
+    pub(crate) fn confirm_execution_trust_authorized<G>(
+        &self,
+        id: &NodePackageId,
+        expected_revision: U64,
+        archive_sha256: &Digest,
+        authorize: impl FnMut() -> HostResult<G>,
+    ) -> HostResult<NodePackageSnapshot> {
+        let (revision, mut document) = Self::load(&self.store)?;
         if revision != expected_revision {
             return Err(conflict());
         }
@@ -173,7 +236,7 @@ impl NodePackageInstaller {
             permissions: package.manifest.permissions.clone(),
             verified_source: package.verified_source.clone(),
         });
-        self.save_preferences(revision, document)
+        self.save_preferences_authorized(revision, document, authorize)
     }
 
     /// 保存启用意图，不启动代码；停用时调用方必须先关闭接纳并结算实际执行 owner。
@@ -184,7 +247,21 @@ impl NodePackageInstaller {
         expected_revision: U64,
         archive_sha256: &Digest,
     ) -> HostResult<NodePackageSnapshot> {
-        let (revision, mut document) = self.load()?;
+        self.set_enabled_authorized(id, enabled, expected_revision, archive_sha256, None, || {
+            Ok(())
+        })
+    }
+
+    pub(crate) fn set_enabled_authorized<G>(
+        &self,
+        id: &NodePackageId,
+        enabled: bool,
+        expected_revision: U64,
+        archive_sha256: &Digest,
+        activation_authority: Option<ActivationAuthority>,
+        authorize: impl FnMut() -> HostResult<G>,
+    ) -> HostResult<NodePackageSnapshot> {
+        let (revision, mut document) = Self::load(&self.store)?;
         if revision != expected_revision {
             return Err(conflict());
         }
@@ -199,7 +276,8 @@ impl NodePackageInstaller {
             return Err(failure("PERMISSION_DENIED", "executionTrustRequired"));
         }
         package.enabled = enabled;
-        self.save_preferences(revision, document)
+        package.activation_authority = enabled.then_some(activation_authority).flatten();
+        self.save_preferences_authorized(revision, document, authorize)
     }
 
     /// 调用方先阻止新效果并结算执行 owner；撤权不删除来源证据、代码或私有数据。
@@ -209,26 +287,40 @@ impl NodePackageInstaller {
         expected_revision: U64,
         archive_sha256: &Digest,
     ) -> HostResult<NodePackageSnapshot> {
-        let (revision, mut document) = self.load()?;
+        self.revoke_execution_trust_authorized(id, expected_revision, archive_sha256, || Ok(()))
+    }
+
+    pub(crate) fn revoke_execution_trust_authorized<G>(
+        &self,
+        id: &NodePackageId,
+        expected_revision: U64,
+        archive_sha256: &Digest,
+        authorize: impl FnMut() -> HostResult<G>,
+    ) -> HostResult<NodePackageSnapshot> {
+        let (revision, mut document) = Self::load(&self.store)?;
         if revision != expected_revision {
             return Err(conflict());
         }
         let package = selected(&mut document, id, archive_sha256)?;
         package.enabled = false;
+        package.activation_authority = None;
         package.execution_trust = None;
-        self.save_preferences(revision, document)
+        self.save_preferences_authorized(revision, document, authorize)
     }
 
-    fn save_preferences(
+    fn save_preferences_authorized<G>(
         &self,
         revision: U64,
         document: InstallDocument,
+        mut authorize: impl FnMut() -> HostResult<G>,
     ) -> HostResult<NodePackageSnapshot> {
-        let value = serde_json::from_value(serde_json::to_value(&document).map_err(|_| storage())?)
-            .map_err(|_| storage())?;
-        let committed = self
-            .store
-            .compare_and_swap_document(&document_id(), revision, value)?;
+        let value: SchemaObject =
+            serde_json::from_value(serde_json::to_value(&document).map_err(|_| storage())?)
+                .map_err(|_| storage())?;
+        let _authority = authorize()?;
+        let committed =
+            self.store
+                .compare_and_swap_schema_document(&document_id(), revision, value)?;
         Ok(NodePackageSnapshot {
             revision: committed.revision,
             packages: document.packages.into_values().collect(),
@@ -243,9 +335,37 @@ impl NodePackageInstaller {
         limits: &NodePackageLimits,
         cancel: &AtomicBool,
     ) -> HostResult<NodePackageInstallReceipt> {
+        self.install_authorized(
+            package,
+            expected_revision,
+            limits,
+            cancel,
+            InstallLifecycle {
+                authorize: || Ok(()),
+                before_commit: || Ok(()),
+            },
+            |_, _| Ok(()),
+        )
+    }
+
+    pub(super) fn install_authorized<G>(
+        &self,
+        package: VerifiedNodePackage,
+        expected_revision: U64,
+        limits: &NodePackageLimits,
+        cancel: &AtomicBool,
+        mut lifecycle: InstallLifecycle<
+            impl FnMut() -> HostResult<G>,
+            impl FnMut() -> HostResult<()>,
+        >,
+        mut report: impl FnMut(u64, u64) -> HostResult<()>,
+    ) -> HostResult<NodePackageInstallReceipt> {
         let control = Control::new(cancel, limits.timeout)?;
         control.check()?;
-        let (revision, mut document) = self.load()?;
+        {
+            let _authority = (lifecycle.authorize)()?;
+        }
+        let (revision, mut document) = Self::load(&self.store)?;
         if revision != expected_revision {
             return Err(conflict());
         }
@@ -277,14 +397,17 @@ impl NodePackageInstaller {
             )?;
             let mut code = stage.child("code")?;
             code.create_directory().map_err(|_| storage())?;
-            extract(&package, &code, limits, &control)?;
+            extract(&package, &code, limits, &control, &mut report)?;
             let destination = objects.child(&object_id.to_string())?;
             control.check()?;
-            // Windows 的目录句柄拒绝 delete-share，发布前只释放待移动的最终目录。
-            code.release_directory();
-            code.rename_to(&destination, false).map_err(|_| storage())?;
-            destination.sync_parent().map_err(|_| storage())?;
-            code.sync_parent().map_err(|_| storage())?;
+            {
+                let _authority = (lifecycle.authorize)()?;
+                // Windows 的目录句柄拒绝 delete-share，发布前只释放待移动的最终目录。
+                code.release_directory();
+                code.rename_to(&destination, false).map_err(|_| storage())?;
+                destination.sync_parent().map_err(|_| storage())?;
+                code.sync_parent().map_err(|_| storage())?;
+            }
             let previous = document.packages.get(package.manifest().id.as_str());
             let execution_trust = previous.and_then(|previous| inherited_trust(previous, &package));
             let enabled =
@@ -295,18 +418,28 @@ impl NodePackageInstaller {
                 verified_source: package.verified_source().cloned(),
                 enabled,
                 execution_trust,
+                activation_authority: if enabled {
+                    previous.and_then(|package| package.activation_authority.clone())
+                } else {
+                    None
+                },
                 object_id,
             };
             document
                 .packages
                 .insert(installed.manifest.id.as_str().into(), installed.clone());
-            let value: JsonObject =
+            let value: SchemaObject =
                 serde_json::from_value(serde_json::to_value(&document).map_err(|_| storage())?)
                     .map_err(|_| storage())?;
             control.check()?;
-            let committed =
+            // 候选已完整暂存，旧执行责任在短期 CAS 锁外收敛。
+            (lifecycle.before_commit)()?;
+            control.check()?;
+            let committed = {
+                let _authority = (lifecycle.authorize)()?;
                 self.store
-                    .compare_and_swap_document(&document_id(), revision, value)?;
+                    .compare_and_swap_schema_document(&document_id(), revision, value)?
+            };
             // 提交后不再响应取消，成功提交不能被报告为未安装。
             Ok(NodePackageInstallReceipt {
                 revision: committed.revision,
@@ -408,12 +541,21 @@ fn extract(
     root: &PathGuard,
     limits: &NodePackageLimits,
     control: &Control<'_>,
+    report: &mut impl FnMut(u64, u64) -> HostResult<()>,
 ) -> HostResult<()> {
     let mut archive =
         ZipArchive::new(Cursor::new(package.archive_bytes())).map_err(|_| storage())?;
     if archive.len() > limits.max_files {
         return Err(limit("archiveEntries"));
     }
+    let file_total = archive
+        .file_names()
+        .try_fold(0_u64, |count, name| -> HostResult<u64> {
+            let name = name.map_err(|_| storage())?;
+            Ok(count + u64::from(!name.ends_with('/')))
+        })?;
+    let mut completed = 0_u64;
+    report(completed, file_total)?;
     let expected: BTreeMap<_, _> = package
         .integrity()
         .files
@@ -499,6 +641,8 @@ fn extract(
         }
         file.sync_all().map_err(|_| storage())?;
         target.sync_parent().map_err(|_| storage())?;
+        completed += 1;
+        report(completed, file_total)?;
     }
     Ok(())
 }

@@ -447,6 +447,8 @@
 }
 .workbench-draft-frame {
   display: grid;
+  /* 长草稿重排保持在编辑框内，外层仍按可见尺寸布局。 */
+  contain: layout;
   grid-template-rows: minmax(0, 1fr) var(--workbench-stat-height);
   height: 5.5rem;
   min-height: 5.5rem;

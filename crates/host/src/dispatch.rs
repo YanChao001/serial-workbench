@@ -1,10 +1,18 @@
 //! 统一动作接纳与连接适配；持久操作由 Store 持有，执行任务由 Host 持有。
+#[path = "node_actions.rs"]
+mod node_actions;
+#[path = "node_queries.rs"]
+mod node_queries;
+#[path = "node_views.rs"]
+mod node_views;
 #[path = "operation_inspection.rs"]
 mod operation_inspection;
 #[path = "shutdown.rs"]
 mod shutdown;
+#[path = "task_children.rs"]
+mod task_children;
 use crate::{
-    auth::{AuthService, AuthenticatedActor},
+    auth::{AuthService, AuthenticatedActor, GrantStamp},
     device::{DeviceService, TransportOpener},
     ipc::{ConnectionContext, HandlerFuture, HandlerReply, RequestHandler},
     registry::Registry,
@@ -36,6 +44,12 @@ struct HostInner {
     registry: Arc<Registry>,
     documents: Arc<crate::documents::DocumentService>,
     files: crate::files::FileService,
+    node_packages: Arc<crate::node_packages::NodePackageManager>,
+    node_query_capacity: Arc<Semaphore>,
+    node_raw_read_capacity: Arc<Semaphore>,
+    node_derived_capacity: Arc<Semaphore>,
+    node_view_capacity: Arc<Semaphore>,
+    tasks: Mutex<HashMap<Id, Arc<task_children::TaskScope>>>,
     capture_api: crate::capture_api::CaptureApi,
     client_effects: crate::client_effects::ClientEffects,
     clock: Arc<dyn Clock>,
@@ -50,6 +64,7 @@ struct HostInner {
     devices: DeviceService,
     device_runtime: Option<Arc<crate::device::DeviceRuntime>>,
     streams: StreamHub,
+    derived: crate::derived::DerivedHub,
     sessions: TransmissionService,
     stop_requested: tokio::sync::watch::Sender<bool>,
     catalog_watchers: tokio::sync::Mutex<HashMap<Id, oneshot::Sender<()>>>,
@@ -57,6 +72,8 @@ struct HostInner {
     admission_gate: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
     #[cfg(test)]
     catalog_gate: Mutex<Option<(oneshot::Sender<()>, oneshot::Receiver<()>)>>,
+    #[cfg(test)]
+    node_test_gates: crate::node_test_gates::NodeTestGates,
 }
 struct Jobs {
     closing: bool,
@@ -64,6 +81,7 @@ struct Jobs {
 }
 impl Drop for HostInner {
     fn drop(&mut self) {
+        self.node_packages.request_quiesce(true);
         if let Some(task) = self
             .operation_projection_task
             .get_mut()
@@ -116,7 +134,15 @@ impl Host {
         clock: Arc<dyn Clock>,
         provider: Arc<dyn crate::device::DeviceProvider>,
     ) -> HostResult<Self> {
-        Self::initialize(store, auth, clock, DeviceSource::Provider(provider), None).await
+        Self::initialize(
+            store,
+            auth,
+            clock,
+            DeviceSource::Provider(provider),
+            None,
+            None,
+        )
+        .await
     }
     pub async fn new(store: Store, auth: AuthService) -> HostResult<Self> {
         Self::initialize(
@@ -124,6 +150,7 @@ impl Host {
             auth,
             Arc::new(crate::clock::SystemClock::new()?),
             DeviceSource::Native,
+            None,
             None,
         )
         .await
@@ -139,6 +166,7 @@ impl Host {
             Arc::new(crate::clock::SystemClock::new()?),
             DeviceSource::Native,
             Some(snapshot),
+            None,
         )
         .await
     }
@@ -148,7 +176,25 @@ impl Host {
         clock: Arc<dyn Clock>,
         opener: TransportOpener,
     ) -> HostResult<Self> {
-        Self::initialize(store, auth, clock, DeviceSource::Opener(opener), None).await
+        Self::initialize(store, auth, clock, DeviceSource::Opener(opener), None, None).await
+    }
+    /// 可信 Rust 嵌入方可移交已校验的同套 Node 证明；该入口不接受 RPC 路径。
+    pub async fn with_verified_node_runtime(
+        store: Store,
+        auth: AuthService,
+        clock: Arc<dyn Clock>,
+        opener: TransportOpener,
+        node: crate::node_runtime::VerifiedNodeRuntime,
+    ) -> HostResult<Self> {
+        Self::initialize(
+            store,
+            auth,
+            clock,
+            DeviceSource::Opener(opener),
+            None,
+            Some(node),
+        )
+        .await
     }
     async fn initialize(
         store: Store,
@@ -156,6 +202,7 @@ impl Host {
         clock: Arc<dyn Clock>,
         source: DeviceSource,
         startup_config: Option<StartupConfigSnapshot>,
+        node: Option<crate::node_runtime::VerifiedNodeRuntime>,
     ) -> HostResult<Self> {
         let registry_store = store.clone();
         let registry_auth = auth.clone();
@@ -205,6 +252,31 @@ impl Host {
             )?;
         }
         let files = crate::files::FileService::new(store.clone(), auth.clone(), identity.clone());
+        #[cfg(test)]
+        let node_test_gates = crate::node_test_gates::NodeTestGates::default();
+        let node_packages = Arc::new(crate::node_packages::NodePackageManager::new(
+            store.clone(),
+            auth.clone(),
+            files.clone(),
+            registry.runtime.clone(),
+            #[cfg(test)]
+            node_test_gates.clone(),
+        ));
+        if let Some(node) = node {
+            node_packages.provide_runtime(node)?;
+        }
+        let recovery_manager = node_packages.clone();
+        if let Err(error) = blocking(move || {
+            recovery_manager.recover_installations(
+                &crate::node_packages::NodePackageLimits::default(),
+                &std::sync::atomic::AtomicBool::new(false),
+            )
+        })
+        .await
+        {
+            // 待恢复代码保持原件；实际Node效果会在安装名额内重试并拒绝未解决状态。
+            eprintln!("Node package cleanup remains pending: {}", error.code);
+        }
         let client_effects = crate::client_effects::ClientEffects::new(store.clone(), auth.clone());
         let capture_api = crate::capture_api::CaptureApi::new(crate::capture::CaptureRuntime {
             store: store.clone(),
@@ -241,6 +313,14 @@ impl Host {
                 store,
                 auth,
                 files,
+                node_packages,
+                node_query_capacity: Arc::new(Semaphore::new(2)),
+                node_raw_read_capacity: Arc::new(Semaphore::new(
+                    crate::node_backend::RAW_READ_SLOTS,
+                )),
+                node_derived_capacity: Arc::new(Semaphore::new(crate::node_backend::DERIVED_SLOTS)),
+                node_view_capacity: Arc::new(Semaphore::new(4)),
+                tasks: Mutex::new(HashMap::new()),
                 capture_api,
                 client_effects,
                 clock,
@@ -259,6 +339,7 @@ impl Host {
                 devices,
                 device_runtime,
                 streams,
+                derived: crate::derived::DerivedHub::new(),
                 sessions,
                 stop_requested: tokio::sync::watch::channel(false).0,
                 catalog_watchers: tokio::sync::Mutex::new(HashMap::new()),
@@ -266,10 +347,23 @@ impl Host {
                 admission_gate: Mutex::new(None),
                 #[cfg(test)]
                 catalog_gate: Mutex::new(None),
+                #[cfg(test)]
+                node_test_gates,
             }),
         };
         host.start_operation_projection()?;
         host.publish_operations().await?;
+        let recovery =
+            crate::node_packages::NodePackageManager::start_recovery(&host.inner.node_packages);
+        host.inner
+            .jobs
+            .lock()
+            .map_err(|_| busy())?
+            .handles
+            .push(OwnedJob {
+                handle: recovery,
+                operation_id: Arc::new(Mutex::new(None)),
+            });
         Ok(host)
     }
     pub fn projections(&self) -> &ProjectionStore {
@@ -329,16 +423,27 @@ impl Host {
             if spec.kind != kind || !spec.target_kinds.contains(&query.target.kind) {
                 return Err(invalid());
             }
-            if action == BuiltinAction::FileRegister && !actor.is_user_control() {
+            if matches!(
+                action,
+                BuiltinAction::FileRegister
+                    | BuiltinAction::NodeSourceApproveKey
+                    | BuiltinAction::NodeSourceRevokeKey
+                    | BuiltinAction::NodePackageConfirmExecutionTrust
+                    | BuiltinAction::NodePackageRevokeExecutionTrust
+            ) && !actor.is_user_control()
+            {
                 return Err(HostError::new(
                     "PERMISSION_DENIED",
-                    "File registration requires user control",
+                    "This action requires user control",
                 ));
             }
             let mut authorization = None;
             for permission in &spec.permissions {
                 // 引用权限由 FileService 解析到保存的原始授权目标，不能套用派生引用 target。
-                if (action == BuiltinAction::TransferFile && permission == "content.read")
+                if (matches!(
+                    action,
+                    BuiltinAction::TransferFile | BuiltinAction::NodePackagesInstall
+                ) && permission == "content.read")
                     || action.is_capture_api()
                     || replay
                     || matches!(
@@ -348,6 +453,7 @@ impl Host {
                             | BuiltinAction::TransferReceiptsRead
                             | BuiltinAction::OperationGet
                             | BuiltinAction::OperationInput
+                            | BuiltinAction::NodeViewAssetRead
                             | BuiltinAction::CatalogList
                     )
                 {
@@ -394,6 +500,13 @@ impl Host {
                     ) =>
             {
                 crate::documents::DocumentService::reference(&query.target)?;
+            }
+            BuiltinAction::NodePackagesInstall => {
+                let manager = self.inner.node_packages.clone();
+                let actor = actor.clone();
+                let target = query.target.clone();
+                let params: NodePackageInstallParams = decode(&query.params)?;
+                blocking(move || manager.authorize_inspection(&actor, &target, &params)).await?;
             }
             BuiltinAction::DeviceOpen => {
                 let params: OpenParams = decode(&query.params)?;
@@ -470,6 +583,14 @@ impl Host {
         query: &Query,
         action: BuiltinAction,
     ) -> HostResult<()> {
+        self.activity_with_reveal(actor, query, action_reveal(action, &query.target))
+    }
+    fn activity_with_reveal(
+        &self,
+        actor: &AuthenticatedActor,
+        query: &Query,
+        reveal_target: RevealTarget,
+    ) -> HostResult<()> {
         let mut activities = self.inner.activities.lock().map_err(|_| busy())?;
         if let Some(existing) = activities
             .iter_mut()
@@ -492,7 +613,7 @@ impl Host {
                 request_id: query.request_id.clone(),
                 action_id: query.action_id.clone(),
                 target: query.target.clone(),
-                reveal_target: action_reveal(action, &query.target),
+                reveal_target,
                 observations: 1.into(),
             });
         }
@@ -506,12 +627,27 @@ impl Host {
         )?;
         Ok(())
     }
+    async fn preflight_node_install(
+        &self,
+        actor: &AuthenticatedActor,
+        query: &Query,
+    ) -> HostResult<()> {
+        let manager = self.inner.node_packages.clone();
+        let actor = actor.clone();
+        let target = query.target.clone();
+        let params: NodePackageInstallParams = decode(&query.params)?;
+        blocking(move || manager.authorize(&actor, &target, &params)).await
+    }
+
     pub async fn check_action(
         &self,
         actor: &AuthenticatedActor,
         target: &Target,
         params: ActionCheckParams,
     ) -> HostResult<ActionCheckResult> {
+        if BuiltinAction::find(params.action_id.as_str()).is_err() {
+            return self.check_extension_query(actor, target, params).await;
+        }
         let action = BuiltinAction::find(params.action_id.as_str())?;
         if action == BuiltinAction::ActionCheck {
             return Err(invalid());
@@ -552,7 +688,17 @@ impl Host {
             params: params.params,
             reveal_target: spec.reveal_target.clone(),
         };
-        let authorization = self.validate(actor, &query, spec.kind).await;
+        let authorization = match self.validate(actor, &query, spec.kind).await {
+            Ok(BuiltinAction::NodePackagesInstall) => self
+                .preflight_node_install(actor, &query)
+                .await
+                .map(|()| BuiltinAction::NodePackagesInstall),
+            Ok(BuiltinAction::NodeViewAssetRead) => self
+                .check_node_view_asset(actor, &query)
+                .await
+                .map(|()| BuiltinAction::NodeViewAssetRead),
+            result => result,
+        };
         let auth = self.inner.auth.clone();
         let store = self.inner.store.clone();
         blocking(move || {
@@ -590,6 +736,15 @@ impl Host {
         query: Query,
         connection: Option<ConnectionContext>,
     ) -> HostResult<QueryOutput> {
+        if BuiltinAction::find(query.action_id.as_str()).is_err() {
+            return self
+                .query_extension(actor, query)
+                .await
+                .map(|result| QueryOutput {
+                    result,
+                    raw_output_lease: None,
+                });
+        }
         let action = self.validate(actor, &query, ActionKind::Query).await?;
         if !matches!(
             action,
@@ -599,12 +754,14 @@ impl Host {
                 | BuiltinAction::SessionInputs
                 | BuiltinAction::HostMetrics
                 | BuiltinAction::OperationGet
+                | BuiltinAction::NodeViewAssetRead
                 | BuiltinAction::StateScopes
                 | BuiltinAction::StateSnapshot
                 | BuiltinAction::StateSubscribe
                 | BuiltinAction::SubscriptionClose
                 | BuiltinAction::StreamCursor
                 | BuiltinAction::StreamRead
+                | BuiltinAction::StreamDerivedRead
                 | BuiltinAction::StreamSubscribe
                 | BuiltinAction::StreamCredit
         ) {
@@ -642,6 +799,54 @@ impl Host {
                             "This Host has no injected process configuration",
                         )
                     })
+            }
+            BuiltinAction::NodePackagesList => {
+                let params: NodePackageListParams = decode(&query.params)?;
+                let manager = self.inner.node_packages.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    manager
+                        .list(&actor, &query.target, params)
+                        .map(QueryResult::NodePackages)
+                })
+                .await
+            }
+            BuiltinAction::NodeViewAssetRead => self
+                .read_node_view_asset(actor, query.target, decode(&query.params)?)
+                .await
+                .map(|asset| QueryResult::NodeViewAsset(Box::new(asset))),
+            BuiltinAction::NodePackageRuntime => {
+                let params: NodePackageRuntimeParams = decode(&query.params)?;
+                let manager = self.inner.node_packages.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    manager
+                        .runtime_status(&actor, &query.target, params)
+                        .map(QueryResult::NodePackageRuntime)
+                })
+                .await
+            }
+            BuiltinAction::NodeSourcesList => {
+                let params: NodeSourceListParams = decode(&query.params)?;
+                let manager = self.inner.node_packages.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    manager
+                        .sources_list(&actor, &query.target, params)
+                        .map(QueryResult::NodePackageSources)
+                })
+                .await
+            }
+            BuiltinAction::NodePackageDetailsRead => {
+                let params: NodePackageDetailsReadParams = decode(&query.params)?;
+                let manager = self.inner.node_packages.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    manager
+                        .details_read(&actor, &query.target, params)
+                        .map(QueryResult::NodePackageDetails)
+                })
+                .await
             }
             BuiltinAction::OperationInput => {
                 let params: OperationInputParams = decode(&query.params)?;
@@ -686,11 +891,21 @@ impl Host {
                 let stream = self.inner.streams.memory_usage();
                 let capture = self.inner.capture_api.memory_usage();
                 let clock = self.inner.clock.clone();
-                blocking(move || {
-                    crate::metrics::snapshot(&store.identity()?, stream, capture, clock.as_ref())
-                        .map(QueryResult::HostMetrics)
+                let host = self.clone();
+                let mut metrics = blocking(move || {
+                    let mut metrics = crate::metrics::snapshot(
+                        &store.identity()?,
+                        stream,
+                        capture,
+                        clock.as_ref(),
+                    )?;
+                    metrics.derived = Some(host.inner.derived.memory_usage()?);
+                    Ok(metrics)
                 })
-                .await
+                .await?;
+                // 阻塞快照之后再复核实际Node，避免把等待期间已退出的实例缓存带入回执。
+                metrics.node = self.inner.node_packages.metrics();
+                Ok(QueryResult::HostMetrics(metrics))
             }
             action if action.is_capture_api() => {
                 if matches!(
@@ -826,6 +1041,26 @@ impl Host {
                     .into_parts();
                 return Ok(QueryOutput {
                     result: QueryResult::StreamRead(result),
+                    raw_output_lease: Some(lease),
+                });
+            }
+            BuiltinAction::StreamDerivedRead => {
+                let _context = connection.ok_or_else(|| {
+                    HostError::new(
+                        "CLIENT_REQUIRED",
+                        "Derived reads require a Raw data connection",
+                    )
+                })?;
+                let params: DerivedReadParams = decode(&query.params)?;
+                let host = self.clone();
+                let (result, lease) = blocking(move || {
+                    host.inner
+                        .derived
+                        .read(&query.target, query.instance_epoch, params)
+                })
+                .await?;
+                return Ok(QueryOutput {
+                    result: QueryResult::StreamDerivedRead(result),
                     raw_output_lease: Some(lease),
                 });
             }
@@ -1194,6 +1429,8 @@ impl Host {
         }
         let mut changes = self.inner.auth.subscribe_changes();
         changes.borrow_and_update();
+        let mut runtime_changes = self.inner.registry.runtime.subscribe();
+        runtime_changes.borrow_and_update();
         let mut current = tokio::select! {
             _ = context.closed() => return Err(HostError::new("CLIENT_CLOSED", "Connection is closed")),
             result = self.catalog_visibility(&context.actor) => result?,
@@ -1223,6 +1460,7 @@ impl Host {
                     _ = &mut stopped => break,
                     _ = context.closed() => break,
                     result = changes.changed() => if result.is_err() { break; },
+                    result = runtime_changes.changed() => if result.is_err() { break; },
                     _ = host.inner.auth.wait_grant_expiry(current.stamp.as_ref()) => {},
                 }
                 let next = match tokio::select! {
@@ -1256,6 +1494,9 @@ impl Host {
         actor: &AuthenticatedActor,
         mut call: Call,
     ) -> HostResult<Operation> {
+        if BuiltinAction::find(call.action_id.as_str()).is_err() {
+            return self.invoke_extension(actor, call).await;
+        }
         let query = call_query(&call);
         let action = self.validate(actor, &query, ActionKind::Action).await?;
         let replay_session = call.target.kind.as_str() == "session"
@@ -1275,6 +1516,31 @@ impl Host {
             action if action.is_document_action() => crate::documents::normalize(action, &call)?,
             BuiltinAction::HostShutdown => normalize::<EmptyParams>(&call.params)?,
             BuiltinAction::FileRegister => normalize::<RegisterFileParams>(&call.params)?,
+            action if action.is_node_mutation() => {
+                if call.expected_revision.is_none() {
+                    return Err(invalid());
+                }
+                match action {
+                    BuiltinAction::NodePackagesInstall => {
+                        normalize::<NodePackageInstallParams>(&call.params)?
+                    }
+                    BuiltinAction::NodePackageConfirmExecutionTrust
+                    | BuiltinAction::NodePackageRevokeExecutionTrust
+                    | BuiltinAction::NodePackageUninstall => {
+                        normalize::<NodePackageIdentityParams>(&call.params)?
+                    }
+                    BuiltinAction::NodePackageSetEnabled => {
+                        normalize::<NodePackageSetEnabledParams>(&call.params)?
+                    }
+                    BuiltinAction::NodeSourceApproveKey => {
+                        normalize::<NodeSourceApproveParams>(&call.params)?
+                    }
+                    BuiltinAction::NodeSourceRevokeKey => {
+                        normalize::<NodeSourceRevokeParams>(&call.params)?
+                    }
+                    _ => return Err(invalid()),
+                }
+            }
             BuiltinAction::Authorize => normalize::<AuthorizeParams>(&call.params)?,
             BuiltinAction::Revoke => normalize::<RevokeParams>(&call.params)?,
             BuiltinAction::OperationCancel => normalize::<OperationCancelParams>(&call.params)?,
@@ -1286,7 +1552,7 @@ impl Host {
         let lookup_actor = actor.clone();
         let lookup_call = call.clone();
         let lookup_files = self.inner.files.clone();
-        if let Some(existing) = blocking(move || {
+        if let Some(mut existing) = blocking(move || {
             let existing = lookup_store.lookup_call(
                 &lookup_actor,
                 &lookup_call,
@@ -1299,7 +1565,13 @@ impl Host {
         })
         .await?
         {
+            operation_inspection::redact_error_details(&mut existing);
             return Ok(existing);
+        }
+        if action == BuiltinAction::NodePackagesInstall {
+            // 当前读授权已通过；只有尚未接纳的新请求才复核安装输入和来源。
+            self.preflight_node_install(actor, &call_query(&call))
+                .await?;
         }
         if action == BuiltinAction::TransferFile {
             let files = self.inner.files.clone();
@@ -1365,6 +1637,7 @@ impl Host {
             }
             let operation_id = Arc::new(Mutex::new(None));
             let accepted_slot = operation_id.clone();
+            actor.mark_admission_queued();
             let handle = tokio::spawn(async move {
                 let mut admission = admission;
                 #[cfg(test)]
@@ -1407,10 +1680,13 @@ impl Host {
                     Err(error) => {
                         let _ = send.send(Err(error));
                     }
-                    Ok((Acceptance::Existing(operation), _)) => {
+                    Ok((Acceptance::Existing(mut operation), _)) => {
+                        operation_inspection::redact_error_details(&mut operation);
                         let _ = send.send(Ok(operation));
                     }
                     Ok((Acceptance::New(operation), stamp)) => {
+                        let mut call = call;
+                        call.request_id = operation.request_id.clone();
                         if let Some(prepared) = client_preparation {
                             let accepted = AcceptedCall {
                                 actor,
@@ -1468,6 +1744,7 @@ impl Host {
                                 call,
                                 operation,
                             },
+                            stamp,
                         )
                         .await;
                     }
@@ -1580,21 +1857,27 @@ impl Host {
         })
         .await;
     }
-    async fn execute_short(&self, action: BuiltinAction, accepted: AcceptedCall) {
-        if action.is_capture_api()
+    async fn execute_short(
+        &self,
+        action: BuiltinAction,
+        accepted: AcceptedCall,
+        stamp: Option<GrantStamp>,
+    ) {
+        if action.is_node_mutation()
+            || action.is_capture_api()
             || (action == BuiltinAction::SessionClose
                 && self.inner.capture_api.owns_replay(&accepted.call.target.id))
         {
-            let outcome = self
-                .inner
-                .capture_api
-                .execute(action, &accepted)
-                .await
-                .unwrap_or_else(|error| Settlement {
-                    state: OperationState::Interrupted,
-                    result: None,
-                    error: Some(error),
-                });
+            let outcome = if action.is_node_mutation() {
+                self.inner.node_packages.execute(&accepted, stamp).await
+            } else {
+                self.inner.capture_api.execute(action, &accepted).await
+            }
+            .unwrap_or_else(|error| Settlement {
+                state: OperationState::Interrupted,
+                result: None,
+                error: Some(error),
+            });
             let store = self.inner.store.clone();
             let operation_id = accepted.operation.operation_id;
             let _ = blocking(move || {
@@ -1952,6 +2235,9 @@ impl RequestHandler for Host {
                         operation: host.invoke(&actor, call).await?,
                     }))
                 }
+                RpcRequest::InvokeChild(call) => RpcResult::Operation(Box::new(OperationResult {
+                    operation: host.invoke_child(&actor, call).await?,
+                })),
                 RpcRequest::Query(q)
                 | RpcRequest::CatalogList(q)
                 | RpcRequest::OperationGet(q)
@@ -2745,6 +3031,9 @@ mod tests {
                 .unwrap()
                 .handles
                 .iter()
+                .filter(|job| {
+                    job.operation_id.lock().unwrap().as_ref() == Some(&accepted.operation_id)
+                })
                 .all(|job| job.handle.is_finished())
         })
         .await;

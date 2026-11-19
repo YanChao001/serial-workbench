@@ -1,8 +1,6 @@
 ﻿/// <reference lib="dom" />
+import { appConfig, defaults, clientDefaults } from "./json-fixtures";
 import type { Page } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
-import clientDefaults from "../../src/lib/generated/client-defaults.json" with { type: "json" };
 
 export const previewSettingsKey = `${appConfig.browserStorageNamespace}:preview-settings-v0`;
 export const clientStateKey = `${appConfig.browserStorageNamespace}:client-state-v0`;

@@ -20,6 +20,10 @@ import { Resvg } from "@resvg/resvg-js";
 import { parseE2EOptions } from "./run-options.mjs";
 import { checkNativeRequestDiagnostics } from "./native-log-evidence.mjs";
 import {
+  prepareTerminalEvidence,
+  readTerminalFixture,
+} from "./terminal-manual.mjs";
+import {
   spawnOwned,
   stopOwned,
   waitForWebDriver,
@@ -30,6 +34,7 @@ const require = createRequire(import.meta.url);
 const owned = [];
 let dataRoot;
 let preserveData = false;
+let artifacts = join(root, "artifacts", "e2e");
 let suiteHost;
 let suiteCli;
 let suiteEnv;
@@ -45,7 +50,7 @@ async function hostCommand(args, name, signal = AbortSignal.timeout(15000)) {
     {
       cwd: root,
       env: suiteEnv,
-      logPath: join(root, "artifacts", "e2e", `${name}-${hostRun}.log`),
+      logPath: join(artifacts, `${name}-${hostRun}.log`),
     },
   );
   owned.push(command);
@@ -56,7 +61,7 @@ async function startSuiteHost(retiredPid) {
   suiteHost = spawnOwned(suiteHostBinary, ["--profile", suiteEnv.SWB_PROFILE], {
     cwd: root,
     env: suiteEnv,
-    logPath: join(root, "artifacts", "e2e", `host-${hostRun}.log`),
+    logPath: join(artifacts, `host-${hostRun}.log`),
   });
   owned.push(suiteHost);
   await waitForSuiteHost(
@@ -81,9 +86,17 @@ async function stopSuiteHost() {
   await waitForSuiteHostExit(suiteHost);
 }
 try {
-  const { skipBuild, phases } = parseE2EOptions(process.argv.slice(2));
-  if (!skipBuild) await buildE2E();
-  const receipt = readE2EBuildReceipt();
+  const { skipBuild, withNodeRuntime, phases } = parseE2EOptions(
+    process.argv.slice(2),
+  );
+  const manual = phases.includes("terminal-manual");
+  const automated = phases.includes("terminal-automated");
+  const terminalFixture =
+    manual || automated
+      ? readTerminalFixture(process.env.SWB_TEST_SIGNED_TERMINAL_RECEIPT)
+      : null;
+  if (!skipBuild) await buildE2E({ withNodeRuntime });
+  const receipt = readE2EBuildReceipt(root, { withNodeRuntime });
   const binary = receipt.executable;
   process.on("SIGINT", interrupt);
   process.on("SIGTERM", interrupt);
@@ -105,9 +118,15 @@ try {
       .render()
       .asPng(),
   );
-  mkdirSync(join(root, "artifacts", "e2e"), { recursive: true });
+  mkdirSync(artifacts, { recursive: true });
+  let terminal;
+  if (terminalFixture) {
+    artifacts = mkdtempSync(join(artifacts, "signed-terminal-"));
+    terminal = prepareTerminalEvidence(terminalFixture, artifacts);
+    console.log(`Signed terminal inputs: ${terminal.path}`);
+  }
   writeFileSync(
-    join(root, "artifacts", "e2e", "candidate.json"),
+    join(artifacts, "candidate.json"),
     JSON.stringify(receipt, null, 2),
   );
   const component = (name) =>
@@ -115,27 +134,38 @@ try {
   suiteCli = component("serial-workbench-cli");
   suiteHostBinary = component("serial-workbench-host");
   await startSuiteHost();
-  suiteControl = serveSuiteHostRestarts(dataRoot, async () => {
-    const previous = suiteHost;
-    await stopSuiteHost();
-    await stopOwned(previous);
-    hostRun++;
-    await startSuiteHost(previous.child.pid);
-    const { hostId, instanceEpoch, pid } = JSON.parse(
+  const hostDiscovery = () =>
+    JSON.parse(
       readFileSync(join(profile, "host-v0", "discovery.json"), "utf8"),
     );
-    const evidence = {
-      hostId,
-      instanceEpoch,
-      pid,
-      previousPid: previous.child.pid,
-    };
+  const hostEvidence = join(artifacts, "terminal-host.json");
+  if (terminal) {
+    const { hostId, instanceEpoch, pid } = hostDiscovery();
     writeFileSync(
-      join(root, "artifacts", "e2e", `host-restart-${hostRun}.json`),
-      JSON.stringify(evidence, null, 2),
+      hostEvidence,
+      JSON.stringify({ hostId, instanceEpoch, pid }, null, 2),
+      { flag: "wx" },
     );
-    return evidence;
-  });
+  } else
+    suiteControl = serveSuiteHostRestarts(dataRoot, async () => {
+      const previous = suiteHost;
+      await stopSuiteHost();
+      await stopOwned(previous);
+      hostRun++;
+      await startSuiteHost(previous.child.pid);
+      const { hostId, instanceEpoch, pid } = hostDiscovery();
+      const evidence = {
+        hostId,
+        instanceEpoch,
+        pid,
+        previousPid: previous.child.pid,
+      };
+      writeFileSync(
+        join(artifacts, `host-restart-${hostRun}.json`),
+        JSON.stringify(evidence, null, 2),
+      );
+      return evidence;
+    });
   // 测试部署显式关闭真实更新源，避免启动检查访问生产 GitHub。
   mkdirSync(join(dataRoot, "config"));
   writeFileSync(
@@ -164,50 +194,94 @@ try {
       STARTER_E2E_PHASE: phase,
       STARTER_E2E_PORT: String(port),
     };
+    const phaseArtifacts = join(artifacts, phase);
+    if (automated) {
+      env.STARTER_E2E_TERMINAL_DIR = artifacts;
+      env.STARTER_E2E_TERMINAL_CLI = suiteCli;
+    }
     const app = spawnOwned(binary, [], {
       cwd: root,
       env,
-      logPath: join(root, "artifacts", "e2e", phase, "native.log"),
+      logPath: join(phaseArtifacts, "native.log"),
     });
     owned.push(app);
     let runner;
     try {
       await waitForWebDriver(app, port, cancellation.signal);
-      runner = spawnOwned(
-        process.execPath,
-        [
-          join(
-            dirname(dirname(require.resolve("@wdio/cli"))),
-            "bin",
-            "wdio.js",
-          ),
-          "run",
-          "wdio.conf.mjs",
-        ],
-        { cwd: root, env },
-      );
-      owned.push(runner);
-      const deadline = AbortSignal.timeout(10 * 60 * 1000);
-      try {
-        await waitOwned(
-          runner,
-          AbortSignal.any([cancellation.signal, deadline]),
+      if (manual) {
+        console.log(
+          `Use the actual file dialogs. Quit the application after completing the scenario. Capture: ${terminal.capture}`,
         );
-      } catch (error) {
-        if (app.child.exitCode !== null || app.child.signalCode !== null)
-          throw new Error(
-            `测试应用提前退出（code=${app.child.exitCode ?? "null"} signal=${app.child.signalCode ?? "null"}）；${error.message}`,
-            { cause: error },
+        await waitOwned(app, cancellation.signal);
+      } else {
+        runner = spawnOwned(
+          process.execPath,
+          [
+            join(
+              dirname(dirname(require.resolve("@wdio/cli"))),
+              "bin",
+              "wdio.js",
+            ),
+            "run",
+            "wdio.conf.mjs",
+          ],
+          {
+            cwd: root,
+            env,
+            ...(automated
+              ? { logPath: join(phaseArtifacts, "webdriver.log") }
+              : {}),
+          },
+        );
+        owned.push(runner);
+        const deadline = AbortSignal.timeout(10 * 60 * 1000);
+        try {
+          await waitOwned(
+            runner,
+            AbortSignal.any([cancellation.signal, deadline]),
           );
-        throw error;
+        } catch (error) {
+          if (app.child.exitCode !== null || app.child.signalCode !== null)
+            throw new Error(
+              `测试应用提前退出（code=${app.child.exitCode ?? "null"} signal=${app.child.signalCode ?? "null"}）；${error.message}`,
+              { cause: error },
+            );
+          throw error;
+        }
       }
     } finally {
       await stopOwned(runner);
       await stopOwned(app);
     }
     checkNativeRequestDiagnostics(
-      join(root, "artifacts", "e2e", phase, "native.log"),
-      join(root, "artifacts", "e2e", phase, "rpc-request-conflicts.json"),
+      join(phaseArtifacts, "native.log"),
+      join(phaseArtifacts, "rpc-request-conflicts.json"),
+    );
+  }
+  if (terminal) {
+    await stopSuiteHost();
+    const verifier = receipt.terminalTools.find(
+      ({ name }) => name === "terminal_capture_check",
+    );
+    const check = spawnOwned(
+      verifier.path,
+      [terminal.capture, terminal.expected, hostEvidence],
+      {
+        cwd: root,
+        logPath: join(artifacts, "capture-verifier.log"),
+      },
+    );
+    owned.push(check);
+    await waitOwned(
+      check,
+      AbortSignal.any([
+        cancellation.signal,
+        AbortSignal.timeout(10 * 60 * 1000),
+      ]),
+    );
+    await stopOwned(check);
+    console.log(
+      `Recorded RX verified. File selection, focus and view observations belong in: ${artifacts}`,
     );
   }
 } catch (error) {

@@ -52,11 +52,30 @@ jobs:
 
       # 仅 feature=e2e 带内嵌 WebDriver，使用 .e2e 标识及临时用户数据。
       - name: 构建测试专用桌面应用
-        run: pnpm e2e:build
+        run: pnpm e2e:build --with-node-runtime
+
+      - name: 准备桌面验收用签名终端
+        shell: bash
+        run: |
+          pnpm plugin-sdk:fixture
+          mkdir -p artifacts/e2e/terminal-fixture
+          output="$(node -p 'require("node:path").resolve("artifacts/e2e/terminal-fixture")')"
+          seed="$(mktemp)"
+          trap 'rm -f -- "$seed"' EXIT
+          node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), {mode:0o600})' "$seed"
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          "src-tauri/target/e2e/${{ inputs.target }}/debug/examples/sign_reference_terminal$suffix" \
+            ".cache/plugin-sdk/examples/reference-terminal/main.js" "$seed" \
+            "$output/reference-terminal.zip" terminal-reference native-ci > "$output/signed-terminal.json"
+          echo "SWB_TEST_SIGNED_TERMINAL_RECEIPT=$output/signed-terminal.json" >> "$GITHUB_ENV"
 
       - name: 桌面 E2E（Windows / macOS）
         if: runner.os != 'Linux'
-        run: pnpm test:e2e --interactive --skip-build
+        shell: bash
+        run: |
+          pnpm test:e2e --interactive --skip-build
+          pnpm test:e2e --interactive --skip-build --terminal-automated
 
       - name: 桌面 E2E（Linux）
         if: runner.os == 'Linux'
@@ -66,7 +85,7 @@ jobs:
           mkdir -p artifacts/e2e/crash
           sudo sysctl -w "kernel.core_pattern=$GITHUB_WORKSPACE/artifacts/e2e/crash/core.%p"
           ulimit -c unlimited
-          dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build'
+          dbus-run-session -- xvfb-run -a sh -c 'openbox >/tmp/serial-workbench-openbox.log 2>&1 & pnpm test:e2e --interactive --skip-build && pnpm test:e2e --interactive --skip-build --terminal-automated'
 
       - name: 保存 Linux 应用崩溃的原生线程栈
         if: failure() && runner.os == 'Linux'
@@ -78,7 +97,7 @@ jobs:
           binary="$(node --input-type=module -e 'import { readE2EBuild } from "./e2e/build.mjs"; process.stdout.write(readE2EBuild());')"
           shopt -s nullglob
           found=0
-          for native_log in artifacts/e2e/*/native.log; do
+          for native_log in artifacts/e2e/*/native.log artifacts/e2e/signed-terminal-*/terminal-*/native.log; do
             pid="$(sed -n 's/.*owned-process-exit .* pid=\([0-9][0-9]*\)$/\1/p' "$native_log" | tail -n 1)"
             [[ "$pid" =~ ^[0-9]+$ ]] || continue
             core="artifacts/e2e/crash/core.$pid"

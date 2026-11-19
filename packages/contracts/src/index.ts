@@ -28,11 +28,13 @@ export type * from "./generated/types.ts";
 export {
   validateNodePackageId,
   validateNodePackageIntegrity,
+  validateNodePackageInstallation,
   validateNodePackageManifest,
   validateNodePackagePath,
   validateNodePackageRegistration,
   validateNodePackageSignature,
   validateNodePackageVersion,
+  validateNodeSourceApproveParams,
 } from "./generated/validators.mjs";
 export {
   NODE_PACKAGE_SIGNATURE_PREFIX,

@@ -810,7 +810,9 @@ impl TransmissionService {
                     .remove(id);
                 return Ok(current);
             }
-            if !BuiltinAction::find(current.action_id.as_str())?.is_device_action() {
+            if current.owner.kind == OwnerKind::Plugin
+                || !BuiltinAction::find(current.action_id.as_str())?.is_device_action()
+            {
                 let store = self.devices.inner.store.clone();
                 let actor = actor.clone();
                 let id = id.clone();

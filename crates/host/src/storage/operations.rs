@@ -8,7 +8,29 @@ use super::{
 use crate::auth::{AuthenticatedActor, add_wall_seconds, hash};
 
 const RETENTION_NS: u64 = 604_800_000_000_000;
-const MAX_IN_FLIGHT: i64 = 256;
+pub(super) const MAX_IN_FLIGHT: i64 = 256;
+
+pub(super) fn apply_progress(operation: &mut Operation, progress: Progress) -> HostResult<bool> {
+    if progress
+        .total
+        .is_some_and(|total| progress.completed > total)
+        || operation.progress.as_ref().is_some_and(|previous| {
+            progress.completed < previous.completed
+                || progress.unit != previous.unit
+                || progress.total != previous.total
+        })
+    {
+        return Err(HostError::new(
+            "INVALID_ARGUMENT",
+            "Operation progress must retain its unit and total and cannot move backwards",
+        ));
+    }
+    if operation.progress.as_ref() == Some(&progress) {
+        return Ok(false);
+    }
+    operation.progress = Some(progress);
+    Ok(true)
+}
 
 #[derive(serde::Serialize, serde::Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -18,6 +40,25 @@ struct OperationSource {
 }
 fn operation_source_key(id: &Id) -> String {
     format!("operation-source-{id}")
+}
+pub(super) fn save_operation_source(
+    connection: &Connection,
+    operation: &Id,
+    source: &Target,
+) -> HostResult<()> {
+    source.validate()?;
+    let value = serde_json::to_string(&OperationSource {
+        format_version: "0.1".into(),
+        source: source.clone(),
+    })
+    .map_err(|_| unavailable())?;
+    connection
+        .execute(
+            "INSERT INTO documents(id,revision,value_json) VALUES(?1,'1',?2)",
+            params![operation_source_key(operation), value],
+        )
+        .map_err(|_| unavailable())?;
+    Ok(())
 }
 fn decode_operation_source(json: &str) -> HostResult<Target> {
     let document: OperationSource = serde_json::from_str(json).map_err(|_| unavailable())?;
@@ -83,7 +124,7 @@ fn canonical_input(call: &Call) -> HostResult<Vec<u8>> {
     Ok(bytes)
 }
 
-fn write_canonical(value: &serde_json::Value, output: &mut Vec<u8>) -> HostResult<()> {
+pub(super) fn write_canonical(value: &serde_json::Value, output: &mut Vec<u8>) -> HostResult<()> {
     match value {
         serde_json::Value::Object(object) => {
             output.push(b'{');
@@ -179,12 +220,28 @@ impl Database {
         Ok((identity, input))
     }
     pub(crate) fn lookup_call(
-        &self,
+        &mut self,
         actor: &AuthenticatedActor,
         call: &Call,
         digest: &Digest,
     ) -> HostResult<Option<Operation>> {
         let (identity, _) = self.validate_call(actor, call, digest)?;
+        if let Some(task) = actor.task() {
+            return self
+                .child_request(
+                    actor,
+                    &task.normalized(call)?,
+                    &task.owner_instance,
+                    None,
+                    None,
+                    false,
+                )
+                .map(|result| {
+                    result.map(|result| match result {
+                        Acceptance::New(operation) | Acceptance::Existing(operation) => operation,
+                    })
+                });
+        }
         let context =
             self.signer
                 .validate(&call.request_context, actor, &identity, self.clock.as_ref())?;
@@ -213,7 +270,39 @@ impl Database {
         digest: &Digest,
         source: Option<&Target>,
     ) -> HostResult<Acceptance> {
+        self.accept_with_metadata(actor, call, digest, source, None)
+    }
+    pub(super) fn accept_plugin(
+        &mut self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+        plugin: &super::plugin_operations::PluginOperation,
+    ) -> HostResult<Acceptance> {
+        plugin.validate_call(call)?;
+        self.accept_with_metadata(actor, call, digest, None, Some(plugin))
+    }
+    fn accept_with_metadata(
+        &mut self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+        source: Option<&Target>,
+        plugin: Option<&super::plugin_operations::PluginOperation>,
+    ) -> HostResult<Acceptance> {
         let (identity, input) = self.validate_call(actor, call, digest)?;
+        if let Some(task) = actor.task() {
+            return self
+                .child_request(
+                    actor,
+                    &task.normalized(call)?,
+                    &task.owner_instance,
+                    source,
+                    plugin,
+                    true,
+                )?
+                .ok_or_else(unavailable);
+        }
         let source = source
             .map(|source| {
                 source.validate()?;
@@ -280,16 +369,21 @@ impl Database {
             revision: U64::from(1),
             reveal_target: call.reveal_target.clone(),
             accepted_at: self.clock.wall_time(),
-            owner: Owner {
-                kind: OwnerKind::Host,
-                id: identity.host_id,
-                version: None,
+            owner: if let Some(plugin) = plugin {
+                plugin.owner()?
+            } else {
+                Owner {
+                    kind: OwnerKind::Host,
+                    id: identity.host_id,
+                    version: None,
+                }
             },
-            dependencies: None,
+            dependencies: plugin.map(|plugin| plugin.dependencies()).transpose()?,
             started_at: None,
             settled_at: None,
             result_expires_at: None,
             progress: None,
+            worker_observation: None,
             result: None,
             client_effect_receipt: None,
             error: None,
@@ -307,6 +401,17 @@ impl Database {
                 )
                 .map_err(|_| unavailable())?;
         }
+        if let Some(plugin) = plugin {
+            transaction
+                .execute(
+                    "INSERT INTO documents(id,revision,value_json) VALUES(?1,'1',?2)",
+                    params![
+                        super::plugin_operations::key(&operation.operation_id),
+                        serde_json::to_string(plugin).map_err(|_| unavailable())?
+                    ],
+                )
+                .map_err(|_| unavailable())?;
+        }
         transaction.commit().map_err(|_| unavailable())?;
         Ok(Acceptance::New(operation))
     }
@@ -320,6 +425,18 @@ impl Database {
         if operation.state != OperationState::Queued {
             return Err(not_running());
         }
+        if let Admission::Child {
+            parent_operation_id,
+            ..
+        } = &operation.admission
+        {
+            let parent = load(&transaction, parent_operation_id)?;
+            if parent.state != OperationState::Running
+                || !self.live_dispatches.contains(parent_operation_id)
+            {
+                return Err(not_running());
+            }
+        }
         operation.state = OperationState::Running;
         operation.revision = operation.revision.checked_next()?;
         operation.started_at = Some(self.clock.wall_time());
@@ -329,7 +446,10 @@ impl Database {
                 params![encode(&operation)?, id.as_str()],
             )
             .map_err(|_| unavailable())?;
-        transaction.commit().map_err(|_| unavailable())
+        transaction.commit().map_err(|_| unavailable())?;
+        self.live_dispatches.insert(id.clone());
+        self.task_admissions.insert(id.clone());
+        Ok(())
     }
 
     pub(crate) fn record_progress(&mut self, id: &Id, progress: Progress) -> HostResult<Operation> {
@@ -354,24 +474,9 @@ impl Database {
         ) {
             return Err(not_running());
         }
-        if progress
-            .total
-            .is_some_and(|total| progress.completed > total)
-            || operation.progress.as_ref().is_some_and(|previous| {
-                progress.completed < previous.completed
-                    || progress.unit != previous.unit
-                    || progress.total != previous.total
-            })
-        {
-            return Err(HostError::new(
-                "INVALID_ARGUMENT",
-                "Operation progress must retain its unit and total and cannot move backwards",
-            ));
-        }
-        if operation.progress.as_ref() == Some(&progress) {
+        if !apply_progress(&mut operation, progress)? {
             return Ok(operation);
         }
-        operation.progress = Some(progress);
         operation.revision = operation.revision.checked_next()?;
         transaction
             .execute(
@@ -511,6 +616,22 @@ impl Database {
             .ok_or_else(exhausted)?;
         let wall = self.clock.wall_time();
         let mut operation = load(&transaction, id)?;
+        let (children_running, children_unknown) =
+            super::child_operations::child_summary(&transaction, id)?;
+        if children_running {
+            return Err(HostError::new(
+                "OPERATION_HAS_CHILDREN",
+                "Child operations have not settled",
+            ));
+        }
+        let mut outcome = outcome;
+        if children_unknown {
+            outcome.state = OperationState::Unknown;
+            outcome.error = Some(HostError::new(
+                "CHILD_OUTCOME_UNKNOWN",
+                "A child effect could not be confirmed",
+            ));
+        }
         let allowed = match operation.state {
             OperationState::Queued => matches!(
                 outcome.state,
@@ -539,6 +660,8 @@ impl Database {
         write_terminal(&transaction, &operation, expires)?;
         save_retention(&transaction, retention_now)?;
         transaction.commit().map_err(|_| unavailable())?;
+        self.live_dispatches.remove(id);
+        self.task_admissions.remove(id);
         Ok(operation)
     }
 
@@ -579,6 +702,8 @@ impl Database {
         }
         save_retention(&transaction, retention_now)?;
         transaction.commit().map_err(|_| unavailable())?;
+        self.live_dispatches.clear();
+        self.task_admissions.clear();
         Ok(recovered)
     }
 
@@ -789,6 +914,8 @@ impl Database {
                 .collect::<HostResult<Vec<_>>>()?
         };
         for operation in expired {
+            super::child_operations::retain_child_summary(&transaction, &operation)?;
+            super::plugin_operations::prune(&transaction, &operation.operation_id)?;
             if operation.action_id.as_str() == "transfer.file" {
                 prune_transfer_receipts(&transaction, &operation.operation_id)?;
             }
@@ -841,9 +968,7 @@ impl Database {
                 parent_operation_id,
                 child_key,
             } => {
-                self.get(actor, parent_operation_id)?;
-                let found: Option<String> = self.connection.query_row("SELECT operation_id FROM operations WHERE json_extract(operation_json,'$.admission.parentOperationId')=?1 AND json_extract(operation_json,'$.admission.childKey')=?2",params![parent_operation_id.as_str(),child_key.get().to_string()],|row| row.get(0)).optional().map_err(|_| unavailable())?;
-                (found.map(|id| Id::try_from(id.as_str())).transpose()?, None)
+                return self.get_child(actor, parent_operation_id, child_key);
             }
         };
         if let Some(id) = id {
@@ -907,32 +1032,54 @@ impl Database {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| unavailable())?;
-        let mut operation = load(&transaction, id)?;
-        match operation.state {
-            OperationState::Queued => {
-                operation.state = OperationState::Cancelled;
-                finish(&mut operation, self.clock.wall_time())?;
-                let now = self.retention.now(self.clock.as_ref())?;
-                write_terminal(
-                    &transaction,
-                    &operation,
-                    now.checked_add(RETENTION_NS).ok_or_else(exhausted)?,
-                )?;
-                save_retention(&transaction, now)?;
-            }
-            OperationState::Running => {
-                operation.state = OperationState::CancelRequested;
-                operation.revision = operation.revision.checked_next()?;
-                transaction
-                    .execute(
-                        "UPDATE operations SET operation_json=?1 WHERE operation_id=?2",
-                        params![encode(&operation)?, id.as_str()],
-                    )
-                    .map_err(|_| unavailable())?;
-            }
-            _ => {}
+        let mut statement=transaction.prepare("WITH RECURSIVE selected(id) AS (SELECT ?1 UNION ALL SELECT o.operation_id FROM operations o JOIN selected s ON json_extract(o.operation_json,'$.admission.parentOperationId')=s.id WHERE o.terminal=0 AND json_extract(o.operation_json,'$.admission.kind')='child') SELECT operation_json FROM operations WHERE operation_id IN (SELECT id FROM selected) LIMIT ?2").map_err(|_|unavailable())?;
+        let operations = statement
+            .query_map(params![id.as_str(), MAX_IN_FLIGHT + 2], |row| {
+                row.get::<_, String>(0)
+            })
+            .map_err(|_| unavailable())?
+            .map(|row| decode(&row.map_err(|_| unavailable())?))
+            .collect::<HostResult<Vec<_>>>()?;
+        drop(statement);
+        if operations.len() > MAX_IN_FLIGHT as usize + 1 {
+            return Err(HostError::new(
+                "HOST_BUSY",
+                "Cancellation evidence exceeds the in-flight budget",
+            ));
         }
+        let mut closed = Vec::new();
+        for mut operation in operations {
+            closed.push(operation.operation_id.clone());
+            match operation.state {
+                OperationState::Queued => {
+                    operation.state = OperationState::Cancelled;
+                    finish(&mut operation, self.clock.wall_time())?;
+                    let now = self.retention.now(self.clock.as_ref())?;
+                    write_terminal(
+                        &transaction,
+                        &operation,
+                        now.checked_add(RETENTION_NS).ok_or_else(exhausted)?,
+                    )?;
+                    save_retention(&transaction, now)?;
+                }
+                OperationState::Running => {
+                    operation.state = OperationState::CancelRequested;
+                    operation.revision = operation.revision.checked_next()?;
+                    transaction
+                        .execute(
+                            "UPDATE operations SET operation_json=?1 WHERE operation_id=?2",
+                            params![encode(&operation)?, operation.operation_id.as_str()],
+                        )
+                        .map_err(|_| unavailable())?;
+                }
+                _ => {}
+            }
+        }
+        let operation = load(&transaction, id)?;
         transaction.commit().map_err(|_| unavailable())?;
+        for id in closed {
+            self.task_admissions.remove(&id);
+        }
         Ok(operation)
     }
 }
@@ -991,7 +1138,7 @@ fn write_terminal(connection: &Connection, operation: &Operation, expires: u64) 
     connection.execute("UPDATE operations SET operation_json=?1,terminal=1,expires_at_retention_ns=?2 WHERE operation_id=?3", params![encode(operation)?, expires.to_string(), operation.operation_id.as_str()]).map_err(|_| unavailable())?;
     Ok(())
 }
-fn load(connection: &Connection, id: &Id) -> HostResult<Operation> {
+pub(super) fn load(connection: &Connection, id: &Id) -> HostResult<Operation> {
     let json: Option<String> = connection
         .query_row(
             "SELECT operation_json FROM operations WHERE operation_id=?1",
@@ -1002,10 +1149,10 @@ fn load(connection: &Connection, id: &Id) -> HostResult<Operation> {
         .map_err(|_| unavailable())?;
     decode(&json.ok_or_else(|| HostError::new("NOT_FOUND", "Operation was not found"))?)
 }
-fn encode(operation: &Operation) -> HostResult<String> {
+pub(super) fn encode(operation: &Operation) -> HostResult<String> {
     serde_json::to_string(operation).map_err(|_| unavailable())
 }
-fn decode(json: &str) -> HostResult<Operation> {
+pub(super) fn decode(json: &str) -> HostResult<Operation> {
     serde_json::from_str(json).map_err(|_| unavailable())
 }
 fn not_running() -> HostError {

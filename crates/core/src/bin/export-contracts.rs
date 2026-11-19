@@ -233,6 +233,26 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         json!({"kind":"future","value":{}}),
         false,
     )?;
+    f.add::<QueryResult>(
+        "query-extension-decimal-result",
+        json!({"kind":"extension","value":{"measurement":{"ratio":1.5},"epoch":"9007199254740993"}}),
+        true,
+    )?;
+    f.add::<QueryResult>(
+        "query-extension-scalar-result",
+        json!({"kind":"extension","value":-0.25}),
+        true,
+    )?;
+    f.add::<QueryResult>(
+        "query-extension-null-result",
+        json!({"kind":"extension","value":null}),
+        true,
+    )?;
+    f.add::<QueryResult>(
+        "query-extension-unknown-envelope",
+        json!({"kind":"extension","value":{},"private":"forbidden"}),
+        false,
+    )?;
     f.add::<ActionResult>(
         "authorization-result",
         json!({"kind":"authorization_changed","value":{"grantRevision":"9007199254740993"}}),
@@ -347,7 +367,99 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
     f.add::<TxReceipt>("tx-no-peer-proof", bad, false)?;
     ipc_fixtures(&mut f)?;
     m1_fixtures(&mut f, &op)?;
+    worker_observation_fixtures(&mut f, &op)?;
     Ok(f)
+}
+
+fn worker_observation_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>> {
+    let sample = json!({
+        "sampledAt":"2026-11-18T00:00:00Z",
+        "measuredWorkers":"2",
+        "v8HeapUsedBytes":"9007199254740993"
+    });
+    f.add::<WorkerMemorySample>("worker-memory-sample", sample.clone(), true)?;
+    let mut invalid = sample.clone();
+    invalid["sampledAt"] = json!("not-a-timestamp");
+    f.add::<WorkerMemorySample>("worker-memory-invalid-time", invalid, false)?;
+    let mut invalid = sample.clone();
+    invalid["v8HeapUsedBytes"] = json!(9007199254740993_u64);
+    f.add::<WorkerMemorySample>("worker-memory-numeric-u64", invalid, false)?;
+    let mut invalid = sample.clone();
+    invalid["rssBytes"] = json!("1");
+    f.add::<WorkerMemorySample>("worker-memory-is-not-rss", invalid, false)?;
+
+    let observation = json!({"liveWorkers":"2","peakWorkers":"3","lastMemory":sample});
+    f.add::<WorkerObservation>("worker-observation", observation.clone(), true)?;
+    f.add::<WorkerObservation>(
+        "worker-observation-no-sample",
+        json!({"liveWorkers":"0","peakWorkers":"3"}),
+        true,
+    )?;
+    let mut invalid = observation.clone();
+    invalid["lastMemory"] = Value::Null;
+    f.add::<WorkerObservation>("worker-observation-null-sample", invalid, false)?;
+    let mut invalid = observation.clone();
+    invalid["operationId"] = json!("self-selected");
+    f.add::<WorkerObservation>("worker-observation-self-selected-owner", invalid, false)?;
+
+    let node = json!({
+        "processId":"1234","sampleAgeMs":"25","rssBytes":"18446744073709551615",
+        "liveWorkers":"2","peakWorkers":"3"
+    });
+    f.add::<NodeMetrics>("node-metrics", node.clone(), true)?;
+    let mut no_rss = node.clone();
+    no_rss.as_object_mut().unwrap().remove("rssBytes");
+    f.add::<NodeMetrics>("node-metrics-no-rss", no_rss, true)?;
+    let mut invalid = node.clone();
+    invalid["rssBytes"] = Value::Null;
+    f.add::<NodeMetrics>("node-metrics-null-rss", invalid, false)?;
+    let mut invalid = node.clone();
+    invalid["sampleAgeMs"] = json!("-1");
+    f.add::<NodeMetrics>("node-metrics-negative-age", invalid, false)?;
+    let mut invalid = node.clone();
+    invalid["actorId"] = json!("self-selected");
+    f.add::<NodeMetrics>("node-metrics-no-actor", invalid, false)?;
+
+    let mut observed_operation = operation.clone();
+    observed_operation["actionId"] = json!("example.terminal.compute");
+    observed_operation["state"] = json!("running");
+    observed_operation["startedAt"] = json!("2026-11-18T00:00:00Z");
+    observed_operation["owner"] =
+        json!({"kind":"plugin","id":"example.terminal","version":"1.0.0"});
+    observed_operation["dependencies"] =
+        json!([{"id":"example.terminal","version":"1.0.0","digest":"a".repeat(64)}]);
+    observed_operation["workerObservation"] = observation;
+    f.add::<Operation>(
+        "operation-worker-observation",
+        observed_operation.clone(),
+        true,
+    )?;
+    observed_operation["workerObservation"] = Value::Null;
+    f.add::<Operation>(
+        "operation-null-worker-observation",
+        observed_operation,
+        false,
+    )?;
+
+    let budget = json!({"usedBytes":"1","peakBytes":"2","limitBytes":"3"});
+    let mut metrics = json!({
+        "hostId":"host","instanceEpoch":"1","observedAt":"2026-11-18T00:00:00Z",
+        "processId":"123","rssBytes":"4","rssPeakBytes":"5",
+        "source":budget,"reader":budget,"captureQueue":budget
+    });
+    f.add::<HostMetrics>("host-metrics-without-node", metrics.clone(), true)?;
+    metrics["node"] = node;
+    f.add::<HostMetrics>("host-metrics-with-node", metrics.clone(), true)?;
+    let derived = json!({"retained":budget,"reader":budget});
+    f.object::<DerivedMemoryMetrics>("derived-memory-metrics", derived.clone(), &[])?;
+    metrics["derived"] = derived;
+    f.add::<HostMetrics>("host-metrics-with-derived", metrics.clone(), true)?;
+    metrics["derived"] = Value::Null;
+    f.add::<HostMetrics>("host-metrics-null-derived", metrics.clone(), false)?;
+    metrics.as_object_mut().unwrap().remove("derived");
+    metrics["node"] = Value::Null;
+    f.add::<HostMetrics>("host-metrics-null-node", metrics, false)?;
+    Ok(())
 }
 
 fn ipc_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
@@ -864,6 +976,28 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
     let cursor = json!({"hostId":"host","instanceEpoch":"7","scopeId":"scope","position":"0"});
     f.object::<Cursor>("stream-cursor", cursor.clone(), &[])?;
     f.object::<StreamReadParams>("stream-read-params", json!({"sessionId":"session","sessionEpoch":"2","startEventSeq":"1","maxEvents":"100","maxBytes":"16384"}), &[])?;
+    let source_range = json!({"hostId":"host","sessionId":"session","sessionEpoch":"2","eventStart":"1","eventEnd":"2","byteStart":"0","byteEnd":"4","direction":"rx"});
+    f.object::<SourceRange>(
+        "derived-source-range",
+        source_range.clone(),
+        &["byteStart", "byteEnd", "direction"],
+    )?;
+    f.object::<DerivedPublishParams>("derived-publish-params", json!({"sources":[source_range.clone()],"quality":["complete","transformed"],"unit":"ms","value":42}), &["unit"])?;
+    f.object::<DerivedPublishResult>(
+        "derived-publish-result",
+        json!({"operationId":"operation","position":"1"}),
+        &[],
+    )?;
+    f.object::<DerivedReadParams>(
+        "derived-read-params",
+        json!({"operationId":"operation","after":"0","maxSamples":"16","maxBytes":"16384"}),
+        &[],
+    )?;
+    f.object::<DerivedReadResult>("derived-read-result", json!({
+        "operationId":"operation","instanceEpoch":"7","nextPosition":"1","hasMore":false,
+        "samples":[{"position":"1","provenance":{"sources":[source_range],"parserId":"plugin.reference.parse",
+            "parserVersion":"1.0.0","configurationDigest":"ab".repeat(32),"quality":["complete","transformed"],"unit":"ms"},"value":42}]
+    }), &[])?;
     let read_result = json!({"events":[event],"nextEventSeq":"3","hasMore":false});
     f.object::<StreamReadResult>("stream-read-result", read_result.clone(), &[])?;
     f.object::<StreamSubscribeParams>("stream-zero-credit", json!({"scopeId":"scope","after":cursor,"queueBytes":"4194304","initialCreditBytes":"0","overflowPolicy":"drop_with_gap"}), &[])?;
@@ -1081,6 +1215,209 @@ fn node_package_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
         invalid,
         false,
     )?;
+    f.add::<NodePackageListResult>(
+        "node-packages-empty",
+        json!({"revision":"0","packages":[]}),
+        true,
+    )?;
+    let installed = json!({
+        "revision":"1",
+        "packages":[{
+            "id":"example.terminal","archiveSha256":"a".repeat(64),
+            "sourceVerified":false,"enabled":false,"executionApproved":false
+        }]
+    });
+    f.add::<NodePackageInstallation>(
+        "node-package-complete-details",
+        json!({
+            "manifest":manifest,"archiveSha256":"a".repeat(64),
+            "verifiedSource":null,"enabled":false,"executionTrust":null
+        }),
+        true,
+    )?;
+    f.add::<NodePackageListParams>("node-packages-default-page", json!({}), true)?;
+    f.add::<NodePackageListParams>(
+        "node-packages-next-page",
+        json!({"pageSize":"1","after":"example.terminal","expectedRevision":"1"}),
+        true,
+    )?;
+    f.add::<NodePackageListParams>("node-packages-null-after", json!({"after":null}), false)?;
+    f.add::<NodePackageListParams>(
+        "node-packages-null-revision",
+        json!({"expectedRevision":null}),
+        false,
+    )?;
+    f.add::<NodePackageListParams>(
+        "node-packages-numeric-page-size",
+        json!({"pageSize":1}),
+        false,
+    )?;
+    f.add::<NodePackageDetailsReadParams>("node-package-details-read", json!({"id":"example.terminal","expectedRevision":"1","archiveSha256":"a".repeat(64),"offset":"0","length":"32768"}), true)?;
+    f.add::<NodePackageDetailsReadParams>("node-package-details-numeric-offset", json!({"id":"example.terminal","expectedRevision":"1","archiveSha256":"a".repeat(64),"offset":0,"length":"32768"}), false)?;
+    f.add::<NodePackageDetailsReadResult>("node-package-details-chunk", json!({"revision":"1","id":"example.terminal","archiveSha256":"a".repeat(64),"jsonSha256":"b".repeat(64),"offset":"0","totalBytes":"1","bytesBase64":"eA=="}), true)?;
+    f.add::<NodePackageListResult>("node-packages-installed", installed.clone(), true)?;
+    let install_result = json!({"revision":"1","package":installed["packages"][0]});
+    f.add::<NodePackageChangeResult>("node-package-install-result", install_result.clone(), true)?;
+    let uninstall_result =
+        json!({"revision":"2","id":"example.terminal","archiveSha256":"a".repeat(64)});
+    f.add::<NodePackageUninstallResult>(
+        "node-package-uninstall-result",
+        uninstall_result.clone(),
+        true,
+    )?;
+    f.add::<ActionResult>(
+        "node-package-uninstalled",
+        json!({"kind":"node_package_uninstalled","value":uninstall_result}),
+        true,
+    )?;
+    f.add::<NodePackageUninstallResult>(
+        "node-package-uninstall-numeric-revision",
+        json!({"revision":2,"id":"example.terminal","archiveSha256":"a".repeat(64)}),
+        false,
+    )?;
+    f.add::<NodePackageUninstallResult>("node-package-uninstall-delete-data", json!({"revision":"2","id":"example.terminal","archiveSha256":"a".repeat(64),"deleteData":true}), false)?;
+    f.add::<NodePackageIdentityParams>(
+        "node-package-identity",
+        json!({"id":"example.terminal","archiveSha256":"a".repeat(64)}),
+        true,
+    )?;
+    f.add::<NodePackageIdentityParams>(
+        "node-package-identity-self-confirmation",
+        json!({"id":"example.terminal","archiveSha256":"a".repeat(64),"userConfirmed":true}),
+        false,
+    )?;
+    f.add::<ActionResult>(
+        "node-package-preference-changed",
+        json!({"kind":"node_package_changed","value":install_result}),
+        true,
+    )?;
+    let mut enabled =
+        json!({"id":"example.terminal","archiveSha256":"a".repeat(64),"enabled":true});
+    f.add::<NodePackageSetEnabledParams>("node-package-enable", enabled.clone(), true)?;
+    enabled["enabled"] = json!(false);
+    f.add::<NodePackageSetEnabledParams>("node-package-disable", enabled.clone(), true)?;
+    enabled["enabled"] = serde_json::Value::Null;
+    f.add::<NodePackageSetEnabledParams>("node-package-enable-null", enabled, false)?;
+    f.add::<NodePackageSetEnabledParams>(
+        "node-package-enable-missing-intent",
+        json!({"id":"example.terminal","archiveSha256":"a".repeat(64)}),
+        false,
+    )?;
+    f.add::<NodePackageRuntimeParams>(
+        "node-package-runtime-query",
+        json!({"id":"example.terminal"}),
+        true,
+    )?;
+    f.add::<NodePackageRuntimeParams>(
+        "node-package-runtime-private-path",
+        json!({"id":"example.terminal","path":"private"}),
+        false,
+    )?;
+    let runtime = json!({"id":"example.terminal","phase":"active","generation":"1","archiveSha256":"a".repeat(64)});
+    f.add::<NodePackageRuntimeStatus>("node-package-runtime-active", runtime.clone(), true)?;
+    f.add::<QueryResult>(
+        "node-package-runtime-result",
+        json!({"kind":"node_package_runtime","value":runtime}),
+        true,
+    )?;
+    f.add::<NodePackageRuntimeStatus>(
+        "node-package-runtime-numeric-generation",
+        json!({"id":"example.terminal","phase":"inactive","generation":0}),
+        false,
+    )?;
+    f.add::<NodePackageRuntimeStatus>(
+        "node-package-runtime-null-error",
+        json!({"id":"example.terminal","phase":"inactive","generation":"0","error":null}),
+        false,
+    )?;
+    f.add::<NodeViewAssetReadParams>(
+        "node-view-asset-entry",
+        json!({"viewId":"example.terminal.view","offset":"0"}),
+        true,
+    )?;
+    f.add::<NodeViewAssetReadParams>(
+        "node-view-asset-parent-path",
+        json!({"viewId":"example.terminal.view","offset":"0","path":"ui/../private.html"}),
+        false,
+    )?;
+    f.add::<QueryResult>(
+        "node-view-asset-result",
+        json!({"kind":"node_view_asset","value":{
+            "packageId":"example.terminal","version":"1.0.0","archiveSha256":"a".repeat(64),
+            "activationId":"activation-a",
+            "view":{"id":"example.terminal.view","actionId":"example.terminal.open","stateScopes":[]},
+            "target":{"hostId":"host","kind":"session","id":"terminal","sessionId":"terminal","sessionEpoch":"2"},
+            "entry":"ui/index.html","path":"ui/index.html","offset":"0","totalBytes":"1",
+            "sha256":"ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+            "bytesBase64":"YQ==",
+        }}),
+        true,
+    )?;
+    f.add::<ActionResult>(
+        "node-package-install-action-result",
+        json!({"kind":"node_package_installed","value":install_result}),
+        true,
+    )?;
+    let mut invalid = installed.clone();
+    invalid["packages"][0]["objectId"] = json!("private-code-object");
+    f.add::<NodePackageListResult>("node-packages-private-object", invalid, false)?;
+    let mut invalid = installed;
+    invalid["revision"] = json!(1);
+    f.add::<NodePackageListResult>("node-packages-numeric-revision", invalid, false)?;
+    let local = json!({"archiveRef":{"hostId":"host","kind":"file","id":"archive"},"source":{"kind":"local"}});
+    f.add::<NodePackageInstallParams>("node-package-install-local", local.clone(), true)?;
+    let mut trusted = local.clone();
+    trusted["source"] = json!({"kind":"trusted","source":"source","keyId":"key"});
+    f.add::<NodePackageInstallParams>("node-package-install-trusted", trusted.clone(), true)?;
+    trusted["source"]["publicKey"] = json!("package-cannot-choose-a-trusted-key");
+    f.add::<NodePackageInstallParams>("node-package-install-supplied-key", trusted, false)?;
+    let mut invalid = local.clone();
+    invalid["path"] = json!("unregistered.zip");
+    f.add::<NodePackageInstallParams>("node-package-install-arbitrary-path", invalid, false)?;
+    let mut invalid = local;
+    invalid["source"] = Value::Null;
+    f.add::<NodePackageInstallParams>("node-package-install-null-source", invalid, false)?;
+    // 此处验证 wire 结构；实际公钥曲线、用户身份及提交条件另经 Host 验收。
+    let source_fingerprint = "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793";
+    let source_key = json!({"source":"source","keyId":"key","publicKey":vec![1u8;32],"publicKeySha256":source_fingerprint,"approved":true});
+    f.add::<NodePackageSourceKey>("node-source-key", source_key.clone(), true)?;
+    f.add::<NodeSourceListParams>("node-sources-default-page", json!({}), true)?;
+    f.add::<NodeSourceListParams>("node-sources-numeric-offset", json!({"offset":1}), false)?;
+    f.add::<NodeSourceListParams>(
+        "node-sources-null-revision",
+        json!({"expectedRevision":null}),
+        false,
+    )?;
+    f.add::<NodeSourceListResult>(
+        "node-sources-empty",
+        json!({"revision":"0","keys":[]}),
+        true,
+    )?;
+    let source_result = json!({"revision":"1","key":source_key});
+    f.add::<NodeSourceChangeResult>("node-source-changed", source_result.clone(), true)?;
+    f.add::<ActionResult>(
+        "node-source-action-result",
+        json!({"kind":"node_source_changed","value":source_result}),
+        true,
+    )?;
+    let source_approval = json!({"source":"source","keyId":"key","publicKey":vec![1u8;32],"publicKeySha256":source_fingerprint});
+    f.add::<NodeSourceApproveParams>("node-source-approve", source_approval.clone(), true)?;
+    for (name, key) in [
+        ("short-key", json!(vec![1u8; 31])),
+        ("out-of-range-key", json!(vec![256; 32])),
+    ] {
+        let mut invalid = source_approval.clone();
+        invalid["publicKey"] = key;
+        f.add::<NodeSourceApproveParams>(&format!("node-source-approve-{name}"), invalid, false)?;
+    }
+    let mut invalid = source_approval;
+    invalid["userConfirmed"] = json!(true);
+    f.add::<NodeSourceApproveParams>("node-source-cannot-self-confirm", invalid, false)?;
+    f.add::<NodeSourceRevokeParams>(
+        "node-source-revoke",
+        json!({"source":"source","keyId":"key","publicKeySha256":source_fingerprint}),
+        true,
+    )?;
     Ok(())
 }
 
@@ -1111,6 +1448,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         SignedDecimal,
         SafeInteger,
         JsonValue,
+        QueryValue,
         PositiveU64,
         DurationMs,
         RetentionMs,
@@ -1244,6 +1582,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         FavoritesSaveParams,
         HostMetricsParams,
         MemoryBudget,
+        DerivedMemoryMetrics,
+        WorkerMemorySample,
+        WorkerObservation,
+        NodeMetrics,
         HostMetrics,
         ShutdownMode,
         ShutdownReport,
@@ -1334,6 +1676,14 @@ fn main() -> Result<(), Box<dyn Error>> {
         RawBatch,
         StreamReadParams,
         StreamReadResult,
+        SourceRange,
+        DerivedQuality,
+        DerivedPublishParams,
+        DerivedPublishResult,
+        DerivedProvenance,
+        DerivedSample,
+        DerivedReadParams,
+        DerivedReadResult,
         StreamSubscribeParams,
         StreamSubscribeResult,
         StreamCreditParams,
@@ -1349,6 +1699,31 @@ fn main() -> Result<(), Box<dyn Error>> {
         NodePackageIntegrity,
         NodePackageSignature,
         NodePackageRegistration,
+        VerifiedNodePackageSource,
+        NodeExecutionTrust,
+        NodePackageInstallation,
+        NodePackageSummary,
+        NodePackageListParams,
+        NodePackageListResult,
+        NodePackageDetailsReadParams,
+        NodePackageDetailsReadResult,
+        NodePackageInstallSource,
+        NodePackageInstallParams,
+        NodePackageChangeResult,
+        NodePackageUninstallResult,
+        NodePackageIdentityParams,
+        NodePackageSetEnabledParams,
+        NodePackageRuntimeParams,
+        NodeViewAssetReadParams,
+        NodeViewAssetReadResult,
+        NodePackageRuntimePhase,
+        NodePackageRuntimeStatus,
+        NodePackageSourceKey,
+        NodeSourceListParams,
+        NodeSourceListResult,
+        NodeSourceApproveParams,
+        NodeSourceRevokeParams,
+        NodeSourceChangeResult,
         NodeRuntimeRelease,
         NodeRuntimeSelfTest,
         NodeRuntimeLibraryRelease

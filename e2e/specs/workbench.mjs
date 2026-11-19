@@ -77,7 +77,7 @@ async function selectVirtual() {
   await choose.click();
   await $("//*[@role='option'][normalize-space()='virtual:echo']").click();
 }
-async function openVirtual() {
+export async function openVirtual() {
   await selectVirtual();
   const open = await $("button[aria-label='Open virtual:echo']");
   await open.waitForEnabled();

@@ -1,10 +1,10 @@
+import { appConfig } from "./json-fixtures";
 import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import AxeBuilder from "@axe-core/playwright";
 import { expect, test } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 
 const wallpaperId = "bundled:001";
 const source = readFileSync(

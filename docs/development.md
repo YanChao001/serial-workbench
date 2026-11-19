@@ -1,37 +1,18 @@
 # 开发指南
 
-命令从仓库根目录运行。实现约束见[开发规范](./conventions.md)，当前任务与已知失败见[进度](./progress.md)。
+命令从仓库根运行。改动约束见[开发规范](./conventions.md)，证据与未验项见[路线与进度](./plan.md)。
 
 ## 环境与启动
 
 工具版本读取 [package.json](../package.json) 的 engines/packageManager、[.nvmrc](../.nvmrc) 和 [rust-toolchain.toml](../rust-toolchain.toml)。Windows 需要 C++ Build Tools、Windows SDK 和 WebView2；macOS 需要 Xcode Command Line Tools；Linux 需要编译工具与 WebKitGTK 开发库，具体安装见 [Tauri 前置条件](https://v2.tauri.app/start/prerequisites/)。
 
-pnpm 在项目内的 `.pnpm-store/` 保存依赖缓存，随项目保持在同一磁盘，配置见 [pnpm-workspace.yaml](../pnpm-workspace.yaml)。该目录由 Git、格式检查和文件监听排除；工具版本由 packageManager 固定，版本更新提示关闭，升级按依赖评审统一处理。
-
-ReactDOM 19.3.1 的[本地补丁](../patches/react-dom@19.3.1.patch)通过 pnpm `patchedDependencies` 绑定精确版本和锁文件摘要，在四套 client/profiling 构建中跳过 textarea 未变默认值的重复写入，保留初始化、当前值与默认值变更语义。维护时使用 `pnpm patch react-dom@19.3.1` 和 `pnpm patch-commit`，提交补丁、工作区配置及锁文件，不直接修改 `node_modules`。升级 ReactDOM 前检查上游是否已修复，移除或迁移补丁后验证原生编辑、外部默认值变更/表单 reset、受控输入以及[原输入性能场景](./testing.md#前端与脚本)；冻结安装必须重新应用同一摘要。
-
-格式命令在展开文件路径时显式排除 `.cache/`，避免遍历其中由不同 Windows 执行身份创建的私有测试 profile；不修改其访问权限，失败现场继续保留。源码、测试和工程文档仍执行原有格式检查。
-
-```sh
-pnpm install --frozen-lockfile
-rustup toolchain install
-pnpm run doctor
-pnpm app:dev
-```
-
-未安装 npm 依赖也可运行 `node scripts/doctor.mjs`。使用 `pnpm run doctor` 明确调用项目诊断，避免命中 pnpm 自带的同名命令。`pnpm dev` 提供 `http://localhost:1420` 浏览器预览；`pnpm build:web` 输出可部署到子路径的 `dist-web/`，原生构建使用 `dist/`。
+首次安装和启动命令见[项目首页](../README.md#从源码运行)。使用 `pnpm run doctor`，不要误调 pnpm 自带的 doctor；未装依赖时可用 `node scripts/doctor.mjs`。缓存由 [pnpm-workspace.yaml](../pnpm-workspace.yaml) 管理；保留编译缓存，不为格式检查放开测试 profile 的权限。
 
 浏览器生产预览使用 `pnpm build:web` 后运行 `pnpm exec vite preview --outDir dist-web`。TSX/CSS 由 Vite 热更新；Rust、capability 和平台配置变化后重新构建并重启原生进程。
 
 React Provider 的组件模块只导出组件，Context、工厂和 Hook 放在相邻模块，避免实现编辑时触发 Fast Refresh 不兼容并使整个页面重载。草稿 Provider 的回归使用当前安装的 Vite React runtime 检查实际导出兼容性，见 [react-refresh.test.mjs](../scripts/react-refresh.test.mjs)。
 
-`app:dev` 在启动 Tauri 前同源构建 Host/CLI，按内容哈希复制到 `.cache/dev-runtime/` 的独立版本目录，再通过副本 CLI `catalog --json` 完成就绪。Host 独立于 GUI，关闭窗口后仍可运行；执行副本避免 Windows 锁住下次 Cargo 要覆盖的产物。副本校验或准备失败停止启动，保留终端错误和已有版本。
-
-已有 profile 只复用同一不可变运行目录的 Host。包装器将 `SWB_DEV_EXPECTED_HOST_EXECUTABLE` 传给准备 CLI 和桌面；客户端完成正常认证后核对该实例发布的本地程序路径，旧 Host 或无法证明版本的旧发现记录返回 `DEV_RUNTIME_MISMATCH`，在 GUI 启动前停止，不能把前端更新当成后端已经更新。该本地发现提示不替代 OS 对端校验、身份 pin 或握手。
-
-开发启动不自动停止在途工作。需要应用新的 Host 实现时，先确认该 profile 的操作已结算，再运行 `pnpm host:stop` 正常停止，随后运行 `pnpm app:dev`。停止命令会构建当前 CLI、使用同一启动配置选择 profile，并等待正式退出结果；可用 `pnpm host:stop --profile <实际绝对目录>` 指定实例。该明确入口允许连接实际运行的旧版本，保留身份认证与本地用户控制凭据；Host 不存在时不启动新 Host，正常停止失败也不强杀。若 OS 实例锁已释放（包括从未启动或旧发现记录仍在的情况），返回 `{"stopped":true,"alreadyStopped":true}` 和退出码 0，不伪造停机 Operation；探测与连接之间退出时也重新核验锁。仍持锁的管道故障、认证错误和无法核验的目录继续失败。正常停止失败须保留隔离责任和证据，不能当成正常回收。同一开发会话需要重新启动 Host 时，客户端使用指定的不可变副本。旧版本若直接运行在 `target/debug/`，首次迁到副本前也需正常停止以解除占用。
-
-Vite 开发模式预构建本地 contracts/host-client 包，避免生成校验器携带巨大内联映射进入窗口；入口及工作台预热以缩短请求瀑布。缓存放在 `.cache/vite-linked/<源码摘要>/`，包源码和清单参与摘要；相关源码变化会合并触发 Vite 重启并重新计算，不能继续复用旧校验器。此重启不更新正在运行的 Host。实现与失效回归见 [vite-linked-packages](../scripts/vite-linked-packages.ts)。生产构建和浏览器产物预览不启用此开发缓存。
+`pnpm app:dev` 构建同源 Host/CLI 并从 `.cache/dev-runtime/` 的不可变副本启动，避免 Windows 锁住 Cargo 输出。关闭窗口不会退出 Host。`DEV_RUNTIME_MISMATCH` 表示旧实例与当前副本不符，使用相同 profile 运行 `pnpm host:stop` 后再启动；它会断开会话，不强杀进程、不启动缺席的 Host，未能核验实例锁仍报错。Vite 热更新不更新后台程序。
 
 准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
@@ -63,37 +44,19 @@ serial-workbench-cli --profile <绝对目录> operation get --request-id <原uui
 
 Host/CLI/MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录选择配置。相对路径绑定启动 cwd，不展开变量或 `~`；Windows 盘符相对/根相对路径拒绝。`SWB_LOG_LEVEL` 接受 off/error/warn/info/debug/trace，默认 info；空值和过滤表达式拒绝。日志写 stderr，CLI JSON/MCP 协议写 stdout；`startup.config.get` 提供脱敏来源。
 
+CLI 的 `query`/`invoke` 和 MCP 的 `tools/list` 使用 Host 当前授权且实际登记的贡献。按返回名称调用，目录变化后重新发现；不要因名称或权限变化而重放业务。插件作者从 [Node SDK](../packages/plugin-sdk/README.md) 开始，真实包的验证入口见[测试指南](./testing.md#rust-与生成)。
+
 ## 工作区操作
 
-工作区保存一组视图、设备绑定和连接预设。可以先连接串口再打开工作区编辑器，当前标签会直接出现在编辑器中，并初始定位到正在查看的视图；在编辑器内选择其他视图只切换配置表单。修改后保存或另存为即可，无需预先保存布局。也可以先新建空白工作区，在编辑器里添加串口视图、设置格式和参数，然后保存方案，关闭弹窗后再明确打开串口。编辑器还支持克隆和移除视图，已有同名项显示编号区分。
+编辑器可以从当前布局或空白工作区开始；选择视图只切换配置表单。保存提交视图、设备绑定与连接预设；另存为不复制发送草稿或运行连接。删除保留原件，默认工作区不可删除。加载配置不打开端口，关闭标签也不等于断开设备。
 
-底部“保存”提交当前视图及预设，顶部“保存当前布局”使用相同的标签快照构建器；显式编辑的预设不会被当前实际连接参数覆盖。接收与发送各用一组格式、编码控件，接收可设自动识别，HEX 往返保留文本编码。编辑器已移除没有固定行为的开关；重连策略未启用时不显示无效的重连间隔。方案保存不等于连接设备，关闭标签不等于断开实际连接。读取等待、写入等待分别控制空闲读取与写入截止预算，不能作为固定收发延迟理解；发送区的自动写入预算按字节数和波特率计算。
+标签的设备框跟随运行来源或保存的绑定。Host 重启后仅在同一 Host、同类传输下唯一匹配时恢复预选；歧义或未匹配需要手动选择。草稿按 Host、工作区和视图隔离，断连、切换和重命名不能串用正文。
 
-编辑器顶部提供新建、另存为、删除和持久工作区列表，默认工作区不可删除。新建创建具名空白工作区，另存为将当前编辑内容保存到独立副本；原工作区保留已保存内容，发送草稿和实际连接不复制。目录可刷新并继续加载，同名工作区通过显示编号区分，原名称保留；普通界面不要求输入内部标识。删除后返回默认工作区，实际串口连接与发送草稿保留。切换不会自动打开串口、发送内容或改变正在使用的连接参数。
+## 接收与发送
 
-发送草稿按稳定的 Host、工作区及视图归属隔离；跨工作区导入相同视图标识也不会串用正文。断连期间保留当前归属，重连不切换草稿；尚未连接的窗口草稿独立保留。已有未归属的视图草稿在首次读取所属视图时保留内容并归属，其他原稿不清除。
-
-点击工作台串口标签时，左侧设备框跟随其运行来源或保存端口，连接预设也随之选择。Host 重启后设备标识可能变化，同一 Host、同类传输下唯一的已保存端口名仍可恢复预选；缺少端口名的既有文档可以用原视图名中的 COM5 等实际端口名恢复。明确保存时补全 `portName`，以后修改视图名称仍保留端口位置；首次改名保存也会参考原已保存视图。打开编辑器或切换标签不会自动保存。
-
-匹配不到、目录尚未更新或存在歧义时显示标签及“未匹配”，需要等待设备出现或从列表明确选择。预选不等于连接或硬件身份确认，点击连接才对当前设备重新验权并打开；保存的旧身份和 Host 自动重连规则保持独立。新增保存字段后须使用同一源码版本的 Host 与桌面端，更新开发源码后先停止旧 Host，再启动 `pnpm app:dev`。
-
-## 接收显示保留
-
-接收区右上角“显示选项”的“显示保留”设置最多显示记录数和数据容量。默认 1024 条、1 MiB，可选条数最高 20000，容量可选 1、2、4、8、16 MiB。同一来源、配置和字节范围连续，且间隔不超过 100 毫秒的接收合为一条显示记录；明确的消息、缺口、配置和生命周期边界会分开记录。发送意图及最终回执计为一条，容量按收发数据字节计量。
-
-偏好按窗口保存，本窗口各串口分别应用两个上限。达到记录数上限时移除最早记录，达到字节上限时接收记录可按字节裁去最早前缀。接收框底部提示本次可见内容的淘汰情况，清空显示以收发字节边界为准。调小上限会即时裁剪实时缓存及暂停快照，增大上限用于保留随后到达的更多内容。上滚或暂停可固定当前显示，恢复显示回到最新缓存。完整历史可使用 Host 录制保存。
-
-连接工具栏的“控制线与回执”对应串口下拉框中选定的设备，连接后可打开。控制线页提供 DTR、RTS、有限 BREAK、队列清理、排空和边界等待，回执页查看实际操作结果。输入采样在面板可见时轮询，重复打开共用同一尚未完成的查询；操作按钮等待实际终态后恢复。连接参数页专用于编辑配置。
-
-## 收发文本编码
-
-接收区和发送区的“文本 / HEX”切换旁各有编码选择器，支持 UTF-8、GBK、GB18030、Big5、Shift-JIS、Latin-1、ASCII 和 UTF-16 LE/BE，默认 UTF-8。两区独立设置，保存工作区时随串口视图保留；尚未连接时选择的发送编码会带入新打开的标签。
-
-接收另有“自动识别”，使用最近连续 RX 数据的最多 8 KiB 前缀检测 BOM、UTF-8 和统计候选，缺口两侧不混合采样。纯 ASCII 或证据不足时显示待识别；短文本和二进制可能有歧义，可以手动指定。切换编码重新解释已缓存的原始字节，不修改采集内容；文本查找也按当前接收编码定位原始字节。
-
-发送使用明确编码，字节计数、文本与 HEX 转换及标准 CR/LF/CRLF 行尾均使用所选编码；HEX 正文和自定义行尾保持输入字节。不能表示的字符会提示并阻止发送，保留草稿，不静默替换为问号。常用 UTF-8 使用浏览器原生编码器，传统编码表在首次需要时共享加载，输入和切换不增加 IPC 请求。
-
-手动发送的最终字节上限为 128 KiB（界面按十进制显示为 131.07 KB），包括编码后的正文与行尾。前后端共用 Rust 生成的 `TX_MAX_BYTES`，超过上限时保留内容并提示使用“发送文件”；不将大草稿拆成可能被其他任务穿插的独立发送。底层契约变化需要按启动说明停止旧 Host 后重新运行开发应用。
+- 接收显示的条数和字节数预算按窗口偏好应用于各串口，调小会裁剪实时缓存和暂停快照。上滚只停止自动跟随，暂停才固定快照；要保留完整历史请使用录制。
+- 收发编码独立，HEX 不改变原字节。自动识别只使用连续 RX 前缀，证据不足可手选编码。发送以所选编码计算正文与行尾的最终字节，不可表示时报错并保留草稿。超过生成的 `TX_MAX_BYTES` 使用文件发送，不将单次手动发送拆成可穿插的动作。
+- 控制线与回执针对选中的设备；配置回执、写入接受范围、drain 和物理线状态不能互相替代，见[系统串口与 PTY 能力](./architecture.md#系统串口与-pty-能力)。
 
 ## 契约与功能接线
 
@@ -123,27 +86,22 @@ Rust 包、共享 profile 和默认成员读取根 [Cargo.toml](../Cargo.toml)�
 
 新依赖评估用途、替代方案、许可、平台、包体与安装脚本，提交最小清单/锁差异。锁冲突先合并清单，再用规定工具链基于已有锁重新解析；避免删除锁文件整体升级。
 
-M2 包契约直接复用锁中 `semver 1.0.28`，用于完整版本解析与忽略 build metadata 的升级比较，避免按字符串排序或自写另一套 SemVer 解析器。来源为 crates.io 上游 `dtolnay/semver`，许可 MIT OR Apache-2.0，纯 Rust、无 build script 或安装钩子，支持全部四目标；本轮仅增加 core 的直接依赖边，不新增锁定包或分发资源。正则 schema 与 Rust 解析共用 fixture 核对边界。
-
-Host 正式包只读验证固定 `zip 9.5.1`（MIT，上游 zip-rs/zip2；关闭默认特性，仅启用纯 Rust Deflate 后端）、`ed25519-dalek 3.0.0`（BSD-3-Clause，上游 dalek-cryptography/curve25519-dalek；关闭默认特性，用 `verify_strict` 验签，不启用 legacy/hazmat）及 `unicode-normalization 0.1.25`（MIT OR Apache-2.0，上游 unicode-rs/unicode-normalization）。三者直接包均无 build script 或安装钩子；传递的 curve25519-dalek 构建脚本只按工具链/目标选择计算后端，已核对，无下载或系统修改。复用现有 SHA-2、flate2/zlib-rs 等锁版本，新增依赖节点及 getrandom/zeroize 的特性边以 Cargo.lock 为准。选择成熟归档、签名与 Unicode 实现，避免手写解压器、密码算法或规范化表；四目标产物体积与实际运行仍须本轮 CI/分发验收，不能用本机编译代替。
+ReactDOM 的[本地补丁](../patches/react-dom@19.3.1.patch)仅跳过 textarea 未变默认值的重复写入。升级时用 `pnpm patch` / `patch-commit` 维护精确版本与锁摘要；核对输入、表单 reset、受控值更新、[输入性能](./testing.md#前端与脚本)及冻结安装，不改 `node_modules`。
 
 ## 构建与发布
 
 当前发布/Pages 模板停用，签名和更新配置待启用。手动 CI 见[测试](./testing.md#持续集成)；正式分发前按本节准备并验收。
 
 ```sh
-pnpm version:set 1.2.0
 pnpm version:check
 pnpm app:build
-pnpm app:build --bundles nsis
-pnpm app:portable
 ```
 
-版本脚本同步 npm/workspace、Tauri、Cargo 共享版本与锁文件。MSI/NSIS 的版本范围及预发布限制由 [version.mjs](../scripts/version.mjs) 校验，不能仅靠选择其他 bundle 绕过配置约束；已发布版本号不复用。
+普通本机构建不改版本号。Windows 如只需 NSIS 安装包，改用 `pnpm app:build --bundles nsis`；需要便携包时用 `pnpm app:portable`。
 
-构建按 Cargo 真实输出收集桌面、Host、CLI、MCP 与组件清单。`--optimize size|speed` 均为 release，默认 size，speed 缩短编译但增大产物并改变优化；参数见脚本 `--help`。I8 路径边界及四目标未签名原生构建已通过，源范围见[进度](./progress.md#m1b-问题闭合)。
+仅在准备新版本时运行 `pnpm version:set <新版本号>` 并复核差异。版本脚本同步 npm/workspace、Tauri、Cargo 共享版本与锁文件。MSI/NSIS 的版本范围及预发布限制由 [version.mjs](../scripts/version.mjs) 校验，不能仅靠选择其他 bundle 绕过配置约束；已发布版本号不复用。
 
-M2 构建现接入固定 Node 下载/验签和资源准备，构建机需要 `gpgv` 与系统 `tar`，Linux 另需 `dpkg-deb`；最终用户无需这些工具。缓存、独立准备命令、Linux 对应源码与许可、`SWB_RUNTIME_OFFLINE=1` 及便携复用检查见 [runtime 输入](../resources/runtime/README.md)。Windows 资源准备已有本机自检证据，最终各目标安装布局、Host 启动与离线运行继续按阶段验收。
+构建收集同源桌面、Host、CLI、MCP 和组件清单；`--optimize size|speed` 均为 release，默认 size。固定 Node 由构建机验签并准备，需 `gpgv` 和系统 `tar`，Linux 另需 `dpkg-deb`。离线缓存、许可和跨目标准备见 [runtime 输入](../resources/runtime/README.md)。
 
 交付从 `artifacts/<version>/<target-triple>/installers/` 或 `portable/` 取文件，manifest 记录版本、target 和文件 SHA-256。同一版本/target 的该类产物整体替换，保留其他版本和另一类，失败恢复旧 bundle。Windows 产出 NSIS/MSI，macOS app/DMG，Linux 格式由 Tauri bundle.targets 决定。
 
@@ -179,7 +137,7 @@ Windows portable 包含程序、组件和许可证，需要 WebView2，数据写
 | --------------------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | 窗口不出现/白屏                                     | 已有实例、托盘/显示器、WebView、终端和原生日志、资源路径/CSP；真实窗口按[桌面边界](./testing.md#桌面边界)安排                                                                                       |
 | `HOST_START_FAILED`                                 | 正式相邻 Host、相同 profile、程序源身份及 Windows Job 限制                                                                                                                                          |
-| Host 失效后重试失败                                 | I3 的重新附着与 epoch 问题，保留本地草稿，不重复发送旧动作                                                                                                                                          |
+| Host 失效后重试失败                                 | 检查是否已显式重新附着到新 epoch，保留本地草稿，不重复发送旧动作                                                                                                                                    |
 | command not found / permission denied               | 当前二进制、命令注册、生成绑定、capability、窗口身份及目标授权                                                                                                                                      |
 | 串口无法连接                                        | 使用工作台平台引导，核对实际设备、驱动、权限和原始错误；拒绝访问不能据此猜测占用进程                                                                                                                |
 | 1420 端口冲突                                       | 确认进程归属；改端口同步 Vite、Tauri devUrl 和编辑器调试配置                                                                                                                                        |

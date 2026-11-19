@@ -17,6 +17,8 @@ pub fn snapshot(
         process_id: u64::from(std::process::id()).into(),
         rss_bytes: rss_bytes.into(),
         rss_peak_bytes: rss_peak_bytes.into(),
+        node: None,
+        derived: None,
         source: budget(stream.source_bytes, stream.source_peak, stream.source_limit),
         reader: budget(stream.reader_bytes, stream.reader_peak, stream.reader_limit),
         capture_queue: budget(
@@ -27,7 +29,7 @@ pub fn snapshot(
     })
 }
 
-fn budget(used: usize, peak: usize, limit: usize) -> MemoryBudget {
+pub(crate) fn budget(used: usize, peak: usize, limit: usize) -> MemoryBudget {
     MemoryBudget {
         used_bytes: (used as u64).into(),
         peak_bytes: (peak as u64).into(),

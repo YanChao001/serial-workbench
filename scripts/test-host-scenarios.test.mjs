@@ -95,6 +95,15 @@ test("host scenarios require an explicit output and fixed M1 duration", () => {
     /unknown|unsupported/i,
   );
   assert.equal(parseOptions(["--output", "report"]).durationSeconds, 600);
+  assert.throws(
+    () => parseOptions(["--output", "report", "--node-runtime", "resources"]),
+    /together/,
+  );
+});
+
+test("a passed base run cannot stand in for the Node parser workload", (t) => {
+  const { root, result } = fixture(t);
+  assert.throws(() => validateEvidence(root, result, 601, true), /Node parser/);
 });
 
 test("evidence requires every named scenario, assertions and existing contained logs", (t) => {

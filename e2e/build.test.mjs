@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
 import {
   chmodSync,
+  copyFileSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -19,6 +20,7 @@ import { effectiveConfig, parseBuildArgs } from "../scripts/build-lib.mjs";
 import { e2eExecutable, root as projectRoot } from "./build.mjs";
 import * as e2eBuild from "./build.mjs";
 import { fileSha256 } from "../scripts/artifact-lib.mjs";
+import { inspectNodeRuntimeLayout } from "../scripts/node-runtime-layout.mjs";
 
 test("E2E source identity is stable across Gitlink checkout states and detects nested HEAD changes", (t) => {
   const { root } = fixture(t);
@@ -126,6 +128,10 @@ test("E2E rejects changed source, missing or substituted adjacent components and
     );
   save();
   assert.deepEqual(e2eBuild.readE2EBuildReceipt(root), receipt);
+  assert.throws(
+    () => e2eBuild.readE2EBuildReceipt(root, { withNodeRuntime: true }),
+    /请先运行 pnpm e2e:build --with-node-runtime/,
+  );
   writeFileSync(sourcePath, "newer source");
   assert.throws(() => e2eBuild.readE2EBuildReceipt(root), /构建收据失效/);
   writeFileSync(sourcePath, "candidate source");
@@ -141,31 +147,95 @@ test("E2E rejects changed source, missing or substituted adjacent components and
     save({ ...receipt, ...patch });
     assert.throws(() => e2eBuild.readE2EBuildReceipt(root), /构建收据失效/);
   }
+
+  const resourceDir = join(root, "resources/runtime");
+  mkdirSync(resourceDir, { recursive: true });
+  copyFileSync(
+    join(projectRoot, "resources/runtime/node-release.json"),
+    join(resourceDir, "node-release.json"),
+  );
+  const runtime = join(output, "runtime");
+  mkdirSync(runtime);
+  const node = join(runtime, "node.exe");
+  writeFileSync(node, "prepared fixture bytes");
+  const examples = join(output, "examples");
+  mkdirSync(examples);
+  const terminalTools = [
+    "sign_reference_terminal",
+    "terminal_capture_check",
+  ].map((name) => {
+    const path = join(examples, name + ".exe");
+    writeFileSync(path, name);
+    return { name, path, sha256: fileSha256(path) };
+  });
+  const provisioned = {
+    ...receipt,
+    source: e2eBuild.e2eSourceIdentity(root),
+    nodeRuntime: inspectNodeRuntimeLayout({ root, target }, output),
+    terminalTools,
+  };
+  save(provisioned);
+  assert.deepEqual(
+    e2eBuild.readE2EBuildReceipt(root, { withNodeRuntime: true }),
+    provisioned,
+  );
+  save({ ...provisioned, terminalTools: terminalTools.slice(0, 1) });
+  assert.throws(
+    () => e2eBuild.readE2EBuildReceipt(root, { withNodeRuntime: true }),
+    /E2E 终端验收工具收据失效/,
+  );
+  save(provisioned);
+  const verifier = terminalTools[1];
+  writeFileSync(verifier.path, "wrong candidate");
+  assert.throws(
+    () => e2eBuild.readE2EBuildReceipt(root),
+    /E2E 终端验收工具收据失效/,
+  );
+  writeFileSync(verifier.path, verifier.name);
+  writeFileSync(node, "prepared fixture data!");
+  assert.throws(
+    () => e2eBuild.readE2EBuildReceipt(root),
+    /E2E 固定 Node 收据失效/,
+  );
+  unlinkSync(node);
+  assert.throws(
+    () => e2eBuild.readE2EBuildReceipt(root, { withNodeRuntime: true }),
+    /E2E 固定 Node 收据失效/,
+  );
 });
 
 test("E2E builds desktop and adjacent entrypoints in one locked Cargo selection", () => {
+  const target = "x86_64-pc-windows-msvc";
+  const plain = e2eBuild.e2eBuildArgs(target, "desktop-app");
+  assert.deepEqual(plain, [
+    "build",
+    "--debug",
+    "--no-bundle",
+    "--target",
+    "x86_64-pc-windows-msvc",
+    "--features",
+    "e2e",
+    "--config",
+    "src-tauri/tauri.e2e.conf.json",
+    "--",
+    "--locked",
+    "--package",
+    "desktop-app",
+    "--package",
+    "serial-workbench-host",
+    "--package",
+    "serial-workbench-cli",
+    "--package",
+    "serial-workbench-mcp",
+  ]);
   assert.deepEqual(
-    e2eBuild.e2eBuildArgs("x86_64-pc-windows-msvc", "desktop-app"),
+    e2eBuild.e2eBuildArgs(target, "desktop-app", { withNodeRuntime: true }),
     [
-      "build",
-      "--debug",
-      "--no-bundle",
-      "--target",
-      "x86_64-pc-windows-msvc",
-      "--features",
-      "e2e",
-      "--config",
-      "src-tauri/tauri.e2e.conf.json",
-      "--",
-      "--locked",
-      "--package",
-      "desktop-app",
-      "--package",
-      "serial-workbench-host",
-      "--package",
-      "serial-workbench-cli",
-      "--package",
-      "serial-workbench-mcp",
+      ...plain,
+      "--example",
+      "sign_reference_terminal",
+      "--example",
+      "terminal_capture_check",
     ],
   );
 });

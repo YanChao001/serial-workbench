@@ -1,0 +1,35 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Voltage trace</title>
+    <link rel="stylesheet" href="view.css" />
+    <script defer src="view.js"></script>
+  </head>
+  <body>
+    <main>
+      <header>
+        <h1 id="heading">Voltage trace</h1>
+        <p role="status" id="status">Waiting for samples…</p>
+      </header>
+      <canvas
+        id="plot"
+        role="img"
+        aria-label="Voltage by sample position"
+      ></canvas>
+      <details>
+        <summary id="samples">Sample values</summary>
+        <table>
+          <thead>
+            <tr>
+              <th scope="col" id="position">Position</th>
+              <th scope="col" id="voltage">Voltage (V)</th>
+            </tr>
+          </thead>
+          <tbody id="values"></tbody>
+        </table>
+      </details>
+    </main>
+  </body>
+</html>

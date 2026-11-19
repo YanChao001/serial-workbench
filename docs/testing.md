@@ -1,6 +1,6 @@
 # 测试与验收
 
-按改动选择检查，通过后即可交付；新增变化、失败或明确疑点出现时再补验证。命令从仓库根目录运行，结果记录源身份、平台、命令及影响判断的未测范围。当前失败见[进度](./progress.md)。
+从仓库根运行，只选择与改动相关的检查。记录源码、平台、命令、结果和影响判断的未测项；当前已验证到哪一步见[验证基线](./plan.md#验证基线)。
 
 ## 日常验证范围
 
@@ -18,10 +18,6 @@
 
 共享文档默认值变更须同时核对 Core、生成 fixture 与 Host 文档集成测试；系统默认值和用户显式命名分别验证，不能只跑默认值所在包。
 
-Host 脚本化夹具的 Operation 等待保留五秒门槛，数据库读取在阻塞 worker 中执行，超时只报告最后已读状态及后端进展，不在失败路径追加同步查询。默认新建 profile 在 panic 时保留到 `artifacts/rust-failures/`，CI 失败时上传；外部传入目录原地保留，通过时沿用 TempDir 常规清理。授权到期使用可控时钟，先建立 reader 等待再推进，并独立观察后台监视器释放预算；BREAK 持续时间从业务 Asserted 屏障后推进。饱和关停区分首轮有界未完成报告与最终责任退出，测试总预算不放宽生产的关闭/关停预算，完整核对操作归属和证据。
-
-`pnpm test` 汇总应用代码、Host 客户端和 Rust 导出契约，参数化输入分别计数。格式与数值边界集中在契约或纯函数测试，界面选择代表性交互；同一行为重复覆盖时合并。样式以浏览器实际布局、可读性和无障碍验证，避免用源码扫描器、CSS 类名或配置文本复刻实现。
-
 ## 前端与脚本
 
 ```sh
@@ -34,17 +30,7 @@ pnpm verify --jobs 1
 
 verify 的实际步骤见 [verify.mjs](../scripts/verify.mjs)，本轮日志写入 `.cache/verify/`。浏览器、预览端口和报告目录不并发运行；Cargo/生成任务共用 target 时顺序执行。
 
-含输入延迟、帧间隔门槛的 UI 检查与本轮 Cargo、生成及静态检查顺序执行，记录浏览器 worker 数及实际负载。并行负载下的失败保留原件，独立重测仍执行原场景与门槛，不拼接两种环境的性能结果。
-
-连接操作的点击完成不代表会话和活动草稿就绪，写稿前等待实际连接与所属标签。连续输入基准单独在 `e2e/browser/composer-input-latency.spec.ts` 运行，关闭会向被测页面注入快照/录屏工作的 tracing，保留失败截图、完整延迟样本及原输入量/CPU 降速/阈值；功能场景继续保留完整跟踪。CPU profile 和长帧观察用于独立诊断，不混入正式性能结果。
-
-工程脚本的文件级并发固定为 4，避免高核数 Windows 上大量文件同时启动系统探针；`verify --jobs 1` 只控制检查组，不能限制组内并发。此限制保留全部用例和原有探针期限；实际超时仍报失败，不跳过进程核对。
-
-组件测试 mock `@/lib/tauri`，门面契约测试再 mock 底层 Tauri API。脚本/进程测试使用自建临时目录和持有的进程，Host 使用独立 profile；测试失败保留必要现场，不触及真实用户数据。
-
-响应检查分别覆盖设备就绪与历史查询、独立操作观察的有效期/并发/晚结果、连续主题保存的授权代次，以及 Text 接收跨块解码。浏览器用真实鼠标悬停核对标题栏与会话控件的统一延时；键盘焦点仍立即提供说明。Native 场景连续点击主题按钮并采样发送/关闭可用性，记录 `workbench-responsiveness.json`；其中 focus 事件用于触发刷新逻辑，不能代替实际窗口焦点切换或 COM 硬件复测。开发模块加载测量、原生 frontend-ready 和 release 冷启动分别记录，不混用耗时。
-
-主题连续输入使用完整动效、真实 `dblclick` 和最终奇偶状态/文本选择验收，不能只用 View Transition mock 判定点击可达。接收压力同时检查实际读者内存与 wire credit，显示保留上限不能代替待确认帧预算；对比相同 credit 下的碎片输入与延后 ACK，保持真正超限时的缺口语义。配置观察过期允许点击时，仍须核对本次完整输入的重新检查及明确拒绝后无副作用。
+性能用例与 Cargo、生成、静态检查错开。长草稿输入基准见 [composer-input-latency.spec.ts](../e2e/browser/composer-input-latency.spec.ts)：等待实际连接和活动草稿就绪，保留输入量、降速、阈值、worker 数及失败样本，不把诊断性 profile 或重试替代原结果。组件测试 mock Tauri 门面，传输测试才 mock 底层；进程测试用独立 profile 和自有进程。
 
 ## 桌面边界
 
@@ -61,29 +47,11 @@ pnpm test:ui
 
 真实桌面通过 `pnpm e2e:build` 与 `pnpm test:e2e --interactive --skip-build` 运行 `e2e/specs/`，使用测试配置和 WebDriver。构建包含相邻同源 Host/CLI/MCP，收据校验源码、target/profile 与程序哈希；runner 使用独立 Host profile、持有 PID、正常 CLI 认证及实际退出，失败保留现场。工作台场景在同一窗口内请求 runner 重启其持有的 Host，核对旧实例退出、新 epoch、显式重新附着、订阅及未发送草稿。
 
+准备签名插件原生验收时，运行 `pnpm e2e:build --with-node-runtime`。它按正式资源校验和布局给测试 Host 准备固定 Node，并在构建收据记录资源字节、文件模式和允许的链接。复用该构建时运行 `pnpm test:e2e --interactive --skip-build --with-node-runtime`，runner 会在打开窗口前重查收据。签名终端的窗口、文件选择和焦点仍按[终端参考包场景](#终端参考包验收)操作和记录。
+
 WebDriver 不自动重发失败或超时的命令：脚本报错前可能已执行原生副作用。`e2e/webdriver-transport.test.mjs` 用实际驱动配置及独立 HTTP 夹具验证一次投递，日常检查不启动原生窗口；界面等待仍由各用例的只读观察条件负责。
 
-新窗口启动观察在原 `waitforTimeout` 内核对目标窗口文档、工作台 shell 与 IPC；单次只读脚本预算不超过一秒，超时后重新观察，非超时驱动错误直接失败，结束后恢复原脚本超时。`e2e/native-ready.test.mjs` 使用真实 WebDriverIO 客户端和 HTTP 夹具覆盖丢失读取、错误文档、持续未就绪及超时恢复，不代替 Native 全场景验收。
-
-主文档刷新使用 [reloadDocument](../e2e/reload-document.ts)，先观察旧文档被替换，再执行原有界面与 Native 就绪检查。驱动刷新返回不代表导航完成，不能让旧 DOM 提前满足新文档条件；对应浏览器反例只验证该屏障，不替代真实 Native 重载场景。
-
-`scripts/ipc-transport.test.mjs` 检查单一原生投递、认证和序列化兼容、独立用户调用及投递后错误不重放；真实 Native 日志另检查 RPC 和订阅建立冲突，reporter 通过仍须满足日志门控。E2E 的桌面、Host、CLI 与 MCP 由同一次 Cargo 选择构建，保留显式 target、锁文件、独立 feature/配置与四入口哈希收据。
-
-传输回归还覆盖含注释终止符的合法合成 Z85 密钥，经上游同样的全文替换后检查初始化、正确认证及一次投递；固定普通密钥不能覆盖该随机边界。本机反例不代替真实窗口启动；Native 超时先查看失败截图和日志，区分应用恢复页、IPC 故障与观察条件，不能只增加等待。
-
-设置场景分别读取 Host SharedSettings 和 Native ClientState，按字符串 revision 保存并等待 Operation 终态。媒体场景仅在测试 feature 中用 suite 固定 PNG 替代系统选择对话框，后续仍经过正式文件检查、登记、授权和媒体票据；这不验证系统选择对话框本身。I5/I7 接线已在候选 `9283f22` 的完整四目标 CI 通过，见[进度](./progress.md#当前验证)；日常仍不在本机启动真实窗口。
-
-同一 Native 阶段串行复用 profile 和界面状态；首个失败后停止该阶段并保留截图/日志，避免后续依赖状态的连锁超时。成功候选仍执行全部阶段和场景。授权恢复定向检查覆盖多个终态无 ACK、正常/应急容量及实际回收、连续授权、恢复查询再次遇到授权变化、真实撤权拒绝，以及旧 reader 回调隔离；恢复只查询和订阅，不重放发送动作。退休检查还验证普通 RPC、订阅及设置副作用不会隐式附着或启动 Host，明确附着后才允许新代次访问。
-
-每个成功 Native 阶段在实际进程回收后检查本阶段原生日志，并保存 `rpc-request-conflicts.json` 的字节数、摘要和冲突计数。套件未主动注入的在途请求冲突即使未使 WebDriver 用例失败，也会拒绝该阶段；缺失或空日志不计通过。已安排的 Host 重启与权限失败仍按所属场景检查，不用统一忽略全部日志错误。普通 EOF 属于 debug；独立 Native 程序显式开启调试日志以保留其时刻，不将正常关停提高为生产告警，也不改变 Host/CLI 默认日志级别。独立 E2E 固定记录安全的 DeviceConnect 阶段元数据，普通程序仍只在 debug 级别输出，不记录业务身份或正文。
-
-原生桥接库回归用真实 Host 暂停旧订阅关闭，连续投递 300 个晚帧并 ACK 另一活跃订阅，核对旧帧不会耗尽建立队列；建立请求失败/取消会释放早帧，合法建立请求的共享条数/字节溢出仍拒绝。IPC 回归区分零字节撤权/epoch 失效与部分帧中断；接纳剪贴板动作后，通过真实 writer 零字节撤权及 `operation.get` 核对 Failed/错误码、无伪造回执及连接继续可用。会话测试用线程退出屏障区分 completed、Closed、关闭操作及实际 join，不以增加等待上限修正断言。
-
-原生链路故障先本机定向复现并收齐本轮 CI 的实际失败，再手动运行 `ci.yml` 的 `native_preflight=true`；`native_preflight_target` 默认 Ubuntu x64，可选择实际失败的 Windows x64、macOS arm64/x64，执行与完整检查相同的 fresh、persisted、centered 三阶段。通过后，对冻结候选以 `native_preflight=false`、`desktop_e2e=true` 运行完整四目标门禁。预检结果单独命名，不计里程碑验收；两种模式均保留原生收据和测试日志。原生驱动的 DOM 点击与真实指针事件有差异，菜单可使用产品提供的键盘入口；标签切换须等待选中状态及对应草稿完成渲染，不复用切换前的元素快照。不得通过直接修改应用状态绕过交互。
-
-固定 Node/runtime 来源、签名身份或原生启动故障可用 `ci.yml` 的 `runtime_preflight=true` 定向验证，`runtime_preflight_target` 默认 `all`，也可选上述四目标之一。它复用正式准备链、Host 探针、安装布局/故障套件及显式原生回归，只构建无界面 Host 入口；不运行桌面、安装器或离线软件全集。不得同时启用 `native_preflight`。收据使用 `runtime-preflight-*` 独立名称，不生成里程碑质量门禁；最终仍须以两个 preflight 均为 `false`、`desktop_e2e=true` 对冻结候选执行完整四目标门禁。
-
-预检并发按 ref/类型/target 隔离，完整模式仍按 ref 串行。Linux Rust、绑定及 Native 共用[依赖脚本](../scripts/ci-linux-deps.sh)，浏览器安装也先使用其索引准备；非交互且不安装推荐包，只将已知 Azure 镜像 URI 改为 Ubuntu 官方源，保留安全源、签名、Xvfb/xauth、CJK 字体、调试符号及媒体解码必需包。索引任一下载错误立即失败，不沿用旧索引进入下载。下载阶段单独限 480 秒，成功后从已下载归档安装；不在 dpkg 阶段套额外超时。环境准备预算 12 分钟，软件测试预算不变。安装超时单独记录，离线场景只有实际执行后才上传证据，实际执行却缺失仍报错；未执行不能计为软件失败或通过，同候选预检通过也不能覆盖完整模式的实际失败。
+Native 刷新需观察旧文档被替换，再检查新窗口 IPC 就绪。同一阶段串行复用 profile，首个失败后保留现场；成功时核对实际进程退出、非空阶段日志及零意外 RPC 冲突。系统文件选择夹具、条件跳过和无头截图分别标明，不计为真实系统交互。
 
 ## Rust 与生成
 
@@ -96,9 +64,108 @@ cargo fmt --all -- --check
 
 用户正在运行开发程序时，可为无头检查显式指定 `--target-dir .cache/local-acceptance-target`，例如 `cargo test --locked --target-dir .cache/local-acceptance-target -p serial-workbench --lib`。独立目录保留缓存；仅设置 `--target` 仍会争用默认根目录锁。
 
-包含桌面的里程碑运行 `cargo test --locked --workspace` 与 `cargo clippy --locked --workspace --all-targets -- -D warnings`。独立后端 Clippy 显式选择 core/ipc/host/client/cli/mcp，生成命令见[功能接线](./development.md#契约与功能接线)。
+共享 target 的 Cargo 与生成顺序执行。从备份恢复旧 mtime 时确认受影响 crate 实际重新编译；交叉测试需同源程序，不能用仅有源码指纹的旧二进制。里程碑跑 `cargo test --locked --workspace`、`cargo clippy --locked --workspace --all-targets -- -D warnings`；两套绑定的生成/check 见[开发指南](./development.md#契约与功能接线)。
 
-CLI、MCP、HostClient 交叉测试先构建同一 target 的 Host/CLI/MCP，再运行 `cargo test --locked -p serial-workbench-host --test client_parity`。测试读取该 target 的程序；独立产物可用 `SWB_TEST_CLI_BIN` / `SWB_TEST_MCP_BIN` 绝对路径。核对临时 profile、真实程序身份和自有进程回收。
+**串口与客户端：** `cargo test --locked -p serial-workbench-host --test serial_backend --test pty_roundtrip` 在目标 OS 上运行；PTY 被 cfg 排除不计通过。先在同一 target 构建 Host、CLI、MCP，再跑 `cargo test --locked -p serial-workbench-host --test client_parity`。Host 夹具普通 Operation 等待为 5 秒，十子动作的 15 秒聚合观察不能算作 5 秒门槛通过。
+
+**真实 Node 包：** 先按[资源准备](../resources/runtime/README.md)准备目标平台的正式资源根，用绝对路径设置 `SWB_NODE_RUNTIME_TEST_ROOT`；macOS 在构建前还须绑定同套 `SWB_NODE_RUNTIME_BUILD_IMAGE`。完整环境及执行顺序以[专项工作流](../.github/workflows/runtime-preflight.yml)为准。按影响从下列入口选用，默认 workspace 的 ignored 项不计通过：
+
+```sh
+cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1
+cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
+```
+
+前者经签名包安装、确认、启用运行实际处理器；后者覆盖撤权与提交竞态、恢复、父子任务、worker 故障、结果访问与 Raw/Capture 连续性。macOS 另跑 `cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1` 核验监护和实际退出。逻辑时钟推进、取消 ACK 与 OS 进程退出是不同证据。
+
+任务 Raw 专项使用同一原生资源根。测试持续接收 Virtual 数据，在后端准备页后暂缓交付，并核对四个 Raw 名额用满时的控制回执、取消、内存释放与录制回放。
+
+```sh
+cargo test --locked -p serial-workbench-host --lib native_node_task_raw_lane -- --ignored --test-threads=1 --nocapture
+```
+
+任务派生专项使用签名包从实际 Raw 事件发布样本，检查字节范围、配置摘要、满额时控制和录制、两路分页、过期、撤权及取消后的名额释放。将 `SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 指向同源程序，可对照相同 Operation 的公开成功回包。需要保留签名 ZIP 与实际回包时，将 `SWB_TEST_DERIVED_EVIDENCE` 设为尚不存在的证据目录。仍按 T06 核验固定负载的延迟与峰值。
+
+```sh
+cargo test --locked -p serial-workbench-host --lib native_node_task_derived_lane -- --ignored --test-threads=1 --nocapture
+```
+
+**作者 SDK 与 CLI/MCP：** `pnpm plugin-sdk:fixture` 检查作者类型并编译示例。将 `SWB_TEST_NODE_SDK_FIXTURE` 指向 `.cache/plugin-sdk/examples/native-parity.js` 的绝对路径，`SWB_TEST_CLI_BIN` / `SWB_TEST_MCP_BIN` 指向同源两程序，再运行：
+
+```sh
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
+```
+
+这组通过官方 MCP SDK 和实际 CLI 检查公开目录、动作/查询、重放、结果读取与窄撤权，不替代 GUI、隔离视图或真实 MCP 产品客户端。
+
+## 终端参考包验收
+
+M2 B 的第一个场景使用 C 将继续交付的终端包。以公开 SDK 构建并签名，在独立 profile 中运行同一候选的桌面、Host、CLI 和 MCP。按[桌面边界](#桌面边界)运行真实桌面步骤。记录包摘要、Host 和会话代次，以及已知 Virtual 输入的字节范围与摘要。
+
+终端源码位于 [SDK 示例](../packages/plugin-sdk/examples/reference-terminal/)。先运行 `pnpm plugin-sdk:fixture`。签名工具读取单独准备的 32 字节 Ed25519 测试种子，输出 ZIP 和一行包含包摘要、来源 ID 和公钥的 JSON。保存 stdout 作为本轮签名收据，公钥用该收据核对。
+
+```sh
+cargo run --locked -p serial-workbench-host --example sign_reference_terminal -- .cache/plugin-sdk/examples/reference-terminal/main.js <测试种子文件> <新ZIP绝对路径> terminal-reference local-acceptance
+```
+
+按[真实 Node 包](#rust-与生成)准备 `SWB_NODE_RUNTIME_TEST_ROOT`，将 `SWB_TEST_SIGNED_TERMINAL_RECEIPT` 设为签名收据的绝对路径。无头桥接测试使用文件选择夹具，覆盖实际管理事务、精确 Virtual 会话上的视图资源与 Raw reader、撤权和重新激活。测试关闭 reader 后继续录制，重开读取留存数据，并回放已完成的录制核对关闭前、中、后的 RX 字节与会话代次。Host 分段测试检查后段同长度篡改。无头 Chromium 测试载入实际壳脚本和 SDK 终端包，检查 sandbox 端口、确认序号、设备文字安全和 iframe 重载。原生窗口、实际产品客户端及平台差异按下面的场景验收。
+
+将 `SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 指向同源的两个程序。无头桥接用例会在同一 Host 上对照桌面 reader、实际 CLI 和官方 MCP SDK 读到的会话数据与录制结果，再撤销 MCP 对该会话和录制的读取授权，复核 CLI 仍可读取。两个变量均缺失时日志会记录跳过这部分用例，四目标里程碑 CI 提供两个程序。
+
+同时将 `SWB_TEST_TERMINAL_HOST_BIN` 指向按[发行资源布局](./contracts/runtime-distribution.md#安装布局与启动)准备、能自行定位固定 Node 的同源正式 Host 程序。正式进程用例在独立 profile 和无关工作目录启动该二进制，进程环境去掉 PATH，核对已持有的 Host PID 和实际 Node PID。签名终端共用管理、视图、录制和三入口断言，最后由实际 CLI 停止 Host 并等待真实退出。仅复跑嵌入式 Host 时，可用全名 `native_reference_terminal_install_enable_and_revoke_through_desktop_bridge` 选择用例。
+
+```sh
+pnpm build
+cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp --bins
+cargo test --locked -p serial-workbench-host --lib pages_retain_the_verified_digest
+cargo test --locked -p serial-workbench --lib native_reference_terminal_ -- --ignored --test-threads=1 --nocapture
+pnpm test:ui e2e/browser/plugin-view.spec.ts
+```
+
+要在同一正式 Host 上加跑 Claude Code MCP 客户端验收，将 `SWB_TEST_CLAUDE_CODE_BIN` 设为已安装程序的绝对路径，将 `SWB_TEST_TERMINAL_PRODUCT_OUTPUT` 指向本轮新建的空目录，然后只运行 `native_reference_terminal_uses_installed_runtime_through_formal_host`。Windows 若需要指定 Git Bash，请设置 `CLAUDE_CODE_GIT_BASH_PATH`。用例给实际 stdio 适配器授予同一 Virtual 会话及录制输出的精确读取权，通过客户端发现并调用签名动作，核对完成录制的引用和正文。撤销授权后用同一身份重新连接，检查目录和原引用。客户端使用临时配置及本地预设模型响应，记录目录保留客户端事件和授权前后的调用。
+
+在独立桌面或已约定的前台时段，保持 `SWB_TEST_SIGNED_TERMINAL_RECEIPT` 指向本轮签名收据并运行 `pnpm test:e2e --interactive --terminal-manual --skip-build`。runner 核对已准备固定 Node 的构建，启动独立 Host 和桌面程序，并输出 `terminal-inputs.json`。从该文件复制来源 ID、密钥 ID 和公钥十六进制，使用实际文件对话框选择其中的 ZIP 和录制路径。在无其他输入的 Virtual Echo 会话中依次发送 `writes` 中的三个 HEX 值，分别在关窗前、关窗期间和重开后发送，关闭发送区的额外行尾。完成录制、停用和撤权步骤后退出应用。runner 等待本轮 Host 停止，再按本轮 Host 及实例代次回放核对完整录制、同一会话和全部 69 字节。窗口焦点、显示、语言、主题、缩放及隔离观察另记录在同一 `artifacts/e2e/signed-terminal-*` 目录。
+
+四目标独立桌面通过 `pnpm test:e2e --interactive --terminal-automated --skip-build` 执行签名场景。`pnpm e2e:build --with-node-runtime` 在同一次 Cargo 构建准备桌面、伴随程序、签名工具和录制核对工具。runner 校验收据中的工具路径和摘要，再在 Host 退出后运行预编译的录制核对工具。自动化使用专用测试构建的文件选择夹具与真实主窗、Host 和独立 Wry 渲染器。场景从主窗安装并显式授权，录制期间通过实际 CLI 追加读取权，核对关闭和重开中的 Raw 确认位置、累计 RX 字节、撤权停止及最终回放。实际系统文件对话框、窗口焦点和缩放继续用手动入口验证。
+
+需要从桌面核对录制正文时，用本地用户控制入口给桌面身份授予所选输出引用的 `content.read`。验证录制期间追加权限时，先开始录制，再提交这项授权。随后发送已知字节，停止录制并回放核对。Host 定向用例使用 `cargo test --locked -p serial-workbench-host --test capture_api_host`。同组还覆盖源读取或目标写入撤销后空闲录制的真实终态。
+
+1. 在桌面插件页打开「管理来源」，认可测试来源。点击「安装插件」，选择来源和文件。核对列表显示插件名称、版本和「等待授权」，展开行核对签名来源。归档摘要通过 Host 回执核对。用普通 MCP 身份检查目录，再用正确的包摘要和当前 revision 请求确认执行信任。应观察到目录隐藏该动作、请求被拒绝，信任记录和 revision 保持原值。随后由本地用户确认同一份包并显式启用。
+2. 用同一 Virtual 会话录制已知输入。为核对结果，给验收身份单独授予所选录制输出的 `content.read`。打开只读终端的隔离 iframe，关页后继续输入，再重开视图。核对录制覆盖关页前、中、后的字节及顺序，旧视图订阅已释放，新视图按快照与游标接续。慢读者或游标过期时应显示缺口或从可用录制补读，核对恢复区间，不能用屏幕最后一行推断录制完整。
+3. 给三个入口的测试身份授予相同的目标读取范围，对照同一源、会话代次和字节区间的可见结果。选一个身份读取录制的结果引用，确认可读后撤销其内容权限。再次读取原区间和该引用，正文均应被拒绝，其余获准读者仍可读取。验证有副作用的动作时，用一次接纳的回执观察终态，独立调用分别核对接纳和实际执行次数。
+
+本场景提供 GUI 管理、公开 SDK 和关页连续性的证据。B 的流预算、取消与压力场景及 C 的三个完整参考包仍按[路线](./plan.md#当前执行与下一步)验收。
+
+保留同一桌面连接复查执行信任撤销及重新启用。签名终端桥接用例逐次对照实际 Host 目录可见性和传给窗口的目录变更通知。`pnpm exec vitest run src/providers/host-controller.test.ts` 同时检查旧连接通知和晚到目录页。
+
+`pnpm test:ui e2e/browser/plugins.spec.ts e2e/browser/smoke.spec.ts` 通过受控桌面 IPC 检查安装页、按名称和版本识别插件、来源、信任后显式启用及失败提示。用例检查界面中的权限说明和实际意图携带的原包摘要，覆盖暗色和中文窄窗口。原生文件对话框和实际窗口仍用前述独立或前台环境验收。
+
+## 图表参考包后台采样
+
+执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。将签名 stdout 保存为收据，并把 `SWB_TEST_SIGNED_CHART_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 指向同源 CLI。
+
+```sh
+cargo run --locked -p serial-workbench-host --example sign_reference_chart -- .cache/plugin-sdk/examples/reference-chart/main.js <测试种子文件> <新ZIP绝对路径> chart-reference local-acceptance
+cargo test --locked -p serial-workbench --lib native_chart_samples_exact_rx_from_the_signed_reference_package -- --ignored --test-threads=1 --nocapture
+node --test scripts/reference-chart.test.mjs
+pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts
+```
+
+定向场景在独立 Virtual Echo 会话内安装签名包，确认执行信任后显式启用。三次输入跨实际 RX 事件拼成 `1.25`、`-2` 和 `3.5`，分别核对字节范围 `[0,6)`、`[6,9)` 和 `[9,13)`，对照桌面桥和同源 CLI 的派生页。超长输入使对应任务失败，Host 仍能读到原始输入和前一任务的样本。缺口测试用受控 SDK 输入验证未完成记录不会跨缺口发布。图表窗口、实际 MCP 客户端与运行故障仍按 C 的完整场景验收。
+
+桌面桥接用例从同一个成功 Operation 开启和重开图表并对照派生页，撤销执行信任后复查读页。无头 Chromium 用实际壳和图表脚本验证 iframe 隔离、留存缺口、曲线与样本值。原生图表窗口以及运行中采样仍需按 C 的完整场景验收。
+
+## 自动化参考包后台应答
+
+执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。把签名 stdout 保存为收据，将 `SWB_TEST_SIGNED_AUTOMATION_RECEIPT` 设为其绝对路径。
+
+```sh
+cargo run --locked -p serial-workbench-host --example sign_reference_automation -- .cache/plugin-sdk/examples/reference-automation/main.js <测试种子文件> <新ZIP绝对路径> automation-reference local-acceptance
+cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --nocapture
+```
+
+用例在 Virtual Echo 会话核对两次应答和 RX 范围，再分别验证应答不符、收到前缀后超时和等待应答时取消。结果区分超时和应答不符，取消请求与父动作实际停止分别核对。三种情况下都只接纳首个发送子动作。独立发送仍可使用同一会话，停止录制后逐字节核对全部 32 字节。
+
+完整四目标 CI 的原生 runtime 验收步骤使用每个目标实际安装布局，构建、签名并运行终端、图表和自动化三个参考包的无窗口用例。产物分别保留在 `artifacts/reference-terminal`、`artifacts/reference-chart` 与 `artifacts/reference-automation`。各平台的原生窗口和实际离线安装遵循阶段出口另行验收。
 
 ## Host 软件验收
 
@@ -123,6 +190,14 @@ node scripts/test-host-scenarios.mjs --harness <harness绝对路径> --output <�
 
 完整 JSON/断言名称由 [wrapper](../scripts/test-host-scenarios.mjs) 和 [harness](../crates/host/examples/software_scenarios.rs) 维护。样本须覆盖时长、单调时间与字节、相邻不超过 3 秒；RSS 为实际进程树，队列取 Host 指标，延迟取客户端单调时钟并按 nearest-rank 核对。11,520 B/s 是软件参考负载；记录实际目标、系统和程序哈希。
 
+Node 组合负载在同一套六场景上复用 T06 的发生器、Raw 慢读者、控制遥测和录制。先运行 `pnpm plugin-sdk:fixture`，然后指定已校验资源目录及编译后的公开 SDK 示例。证据目录与基座运行分别提供。
+
+```sh
+node scripts/test-host-scenarios.mjs --harness <harness绝对路径> --output <新证据目录> --node-runtime <已准备的资源目录> --node-parser .cache/plugin-sdk/examples/t06-parser.js
+```
+
+发生器在录制、读者及签名解析任务就绪后启动。验收核对发生器、快速 Raw 读者、解析器、回放的字节与 SHA-256，以及派生页的全部偏移范围、慢读者过期和恢复。逐秒校验派生留存和读页占用、峰值与限额；读页排空后确认读页占用归零，历史峰值与留存样本仍可观测。Node 运行在独立私有 Host，并由实际 CLI 停止该 Host，再确认 Node 进程退出。组合 RSS 采集 Host、验收客户端及实际 Node owner，辅助进程另行取证。原始包、派生样本、逐秒控制及队列遥测、录制和退出证据随报告留存。
+
 Ubuntu 手动 CI 在联网安装/构建后运行 `scripts/test-host-offline.mjs`，以独立 network namespace、原 runner UID/GID 执行同一六场景。前后核对命名空间、仅未启用 lo、无 IP/双栈路由及父环境不变，并从外部上传原始证据。失败不回退联网；本地单元测试只验证接线。
 
 ### 独立录制格式
@@ -136,23 +211,23 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 ## 持续集成
 
-`.github/workflows/ci.yml` 与 audit 仅手动触发；大节点完整检查累计源范围，未设置 push/PR/定时自动运行。四目标为 Windows x64、Ubuntu x64、macOS arm64/x64，具体 runner 读取工作流。
+[手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
 
-每轮包含前端/脚本、浏览器、Rust fmt/Clippy/workspace、生成绑定和未签名构建。desktop_e2e 默认开启；关闭时只允许该类 job 跳过，其余失败、缺失、取消或跳过均使质量门槛失败。Ubuntu 正式离线场景保持 600 秒及隔离/上传门槛。
+## M3 契约冻结
 
-最低系统、真实硬件、72 小时、LAN 双机、实际 MCP 产品客户端、签名与公开发行分别验收；runner 软件通过记录到其适用范围。
+以至少两个仅使用公开 SDK 的参考插件验证终端、协议事务、长脚本、网络和独占工具交接、合成 UART 波形及图表离屏导出。核对 schema 与类型、获准入口的结果、revision/epoch、撤权、取消、unknown、写盘恢复及未来格式。完成不兼容版本拒绝、实际 MCP 产品客户端、正式 Node 离线包、后台整套升级和故障回收后冻结 v1。
 
 ## 安装与发行验收
+
+进入 M6 时，按[验收场景映射](./requirements.md#附件验收方案与功能映射)核对纳入需求在前序阶段应完成的软件验证。例如 T04 此时已有能力与配置回执，接线与仪器结果留在 M6 实测。PERF-08 的实际 72 小时在本阶段完成。T14 的离线包和后台升级分别在 M2、M3 验证，M6 用发行候选核验最终产物。退出 M6 时逐项核对适用的软件、硬件和发行证据，排除或推迟项沿用账本中的范围决定。
 
 安装升级前先按变更选择数据验证：CAS 冲突、未来格式拒写、读/写/备份失败、替换竞态及中断恢复均核对原件和最终状态。隔离恢复同时检查暂存、明确重启、归档及回滚；只读 fixture 或成功返回不足以确认恢复正确。
 
 按实际系统覆盖安装、首次/重复启动、卸载、系统 WebView、协议关联、自启动与窗口恢复；更新使用两个不同版本核对下载/验签、工作协商、安装、重启和失败恢复。Windows portable 单独验证，macOS 签名/公证、Linux 包格式分别记录。
 
-硬件按 2026-11-09 用户确认的 Windows 范围覆盖目标适配器与接线，记录驱动、芯片、OS、速率、流控、BREAK、拔插和休眠；LAN 在两台 Windows 物理电脑上交换角色。macOS/Linux 进行实现与虚拟测试。性能用固定 release 与参考机器，记录完整进程树、吞吐、队列、CPU/RSS 和控制延迟，典型负载进行实际 72 小时长稳。
+按[平台目标](./requirements.md#平台目标)在最低支持系统核验安装与运行。Windows 实测目标芯片、接线、流控、BREAK、拔插与休眠，并用两台物理机在 IPv4/IPv6 下互换 LAN 角色。macOS/Linux 做实现与虚拟设备验证。三平台各自用固定 release 和典型负载实际运行 72 小时，记录机器、完整进程树、吞吐、队列、CPU/RSS 和控制延迟。
 
 初始软件参考负载为单会话 11,520 B/s、四会话各 100 KiB/s、八会话各 1 MiB/s 压力；M1/M2 实测后固定机器、预算及阈值。3/6/12 Mbps 使用确实支持的适配器和对端；百万点/60FPS 记录通道、可见范围及降采样，满队列保留缺口或停止原因。
-
-M3 契约冻结前，以至少两个仅使用公开 SDK 的参考插件验证终端、图表导出、自动化、网络/工具交接和合成 UART 波形；覆盖跨入口 revision/epoch、撤权、取消、unknown、写盘恢复及未来格式，并完成实际 MCP 产品客户端、正式 Node 离线包、后台升级和故障回收。通过后才进入完整功能包集成。
 
 ## 依赖审计
 

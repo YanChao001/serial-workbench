@@ -687,6 +687,136 @@ async fn imported_capture_status_needs_only_metadata_and_omits_recording_owner()
 }
 
 #[tokio::test]
+async fn recording_survives_granting_read_access_to_its_destination() {
+    let f = Fixture::new().await;
+    let session = f.open().await;
+    let destination = f.register("recording-read-grant").await;
+    let destination_target = f.reference_target(&destination);
+    let (owner, live) = f.start(&f.user, &session, &destination).await;
+    let authorized = f
+        .action(
+            &f.control,
+            "auth.authorize",
+            f.host(),
+            json!({
+                "clientId": f.user.attachment().client_id,
+                "permissions": ["content.read"],
+                "targets": [destination_target]
+            }),
+        )
+        .await;
+    assert_eq!(
+        authorized.state,
+        OperationState::Succeeded,
+        "{authorized:?}"
+    );
+
+    let tx = f
+        .action(
+            &f.user,
+            "session.tx",
+            session,
+            json!({"bytesBase64":"AQID","writeWaitMs":"100"}),
+        )
+        .await;
+    assert_eq!(tx.state, OperationState::Succeeded, "{tx:?}");
+    tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let current = f.store.get(&f.operator, &owner.operation_id).unwrap();
+            assert_eq!(current.state, OperationState::Running, "{current:?}");
+            let RpcResult::Query(QueryResult::CaptureStatus(status)) = success(
+                f.user
+                    .request(RpcRequest::Query(f.query(
+                        &f.user,
+                        "capture.status",
+                        f.reference_target(&live),
+                        json!({"captureRef":live}),
+                    )))
+                    .await
+                    .unwrap(),
+            ) else {
+                panic!("Expected live capture status");
+            };
+            if status.summary.watermarks.written.get() >= 3 {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("Recording did not contain the RX after the read grant");
+    let stopped = f
+        .action(
+            &f.user,
+            "capture.stop",
+            f.reference_target(&live),
+            json!({"captureRef":live}),
+        )
+        .await;
+    assert_eq!(stopped.state, OperationState::Succeeded, "{stopped:?}");
+    let finalized = f.wait(&owner, false).await;
+    assert_eq!(finalized.state, OperationState::Succeeded, "{finalized:?}");
+    let Some(ActionResult::CaptureStatus(status)) = finalized.result else {
+        panic!("Expected completed capture");
+    };
+    assert!(status.summary.container_complete && status.summary.source_continuous);
+    let raw = f.user.connect_raw().await.unwrap();
+    let RpcResult::Query(QueryResult::CaptureTail(tail)) = success(
+        raw.request(RpcRequest::Query(f.query(
+            &f.user,
+            "capture.tail",
+            f.reference_target(&status.capture_ref),
+            json!({"captureRef":status.capture_ref,"maxRecords":"32","maxBytes":"8192"}),
+        )))
+        .await
+        .unwrap(),
+    ) else {
+        panic!("Expected completed capture tail");
+    };
+    assert!(tail.records.iter().any(|record| {
+        let ReplayRecord::Inline { record } = record else {
+            return false;
+        };
+        matches!(&record.entry, CaptureEntry::Event(event)
+            if matches!(&event.payload, RawPayload::Rx(rx) if rx.bytes_base64.as_str() == "AQID"))
+    }));
+    raw.close().await.unwrap();
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn revoking_either_recording_grant_stops_an_idle_capture() {
+    for permission in ["content.read", "workspace.modify"] {
+        let f = Fixture::new().await;
+        let session = f.open().await;
+        let destination = f.register("recording-revoked").await;
+        let (owner, _) = f.start(&f.user, &session, &destination).await;
+        let target = if permission == "content.read" {
+            session
+        } else {
+            f.reference_target(&destination)
+        };
+        let revoked = f
+            .action(
+                &f.control,
+                "auth.revoke",
+                f.host(),
+                json!({
+                    "actorId": f.user.attachment().actor_id,
+                    "permissions": [permission],
+                    "targets": [target]
+                }),
+            )
+            .await;
+        assert_eq!(revoked.state, OperationState::Succeeded, "{revoked:?}");
+        let settled = f.wait(&owner, false).await;
+        assert_eq!(settled.state, OperationState::Failed, "{settled:?}");
+        assert_eq!(settled.error.unwrap().code, "PERMISSION_DENIED");
+        f.finish().await;
+    }
+}
+
+#[tokio::test]
 async fn capture_start_requires_explicit_independent_mode() {
     let f = Fixture::new().await;
     let session = f.open().await;

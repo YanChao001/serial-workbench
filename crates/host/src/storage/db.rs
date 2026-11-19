@@ -14,6 +14,9 @@ pub(super) struct Database {
     pub signer: ContextSigner,
     identity: Option<HostIdentity>,
     pub retention: RetentionClock,
+    // 只包含本实例真实派发的任务；重开数据库不会复活旧执行owner。
+    pub live_dispatches: std::collections::BTreeSet<Id>,
+    pub task_admissions: std::collections::BTreeSet<Id>,
 }
 
 /// 仅累计已确认的 Host 存活时间，重启时沿用已持久的基值。
@@ -105,6 +108,7 @@ impl Database {
             transaction.commit().map_err(|_| unavailable())?;
         }
         connection.execute_batch("CREATE INDEX IF NOT EXISTS operation_active ON operations(operation_id) WHERE terminal=0;").map_err(|_| unavailable())?;
+        connection.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS operation_child_identity ON operations(json_extract(operation_json,'$.admission.parentOperationId'),json_extract(operation_json,'$.admission.childKey')) WHERE json_extract(operation_json,'$.admission.kind')='child';").map_err(|_| unavailable())?;
         connection.execute_batch("CREATE TABLE IF NOT EXISTS workspace_directory (workspace_id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE REFERENCES documents(id));").map_err(|_| unavailable())?;
         let retention: String = connection
             .query_row(
@@ -119,6 +123,8 @@ impl Database {
             connection,
             clock,
             signer: ContextSigner::new(),
+            live_dispatches: Default::default(),
+            task_admissions: Default::default(),
             identity: None,
             retention: RetentionClock {
                 base_ns: retention_base_ns,

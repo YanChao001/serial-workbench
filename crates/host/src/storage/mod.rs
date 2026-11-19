@@ -1,16 +1,23 @@
 //! 串行持久提交边界。调用者等待回执，设备 RX 不持有或等待本模块的数据库锁。
+mod child_operations;
 mod db;
 mod documents;
 mod operations;
+#[cfg(test)]
+mod plugin_observation_tests;
+mod plugin_operations;
+#[cfg(test)]
+mod queue_test_support;
 
 use crate::auth::{AuthenticatedActor, HostIdentity, RequestContext};
 use crate::clock::SystemClock;
 use db::Database;
 pub use documents::StoredDocument;
 pub use operations::{Acceptance, Settlement, canonical_digest};
+pub(crate) use plugin_operations::{PluginOperation, result_operation as plugin_result_operation};
 use serial_workbench_core::*;
 use std::{
-    path::Path,
+    path::{Path, PathBuf},
     sync::{Arc, Mutex, mpsc},
     thread::{self, JoinHandle},
 };
@@ -19,6 +26,10 @@ const WRITER_QUEUE_CAPACITY: usize = 256;
 type Job = Box<dyn FnOnce(&mut Database) + Send>;
 enum WriterMessage {
     Run(Job),
+    CloseTask {
+        parent: Id,
+        reply: mpsc::SyncSender<()>,
+    },
     Shutdown,
 }
 struct Writer {
@@ -39,10 +50,16 @@ impl Drop for Writer {
 
 #[derive(Clone)]
 pub struct Store {
+    profile: Arc<PathBuf>,
     writer: Arc<Writer>,
     operation_changes: tokio::sync::watch::Sender<()>,
+    operation_state_changes: tokio::sync::watch::Sender<()>,
     #[cfg(test)]
     request_diagnostics: Arc<RequestDiagnostics>,
+    #[cfg(test)]
+    pub(crate) schema_commit_ready: crate::node_test_gates::GateSlot,
+    #[cfg(test)]
+    pub(crate) lose_schema_receipt_once: Arc<Mutex<Option<Arc<std::sync::atomic::AtomicBool>>>>,
 }
 
 pub(crate) enum DocumentRead {
@@ -65,6 +82,7 @@ impl Store {
     }
 
     pub fn open_with_clock(profile: &Path, clock: Arc<dyn Clock>) -> HostResult<Self> {
+        let profile = std::path::absolute(profile).map_err(|_| unavailable())?;
         let path = profile.join("host-v0/state.sqlite3");
         let (sender, receiver) = mpsc::sync_channel(WRITER_QUEUE_CAPACITY);
         let (ready_sender, ready_receiver) = mpsc::sync_channel(1);
@@ -84,6 +102,10 @@ impl Store {
                 while let Ok(message) = receiver.recv() {
                     match message {
                         WriterMessage::Run(job) => job(&mut database),
+                        WriterMessage::CloseTask { parent, reply } => {
+                            database.task_admissions.remove(&parent);
+                            let _ = reply.send(());
+                        }
                         WriterMessage::Shutdown => {
                             let _ = database.checkpoint();
                             break;
@@ -97,14 +119,24 @@ impl Store {
             return Err(error);
         }
         Ok(Self {
+            profile: Arc::new(profile),
             operation_changes: tokio::sync::watch::channel(()).0,
+            operation_state_changes: tokio::sync::watch::channel(()).0,
             writer: Arc::new(Writer {
                 sender,
                 join: Mutex::new(Some(join)),
             }),
             #[cfg(test)]
             request_diagnostics: Arc::default(),
+            #[cfg(test)]
+            schema_commit_ready: crate::node_test_gates::GateSlot::default(),
+            #[cfg(test)]
+            lose_schema_receipt_once: Arc::default(),
         })
+    }
+
+    pub(crate) fn profile(&self) -> &Path {
+        &self.profile
     }
 
     // 同步 API 只供控制 worker / spawn_blocking 使用，不在采集或异步调度线程上等待。
@@ -213,11 +245,18 @@ impl Store {
     pub fn request_cancel(&self, actor: &AuthenticatedActor, id: &Id) -> HostResult<Operation> {
         let (actor, id) = (actor.clone(), id.clone());
         let operation = self.request(move |database| database.request_cancel(&actor, &id))?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(operation)
     }
     pub(crate) fn subscribe_operation_changes(&self) -> tokio::sync::watch::Receiver<()> {
         self.operation_changes.subscribe()
+    }
+    pub(crate) fn subscribe_operation_state_changes(&self) -> tokio::sync::watch::Receiver<()> {
+        self.operation_state_changes.subscribe()
+    }
+    fn publish_operation_change(&self) {
+        self.operation_changes.send_replace(());
+        self.operation_state_changes.send_replace(());
     }
     pub fn operation_metadata(&self) -> HostResult<JsonObject> {
         self.request(|database| database.operation_metadata())
@@ -235,7 +274,7 @@ impl Store {
         let (actor, call, digest) = (actor.clone(), call.clone(), digest.clone());
         let acceptance = self.request(move |database| database.accept(&actor, &call, &digest))?;
         if matches!(&acceptance, Acceptance::New(_)) {
-            self.operation_changes.send_replace(());
+            self.publish_operation_change();
         }
         Ok(acceptance)
     }
@@ -253,7 +292,7 @@ impl Store {
             database.accept_with_source(&actor, &call, &digest, source.as_ref())
         })?;
         if matches!(&acceptance, Acceptance::New(_)) {
-            self.operation_changes.send_replace(());
+            self.publish_operation_change();
         }
         Ok(acceptance)
     }
@@ -269,20 +308,20 @@ impl Store {
     pub fn mark_dispatch(&self, id: &Id) -> HostResult<()> {
         let id = id.clone();
         self.request(move |database| database.mark_dispatch(&id))?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(())
     }
     pub fn settle(&self, id: &Id, outcome: Settlement) -> HostResult<Operation> {
         let id = id.clone();
         let operation = self.request(move |database| database.settle(&id, outcome))?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(operation)
     }
     pub fn record_result_evidence(&self, id: &Id, result: &ActionResult) -> HostResult<Operation> {
         let (id, result) = (id.clone(), result.clone());
         let operation =
             self.request(move |database| database.record_result_evidence(&id, result))?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(operation)
     }
     pub(crate) fn record_progress(&self, id: &Id, progress: &Progress) -> HostResult<Operation> {
@@ -299,12 +338,12 @@ impl Store {
         let (id, receipt) = (id.clone(), receipt.clone());
         let operation =
             self.request(move |database| database.record_client_receipt_evidence(&id, receipt))?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(operation)
     }
     pub fn recover(&self) -> HostResult<Vec<Operation>> {
         let operations = self.request(Database::recover)?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(operations)
     }
     pub fn get(&self, actor: &AuthenticatedActor, id: &Id) -> HostResult<Operation> {
@@ -327,7 +366,7 @@ impl Store {
     }
     pub fn prune(&self) -> HostResult<()> {
         self.request(Database::prune)?;
-        self.operation_changes.send_replace(());
+        self.publish_operation_change();
         Ok(())
     }
     pub(crate) fn shutdown_operations(
@@ -345,6 +384,14 @@ impl Store {
     pub fn read_document(&self, id: &Id) -> HostResult<Option<StoredDocument>> {
         let id = id.clone();
         self.request(move |database| database.read_document(&id))
+    }
+    /// schema元数据保留JSON数值；业务文档继续使用JsonObject的安全整数约束。
+    pub(crate) fn read_schema_document(
+        &self,
+        id: &Id,
+    ) -> HostResult<Option<StoredDocument<SchemaObject>>> {
+        let id = id.clone();
+        self.request(move |database| database.read_schema_document(&id))
     }
     /// 在同一个存储任务中核对 revision；未改变的文档不读取或解析正文。
     pub(crate) fn read_document_if_changed(
@@ -387,6 +434,34 @@ impl Store {
             database.compare_and_swap_document(&id, expected_revision, value)
         })
     }
+    pub(crate) fn compare_and_swap_schema_document(
+        &self,
+        id: &Id,
+        expected_revision: U64,
+        value: SchemaObject,
+    ) -> HostResult<StoredDocument<SchemaObject>> {
+        #[cfg(test)]
+        self.schema_commit_ready.arrive();
+        let id = id.clone();
+        let result = self.request(move |database| {
+            database.compare_and_swap_schema_document(&id, expected_revision, value)
+        })?;
+        #[cfg(test)]
+        if let Some(cancel) = self
+            .lose_schema_receipt_once
+            .lock()
+            .expect("test schema receipt fault")
+            .take()
+        {
+            // 实际SQL已经提交；仅测试迟到取消和本次返回回执丢失，不替换存储效果。
+            cancel.store(true, std::sync::atomic::Ordering::Release);
+            return Err(HostError::new(
+                "STORAGE_UNAVAILABLE",
+                "Injected schema commit receipt loss",
+            ));
+        }
+        Ok(result)
+    }
     pub(crate) fn compare_and_swap_workspace(
         &self,
         id: &Id,
@@ -417,6 +492,8 @@ fn unavailable() -> HostError {
     HostError::new("STORAGE_UNAVAILABLE", "Host storage is unavailable")
 }
 
+#[cfg(test)]
+mod child_operations_tests;
 #[cfg(test)]
 mod client_receipt_tests;
 #[cfg(test)]

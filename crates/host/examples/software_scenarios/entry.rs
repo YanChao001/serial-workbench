@@ -6,6 +6,7 @@ struct Options {
     duration_seconds: u64,
     result: PathBuf,
     log_dir: PathBuf,
+    node: Option<super::node_load::Inputs>,
 }
 
 fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
@@ -15,7 +16,16 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
         let key = key
             .into_string()
             .map_err(|_| "Option names must be UTF-8")?;
-        if !["--profile", "--duration-seconds", "--result", "--log-dir"].contains(&key.as_str()) {
+        if ![
+            "--profile",
+            "--duration-seconds",
+            "--result",
+            "--log-dir",
+            "--node-runtime",
+            "--node-parser",
+        ]
+        .contains(&key.as_str())
+        {
             return Err(format!("Unknown option {key}"));
         }
         let value = args
@@ -28,6 +38,17 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
             return Err(format!("Duplicate option {key}"));
         }
     }
+    let node = match (
+        values.remove("--node-runtime"),
+        values.remove("--node-parser"),
+    ) {
+        (None, None) => None,
+        (Some(runtime), Some(parser)) => Some(super::node_load::Inputs {
+            runtime: runtime.into(),
+            parser: parser.into(),
+        }),
+        _ => return Err("--node-runtime and --node-parser must be supplied together".into()),
+    };
     let mut take = |name: &str| values.remove(name).ok_or_else(|| format!("Missing {name}"));
     let profile = take("--profile")?.into();
     let duration = take("--duration-seconds")?;
@@ -39,16 +60,26 @@ fn parse(args: impl IntoIterator<Item = OsString>) -> Result<Options, String> {
         duration_seconds: 600,
         result: take("--result")?.into(),
         log_dir: take("--log-dir")?.into(),
+        node,
     })
 }
 
 pub(super) async fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), String> {
     let args: Vec<_> = args.into_iter().collect();
     if args.first().is_some_and(|arg| arg == "--owned-fault-host") {
-        if args.len() != 5 || args[1] != "--profile" || args[3] != "--log-dir" {
+        if !matches!(args.len(), 5 | 7)
+            || args[1] != "--profile"
+            || args[3] != "--log-dir"
+            || (args.len() == 7 && args[5] != "--node-runtime")
+        {
             return Err("Invalid owned Host arguments".into());
         }
-        return super::runner::owned_host(PathBuf::from(&args[2]), PathBuf::from(&args[4])).await;
+        return super::runner::owned_host(
+            PathBuf::from(&args[2]),
+            PathBuf::from(&args[4]),
+            args.get(6).map(PathBuf::from),
+        )
+        .await;
     }
     if args
         .first()
@@ -66,6 +97,7 @@ pub(super) async fn run(args: impl IntoIterator<Item = OsString>) -> Result<(), 
         options.duration_seconds,
         options.result,
         options.log_dir,
+        options.node,
     ))
     .await
 }
@@ -85,6 +117,7 @@ mod tests {
             duration_seconds: 600,
             result: PathBuf::from("/evidence/result.json"),
             log_dir: PathBuf::from("/evidence"),
+            node: None,
         };
         assert_eq!(
             parse(args(&[

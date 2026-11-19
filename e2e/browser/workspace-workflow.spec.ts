@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
+import { defaults } from "./json-fixtures";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import type {
   DeviceDescriptor,

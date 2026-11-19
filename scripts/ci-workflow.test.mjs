@@ -180,7 +180,84 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     runtime,
     /cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1/,
   );
+  for (const workflow of [ci, runtime]) {
+    assert.match(
+      workflow,
+      /cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1/,
+    );
+    assert.match(
+      workflow,
+      /cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture/,
+    );
+    assert.match(
+      workflow,
+      /export SWB_TEST_CLI_BIN="\$PWD\/src-tauri\/target\/debug\/serial-workbench-cli\$suffix"/,
+    );
+    assert.match(
+      workflow,
+      /export SWB_TEST_MCP_BIN="\$PWD\/src-tauri\/target\/debug\/serial-workbench-mcp\$suffix"/,
+    );
+    assert.match(workflow, /pnpm plugin-sdk:fixture/);
+    assert.match(
+      workflow,
+      /export SWB_TEST_NODE_SDK_FIXTURE="\$PWD\/\.cache\/plugin-sdk\/examples\/native-parity\.js"/,
+    );
+    assert.match(
+      workflow,
+      /cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture/,
+    );
+    assert.match(
+      workflow,
+      /if \[\[ "\$RUNNER_OS" == "macOS" \]\]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi/,
+    );
+    for (const prefix of [
+      "node-backend-",
+      "host-node-backend-",
+      "macos-node-before-auth-",
+    ]) {
+      assert.ok(workflow.includes(`artifacts/rust-failures/${prefix}*/**`));
+    }
+  }
+  assert.match(
+    ci,
+    /cargo build --locked -p serial-workbench-host \\\n\s+--example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation/,
+  );
+  assert.match(
+    ci,
+    /cargo test --locked -p serial-workbench --lib native_reference_terminal_ -- --ignored --test-threads=1 --nocapture/,
+  );
+  assert.ok(
+    ci.includes(
+      'SWB_TEST_TERMINAL_HOST_BIN="$installed/serial-workbench-host$suffix"',
+    ),
+  );
+  assert.ok(ci.includes("artifacts/reference-terminal/signed-terminal.json"));
+  assert.ok(ci.includes("artifacts/reference-terminal/native-reader.log"));
+  for (const [name, testName, log] of [
+    [
+      "chart",
+      "native_chart_samples_exact_rx_from_the_signed_reference_package",
+      "native-samples",
+    ],
+    [
+      "automation",
+      "native_automation_uses_exact_responses_and_keeps_capture_running",
+      "native-response",
+    ],
+  ]) {
+    assert.ok(
+      ci.includes(
+        `cargo test --locked -p serial-workbench --lib ${testName} -- --ignored --test-threads=1 --nocapture`,
+      ),
+    );
+    assert.ok(ci.includes(`artifacts/reference-${name}/signed-${name}.json`));
+    assert.ok(ci.includes(`artifacts/reference-${name}/${log}.log`));
+  }
   assert.match(runtime, /name: runtime-preflight-\$\{\{ matrix\.target \}\}/);
+  assert.match(
+    runtime,
+    /cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp --bins/,
+  );
   assert.match(runtime, /fail-fast: false/);
   assert.match(
     ci,

@@ -148,7 +148,7 @@ for (const scope of ["excluded", "deferred"]) {
     const item = {
       ...feature(),
       scope,
-      scopeNote: "Matrix: ./requirements.md#本轮范围决定",
+      scopeNote: "Out of scope for this release.",
     };
     for (const phase of ["software", "hardware", "release"])
       item[phase].status = "not-applicable";
@@ -260,6 +260,19 @@ test("the real ledger covers exactly 247 unique matrix IDs and preserves current
     document.features.filter(({ scope }) => scope === "included").length,
     244,
   );
+});
+
+test("browser and mobile scope notes link to the product scope decision", async () => {
+  const matrix = await readFile(path.resolve(MATRIX_PATH), "utf8");
+  const { features } = JSON.parse(
+    await readFile(path.resolve(LEDGER_PATH), "utf8"),
+  );
+  const section = "范围边界";
+  assert.ok(matrix.split(/\r?\n/).includes(`## ${section}`));
+  for (const id of ["FUT-08", "FUT-10", "CONN-19", "NET-13"]) {
+    const note = features.find((item) => item.id === id)?.scopeNote;
+    assert.ok(note?.includes(`(./requirements.md#${section})`), id);
+  }
 });
 
 test("CLI resolves fixed repository paths from its location and signals invalid ledgers", async (t) => {

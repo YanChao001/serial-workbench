@@ -73,6 +73,30 @@ export const commands = {
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_document_intent", { generation, intent }),
     ),
+  hostApplyNodeIntent: (generation: U64, intent: LocalNodeIntent_Deserialize) =>
+    typedError<Operation_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_apply_node_intent", { generation, intent }),
+    ),
+  hostOpenNodeView: (
+    generation: U64,
+    operationId: Id,
+    viewId: Id,
+    locale: string,
+    dark: boolean,
+  ) =>
+    typedError<Id, HostError_Serialize>(
+      __TAURI_INVOKE("host_open_node_view", {
+        generation,
+        operationId,
+        viewId,
+        locale,
+        dark,
+      }),
+    ),
+  hostCloseNodeView: (id: Id) =>
+    typedError<null, HostError_Serialize>(
+      __TAURI_INVOKE("host_close_node_view", { id }),
+    ),
   hostRequest: (request: RpcRequest_Deserialize, generation: U64) =>
     typedError<RpcReply_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_request", { request, generation }),
@@ -250,6 +274,13 @@ export type ActionResult_Deserialize =
   | { kind: "capture_verification"; value: VerificationReport }
   | { kind: "replay_position"; value: ReplayReadResult_Deserialize }
   | { kind: "file_metadata"; value: FileMetadata_Deserialize }
+  | {
+      kind: "node_package_installed";
+      value: NodePackageChangeResult_Deserialize;
+    }
+  | { kind: "node_package_changed"; value: NodePackageChangeResult_Deserialize }
+  | { kind: "node_package_uninstalled"; value: NodePackageUninstallResult }
+  | { kind: "node_source_changed"; value: NodeSourceChangeResult }
   | { kind: "file_transfer"; value: FileTransferResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
@@ -275,6 +306,10 @@ export type ActionResult_Serialize =
   | { kind: "capture_verification"; value: VerificationReport }
   | { kind: "replay_position"; value: ReplayReadResult_Serialize }
   | { kind: "file_metadata"; value: FileMetadata_Serialize }
+  | { kind: "node_package_installed"; value: NodePackageChangeResult_Serialize }
+  | { kind: "node_package_changed"; value: NodePackageChangeResult_Serialize }
+  | { kind: "node_package_uninstalled"; value: NodePackageUninstallResult }
+  | { kind: "node_source_changed"; value: NodeSourceChangeResult }
   | { kind: "file_transfer"; value: FileTransferResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
@@ -1375,6 +1410,69 @@ export type Dependency = {
   digest: Digest;
 };
 
+/**  派生留存和读页各自的计账预算，单位为字节。 */
+export type DerivedMemoryMetrics = {
+  retained: MemoryBudget;
+  reader: MemoryBudget;
+};
+
+export type DerivedProvenance =
+  DerivedProvenance_Serialize | DerivedProvenance_Deserialize;
+
+export type DerivedProvenance_Deserialize = {
+  sources: SourceRange_Deserialize[];
+  parserId: Id;
+  parserVersion: string;
+  configurationDigest: Digest;
+  quality: DerivedQuality[];
+  unit?: string;
+};
+
+export type DerivedProvenance_Serialize = {
+  sources: SourceRange_Serialize[];
+  parserId: Id;
+  parserVersion: string;
+  configurationDigest: Digest;
+  quality: DerivedQuality[];
+  unit?: string;
+};
+
+export type DerivedQuality =
+  "complete" | "gap" | "partial" | "unknown" | "transformed";
+
+export type DerivedReadResult =
+  DerivedReadResult_Serialize | DerivedReadResult_Deserialize;
+
+export type DerivedReadResult_Deserialize = {
+  operationId: Id;
+  instanceEpoch: U64;
+  samples: DerivedSample_Deserialize[];
+  nextPosition: U64;
+  hasMore: boolean;
+};
+
+export type DerivedReadResult_Serialize = {
+  operationId: Id;
+  instanceEpoch: U64;
+  samples: DerivedSample_Serialize[];
+  nextPosition: U64;
+  hasMore: boolean;
+};
+
+export type DerivedSample = DerivedSample_Serialize | DerivedSample_Deserialize;
+
+export type DerivedSample_Deserialize = {
+  position: U64;
+  provenance: DerivedProvenance_Deserialize;
+  value: QueryValue;
+};
+
+export type DerivedSample_Serialize = {
+  position: U64;
+  provenance: DerivedProvenance_Serialize;
+  value: QueryValue;
+};
+
 export type DesktopAttachment = {
   attachment: AttachResult;
   generation: U64;
@@ -1723,7 +1821,10 @@ export type HostError_Serialize = {
 };
 
 /**  RSS 峰值由操作系统提供；各预算快照独立读取，不构成跨资源事务。 */
-export type HostMetrics = {
+export type HostMetrics = HostMetrics_Serialize | HostMetrics_Deserialize;
+
+/**  RSS 峰值由操作系统提供；各预算快照独立读取，不构成跨资源事务。 */
+export type HostMetrics_Deserialize = {
   hostId: Id;
   instanceEpoch: U64;
   observedAt: Timestamp;
@@ -1733,6 +1834,23 @@ export type HostMetrics = {
   source: MemoryBudget;
   reader: MemoryBudget;
   captureQueue: MemoryBudget;
+  derived?: DerivedMemoryMetrics;
+  node?: NodeMetrics_Deserialize;
+};
+
+/**  RSS 峰值由操作系统提供；各预算快照独立读取，不构成跨资源事务。 */
+export type HostMetrics_Serialize = {
+  hostId: Id;
+  instanceEpoch: U64;
+  observedAt: Timestamp;
+  processId: U64;
+  rssBytes: U64;
+  rssPeakBytes: U64;
+  source: MemoryBudget;
+  reader: MemoryBudget;
+  captureQueue: MemoryBudget;
+  derived?: DerivedMemoryMetrics;
+  node?: NodeMetrics_Serialize;
 };
 
 export type HostSettingsEffectsReceipt = {
@@ -2526,6 +2644,83 @@ export type LocalDocumentIntent_Serialize =
       params: RebindParams;
     };
 
+export type LocalNodeIntent =
+  LocalNodeIntent_Serialize | LocalNodeIntent_Deserialize;
+
+export type LocalNodeIntent_Deserialize =
+  | {
+      kind: "install";
+      expectedRevision: U64;
+      params: NodePackageInstallParams_Deserialize;
+    }
+  | {
+      kind: "setEnabled";
+      expectedRevision: U64;
+      params: NodePackageSetEnabledParams;
+    }
+  | {
+      kind: "uninstall";
+      expectedRevision: U64;
+      params: NodePackageIdentityParams;
+    }
+  | {
+      kind: "confirmExecutionTrust";
+      expectedRevision: U64;
+      params: NodePackageIdentityParams;
+    }
+  | {
+      kind: "revokeExecutionTrust";
+      expectedRevision: U64;
+      params: NodePackageIdentityParams;
+    }
+  | {
+      kind: "approveSource";
+      expectedRevision: U64;
+      params: NodeSourceApproveParams;
+    }
+  | {
+      kind: "revokeSource";
+      expectedRevision: U64;
+      params: NodeSourceRevokeParams;
+    };
+
+export type LocalNodeIntent_Serialize =
+  | {
+      kind: "install";
+      expectedRevision: U64;
+      params: NodePackageInstallParams_Serialize;
+    }
+  | {
+      kind: "setEnabled";
+      expectedRevision: U64;
+      params: NodePackageSetEnabledParams;
+    }
+  | {
+      kind: "uninstall";
+      expectedRevision: U64;
+      params: NodePackageIdentityParams;
+    }
+  | {
+      kind: "confirmExecutionTrust";
+      expectedRevision: U64;
+      params: NodePackageIdentityParams;
+    }
+  | {
+      kind: "revokeExecutionTrust";
+      expectedRevision: U64;
+      params: NodePackageIdentityParams;
+    }
+  | {
+      kind: "approveSource";
+      expectedRevision: U64;
+      params: NodeSourceApproveParams;
+    }
+  | {
+      kind: "revokeSource";
+      expectedRevision: U64;
+      params: NodeSourceRevokeParams;
+    };
+
 export type MediaResolution = {
   ticket: string;
   url: string;
@@ -2556,6 +2751,314 @@ export type NativeError = {
 };
 
 export type NetworkMode = "system" | "direct";
+
+/**  真实 Node owner 的聚合观测；RSS 属于整个 Node 进程，不按 worker 重复计数。 */
+export type NodeMetrics = NodeMetrics_Serialize | NodeMetrics_Deserialize;
+
+/**  真实 Node owner 的聚合观测；RSS 属于整个 Node 进程，不按 worker 重复计数。 */
+export type NodeMetrics_Deserialize = {
+  /**  由 Rust 持有的实际 owner 注入，不接受插件自报 PID。 */
+  processId: U64;
+  /**  从 Host 收到 Node 快照起计算的单调年龄，不是墙钟时间差。 */
+  sampleAgeMs: U64;
+  /**  Node 原生 memoryUsage.rss 的全进程读数；缺省表示不可得，不代表零。 */
+  rssBytes?: U64;
+  liveWorkers: U64;
+  peakWorkers: U64;
+};
+
+/**  真实 Node owner 的聚合观测；RSS 属于整个 Node 进程，不按 worker 重复计数。 */
+export type NodeMetrics_Serialize = {
+  /**  由 Rust 持有的实际 owner 注入，不接受插件自报 PID。 */
+  processId: U64;
+  /**  从 Host 收到 Node 快照起计算的单调年龄，不是墙钟时间差。 */
+  sampleAgeMs: U64;
+  /**  Node 原生 memoryUsage.rss 的全进程读数；缺省表示不可得，不代表零。 */
+  rssBytes?: U64;
+  liveWorkers: U64;
+  peakWorkers: U64;
+};
+
+export type NodePackageChangeResult =
+  NodePackageChangeResult_Serialize | NodePackageChangeResult_Deserialize;
+
+export type NodePackageChangeResult_Deserialize = {
+  revision: U64;
+  package: NodePackageSummary_Deserialize;
+};
+
+export type NodePackageChangeResult_Serialize = {
+  revision: U64;
+  package: NodePackageSummary_Serialize;
+};
+
+export type NodePackageDetailsReadResult = {
+  revision: U64;
+  id: NodePackageId;
+  archiveSha256: Digest;
+  jsonSha256: Digest;
+  offset: U64;
+  totalBytes: U64;
+  bytesBase64: Bytes;
+};
+
+export type NodePackageId = string;
+
+export type NodePackageIdentityParams = {
+  id: NodePackageId;
+  archiveSha256: Digest;
+};
+
+export type NodePackageInstallParams =
+  NodePackageInstallParams_Serialize | NodePackageInstallParams_Deserialize;
+
+export type NodePackageInstallParams_Deserialize = {
+  archiveRef: ObjectRef_Deserialize;
+  source: NodePackageInstallSource;
+};
+
+export type NodePackageInstallParams_Serialize = {
+  archiveRef: ObjectRef_Serialize;
+  source: NodePackageInstallSource;
+};
+
+export type NodePackageInstallSource =
+  { kind: "local" } | { kind: "trusted"; source: Id; keyId: Id };
+
+export type NodePackageListResult =
+  NodePackageListResult_Serialize | NodePackageListResult_Deserialize;
+
+export type NodePackageListResult_Deserialize = {
+  revision: U64;
+  packages: NodePackageSummary_Deserialize[];
+  nextAfter?: NodePackageId;
+};
+
+export type NodePackageListResult_Serialize = {
+  revision: U64;
+  packages: NodePackageSummary_Serialize[];
+  nextAfter?: NodePackageId;
+};
+
+export type NodePackagePath = string;
+
+export type NodePackageRuntimePhase =
+  "inactive" | "starting" | "active" | "stopping" | "failed";
+
+export type NodePackageRuntimeStatus =
+  NodePackageRuntimeStatus_Serialize | NodePackageRuntimeStatus_Deserialize;
+
+export type NodePackageRuntimeStatus_Deserialize = {
+  id: NodePackageId;
+  phase: NodePackageRuntimePhase;
+  generation: U64;
+  archiveSha256?: Digest;
+  error?: HostError_Deserialize;
+};
+
+export type NodePackageRuntimeStatus_Serialize = {
+  id: NodePackageId;
+  phase: NodePackageRuntimePhase;
+  generation: U64;
+  archiveSha256?: Digest;
+  error?: HostError_Serialize;
+};
+
+export type NodePackageSetEnabledParams = {
+  id: NodePackageId;
+  archiveSha256: Digest;
+  enabled: boolean;
+};
+
+export type NodePackageSourceKey = {
+  source: Id;
+  keyId: Id;
+  publicKey: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  publicKeySha256: Digest;
+  approved: boolean;
+};
+
+export type NodePackageSummary =
+  NodePackageSummary_Serialize | NodePackageSummary_Deserialize;
+
+export type NodePackageSummary_Deserialize = {
+  id: NodePackageId;
+  displayName?: string;
+  version?: string;
+  archiveSha256: Digest;
+  enabled: boolean;
+  sourceVerified: boolean;
+  executionApproved: boolean;
+};
+
+export type NodePackageSummary_Serialize = {
+  id: NodePackageId;
+  displayName?: string;
+  version?: string;
+  archiveSha256: Digest;
+  enabled: boolean;
+  sourceVerified: boolean;
+  executionApproved: boolean;
+};
+
+export type NodePackageUninstallResult = {
+  revision: U64;
+  id: NodePackageId;
+  archiveSha256: Digest;
+};
+
+export type NodePackageVersion = string;
+
+export type NodePackageView =
+  NodePackageView_Serialize | NodePackageView_Deserialize;
+
+export type NodePackageViewFeed = "derived";
+
+export type NodePackageView_Deserialize = {
+  id: Id;
+  actionId: Id;
+  stateScopes: string[];
+  feed?: NodePackageViewFeed;
+};
+
+export type NodePackageView_Serialize = {
+  id: Id;
+  actionId: Id;
+  stateScopes: string[];
+  feed?: NodePackageViewFeed;
+};
+
+export type NodeSourceApproveParams = {
+  source: Id;
+  keyId: Id;
+  publicKey: [
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+    number,
+  ];
+  publicKeySha256: Digest;
+};
+
+export type NodeSourceChangeResult = {
+  revision: U64;
+  key: NodePackageSourceKey;
+};
+
+export type NodeSourceListResult =
+  NodeSourceListResult_Serialize | NodeSourceListResult_Deserialize;
+
+export type NodeSourceListResult_Deserialize = {
+  revision: U64;
+  keys: NodePackageSourceKey[];
+  nextOffset?: U64;
+};
+
+export type NodeSourceListResult_Serialize = {
+  revision: U64;
+  keys: NodePackageSourceKey[];
+  nextOffset?: U64;
+};
+
+export type NodeSourceRevokeParams = {
+  source: Id;
+  keyId: Id;
+  publicKeySha256: Digest;
+};
+
+export type NodeViewAssetReadResult =
+  NodeViewAssetReadResult_Serialize | NodeViewAssetReadResult_Deserialize;
+
+export type NodeViewAssetReadResult_Deserialize = {
+  packageId: NodePackageId;
+  version: NodePackageVersion;
+  archiveSha256: Digest;
+  activationId: Id;
+  view: NodePackageView_Deserialize;
+  target: Target_Deserialize;
+  entry: NodePackagePath;
+  path: NodePackagePath;
+  offset: U64;
+  totalBytes: U64;
+  sha256: Digest;
+  bytesBase64: Bytes;
+};
+
+export type NodeViewAssetReadResult_Serialize = {
+  packageId: NodePackageId;
+  version: NodePackageVersion;
+  archiveSha256: Digest;
+  activationId: Id;
+  view: NodePackageView_Serialize;
+  target: Target_Serialize;
+  entry: NodePackagePath;
+  path: NodePackagePath;
+  offset: U64;
+  totalBytes: U64;
+  sha256: Digest;
+  bytesBase64: Bytes;
+};
 
 export type ObjectReadResult =
   ObjectReadResult_Serialize | ObjectReadResult_Deserialize;
@@ -2709,6 +3212,7 @@ export type Operation_Deserialize = {
   settledAt?: Timestamp;
   resultExpiresAt?: Timestamp;
   progress?: Progress_Deserialize;
+  workerObservation?: WorkerObservation_Deserialize;
   result?: ActionResult_Deserialize;
   clientEffectReceipt?: ClientEffectReceipt_Deserialize;
   error?: HostError_Deserialize;
@@ -2735,6 +3239,7 @@ export type Operation_Serialize = {
   settledAt?: Timestamp;
   resultExpiresAt?: Timestamp;
   progress?: Progress_Serialize;
+  workerObservation?: WorkerObservation_Serialize;
   result?: ActionResult_Serialize;
   clientEffectReceipt?: ClientEffectReceipt_Serialize;
   error?: HostError_Serialize;
@@ -2804,12 +3309,21 @@ export type Query = Query_Serialize | Query_Deserialize;
 export type QueryResult = QueryResult_Serialize | QueryResult_Deserialize;
 
 export type QueryResult_Deserialize =
+  | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Deserialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
   | { kind: "clients"; value: ClientListResult_Deserialize }
-  | { kind: "host_metrics"; value: HostMetrics }
+  | { kind: "host_metrics"; value: HostMetrics_Deserialize }
   | { kind: "startup_config"; value: StartupConfigSnapshot }
+  | { kind: "node_packages"; value: NodePackageListResult_Deserialize }
+  | { kind: "node_package_details"; value: NodePackageDetailsReadResult }
+  | {
+      kind: "node_package_runtime";
+      value: NodePackageRuntimeStatus_Deserialize;
+    }
+  | { kind: "node_view_asset"; value: NodeViewAssetReadResult_Deserialize }
+  | { kind: "node_package_sources"; value: NodeSourceListResult_Deserialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
   | { kind: "replay_read"; value: ReplayReadResult_Deserialize }
@@ -2827,6 +3341,7 @@ export type QueryResult_Deserialize =
   | { kind: "workspaces"; value: WorkspaceListResult_Deserialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Deserialize }
+  | { kind: "stream_derived_read"; value: DerivedReadResult_Deserialize }
   | { kind: "stream_subscribe"; value: StreamSubscribeResult }
   | { kind: "stream_credit"; value: StreamCreditResult }
   | { kind: "devices"; value: DeviceList_Deserialize }
@@ -2842,12 +3357,18 @@ export type QueryResult_Deserialize =
   | { kind: "closed"; value: ClosedResult };
 
 export type QueryResult_Serialize =
+  | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Serialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
   | { kind: "clients"; value: ClientListResult_Serialize }
-  | { kind: "host_metrics"; value: HostMetrics }
+  | { kind: "host_metrics"; value: HostMetrics_Serialize }
   | { kind: "startup_config"; value: StartupConfigSnapshot }
+  | { kind: "node_packages"; value: NodePackageListResult_Serialize }
+  | { kind: "node_package_details"; value: NodePackageDetailsReadResult }
+  | { kind: "node_package_runtime"; value: NodePackageRuntimeStatus_Serialize }
+  | { kind: "node_view_asset"; value: NodeViewAssetReadResult_Serialize }
+  | { kind: "node_package_sources"; value: NodeSourceListResult_Serialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
   | { kind: "replay_read"; value: ReplayReadResult_Serialize }
@@ -2865,6 +3386,7 @@ export type QueryResult_Serialize =
   | { kind: "workspaces"; value: WorkspaceListResult_Serialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Serialize }
+  | { kind: "stream_derived_read"; value: DerivedReadResult_Serialize }
   | { kind: "stream_subscribe"; value: StreamSubscribeResult }
   | { kind: "stream_credit"; value: StreamCreditResult }
   | { kind: "devices"; value: DeviceList_Serialize }
@@ -2878,6 +3400,15 @@ export type QueryResult_Serialize =
   | { kind: "snapshot"; value: Snapshot }
   | { kind: "subscription"; value: SubscriptionResult }
   | { kind: "closed"; value: ClosedResult };
+
+/**  查询领域结果允许JSON小数；U64字段仍由各自领域schema要求十进制字符串。 */
+export type QueryValue =
+  | null
+  | boolean
+  | number
+  | string
+  | QueryValue[]
+  | { [key in string]: QueryValue };
 
 export type Query_Deserialize = {
   protocolVersion: ProtocolVersion;
@@ -3464,6 +3995,30 @@ export type SourceGap_Serialize = {
   direction?: Direction;
 };
 
+export type SourceRange = SourceRange_Serialize | SourceRange_Deserialize;
+
+export type SourceRange_Deserialize = {
+  hostId: Id;
+  sessionId: Id;
+  sessionEpoch: U64;
+  eventStart: U64;
+  eventEnd: U64;
+  byteStart?: U64;
+  byteEnd?: U64;
+  direction?: Direction;
+};
+
+export type SourceRange_Serialize = {
+  hostId: Id;
+  sessionId: Id;
+  sessionEpoch: U64;
+  eventStart: U64;
+  eventEnd: U64;
+  byteStart?: U64;
+  byteEnd?: U64;
+  direction?: Direction;
+};
+
 export type StartupConfigSnapshot = {
   profileReference: StartupProfileReference;
   profileSource: StartupConfigSource;
@@ -3814,6 +4369,32 @@ export type WireFrame_Serialize = {
   requestId: RequestId;
   channel: IpcChannel;
   body: IpcMessage_Serialize;
+};
+
+/**  Node 原生采样完成时的 worker V8 堆使用量；不是进程 RSS。 */
+export type WorkerMemorySample = {
+  /**  经验证的 Node 原生采样完成时刻，不是 Host 收到快照的时刻。 */
+  sampledAt: Timestamp;
+  measuredWorkers: U64;
+  v8HeapUsedBytes: U64;
+};
+
+/**  实际任务拥有的 worker 数量及最后一次内存样本；退出不把旧样本改成零。 */
+export type WorkerObservation =
+  WorkerObservation_Serialize | WorkerObservation_Deserialize;
+
+/**  实际任务拥有的 worker 数量及最后一次内存样本；退出不把旧样本改成零。 */
+export type WorkerObservation_Deserialize = {
+  liveWorkers: U64;
+  peakWorkers: U64;
+  lastMemory?: WorkerMemorySample;
+};
+
+/**  实际任务拥有的 worker 数量及最后一次内存样本；退出不把旧样本改成零。 */
+export type WorkerObservation_Serialize = {
+  liveWorkers: U64;
+  peakWorkers: U64;
+  lastMemory?: WorkerMemorySample;
 };
 
 export type Workspace = {

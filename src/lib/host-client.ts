@@ -253,6 +253,13 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
     buildQuery,
     buildCall,
     refreshScopes,
+    onCatalogChanged(listener: () => void): Promise<() => void> {
+      return (
+        port.onCatalogChanged?.((generation) => {
+          if (!disposed && generation === desktop.generation) listener();
+        }) ?? Promise.resolve(() => {})
+      );
+    },
     dispose: () => {
       disposed = true;
       projectionBinding.disposed = true;

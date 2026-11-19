@@ -39,6 +39,11 @@ pub(crate) fn with_storage_for_test(
     }
 }
 impl CaptureApi {
+    #[cfg(test)]
+    pub(crate) fn capture_queue_gate(&self) -> &crate::node_test_gates::GateSlot {
+        &self.captures.before_queue
+    }
+
     pub(crate) fn new(runtime: CaptureRuntime) -> Self {
         let replays = ReplayService::new(
             runtime.files.clone(),

@@ -1,7 +1,7 @@
+import { appConfig } from "./json-fixtures";
 import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 import { PRESET_ACCENTS } from "../../src/lib/accent-colors";
 
 const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:preview-settings-v0`;

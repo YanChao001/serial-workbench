@@ -1,7 +1,5 @@
 # Host v0
 
-工作区文档新增可选 `archived`（缺省为 `false`）。设为 `true` 的 CAS 保存保留原件并原子移出工作区目录；后续覆盖返回 `WORKSPACE_DELETED`，默认工作区禁止删除。导入、导出与另存副本不传播此生命周期标记。没有新增删除 RPC 或绕过 revision 检查的接口。
-
 本文定义独立 Host v0 契约，实施阶段与权威来源见 [索引](./README.md)。GUI、CLI、MCP、Node 后台和远端转发调用相同业务 handler；客户端适配器只负责认证、传输、呈现与客户端系统交互。
 
 ## Wire 基元与身份
@@ -29,15 +27,17 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 | `revision`        | U64；单一目标资源或状态投影内的提交版本               | 原子提交递增，不能跨资源比较；同 ID 重建不得回退                                            |
 | `cursor`          | `{hostId,instanceEpoch,scopeId,position}`             | scopeId 为 Host 分配的状态投影或原始流身份；position 为 U64，表示已消费到的位置             |
 
-`Target={hostId,kind,id,sessionId?,sessionEpoch?}`。`kind` 是已登记的资源种类，基座 v0 值为 `host|device|session|operation|workspace|settings|capture|file|plugin|client`；插件种类使用 `<pluginId>:<name>` 并注册 schema。操作现有会话必须同时传 `sessionId` 与 `sessionEpoch`，二者缺一拒绝。`id` 是 kind 的资源 ID，不接受任意系统路径；Host 本身以 hostId 作为 id。
+`Target={hostId,kind,id,sessionId?,sessionEpoch?}`。`kind` 是已登记的资源种类，基座 v0 值为 `host|device|session|operation|workspace|settings|capture|file|plugin|client|plugin_result`；插件种类使用 `<pluginId>:<name>` 并注册 schema。操作现有会话必须同时传 `sessionId` 与 `sessionEpoch`，二者缺一拒绝。`id` 是 kind 的资源 ID，不接受任意系统路径；Host 本身以 hostId 作为 id。
 
 `ObjectRef={hostId,kind,id,revision?}` 是授权范围内的对象引用，kind 使用 Target 的种类；大结果以 `file` 或业务注册种类返回。引用不携带访问令牌，不自动授予读取权。`RevealTarget={workspaceId?,sessionId?,pageId,panelId?,resultRef?}`：各 ID 是目录登记的 GUI 位置，`resultRef` 为 ObjectRef；`pageId` 必填。handler 校验或补全目录默认位置，客户端不能以定位字段扩大权限。
+
+插件动作结果使用Host内建只读种类 `plugin_result`：id为所属operationId，revision固定为 `"1"`，正文保存schema校验后的JSON字节，允许结果schema支持的小数。`file.metadata`/`file.read`复用原有分块与Raw通道预算，读取绑定原动作Target的当前权限，并核对已保存长度和摘要；引用不代表任意磁盘路径或业务参数数值约束的改变。结果和Operation引用在同一事务提交，安装包停用不撤销历史证据，保留期及未来格式按持久操作边界处理。
 
 ## 附着、版本与目录
 
 一个数据配置仅允许一个持锁 Host。发现记录只是连接提示，客户端必须完成认证和握手；启动锁由 OS 排他机制管理，不因超时直接抢活锁。Host 健康但暂忙时返回 `HOST_BUSY`，客户端附着同一实例。关闭 GUI 不释放 Host 启动锁。
 
-以下为逻辑 RPC 名，不规定具体 IPC 路径；本地 IPC、同源 HTTP/WebSocket 和 LAN 适配器均按相同 DTO 实现。所有查询经过权限过滤，并产生关联的活动与 revealTarget；内部轮询复用已有活动，不重复导航。
+本节区分传输方法（`method`）与业务目录 ID（`actionId`）。当前桌面、CLI 和 MCP 使用本机 IPC；浏览器和 LAN 适配属于后续阶段。方法与结果信封以 [Rust wire DTO](../../crates/core/src/wire.rs) 为准；能调用哪些业务及其参数，以当前身份的 `catalog.list` 为准。
 
 | RPC                  | 输入                                                                                                                                                     | 成功结果                                                                                                               | 特定错误                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -48,17 +48,21 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 | `action.invokeChild` | ChildCall 信封，仅供 Host 已派发任务的执行 owner                                                                                                         | `operation: Operation`                                                                                                 | `OPERATION_NOT_RUNNING`、`REQUEST_CONFLICT`、`RESULT_EXPIRED`                                     |
 | `operation.get`      | Query 信封，params 选择 `operationId,requestContext?`、`actorId,requestId,requestContext` 或 `parentOperationId,childKey` 之一                           | `operation: Operation`                                                                                                 | `NOT_FOUND`、`RESULT_EXPIRED`                                                                     |
 | `operation.cancel`   | Call 信封，target 为 operation；params 为 `reason: user\|revoked\|takeover\|shutdown`                                                                    | 取消请求自身的 operation，结果引用被取消 operation                                                                     | `PERMISSION_DENIED`；已终态时返回现有终态，不改写                                                 |
-| `host.shutdown`      | Call 信封，target 为 host；params 为空对象                                                                                                               | 停止请求自身的 operation，结果为 `ShutdownRequested={instanceEpoch: U64}`                                              | `PERMISSION_DENIED`；仅本地用户控制身份的 `auth.manage` 可调用                                    |
 | `state.snapshot`     | Query 信封，params 为 `scopeId`                                                                                                                          | `hostId,instanceEpoch,revision,cursor,state`                                                                           | `NOT_FOUND`                                                                                       |
 | `state.subscribe`    | Query 信封，params 为 `scopeId,after: Cursor`                                                                                                            | `subscriptionId: Id`，之后增量事件                                                                                     | `CURSOR_EXPIRED`、`EPOCH_MISMATCH`、`PERMISSION_DENIED`                                           |
 | `subscription.close` | Query 信封，params 为 `subscriptionId`                                                                                                                   | `closed: true`                                                                                                         | 未存在也返回 closed，不停止业务任务                                                               |
-| `object.read`        | Query 信封，params 为 `ref: ObjectRef,offset: U64,length: U64`                                                                                           | 授权载荷及 `revision,length,nextOffset?`                                                                               | `PERMISSION_DENIED`、`REVISION_CONFLICT`、`RESULT_EXPIRED`                                        |
+
+关停是业务动作：本地用户控制连接发送 `method: "action.invoke"`、`actionId: "host.shutdown"`，目标为 Host，参数为空。接纳返回 Operation，领域结果带 `instanceEpoch`；CLI 的 `host stop` 还会等待实例实际退出。
+
+读取文件或插件结果引用使用 `action.query` 调用 `file.read`，传 `fileRef,offset,maxBytes`，并按返回的 `nextOffset` 分块读取。wire DTO 虽保留 `object.read`，当前内置目录没有这个业务 ID，不应作为客户端读文件入口。
 
 `limits` 必含 `maxRequestBytes,maxPageItems,maxBatchBytes,maxReaderQueueBytes,resultRetentionMs,maxLeaseTtlMs`（均 U64），在 attach 前也对握手限流限长；具体容量由 M1 实测配置并在 handshake 返回。maxLeaseTtlMs 不得超过 `"2147483647"`，时限单位、范围与计时器转换见 [发送回执](./stream-and-operations-v0.md#发送回执)。v0 `resultRetentionMs` 最小值为 `"604800000"`（终态后七天），在途 operation 不因保留期淘汰。超出接纳容量返回 `HOST_BUSY`/`LIMIT_EXCEEDED`，不能先执行再丢去重记录。
 
 目录项必含 `actionId,kind,inputSchema,outputSchema,targetKinds,executionLocation,permissions,stateScopes,eventTypes,cancellation,revealTarget`。`kind=query|action`；`executionLocation=resource_host|client`；`cancellation=none|cooperative`。各 schema 是 JSON Schema 对象，由生成契约/插件注册校验，不能用任意代码字符串替代领域动作。排序按 actionId 字节序；pageToken 是绑定 catalogVersion、actorId、授权版本和过滤条件的不透明字符串；翻页中注册或授权变化返回 `CATALOG_CHANGED`，重取第一页。未安装/停用或未授权的功能不出现在可调用清单中。已知 actionId 的直接调用仍重新校验。
 
 目录 `outputSchema` 描述领域结果；`action.query` 的 `QueryResult` 另加 `kind/value` 判别包装，专用查询 RPC 直接返回领域结果。适配器按真实返回层级声明输出，不能用领域 schema 校验整个包装。`Operation.result` 使用生成的 `ActionResult={kind,value}`；没有任意 JSON 成功兜底。目录摘要变化时在 Host 存储事务内递增唯一 catalogVersion，attach 读取当前版本；相同目录重启不递增。
+
+插件查询通过通用 `action.query` 返回 `QueryResult={kind:"extension",value}`，value直接符合登记的outputSchema，不再增加插件专用包装。Rust的QueryValue承载递归JSON结果及领域小数，params的JsonValue仍仅允许安全整数，所有U64字段继续按所属schema使用十进制字符串。
 
 本地控制连接第一次 `catalog.list` 在读取目录前建立该连接唯一的变化监听：先监听授权变化，再计算当前 actor 经授权过滤、按 actionId 排序后的真实 ActionSpec 摘要。后续仅可见摘要或目录版本变化时投递 `{type:"catalogChanged",catalogVersion,visibilityToken: Digest}`，不携带 actor、授权规则或资源正文；授权变化不递增 catalogVersion。监听同时等待原授权的最早有效单调期限，到期重算；已过期期限不重复触发。通知使用有界单槽合并最新值，连接关闭即结束。MCP 初始化先真实读取目录建立监听，再将该通知转为工具列表变化通知。
 
@@ -68,9 +72,9 @@ CLI `host stop` 在连接前先核验受保护的 OS 实例锁。已释放时返
 
 ## 调用、结果与错误
 
-`Query={protocolVersion,hostId,instanceEpoch,actorId,requestId,actionId,target,params,revealTarget}`；`Call` 在 Query 上增加必填 `requestContext: string` 以及可选 `expectedRevision: U64,leaseId: Id,executionMode: interactive|independent`。actionId 为目录稳定 ID；params 为该动作输入 schema 的对象。外部副作用使用 Call，已接纳任务的子动作使用下述 ChildCall；查询的 requestId 只关联活动，不建立副作用去重。会话修改、设置与工作区保存必须带 expectedRevision；无需 CAS 的动作由目录 schema 明确声明。
+`Query={protocolVersion,hostId,instanceEpoch,actorId,requestId,actionId,target,params,revealTarget}`；`Call` 在 Query 上增加必填 `requestContext: string` 以及可选 `expectedRevision: U64,leaseId: Id,executionMode: interactive|independent`。actionId 为目录稳定 ID；params 为该动作输入 schema 的对象。外部副作用使用 Call，已接纳任务的子动作使用下述 ChildCall；查询的 requestId 只关联活动，不建立副作用去重。`expectedRevision` 属于 Call 信封，不是业务 `params` 的字段。`session.configure`、`session.setReadOnly` 以及设置、工作区保存要求它；普通 `session.tx` 不以 revision 为必填条件，仍须通过授权与会话代次检查。
 
-未提供 executionMode 时规范化为 interactive；独立 capture/发送回放等任务须显式传 independent，handler 拒绝不支持的模式为 INVALID_ARGUMENT。target.hostId 必须等于执行 hostId；target.kind=session 时 id 必须等于 sessionId，不能利用两个不同字段选择不同资源。
+未提供 executionMode 时规范化为 interactive；`capture.start` 和 `transfer.file`须显式传 independent，handler 拒绝不支持的模式为 INVALID_ARGUMENT。target.hostId 必须等于执行 hostId；target.kind=session 时 id 必须等于 sessionId，不能利用两个不同字段选择不同资源。
 
 hostId/instanceEpoch 指执行 Host，不是入口转发 Host。执行端校验真实认证 actorId 后再校验信封；不一致返回 `ACTOR_MISMATCH`。若请求曾接纳，允许在当前实例以原 actor/request 查询旧结果；旧 epoch 的 action.invoke 始终拒绝，不能利用去重绕过代次校验。断线后的正确流程是 attach、operation.get，然后决定是否提出新的明确操作。
 
@@ -123,7 +127,11 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 
 设置/工作区/插件公开配置分别拥有格式版本与 revision，按 expectedRevision CAS 原子替换。格式校验、迁移与备份失败保留原件；未来格式普通保存返回 FUTURE_FORMAT。持久布局是模板，运行队列/租约不从模板恢复执行。共享提交先持久化再发布对应 revision；客户端草稿冲突保留并由用户合并。
 
+共享设置与工作区保存的最终验权、实例代次检查及同步CAS，与同一Host的auth.authorize/auth.revoke按共享提交锁排序。撤权先完成则保存拒绝且revision不变；保存先进入同步提交则完成后撤权才返回，已提交的成功回执保留。候选准备和投影发布不持该授权提交锁。
+
 `workspace.list` 是以执行 Host 为目标的只读目录查询。`params={after?: Id}`，结果为 `WorkspaceListResult={workspaces: WorkspaceSummary[],nextCursor?: Id}`，摘要包含 `scope/name/revision`；`action.query` 的判别包装为 `kind: workspaces`。每页最多扫描 64 个已保存工作区，只返回调用者具有 `metadata.read` 权限的条目，空页仍可能带继续游标。游标是不透明的存储顺序标记，不携带被过滤工作区的标识；客户端不得据其构造资源 Target。目录跨 Host 实例保留，不依赖文档投影是否已注册，列举不隐式打开文档或连接设备。
+
+工作区 `archived` 缺省为 `false`。通过 CAS 设为 `true` 时保留原件并原子移出目录；后续覆盖返回 `WORKSPACE_DELETED`，默认工作区禁止删除。导入、导出与另存副本不传播此标记。
 
 新建与另存为复用 `workspace.save`，对独立新标识提交 `expectedRevision: 0`，保存冲突不能覆盖已有文档。持久目录身份与文档 CAS 在同一次事务提交，名称与版本从相应文档读取，失败不得生成空目录项。复制视图和设备绑定时生成独立身份并重映射内部引用，实际会话、发送草稿和授权不随模板复制。
 
@@ -167,7 +175,7 @@ Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe
 
 `authenticate` 使用普通客户端凭据，`authenticateUserControl` 使用独立的本地用户控制 capability；选择消息类型或声明 desktop/CLI kind 都不授予权限。Host pin、普通凭据和用户控制 capability 相互独立。用户控制 capability 只从明确的本地用户入口取得，不由普通 IPC 领取；内部启动通过专用继承 stdout pipe 传递四字节大端长度和 1—2048 字节 capability，常规启动不输出 capability。秘密不进入 argv、URL 或日志；Windows 用 current-user DPAPI，Unix 用当前用户私有文件保存。
 
-通用 action.query 与专用 RPC 共用 actionId 到物理通道的映射：stream.read/subscribe/credit 只能走 raw 连接，其他控制请求不能经 raw 执行；专用 method 与信封 actionId 必须一致。state 订阅按 connectionId/channel 归属，连接关闭后才完成的订阅创建也必须立即释放。Host 持有从持久接纳开始的任务；关闭时停止连接并等待这些任务结算后才释放实例锁。
+通用 `action.query` 与专用 RPC 按同一[通道路由](../../crates/core/src/dispatch.rs)分流：例如 `stream.read`、`file.read`、`capture.tail` 和 `replay.read` 走 raw；`subscription.close` 可走任一通道，但必须匹配订阅归属。其余按映射走 control，专用 method 必须匹配信封的 actionId。连接关闭时释放所属订阅，包括晚到的建立结果；已持久接纳的任务仍由 Host 负责。
 
 ## 权限、客户端与 LAN
 

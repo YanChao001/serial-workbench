@@ -1,14 +1,12 @@
 # Serial Workbench
 
-A cross-platform serial workbench built with Tauri, Rust, React and TypeScript. An independent Rust Host owns devices, sessions, captures and shared state; the desktop UI, CLI and MCP adapter use the same backend.
+A cross-platform serial workbench. The Tauri desktop app, CLI and MCP share a Rust Host that owns serial ports, sessions and recordings. The workbench supports text/hex I/O, file sending, recording, read-only replay, workspaces and shared settings. See the [roadmap and status](./docs/plan.md) for Node extensions, browser access and LAN sharing.
 
-The current workbench includes Text/HEX I/O, file sending, capture, read-only replay and workspaces. M1b has passed acceptance and merged; see [development status](./docs/progress.md) for remaining milestones and validation scope. Node extensions, browser connections and LAN sharing belong to later milestones.
-
-[中文](./README.md) · [Engineering docs](./docs/README.md) · [Requirements](./docs/requirements.md) · [Contributing](./CONTRIBUTING.md)
+[中文](./README.md) · [Engineering docs](./docs/README.md) · [Contributing](./CONTRIBUTING.md)
 
 ## Run from source
 
-Use the versions in [package.json](./package.json), [.nvmrc](./.nvmrc) and [rust-toolchain.toml](./rust-toolchain.toml). Install the [platform prerequisites](./docs/development.md#环境与启动), then run from the repository root:
+Use the Node version in [.nvmrc](./.nvmrc), the pnpm version in [package.json](./package.json), and rustup. Install the [platform prerequisites](./docs/development.md#环境与启动), then run from the repository root:
 
 ```sh
 pnpm install --frozen-lockfile
@@ -17,15 +15,9 @@ pnpm run doctor
 pnpm app:dev
 ```
 
-If development startup reports an older Host, run `pnpm host:stop`, then `pnpm app:dev`. This gracefully disconnects that Host's sessions while retaining settings and drafts. It does not force-kill a process or start an absent Host.
+`pnpm dev` previews the interface without connecting to local serial ports. If startup reports an older Host after a source change, run `pnpm host:stop` with the same profile, then `pnpm app:dev`. Stopping the Host disconnects its sessions but preserves settings and drafts.
 
-`pnpm dev` starts the browser preview; system capabilities require the desktop environment. Without npm dependencies, run `node scripts/doctor.mjs` for diagnostics.
-
-## Development
-
-Read [architecture](./docs/architecture.md), [conventions](./docs/conventions.md), [development](./docs/development.md) and [testing](./docs/testing.md). Use [the plan](./docs/plan.md) and [status](./docs/progress.md) to identify current work.
-
-`pnpm app:build` creates installers; on Windows, `pnpm app:portable` creates portable files. Outputs are archived under `artifacts/<version>/<target-triple>/`. Signing, updates and public release remain unconfigured; see [build and release](./docs/development.md#构建与发布).
+`pnpm app:build` builds installers; Windows also supports `pnpm app:portable`. See [build and release](./docs/development.md#构建与发布) for output paths, signing and update prerequisites.
 
 ## License and security
 

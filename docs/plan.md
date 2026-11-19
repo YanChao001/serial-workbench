@@ -1,173 +1,101 @@
-# 任务规划
+# 路线与进度
 
-需求定义见[需求](./requirements.md)，实际状态见[进度](./progress.md)与[账本](./feature-status.json)。M1b、界面响应、串口稳定性及启动/工作区修复已交付合入 `main@3c65809`；当前短期分支 `feature/m2-node-packages` 从最新 main 接续 M2 Task14 的 Node/runtime 切片，随后按阶段出口推进 M2—M6。产品范围与验收标准变更仍由用户确认。
-
-## 阶段路线
-
-| 阶段 | 工作与出口                                                                                                             |
-| ---- | ---------------------------------------------------------------------------------------------------------------------- |
-| M0   | 新体系范围、契约、状态账本和干净基座；已交付                                                                           |
-| M1   | 独立 Host、系统串口/PTY/Virtual、收发、录制回放、工作区及 GUI/CLI/MCP 的 M1 软件切片已交付，M1b 与界面软件修正均已合入 |
-| M2   | 可信 Node 后台/Web UI/worker、正式离线 runtime、三个参考插件、浏览器连接和 LAN 双 Host                                 |
-| M3   | 用实际参考场景冻结 v1 契约、版本协商、SDK、资源预算、升级与故障恢复                                                    |
-| M4   | 完整终端、协议、图表、自动化、传输网络和诊断内置功能包                                                                 |
-| M5   | 专业设备/烧录/分析插件、市场收录分发和离线工具                                                                         |
-| M6   | 完整软件候选、三平台长稳、Windows 硬件/LAN 双机、安装签名及发行候选                                                    |
-
-近期任务给出边界和完成条件；远期接口以[契约](./contracts/README.md)及参考实现校验后细化。跨阶段需求只记录已完成切片，软件、硬件和发行分别验收；M1b 交付不代表 247 条需求全部完成。
-
-M2 依次闭合 Node/正式离线包、浏览器与跟随、LAN 双 Host，参考插件包括终端、图表和自动化；M3 冻结前完成参考场景与升级/故障验证，具体门槛见[测试](./testing.md#安装与发行验收)。M4/M5 的领域计划逐项关联需求 ID、首批变种、独立对端及失败/取消验收。
-
-M6 先完成全部纳入的软件项和 T01—T14，再集中硬件与发行验收。三平台长稳为实际 72 小时，不用加速运行替代；2026-11-09 用户确认真实硬件仅验收 Windows，macOS/Linux 做实现与虚拟测试。Windows 专业设备与烧录目标逐变种记录，Windows LAN 双物理机交换角色并覆盖 IPv4/IPv6、权限接管和升级。UX-11 程序目录数据模式仍须单独验证只读目录、移动介质、换机凭据及升级，当前 portable 的用户目录行为不能计为完成。
-
-每个切片先核对 git status、实际 HEAD、PR 与自有运行任务，再使用本计划和进度选择任务。全部工作在主仓库工作区顺序推进，保留备份、用户数据和编译缓存；后续短期分支均从最新 main 创建。
-
-## M1b 验收出口
-
-[PR #40](https://github.com/YanChao001/serial-workbench/pull/40) 已 squash 合入 `main@7b466df28bf255a325ed8275612ffb4400a06001`。验收候选 `9283f22463106a785834d055fb55f86a5aa14195` 与该合入树完全相同，重新计算的源码指纹均为 `86a459f87deab7e1077ae7caf2ca18897027b73c6b8d225e50e8f8b6c5177d37`。
-
-- [x] 工作台菜单编辑/克隆、配置终态、退休后显式重附着、独立草稿与晚结果隔离完成。
-- [x] TX 以来源、operation ID 和 byte span 关联意图/回执，按实际字节与 accepted/unknown 范围呈现。
-- [x] SharedSettings、ClientState、文件授权、媒体票据与同源 Host/CLI/MCP 接线完成，原生 profile 与退出责任独立核对。
-- [x] 类型方向、preview 取消声明、图库反馈、导出失败/切换及原评审问题闭合；最终两轴复核无剩余发现，详见[问题闭合](./progress.md#m1b-问题闭合)。
-- [x] 本机综合、Host 全目标、桌面库、无头浏览器与相关静态检查通过；Windows 正式六场景/18 断言及实际 600 秒通过。
-- [x] [完整四目标 CI 42710347353](https://github.com/YanChao001/serial-workbench/actions/runs/42710347353) 的 12 项必需任务全部成功，四个 Rust 与四个 Native 目标实际执行；Ubuntu 正式六场景/实际 600 秒通过，质量门禁成功。主工作区已 fast-forward 到合入 main，验证相同树/源码后清理 M1b 自有分支。
-
-失败历史保留在[验证记录](./progress.md#有效验证记录)，不改记为通过。驱动 wheel 输入、平台专属 fullscreen 等条件跳过及系统文件选择对话框未测范围继续保留；硬件、最低系统、72h、LAN 双机、安装签名与发行未在 M1b 验收。
+**当前接续点（2026-11-19）为 M2 / Task14.4 的 B 候选验收。** Windows 原生签名终端已通过实际文件选择、执行信任、关窗录制、重开补读及撤权观察。实际 MCP 客户端已在同一正式 Host 上验证签名动作、录制引用和撤权。签名 Node 组合负载已在 Windows 实跑 600 秒。继续 B 的窗口环境、已发现问题和候选出口，C 图表的派生视图可并行验收。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
 
 ## 当前执行与下一步
 
-PR #45 已 squash 合入 `main@9ddb5d8`。验收候选 `25834bc` 的 ARM 原生预检、完整四目标 12 项必需任务均成功；合入树与源码指纹相同，本轮自有分支已清理。用户报告 f1504de 的 COM5/COM14 各 10000 字节回环、重开与密集交互通过，源范围及历史失败见[交付证据](./progress.md#pr45-交付与-m2-接续)。
+1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、缩放、慢读者及其他平台原生观察。处理草稿输入延迟，核实 Windows 主窗与隔离插件窗口的缩放行为。候选验收保留安装准备和关停压力的未决记录。
+2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。两个 macOS 架构均须实际编译、运行并回收原生监护进程。
+3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
-[PR #46](https://github.com/YanChao001/serial-workbench/pull/46) 已 squash 合入 `main@97ccd7b`，交付串口收发、Host/RPC 生命周期、工作区视图复用、编码、输入响应及统一界面反馈修复。[完整四目标 CI 43596079750](https://github.com/YanChao001/serial-workbench/actions/runs/43596079750) 的 12 项必需任务全部成功，合入树与冻结候选相同，自有修复分支已清理。当前 `fix/startup-shell` 让工作台在本地恢复和 Host 连接期间先显示，并修正工作区实际操作中复现的草稿串用、格式覆盖及配置缺项；按相关前端与 Native 存储边界检查，不计为 Node/runtime 实现。原 `feature/m2-node-runtime` 分支保留，后续 Task14 从最新 main 接续。
+签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 
-2026-11-15，[PR #47](https://github.com/YanChao001/serial-workbench/pull/47) 已 squash 合入 `main@3c65809`，合入树与冻结候选 `8aa9f27` 相同；[完整四目标 CI 43645620280](https://github.com/YanChao001/serial-workbench/actions/runs/43645620280) 十二项必需任务成功。浏览器为 198 通过、1 项性能重试，首次 P95 124.6ms、重试 88.7ms，根因未定且不提升 PERF/M6 全项状态；其他历史失败与正式离线证据见[交付进度](./progress.md#pr47-交付与-task14-接续)。本轮自有分支已清理，主工作区核对干净 main 后创建 `feature/m2-node-packages`，从 Task14.1 开始。指定备份、旧 M2 分支、用户 Host 及数据保留。
+**Windows 签名终端原生流程（工作树）**。实际 ZIP 选择、桌面确认执行信任、显式启用、关闭终端窗、同会话继续录制、重开补读、撤权停止视图和退出均有记录。预授权录制的三个 RX 事件逐字节回放一致，共 69 字节，九条容器记录均验证完成。候选、截图、两次录制和退出日志见 `.cache/evidence/m2-node-backend/native-terminal-foreground-20261119/checkpoint.json`。首次录制在同一桌面身份运行中追加目标读取权后结算为失败，保留未完整容器。重新启用后曾需重新附着主窗口才恢复视图入口，保留待复查。此轮更新 LOG-01、AUTO-13、PERF-02、SEC-03、SEC-07、SEC-12 和 FUT-07 的本机软件证据。
 
-下一切片沿 Node v0 合同建立 Rust 权威 DTO、完整性/来源验证与安装事务，再接正式离线 runtime、可信后台、worker、隔离 Web UI 及三个参考插件；Rust 继续拥有设备、录制、授权与 Operation 证据。共享 Node 故障按合同中断相关扩展任务，worker 故障按所属任务结算；执行信任与设备 API scope 分开，安装不执行包代码。
+**桌面目录恢复（工作树，Windows）**。修复桌面桥丢弃 `catalogChanged`。嵌入式和正式 Host 均在同一桌面连接验证显式启用、撤销执行信任及重新启用的通知与目录可见性。前端回归验证旧窗口通知和晚到目录页不会覆盖新结果。原生窗口复查仍待安排。见 `.cache/evidence/m2-node-backend/catalog-reactivation-20261119/checkpoint.json`，覆盖 AUTO-13 和 SEC-07 的软件部分。
 
-| 子任务 | 范围与出口                                                                                        | 执行状态                                                           |
-| ------ | ------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| 14.1   | 正式包 manifest/完整性/签名及动态贡献 Rust DTO；同源 schema/SDK；未知字段、重复键、路径和篡改拒绝 | 基础层本机验证通过，随基础 A 交付；产品 SDK 仍由 B/C 验收          |
-| 14.2   | 四目标固定 runtime 的已验签来源、资源布局、版本/ABI/加载自检；Linux 私有 libatomic 来源与许可     | 进行中：四目标 runtime/Native 已实证；当前完整门禁因浏览器性能失败 |
-| 14.3   | 原子安装/升级与来源信任、共享 Node 监督、register/dispose、worker 中断及当前授权交集              | 进行中：安装/来源/执行信任库层本机验证；激活、监督及授权接线待实施 |
-| 14.4   | GUI/CLI/MCP 同源目录和 SDK、隔离 iframe、后台与页面生命周期、原始/派生流预算                      | 未开始                                                             |
-| 14.5   | 终端、图表、自动化三个正式参考包；离线安装和 Node/worker 故障实证；完整四目标交付                 | 未开始                                                             |
+**录制期间追加读取权（工作树，Windows）**。真实 Host 复现同一身份追加目标文件读取权导致录制以 `PERMISSION_DENIED` 结束。修复后，Host 录制绑定实际使用的源读取与目标写入权限。回归从本地控制入口追加文件读取权，再发送并回放核对 3 个 RX 字节。撤销任一录制权限都使空闲录制失败结算，立即重授仍拒绝原绑定。证据见 `.cache/evidence/m2-node-backend/capture-grant-20261119/checkpoint.json`，属于 LOG-01 和 SEC-12 的软件部分。原生窗口仍待复验。
 
-测试沿已确认的正式包文档/安装入口、SDK/Host 调用及生命周期边界，逐个有效/拒绝场景接实现；不以私有实现细节代替行为。Task14 按以下工程节点集中交付，每个节点将实现、测试、评审修正和配套文档归为一个中文提交，经 PR、完整四目标检查和 squash 合入；下一节点从最新 main 创建短期分支。
+**同源候选复审（工作树，Windows）**。固定 Node 候选通过终端、图表和自动化的四项真实 Host 用例。正式 Host 的终端流程通过实际 CLI、MCP 和 Claude Code，后者核对 69 个 RX 字节及撤权。`pnpm verify` 通过。全量无头 Chromium 通过 202 项，草稿输入 p95 为 106.2 毫秒，超过 100 毫秒门槛。三次单独复测中一项通过，两项失败。复审确认录制入队与撤权存在竞态，并发现原生迟到窗口和四目标签名场景的覆盖缺口。构建收据、失败样本和复审见 `.cache/evidence/m2-node-backend/capture-grant-candidate-20261119/checkpoint.json`。录制授权修复后须重新构建并验收同源候选。
 
-基础 A 的当前候选 `8dd51d2` 已完成[完整四目标 CI 43701104800](https://github.com/YanChao001/serial-workbench/actions/runs/43701104800)：四目标 Rust/runtime、四目标 Native、前端和绑定通过，浏览器输入 P95 151/213.6ms 超过 100ms，汇总失败。当前先修正并以原场景复验输入性能，再冻结候选完成最终完整门禁；修正未通过前不合入，也不提前开始 B/C 实现。具体实验与原失败证据见[当前执行](./progress.md#m2-task14-当前执行)。
+**活动录制批次的撤权边界（工作树，Windows）**。在真实 Virtual Echo 的第二组 RX 入队前撤销源读取权。旧实现终态报 `PERMISSION_DENIED`，但文件仍包含第二组数据。修复后终态一致，校验实际卷只读到撤权前的 RX。录制单元及 Host 集成筛选通过 16 项，录制 API 集成通过 14 项，固定 Node 交叉场景通过 6 项。历史饱和关停用例单独复测通过，三种停止方式耗时 4.01 到 4.39 秒，整体候选复测仍待完成。关联 LOG-01 和 SEC-12 的软件部分，保留原软件状态。见 `.cache/evidence/m2-node-backend/capture-revoke-queue-20261119/checkpoint.json`。
 
-- **基础 A（当前）：** 14.1 的 Rust 元数据/生成链、14.2 的已验签固定 runtime/原生自检，以及 14.3 的包安装、来源/执行信任与已安装内容复核库层。出口为本机综合/无头 UI、相关 Rust/绑定检查、两轴复审及完整四目标 CI；四目标均须运行真实 runtime 夹具和既有 Native 场景。该节点提供内部基础 API，产品插件管理与执行入口留给后续节点。
-- **后台与 SDK B：** 接续 14.3 的实际管理、当前授权、共享 Node/worker 监督及 register/dispose，再完成 14.4 的 GUI/CLI/MCP、同源 SDK、隔离 iframe 和流预算。
-- **参考验收 C：** 完成 14.5 的终端、图表、自动化三个正式包、三入口等效、正式离线安装和 Node/worker 故障实证，闭合 Task14 的完整业务出口。
+**插件窗口的显示边界（工作树，Windows）**。窗口先隐藏初始化，显示前复核发起文档和当前 Host 连接。真实 Host 桥接回归保留同一个发起文档并更换连接，验证旧请求返回 `EPOCH_MISMATCH`，并验证连接移除与最终显示使用同一边界。桌面 Rust 库检查通过 181 项，4 项签名包专项由独立入口运行。关联 SEC-07 的软件部分。实际 WebView 显示、关闭和重新打开仍需对应平台观察。构建与本机记录见 `.cache/evidence/m2-node-backend/node-view-publication-20261119/checkpoint.json`。
 
-上述工程分段保持 M2/Task14 的业务范围与验收矩阵。Task14 完整出口后再创建浏览器连接切片，随后 LAN 双 Host；M3 的 v1 冻结、M4/M5 扩展及 M6 实际矩阵仍各守出口。
+**插件安装和授权界面（工作树，Windows）**。已安装列表显示名称、版本和状态，展开行查看来源与操作。「管理来源」默认收起。授权弹窗显示签名来源、工作台能力和本机执行风险。无头 Chromium 用受控桌面 IPC 核对选择签名来源、安装、信任后显式启用、撤权和安装失败提示，覆盖英文暗色与中文窄窗口。嵌入式 Rust Host 用实际签名终端包复核安装回执与列表的名称和版本、撤权后重新启用和 69 字节录制连续性。原生文件选择和新版原生窗口仍待复验。AUTO-13 和 SEC-07 的此次软件证据见 `.cache/evidence/m2-node-backend/plugin-install-ui-20261119/checkpoint.json`。
 
-M1b 已由 PR #40/#41 交付，此前界面软件由 [PR #42](https://github.com/YanChao001/serial-workbench/pull/42) squash 合入 `main@1154b89`；候选 `2f3d064` 与合入树完全相同，源码指纹 `6fd5e73698eb122c069bf3fd6647a88a9c4b3c3c851872ebaca698874e91870e` 已重新核对。
+**C 图表后台和留存视图（工作树，Windows）**。签名包将 Virtual Echo 的拆分 RX 发布为 `1.25`、`-2`、`3.5` V，保留三段原始字节范围。真实桌面桥、重开视图和 CLI 读取同一完成任务的样本，撤权后禁止读页。图表和终端可以在工作台已占用 Raw 通道时打开。无头 Chromium 验证隔离视图显示缺口和样本。证据见 `.cache/evidence/m2-node-backend/reference-chart-view-20261119/checkpoint.json`，后台原验证见 `.cache/evidence/m2-node-backend/reference-chart-20261119/checkpoint.json`。VIZ-01 软件已开始。原生图表、实时采样、实际 MCP 产品与三平台离线安装继续验收。
 
-- [x] 用户 36 项界面反馈完成软件修正与逐项核对，保留本机现场及系统环境缺口。
-- [x] 本机综合检查、完整 Rust 工作区和相关静态检查通过；各轮源范围见进度。
-- [x] [完整四目标 CI 42916751468](https://github.com/YanChao001/serial-workbench/actions/runs/42916751468) 的 12 项必需任务全部成功，四个 Rust 和四个 Native 实际执行；12 份阶段日志冲突为零，正常关闭不新增 Raw 故障。
-- [x] Ubuntu 正式离线六场景/18 断言、实际 600.44 秒及 602 样本通过，11 个自有进程全部退出。
+**C 自动化后台参考包（工作树，Windows）**。公开 SDK 提交同一会话的发送子动作，按实际发送回执和 RX 来源范围核对每步应答。实际签名包在嵌入式 Rust Host 上通过双步骤匹配。应答不符、收到前缀后超时、等待应答时取消都只执行首步。取消用例先等真实 RX，再核对取消接纳回执和父动作终态。Virtual Echo 录制回放逐字节核对 32 字节和会话代次，覆盖 IO-10、AUTO-05 和 AUTO-13 的软件部分。见 `.cache/evidence/m2-node-backend/reference-automation-20261119/checkpoint.json`。窗口、多入口与三平台离线安装仍待验收。
 
-此前按用户要求暂停总目标，现已恢复，优先完成当前响应修复后继续 M2—M6。2026-11-11 解锁后，`main@9a12ec2` 开发版在普通 profile/原 Host 下完成 COM14 两次各 18 字节的文本/HEX 精确短回环与正常关闭；原草稿、Host、窗口及既有虚拟会话保留，详情见[现场复测](./progress.md#com14-解锁后现场复测)。该轮开发启动就绪为 7.8—9.4 秒，当前响应修复须以新候选独立核验，字体/DPI 现场问题仍保留。最低系统、实际 72h、完整 Windows 硬件、LAN 双机、安装签名与发行继续按已确认矩阵，不能将本轮软件出口或短回环记为这些范围完成。
+**四目标签名包用例（工作树）**。在现有四目标 CI 的原生 runtime 验收步骤中加入图表和自动化，三种参考包共用一次签名工具构建。任务分别保留签名包、签名收据与实际用例日志。Windows 本机用已构建的 runtime、正式 Host、CLI 和 MCP 复跑了三包签名与四个真实 Host 用例。首次本机复跑的伴随程序路径配置失败也已保留。见 `.cache/evidence/m2-node-backend/reference-ci-recheck-20261119/checkpoint.json`。四目标托管 CI 仍待运行。
 
-截至 PR #47 的 247 条账本为 76 个跨阶段软件 in-progress、168 个 not-started、3 个 not-applicable；Task14.1 的 SDK 元数据基础开始后，AUTO-13 进入 in-progress，当前为 77/167/3，未标通过；基础 A 由 [PR #48](https://github.com/YanChao001/serial-workbench/pull/48) 跟踪，登记该基础切片的软件证据，完整四目标 CI 尚待验收。35 个相关软件项已登记 PR #42 交付证据，最终 CI 见对应 PR 与进度，硬件与发行状态不提升。后续切片仍在主仓库主工作区，从最新 main 创建短期分支；marketplace 按自身规范独立交付。历史失败和取消保留于[当前验证](./progress.md#当前验证)，不拼接旧结果代替完整候选。
+**本机 B 候选（工作树，Windows）**。窗口与录制授权修复的同源候选通过 `pnpm verify`、203 项无头 Chromium 及四项签名包专项。草稿输入 p95 为 84.6 毫秒，保留旧候选的失败样本。实际 Windows ZIP 选择、签名提示、运行授权、显式启用通过。前台运行在录制前超时，已核对测试进程退出和临时任务删除。证据见 `.cache/evidence/m2-node-backend/node-view-publication-20261119/checkpoint.json`。
 
-## M1 需求切片
+**四目标桌面签名场景（候选）**。原生工作流复用固定 Node 构建，在原有桌面用例之外运行签名终端自动化。Windows 真实窗口通过签名安装、运行授权、显式启用及录制中追加读取权，授权结算后录制仍运行。随后重返插件页触发读取失败，原生终端未打开。无头回归按 Host 的两个共享读取槽复现列表与详情并发失败，改为各自顺序读取后通过。修复后的实际文件选择、关窗重开和撤权仍待复验。候选已集中提交，最新本机综合检查与四项签名 Host 专项通过。收据、失败截图和正式 Host 的 69 字节回放见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/checkpoint.json`，关联 LOG-01、AUTO-13、SEC-07 和 SEC-12 的软件部分。[草稿 PR #49](https://github.com/YanChao001/serial-workbench/pull/49)
 
-下表沿用原任务追溯编号：Task1 契约生成、2 持久操作、3 本机 IPC、4 授权/目录、5 会话/Virtual、6 流与发送、7 CLI/MCP、8 设备目录、9 系统串口/PTY、10 录制回放、10a 文件传输、11 设置/工作区、12 桌面工作台、13 正式软件验收。
+**大草稿输入（候选，Windows）**。全量无头 Chromium 的两轮草稿输入 p95 分别为 184.9、109.1 毫秒，均超过 100 毫秒。性能追踪定位到粘贴期间的布局开销。编辑框布局隔离的三组本机对照中，p95 中位数由 77.2 降至 66.0 毫秒，输入框测得的矩形一致。加入布局隔离后全量复测通过 202 项，草稿输入 p95 为 110.7 毫秒。保持原门槛、CPU 降速和样本量。关联 PERF-02 的软件部分，原始采样和失败保存在同一证据目录。
 
-| ID      | M1 交付与任务                                              | 后续切片或实际验收                   |
-| ------- | ---------------------------------------------------------- | ------------------------------------ |
-| CONN-01 | Task8/9/12 实际系统名、描述、厂商/驱动来源与缺失字段       | M6真实双设备/驱动字段                |
-| CONN-02 | Task8 500ms目录差分、客户端刷新和stale状态                 | M6真实USB连续插拔                    |
-| CONN-03 | Task8 指纹证据与唯一匹配，歧义不自动连                     | M2远端命名空间/身份                  |
-| CONN-04 | Task8/11 收藏与最近配置CAS，明确重新绑定                   | M6真实设备失效/恢复                  |
-| CONN-05 | Task5/6/12 多会话独立预算、同端口多client共享              | M2多窗口/浏览器/LAN                  |
-| CONN-06 | Task11 新格式连接/视图配置导入导出                         | M4脚本/快捷命令与插件依赖            |
-| CONN-07 | Task8 身份核验、退避、epoch与不重发旧队列                  | M2 LAN重连                           |
-| CONN-08 | Task9/12 根据OS错误解释占用/权限/驱动，未知占用者不猜      | M6真实进程占用/驱动缺失              |
-| CONN-09 | Task9 三平台引导、明确用户系统操作与重新检查               | M6全新用户权限环境                   |
-| CONN-15 | Task5/9/10 Virtual/OS串口/PTY/只读回放共Transport模型      | M2/M3网口、插件后端/报文语义         |
-| CONN-16 | Task5/9 完整参数配置、逐字段结果与不确定gate               | M4协议协商切换，M6真实设备           |
-| LINE-01 | Task5/9/12 baud预设与自定义，能力/读回分开                 | M6非标准真实速率                     |
-| LINE-02 | Task5/9 5/6/7/8模型、OS映射与组合拒绝                      | M6各位宽实测                         |
-| LINE-03 | Task5/9 全部parity模型，支持平台实现，unsupported可见      | M6 Mark/Space波形与驱动              |
-| LINE-04 | Task5/9 1/1.5/2模型与实际平台组合约束                      | M6适配器/数据位组合                  |
-| LINE-05 | Task5/9 四种流控模型，线路占用冲突                         | M6实际线与XON/XOFF字节               |
-| LINE-06 | Task5/9/12 DTR/RTS动作及真实/未知回执                      | M6复位/使能真实接线                  |
-| LINE-07 | Task9/12 输出设定与输入采样分开显示                        | M4边沿支持，M6线变化                 |
-| LINE-08 | Task5/9 有限BREAK和清线失败隔离                            | M4 RX BREAK能力，M6电气验证          |
-| LINE-11 | Task11/12 独立Text/HEX收发模式                             | M4 line/可变宽HEX                    |
-| LINE-12 | Task10a Host分块限速/取消，公平性测试                      | M4字符/行语义扩展                    |
-| TERM-05 | Task11 增量UTF-8，原始字节不变                             | M4其余编码与UTF-16端序               |
-| TERM-06 | Task11 UTF-8所有拆块位置，gap/seek/断连重置                | M4完整终端/编码状态                  |
-| TERM-14 | Task11/12 等宽字体、字号/行高/连字基础设置                 | M4完整终端字体与选区                 |
-| IO-05   | Task11/12 None/CR/LF/CRLF/custom尾部与最终字节预览         | M4命令覆盖/校验组合                  |
-| IO-11   | Task10a/12 ObjectRef裸文件分块发送、限速/进度/取消         | M4文本转换和命令/插件入口            |
-| DISP-01 | Task12 Text/HEX切换/并排，共字节offset和独立视图           | M6真实UI验收                         |
-| DISP-04 | Task6/12 绝对/相对/块间时间、源精度与时钟                  | M3跨Host偏移/误差及自定义格式        |
-| DISP-05 | Task6/12 RX/TX/回放有文本方向与颜色                        | M4回显/插件来源                      |
-| DISP-10 | Task12 上滚暂停、回底跟随，采集不断                        | 无后续软件切片，M6交互验收           |
-| DISP-11 | Task6/12 冻结只停刷新，缓冲淘汰标Gap                       | M4插件视图冻结                       |
-| DISP-12 | Task12 文本和HEX字节查找/定位                              | M4正则/完整方向过滤                  |
-| DISP-16 | Task11/12 字体/缩放/列对齐，与TERM-14共设置                | M4完整选区，M6DPI                    |
-| LOG-01  | Task6/10 原始RX、最终TX及回执roundtrip                     | M3新格式/多源合同冻结                |
-| LOG-02  | Task10 时间/方向/原offset文本导出                          | M4其余编码/持续文本日志              |
-| LOG-04  | Task10 UTC时间+安全设备名+baud+短ID命名，大小/时间分卷     | M4高级模板与跨日策略                 |
-| LOG-05  | Task10 显式create/append/replace，源/格式冲突拒绝          | M6真实长跑文件系统                   |
-| LOG-06  | Task10 有界独立写盘、四水位与失败状态                      | M3实测预算与多源冻结                 |
-| LOG-08  | Task10/12 只读原时序/最快、暂停/seek                       | M4倍速/单步/断点/设备重放            |
-| LOG-11  | Task10 容量/余量配置、停止原因与证据保留                   | M4更多磁盘策略                       |
-| LOG-12  | Task10 验证→预览边界→另存前缀，目标/源变化冲突             | M3跨卷冻结，M6真实断电               |
-| XFER-03 | Task10a 与IO-11共裸传owner与回执                           | M4组合传输、设备独立校验证据         |
-| AUTO-15 | Task11 新JSON配置导入导出、diff、有限环境覆盖              | M3完整插件配置及新版本演进           |
-| SESS-01 | Task12 多标签，客户端关闭和session.close分开               | M2拖出多窗/浏览器                    |
-| SESS-02 | Task11/12 一组会话配置+布局，加载不执行任务                | M4脚本/插件模板                      |
-| SESS-04 | Task11/12 名称/颜色/图标/pin持久同步与可访问名称           | 无后续软件切片，M6体验               |
-| SESS-05 | Task11/12 克隆视图配置，同端口复用会话                     | M2跨窗口克隆                         |
-| SESS-06 | Task2/10/11 工作区+已验证capture尾部恢复，不自动TX         | M3完整恢复目录与多源                 |
-| SESS-07 | Task5/12 Host只读gate覆盖TX/config/control/裸传            | M2远端与多主体观察                   |
-| SESS-08 | Task11/12 revision布局模板、实例焦点/滚动独立              | M4复杂dock/缺插件布局                |
-| UX-01   | Task4/12 Ctrl+K复用目录、按权限更新可用性                  | M4插件命令全集                       |
-| UX-02   | Task12 所有M1控件键盘可达，沿已有shortcut冲突处理          | M4完整改键、M6真实平台               |
-| UX-03   | Task11/12 现有深/浅/system与主题设置共享、JSON导入导出     | M4 Node主题包                        |
-| UX-04   | Task12 保留窗口几何恢复、无头多视口/缩放测试               | CI原生窗口；M6真实多屏/DPI断接       |
-| UX-05   | Task12 基座导航折叠/调宽与键盘入口，按需工具、显式布局保存 | M4自由拖拽停靠/跨窗                  |
-| UX-06   | Task6/12 Host RX/TX/错误/时长/速率；帧数未解析标不可用     | M4协议帧指标                         |
-| UX-10   | Task12 label/focus/live region/axe/对比度                  | CI原生焦点，M6屏读人工               |
-| UX-13   | Task12 同步中英词典与UTF-8数据显示                         | M4插件词典，M6平台                   |
-| PERF-02 | Task5/6/10/13 IO/UI/写盘独立与慢reader故障                 | M6组合性能                           |
-| PERF-03 | Task6 Arc字节环、独立游标，记录拷贝/RSS                    | M3基线，M6长稳；Node在M2后           |
-| PERF-04 | Task6/10 授权流控或stop/Gap，控制通道独立                  | M6真实背压                           |
-| PERF-05 | Task10 批量异步写/索引、慢盘/满盘                          | M3预算、M6mmap/压缩按实际需求        |
-| PERF-07 | Task6/13 每层/全局内存配额、超限拒绝/可见淘汰              | M6组合上限                           |
-| PERF-09 | Task8/9 注入断连/重编号安全恢复                            | M6真实USB/休眠                       |
-| SEC-01  | Task3/13 无网络监听/遥测，断网Virtual/串口/录制闭环        | M2离线runtime，M6正式包离线          |
-| DIAG-02 | Task12 打不开/乱码/丢数据/断连基于实际证据的向导           | M4协议/编码诊断                      |
-| DIAG-03 | Task8/9/12 展示可证驱动/USB/序列来源，未知显式缺失         | M5遥测设备/固件能力                  |
-| DIAG-05 | Task12 从commands同源生成快捷键速查与搜索                  | M4改键/终端模式                      |
-| FUT-04  | Task7/12 官方SDK、全部M1功能目录、授权/长任务/取消         | M2插件/浏览器/LAN，M3真实客户端/冻结 |
-| CONN-18 | Task8/12 匹配证据/歧义提示，明确重绑定后启用修改           | M2远端身份                           |
-| LINE-16 | Task5/9 应用边界、驱动观测/drain/purge与取消区分           | M3合同冻结，M6驱动                   |
-| LINE-17 | Task5/8/9 read/write/queue/重连/lease独立时限              | M4字节空闲/协议应答                  |
-| LOG-13  | Task6/10 源Host/session/epoch/配置revision/生命周期与clock | M3跨Host/设备/sample时钟             |
-| UX-14   | Task12/13 保存键盘/焦点/缩放/中英软件验收表                | M6三平台屏读/多窗口                  |
-| PERF-10 | Task6/10/12 readerGap/queue/丢弃/写盘失败/恢复点           | M4解析丢帧，M6组合                   |
-| PERF-11 | Task6/12 host_read分辨率与clockId、无伪线级精度            | M3跨Host估计，M5sample/line_capture  |
+**首轮四目标 CI（候选）**。前端综合检查、IPC 绑定检查以及托管无头 Chromium 的 203 项用例通过，草稿输入 p95 为 80.3 毫秒。Windows x64 和 Linux x64 的真实桌面作业均通过，签名终端录制回放同一会话的 69 字节，并观察到重开补读、撤权中止和读者预算归还。两个 macOS 架构的 Clippy 与原生构建均因未声明的日志库失败，已改用 Host 的标准错误诊断。Windows 和 Linux 的 Clippy 发现签名终端测试中的冗余克隆，改为用借用切片断言后本机复查通过。保留各目标的失败和产物，完整四目标继续复验。[首次 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44483357907)
 
-## 贯穿场景落点
+**合并桌面验收构建（候选）**。首轮 CI 中的独立签名工具构建重复编译 Windows 的 91 个和 Linux 的 85 个 crate，分别耗时 121 秒和 65 秒。Windows 本机实跑验证一次 Tauri 构建可同时产出桌面程序、签名工具和录制核对工具。四目标流程已改为复用这批工具，收据同时核对两个工具的路径和摘要。下一轮记录工具编译、缓存和桌面各阶段耗时。原桌面测试、签名流程和录制回放门槛均纳入本轮复验。
 
-| 场景            | M1 软件验收                                                       | 后续界限                       |
-| --------------- | ----------------------------------------------------------------- | ------------------------------ |
-| T01 字节保真    | Task5/6/9/10：RX原字节、TX最终字节、partial/unknown、独立对端hash | M3变换组合；M6真实速率/LAN     |
-| T03 生命周期    | Task2/3/5/8/13：同资源、旧epoch、掉线、Host重启、关闭客户端       | M2 LAN/Node；M6拔插休眠        |
-| T04 参数信号    | Task5/9：实际支持能力、部分配置、BREAK清线与队列                  | M4接收BREAK/边沿；M6仪器       |
-| T05 日志故障    | Task10：轮转、满盘、只读目录、半记录、另存验证前缀                | M4脱敏/加密；M6断电            |
-| T06 响应背压    | Task6/13：慢reader/写盘独立，控制可响应，实测预算                 | M3阈值；M6 72h组合负载         |
-| T08 录制回放    | Task10/11：只读开、pause/seek重置、已验证尾部恢复                 | M4倍速/单步/设备发送           |
-| T13 安全 M1前置 | Task3/4/7：认证/授权/引用/目录/撤权，CLI/MCP等效                  | M2 Node/LAN；M3执行隔离        |
-| T14 安装 M1前置 | Task13固定Host/CLI/MCP组件与三平台CI                              | M2 Node离线包；M6安装卸载/签名 |
+## 验证基线
 
-T02/T07/T09/T10/T11/T12 的完整业务尚未进入M1；M1提供其依赖的原始字节、任务和会话合同，不通过占位插件冒充已实现。所有条目在里程碑PR写出软件证据和未测平台/硬件，不填写不存在的成功记录。
+| 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
+| ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
+| 已合入：M1b 和工作台修复                 | [M1b](https://github.com/YanChao001/serial-workbench/pull/40)、[界面](https://github.com/YanChao001/serial-workbench/pull/42)、[串口与启动修复](https://github.com/YanChao001/serial-workbench/pull/47)；用户在 `f1504de` 报告 COM5/COM14 各 10000 字节回环通过 | 全部设备、双端口并行、字体/DPI 或屏读验收               |
+| 已合入：基础 A（14.1/14.2、14.3 安装库） | [PR #48](https://github.com/YanChao001/serial-workbench/pull/48)，合入 `2d450af`；[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/43714434338) 12 项必需任务通过，含固定 runtime 原生自检与 Ubuntu 离线六场景、实际 600 秒              | 最低系统、最终安装器断网运行、正式签名或 B 的四目标结果 |
+| 工作树：14.3                             | Windows 定向验证覆盖安装/升级/卸载、来源与执行信任撤销、激活/恢复、父子动作去重与取消、worker/Node 退出及同会话 Raw/Capture 连续性。H13—H16 收据源码 `0a01c2a9`                                                                                                 | 逻辑七天不算实际长稳，Virtual TX 不算硬件；未验收整个 B |
+| 工作树：14.4                             | Windows 动态 CLI/MCP 收据源码 `e7611e9e`；后台 [SDK 编译示例](../packages/plugin-sdk/README.md) 收据源码 `b7720eb5`。真实签名包经 CLI 和官方 MCP SDK 验证调用、重放、窄撤权和结果读取                                                                           | 完整 SDK、实际 MCP 产品客户端、GUI、iframe 或流         |
+
+LOG-08 的 M1 软件证据覆盖已合入的只读回放，M4 还需验证变速、单步和断点。AUTO-13 在 14.4 已有后台作者示例、CLI、实际 MCP 产品、桌面桥和无头 iframe/Raw 证据。原生窗口继续在 B 验收，v1 冻结在 M3。两项均按完整需求更新账本。
+
+上述 B 结果来自 `feature/m2-node-backend` 的未提交实现，尚无该候选的 PR 或完整四目标 CI。本机原始收据位于 `.cache/evidence/m2-node-backend/` 下的 `exact-matrix-local-progress.json`、`dynamic-mcp-local-progress.json` 和 `node-sdk-local-progress.json`；失败、源码快照和程序摘要保留在对应收据及其备份中。
+
+**桌面管理切片（工作树，Windows）：** 原生桥接测试确认普通桌面身份不能认可来源，独立用户控制连接可以提交，业务连接可以读取终态回执。签名终端包通过实际安装、普通 MCP 身份的目录隐藏与确认请求拒绝、本机确认和显式启用，撤销执行信任后运行状态回到 `inactive`。文件选择使用夹具，MCP 身份直接连接 Host。无头 Chromium smoke 通过 3 项，覆盖插件导航及预览中的桌面要求。ZIP、程序摘要及首轮目录回执夹具失败见 `.cache/evidence/m2-node-backend/terminal-management-632b0246c226464e863b80436173ad26/checkpoint.json`，归档 SHA-256 为 `055735e6cfe205b1a4a7e580b823b487a8f99039791ead5a46ea3607c983e05a`。AUTO-13、FUT-07、SEC-07 和 SEC-12 按完整需求继续追踪。真实桌面、iframe、关页录制及三入口数据对照仍待验收。
+
+**视图资源切片（工作树，Windows）：** 同一签名 ZIP 在实际 Virtual 会话上完成视图打开，并按回执读取 Host 校验的包内入口。无头用例覆盖未登记视图、非法路径、无权读取、精确授权和撤权、其余读者继续，以及重启插件后旧回执失效。分段测试验证后段同长度篡改被拒绝。源码与验收记录见 `.cache/evidence/m2-node-backend/terminal-view-assets-20261118/checkpoint-boxed.json`。
+
+**隔离终端切片（工作树，Windows）：** 重新构建并签名终端包，归档 SHA-256 为 `8d77b92b14b42847edc16f3345dca2e0e74ea90ef4079b66368bd373cb214491`。无头桥接测试用实际 Virtual 会话和 Raw reader 验证快照、实时数据、关闭后重开的留存数据、信任撤销。回放完整录制，逐字节核对 reader 关闭前、中、后的 69 个 RX 字节及同一会话代次。首轮缺少录制输出的读取授权，补充同一输出的精确授权后通过。无头 Chromium 以实际壳脚本和终端包代码验证 opaque iframe、批次确认和重载回收。收据、失败日志和源码摘要见 `.cache/evidence/m2-node-backend/terminal-renderer-20261118/checkpoint.json`。完整四目标 CI 已加入此无头签名测试，候选尚未运行。
+
+**同包三入口对照（工作树，Windows）**。实际 CLI 和官方 MCP SDK 连接到桌面桥验收的同一 Host。`stream.read` 和 `capture.tail` 返回与录制回放一致的 RX 事件，包括会话代次、序号和字节范围。撤销 MCP 的会话与录制内容权限后，目录隐藏两项工具，该身份直连 Raw 查询也返回 `PERMISSION_DENIED`，CLI 仍读到同一数据。同一签名包也通过桌面桥停用、撤销来源密钥和卸载，停用后旧视图资源拒绝读取。
+
+**正式 Host 固定 runtime（工作树，Windows）**。同源 Host 程序使用独立 profile，从无关目录、无 PATH 的环境启动。签名终端经正式资源定位实际启动 Node，通过桌面桥、CLI 和官方 MCP SDK 对照关读者前后同代次的 69 个录制 RX 字节，并完成停用、来源撤销和卸载。实际 CLI 发起停机，验收进程等待 Host 成功退出。`pnpm app:build --no-bundle` 已生成桌面及伴随程序，使用这组 release 程序和固定资源复跑嵌入式、正式进程两项均通过。四目标 CI 已接入此断言，实跑结果待候选。软件证据关联 AUTO-13、FUT-07、SEC-07、SEC-12，源码、程序、签名及原始输出见 `.cache/evidence/m2-node-backend/formal-terminal-20261119/checkpoint.json`。
+
+**实际 MCP 客户端（工作树，Windows）**。Claude Code 2.1.314 用独立配置与本地预设模型响应，通过实际 MCP stdio 在同一 release Host 和 Virtual 会话上发现并调用签名终端动作。Host 核对接纳身份、插件归属和实际成功终态。客户端取得同一完成录制的操作引用，`capture.tail` 结构化正文与 CLI 和官方 MCP SDK 一致。撤销读取授权后以同一身份重新连接，签名动作和录制正文工具已从目录隐藏，按原操作 ID 再查录制引用返回 `PERMISSION_DENIED`，CLI 的独立读取权仍有效。这是 AUTO-13、SEC-07 和 SEC-12 的 Windows 软件证据；源码、逐轮客户端事件和程序摘要见 `.cache/evidence/m2-node-backend/terminal-product-20261119/checkpoint.json`。
+
+Windows `pnpm verify` 通过，前端 2558 项通过，脚本 353 项通过、4 项条件跳过。无头 Chromium 全量首轮 198 项通过、2 项因旧导航断言失败。修正断言使其同时检查工作台、插件入口及设置页页脚，两项复跑通过。首轮截图、trace 和日志保留。原生窗口仍待独立环境验收。
+
+**Node 任务 Raw 读取（工作树，Windows）**。真实 Node 后端在四个 Raw 请求占用额度时返回 `HOST_BUSY`。暂缓交付一页原始数据期间，Node 控制读取仍取得已完成的 TX 回执，独立 Raw reader 与 Capture 同时推进。取消后插件停止等待，读取工作完成后才归还 Host 内存。三段 Virtual 输入和回放的 46 个 RX 字节相符。用例也覆盖精确会话代次和无效入参。日志、源码与程序摘要见 `.cache/evidence/m2-node-backend/node-raw-lane-20261118/checkpoint.json`。这是 SEC-09 与 PERF-02 的软件切片。
+
+**Node 派生发布与读取（工作树，Windows）**。签名测试包以真实 Raw 事件生成派生样本，Host 核对事件和字节范围，记录处理器版本与规范化配置摘要。四个发布请求占满额度时，第五个获得 `HOST_BUSY`，控制回执和 Raw 读取仍可用，三段输入的 58 个 RX 字节与同代次的录制回放一致。两路读者保持独立位置，慢读者获知最早留存位置。撤权后拒绝读页，取消后未提交的样本不可读，实际工作结束才归还名额。源码、日志和失败记录见 `.cache/evidence/m2-node-backend/node-derived-lane-20261118/checkpoint.json`。SEC-09、PERF-02 软件继续进行，T06 固定负载、GUI 派生消费及长稳仍待验收。
+
+实际 CLI 与官方 MCP SDK 读取了签名测试包的同一生产 Operation。四个样本、来源字段和页位置与直接 Host 查询全部一致。另验证了无对应生产任务的请求返回 `NOT_FOUND`，MCP 的派生连接在已有 Raw 连接时成功附接，随后 Raw 查询仍返回同一会话的数据。
+
+**Windows 基座软件场景（工作树，2026-11-19）**。同源 Host、CLI、MCP 及 harness 通过 T01、T03、T04、T05、T06、T08 的 18 项软件断言。T06 实跑 600.064 秒，采样 602 次；发生器、快速读者和录制各核对 6,914,368 字节。慢读者报告缺口，控制 p50/p95/p99 为 4.013/7.388/10.876 ms。源环、读者和录制队列峰值分别为 16,879,922、5,935,176、4,415,084 字节。Host 与验收客户端合计 RSS 峰值为 173,711,360 字节。详细收据见 `.cache/evidence/m2-node-backend/node-derived-lane-20261118/host-software-windows/result.json`，自有进程均已退出，程序摘要见同阶段 checkpoint。Node 解析组合负载、实机及 72 小时验收仍按原门槛执行。
+
+**Windows Node 组合负载（工作树，2026-11-19）**。复跑通过六场景的 18 项软件断言。T06 实跑 600.052 秒，采样 602 次。发生器、快速 Raw 读者、签名解析器和录制回放的 6,911,297 字节 SHA-256 一致。快读者收齐 596 个派生样本，慢读者在 `CURSOR_EXPIRED` 后从位置 533 恢复。控制 p99 为 11.209 ms。派生留存和读页的计账峰值分别为 790,528 和 1,576,960 字节，页排空后读页占用归零，仍留存 790,504 字节。实际 CLI 停止负载 Host 后确认 Node 进程退出。签名 ZIP、逐秒遥测、样本和前次运行索引见 `.cache/evidence/m2-node-backend/t06-derived-memory-20261119/checkpoint.json`。这是 PERF-02、PERF-07 与 SEC-09 的 Windows 软件证据，辅助进程资源和 72 小时实机组合负载仍待验收。
+
+同一工作树的 Windows `pnpm verify` 复跑通过，前端 2591 项通过，脚本 353 项通过、4 项条件跳过。首轮的 Windows CIM 和测试子进程清理权限失败已保留。全量无头 Chromium 测试 200 项通过，已确认剩余的测试 Vite 预览退出。相关日志与退出记录见本阶段 checkpoint。
+
+隔离视图需验证平台注入行为。锁定的 Tauri 将初始化脚本标记为主 frame 专用，Wry 文档记录 Windows 会把这些脚本注入子 frame。Tauri 文档也记录了 Linux 嵌入 frame 的 IPC 来源识别限制。视图验收须验证各目标上的实际授权边界和 Tauri 全局隔离。参见 [Wry 初始化脚本](https://docs.rs/wry/latest/wry/struct.WebViewBuilder.html#method.with_initialization_script_for_main_only)和 [Tauri 权限](https://v2.tauri.app/security/capabilities/#remote-api-access)。
+
+原生平台验收使用独立环境或安排好的前台时段。检查实际 WebView 隔离、Tauri 全局、子 frame 导航、旧端口投递与关窗资源回收，并核对焦点、语言、主题和缩放。参见 [锁定版 Wry 的 WebView 构建接口](https://docs.rs/wry/0.57.0/wry/struct.WebViewBuilder.html)和 [HTML 消息端口](https://html.spec.whatwg.org/multipage/web-messaging.html#message-channels)。
+
+**仍需观察：** 安装准备超时和关停压力失败尚未确认修复；保留原门槛，在重新复现或候选验收时调查，不用单项重跑覆盖整组失败。大草稿输入即便单轮通过，也曾在同一场景十轮中三次超过 100 ms；保留四倍 CPU 降速、40 样本和原重试策略，不据此提升性能需求状态。schema 逻辑额度和 Node 采样也不证明全局 CPU 或完整进程树峰值 RSS；仍需在候选上测量。
+
+## 阶段路线
+
+| 阶段   | 交付边界                                                                                                                                                                                                      |
+| ------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| M0–M1b | 新体系契约与基座；独立 Host、系统串口/PTY/Virtual、基本收发、录制回放、工作区和 GUI/CLI/MCP 的软件切片。跨阶段需求仍按 ID 验收。                                                                              |
+| M2     | 可信 Node、Web UI、worker、离线 runtime 和三个参考包。浏览器配对到真实 Host，验证跟随、暂停和人工接管。随后用两个 Host 验证 [LAN-01](./requirements.md#新增用户场景局域网端口共享) 的持口、授权、断网与恢复。 |
+| M3     | 用公开 SDK 和真实参考场景冻结 v1 契约、协商、预算、升级与故障恢复，见[冻结前验收](./testing.md#m3-契约冻结)。                                                                                                 |
+| M4     | 终端、协议、图表、自动化、传输网络及诊断内置包。                                                                                                                                                              |
+| M5     | 专业设备、烧录和分析插件，市场收录分发与离线工具。M4/M5 按需求 ID、首批变种、独立对端和失败/取消条件拆分。                                                                                                    |
+| M6     | 入口核对纳入需求在 M0–M5 应交付的软件证据。出口逐项核对完整需求及 [T01—T14](./requirements.md#附件验收方案与功能映射) 的适用场景，包括[实机、长稳与发行候选验收](./testing.md#安装与发行验收)。               |
+
+如需追溯某个 M1 Task 与需求 ID 的对应关系，查阅 `git show 2d450af:docs/plan.md`，不再维护已交付任务的平行矩阵。
+
+平台与适配器以[需求的平台目标](./requirements.md#平台目标)为准。Windows portable 当前仍使用用户目录；UX-11 的程序目录模式须另验只读目录、移动介质、换机凭据及升级。

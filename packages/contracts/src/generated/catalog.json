@@ -72,7 +72,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "Target": {
@@ -339,7 +339,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -904,7 +904,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -1609,7 +1609,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -2314,7 +2314,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -3025,7 +3025,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -3745,7 +3745,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -4456,7 +4456,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -5161,7 +5161,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -5866,7 +5866,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -6571,7 +6571,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -7276,7 +7276,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -7987,7 +7987,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -8692,7 +8692,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -9403,7 +9403,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -10108,7 +10108,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -10813,7 +10813,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -11518,7 +11518,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -12223,7 +12223,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -12928,7 +12928,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -13633,7 +13633,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -14338,7 +14338,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -15043,7 +15043,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -15748,7 +15748,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -16201,7 +16201,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "Target": {
@@ -16291,6 +16291,20 @@
         "$schema": "http://json-schema.org/draft-07/schema#",
         "additionalProperties": false,
         "definitions": {
+          "DerivedMemoryMetrics": {
+            "additionalProperties": false,
+            "description": "派生留存和读页各自的计账预算，单位为字节。",
+            "properties": {
+              "reader": {
+                "$ref": "#/definitions/MemoryBudget"
+              },
+              "retained": {
+                "$ref": "#/definitions/MemoryBudget"
+              }
+            },
+            "required": ["retained", "reader"],
+            "type": "object"
+          },
           "Id": {
             "pattern": "^[A-Za-z0-9._:-]{1,128}$",
             "type": "string"
@@ -16312,6 +16326,49 @@
             "required": ["usedBytes", "peakBytes", "limitBytes"],
             "type": "object"
           },
+          "NodeMetrics": {
+            "additionalProperties": false,
+            "description": "真实 Node owner 的聚合观测；RSS 属于整个 Node 进程，不按 worker 重复计数。",
+            "properties": {
+              "liveWorkers": {
+                "$ref": "#/definitions/U64"
+              },
+              "peakWorkers": {
+                "$ref": "#/definitions/U64"
+              },
+              "processId": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "description": "由 Rust 持有的实际 owner 注入，不接受插件自报 PID。"
+              },
+              "rssBytes": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "description": "Node 原生 memoryUsage.rss 的全进程读数；缺省表示不可得，不代表零。"
+              },
+              "sampleAgeMs": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "description": "从 Host 收到 Node 快照起计算的单调年龄，不是墙钟时间差。"
+              }
+            },
+            "required": [
+              "processId",
+              "sampleAgeMs",
+              "liveWorkers",
+              "peakWorkers"
+            ],
+            "type": "object"
+          },
           "Timestamp": {
             "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
             "type": "string"
@@ -16326,11 +16383,17 @@
           "captureQueue": {
             "$ref": "#/definitions/MemoryBudget"
           },
+          "derived": {
+            "$ref": "#/definitions/DerivedMemoryMetrics"
+          },
           "hostId": {
             "$ref": "#/definitions/Id"
           },
           "instanceEpoch": {
             "$ref": "#/definitions/U64"
+          },
+          "node": {
+            "$ref": "#/definitions/NodeMetrics"
           },
           "observedAt": {
             "$ref": "#/definitions/Timestamp"
@@ -16432,6 +16495,1511 @@
       "targetKinds": ["host"]
     },
     {
+      "actionId": "node.packages.list",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "after": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "expectedRevision": {
+            "$ref": "#/definitions/U64"
+          },
+          "pageSize": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/U64"
+              }
+            ],
+            "default": "20"
+          }
+        },
+        "title": "NodePackageListParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "executionApproved": {
+                "type": "boolean"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "sourceVerified": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "archiveSha256",
+              "enabled",
+              "sourceVerified",
+              "executionApproved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "nextAfter": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "packages": {
+            "items": {
+              "$ref": "#/definitions/NodePackageSummary"
+            },
+            "type": "array"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "packages"],
+        "title": "NodePackageListResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.packages.detailsRead",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "expectedRevision": {
+            "$ref": "#/definitions/U64"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "length": {
+            "$ref": "#/definitions/U64"
+          },
+          "offset": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": [
+          "id",
+          "expectedRevision",
+          "archiveSha256",
+          "offset",
+          "length"
+        ],
+        "title": "NodePackageDetailsReadParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "bytesBase64": {
+            "$ref": "#/definitions/Bytes"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "jsonSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "offset": {
+            "$ref": "#/definitions/U64"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          },
+          "totalBytes": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": [
+          "revision",
+          "id",
+          "archiveSha256",
+          "jsonSha256",
+          "offset",
+          "totalBytes",
+          "bytesBase64"
+        ],
+        "title": "NodePackageDetailsReadResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.packages.install",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "NodePackageInstallSource": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "local",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "keyId": {
+                    "$ref": "#/definitions/Id"
+                  },
+                  "kind": {
+                    "const": "trusted",
+                    "type": "string"
+                  },
+                  "source": {
+                    "$ref": "#/definitions/Id"
+                  }
+                },
+                "required": ["kind", "source", "keyId"],
+                "type": "object"
+              }
+            ]
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveRef": {
+            "$ref": "#/definitions/ObjectRef"
+          },
+          "source": {
+            "$ref": "#/definitions/NodePackageInstallSource"
+          }
+        },
+        "required": ["archiveRef", "source"],
+        "title": "NodePackageInstallParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "executionApproved": {
+                "type": "boolean"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "sourceVerified": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "archiveSha256",
+              "enabled",
+              "sourceVerified",
+              "executionApproved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "package": {
+            "$ref": "#/definitions/NodePackageSummary"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "package"],
+        "title": "NodePackageChangeResult",
+        "type": "object"
+      },
+      "permissions": ["plugins.manage", "content.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.packages.setEnabled",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "enabled": {
+            "type": "boolean"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          }
+        },
+        "required": ["id", "archiveSha256", "enabled"],
+        "title": "NodePackageSetEnabledParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "executionApproved": {
+                "type": "boolean"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "sourceVerified": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "archiveSha256",
+              "enabled",
+              "sourceVerified",
+              "executionApproved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "package": {
+            "$ref": "#/definitions/NodePackageSummary"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "package"],
+        "title": "NodePackageChangeResult",
+        "type": "object"
+      },
+      "permissions": ["plugins.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.packages.uninstall",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          }
+        },
+        "required": ["id", "archiveSha256"],
+        "title": "NodePackageIdentityParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "id", "archiveSha256"],
+        "title": "NodePackageUninstallResult",
+        "type": "object"
+      },
+      "permissions": ["plugins.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.packages.runtime",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          }
+        },
+        "required": ["id"],
+        "title": "NodePackageRuntimeParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "HostError": {
+            "additionalProperties": false,
+            "properties": {
+              "code": {
+                "type": "string"
+              },
+              "details": {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              },
+              "message": {
+                "type": "string"
+              },
+              "operationId": {
+                "$ref": "#/definitions/Id"
+              },
+              "retryable": {
+                "type": "boolean"
+              },
+              "revealTarget": {
+                "$ref": "#/definitions/RevealTarget"
+              }
+            },
+            "required": ["code", "message", "retryable"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "JsonValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "$ref": "#/definitions/SafeInteger"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/JsonValue"
+                },
+                "type": "object"
+              }
+            ]
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageRuntimePhase": {
+            "enum": ["inactive", "starting", "active", "stopping", "failed"],
+            "type": "string"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "RevealTarget": {
+            "additionalProperties": false,
+            "properties": {
+              "pageId": {
+                "$ref": "#/definitions/Id"
+              },
+              "panelId": {
+                "$ref": "#/definitions/Id"
+              },
+              "resultRef": {
+                "$ref": "#/definitions/ObjectRef"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "workspaceId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": ["pageId"],
+            "type": "object"
+          },
+          "SafeInteger": {
+            "maximum": 9007199254740991,
+            "minimum": -9007199254740991,
+            "type": "integer"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "error": {
+            "$ref": "#/definitions/HostError"
+          },
+          "generation": {
+            "$ref": "#/definitions/U64"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "phase": {
+            "$ref": "#/definitions/NodePackageRuntimePhase"
+          }
+        },
+        "required": ["id", "phase", "generation"],
+        "title": "NodePackageRuntimeStatus",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.views.assetRead",
+      "cancellation": "none",
+      "eventTypes": [],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "NodePackagePath": {
+            "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "description": "此查询的 operation 目标引用已完成的视图打开动作。",
+        "properties": {
+          "offset": {
+            "$ref": "#/definitions/U64"
+          },
+          "path": {
+            "$ref": "#/definitions/NodePackagePath"
+          },
+          "viewId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["viewId", "offset"],
+        "title": "NodeViewAssetReadParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackagePath": {
+            "pattern": "^(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+(?:/(?!\\.{1,2}(?:/|$))[^/\\\\:\\u0000-\\u001F\\u007F-\\u009F]+)*$",
+            "type": "string"
+          },
+          "NodePackageVersion": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)\\.(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)(?:-(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*)(?:\\.(?:0|[1-9][0-9]*|[0-9]*[A-Za-z-][0-9A-Za-z-]*))*)?(?:\\+[0-9A-Za-z-]+(?:\\.[0-9A-Za-z-]+)*)?$",
+            "type": "string"
+          },
+          "NodePackageView": {
+            "additionalProperties": false,
+            "properties": {
+              "actionId": {
+                "$ref": "#/definitions/Id"
+              },
+              "feed": {
+                "$ref": "#/definitions/NodePackageViewFeed"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "stateScopes": {
+                "items": {
+                  "type": "string"
+                },
+                "type": "array"
+              }
+            },
+            "required": ["id", "actionId", "stateScopes"],
+            "type": "object"
+          },
+          "NodePackageViewFeed": {
+            "enum": ["derived"],
+            "type": "string"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "Target": {
+            "additionalProperties": false,
+            "dependencies": {
+              "sessionEpoch": ["sessionId"],
+              "sessionId": ["sessionEpoch"]
+            },
+            "if": {
+              "properties": {
+                "kind": {
+                  "const": "session"
+                }
+              },
+              "required": ["kind"]
+            },
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "sessionEpoch": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/U64"
+                  }
+                ],
+                "default": null
+              },
+              "sessionId": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/Id"
+                  }
+                ],
+                "default": null
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "then": {
+              "required": ["sessionId", "sessionEpoch"]
+            },
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "activationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "bytesBase64": {
+            "$ref": "#/definitions/Bytes"
+          },
+          "entry": {
+            "$ref": "#/definitions/NodePackagePath"
+          },
+          "offset": {
+            "$ref": "#/definitions/U64"
+          },
+          "packageId": {
+            "$ref": "#/definitions/NodePackageId"
+          },
+          "path": {
+            "$ref": "#/definitions/NodePackagePath"
+          },
+          "sha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "target": {
+            "$ref": "#/definitions/Target"
+          },
+          "totalBytes": {
+            "$ref": "#/definitions/U64"
+          },
+          "version": {
+            "$ref": "#/definitions/NodePackageVersion"
+          },
+          "view": {
+            "$ref": "#/definitions/NodePackageView"
+          }
+        },
+        "required": [
+          "packageId",
+          "version",
+          "archiveSha256",
+          "activationId",
+          "view",
+          "target",
+          "entry",
+          "path",
+          "offset",
+          "totalBytes",
+          "sha256",
+          "bytesBase64"
+        ],
+        "title": "NodeViewAssetReadResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": [],
+      "targetKinds": ["operation"]
+    },
+    {
+      "actionId": "node.packages.confirmExecutionTrust",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          }
+        },
+        "required": ["id", "archiveSha256"],
+        "title": "NodePackageIdentityParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "executionApproved": {
+                "type": "boolean"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "sourceVerified": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "archiveSha256",
+              "enabled",
+              "sourceVerified",
+              "executionApproved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "package": {
+            "$ref": "#/definitions/NodePackageSummary"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "package"],
+        "title": "NodePackageChangeResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.packages.revokeExecutionTrust",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "archiveSha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "id": {
+            "$ref": "#/definitions/NodePackageId"
+          }
+        },
+        "required": ["id", "archiveSha256"],
+        "title": "NodePackageIdentityParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "executionApproved": {
+                "type": "boolean"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "sourceVerified": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "archiveSha256",
+              "enabled",
+              "sourceVerified",
+              "executionApproved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "package": {
+            "$ref": "#/definitions/NodePackageSummary"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "package"],
+        "title": "NodePackageChangeResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.sources.list",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "expectedRevision": {
+            "$ref": "#/definitions/U64"
+          },
+          "offset": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/U64"
+              }
+            ],
+            "default": "0"
+          },
+          "pageSize": {
+            "allOf": [
+              {
+                "$ref": "#/definitions/U64"
+              }
+            ],
+            "default": "20"
+          }
+        },
+        "title": "NodeSourceListParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "NodePackageSourceKey": {
+            "additionalProperties": false,
+            "properties": {
+              "approved": {
+                "type": "boolean"
+              },
+              "keyId": {
+                "$ref": "#/definitions/Id"
+              },
+              "publicKey": {
+                "items": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 32,
+                "minItems": 32,
+                "type": "array"
+              },
+              "publicKeySha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "source": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": [
+              "source",
+              "keyId",
+              "publicKey",
+              "publicKeySha256",
+              "approved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "keys": {
+            "items": {
+              "$ref": "#/definitions/NodePackageSourceKey"
+            },
+            "type": "array"
+          },
+          "nextOffset": {
+            "$ref": "#/definitions/U64"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "keys"],
+        "title": "NodeSourceListResult",
+        "type": "object"
+      },
+      "permissions": ["metadata.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.sources.approveKey",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "keyId": {
+            "$ref": "#/definitions/Id"
+          },
+          "publicKey": {
+            "items": {
+              "maximum": 255,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "maxItems": 32,
+            "minItems": 32,
+            "type": "array"
+          },
+          "publicKeySha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "source": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["source", "keyId", "publicKey", "publicKeySha256"],
+        "title": "NodeSourceApproveParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "NodePackageSourceKey": {
+            "additionalProperties": false,
+            "properties": {
+              "approved": {
+                "type": "boolean"
+              },
+              "keyId": {
+                "$ref": "#/definitions/Id"
+              },
+              "publicKey": {
+                "items": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 32,
+                "minItems": 32,
+                "type": "array"
+              },
+              "publicKeySha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "source": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": [
+              "source",
+              "keyId",
+              "publicKey",
+              "publicKeySha256",
+              "approved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "key": {
+            "$ref": "#/definitions/NodePackageSourceKey"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "key"],
+        "title": "NodeSourceChangeResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
+      "actionId": "node.sources.revokeKey",
+      "cancellation": "cooperative",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "keyId": {
+            "$ref": "#/definitions/Id"
+          },
+          "publicKeySha256": {
+            "$ref": "#/definitions/Digest"
+          },
+          "source": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["source", "keyId", "publicKeySha256"],
+        "title": "NodeSourceRevokeParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "NodePackageSourceKey": {
+            "additionalProperties": false,
+            "properties": {
+              "approved": {
+                "type": "boolean"
+              },
+              "keyId": {
+                "$ref": "#/definitions/Id"
+              },
+              "publicKey": {
+                "items": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 32,
+                "minItems": 32,
+                "type": "array"
+              },
+              "publicKeySha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "source": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": [
+              "source",
+              "keyId",
+              "publicKey",
+              "publicKeySha256",
+              "approved"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "key": {
+            "$ref": "#/definitions/NodePackageSourceKey"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "key"],
+        "title": "NodeSourceChangeResult",
+        "type": "object"
+      },
+      "permissions": ["auth.manage"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["host"]
+    },
+    {
       "actionId": "capture.start",
       "cancellation": "cooperative",
       "eventTypes": ["operations.changed"],
@@ -16500,7 +18068,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "Target": {
@@ -16688,7 +18256,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -16752,7 +18320,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -16862,7 +18430,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -16926,7 +18494,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -17036,7 +18604,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -17100,7 +18668,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -17644,7 +19212,7 @@
             ]
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -17924,7 +19492,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -18069,7 +19637,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -18121,7 +19689,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -18179,7 +19747,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -18228,7 +19796,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -18290,7 +19858,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -18400,7 +19968,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -19007,7 +20575,7 @@
             ]
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -19776,7 +21344,7 @@
             ]
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -20210,7 +21778,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -20949,7 +22517,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -21403,7 +22971,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -21734,7 +23302,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -21800,7 +23368,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -21854,7 +23422,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -21885,7 +23453,7 @@
         "pageId": "workbench"
       },
       "stateScopes": ["host.activity"],
-      "targetKinds": ["file", "capture"]
+      "targetKinds": ["file", "capture", "plugin_result"]
     },
     {
       "actionId": "file.read",
@@ -21920,7 +23488,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -21980,7 +23548,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -22028,7 +23596,7 @@
         "pageId": "workbench"
       },
       "stateScopes": ["host.activity"],
-      "targetKinds": ["file", "capture_record"]
+      "targetKinds": ["file", "capture_record", "plugin_result"]
     },
     {
       "actionId": "transfer.receiptsRead",
@@ -22063,7 +23631,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -22208,7 +23776,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -22385,7 +23953,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "Target": {
@@ -22499,7 +24067,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -22575,7 +24143,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "U64": {
@@ -22638,7 +24206,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "StateScopeRef": {
@@ -22941,7 +24509,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SettingsSnapshot": {
@@ -23419,7 +24987,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SharedSettings": {
@@ -23810,7 +25378,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SettingsSnapshot": {
@@ -24332,7 +25900,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SettingsSnapshot": {
@@ -24640,7 +26208,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "StateScopeRef": {
@@ -24924,7 +26492,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -25356,7 +26924,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -25701,7 +27269,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -26177,7 +27745,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -26585,7 +28153,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -26833,6 +28401,62 @@
                   },
                   "value": {
                     "$ref": "#/definitions/FileMetadata"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "node_package_installed",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/NodePackageChangeResult"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "node_package_changed",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/NodePackageChangeResult"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "node_package_uninstalled",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/NodePackageUninstallResult"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "node_source_changed",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/NodeSourceChangeResult"
                   }
                 },
                 "required": ["kind", "value"],
@@ -28642,6 +30266,122 @@
             "enum": ["system", "direct"],
             "type": "string"
           },
+          "NodePackageChangeResult": {
+            "additionalProperties": false,
+            "properties": {
+              "package": {
+                "$ref": "#/definitions/NodePackageSummary"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["revision", "package"],
+            "type": "object"
+          },
+          "NodePackageId": {
+            "maxLength": 128,
+            "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+            "type": "string"
+          },
+          "NodePackageSourceKey": {
+            "additionalProperties": false,
+            "properties": {
+              "approved": {
+                "type": "boolean"
+              },
+              "keyId": {
+                "$ref": "#/definitions/Id"
+              },
+              "publicKey": {
+                "items": {
+                  "maximum": 255,
+                  "minimum": 0,
+                  "type": "integer"
+                },
+                "maxItems": 32,
+                "minItems": 32,
+                "type": "array"
+              },
+              "publicKeySha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "source": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": [
+              "source",
+              "keyId",
+              "publicKey",
+              "publicKeySha256",
+              "approved"
+            ],
+            "type": "object"
+          },
+          "NodePackageSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "displayName": {
+                "type": "string"
+              },
+              "enabled": {
+                "type": "boolean"
+              },
+              "executionApproved": {
+                "type": "boolean"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "sourceVerified": {
+                "type": "boolean"
+              },
+              "version": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "id",
+              "archiveSha256",
+              "enabled",
+              "sourceVerified",
+              "executionApproved"
+            ],
+            "type": "object"
+          },
+          "NodePackageUninstallResult": {
+            "additionalProperties": false,
+            "properties": {
+              "archiveSha256": {
+                "$ref": "#/definitions/Digest"
+              },
+              "id": {
+                "$ref": "#/definitions/NodePackageId"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["revision", "id", "archiveSha256"],
+            "type": "object"
+          },
+          "NodeSourceChangeResult": {
+            "additionalProperties": false,
+            "properties": {
+              "key": {
+                "$ref": "#/definitions/NodePackageSourceKey"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["revision", "key"],
+            "type": "object"
+          },
           "ObjectRef": {
             "additionalProperties": false,
             "properties": {
@@ -28757,6 +30497,9 @@
               },
               "target": {
                 "$ref": "#/definitions/Target"
+              },
+              "workerObservation": {
+                "$ref": "#/definitions/WorkerObservation"
               }
             },
             "required": [
@@ -29192,7 +30935,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "ResultReference": {
@@ -29898,6 +31641,45 @@
               }
             },
             "required": ["throughOperationId"],
+            "type": "object"
+          },
+          "WorkerMemorySample": {
+            "additionalProperties": false,
+            "description": "Node 原生采样完成时的 worker V8 堆使用量；不是进程 RSS。",
+            "properties": {
+              "measuredWorkers": {
+                "$ref": "#/definitions/U64"
+              },
+              "sampledAt": {
+                "allOf": [
+                  {
+                    "$ref": "#/definitions/Timestamp"
+                  }
+                ],
+                "description": "经验证的 Node 原生采样完成时刻，不是 Host 收到快照的时刻。"
+              },
+              "v8HeapUsedBytes": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["sampledAt", "measuredWorkers", "v8HeapUsedBytes"],
+            "type": "object"
+          },
+          "WorkerObservation": {
+            "additionalProperties": false,
+            "description": "实际任务拥有的 worker 数量及最后一次内存样本；退出不把旧样本改成零。",
+            "properties": {
+              "lastMemory": {
+                "$ref": "#/definitions/WorkerMemorySample"
+              },
+              "liveWorkers": {
+                "$ref": "#/definitions/U64"
+              },
+              "peakWorkers": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["liveWorkers", "peakWorkers"],
             "type": "object"
           },
           "WorkspaceDocument": {
@@ -30956,7 +32738,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "SerialConfiguration": {
@@ -31905,7 +33687,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "Target": {
@@ -32028,7 +33810,7 @@
             "type": "string"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "Target": {
@@ -32489,7 +34271,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -32760,7 +34542,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -33365,7 +35147,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -33618,7 +35400,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "TransformReference": {
@@ -33791,7 +35573,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -34374,7 +36156,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -34646,7 +36428,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -35881,7 +37663,7 @@
             "type": "object"
           },
           "ResourceKind": {
-            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
             "type": "string"
           },
           "RevealTarget": {
@@ -36094,6 +37876,224 @@
         },
         "required": ["events", "nextEventSeq", "hasMore"],
         "title": "StreamReadResult",
+        "type": "object"
+      },
+      "permissions": ["content.read"],
+      "revealTarget": {
+        "pageId": "workbench"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["session"]
+    },
+    {
+      "actionId": "stream.derivedRead",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "after": {
+            "$ref": "#/definitions/U64"
+          },
+          "maxBytes": {
+            "$ref": "#/definitions/U64"
+          },
+          "maxSamples": {
+            "$ref": "#/definitions/U64"
+          },
+          "operationId": {
+            "$ref": "#/definitions/Id"
+          }
+        },
+        "required": ["operationId", "after", "maxSamples", "maxBytes"],
+        "title": "DerivedReadParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "DerivedProvenance": {
+            "additionalProperties": false,
+            "properties": {
+              "configurationDigest": {
+                "$ref": "#/definitions/Digest"
+              },
+              "parserId": {
+                "$ref": "#/definitions/Id"
+              },
+              "parserVersion": {
+                "type": "string"
+              },
+              "quality": {
+                "items": {
+                  "$ref": "#/definitions/DerivedQuality"
+                },
+                "type": "array"
+              },
+              "sources": {
+                "items": {
+                  "$ref": "#/definitions/SourceRange"
+                },
+                "type": "array"
+              },
+              "unit": {
+                "type": "string"
+              }
+            },
+            "required": [
+              "sources",
+              "parserId",
+              "parserVersion",
+              "configurationDigest",
+              "quality"
+            ],
+            "type": "object"
+          },
+          "DerivedQuality": {
+            "enum": ["complete", "gap", "partial", "unknown", "transformed"],
+            "type": "string"
+          },
+          "DerivedSample": {
+            "additionalProperties": false,
+            "properties": {
+              "position": {
+                "$ref": "#/definitions/U64"
+              },
+              "provenance": {
+                "$ref": "#/definitions/DerivedProvenance"
+              },
+              "value": {
+                "$ref": "#/definitions/QueryValue"
+              }
+            },
+            "required": ["position", "provenance", "value"],
+            "type": "object"
+          },
+          "Digest": {
+            "pattern": "^[0-9a-f]{64}$",
+            "type": "string"
+          },
+          "Direction": {
+            "enum": ["rx", "tx"],
+            "type": "string"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "QueryValue": {
+            "anyOf": [
+              {
+                "type": "null"
+              },
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "string"
+              },
+              {
+                "items": {
+                  "$ref": "#/definitions/QueryValue"
+                },
+                "type": "array"
+              },
+              {
+                "additionalProperties": {
+                  "$ref": "#/definitions/QueryValue"
+                },
+                "type": "object"
+              }
+            ],
+            "description": "查询领域结果允许JSON小数；U64字段仍由各自领域schema要求十进制字符串。"
+          },
+          "SourceRange": {
+            "additionalProperties": false,
+            "properties": {
+              "byteEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "byteStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "direction": {
+                "$ref": "#/definitions/Direction"
+              },
+              "eventEnd": {
+                "$ref": "#/definitions/U64"
+              },
+              "eventStart": {
+                "$ref": "#/definitions/U64"
+              },
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "sessionEpoch": {
+                "$ref": "#/definitions/U64"
+              },
+              "sessionId": {
+                "$ref": "#/definitions/Id"
+              }
+            },
+            "required": [
+              "hostId",
+              "sessionId",
+              "sessionEpoch",
+              "eventStart",
+              "eventEnd"
+            ],
+            "type": "object"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "hasMore": {
+            "type": "boolean"
+          },
+          "instanceEpoch": {
+            "$ref": "#/definitions/U64"
+          },
+          "nextPosition": {
+            "$ref": "#/definitions/U64"
+          },
+          "operationId": {
+            "$ref": "#/definitions/Id"
+          },
+          "samples": {
+            "items": {
+              "$ref": "#/definitions/DerivedSample"
+            },
+            "type": "array"
+          }
+        },
+        "required": [
+          "operationId",
+          "instanceEpoch",
+          "samples",
+          "nextPosition",
+          "hasMore"
+        ],
+        "title": "DerivedReadResult",
         "type": "object"
       },
       "permissions": ["content.read"],

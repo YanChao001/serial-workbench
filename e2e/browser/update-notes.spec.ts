@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { defaults, clientDefaults } from "./json-fixtures";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
 import type {
@@ -7,8 +8,6 @@ import type {
   SharedSettings,
   WorkspaceDocument,
 } from "@serial-workbench/contracts";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
-import clientDefaults from "../../src/lib/generated/client-defaults.json" with { type: "json" };
 import type {
   ClientStateSnapshot,
   ClientWindowState,

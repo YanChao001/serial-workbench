@@ -35,15 +35,15 @@ describe("路由配置与匹配", () => {
       "contentLayout",
     );
   });
-  it("只展示工作区与设置，诊断和恢复保留为设置内入口", () => {
+  it("展示工作台、插件和设置，诊断和恢复保留为设置内入口", () => {
     expect(
       APP_ROUTES.filter((route) => !route.hidden).map((route) => route.path),
-    ).toEqual(["/", "/settings"]);
+    ).toEqual(["/", "/plugins", "/settings"]);
     expect(
       APP_ROUTES.filter(
         (route) => !route.hidden && route.navigationPlacement !== "footer",
       ).map((route) => route.path),
-    ).toEqual(["/"]);
+    ).toEqual(["/", "/plugins"]);
     expect(
       APP_ROUTES.filter(
         (route) => !route.hidden && route.navigationPlacement === "footer",

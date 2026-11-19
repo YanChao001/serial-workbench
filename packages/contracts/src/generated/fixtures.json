@@ -673,6 +673,251 @@
       }
     },
     {
+      "name": "node-packages-null-after",
+      "schema": "NodePackageListParams",
+      "value": {
+        "after": null
+      }
+    },
+    {
+      "name": "node-packages-null-revision",
+      "schema": "NodePackageListParams",
+      "value": {
+        "expectedRevision": null
+      }
+    },
+    {
+      "name": "node-packages-numeric-page-size",
+      "schema": "NodePackageListParams",
+      "value": {
+        "pageSize": 1
+      }
+    },
+    {
+      "name": "node-package-details-numeric-offset",
+      "schema": "NodePackageDetailsReadParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expectedRevision": "1",
+        "id": "example.terminal",
+        "length": "32768",
+        "offset": 0
+      }
+    },
+    {
+      "name": "node-package-uninstall-numeric-revision",
+      "schema": "NodePackageUninstallResult",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "id": "example.terminal",
+        "revision": 2
+      }
+    },
+    {
+      "name": "node-package-uninstall-delete-data",
+      "schema": "NodePackageUninstallResult",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "deleteData": true,
+        "id": "example.terminal",
+        "revision": "2"
+      }
+    },
+    {
+      "name": "node-package-identity-self-confirmation",
+      "schema": "NodePackageIdentityParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "id": "example.terminal",
+        "userConfirmed": true
+      }
+    },
+    {
+      "name": "node-package-enable-null",
+      "schema": "NodePackageSetEnabledParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "enabled": null,
+        "id": "example.terminal"
+      }
+    },
+    {
+      "name": "node-package-enable-missing-intent",
+      "schema": "NodePackageSetEnabledParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "id": "example.terminal"
+      }
+    },
+    {
+      "name": "node-package-runtime-private-path",
+      "schema": "NodePackageRuntimeParams",
+      "value": {
+        "id": "example.terminal",
+        "path": "private"
+      }
+    },
+    {
+      "name": "node-package-runtime-numeric-generation",
+      "schema": "NodePackageRuntimeStatus",
+      "value": {
+        "generation": 0,
+        "id": "example.terminal",
+        "phase": "inactive"
+      }
+    },
+    {
+      "name": "node-package-runtime-null-error",
+      "schema": "NodePackageRuntimeStatus",
+      "value": {
+        "error": null,
+        "generation": "0",
+        "id": "example.terminal",
+        "phase": "inactive"
+      }
+    },
+    {
+      "name": "node-view-asset-parent-path",
+      "schema": "NodeViewAssetReadParams",
+      "value": {
+        "offset": "0",
+        "path": "ui/../private.html",
+        "viewId": "example.terminal.view"
+      }
+    },
+    {
+      "name": "node-packages-private-object",
+      "schema": "NodePackageListResult",
+      "value": {
+        "packages": [
+          {
+            "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "enabled": false,
+            "executionApproved": false,
+            "id": "example.terminal",
+            "objectId": "private-code-object",
+            "sourceVerified": false
+          }
+        ],
+        "revision": "1"
+      }
+    },
+    {
+      "name": "node-packages-numeric-revision",
+      "schema": "NodePackageListResult",
+      "value": {
+        "packages": [
+          {
+            "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "enabled": false,
+            "executionApproved": false,
+            "id": "example.terminal",
+            "sourceVerified": false
+          }
+        ],
+        "revision": 1
+      }
+    },
+    {
+      "name": "node-package-install-supplied-key",
+      "schema": "NodePackageInstallParams",
+      "value": {
+        "archiveRef": {
+          "hostId": "host",
+          "id": "archive",
+          "kind": "file"
+        },
+        "source": {
+          "keyId": "key",
+          "kind": "trusted",
+          "publicKey": "package-cannot-choose-a-trusted-key",
+          "source": "source"
+        }
+      }
+    },
+    {
+      "name": "node-package-install-arbitrary-path",
+      "schema": "NodePackageInstallParams",
+      "value": {
+        "archiveRef": {
+          "hostId": "host",
+          "id": "archive",
+          "kind": "file"
+        },
+        "path": "unregistered.zip",
+        "source": {
+          "kind": "local"
+        }
+      }
+    },
+    {
+      "name": "node-package-install-null-source",
+      "schema": "NodePackageInstallParams",
+      "value": {
+        "archiveRef": {
+          "hostId": "host",
+          "id": "archive",
+          "kind": "file"
+        },
+        "source": null
+      }
+    },
+    {
+      "name": "node-sources-numeric-offset",
+      "schema": "NodeSourceListParams",
+      "value": {
+        "offset": 1
+      }
+    },
+    {
+      "name": "node-sources-null-revision",
+      "schema": "NodeSourceListParams",
+      "value": {
+        "expectedRevision": null
+      }
+    },
+    {
+      "name": "node-source-approve-short-key",
+      "schema": "NodeSourceApproveParams",
+      "value": {
+        "keyId": "key",
+        "publicKey": [
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1
+        ],
+        "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+        "source": "source"
+      }
+    },
+    {
+      "name": "node-source-approve-out-of-range-key",
+      "schema": "NodeSourceApproveParams",
+      "value": {
+        "keyId": "key",
+        "publicKey": [
+          256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256,
+          256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256, 256,
+          256, 256, 256, 256
+        ],
+        "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+        "source": "source"
+      }
+    },
+    {
+      "name": "node-source-cannot-self-confirm",
+      "schema": "NodeSourceApproveParams",
+      "value": {
+        "keyId": "key",
+        "publicKey": [
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1, 1
+        ],
+        "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+        "source": "source",
+        "userConfirmed": true
+      }
+    },
+    {
       "name": "terminal-invalid-codec",
       "schema": "TerminalSettings",
       "value": {
@@ -961,6 +1206,15 @@
       "schema": "QueryResult",
       "value": {
         "kind": "future",
+        "value": {}
+      }
+    },
+    {
+      "name": "query-extension-unknown-envelope",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "extension",
+        "private": "forbidden",
         "value": {}
       }
     },
@@ -8066,6 +8320,472 @@
       }
     },
     {
+      "name": "derived-source-range-unknown-field",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session",
+        "unknown": true
+      }
+    },
+    {
+      "name": "derived-source-range-missing-eventEnd",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-source-range-missing-eventStart",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-source-range-missing-hostId",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-source-range-missing-sessionEpoch",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-source-range-missing-sessionId",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2"
+      }
+    },
+    {
+      "name": "derived-source-range-null-byteStart",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": null,
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-source-range-null-byteEnd",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": null,
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-source-range-null-direction",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": null,
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-publish-params-unknown-field",
+      "schema": "DerivedPublishParams",
+      "value": {
+        "quality": ["complete", "transformed"],
+        "sources": [
+          {
+            "byteEnd": "4",
+            "byteStart": "0",
+            "direction": "rx",
+            "eventEnd": "2",
+            "eventStart": "1",
+            "hostId": "host",
+            "sessionEpoch": "2",
+            "sessionId": "session"
+          }
+        ],
+        "unit": "ms",
+        "unknown": true,
+        "value": 42
+      }
+    },
+    {
+      "name": "derived-publish-params-missing-quality",
+      "schema": "DerivedPublishParams",
+      "value": {
+        "sources": [
+          {
+            "byteEnd": "4",
+            "byteStart": "0",
+            "direction": "rx",
+            "eventEnd": "2",
+            "eventStart": "1",
+            "hostId": "host",
+            "sessionEpoch": "2",
+            "sessionId": "session"
+          }
+        ],
+        "unit": "ms",
+        "value": 42
+      }
+    },
+    {
+      "name": "derived-publish-params-missing-sources",
+      "schema": "DerivedPublishParams",
+      "value": {
+        "quality": ["complete", "transformed"],
+        "unit": "ms",
+        "value": 42
+      }
+    },
+    {
+      "name": "derived-publish-params-missing-value",
+      "schema": "DerivedPublishParams",
+      "value": {
+        "quality": ["complete", "transformed"],
+        "sources": [
+          {
+            "byteEnd": "4",
+            "byteStart": "0",
+            "direction": "rx",
+            "eventEnd": "2",
+            "eventStart": "1",
+            "hostId": "host",
+            "sessionEpoch": "2",
+            "sessionId": "session"
+          }
+        ],
+        "unit": "ms"
+      }
+    },
+    {
+      "name": "derived-publish-params-null-unit",
+      "schema": "DerivedPublishParams",
+      "value": {
+        "quality": ["complete", "transformed"],
+        "sources": [
+          {
+            "byteEnd": "4",
+            "byteStart": "0",
+            "direction": "rx",
+            "eventEnd": "2",
+            "eventStart": "1",
+            "hostId": "host",
+            "sessionEpoch": "2",
+            "sessionId": "session"
+          }
+        ],
+        "unit": null,
+        "value": 42
+      }
+    },
+    {
+      "name": "derived-publish-result-unknown-field",
+      "schema": "DerivedPublishResult",
+      "value": {
+        "operationId": "operation",
+        "position": "1",
+        "unknown": true
+      }
+    },
+    {
+      "name": "derived-publish-result-missing-operationId",
+      "schema": "DerivedPublishResult",
+      "value": {
+        "position": "1"
+      }
+    },
+    {
+      "name": "derived-publish-result-missing-position",
+      "schema": "DerivedPublishResult",
+      "value": {
+        "operationId": "operation"
+      }
+    },
+    {
+      "name": "derived-read-params-unknown-field",
+      "schema": "DerivedReadParams",
+      "value": {
+        "after": "0",
+        "maxBytes": "16384",
+        "maxSamples": "16",
+        "operationId": "operation",
+        "unknown": true
+      }
+    },
+    {
+      "name": "derived-read-params-missing-after",
+      "schema": "DerivedReadParams",
+      "value": {
+        "maxBytes": "16384",
+        "maxSamples": "16",
+        "operationId": "operation"
+      }
+    },
+    {
+      "name": "derived-read-params-missing-maxBytes",
+      "schema": "DerivedReadParams",
+      "value": {
+        "after": "0",
+        "maxSamples": "16",
+        "operationId": "operation"
+      }
+    },
+    {
+      "name": "derived-read-params-missing-maxSamples",
+      "schema": "DerivedReadParams",
+      "value": {
+        "after": "0",
+        "maxBytes": "16384",
+        "operationId": "operation"
+      }
+    },
+    {
+      "name": "derived-read-params-missing-operationId",
+      "schema": "DerivedReadParams",
+      "value": {
+        "after": "0",
+        "maxBytes": "16384",
+        "maxSamples": "16"
+      }
+    },
+    {
+      "name": "derived-read-result-unknown-field",
+      "schema": "DerivedReadResult",
+      "value": {
+        "hasMore": false,
+        "instanceEpoch": "7",
+        "nextPosition": "1",
+        "operationId": "operation",
+        "samples": [
+          {
+            "position": "1",
+            "provenance": {
+              "configurationDigest": "abababababababababababababababababababababababababababababababab",
+              "parserId": "plugin.reference.parse",
+              "parserVersion": "1.0.0",
+              "quality": ["complete", "transformed"],
+              "sources": [
+                {
+                  "byteEnd": "4",
+                  "byteStart": "0",
+                  "direction": "rx",
+                  "eventEnd": "2",
+                  "eventStart": "1",
+                  "hostId": "host",
+                  "sessionEpoch": "2",
+                  "sessionId": "session"
+                }
+              ],
+              "unit": "ms"
+            },
+            "value": 42
+          }
+        ],
+        "unknown": true
+      }
+    },
+    {
+      "name": "derived-read-result-missing-hasMore",
+      "schema": "DerivedReadResult",
+      "value": {
+        "instanceEpoch": "7",
+        "nextPosition": "1",
+        "operationId": "operation",
+        "samples": [
+          {
+            "position": "1",
+            "provenance": {
+              "configurationDigest": "abababababababababababababababababababababababababababababababab",
+              "parserId": "plugin.reference.parse",
+              "parserVersion": "1.0.0",
+              "quality": ["complete", "transformed"],
+              "sources": [
+                {
+                  "byteEnd": "4",
+                  "byteStart": "0",
+                  "direction": "rx",
+                  "eventEnd": "2",
+                  "eventStart": "1",
+                  "hostId": "host",
+                  "sessionEpoch": "2",
+                  "sessionId": "session"
+                }
+              ],
+              "unit": "ms"
+            },
+            "value": 42
+          }
+        ]
+      }
+    },
+    {
+      "name": "derived-read-result-missing-instanceEpoch",
+      "schema": "DerivedReadResult",
+      "value": {
+        "hasMore": false,
+        "nextPosition": "1",
+        "operationId": "operation",
+        "samples": [
+          {
+            "position": "1",
+            "provenance": {
+              "configurationDigest": "abababababababababababababababababababababababababababababababab",
+              "parserId": "plugin.reference.parse",
+              "parserVersion": "1.0.0",
+              "quality": ["complete", "transformed"],
+              "sources": [
+                {
+                  "byteEnd": "4",
+                  "byteStart": "0",
+                  "direction": "rx",
+                  "eventEnd": "2",
+                  "eventStart": "1",
+                  "hostId": "host",
+                  "sessionEpoch": "2",
+                  "sessionId": "session"
+                }
+              ],
+              "unit": "ms"
+            },
+            "value": 42
+          }
+        ]
+      }
+    },
+    {
+      "name": "derived-read-result-missing-nextPosition",
+      "schema": "DerivedReadResult",
+      "value": {
+        "hasMore": false,
+        "instanceEpoch": "7",
+        "operationId": "operation",
+        "samples": [
+          {
+            "position": "1",
+            "provenance": {
+              "configurationDigest": "abababababababababababababababababababababababababababababababab",
+              "parserId": "plugin.reference.parse",
+              "parserVersion": "1.0.0",
+              "quality": ["complete", "transformed"],
+              "sources": [
+                {
+                  "byteEnd": "4",
+                  "byteStart": "0",
+                  "direction": "rx",
+                  "eventEnd": "2",
+                  "eventStart": "1",
+                  "hostId": "host",
+                  "sessionEpoch": "2",
+                  "sessionId": "session"
+                }
+              ],
+              "unit": "ms"
+            },
+            "value": 42
+          }
+        ]
+      }
+    },
+    {
+      "name": "derived-read-result-missing-operationId",
+      "schema": "DerivedReadResult",
+      "value": {
+        "hasMore": false,
+        "instanceEpoch": "7",
+        "nextPosition": "1",
+        "samples": [
+          {
+            "position": "1",
+            "provenance": {
+              "configurationDigest": "abababababababababababababababababababababababababababababababab",
+              "parserId": "plugin.reference.parse",
+              "parserVersion": "1.0.0",
+              "quality": ["complete", "transformed"],
+              "sources": [
+                {
+                  "byteEnd": "4",
+                  "byteStart": "0",
+                  "direction": "rx",
+                  "eventEnd": "2",
+                  "eventStart": "1",
+                  "hostId": "host",
+                  "sessionEpoch": "2",
+                  "sessionId": "session"
+                }
+              ],
+              "unit": "ms"
+            },
+            "value": 42
+          }
+        ]
+      }
+    },
+    {
+      "name": "derived-read-result-missing-samples",
+      "schema": "DerivedReadResult",
+      "value": {
+        "hasMore": false,
+        "instanceEpoch": "7",
+        "nextPosition": "1",
+        "operationId": "operation"
+      }
+    },
+    {
       "name": "stream-read-result-unknown-field",
       "schema": "StreamReadResult",
       "value": {
@@ -9701,6 +10421,236 @@
       "value": {
         "kind": "closed"
       }
+    },
+    {
+      "name": "worker-memory-invalid-time",
+      "schema": "WorkerMemorySample",
+      "value": {
+        "measuredWorkers": "2",
+        "sampledAt": "not-a-timestamp",
+        "v8HeapUsedBytes": "9007199254740993"
+      }
+    },
+    {
+      "name": "worker-memory-numeric-u64",
+      "schema": "WorkerMemorySample",
+      "value": {
+        "measuredWorkers": "2",
+        "sampledAt": "2026-11-18T00:00:00Z",
+        "v8HeapUsedBytes": 9007199254740993
+      }
+    },
+    {
+      "name": "worker-memory-is-not-rss",
+      "schema": "WorkerMemorySample",
+      "value": {
+        "measuredWorkers": "2",
+        "rssBytes": "1",
+        "sampledAt": "2026-11-18T00:00:00Z",
+        "v8HeapUsedBytes": "9007199254740993"
+      }
+    },
+    {
+      "name": "worker-observation-null-sample",
+      "schema": "WorkerObservation",
+      "value": {
+        "lastMemory": null,
+        "liveWorkers": "2",
+        "peakWorkers": "3"
+      }
+    },
+    {
+      "name": "worker-observation-self-selected-owner",
+      "schema": "WorkerObservation",
+      "value": {
+        "lastMemory": {
+          "measuredWorkers": "2",
+          "sampledAt": "2026-11-18T00:00:00Z",
+          "v8HeapUsedBytes": "9007199254740993"
+        },
+        "liveWorkers": "2",
+        "operationId": "self-selected",
+        "peakWorkers": "3"
+      }
+    },
+    {
+      "name": "node-metrics-null-rss",
+      "schema": "NodeMetrics",
+      "value": {
+        "liveWorkers": "2",
+        "peakWorkers": "3",
+        "processId": "1234",
+        "rssBytes": null,
+        "sampleAgeMs": "25"
+      }
+    },
+    {
+      "name": "node-metrics-negative-age",
+      "schema": "NodeMetrics",
+      "value": {
+        "liveWorkers": "2",
+        "peakWorkers": "3",
+        "processId": "1234",
+        "rssBytes": "18446744073709551615",
+        "sampleAgeMs": "-1"
+      }
+    },
+    {
+      "name": "node-metrics-no-actor",
+      "schema": "NodeMetrics",
+      "value": {
+        "actorId": "self-selected",
+        "liveWorkers": "2",
+        "peakWorkers": "3",
+        "processId": "1234",
+        "rssBytes": "18446744073709551615",
+        "sampleAgeMs": "25"
+      }
+    },
+    {
+      "name": "operation-null-worker-observation",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "example.terminal.compute",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "dependencies": [
+          {
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "id": "example.terminal",
+            "version": "1.0.0"
+          }
+        ],
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "example.terminal",
+          "kind": "plugin",
+          "version": "1.0.0"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "startedAt": "2026-11-18T00:00:00Z",
+        "state": "running",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        },
+        "workerObservation": null
+      }
+    },
+    {
+      "name": "derived-memory-metrics-unknown-field",
+      "schema": "DerivedMemoryMetrics",
+      "value": {
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "retained": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "derived-memory-metrics-missing-reader",
+      "schema": "DerivedMemoryMetrics",
+      "value": {
+        "retained": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
+    },
+    {
+      "name": "derived-memory-metrics-missing-retained",
+      "schema": "DerivedMemoryMetrics",
+      "value": {
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
+    },
+    {
+      "name": "host-metrics-null-derived",
+      "schema": "HostMetrics",
+      "value": {
+        "captureQueue": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "derived": null,
+        "hostId": "host",
+        "instanceEpoch": "1",
+        "node": {
+          "liveWorkers": "2",
+          "peakWorkers": "3",
+          "processId": "1234",
+          "rssBytes": "18446744073709551615",
+          "sampleAgeMs": "25"
+        },
+        "observedAt": "2026-11-18T00:00:00Z",
+        "processId": "123",
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "rssBytes": "4",
+        "rssPeakBytes": "5",
+        "source": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
+    },
+    {
+      "name": "host-metrics-null-node",
+      "schema": "HostMetrics",
+      "value": {
+        "captureQueue": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "hostId": "host",
+        "instanceEpoch": "1",
+        "node": null,
+        "observedAt": "2026-11-18T00:00:00Z",
+        "processId": "123",
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "rssBytes": "4",
+        "rssPeakBytes": "5",
+        "source": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
     }
   ],
   "schemaVersion": 1,
@@ -10079,6 +11029,391 @@
       }
     },
     {
+      "name": "node-packages-empty",
+      "schema": "NodePackageListResult",
+      "value": {
+        "packages": [],
+        "revision": "0"
+      }
+    },
+    {
+      "name": "node-package-complete-details",
+      "schema": "NodePackageInstallation",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "enabled": false,
+        "executionTrust": null,
+        "manifest": {
+          "activation": ["startup"],
+          "contributes": {
+            "actions": [],
+            "configuration": [],
+            "parsers": [],
+            "queries": [],
+            "themes": [],
+            "transports": [],
+            "views": []
+          },
+          "dataSchemaVersion": "1",
+          "dependencies": [],
+          "description": "参考包",
+          "displayName": "离线终端",
+          "hostProtocolVersion": "0.1",
+          "id": "example.terminal",
+          "license": "MIT",
+          "main": "dist/main.mjs",
+          "notices": ["许可证/LICENSE.txt"],
+          "permissions": {
+            "executionPurposes": ["terminal"],
+            "externalTools": [],
+            "hostApi": []
+          },
+          "platformResources": [],
+          "runtimeRef": "node-26.13.0",
+          "schemaVersion": "0.1",
+          "version": "1.2.3-beta.1+build.7",
+          "webUi": {
+            "entry": "界面/index.html"
+          }
+        },
+        "verifiedSource": null
+      }
+    },
+    {
+      "name": "node-packages-default-page",
+      "schema": "NodePackageListParams",
+      "value": {}
+    },
+    {
+      "name": "node-packages-next-page",
+      "schema": "NodePackageListParams",
+      "value": {
+        "after": "example.terminal",
+        "expectedRevision": "1",
+        "pageSize": "1"
+      }
+    },
+    {
+      "name": "node-package-details-read",
+      "schema": "NodePackageDetailsReadParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expectedRevision": "1",
+        "id": "example.terminal",
+        "length": "32768",
+        "offset": "0"
+      }
+    },
+    {
+      "name": "node-package-details-chunk",
+      "schema": "NodePackageDetailsReadResult",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "bytesBase64": "eA==",
+        "id": "example.terminal",
+        "jsonSha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+        "offset": "0",
+        "revision": "1",
+        "totalBytes": "1"
+      }
+    },
+    {
+      "name": "node-packages-installed",
+      "schema": "NodePackageListResult",
+      "value": {
+        "packages": [
+          {
+            "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "enabled": false,
+            "executionApproved": false,
+            "id": "example.terminal",
+            "sourceVerified": false
+          }
+        ],
+        "revision": "1"
+      }
+    },
+    {
+      "name": "node-package-install-result",
+      "schema": "NodePackageChangeResult",
+      "value": {
+        "package": {
+          "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "enabled": false,
+          "executionApproved": false,
+          "id": "example.terminal",
+          "sourceVerified": false
+        },
+        "revision": "1"
+      }
+    },
+    {
+      "name": "node-package-uninstall-result",
+      "schema": "NodePackageUninstallResult",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "id": "example.terminal",
+        "revision": "2"
+      }
+    },
+    {
+      "name": "node-package-uninstalled",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "node_package_uninstalled",
+        "value": {
+          "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "id": "example.terminal",
+          "revision": "2"
+        }
+      }
+    },
+    {
+      "name": "node-package-identity",
+      "schema": "NodePackageIdentityParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "id": "example.terminal"
+      }
+    },
+    {
+      "name": "node-package-preference-changed",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "node_package_changed",
+        "value": {
+          "package": {
+            "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "enabled": false,
+            "executionApproved": false,
+            "id": "example.terminal",
+            "sourceVerified": false
+          },
+          "revision": "1"
+        }
+      }
+    },
+    {
+      "name": "node-package-enable",
+      "schema": "NodePackageSetEnabledParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "enabled": true,
+        "id": "example.terminal"
+      }
+    },
+    {
+      "name": "node-package-disable",
+      "schema": "NodePackageSetEnabledParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "enabled": false,
+        "id": "example.terminal"
+      }
+    },
+    {
+      "name": "node-package-runtime-query",
+      "schema": "NodePackageRuntimeParams",
+      "value": {
+        "id": "example.terminal"
+      }
+    },
+    {
+      "name": "node-package-runtime-active",
+      "schema": "NodePackageRuntimeStatus",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "generation": "1",
+        "id": "example.terminal",
+        "phase": "active"
+      }
+    },
+    {
+      "name": "node-package-runtime-result",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "node_package_runtime",
+        "value": {
+          "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "generation": "1",
+          "id": "example.terminal",
+          "phase": "active"
+        }
+      }
+    },
+    {
+      "name": "node-view-asset-entry",
+      "schema": "NodeViewAssetReadParams",
+      "value": {
+        "offset": "0",
+        "viewId": "example.terminal.view"
+      }
+    },
+    {
+      "name": "node-view-asset-result",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "node_view_asset",
+        "value": {
+          "activationId": "activation-a",
+          "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "bytesBase64": "YQ==",
+          "entry": "ui/index.html",
+          "offset": "0",
+          "packageId": "example.terminal",
+          "path": "ui/index.html",
+          "sha256": "ca978112ca1bbdcafac231b39a23dc4da786eff8147c4e72b9807785afee48bb",
+          "target": {
+            "hostId": "host",
+            "id": "terminal",
+            "kind": "session",
+            "sessionEpoch": "2",
+            "sessionId": "terminal"
+          },
+          "totalBytes": "1",
+          "version": "1.0.0",
+          "view": {
+            "actionId": "example.terminal.open",
+            "id": "example.terminal.view",
+            "stateScopes": []
+          }
+        }
+      }
+    },
+    {
+      "name": "node-package-install-action-result",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "node_package_installed",
+        "value": {
+          "package": {
+            "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "enabled": false,
+            "executionApproved": false,
+            "id": "example.terminal",
+            "sourceVerified": false
+          },
+          "revision": "1"
+        }
+      }
+    },
+    {
+      "name": "node-package-install-local",
+      "schema": "NodePackageInstallParams",
+      "value": {
+        "archiveRef": {
+          "hostId": "host",
+          "id": "archive",
+          "kind": "file"
+        },
+        "source": {
+          "kind": "local"
+        }
+      }
+    },
+    {
+      "name": "node-package-install-trusted",
+      "schema": "NodePackageInstallParams",
+      "value": {
+        "archiveRef": {
+          "hostId": "host",
+          "id": "archive",
+          "kind": "file"
+        },
+        "source": {
+          "keyId": "key",
+          "kind": "trusted",
+          "source": "source"
+        }
+      }
+    },
+    {
+      "name": "node-source-key",
+      "schema": "NodePackageSourceKey",
+      "value": {
+        "approved": true,
+        "keyId": "key",
+        "publicKey": [
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1, 1
+        ],
+        "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+        "source": "source"
+      }
+    },
+    {
+      "name": "node-sources-default-page",
+      "schema": "NodeSourceListParams",
+      "value": {}
+    },
+    {
+      "name": "node-sources-empty",
+      "schema": "NodeSourceListResult",
+      "value": {
+        "keys": [],
+        "revision": "0"
+      }
+    },
+    {
+      "name": "node-source-changed",
+      "schema": "NodeSourceChangeResult",
+      "value": {
+        "key": {
+          "approved": true,
+          "keyId": "key",
+          "publicKey": [
+            1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+            1, 1, 1, 1, 1, 1, 1, 1, 1
+          ],
+          "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+          "source": "source"
+        },
+        "revision": "1"
+      }
+    },
+    {
+      "name": "node-source-action-result",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "node_source_changed",
+        "value": {
+          "key": {
+            "approved": true,
+            "keyId": "key",
+            "publicKey": [
+              1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+              1, 1, 1, 1, 1, 1, 1, 1, 1, 1
+            ],
+            "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+            "source": "source"
+          },
+          "revision": "1"
+        }
+      }
+    },
+    {
+      "name": "node-source-approve",
+      "schema": "NodeSourceApproveParams",
+      "value": {
+        "keyId": "key",
+        "publicKey": [
+          1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1, 1,
+          1, 1, 1, 1, 1, 1, 1, 1, 1
+        ],
+        "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+        "source": "source"
+      }
+    },
+    {
+      "name": "node-source-revoke",
+      "schema": "NodeSourceRevokeParams",
+      "value": {
+        "keyId": "key",
+        "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
+        "source": "source"
+      }
+    },
+    {
       "name": "terminal-gbk",
       "schema": "TerminalSettings",
       "value": {
@@ -10319,6 +11654,35 @@
           "catalogVersion": "1",
           "items": []
         }
+      }
+    },
+    {
+      "name": "query-extension-decimal-result",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "extension",
+        "value": {
+          "epoch": "9007199254740993",
+          "measurement": {
+            "ratio": 1.5
+          }
+        }
+      }
+    },
+    {
+      "name": "query-extension-scalar-result",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "extension",
+        "value": -0.25
+      }
+    },
+    {
+      "name": "query-extension-null-result",
+      "schema": "QueryResult",
+      "value": {
+        "kind": "extension",
+        "value": null
       }
     },
     {
@@ -12524,6 +13888,94 @@
       }
     },
     {
+      "name": "derived-source-range",
+      "schema": "SourceRange",
+      "value": {
+        "byteEnd": "4",
+        "byteStart": "0",
+        "direction": "rx",
+        "eventEnd": "2",
+        "eventStart": "1",
+        "hostId": "host",
+        "sessionEpoch": "2",
+        "sessionId": "session"
+      }
+    },
+    {
+      "name": "derived-publish-params",
+      "schema": "DerivedPublishParams",
+      "value": {
+        "quality": ["complete", "transformed"],
+        "sources": [
+          {
+            "byteEnd": "4",
+            "byteStart": "0",
+            "direction": "rx",
+            "eventEnd": "2",
+            "eventStart": "1",
+            "hostId": "host",
+            "sessionEpoch": "2",
+            "sessionId": "session"
+          }
+        ],
+        "unit": "ms",
+        "value": 42
+      }
+    },
+    {
+      "name": "derived-publish-result",
+      "schema": "DerivedPublishResult",
+      "value": {
+        "operationId": "operation",
+        "position": "1"
+      }
+    },
+    {
+      "name": "derived-read-params",
+      "schema": "DerivedReadParams",
+      "value": {
+        "after": "0",
+        "maxBytes": "16384",
+        "maxSamples": "16",
+        "operationId": "operation"
+      }
+    },
+    {
+      "name": "derived-read-result",
+      "schema": "DerivedReadResult",
+      "value": {
+        "hasMore": false,
+        "instanceEpoch": "7",
+        "nextPosition": "1",
+        "operationId": "operation",
+        "samples": [
+          {
+            "position": "1",
+            "provenance": {
+              "configurationDigest": "abababababababababababababababababababababababababababababababab",
+              "parserId": "plugin.reference.parse",
+              "parserVersion": "1.0.0",
+              "quality": ["complete", "transformed"],
+              "sources": [
+                {
+                  "byteEnd": "4",
+                  "byteStart": "0",
+                  "direction": "rx",
+                  "eventEnd": "2",
+                  "eventStart": "1",
+                  "hostId": "host",
+                  "sessionEpoch": "2",
+                  "sessionId": "session"
+                }
+              ],
+              "unit": "ms"
+            },
+            "value": 42
+          }
+        ]
+      }
+    },
+    {
       "name": "stream-read-result",
       "schema": "StreamReadResult",
       "value": {
@@ -13125,6 +14577,231 @@
         "kind": "closed",
         "value": {
           "closed": true
+        }
+      }
+    },
+    {
+      "name": "worker-memory-sample",
+      "schema": "WorkerMemorySample",
+      "value": {
+        "measuredWorkers": "2",
+        "sampledAt": "2026-11-18T00:00:00Z",
+        "v8HeapUsedBytes": "9007199254740993"
+      }
+    },
+    {
+      "name": "worker-observation",
+      "schema": "WorkerObservation",
+      "value": {
+        "lastMemory": {
+          "measuredWorkers": "2",
+          "sampledAt": "2026-11-18T00:00:00Z",
+          "v8HeapUsedBytes": "9007199254740993"
+        },
+        "liveWorkers": "2",
+        "peakWorkers": "3"
+      }
+    },
+    {
+      "name": "worker-observation-no-sample",
+      "schema": "WorkerObservation",
+      "value": {
+        "liveWorkers": "0",
+        "peakWorkers": "3"
+      }
+    },
+    {
+      "name": "node-metrics",
+      "schema": "NodeMetrics",
+      "value": {
+        "liveWorkers": "2",
+        "peakWorkers": "3",
+        "processId": "1234",
+        "rssBytes": "18446744073709551615",
+        "sampleAgeMs": "25"
+      }
+    },
+    {
+      "name": "node-metrics-no-rss",
+      "schema": "NodeMetrics",
+      "value": {
+        "liveWorkers": "2",
+        "peakWorkers": "3",
+        "processId": "1234",
+        "sampleAgeMs": "25"
+      }
+    },
+    {
+      "name": "operation-worker-observation",
+      "schema": "Operation",
+      "value": {
+        "acceptedAt": "2026-11-07T00:00:00Z",
+        "actionId": "example.terminal.compute",
+        "actorId": "actor",
+        "admission": {
+          "kind": "request",
+          "requestContextDigest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa"
+        },
+        "childHighWatermark": "0",
+        "dependencies": [
+          {
+            "digest": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+            "id": "example.terminal",
+            "version": "1.0.0"
+          }
+        ],
+        "executionHostId": "host",
+        "executionMode": "interactive",
+        "operationId": "op",
+        "owner": {
+          "id": "example.terminal",
+          "kind": "plugin",
+          "version": "1.0.0"
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333",
+        "revealTarget": {
+          "pageId": "workbench"
+        },
+        "revision": "1",
+        "rootOperationId": "op",
+        "startedAt": "2026-11-18T00:00:00Z",
+        "state": "running",
+        "target": {
+          "hostId": "host",
+          "id": "host",
+          "kind": "host"
+        },
+        "workerObservation": {
+          "lastMemory": {
+            "measuredWorkers": "2",
+            "sampledAt": "2026-11-18T00:00:00Z",
+            "v8HeapUsedBytes": "9007199254740993"
+          },
+          "liveWorkers": "2",
+          "peakWorkers": "3"
+        }
+      }
+    },
+    {
+      "name": "host-metrics-without-node",
+      "schema": "HostMetrics",
+      "value": {
+        "captureQueue": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "hostId": "host",
+        "instanceEpoch": "1",
+        "observedAt": "2026-11-18T00:00:00Z",
+        "processId": "123",
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "rssBytes": "4",
+        "rssPeakBytes": "5",
+        "source": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
+    },
+    {
+      "name": "host-metrics-with-node",
+      "schema": "HostMetrics",
+      "value": {
+        "captureQueue": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "hostId": "host",
+        "instanceEpoch": "1",
+        "node": {
+          "liveWorkers": "2",
+          "peakWorkers": "3",
+          "processId": "1234",
+          "rssBytes": "18446744073709551615",
+          "sampleAgeMs": "25"
+        },
+        "observedAt": "2026-11-18T00:00:00Z",
+        "processId": "123",
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "rssBytes": "4",
+        "rssPeakBytes": "5",
+        "source": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
+    },
+    {
+      "name": "derived-memory-metrics",
+      "schema": "DerivedMemoryMetrics",
+      "value": {
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "retained": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        }
+      }
+    },
+    {
+      "name": "host-metrics-with-derived",
+      "schema": "HostMetrics",
+      "value": {
+        "captureQueue": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "derived": {
+          "reader": {
+            "limitBytes": "3",
+            "peakBytes": "2",
+            "usedBytes": "1"
+          },
+          "retained": {
+            "limitBytes": "3",
+            "peakBytes": "2",
+            "usedBytes": "1"
+          }
+        },
+        "hostId": "host",
+        "instanceEpoch": "1",
+        "node": {
+          "liveWorkers": "2",
+          "peakWorkers": "3",
+          "processId": "1234",
+          "rssBytes": "18446744073709551615",
+          "sampleAgeMs": "25"
+        },
+        "observedAt": "2026-11-18T00:00:00Z",
+        "processId": "123",
+        "reader": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
+        },
+        "rssBytes": "4",
+        "rssPeakBytes": "5",
+        "source": {
+          "limitBytes": "3",
+          "peakBytes": "2",
+          "usedBytes": "1"
         }
       }
     }

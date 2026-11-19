@@ -1,5 +1,7 @@
 import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+
+const terminal = process.env.STARTER_E2E_PHASE === "terminal-automated";
 
 if (
   !process.env.STARTER_E2E_BINARY ||
@@ -7,14 +9,22 @@ if (
   !/^\d+$/.test(process.env.STARTER_E2E_PORT ?? "") ||
   Number(process.env.STARTER_E2E_PORT) < 1 ||
   Number(process.env.STARTER_E2E_PORT) > 65535 ||
-  !["fresh", "persisted", "centered", "previews"].includes(
-    process.env.STARTER_E2E_PHASE,
-  )
+  ![
+    "fresh",
+    "persisted",
+    "centered",
+    "previews",
+    "terminal-automated",
+  ].includes(process.env.STARTER_E2E_PHASE) ||
+  (terminal && !isAbsolute(process.env.STARTER_E2E_TERMINAL_DIR ?? ""))
 )
   throw new Error(
     "请通过 pnpm test:e2e --interactive 或 pnpm docs:capture --interactive 运行隔离窗口。",
   );
-const outputDir = resolve("artifacts", "e2e", process.env.STARTER_E2E_PHASE);
+const outputDir = resolve(
+  terminal ? process.env.STARTER_E2E_TERMINAL_DIR : join("artifacts", "e2e"),
+  process.env.STARTER_E2E_PHASE,
+);
 mkdirSync(outputDir, { recursive: true });
 
 export const config = {

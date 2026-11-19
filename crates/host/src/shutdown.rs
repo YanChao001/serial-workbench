@@ -27,6 +27,7 @@ struct ShutdownState {
     operation_read: Option<JoinHandle<HostResult<Vec<Operation>>>>,
     capture: Cleanup,
     devices: Cleanup,
+    node: Cleanup,
     projection: Cleanup,
     checkpoint: Cleanup,
     client_effects: Option<JoinHandle<HostResult<Vec<crate::client_effects::PendingClientEffect>>>>,
@@ -153,6 +154,15 @@ impl Host {
         let mut state = tokio::time::timeout_at(deadline, self.inner.shutdown.state.lock())
             .await
             .map_err(|_| incomplete("Another Host settlement barrier is still running"))?;
+        self.inner
+            .node_packages
+            .request_quiesce(mode == ShutdownMode::CancelAndSettle);
+        if !state.node.complete && state.node.task.is_none() {
+            let manager = self.inner.node_packages.clone();
+            state.node.task = Some(tokio::spawn(
+                async move { manager.shutdown_runtime().await },
+            ));
+        }
         self.observe_owned_jobs(&mut state)?;
         let client_pending = self
             .quiesce_client_effects(&mut state, update, deadline)
@@ -193,7 +203,8 @@ impl Host {
             }
         }
         let mut jobs_complete = false;
-        if tx_complete && state.capture.complete && state.devices.complete {
+        state.node.wait(work_deadline).await;
+        if tx_complete && state.capture.complete && state.devices.complete && state.node.complete {
             loop {
                 self.observe_owned_jobs(&mut state)?;
                 let (finished, pending) = {
@@ -301,7 +312,12 @@ impl Host {
                 });
             }
         }
-        for cleanup in [&state.capture, &state.devices, &state.projection] {
+        for cleanup in [
+            &state.capture,
+            &state.devices,
+            &state.node,
+            &state.projection,
+        ] {
             if let Some(error) = &cleanup.failure {
                 failures.push(error.clone());
             }
@@ -309,6 +325,7 @@ impl Host {
         if !tx_complete
             || !state.capture.complete
             || !state.devices.complete
+            || !state.node.complete
             || !jobs_complete
             || !projection_complete
         {
@@ -362,6 +379,7 @@ impl Host {
             completed: tx_complete
                 && state.capture.complete
                 && state.devices.complete
+                && state.node.complete
                 && jobs_complete
                 && projection_complete
                 && unsettled_operation_ids.is_empty()

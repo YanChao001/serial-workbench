@@ -23,6 +23,7 @@ export type HostNativePort = {
   rawSubscribe: typeof native.hostRawSubscribe;
   rawUnsubscribe: typeof native.hostRawUnsubscribe;
   ack: typeof native.hostDeliveryAck;
+  onCatalogChanged?: typeof native.onHostCatalogChanged;
 };
 export const nativePort: HostNativePort = {
   attachment: native.hostAttachment,
@@ -33,6 +34,7 @@ export const nativePort: HostNativePort = {
   rawSubscribe: native.hostRawSubscribe,
   rawUnsubscribe: native.hostRawUnsubscribe,
   ack: native.hostDeliveryAck,
+  onCatalogChanged: native.onHostCatalogChanged,
 };
 export function abortError(): DOMException {
   return new DOMException("Waiting was aborted", "AbortError");

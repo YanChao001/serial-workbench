@@ -1,16 +1,12 @@
 use super::probe::NodeRuntimeProbeDiagnostics;
-use super::{Control, failure, integrity, open_file, read_descriptor};
+use super::{Control, failure, integrity, macos_supervisor, open_file, read_descriptor};
 use serde::Deserialize;
 use serial_workbench_core::{
     Digest, HostResult, NodePackageTarget, NodeRuntimeFile, NodeRuntimeTarget, U64,
 };
 use sha2::{Digest as _, Sha256};
 use std::{
-    ffi::CString,
-    io,
-    os::unix::{ffi::OsStrExt, process::CommandExt},
-    path::Path,
-    process::{Child, Command},
+    cell::UnsafeCell, ffi::CString, io, os::unix::ffi::OsStrExt, path::Path, process::Command,
 };
 
 #[derive(Debug, Clone, PartialEq, Eq, Deserialize)]
@@ -78,24 +74,22 @@ impl MacRuntimeImage {
         executable
     }
 
-    pub(super) fn configure(&self, command: &mut Command) -> io::Result<()> {
+    pub(super) fn configure(
+        &self,
+        command: &mut Command,
+    ) -> io::Result<macos_supervisor::Prepared> {
         let exec = SuspendedExec::new(command)?;
-        // 所有分配和属性初始化在 fork 前完成。子进程只调用原生 SETEXEC 系统入口。
-        unsafe {
-            command.pre_exec(move || exec.replace());
-        }
-        Ok(())
+        macos_supervisor::Prepared::configure(command, exec)
     }
 
-    pub(super) fn authenticate_and_resume(
+    pub(super) fn authenticate(
         &self,
-        child: &Child,
+        process_id: u32,
         control: &Control<'_>,
         diagnostics: &mut NodeRuntimeProbeDiagnostics,
     ) -> HostResult<()> {
         control.check()?;
-        let pid: libc::pid_t = child
-            .id()
+        let pid: libc::pid_t = process_id
             .try_into()
             .map_err(|_| integrity("processIdentity"))?;
         let mut status: u32 = 0;
@@ -127,11 +121,7 @@ impl MacRuntimeImage {
         {
             return Err(integrity("processSignature"));
         }
-        control.check()?;
-        if unsafe { libc::kill(pid, libc::SIGCONT) } != 0 {
-            return Err(failure("NODE_RUNTIME_START_FAILED", "processResume"));
-        }
-        Ok(())
+        control.check()
     }
 }
 
@@ -144,15 +134,16 @@ unsafe extern "C" {
     ) -> libc::c_int;
 }
 
-struct SuspendedExec {
+pub(super) struct SuspendedExec {
     path: CString,
     _arguments: Vec<CString>,
     _environment: Vec<CString>,
     argument_pointers: Vec<*mut libc::c_char>,
     environment_pointers: Vec<*mut libc::c_char>,
     attributes: libc::posix_spawnattr_t,
+    group_argument: Box<UnsafeCell<[libc::c_char; 11]>>,
 }
-// 指针只引用本对象拥有的稳定 CString；构造后不再修改，原生属性仅以 const 参数读取。
+// 指针引用稳定自有存储；固定PID参数槽仅由fork后的Node子分支写入，父进程不修改。
 unsafe impl Send for SuspendedExec {}
 unsafe impl Sync for SuspendedExec {}
 
@@ -189,13 +180,17 @@ impl SuspendedExec {
         if result != 0 {
             return Err(io::Error::from_raw_os_error(result));
         }
+        let group_argument = Box::new(UnsafeCell::new([0; 11]));
+        let mut argument_pointers: Vec<*mut libc::c_char> = pointers(&arguments);
+        argument_pointers.insert(argument_pointers.len() - 1, group_argument.get().cast());
         let mut value = Self {
-            argument_pointers: pointers(&arguments),
+            argument_pointers,
             environment_pointers: pointers(&environment),
             path,
             _arguments: arguments,
             _environment: environment,
             attributes,
+            group_argument,
         };
         let flags =
             (libc::POSIX_SPAWN_SETEXEC | libc::POSIX_SPAWN_START_SUSPENDED) as libc::c_short;
@@ -206,7 +201,21 @@ impl SuspendedExec {
         Ok(value)
     }
 
-    fn replace(&self) -> io::Result<()> {
+    pub(super) fn replace(&self, group: libc::pid_t) -> io::Result<()> {
+        // 预分配槽写入实际组身份；fork后不格式化、不分配、不调用setenv。
+        let buffer = unsafe { &mut *self.group_argument.get() };
+        let mut number = group as u32;
+        let mut start = 10;
+        loop {
+            start -= 1;
+            buffer[start] = (b'0' + (number % 10) as u8) as libc::c_char;
+            number /= 10;
+            if number == 0 {
+                break;
+            }
+        }
+        buffer.copy_within(start..10, 0);
+        buffer[10 - start] = 0;
         let mut pid = 0;
         let result = unsafe {
             libc::posix_spawn(

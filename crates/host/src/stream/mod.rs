@@ -6,11 +6,12 @@ use std::{
     sync::{Arc, Mutex},
 };
 mod credit;
+mod provenance;
 mod reader;
 mod ring;
 pub use reader::{PreparedRawBatch, RawSubscription};
-pub(crate) use ring::Lease as RawMemoryLease;
-use ring::{Budget, SourceEvent, SourceInner, SourceState};
+pub(crate) use ring::{Budget, Lease as RawMemoryLease};
+use ring::{SourceEvent, SourceInner, SourceState};
 
 #[derive(Clone)]
 pub struct StreamHub {
@@ -320,6 +321,13 @@ pub struct StreamMemory {
 pub struct RawOutputLease {
     _lease: ring::Lease,
 }
+impl RawOutputLease {
+    pub(crate) fn reserve(budget: &Arc<Budget>, bytes: usize) -> HostResult<Self> {
+        Ok(Self {
+            _lease: budget.take(bytes)?,
+        })
+    }
+}
 pub struct PreparedStreamRead {
     result: StreamReadResult,
     lease: RawOutputLease,
@@ -348,9 +356,7 @@ impl StreamHub {
         if bytes > self.inner.limits.reader_bytes {
             return Err(limit());
         }
-        let lease = RawOutputLease {
-            _lease: self.inner.reader_budget.take(bytes)?,
-        };
+        let lease = RawOutputLease::reserve(&self.inner.reader_budget, bytes)?;
         let result = self.read(actor, params, bytes).await?;
         Ok(PreparedStreamRead { result, lease })
     }

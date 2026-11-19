@@ -1,21 +1,10 @@
 # Node runtime 与四目标分发基线
 
-本文保留 2026-11-07 的 runtime 选型与 M2/M3 验收输入，配合 [Node 契约](./node-extension-v0.md)实施。平台目标见[需求](../requirements.md#平台目标)，当前实现和验证结果见[进度](../progress.md)；随包 Node 尚未交付，实施前重新核对来源、许可和目标系统支持。本文的升级仅指新体系版本之间。
+本契约规定随包 Node 的来源、安装布局、自检和升级条件。[资源准备指南](../../resources/runtime/README.md)给出操作命令；[路线与进度](../plan.md#验证基线)区分已过的四目标自检与尚未完成的最低系统、最终安装器和发行验收。
 
 ## 版本与来源
 
-随包 runtime 固定 **Node 26.13.0 LTS（Lithium）**，使用官方预编译归档。开发 Node 由 [`.nvmrc`](../../.nvmrc)指定，pnpm 由 [`package.json`](../../package.json)指定，Rust 由 [`rust-toolchain.toml`](../../rust-toolchain.toml)指定；开发工具的版本和检查成功不能代替随包 runtime 的目标环境验收。终端用户无需安装 Node、npm、pnpm、Rust 或编译器。
-
-四个下载地址与 SHA-256 如下；SHA 来自[该版本官方清单](https://nodejs.org/download/release/v26.13.0/SHASUMS256.txt)，已与[发布说明](https://nodejs.org/en/blog/release/v26.13.0)逐项核对。
-
-| target                     | 官方归档 URL                                                                     | SHA-256                                                            |
-| -------------------------- | -------------------------------------------------------------------------------- | ------------------------------------------------------------------ |
-| `x86_64-pc-windows-msvc`   | <https://nodejs.org/download/release/v26.13.0/node-v26.13.0-win-x64.zip>         | `dcc60d59a0746999f99064a01c020445d54d84228c691cdbf25b49ac3b59150a` |
-| `aarch64-apple-darwin`     | <https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-arm64.tar.gz> | `d38bd5e5a2ddce6bbb5ce45e46e208337da4d51fffe611e567fd32073d6439f6` |
-| `x86_64-apple-darwin`      | <https://nodejs.org/download/release/v26.13.0/node-v26.13.0-darwin-x64.tar.gz>   | `525c9b29bb0263d687de60a4cec0e2a6db876a8eb032369e5795eca71e7c358e` |
-| `x86_64-unknown-linux-gnu` | <https://nodejs.org/download/release/v26.13.0/node-v26.13.0-linux-x64.tar.xz>    | `d28a96af6c38596f6d9d97c0ee531c13d238d757742387d1928de822d959e997` |
-
-M2 获取[签名清单](https://nodejs.org/download/release/v26.13.0/SHASUMS256.txt.asc)，按[上游验签流程](https://github.com/nodejs/node/blob/v26.13.0/README.md#verifying-binaries)使用受信任的 [Node 发布公钥](https://github.com/nodejs/release-keys)验证发布者，再计算所下载归档的 SHA-256，与已验签清单和本表同时比较。记录 keyring 固定版本、公钥指纹、归档 URL、计算值及验签结果。下载失败、签名失败或任一 hash 不同即停止打包；不得改用浮动版本、镜像中的另一文件或系统 Node。
+[机器清单](../../resources/runtime/node-release.json)固定版本、ABI、四个 target、官方 URL、归档与解包内容摘要；开发工具版本另由项目配置决定。用固定公钥核对[签名清单](../../resources/runtime/SHASUMS256.txt.asc)后，再比较下载大小和 SHA-256。任何签名、来源或摘要不符均停止打包，不得改用镜像、浮动版本或系统 Node。终端用户不需要开发工具。
 
 ## 平台目标与静态核对
 
@@ -44,7 +33,7 @@ Windows 安装包的离线验收必须含 WebView2 缺失场景，采用 Tauri �
 
 Node 25 起的官方 Linux 二进制新增 `libatomic` 动态依赖，见 [BUILDING.md 官方二进制说明](https://github.com/nodejs/node/blob/v26.13.0/BUILDING.md#official-binary-platforms-and-toolchains)。M2 采用**私有随包 libatomic**，避免要求离线用户临时联网安装：
 
-1. 从 Ubuntu 22.04 官方仓库的 [amd64 libatomic1](https://packages.ubuntu.com/jammy-updates/libatomic1)选定兼容包，在机器清单锁定完整包版本、仓库签名证据、下载 URL、包/库 SHA-256、源码和许可。M2 已在 [`libatomic-jammy.json`](../../resources/runtime/libatomic-jammy.json) 固定 `12.3.0-1ubuntu1~22.04.3`，取得并核对签名索引、两个 deb、完整对应源码、库字节和实际 copyright，详见[当前进度](../progress.md#m2-task14-当前执行)；动态依赖及真实加载仍待验。不得从开发机任意复制 `.so`。
+1. [机器清单](../../resources/runtime/libatomic-jammy.json)固定 Ubuntu Jammy 的包版本、签名索引、二进制与对应源码、库和许可的摘要。只从已核验的发行材料准备私有库，不从开发机任意复制 `.so`。
 2. 将所需 `libatomic.so.1` 及其真实库文件放入下述 runtime 私有 `lib/`，保留 SONAME 链接、模式和许可；检查 ELF `NEEDED`、符号版本及传递依赖在 Ubuntu 22.04、24.04、Debian 12 均满足。该库许可通常是 GPL-3.0-or-later WITH GCC-exception-3.1，按选中包实际 copyright 核对，提供对应源码及必要补丁/构建信息；不能套用 Node 的 MIT 许可。许可依据见 [GCC libatomic 声明](https://github.com/gcc-mirror/gcc/blob/releases/gcc-11.5.0/libatomic/libatomic_i.h)及 [Runtime Library Exception](https://github.com/gcc-mirror/gcc/blob/releases/gcc-11.5.0/COPYING.RUNTIME)，此版本链接只说明许可结构，未选定库版本。
 3. Host 仅对 Node 子进程指定已核验的私有 libatomic 来源，以封印 fd preload，清理继承的加载注入配置；原安装目录不作为其他系统依赖的通用搜索入口，不更改全局环境或系统库。M2 通过动态加载记录确认真正使用随包库；deb 与 AppImage 都检查，不能依赖打包器自动发现 Node 的依赖。其余系统库和 WebKitGTK 按包依赖/离线部署材料交付。
 4. 启动前验证文件、架构和完整性，运行有超时的 runtime 自检取得版本、架构与 ABI，再启动插件宿主。缺 `libatomic`、glibc/GLIBCXX 版本不符、其他 DLL/库缺失均归入可诊断的依赖错误，报告缺少的组件与对应离线修复包。缺库时插件执行不可用，Rust 基础服务和已存在的原始录制继续；不循环重启、不改用 PATH Node。
@@ -81,7 +70,9 @@ Unix 的只读文件句柄不能阻止替换或原地改写，因此校验后不
 
 macOS 的官方原件经静态核对含 `disable-executable-page-protection`，Intel 目标不能仅以原 CDHASH 保证执行页面，见 [Apple 的签名检查说明](https://developer.apple.com/documentation/technotes/tn3126-inside-code-signing-hashes)。准备器保留原件、原 hash 和完整许可，仅在独立副本上以固定 [entitlements](../../resources/runtime/node-entitlements.plist) 和 `runtime,hard,kill` 收紧 ad hoc 签名，移除关闭页面保护、调试附着及继承 dyld 环境的例外，保留 JIT 与原生模块所需例外；核对实际签名和 entitlements，记录命令、工具身份及签名前后摘要。`runtime/node-image.json` 的目标、来源 hash、准备后大小/hash、CDHASH 和策略摘要通过 `SWB_NODE_RUNTIME_BUILD_IMAGE` 编入同次 Host；磁盘收据本身不能自授权，普通 Cargo 构建未绑定该身份时 Node 保持不可用。
 
-macOS 子进程以原生 `SETEXEC|START_SUSPENDED` 在用户代码运行前暂停，父 owner 用内核 `csops` 的主映像 CDHASH 与本次构建身份核对，要求 VALID/HARD/KILL/RUNTIME，拒绝允许无效代码或调试状态，再恢复运行。身份不符、未知、取消或预算结束时先 kill/wait，保留实际 flags/CDHASH 和退出证据；依据为 [XNU 启动](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exec.c)与 [csops](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c)。两架构实际执行、篡改反例及签名策略的 Node 兼容性均须 CI 验证；正式 Developer ID、公证、安装及最终整套重签顺序继续属于发行矩阵。
+macOS子进程以原生 `SETEXEC|START_SUSPENDED` 在用户代码运行前暂停。可信Host派生的原生监护是Node的直接父进程，Node有独立进程组；Host通过独立管道取得真实Node PID，用内核 `csops` 的主映像 CDHASH 与本次构建身份核对，要求 VALID/HARD/KILL/RUNTIME，拒绝允许无效代码或调试状态，随后仅向监护发送恢复指令。fork后的原生分支不分配、不取锁或运行Rust清理器，重置信号处置及mask；控制EOF、停止或原Host实时父身份变化均结束Node组、wait Node后退出。Host同时wait监护并核对Node原始终态，不能把监护的退出码当Node结果；PID和exitCode继续报告实际Node。身份不符、未知、取消或预算结束时保留实际flags/CDHASH和退出证据；依据为[XNU启动](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_exec.c)、[csops](https://github.com/apple-oss-distributions/xnu/blob/main/bsd/kern/kern_proc.c)及[Rust pre_exec约束](https://doc.rust-lang.org/std/os/unix/process/trait.CommandExt.html#method.pre_exec)。新增监护、两架构实际执行、篡改反例及签名策略的Node兼容性均须CI验证；正式Developer ID、公证、安装及最终整套重签顺序继续属于发行矩阵。
+
+实现保留未reap的直接监护A的PID作为Node组锚。原生观察者B先在A原组内发布PID及内核唯一身份，再自行建立私有组；A确认该屏障后才fork Node，并迁入B组。Host组死亡时A/B仍负责清理；A单独死亡时B结束Node组，整个原生组死亡时由仍持有A锚的Host结束Node组。Host确认Node组清空、B唯一身份连同zombie已回收后，最后wait A；未发布身份的B仍在A原组，其退出由组枚举涵盖。Host的SIGCHLD忽略/SA_NOCLDWAIT策略在启动前拒绝，不修改Host全局策略。最多四条16字节原生记录传送身份、Node PID、原始终态和exec errno；真实启动错误在清理后按稳定code返回，errno仅留私有诊断和日志，不能误报成签名不符。两个原生进程纳入B的RSS验收范围。
 
 | code                              | 含义                                                  |
 | --------------------------------- | ----------------------------------------------------- |
@@ -93,7 +84,7 @@ macOS 子进程以原生 `SETEXEC|START_SUSPENDED` 在用户代码运行前暂�
 | `NODE_RUNTIME_START_TIMEOUT`      | 文件验证或启动自检预算到期                            |
 | `NODE_RUNTIME_INCOMPATIBLE`       | 编译描述、实测版本/ABI 或实际程序身份不符             |
 
-公共错误只含稳定 code、固定说明及 `{component:"nodeRuntime",reason}`，不返回真实路径或原始 loader 输出。原始 stdout/stderr、I/O 错误、PID 与退出证据保留在 Host 私有诊断报告；验收入口写入唯一证据目录。停止前取消使用 `CANCELLED`，输出超限使用 `LIMIT_EXCEEDED`，非法调用参数使用 `INVALID_ARGUMENT`。这是 Host 层基础 API，插件后台监督、三入口和整套发行描述继续由 Task14 后续节点接线。
+公共错误只含稳定 code、固定说明及 `{component:"nodeRuntime",reason}`，不返回真实路径或原始 loader 输出。原始 stdout/stderr、I/O 错误、PID 与退出证据保留在 Host 私有诊断报告；验收入口写入唯一证据目录。停止前取消使用 `CANCELLED`，输出超限使用 `LIMIT_EXCEEDED`，非法调用参数使用 `INVALID_ARGUMENT`。
 
 Linux 构建通过打包器的目录映射收集 runtime，未打包输出使用保留链接的候选目录提交；避免普通资源逐文件复制解引用 SONAME。核对依据为锁定 [Tauri CLI 2.12.3 的复制实现](https://github.com/tauri-apps/tauri/blob/tauri-cli-v2.12.3/crates/tauri-bundler/src/utils/fs_utils.rs)。阶段清单只统计 `runtime/` 命名空间，其他程序和 Cargo 缓存由各自边界验证，不占本组件预算。
 
@@ -116,17 +107,8 @@ M3 升级按[更新与分发](../architecture.md#更新与分发)：下载并验
 
 ## 验收与 M2 实现入口
 
-以下四级分别记录证据。2026-11-07 的 M0 记录仅覆盖上游文字与清单核对；2026-11-15 已重新核对四归档的下载 hash、固定 keyring/签名与原始 Node/完整 LICENSE 字节，并建立 [Rust 权威机器矩阵和离线验签输入](../../resources/runtime/README.md)。Windows 的直接路径探测及其余归档的静态 ABI 不替代以下最低系统、整套离线和安装验收。
-
-| target                     | 上游信息与 SHA 文本核对               | 下载包 hash / GPG 验签  | 最低目标离线运行                   | 安装 / 升级 / 签名         |
-| -------------------------- | ------------------------------------- | ----------------------- | ---------------------------------- | -------------------------- |
-| `x86_64-pc-windows-msvc`   | 2026-11-07 已核对；Win10 EOL 冲突见上 | 2026-11-15 来源准备通过 | 待验                               | NSIS / MSI / ZIP 各待验    |
-| `aarch64-apple-darwin`     | 2026-11-07 已核对                     | 2026-11-15 来源准备通过 | macOS 14 arm64 待验                | app / DMG、签名 / 公证待验 |
-| `x86_64-apple-darwin`      | 2026-11-07 已核对                     | 2026-11-15 来源准备通过 | macOS 14 Intel 待验                | app / DMG、签名 / 公证待验 |
-| `x86_64-unknown-linux-gnu` | 2026-11-07 已核对                     | 2026-11-15 来源准备通过 | Ubuntu 22.04/24.04、Debian 12 待验 | deb / AppImage 各待验      |
+分别核验上游支持与签名材料、目标架构运行与实际加载、最低系统整套断网运行、最终安装/升级/签名。固定来源核验不等于成功启动，构造的安装布局不等于最终安装器。
 
 每个目标均使用没有系统 Node/npm 的断网环境，实际从最终包启动 GUI、独立 Host、CLI/MCP 和至少一个正式随包插件；验证从其他当前目录启动仍使用固定 runtime。负例覆盖错架构、损坏/缺失 runtime、缺少系统依赖、addon ABI 不符，以及录制/插件任务在后台时推迟升级、停止接新任务、结算失败保留旧版和成功整套切换。原生图形界面与浏览器分别记录结果，架构模拟运行不替代本架构验收。
-
-M2 由[推进计划](../plan.md)的 runtime/包加载任务接入机器可读清单、下载验签器、资源映射、许可收集器和自检/故障用例。当前已有 Rust DTO、固定机器矩阵、同源 schema/fixture、实际离线来源校验器及下载/准备/构建接线；Windows 资源准备已有本机自检证据，Host 受控启动、最终四目标布局及整套验收继续实施。清单至少容纳上述版本/target、来源/hash/签名证据、资源路径、系统依赖、ABI、许可、兼容范围和验收收据。M3 接入整套组件升级与签名验收。
 
 实际验收入口沿用[安装与发行验收](../testing.md#安装与发行验收)、[交付检查](../development.md#交付检查)和[桌面边界](../testing.md#桌面边界)，在独立机器/虚拟机或用户安排的前台时段运行。PR/Release 记录版本、commit、target、系统 edition/build、依赖版本、最终包 hash、签名身份/状态、执行步骤、结果和未通过项，据此声明实际可交付范围。

@@ -23,6 +23,7 @@ mod host_bridge;
 mod lifecycle;
 mod media_protocol;
 mod network;
+mod node_view;
 mod platform_settings;
 mod recovery;
 mod redaction;
@@ -164,9 +165,14 @@ pub fn run() {
         app.manage(initialized.recovery);
         app.manage(initialized.client_state);
         app.manage(platform_settings::PlatformSettings::default());
-        app.manage(host_bridge::DesktopHostBridge::new(
-            startup.profile().to_path_buf(),
-        ));
+        let host_events = app.handle().clone();
+        app.manage(
+            host_bridge::DesktopHostBridge::new(startup.profile().to_path_buf())
+                .with_catalog_notifier(move |label, generation, _| {
+                    use tauri::Emitter;
+                    let _ = host_events.emit_to(label, "app://host-catalog-changed", generation);
+                }),
+        );
         app.manage(system);
         system_commands::drain_activations(app.handle());
         app.manage(diagnostics::DiagnosticsState::default());
@@ -248,6 +254,7 @@ pub fn run() {
                 }
             }
             if let tauri::WindowEvent::Destroyed = event {
+                node_view::close_owned_views(window.label(), None);
                 window
                     .app_handle()
                     .state::<lifecycle::LifecycleState>()

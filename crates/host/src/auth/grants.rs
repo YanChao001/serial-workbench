@@ -5,7 +5,7 @@ use serial_workbench_core::*;
 use serial_workbench_ipc::identity::{credential_verifier, random_token, verify_credential};
 use std::{
     collections::BTreeMap,
-    sync::{Arc, Mutex},
+    sync::{Arc, Mutex, MutexGuard, TryLockError},
 };
 
 type GrantSnapshot = (U64, Arc<GrantDocument>);
@@ -20,6 +20,28 @@ pub(crate) struct GrantStamp {
     actor_id: Id,
     revision: U64,
     deadline_ns: Option<u64>,
+    task: Option<Arc<super::TaskAuthority>>,
+    recording: Option<Arc<[RecordingRule; 2]>>,
+}
+
+struct RecordingRule {
+    target: Target,
+    rule: Rule,
+}
+
+impl GrantStamp {
+    fn permits(&self, record: &ClientRecord, now: u64) -> bool {
+        record.actor_id == self.actor_id
+            && self.deadline_ns.is_none_or(|deadline| now < deadline)
+            && (record.grant_revision == self.revision
+                || (record.grant_revision > self.revision
+                    && self.recording.as_ref().is_some_and(|rules| {
+                        rules.iter().all(|bound| {
+                            matching_rule(record, &bound.rule.permission, &bound.target)
+                                == Some(&bound.rule)
+                        })
+                    })))
+    }
 }
 #[derive(Clone)]
 pub struct AuthService {
@@ -31,6 +53,12 @@ pub struct AuthService {
     cached: Arc<Mutex<Option<GrantSnapshot>>>,
     #[cfg(test)]
     document_reads: Arc<std::sync::atomic::AtomicUsize>,
+    #[cfg(test)]
+    pub(crate) commit_ready: crate::node_test_gates::GateSlot,
+    #[cfg(test)]
+    pub(crate) commit_waiting: crate::node_test_gates::GateSlot,
+    #[cfg(test)]
+    pub(crate) revocation_waiting: crate::node_test_gates::GateSlot,
 }
 /// 单次同步验权视图；后续交付或写入必须重新载入当前授权。
 pub(crate) struct AuthorizationSnapshot {
@@ -74,6 +102,8 @@ struct Rule {
     expires_at: Option<Timestamp>,
     epoch: Option<U64>,
     deadline_ns: Option<U64>,
+    #[serde(skip)]
+    changed_at_revision: u64,
 }
 const PERMISSIONS: &[&str] = &[
     "client.window.modify",
@@ -92,6 +122,24 @@ const PERMISSIONS: &[&str] = &[
 const MAX_CLIENT_RULES: usize = 4096;
 const MAX_TOTAL_RULES: usize = 32768;
 impl AuthService {
+    /// 只从Host保存的主体引用恢复现存普通actor；不注册、不签发凭据或复活旧委托。
+    pub(crate) fn restore_actor(
+        &self,
+        reference: &super::ActorReference,
+    ) -> HostResult<AuthenticatedActor> {
+        let (_, document) = self.load()?;
+        let record = document
+            .clients
+            .get(&reference.client_id)
+            .filter(|record| record.actor_id == reference.actor_id)
+            .ok_or_else(denied)?;
+        Ok(AuthenticatedActor::from_verified(
+            reference.actor_id.clone(),
+            reference.client_id.clone(),
+            record.grant_revision,
+            false,
+        ))
+    }
     pub fn new(store: Store, control: ContextToken) -> Self {
         Self::with_clock(
             store,
@@ -109,6 +157,12 @@ impl AuthService {
             cached: Arc::new(Mutex::new(None)),
             #[cfg(test)]
             document_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
+            #[cfg(test)]
+            commit_ready: crate::node_test_gates::GateSlot::default(),
+            #[cfg(test)]
+            commit_waiting: crate::node_test_gates::GateSlot::default(),
+            #[cfg(test)]
+            revocation_waiting: crate::node_test_gates::GateSlot::default(),
         }
     }
     fn load(&self) -> HostResult<GrantSnapshot> {
@@ -131,7 +185,7 @@ impl AuthService {
             }
             DocumentRead::Changed(document) => document,
         };
-        let data: GrantDocument =
+        let mut data: GrantDocument =
             serde_json::from_value(serde_json::to_value(document.value).map_err(|_| corrupt())?)
                 .map_err(|_| corrupt())?;
         if data.format_version != 1.into() {
@@ -140,18 +194,24 @@ impl AuthService {
                 "Unsupported authorization format",
             ));
         }
+        // 从持久文档重载时没有逐规则历史，用当前身份版本使旧录制保守失效。
+        for record in data.clients.values_mut() {
+            for rule in &mut record.rules {
+                rule.changed_at_revision = record.grant_revision.get();
+            }
+        }
         let data = Arc::new(data);
         *cached = Some((document.revision, data.clone()));
         Ok((document.revision, data))
     }
     fn save(&self, revision: U64, document: GrantDocument) -> HostResult<U64> {
+        let mut cached = self.cached.lock().map_err(|_| corrupt())?;
         let count = document
             .clients
             .values()
             .map(|record| record.rules.len())
             .sum::<usize>();
         if count > MAX_TOTAL_RULES {
-            let cached = self.cached.lock().map_err(|_| corrupt())?;
             let previous =
                 cached
                     .as_ref()
@@ -168,12 +228,15 @@ impl AuthService {
                 return Err(limit());
             }
         }
-        let value = serde_json::from_value(serde_json::to_value(document).map_err(|_| corrupt())?)
+        let value = serde_json::from_value(serde_json::to_value(&document).map_err(|_| corrupt())?)
             .map_err(|_| corrupt())?;
-        Ok(self
+        let committed = self
             .store
             .compare_and_swap_document(&document_id(), revision, value)?
-            .revision)
+            .revision;
+        // 与持久提交一起发布快照，读者不会在两者之间重载而丢失活跃规则版本。
+        *cached = Some((committed, Arc::new(document)));
+        Ok(committed)
     }
     pub fn authenticate(
         &self,
@@ -221,6 +284,7 @@ impl AuthService {
                     expires_at: None,
                     epoch: None,
                     deadline_ns: None,
+                    changed_at_revision: 1,
                 }],
             },
         );
@@ -258,7 +322,7 @@ impl AuthService {
         bytes[8] = (bytes[8] & 0x3f) | 0x80;
         Id::try_from(uuid::Uuid::from_bytes(bytes).to_string().as_str())
     }
-    fn require_control(&self, actor: &AuthenticatedActor) -> HostResult<()> {
+    pub(crate) fn require_control(&self, actor: &AuthenticatedActor) -> HostResult<()> {
         if actor.is_user_control() && actor.id() == &self.operator_id()? {
             Ok(())
         } else {
@@ -281,7 +345,8 @@ impl AuthService {
         actor: &AuthenticatedActor,
         identity: HostIdentity,
     ) -> HostResult<AuthorizationSnapshot> {
-        let grants = if actor.is_user_control() {
+        actor.check_task()?;
+        let grants = if actor.has_user_control_identity() {
             if actor.id() != &self.operator_id_for(&identity.host_id)? {
                 return Err(denied());
             }
@@ -336,22 +401,29 @@ impl AuthService {
         Ok(self.snapshot(actor)?.capture_grants())
     }
     pub(crate) fn validate_grants(&self, stamp: &GrantStamp) -> HostResult<()> {
+        if let Some(task) = &stamp.task {
+            (task.check)()?;
+        }
         let (_, document) = self.load()?;
-        let unchanged = document
+        let now = self.clock.mono_ns();
+        if document
             .clients
             .get(&stamp.client_id)
-            .is_some_and(|record| {
-                record.actor_id == stamp.actor_id && record.grant_revision == stamp.revision
-            });
-        if !unchanged
-            || stamp
-                .deadline_ns
-                .is_some_and(|deadline| self.clock.mono_ns() >= deadline)
+            .is_some_and(|record| stamp.permits(record, now))
         {
-            Err(denied())
-        } else {
             Ok(())
+        } else {
+            Err(denied())
         }
+    }
+    pub(crate) fn commit_grant_stamp<T>(
+        &self,
+        stamp: &GrantStamp,
+        commit: impl FnOnce() -> HostResult<T>,
+    ) -> HostResult<T> {
+        let _guard = self.serial.lock().map_err(|_| corrupt())?;
+        self.validate_grants(stamp)?;
+        commit()
     }
     pub fn require(
         &self,
@@ -364,6 +436,42 @@ impl AuthService {
         verify_host(&identity, target)?;
         self.snapshot_with_identity(actor, identity)?
             .require(permission, target)
+    }
+    /// 最终验权与有界同步提交共用授权变更锁；准备和异步工作须在锁外完成。
+    pub(crate) fn commit_authorized<T>(
+        &self,
+        actor: &AuthenticatedActor,
+        permissions: &[String],
+        target: &Target,
+        commit: impl FnOnce() -> HostResult<T>,
+    ) -> HostResult<T> {
+        let _guard = self.serial.lock().map_err(|_| corrupt())?;
+        let authorization = self.snapshot(actor)?;
+        for permission in permissions {
+            authorization.require(permission, target)?;
+        }
+        #[cfg(test)]
+        self.commit_ready.arrive();
+        commit()
+    }
+    /// 管理worker在原预算内等同一锁；只读完整验权闭包保留各资源的真实权限边界。
+    pub(crate) fn try_commit_authorized(
+        &self,
+        authorize: impl FnOnce() -> HostResult<()>,
+    ) -> HostResult<Option<MutexGuard<'_, ()>>> {
+        let guard = match self.serial.try_lock() {
+            Ok(guard) => guard,
+            Err(TryLockError::WouldBlock) => {
+                #[cfg(test)]
+                self.commit_waiting.arrive();
+                return Ok(None);
+            }
+            Err(TryLockError::Poisoned(_)) => return Err(corrupt()),
+        };
+        authorize()?;
+        #[cfg(test)]
+        self.commit_ready.arrive();
+        Ok(Some(guard))
     }
     pub fn authorize(
         &self,
@@ -419,6 +527,7 @@ impl AuthService {
                         expires_at: params.expires_at.clone(),
                         epoch,
                         deadline_ns: deadline,
+                        changed_at_revision: 0,
                     },
                 )?;
             }
@@ -434,6 +543,15 @@ impl AuthService {
     }
     pub fn revoke(&self, actor: &AuthenticatedActor, params: RevokeParams) -> HostResult<U64> {
         self.require_control(actor)?;
+        #[cfg(test)]
+        if self
+            .serial
+            .try_lock()
+            .is_err_and(|error| matches!(error, std::sync::TryLockError::WouldBlock))
+        {
+            // 只观测真实锁竞争；释放屏障后仍执行原阻塞获取和授权写入。
+            self.revocation_waiting.arrive();
+        }
         let _guard = self.serial.lock().map_err(|_| corrupt())?;
         self.validate_scopes(&params.permissions, &params.targets)?;
         let (revision, document) = self.load()?;
@@ -455,6 +573,7 @@ impl AuthService {
                         expires_at: None,
                         epoch: None,
                         deadline_ns: None,
+                        changed_at_revision: 0,
                     },
                 )?;
             }
@@ -514,45 +633,79 @@ impl AuthorizationSnapshot {
             actor_id: self.actor.id().clone(),
             revision: grants.record().grant_revision,
             deadline_ns,
+            task: self.actor.task().cloned(),
+            recording: None,
+        })
+    }
+    pub(crate) fn capture_recording_grants(
+        &self,
+        source: &Target,
+        destination: &Target,
+    ) -> HostResult<GrantStamp> {
+        let grants = self.grants.as_ref().ok_or_else(denied)?;
+        let record = grants.record();
+        let bind = |permission, target: &Target| {
+            self.require(permission, target)?;
+            let rule = matching_rule(record, permission, target).ok_or_else(denied)?;
+            Ok::<_, HostError>(RecordingRule {
+                target: target.clone(),
+                rule: rule.clone(),
+            })
+        };
+        let rules = [
+            bind("content.read", source)?,
+            bind("workspace.modify", destination)?,
+        ];
+        let deadline_ns = rules
+            .iter()
+            .filter_map(|bound| bound.rule.deadline_ns.map(U64::get))
+            .min();
+        Ok(GrantStamp {
+            client_id: self.actor.client_id().clone(),
+            actor_id: self.actor.id().clone(),
+            revision: record.grant_revision,
+            deadline_ns,
+            task: self.actor.task().cloned(),
+            recording: Some(Arc::new(rules)),
         })
     }
     pub(crate) fn validate_grants(&self, stamp: &GrantStamp) -> HostResult<()> {
-        if self.actor.client_id() != &stamp.client_id
-            || self.actor.id() != &stamp.actor_id
-            || self.grant_revision() != stamp.revision
-            || stamp
-                .deadline_ns
-                .is_some_and(|deadline| self.clock.mono_ns() >= deadline)
+        self.actor.check_task()?;
+        if self.actor.client_id() == &stamp.client_id
+            && self
+                .grants
+                .as_ref()
+                .is_some_and(|grants| stamp.permits(grants.record(), self.clock.mono_ns()))
         {
-            Err(denied())
-        } else {
             Ok(())
+        } else {
+            Err(denied())
         }
     }
     pub(crate) fn require(&self, permission: &str, target: &Target) -> HostResult<()> {
         target.validate()?;
         verify_host(&self.identity, target)?;
+        if let Some(task) = self.actor.task() {
+            task.require(permission, target)?;
+        }
         let Some(grants) = &self.grants else {
-            return if ["auth.manage", "metadata.read"].contains(&permission) {
+            return if permission == "metadata.read"
+                || (permission == "auth.manage" && self.actor.is_user_control())
+            {
                 Ok(())
             } else {
                 Err(denied())
             };
         };
         // 最新匹配规则生效；失效的窄规则仍遮蔽更旧的宽授权。
-        for rule in grants.record().rules.iter().rev() {
-            if rule.permission != permission || !scope_matches(&rule.target, target) {
-                continue;
-            }
-            if let Some(deadline) = rule.deadline_ns
-                && (rule.epoch != Some(self.identity.instance_epoch)
-                    || self.clock.mono_ns() >= deadline.get())
-            {
-                return Err(denied());
-            }
-            return if rule.allowed { Ok(()) } else { Err(denied()) };
+        let rule = matching_rule(grants.record(), permission, target).ok_or_else(denied)?;
+        if let Some(deadline) = rule.deadline_ns
+            && (rule.epoch != Some(self.identity.instance_epoch)
+                || self.clock.mono_ns() >= deadline.get())
+        {
+            return Err(denied());
         }
-        Err(denied())
+        if rule.allowed { Ok(()) } else { Err(denied()) }
     }
     pub(crate) fn can_discover(&self, permission: &str, target_kinds: &[ResourceKind]) -> bool {
         let Some(grants) = &self.grants else {
@@ -591,7 +744,18 @@ fn host_target(host_id: Id) -> Target {
 fn scope_matches(scope: &Target, target: &Target) -> bool {
     scope.host_id == target.host_id && (scope.kind.as_str() == "host" || scope == target)
 }
-fn set_rule(record: &mut ClientRecord, rule: Rule) -> HostResult<bool> {
+fn matching_rule<'a>(
+    record: &'a ClientRecord,
+    permission: &str,
+    target: &Target,
+) -> Option<&'a Rule> {
+    record
+        .rules
+        .iter()
+        .rev()
+        .find(|rule| rule.permission == permission && scope_matches(&rule.target, target))
+}
+fn set_rule(record: &mut ClientRecord, mut rule: Rule) -> HostResult<bool> {
     if let Some(index) = record
         .rules
         .iter()
@@ -604,6 +768,7 @@ fn set_rule(record: &mut ClientRecord, rule: Rule) -> HostResult<bool> {
                     || rule.target.kind.as_str() == "host"
                     || later.target == rule.target)
         });
+        rule.changed_at_revision = record.rules[index].changed_at_revision;
         if record.rules[index] == rule && !shadowed {
             return Ok(false);
         }
@@ -614,6 +779,8 @@ fn set_rule(record: &mut ClientRecord, rule: Rule) -> HostResult<bool> {
     if record.rules.len() >= MAX_CLIENT_RULES {
         return Err(limit());
     }
+    // 同一范围撤销后再授予时，已运行的录制也能区分旧规则与新规则。
+    rule.changed_at_revision = record.grant_revision.checked_next()?.get();
     record.rules.push(rule);
     Ok(true)
 }
@@ -665,6 +832,95 @@ mod tests {
             target,
         )
     }
+    #[test]
+    fn recording_binding_cannot_be_reused_after_revoke_and_regrant() {
+        let (_directory, auth, host) = setup();
+        let client = auth.authenticate(&id("recording"), None).unwrap().actor;
+        let control = auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("independent-user-control-secret").unwrap(),
+            )
+            .unwrap();
+        let source = Target {
+            kind: ResourceKind::try_from("session").unwrap(),
+            id: id("source"),
+            session_id: Some(id("source")),
+            session_epoch: Some(1.into()),
+            ..host.clone()
+        };
+        let destination = Target {
+            kind: ResourceKind::try_from("file").unwrap(),
+            id: id("destination"),
+            ..host
+        };
+        for (permission, target) in [
+            ("content.read", &source),
+            ("workspace.modify", &destination),
+        ] {
+            auth.authorize(
+                &control,
+                AuthorizeParams {
+                    client_id: client.client_id().clone(),
+                    permissions: vec![permission.into()],
+                    targets: vec![target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        }
+        for (permission, target) in [
+            ("content.read", &source),
+            ("workspace.modify", &destination),
+        ] {
+            let stamp = auth
+                .snapshot(&client)
+                .unwrap()
+                .capture_recording_grants(&source, &destination)
+                .unwrap();
+            auth.revoke(
+                &control,
+                RevokeParams {
+                    actor_id: client.id().clone(),
+                    permissions: vec![permission.into()],
+                    targets: vec![target.clone()],
+                },
+            )
+            .unwrap();
+            auth.authorize(
+                &control,
+                AuthorizeParams {
+                    client_id: client.client_id().clone(),
+                    permissions: vec![permission.into()],
+                    targets: vec![target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+            auth.require(&client, permission, target).unwrap();
+            assert_eq!(
+                auth.validate_grants(&stamp).unwrap_err().code,
+                "PERMISSION_DENIED"
+            );
+            assert_eq!(
+                auth.snapshot(&client)
+                    .unwrap()
+                    .validate_grants(&stamp)
+                    .unwrap_err()
+                    .code,
+                "PERMISSION_DENIED"
+            );
+        }
+        let saved = auth.store.read_document(&document_id()).unwrap().unwrap();
+        let saved = serde_json::to_value(saved.value).unwrap();
+        let rules = saved["clients"]["recording"]["rules"].as_array().unwrap();
+        assert!(
+            rules
+                .iter()
+                .all(|rule| rule.get("changedAtRevision").is_none())
+        );
+    }
+
     #[test]
     fn unchanged_grants_reuse_authority_but_later_overlapping_rules_still_require_regrant() {
         let (_directory, auth, host) = setup();

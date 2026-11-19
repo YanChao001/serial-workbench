@@ -57,7 +57,10 @@ pub fn drain_activations(app: &tauri::AppHandle) {
 }
 
 pub fn allowed_route(route: &str) -> bool {
-    matches!(route, "/" | "/settings" | "/diagnostics" | "/recovery")
+    matches!(
+        route,
+        "/" | "/settings" | "/diagnostics" | "/recovery" | "/plugins"
+    )
 }
 
 impl SystemState {

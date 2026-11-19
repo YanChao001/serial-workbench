@@ -76,6 +76,9 @@
   border-radius: var(--radius-xl);
   background: var(--studio-surface);
 }
+.plugin-package-row:is(:hover, [aria-expanded="true"]) {
+  background: color-mix(in oklab, var(--foreground) 4%, transparent);
+}
 @media (forced-colors: active) {
   .studio-panel {
     background: Canvas;

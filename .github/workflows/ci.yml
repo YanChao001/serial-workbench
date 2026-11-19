@@ -250,6 +250,42 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           pnpm test:runtime --target '${{ matrix.target }}' --resources 'src-tauri/target/${{ matrix.target }}/release' --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/node-runtime
           cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
+          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1
+          export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
+          pnpm plugin-sdk:fixture
+          export SWB_TEST_NODE_SDK_FIXTURE="$PWD/.cache/plugin-sdk/examples/native-parity.js"
+          cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
+          if [[ "$RUNNER_OS" == "macOS" ]]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi
+          mkdir -p artifacts/reference-terminal artifacts/reference-chart artifacts/reference-automation
+          seed="artifacts/test-reference-package.seed"
+          node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), { flag: "wx", mode: 0o600 })' "$seed"
+          trap 'rm -f -- "$seed"' EXIT
+          cargo build --locked -p serial-workbench-host \
+            --example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation
+          for reference in terminal chart automation; do
+            output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/reference-$reference")"
+            "src-tauri/target/debug/examples/sign_reference_${reference}$suffix" \
+              ".cache/plugin-sdk/examples/reference-$reference/main.js" "$seed" \
+              "$output/reference-$reference.zip" "$reference-reference" ci-acceptance \
+              > "artifacts/reference-$reference/signed-$reference.json"
+          done
+          rm -- "$seed"
+          trap - EXIT
+          export SWB_TEST_SIGNED_TERMINAL_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-terminal/signed-terminal.json")')"
+          export SWB_TEST_SIGNED_CHART_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-chart/signed-chart.json")')"
+          export SWB_TEST_SIGNED_AUTOMATION_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-automation/signed-automation.json")')"
+          installed="$PWD/src-tauri/target/${{ matrix.target }}/release"
+          export SWB_TEST_TERMINAL_HOST_BIN="$installed/serial-workbench-host$suffix"
+          export SWB_TEST_CLI_BIN="$installed/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$installed/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench --lib native_reference_terminal_ -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-terminal/native-reader.log
+          cargo test --locked -p serial-workbench --lib native_chart_samples_exact_rx_from_the_signed_reference_package -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-chart/native-samples.log
+          cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-automation/native-response.log
 
       - name: 保留 runtime 验收收据与原始输出
         if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
@@ -271,6 +307,15 @@ jobs:
             artifacts/node-runtime/**/probe.stdout
             artifacts/node-runtime/**/probe.stderr
             artifacts/node-runtime/**/probe-io.txt
+            artifacts/reference-terminal/reference-terminal.zip
+            artifacts/reference-terminal/signed-terminal.json
+            artifacts/reference-terminal/native-reader.log
+            artifacts/reference-chart/reference-chart.zip
+            artifacts/reference-chart/signed-chart.json
+            artifacts/reference-chart/native-samples.log
+            artifacts/reference-automation/reference-automation.zip
+            artifacts/reference-automation/signed-automation.json
+            artifacts/reference-automation/native-response.log
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
@@ -284,6 +329,9 @@ jobs:
             artifacts/node-runtime
             .cache/node-runtime
             artifacts/rust-failures/node-runtime-*/**
+            artifacts/rust-failures/node-backend-*/**
+            artifacts/rust-failures/host-node-backend-*/**
+            artifacts/rust-failures/macos-node-before-auth-*/**
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7

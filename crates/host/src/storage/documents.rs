@@ -1,5 +1,6 @@
 use rusqlite::{OptionalExtension, TransactionBehavior, params};
-use serial_workbench_core::{HostError, HostResult, Id, JsonObject, U64};
+use serde::{Serialize, de::DeserializeOwned};
+use serial_workbench_core::{HostError, HostResult, Id, JsonObject, SchemaObject, U64};
 
 use super::{
     db::{Database, counter},
@@ -7,13 +8,25 @@ use super::{
 };
 
 #[derive(Debug, Clone, PartialEq)]
-pub struct StoredDocument {
+pub struct StoredDocument<T = JsonObject> {
     pub revision: U64,
-    pub value: JsonObject,
+    pub value: T,
 }
 
 impl Database {
     pub fn read_document(&self, id: &Id) -> HostResult<Option<StoredDocument>> {
+        self.read_document_as(id)
+    }
+    pub(crate) fn read_schema_document(
+        &self,
+        id: &Id,
+    ) -> HostResult<Option<StoredDocument<SchemaObject>>> {
+        self.read_document_as(id)
+    }
+    fn read_document_as<T: DeserializeOwned>(
+        &self,
+        id: &Id,
+    ) -> HostResult<Option<StoredDocument<T>>> {
         let row: Option<(String, String)> = self
             .connection
             .query_row(
@@ -40,6 +53,15 @@ impl Database {
     ) -> HostResult<StoredDocument> {
         self.save_document(id, expected, value, None)
     }
+    pub(crate) fn compare_and_swap_schema_document(
+        &mut self,
+        id: &Id,
+        expected: U64,
+        value: SchemaObject,
+    ) -> HostResult<StoredDocument<SchemaObject>> {
+        let revision = self.save_document_value(id, expected, &value, None, false)?;
+        Ok(StoredDocument { revision, value })
+    }
     pub fn compare_and_swap_workspace(
         &mut self,
         id: &Id,
@@ -56,6 +78,18 @@ impl Database {
         value: JsonObject,
         workspace_id: Option<&Id>,
     ) -> HostResult<StoredDocument> {
+        let archived = matches!(value.get("value"),Some(serial_workbench_core::JsonValue::Object(document)) if document.get("archived") == Some(&serial_workbench_core::JsonValue::Bool(true)));
+        let revision = self.save_document_value(id, expected, &value, workspace_id, archived)?;
+        Ok(StoredDocument { revision, value })
+    }
+    fn save_document_value<T: Serialize>(
+        &mut self,
+        id: &Id,
+        expected: U64,
+        value: &T,
+        workspace_id: Option<&Id>,
+        archived: bool,
+    ) -> HostResult<U64> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
@@ -80,10 +114,9 @@ impl Database {
             ));
         }
         let revision = current.checked_next()?;
-        let json = serde_json::to_string(&value).map_err(|_| unavailable())?;
+        let json = serde_json::to_string(value).map_err(|_| unavailable())?;
         transaction.execute("INSERT INTO documents(id,revision,value_json) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,value_json=excluded.value_json", params![id.as_str(), revision.to_string(), json]).map_err(|_| unavailable())?;
         if let Some(workspace_id) = workspace_id {
-            let archived = matches!(value.get("value"),Some(serial_workbench_core::JsonValue::Object(document)) if document.get("archived") == Some(&serial_workbench_core::JsonValue::Bool(true)));
             if archived {
                 transaction
                     .execute(
@@ -96,7 +129,7 @@ impl Database {
             }
         }
         transaction.commit().map_err(|_| unavailable())?;
-        Ok(StoredDocument { revision, value })
+        Ok(revision)
     }
     pub fn register_workspace(&self, id: &Id, workspace_id: &Id) -> HostResult<()> {
         // 仅登记已经成功读取的持久文档，不让探测未知标识产生空工作区。

@@ -18,6 +18,10 @@ pub(crate) struct DocumentService {
     auth: AuthService,
     projections: ProjectionStore,
     locks: Mutex<HashMap<Id, Weak<Mutex<()>>>>,
+    #[cfg(test)]
+    pub(crate) before_commit: crate::node_test_gates::GateSlot,
+    #[cfg(test)]
+    pub(crate) after_commit: crate::node_test_gates::GateSlot,
 }
 enum Document {
     Settings(SettingsDocumentResult),
@@ -106,6 +110,10 @@ impl DocumentService {
             auth,
             projections,
             locks: Mutex::new(HashMap::new()),
+            #[cfg(test)]
+            before_commit: crate::node_test_gates::GateSlot::default(),
+            #[cfg(test)]
+            after_commit: crate::node_test_gates::GateSlot::default(),
         }
     }
     pub(crate) fn reference(target: &Target) -> HostResult<StateScopeRef> {
@@ -377,25 +385,31 @@ impl DocumentService {
             candidate.event(),
             &state,
         )?;
-        // 等待文档锁后，在唯一持久修改前复查权限与实例代次。
-        for permission in &action.spec().permissions {
-            self.auth.require(actor, permission, &call.target)?;
-        }
-        if self.store.identity()?.instance_epoch != call.instance_epoch {
-            return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
-        }
-        let saved = match candidate {
-            Document::Settings(mut result) => {
-                result.document = SettingsService::new(self.store.clone())
-                    .save(expected, result.document.value)?;
-                Document::Settings(result)
-            }
-            Document::Workspace(mut result) => {
-                result.document = WorkspaceService::new(self.store.clone(), call.target.id.clone())
-                    .save(expected, result.document.value)?;
-                Document::Workspace(result)
-            }
-        };
+        #[cfg(test)]
+        self.before_commit.arrive();
+        // 撤权先提交则拒绝写入；已进入同步CAS的提交完成后，撤权才可返回。
+        let saved =
+            self.auth
+                .commit_authorized(actor, &action.spec().permissions, &call.target, || {
+                    if self.store.identity()?.instance_epoch != call.instance_epoch {
+                        return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
+                    }
+                    Ok(match candidate {
+                        Document::Settings(mut result) => {
+                            result.document = SettingsService::new(self.store.clone())
+                                .save(expected, result.document.value)?;
+                            Document::Settings(result)
+                        }
+                        Document::Workspace(mut result) => {
+                            result.document =
+                                WorkspaceService::new(self.store.clone(), call.target.id.clone())
+                                    .save(expected, result.document.value)?;
+                            Document::Workspace(result)
+                        }
+                    })
+                })?;
+        #[cfg(test)]
+        self.after_commit.arrive();
         let error = self.projections.commit(&saved.reference().scope_id, saved.event(), state.clone(), state).err().map(|mut error| {
             error.message = "Document persisted, but projection publication failed; read the document to recover".into();
             error.details = Some(Box::new([("documentPersisted".into(), JsonValue::Bool(true))].into()));

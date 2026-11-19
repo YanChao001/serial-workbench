@@ -6,19 +6,10 @@ use super::{
 use crate::storage::Store;
 use ed25519_dalek::VerifyingKey;
 use serde::{Deserialize, Serialize};
+pub use serial_workbench_core::NodePackageSourceKey;
 use serial_workbench_core::{Digest, HostError, HostResult, Id, U64};
 use sha2::{Digest as _, Sha256};
 use std::{collections::BTreeSet, sync::atomic::AtomicBool};
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct NodePackageSourceKey {
-    pub source: Id,
-    pub key_id: Id,
-    pub public_key: [u8; 32],
-    pub public_key_sha256: Digest,
-    pub approved: bool,
-}
 
 #[derive(Debug, Clone, PartialEq, Eq)]
 pub struct NodePackageSourceSnapshot {
@@ -93,6 +84,17 @@ impl NodePackageSources {
         public_key: [u8; 32],
         expected_revision: U64,
     ) -> HostResult<NodePackageSourceSnapshot> {
+        self.approve_key_authorized(source, key_id, public_key, expected_revision, || Ok(()))
+    }
+
+    pub(crate) fn approve_key_authorized<G>(
+        &self,
+        source: Id,
+        key_id: Id,
+        public_key: [u8; 32],
+        expected_revision: U64,
+        authorize: impl FnMut() -> HostResult<G>,
+    ) -> HostResult<NodePackageSourceSnapshot> {
         validate_key(&public_key)?;
         let (revision, mut document) = self.load()?;
         if revision != expected_revision {
@@ -117,7 +119,7 @@ impl NodePackageSources {
                 approved: true,
             });
         }
-        self.save(revision, document)
+        self.save(revision, document, authorize)
     }
 
     /// 撤销只关闭当前认可，保留公钥历史；运行中 owner 的停止由管理器协调。
@@ -126,6 +128,16 @@ impl NodePackageSources {
         source: &Id,
         key_id: &Id,
         expected_revision: U64,
+    ) -> HostResult<NodePackageSourceSnapshot> {
+        self.revoke_key_authorized(source, key_id, expected_revision, || Ok(()))
+    }
+
+    pub(crate) fn revoke_key_authorized<G>(
+        &self,
+        source: &Id,
+        key_id: &Id,
+        expected_revision: U64,
+        authorize: impl FnMut() -> HostResult<G>,
     ) -> HostResult<NodePackageSourceSnapshot> {
         let (revision, mut document) = self.load()?;
         if revision != expected_revision {
@@ -141,19 +153,21 @@ impl NodePackageSources {
         if !found {
             return Err(failure("NOT_FOUND", "sourceKeyUnknown"));
         }
-        self.save(revision, document)
+        self.save(revision, document, authorize)
     }
 
-    fn save(
+    fn save<G>(
         &self,
         revision: U64,
         document: SourceDocument,
+        mut authorize: impl FnMut() -> HostResult<G>,
     ) -> HostResult<NodePackageSourceSnapshot> {
         let raw = serde_json::to_vec(&document).map_err(|_| corrupt())?;
         if raw.len() > 1024 * 1024 {
             return Err(failure("LIMIT_EXCEEDED", "sourceTrustBytes"));
         }
         let value = serde_json::from_slice(&raw).map_err(|_| corrupt())?;
+        let _authority = authorize()?;
         let saved = self
             .store
             .compare_and_swap_document(&document_id(), revision, value)?;

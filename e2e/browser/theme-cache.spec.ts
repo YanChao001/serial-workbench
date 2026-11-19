@@ -1,6 +1,6 @@
+import { appConfig } from "./json-fixtures";
 import { seedBrowserSettings } from "./browser-settings.fixture";
 import { expect, test } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 
 test("另一个标签页的主题缓存不会覆盖当前偏好或引发主题反复切换", async ({
   page,

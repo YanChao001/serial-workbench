@@ -20,11 +20,44 @@ import {
 } from "../scripts/build-lib.mjs";
 import { fileSha256 } from "../scripts/artifact-lib.mjs";
 import { COMPONENTS } from "../scripts/components-build.mjs";
+import { buildNodeRuntime } from "../scripts/node-runtime-build.mjs";
+import {
+  inspectNodeRuntimeLayout,
+  stageNodeRuntime,
+} from "../scripts/node-runtime-layout.mjs";
 
 const require = createRequire(import.meta.url);
 export const root = resolve(import.meta.dirname, "..");
 const targetDirectory = join(root, "src-tauri", "target", "e2e");
 const receiptPath = join(targetDirectory, "build.json");
+const TERMINAL_TOOLS = ["sign_reference_terminal", "terminal_capture_check"];
+
+function binaryPath(output, target, name) {
+  return join(output, `${name}${target.includes("-windows-") ? ".exe" : ""}`);
+}
+
+function binaryReceipts(names, output, target) {
+  return names.map((name) => {
+    const path = binaryPath(output, target, name);
+    return { name, path, sha256: fileSha256(path) };
+  });
+}
+
+function binariesMatch(receipts, names, output, target) {
+  return (
+    Array.isArray(receipts) &&
+    receipts.length === names.length &&
+    names.every((name) => {
+      const entry = receipts.find((item) => item?.name === name);
+      const path = binaryPath(output, target, name);
+      return (
+        entry?.path === path &&
+        existsSync(path) &&
+        fileSha256(path) === entry.sha256
+      );
+    })
+  );
+}
 
 export function e2eSourceIdentity(projectRoot = root) {
   const gitlinks = new Map(
@@ -94,7 +127,11 @@ function runBuild(command, args, env) {
   });
 }
 
-export function e2eBuildArgs(target, packageName) {
+export function e2eBuildArgs(
+  target,
+  packageName,
+  { withNodeRuntime = false } = {},
+) {
   return [
     "build",
     "--debug",
@@ -111,6 +148,9 @@ export function e2eBuildArgs(target, packageName) {
     packageName,
     // Tauri CLI 已提供 --bins，透传部分只补同图构建的相邻包。
     ...COMPONENTS.flatMap((name) => ["--package", name]),
+    ...(withNodeRuntime
+      ? TERMINAL_TOOLS.flatMap((name) => ["--example", name])
+      : []),
   ];
 }
 
@@ -141,7 +181,7 @@ export function e2eExecutable(projectRoot, target, pkg) {
   );
 }
 
-export async function buildE2E() {
+export async function buildE2E({ withNodeRuntime = false } = {}) {
   const env = { ...buildEnvironment(), CARGO_TARGET_DIR: targetDirectory };
   const source = e2eSourceIdentity();
   const host = execFileSync("rustc", ["-vV"], {
@@ -172,26 +212,36 @@ export async function buildE2E() {
   );
   if (!pkg) throw new Error("未找到应用 Cargo package");
   const executable = e2eExecutable(root, host, pkg);
-  // 四个入口在同一 Cargo 特性图构建，避免分两轮编译共享包。
+  const output = dirname(executable);
+  const runtimePlan = { root, target: host, env, metadata };
+  const runtime = withNodeRuntime ? await buildNodeRuntime(runtimePlan) : null;
+  if (runtime) {
+    delete env.SWB_NODE_RUNTIME_BUILD_IMAGE;
+    if (runtime.imageBinding)
+      env.SWB_NODE_RUNTIME_BUILD_IMAGE = runtime.imageBinding;
+  }
+  // 桌面入口和签名场景共用一个 Cargo 特性图，避免重新编译 Host 依赖。
   await runBuild(
     process.execPath,
     [
       require.resolve("@tauri-apps/cli/tauri.js"),
-      ...e2eBuildArgs(host, pkg.name),
+      ...e2eBuildArgs(host, pkg.name, { withNodeRuntime }),
     ],
     env,
   );
   if (!existsSync(executable))
     throw new Error(`测试主程序不存在：${executable}`);
+  let nodeRuntime;
+  if (runtime) {
+    stageNodeRuntime(runtimePlan, runtime, output);
+    nodeRuntime = inspectNodeRuntimeLayout(runtimePlan, output);
+  }
   if (source !== e2eSourceIdentity())
     throw new Error("E2E source changed during build; rebuild the candidate");
-  const components = COMPONENTS.map((name) => {
-    const path = join(
-      dirname(executable),
-      `${name}${host.includes("-windows-") ? ".exe" : ""}`,
-    );
-    return { name, path, sha256: fileSha256(path) };
-  });
+  const components = binaryReceipts(COMPONENTS, output, host);
+  const terminalTools = runtime
+    ? binaryReceipts(TERMINAL_TOOLS, join(output, "examples"), host)
+    : undefined;
   mkdirSync(targetDirectory, { recursive: true });
   writeFileSync(
     receiptPath,
@@ -203,6 +253,8 @@ export async function buildE2E() {
         target: host,
         sha256: fileSha256(executable),
         components,
+        nodeRuntime,
+        terminalTools,
       },
       null,
       2,
@@ -211,7 +263,10 @@ export async function buildE2E() {
   return executable;
 }
 
-export function readE2EBuildReceipt(projectRoot = root) {
+export function readE2EBuildReceipt(
+  projectRoot = root,
+  { withNodeRuntime = false } = {},
+) {
   const targetRoot = join(projectRoot, "src-tauri", "target", "e2e");
   const path = join(targetRoot, "build.json");
   if (!existsSync(path))
@@ -228,22 +283,37 @@ export function readE2EBuildReceipt(projectRoot = root) {
     typeof receipt.executable !== "string" ||
     resolve(receipt.executable, "..") !== expected ||
     fileSha256(receipt.executable) !== receipt.sha256 ||
-    !Array.isArray(receipt.components) ||
-    receipt.components.length !== COMPONENTS.length ||
-    !COMPONENTS.every((name) => {
-      const component = receipt.components.find((item) => item.name === name);
-      const path = join(
-        expected,
-        `${name}${receipt.target.includes("-windows-") ? ".exe" : ""}`,
-      );
-      return (
-        component?.path === path &&
-        existsSync(path) &&
-        fileSha256(path) === component.sha256
-      );
-    })
+    !binariesMatch(receipt.components, COMPONENTS, expected, receipt.target)
   )
     throw new Error("E2E 构建收据失效，请重新运行 pnpm e2e:build。");
+  if (withNodeRuntime && !receipt.nodeRuntime)
+    throw new Error("请先运行 pnpm e2e:build --with-node-runtime。");
+  if (receipt.nodeRuntime !== undefined) {
+    if (
+      !binariesMatch(
+        receipt.terminalTools,
+        TERMINAL_TOOLS,
+        join(expected, "examples"),
+        receipt.target,
+      )
+    )
+      throw new Error(
+        "E2E 终端验收工具收据失效，请重新运行 pnpm e2e:build --with-node-runtime。",
+      );
+    const plan = { root: projectRoot, target: receipt.target };
+    try {
+      if (
+        JSON.stringify(receipt.nodeRuntime) !==
+        JSON.stringify(inspectNodeRuntimeLayout(plan, expected))
+      )
+        throw new Error("Runtime layout hash, file mode or link changed");
+    } catch (error) {
+      throw new Error(
+        "E2E 固定 Node 收据失效，请重新运行 pnpm e2e:build --with-node-runtime。",
+        { cause: error },
+      );
+    }
+  }
   return receipt;
 }
 
@@ -256,7 +326,15 @@ if (
   import.meta.url === pathToFileURL(resolve(process.argv[1])).href
 ) {
   try {
-    console.log(`E2E executable: ${await buildE2E()}`);
+    const args = process.argv.slice(2);
+    if (
+      args.length > 1 ||
+      (args.length === 1 && args[0] !== "--with-node-runtime")
+    )
+      throw new Error("Usage: pnpm e2e:build [--with-node-runtime].");
+    console.log(
+      `E2E executable: ${await buildE2E({ withNodeRuntime: args.length === 1 })}`,
+    );
   } catch (error) {
     console.error(error.message);
     process.exitCode = 1;
