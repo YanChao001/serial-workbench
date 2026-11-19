@@ -61,6 +61,7 @@ internal static class TerminalPickerWindow
     [DllImport("user32.dll")] private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
+    [DllImport("user32.dll")] private static extern bool IsChild(IntPtr parent, IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
     [DllImport("user32.dll")] private static extern int GetDlgCtrlID(IntPtr window);
     [DllImport("user32.dll", CharSet = CharSet.Unicode)]
@@ -69,8 +70,6 @@ internal static class TerminalPickerWindow
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumerateWindow callback, IntPtr extra);
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern IntPtr ReadText(IntPtr window, uint message, UIntPtr size, StringBuilder value, uint flags, uint timeout, out UIntPtr result);
-    [DllImport("user32.dll", EntryPoint = "PostMessageW", ExactSpelling = true)]
-    private static extern bool PostMessage(IntPtr window, uint message, IntPtr parameter, IntPtr extra);
 
     private static int Main(string[] args)
     {
@@ -241,13 +240,19 @@ internal static class TerminalPickerWindow
             ? "" : actual.ToString();
     }
 
-    private static bool HasFocus(IntPtr dialog, IntPtr edit)
+    private static IntPtr FocusedControl(IntPtr dialog)
     {
         uint pid;
         uint thread = GetWindowThreadProcessId(dialog, out pid);
         var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
-        return GetForegroundWindow() == dialog && thread != 0 && GetGUIThreadInfo(thread, ref info) &&
-            info.Active == dialog && info.Focus == edit;
+        return GetForegroundWindow() == dialog && thread != 0 && GetGUIThreadInfo(thread, ref info)
+            ? info.Focus : IntPtr.Zero;
+    }
+
+    private static bool HasFocus(IntPtr dialog, IntPtr edit)
+    {
+        IntPtr focus = FocusedControl(dialog);
+        return focus == edit || (WindowClass(focus) == "ComboBox" && IsChild(dialog, focus) && IsChild(focus, edit));
     }
 
     private static Input Key(ushort key, ushort scanCode, uint flags)
@@ -269,15 +274,21 @@ internal static class TerminalPickerWindow
     {
         if (!HasFocus(dialog, edit))
         {
-            const uint focusDialogControl = 0x0028;
-            if (!PostMessage(dialog, focusDialogControl, edit, new IntPtr(1)))
-                throw new InvalidOperationException("Could not queue focus for the filename edit.");
+            if (GetForegroundWindow() != dialog)
+                throw new InvalidOperationException("The owned dialog lost foreground focus before selecting its filename field.");
+            const ushort alt = 0x12;
+            // 英文系统文件对话框用 Alt+N 聚焦文件名控件。
+            SendKeys(new[] { Key(alt, 0, 0), Key('N', 0, 0), Key('N', 0, KeyUp), Key(alt, 0, KeyUp) });
             var focus = Stopwatch.StartNew();
             while (!HasFocus(dialog, edit) && GetForegroundWindow() == dialog && focus.Elapsed.TotalSeconds < 2)
                 Thread.Sleep(50);
         }
         if (!HasFocus(dialog, edit))
-            throw new InvalidOperationException("The filename edit did not receive keyboard focus.");
+        {
+            IntPtr focused = FocusedControl(dialog);
+            throw new InvalidOperationException("The filename edit did not receive keyboard focus. Focus class=" +
+                WindowClass(focused) + "; control ID=" + GetDlgCtrlID(focused));
+        }
 
         const ushort control = 0x11;
         var inputs = new List<Input>(4 + path.Length * 2) {

@@ -23,6 +23,7 @@ import type {
   WorkspaceDocumentResult,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
+import { bytesToBase64 } from "@/lib/base64";
 import type { HostConnection } from "@/lib/host-client";
 import { confirmProjectionHost, HostProjectionError } from "@/lib/host-client";
 import { abortError, waitForHost } from "@/lib/host-native-transport";
@@ -1284,14 +1285,12 @@ export function createHostWorkspace(
       );
     if (session.readOnly)
       throw failure("PERMISSION_DENIED", "Session is read only");
-    let binary = "";
-    for (const byte of bytes) binary += String.fromCharCode(byte);
     return invoke(
       {
         actionId: "session.tx",
         target: { ...target },
         params: {
-          bytesBase64: btoa(binary),
+          bytesBase64: bytesToBase64(bytes),
           writeWaitMs: writeWaitMs ?? session.configuration.writeWaitMs,
         },
         executionMode: "interactive",

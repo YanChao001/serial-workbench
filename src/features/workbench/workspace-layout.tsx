@@ -25,6 +25,7 @@ import type {
   HostContextValue,
 } from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
+import { bytesToBase64 } from "@/lib/base64";
 import { nativeErrorCode } from "@/lib/native-error";
 import type { UserLogInput, UserLogModule } from "@/lib/user-log";
 import type { ConnectionConfigurations } from "@/lib/client-connection-defaults";
@@ -1338,11 +1339,7 @@ export function WorkspaceLayout({
           actionId: "session.tx",
           target,
           params: {
-            bytesBase64: btoa(
-              Array.from(checkBytes, (byte) => String.fromCharCode(byte)).join(
-                "",
-              ),
-            ),
+            bytesBase64: bytesToBase64(checkBytes),
             writeWaitMs: checkedWriteWaitMs,
           },
         });
