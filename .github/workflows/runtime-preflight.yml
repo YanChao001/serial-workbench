@@ -48,10 +48,11 @@ jobs:
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
           const suite = process.env.RUNTIME_SUITE;
-          if (!['all', 'host-ipc', 'macos-signature', 'linux-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (!['all', 'host-ipc', 'macos-signature', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
           if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
           if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
           if (suite === 'linux-offline-installer' && requested !== 'x86_64-unknown-linux-gnu') throw new Error('The offline Debian installer suite requires Linux x64');
+          if (suite === 'macos-offline-installer' && !requested.endsWith('-apple-darwin')) throw new Error('The offline disk image suite requires macOS');
           const include = Object.entries(platforms)
             .filter(([target]) => requested === 'all' || requested === target)
             .map(([target, platform]) => {
@@ -65,7 +66,7 @@ jobs:
     name: 运行时预检（${{ matrix.target }}）
     needs: plan
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: ${{ inputs.suite == 'linux-offline-installer' && 50 || 25 }}
+    timeout-minutes: ${{ endsWith(inputs.suite, '-offline-installer') && 50 || 25 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -100,13 +101,16 @@ jobs:
           if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
           gpgv --version
       - name: 验签并准备固定原生运行时
-        if: inputs.suite != 'linux-offline-installer'
+        if: ${{ !endsWith(inputs.suite, '-offline-installer') }}
         run: node scripts/ci-prepare-node-runtime.mjs
       - name: 验证 Debian 实际离线安装与参考包
         if: inputs.suite == 'linux-offline-installer'
         run: |
           bash scripts/ci-linux-deps.sh rust
           bash scripts/ci-linux-offline-installer.sh
+      - name: 验证 macOS DMG 实际离线安装与参考包
+        if: inputs.suite == 'macos-offline-installer'
+        run: bash scripts/ci-macos-offline-installer.sh
       - name: 构建运行时探针、CLI 与 MCP
         if: inputs.suite == 'all'
         run: >-
@@ -167,6 +171,7 @@ jobs:
             artifacts/runtime-preflight/**/probe-io.txt
             artifacts/offline-installer/*.log
             artifacts/offline-installer/*.txt
+            artifacts/offline-installer/*.sb
             artifacts/offline-installer/components.json
             artifacts/offline-installer/reference-*/signed-*.json
             .cache/node-runtime/layouts/**/runtime-preparation.json
@@ -178,7 +183,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: 保留 runtime 失败夹具与来源现场
-        if: failure() && inputs.suite != 'linux-offline-installer'
+        if: failure() && !endsWith(inputs.suite, '-offline-installer')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-preflight-failures-${{ matrix.target }}

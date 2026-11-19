@@ -316,6 +316,7 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     ["定向验证 Host 管道和自动恢复", "host-ipc"],
     ["定向验证 macOS 进程签名", "macos-signature"],
     ["验证 Debian 实际离线安装与参考包", "linux-offline-installer"],
+    ["验证 macOS DMG 实际离线安装与参考包", "macos-offline-installer"],
   ]) {
     assert.ok(
       runtime.includes(
@@ -374,6 +375,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     ["aarch64-apple-darwin", "host-ipc", "macos-15"],
     ["x86_64-apple-darwin", "macos-signature", "macos-15-intel"],
     ["x86_64-unknown-linux-gnu", "linux-offline-installer", "ubuntu-22.04"],
+    ["aarch64-apple-darwin", "macos-offline-installer", "macos-15"],
   ]) {
     const one = run(target, "false", suite);
     assert.equal(one.result.status, 0, one.result.stderr);
@@ -393,6 +395,12 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
       "false",
       "linux-offline-installer",
       /requires Linux x64/,
+    ],
+    [
+      "x86_64-pc-windows-msvc",
+      "false",
+      "macos-offline-installer",
+      /requires macOS/,
     ],
   ]) {
     const { result } = run(target, conflict, suite);

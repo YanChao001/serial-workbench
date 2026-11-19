@@ -15,7 +15,7 @@ on:
         default: false
         required: true
       runtime_preflight:
-        description: 仅验证固定运行时来源、原生启动与故障，不作为里程碑验收
+        description: 定向验证固定运行时或离线安装，不作为里程碑验收
         type: boolean
         default: false
         required: true
@@ -39,6 +39,7 @@ on:
           - host-ipc
           - macos-signature
           - linux-offline-installer
+          - macos-offline-installer
         required: true
       native_preflight_target:
         description: 原生预检目标；完整四目标模式不使用此选项
