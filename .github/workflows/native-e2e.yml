@@ -87,10 +87,11 @@ jobs:
 
       - name: 桌面 E2E（Windows / macOS）
         if: runner.os != 'Linux'
-        shell: bash
-        run: |
-          pnpm test:e2e --interactive --skip-build
-          pnpm test:e2e --interactive --skip-build --terminal-automated
+        run: pnpm test:e2e --interactive --skip-build
+
+      - name: 签名终端与文件选择夹具（Windows / macOS）
+        if: runner.os != 'Linux' && !(runner.os == 'Windows' && inputs.native_file_dialogs)
+        run: pnpm test:e2e --interactive --skip-build --terminal-automated
 
       - name: Windows 实际文件对话框与焦点
         if: runner.os == 'Windows' && inputs.native_file_dialogs
