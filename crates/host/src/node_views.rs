@@ -1,4 +1,4 @@
-//! 视图读取以实际完成的打开动作和当前 Node 登记为依据。
+//! 视图读取以实际打开动作和当前 Node 登记为依据。
 use super::*;
 use crate::{node_backend::RegisteredHandler, node_packages::ui_assets::VerifiedUiAssets};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
@@ -42,7 +42,10 @@ impl Host {
         self.inner
             .auth
             .require(actor, "metadata.read", &operation.target)?;
-        if operation.state != OperationState::Succeeded || operation.owner.kind != OwnerKind::Plugin
+        if !matches!(
+            operation.state,
+            OperationState::Running | OperationState::Succeeded
+        ) || operation.owner.kind != OwnerKind::Plugin
         {
             return Err(HostError::new(
                 "UNSUPPORTED_CAPABILITY",
@@ -73,6 +76,14 @@ impl Host {
                 "Plugin view is not registered for this action",
             )
         })?;
+        if operation.state == OperationState::Running
+            && view.feed != Some(NodePackageViewFeed::Derived)
+        {
+            return Err(HostError::new(
+                "UNSUPPORTED_CAPABILITY",
+                "Operation did not open a plugin view",
+            ));
+        }
         let access = ViewAccess {
             _permit: permit,
             target: operation.target,

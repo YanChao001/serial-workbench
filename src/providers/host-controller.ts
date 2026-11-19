@@ -1173,7 +1173,11 @@ export function createHostWorkspace(
     if (result.kind !== "replay_read") throw new ContractValidationError();
     return result.value;
   }
-  async function waitForOperation(operation: Operation, signal?: AbortSignal) {
+  async function waitForOperation(
+    operation: Operation,
+    signal?: AbortSignal,
+    until: "running" | "succeeded" = "succeeded",
+  ) {
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
       : lifetime.signal;
@@ -1184,7 +1188,10 @@ export function createHostWorkspace(
       operation.target.hostId !== connection.attachment.hostId
     )
       throw new ContractValidationError("Operation belongs to another Host");
-    while (!terminalStates.has(operation.state)) {
+    while (
+      !terminalStates.has(operation.state) &&
+      !(until === "running" && operation.state === "running")
+    ) {
       await pause(50, waiting);
       const result = await connection.client.query(
         connection.buildQuery("operation.get", connection.hostTarget, {
@@ -1204,7 +1211,10 @@ export function createHostWorkspace(
       operation = result.value.operation;
       updateOperation(operation);
     }
-    if (operation.error || operation.state !== "succeeded") {
+    if (
+      operation.error ||
+      (operation.state !== "succeeded" && operation.state !== until)
+    ) {
       const error = operation.error
         ? new HostRequestError(operation.error)
         : failure("OPERATION_ABORTED", "Operation did not succeed");

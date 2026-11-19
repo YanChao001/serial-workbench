@@ -41,9 +41,7 @@ export function PluginViewLauncher({
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<unknown>(null);
   const pending = useRef<AbortController | null>(null);
-  const completedFeed = useRef<{ key: string; operationId: string } | null>(
-    null,
-  );
+  const derivedFeed = useRef<{ key: string; operationId: string } | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
 
   const available = views.filter((view) =>
@@ -76,8 +74,8 @@ export function PluginViewLauncher({
         : null;
     try {
       let operationId =
-        feedKey && completedFeed.current?.key === feedKey
-          ? completedFeed.current.operationId
+        feedKey && derivedFeed.current?.key === feedKey
+          ? derivedFeed.current.operationId
           : null;
       if (!operationId) {
         const accepted = await invoke(
@@ -95,7 +93,11 @@ export function PluginViewLauncher({
           },
           owner.signal,
         );
-        const operation = await waitForOperation(accepted, owner.signal);
+        const operation = await waitForOperation(
+          accepted,
+          owner.signal,
+          feedKey ? "running" : "succeeded",
+        );
         owner.signal.throwIfAborted();
         if (
           !operation.dependencies?.some(
@@ -106,7 +108,7 @@ export function PluginViewLauncher({
             "Plugin archive changed while opening a view",
           );
         operationId = operation.operationId;
-        if (feedKey) completedFeed.current = { key: feedKey, operationId };
+        if (feedKey) derivedFeed.current = { key: feedKey, operationId };
       }
       const opened = await hostOpenNodeView(
         connection.generation,
@@ -117,8 +119,8 @@ export function PluginViewLauncher({
       );
       if (owner.signal.aborted) await hostCloseNodeView(opened);
     } catch (reason) {
-      if (feedKey && completedFeed.current?.key === feedKey)
-        completedFeed.current = null;
+      if (feedKey && derivedFeed.current?.key === feedKey)
+        derivedFeed.current = null;
       if (!owner.signal.aborted) setError(reason);
     } finally {
       pending.current = null;

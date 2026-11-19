@@ -2422,6 +2422,24 @@ it("attaches verified terminal operation identity while preserving its HostReque
   }
 });
 
+it("allows a derived view to proceed once its operation starts", async () => {
+  const connection = await createHostConnection(port());
+  const initial = workspaceOperation(workspaceFixture(), "queued");
+  const running = { ...initial, state: "running" as const };
+  vi.spyOn(connection.client, "query").mockResolvedValue({
+    kind: "operation",
+    value: { operation: running },
+  });
+  const workspace = createHostWorkspace(connection);
+  try {
+    await expect(
+      workspace.waitForOperation(initial, undefined, "running"),
+    ).resolves.toEqual(running);
+  } finally {
+    workspace.dispose();
+  }
+});
+
 it("keeps an operation-wait RPC failure free of terminal operation identity", async () => {
   const connection = await createHostConnection(port());
   const rpcError = new HostRequestError({

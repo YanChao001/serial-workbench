@@ -25,24 +25,49 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         };
         let sampling = invoke(&bridge, business, &session, SAMPLE,
             json!({"startEventSeq":"1","sampleCount":3}), ExecutionMode::Independent).await;
+        use crate::node_view::test_support::TestDerivedView;
+        timeout(Duration::from_secs(8), async {
+            loop {
+                let snapshot = operation_snapshot(&bridge, business, &sampling.operation_id).await;
+                if snapshot.state == OperationState::Running { break; }
+                assert!(!snapshot.state.is_terminal(), "{snapshot:?}");
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }).await.expect("The chart did not start sampling");
+        let mut live_view = TestDerivedView::open(&bridge, desktop.generation, sampling.operation_id.clone()).await;
+        assert!(live_view.next().await.unwrap().is_null(), "The view must wait before the first sample exists");
         tx(&bridge, business, &session, b"1").await;
         let _ = wait_reference_rx_end(&bridge, business, &session, 1).await;
         tx(&bridge, business, &session, b".25\r\n-2\n3").await;
         let _ = wait_reference_rx_end(&bridge, business, &session, 10).await;
+        let live_samples = timeout(Duration::from_secs(8), async {
+            let mut samples = Vec::new();
+            while samples.len() < 2 {
+                let frame = live_view.next().await.unwrap();
+                if frame.is_null() {
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                    continue;
+                }
+                let page = derived(success(serde_json::from_value(frame["derived"]["reply"].clone()).unwrap()));
+                samples.extend(page.samples);
+            }
+            samples
+        }).await.expect("The view did not receive samples while the last input was withheld");
+        assert_eq!(operation_snapshot(&bridge, business, &sampling.operation_id).await.state, OperationState::Running);
         tx(&bridge, business, &session, b".5\n").await;
         let complete = wait(&bridge, business, sampling).await;
         assert!(matches!(complete.result, Some(ActionResult::Reference(_))));
+        let tail = live_view.next().await.unwrap();
+        assert_eq!(tail["derived"]["previousPosition"], "2");
+        let tail = derived(success(serde_json::from_value(tail["derived"]["reply"].clone()).unwrap()));
+        drop(live_view);
 
-        use crate::node_view::test_support::TestDerivedView;
-        let mut view = TestDerivedView::open(&bridge, desktop.generation, complete.operation_id.clone()).await;
-        let view_page = view.next().await.unwrap();
+        let mut reopened = TestDerivedView::open(&bridge, desktop.generation, complete.operation_id.clone()).await;
+        let view_page = reopened.next().await.unwrap();
         assert_eq!(view_page["derived"]["previousPosition"], "0");
         assert_eq!(view_page["derived"]["after"], "0");
         let view_samples = derived(success(serde_json::from_value(view_page["derived"]["reply"].clone()).unwrap()));
-        assert!(view.next().await.unwrap().is_null());
-        drop(view);
-        let mut reopened = TestDerivedView::open(&bridge, desktop.generation, complete.operation_id.clone()).await;
-        assert_eq!(reopened.next().await.unwrap(), view_page);
+        assert!(reopened.next().await.unwrap().is_null());
 
         let params = |after: &str| json!({"operationId":complete.operation_id,"after":after,"maxSamples":"2","maxBytes":"16384"});
         let first_params = params("0");
@@ -55,6 +80,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         assert!(!last.has_more);
         let samples: Vec<_> = first.samples.iter().chain(&last.samples).collect();
         assert_eq!(view_samples.samples.iter().collect::<Vec<_>>(), samples);
+        assert_eq!(live_samples.iter().chain(&tail.samples).collect::<Vec<_>>(), samples);
         assert_eq!(samples.len(), 3);
         for (index, ((sample, value), (start, end))) in samples.iter()
             .zip([json!(1.25), json!(-2), json!(3.5)])
@@ -107,7 +133,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             params: NodePackageIdentityParams { id: package.id.clone(), archive_sha256: package.archive_sha256.clone() },
         }).await;
         assert!(matches!(reopened.next().await, Err(error) if error.code == "UNSUPPORTED_CAPABILITY"));
-        eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] two_pages=true cli_match=true official_mcp_pages=2 scoped_view_reopened=true viewer_revoked=true overlong_rejected=true raw_bytes=78");
+        eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] samples_while_running=2 same_view_after_completion=true two_pages=true cli_match=true official_mcp_pages=2 scoped_view_reopened=true viewer_revoked=true overlong_rejected=true raw_bytes=78");
     }).await;
 }
 

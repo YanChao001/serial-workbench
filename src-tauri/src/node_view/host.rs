@@ -150,6 +150,36 @@ impl ViewHost {
         Ok(())
     }
 
+    async fn sampling(&self) -> HostResult<bool> {
+        let request = query(
+            &self.attachment,
+            self.operation.clone(),
+            BuiltinAction::OperationGet,
+            OperationGetParams::ById {
+                operation_id: self.operation.id.clone(),
+                request_context: None,
+            },
+        )?;
+        let RpcResult::Operation(result) = unpack(
+            self.bridge
+                .request_at_generation(
+                    &self.window,
+                    self.generation,
+                    RpcRequest::OperationGet(request),
+                )
+                .await?,
+        )?
+        else {
+            return Err(failure());
+        };
+        if result.operation.operation_id != self.operation.id
+            || result.operation.target != self.entry.target
+        {
+            return Err(failure());
+        }
+        Ok(result.operation.state == OperationState::Running)
+    }
+
     pub(super) async fn snapshot(&self) -> HostResult<SessionSnapshot> {
         self.authorize().await?;
         let request = query(
@@ -365,6 +395,7 @@ impl DerivedReader {
     async fn next(&mut self, host: &ViewHost) -> HostResult<Option<(U64, U64, DerivedReadResult)>> {
         host.authorize().await?;
         let mut after = self.position;
+        let waiting_for_first_sample = after.get() == 0 && host.sampling().await?;
         for _ in 0..3 {
             let request = query(
                 &host.attachment,
@@ -402,6 +433,9 @@ impl DerivedReader {
                     let previous = self.position;
                     self.position = page.next_position;
                     return Ok(Some((previous, after, page)));
+                }
+                Err(error) if error.code == "NOT_FOUND" && waiting_for_first_sample => {
+                    return Ok(None);
                 }
                 Err(error) if error.code == "CURSOR_EXPIRED" => {
                     let Some(oldest) = error

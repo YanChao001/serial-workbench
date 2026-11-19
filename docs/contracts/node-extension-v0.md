@@ -207,9 +207,9 @@ Host动作的`task.progress.report({completed,unit,total?})`复用Operation进�
 
 桌面 WebView 与浏览器加载同一份预构建 UI。UI 在独立受控 iframe 中运行，无 Node、require、process 或 Tauri 全局；隔离文档不能获取任意系统路径、宿主对象或通用原生 IPC。宿主在验证 frame 来源/所属包/版本/页面实例后建立专用消息端口；每个消息校验生成 schema 与当前授权，不能仅信任消息内 actorId。重建 frame 使旧端口失效，迟到消息不能命中新实例。
 
-`node.views.assetRead` 由可信客户端以成功的视图打开 Operation 为 `operation` 目标发送。参数为 `{viewId,offset,path?}`，首次省略 `path` 读取预构建入口。Host 从持久回执取得业务目标，读取前后复核目标代次、当前授权、源操作声明的权限及同一实际插件登记。视图与打开动作均须已登记，旧登记的回执在插件重新激活后失效。只读 `action.check` 使用同一权限与范围校验。
+`node.views.assetRead` 由可信客户端以视图打开 Operation 为 `operation` 目标发送。参数为 `{viewId,offset,path?}`，首次省略 `path` 读取预构建入口。Host 从持久回执取得业务目标，读取前后复核目标代次、当前授权、源操作声明的权限及同一实际插件登记。视图与打开动作均须已登记，旧登记的回执在插件重新激活后失效。只读 `action.check` 使用同一权限与范围校验。
 
-`contributes.views` 的每项可声明 `feed: "derived"`。此时视图读取其打开动作在该 Operation 发布的派生样本，桌面桥固定生产任务和目标会话代次，向页面交付已校验的数据和留存缺口。省略 `feed` 时交付目标会话的 Raw 数据。
+`contributes.views` 的每项可声明 `feed: "derived"`。这类视图可在生产 Operation 运行中打开，等待首个样本，成功后仍可读取已发布的留存和缺口。桌面桥固定生产任务和目标会话代次。省略 `feed` 时，打开动作成功后交付目标会话的 Raw 数据。
 
 回复 `node_view_asset` 绑定包 ID、版本、归档摘要、激活 ID、视图、业务目标、入口与资源路径。路径指向完整性清单中的包内文件。每段最多 32768 字节，offset 为段起点或文件末尾，回执携带总长度与文件 SHA-256。Host 对比构造内容证明时取得的段摘要，客户端拼接后按整文件摘要校验。包资源读取有独立并发预算。
 
