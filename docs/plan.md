@@ -52,6 +52,8 @@
 
 **设备刷新与 Ubuntu CI（候选）**。`6fb7fd7` 的 Windows `device_runtime` 17 项通过，包含固定旧枚举与新请求顺序的回归，日志见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/device-refresh-runtime.log`。第二轮 Ubuntu 的 workspace 测试、离线负载、未签名构建分别耗时 358、616、214 秒，原生运行时检查又运行 2036 秒后被作业上限中止。Linux x64 的 108 项 `verified_backend_` 用例移到独立必跑作业，同时保留原测试顺序、断言和作业上限。门禁用例核对漏跑或失败会拒绝候选，远程实际执行、覆盖及耗时待验证。
 
+**原生后台重新启动耗时（候选）**。第三轮 macOS arm64 的失败日志及 SQLite 收据确认，容量释放后的启用在等待期限内仍为 Running，兼容升级已经提交且新运行时代次仍为 Starting。Intel macOS 与 Ubuntu 也记录同名用例失败。两条路径在首个后台 owner 释放后均重新走固定 Node 校验。在 Windows 对同一份 100,097,864 字节文件各测六次，优化 `sha2 0.10.9` 后摘要耗时中位数从 1.852 秒降到 0.082 秒，逐次摘要一致。仅调整开发及测试构建的该依赖优化等级，原资源校验顺序和用例等待期限继续适用。Windows 固定 Node 的两项原生用例复跑通过，容量释放后重新启用成功，升级后保存 Schema 仍可重放。现场、测量和复跑见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `combined-runtime-arm64-failures`、`runtime-sha-and-arm64-profiles.json` 与 `optimized-runtime-package-windows.log`。实际 Linux 和 macOS 启用及升级耗时待同一候选验证。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

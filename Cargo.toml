@@ -18,6 +18,10 @@ opt-level = 3
 [profile.dev.package.zune-jpeg]
 opt-level = 3
 
+# 固定 Node 的完整摘要校验也在调试和测试构建中运行。
+[profile.dev.package."sha2@0.10.9"]
+opt-level = 3
+
 [profile.release]
 codegen-units = 1
 lto = true
