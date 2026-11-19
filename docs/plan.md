@@ -98,6 +98,8 @@
 
 **Windows 辅助进程启动（`659c43f`）**。本机 `pnpm verify --jobs 1` 通过，190.5 秒。托管选择夹具场景的 69 字节回放通过，真实打开的辅助进程在 30 秒后被终止，初始化后的首条进度未出现，真实保存未执行。候选将对话框辅助程序提前编译并在桌面构建前自检，打开和保存通过已有 Win32 路径直接调用同一程序，便于定位准备与实际窗口操作。本机确认可编译出辅助程序，原生行为待托管复验。证据见同目录 `windows-659c43f/signed-terminal-uJ7TBb` 与 `659c43f-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44567109656)
 
+**Windows 文件名输入（`30fac96`）**。托管辅助程序编译和自检通过，打开进程能找到真实对话框、核对编辑框文字并提交确认。确认后对话框仍可见，保存未执行。原生选择夹具场景再次逐字节回放 69 字节。候选改用系统键盘输入，操作前核对实际编辑焦点，录制仍按 Host 登记的真实目标校验。本机 `pnpm verify --jobs 1` 通过，169.2 秒。无头 UI 202 项通过，草稿输入第二慢值 102.8 毫秒，未过原门槛，两次超时分别为按键和大段插入，最邻近秩为 96.4 毫秒。日志与样本见同目录 `windows-30fac96/signed-terminal-59EWyX`、`30fac96-verify.log` 和 `30fac96-headless-ui`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44571922710)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

@@ -12,11 +12,53 @@ internal static class TerminalPickerWindow
 {
     private const uint OwnerWindow = 4;
     private const int ConfirmButtonId = 1;
+    private const uint KeyUp = 2;
+    private const uint Unicode = 4;
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct KeyboardInput
+    {
+        public ushort Key, ScanCode;
+        public uint Flags, Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct MouseInput
+    {
+        public int X, Y;
+        public uint MouseData, Flags, Time;
+        public UIntPtr ExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    private struct InputData
+    {
+        [FieldOffset(0)] public KeyboardInput Keyboard;
+        [FieldOffset(0)] public MouseInput Mouse;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct Input
+    {
+        public uint Type;
+        public InputData Data;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    private struct GuiThreadInfo
+    {
+        public uint Size, Flags;
+        public IntPtr Active, Focus, Capture, MenuOwner, MoveSize, Caret;
+        public int Left, Top, Right, Bottom;
+    }
 
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint relation);
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr dialog, int id);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
+    [DllImport("user32.dll")] private static extern bool GetGUIThreadInfo(uint thread, ref GuiThreadInfo info);
+    [DllImport("user32.dll")] private static extern uint SendInput(uint count, Input[] inputs, int size);
     [DllImport("user32.dll")] private static extern bool IsWindowVisible(IntPtr window);
     [DllImport("user32.dll")] private static extern bool IsWindowEnabled(IntPtr window);
     [DllImport("user32.dll")] private static extern IntPtr GetParent(IntPtr window);
@@ -26,11 +68,9 @@ internal static class TerminalPickerWindow
     private delegate bool EnumerateWindow(IntPtr window, IntPtr extra);
     [DllImport("user32.dll")] private static extern bool EnumChildWindows(IntPtr parent, EnumerateWindow callback, IntPtr extra);
     [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
-    private static extern IntPtr WriteText(IntPtr window, uint message, UIntPtr size, string value, uint flags, uint timeout, out UIntPtr result);
-    [DllImport("user32.dll", EntryPoint = "SendMessageTimeoutW", CharSet = CharSet.Unicode, ExactSpelling = true)]
     private static extern IntPtr ReadText(IntPtr window, uint message, UIntPtr size, StringBuilder value, uint flags, uint timeout, out UIntPtr result);
     [DllImport("user32.dll", EntryPoint = "PostMessageW", ExactSpelling = true)]
-    private static extern bool PostMessage(IntPtr window, uint message, UIntPtr parameter, IntPtr extra);
+    private static extern bool PostMessage(IntPtr window, uint message, IntPtr parameter, IntPtr extra);
 
     private static int Main(string[] args)
     {
@@ -107,13 +147,12 @@ internal static class TerminalPickerWindow
 
         if (GetForegroundWindow() != dialog || GetWindow(dialog, OwnerWindow) != owner || !BelongsTo(edit, pid))
             throw new InvalidOperationException("The owned " + action + " dialog lost foreground focus before entering the path.");
-        EnterPath(dialog, edit, save, path);
-        if (GetForegroundWindow() != dialog || GetDlgItem(dialog, ConfirmButtonId) != button || !IsWindowEnabled(button))
+        EnterPath(dialog, edit, path);
+        if (!HasFocus(dialog, edit) || GetDlgItem(dialog, ConfirmButtonId) != button || !IsWindowEnabled(button))
             throw new InvalidOperationException("The owned " + action + " dialog lost focus or its confirmation button became unavailable.");
         Console.Error.WriteLine("Verified " + action + " filename");
-        const uint buttonClick = 0x00F5;
-        if (!PostMessage(button, buttonClick, UIntPtr.Zero, IntPtr.Zero))
-            throw new InvalidOperationException("The owned " + action + " dialog could not queue its native confirmation.");
+        const ushort enter = 0x0D;
+        SendKeys(new[] { Key(enter, 0, 0), Key(enter, 0, KeyUp) });
         Console.Error.WriteLine("Queued " + action + " confirmation");
 
         observation.Restart();
@@ -123,7 +162,7 @@ internal static class TerminalPickerWindow
             {
                 WriteReceipt(new {
                     action, applicationPid = pid, dialog = dialog.ToInt64(), owner = owner.ToInt64(), path,
-                    input = save ? "native-characters" : "native-edit", confirmation = "native-button", returnedFocus = true,
+                    input = "keyboard", confirmation = "enter", returnedFocus = true,
                 });
                 return;
             }
@@ -131,8 +170,8 @@ internal static class TerminalPickerWindow
         }
         IntPtr lastForeground = GetForegroundWindow();
         throw new InvalidOperationException(string.Format(
-            "The {0} dialog did not close with focus returned. dialogVisible={1}; ownerForeground={2}; foregroundClass={3}",
-            action, IsWindowVisible(dialog), lastForeground == owner, WindowClass(lastForeground)));
+            "The {0} dialog did not close with focus returned. dialogVisible={1}; ownerForeground={2}; dialogForeground={3}; foregroundClass={4}",
+            action, IsWindowVisible(dialog), lastForeground == owner, lastForeground == dialog, WindowClass(lastForeground)));
     }
 
     private static bool BelongsTo(IntPtr window, uint applicationPid)
@@ -202,32 +241,62 @@ internal static class TerminalPickerWindow
             ? "" : actual.ToString();
     }
 
-    private static void EnterPath(IntPtr dialog, IntPtr edit, bool save, string path)
+    private static bool HasFocus(IntPtr dialog, IntPtr edit)
     {
-        if (!save)
-        {
-            const uint abortIfHung = 2;
-            const uint setText = 0x000C;
-            UIntPtr result;
-            if (WriteText(edit, setText, UIntPtr.Zero, path, abortIfHung, 1000, out result) != IntPtr.Zero &&
-                result != UIntPtr.Zero && ReadFileName(edit, path.Length + 2) == path) return;
-            throw new InvalidOperationException("The owned Open dialog did not retain its filename.");
-        }
+        uint pid;
+        uint thread = GetWindowThreadProcessId(dialog, out pid);
+        var info = new GuiThreadInfo { Size = (uint)Marshal.SizeOf(typeof(GuiThreadInfo)) };
+        return GetForegroundWindow() == dialog && thread != 0 && GetGUIThreadInfo(thread, ref info) &&
+            info.Active == dialog && info.Focus == edit;
+    }
 
-        // 字符输入让 Save 对话框收到文件名修改通知。
-        const uint selectText = 0x00B1;
-        const uint keyboardCharacter = 0x0102;
-        if (!PostMessage(edit, selectText, UIntPtr.Zero, new IntPtr(-1)))
-            throw new InvalidOperationException("Could not select the suggested filename.");
+    private static Input Key(ushort key, ushort scanCode, uint flags)
+    {
+        const uint keyboard = 1;
+        return new Input {
+            Type = keyboard,
+            Data = new InputData { Keyboard = new KeyboardInput { Key = key, ScanCode = scanCode, Flags = flags } },
+        };
+    }
+
+    private static void SendKeys(Input[] inputs)
+    {
+        if (SendInput((uint)inputs.Length, inputs, Marshal.SizeOf(typeof(Input))) != inputs.Length)
+            throw new InvalidOperationException("Windows did not accept all file dialog keystrokes.");
+    }
+
+    private static void EnterPath(IntPtr dialog, IntPtr edit, string path)
+    {
+        if (!HasFocus(dialog, edit))
+        {
+            const uint focusDialogControl = 0x0028;
+            if (!PostMessage(dialog, focusDialogControl, edit, new IntPtr(1)))
+                throw new InvalidOperationException("Could not queue focus for the filename edit.");
+            var focus = Stopwatch.StartNew();
+            while (!HasFocus(dialog, edit) && GetForegroundWindow() == dialog && focus.Elapsed.TotalSeconds < 2)
+                Thread.Sleep(50);
+        }
+        if (!HasFocus(dialog, edit))
+            throw new InvalidOperationException("The filename edit did not receive keyboard focus.");
+
+        const ushort control = 0x11;
+        var inputs = new List<Input>(4 + path.Length * 2) {
+            Key(control, 0, 0), Key('A', 0, 0), Key('A', 0, KeyUp), Key(control, 0, KeyUp),
+        };
         foreach (char character in path)
-            if (!PostMessage(edit, keyboardCharacter, new UIntPtr((uint)character), new IntPtr(1)))
-                throw new InvalidOperationException("Could not queue the filename characters.");
+        {
+            inputs.Add(Key(0, character, Unicode));
+            inputs.Add(Key(0, character, Unicode | KeyUp));
+        }
+        if (!HasFocus(dialog, edit))
+            throw new InvalidOperationException("The filename edit lost keyboard focus before typing.");
+        SendKeys(inputs.ToArray());
         var entry = Stopwatch.StartNew();
         do
         {
             if (ReadFileName(edit, path.Length + 2) == path) return;
             Thread.Sleep(50);
         } while (entry.Elapsed.TotalSeconds < 2 && GetForegroundWindow() == dialog);
-        throw new InvalidOperationException("The owned Save dialog did not receive the typed filename.");
+        throw new InvalidOperationException("The owned dialog did not receive the typed filename.");
     }
 }
