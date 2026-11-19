@@ -6,7 +6,7 @@
 
 1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、缩放、慢读者及其他平台原生观察。处理草稿输入延迟，核实 Windows 主窗与隔离插件窗口的缩放行为。候选验收保留安装准备和关停压力的未决记录。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
-3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
+3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 已验证 Debian 安装和三个参考场景；继续 Windows、macOS 离线安装和实际图表窗口。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 
@@ -27,6 +27,8 @@
 **C 图表实时采样和留存视图（候选，Windows）**。签名包将 Virtual Echo 的拆分 RX 发布为 `1.25`、`-2`、`3.5` V，保留三段原始字节范围。桌面桥可在取样任务运行中打开视图，先等待输入，再读到两个样本，任务结算后在同一视图读到第三个。重开、CLI 和实际 MCP 读页对照同一数值、会话代次及来源范围。撤权后禁止视图读页。图表和终端可以在工作台已占用 Raw 通道时打开。无头 Chromium 验证隔离视图显示缺口和样本。修复前拒绝打开及复验见 `.cache/evidence/m2-node-backend/chart-live-sampling-20261120/checkpoint.json`，视图原验证见 `.cache/evidence/m2-node-backend/reference-chart-view-20261119/checkpoint.json`。这次覆盖 AUTO-13 和 VIZ-16 的软件部分。原生图表窗口、三平台离线安装及完整 C 场景继续验收。
 
 **C 自动化后台参考包（候选，Windows）**。公开 SDK 提交同一会话的发送子动作，按实际发送回执和 RX 来源范围核对每步应答。实际签名包在嵌入式 Rust Host 上通过双步骤匹配。应答不符、收到前缀后超时、等待应答时取消都只执行首步。取消用例先等真实 RX，再核对取消接纳回执和父动作终态。Virtual Echo 录制回放逐字节核对 32 字节和会话代次。实际 MCP 程序随后执行一步，CLI 读到同一结果字节和来源。Host 目录现能按会话读取授权公布结果读取工具，撤权后 MCP 无法调用，CLI 的独立授权继续有效。覆盖 IO-10、AUTO-05、AUTO-13 和 SEC-12 的软件部分。首轮目录错误和三项定向复验见 `.cache/evidence/m2-node-backend/automation-client-parity-20261120/checkpoint.json`，录制原证据见 `.cache/evidence/m2-node-backend/reference-automation-20261119/checkpoint.json`。窗口、三平台离线安装及完整 C 场景继续验收。
+
+**C Debian 离线安装（`904ed8c`，Ubuntu 22.04 x64）**。在无 IPv4/IPv6 地址和路由的独立网络命名空间实际安装 `0.1.0`。安装后保留私有 `libatomic.so.1` 相对链接。普通用户通过安装版 Host、CLI 和 MCP 执行签名终端，回放 69 字节并确认 Host 正常退出；图表和自动化用已安装 runtime 与客户端通过实时采样、结果一致和录制用例。三个用例用时 27.88 秒，Rust 与 pnpm 缓存均命中。这是 T14、AUTO-13、SEC-01 和 SEC-11 的 Ubuntu 软件证据。首轮在归档路径查找时失败，第二轮安装成功后 Host 拒绝被解引用的私有库链接。两个失败和最终安装收据见 `.cache/evidence/m2-node-backend/debian-offline-installer-20261120/checkpoint.json`。原生窗口、其他安装包格式和正式发行安装器继续按阶段验收。[Ubuntu 离线预检](https://github.com/YanChao001/serial-workbench/actions/runs/44618907763/job/135895042980)
 
 **四目标签名包用例（工作树）**。在现有四目标 CI 的原生 runtime 验收步骤中加入图表和自动化，三种参考包共用一次签名工具构建。任务分别保留签名包、签名收据与实际用例日志。Windows 本机用已构建的 runtime、正式 Host、CLI 和 MCP 复跑了三包签名与四个真实 Host 用例。首次本机复跑的伴随程序路径配置失败也已保留。见 `.cache/evidence/m2-node-backend/reference-ci-recheck-20261119/checkpoint.json`。四目标托管 CI 仍待运行。
 
