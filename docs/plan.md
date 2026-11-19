@@ -78,6 +78,8 @@
 
 **预检构建与派生页（候选）**。Intel 预检单独构建探针用时 336 秒，再构建 CLI 和 MCP 用时 145 秒，两个步骤重复编译了 `core`、`ipc` 和 `client`。三个入口现由一次 Cargo 命令构建，本机 Windows 确认产出三个程序并各编译上述依赖一次，同平台托管耗时仍待对照。提前设置两入口路径，让原生 Host 用例实际执行读页分支。本机同源 CLI 与官方 MCP SDK 读到相同的四个派生样本和完整事件、字节来源，66 次留存用发布耗时 3.151 秒，录制回放仍逐字节匹配。此轮覆盖 VIZ-16 的派生来源部分，原字节、字段和曲线界面联动继续按 M3/M4 验收。日志及样本见同目录的 `runtime-preflight-combined-build-windows.log`、`runtime-preflight-combined-derived-pages.log` 和 `runtime-preflight-combined-derived-pages`。[PR #49](https://github.com/YanChao001/serial-workbench/pull/49)
 
+**Windows 托管对话框首次实跑（`4ab7c75`）**。原有桌面和签名夹具场景通过，录制回放验证完成。新增实跑取得所属应用的实际前台打开对话框，控件匹配失败，未选择 ZIP，也未到达保存。修订用原生控件 ID 和可访问编辑控件定位，并在失败时保留控件信息。原始日志与产物见同目录的 `windows-native-picker-preflight.log`、`windows-native-picker-first-artifact`。[首次 Windows 预检](https://github.com/YanChao001/serial-workbench/actions/runs/44540563836)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

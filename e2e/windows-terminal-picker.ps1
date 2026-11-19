@@ -20,6 +20,7 @@ using System.Runtime.InteropServices;
 public static class TerminalPickerWindow {
     [DllImport("user32.dll")] public static extern IntPtr GetForegroundWindow();
     [DllImport("user32.dll")] public static extern IntPtr GetWindow(IntPtr window, uint relation);
+    [DllImport("user32.dll")] public static extern IntPtr GetDlgItem(IntPtr dialog, int id);
     [DllImport("user32.dll")] public static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
     [DllImport("user32.dll")] public static extern bool IsWindow(IntPtr window);
 }
@@ -51,21 +52,47 @@ while ($clock.Elapsed.TotalSeconds -lt 15) {
 if (!$dialog) { throw "No foreground $Action file dialog owned by application $ApplicationPid." }
 
 $scope = [Windows.Automation.TreeScope]::Descendants
-$id = [Windows.Automation.AutomationElement]::AutomationIdProperty
-$fileName = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($id, '1148'))
+$edit = [Windows.Automation.PropertyCondition]::new(
+    [Windows.Automation.AutomationElement]::ControlTypeProperty,
+    [Windows.Automation.ControlType]::Edit
+)
+function Find-DialogItem([int]$Id) {
+    $property = [Windows.Automation.AutomationElement]::AutomationIdProperty
+    $item = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($property, [string]$Id))
+    if ($item) { return $item }
+    $child = [TerminalPickerWindow]::GetDlgItem($handle, $Id)
+    if ($child -ne [IntPtr]::Zero) {
+        return [Windows.Automation.AutomationElement]::FromHandle($child)
+    }
+}
+
+# The common dialogs can expose a combo box, a nested edit, or a labeled edit.
+$fileName = Find-DialogItem 1148
 if ($fileName -and $fileName.Current.ControlType -ne [Windows.Automation.ControlType]::Edit) {
-    $edit = [Windows.Automation.PropertyCondition]::new(
-        [Windows.Automation.AutomationElement]::ControlTypeProperty,
-        [Windows.Automation.ControlType]::Edit
-    )
     $fileName = $fileName.FindFirst($scope, $edit)
 }
-$confirm = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($id, '1'))
-if (!$fileName -or !$confirm -or $confirm.Current.Name.Replace('&', '') -ne $Action) {
-    throw "Unexpected controls in the foreground $Action file dialog."
+if (!$fileName) {
+    $fileName = $dialog.FindAll($scope, $edit) | Where-Object {
+        $_.Current.AutomationId -eq '1152' -or $_.Current.Name -match '^File name\s*:?\s*$'
+    } | Select-Object -First 1
 }
-$fileName.GetCurrentPattern([Windows.Automation.ValuePattern]::Pattern).SetValue($FilePath)
-$confirm.GetCurrentPattern([Windows.Automation.InvokePattern]::Pattern).Invoke()
+$confirm = Find-DialogItem 1
+$fileValue = $null
+$confirmAction = $null
+if (!$fileName -or !$fileName.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue) -or
+    !$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)) {
+    $controls = $dialog.FindAll($scope, [Windows.Automation.Condition]::TrueCondition) | Where-Object {
+        $_.Current.ControlType -in [Windows.Automation.ControlType]::Edit, [Windows.Automation.ControlType]::ComboBox, [Windows.Automation.ControlType]::Button
+    } | Select-Object -First 16 | ForEach-Object {
+        '{0}/{1}/{2}' -f $_.Current.ControlType.ProgrammaticName, $_.Current.AutomationId, $_.Current.Name
+    }
+    throw "The owned $Action dialog is missing its filename edit or confirmation control. Controls: $($controls -join ' | ')"
+}
+$fileValue.SetValue($FilePath)
+if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
+    throw "The owned $Action dialog lost foreground focus before confirmation."
+}
+$confirmAction.Invoke()
 
 $clock.Restart()
 while ($clock.Elapsed.TotalSeconds -lt 5) {
