@@ -38,6 +38,7 @@ on:
           - all
           - host-ipc
           - macos-signature
+          - linux-offline-installer
         required: true
       native_preflight_target:
         description: 原生预检目标；完整四目标模式不使用此选项

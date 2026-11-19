@@ -48,9 +48,10 @@ jobs:
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
           const suite = process.env.RUNTIME_SUITE;
-          if (!['all', 'host-ipc', 'macos-signature'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (!['all', 'host-ipc', 'macos-signature', 'linux-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
           if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
           if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
+          if (suite === 'linux-offline-installer' && requested !== 'x86_64-unknown-linux-gnu') throw new Error('The offline Debian installer suite requires Linux x64');
           const include = Object.entries(platforms)
             .filter(([target]) => requested === 'all' || requested === target)
             .map(([target, platform]) => {
@@ -64,7 +65,7 @@ jobs:
     name: 运行时预检（${{ matrix.target }}）
     needs: plan
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 25
+    timeout-minutes: ${{ inputs.suite == 'linux-offline-installer' && 50 || 25 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -99,7 +100,13 @@ jobs:
           if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
           gpgv --version
       - name: 验签并准备固定原生运行时
+        if: inputs.suite != 'linux-offline-installer'
         run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 验证 Debian 实际离线安装与参考包
+        if: inputs.suite == 'linux-offline-installer'
+        run: |
+          bash scripts/ci-linux-deps.sh rust
+          bash scripts/ci-linux-offline-installer.sh
       - name: 构建运行时探针、CLI 与 MCP
         if: inputs.suite == 'all'
         run: >-
@@ -158,6 +165,10 @@ jobs:
             artifacts/runtime-preflight/**/probe.stdout
             artifacts/runtime-preflight/**/probe.stderr
             artifacts/runtime-preflight/**/probe-io.txt
+            artifacts/offline-installer/*.log
+            artifacts/offline-installer/*.txt
+            artifacts/offline-installer/components.json
+            artifacts/offline-installer/reference-*/signed-*.json
             .cache/node-runtime/layouts/**/runtime-preparation.json
             .cache/node-runtime/layouts/**/node-resigning.json
             .cache/node-runtime/layouts/**/node-sign*.stdout

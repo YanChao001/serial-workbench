@@ -240,6 +240,8 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 ## 安装与发行验收
 
+Ubuntu x64 的实际 Debian 离线安装可在[手动 CI](../.github/workflows/ci.yml)选 `runtime_preflight=true`、`runtime_preflight_target=x86_64-unknown-linux-gnu` 和 `runtime_preflight_suite=linux-offline-installer`。作业在线构建同源 `.deb` 和签名参考包，进入仅有停用 loopback 的隔离网络后执行 `dpkg --install`。无外网环境中以普通用户运行现有参考包用例。终端使用安装后的 Host、CLI 与 MCP，图表和自动化使用安装后的 runtime 和客户端。收据保留 `.deb` 与安装组件摘要、隔离观察、三个签名包签名回执和测试输出。此专项用于 T14 的 Ubuntu 离线软件验收，原生窗口、最低系统和发行安装器另行验收。
+
 进入 M6 时，按[验收场景映射](./requirements.md#附件验收方案与功能映射)核对纳入需求在前序阶段应完成的软件验证。例如 T04 此时已有能力与配置回执，接线与仪器结果留在 M6 实测。PERF-08 的实际 72 小时在本阶段完成。T14 的离线包和后台升级分别在 M2、M3 验证，M6 用发行候选核验最终产物。退出 M6 时逐项核对适用的软件、硬件和发行证据，排除或推迟项沿用账本中的范围决定。
 
 安装升级前先按变更选择数据验证：CAS 冲突、未来格式拒写、读/写/备份失败、替换竞态及中断恢复均核对原件和最终状态。隔离恢复同时检查暂存、明确重启、归档及回滚；只读 fixture 或成功返回不足以确认恢复正确。
