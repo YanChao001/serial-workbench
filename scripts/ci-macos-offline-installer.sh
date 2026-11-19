@@ -41,7 +41,7 @@ for (const host of ['127.0.0.1', '::1']) {
 }
 PROBE
 
-pnpm app:build --target "$target" --bundles dmg --optimize speed --no-sign
+pnpm app:build --target "$target" --bundles app,dmg --optimize speed --no-sign
 version=$(node -p 'require("./package.json").version')
 name=$(node -p 'require("./app.config.json").name')
 dist="$PWD/artifacts/$version/$target/installers"

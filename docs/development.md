@@ -98,6 +98,7 @@ pnpm app:build
 ```
 
 普通本机构建不改版本号。Windows 如只需 NSIS 安装包，改用 `pnpm app:build --bundles nsis`；需要便携包时用 `pnpm app:portable`。
+macOS 的 DMG 验收构建用 `pnpm app:build --bundles app,dmg`，保留 `.app` 供安装组件收据核对。
 
 仅在准备新版本时运行 `pnpm version:set <新版本号>` 并复核差异。版本脚本同步 npm/workspace、Tauri、Cargo 共享版本与锁文件。MSI/NSIS 的版本范围及预发布限制由 [version.mjs](../scripts/version.mjs) 校验，不能仅靠选择其他 bundle 绕过配置约束；已发布版本号不复用。
 
