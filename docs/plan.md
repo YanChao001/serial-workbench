@@ -92,7 +92,7 @@
 
 **无头 UI 与 Windows 真实文件名（`dab02d5`）**。本机无头 Chromium 203 项通过，输入 p95 为 96.4 毫秒。托管 Windows 基础桌面和签名终端复跑通过，再次逐字节验证 69 字节回放。真实对话框已通过原生编辑框写入和读回 ZIP 路径，确认后未同时观察到对话框关闭和所有者复得前台焦点，真实保存未执行。候选补记对话框可见性与前台所有者，并为原生编辑框使用同一对话框的原生确认按钮。证据见同目录 `dab02d5-headless-ui.log`、`dab02d5-headless-ui` 和 `windows-dab02d5`。[真实对话框复验](https://github.com/YanChao001/serial-workbench/actions/runs/44557849724)
 
-**Windows 实际打开通过（`e0506d2`）**。本机 `pnpm verify --jobs 1` 通过，181.1 秒。托管真实打开收据确认由该应用拥有的对话框收到正确 ZIP 路径、用原生按钮确认并将前台焦点还给所有者，随后完成签名安装与启用。真实保存阶段取得对话框和确认按钮，控件树未暴露已知文件名编辑框。修订在同一所属对话框内查找唯一持有应用预填录制名的原生输入框，并使用原有 15 秒对话框观察限额。真实保存、同轮录制回放与四目标候选仍待核对。旧收据和失败日志见同目录 `windows-e0506d2`，综合日志见 `e0506d2-verify.log`。[Windows 实际打开收据](https://github.com/YanChao001/serial-workbench/actions/runs/44560101923)
+**Windows 实际文件对话框（`405e584`）**。本机 `pnpm verify --jobs 1` 通过，184.1 秒。托管真实打开和保存均取得原生收据，焦点回到同一所有者窗口。录制实际写到保存框预填的默认 `.swb` 文件，指定的录制目标未生效。修订向保存框发送逐字符输入、读回文本后再确认，由 Host 继续核对实际登记的录制路径。原有选择夹具场景的 69 字节回放通过；真实保存路径、同轮回放和四目标候选仍待验收。证据见同目录 `windows-405e584/signed-terminal-CEPdfL` 与 `405e584-verify.log`。[托管复验与产物](https://github.com/YanChao001/serial-workbench/actions/runs/44562449533)
 
 ## 验证基线
 

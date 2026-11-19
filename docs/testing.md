@@ -129,7 +129,7 @@ pnpm test:ui e2e/browser/plugin-view.spec.ts
 
 四目标独立桌面通过 `pnpm test:e2e --interactive --terminal-automated --skip-build` 执行签名场景。`pnpm e2e:build --with-node-runtime` 在同一次 Cargo 构建准备桌面、伴随程序、签名工具和录制核对工具。runner 校验收据中的工具路径和摘要，再在 Host 退出后运行预编译的录制核对工具。自动化使用专用测试构建的文件选择夹具与真实主窗、Host 和独立 Wry 渲染器。场景从主窗安装并显式授权，录制期间通过实际 CLI 追加读取权，核对关闭和重开中的 Raw 确认位置、累计 RX 字节、撤权停止及最终回放。系统对话框与焦点另留原生证据，缩放按手动入口验证。
 
-独立 Windows 原生预检另用真实系统对话框运行同一签名场景。辅助程序只操作该次启动的应用 PID 所拥有的前台对话框，以系统 UI Automation 填写路径并确认。打开和保存分别记录原生窗口句柄、所属应用、所选路径和焦点返回，随后继续用同一 Host 核对录制与撤权。证据为 `native-picker-open.json`、`native-picker-save.json` 和同一次原生场景日志。预检还保留原文件选择夹具的覆盖，其他平台以及缩放等桌面观察继续按阶段出口验收。
+独立 Windows 原生预检另用真实系统对话框运行同一签名场景。辅助程序只操作该次启动的应用 PID 所拥有的前台对话框，经 UI Automation 或原生控件输入路径并确认。原生保存控件接收逐字符输入，随后按 Host 实际登记的目标路径验证开始录制。打开和保存分别记录原生窗口句柄、所属应用、输入方式、提交路径和焦点返回，继续用同一 Host 核对录制与撤权。证据为 `native-picker-open.json`、`native-picker-save.json` 和同一次原生场景日志。预检还保留原文件选择夹具的覆盖，其他平台以及缩放等桌面观察继续按阶段出口验收。
 
 需要从桌面核对录制正文时，用本地用户控制入口给桌面身份授予所选输出引用的 `content.read`。验证录制期间追加权限时，先开始录制，再提交这项授权。随后发送已知字节，停止录制并回放核对。Host 定向用例使用 `cargo test --locked -p serial-workbench-host --test capture_api_host`。同组还覆盖源读取或目标写入撤销后空闲录制的真实终态。
 

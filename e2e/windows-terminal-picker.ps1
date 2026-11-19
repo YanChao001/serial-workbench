@@ -113,6 +113,20 @@ public static class TerminalPickerWindow {
         if (WriteText(edit, setText, UIntPtr.Zero, path, abortIfHung, 1000, out result) == IntPtr.Zero || result == UIntPtr.Zero) {
             return false;
         }
+        return HasFileName(edit, path);
+    }
+
+    public static bool QueueFileNameCharacters(IntPtr edit, string path) {
+        const uint selectText = 0x00B1;
+        const uint keyboardCharacter = 0x0102;
+        if (!PostMessage(edit, selectText, UIntPtr.Zero, new IntPtr(-1))) return false;
+        foreach (char character in path) {
+            if (!PostMessage(edit, keyboardCharacter, new UIntPtr((uint)character), new IntPtr(1))) return false;
+        }
+        return true;
+    }
+
+    public static bool HasFileName(IntPtr edit, string path) {
         return ReadFileName(edit, path.Length + 2) == path;
     }
 }
@@ -187,7 +201,7 @@ if (!$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePatte
     }
 }
 $nativeEdit = [IntPtr]::Zero
-if (!$fileValue) {
+if (!$fileValue -or $Action -eq 'Save') {
     # The Save dialog can expose a different native tree. Match the app's prefilled capture name.
     do {
         $nativeEdit = [TerminalPickerWindow]::FileNameEdit($handle, $ApplicationPid, $Action -eq 'Save')
@@ -208,10 +222,27 @@ if ((!$fileValue -and $nativeEdit -eq [IntPtr]::Zero) -or !$confirmAction) {
 if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
     throw "The owned $Action dialog lost foreground focus before entering the path."
 }
-if ($fileValue) {
+$input = 'automation-value'
+if ($Action -eq 'Save' -and $nativeEdit -ne [IntPtr]::Zero) {
+    # Typing notifies the Save dialog of edits to its prefilled filename.
+    if (![TerminalPickerWindow]::QueueFileNameCharacters($nativeEdit, $FilePath)) {
+        throw "The owned $Action dialog could not queue the filename characters."
+    }
+    $entry = [Diagnostics.Stopwatch]::StartNew()
+    do {
+        $entered = [TerminalPickerWindow]::HasFileName($nativeEdit, $FilePath)
+        if ($entered) { break }
+        Start-Sleep -Milliseconds 50
+    } while ($entry.Elapsed.TotalSeconds -lt 2 -and [TerminalPickerWindow]::GetForegroundWindow() -eq $handle)
+    if (!$entered) { throw "The owned $Action dialog did not receive the typed filename." }
+    $input = 'native-characters'
+} elseif ($fileValue) {
     $fileValue.SetValue($FilePath)
-} elseif (![TerminalPickerWindow]::SetFileName($nativeEdit, $FilePath)) {
-    throw "The owned $Action dialog did not retain its filename."
+} else {
+    if (![TerminalPickerWindow]::SetFileName($nativeEdit, $FilePath)) {
+        throw "The owned $Action dialog did not retain its filename."
+    }
+    $input = 'native-edit'
 }
 if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {
     throw "The owned $Action dialog lost foreground focus before confirmation."
@@ -237,7 +268,7 @@ while ($clock.Elapsed.TotalSeconds -lt 5) {
             dialog = $handle.ToInt64()
             owner = $owner.ToInt64()
             path = $FilePath
-            input = if ($fileValue) { 'automation-value' } else { 'native-edit' }
+            input = $input
             confirmation = $confirmation
             returnedFocus = $true
         } | ConvertTo-Json -Compress
