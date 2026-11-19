@@ -149,10 +149,9 @@ fn macos_startup_parent_fixture() {
         _ => panic!("Unknown native signal mode"),
     }
     let resources = directory.join("resources");
-    copy_resources(
-        Path::new(&std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap()),
-        &resources,
-    );
+    let build_root = PathBuf::from(std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap());
+    fs::create_dir(&resources).unwrap();
+    copy_resources(&build_root.join("runtime"), &resources.join("runtime"));
     let limits = NodeRuntimeLimits::default();
     let runtime = verify_node_runtime(&resources, &limits, &AtomicBool::new(false)).unwrap();
     if mode.starts_with("sigchld-") {
