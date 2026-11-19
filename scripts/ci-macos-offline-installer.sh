@@ -55,28 +55,20 @@ dmg=${packages[0]}
 cp "$dist/components.json" "$output/components.json"
 shasum -a 256 "$dmg" > "$output/installer.sha256.txt"
 
-export SWB_NODE_RUNTIME_BUILD_IMAGE="$PWD/src-tauri/target/$target/release/runtime/node-image.json"
-test_bin=$(prepare_offline_references "$output")
-[[ -x "$test_bin" ]]
-
 scratch=$(mktemp -d /private/tmp/swb-dmg.XXXXXX)
+installed="$scratch/Applications/$name.app"
 /usr/bin/sandbox-exec -f "$profile" /usr/bin/env -i PATH=/usr/bin:/bin LANG=en_US.UTF-8 TMPDIR="$scratch" \
-  /bin/bash -s -- "$dmg" "$output" "$test_bin" "$name" "$scratch" "$fixtures" 2>&1 <<'OFFLINE' | tee "$output/installed-reference.log"
+  /bin/bash -s -- "$dmg" "$installed" "$scratch/mount" 2>&1 <<'OFFLINE' | tee "$output/install.log"
 set -euo pipefail
 dmg=$1
-output=$2
-test_bin=$3
-name=$4
-scratch=$5
-fixtures=$6
-source "$fixtures"
+installed=$2
+mount=$3
 
-mount="$scratch/mount"
-installed="$scratch/Applications/$name.app"
 mkdir -p "$mount" "$(dirname "$installed")"
-/usr/bin/hdiutil attach -readonly -nobrowse -mountpoint "$mount" "$dmg"
+# 镜像内嵌本仓库 LICENSE。显式向挂载命令确认，避免它读取 bash 的脚本输入。
+printf 'Y\n' | /usr/bin/hdiutil attach -readonly -nobrowse -noautoopen -mountpoint "$mount" "$dmg"
 trap '/usr/bin/hdiutil detach "$mount"' EXIT
-/usr/bin/ditto "$mount/$name.app" "$installed"
+/usr/bin/ditto "$mount/$(basename "$installed")" "$installed"
 /usr/bin/hdiutil detach "$mount"
 trap - EXIT
 
@@ -85,6 +77,13 @@ resources="$installed/Contents/Resources"
 main=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$installed/Contents/Info.plist")
 /usr/bin/file "$programs/serial-workbench-host"
 /usr/bin/shasum -a 256 "$programs/$main" "$programs"/serial-workbench{-host,-cli,-mcp} "$resources/runtime/node-image.json"
-cd "$scratch"
-run_offline_references "$output" "$test_bin" "$programs" "$resources"
 OFFLINE
+
+export SWB_NODE_RUNTIME_BUILD_IMAGE="$installed/Contents/Resources/runtime/node-image.json"
+test_bin=$(prepare_offline_references "$output")
+[[ -x "$test_bin" ]]
+
+cd "$scratch"
+/usr/bin/sandbox-exec -f "$profile" /usr/bin/env -i PATH=/usr/bin:/bin LANG=en_US.UTF-8 TMPDIR="$scratch" \
+  /bin/bash -c 'set -euo pipefail; source "$1"; run_offline_references "$2" "$3" "$4/Contents/MacOS" "$4/Contents/Resources"' \
+  offline "$fixtures" "$output" "$test_bin" "$installed" 2>&1 | tee "$output/installed-reference.log"
