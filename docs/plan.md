@@ -110,6 +110,8 @@
 
 同轮 Windows Rust 在传输进度订阅的 500 毫秒夹具期限退出。候选将首块之后的发送排到观察窗口之外，收到已持久化的首块进度后立即取消，仍验证订阅在传输进行期间发布。本机 `operation_visibility_host` 的 8 项均通过。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108268)
 
+Apple Silicon 的签名后台通过 108 项，一项失败在退出报告缺少私有动作异常文本。Unix 的读取线程原先在收尾信号后直接退出，可能漏读管道中已有的内容。候选读取非阻塞管道中已写入的诊断，收到空管道即结束，保留既有预算和公共错误的脱敏断言，待同架构复验。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108276)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |

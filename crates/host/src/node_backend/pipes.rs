@@ -186,7 +186,8 @@ impl Pipes {
         self.spawn("node-backend-stderr", move || {
             let mut buffer = [0; 8192];
             let mut received = 0usize;
-            while !stopped.load(Ordering::Acquire) {
+            // Unix 的非阻塞管道在关停后仍可读到已写入的诊断，读空后直接退出。
+            while cfg!(unix) || !stopped.load(Ordering::Acquire) {
                 match stderr.read(&mut buffer) {
                     Ok(0) => break,
                     Ok(count) => {
@@ -200,7 +201,12 @@ impl Pipes {
                             break;
                         }
                     }
-                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => thread::sleep(TICK),
+                    Err(error) if error.kind() == io::ErrorKind::WouldBlock => {
+                        if stopped.load(Ordering::Acquire) {
+                            break;
+                        }
+                        thread::sleep(TICK);
+                    }
                     Err(error) if error.kind() == io::ErrorKind::Interrupted => {}
                     Err(_) => {
                         failed.store(true, Ordering::Release);
