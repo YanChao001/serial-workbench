@@ -1,10 +1,12 @@
 use super::*;
-use serde_json::json;
+use rmcp::{ServiceExt, transport::TokioChildProcess};
+use serde_json::{Value, json};
+use tokio::{process::Command, time::timeout};
 
 const SAMPLE: &str = "swb.reference.chart.sample";
 
 #[tokio::test]
-#[ignore = "requires prepared Node, the signed chart receipt and same-source CLI"]
+#[ignore = "requires prepared Node, the signed chart receipt and same-source CLI/MCP"]
 async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
     let package = signed_reference("SWB_TEST_SIGNED_CHART_RECEIPT");
     with_embedded_host(async move |profile| {
@@ -44,8 +46,10 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         assert_eq!(reopened.next().await.unwrap(), view_page);
 
         let params = |after: &str| json!({"operationId":complete.operation_id,"after":after,"maxSamples":"2","maxBytes":"16384"});
-        let first = derived(read_reference_raw(&bridge, business, &session, "stream.derivedRead", params("0")).await);
-        let last = derived(read_reference_raw(&bridge, business, &session, "stream.derivedRead", params("2")).await);
+        let first_params = params("0");
+        let last_params = params("2");
+        let first = derived(read_reference_raw(&bridge, business, &session, "stream.derivedRead", first_params.clone()).await);
+        let last = derived(read_reference_raw(&bridge, business, &session, "stream.derivedRead", last_params.clone()).await);
         assert_eq!(first.next_position.get(), 2);
         assert!(first.has_more);
         assert_eq!(last.next_position.get(), 3);
@@ -73,11 +77,14 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             if index != 1 { assert!(source.event_end.get() - source.event_start.get() > 1); }
         }
 
-        let cli = HostClient::connect(ConnectOptions::new(profile.to_path_buf(), Id::try_from("serial-workbench-cli").unwrap(), ClientKind::Cli)).await.unwrap();
-        invoke_control(&bridge, "main", desktop.generation, "auth.authorize", json!({"clientId":cli.attachment().client_id,"permissions":["content.read"],"targets":[session]})).await.unwrap();
-        cli.close().await.unwrap();
+        for (id, kind) in [("serial-workbench-cli", ClientKind::Cli), ("serial-workbench-mcp", ClientKind::Mcp)] {
+            let identity = HostClient::connect(ConnectOptions::new(profile.to_path_buf(), Id::try_from(id).unwrap(), kind)).await.unwrap();
+            invoke_control(&bridge, "main", desktop.generation, "auth.authorize", json!({"clientId":identity.attachment().client_id,"permissions":["content.read"],"targets":[session]})).await.unwrap();
+            identity.close().await.unwrap();
+        }
         let cli = parity_clients::Cli { binary: parity_clients::binary("SWB_TEST_CLI_BIN", "serial-workbench-cli"), profile: profile.to_path_buf() };
-        assert_eq!(derived(success(cli.query_reply("stream.derivedRead", &session, &params("0")).await)), first);
+        assert_eq!(derived(success(cli.query_reply("stream.derivedRead", &session, &first_params).await)), first);
+        verify_mcp_pages(profile, &session, [(first_params, &first), (last_params, &last)]).await;
 
         let end = wait_reference_rx_end(&bridge, business, &session, 13).await;
         let overflow = invoke(&bridge, business, &session, SAMPLE,
@@ -101,8 +108,51 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             params: NodePackageIdentityParams { id: package.id.clone(), archive_sha256: package.archive_sha256.clone() },
         }).await;
         assert!(matches!(reopened.next().await, Err(error) if error.code == "UNSUPPORTED_CAPABILITY"));
-        eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] two_pages=true cli_match=true scoped_view_reopened=true viewer_revoked=true overlong_rejected=true raw_bytes=78");
+        eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] two_pages=true cli_match=true official_mcp_pages=2 scoped_view_reopened=true viewer_revoked=true overlong_rejected=true raw_bytes=78");
     }).await;
+}
+
+async fn verify_mcp_pages(
+    profile: &Path,
+    session: &Target,
+    pages: [(Value, &DerivedReadResult); 2],
+) {
+    let mut command = Command::new(parity_clients::binary(
+        "SWB_TEST_MCP_BIN",
+        "serial-workbench-mcp",
+    ));
+    command.arg("--profile").arg(profile).kill_on_drop(true);
+    #[cfg(windows)]
+    command.creation_flags(0x0800_0000);
+    let transport = TokioChildProcess::new(command).expect("Start actual MCP stdio program");
+    let sdk = timeout(Duration::from_secs(10), ().serve(transport))
+        .await
+        .expect("MCP initialization timed out")
+        .unwrap();
+    let replies = timeout(Duration::from_secs(10), async {
+        let mut replies = Vec::with_capacity(pages.len());
+        for (params, expected) in pages {
+            let reply = parity_clients::tool_reply(
+                sdk.peer(),
+                "swb_stream_x2E_derivedRead",
+                session,
+                params,
+            )
+            .await;
+            replies.push((reply, expected));
+        }
+        replies
+    })
+    .await;
+    timeout(Duration::from_secs(12), sdk.cancel())
+        .await
+        .expect("MCP cancellation timed out")
+        .unwrap();
+    for (reply, expected) in replies.expect("MCP chart pages timed out") {
+        let actual: DerivedReadResult =
+            serde_json::from_value(parity_clients::structured(reply.unwrap())).unwrap();
+        assert_eq!(&actual, expected);
+    }
 }
 
 fn derived(result: RpcResult) -> DerivedReadResult {

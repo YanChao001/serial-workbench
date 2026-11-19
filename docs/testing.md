@@ -152,7 +152,7 @@ Windows 四目标桌面作业在同一次构建中运行文件选择夹具和真
 
 ## 图表参考包后台采样
 
-执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。将签名 stdout 保存为收据，并把 `SWB_TEST_SIGNED_CHART_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 指向同源 CLI。
+执行 `pnpm plugin-sdk:fixture`，复用独立的 32 字节 Ed25519 测试种子和已准备的固定 Node。将签名 stdout 保存为收据，并把 `SWB_TEST_SIGNED_CHART_RECEIPT` 设为其绝对路径。`SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 分别指向同源 CLI 和 MCP 程序。
 
 ```sh
 cargo run --locked -p serial-workbench-host --example sign_reference_chart -- .cache/plugin-sdk/examples/reference-chart/main.js <测试种子文件> <新ZIP绝对路径> chart-reference local-acceptance
@@ -161,7 +161,7 @@ node --test scripts/reference-chart.test.mjs
 pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts
 ```
 
-定向场景在独立 Virtual Echo 会话内安装签名包，确认执行信任后显式启用。三次输入跨实际 RX 事件拼成 `1.25`、`-2` 和 `3.5`，分别核对字节范围 `[0,6)`、`[6,9)` 和 `[9,13)`，对照桌面桥和同源 CLI 的派生页。超长输入使对应任务失败，Host 仍能读到原始输入和前一任务的样本。缺口测试用受控 SDK 输入验证未完成记录不会跨缺口发布。图表窗口、实际 MCP 客户端与运行故障仍按 C 的完整场景验收。
+定向场景在独立 Virtual Echo 会话内安装签名包，确认执行信任后显式启用。三次输入跨实际 RX 事件拼成 `1.25`、`-2` 和 `3.5`，分别核对字节范围 `[0,6)`、`[6,9)` 和 `[9,13)`。同源 CLI 对照桌面桥首页，官方 MCP SDK 通过真实 stdio 程序对照两页。超长输入使对应任务失败，Host 仍能读到原始输入和前一任务的样本。缺口测试用受控 SDK 输入验证未完成记录不会跨缺口发布。实际运行故障按 C 的完整场景验收。
 
 桌面桥接用例从同一个成功 Operation 开启和重开图表并对照派生页，撤销执行信任后复查读页。无头 Chromium 用实际壳和图表脚本验证 iframe 隔离、留存缺口、曲线与样本值。原生图表窗口以及运行中采样仍需按 C 的完整场景验收。
 
