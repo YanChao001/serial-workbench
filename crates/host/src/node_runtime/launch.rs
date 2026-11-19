@@ -135,7 +135,12 @@ impl VerifiedNodeRuntime {
             #[cfg(target_os = "macos")]
             {
                 self.image
-                    .authenticate(child.id(), &control, &mut diagnostics)?;
+                    .authenticate(child.id(), &control, &mut diagnostics)
+                    .inspect_err(|_| {
+                        if let Some(detail) = &diagnostics.io_error {
+                            eprintln!("node_runtime_backend_authentication_failed {detail}");
+                        }
+                    })?;
                 child.resume()?;
             }
             Ok(())

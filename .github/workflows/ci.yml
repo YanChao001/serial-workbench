@@ -1,5 +1,5 @@
 name: 里程碑检查
-run-name: ${{ inputs.runtime_preflight && format('运行时预检 {0}', inputs.runtime_preflight_target || 'all') || inputs.native_preflight && format('原生预检 {0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || '完整四目标检查' }} · ${{ github.ref_name }}
+run-name: ${{ inputs.runtime_preflight && format('运行时预检 {0} / {1}', inputs.runtime_preflight_target || 'all', inputs.runtime_preflight_suite || 'all') || inputs.native_preflight && format('原生预检 {0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || '完整四目标检查' }} · ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
@@ -29,6 +29,15 @@ on:
           - x86_64-pc-windows-msvc
           - aarch64-apple-darwin
           - x86_64-apple-darwin
+        required: true
+      runtime_preflight_suite:
+        description: 运行时预检范围；定向套件须选择单一目标
+        type: choice
+        default: all
+        options:
+          - all
+          - host-ipc
+          - macos-signature
         required: true
       native_preflight_target:
         description: 原生预检目标；完整四目标模式不使用此选项
@@ -434,6 +443,7 @@ jobs:
     uses: ./.github/workflows/runtime-preflight.yml
     with:
       target: ${{ inputs.runtime_preflight_target || 'all' }}
+      suite: ${{ inputs.runtime_preflight_suite || 'all' }}
       conflicting_preflight: ${{ inputs.native_preflight }}
 
   native-preflight:

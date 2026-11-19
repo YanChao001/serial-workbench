@@ -6,6 +6,9 @@ on:
       target:
         type: string
         default: all
+      suite:
+        type: string
+        default: all
       conflicting_preflight:
         type: boolean
         default: false
@@ -28,6 +31,7 @@ jobs:
         id: matrix
         env:
           RUNTIME_TARGET: ${{ inputs.target }}
+          RUNTIME_SUITE: ${{ inputs.suite }}
           CONFLICTING_PREFLIGHT: ${{ inputs.conflicting_preflight }}
         run: |
           node --input-type=module <<'NODE'
@@ -43,6 +47,10 @@ jobs:
           const release = loadNodeRuntimeRelease(process.cwd());
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
+          const suite = process.env.RUNTIME_SUITE;
+          if (!['all', 'host-ipc', 'macos-signature'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
+          if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
           const include = Object.entries(platforms)
             .filter(([target]) => requested === 'all' || requested === target)
             .map(([target, platform]) => {
@@ -93,10 +101,12 @@ jobs:
       - name: 验签并准备固定原生运行时
         run: node scripts/ci-prepare-node-runtime.mjs
       - name: 构建运行时探针、CLI 与 MCP
+        if: inputs.suite == 'all'
         run: >-
           cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
           --example node_runtime_probe --bin serial-workbench-cli --bin serial-workbench-mcp
       - name: 验证原生 runtime 安装布局与故障
+        if: inputs.suite == 'all'
         id: node-runtime
         shell: bash
         run: |
@@ -112,6 +122,27 @@ jobs:
           export SWB_TEST_NODE_SDK_FIXTURE="$PWD/.cache/plugin-sdk/examples/native-parity.js"
           cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
           if [[ "$RUNNER_OS" == "macOS" ]]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi
+      - name: 定向验证 Host 管道和自动恢复
+        if: inputs.suite == 'host-ipc'
+        shell: bash
+        run: |
+          cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench-host --lib -- --ignored --test-threads=1 --nocapture \
+            native_node_task_derived_lane_preserves_raw_control_and_capture \
+            native_node_task_raw_lane_bounds_reads_preserves_control_and_capture \
+            restart_automatically_registers_without_replaying_tasks
+      - name: 定向验证 macOS 进程签名
+        if: inputs.suite == 'macos-signature'
+        shell: bash
+        run: |
+          cargo test --locked -p serial-workbench-host --test node_packages \
+            verified_backend_schema_lookup_budget_uses_actual_prepared_fragment_id_keys -- --ignored --test-threads=1 --nocapture
+          cargo build --locked -p serial-workbench-host --example node_runtime_probe
+          pnpm test:runtime --target "$RUNTIME_TARGET" --resources "$SWB_NODE_RUNTIME_TEST_ROOT" --probe src-tauri/target/debug/examples/node_runtime_probe --output artifacts/runtime-preflight
       - name: 保留 runtime 专项收据与签名来源
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -154,4 +185,7 @@ jobs:
       - name: 标记专项验证范围
         if: always()
         shell: bash
-        run: echo '运行时专项预检只验证固定来源、原生启动与故障，不验证桌面、安装器、离线软件全集或里程碑完整门禁。' >> "$GITHUB_STEP_SUMMARY"
+        env:
+          RUNTIME_SUITE: ${{ inputs.suite }}
+        run: |
+          echo "运行时专项预检套件为 $RUNTIME_SUITE，仅计入已运行的用例。里程碑仍以完整四目标门禁为准。" >> "$GITHUB_STEP_SUMMARY"

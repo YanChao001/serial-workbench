@@ -77,6 +77,8 @@ cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --t
 
 前者经签名包安装、确认、启用运行实际处理器；后者覆盖撤权与提交竞态、恢复、父子任务、worker 故障、结果访问与 Raw/Capture 连续性。macOS 另跑 `cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1` 核验监护和实际退出。逻辑时钟推进、取消 ACK 与 OS 进程退出是不同证据。
 
+托管定向复测启用 `runtime_preflight` 并选择单一 `runtime_preflight_target`。`runtime_preflight_suite=host-ipc` 运行派生、Raw、Host 和 Node 自动恢复；`macos-signature` 在所选 macOS 架构运行已复现失败的后台用例及原生安装布局与启动故障。默认 `all` 运行完整运行时专项。里程碑仍用同一候选的完整四目标工作流验收。
+
 任务 Raw 专项使用同一原生资源根。测试持续接收 Virtual 数据，在后端准备页后暂缓交付，并核对四个 Raw 名额用满时的控制回执、取消、内存释放与录制回放。
 
 ```sh

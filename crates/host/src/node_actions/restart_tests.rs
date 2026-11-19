@@ -903,6 +903,10 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
     else {
         panic!("Expected workspace");
     };
+    let restored_generation = match boundary {
+        RestartBoundary::Host => before_runtime.generation,
+        RestartBoundary::Node => before_runtime.generation.checked_next().unwrap(),
+    };
     if automatic {
         let mut last = None;
         let restored = tokio::time::timeout(Duration::from_secs(5), async {
@@ -917,7 +921,10 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
                 else {
                     panic!("Expected runtime status");
                 };
-                if status.phase == NodePackageRuntimePhase::Active {
+                if status.phase == NodePackageRuntimePhase::Active
+                    && status.generation == restored_generation
+                    && status.archive_sha256.as_ref() == Some(&archive)
+                {
                     break;
                 }
                 last = Some(status);
@@ -995,13 +1002,7 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
     assert_eq!(after.document, value.document);
     assert_eq!(before_runtime.phase, NodePackageRuntimePhase::Active);
     assert_eq!(after_runtime.phase, NodePackageRuntimePhase::Active);
-    match boundary {
-        RestartBoundary::Host => assert_eq!(after_runtime.generation, before_runtime.generation),
-        RestartBoundary::Node => assert_eq!(
-            after_runtime.generation,
-            before_runtime.generation.checked_next().unwrap()
-        ),
-    }
+    assert_eq!(after_runtime.generation, restored_generation);
     match boundary {
         RestartBoundary::Host => {
             assert!(

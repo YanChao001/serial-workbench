@@ -301,6 +301,17 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   }
   assert.match(runtime, /name: runtime-preflight-\$\{\{ matrix\.target \}\}/);
   assert.match(runtime, /fail-fast: false/);
+  for (const [step, suite] of [
+    ["验证原生 runtime 安装布局与故障", "all"],
+    ["定向验证 Host 管道和自动恢复", "host-ipc"],
+    ["定向验证 macOS 进程签名", "macos-signature"],
+  ]) {
+    assert.ok(
+      runtime.includes(
+        `- name: ${step}\n        if: inputs.suite == '${suite}'`,
+      ),
+    );
+  }
   assert.match(
     ci,
     /runtime_preflight:[\s\S]*?type: boolean\n {8}default: false/,
@@ -319,8 +330,8 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
   t.after(() => {
     if (t.passed) removeProjectPath(root, relative(root, directory));
   });
-  const run = (target, conflict = "false") => {
-    const output = join(directory, `${target}-${conflict}.txt`);
+  const run = (target, conflict = "false", suite = "all") => {
+    const output = join(directory, `${target}-${conflict}-${suite}.txt`);
     const result = spawnSync(process.execPath, ["--input-type=module"], {
       cwd: root,
       input: script,
@@ -329,6 +340,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
       env: {
         ...process.env,
         RUNTIME_TARGET: target,
+        RUNTIME_SUITE: suite,
         CONFLICTING_PREFLIGHT: conflict,
         GITHUB_OUTPUT: output,
       },
@@ -347,17 +359,25 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     { target: "aarch64-apple-darwin", platform: "macos-15" },
     { target: "x86_64-apple-darwin", platform: "macos-15-intel" },
   ]);
-  const one = run("aarch64-apple-darwin");
-  assert.equal(one.result.status, 0, one.result.stderr);
-  assert.equal(
-    JSON.parse(readFileSync(one.output, "utf8").trim().slice(7)).include.length,
-    1,
-  );
-  for (const [target, conflict, message] of [
-    ["all", "true", /mutually exclusive/],
-    ["unknown", "false", /Unsupported runtime preflight target/],
+  for (const [target, suite, platform] of [
+    ["aarch64-apple-darwin", "host-ipc", "macos-15"],
+    ["x86_64-apple-darwin", "macos-signature", "macos-15-intel"],
   ]) {
-    const { result } = run(target, conflict);
+    const one = run(target, "false", suite);
+    assert.equal(one.result.status, 0, one.result.stderr);
+    assert.deepEqual(
+      JSON.parse(readFileSync(one.output, "utf8").trim().slice(7)).include,
+      [{ target, platform }],
+    );
+  }
+  for (const [target, conflict, suite, message] of [
+    ["all", "true", "all", /mutually exclusive/],
+    ["unknown", "false", "all", /Unsupported runtime preflight target/],
+    ["all", "false", "unknown", /Unsupported runtime preflight suite/],
+    ["all", "false", "host-ipc", /needs one target/],
+    ["x86_64-pc-windows-msvc", "false", "macos-signature", /requires macOS/],
+  ]) {
+    const { result } = run(target, conflict, suite);
     assert.equal(result.status, 1);
     assert.match(result.stderr, message);
   }

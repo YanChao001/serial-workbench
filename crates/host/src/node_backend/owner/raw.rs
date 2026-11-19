@@ -93,8 +93,10 @@ impl Owner {
             .map_err(|_| error("INVALID_ARGUMENT", "backendRawReadParams"))?;
         let future = (task.read_raw)(params);
         let (reply, response) = oneshot::channel();
+        let owner = std::thread::current();
         let work = task.runtime.spawn(async move {
             let _ = reply.send(future.await);
+            owner.unpark();
         });
         Ok(Read {
             parent: request.parent_request_id,

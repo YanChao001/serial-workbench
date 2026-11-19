@@ -56,37 +56,52 @@ $edit = [Windows.Automation.PropertyCondition]::new(
     [Windows.Automation.AutomationElement]::ControlTypeProperty,
     [Windows.Automation.ControlType]::Edit
 )
-function Find-DialogItem([int]$Id) {
+function Find-DialogItem([string]$Id) {
     $property = [Windows.Automation.AutomationElement]::AutomationIdProperty
-    $item = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($property, [string]$Id))
+    $item = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($property, $Id))
     if ($item) { return $item }
-    $child = [TerminalPickerWindow]::GetDlgItem($handle, $Id)
-    if ($child -ne [IntPtr]::Zero) {
-        return [Windows.Automation.AutomationElement]::FromHandle($child)
+    $controlId = 0
+    if ([int]::TryParse($Id, [ref]$controlId)) {
+        $child = [TerminalPickerWindow]::GetDlgItem($handle, $controlId)
+        if ($child -ne [IntPtr]::Zero) {
+            return [Windows.Automation.AutomationElement]::FromHandle($child)
+        }
     }
 }
 
-# The common dialogs can expose a combo box, a nested edit, or a labeled edit.
-$fileName = Find-DialogItem 1148
-if ($fileName -and $fileName.Current.ControlType -ne [Windows.Automation.ControlType]::Edit) {
-    $fileName = $fileName.FindFirst($scope, $edit)
-}
-if (!$fileName) {
-    $fileName = $dialog.FindAll($scope, $edit) | Where-Object {
-        $_.Current.AutomationId -eq '1152' -or $_.Current.Name -match '^File name\s*:?\s*$'
-    } | Select-Object -First 1
-}
-$confirm = Find-DialogItem 1
+# A filename host can expose Value directly without exposing a child edit.
 $fileValue = $null
+foreach ($key in 'FileNameControlHost', '1148', '1152') {
+    $fileName = Find-DialogItem $key
+    if (!$fileName) { continue }
+    if ($fileName.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue)) { break }
+    $nested = $fileName.FindFirst($scope, $edit)
+    if ($nested -and $nested.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue)) { break }
+}
+if (!$fileValue) {
+    foreach ($candidate in $dialog.FindAll($scope, $edit)) {
+        if ($candidate.Current.Name -match '^File name\s*:?\s*$' -and
+            $candidate.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue)) { break }
+    }
+}
+
+$confirm = Find-DialogItem '1'
 $confirmAction = $null
-if (!$fileName -or !$fileName.TryGetCurrentPattern([Windows.Automation.ValuePattern]::Pattern, [ref]$fileValue) -or
-    !$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)) {
+if (!$confirm -or !$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)) {
+    $name = [Windows.Automation.AutomationElement]::NameProperty
+    $confirm = $dialog.FindFirst($scope, [Windows.Automation.PropertyCondition]::new($name, $Action))
+    if ($confirm) {
+        [void]$confirm.TryGetCurrentPattern([Windows.Automation.InvokePattern]::Pattern, [ref]$confirmAction)
+    }
+}
+if (!$fileValue -or !$confirmAction) {
     $controls = $dialog.FindAll($scope, [Windows.Automation.Condition]::TrueCondition) | Where-Object {
-        $_.Current.ControlType -in [Windows.Automation.ControlType]::Edit, [Windows.Automation.ControlType]::ComboBox, [Windows.Automation.ControlType]::Button
-    } | Select-Object -First 16 | ForEach-Object {
+        $_.Current.AutomationId -notlike 'System.*' -and
+            $_.Current.ControlType -in [Windows.Automation.ControlType]::Edit, [Windows.Automation.ControlType]::ComboBox, [Windows.Automation.ControlType]::Button
+    } | Select-Object -Last 16 | ForEach-Object {
         '{0}/{1}/{2}' -f $_.Current.ControlType.ProgrammaticName, $_.Current.AutomationId, $_.Current.Name
     }
-    throw "The owned $Action dialog is missing its filename edit or confirmation control. Controls: $($controls -join ' | ')"
+    throw "The owned $Action dialog did not expose Value=$([bool]$fileValue) Invoke=$([bool]$confirmAction). Controls: $($controls -join ' | ')"
 }
 $fileValue.SetValue($FilePath)
 if ([TerminalPickerWindow]::GetForegroundWindow() -ne $handle) {

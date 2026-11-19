@@ -75,7 +75,7 @@ pub struct NodeBackendExit {
     pub stderr: Vec<u8>,
 }
 pub struct NodeBackend {
-    requests: SyncSender<Request>,
+    requests: pipes::WakingSender<Request>,
     stop: Arc<AtomicBool>,
     owner: Option<JoinHandle<NodeBackendExit>>,
     observation: Arc<Mutex<ExitObservation>>,
@@ -90,7 +90,7 @@ pub struct NodeBackend {
 pub(crate) struct RegisteredHandler {
     execution: Arc<registrations::PackageExecution>,
     definition: Arc<definitions::Definition>,
-    requests: SyncSender<Request>,
+    requests: pipes::WakingSender<Request>,
     registrations: Arc<registrations::Registrations>,
     observation: Arc<Mutex<ExitObservation>>,
     finished: Arc<AtomicBool>,
@@ -243,6 +243,8 @@ impl NodeBackend {
                 report
             })
             .map_err(|_| error("HOST_BUSY", "backendOwnerThread"))?;
+        let mut requests = pipes::WakingSender::from(requests);
+        requests.set_receiver(owner.thread().clone());
         let mut backend = Self {
             requests,
             stop,
@@ -400,6 +402,7 @@ impl NodeBackend {
         owner_ended(&self.finished, &self.observation)
     }
     fn join(&mut self) -> NodeBackendExit {
+        self.requests.wake();
         self.owner
             .take()
             .expect("one owner join")

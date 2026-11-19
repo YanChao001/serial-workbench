@@ -73,9 +73,11 @@ impl Owner {
             .map_err(|_| error("INVALID_ARGUMENT", "backendDerivedPublishParams"))?;
         let future = (task.publish_derived)(params);
         let (reply, response) = oneshot::channel();
+        let owner = std::thread::current();
         let work = task.runtime.spawn(async move {
             // 成功回执代表已经发布的事实，父任务结束也不能改写它。
             let _ = reply.send(future.await);
+            owner.unpark();
         });
         Ok(Publish { response, work })
     }

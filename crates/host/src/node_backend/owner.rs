@@ -19,6 +19,7 @@ use std::{
         atomic::{AtomicBool, Ordering},
         mpsc::{self, Receiver, SyncSender},
     },
+    thread,
     time::{Duration, Instant},
 };
 mod derived;
@@ -297,7 +298,7 @@ impl Owner {
             if Instant::now() >= deadline {
                 return Err(error("LIMIT_EXCEEDED", "backendCommandDeadline"));
             }
-            match self.process.io.receive.recv_timeout(TICK) {
+            match self.process.io.receive.try_recv() {
                 Ok(bytes) => {
                     let frame = serde_json::from_slice(&bytes)
                         .map_err(|_| error("PROTOCOL_ERROR", "backendResponse"))?;
@@ -309,8 +310,8 @@ impl Owner {
                         return Ok(frame);
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => {
+                Err(mpsc::TryRecvError::Empty) => thread::park_timeout(TICK),
+                Err(mpsc::TryRecvError::Disconnected) => {
                     return Err(error("NODE_BACKEND_INTERRUPTED", "backendOutputEnded"));
                 }
             }
@@ -804,7 +805,7 @@ impl Owner {
                     Err(_) => return self.finish(Some(error("PROTOCOL_ERROR", "backendResponse"))),
                 }
             }
-            match receiver.recv_timeout(TICK) {
+            match receiver.try_recv() {
                 Ok(Request::Activate {
                     package,
                     definitions,
@@ -886,8 +887,8 @@ impl Owner {
                         let _ = failed.send(Err(cause));
                     }
                 }
-                Err(mpsc::RecvTimeoutError::Timeout) => {}
-                Err(mpsc::RecvTimeoutError::Disconnected) => return self.finish(None),
+                Err(mpsc::TryRecvError::Empty) => thread::park_timeout(TICK),
+                Err(mpsc::TryRecvError::Disconnected) => return self.finish(None),
             }
         }
     }
