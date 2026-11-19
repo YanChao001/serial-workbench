@@ -6,7 +6,7 @@
 
 1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、缩放、慢读者及其他平台原生观察。处理草稿输入延迟，核实 Windows 主窗与隔离插件窗口的缩放行为。候选验收保留安装准备和关停压力的未决记录。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
-3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 离线安装需可断网的独立环境并能在断网时操作控制台。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
+3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 离线候选已由 `3ffd6ff` 构建并校验归档，内置 WebView2 离线安装程序。候选、复用的三个签名参考包与验收程序记录在 `.cache/evidence/m2-node-backend/windows-offline-nsis-3ffd6ff/checkpoint.json`，实际安装和用例待可断网且能操作控制台的独立 Windows 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 
