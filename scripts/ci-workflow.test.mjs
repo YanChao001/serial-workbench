@@ -211,7 +211,7 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   );
   assert.match(
     runtime,
-    /cargo build --locked -p serial-workbench-host --example node_runtime_probe/,
+    /cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp\s+--example node_runtime_probe --bin serial-workbench-cli --bin serial-workbench-mcp/,
   );
   assert.match(
     runtime,
@@ -233,6 +233,10 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     assert.match(
       workflow,
       /export SWB_TEST_MCP_BIN="\$PWD\/src-tauri\/target\/debug\/serial-workbench-mcp\$suffix"/,
+    );
+    assert.match(
+      workflow,
+      /export SWB_TEST_CLI_BIN=.*\n\s+export SWB_TEST_MCP_BIN=.*\n\s+cargo test --locked -p serial-workbench-host --lib native_node_/,
     );
     assert.match(workflow, /pnpm plugin-sdk:fixture/);
     assert.match(
@@ -296,10 +300,6 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     assert.ok(ci.includes(`artifacts/reference-${name}/${log}.log`));
   }
   assert.match(runtime, /name: runtime-preflight-\$\{\{ matrix\.target \}\}/);
-  assert.match(
-    runtime,
-    /cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp --bins/,
-  );
   assert.match(runtime, /fail-fast: false/);
   assert.match(
     ci,

@@ -92,10 +92,10 @@ jobs:
           gpgv --version
       - name: 验签并准备固定原生运行时
         run: node scripts/ci-prepare-node-runtime.mjs
-      - name: 构建无界面 runtime 验收入口
-        run: cargo build --locked -p serial-workbench-host --example node_runtime_probe
-      - name: 构建无界面 CLI 与 MCP 验收入口
-        run: cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp --bins
+      - name: 构建运行时探针、CLI 与 MCP
+        run: >-
+          cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+          --example node_runtime_probe --bin serial-workbench-cli --bin serial-workbench-mcp
       - name: 验证原生 runtime 安装布局与故障
         id: node-runtime
         shell: bash
@@ -105,9 +105,9 @@ jobs:
           pnpm test:runtime --target "$RUNTIME_TARGET" --resources "$SWB_NODE_RUNTIME_TEST_ROOT" --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/runtime-preflight
           cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
           cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1
-          cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
           export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
           export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
           pnpm plugin-sdk:fixture
           export SWB_TEST_NODE_SDK_FIXTURE="$PWD/.cache/plugin-sdk/examples/native-parity.js"
           cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
