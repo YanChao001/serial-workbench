@@ -308,6 +308,11 @@ fn prepare_view(
             return Err(error);
         }
     };
+    #[cfg(all(windows, feature = "e2e"))]
+    if crate::e2e_zoom::enabled() {
+        use wry::WebViewExtWindows;
+        crate::e2e_zoom::observe(&window, renderer.controller());
+    }
     let label = id.as_str().to_owned();
     let stop = context.clone();
     window.on_window_event(move |event| {

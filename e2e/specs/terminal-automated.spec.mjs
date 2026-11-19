@@ -89,6 +89,56 @@ function windowEvents() {
   );
 }
 
+async function verifyWindowsZoom(window, screenshots = false) {
+  if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS !== "1") return;
+  const events = () =>
+    Array.from(
+      readFileSync(file("terminal-automated/native.log"), "utf8").matchAll(
+        /e2e_webview_zoom window=([\w-]+) handle=(\d+) factor=(\d+(?:\.\d+)?)/g,
+      ),
+      ([, label, handle, factor]) => ({
+        label,
+        handle,
+        factor: Number(factor),
+      }),
+    ).filter((event) => event.label === window);
+  let baseline;
+  await browser.waitUntil(() => Boolean((baseline = events().at(-1))), {
+    timeoutMsg: `No initial WebView2 zoom was recorded for ${window}`,
+  });
+  const drive = (action, ...args) =>
+    execute(
+      process.env.SWB_E2E_WINDOWS_PICKER_BIN,
+      [process.env.STARTER_E2E_APP_PID, action, baseline.handle, ...args],
+      { windowsHide: true, timeout: 15000 },
+    );
+  if (screenshots) await drive("ZoomCapture", file("terminal-before-zoom.png"));
+  await drive("ZoomIn");
+  let magnified;
+  await browser.waitUntil(
+    () => {
+      magnified = events().at(-1);
+      return magnified.factor > baseline.factor;
+    },
+    { timeoutMsg: `Ctrl+= did not magnify the foreground ${window} WebView2` },
+  );
+  if (screenshots) await drive("ZoomCapture", file("terminal-after-zoom.png"));
+  await drive("ZoomReset");
+  let restored;
+  await browser.waitUntil(
+    () => {
+      restored = events().at(-1);
+      return restored.factor === baseline.factor;
+    },
+    { timeoutMsg: `Ctrl+0 did not restore the foreground ${window} WebView2` },
+  );
+  writeFileSync(
+    file(`zoom-${window}.json`),
+    JSON.stringify({ baseline, magnified, restored }, null, 2),
+    { flag: "wx" },
+  );
+}
+
 async function waitEvent(predicate, timeoutMsg) {
   let match;
   await browser.waitUntil(
@@ -260,7 +310,9 @@ describe("Signed terminal on the real desktop", () => {
     await startCapture(fixture.capture);
     const baseline = await readerBytes();
 
+    await verifyWindowsZoom("main");
     const first = await openPlugin();
+    await verifyWindowsZoom(first, true);
     await send(beforeClose);
     await expectAcknowledgedRx(first, beforeClose);
     const open = await readerBytes();

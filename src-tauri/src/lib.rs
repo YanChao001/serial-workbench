@@ -15,6 +15,8 @@ mod client_state;
 mod commands;
 mod desktop;
 mod diagnostics;
+#[cfg(all(windows, feature = "e2e"))]
+mod e2e_zoom;
 mod error;
 mod file_access;
 mod file_commands;

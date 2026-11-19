@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Diagnostics;
+using System.Drawing;
+using System.Drawing.Imaging;
 using System.IO;
 using System.Runtime.InteropServices;
 using System.Text;
@@ -53,7 +55,15 @@ internal static class TerminalPickerWindow
         public int Left, Top, Right, Bottom;
     }
 
+    [StructLayout(LayoutKind.Sequential)]
+    private struct WindowRect
+    {
+        public int Left, Top, Right, Bottom;
+    }
+
     [DllImport("user32.dll")] private static extern IntPtr GetForegroundWindow();
+    [DllImport("user32.dll")] private static extern bool GetWindowRect(IntPtr window, out WindowRect rect);
+    [DllImport("user32.dll")] private static extern bool SetProcessDPIAware();
     [DllImport("user32.dll")] private static extern IntPtr GetWindow(IntPtr window, uint relation);
     [DllImport("user32.dll")] private static extern IntPtr GetDlgItem(IntPtr dialog, int id);
     [DllImport("user32.dll")] private static extern uint GetWindowThreadProcessId(IntPtr window, out uint pid);
@@ -85,6 +95,14 @@ internal static class TerminalPickerWindow
                 throw new InvalidOperationException("The native picker probe requires the independent Windows CI desktop.");
 
             uint pid;
+            if (args.Length >= 3 && args[1].StartsWith("Zoom", StringComparison.Ordinal))
+            {
+                long handle;
+                if (!uint.TryParse(args[0], out pid) || pid == 0 || !long.TryParse(args[2], out handle) || handle <= 0)
+                    throw new ArgumentException("Expected an owned application PID and a window handle.");
+                DriveZoom(pid, new IntPtr(handle), args);
+                return 0;
+            }
             if (args.Length != 3 || !uint.TryParse(args[0], out pid) || pid == 0 ||
                 (args[1] != "Open" && args[1] != "Save") || !Path.IsPathRooted(args[2]))
                 throw new ArgumentException("Expected application PID, Open or Save, and an absolute fixture path.");
@@ -103,6 +121,36 @@ internal static class TerminalPickerWindow
     {
         using (var writer = new StreamWriter(Console.OpenStandardOutput(), new UTF8Encoding(false)))
             writer.WriteLine(new JavaScriptSerializer().Serialize(receipt));
+    }
+
+    private static void DriveZoom(uint pid, IntPtr window, string[] args)
+    {
+        var observation = Stopwatch.StartNew();
+        while (GetForegroundWindow() != window && observation.Elapsed.TotalSeconds < 8)
+            Thread.Sleep(50);
+        if (!BelongsTo(window, pid) || GetForegroundWindow() != window)
+            throw new InvalidOperationException("The expected application window is not in the foreground.");
+
+        if (args[1] == "ZoomCapture" && args.Length == 4 && Path.IsPathRooted(args[3]))
+        {
+            SetProcessDPIAware();
+            WindowRect rect;
+            if (!GetWindowRect(window, out rect))
+                throw new InvalidOperationException("Cannot capture the foreground window bounds.");
+            using (var image = new Bitmap(rect.Right - rect.Left, rect.Bottom - rect.Top))
+            using (var graphics = Graphics.FromImage(image))
+            {
+                graphics.CopyFromScreen(rect.Left, rect.Top, 0, 0, image.Size);
+                image.Save(args[3], ImageFormat.Png);
+            }
+            return;
+        }
+
+        if (args.Length != 3 || (args[1] != "ZoomIn" && args[1] != "ZoomReset"))
+            throw new ArgumentException("Expected ZoomIn, ZoomReset, or ZoomCapture with an absolute destination.");
+        const ushort control = 0x11;
+        ushort key = args[1] == "ZoomIn" ? (ushort)0xBB : (ushort)'0';
+        SendKeys(new[] { Key(control, 0, 0), Key(key, 0, 0), Key(key, 0, KeyUp), Key(control, 0, KeyUp) });
     }
 
     private static void Drive(uint pid, string action, string path)

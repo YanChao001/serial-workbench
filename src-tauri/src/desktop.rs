@@ -209,12 +209,21 @@ fn create_window(app: &tauri::AppHandle, label: &str) -> NativeResult<()> {
     let builder = WebviewWindowBuilder::from_config(app, &config).map_err(|e| {
         NativeError::operation(ErrorCode::WindowError, "Cannot configure window", e)
     })?;
-    // Wry 在首次导航前把捏合输入绑定到此开关；Windows 的 ready 回调会单独关闭整页缩放。
+    // Windows 主窗与独立插件窗都采用 WebView2 的键盘缩放。
     #[cfg(windows)]
     let builder = builder.zoom_hotkeys_enabled(true);
     let window = builder
         .build()
         .map_err(|e| NativeError::operation(ErrorCode::WindowError, "Cannot create window", e))?;
+    #[cfg(all(windows, feature = "e2e"))]
+    if label == "main" && crate::e2e_zoom::enabled() {
+        let owner = window.as_ref().window();
+        if let Err(error) = window.with_webview(move |webview| {
+            crate::e2e_zoom::observe(&owner, webview.controller());
+        }) {
+            log::warn!("Cannot access the main WebView2 controller: {error}");
+        }
+    }
     app.state::<crate::host_bridge::DesktopHostBridge>()
         .register_new_window(&window)
         .map_err(|error| NativeError::new(ErrorCode::WindowError, error.message))?;
