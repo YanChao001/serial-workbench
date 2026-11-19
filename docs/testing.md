@@ -165,6 +165,8 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 用例在 Virtual Echo 会话核对两次应答和 RX 范围，再分别验证应答不符、收到前缀后超时和等待应答时取消。结果区分超时和应答不符，取消请求与父动作实际停止分别核对。三种情况下都只接纳首个发送子动作。独立发送仍可使用同一会话，停止录制后逐字节核对全部 32 字节。
 
+`node --test scripts/node-backend-cancellation.test.mjs` 向实际 Node bootstrap 先发送带 `CANCELLED` 的 Raw 回执，并验证任务在收到取消控制帧之前已报告取消。真实 Host 中的授权复核、父动作终态和录制连续性仍由原生用例验证。
+
 完整四目标 CI 的原生 runtime 验收步骤使用每个目标实际安装布局，构建、签名并运行终端、图表和自动化三个参考包的无窗口用例。产物分别保留在 `artifacts/reference-terminal`、`artifacts/reference-chart` 与 `artifacts/reference-automation`。各平台的原生窗口和实际离线安装遵循阶段出口另行验收。
 
 ## Host 软件验收

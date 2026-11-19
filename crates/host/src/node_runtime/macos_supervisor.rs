@@ -396,9 +396,28 @@ fn group_has_live_members(group: libc::pid_t) -> io::Result<bool> {
 fn read_group(group: libc::pid_t, members: &mut [libc::pid_t]) -> io::Result<usize> {
     let size = libc::c_int::try_from(std::mem::size_of_val(members))
         .map_err(|_| io::Error::from_raw_os_error(libc::EOVERFLOW))?;
-    let count = unsafe { libc::proc_listpgrppids(group, members.as_mut_ptr().cast(), size) };
-    usize::try_from(count).map_err(|_| io::Error::last_os_error())
+    // libproc 在查询失败时可能返回零，同时保留内核 errno。
+    let (count, code) = unsafe {
+        let errno = libc::__error();
+        *errno = 0;
+        let count = libc::proc_listpgrppids(group, members.as_mut_ptr().cast(), size);
+        (count, *errno)
+    };
+    if count <= 0 && code != 0 {
+        return Err(io::Error::from_raw_os_error(code));
+    }
+    usize::try_from(count).map_err(|_| io::Error::from_raw_os_error(libc::EIO))
 }
+
+#[cfg(test)]
+#[test]
+fn process_group_query_propagates_kernel_error() {
+    let group = unsafe { libc::getpgrp() };
+    // XNU 对非空地址及不足一个 PID 的缓冲区返回 ENOMEM。
+    let error = read_group(group, &mut []).unwrap_err();
+    assert_eq!(error.raw_os_error(), Some(libc::ENOMEM));
+}
+
 pub(super) fn wait_group_gone(pid: u32) -> io::Result<()> {
     let group = pid as libc::pid_t;
     loop {

@@ -54,6 +54,10 @@
 
 **原生后台重新启动耗时（候选）**。第三轮 macOS arm64 的失败日志及 SQLite 收据确认，容量释放后的启用在等待期限内仍为 Running，兼容升级已经提交且新运行时代次仍为 Starting。Intel macOS 与 Ubuntu 也记录同名用例失败。两条路径在首个后台 owner 释放后均重新走固定 Node 校验。在 Windows 对同一份 100,097,864 字节文件各测六次，优化 `sha2 0.10.9` 后摘要耗时中位数从 1.852 秒降到 0.082 秒，逐次摘要一致。仅调整开发及测试构建的该依赖优化等级，原资源校验顺序和用例等待期限继续适用。Windows 固定 Node 的两项原生用例复跑通过，容量释放后重新启用成功，升级后保存 Schema 仍可重放。现场、测量和复跑见 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `combined-runtime-arm64-failures`、`runtime-sha-and-arm64-profiles.json` 与 `optimized-runtime-package-windows.log`。实际 Linux 和 macOS 启用及升级耗时待同一候选验证。
 
+**同源复审（候选）**。`2aa8d85` 的 Windows `pnpm verify --jobs 1` 通过。复审发现 macOS `libproc` 的零返回也可能携带真实错误。读取进程组现在清除旧 `errno`，并让本次查询错误阻止回收确认。新增 macOS 用例直接核对内核查询错误，待两种架构实跑。新增脚本回归用真实 Node bootstrap 固定数据回执先到的顺序。同一用例用 `d5eaa63` 的 bootstrap 得到 `action_failed`，用当前 bootstrap 得到 `action_cancelled`。原生 Host 仍须核对已接受取消后的实际结算。原始日志为同目录的 `runtime-sha-exact-verify.log` 和 `raw-cancel-tracked-test-{red,green}.log`。[Apple libproc 实现](https://github.com/apple-oss-distributions/xnu/blob/xnu-11215.81.4/libsyscall/wrappers/libproc/libproc.c#L41-L77)
+
+**独立 Linux 签名后台作业首跑（`d69ebea`）**。108 项均执行完毕，用例总耗时约 39 分钟，106 项通过。容量释放后启用仍停在 Running，兼容升级后注册仍停在 Starting。该作业取自摘要优化前的候选。失败日志保存为同目录的 `split-ci-linux-backend.log`，优化后的同源候选仍须通过这两项及完整四目标门禁。[独立 Linux 作业](https://github.com/YanChao001/serial-workbench/actions/runs/44510694314/job/135519288809)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
