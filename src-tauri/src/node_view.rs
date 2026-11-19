@@ -274,6 +274,8 @@ fn prepare_view(
         })
         .with_new_window_req_handler(|_, _| wry::NewWindowResponse::Deny)
         .with_download_started_handler(|_, _| false);
+    #[cfg(windows)]
+    let renderer = renderer.with_hotkeys_zoom(true);
     #[cfg(target_os = "linux")]
     let renderer = {
         use wry::WebViewBuilderExtUnix;

@@ -114,6 +114,8 @@
 
 **Intel 复验及已有参考包证据**。`ce603c4` 在 Intel macOS 完成签名终端启用、关窗录制、重开与撤权，回放同一会话的 69 字节，收据在 `intel-ce603c4/signed-terminal-6fGcRO`。`2505273` 的 Apple Silicon 和 Linux 桌面也完成 69 字节回放。该提交的 Linux 安装布局通过两个终端、一个图表及一个自动化的真实 Host 用例，三包签名 ZIP 和日志保存在 `linux-2505273-runtime/artifacts`。其余架构须完成同源验证。[Intel 原生复验](https://github.com/YanChao001/serial-workbench/actions/runs/44582705913) · [Linux runtime 验收](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108305)
 
+**本机候选与 Windows 缩放**。`4222ccb` 的 `pnpm verify --jobs 1` 用时 157.7 秒，无头 UI 203 项全部通过。应用输入 p95 为 98.9 毫秒，最慢一次为 183 毫秒，样本见 `4222ccb-headless-ui`。下一候选将 Windows 隔离视图缩放快捷键与主窗口对齐，桌面编译检查通过，实际焦点与可读性待原生观察。完整四目标的 Windows 作业在既有桌面构建中执行真实文件对话框场景，复用上轮通过的测试入口。编译收据见 `windows-plugin-zoom-check.log`。
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
