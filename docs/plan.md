@@ -110,7 +110,9 @@
 
 同轮 Windows Rust 在传输进度订阅的 500 毫秒夹具期限退出。候选将首块之后的发送排到观察窗口之外，收到已持久化的首块进度后立即取消，仍验证订阅在传输进行期间发布。本机 `operation_visibility_host` 的 8 项均通过。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108268)
 
-Apple Silicon 的签名后台通过 108 项，一项失败在退出报告缺少私有动作异常文本。Unix 的读取线程原先在收尾信号后直接退出，可能漏读管道中已有的内容。候选读取非阻塞管道中已写入的诊断，收到空管道即结束，保留既有预算和公共错误的脱敏断言，待同架构复验。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108276)
+两种 macOS 的签名后台各通过 108 项，均在退出报告缺少私有动作异常文本时失败。`a738621` 在收尾时读完 Unix 非阻塞管道中的诊断，再结束读取线程。Apple Silicon 同源复验通过全部 109 项，包括该动作异常用例，实际 Host 专项另通过 73 项。Intel Rust 仍待同源确认。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108276) · [Apple Silicon 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44583914686)
+
+**Intel 复验及已有参考包证据**。`ce603c4` 在 Intel macOS 完成签名终端启用、关窗录制、重开与撤权，回放同一会话的 69 字节，收据在 `intel-ce603c4/signed-terminal-6fGcRO`。`2505273` 的 Apple Silicon 和 Linux 桌面也完成 69 字节回放。该提交的 Linux 安装布局通过两个终端、一个图表及一个自动化的真实 Host 用例，三包签名 ZIP 和日志保存在 `linux-2505273-runtime/artifacts`。其余架构须完成同源验证。[Intel 原生复验](https://github.com/YanChao001/serial-workbench/actions/runs/44582705913) · [Linux runtime 验收](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108305)
 
 ## 验证基线
 
