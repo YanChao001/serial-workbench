@@ -42,6 +42,10 @@ export async function installPlugin(fixture, selectFile = click) {
     "*",
     `Signature verified · ${fixture.source}`,
   ).waitForDisplayed();
+  await trustAndEnablePlugin();
+}
+
+export async function trustAndEnablePlugin() {
   await click(button("Trust this plugin"));
   await byText(
     "*",

@@ -18,10 +18,12 @@ import {
   installPlugin,
   sendHex,
   showPluginDetails,
+  trustAndEnablePlugin,
 } from "./reference-plugin.mjs";
 
 const execute = promisify(execFile);
 const directory = process.env.STARTER_E2E_TERMINAL_DIR;
+const useWindowsPickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const file = (name) => join(directory, name);
 
@@ -29,7 +31,7 @@ const showTerminalDetails = () =>
   showPluginDetails("Serial Workbench Terminal");
 
 async function selectFile(element, action, path) {
-  if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS !== "1") {
+  if (!useWindowsPickers) {
     await click(element);
     return;
   }
@@ -89,35 +91,49 @@ function windowEvents() {
   );
 }
 
-async function verifyWindowsZoom(window, screenshots = false) {
-  if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS !== "1") return;
-  const events = () =>
-    Array.from(
-      readFileSync(file("terminal-automated/native.log"), "utf8").matchAll(
-        /e2e_webview_zoom window=([\w-]+) handle=(\d+) factor=(\d+(?:\.\d+)?)/g,
-      ),
-      ([, label, handle, factor]) => ({
-        label,
-        handle,
-        factor: Number(factor),
-      }),
-    ).filter((event) => event.label === window);
+function windowsZoomEvents(window) {
+  return Array.from(
+    readFileSync(file("terminal-automated/native.log"), "utf8").matchAll(
+      /e2e_webview_zoom window=([\w-]+) handle=(\d+) factor=(\d+(?:\.\d+)?)/g,
+    ),
+    ([, label, handle, factor]) => ({
+      label,
+      handle,
+      factor: Number(factor),
+    }),
+  ).filter((event) => event.label === window);
+}
+
+async function currentWindowsZoom(window) {
   let baseline;
-  await browser.waitUntil(() => Boolean((baseline = events().at(-1))), {
-    timeoutMsg: `No initial WebView2 zoom was recorded for ${window}`,
-  });
+  await browser.waitUntil(
+    () => Boolean((baseline = windowsZoomEvents(window).at(-1))),
+    {
+      timeoutMsg: `No initial WebView2 zoom was recorded for ${window}`,
+    },
+  );
+  return baseline;
+}
+
+function driveWindowsView(action, handle, ...args) {
+  return execute(
+    process.env.SWB_E2E_WINDOWS_PICKER_BIN,
+    [process.env.STARTER_E2E_APP_PID, action, handle, ...args],
+    { windowsHide: true, timeout: 15000 },
+  );
+}
+
+async function verifyWindowsZoom(window, screenshots = false) {
+  if (!useWindowsPickers) return;
+  const baseline = await currentWindowsZoom(window);
   const drive = (action, ...args) =>
-    execute(
-      process.env.SWB_E2E_WINDOWS_PICKER_BIN,
-      [process.env.STARTER_E2E_APP_PID, action, baseline.handle, ...args],
-      { windowsHide: true, timeout: 15000 },
-    );
+    driveWindowsView(action, baseline.handle, ...args);
   if (screenshots) await drive("ZoomCapture", file("terminal-before-zoom.png"));
   await drive("ZoomIn");
   let magnified;
   await browser.waitUntil(
     () => {
-      magnified = events().at(-1);
+      magnified = windowsZoomEvents(window).at(-1);
       return magnified.factor > baseline.factor;
     },
     { timeoutMsg: `Ctrl+= did not magnify the foreground ${window} WebView2` },
@@ -127,7 +143,7 @@ async function verifyWindowsZoom(window, screenshots = false) {
   let restored;
   await browser.waitUntil(
     () => {
-      restored = events().at(-1);
+      restored = windowsZoomEvents(window).at(-1);
       return restored.factor === baseline.factor;
     },
     { timeoutMsg: `Ctrl+0 did not restore the foreground ${window} WebView2` },
@@ -148,15 +164,33 @@ async function waitEvent(predicate, timeoutMsg) {
   return match;
 }
 
-async function openPlugin(except) {
+async function openPlugin(label = "Open plugin") {
   await showTerminalDetails();
-  await click(button("Open plugin"));
+  const previousViews = new Set(windowEvents().map((entry) => entry.view));
+  await click(button(label));
   const { view } = await waitEvent(
-    (entry) => entry.event === "shown" && entry.view !== except,
+    (entry) => entry.event === "shown" && !previousViews.has(entry.view),
     "The native plugin window was not shown",
   );
-  await button("Open plugin").waitForEnabled();
+  await button(label).waitForEnabled();
   return view;
+}
+
+async function closePlugin(view) {
+  await nativeValue("host_close_node_view", { id: view });
+  await waitEvent(
+    (entry) => entry.view === view && entry.event === "closed",
+    "The native Wry window was not destroyed",
+  );
+}
+
+async function setTheme(dark) {
+  const isDark = () =>
+    browser.execute(() => document.documentElement.classList.contains("dark"));
+  if ((await isDark()) !== dark) {
+    await click($("button[data-theme-control]"));
+    await browser.waitUntil(async () => (await isDark()) === dark);
+  }
 }
 
 async function expectAcknowledgedRx(view, ...writes) {
@@ -303,6 +337,7 @@ describe("Signed terminal on the real desktop", () => {
     const { beforeClose, whileClosed, afterReopen } = fixture.writes;
     await ready();
     await language("en");
+    if (useWindowsPickers) await setTheme(true);
     await navigate("/");
     await openVirtual();
     await installPlugin(fixture, selectFile);
@@ -316,11 +351,7 @@ describe("Signed terminal on the real desktop", () => {
     await expectAcknowledgedRx(first, beforeClose);
     const open = await readerBytes();
     assert.ok(open > baseline, "The native view must own a separate reader");
-    await nativeValue("host_close_node_view", { id: first });
-    await waitEvent(
-      (entry) => entry.view === first && entry.event === "closed",
-      "The first native Wry window was not destroyed",
-    );
+    await closePlugin(first);
     let closed;
     await browser.waitUntil(
       async () => (closed = await readerBytes()) <= baseline,
@@ -339,7 +370,7 @@ describe("Signed terminal on the real desktop", () => {
       { flag: "wx" },
     );
     await send(whileClosed);
-    const second = await openPlugin(first);
+    const second = await openPlugin();
     await expectAcknowledgedRx(second, beforeClose, whileClosed);
     await verifyWindowsZoom(second, true);
     await send(afterReopen);
@@ -358,6 +389,7 @@ describe("Signed terminal on the real desktop", () => {
       timeoutMsg: "Closing recording details did not restore capture focus",
     });
     await showTerminalDetails();
+    const { generation } = await nativeValue("host_attachment");
     assert.ok(
       !windowEvents().some(
         (entry) =>
@@ -388,11 +420,7 @@ describe("Signed terminal on the real desktop", () => {
       (entry) => entry.view === second && entry.event === "stopped",
       "The isolated reader did not stop after revocation",
     );
-    await nativeValue("host_close_node_view", { id: second });
-    await waitEvent(
-      (entry) => entry.view === second && entry.event === "closed",
-      "The reopened native window was not destroyed",
-    );
+    await closePlugin(second);
     const events = windowEvents().filter((entry) => entry.view === second);
     const withdrawn = events.findIndex((entry) => entry.event === "withdrawn");
     assert.ok(withdrawn >= 0);
@@ -400,5 +428,35 @@ describe("Signed terminal on the real desktop", () => {
       events.slice(withdrawn + 1).every((entry) => entry.event !== "rx"),
       "The old view received RX after the Host withdrew access",
     );
+
+    await trustAndEnablePlugin();
+    if (useWindowsPickers) {
+      await setTheme(false);
+      await language("zh");
+    }
+    const restored = await openPlugin(
+      useWindowsPickers ? "打开插件" : "Open plugin",
+    );
+    await expectAcknowledgedRx(restored, beforeClose, whileClosed, afterReopen);
+    const attachment = await nativeValue("host_attachment");
+    assert.equal(
+      attachment.generation,
+      generation,
+      "Plugin recovery replaced the desktop attachment",
+    );
+    if (useWindowsPickers) {
+      const { handle } = await currentWindowsZoom(restored);
+      await driveWindowsView(
+        "ZoomCapture",
+        handle,
+        file("terminal-zh-light.png"),
+      );
+    }
+    writeFileSync(
+      file("terminal-catalog-reactivation.json"),
+      JSON.stringify({ generation, oldView: second, restoredView: restored }),
+      { flag: "wx" },
+    );
+    await closePlugin(restored);
   });
 });
