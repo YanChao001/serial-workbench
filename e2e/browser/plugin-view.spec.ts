@@ -133,6 +133,7 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   ];
   let pulls = 0;
   let stops = 0;
+  let dataReady = false;
   const unexpected: string[] = [];
   await page.route("https://unexpected.example/**", (route) => {
     unexpected.push(route.request().url());
@@ -158,7 +159,9 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
         body: shell,
       });
     if (path === "/next.js") {
-      const payload = payloads[pulls++] ?? { frame: null };
+      const payload = (pulls === 0 || dataReady
+        ? payloads[pulls++]
+        : undefined) ?? { frame: null };
       return route.fulfill({
         contentType: "application/javascript",
         body: `globalThis.swbViewReceive(JSON.parse(${JSON.stringify(JSON.stringify(payload))}));`,
@@ -187,13 +190,15 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
 
   await page.goto(`${shellOrigin}/index.html`);
   const view = page.frameLocator('iframe[title="Plugin view"]');
-  await expect(view.getByRole("heading", { name: "串口监听" })).toBeVisible();
-  await expect(view.getByRole("status")).toHaveText("正在监听");
+  await expect(view.getByRole("status")).toHaveText("等待串口数据…");
+  dataReady = true;
   await expect(view.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(view.locator("#receive")).toHaveJSProperty(
     "textContent",
     `${rxLine}[TX] X\n[部分串口数据缺失]\n${afterGap}\n`,
   );
+  await expect(view.getByRole("heading")).toHaveCount(0);
+  await expect(view.getByRole("status")).toBeHidden();
   await expect(view.locator("#receive img")).toHaveCount(0);
   expect(await view.locator("html").evaluate(() => globalThis.origin)).toBe(
     "null",

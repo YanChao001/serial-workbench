@@ -2,9 +2,8 @@
 import { connectReadOnlyView } from "@serial-workbench/plugin-sdk/web";
 
 const status = document.querySelector<HTMLElement>("#connection");
-const title = document.querySelector<HTMLElement>("#title");
 const receive = document.querySelector<HTMLPreElement>("#receive");
-if (!status || !title || !receive) throw new Error("Monitor layout is missing");
+if (!status || !receive) throw new Error("Monitor layout is missing");
 
 const displayLimit = 256 * 1024;
 let displayed = 0;
@@ -64,7 +63,7 @@ function addDisplayLine(parts: string[], text: string) {
 
 const view = connectReadOnlyView({
   onSession() {
-    status.textContent = zh ? "正在监听" : "Listening";
+    status.textContent = zh ? "等待串口数据…" : "Waiting for serial data…";
   },
   onBatch(batch) {
     const terms: string[] = [];
@@ -87,7 +86,9 @@ const view = connectReadOnlyView({
         );
       }
     }
-    append(terms.join(""));
+    const text = terms.join("");
+    if (text && displayed === 0) status.textContent = "";
+    append(text);
   },
   onError() {
     status.textContent = zh ? "监听已断开" : "Monitor disconnected";
@@ -98,7 +99,6 @@ document.documentElement.lang = view.locale;
 document.documentElement.dataset.theme = view.dark ? "dark" : "light";
 if (zh) {
   document.title = "串口监听";
-  title.textContent = document.title;
   status.textContent = "正在连接…";
   receive.setAttribute("aria-label", "串口数据");
 }

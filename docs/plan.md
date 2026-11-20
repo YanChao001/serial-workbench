@@ -5,7 +5,7 @@
 ## 当前执行与下一步
 
 1. **B / 14.3–14.4 已验收。** 同一候选 `9090867` 通过自审、本机综合检查、无头 UI 203 项和完整四目标 CI。四个原生桌面均验证同连接的目录恢复与关窗录制，重开补读的三段 RX 与 69 字节录制一致。Windows 实际打开和保存对话框均返回同一窗口焦点，两种 macOS 架构完成进程回收。打开中的插件实时更新语言仍待交付，UX-13 保留为部分软件进展。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44681253676)
-2. **C / 14.5 正在验收。** 同一个只读参考包以「串口监听」展示所选串口的收发数据。开发中的新版调整显示名、状态提示和文本行距。三个参考包按公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。四目标已验证实际图表窗口。
+2. **C / 14.5 正在验收。** 同一个只读参考包以「串口监听」展示所选串口的收发数据。插件名放在窗口标题，正文收到数据后从顶部直接显示，等待和异常按需提示。新版已复查中英文、明暗和窄窗布局，最终候选仍在验证。三个参考包按公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。四目标已验证实际图表窗口。
 3. **Windows 断网实装移至 M6。** 用户确认将未安装 WebView2 的独立 Windows x64 环境中的断网实装纳入 M6 发行候选验收。M2 和 M3 继续核对 Windows 安装包内置 Runtime、固定 Node 资源和软件参考场景。已从 `2a26df5` 重建 Windows 0.1.0 x64 未签名 NSIS，核对内置 WebView2 安装程序的来源和 Authenticode 签名。候选和验收材料见 `.cache/evidence/m2-node-backend/windows-offline-nsis-2a26df5/transfer/README.md`。[M6 安装验收](./testing.md#安装与发行验收)
 4. **M2 其余出口。** 完成 Task14 的软件验收后，依次验收浏览器连接与跟随、LAN 双 Host。通过上述出口后进入 M3。
 
