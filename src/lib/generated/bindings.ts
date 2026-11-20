@@ -81,16 +81,14 @@ export const commands = {
     generation: U64,
     operationId: Id,
     viewId: Id,
-    locale: string,
-    dark: boolean,
+    presentation: NodeViewPresentation,
   ) =>
     typedError<Id, HostError_Serialize>(
       __TAURI_INVOKE("host_open_node_view", {
         generation,
         operationId,
         viewId,
-        locale,
-        dark,
+        presentation,
       }),
     ),
   hostCloseNodeView: (id: Id) =>
@@ -3058,6 +3056,12 @@ export type NodeViewAssetReadResult_Serialize = {
   totalBytes: U64;
   sha256: Digest;
   bytesBase64: Bytes;
+};
+
+export type NodeViewPresentation = {
+  title: string;
+  locale: string;
+  dark: boolean;
 };
 
 export type ObjectReadResult =

@@ -52,9 +52,11 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   const marker = '<img src="https://unexpected.example/" onerror="alert(1)">';
   item.event.sessionEpoch = session.sessionEpoch;
   const rxLine = `${marker}\n`;
-  const txLine = "X\n";
-  item.event.payload.bytesBase64 = Buffer.from(rxLine).toString("base64");
-  item.event.payload.byteEnd = String(Buffer.byteLength(rxLine));
+  const txLine = "X\r\n";
+  const firstRead = `${marker}\r`;
+  item.event.payload.bytesBase64 = Buffer.from(firstRead).toString("base64");
+  item.event.payload.byteEnd = String(Buffer.byteLength(firstRead));
+  const lineEnd = (BigInt(item.event.payload.byteEnd) + 1n).toString();
   const txPosition = (BigInt(batch.cursor.position) + 1n).toString();
   batch.items.push({
     kind: "source",
@@ -65,25 +67,48 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
       payload: {
         ...tx.payload,
         bytesBase64: Buffer.from(txLine).toString("base64"),
+        byteEnd: String(Buffer.byteLength(txLine)),
       },
     },
   });
   batch.cursor.position = txPosition;
+  const continuationPosition = (BigInt(txPosition) + 1n).toString();
+  const continuation: RawBatch = {
+    ...batch,
+    previousCursor: batch.cursor,
+    cursor: { ...batch.cursor, position: continuationPosition },
+    items: [
+      {
+        kind: "source",
+        event: {
+          ...item.event,
+          eventSeq: continuationPosition,
+          payload: {
+            ...item.event.payload,
+            bytesBase64: "Cg==",
+            byteStart: item.event.payload.byteEnd,
+            byteEnd: lineEnd,
+          },
+        },
+      },
+    ],
+  };
   const frame = {
     requestId: "33333333-3333-4333-8333-333333333333",
     channel: "raw",
     body: { type: "rawBatch", batch },
   };
   const afterGap = "serial data after recovery";
+  const finalRead = `${afterGap}\r`;
   const missing = {
-    start: (BigInt(batch.cursor.position) + 1n).toString(),
-    end: (BigInt(batch.cursor.position) + 4n).toString(),
+    start: (BigInt(continuationPosition) + 1n).toString(),
+    end: (BigInt(continuationPosition) + 4n).toString(),
   };
-  overflow.previousCursor = batch.cursor;
+  overflow.previousCursor = continuation.cursor;
   overflow.cursor.position = missing.end;
   gap.gap.sessionEpoch = session.sessionEpoch;
   gap.gap.missingEventRange = missing;
-  const byteStart = item.event.payload.byteEnd;
+  const byteStart = lineEnd;
   overflow.items.push({
     kind: "source",
     event: {
@@ -91,10 +116,10 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
       eventSeq: missing.end,
       payload: {
         ...item.event.payload,
-        bytesBase64: Buffer.from(afterGap).toString("base64"),
+        bytesBase64: Buffer.from(finalRead).toString("base64"),
         byteStart,
         byteEnd: (
-          BigInt(byteStart) + BigInt(Buffer.byteLength(afterGap))
+          BigInt(byteStart) + BigInt(Buffer.byteLength(finalRead))
         ).toString(),
       },
     },
@@ -102,6 +127,7 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   const payloads = [
     { snapshot: session },
     { frame },
+    { frame: { ...frame, body: { ...frame.body, batch: continuation } } },
     { frame: { ...frame, body: { ...frame.body, batch: overflow } } },
     { frame: null },
   ];
@@ -166,14 +192,14 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   await expect(view.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(view.locator("#receive")).toHaveJSProperty(
     "textContent",
-    `${rxLine}[TX] ${txLine}[部分串口数据缺失]\n${afterGap}`,
+    `${rxLine}[TX] X\n[部分串口数据缺失]\n${afterGap}\n`,
   );
   await expect(view.locator("#receive img")).toHaveCount(0);
   expect(await view.locator("html").evaluate(() => globalThis.origin)).toBe(
     "null",
   );
   expect(unexpected).toEqual([]);
-  await expect.poll(() => pulls).toBeGreaterThanOrEqual(4);
+  await expect.poll(() => pulls).toBeGreaterThanOrEqual(5);
 
   await view.locator("html").evaluate(() => location.reload());
   await expect(page.getByRole("status")).toHaveText(

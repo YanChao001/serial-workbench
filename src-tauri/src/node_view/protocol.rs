@@ -114,13 +114,15 @@ impl ViewContext {
                 asset.set_path(&format!("/{}", self.host.entry.entry.as_str()));
                 let dark = if self.dark { "dark" } else { "light" };
                 asset.set_fragment(Some(&format!("{}.{}.{dark}", self.frame_id, self.locale)));
-                let frame_url = asset
-                    .as_str()
-                    .replace('&', "&amp;")
-                    .replace('"', "&quot;")
-                    .replace('<', "&lt;")
-                    .replace('>', "&gt;");
-                let title = self.title();
+                let escape_html = |value: &str| {
+                    value
+                        .replace('&', "&amp;")
+                        .replace('"', "&quot;")
+                        .replace('<', "&lt;")
+                        .replace('>', "&gt;")
+                };
+                let frame_url = escape_html(asset.as_str());
+                let title = escape_html(self.title());
                 let opening = if self.locale == "zh-CN" {
                     "正在打开插件视图…"
                 } else {
@@ -206,15 +208,7 @@ impl ViewContext {
                         }
                     };
                     #[cfg(feature = "e2e")]
-                    if payload["error"] == "UNSUPPORTED_CAPABILITY" {
-                        super::trace_terminal_view(
-                            &format!("node-view-{}", self.frame_id),
-                            "withdrawn",
-                            0,
-                            0,
-                            None,
-                        );
-                    }
+                    self.trace_read_termination(&payload);
                     // 外部 JS 只调用壳的固定入口，设备正文始终以 JSON 数据传递。
                     let argument =
                         serde_json::to_string(&payload.to_string()).expect("JSON string");
@@ -231,6 +225,29 @@ impl ViewContext {
             _ => rejected(),
         };
         responder.respond(content);
+    }
+
+    #[cfg(feature = "e2e")]
+    fn trace_read_termination(&self, payload: &serde_json::Value) {
+        if std::env::var("STARTER_E2E_PHASE").as_deref() != Ok("terminal-automated") {
+            return;
+        }
+        let code = payload["error"].as_str().or_else(|| {
+            payload
+                .pointer("/frame/body/error/code")
+                .and_then(serde_json::Value::as_str)
+        });
+        if let Some(code) = code {
+            let label = format!("node-view-{}", self.frame_id);
+            log::info!("e2e_terminal_read_end view={label} code={code}");
+            // 权限变化可在资产复核或 Raw 订阅终止两个入口先被观察到。
+            if matches!(
+                code,
+                "UNSUPPORTED_CAPABILITY" | "CATALOG_CHANGED" | "PERMISSION_DENIED"
+            ) {
+                super::trace_terminal_view(&label, "withdrawn", 0, 0, None);
+            }
+        }
     }
 
     pub(super) fn respond_asset(

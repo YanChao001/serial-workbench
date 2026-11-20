@@ -6,8 +6,8 @@
 
 1. **B / 14.3–14.4 已验收。** 同一候选 `9090867` 通过自审、本机综合检查、无头 UI 203 项和完整四目标 CI。四个原生桌面均验证同连接的目录恢复与关窗录制，重开补读的三段 RX 与 69 字节录制一致。Windows 实际打开和保存对话框均返回同一窗口焦点，两种 macOS 架构完成进程回收。打开中的插件实时更新语言仍待交付，UX-13 保留为部分软件进展。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44681253676)
 2. **C / 14.5 正在验收。** 同一个只读参考包以「串口监听」展示所选串口的收发数据。开发中的新版调整显示名、状态提示和文本行距。三个参考包按公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。四目标已验证实际图表窗口。
-3. **C 的 Windows 断网实装待验。** 已从 `2a26df5` 重建 Windows 0.1.0 x64 未签名 NSIS，核对内置 WebView2 离线安装程序的来源和 Authenticode 签名。候选和验收材料见 `.cache/evidence/m2-node-backend/windows-offline-nsis-2a26df5/transfer/README.md`。当前没有可断网、可操作本地控制台、未安装 WebView2 Runtime 的独立 Windows x64 环境。
-4. **M2 其余出口。** Task14 退出后，依次验收浏览器连接与跟随、LAN 双 Host。M2 的软件和环境相关验收均完成后进入 M3。
+3. **Windows 断网实装移至 M6。** 用户确认将未安装 WebView2 的独立 Windows x64 环境中的断网实装纳入 M6 发行候选验收。M2 和 M3 继续核对 Windows 安装包内置 Runtime、固定 Node 资源和软件参考场景。已从 `2a26df5` 重建 Windows 0.1.0 x64 未签名 NSIS，核对内置 WebView2 安装程序的来源和 Authenticode 签名。候选和验收材料见 `.cache/evidence/m2-node-backend/windows-offline-nsis-2a26df5/transfer/README.md`。[M6 安装验收](./testing.md#安装与发行验收)
+4. **M2 其余出口。** 完成 Task14 的软件验收后，依次验收浏览器连接与跟随、LAN 双 Host。通过上述出口后进入 M3。
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 
@@ -159,7 +159,7 @@ Intel Rust 的监督进程失效用例在发出故障信号前读到空 PID 文�
 | ---------------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------- |
 | 已合入：M1b 和工作台修复                 | [M1b](https://github.com/YanChao001/serial-workbench/pull/40)、[界面](https://github.com/YanChao001/serial-workbench/pull/42)、[串口与启动修复](https://github.com/YanChao001/serial-workbench/pull/47)；用户在 `f1504de` 报告 COM5/COM14 各 10000 字节回环通过 | 全部设备、双端口并行、字体/DPI 或屏读验收               |
 | 已合入：基础 A（14.1/14.2、14.3 安装库） | [PR #48](https://github.com/YanChao001/serial-workbench/pull/48)，合入 `2d450af`；[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/43714434338) 12 项必需任务通过，含固定 runtime 原生自检与 Ubuntu 离线六场景、实际 600 秒              | 最低系统、最终安装器断网运行、正式签名或 B 的四目标结果 |
-| 已合入：M2 B（14.3–14.4）                | [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 合入 `118bc40`，通过可信插件管理、监督、公开 SDK 和 GUI/CLI/MCP 参考场景。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44681253676)                                 | C 的 Windows 断网实装、M3 契约冻结及实机长稳            |
+| 已合入：M2 B（14.3–14.4）                | [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 合入 `118bc40`，通过可信插件管理、监督、公开 SDK 和 GUI/CLI/MCP 参考场景。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44681253676)                                 | M3 契约冻结、M6 Windows 断网实装及实机长稳              |
 
 LOG-08 的 M1 软件证据覆盖已合入的只读回放，M4 还需验证变速、单步和断点。AUTO-13 在 14.4 已有后台作者示例、CLI、实际 MCP 产品、桌面桥、原生窗口和无头 iframe/Raw 证据。v1 冻结在 M3。两项均按完整需求更新账本。
 

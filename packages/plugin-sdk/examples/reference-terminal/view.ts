@@ -11,8 +11,9 @@ let displayed = 0;
 let lineStart = true;
 let zh = false;
 let rx = new TextDecoder();
+let rxEndsWithCarriageReturn = false;
 const deviceText = (value: string) =>
-  value.replace(
+  value.replace(/\r\n?/g, "\n").replace(
     // eslint-disable-next-line no-control-regex -- Display literal serial control bytes safely.
     /[\u0000-\u0008\u000b-\u001f\u007f]/g,
     (character) =>
@@ -41,7 +42,17 @@ function decode(base64: string, decoder: TextDecoder, stream = false) {
   const bytes = Uint8Array.from(atob(base64), (character) =>
     character.charCodeAt(0),
   );
-  return deviceText(decoder.decode(bytes, { stream }));
+  return decoder.decode(bytes, { stream });
+}
+
+function receivedText(base64: string) {
+  const chunk = decode(base64, rx, true);
+  if (!chunk) return "";
+  // CR 立即换行。后续 RX 的 LF 仍属于同一 CRLF，即使期间有 TX。
+  const text =
+    rxEndsWithCarriageReturn && chunk.startsWith("\n") ? chunk.slice(1) : chunk;
+  rxEndsWithCarriageReturn = chunk.endsWith("\r");
+  return deviceText(text);
 }
 
 function addDisplayLine(parts: string[], text: string) {
@@ -60,18 +71,19 @@ const view = connectReadOnlyView({
     for (const item of batch.items) {
       if (item.kind === "reader_gap" || item.event.kind === "gap") {
         rx = new TextDecoder();
+        rxEndsWithCarriageReturn = false;
         addDisplayLine(
           terms,
           zh ? "[部分串口数据缺失]" : "[Some serial data is missing]",
         );
       } else if (item.event.kind === "rx") {
-        const text = decode(item.event.payload.bytesBase64, rx, true);
+        const text = receivedText(item.event.payload.bytesBase64);
         terms.push(text);
         if (text) lineStart = text.endsWith("\n");
       } else if (item.event.kind === "tx") {
         addDisplayLine(
           terms,
-          `[TX] ${decode(item.event.payload.bytesBase64, new TextDecoder())}`,
+          `[TX] ${deviceText(decode(item.event.payload.bytesBase64, new TextDecoder()))}`,
         );
       }
     }

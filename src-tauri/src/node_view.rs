@@ -84,6 +84,7 @@ struct ViewContext {
     snapshot_pending: AtomicBool,
     shell_token: String,
     frame_id: String,
+    display_name: String,
     locale: String,
     dark: bool,
 }
@@ -116,8 +117,11 @@ fn trace_terminal_view(
 }
 
 impl ViewContext {
-    fn title(&self) -> &'static str {
-        if self.locale == "zh-CN" {
+    fn title(&self) -> &str {
+        let display_name = self.display_name.trim();
+        if !display_name.is_empty() {
+            display_name
+        } else if self.locale == "zh-CN" {
             "插件视图"
         } else {
             "Plugin view"
@@ -132,6 +136,14 @@ impl ViewContext {
     }
 }
 
+#[derive(serde::Deserialize, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct NodeViewPresentation {
+    title: String,
+    locale: String,
+    dark: bool,
+}
+
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn host_open_node_view(
@@ -139,8 +151,7 @@ pub(crate) async fn host_open_node_view(
     generation: U64,
     operation_id: Id,
     view_id: Id,
-    locale: String,
-    dark: bool,
+    presentation: NodeViewPresentation,
     bridge: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<Id> {
     let owner = ViewOwner {
@@ -172,8 +183,20 @@ pub(crate) async fn host_open_node_view(
         snapshot_pending: AtomicBool::new(true),
         shell_token: token(),
         frame_id,
-        locale: if locale == "zh" { "zh-CN" } else { "en" }.into(),
-        dark,
+        display_name: presentation
+            .title
+            .trim()
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(128)
+            .collect(),
+        locale: if presentation.locale == "zh" {
+            "zh-CN"
+        } else {
+            "en"
+        }
+        .into(),
+        dark: presentation.dark,
     });
     let label = Id::try_from(format!("node-view-{}", context.frame_id).as_str())?;
     let retired = bridge
