@@ -1,10 +1,10 @@
 # 路线与进度
 
-**当前接续点（2026-11-19）为 M2 / Task14.4 的 B 候选验收。** Windows 原生签名终端已通过实际文件选择、执行信任、关窗录制、重开补读及撤权观察。实际 MCP 客户端已在同一正式 Host 上验证签名动作、录制引用和撤权。签名 Node 组合负载已在 Windows 实跑 600 秒。继续 B 的窗口环境、已发现问题和候选出口，C 图表的派生视图可并行验收。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
+**当前接续点（2026-11-20）为 M2 / Task14.4 的 B 候选验收。** Windows 原生签名终端已通过实际文件选择、执行信任、关窗录制、重开补读、撤权和键盘缩放。实际 MCP 客户端已在同一正式 Host 上验证签名动作、录制引用和撤权。签名 Node 组合负载已在 Windows 实跑 600 秒。继续 B 的窗口环境、已发现问题和候选出口，C 的参考场景可并行验收。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
 
 ## 当前执行与下一步
 
-1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、缩放、慢读者及其他平台原生观察。处理草稿输入延迟，核实 Windows 主窗与隔离插件窗口的缩放行为。候选验收保留安装准备和关停压力的未决记录。
+1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、慢读者及其他平台原生观察。复核草稿输入门槛。候选验收保留安装准备和关停压力的未决记录。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
 3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 离线候选已由 `3ffd6ff` 构建并校验归档，内置 WebView2 离线安装程序。候选、复用的三个签名参考包与验收程序记录在 `.cache/evidence/m2-node-backend/windows-offline-nsis-3ffd6ff/checkpoint.json`，实际安装和用例待可断网且能操作控制台的独立 Windows 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
@@ -121,6 +121,8 @@
 **Intel 复验及已有参考包证据**。`ce603c4` 在 Intel macOS 完成签名终端启用、关窗录制、重开与撤权，回放同一会话的 69 字节，收据在 `intel-ce603c4/signed-terminal-6fGcRO`。`2505273` 的 Apple Silicon 和 Linux 桌面也完成 69 字节回放。该提交的 Linux 安装布局通过两个终端、一个图表及一个自动化的真实 Host 用例，三包签名 ZIP 和日志保存在 `linux-2505273-runtime/artifacts`。其余架构须完成同源验证。[Intel 原生复验](https://github.com/YanChao001/serial-workbench/actions/runs/44582705913) · [Linux runtime 验收](https://github.com/YanChao001/serial-workbench/actions/runs/44578128661/job/135751108305)
 
 **本机候选与 Windows 缩放**。`4222ccb` 的 `pnpm verify --jobs 1` 用时 157.7 秒，无头 UI 203 项全部通过。应用输入 p95 为 98.9 毫秒，最慢一次为 183 毫秒，样本见 `4222ccb-headless-ui`。下一候选将 Windows 隔离视图缩放快捷键与主窗口对齐，桌面编译检查通过，实际焦点与可读性待原生观察。完整四目标的 Windows 作业在既有桌面构建中执行真实文件对话框场景，复用上轮通过的测试入口。编译收据见 `windows-plugin-zoom-check.log`。
+
+**Windows 原生键盘缩放（`2371213`）**。托管 Windows x64 的主窗和独立签名终端窗分别通过系统键盘放大与恢复，WebView2 实测为 100% → 110% → 100%。插件窗确认收到了关窗前和关窗期间的 RX 后拍摄，两张图中的同一终端正文均清楚可读。实际打开和保存回到同一所有者窗口，撤权及 69 字节录制回放通过。这是 UX-02、UX-10、UX-14 的部分软件证据。首轮文件名夹具错选控件和次轮加载中截图均保存在 `.cache/evidence/m2-node-backend/windows-terminal-zoom-20261120/checkpoint.json`。最后一轮定向作业省去上一轮耗时 84 秒的基础桌面步骤，签名场景为 31 秒，两轮 pnpm 与 Rust 均命中缓存。最低系统和多 DPI 实机仍按平台矩阵验收。[失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44641778880/job/135974360604) · [定向验收](https://github.com/YanChao001/serial-workbench/actions/runs/44644885767/job/135984830398)
 
 **合并 Windows 桌面验证（`4b66269`）**。一次构建完成系统对话框完整场景，实际打开和保存均还焦到同一所有者，录制回放校验 69 字节。收据在 `windows-4b66269/signed-terminal-1l4mCP`。本机 `pnpm verify --jobs 1` 通过，159.4 秒，无头 UI 203 项通过，输入 p95 为 98.4 毫秒。托管首跑 125.9 毫秒，自动重试 79.1 毫秒，报告一项不稳定，原始样本在 `hosted-4b66269-browser`。Apple Silicon 桌面因未分配托管 runner 而取消，用例未执行。[四目标运行](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155)
 
