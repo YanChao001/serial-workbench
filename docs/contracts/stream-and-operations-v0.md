@@ -21,7 +21,7 @@ Session 投影包含 `sessionId,deviceId,sessionEpoch,revision,configurationRevi
 | `lease.release`    | `leaseId`                                 | 先结算在途工作，再 released；未完成清线不释放为可写                             |
 | `session.takeover` | `actorId,reason: user`                    | 由有控制管理权限的用户操作，撤销指定 actor 对该会话的修改权并返回结算状态       |
 
-接管只撤销指定 actor 对该 session 的 `device.modify`，取消并等待其排队、执行和持租操作真实结算；其他 actor 的任务继续。接管不以 clientKind 推定身份。明确重新授权只允许新请求，旧授权代次下的排队操作不会复活。
+接管撤销指定 actor 对该 session 代次的 `device.modify`，取消并等待其排队、执行和持租操作真实结算，其他 actor 的任务继续。接管按已认证的 actor 寻址。对于 LAN 转发身份，B 保留同一配对内的客户端级撤权，重连仍按该规则验权。B 可在共享操作权限内向该附着返回的 `clientId` 明确重新授权。重新获准后用新编号发起写入。重复提交已接纳的旧编号返回原回执。
 
 显式 acquire 自身 operation 成为 ownerOperationId，并在持租期间 running；释放/过期完成后才结算。普通动作 operation 为自己的 owner。独立任务 handler 可在内部申请租约，ownerOperationId 固定任务 ID。租约 TTL 与操作 deadline 分别控制控制权和业务时限。续租 TTL 必须受 Host 协商上限约束，租约既在入队也在真正提交后端前检查，权限/epoch 同时复核。
 

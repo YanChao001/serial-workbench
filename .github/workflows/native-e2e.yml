@@ -104,6 +104,10 @@ jobs:
           pnpm exec playwright install --only-shell chromium
           pnpm test:e2e --interactive --skip-build --browser-takeover
 
+      - name: 双 Host 串口共享与接管（Windows）
+        if: runner.os == 'Windows' && !inputs.chart_only && !inputs.windows_reference_only
+        run: pnpm test:e2e --interactive --skip-build --lan
+
       - name: 签名终端与文件选择夹具（Windows / macOS）
         if: runner.os != 'Linux' && !inputs.chart_only && !(runner.os == 'Windows' && inputs.native_file_dialogs)
         run: pnpm test:e2e --interactive --skip-build --terminal-automated

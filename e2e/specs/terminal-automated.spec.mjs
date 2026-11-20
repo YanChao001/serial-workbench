@@ -215,7 +215,13 @@ async function expectAcknowledgedRx(view, ...writes) {
         received <= expected.length,
         "The renderer acknowledged duplicate or extra RX",
       );
-      if (received < expected.length) return false;
+      if (received < expected.length) {
+        assert.ok(
+          !events.some((entry) => entry.event === "stopped"),
+          "The plugin view stopped before acknowledging all RX. See the native log for its reason.",
+        );
+        return false;
+      }
       assert.equal(acknowledged.at(-1)?.digest, digest);
       return true;
     },

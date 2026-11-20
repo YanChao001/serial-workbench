@@ -8,6 +8,8 @@ use std::{
     sync::{Arc, Mutex, MutexGuard, TryLockError},
 };
 
+mod lan;
+
 type GrantSnapshot = (U64, Arc<GrantDocument>);
 
 pub struct Authentication {
@@ -18,24 +20,30 @@ pub struct Authentication {
 pub(crate) struct GrantStamp {
     client_id: Id,
     actor_id: Id,
+    grant_actor_id: Id,
     revision: U64,
     deadline_ns: Option<u64>,
     task: Option<Arc<super::TaskAuthority>>,
-    recording: Option<Arc<[RecordingRule; 2]>>,
+    bound_rules: Option<Arc<[BoundRule]>>,
+    lan: Option<Arc<lan::LanGrantStamp>>,
 }
 
-struct RecordingRule {
+struct BoundRule {
     target: Target,
     rule: Rule,
 }
 
 impl GrantStamp {
     fn permits(&self, record: &ClientRecord, now: u64) -> bool {
-        record.actor_id == self.actor_id
+        record.actor_id == self.grant_actor_id
             && self.deadline_ns.is_none_or(|deadline| now < deadline)
+            && self
+                .lan
+                .as_ref()
+                .is_none_or(|stamp| stamp.matches(record, &self.actor_id))
             && (record.grant_revision == self.revision
                 || (record.grant_revision > self.revision
-                    && self.recording.as_ref().is_some_and(|rules| {
+                    && self.bound_rules.as_ref().is_some_and(|rules| {
                         rules.iter().all(|bound| {
                             matching_rule(record, &bound.rule.permission, &bound.target)
                                 == Some(&bound.rule)
@@ -51,6 +59,7 @@ pub struct AuthService {
     clock: Arc<dyn Clock>,
     changes: tokio::sync::watch::Sender<U64>,
     cached: Arc<Mutex<Option<GrantSnapshot>>>,
+    lan_sessions: Arc<Mutex<lan::SessionBindings>>,
     #[cfg(test)]
     document_reads: Arc<std::sync::atomic::AtomicUsize>,
     #[cfg(test)]
@@ -66,6 +75,7 @@ pub(crate) struct AuthorizationSnapshot {
     actor: AuthenticatedActor,
     grants: Option<ClientGrants>,
     clock: Arc<dyn Clock>,
+    lan_sessions: Option<lan::SessionBindings>,
 }
 struct ClientGrants {
     document: Arc<GrantDocument>,
@@ -92,6 +102,10 @@ struct ClientRecord {
     grant_revision: U64,
     verifier: ContextToken,
     rules: Vec<Rule>,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    lan_peer: Option<crate::lan::LanPeer>,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    lan_clients: BTreeMap<Id, lan::LanClient>,
 }
 #[derive(Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -117,6 +131,7 @@ const PERMISSIONS: &[&str] = &[
     "plugins.manage",
     "workspace.modify",
     "settings.modify",
+    LAN_CONNECT_PERMISSION,
 ];
 // 会话代次及历史结果需要保留精确授权；容量不能只够数十次连接。
 const MAX_CLIENT_RULES: usize = 4096;
@@ -155,6 +170,7 @@ impl AuthService {
             clock,
             changes: tokio::sync::watch::channel(U64::from(0)).0,
             cached: Arc::new(Mutex::new(None)),
+            lan_sessions: Arc::default(),
             #[cfg(test)]
             document_reads: Arc::new(std::sync::atomic::AtomicUsize::new(0)),
             #[cfg(test)]
@@ -209,7 +225,7 @@ impl AuthService {
         let count = document
             .clients
             .values()
-            .map(|record| record.rules.len())
+            .map(ClientRecord::rule_count)
             .sum::<usize>();
         if count > MAX_TOTAL_RULES {
             let previous =
@@ -220,7 +236,7 @@ impl AuthService {
                         document
                             .clients
                             .values()
-                            .map(|record| record.rules.len())
+                            .map(ClientRecord::rule_count)
                             .sum::<usize>()
                     });
             // 已存在的大存档仍可撤权；容量限制只禁止继续增长。
@@ -246,7 +262,9 @@ impl AuthService {
         let _guard = self.serial.lock().map_err(|_| corrupt())?;
         let (revision, document) = self.load()?;
         if let Some(record) = document.clients.get(client_id) {
-            if !credential.is_some_and(|credential| verify_credential(&record.verifier, credential))
+            if record.lan_peer.is_some()
+                || !credential
+                    .is_some_and(|credential| verify_credential(&record.verifier, credential))
             {
                 return Err(unauthenticated());
             }
@@ -344,6 +362,9 @@ impl AuthService {
         if document.clients.len() >= 1024 {
             return Err(limit());
         }
+        if document.has_lan_client(client_id) {
+            return Err(unauthenticated());
+        }
         let mut document = document.clone();
         let identity = self.store.identity()?;
         let actor_id = Id::try_from(uuid::Uuid::new_v4().to_string().as_str())?;
@@ -353,6 +374,8 @@ impl AuthService {
                 actor_id: actor_id.clone(),
                 grant_revision: 1.into(),
                 verifier: credential_verifier(credential),
+                lan_peer: None,
+                lan_clients: BTreeMap::new(),
                 rules: vec![Rule {
                     permission: "metadata.read".into(),
                     target: host_target(identity.host_id),
@@ -431,21 +454,28 @@ impl AuthService {
             None
         } else {
             let (_, document) = self.load()?;
+            let (grant_client_id, grant_actor_id) = actor.grant_owner();
             document
                 .clients
-                .get(actor.client_id())
-                .filter(|record| &record.actor_id == actor.id())
+                .get(grant_client_id)
+                .filter(|record| &record.actor_id == grant_actor_id)
                 .ok_or_else(denied)?;
             Some(ClientGrants {
-                client_id: actor.client_id().clone(),
+                client_id: grant_client_id.clone(),
                 document,
             })
         };
+        let lan_sessions = grants
+            .as_ref()
+            .filter(|grants| grants.record().lan_peer.is_some())
+            .map(|_| self.lan_session_bindings())
+            .transpose()?;
         Ok(AuthorizationSnapshot {
             identity,
             actor: actor.clone(),
             grants,
             clock: self.clock.clone(),
+            lan_sessions,
         })
     }
     #[cfg(test)]
@@ -589,10 +619,28 @@ impl AuthService {
             .transpose()?;
         let (revision, document) = self.load()?;
         let mut document = (*document).clone();
-        let record = document
+        let Some(record) = document
             .clients
             .get_mut(&params.client_id)
-            .ok_or_else(denied)?;
+            .filter(|record| record.lan_peer.is_none())
+        else {
+            let rules = params.targets.into_iter().map(|target| Rule {
+                permission: "device.modify".into(),
+                target,
+                allowed: true,
+                expires_at: params.expires_at.clone(),
+                epoch,
+                deadline_ns: deadline,
+                changed_at_revision: 0,
+            });
+            return self.update_lan_writes(
+                revision,
+                document,
+                lan::LanSubject::Client(&params.client_id),
+                &params.permissions,
+                rules,
+            );
+        };
         let mut changed = false;
         for permission in params.permissions {
             for target in &params.targets {
@@ -634,11 +682,28 @@ impl AuthService {
         self.validate_scopes(&params.permissions, &params.targets)?;
         let (revision, document) = self.load()?;
         let mut document = (*document).clone();
-        let record = document
+        let Some(record) = document
             .clients
             .values_mut()
-            .find(|record| record.actor_id == params.actor_id)
-            .ok_or_else(denied)?;
+            .find(|record| record.actor_id == params.actor_id && record.lan_peer.is_none())
+        else {
+            let rules = params.targets.into_iter().map(|target| Rule {
+                permission: "device.modify".into(),
+                target,
+                allowed: false,
+                expires_at: None,
+                epoch: None,
+                deadline_ns: None,
+                changed_at_revision: 0,
+            });
+            return self.update_lan_writes(
+                revision,
+                document,
+                lan::LanSubject::Actor(&params.actor_id),
+                &params.permissions,
+                rules,
+            );
+        };
         let mut changed = false;
         for permission in params.permissions {
             for target in &params.targets {
@@ -690,6 +755,12 @@ impl AuthService {
     }
 }
 impl AuthorizationSnapshot {
+    pub(crate) fn is_lan_peer(&self) -> bool {
+        self.grants
+            .as_ref()
+            .is_some_and(|grants| grants.record().lan_peer.is_some())
+    }
+
     pub(crate) fn grant_revision(&self) -> U64 {
         self.grants
             .as_ref()
@@ -697,6 +768,7 @@ impl AuthorizationSnapshot {
     }
     pub(crate) fn capture_grants(&self) -> Option<GrantStamp> {
         let grants = self.grants.as_ref()?;
+        let (grant_client_id, grant_actor_id) = self.actor.grant_owner();
         let now = self.clock.mono_ns();
         let deadline_ns = grants
             .record()
@@ -707,12 +779,14 @@ impl AuthorizationSnapshot {
             .filter(|deadline| *deadline > now)
             .min();
         Some(GrantStamp {
-            client_id: self.actor.client_id().clone(),
+            client_id: grant_client_id.clone(),
             actor_id: self.actor.id().clone(),
+            grant_actor_id: grant_actor_id.clone(),
             revision: grants.record().grant_revision,
             deadline_ns,
             task: self.actor.task().cloned(),
-            recording: None,
+            bound_rules: None,
+            lan: None,
         })
     }
     pub(crate) fn capture_recording_grants(
@@ -720,36 +794,46 @@ impl AuthorizationSnapshot {
         source: &Target,
         destination: &Target,
     ) -> HostResult<GrantStamp> {
+        self.capture_bound_grants(&[("content.read", source), ("workspace.modify", destination)])
+    }
+
+    pub(crate) fn capture_bound_grants(
+        &self,
+        scopes: &[(&str, &Target)],
+    ) -> HostResult<GrantStamp> {
         let grants = self.grants.as_ref().ok_or_else(denied)?;
         let record = grants.record();
-        let bind = |permission, target: &Target| {
-            self.require(permission, target)?;
-            let rule = matching_rule(record, permission, target).ok_or_else(denied)?;
-            Ok::<_, HostError>(RecordingRule {
-                target: target.clone(),
-                rule: rule.clone(),
+        let rules = scopes
+            .iter()
+            .map(|&(permission, target)| {
+                self.require(permission, target)?;
+                let rule = matching_rule(record, permission, target).ok_or_else(denied)?;
+                Ok(BoundRule {
+                    target: target.clone(),
+                    rule: rule.clone(),
+                })
             })
-        };
-        let rules = [
-            bind("content.read", source)?,
-            bind("workspace.modify", destination)?,
-        ];
+            .collect::<HostResult<Vec<_>>>()?;
         let deadline_ns = rules
             .iter()
             .filter_map(|bound| bound.rule.deadline_ns.map(U64::get))
             .min();
+        let (grant_client_id, grant_actor_id) = self.actor.grant_owner();
         Ok(GrantStamp {
-            client_id: self.actor.client_id().clone(),
+            client_id: grant_client_id.clone(),
             actor_id: self.actor.id().clone(),
+            grant_actor_id: grant_actor_id.clone(),
             revision: record.grant_revision,
             deadline_ns,
             task: self.actor.task().cloned(),
-            recording: Some(Arc::new(rules)),
+            bound_rules: Some(rules.into()),
+            lan: None,
         })
     }
     pub(crate) fn validate_grants(&self, stamp: &GrantStamp) -> HostResult<()> {
         self.actor.check_task()?;
-        if self.actor.client_id() == &stamp.client_id
+        if self.actor.id() == &stamp.actor_id
+            && self.actor.grant_owner().0 == &stamp.client_id
             && self
                 .grants
                 .as_ref()
@@ -776,14 +860,33 @@ impl AuthorizationSnapshot {
             };
         };
         // 最新匹配规则生效；失效的窄规则仍遮蔽更旧的宽授权。
-        let rule = matching_rule(grants.record(), permission, target).ok_or_else(denied)?;
+        let rule = lan::base_rule(
+            grants.record(),
+            permission,
+            target,
+            self.lan_sessions.as_deref(),
+        )
+        .ok_or_else(denied)?;
         if let Some(deadline) = rule.deadline_ns
             && (rule.epoch != Some(self.identity.instance_epoch)
                 || self.clock.mono_ns() >= deadline.get())
         {
             return Err(denied());
         }
-        if rule.allowed { Ok(()) } else { Err(denied()) }
+        if !rule.allowed {
+            return Err(denied());
+        }
+        if permission == "device.modify"
+            && let Some(write) = grants.record().lan_write(self.actor.id(), target)
+            && (!write.rule.allowed
+                || write.rule.deadline_ns.is_some_and(|deadline| {
+                    write.rule.epoch != Some(self.identity.instance_epoch)
+                        || self.clock.mono_ns() >= deadline.get()
+                }))
+        {
+            return Err(denied());
+        }
+        Ok(())
     }
     pub(crate) fn can_discover(&self, permission: &str, target_kinds: &[ResourceKind]) -> bool {
         self.can_discover_on(permission, |kind| target_kinds.contains(kind))
@@ -796,10 +899,16 @@ impl AuthorizationSnapshot {
         let Some(grants) = &self.grants else {
             return ["auth.manage", "metadata.read"].contains(&permission);
         };
+        let session = self
+            .is_lan_peer()
+            .then(|| ResourceKind::try_from("session").expect("session kind"));
         grants.record().rules.iter().any(|rule| {
             rule.permission == permission
                 && rule.allowed
-                && (rule.target.kind.as_str() == "host" || includes_kind(&rule.target.kind))
+                && (rule.target.kind.as_str() == "host"
+                    || includes_kind(&rule.target.kind)
+                    || (rule.target.kind.as_str() == "device"
+                        && session.as_ref().is_some_and(&includes_kind)))
                 && self.require(permission, &rule.target).is_ok()
         })
     }
@@ -917,6 +1026,60 @@ mod tests {
             target,
         )
     }
+    #[test]
+    fn lan_route_keeps_unrelated_grants_but_loses_its_binding_on_regrant() {
+        let (_directory, auth, host) = setup();
+        let client = auth.authenticate(&id("lan-client"), None).unwrap().actor;
+        let control = auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("independent-user-control-secret").unwrap(),
+            )
+            .unwrap();
+        let peer = LanRoute {
+            host_id: id("remote"),
+            address: "127.0.0.1:1".into(),
+        };
+        let scope = peer.authorization_target(&host.host_id);
+        let grant = |permission: &str, target: &Target| {
+            auth.authorize(
+                &control,
+                AuthorizeParams {
+                    client_id: client.client_id().clone(),
+                    permissions: vec![permission.into()],
+                    targets: vec![target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        };
+        let bind = || {
+            auth.snapshot(&client)
+                .unwrap()
+                .capture_bound_grants(&[(LAN_CONNECT_PERMISSION, &scope)])
+                .unwrap()
+        };
+        grant(LAN_CONNECT_PERMISSION, &scope);
+        let old = bind();
+        grant("workspace.modify", &host);
+        auth.validate_grants(&old).unwrap();
+        auth.revoke(
+            &control,
+            RevokeParams {
+                actor_id: client.id().clone(),
+                permissions: vec![LAN_CONNECT_PERMISSION.into()],
+                targets: vec![scope.clone()],
+            },
+        )
+        .unwrap();
+        grant(LAN_CONNECT_PERMISSION, &scope);
+        assert_eq!(
+            auth.validate_grants(&old).unwrap_err().code,
+            "PERMISSION_DENIED"
+        );
+        auth.validate_grants(&bind()).unwrap();
+    }
+
     #[test]
     fn recording_binding_cannot_be_reused_after_revoke_and_regrant() {
         let (_directory, auth, host) = setup();

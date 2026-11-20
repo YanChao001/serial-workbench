@@ -283,6 +283,7 @@ async function seedUpdateFixture(
                 return appVersion;
               case "plugin:app|tauri_version":
                 return "2.0.0";
+              case "host_local_attachment":
               case "host_attachment":
                 return hostAttachment;
               case "host_request": {

@@ -551,6 +551,56 @@ export const en = {
   "workbench.bytes": "bytes",
   "workbench.unavailable": "Host is unavailable",
   "browserAccess.title": "Browser access",
+  "lanConnection.title": "LAN connection",
+  "lanConnection.description":
+    "Pair the two computers, then paste the connection information copied from the computer sharing its serial port.",
+  "lanConnection.connected": "Using serial ports shared by {address}.",
+  "lanConnection.address": "Other computer’s address",
+  "lanConnection.invitation": "Connection information",
+  "lanConnection.changeComputer": "Use a different computer",
+  "lanConnection.connect": "Connect",
+  "lanConnection.switching": "Switching connection…",
+  "lanConnection.returnLocal": "Return to this computer",
+  "lanConnection.source": "LAN",
+  "lanConnection.sourceDetail": "Serial ports shared by {address}",
+  "lanConnection.notPaired":
+    "Pair with this computer in LAN sharing, then connect again.",
+  "lanConnection.unavailable":
+    "The other computer could not be reached. Check its address and that LAN sharing is enabled.",
+  "lanConnection.wrongHost":
+    "This address belongs to a different computer. Check the connection information.",
+  "lanAccess.title": "LAN sharing",
+  "lanAccess.description":
+    "Exchange pairing information and choose which serial ports the other computer can use.",
+  "lanAccess.manage": "Manage sharing",
+  "lanAccess.address": "Local listen address",
+  "lanAccess.start": "Allow LAN connections",
+  "lanAccess.stop": "Stop listening",
+  "lanAccess.listening": "Listening on {address}",
+  "lanAccess.copy": "Copy this computer’s pairing information",
+  "lanAccess.copied": "Pairing information copied",
+  "lanAccess.loading": "Loading sharing settings…",
+  "lanAccess.retry": "Reload",
+  "lanAccess.peer": "Paste the other computer’s pairing information",
+  "lanAccess.invalidPeer":
+    "Paste the complete pairing information copied from the other computer.",
+  "lanAccess.pairInstruction":
+    "Confirm this information came from the other computer before pairing. You can also choose what to share.",
+  "lanAccess.paired": "Paired with this computer",
+  "lanAccess.changePeer": "Change peer",
+  "lanAccess.noOpenSession":
+    "Open a serial port in the workbench to share it here.",
+  "lanAccess.none": "Do not share",
+  "lanAccess.readOnly": "View only",
+  "lanAccess.operate": "View and operate",
+  "lanAccess.pair": "Trust and pair",
+  "lanAccess.save": "Save sharing",
+  "lanAccess.saved": "Sharing settings updated",
+  "lanAccess.unpair": "Unpair",
+  "lanAccess.bindFailed":
+    "Could not listen on this address. Check the local IP address and port.",
+  "lanAccess.peerConflict":
+    "This information conflicts with an existing pairing. Copy it from the other computer again and check it.",
   "browserAccess.configure": "Configure",
   "browserAccess.manage": "Configure browser access",
   "browserAccess.description":

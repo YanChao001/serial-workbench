@@ -42,16 +42,23 @@ let suiteCli;
 let suiteEnv;
 let suiteHostBinary;
 let suiteControl;
+let lanCaller;
+let lanCallerEnv;
 let hostRun = 0;
 const cancellation = new AbortController();
 const interrupt = () => cancellation.abort(new Error("桌面测试已中断"));
-async function hostCommand(args, name, signal = AbortSignal.timeout(15000)) {
+async function hostCommand(
+  args,
+  name,
+  signal = AbortSignal.timeout(15000),
+  env = suiteEnv,
+) {
   const command = spawnOwned(
     suiteCli,
-    [...args, "--profile", suiteEnv.SWB_PROFILE, "--json"],
+    [...args, "--profile", env.SWB_PROFILE, "--json"],
     {
       cwd: root,
-      env: suiteEnv,
+      env,
       logPath: join(artifacts, `${name}-${hostRun}.log`),
     },
   );
@@ -78,14 +85,10 @@ async function startSuiteHost(retiredPid) {
     AbortSignal.any([cancellation.signal, AbortSignal.timeout(15000)]),
   );
 }
-async function stopSuiteHost() {
-  await waitForSuiteHost(
-    suiteHost,
-    suiteEnv.SWB_PROFILE,
-    AbortSignal.timeout(2000),
-  );
-  await hostCommand(["host", "stop"], "host-stop");
-  await waitForSuiteHostExit(suiteHost);
+async function stopSuiteHost(host = suiteHost, env = suiteEnv, name = "host") {
+  await waitForSuiteHost(host, env.SWB_PROFILE, AbortSignal.timeout(2000));
+  await hostCommand(["host", "stop"], `${name}-stop`, undefined, env);
+  await waitForSuiteHostExit(host);
 }
 try {
   const { skipBuild, withNodeRuntime, phases } = parseE2EOptions(
@@ -95,6 +98,7 @@ try {
   const automated = phases.includes("terminal-automated");
   const chart = phases.includes("chart-automated");
   const browserTakeover = phases.includes("browser-takeover");
+  const lan = phases.includes("lan-owner");
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&
@@ -173,6 +177,7 @@ try {
   }
   if (browserTakeover)
     artifacts = mkdtempSync(join(artifacts, "browser-takeover-"));
+  if (lan) artifacts = mkdtempSync(join(artifacts, "lan-desktop-"));
   writeFileSync(
     join(artifacts, "candidate.json"),
     JSON.stringify(receipt, null, 2),
@@ -182,6 +187,36 @@ try {
   suiteCli = component("serial-workbench-cli");
   suiteHostBinary = component("serial-workbench-host");
   await startSuiteHost();
+  if (lan) {
+    const callerRoot = join(dataRoot, "caller-desktop");
+    lanCallerEnv = {
+      ...suiteEnv,
+      SWB_PROFILE: join(callerRoot, "host-profile"),
+      STARTER_TEST_DATA_DIR: callerRoot,
+      STARTER_E2E_DATA_ROOT: callerRoot,
+    };
+    lanCaller = spawnOwned(
+      suiteHostBinary,
+      ["--profile", lanCallerEnv.SWB_PROFILE],
+      {
+        cwd: root,
+        env: lanCallerEnv,
+        logPath: join(artifacts, "caller-host.log"),
+      },
+    );
+    owned.push(lanCaller);
+    await waitForSuiteHost(
+      lanCaller,
+      lanCallerEnv.SWB_PROFILE,
+      cancellation.signal,
+    );
+    await hostCommand(
+      ["catalog"],
+      "caller-host-ready",
+      AbortSignal.any([cancellation.signal, AbortSignal.timeout(15000)]),
+      lanCallerEnv,
+    );
+  }
   const hostDiscovery = () =>
     JSON.parse(
       readFileSync(join(profile, "host-v0", "discovery.json"), "utf8"),
@@ -198,7 +233,7 @@ try {
       { flag: "wx" },
     );
   }
-  if (!terminal)
+  if (!terminal && !lan)
     suiteControl = serveSuiteHostRestarts(dataRoot, async () => {
       const previous = suiteHost;
       await stopSuiteHost();
@@ -219,15 +254,25 @@ try {
       return evidence;
     });
   // 测试部署显式关闭真实更新源，避免启动检查访问生产 GitHub。
-  mkdirSync(join(dataRoot, "config"));
-  writeFileSync(
-    join(dataRoot, "config", "deployment.json"),
-    JSON.stringify({
-      updates: { endpoint: "", publicKey: "" },
-    }),
-  );
+  for (const desktopRoot of [
+    dataRoot,
+    lanCallerEnv?.STARTER_TEST_DATA_DIR,
+  ].filter(Boolean)) {
+    mkdirSync(join(desktopRoot, "config"));
+    writeFileSync(
+      join(desktopRoot, "config", "deployment.json"),
+      JSON.stringify({ updates: { endpoint: "", publicKey: "" } }),
+    );
+  }
   for (const phase of phases) {
     await waitForSuiteHost(suiteHost, profile, cancellation.signal);
+    if (lan) {
+      await waitForSuiteHost(
+        lanCaller,
+        lanCallerEnv.SWB_PROFILE,
+        cancellation.signal,
+      );
+    }
     const port = await new Promise((done, fail) => {
       const socket = createServer();
       socket.once("error", fail);
@@ -237,12 +282,11 @@ try {
       });
     });
     const env = {
-      ...suiteEnv,
+      ...(phase === "lan-caller" ? lanCallerEnv : suiteEnv),
       // 普通 EOF 属于调试信息；独立验收仍保留其时刻，不提升生产告警级别。
       SWB_LOG_LEVEL: "debug",
       TAURI_WEBDRIVER_PORT: String(port),
       STARTER_E2E_BINARY: binary,
-      STARTER_E2E_DATA_ROOT: dataRoot,
       STARTER_E2E_PHASE: phase,
       STARTER_E2E_PORT: String(port),
     };
@@ -252,11 +296,17 @@ try {
       env.STARTER_E2E_TERMINAL_CLI = suiteCli;
     }
     if (chart) env.STARTER_E2E_CHART_DIR = artifacts;
-    if (browserTakeover) {
+    if (browserTakeover || lan) {
       env.STARTER_E2E_CLI = suiteCli;
       env.STARTER_E2E_MCP = component("serial-workbench-mcp");
-      env.STARTER_E2E_BROWSER_DIR = artifacts;
       env.SWB_DEV_EXPECTED_HOST_EXECUTABLE = suiteHostBinary;
+    }
+    if (browserTakeover) env.STARTER_E2E_BROWSER_DIR = artifacts;
+    if (lan) {
+      env.STARTER_E2E_LAN_DIR = artifacts;
+      env.STARTER_E2E_LAN_HANDOFF = join(dataRoot, "lan-handoff.json");
+      env.STARTER_E2E_LAN_OWNER_PROFILE = profile;
+      env.STARTER_E2E_LAN_CALLER_PROFILE = lanCallerEnv.SWB_PROFILE;
     }
     const app = spawnOwned(binary, [], {
       cwd: root,
@@ -288,7 +338,7 @@ try {
           {
             cwd: root,
             env,
-            ...(automated || chart || browserTakeover
+            ...(automated || chart || browserTakeover || lan
               ? { logPath: join(phaseArtifacts, "webdriver.log") }
               : {}),
           },
@@ -316,6 +366,17 @@ try {
     checkNativeRequestDiagnostics(
       join(phaseArtifacts, "native.log"),
       join(phaseArtifacts, "rpc-request-conflicts.json"),
+    );
+  }
+  if (lan) {
+    await stopSuiteHost(lanCaller, lanCallerEnv, "caller-host");
+    await stopSuiteHost();
+    writeFileSync(
+      join(artifacts, "host-exit.json"),
+      JSON.stringify({
+        caller: lanCaller.child.pid,
+        owner: suiteHost.child.pid,
+      }) + "\n",
     );
   }
   if (terminal) {
@@ -356,13 +417,17 @@ try {
     process.exitCode = 1;
     console.error(error.message);
   }
-  if (suiteHost && !suiteHost.state.done && suiteCli && suiteEnv) {
+  for (const [host, env, name] of [
+    [lanCaller, lanCallerEnv, "caller-host"],
+    [suiteHost, suiteEnv, "host"],
+  ]) {
+    if (!host || host.state.done) continue;
     try {
-      await stopSuiteHost();
+      await stopSuiteHost(host, env, name);
     } catch (error) {
       preserveData = true;
       process.exitCode = 1;
-      console.error(`Owned Host shutdown failed: ${error.message}`);
+      console.error(`Owned ${name} shutdown failed: ${error.message}`);
     }
   }
   for (const processHandle of owned.reverse()) {

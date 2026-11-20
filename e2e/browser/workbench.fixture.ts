@@ -5,6 +5,9 @@ import { TX_MAX_BYTES } from "../../packages/contracts/src/generated/types";
 import type {
   BrowserAccessState,
   BrowserTakeoverRequest,
+  LanAccessParams,
+  LanAccessResult,
+  LanRoute,
   QueryResult,
   RpcRequest,
   SharedSettings,
@@ -73,6 +76,10 @@ export type ReplayLayoutFixture = {
 };
 export type WorkbenchFixture = {
   browserTakeoverDecisions: { takeoverId: string; approve: boolean }[];
+  lanCommands: LanAccessParams[];
+  copiedLanInfo: string[];
+  emitSharedActivity: (items: unknown[]) => number;
+  lanSwitches: { generation: string | null; route: LanRoute | null }[];
   rawSubscriptions: string[];
   emitRaw: (items: unknown[]) => number;
   endRaw: (error: HostError) => number;
@@ -190,6 +197,7 @@ export async function seedWorkbenchFixture(
     connectionDefaults,
     plugin,
     pendingTakeover,
+    lanOwner,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -212,6 +220,7 @@ export async function seedWorkbenchFixture(
     connectFailure?: HostError;
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     pendingTakeover?: BrowserTakeoverRequest;
+    lanOwner?: { hostId: string; address: string };
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -439,6 +448,7 @@ export async function seedWorkbenchFixture(
     connectFailure: connectFailure ?? null,
     plugin,
     pendingTakeover,
+    lanOwner,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -468,7 +478,37 @@ export async function seedWorkbenchFixture(
       connectFailure,
       plugin,
       pendingTakeover,
+      lanOwner,
     } = JSON.parse(raw) as typeof fixturePayload;
+    let remoteAttachment: DesktopAttachment | undefined;
+    let remoteGeneration = 1;
+    const sharedDevice = {
+      ...hostQueryResults["device.list"].value.devices[0]!,
+      deviceId: "shared-serial",
+      hostId: lanOwner?.hostId ?? "",
+      systemName: "Shared UART",
+    };
+    const sharedSession = {
+      ...openedSession,
+      sessionId: "shared-session",
+      deviceId: sharedDevice.deviceId,
+    };
+    const sharedScope = {
+      scopeId: "session.shared-session",
+      target: {
+        hostId: sharedDevice.hostId,
+        kind: "session",
+        id: sharedSession.sessionId,
+        sessionId: sharedSession.sessionId,
+        sessionEpoch: sharedSession.sessionEpoch,
+      },
+    };
+    const sharedActivityScope = {
+      ...sharedScope,
+      scopeId: "session-activity:shared-session",
+    };
+    let sharedActivityRevision = 0n;
+    let sharedActivity: { items: unknown[] } = { items: [] };
     let pluginRevision = 0;
     let activePluginReads = 0;
     let pluginSummary: NodePackageSummary | undefined;
@@ -550,9 +590,57 @@ export async function seedWorkbenchFixture(
     >();
     let nextCallback = 1;
     let browserAccess: BrowserAccessState = { kind: "disabled" };
+    let lanAccess: LanAccessResult = {
+      localPeer: { hostId: "workbench-gui-host", fingerprint: "a".repeat(64) },
+      listener: { kind: "disabled" },
+      peers: [],
+    };
     const fixture: WorkbenchFixture = {
       browserTakeoverDecisions: [],
+      lanCommands: [],
+      copiedLanInfo: [],
+      lanSwitches: [],
       rawSubscriptions: [],
+      emitSharedActivity(items) {
+        if (!remoteAttachment) return 0;
+        const { hostId, instanceEpoch } = remoteAttachment.attachment;
+        const scopeId = sharedActivityScope.scopeId;
+        const previousCursor = {
+          hostId,
+          instanceEpoch,
+          scopeId,
+          position: String(sharedActivityRevision),
+        };
+        const revision = String(++sharedActivityRevision);
+        const cursor = { ...previousCursor, position: revision };
+        sharedActivity = { items };
+        let delivered = 0;
+        for (const [subscriptionId, entry] of stateChannels) {
+          if (entry.scopeId !== scopeId) continue;
+          const callback = callbacks.get(entry.callback);
+          if (!callback) continue;
+          delivered++;
+          callback({
+            message: {
+              channel: "state",
+              requestId: entry.requestId,
+              body: {
+                type: "delta",
+                subscriptionId,
+                delta: {
+                  previousCursor,
+                  cursor,
+                  revision,
+                  eventType: "activity.changed",
+                  payload: sharedActivity,
+                },
+              },
+            },
+            index: entry.index++,
+          });
+        }
+        return delivered;
+      },
       emitRaw(items) {
         const bytes = items.reduce<bigint>(
           (total, item) =>
@@ -750,11 +838,50 @@ export async function seedWorkbenchFixture(
             case "plugin:app|tauri_version":
               return "2.0.0";
             case "host_attachment":
+              if (remoteAttachment) return remoteAttachment;
+            // falls through to the local attachment when there is no selected route
+            case "host_local_attachment":
               fixture.attachmentCalls++;
               if (hostAvailability === "pending")
                 await new Promise<void>((resolve) => hostWaiters.push(resolve));
               if (hostAvailability === "failed") throw startupFailure;
               return hostAttachment;
+            case "host_select_lan_route": {
+              const route = args.route as LanRoute | null;
+              const generation = args.generation as string | null;
+              fixture.lanSwitches.push({ generation, route });
+              if (
+                generation !== (remoteAttachment ?? hostAttachment).generation
+              )
+                throw {
+                  code: "EPOCH_MISMATCH",
+                  message: "Stale connection",
+                  retryable: false,
+                };
+              if (!route) {
+                remoteAttachment = undefined;
+                return hostAttachment;
+              }
+              if (
+                !lanOwner ||
+                route.hostId !== lanOwner.hostId ||
+                route.address !== lanOwner.address
+              )
+                throw {
+                  code: "LAN_UNAVAILABLE",
+                  message: "Cannot connect",
+                  retryable: true,
+                };
+              remoteAttachment = {
+                generation: String(++remoteGeneration),
+                lanRoute: route,
+                attachment: {
+                  ...hostAttachment.attachment,
+                  hostId: route.hostId,
+                },
+              };
+              return remoteAttachment;
+            }
             case "host_browser_access": {
               if (args.generation !== hostAttachment.generation)
                 throw {
@@ -779,6 +906,35 @@ export async function seedWorkbenchFixture(
               if (intent.kind === "revoke")
                 browserAccess = { kind: "disabled" };
               return browserAccess;
+            }
+            case "plugin:clipboard-manager|write_text":
+              fixture.copiedLanInfo.push(String(args.text));
+              return null;
+            case "host_lan_access": {
+              if (args.generation !== hostAttachment.generation)
+                throw {
+                  code: "EPOCH_MISMATCH",
+                  message: "Stale connection",
+                  retryable: false,
+                };
+              const action = args.params as LanAccessParams;
+              fixture.lanCommands.push(action);
+              if (action.kind === "enable")
+                lanAccess = {
+                  ...lanAccess,
+                  listener: { kind: "listening", address: action.address },
+                };
+              if (action.kind === "disable")
+                lanAccess = { ...lanAccess, listener: { kind: "disabled" } };
+              if (action.kind === "setShares" || action.kind === "unpair") {
+                const peers = lanAccess.peers.filter(
+                  ({ peer }) => peer.hostId !== action.peer.hostId,
+                );
+                if (action.kind === "setShares")
+                  peers.push({ peer: action.peer, shares: action.shares });
+                lanAccess = { ...lanAccess, peers };
+              }
+              return lanAccess;
             }
             case "host_decide_browser_takeover": {
               if (
@@ -966,6 +1122,127 @@ export async function seedWorkbenchFixture(
             case "host_raw_request":
             case "host_request": {
               const request = args.request as RpcRequest;
+              if (
+                remoteAttachment &&
+                args.generation === remoteAttachment.generation &&
+                request.method === "action.query" &&
+                request.params.actionId !== "stream.credit"
+              ) {
+                const query = request.params;
+                fixture.hostQueries.push(query.actionId);
+                fixture.queryInputs.push(query);
+                switch (query.actionId) {
+                  case "catalog.list":
+                    return {
+                      ok: true,
+                      result: hostQueryResults["catalog.list"],
+                    };
+                  case "device.list":
+                    return {
+                      ok: true,
+                      result: {
+                        kind: "devices",
+                        value: { devices: [sharedDevice], stale: false },
+                      },
+                    };
+                  case "state.scopes":
+                    return {
+                      ok: true,
+                      result: {
+                        kind: "scopes",
+                        value: { scopes: [sharedScope, sharedActivityScope] },
+                      },
+                    };
+                  case "state.snapshot":
+                    if (query.params.scopeId === sharedActivityScope.scopeId) {
+                      const { hostId, instanceEpoch } =
+                        remoteAttachment.attachment;
+                      const revision = String(sharedActivityRevision);
+                      return {
+                        ok: true,
+                        result: {
+                          kind: "snapshot",
+                          value: {
+                            hostId,
+                            instanceEpoch,
+                            revision,
+                            state: sharedActivity,
+                            cursor: {
+                              hostId,
+                              instanceEpoch,
+                              scopeId: sharedActivityScope.scopeId,
+                              position: revision,
+                            },
+                          },
+                        },
+                      };
+                    }
+                    if (query.params.scopeId === sharedScope.scopeId) {
+                      const { hostId, instanceEpoch } =
+                        remoteAttachment.attachment;
+                      return {
+                        ok: true,
+                        result: {
+                          kind: "snapshot",
+                          value: {
+                            hostId,
+                            instanceEpoch,
+                            revision: sharedSession.revision,
+                            cursor: {
+                              hostId,
+                              instanceEpoch,
+                              scopeId: sharedScope.scopeId,
+                              position: "0",
+                            },
+                            state: sharedSession,
+                          },
+                        },
+                      };
+                    }
+                    break;
+                  case "stream.cursor":
+                    if (query.target.id === sharedSession.sessionId)
+                      return {
+                        ok: true,
+                        result: {
+                          kind: "stream_cursor",
+                          value: {
+                            target: query.target,
+                            cursor: {
+                              hostId: remoteAttachment.attachment.hostId,
+                              instanceEpoch:
+                                remoteAttachment.attachment.instanceEpoch,
+                              scopeId: "raw:shared-session:1",
+                              position: "0",
+                            },
+                          },
+                        },
+                      };
+                    break;
+                  case "stream.read":
+                    if (query.target.id === sharedSession.sessionId)
+                      return {
+                        ok: true,
+                        result: {
+                          kind: "stream_read",
+                          value: {
+                            events: [],
+                            nextEventSeq: "1",
+                            hasMore: false,
+                          },
+                        },
+                      };
+                    break;
+                }
+                return {
+                  ok: false,
+                  error: {
+                    code: "PERMISSION_DENIED",
+                    message: "Unavailable for shared serial",
+                    retryable: false,
+                  },
+                };
+              }
               if (request.method === "action.invoke")
                 fixture.invocations.push(request.params);
               if (

@@ -288,6 +288,21 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     desktopOnly: true,
   },
   {
+    id: "lanAccess",
+    anchor: "settings-lan-access",
+    labelKey: "lanAccess.title",
+    descriptionKey: "lanAccess.description",
+    keywords: [
+      "LAN",
+      "serial sharing",
+      "pairing",
+      "局域网",
+      "共享串口",
+      "配对",
+    ],
+    desktopOnly: true,
+  },
+  {
     id: "updates",
     anchor: "settings-updates-check",
     labelKey: "updates.check",

@@ -274,6 +274,8 @@ pub enum RpcRequest {
     BrowserAccess(BrowserAccessParams),
     #[serde(rename = "browser.takeover")]
     BrowserTakeover(BrowserTakeoverParams),
+    #[serde(rename = "lan.access")]
+    LanAccess(LanAccessParams),
     #[serde(rename = "client.register")]
     ClientRegister(ClientRegisterParams),
     #[serde(rename = "client.unregister")]
@@ -313,6 +315,7 @@ pub enum RpcRequest {
 #[serde(untagged)]
 pub enum RpcResult {
     BrowserAccess(BrowserAccessResult),
+    LanAccess(LanAccessResult),
     ClientRegistration(ClientRegistration),
     ClientEffectAcknowledged(ClientEffectAcknowledged),
     Query(QueryResult),

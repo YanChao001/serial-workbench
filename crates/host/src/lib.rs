@@ -10,6 +10,7 @@ pub mod dispatch;
 mod documents;
 pub mod files;
 pub mod ipc;
+pub mod lan;
 mod limits;
 pub mod metrics;
 pub mod node_backend;

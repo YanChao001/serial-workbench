@@ -60,6 +60,20 @@ pnpm test:ui
 
 配对浏览器定向验证先运行 `pnpm build`，用 `cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins` 准备同源程序，再运行 `node e2e/paired-browser.mjs <Host> <CLI> dist <新证据目录> <MCP>`。脚本经本机继承管道启动独立 Host，显式授权临时浏览器身份。无头 Chromium 验证错码拒绝、虚拟串口回显、保存布局及刷新后的会话代次，CLI 对照工作区与共享设置。传入 MCP 程序时，同一场景用两组命名身份和两个窗口复验跟随范围、查询轮询、暂停及草稿保留。实际设备查询在草稿编辑期间等待，离开输入框后只在绑定窗口打开目录指定面板，查询轮询不重新打开。暂停期间从实际 MCP 发送并经 Virtual Echo 回显。浏览器发起接管后从 CLI 核对等待确认的客户端与串口。关闭请求窗口后核对清理及原写入权。失败时 WebSocket 诊断记录消息类型、动作和结果码。
 
+LAN 进程验收使用同源且相邻的 Host、CLI 和 MCP 程序，运行 `node e2e/lan-route.mjs <Host> <CLI> <MCP> <新证据目录>`。脚本启动两份独立 Host，在 B 打开 Virtual Echo 并共享。A 的实际 CLI 验证授权前拒绝、跨进程读写 B 的会话与原操作回执，实际 MCP 验证 B 对命名客户端的独立归属。撤销 A 的 CLI 路由权后 MCP 仍可读取，A 解除配对后确认原 MCP 路由失效，B 本地会话仍可读。收据和命令日志用于软件验收。跨机网卡、USB 设备和控制租约恢复各按相应场景验收。
+
+A 的 CLI 在精确共享会话快照读回实际 MCP 的活动，与 B 本机活动中的同编号和操作者一致。B 的全局活动拒绝 A 读取。Rust LAN 用例另外验证独立 TCP 订阅收到同一活动，收回 B 共享后收到终止。无头工作台选择该客户端后应打开共享串口视图，新配置活动自动打开对应面板。
+
+S12 软件用例运行 `cargo test --locked -p serial-workbench-host --lib stopped_caller_host_loses_its_interactive_lease_but_owner_settles_independent_tx`。B 共享尚未打开的 Virtual Echo 设备。A 经真实 TCP 请求打开、发现新会话并使用其收发。测试时钟只推进 B 的租约时间，派发屏障控制断线或撤权的时机。核对 B 的原始 TX/RX、旧请求回执、独立任务和 A 重启后重连。B 人工接管选中的客户端时，核对已接纳写入取消、同一对端另一客户端与 B 本机继续写入、所选客户端继续读且重连仍拒绝写入。B 重新授权后试读旧回执并发送新 TX。最后撤销整项共享，核对 A 独立任务在派发前取消而 B 本机写入继续。
+
+桌面 LAN 桥的无窗口检查在准备 `dist` 后运行 `cargo test --locked -p serial-workbench --lib desktop_lan_switch_uses_remote_business_and_local_management`。两份真实 Host 以 TCP 相连。用例核对失败切换保留本机代次，成功切换使用 B 的普通身份收发。窗口的原本机连接继续读取 A 的共享设置，配对管理也落在 A。随后验证远端重连沿用所选身份，返回本机沿用原代次并释放远端连接，B 的会话继续运行。
+
+桌面工作台的无头验收运行 `pnpm test:ui e2e/browser/lan-access.spec.ts --workers=1`。用受控 IPC 核对连接失败后的重试、正常设备入口打开共享会话、接收数据显示、切回本机时先保存草稿，以及只向所属 Host 查询设置与串口。真实 TCP、授权及收发以桌面桥用例为准。
+
+Windows 原生用例复用桌面 CI 的同源构建，在隔离桌面运行 `pnpm test:e2e --interactive --skip-build --lan`。运行器持有两份 Host 和配置，依次启动 B 和 A 的桌面。B 在设置中共享已打开的串口，接管实际转发的一个 MCP 客户端，验证其他客户端和 B 本机继续收发。A 从工作台连接并打开同一会话，通过桌面收发，跟随命名 MCP 客户端的参数动作，再回到本机 Host。收据、截图、进程日志和构建信息保存在 `artifacts/e2e/lan-desktop-*`。全量四目标 CI 的 Windows 原生作业执行该用例。物理机和实际 USB 串口按 M6 矩阵验收。
+
+桌面共享界面的无头检查用 `pnpm test:ui e2e/browser/lan-access.spec.ts --workers=1`。先在工作台打开虚拟串口，再通过设置入口验证交换配对信息、设置共享权限、启停监听及解除配对。截图检查布局和字段可见性，实际 TCP 过滤与授权由 `lan::tests::` 覆盖。
+
 桌面人工接管在「活动」中选择 MCP 客户端，再接管当前串口。Host 定向用例用 `cargo test --locked -p serial-workbench-host --test control_state takeover` 核对排队、在途结算和无法确认的控制结果。`takeover_waits_for_the_selected_admission_but_not_another_serial_port` 检查接纳中的请求与其他串口并发。准备 `dist` 后运行 `cargo test --locked -p serial-workbench --lib desktop_takeover_revokes_the_selected_actor_and_keeps_the_session`，使用无窗口桌面桥和实际 Host 确认撤销范围、终态及原会话代次。真实窗口按桌面运行前提验收。
 
 已运行的 Host 用 `cargo test --locked -p serial-workbench-host --test browser_pairing` 验证本机配对、只读授权、撤销和接管。撤销后确认两个浏览器连接关闭，再在同一串口会话核对桌面发送的终态。接管用实际 WebSocket 发起，核对浏览器不能自行批准，拒绝及断开后原写入权保留，批准后只有所选 MCP 失去当前串口写入权。桌面设置的无头用例为 `pnpm test:ui e2e/browser/browser-access.spec.ts --workers=1`，验证配对与停用、窄窗口和焦点，以及明确显示端口和客户端后传递当前确认编号。正式桌面验收从实际设置页生成配对码，用该候选安装资源打开浏览器，再从真实桌面窗口确认浏览器发起的接管。
@@ -253,7 +267,7 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 ### 失败定位与复验顺序
 
 1. 先查失败作业的第一个失败步骤和原始产物，记下候选、平台、缓存命中、耗时、实际执行到的断言及退出原因。依赖下载、runner、测试驱动和产品各有对应的复现入口。启动或安装前失败时，对应业务场景记为未测。时间上限触发时，先找出耗时阶段和它正在等待的对象。
-2. 用同一输入和验收断言在失败平台定向复验。产品缺陷优先得到修复前后的对照。测试夹具明确等待新代次、所有权或应用状态；真实窗口同时核对对话框关闭、焦点归属和 Host 实际接受的结果。并发或超时带来的晚结果先查当前状态。已有副作用的命令仍按一次投递观察，重试和首次结果都留证据。
+2. 用同一输入和验收断言在失败平台定向复验。产品缺陷优先得到修复前后的对照。断言选用领域对象及其稳定身份。一个对象有多份投影时，选与验证行为对应的投影。用只读探针等待新代次、所有权或应用状态，在确认前置状态后单独执行有副作用的动作。真实窗口同时核对对话框关闭、焦点归属和 Host 实际接受的结果。并发或超时带来的晚结果先查当前状态。已有副作用的命令仍按一次投递观察，重试和首次结果都留证据。
 3. 已知失败路径在定向复验通过后，再汇合到同一候选的本机综合检查、完整无头 UI 和四目标 CI。仅依赖或 runner 被阻断时，在确认恢复后复跑受影响作业。记录缩短前后的构建、缓存及用例耗时，保留完整出口应有的目标、负载、断言及原始失败。
 
 ## M3 契约冻结

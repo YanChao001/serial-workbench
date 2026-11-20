@@ -154,13 +154,18 @@ impl ViewContext {
             Some("stop.js") => {
                 self.stop();
                 #[cfg(feature = "e2e")]
-                super::trace_terminal_view(
-                    &format!("node-view-{}", self.frame_id),
-                    "stopped",
-                    0,
-                    0,
-                    None,
-                );
+                {
+                    let label = format!("node-view-{}", self.frame_id);
+                    if let Some(reason) = request.uri().query().filter(|reason| {
+                        reason.len() <= 64
+                            && reason
+                                .bytes()
+                                .all(|byte| byte.is_ascii_uppercase() || byte == b'_')
+                    }) {
+                        log::info!("e2e_node_view_stop view={label} reason={reason}");
+                    }
+                    super::trace_terminal_view(&label, "stopped", 0, 0, None);
+                }
                 response(
                     StatusCode::OK,
                     "application/javascript; charset=utf-8",
@@ -213,6 +218,8 @@ impl ViewContext {
                     let argument =
                         serde_json::to_string(&payload.to_string()).expect("JSON string");
                     let body = format!("globalThis.swbViewReceive(JSON.parse({argument}));");
+                    // WebKit can run the response and start another pull during respond.
+                    drop(reader);
                     responder.respond(response(
                         StatusCode::OK,
                         "application/javascript; charset=utf-8",

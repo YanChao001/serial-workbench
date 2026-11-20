@@ -65,21 +65,47 @@ const empty = (status: HostState["status"]): HostContextValue => ({
   invoke: async () => unavailable(),
   watchSession: () => () => {},
 });
+function withLocalWorkspace(
+  remote: HostContextValue,
+  local: HostContextValue,
+): HostContextValue {
+  return {
+    ...remote,
+    state: { ...remote.state, workspace: local.state.workspace },
+    loadWorkspace: local.loadWorkspace,
+    listWorkspaces: local.listWorkspaces,
+    saveWorkspace: local.saveWorkspace,
+    saveFavorites: local.saveFavorites,
+    rebindDevice: local.rebindDevice,
+    exportWorkspace: local.exportWorkspace,
+    previewWorkspaceImport: local.previewWorkspaceImport,
+  };
+}
+
 export function HostProvider({
   children,
   connect = getHostClient,
   enabled = isTauri(),
+  localWorkspace,
 }: {
   children: ReactNode;
   connect?: () => Promise<HostConnection>;
   enabled?: boolean;
+  localWorkspace?: HostContextValue;
 }) {
-  const [value, setValue] = useState(() =>
-    empty(enabled ? "connecting" : "preview"),
-  );
+  const [publication, publishValue] = useState<{
+    owner: typeof connect;
+    value: HostContextValue;
+  }>();
+  const value =
+    publication?.owner === connect
+      ? publication.value
+      : empty(enabled ? "connecting" : "preview");
   useEffect(() => {
     if (!enabled) return;
     let active = true;
+    const setValue = (value: HostContextValue) =>
+      publishValue({ owner: connect, value });
     let workspace: ReturnType<typeof createHostWorkspace> | undefined;
     let attaching: Promise<void> | undefined;
     let removeClosedListener: (() => void) | undefined;
@@ -128,7 +154,7 @@ export function HostProvider({
         }
         const attachedWorkspace = createHostWorkspace(
           connection,
-          connection.browser ? null : undefined,
+          connection.browser || connection.lanRoute ? null : undefined,
         );
         workspace = attachedWorkspace;
         if (closed) {
@@ -191,5 +217,17 @@ export function HostProvider({
       disposeWorkspace();
     };
   }, [connect, enabled]);
-  return <HostContext value={value}>{children}</HostContext>;
+  return (
+    <HostContext
+      value={
+        localWorkspace
+          ? enabled
+            ? withLocalWorkspace(value, localWorkspace)
+            : localWorkspace
+          : value
+      }
+    >
+      {children}
+    </HostContext>
+  );
 }

@@ -1,13 +1,14 @@
 # 路线与进度
 
-**当前接续点（2026-11-20）为 M2 配对浏览器。** M2 B 与 C 已分别经 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 和 [PR #50](https://github.com/YanChao001/serial-workbench/pull/50) 合入 `main`。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
+**当前接续点（2026-11-21）为 M2 LAN 双 Host。** M2 B、C 和配对浏览器已分别经 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49)、[PR #50](https://github.com/YanChao001/serial-workbench/pull/50) 和 [PR #51](https://github.com/YanChao001/serial-workbench/pull/51) 合入 `main`。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
 
 ## 当前执行与下一步
 
 1. **B / 14.3–14.4 已验收。** 同一候选 `9090867` 通过自审、本机综合检查、无头 UI 203 项和完整四目标 CI。四个原生桌面均验证同连接的目录恢复与关窗录制，重开补读的三段 RX 与 69 字节录制一致。Windows 实际打开和保存对话框均返回同一窗口焦点，两种 macOS 架构完成进程回收。打开中的插件实时更新语言仍待交付，UX-13 保留为部分软件进展。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44681253676)
 2. **C / 14.5 已合入 `7befd10`。** 同源候选 `bfd37d6` 通过本机综合检查、203 项无头 UI 和完整四目标 CI 的 13 项作业。四个原生桌面核对关窗录制、重开补读和撤权。Debian x64 与 macOS arm64/x64 的实际断网安装通过三个签名参考场景。图表证据覆盖采样值与原始字节区间，界面交叉定位仍在 M3 到 M4 验收。[PR #50](https://github.com/YanChao001/serial-workbench/pull/50) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44705059778)
 3. **Windows 断网实装移至 M6。** `bfd37d6` 的未签名 Windows x64 NSIS 已确认内置 WebView2 离线安装程序、固定 Node 和三个伴随程序。Microsoft 安装程序的 Authenticode 验证有效。用户确认用 M6 发行候选，在未安装 WebView2 的独立 Windows x64 环境实际断网安装及首次启动。此前的安装材料和失败记录保留。[M6 安装验收](./testing.md#安装与发行验收)
-4. **M2 其余出口。** 先完成浏览器连接真实 Host、共享状态、跟随及接管，再验收 LAN 双 Host。通过这两个出口后进入 M3。
+4. **配对浏览器已合入 `d504166`。** 同一候选 `92f0d5f` 通过本机综合检查、205 项无头 UI 和四目标 CI 的 13 项作业，两项专项预检按运行模式跳过。Windows 原生桌面通过实际配对及接管，所选 MCP 失去当前串口的写入权，另一身份在同一会话继续收发。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44770530228)
+5. **M2 剩余出口为 LAN 双 Host。** 在持口端验收共享、权限和写入仲裁，在使用端验收应用路由、MCP 与会话恢复。完成本阶段的软件出口后进入 M3。
 
 **FUT-08 配对浏览器（工作树，Windows）。** Host 提供显式启用的 loopback 页面与 WebSocket 入口。真实回环测试通过 Host 与 Origin 校验、一次性配对、专属普通身份附着和控制连接关闭后的 Raw 清理。复审后改用浏览器独立随机生成的重连凭据，拒绝用已消费的配对码重连、重新绑定凭据或冒用桌面身份。复验也核对了未读完静态下载时关停及重开同一 profile。无头启动器可通过受保护的继承管道接收配对码。真实 Host 通过三项定向检查，真实 Chromium 在另一个浏览器上下文重用配对码被拒绝。证据见 `.cache/evidence/m2-browser-pairing/browser-review-auth-host-retest.log` 与 `browser-review-exact-20261120-221938/`。
 
@@ -29,7 +30,47 @@ Windows 独立桌面在 `f40bc2d` 通过实际配对和确认接管。所选 MCP
 
 复审补齐了开始顺序和撤权证据。真实 Chromium 在保持草稿焦点时收到两项 MCP 活动，离开输入框后依次打开设备与工作区面板，重复查询从原活动更新。真实 Host 在浏览器只丧失指定串口写入权时清除该串口的待确认请求，许可恢复后可重新请求，并实际拒绝已被接管 MCP 的发送。证据与同轮程序摘要见 `.cache/evidence/m2-browser-pairing/browser-review-exact-20261120-221938/` 和 `browser-review-auth-host-retest.log`。
 
-配对浏览器候选的 Windows 本机门槛已通过。`pnpm verify --jobs 1`、`pnpm test:ui --workers=1` 的 205 项无头用例、Host 契约与 IPC 绑定校验、Host 与 MCP 等相关 Rust 包的 Clippy 均通过。结果与候选指纹保存在 `.cache/evidence/m2-browser-pairing/` 的 `browser-candidate-*` 与 `browser-reviewed-*`。四目标 CI 和真实桌面验收进入托管阶段。
+配对浏览器候选的 Windows 本机检查包括 `pnpm verify --jobs 1`、`pnpm test:ui --workers=1` 的 205 项无头用例、Host 契约与 IPC 绑定校验，以及 Host 与 MCP 等相关 Rust 包的 Clippy，均通过。本机候选指纹、托管作业结论和真实桌面收据位于 `.cache/evidence/m2-browser-pairing/` 的 `browser-candidate-*`、`browser-reviewed-*`、`ci-44770530228-terminal.json` 与 `ci-44770530228-win-native/`。
+
+**LAN-01（独立工作树，Windows）**。两份独立 Host profile 的本机测试验证 TLS 1.3 身份、IPv4/IPv6 角色互换、越权拒绝、重启识别及撤销旧握手。A 通过现有 Rust RPC 客户端发现 B 共享的会话，在真实 Virtual Echo 上收发 5 个含 NUL、CRLF 和 FF 的字节，远端与 B 本地 IPC 的数据及 TX 回执一致。重连查询到原终态。同编号同参数返回原操作，改参数返回冲突，复查原始事件确认只有一次发送。解除配对关闭远端两个通道，本地读取保持可用。重连拒绝更换 A 的配置或在 B 重新配对后沿用旧身份。4 项 LAN、23 项 Rust 客户端及 12 项本地 IPC 回归通过。证据见 [LAN 收发用例](../crates/host/src/lan/rpc_tests.rs) 和主工作区 `.cache/evidence/m2-lan-host/lan-rpc-client-20261121-001704/`、`.cache/evidence/m2-lan-host/visible-shares-20261121-002336/`、`.cache/evidence/m2-lan-host/bound-reconnect-20261121-002603/`。两台 Windows 物理机的实际 USB 串口场景留在 M6。
+
+**LAN 本机管理（独立工作树，Windows）**。常规 Host 启动默认关闭监听。本机用户控制连接可绑定、停止监听，设置共享和解除配对。定向用例以真实 TCP 对照普通本机及远端连接的管理拒绝，并确认停止监听关闭现有远端通道。实际 CLI 在两个独立 Host 进程上分别设置对端，验证显式启停及 B 重启换代后配对和身份保留，最后正常停止两个进程。4 项 LAN、2 项 CLI 检查、Host 与 CLI Clippy、契约与桌面绑定检查以及 TypeScript 检查通过。收据及首轮诊断见主工作区 `.cache/evidence/m2-lan-host/local-lan-management-20261121-003644/`，真实进程收据在 `cli-retry-1795193652944/checkpoint.json`。桌面管理入口、A 的应用路由、客户端身份转发、并发写入和断线租约恢复仍待验收。
+
+LAN 工作树已迁到 `d504166`。本地 IPC、配对浏览器和 LAN 共用请求处理，各自管理附着凭据。本机管理命令仅由本地控制连接接入。Windows 复验通过 4 项 LAN、3 项配对浏览器及 58 项 Rust 客户端和 IPC 用例。两项受控子进程由父用例调度。Host 与 CLI Clippy、Host 契约、桌面绑定、TypeScript、文档和 247 项账本校验通过。源码补丁与收据见 `.cache/evidence/m2-lan-host/combined-main-20261121-010555/checkpoint.json`。
+
+**LAN 客户端身份转发（独立工作树，Windows）**。A 用本机认证过的两个客户端打开 B 的真实 LAN 通道。B 保持共享授权由配对管理，操作主体按来源区分。两个客户端使用相同请求编号，分别得到实际 TX 回执。首个客户端重连后读回原操作，改参数重试仍发生冲突。Raw 拒绝把甲的附着令牌交给乙，解除配对关闭两者的 Control 与 Raw，本地读取继续。4 项 LAN、13 项授权及 3 项配对浏览器检查和 Host Clippy 均通过，首次编译诊断已归档。证据见 `.cache/evidence/m2-lan-host/forwarded-actor-20261121-012506/checkpoint.json`。
+
+**LAN 应用路由（独立工作树，Windows）**。实际 CLI 与 MCP 通过 A 的本机 IPC 使用 B 的 Virtual Echo，两个 Host 使用独立进程与配置。CLI 在获准后收发相同的 5 个二进制字节，重新附着后查询终态和重复请求均返回原操作，Raw 与 B 本地读取一致。MCP 用相同请求编号执行独立发送，B 记录实际来源名称。A 撤销 CLI 的路由权限后，MCP 继续读；A 解除配对后 MCP 的现用路由失效，B 保留原会话。两个 Host 均正常退出。[进程验收入口](../e2e/lan-route.mjs)，证据见 `.cache/evidence/m2-lan-host/app-route-20261121-013907/processes-1/receipt.json`。桌面接入、A 端观看跟随、写入仲裁和断线租约恢复仍待验收。
+
+同一工作树通过 83 项 Windows 定向回归、Clippy、Host 契约、桌面绑定和 TypeScript。两项受控子进程由父用例调度。首次 Rust 测试编译报告旧连接夹具缺少字段，补齐后复验通过。源码补丁、程序摘要和各条日志见 `.cache/evidence/m2-lan-host/app-route-20261121-013907/checkpoint.json`。
+
+**LAN 桌面桥（独立工作树，Windows）**。无窗口用例以两份独立 Host 配置和真实 TCP 验证授权前拒绝、原连接保留、授权后发布新代次及 B 的实际收发。切换到 B 后仍从 A 读取本机配对配置，本机浏览器特权操作受限。B 连接失效后同一窗口文档按原选择重连，保持转发身份。返回本机释放旧路由，B 原会话继续运行。37 项桌面桥回归通过，类型检查和生成绑定一致。两次编译诊断与最终收据见 `.cache/evidence/m2-lan-host/desktop-route-20261121-020157/`。工作台入口和远端共享投影仍待接线，本机偏好与远端串口应分别保持原归属。
+
+**LAN 共享设置和设备目录（独立工作树，Windows）**。桌面设置提供复制和粘贴配对信息、为已打开的串口选择共享权限、启停监听及解除配对。完成配对后用精简状态与「更换对端」代替粘贴框。窄窗 Chromium 验证实际渲染、焦点和桌面 IPC 参数，LAN 与配对浏览器的 3 项无头用例通过。真实 TCP 用例确认仅共享会话时 B 提供该串口名称和能力，隐藏硬件身份字段，收回共享后设备列表为空。5 项 LAN 与目录检查、Host Clippy、前端类型和 lint 通过。源码、截图、复验及首轮测试现场见 `.cache/evidence/m2-lan-host/lan-settings-20261121-021849/checkpoint.json`。A 的工作台连接入口、会话展示与活动跟随仍在接入。
+
+**LAN 桌面连接归属（独立工作树，Windows）**。桌面桥保留同一窗口文档的本机连接，并独立管理远端路由、Raw 与订阅预算。真实双 Host 用例验证切换失败保留 A、切到 B 后用 A 的原连接读取共享设置、B 执行实际收发、B 的重连身份不变。返回 A 仍使用原代次，回收旧远端连接，B 的串口会话继续运行。桌面桥回归 70 项通过，4 项签名参考包用例需要准备独立运行材料，本轮跳过。生成绑定与本机收据见 `.cache/evidence/m2-lan-host/desktop-local-preferences-20261121-024503/checkpoint.json`。
+
+**LAN 工作台连接入口（独立工作树，Windows）**。已配对的 A 可从工作台菜单使用 B 的连接信息，打开 B 已共享的串口，并从同一入口返回本机。设备和会话查询在 B，工作区与设置继续由 A 管理，窗口草稿沿用本机保存。真实双 Host 用例拒绝未配对目标和未经桌面明确连接授权的路由，随后验证合法授权、收发及返回本机。无头 Chromium 用受控 IPC 验证地址失败后重试、从设备列表立即打开共享会话、接收数据显示和切换时保存草稿。证据见 `.cache/evidence/m2-lan-host/desktop-lan-workbench-20261121-025711/checkpoint.json`。原生窗口专项待验。
+
+**LAN MCP 活动跟随（独立工作树，Windows）**。B 发布精确会话代次的活动。实际 CLI 通过 A 的独立 Host 读到实际 MCP 的活动，与 B 本机记录使用同一身份和活动编号。真实 TCP 用例验证另一客户端收到增量，拒读 B 的全局活动，撤回共享后关闭订阅。无头工作台选择命名客户端后自动打开对应共享视图，下一项活动打开串口参数。证据见 `.cache/evidence/m2-lan-host/shared-session-activity-20261121-032551/checkpoint.json`。
+
+**LAN 写入仲裁与断线租约（独立工作树，Windows）**。双 Host 通过真实 TCP 路由写入 B 的 Virtual Echo。A 停止后，B 按自身时钟使事务租约到期。两笔在后端派发前的交互写入结算为拒绝且没有写入字节，A 和 B 各自的独立写入完整结算，原始回显保持整帧。重启 A 后沿相同身份读回原回执，重复请求不重发。随后 B 撤销共享，A 已接纳的独立写入在后端派发前取消，新请求被拒绝，B 本机任务正常结算。此软件证据覆盖 LAN-01、NET-07 与 NET-11 的相关范围。见 `.cache/evidence/m2-lan-host/lan-lease-recovery-20261121-034007/checkpoint.json`。
+
+**LAN 按客户端接管（独立工作树，Windows）。** 双 Host 用真实 TCP 和 B 的 Virtual Echo 验证 `session.takeover`。B 收回所选客户端在当前会话代次的写权，派发前的任务以零写入结算。同一对端的另一客户端和 B 本机均正常写入。所选客户端保持读取，重连后仍拒绝写入。B 重新授权后原编号返回取消回执，新编号成功发送。覆盖 LAN-01、NET-07 与 NET-11 的本次软件范围。证据见 `.cache/evidence/m2-lan-host/takeover-scoped-20261121/checkpoint.json`。原生桌面入口和四目标阶段 CI 待验。
+
+**LAN 原生候选（PR #52）。** 首轮四目标原生作业在重启检查中把会话快照和活动投影计为两个会话，当时未执行 Windows LAN 桌面步骤。断言已改为定位同一会话快照。自审另修复设备共享后新会话缺少权限，以及 A 重新授权时旧路由沿用新许可。双 Host 定向验收通过远端打开后收发、按客户端接管和断线恢复，授权回归确认撤权重授后旧许可失效。[PR #52](https://github.com/YanChao001/serial-workbench/pull/52) · [首轮 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44812324987) · [运行与收据](./testing.md#桌面边界)
+
+`e44c572` 的 Windows 预检通过重启场景、配对浏览器接管及 LAN 持口端接管。使用端已在原生窗口打开共享会话并完成收发，参数操作因测试夹具漏传会话 revision 被拒绝。夹具现用 MCP 读回的 revision 提交变更。本机两份实际 Host 经真实 MCP 核对同一会话两端均读回 `19200`。原生 Rust 缓存命中，构建从 460 秒降至 159 秒，pnpm 缓存本轮未命中。首轮 Apple Silicon 的签名任务用例把迟到调用混入就绪轮询，可能在处理器仍接受子动作时多写一笔。现使用只读探针检测子任务已接纳并开始，在取消结算后单独尝试迟到调用，Windows 本机固定 Node 定向复验通过。两条路径的本机收据见 `.cache/evidence/m2-lan-host/node-task-admission-20261121/`，原生与四目标 CI 待复验。[Windows 预检](https://github.com/YanChao001/serial-workbench/actions/runs/44816021908/job/136564449388) · [Apple Silicon 原始失败](https://github.com/YanChao001/serial-workbench/actions/runs/44812324987/job/136551772603)
+
+`b59a0b8` 的 Windows 使用端原生用例通过配置操作接纳，随后在发送草稿聚焦时等待自动跟随超时。原生截图与编辑期间暂缓跟随的规则一致。用例明确核对聚焦草稿时的保护，移开焦点后再核对参数面板和读回值。Apple Silicon 的原始 SQLite 记录确认第二个子动作在取消接纳前 42 毫秒进入，两个子动作后来均取消。原件与只读时间线保存在同一证据目录。[Windows 使用端原始结果](https://github.com/YanChao001/serial-workbench/actions/runs/44818496752/job/136572950817)
+
+`4e47108` 通过本机综合检查和两项 LAN 无头场景。原生预检在持口端读取参数时因 CLI 夹具未提供必需参数文件停止，焦点释放场景尚未运行。原生和本机双 Host 用例共用带目标及参数文件的查询构造，继续核对实际 CLI 回执。[Windows 读回原始结果](https://github.com/YanChao001/serial-workbench/actions/runs/44820406344/job/136579537215)
+
+`6e7e4a6` 通过本机综合检查。Windows 原生用例完成了双 Host 收发、持口端接管、两端参数读回和移出草稿后的自动定位，返回本机时停在正常的「保存未完成工作」提示。用例现显式保存草稿，并在返回后查本机草稿和持口端会话。下一轮完整四目标 CI 执行这一原生流程。[Windows 跟随与返回原始结果](https://github.com/YanChao001/serial-workbench/actions/runs/44821990624/job/136584915400)
+
+`93170d6` 通过本机综合检查和 207 项无头 UI 检查。Windows 原生用例在已选中命名助手后，因发送 Escape 未关闭「活动」面板而停止，尚未到达参数与返回断言。该用例改用面板已有的关闭按钮。Apple Silicon 签名终端在选择包后丢失本地 Host 控制连接，应用提示无法加载插件，Host 仍可接受独立 CLI 的正常关停。客户端日志只记录了帧读取失败。候选为 Host 私有日志补充输出失败和事件入队失败原因，继续定向复验。[Windows 原生记录](https://github.com/YanChao001/serial-workbench/actions/runs/44823571873/job/136590361674) · [Apple Silicon 原生记录](https://github.com/YanChao001/serial-workbench/actions/runs/44823571873/job/136590362066)
+
+`0a5c6ad` 的 Windows 实际桌面完成接管、自动定位、保存草稿及返回本机，CLI 确保持口端原会话保持打开。真实打开与保存对话框均恢复主窗口焦点，签名终端回放 3 个 RX 事件共 69 字节。Apple Silicon 本次完成包安装和录制启动，主窗口确认首条 21 字节回显，独立视图确认 TX 后主动停止，未确认 RX。视图发布下一批响应前先释放读者锁，消除 WebKit 立即发起后续请求时可能遇到的锁竞争。测试记录壳的停止原因，收到停止事件时直接报告失败。具体停因与新实现待定向复验。[Windows 通过记录](https://github.com/YanChao001/serial-workbench/actions/runs/44826391351/job/136599976127) · [Apple Silicon 失败记录](https://github.com/YanChao001/serial-workbench/actions/runs/44826396611/job/136599991868)
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 

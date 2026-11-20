@@ -4,6 +4,7 @@ import {
 } from "@serial-workbench/contracts";
 import type {
   Call,
+  LanRoute,
   Query,
   StateScopeRef,
   Target,
@@ -19,6 +20,7 @@ import {
   nativePort,
 } from "./host-native-transport";
 import { readWithAuthorizationRecovery } from "./host-read-recovery";
+import { hostLocalAttachment } from "./tauri";
 import type { HostNativePort } from "./host-native-transport";
 export { createNativeTransport } from "./host-native-transport";
 export type { HostNativePort } from "./host-native-transport";
@@ -128,7 +130,7 @@ export async function confirmProjectionHost(
 }
 export async function createHostConnection(port: HostNativePort = nativePort) {
   const desktop = await port.attachment();
-  return bindHostConnection(
+  const connection = bindHostConnection(
     createNativeTransport(desktop, port),
     () => desktop.generation,
     (listener) =>
@@ -136,6 +138,7 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
         if (generation === desktop.generation) listener();
       }) ?? Promise.resolve(() => {}),
   );
+  return { ...connection, lanRoute: desktop.lanRoute };
 }
 
 export type WorkbenchHostTransport = HostTransport &
@@ -289,8 +292,13 @@ export function bindHostConnection(
 }
 export type HostConnection = ReturnType<typeof bindHostConnection> & {
   browser?: { closed: AbortSignal };
+  lanRoute?: LanRoute;
 };
 // The provider owns connection lifetime; reattachment is explicit, never an RPC retry.
+const localPort = { ...nativePort, attachment: hostLocalAttachment };
+export function getLocalHostClient(): Promise<HostConnection> {
+  return createHostConnection(localPort);
+}
 export function getHostClient(): Promise<HostConnection> {
   return createHostConnection();
 }

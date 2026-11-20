@@ -67,6 +67,11 @@ struct ScopeState {
     history_bytes: usize,
     readers: BTreeMap<Id, Weak<Reader>>,
 }
+enum CommitTarget<'a> {
+    Unchanged,
+    Exact(&'a Target),
+    NextEpoch(Target),
+}
 struct Entry {
     delta: Delta,
     bytes: usize,
@@ -137,13 +142,15 @@ impl ProjectionStore {
                     && target.session_id.is_none()
                     && target.session_epoch.is_none()
             }
-            value if value.starts_with("session:") => {
+            value => {
+                let session = value
+                    .strip_prefix("session:")
+                    .or_else(|| value.strip_prefix("session-activity:"));
                 target.kind.as_str() == "session"
-                    && value.strip_prefix("session:") == Some(target.id.as_str())
+                    && session == Some(target.id.as_str())
                     && target.session_id.as_ref() == Some(&target.id)
                     && target.session_epoch.is_some()
             }
-            _ => false,
         };
         if !valid || !["metadata.read", "content.read"].contains(&permission.as_str()) {
             return Err(HostError::new(
@@ -189,7 +196,29 @@ impl ProjectionStore {
         state: JsonObject,
         payload: JsonObject,
     ) -> HostResult<Delta> {
-        self.commit_with_target(scope_id, None, event_type, state, payload)
+        self.commit_with_target(
+            scope_id,
+            CommitTarget::Unchanged,
+            event_type,
+            state,
+            payload,
+        )
+    }
+    pub(crate) fn commit_for_current_target(
+        &self,
+        scope_id: &Id,
+        target: &Target,
+        event_type: Id,
+        state: JsonObject,
+        payload: JsonObject,
+    ) -> HostResult<Delta> {
+        self.commit_with_target(
+            scope_id,
+            CommitTarget::Exact(target),
+            event_type,
+            state,
+            payload,
+        )
     }
     /// 同一 session scope 重开：epoch 严格前进，旧 reader/history 同次提交失效。
     pub fn commit_for_target(
@@ -200,18 +229,24 @@ impl ProjectionStore {
         state: JsonObject,
         payload: JsonObject,
     ) -> HostResult<Delta> {
-        self.commit_with_target(scope_id, Some(target), event_type, state, payload)
+        self.commit_with_target(
+            scope_id,
+            CommitTarget::NextEpoch(target),
+            event_type,
+            state,
+            payload,
+        )
     }
     fn commit_with_target(
         &self,
         scope_id: &Id,
-        target: Option<Target>,
+        target: CommitTarget<'_>,
         event_type: Id,
         state: JsonObject,
         payload: JsonObject,
     ) -> HostResult<Delta> {
         let scope = self.scope(scope_id)?;
-        if let Some(target) = &target {
+        if let CommitTarget::NextEpoch(target) = &target {
             target.validate()?;
             if target.host_id != self.inner.identity.host_id {
                 return Err(HostError::new(
@@ -233,7 +268,10 @@ impl ProjectionStore {
         };
         let base_bytes = encoded_length(&delta, limits.history_bytes.min(limits.queue_bytes))?;
         let mut current = lock(&scope.state)?;
-        if let Some(target) = &target {
+        if let CommitTarget::Exact(expected) = &target {
+            verify_target(Some(expected), &current.target)?;
+        }
+        if let CommitTarget::NextEpoch(target) = &target {
             let previous = &current.target;
             if previous.kind.as_str() != "session"
                 || target.kind != previous.kind
@@ -257,7 +295,7 @@ impl ProjectionStore {
         if bytes > limits.history_bytes || bytes > limits.queue_bytes {
             return Err(limit());
         }
-        let history_bytes = if target.is_some() {
+        let history_bytes = if matches!(&target, CommitTarget::NextEpoch(_)) {
             0
         } else {
             current.history_bytes.checked_add(bytes).ok_or_else(limit)?
@@ -271,7 +309,7 @@ impl ProjectionStore {
         });
         current.value = state;
         current.revision = next;
-        if let Some(target) = target {
+        if let CommitTarget::NextEpoch(target) = target {
             current.target = target;
             // 重开提交成为新 snapshot 起点；旧 cursor 不能补读跨 epoch 的边界事件。
             current.history.clear();
@@ -700,6 +738,9 @@ impl Drop for Subscription {
     }
 }
 
+pub(crate) fn session_activity_scope(session: &Id) -> HostResult<Id> {
+    Id::try_from(format!("session-activity:{}", session.as_str()).as_str())
+}
 fn is_document_scope(id: &Id) -> bool {
     id.as_str() == "settings:shared" || id.as_str().starts_with("workspace:")
 }

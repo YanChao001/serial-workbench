@@ -33,6 +33,13 @@ pub async fn read_frame<R: AsyncRead + Unpin>(
     reader: &mut R,
     max_bytes: usize,
 ) -> HostResult<Option<WireFrame>> {
+    read_json_frame(reader, max_bytes).await
+}
+
+pub async fn read_json_frame<T: serde::de::DeserializeOwned>(
+    reader: &mut (impl AsyncRead + Unpin),
+    max_bytes: usize,
+) -> HostResult<Option<T>> {
     let mut header = [0_u8; 4];
     if reader
         .read(&mut header[..1])
@@ -68,6 +75,14 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     frame: &WireFrame,
     max_bytes: usize,
 ) -> HostResult<()> {
+    write_json_frame(writer, frame, max_bytes).await
+}
+
+pub async fn write_json_frame(
+    writer: &mut (impl AsyncWrite + Unpin),
+    frame: &impl serde::Serialize,
+    max_bytes: usize,
+) -> HostResult<()> {
     let body = encode_frame(frame, max_bytes)?;
     writer
         .write_all(&(body.len() as u32).to_be_bytes())
@@ -77,7 +92,7 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     writer.flush().await.map_err(|_| disconnected())
 }
 
-pub fn encode_frame(frame: &WireFrame, max_bytes: usize) -> HostResult<Vec<u8>> {
+pub fn encode_frame(frame: &impl serde::Serialize, max_bytes: usize) -> HostResult<Vec<u8>> {
     // 限额写入器避免先把超大结果完整序列化进内存。
     struct Bounded {
         bytes: Vec<u8>,

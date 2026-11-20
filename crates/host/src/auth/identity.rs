@@ -1,4 +1,6 @@
-use serial_workbench_core::{Id, U64};
+use crate::lan::LanOrigin;
+use serial_workbench_core::{HostError, HostResult, Id, U64};
+use sha2::{Digest as _, Sha256};
 
 /// 可信Host持久启用意图引用身份，不保存凭据，也不携带任务委托或人工控制权。
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -15,8 +17,16 @@ pub struct AuthenticatedActor {
     grant_revision: U64,
     user_control: bool,
     mcp_observer_source: bool,
+    forwarded: Option<ForwardedActor>,
     task: Option<std::sync::Arc<super::task_scope::TaskAuthority>>,
 }
+
+#[derive(Clone, Debug)]
+struct ForwardedActor {
+    pairing: ActorReference,
+    source_client_id: Id,
+}
+
 impl AuthenticatedActor {
     pub(super) fn from_verified(
         id: Id,
@@ -30,8 +40,58 @@ impl AuthenticatedActor {
             grant_revision,
             user_control,
             mcp_observer_source: false,
+            forwarded: None,
             task: None,
         }
+    }
+    /// 只能在配对 Host 认证后接受来源。当前配对代次参与派生，重新配对不会复用主体。
+    pub(crate) fn forward_lan(&self, origin: &LanOrigin) -> HostResult<Self> {
+        let mut identity = Sha256::new();
+        identity.update(b"serial-workbench-lan-actor-v1\0");
+        identity.update(self.id.as_str());
+        identity.update(b"\0");
+        identity.update(origin.actor_id.as_str());
+        identity.update(b"\0");
+        identity.update(origin.client_id.as_str());
+        let mut bytes: [u8; 16] = identity.finalize()[..16].try_into().expect("digest prefix");
+        bytes[6] = (bytes[6] & 0x0f) | 0x80;
+        bytes[8] = (bytes[8] & 0x3f) | 0x80;
+        let actor_id = uuid::Uuid::from_bytes(bytes).to_string();
+        let mut actor = Self::from_verified(
+            Id::try_from(actor_id.as_str())?,
+            Id::try_from(format!("lan:{actor_id}").as_str())?,
+            self.grant_revision,
+            false,
+        );
+        actor.mcp_observer_source = origin.mcp;
+        actor.forwarded = Some(ForwardedActor {
+            pairing: ActorReference {
+                actor_id: self.id.clone(),
+                client_id: self.client_id.clone(),
+            },
+            source_client_id: origin.client_id.clone(),
+        });
+        Ok(actor)
+    }
+
+    pub(super) fn grant_owner(&self) -> (&Id, &Id) {
+        match &self.forwarded {
+            Some(origin) => (&origin.pairing.client_id, &origin.pairing.actor_id),
+            None => (&self.client_id, &self.id),
+        }
+    }
+    pub(crate) fn local_lan_origin(&self) -> HostResult<LanOrigin> {
+        if self.user_control || self.task.is_some() || self.forwarded.is_some() {
+            return Err(HostError::new(
+                "PERMISSION_DENIED",
+                "LAN routing requires a local client identity",
+            ));
+        }
+        Ok(LanOrigin {
+            actor_id: self.id.clone(),
+            client_id: self.client_id.clone(),
+            mcp: self.mcp_observer_source,
+        })
     }
     pub fn id(&self) -> &Id {
         &self.id
@@ -50,12 +110,18 @@ impl AuthenticatedActor {
         self.mcp_observer_source = !self.user_control;
     }
     pub(crate) fn mcp_client_id(&self) -> Option<&Id> {
-        (self.mcp_observer_source && self.task.is_none()).then_some(&self.client_id)
+        (self.mcp_observer_source && self.task.is_none()).then(|| {
+            self.forwarded
+                .as_ref()
+                .map_or(&self.client_id, |origin| &origin.source_client_id)
+        })
     }
     pub(crate) fn persistent_reference(&self) -> Option<ActorReference> {
-        (!self.user_control && self.task.is_none()).then(|| ActorReference {
-            actor_id: self.id.clone(),
-            client_id: self.client_id.clone(),
+        (!self.user_control && self.task.is_none() && self.forwarded.is_none()).then(|| {
+            ActorReference {
+                actor_id: self.id.clone(),
+                client_id: self.client_id.clone(),
+            }
         })
     }
     pub(super) fn has_user_control_identity(&self) -> bool {

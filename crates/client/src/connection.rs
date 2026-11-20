@@ -6,6 +6,9 @@ use serial_workbench_ipc::{
     identity::{IdentityPin, random_token},
 };
 use std::{path::PathBuf, time::Duration};
+use tokio::io::{AsyncRead, AsyncWrite};
+
+const LOCAL_ATTACH_TIMEOUT: Duration = Duration::from_secs(5);
 
 #[derive(Clone)]
 pub struct ConnectOptions {
@@ -15,6 +18,7 @@ pub struct ConnectOptions {
     pub expected_host_id: Option<Id>,
     /// 开发包装器指定不可变运行产物；普通客户端不限制同 profile 的 Host 构建。
     pub expected_host_executable: Option<PathBuf>,
+    pub lan_route: Option<LanRoute>,
     /// 调用方通过明确本地用户入口取得；不能由 clientKind 推导或自动加载。
     pub user_control_credential: Option<ContextToken>,
 }
@@ -26,14 +30,14 @@ impl ConnectOptions {
             client_kind,
             expected_host_id: None,
             expected_host_executable: None,
+            lan_route: None,
             user_control_credential: None,
         }
     }
 }
 pub struct HostClient {
     options: ConnectOptions,
-    connection: RpcConnection,
-    attachment: AttachResult,
+    control: ControlConnection,
     raw: RawAttachment,
 }
 #[derive(Clone)]
@@ -41,13 +45,18 @@ pub struct RawAttachment {
     discovery: DiscoveryRecord,
     pin: IdentityPin,
     token: ContextToken,
+    routed: bool,
 }
-pub struct RawConnection {
-    connection: RpcConnection,
+pub struct ControlConnection<S = LocalStream> {
+    connection: RpcConnection<S>,
+    attachment: AttachResult,
+}
+pub struct RawConnection<S = LocalStream> {
+    connection: RpcConnection<S>,
 }
 impl HostClient {
     pub async fn close(&self) -> HostResult<()> {
-        self.connection.close().await
+        self.control.close().await
     }
     pub async fn connect(options: ConnectOptions) -> HostResult<Self> {
         Self::connect_inner(options, true).await
@@ -57,6 +66,12 @@ impl HostClient {
         Self::connect_inner(options, false).await
     }
     async fn connect_inner(options: ConnectOptions, wait_for_endpoint: bool) -> HostResult<Self> {
+        if options.lan_route.is_some() && options.user_control_credential.is_some() {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Local user control cannot use a LAN route",
+            ));
+        }
         let mut registration = registration_lock(&options).await?;
         let to_load = options.clone();
         let loaded = tokio::task::spawn_blocking(move || discovery::load(&to_load))
@@ -70,12 +85,18 @@ impl HostClient {
         )
         .await?;
         let id = new_request_id();
-        let body = match options.user_control_credential.clone() {
-            Some(credential) => IpcMessage::AuthenticateUserControl {
+        let body = match (&options.lan_route, options.user_control_credential.clone()) {
+            (_, Some(credential)) => IpcMessage::AuthenticateUserControl {
                 client_id: options.client_id.clone(),
                 credential,
             },
-            None => IpcMessage::Authenticate {
+            (Some(route), None) => IpcMessage::AuthenticateLan {
+                client_id: options.client_id.clone(),
+                credential: loaded.credential.clone(),
+                route: route.clone(),
+                client_kind: options.client_kind,
+            },
+            (None, None) => IpcMessage::Authenticate {
                 client_id: options.client_id.clone(),
                 credential: loaded.credential.clone(),
             },
@@ -90,7 +111,7 @@ impl HostClient {
             MAX_FRAME_BYTES,
         )
         .await?;
-        let response = receive(&mut stream, &id, IpcChannel::Control).await?;
+        let response = receive(&mut stream, &id, IpcChannel::Control, LOCAL_ATTACH_TIMEOUT).await?;
         let IpcMessage::Authenticated {
             credential,
             raw_attach_token,
@@ -117,13 +138,102 @@ impl HostClient {
             return Err(invalid());
         }
         drop(registration);
+        let (host_id, instance_epoch, client_id) = if let Some(route) = &options.lan_route {
+            match receive(&mut stream, &id, IpcChannel::Control, LAN_ATTACH_TIMEOUT).await? {
+                IpcMessage::LanRouted {
+                    host_id,
+                    instance_epoch,
+                    client_id,
+                } if host_id == route.host_id => (host_id, instance_epoch, client_id),
+                _ => return Err(invalid()),
+            }
+        } else {
+            (
+                loaded.pin.host_id.clone(),
+                loaded.discovery.instance_epoch,
+                options.client_id.clone(),
+            )
+        };
+        let control = ControlConnection::attach_authenticated(
+            stream,
+            options.client_kind,
+            client_id,
+            &host_id,
+            instance_epoch,
+        )
+        .await?;
+        if let Some(expected) = options.expected_host_executable.as_ref() {
+            verify_runtime_executable(expected, loaded.discovery.executable.as_deref())?;
+        }
+        let routed = options.lan_route.is_some();
+        Ok(Self {
+            options,
+            control,
+            raw: RawAttachment {
+                discovery: loaded.discovery,
+                pin: loaded.pin,
+                token: raw_attach_token,
+                routed,
+            },
+        })
+    }
+    pub fn attachment(&self) -> &AttachResult {
+        self.control.attachment()
+    }
+    /// 业务连接经 LAN 中继时，这里仍返回本机认证的中继 Host。
+    pub fn local_instance(&self) -> (&Id, U64) {
+        (
+            &self.raw.discovery.host_id,
+            self.raw.discovery.instance_epoch,
+        )
+    }
+    /// Reattach using the same private identity. Never start a Host or replay a business request.
+    pub async fn reconnect(&self) -> HostResult<Self> {
+        let reconnected = Self::connect(self.options.clone()).await?;
+        if self.options.lan_route.is_some()
+            && reconnected.attachment().actor_id != self.attachment().actor_id
+        {
+            return Err(HostError::new(
+                "ACTOR_MISMATCH",
+                "The paired actor changed while reconnecting",
+            ));
+        }
+        Ok(reconnected)
+    }
+    pub async fn request(&self, request: RpcRequest) -> HostResult<RpcReply> {
+        self.control.request(request).await
+    }
+    pub async fn next_event(&self) -> HostResult<Option<WireFrame>> {
+        self.control.next_event().await
+    }
+    /// 观察现有连接失效；不重连，也不代替实际资源清理。
+    pub async fn wait_for_disconnect(&self) {
+        self.control.wait_for_disconnect().await;
+    }
+    pub fn raw_attachment(&self) -> RawAttachment {
+        self.raw.clone()
+    }
+    pub async fn connect_raw(&self) -> HostResult<RawConnection> {
+        RawConnection::connect(self.raw.clone()).await
+    }
+}
+
+impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> ControlConnection<S> {
+    /// 传输必须已认证到指定 Host 并完成 Control 通道握手。
+    pub async fn attach_authenticated(
+        stream: S,
+        client_kind: ClientKind,
+        client_id: Id,
+        host_id: &Id,
+        instance_epoch: U64,
+    ) -> HostResult<Self> {
         let connection = RpcConnection::new(stream, IpcChannel::Control);
         let attached = connection
             .request(RpcRequest::Attach(AttachParams {
                 supported_protocol_versions: vec!["0.1".into()],
-                client_kind: options.client_kind,
-                client_id: options.client_id.clone(),
-                expected_host_id: Some(loaded.pin.host_id.clone()),
+                client_kind,
+                client_id: client_id.clone(),
+                expected_host_id: Some(host_id.clone()),
             }))
             .await?;
         let attachment = match attached {
@@ -133,48 +243,36 @@ impl HostClient {
             },
             RpcReply::Failure { error, .. } => return Err(error),
         };
-        if attachment.host_id != loaded.pin.host_id
-            || attachment.instance_epoch != loaded.discovery.instance_epoch
-            || attachment.client_id != options.client_id
+        if &attachment.host_id != host_id
+            || attachment.instance_epoch != instance_epoch
+            || attachment.client_id != client_id
         {
             return Err(invalid());
         }
-        if let Some(expected) = options.expected_host_executable.as_ref() {
-            verify_runtime_executable(expected, loaded.discovery.executable.as_deref())?;
-        }
         Ok(Self {
-            options,
             connection,
             attachment,
-            raw: RawAttachment {
-                discovery: loaded.discovery,
-                pin: loaded.pin,
-                token: raw_attach_token,
-            },
         })
     }
+
     pub fn attachment(&self) -> &AttachResult {
         &self.attachment
     }
-    /// Reattach using the same private identity. Never start a Host or replay a business request.
-    pub async fn reconnect(&self) -> HostResult<Self> {
-        Self::connect(self.options.clone()).await
-    }
+
     pub async fn request(&self, request: RpcRequest) -> HostResult<RpcReply> {
         self.connection.request(request).await
     }
+
     pub async fn next_event(&self) -> HostResult<Option<WireFrame>> {
         self.connection.next_event().await
     }
-    /// 观察现有连接失效；不重连，也不代替实际资源清理。
+
     pub async fn wait_for_disconnect(&self) {
         self.connection.wait_for_disconnect().await;
     }
-    pub fn raw_attachment(&self) -> RawAttachment {
-        self.raw.clone()
-    }
-    pub async fn connect_raw(&self) -> HostResult<RawConnection> {
-        RawConnection::connect(self.raw.clone()).await
+
+    pub async fn close(&self) -> HostResult<()> {
+        self.connection.close().await
     }
 }
 
@@ -235,9 +333,6 @@ fn registration_busy() -> HostError {
     )
 }
 impl RawConnection {
-    pub async fn close(&self) -> HostResult<()> {
-        self.connection.close().await
-    }
     pub async fn connect(attachment: RawAttachment) -> HostResult<Self> {
         let mut stream = verified_connection(
             &attachment.discovery,
@@ -260,14 +355,38 @@ impl RawConnection {
         )
         .await?;
         if !matches!(
-            receive(&mut stream, &id, IpcChannel::Raw).await?,
+            receive(
+                &mut stream,
+                &id,
+                IpcChannel::Raw,
+                if attachment.routed {
+                    LAN_ATTACH_TIMEOUT
+                } else {
+                    LOCAL_ATTACH_TIMEOUT
+                },
+            )
+            .await?,
             IpcMessage::RawAttached {}
         ) {
             return Err(invalid());
         }
-        Ok(Self {
+        Ok(Self::from_authenticated_stream(stream))
+    }
+}
+impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> RawConnection<S> {
+    /// 传输必须已完成 Raw 附着握手。
+    pub fn from_authenticated_stream(stream: S) -> Self {
+        Self {
             connection: RpcConnection::new(stream, IpcChannel::Raw),
-        })
+        }
+    }
+
+    pub async fn close(&self) -> HostResult<()> {
+        self.connection.close().await
+    }
+
+    pub async fn wait_for_disconnect(&self) {
+        self.connection.wait_for_disconnect().await;
     }
     pub async fn request(&self, request: RpcRequest) -> HostResult<RpcReply> {
         self.connection.request(request).await
@@ -312,7 +431,7 @@ async fn verified_connection(
         MAX_FRAME_BYTES,
     )
     .await?;
-    let response = receive(&mut stream, &id, channel).await?;
+    let response = receive(&mut stream, &id, channel, LOCAL_ATTACH_TIMEOUT).await?;
     local::verify_peer(&stream)?;
     let IpcMessage::HostHello {
         protocol_version: ProtocolVersion::V0_1,
@@ -340,8 +459,9 @@ async fn receive(
     stream: &mut LocalStream,
     id: &RequestId,
     channel: IpcChannel,
+    limit: Duration,
 ) -> HostResult<IpcMessage> {
-    let frame = tokio::time::timeout(Duration::from_secs(5), read_frame(stream, MAX_FRAME_BYTES))
+    let frame = tokio::time::timeout(limit, read_frame(stream, MAX_FRAME_BYTES))
         .await
         .map_err(|_| disconnected())??
         .ok_or_else(disconnected)?;

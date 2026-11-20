@@ -9,14 +9,26 @@ pub fn json(value: &impl serde::Serialize) -> HostResult<()> {
 pub fn exit_code(error: &HostError) -> u8 {
     match error.code.as_str() {
         "INVALID_ARGUMENT" | "UNSUPPORTED_CAPABILITY" | "NOT_FOUND" => 2,
-        "PERMISSION_DENIED" | "UNAUTHENTICATED" | "ACTOR_MISMATCH" => 3,
-        "REQUEST_CONFLICT" | "REVISION_CONFLICT" | "EPOCH_MISMATCH" | "HOST_ID_MISMATCH"
-        | "STALE_CURSOR" | "CATALOG_CHANGED" | "RESULT_EXPIRED" => 4,
+        "PERMISSION_DENIED"
+        | "UNAUTHENTICATED"
+        | "ACTOR_MISMATCH"
+        | "LAN_AUTHENTICATION_FAILED" => 3,
+        "REQUEST_CONFLICT"
+        | "REVISION_CONFLICT"
+        | "EPOCH_MISMATCH"
+        | "HOST_ID_MISMATCH"
+        | "STALE_CURSOR"
+        | "CATALOG_CHANGED"
+        | "RESULT_EXPIRED"
+        | "LAN_PEER_CONFLICT"
+        | "LAN_HOST_ID_MISMATCH" => 4,
         "HOST_BUSY"
         | "STORAGE_UNAVAILABLE"
         | "HOST_UNAVAILABLE"
         | "HOST_START_FAILED"
         | "HOST_START_TIMEOUT"
+        | "LAN_BIND_FAILED"
+        | "LAN_UNAVAILABLE"
         | "HOST_STOP_TIMEOUT" => 5,
         _ => 1,
     }

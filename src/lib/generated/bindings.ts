@@ -55,8 +55,12 @@ export const commands = {
       __TAURI_INVOKE("apply_host_settings_effects"),
     ),
   hostAttachment: () =>
-    typedError<DesktopAttachment, HostError_Serialize>(
+    typedError<DesktopAttachment_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_attachment"),
+    ),
+  hostLocalAttachment: () =>
+    typedError<DesktopAttachment_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_local_attachment"),
     ),
   hostConnectDevice: (
     generation: U64,
@@ -69,6 +73,20 @@ export const commands = {
   hostBrowserAccess: (generation: U64, intent: LocalBrowserAccess) =>
     typedError<BrowserAccessState, HostError_Serialize>(
       __TAURI_INVOKE("host_browser_access", { generation, intent }),
+    ),
+  hostLanAccess: (generation: U64, params: LanAccessParams_Deserialize) =>
+    typedError<LanAccessResult_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_lan_access", { generation, params }),
+    ),
+  hostSelectLanRoute: (
+    generation: string | null,
+    route: {
+      hostId: Id;
+      address: string;
+    } | null,
+  ) =>
+    typedError<DesktopAttachment_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_select_lan_route", { generation, route }),
     ),
   hostTakeoverSession: (
     generation: U64,
@@ -1540,9 +1558,19 @@ export type DerivedSample_Serialize = {
   value: QueryValue;
 };
 
-export type DesktopAttachment = {
+export type DesktopAttachment =
+  DesktopAttachment_Serialize | DesktopAttachment_Deserialize;
+
+export type DesktopAttachment_Deserialize = {
   attachment: AttachResult;
   generation: U64;
+  lanRoute?: LanRoute;
+};
+
+export type DesktopAttachment_Serialize = {
+  attachment: AttachResult;
+  generation: U64;
+  lanRoute?: LanRoute;
 };
 
 export type DesktopStatus = {
@@ -1940,6 +1968,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -1953,6 +1982,7 @@ export type IpcMessage_Deserialize =
       rawAttachToken?: never;
       reconnectCredential?: never;
       reply?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -1968,6 +1998,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       credential?: never;
       delta?: never;
       error?: never;
@@ -1980,6 +2011,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       token?: never;
@@ -1996,6 +2028,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2006,6 +2039,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
@@ -2014,6 +2048,7 @@ export type IpcMessage_Deserialize =
   | ({ type: "authenticate"; clientId: Id; credential?: ContextToken } & {
       batch?: never;
       catalogVersion?: never;
+      clientKind?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -2027,6 +2062,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2037,6 +2073,36 @@ export type IpcMessage_Deserialize =
       type: "authenticateUserControl";
       clientId: Id;
       credential: ContextToken;
+    } & {
+      batch?: never;
+      catalogVersion?: never;
+      clientKind?: never;
+      clientNonce?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      hostId?: never;
+      instanceEpoch?: never;
+      pairingCode?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reconnectCredential?: never;
+      reply?: never;
+      request?: never;
+      route?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({
+      type: "authenticateLan";
+      clientId: Id;
+      credential?: ContextToken;
+      route: LanRoute;
+      clientKind: ClientKind;
     } & {
       batch?: never;
       catalogVersion?: never;
@@ -2067,6 +2133,7 @@ export type IpcMessage_Deserialize =
     } & {
       batch?: never;
       catalogVersion?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2079,6 +2146,7 @@ export type IpcMessage_Deserialize =
       rawAttachToken?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2093,6 +2161,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -2105,6 +2174,30 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({ type: "lanRouted"; hostId: Id; instanceEpoch: U64; clientId: Id } & {
+      batch?: never;
+      catalogVersion?: never;
+      clientKind?: never;
+      clientNonce?: never;
+      credential?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      pairingCode?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reconnectCredential?: never;
+      reply?: never;
+      request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2115,6 +2208,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2129,6 +2223,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2138,6 +2233,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2152,6 +2248,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2162,6 +2259,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2175,6 +2273,7 @@ export type IpcMessage_Deserialize =
       rawAttachToken?: never;
       reconnectCredential?: never;
       reply?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2185,6 +2284,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2198,6 +2298,7 @@ export type IpcMessage_Deserialize =
       rawAttachToken?: never;
       reconnectCredential?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2208,6 +2309,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2221,6 +2323,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2230,6 +2333,7 @@ export type IpcMessage_Deserialize =
   | ({ type: "rawBatch"; batch: RawBatch_Deserialize } & {
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2244,6 +2348,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2254,6 +2359,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       error?: never;
@@ -2267,6 +2373,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       supportedProtocolVersions?: never;
       token?: never;
@@ -2280,6 +2387,7 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2293,6 +2401,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       supportedProtocolVersions?: never;
       token?: never;
@@ -2305,6 +2414,7 @@ export type IpcMessage_Deserialize =
     } & {
       batch?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2319,6 +2429,7 @@ export type IpcMessage_Deserialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2330,6 +2441,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2343,6 +2455,7 @@ export type IpcMessage_Serialize =
       rawAttachToken?: never;
       reconnectCredential?: never;
       reply?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2358,6 +2471,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       credential?: never;
       delta?: never;
       error?: never;
@@ -2370,6 +2484,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       token?: never;
@@ -2386,6 +2501,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2396,6 +2512,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
       token?: never;
@@ -2404,6 +2521,7 @@ export type IpcMessage_Serialize =
   | ({ type: "authenticate"; clientId: Id; credential?: ContextToken } & {
       batch?: never;
       catalogVersion?: never;
+      clientKind?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -2417,6 +2535,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2427,6 +2546,36 @@ export type IpcMessage_Serialize =
       type: "authenticateUserControl";
       clientId: Id;
       credential: ContextToken;
+    } & {
+      batch?: never;
+      catalogVersion?: never;
+      clientKind?: never;
+      clientNonce?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      hostId?: never;
+      instanceEpoch?: never;
+      pairingCode?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reconnectCredential?: never;
+      reply?: never;
+      request?: never;
+      route?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({
+      type: "authenticateLan";
+      clientId: Id;
+      credential?: ContextToken;
+      route: LanRoute;
+      clientKind: ClientKind;
     } & {
       batch?: never;
       catalogVersion?: never;
@@ -2457,6 +2606,7 @@ export type IpcMessage_Serialize =
     } & {
       batch?: never;
       catalogVersion?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2469,6 +2619,7 @@ export type IpcMessage_Serialize =
       rawAttachToken?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2483,6 +2634,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       delta?: never;
       error?: never;
@@ -2495,6 +2647,30 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({ type: "lanRouted"; hostId: Id; instanceEpoch: U64; clientId: Id } & {
+      batch?: never;
+      catalogVersion?: never;
+      clientKind?: never;
+      clientNonce?: never;
+      credential?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      pairingCode?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reconnectCredential?: never;
+      reply?: never;
+      request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2505,6 +2681,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2519,6 +2696,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2528,6 +2706,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2542,6 +2721,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2552,6 +2732,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2565,6 +2746,7 @@ export type IpcMessage_Serialize =
       rawAttachToken?: never;
       reconnectCredential?: never;
       reply?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2575,6 +2757,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2588,6 +2771,7 @@ export type IpcMessage_Serialize =
       rawAttachToken?: never;
       reconnectCredential?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2598,6 +2782,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2611,6 +2796,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2620,6 +2806,7 @@ export type IpcMessage_Serialize =
   | ({ type: "rawBatch"; batch: RawBatch_Serialize } & {
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2634,6 +2821,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2644,6 +2832,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       error?: never;
@@ -2657,6 +2846,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       supportedProtocolVersions?: never;
       token?: never;
@@ -2670,6 +2860,7 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2683,6 +2874,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       supportedProtocolVersions?: never;
       token?: never;
@@ -2695,6 +2887,7 @@ export type IpcMessage_Serialize =
     } & {
       batch?: never;
       clientId?: never;
+      clientKind?: never;
       clientNonce?: never;
       credential?: never;
       delta?: never;
@@ -2709,6 +2902,7 @@ export type IpcMessage_Serialize =
       reconnectCredential?: never;
       reply?: never;
       request?: never;
+      route?: never;
       serverNonce?: never;
       subscriptionId?: never;
       supportedProtocolVersions?: never;
@@ -2722,6 +2916,82 @@ export type JsonValue =
   | string
   | JsonValue[]
   | { [key in string]: JsonValue };
+
+export type LanAccessParams =
+  LanAccessParams_Serialize | LanAccessParams_Deserialize;
+
+export type LanAccessParams_Deserialize =
+  | ({ kind: "status" } & { address?: never; peer?: never; shares?: never })
+  | ({ kind: "enable"; address: string } & { peer?: never; shares?: never })
+  | ({ kind: "disable" } & { address?: never; peer?: never; shares?: never })
+  | ({ kind: "setShares"; peer: LanPeer; shares: LanShare_Deserialize[] } & {
+      address?: never;
+    })
+  | ({ kind: "unpair"; peer: LanPeer } & { address?: never; shares?: never });
+
+export type LanAccessParams_Serialize =
+  | ({ kind: "status" } & { address?: never; peer?: never; shares?: never })
+  | ({ kind: "enable"; address: string } & { peer?: never; shares?: never })
+  | ({ kind: "disable" } & { address?: never; peer?: never; shares?: never })
+  | ({ kind: "setShares"; peer: LanPeer; shares: LanShare_Serialize[] } & {
+      address?: never;
+    })
+  | ({ kind: "unpair"; peer: LanPeer } & { address?: never; shares?: never });
+
+export type LanAccessResult =
+  LanAccessResult_Serialize | LanAccessResult_Deserialize;
+
+export type LanAccessResult_Deserialize = {
+  localPeer: LanPeer;
+  listener: LanListenerState;
+  peers: LanPeerSettings_Deserialize[];
+};
+
+export type LanAccessResult_Serialize = {
+  localPeer: LanPeer;
+  listener: LanListenerState;
+  peers: LanPeerSettings_Serialize[];
+};
+
+export type LanListenerState =
+  { kind: "disabled" } | { kind: "listening"; address: string };
+
+export type LanPeer = {
+  hostId: Id;
+  fingerprint: Digest;
+};
+
+export type LanPeerSettings =
+  LanPeerSettings_Serialize | LanPeerSettings_Deserialize;
+
+export type LanPeerSettings_Deserialize = {
+  peer: LanPeer;
+  shares: LanShare_Deserialize[];
+};
+
+export type LanPeerSettings_Serialize = {
+  peer: LanPeer;
+  shares: LanShare_Serialize[];
+};
+
+export type LanRoute = {
+  hostId: Id;
+  address: string;
+};
+
+export type LanShare = LanShare_Serialize | LanShare_Deserialize;
+
+export type LanShareAccess = "readOnly" | "operate";
+
+export type LanShare_Deserialize = {
+  target: Target_Deserialize;
+  access: LanShareAccess;
+};
+
+export type LanShare_Serialize = {
+  target: Target_Serialize;
+  access: LanShareAccess;
+};
 
 export type Language = "zh" | "en";
 
@@ -3886,6 +4156,7 @@ export type RpcRequest = RpcRequest_Serialize | RpcRequest_Deserialize;
 export type RpcRequest_Deserialize =
   | { method: "browser.access"; params: BrowserAccessParams }
   | { method: "browser.takeover"; params: BrowserTakeoverParams_Deserialize }
+  | { method: "lan.access"; params: LanAccessParams_Deserialize }
   | { method: "client.register"; params: ClientRegisterParams }
   | { method: "client.unregister"; params: ClientUnregisterParams }
   | { method: "client.receipt"; params: ClientReceiptSubmission_Deserialize }
@@ -3907,6 +4178,7 @@ export type RpcRequest_Deserialize =
 export type RpcRequest_Serialize =
   | { method: "browser.access"; params: BrowserAccessParams }
   | { method: "browser.takeover"; params: BrowserTakeoverParams_Serialize }
+  | { method: "lan.access"; params: LanAccessParams_Serialize }
   | { method: "client.register"; params: ClientRegisterParams }
   | { method: "client.unregister"; params: ClientUnregisterParams }
   | { method: "client.receipt"; params: ClientReceiptSubmission_Serialize }
@@ -3929,6 +4201,7 @@ export type RpcResult = RpcResult_Serialize | RpcResult_Deserialize;
 
 export type RpcResult_Deserialize =
   | BrowserAccessResult
+  | LanAccessResult_Deserialize
   | ClientRegistration_Deserialize
   | ClientEffectAcknowledged
   | QueryResult_Deserialize
@@ -3944,6 +4217,7 @@ export type RpcResult_Deserialize =
 
 export type RpcResult_Serialize =
   | BrowserAccessResult
+  | LanAccessResult_Serialize
   | ClientRegistration_Serialize
   | ClientEffectAcknowledged
   | QueryResult_Serialize

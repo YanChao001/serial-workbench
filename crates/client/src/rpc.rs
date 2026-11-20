@@ -15,7 +15,7 @@ use std::{
     time::{Duration, Instant},
 };
 use tokio::{
-    io::WriteHalf,
+    io::{AsyncRead, AsyncWrite, WriteHalf},
     sync::{Mutex, watch},
     task::JoinHandle,
 };
@@ -69,6 +69,7 @@ impl RequestDiagnostic {
             RpcRequest::Attach(_) => ("host.attach", None),
             RpcRequest::BrowserAccess(_) => ("browser.access", None),
             RpcRequest::BrowserTakeover(_) => ("browser.takeover", None),
+            RpcRequest::LanAccess(_) => ("lan.access", None),
             RpcRequest::Invoke(call) => ("action.invoke", Some(&call.action_id)),
             RpcRequest::InvokeChild(call) => ("action.invokeChild", Some(&call.action_id)),
             RpcRequest::Query(query) => ("action.query", Some(&query.action_id)),
@@ -201,8 +202,8 @@ fn diagnostic_error_code(error: &HostError) -> &str {
 }
 mod events;
 use events::{EventQueue, PushError};
-pub(crate) struct RpcConnection {
-    writer: Mutex<Option<WriteHalf<LocalStream>>>,
+pub(crate) struct RpcConnection<S = LocalStream> {
+    writer: Mutex<Option<WriteHalf<S>>>,
     pending: Pending,
     healthy: Arc<AtomicBool>,
     events: Arc<EventQueue>,
@@ -211,7 +212,7 @@ pub(crate) struct RpcConnection {
     channel: IpcChannel,
     diagnostic_id: Option<u64>,
 }
-impl RpcConnection {
+impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> RpcConnection<S> {
     pub async fn wait_for_disconnect(&self) {
         let mut closed = self.closed.subscribe();
         let _ = closed.wait_for(|closed| *closed).await;
@@ -238,7 +239,7 @@ impl RpcConnection {
         self.events.close();
         Ok(())
     }
-    pub fn new(stream: LocalStream, channel: IpcChannel) -> Self {
+    pub fn new(stream: S, channel: IpcChannel) -> Self {
         let (mut read, write) = tokio::io::split(stream);
         let pending: Pending = Arc::new(StdMutex::new(HashMap::new()));
         let healthy = Arc::new(AtomicBool::new(true));
@@ -500,7 +501,7 @@ impl RpcConnection {
         }
     }
 }
-impl Drop for RpcConnection {
+impl<S> Drop for RpcConnection<S> {
     fn drop(&mut self) {
         self.healthy.store(false, Ordering::Release);
         self.closed.send_replace(true);
@@ -557,6 +558,7 @@ fn request_id(request: &RpcRequest) -> RequestId {
         RpcRequest::Attach(_)
         | RpcRequest::BrowserAccess(_)
         | RpcRequest::BrowserTakeover(_)
+        | RpcRequest::LanAccess(_)
         | RpcRequest::InvokeChild(_)
         | RpcRequest::ClientRegister(_)
         | RpcRequest::ClientUnregister(_)

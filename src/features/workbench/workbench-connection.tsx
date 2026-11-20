@@ -3,12 +3,14 @@ import type {
   SessionSnapshot,
   SerialConfiguration,
 } from "@serial-workbench/contracts";
-import { useEffect, useRef, useState, type ReactNode } from "react";
+import { useContext, useEffect, useRef, useState, type ReactNode } from "react";
+import { LanWorkbenchContext } from "@/features/lan/lan-workbench-context";
 import {
   Plug,
   Unplug,
   Settings2,
   MoreHorizontal,
+  Network,
   Play,
   Save,
   Usb,
@@ -110,6 +112,7 @@ export function WorkbenchConnection({
   onCloseOtherViews?: () => void;
   onCloseAllViews?: () => void;
 }) {
+  const lan = useContext(LanWorkbenchContext);
   const [deviceListOpen, setDeviceListOpen] = useState(false);
   const header = useRef<HTMLElement | null>(null);
   const primaryTools = useRef<HTMLDivElement | null>(null);
@@ -173,7 +176,9 @@ export function WorkbenchConnection({
         <SelectTrigger
           size="sm"
           className="workbench-device-select"
+          data-lan={lan?.route ? "" : undefined}
           aria-label={toolLabels?.chooseDevice ?? labels.devices}
+          aria-description={lan?.description}
         >
           <SelectValue
             placeholder={
@@ -187,6 +192,9 @@ export function WorkbenchConnection({
               : devices.find((value) => value.deviceId === deviceId)
                   ?.systemName}
           </SelectValue>
+          {lan?.route && (
+            <span className="text-xs text-muted-foreground">{lan.source}</span>
+          )}
         </SelectTrigger>
         <SelectContent
           position="popper"
@@ -326,6 +334,12 @@ export function WorkbenchConnection({
           </WorkbenchIconButton>
         </DropdownMenuTrigger>
         <DropdownMenuContent align="end" className="workbench-workspace-menu">
+          {lan && (
+            <DropdownMenuItem onSelect={() => lan.open(menuTrigger.current)}>
+              <Network aria-hidden="true" />
+              {lan.title}
+            </DropdownMenuItem>
+          )}
           {canRestoreAccess && (
             <DropdownMenuItem
               disabled={disabled || opening !== null || devicesStale}

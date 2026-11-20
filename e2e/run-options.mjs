@@ -1,28 +1,29 @@
 /** 原生窗口测试会主动激活窗口，必须在启动构建或进程前明确选择前台运行。 */
 export function parseE2EOptions(args) {
-  const specializedPhases = [
-    "terminal-manual",
-    "terminal-automated",
-    "chart-automated",
-    "browser-takeover",
-  ].filter((phase) => args.includes(`--${phase}`));
+  const modes = {
+    "terminal-manual": ["terminal-manual"],
+    "terminal-automated": ["terminal-automated"],
+    "chart-automated": ["chart-automated"],
+    "browser-takeover": ["browser-takeover"],
+    lan: ["lan-owner", "lan-caller"],
+  };
+  const specialized = Object.keys(modes).filter((mode) =>
+    args.includes(`--${mode}`),
+  );
   if (
-    specializedPhases.length > 1 ||
+    specialized.length > 1 ||
     args.some(
       (arg) =>
         ![
           "--interactive",
           "--skip-build",
           "--with-node-runtime",
-          "--terminal-manual",
-          "--terminal-automated",
-          "--chart-automated",
-          "--browser-takeover",
+          ...Object.keys(modes).map((mode) => `--${mode}`),
         ].includes(arg),
     )
   )
     throw new Error(
-      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime | --terminal-manual | --terminal-automated | --chart-automated | --browser-takeover].",
+      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime] [--terminal-manual | --terminal-automated | --chart-automated | --browser-takeover | --lan].",
     );
   if (!args.includes("--interactive"))
     throw new Error(
@@ -32,11 +33,8 @@ export function parseE2EOptions(args) {
   return {
     skipBuild: args.includes("--skip-build"),
     withNodeRuntime:
-      specializedPhases.some((phase) => phase !== "browser-takeover") ||
+      specialized.some((mode) => /^(terminal|chart)-/.test(mode)) ||
       args.includes("--with-node-runtime"),
-    phases:
-      specializedPhases.length > 0
-        ? specializedPhases
-        : ["fresh", "persisted", "centered"],
+    phases: modes[specialized[0]] ?? ["fresh", "persisted", "centered"],
   };
 }

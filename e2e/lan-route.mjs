@@ -1,0 +1,484 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { createHash, randomUUID } from "node:crypto";
+import { mkdir, mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
+import { setTimeout } from "node:timers/promises";
+import { promisify } from "node:util";
+import { queryArgs } from "./cli-query.mjs";
+import { startMcpFixture } from "./mcp-fixture.mjs";
+
+const [hostPath, cliPath, mcpPath, outputPath] = process.argv.slice(2);
+assert.ok(
+  hostPath && cliPath && mcpPath && outputPath,
+  "Usage: node e2e/lan-route.mjs <Host> <CLI> <MCP> <new evidence directory>",
+);
+const host = resolve(hostPath);
+const cli = resolve(cliPath);
+const mcp = resolve(mcpPath);
+const output = resolve(outputPath);
+await mkdir(output);
+const temporary = resolve(tmpdir());
+const root = await mkdtemp(join(temporary, "swb-lan-route-"));
+const profiles = { caller: join(root, "caller"), owner: join(root, "owner") };
+const evidence = {
+  environment: { platform: process.platform, arch: process.arch },
+};
+const commands = [];
+const failures = [];
+let assistant;
+
+async function run(role, args, expectedError) {
+  let response;
+  try {
+    response = await promisify(execFile)(
+      cli,
+      ["--profile", profiles[role], ...args, "--json"],
+      {
+        env: { ...process.env, SWB_DEV_EXPECTED_HOST_EXECUTABLE: host },
+        timeout: 45_000,
+        windowsHide: true,
+      },
+    );
+  } catch (error) {
+    response = error;
+  }
+  const { stdout, stderr, code } = response;
+  const value = JSON.parse(stdout || "null");
+  commands.push({
+    role,
+    action: args[0],
+    exit: code ?? 0,
+    error: value?.error?.code,
+    stderr,
+  });
+  if (expectedError) {
+    assert.equal(code, 3, stderr);
+    assert.equal(value?.error?.code, expectedError, stderr);
+  } else {
+    assert.equal(code, undefined, stderr);
+    assert.notEqual(value?.ok, false, value?.error?.code);
+  }
+  return value;
+}
+
+async function fixture(value) {
+  const file = join(root, randomUUID() + ".json");
+  await writeFile(file, JSON.stringify(value), { flag: "wx" });
+  return file;
+}
+
+async function grant(role, clientId, permissions, target) {
+  await run(role, [
+    "authorize",
+    "--params-json",
+    await fixture({ clientId, permissions, targets: [target] }),
+  ]);
+}
+
+async function until(check, label) {
+  const deadline = Date.now() + 20_000;
+  for (;;) {
+    const value = await check();
+    if (value) return value;
+    assert.ok(Date.now() < deadline, label);
+    await setTimeout(100);
+  }
+}
+
+async function settled(role, operationId, route = []) {
+  return until(async () => {
+    const {
+      result: { operation },
+    } = await run(role, ["operation", "get", operationId, ...route]);
+    if (operation.state === "succeeded") return operation;
+    assert.ok(
+      ["queued", "running"].includes(operation.state),
+      JSON.stringify(operation),
+    );
+  }, "Wait for real terminal operation " + operationId);
+}
+
+async function query(role, action, target, params, route = []) {
+  return (
+    await run(role, [
+      ...queryArgs(action, await fixture(target), await fixture(params)),
+      ...route,
+    ])
+  ).result.value;
+}
+
+async function invoke(
+  role,
+  action,
+  target,
+  params,
+  context,
+  requestId,
+  route = [],
+) {
+  return (
+    await run(role, [
+      "invoke",
+      action,
+      "--target-json",
+      await fixture(target),
+      "--params-json",
+      await fixture(params),
+      "--request-context-json",
+      context,
+      "--request-id",
+      requestId,
+      ...route,
+    ])
+  ).result.operation;
+}
+
+const hostTarget = (hostId) => ({ hostId, kind: "host", id: hostId });
+const cliId = "serial-workbench-cli";
+const assistantName = "lan-verification-assistant";
+
+try {
+  const owner = (await run("owner", ["lan", "status"])).result.localPeer;
+  const caller = (await run("caller", ["lan", "status"])).result.localPeer;
+  const discovery = async (role) =>
+    JSON.parse(
+      await readFile(join(profiles[role], "host-v0", "discovery.json"), "utf8"),
+    );
+  evidence.pids = {
+    caller: (await discovery("caller")).pid,
+    owner: (await discovery("owner")).pid,
+  };
+  assert.notEqual(evidence.pids.caller, evidence.pids.owner);
+  assert.notEqual(caller.hostId, owner.hostId);
+  const ownerHost = hostTarget(owner.hostId);
+  await grant(
+    "owner",
+    cliId,
+    ["metadata.read", "content.read", "device.modify"],
+    ownerHost,
+  );
+  const ownerContext = join(root, "owner-context.json");
+  await run("owner", ["context", "--out", ownerContext]);
+  const device = { ...ownerHost, kind: "device", id: "virtual:echo" };
+  const { serialConfiguration } = JSON.parse(
+    await readFile(
+      new URL(
+        "../packages/contracts/src/generated/defaults.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const open = await invoke(
+    "owner",
+    "device.open",
+    device,
+    { configuration: serialConfiguration },
+    ownerContext,
+    randomUUID(),
+  );
+  const { sessionId, sessionEpoch } = (await settled("owner", open.operationId))
+    .result.value;
+  const session = {
+    ...ownerHost,
+    kind: "session",
+    id: sessionId,
+    sessionId,
+    sessionEpoch,
+  };
+  const read = {
+    sessionId,
+    sessionEpoch,
+    startEventSeq: "1",
+    maxEvents: "100",
+    maxBytes: "262144",
+  };
+  const { address } = (await run("owner", ["lan", "enable", "127.0.0.1:0"]))
+    .result.listener;
+  await run("owner", [
+    "lan",
+    "--params-json",
+    await fixture({
+      kind: "setShares",
+      peer: caller,
+      shares: [{ target: session, access: "operate" }],
+    }),
+  ]);
+  await run("caller", [
+    "lan",
+    "--params-json",
+    await fixture({
+      kind: "setShares",
+      peer: owner,
+      shares: [],
+    }),
+  ]);
+  const route = ["--lan-peer", owner.hostId, "--lan-address", address];
+  await run(
+    "caller",
+    ["context", "--out", join(root, "denied.json"), ...route],
+    "PERMISSION_DENIED",
+  );
+  const callerContext = await run("caller", [
+    "context",
+    "--out",
+    join(root, "caller-local.json"),
+  ]);
+  const scope = {
+    hostId: caller.hostId,
+    kind: "swb:lan-peer",
+    id: owner.hostId,
+  };
+  await grant("caller", cliId, ["lan.connect"], scope);
+  const routedFile = join(root, "routed-context.json");
+  const routed = await run("caller", [
+    "context",
+    "--out",
+    routedFile,
+    ...route,
+  ]);
+  assert.equal(routed.hostId, owner.hostId);
+  assert.equal(routed.instanceEpoch, (await discovery("owner")).instanceEpoch);
+  const payload = Buffer.from([0, 65, 13, 10, 255]);
+  const serial = {
+    bytesBase64: payload.toString("base64"),
+    writeWaitMs: "1000",
+  };
+  const requestId = randomUUID();
+  const tx = await invoke(
+    "caller",
+    "session.tx",
+    session,
+    serial,
+    routedFile,
+    requestId,
+    route,
+  );
+  const cliTerminal = await settled("caller", tx.operationId, route);
+  assert.equal(cliTerminal.actorId, routed.actorId);
+  const retry = await invoke(
+    "caller",
+    "session.tx",
+    session,
+    serial,
+    routedFile,
+    requestId,
+    route,
+  );
+  assert.equal(retry.operationId, tx.operationId);
+  const readBack = await until(async () => {
+    const raw = await query("caller", "stream.read", session, read, route);
+    return raw.events.some(
+      ({ kind, payload }) =>
+        kind === "rx" && payload.bytesBase64 === serial.bytesBase64,
+    )
+      ? raw
+      : undefined;
+  }, "Raw returned exact RX");
+  assert.deepEqual(
+    readBack,
+    await query("owner", "stream.read", session, read),
+  );
+
+  const mcpFixture = {
+    binary: mcp,
+    profile: profiles.caller,
+    clientId: assistantName,
+    host,
+  };
+  assistant = await startMcpFixture(mcpFixture);
+  await assistant.stop();
+  assistant = undefined;
+  await grant("caller", assistantName, ["lan.connect"], scope);
+  assistant = await startMcpFixture({
+    ...mcpFixture,
+    route: { hostId: owner.hostId, address },
+  });
+  const mcpTx = await assistant.call(
+    "swb_session_x2E_tx",
+    session,
+    { bytesBase64: "Wg==", writeWaitMs: "1000" },
+    { requestId },
+  );
+  assert.notEqual(mcpTx.actorId, tx.actorId);
+  assert.notEqual(mcpTx.operationId, tx.operationId);
+  const mcpTerminal = await settled("owner", mcpTx.operationId);
+  assert.equal(mcpTerminal.requestId, requestId);
+  const activity = await until(async () => {
+    const snapshot = await query("owner", "state.snapshot", ownerHost, {
+      scopeId: "host.activity",
+    });
+    return snapshot.state.items.find(
+      ({ operationId, mcpClientId }) =>
+        operationId === mcpTx.operationId && mcpClientId === assistantName,
+    );
+  }, "B observes named MCP operation");
+  assert.equal(activity.actorId, mcpTx.actorId);
+  const activityScope = "session-activity:" + sessionId;
+  const available = await query("caller", "state.scopes", ownerHost, {}, route);
+  assert.ok(
+    available.scopes.some(
+      ({ scopeId, target }) =>
+        scopeId === activityScope && target.sessionEpoch === sessionEpoch,
+    ),
+  );
+  assert.ok(available.scopes.every(({ target }) => target.id === sessionId));
+  const remoteActivity = await query(
+    "caller",
+    "state.snapshot",
+    session,
+    { scopeId: activityScope },
+    route,
+  );
+  assert.deepEqual(remoteActivity.state.items, [activity]);
+  assert.equal(remoteActivity.state.pendingTakeover, undefined);
+  await run(
+    "caller",
+    [
+      "query",
+      "state.snapshot",
+      "--target-json",
+      await fixture(ownerHost),
+      "--params-json",
+      await fixture({ scopeId: "host.activity" }),
+      ...route,
+    ],
+    "PERMISSION_DENIED",
+  );
+  const beforeConfigure = await assistant.call("swb_session_x2E_get", session);
+  const baudRate = "19200";
+  const configuration = await assistant.call(
+    "swb_session_x2E_configure",
+    session,
+    { requested: { ...beforeConfigure.configuration, baudRate } },
+    { expectedRevision: beforeConfigure.revision },
+  );
+  await settled("owner", configuration.operationId);
+  assert.equal(
+    (await assistant.call("swb_session_x2E_get", session)).configuration
+      .baudRate,
+    baudRate,
+  );
+  assert.equal(
+    (await query("owner", "session.get", session, {})).configuration.baudRate,
+    baudRate,
+  );
+  await run("caller", [
+    "revoke",
+    "--params-json",
+    await fixture({
+      actorId: callerContext.actorId,
+      permissions: ["lan.connect"],
+      targets: [scope],
+    }),
+  ]);
+  await run(
+    "caller",
+    ["context", "--out", join(root, "revoked.json"), ...route],
+    "PERMISSION_DENIED",
+  );
+  assert.equal(
+    (await assistant.call("swb_session_x2E_get", session)).sessionId,
+    sessionId,
+  );
+  await run("caller", [
+    "lan",
+    "--params-json",
+    await fixture({ kind: "unpair", peer: owner }),
+  ]);
+  await until(async () => {
+    try {
+      await assistant.call("swb_session_x2E_get", session);
+    } catch (error) {
+      return [
+        "UNAUTHENTICATED",
+        "PERMISSION_DENIED",
+        "LAN_AUTHENTICATION_FAILED",
+      ].includes(error.code);
+    }
+  }, "A unpair closes the existing MCP route");
+  assert.equal(
+    (await query("owner", "session.get", session, {})).sessionId,
+    sessionId,
+  );
+  Object.assign(evidence, {
+    connection: {
+      caller: caller.hostId,
+      owner: owner.hostId,
+      address,
+      instanceEpoch: routed.instanceEpoch,
+    },
+    session,
+    cli: {
+      operationId: tx.operationId,
+      actorId: tx.actorId,
+      duplicateKeptOriginal: true,
+      rxBytes: payload.length,
+    },
+    mcp: {
+      operationId: mcpTx.operationId,
+      actorId: mcpTx.actorId,
+      activity: assistantName,
+      observedOverSharedSession: true,
+      hostWideActivityDenied: true,
+      configuredBaudRate: baudRate,
+      configurationOperationId: configuration.operationId,
+    },
+    deniedBeforeGrant: true,
+    callerScopeRevoked: true,
+    callerUnpairClosedMcp: true,
+    ownerSessionPreserved: true,
+  });
+} catch (error) {
+  failures.push(error);
+} finally {
+  if (assistant) {
+    try {
+      await assistant.stop();
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  evidence.stopped = {};
+  for (const role of Object.keys(profiles)) {
+    try {
+      evidence.stopped[role] = (await run(role, ["host", "stop"])).stopped;
+      assert.equal(evidence.stopped[role], true);
+    } catch (error) {
+      failures.push(error);
+    }
+  }
+  evidence.binaries = Object.fromEntries(
+    await Promise.all(
+      [host, cli, mcp].map(async (binary) => [
+        binary,
+        createHash("sha256")
+          .update(await readFile(binary))
+          .digest("hex"),
+      ]),
+    ),
+  );
+  if (failures.length === 0) {
+    assert.equal(dirname(root), temporary);
+    await rm(root, { recursive: true, force: true });
+  } else {
+    evidence.fixture = root;
+  }
+  evidence.errors = failures.map(String);
+  evidence.passed = failures.length === 0;
+  await writeFile(
+    join(output, "commands.json"),
+    JSON.stringify(commands, null, 2) + "\n",
+  );
+  await writeFile(
+    join(output, "receipt.json"),
+    JSON.stringify(evidence, null, 2) + "\n",
+  );
+}
+if (failures.length)
+  throw new AggregateError(
+    failures,
+    "LAN application route verification failed",
+  );

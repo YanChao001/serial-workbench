@@ -6,6 +6,9 @@ import {
 import type {
   BrowserAccessState,
   HostError,
+  LanAccessParams,
+  LanAccessResult,
+  LanRoute,
   ObjectRef,
   OpenParams,
   Query,
@@ -599,6 +602,23 @@ async function callHost<T>(
 }
 export function hostAttachment(): Promise<DesktopAttachment> {
   return callHost((commands) => commands.hostAttachment());
+}
+export function hostLocalAttachment(): Promise<DesktopAttachment> {
+  return callHost((commands) => commands.hostLocalAttachment());
+}
+export function hostSelectLanRoute(
+  generation: U64 | undefined,
+  route: LanRoute | null,
+): Promise<DesktopAttachment> {
+  return callHost((commands) =>
+    commands.hostSelectLanRoute(generation ?? null, route),
+  );
+}
+export function hostLanAccess(
+  generation: U64,
+  params: LanAccessParams,
+): Promise<LanAccessResult> {
+  return callHost((commands) => commands.hostLanAccess(generation, params));
 }
 export function hostRequest(
   request: RpcRequest,

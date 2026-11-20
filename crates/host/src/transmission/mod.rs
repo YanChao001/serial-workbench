@@ -150,6 +150,24 @@ impl TransmissionService {
             settlement_gap: Arc::new(Mutex::new(None)),
         }
     }
+    #[cfg(test)]
+    pub(crate) fn hold_next_dispatch(
+        &self,
+    ) -> (
+        tokio::sync::oneshot::Receiver<()>,
+        tokio::sync::oneshot::Sender<()>,
+    ) {
+        let (entered, held) = tokio::sync::oneshot::channel();
+        let (release, waiting) = tokio::sync::oneshot::channel();
+        assert!(
+            self.dispatch_gap
+                .lock()
+                .unwrap()
+                .replace((entered, waiting))
+                .is_none()
+        );
+        (held, release)
+    }
     pub(crate) fn admission(
         &self,
         allow_stop: bool,

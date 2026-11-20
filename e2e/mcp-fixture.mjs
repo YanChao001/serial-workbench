@@ -5,8 +5,17 @@ import { once } from "node:events";
 import { createInterface } from "node:readline";
 import { setTimeout } from "node:timers/promises";
 
-export async function startMcpFixture({ binary, profile, clientId, host }) {
-  const child = spawn(binary, ["--profile", profile, "--client-id", clientId], {
+export async function startMcpFixture({
+  binary,
+  profile,
+  clientId,
+  host,
+  route,
+}) {
+  const args = ["--profile", profile, "--client-id", clientId];
+  if (route)
+    args.push("--lan-peer", route.hostId, "--lan-address", route.address);
+  const child = spawn(binary, args, {
     windowsHide: true,
     stdio: ["pipe", "pipe", "ignore"],
     env: { ...process.env, SWB_DEV_EXPECTED_HOST_EXECUTABLE: host },
@@ -72,10 +81,15 @@ export async function startMcpFixture({ binary, profile, clientId, host }) {
 
   return {
     stop,
-    async call(name, target, params = {}, requestId = randomUUID()) {
+    async call(
+      name,
+      target,
+      params = {},
+      { requestId = randomUUID(), expectedRevision } = {},
+    ) {
       const reply = await request("tools/call", {
         name,
-        arguments: { target, params, requestId },
+        arguments: { target, params, requestId, expectedRevision },
       });
       if (reply.isError === true) {
         const { code } = JSON.parse(reply.content?.[0]?.text ?? "{}");

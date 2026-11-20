@@ -918,6 +918,17 @@
       }
     },
     {
+      "name": "local-lan-unknown-control-field",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "lan.access",
+        "params": {
+          "confirmed": true,
+          "kind": "disable"
+        }
+      }
+    },
+    {
       "name": "terminal-invalid-codec",
       "schema": "TerminalSettings",
       "value": {
@@ -11411,6 +11422,17 @@
         "keyId": "key",
         "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
         "source": "source"
+      }
+    },
+    {
+      "name": "local-lan-enable",
+      "schema": "RpcRequest",
+      "value": {
+        "method": "lan.access",
+        "params": {
+          "address": "[::1]:9240",
+          "kind": "enable"
+        }
       }
     },
     {

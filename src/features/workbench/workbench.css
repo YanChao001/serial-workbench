@@ -69,6 +69,11 @@
   max-width: 8rem;
   min-width: 6rem;
 }
+.workbench-device-select[data-lan] {
+  flex-basis: 10rem;
+  width: 10rem;
+  max-width: 10rem;
+}
 .workbench-connection .ui-button {
   flex-shrink: 0;
 }

@@ -668,28 +668,39 @@ impl DeviceService {
                 let _ = source.fail(error.clone());
                 return Err(error);
             }
-            let scope = scope_id(&snapshot.session_id)?;
-            let state = object(&snapshot)?;
-            let published = match self.inner.projections.register_scope(
-                scope.clone(),
-                target.clone(),
-                "metadata.read".into(),
-                state.clone(),
-            ) {
-                Ok(()) => Ok(()),
-                Err(error) if error.code == "REVISION_CONFLICT" => self
-                    .inner
-                    .projections
-                    .commit_for_target(
-                        &scope,
-                        target,
-                        Id::try_from("session.changed")?,
-                        state.clone(),
-                        state,
-                    )
-                    .map(|_| ()),
-                Err(error) => Err(error),
-            };
+            let session_scope = scope_id(&snapshot.session_id)?;
+            let activity_scope = crate::state::session_activity_scope(&snapshot.session_id)?;
+            self.inner
+                .auth
+                .bind_lan_session(&target, &snapshot.device_id)?;
+            let scopes = [
+                (
+                    session_scope,
+                    Id::try_from("session.changed")?,
+                    object(&snapshot)?,
+                ),
+                (
+                    activity_scope,
+                    Id::try_from("activity.changed")?,
+                    object(&serde_json::json!({"items":[]}))?,
+                ),
+            ];
+            let published = scopes.into_iter().try_for_each(|(scope, event, state)| {
+                match self.inner.projections.register_scope(
+                    scope.clone(),
+                    target.clone(),
+                    "metadata.read".into(),
+                    state.clone(),
+                ) {
+                    Ok(()) => Ok(()),
+                    Err(error) if error.code == "REVISION_CONFLICT" => self
+                        .inner
+                        .projections
+                        .commit_for_target(&scope, target.clone(), event, state.clone(), state)
+                        .map(|_| ()),
+                    Err(error) => Err(error),
+                }
+            });
             if let Err(error) = published {
                 let _ = source.close();
                 return Err(error);

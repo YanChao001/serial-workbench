@@ -2262,6 +2262,7 @@ export function WorkspaceLayout({
               <ActivityPanel
                 operations={state.operationSummaries}
                 activities={state.activities}
+                includeUnlistedOperations={Boolean(host.connection?.lanRoute)}
                 mcpClient={mcpClient}
                 onMcpChange={(client) => {
                   // 选择客户端时定位当前最后一次活动。之后按 Host 的开始顺序处理新增活动。

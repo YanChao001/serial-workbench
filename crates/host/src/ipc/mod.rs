@@ -1,6 +1,8 @@
 //! 单实例生命周期与认证后的本地连接。
 mod browser;
 mod connection;
+mod lan_access;
+mod lan_route;
 mod protocol;
 mod server;
 pub use serial_workbench_core::BrowserEntry;

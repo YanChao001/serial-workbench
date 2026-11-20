@@ -115,6 +115,7 @@ export const enShell = {
   "navContext.commands": "Quick actions",
   "nativeError.clipboardWriteFailed": "Could not copy. Try again.",
   "nativeError.busy": "Too many operations are running. Try again shortly.",
+  "lifecycle.scopeDescription": "Save or discard changes before continuing.",
   "lifecycle.title": "Save unfinished work",
   "lifecycle.description":
     "Save or finish your work first. All {count} windows must be ready to continue.",

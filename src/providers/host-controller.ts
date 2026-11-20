@@ -7,6 +7,8 @@ import {
 } from "@serial-workbench/contracts";
 import type {
   ActionSpec,
+  ActivitySummary,
+  StateScopeRef,
   FavoritesSaveParams,
   RebindParams,
   FileReadParams,
@@ -93,6 +95,11 @@ function sameTarget(a: Target, b: Target) {
     a.sessionEpoch === b.sessionEpoch
   );
 }
+function isSessionActivity({ scopeId, target }: StateScopeRef) {
+  return (
+    target.kind === "session" && scopeId === "session-activity:" + target.id
+  );
+}
 export function createHostWorkspace(
   connection: HostConnection,
   userActions: HostUserActions | null = {
@@ -112,6 +119,7 @@ export function createHostWorkspace(
     string,
     { target: Target; close: () => void; controller: AbortController }
   >();
+  const sessionActivities = new Map<string, readonly ActivitySummary[]>();
   let projectionsPending: Promise<void> | undefined;
   let projectionsRequested = false;
   let projectionEpochError: HostProjectionError | undefined;
@@ -377,14 +385,46 @@ export function createHostWorkspace(
     projectionsPending = pending;
     return pending;
   }
+  function updateSessionActivities(
+    scopeId: string,
+    items?: readonly ActivitySummary[],
+  ) {
+    if (items) sessionActivities.set(scopeId, items);
+    else if (!sessionActivities.delete(scopeId)) return;
+    // 同一个活动更新原记录，窗口按收到新活动的顺序接续跟随。
+    const visible = new Map(
+      [...sessionActivities.values()].flatMap((entries) =>
+        entries.map((item) => [item.activityId, item] as const),
+      ),
+    );
+    const activities: ActivitySummary[] = [];
+    for (const prior of state.activities ?? []) {
+      const current = visible.get(prior.activityId);
+      if (current) {
+        activities.push(current);
+        visible.delete(prior.activityId);
+      }
+    }
+    activities.push(...visible.values());
+    change({ activities });
+  }
+  function forgetActivityScope(scopeId: string) {
+    if (scopeId === "host.activity")
+      change({ activities: undefined, pendingTakeover: undefined });
+    else updateSessionActivities(scopeId);
+  }
   async function syncProjectionPass() {
     const scopes = (await connection.refreshScopes(lifetime.signal)).filter(
-      (scope) =>
-        scope.target.kind === "session" ||
-        ["host.devices", "host.operations", "host.activity"].includes(
-          scope.scopeId,
-        ) ||
-        scope.scopeId === state.workspace?.scope.scopeId,
+      (scope) => {
+        if (isSessionActivity(scope)) return connection.lanRoute !== undefined;
+        return (
+          scope.target.kind === "session" ||
+          ["host.devices", "host.operations", "host.activity"].includes(
+            scope.scopeId,
+          ) ||
+          scope.scopeId === state.workspace?.scope.scopeId
+        );
+      },
     );
     if (lifetime.signal.aborted) return;
     const retained = new Set(scopes.map((scope) => scope.scopeId));
@@ -398,8 +438,7 @@ export function createHostWorkspace(
         entry.controller.abort();
         entry.close();
         projections.delete(id);
-        if (id === "host.activity")
-          change({ activities: undefined, pendingTakeover: undefined });
+        forgetActivityScope(id);
       }
     }
     for (const scope of scopes) {
@@ -429,8 +468,7 @@ export function createHostWorkspace(
               entry.close();
               if (projections.get(scope.scopeId) === entry)
                 projections.delete(scope.scopeId);
-              if (scope.scopeId === "host.activity")
-                change({ activities: undefined, pendingTakeover: undefined });
+              forgetActivityScope(scope.scopeId);
               if (
                 scope.target.kind === "session" &&
                 event.error instanceof HostRequestError &&
@@ -453,17 +491,40 @@ export function createHostWorkspace(
                 ? event.snapshot.state
                 : event.delta.payload;
             if (scope.target.kind === "session") {
-              const parsed = asQueryResult({ kind: "session", value: payload });
-              if (parsed.kind === "session") {
-                updateSession(parsed.value);
-                // 建立订阅不证明持续健康；只有失败过的 scope 真正交付增量才归还恢复预算。
-                if (
-                  event.type === "delta" &&
-                  failedProjectionScopes.delete(scope.scopeId) &&
-                  failedProjectionScopes.size === 0
-                )
-                  projectionFailures = 0;
+              if (isSessionActivity(scope)) {
+                try {
+                  const activity = parseActivitySnapshot(payload);
+                  if (
+                    activity.pendingTakeover ||
+                    activity.items.some(
+                      (item) =>
+                        !item.mcpClientId ||
+                        !sameTarget(item.target, scope.target),
+                    )
+                  )
+                    throw new ContractValidationError(
+                      "Activity belongs to another shared session",
+                    );
+                  updateSessionActivities(scope.scopeId, activity.items);
+                } catch (error) {
+                  forgetActivityScope(scope.scopeId);
+                  report(error);
+                  return;
+                }
+              } else {
+                const parsed = asQueryResult({
+                  kind: "session",
+                  value: payload,
+                });
+                if (parsed.kind === "session") updateSession(parsed.value);
               }
+              // 建立订阅不证明持续健康。有效增量归还失败 scope 的恢复预算。
+              if (
+                event.type === "delta" &&
+                failedProjectionScopes.delete(scope.scopeId) &&
+                failedProjectionScopes.size === 0
+              )
+                projectionFailures = 0;
             } else if (scope.target.kind === "workspace") {
               const parsed = asQueryResult({
                 kind: "workspace",
@@ -836,14 +897,17 @@ export function createHostWorkspace(
       await refreshCatalog();
       const devices = await connection.client.query(
         connection.buildQuery(
-          enumerateDevices ? "device.refresh" : "device.list",
+          enumerateDevices && !connection.lanRoute
+            ? "device.refresh"
+            : "device.list",
           connection.hostTarget,
         ),
         lifetime.signal,
       );
       if (devices.kind !== "devices") throw new ContractValidationError();
-      // 先恢复选中工作区与草稿归属；历史订阅仍不阻塞设备就绪。
-      if (!state.workspace)
+      // 远端先识别已共享的会话。仅共享会话时，打开视图不能落到新开设备。
+      if (connection.lanRoute) await syncProjections();
+      else if (!state.workspace)
         await loadWorkspace("default", undefined, { deferProjections: true });
       change({
         devices: devices.value.devices,
@@ -851,7 +915,7 @@ export function createHostWorkspace(
         // 已认证连接与设备目录已可用；历史投影不阻塞明确的设备连接。
         status: "ready",
       });
-      await syncProjections();
+      if (!connection.lanRoute) await syncProjections();
       change({ status: "ready", error: null });
     })()
       .catch((error: unknown) => {

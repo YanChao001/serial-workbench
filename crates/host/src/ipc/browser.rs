@@ -378,14 +378,14 @@ async fn serve_socket(mut socket: WebSocket, state: BrowserState) -> HostResult<
                 .reconnect(&client_id, &credential)?,
             IpcMessage::RawAttach { token } if channel == IpcChannel::Raw => {
                 return Ok((
-                    connection.attach_raw(&token)?,
+                    connection.attach_raw(&token, None)?,
                     None,
                     IpcMessage::RawAttached {},
                 ));
             }
             _ => return Err(unauthenticated()),
         };
-        let (session, token) = connection.open_control(actor)?;
+        let (session, token) = connection.open_control(actor, false)?;
         let message = IpcMessage::Authenticated {
             credential: None,
             raw_attach_token: token.clone(),

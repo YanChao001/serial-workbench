@@ -1,10 +1,13 @@
 use super::{
-    browser::{BrowserCommand, request_access},
+    browser::{BrowserCommand, request_access as request_browser_access},
+    lan_access::{LanCommand, request_access as request_lan_access},
+    lan_route::{LanEndpoints, LanRelay, unavailable as lan_unavailable},
     protocol::*,
     server::{AuthorizedEvent, ConnectionContext, EventFrame, RequestHandler},
 };
 use crate::{
     auth::{AuthService, AuthenticatedActor, GrantStamp, HostIdentity},
+    lan::{LanAdmission, LanPeer, Lane, LaneReady, read_lane, write_lane},
     storage::Store,
 };
 use serial_workbench_core::*;
@@ -15,7 +18,7 @@ use serial_workbench_ipc::{
 };
 use std::{
     collections::HashMap,
-    future::Future,
+    future::{Future, pending},
     sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
@@ -24,6 +27,7 @@ use std::{
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite},
+    net::TcpStream,
     sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch},
     task::JoinSet,
 };
@@ -34,8 +38,27 @@ pub(super) struct ControlSession {
     alive: watch::Sender<bool>,
     raw_attached: AtomicBool,
     client_kind: std::sync::OnceLock<ClientKind>,
+    relay: Option<std::sync::OnceLock<LanRelay>>,
 }
 pub(super) type Sessions = Arc<Mutex<HashMap<ContextToken, Weak<ControlSession>>>>;
+
+enum LocalAttachment {
+    Control {
+        token: ContextToken,
+        route: Option<(RequestId, LanRoute, ClientKind)>,
+    },
+    Raw {
+        request_id: RequestId,
+    },
+}
+
+#[derive(Clone)]
+pub(super) struct LocalAccess {
+    pub browser: mpsc::Sender<BrowserCommand>,
+    pub lan: mpsc::Sender<LanCommand>,
+    pub endpoints: LanEndpoints,
+}
+
 struct ConnectionGuard {
     context: ConnectionContext,
     session: Arc<ControlSession>,
@@ -75,21 +98,182 @@ pub(super) struct ConnectionState {
     pub handler: Arc<dyn RequestHandler>,
 }
 impl ConnectionState {
-    pub async fn serve(
-        self,
-        mut stream: LocalStream,
-        browser: mpsc::Sender<BrowserCommand>,
-    ) -> HostResult<()> {
-        let attached = tokio::time::timeout(Duration::from_secs(5), self.handshake(&mut stream))
-            .await
-            .map_err(|_| unauthenticated())??;
+    pub async fn serve(self, mut stream: LocalStream, access: LocalAccess) -> HostResult<()> {
+        let (session, attached) =
+            tokio::time::timeout(Duration::from_secs(5), self.handshake(&mut stream))
+                .await
+                .map_err(|_| unauthenticated())??;
+        let (token, channel) = match attached {
+            LocalAttachment::Control { token, route: None } => (Some(token), IpcChannel::Control),
+            LocalAttachment::Control {
+                token,
+                route: Some((id, route, kind)),
+            } => {
+                let result = self
+                    .serve_local_route(stream, &session, &access.endpoints, id, route, kind)
+                    .await;
+                self.abandon_handshake(&session, Some(&token));
+                return result;
+            }
+            LocalAttachment::Raw { request_id } => {
+                if let Some(relay) = &session.relay {
+                    let result = async {
+                        let Some(relay) = relay.get() else {
+                            return send_local_handshake(
+                                &mut stream,
+                                request_id,
+                                IpcChannel::Raw,
+                                Err(busy()),
+                            )
+                            .await;
+                        };
+                        let remote = relay.raw().await;
+                        let message = remote
+                            .as_ref()
+                            .map(|_| IpcMessage::RawAttached {})
+                            .map_err(Clone::clone);
+                        send_local_handshake(&mut stream, request_id, IpcChannel::Raw, message)
+                            .await?;
+                        relay
+                            .forward(stream, remote?, session.alive.subscribe())
+                            .await;
+                        Ok(())
+                    }
+                    .await;
+                    self.abandon_handshake(&session, None);
+                    return result;
+                }
+                if let Err(error) = send_local_handshake(
+                    &mut stream,
+                    request_id,
+                    IpcChannel::Raw,
+                    Ok(IpcMessage::RawAttached {}),
+                )
+                .await
+                {
+                    self.abandon_handshake(&session, None);
+                    return Err(error);
+                }
+                (None, IpcChannel::Raw)
+            }
+        };
         let (reader, writer) = tokio::io::split(stream);
         self.serve_frames(
             reader,
             writer,
-            attached,
-            std::future::pending(),
-            Some(browser),
+            (session, token, channel),
+            pending(),
+            Some(access),
+            None,
+        )
+        .await
+    }
+
+    async fn serve_local_route(
+        &self,
+        mut stream: LocalStream,
+        session: &ControlSession,
+        endpoints: &LanEndpoints,
+        id: RequestId,
+        route: LanRoute,
+        kind: ClientKind,
+    ) -> HostResult<()> {
+        let routed = tokio::time::timeout(
+            LAN_ATTACH_TIMEOUT,
+            endpoints.route(route, session.actor.clone(), kind),
+        )
+        .await
+        .map_err(|_| lan_unavailable())
+        .and_then(|result| result);
+        let receipt = routed
+            .as_ref()
+            .map(|(relay, _)| relay.receipt())
+            .map_err(Clone::clone);
+        match routed {
+            Ok((relay, remote)) => {
+                let relay_slot = session.relay.as_ref().expect("routed control session");
+                relay_slot.set(relay).map_err(|_| lan_unavailable())?;
+                send_local_handshake(&mut stream, id, IpcChannel::Control, receipt).await?;
+                relay_slot
+                    .get()
+                    .expect("set LAN route")
+                    .forward(stream, remote, session.alive.subscribe())
+                    .await;
+                Ok(())
+            }
+            Err(error) => {
+                send_local_handshake(&mut stream, id, IpcChannel::Control, Err(error)).await
+            }
+        }
+    }
+
+    pub(super) async fn serve_lan(
+        self,
+        admission: &LanAdmission,
+        socket: TcpStream,
+        mut lifetime: watch::Receiver<()>,
+    ) -> HostResult<()> {
+        let (actor, remote) = tokio::select! {
+            _ = lifetime.changed() => return Ok(()),
+            accepted = admission.accept(socket) => accepted?,
+        };
+        let mut stream = remote.stream;
+        let lane: Lane = tokio::select! {
+            _ = lifetime.changed() => return Ok(()),
+            frame = tokio::time::timeout(Duration::from_secs(5), read_lane(&mut stream)) => {
+                frame.map_err(|_| unauthenticated())??
+            }
+        };
+        let pairing_id = actor.id().clone();
+        let actor = match lane.origin() {
+            Some(origin) => actor.forward_lan(origin)?,
+            None => actor,
+        };
+        let (session, token, channel, ready) = match lane {
+            Lane::Control { .. } => {
+                let auth = self.auth.clone();
+                let registered = actor.clone();
+                blocking(move || auth.register_lan_client(&registered)).await?;
+                let client_id = actor.client_id().clone();
+                let (session, token) = self.open_control(actor, false)?;
+                let ready = LaneReady::Control {
+                    client_id,
+                    raw_attach_token: token.clone(),
+                };
+                (session, Some(token), IpcChannel::Control, ready)
+            }
+            Lane::Raw { token, .. } => (
+                self.attach_raw(&token, Some(actor.id()))?,
+                None,
+                IpcChannel::Raw,
+                LaneReady::Raw,
+            ),
+        };
+        let result = tokio::select! {
+            biased;
+            _ = lifetime.changed() => Err(unauthenticated()),
+            sent = tokio::time::timeout(Duration::from_secs(5), write_lane(&mut stream, &ready)) => {
+                sent.map_err(|_| busy()).and_then(|result| result)
+            }
+        };
+        if let Err(error) = result {
+            self.abandon_handshake(&session, token.as_ref());
+            return Err(error);
+        }
+        let revoked = lan_revoked(self.auth.clone(), remote.peer, pairing_id);
+        let closed = async move {
+            tokio::select! {
+                _ = lifetime.changed() => {}
+                _ = revoked => {}
+            }
+        };
+        let (reader, writer) = tokio::io::split(stream);
+        self.serve_frames(
+            reader,
+            writer,
+            (session, token, channel),
+            closed,
+            None,
             None,
         )
         .await
@@ -101,7 +285,7 @@ impl ConnectionState {
         writer: impl FrameWriter,
         (session, token, channel): (Arc<ControlSession>, Option<ContextToken>, IpcChannel),
         transport_closed: impl Future<Output = ()> + Send,
-        browser: Option<mpsc::Sender<BrowserCommand>>,
+        access: Option<LocalAccess>,
         browser_stopped: Option<watch::Receiver<bool>>,
     ) -> HostResult<()> {
         let (replies_tx, replies_rx) = mpsc::channel(256);
@@ -143,10 +327,18 @@ impl ConnectionState {
         loop {
             while requests.try_join_next().is_some() {}
             let incoming = tokio::select! {
-                _ = &mut writer_future => break,
-                _ = context.failed.notified() => break,
-                _ = alive.changed(), if channel == IpcChannel::Raw => break,
+                result = &mut writer_future => {
+                    if let Err(error) = result {
+                        eprintln!("host_ipc_output_ended channel={channel:?} code={}", error.code);
+                    }
+                    break;
+                },
+                _ = context.failed.notified() => {
+                    eprintln!("host_ipc_event_enqueue_failed channel={channel:?}");
+                    break;
+                },
                 _ = &mut transport_closed => break,
+                _ = alive.changed(), if channel == IpcChannel::Raw => break,
                 incoming = reader.read_wire() => incoming,
             };
             let frame = match incoming {
@@ -189,7 +381,7 @@ impl ConnectionState {
             let identity = self.identity.clone();
             let handler = self.handler.clone();
             let auth = self.auth.clone();
-            let browser = browser.clone();
+            let access = access.clone();
             let session = session.clone();
             let sender = replies_tx.clone();
             let request_id = frame.request_id;
@@ -208,7 +400,12 @@ impl ConnectionState {
                     Err(error) => failure(error).into(),
                     Ok(()) => match *request {
                         RpcRequest::BrowserAccess(params) => {
-                            match request_access(browser.as_ref(), params).await {
+                            match request_browser_access(
+                                access.as_ref().map(|local| &local.browser),
+                                params,
+                            )
+                            .await
+                            {
                                 Ok(browser_access) => RpcReply::Success {
                                     ok: True,
                                     result: Box::new(RpcResult::BrowserAccess(
@@ -219,15 +416,35 @@ impl ConnectionState {
                                 Err(error) => failure(error).into(),
                             }
                         }
+                        RpcRequest::LanAccess(params) => {
+                            match request_lan_access(
+                                access.as_ref().map(|local| &local.lan),
+                                context.actor.clone(),
+                                params,
+                            )
+                            .await
+                            {
+                                Ok(result) => RpcReply::Success {
+                                    ok: True,
+                                    result: Box::new(RpcResult::LanAccess(result)),
+                                }
+                                .into(),
+                                Err(error) => failure(error).into(),
+                            }
+                        }
                         RpcRequest::Attach(params) => {
-                            let kind = if browser.is_some() {
-                                params.client_kind
-                            } else {
-                                ClientKind::Browser
-                            };
+                            // 只有本机附着能声明客户端类型。浏览器入口的类型由 Host 确认。
+                            let kind = access.as_ref().map(|_| params.client_kind).or_else(|| {
+                                context
+                                    .browser_stopped
+                                    .as_ref()
+                                    .map(|_| ClientKind::Browser)
+                            });
                             match attach(&store, &identity, &context.actor, params).await {
                                 Ok(result) => {
-                                    if channel == IpcChannel::Control {
+                                    if channel == IpcChannel::Control
+                                        && let Some(kind) = kind
+                                    {
                                         let _ = session.client_kind.set(kind);
                                     }
                                     RpcReply::Success {
@@ -272,7 +489,7 @@ impl ConnectionState {
     async fn handshake(
         &self,
         stream: &mut LocalStream,
-    ) -> HostResult<(Arc<ControlSession>, Option<ContextToken>, IpcChannel)> {
+    ) -> HostResult<(Arc<ControlSession>, LocalAttachment)> {
         let first = read_frame(stream, MAX_FRAME_BYTES)
             .await?
             .ok_or_else(unauthenticated)?;
@@ -330,29 +547,30 @@ impl ConnectionState {
                 let IpcMessage::RawAttach { token } = next.body else {
                     return Err(unauthenticated());
                 };
-                let session = self.attach_raw(&token)?;
-                if let Err(error) = write_frame(
-                    stream,
-                    &WireFrame {
+                let session = self.attach_raw(&token, None)?;
+                return Ok((
+                    session,
+                    LocalAttachment::Raw {
                         request_id: next.request_id,
-                        channel,
-                        body: IpcMessage::RawAttached {},
                     },
-                    MAX_FRAME_BYTES,
-                )
-                .await
-                {
-                    self.abandon_handshake(&session, None);
-                    return Err(error);
-                }
-                return Ok((session, None, channel));
+                ));
             }
             let auth = self.auth.clone();
+            let mut route = None;
             let authentication = match next.body {
                 IpcMessage::Authenticate {
                     client_id,
                     credential,
                 } => blocking(move || auth.authenticate(&client_id, credential.as_ref())).await?,
+                IpcMessage::AuthenticateLan {
+                    client_id,
+                    credential,
+                    route: requested,
+                    client_kind,
+                } => {
+                    route = Some((next.request_id.clone(), requested, client_kind));
+                    blocking(move || auth.authenticate(&client_id, credential.as_ref())).await?
+                }
                 IpcMessage::AuthenticateUserControl {
                     client_id,
                     credential,
@@ -368,7 +586,7 @@ impl ConnectionState {
                 }
                 _ => return Err(unauthenticated()),
             };
-            let (session, token) = self.open_control(authentication.actor)?;
+            let (session, token) = self.open_control(authentication.actor, route.is_some())?;
             if let Err(error) = write_frame(
                 stream,
                 &WireFrame {
@@ -386,7 +604,7 @@ impl ConnectionState {
                 self.abandon_handshake(&session, Some(&token));
                 return Err(error);
             }
-            Ok((session, Some(token), channel))
+            Ok((session, LocalAttachment::Control { token, route }))
         }
         .await;
         if let Err(error) = &result {
@@ -403,6 +621,7 @@ impl ConnectionState {
     pub(super) fn open_control(
         &self,
         actor: AuthenticatedActor,
+        routed: bool,
     ) -> HostResult<(Arc<ControlSession>, ContextToken)> {
         let (alive, _) = watch::channel(true);
         let session = Arc::new(ControlSession {
@@ -411,16 +630,20 @@ impl ConnectionState {
             alive,
             raw_attached: AtomicBool::new(false),
             client_kind: std::sync::OnceLock::new(),
+            relay: routed.then(std::sync::OnceLock::new),
         });
         let token = random_token();
-        self.sessions
-            .lock()
-            .map_err(|_| storage())?
-            .insert(token.clone(), Arc::downgrade(&session));
+        let mut sessions = self.sessions.lock().map_err(|_| storage())?;
+        sessions.retain(|_, session| session.strong_count() != 0);
+        sessions.insert(token.clone(), Arc::downgrade(&session));
         Ok((session, token))
     }
 
-    pub(super) fn attach_raw(&self, token: &ContextToken) -> HostResult<Arc<ControlSession>> {
+    pub(super) fn attach_raw(
+        &self,
+        token: &ContextToken,
+        expected_actor: Option<&Id>,
+    ) -> HostResult<Arc<ControlSession>> {
         let session = self
             .sessions
             .lock()
@@ -428,7 +651,10 @@ impl ConnectionState {
             .get(token)
             .and_then(Weak::upgrade)
             .ok_or_else(unauthenticated)?;
-        if !*session.alive.borrow() || session.raw_attached.swap(true, Ordering::AcqRel) {
+        if expected_actor.is_some_and(|actor| actor != session.actor.id())
+            || !*session.alive.borrow()
+            || session.raw_attached.swap(true, Ordering::AcqRel)
+        {
             return Err(unauthenticated());
         }
         Ok(session)
@@ -442,6 +668,45 @@ impl ConnectionState {
             }
         } else {
             session.raw_attached.store(false, Ordering::Release);
+        }
+    }
+}
+
+async fn send_local_handshake(
+    stream: &mut LocalStream,
+    id: RequestId,
+    channel: IpcChannel,
+    result: HostResult<IpcMessage>,
+) -> HostResult<()> {
+    let frame = match result {
+        Ok(body) => WireFrame {
+            request_id: id,
+            channel,
+            body,
+        },
+        Err(error) => {
+            write_frame(
+                stream,
+                &error_frame(id, channel, error.clone()),
+                MAX_FRAME_BYTES,
+            )
+            .await?;
+            return Err(error);
+        }
+    };
+    write_frame(stream, &frame, MAX_FRAME_BYTES).await
+}
+
+async fn lan_revoked(auth: AuthService, peer: LanPeer, actor_id: Id) {
+    let mut changes = auth.subscribe_changes();
+    loop {
+        let current = auth.clone();
+        let target = peer.clone();
+        let valid = blocking(move || current.authenticate_lan(&target))
+            .await
+            .is_ok_and(|actor| actor.id() == &actor_id);
+        if !valid || changes.changed().await.is_err() {
+            break;
         }
     }
 }
@@ -1686,6 +1951,7 @@ mod tests {
             alive: watch::channel(true).0,
             raw_attached: AtomicBool::new(true),
             client_kind: std::sync::OnceLock::new(),
+            relay: None,
         });
         drop(ConnectionGuard {
             context: f.context,
