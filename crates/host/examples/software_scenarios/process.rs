@@ -113,6 +113,23 @@ impl Processes {
         }
     }
     pub fn start_host(&mut self, binary: &Path, profile: &Path, private: bool) -> Result<usize> {
+        self.spawn_host(binary, profile, private, None)
+    }
+    pub fn start_node_host(
+        &mut self,
+        binary: &Path,
+        profile: &Path,
+        runtime: &Path,
+    ) -> Result<usize> {
+        self.spawn_host(binary, profile, true, Some(runtime))
+    }
+    fn spawn_host(
+        &mut self,
+        binary: &Path,
+        profile: &Path,
+        private: bool,
+        runtime: Option<&Path>,
+    ) -> Result<usize> {
         let index = self.children.len();
         let log = checked(std::fs::File::create(
             self.log_dir.join(format!("host-{index}.log")),
@@ -124,6 +141,9 @@ impl Processes {
         command.arg("--profile").arg(profile);
         if private {
             command.arg("--log-dir").arg(&self.log_dir);
+        }
+        if let Some(runtime) = runtime {
+            command.arg("--node-runtime").arg(runtime);
         }
         command
             .stdin(Stdio::null())

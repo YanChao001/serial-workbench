@@ -6,6 +6,9 @@ on:
       target:
         type: string
         default: all
+      suite:
+        type: string
+        default: all
       conflicting_preflight:
         type: boolean
         default: false
@@ -28,6 +31,7 @@ jobs:
         id: matrix
         env:
           RUNTIME_TARGET: ${{ inputs.target }}
+          RUNTIME_SUITE: ${{ inputs.suite }}
           CONFLICTING_PREFLIGHT: ${{ inputs.conflicting_preflight }}
         run: |
           node --input-type=module <<'NODE'
@@ -43,6 +47,12 @@ jobs:
           const release = loadNodeRuntimeRelease(process.cwd());
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
+          const suite = process.env.RUNTIME_SUITE;
+          if (!['all', 'host-ipc', 'macos-signature', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
+          if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
+          if (suite === 'linux-offline-installer' && requested !== 'x86_64-unknown-linux-gnu') throw new Error('The offline Debian installer suite requires Linux x64');
+          if (suite === 'macos-offline-installer' && !requested.endsWith('-apple-darwin')) throw new Error('The offline disk image suite requires macOS');
           const include = Object.entries(platforms)
             .filter(([target]) => requested === 'all' || requested === target)
             .map(([target, platform]) => {
@@ -56,7 +66,7 @@ jobs:
     name: 运行时预检（${{ matrix.target }}）
     needs: plan
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 25
+    timeout-minutes: ${{ endsWith(inputs.suite, '-offline-installer') && 50 || 25 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -91,10 +101,23 @@ jobs:
           if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
           gpgv --version
       - name: 验签并准备固定原生运行时
+        if: ${{ !endsWith(inputs.suite, '-offline-installer') }}
         run: node scripts/ci-prepare-node-runtime.mjs
-      - name: 构建无界面 runtime 验收入口
-        run: cargo build --locked -p serial-workbench-host --example node_runtime_probe
+      - name: 验证 Debian 实际离线安装与参考包
+        if: inputs.suite == 'linux-offline-installer'
+        run: |
+          bash scripts/ci-linux-deps.sh rust
+          bash scripts/ci-linux-offline-installer.sh
+      - name: 验证 macOS DMG 实际离线安装与参考包
+        if: inputs.suite == 'macos-offline-installer'
+        run: bash scripts/ci-macos-offline-installer.sh
+      - name: 构建运行时探针、CLI 与 MCP
+        if: inputs.suite == 'all'
+        run: >-
+          cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp
+          --example node_runtime_probe --bin serial-workbench-cli --bin serial-workbench-mcp
       - name: 验证原生 runtime 安装布局与故障
+        if: inputs.suite == 'all'
         id: node-runtime
         shell: bash
         run: |
@@ -102,6 +125,35 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           pnpm test:runtime --target "$RUNTIME_TARGET" --resources "$SWB_NODE_RUNTIME_TEST_ROOT" --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/runtime-preflight
           cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
+          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1
+          export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
+          pnpm plugin-sdk:fixture
+          export SWB_TEST_NODE_SDK_FIXTURE="$PWD/.cache/plugin-sdk/examples/native-parity.js"
+          cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
+          if [[ "$RUNNER_OS" == "macOS" ]]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi
+      - name: 定向验证 Host 管道和自动恢复
+        if: inputs.suite == 'host-ipc'
+        shell: bash
+        run: |
+          cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp
+          suffix=""
+          if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
+          export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench-host --lib -- --ignored --test-threads=1 --nocapture \
+            native_node_task_derived_lane_preserves_raw_control_and_capture \
+            native_node_task_raw_lane_bounds_reads_preserves_control_and_capture \
+            restart_automatically_registers_without_replaying_tasks
+      - name: 定向验证 macOS 进程签名
+        if: inputs.suite == 'macos-signature'
+        shell: bash
+        run: |
+          cargo test --locked -p serial-workbench-host --test node_packages \
+            verified_backend_schema_lookup_budget_uses_actual_prepared_fragment_id_keys -- --ignored --test-threads=1 --nocapture
+          cargo build --locked -p serial-workbench-host --example node_runtime_probe
+          pnpm test:runtime --target "$RUNTIME_TARGET" --resources "$SWB_NODE_RUNTIME_TEST_ROOT" --probe src-tauri/target/debug/examples/node_runtime_probe --output artifacts/runtime-preflight
       - name: 保留 runtime 专项收据与签名来源
         if: always()
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
@@ -117,6 +169,11 @@ jobs:
             artifacts/runtime-preflight/**/probe.stdout
             artifacts/runtime-preflight/**/probe.stderr
             artifacts/runtime-preflight/**/probe-io.txt
+            artifacts/offline-installer/*.log
+            artifacts/offline-installer/*.txt
+            artifacts/offline-installer/*.sb
+            artifacts/offline-installer/components.json
+            artifacts/offline-installer/reference-*/signed-*.json
             .cache/node-runtime/layouts/**/runtime-preparation.json
             .cache/node-runtime/layouts/**/node-resigning.json
             .cache/node-runtime/layouts/**/node-sign*.stdout
@@ -126,7 +183,7 @@ jobs:
           if-no-files-found: warn
           retention-days: 7
       - name: 保留 runtime 失败夹具与来源现场
-        if: failure()
+        if: failure() && !endsWith(inputs.suite, '-offline-installer')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: runtime-preflight-failures-${{ matrix.target }}
@@ -134,10 +191,17 @@ jobs:
             artifacts/runtime-preflight
             .cache/node-runtime
             artifacts/rust-failures/node-runtime-*/**
+            artifacts/rust-failures/node-backend-*/**
+            artifacts/rust-failures/host-node-backend-*/**
+            artifacts/rust-failures/host-node-task-derived-*/derived.events
+            artifacts/rust-failures/macos-node-before-auth-*/**
           include-hidden-files: true
           if-no-files-found: ignore
           retention-days: 7
       - name: 标记专项验证范围
         if: always()
         shell: bash
-        run: echo '运行时专项预检只验证固定来源、原生启动与故障，不验证桌面、安装器、离线软件全集或里程碑完整门禁。' >> "$GITHUB_STEP_SUMMARY"
+        env:
+          RUNTIME_SUITE: ${{ inputs.suite }}
+        run: |
+          echo "运行时专项预检套件为 $RUNTIME_SUITE，仅计入已运行的用例。里程碑仍以完整四目标门禁为准。" >> "$GITHUB_STEP_SUMMARY"

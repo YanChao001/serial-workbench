@@ -1,0 +1,36 @@
+:root[data-theme="dark"] {
+  color-scheme: dark;
+}
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+body {
+  margin: 0;
+  background: Canvas;
+  color: CanvasText;
+  font:
+    14px system-ui,
+    sans-serif;
+}
+main {
+  height: 100vh;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+}
+#connection {
+  margin: 0;
+  padding: 8px 12px;
+  border-bottom: 1px solid GrayText;
+}
+#receive {
+  min-height: 0;
+  margin: 0;
+  padding: 12px;
+  overflow: auto;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  unicode-bidi: plaintext;
+}
+#receive:focus-visible {
+  outline-offset: -2px;
+}

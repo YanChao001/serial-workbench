@@ -93,6 +93,10 @@ pub enum ActionResult {
     CaptureVerification(VerificationReport),
     ReplayPosition(ReplayReadResult),
     FileMetadata(FileMetadata),
+    NodePackageInstalled(Box<NodePackageChangeResult>),
+    NodePackageChanged(Box<NodePackageChangeResult>),
+    NodePackageUninstalled(Box<NodePackageUninstallResult>),
+    NodeSourceChanged(Box<NodeSourceChangeResult>),
     FileTransfer(FileTransferResult),
     Settings(SettingsDocumentResult),
     Workspace(WorkspaceDocumentResult),
@@ -175,6 +179,14 @@ pub struct Operation {
     #[schemars(with = "Progress")]
     #[specta(type=Progress, optional)]
     pub progress: Option<Progress>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "WorkerObservation")]
+    #[specta(type=WorkerObservation, optional)]
+    pub worker_observation: Option<WorkerObservation>,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

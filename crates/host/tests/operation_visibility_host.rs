@@ -574,24 +574,19 @@ async fn running_transfer_publishes_committed_progress_before_final_settlement()
             .await
             .unwrap(),
     );
-    let accepted=f.invoke(&f.mcp,f.call(&f.mcp,"transfer.file",session.clone(),json!({"sourceRef":source,"offset":"0","length":"4","chunkBytes":"1","bytesPerSecond":"1000000","interChunkMs":"1000","writeWaitMs":"1000"}))).await;
-    let durable = tokio::time::timeout(Duration::from_secs(2), async {
-        loop {
-            let operation = f.store.get(&f.operator, &accepted.operation_id).unwrap();
-            if operation
-                .progress
-                .as_ref()
-                .is_some_and(|p| p.completed.get() > 0)
-            {
-                break operation;
-            }
-            tokio::time::sleep(Duration::from_millis(2)).await;
-        }
-    })
-    .await
-    .unwrap();
-    assert_eq!(durable.state, OperationState::Running);
-    let visible = tokio::time::timeout(Duration::from_millis(500), async {
+    // 首块立即发送。将第二块留到观察窗口之后，收到首块进度就立即取消。
+    let accepted = f
+        .invoke(
+            &f.mcp,
+            f.call(
+                &f.mcp,
+                "transfer.file",
+                session.clone(),
+                json!({"sourceRef":source,"offset":"0","length":"4","chunkBytes":"1","bytesPerSecond":"1000000","interChunkMs":"10000","writeWaitMs":"1000"}),
+            ),
+        )
+        .await;
+    let visible = tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let frame = f.gui.next_event().await.unwrap().unwrap();
             if let IpcMessage::Delta {
@@ -618,6 +613,7 @@ async fn running_transfer_publishes_committed_progress_before_final_settlement()
         }
     })
     .await;
+    let durable = f.store.get(&f.operator, &accepted.operation_id).unwrap();
     let cancel = f
         .invoke(
             &f.mcp,
@@ -634,6 +630,8 @@ async fn running_transfer_publishes_committed_progress_before_final_settlement()
     f.finish().await;
     let visible = visible
         .expect("a committed intermediate progress update must arrive while the owner is running");
+    assert_eq!(durable.state, OperationState::Running);
+    assert_eq!(durable.progress.unwrap().completed.get(), 1);
     assert_eq!(visible["progress"]["total"], "4");
     assert_eq!(visible["progress"]["unit"], "bytes");
     assert_eq!(done.state, OperationState::Cancelled);

@@ -1,10 +1,15 @@
 //! Host 只读取同套应用资源；校验失败不会启动另一份 Node 或改变 Rust 基础服务。
+mod child;
+mod launch;
 #[cfg(target_os = "linux")]
 mod linux_image;
 mod locator;
 #[cfg(target_os = "macos")]
 mod macos_image;
+#[cfg(target_os = "macos")]
+mod macos_supervisor;
 mod probe;
+pub(crate) use child::RuntimeChild;
 pub use locator::{installed_node_resource_root, resource_root_for_executable};
 pub use probe::{NodeRuntimeProbeDiagnostics, NodeRuntimeProbeReport};
 use serial_workbench_core::{

@@ -31,6 +31,7 @@ import { checkVersions } from "./version.mjs";
 import { fileSha256 } from "./artifact-lib.mjs";
 import {
   buildNodeRuntime,
+  preserveDebianRuntimeLink,
   runtimeBundleConfig,
 } from "./node-runtime-build.mjs";
 import { stageNodeRuntime } from "./node-runtime-layout.mjs";
@@ -610,7 +611,13 @@ export async function bundleApplication(plan, built, consume) {
     plan,
     built,
     () => runTauri(plan, "bundle", plan.bundleArgs),
-    consume,
+    (entries) => {
+      for (const entry of entries) {
+        if (plan.platform === "linux" && extname(entry.path) === ".deb")
+          preserveDebianRuntimeLink(plan, built.runtime, entry.source);
+      }
+      return consume(entries);
+    },
   );
 }
 

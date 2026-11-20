@@ -11,7 +11,8 @@ use std::{
     fmt,
     fs::{self, File, Metadata},
     io::{Cursor, Read},
-    path::{Path, PathBuf},
+    path::Path,
+    sync::Arc,
     time::Instant,
 };
 use zip::ZipArchive;
@@ -19,12 +20,29 @@ use zip::ZipArchive;
 pub struct VerifiedNodeInstallation {
     package: InstalledNodePackage,
     revision: U64,
-    code_directory: PathBuf,
+    code: Arc<PathGuard>,
+    ui_assets: Option<Arc<super::ui_assets::VerifiedUiAssets>>,
+    #[cfg(windows)]
     _directories: Vec<PathGuard>,
     #[cfg(windows)]
     _files: Vec<File>,
 }
 impl VerifiedNodeInstallation {
+    pub(crate) fn bind_enabled(
+        mut self,
+        package: &InstalledNodePackage,
+        revision: U64,
+    ) -> HostResult<Self> {
+        let mut expected = self.package.clone();
+        expected.enabled = package.enabled;
+        expected.activation_authority = package.activation_authority.clone();
+        if expected != *package {
+            return Err(integrity("installedPreferenceBinding"));
+        }
+        self.package = package.clone();
+        self.revision = revision;
+        Ok(self)
+    }
     pub fn package(&self) -> &InstalledNodePackage {
         &self.package
     }
@@ -32,7 +50,10 @@ impl VerifiedNodeInstallation {
         self.revision
     }
     pub fn code_directory(&self) -> &Path {
-        &self.code_directory
+        self.code.checked_path()
+    }
+    pub(crate) fn ui_assets(&self) -> Option<Arc<super::ui_assets::VerifiedUiAssets>> {
+        self.ui_assets.clone()
     }
 }
 impl fmt::Debug for VerifiedNodeInstallation {
@@ -117,13 +138,13 @@ pub(super) fn verify_contents(
     }
     let expected = expected_tree(&verified, control)?;
     let objects = open_directory(&root, "objects")?;
-    let code = open_directory(&objects, &object_id.to_string())?;
-    let code_directory = code.checked_path().to_path_buf();
+    let code = Arc::new(open_directory(&objects, &object_id.to_string())?);
     let mut check = TreeCheck {
         expected,
         paths: PackagePaths::default(),
         limits,
         control,
+        ui_index: super::ui_assets::UiAssetIndex::from_archive(&verified),
         #[cfg(windows)]
         files: Vec::new(),
         #[cfg(windows)]
@@ -134,19 +155,20 @@ pub(super) fn verify_contents(
         return Err(integrity("missingInstalledEntry"));
     }
     control.check()?;
+    let ui_assets = check
+        .ui_index
+        .map(|index| Arc::new(index.seal(code.clone())));
     #[cfg(windows)]
     let directories = {
-        check
-            .directories
-            .extend([root, staging, stage, objects, code]);
+        check.directories.extend([root, staging, stage, objects]);
         check.directories
     };
-    #[cfg(unix)]
-    let directories = vec![code];
     Ok(VerifiedNodeInstallation {
         package,
         revision,
-        code_directory,
+        code,
+        ui_assets,
+        #[cfg(windows)]
         _directories: directories,
         #[cfg(windows)]
         _files: check.files,
@@ -234,6 +256,7 @@ struct TreeCheck<'a, 'b> {
     paths: PackagePaths,
     limits: &'a NodePackageLimits,
     control: &'a Control<'b>,
+    ui_index: Option<super::ui_assets::UiAssetIndex>,
     #[cfg(windows)]
     files: Vec<File>,
     #[cfg(windows)]
@@ -294,7 +317,7 @@ impl TreeCheck<'_, '_> {
                     let mut file = child
                         .open_pinned_file()
                         .map_err(|_| integrity("installedFile"))?;
-                    self.file(&mut file, &expected)?;
+                    self.file(&mut file, &expected, &path)?;
                     #[cfg(windows)]
                     self.files.push(file);
                 }
@@ -309,7 +332,7 @@ impl TreeCheck<'_, '_> {
         Ok(())
     }
 
-    fn file(&self, file: &mut File, expected: &ExpectedFile) -> HostResult<()> {
+    fn file(&mut self, file: &mut File, expected: &ExpectedFile, path: &str) -> HostResult<()> {
         let metadata = file
             .metadata()
             .map_err(|_| integrity("installedMetadata"))?;
@@ -327,30 +350,39 @@ impl TreeCheck<'_, '_> {
             }
         }
         let mut hash = Sha256::new();
-        let mut size = 0_u64;
-        let mut buffer = [0_u8; 64 * 1024];
-        loop {
+        let mut remaining = expected.size;
+        let mut buffer = [0_u8; serial_workbench_core::NODE_VIEW_ASSET_CHUNK_BYTES];
+        let mut index = self
+            .ui_index
+            .as_mut()
+            .and_then(|ui| ui.chunks(&path_key(path)));
+        while remaining > 0 {
             self.control.check()?;
-            let read = file
-                .read(&mut buffer)
+            let size = remaining.min(buffer.len() as u64) as usize;
+            let chunk = &mut buffer[..size];
+            file.read_exact(chunk)
                 .map_err(|_| integrity("installedFile"))?;
-            if read == 0 {
-                break;
+            hash.update(&*chunk);
+            if let Some(chunks) = index.as_mut() {
+                chunks.push(Sha256::digest(chunk).into());
             }
-            size += read as u64;
-            if size > expected.size {
-                return Err(integrity("installedFileSize"));
-            }
-            hash.update(&buffer[..read]);
+            remaining -= size as u64;
         }
-        if size != expected.size || format!("{:x}", hash.finalize()) != expected.sha256 {
+        if file
+            .read(&mut buffer[..1])
+            .map_err(|_| integrity("installedFile"))?
+            != 0
+        {
+            return Err(integrity("installedFileSize"));
+        }
+        if format!("{:x}", hash.finalize()) != expected.sha256 {
             return Err(integrity("installedFileDigest"));
         }
         Ok(())
     }
 }
 
-fn open_directory(parent: &PathGuard, name: &str) -> HostResult<PathGuard> {
+pub(super) fn open_directory(parent: &PathGuard, name: &str) -> HostResult<PathGuard> {
     let mut child = parent
         .child(name)
         .map_err(|_| integrity("installedDirectory"))?;
@@ -369,7 +401,7 @@ fn is_link(metadata: &Metadata) -> bool {
     }
     metadata.file_type().is_symlink()
 }
-fn link_count(file: &File, metadata: &Metadata) -> HostResult<u64> {
+pub(super) fn link_count(file: &File, metadata: &Metadata) -> HostResult<u64> {
     #[cfg(unix)]
     {
         use std::os::unix::fs::MetadataExt;
@@ -390,7 +422,7 @@ fn link_count(file: &File, metadata: &Metadata) -> HostResult<u64> {
         Ok(u64::from(info.nNumberOfLinks))
     }
 }
-fn path_key(path: &str) -> String {
+pub(super) fn path_key(path: &str) -> String {
     #[cfg(target_os = "macos")]
     {
         use unicode_normalization::UnicodeNormalization;
@@ -402,6 +434,6 @@ fn path_key(path: &str) -> String {
         path.to_owned()
     }
 }
-fn integrity(reason: &str) -> serial_workbench_core::HostError {
+pub(super) fn integrity(reason: &str) -> serial_workbench_core::HostError {
     failure("INTEGRITY_FAILED", reason)
 }

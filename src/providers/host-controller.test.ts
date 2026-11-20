@@ -1,6 +1,7 @@
 import { expect, it, vi } from "vitest";
 import { parseReply } from "@serial-workbench/contracts";
 import type {
+  ActionSpec,
   DeviceDescriptor,
   FileTransferReceiptsResult,
   ObjectRef,
@@ -9,6 +10,8 @@ import type {
 import { createHostConnection, type HostNativePort } from "@/lib/host-client";
 import { createHostWorkspace } from "./host-controller";
 import fixtures from "../../packages/contracts/src/generated/fixtures.json";
+import catalog from "../../packages/contracts/src/generated/catalog.json";
+import { validateActionSpec } from "../../packages/contracts/src/generated/validators.mjs";
 
 function fixture(schema: string): unknown {
   const found = fixtures.valid.find((value) => value.schema === schema);
@@ -133,6 +136,92 @@ function requestedActions(native: HostNativePort) {
         : request.method,
     );
 }
+
+it("updates a signed plugin action after reactivation on the same desktop attachment", async () => {
+  const viewAction = catalog.actions.find(
+    (item) => item.actionId === "session.tx",
+  );
+  const action = { ...viewAction, actionId: "swb.reference.terminal.open" };
+  if (!validateActionSpec(action)) throw new Error("Invalid action fixture");
+  let items: ActionSpec[] = [];
+  let holdRead:
+    | {
+        started: ReturnType<typeof deferred>;
+        reply: ReturnType<typeof deferred>;
+      }
+    | undefined;
+  let notify: ((generation: string) => void) | undefined;
+  const stop = vi.fn();
+  const native = {
+    ...port(() => []),
+    onCatalogChanged: vi.fn(async (listener: (generation: string) => void) => {
+      notify = listener;
+      return stop;
+    }),
+  };
+  const original = vi.mocked(native.request).getMockImplementation();
+  if (!original) throw new Error("Missing Native request fixture");
+  vi.mocked(native.request).mockImplementation(async (request, generation) => {
+    if (
+      request.method === "action.query" &&
+      request.params.actionId === "catalog.list"
+    ) {
+      const captured = items;
+      const held = holdRead;
+      holdRead = undefined;
+      if (held) {
+        held.started.release();
+        await held.reply.promise;
+      }
+      return {
+        ok: true,
+        result: {
+          kind: "catalog",
+          value: { catalogVersion: "2", items: captured },
+        },
+      };
+    }
+    return original(request, generation);
+  });
+  const workspace = createHostWorkspace(await createHostConnection(native));
+  const visible = () =>
+    workspace.getSnapshot().state.catalog.map((item) => item.actionId);
+  const publish = (next: ActionSpec[]) => {
+    items = next;
+    notify?.("8");
+  };
+  const snapshots: string[][] = [];
+  workspace.subscribe(() => snapshots.push(visible()));
+  const held = { started: deferred(), reply: deferred() };
+  try {
+    await workspace.refresh();
+    expect(visible()).toEqual([]);
+    publish([action]);
+    await vi.waitFor(() => expect(visible()).toEqual([action.actionId]));
+    publish([]);
+    await vi.waitFor(() => expect(visible()).toEqual([]));
+
+    items = [action];
+    const requests = vi.mocked(native.request).mock.calls.length;
+    notify?.("7");
+    await Promise.resolve();
+    expect(native.request).toHaveBeenCalledTimes(requests);
+
+    const obsolete = { ...action, actionId: "swb.reference.previous.open" };
+    holdRead = held;
+    publish([obsolete]);
+    await held.started.promise;
+    publish([action]);
+    held.reply.release();
+    await vi.waitFor(() => expect(visible()).toEqual([action.actionId]));
+    expect(snapshots.flat()).not.toContain(obsolete.actionId);
+    expect(native.attachment).toHaveBeenCalledTimes(1);
+  } finally {
+    held.reply.release();
+    workspace.dispose();
+  }
+  expect(stop).toHaveBeenCalledOnce();
+});
 
 it("enumerates devices only for an explicit refresh option without opening or authorizing one", async () => {
   let devices: DeviceDescriptor[] = [];

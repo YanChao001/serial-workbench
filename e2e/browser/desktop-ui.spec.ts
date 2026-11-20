@@ -1451,11 +1451,16 @@ for (const theme of ["light", "dark"] as const) {
     await expect(settings).toHaveAttribute("aria-current", "page");
     await expect(settings).toHaveText("Settings");
     await expect(settings.locator("svg")).toHaveCount(1);
-    await expect(navigation.getByRole("link")).toHaveCount(1);
+    await expect(navigation.getByRole("link")).toHaveCount(2);
+    await expect(
+      navigation.getByRole("link", { name: "Serial Workbench", exact: true }),
+    ).toHaveAttribute("href", "#/");
+    await expect(
+      navigation
+        .getByRole("group", { name: "System", exact: true })
+        .getByRole("link", { name: "Plugins", exact: true }),
+    ).toHaveAttribute("href", "#/plugins");
     await expect(navigation.locator('a[href="#/settings"]')).toHaveCount(0);
-    await expect(navigation.getByText("System", { exact: true })).toHaveCount(
-      0,
-    );
     await expect(footer.getByRole("button")).toHaveCount(0);
     await expect(
       page.locator(".app-title-bar").getByRole("combobox", {

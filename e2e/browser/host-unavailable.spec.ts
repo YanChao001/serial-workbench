@@ -1,8 +1,8 @@
 ﻿/// <reference lib="dom" />
+import { defaults } from "./json-fixtures";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
 import type { WorkspaceDocument } from "@serial-workbench/contracts";
 import { validateSerialConfiguration } from "../../packages/contracts/src/generated/validators.mjs";
 import { seedWorkbenchFixture } from "./workbench.fixture";

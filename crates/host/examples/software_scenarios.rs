@@ -15,6 +15,13 @@ mod fault_transport;
 mod formal;
 #[path = "software_scenarios/load.rs"]
 mod load;
+#[path = "software_scenarios/node_load.rs"]
+mod node_load;
+#[path = "../tests/support/node_owner_exit.rs"]
+#[allow(dead_code)]
+mod node_owner_exit;
+#[path = "../tests/support/node_package.rs"]
+mod node_package;
 #[path = "software_scenarios/process.rs"]
 mod process;
 #[path = "software_scenarios/runner.rs"]

@@ -2,6 +2,8 @@
 mod client_effects;
 mod connect_device;
 pub(crate) mod document_intents;
+pub(crate) use document_intents::document_request_id as local_request_id;
+pub(crate) mod node_intents;
 mod pending_frames;
 mod platform_effects;
 mod read_requests;
@@ -155,6 +157,10 @@ pub(crate) struct DesktopAttachment {
     pub(crate) generation: serial_workbench_core::U64,
 }
 
+type CatalogNotifier = std::sync::Arc<
+    dyn Fn(&str, serial_workbench_core::U64, serial_workbench_core::U64) + Send + Sync,
+>;
+
 #[derive(Clone)]
 pub(crate) struct DesktopHostBridge {
     profile: std::path::PathBuf,
@@ -162,6 +168,7 @@ pub(crate) struct DesktopHostBridge {
     initialization: std::sync::Arc<tokio::sync::Mutex<()>>,
     instances: std::sync::Arc<std::sync::Mutex<WindowInstances>>,
     delivery_limits: (usize, usize),
+    catalog_notifier: Option<CatalogNotifier>,
 }
 
 #[derive(Default)]
@@ -170,6 +177,11 @@ struct BridgeState {
     windows: HashMap<String, BridgeWindow>,
     ledgers: HashMap<String, (u64, std::sync::Arc<std::sync::Mutex<DeliveryLedger>>)>,
 }
+
+pub(crate) struct CurrentGeneration {
+    state: tokio::sync::OwnedMutexGuard<BridgeState>,
+}
+
 #[derive(Default)]
 struct WindowInstances {
     next: u64,
@@ -229,6 +241,7 @@ impl WindowInstances {
 struct BridgeWindow {
     instance: u64,
     generation: u64,
+    view_generation_end: tokio::sync::watch::Sender<()>,
     client: std::sync::Arc<serial_workbench_client::HostClient>,
     control: std::sync::Arc<serial_workbench_client::HostClient>,
     raw: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<RawLink>>>>,
@@ -512,6 +525,10 @@ impl DesktopHostBridge {
         if let Some(previous) =
             self.replace_document(window.label(), native_window_identity(window))
         {
+            let owner = window.label().to_owned();
+            let _ = window.app_handle().run_on_main_thread(move || {
+                crate::node_view::close_owned_views(&owner, Some(previous))
+            });
             if let Some(tickets) = window
                 .app_handle()
                 .try_state::<crate::media_protocol::MediaTickets>()
@@ -1286,11 +1303,57 @@ impl DesktopHostBridge {
         generation: serial_workbench_core::U64,
         request: serial_workbench_core::RpcRequest,
     ) -> HostResult<serial_workbench_core::RpcReply> {
+        let client = self.business_connection(window, generation).await?;
+        let result = client.request(request).await;
+        self.attachment_at_generation(window, generation)
+            .await
+            .map_err(|_| {
+                HostError::new(
+                    "EPOCH_MISMATCH",
+                    "Window Host connection changed; the request may have completed",
+                )
+            })?;
+        result
+    }
+
+    pub(crate) async fn connect_node_view_raw(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
+    ) -> HostResult<(
+        serial_workbench_client::RawConnection,
+        serial_workbench_client::HostClient,
+    )> {
+        let client = self.business_connection(window, generation).await?;
+        // Each Control connection owns one Raw lane. A terminal view releases
+        // its own lane on close without interrupting the workbench reader.
+        let view_client = client.reconnect().await?;
+        let expected = client.attachment();
+        let actual = view_client.attachment();
+        if actual.host_id != expected.host_id
+            || actual.instance_epoch != expected.instance_epoch
+            || actual.actor_id != expected.actor_id
+        {
+            return Err(HostError::new(
+                "EPOCH_MISMATCH",
+                "View Host connection changed",
+            ));
+        }
+        let connection = view_client.connect_raw().await?;
+        self.attachment_at_generation(window, generation).await?;
+        Ok((connection, view_client))
+    }
+
+    async fn business_connection(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
+    ) -> HostResult<std::sync::Arc<serial_workbench_client::HostClient>> {
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
-        let client = {
+        {
             let state = self.inner.lock().await;
-            state
+            Ok(state
                 .windows
                 .get(window)
                 .filter(|connected| {
@@ -1303,24 +1366,8 @@ impl DesktopHostBridge {
                 })
                 .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?
                 .client
-                .clone()
-        };
-        let result = client.request(request).await;
-        let state = self.inner.lock().await;
-        if !state.windows.get(window).is_some_and(|connected| {
-            connected.generation == generation.get()
-                && self
-                    .instances
-                    .lock()
-                    .expect("window instances")
-                    .current(window, connected.instance)
-        }) {
-            return Err(HostError::new(
-                "EPOCH_MISMATCH",
-                "Window Host connection changed; the request may have completed",
-            ));
+                .clone())
         }
-        result
     }
     #[cfg(test)]
     async fn destroy_window(&self, window: &str, generation: serial_workbench_core::U64) {
@@ -1340,7 +1387,18 @@ impl DesktopHostBridge {
             initialization: std::sync::Arc::new(tokio::sync::Mutex::new(())),
             instances: std::sync::Arc::new(std::sync::Mutex::new(WindowInstances::new())),
             delivery_limits: (256, 4 * 1024 * 1024),
+            catalog_notifier: None,
         }
+    }
+    pub(crate) fn with_catalog_notifier(
+        mut self,
+        notify: impl Fn(&str, serial_workbench_core::U64, serial_workbench_core::U64)
+        + Send
+        + Sync
+        + 'static,
+    ) -> Self {
+        self.catalog_notifier = Some(std::sync::Arc::new(notify));
+        self
     }
     #[cfg(test)]
     pub(crate) async fn attach(&self, window: &str) -> HostResult<DesktopAttachment> {
@@ -1493,6 +1551,8 @@ impl DesktopHostBridge {
         let source = client.clone();
         let owner = std::sync::Arc::downgrade(&self.inner);
         let owner_label = window.to_owned();
+        let instances = self.instances.clone();
+        let notify_catalog = self.catalog_notifier.clone();
         let pump = tokio::spawn(async move {
             let stopped = loop {
                 let frame = match source.next_event().await {
@@ -1508,6 +1568,18 @@ impl DesktopHostBridge {
                         subscription_id,
                         ..
                     } => subscription_id,
+                    serial_workbench_core::IpcMessage::CatalogChanged {
+                        catalog_version, ..
+                    } if frame.channel == serial_workbench_core::IpcChannel::Control => {
+                        let current = instances
+                            .lock()
+                            .expect("window instances")
+                            .current(&owner_label, instance);
+                        if current && let Some(notify) = &notify_catalog {
+                            notify(&owner_label, generation.into(), *catalog_version);
+                        }
+                        continue;
+                    }
                     _ => continue,
                 };
                 let id = id.clone();
@@ -1581,6 +1653,7 @@ impl DesktopHostBridge {
             BridgeWindow {
                 instance,
                 generation,
+                view_generation_end: tokio::sync::watch::channel(()).0,
                 client,
                 control,
                 raw: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
@@ -1661,9 +1734,19 @@ impl DesktopHostBridge {
         generation: serial_workbench_core::U64,
         apply: impl FnOnce() -> HostResult<T>,
     ) -> HostResult<T> {
+        let _current = self.lock_current_generation(window, generation).await?;
+        apply()
+    }
+
+    /// Protect a final, synchronous effect against removal of its Host connection.
+    pub(crate) async fn lock_current_generation(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
+    ) -> HostResult<CurrentGeneration> {
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
-        let state = self.inner.lock().await;
+        let state = self.inner.clone().lock_owned().await;
         if !state.windows.get(window).is_some_and(|connected| {
             connected.generation == generation.get()
                 && self
@@ -1677,7 +1760,19 @@ impl DesktopHostBridge {
                 "Window Host connection changed",
             ));
         }
-        apply()
+        Ok(CurrentGeneration { state })
+    }
+
+    pub(crate) async fn watch_view_generation_end(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
+    ) -> HostResult<tokio::sync::watch::Receiver<()>> {
+        let current = self.lock_current_generation(window, generation).await?;
+        // 连接被移除时发送端随该代连接销毁，已打开的视图不再依赖页面轮询。
+        Ok(current.state.windows[window]
+            .view_generation_end
+            .subscribe())
     }
     #[cfg(test)]
     async fn subscribe(

@@ -1,4 +1,7 @@
 #![allow(dead_code)]
+pub mod node_host_actions;
+pub mod node_owner_exit;
+pub mod node_package;
 use serial_workbench_core::*;
 use serial_workbench_host::{
     Host,
@@ -14,6 +17,16 @@ use std::{
     },
     time::Duration,
 };
+
+// Node 夹具先写临时文件，保证按存在性等待的接收方读到完整内容。
+// 调用方从 node:fs 导入 writeFileSync 和 renameSync。
+pub const PUBLISH_MARKER_JS: &str = r#"
+function publishMarker(path, contents) {
+  const pending = path + '.tmp';
+  writeFileSync(pending, contents);
+  renameSync(pending, path);
+}
+"#;
 
 pub fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
@@ -112,8 +125,10 @@ impl Profile {
 }
 impl Drop for Profile {
     fn drop(&mut self) {
-        if std::thread::panicking() {
-            let path = self.0.take().unwrap().keep();
+        if std::thread::panicking()
+            && let Some(dir) = self.0.take()
+        {
+            let path = dir.keep();
             eprintln!("host_test_failed_profile={}", path.display());
         }
     }
@@ -142,6 +157,20 @@ impl Harness {
         Self::in_profile(dir).await
     }
     pub async fn in_profile(dir: tempfile::TempDir) -> Self {
+        Self::in_profile_with_node(dir, None).await
+    }
+    pub async fn with_node_runtime(
+        node: serial_workbench_host::node_runtime::VerifiedNodeRuntime,
+    ) -> Self {
+        let mut profile = Profile::isolated("host-node-backend-");
+        Self::in_profile_with_node(profile.0.take().unwrap(), Some(node)).await
+    }
+    async fn in_profile_with_node(
+        dir: tempfile::TempDir,
+        node: Option<serial_workbench_host::node_runtime::VerifiedNodeRuntime>,
+    ) -> Self {
+        // 初始化失败也由同一owner保留现场，转交出去的外壳不再重复消费目录。
+        let dir = Profile(Some(dir));
         let clock = Arc::new(ManualClock(AtomicU64::new(0)));
         let store = Store::open_with_clock(dir.path(), clock.clone()).unwrap();
         let identity = store.begin_instance().unwrap();
@@ -181,11 +210,22 @@ impl Harness {
                 closed: false,
             }))
         });
-        let host = Host::with_runtime(store.clone(), auth.clone(), clock.clone(), opener)
-            .await
-            .unwrap();
+        let host = match node {
+            Some(node) => {
+                Host::with_verified_node_runtime(
+                    store.clone(),
+                    auth.clone(),
+                    clock.clone(),
+                    opener,
+                    node,
+                )
+                .await
+            }
+            None => Host::with_runtime(store.clone(), auth.clone(), clock.clone(), opener).await,
+        }
+        .unwrap();
         Self {
-            dir: Profile(Some(dir)),
+            dir,
             store,
             auth,
             actor,
@@ -261,17 +301,29 @@ impl Harness {
         self.host.invoke(&self.actor, call).await.unwrap()
     }
     pub async fn wait(&self, id: &Id) -> Operation {
+        self.wait_as(&self.actor, id).await
+    }
+    pub async fn wait_as(&self, actor: &AuthenticatedActor, id: &Id) -> Operation {
+        self.wait_for_operation(actor, id, |operation| terminal(operation.state))
+            .await
+    }
+    pub async fn wait_for_operation(
+        &self,
+        actor: &AuthenticatedActor,
+        id: &Id,
+        ready: impl Fn(&Operation) -> bool,
+    ) -> Operation {
         let mut last = None;
         let result = tokio::time::timeout(Duration::from_secs(5), async {
             loop {
                 let store = self.store.clone();
-                let actor = self.actor.clone();
+                let actor = actor.clone();
                 let id = id.clone();
                 let operation = tokio::task::spawn_blocking(move || store.get(&actor, &id))
                     .await
                     .unwrap()
                     .unwrap();
-                if terminal(operation.state) {
+                if ready(&operation) {
                     return operation;
                 }
                 last = Some(operation);
@@ -292,16 +344,18 @@ impl Harness {
                 serde_json::json!({
                     "state": operation.state,
                     "revision": operation.revision,
+                    "progress": operation.progress,
                     "error": operation.error,
                     "transfer": transfer,
                 })
             });
             eprintln!(
-                "host_test_wait_timeout operation={id} profile={} last={last:?} writes={} remaining_steps={} clock_ns={}",
+                "host_test_wait_timeout operation={id} profile={} last={last:?} writes={} remaining_steps={} clock_ns={} file_read_bytes={}",
                 self.dir.path().display(),
                 self.probe.writes.lock().unwrap().len(),
                 self.probe.steps.lock().unwrap().len(),
                 self.clock.mono_ns(),
+                self.host.files().file_read_bytes(),
             );
         }
         result.unwrap()

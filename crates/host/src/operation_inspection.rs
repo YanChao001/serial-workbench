@@ -68,7 +68,11 @@ impl Host {
         let auth = self.inner.auth.clone();
         let files = self.inner.files.clone();
         let reader = actor.clone();
+        let store = self.inner.store.clone();
         blocking(move || {
+            if operation.owner.kind == OwnerKind::Plugin {
+                store.plugin_operation(&operation.operation_id)?;
+            }
             if let Some(source) = &source {
                 auth.require(&reader, "metadata.read", source)?;
                 auth.require(&reader, "content.read", source)?;
@@ -89,15 +93,20 @@ impl Host {
                     reason: OperationInputRedaction::UnsupportedAction,
                 }
             };
-            if let Some(error) = operation.error.as_mut() {
-                error.details = None;
-            }
+            redact_error_details(&mut operation);
             if let Some(stamp) = &stamp {
                 auth.validate_grants(stamp)?;
             }
             Ok((operation, input))
         })
         .await
+    }
+}
+
+pub(super) fn redact_error_details(operation: &mut Operation) {
+    // 查询和同键重放保持同一公开投影，持久证据中的私有诊断仍保留。
+    if let Some(error) = operation.error.as_mut() {
+        error.details = None;
     }
 }
 
@@ -124,6 +133,13 @@ fn authorize_inspection(
         })
     };
     match action {
+        "node.packages.install" => {
+            auth.require(actor, "metadata.read", &operation.target)?;
+            if include_input {
+                let input: NodePackageInstallParams = decode(stored()?)?;
+                files.require_inspection_reference(&input.archive_ref, actor, "content.read")?;
+            }
+        }
         "capture.start" => {
             let input: CaptureStartParams = decode(stored()?)?;
             file_read(&input.target_ref)?;
@@ -198,7 +214,7 @@ fn authorize_inspection(
         Some(ActionResult::Reference(value))
             if matches!(
                 value.result_ref.kind.as_str(),
-                "file" | "capture" | "capture_record"
+                "file" | "capture" | "capture_record" | "plugin_result"
             ) =>
         {
             file_read(&value.result_ref)?

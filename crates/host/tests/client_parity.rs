@@ -5,7 +5,14 @@ use serial_workbench_client::{ConnectOptions, HostClient};
 use serial_workbench_core::*;
 use serial_workbench_host::{Host, ipc::HostServer};
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
-use tokio::{io::AsyncReadExt, process::Command, sync::oneshot, time::timeout};
+use tokio::{process::Command, sync::oneshot, time::timeout};
+
+#[path = "support/parity_clients.rs"]
+mod parity_clients;
+use parity_clients::{Cli, binary, drain, structured, tool};
+
+#[path = "client_parity/node_plugins.rs"]
+mod node_plugins;
 
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
@@ -13,26 +20,6 @@ fn id(value: &str) -> Id {
 
 fn request_id() -> RequestId {
     RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap()
-}
-
-fn binary(variable: &str, name: &str) -> PathBuf {
-    let path = std::env::var_os(variable)
-        .map(PathBuf::from)
-        .unwrap_or_else(|| {
-            std::env::current_exe()
-                .unwrap()
-                .parent()
-                .expect("test executable directory")
-                .parent()
-                .expect("target profile directory")
-                .join(format!("{name}{}", std::env::consts::EXE_SUFFIX))
-        });
-    path.canonicalize().ok().filter(|path| path.is_file()).unwrap_or_else(|| {
-        panic!(
-            "Missing test binary {} ({variable}); from the workspace root first run: cargo build --locked -p serial-workbench-cli -p serial-workbench-mcp",
-            path.display()
-        )
-    })
 }
 
 fn query(client: &HostClient, action: &str, target: &Target, params: Value) -> Query {
@@ -70,96 +57,9 @@ fn query_result(result: RpcResult) -> QueryResult {
     }
 }
 
-async fn drain(mut stream: impl tokio::io::AsyncRead + Unpin) -> std::io::Result<Vec<u8>> {
-    let mut retained = Vec::new();
-    let mut buffer = [0; 4096];
-    loop {
-        let count = stream.read(&mut buffer).await?;
-        if count == 0 {
-            return Ok(retained);
-        }
-        // Continue draining after the diagnostic cap so the child cannot block on stderr.
-        let keep = count.min((1024 * 1024_usize).saturating_sub(retained.len()));
-        retained.extend_from_slice(&buffer[..keep]);
-    }
-}
-
-struct Cli {
-    binary: PathBuf,
-    profile: PathBuf,
-}
-
 impl Cli {
-    async fn json(&self, args: &[&str]) -> Value {
-        let mut command = Command::new(&self.binary);
-        #[cfg(windows)]
-        command.creation_flags(0x0800_0000);
-        command
-            .args(args)
-            .arg("--profile")
-            .arg(&self.profile)
-            .stdin(Stdio::null())
-            .stdout(Stdio::piped())
-            .stderr(Stdio::piped())
-            .kill_on_drop(true);
-        let mut child = command.spawn().expect("spawn real CLI");
-        let mut stdout = tokio::spawn(drain(child.stdout.take().unwrap()));
-        let mut stderr = tokio::spawn(drain(child.stderr.take().unwrap()));
-        let status = timeout(Duration::from_secs(10), child.wait()).await;
-        if !matches!(&status, Ok(Ok(_))) {
-            let _ = child.kill().await;
-            let _ = child.wait().await;
-        }
-        let output = timeout(Duration::from_secs(3), &mut stdout).await;
-        let errors = timeout(Duration::from_secs(3), &mut stderr).await;
-        if output.is_err() {
-            stdout.abort();
-            let _ = stdout.await;
-        }
-        if errors.is_err() {
-            stderr.abort();
-            let _ = stderr.await;
-        }
-        let output = output.expect("CLI stdout drain timeout").unwrap().unwrap();
-        let errors = errors.expect("CLI stderr drain timeout").unwrap().unwrap();
-        let status = status
-            .expect("CLI timeout (child killed and reaped)")
-            .unwrap();
-        assert!(
-            status.success(),
-            "CLI {args:?}: stdout={} stderr={}",
-            String::from_utf8_lossy(&output),
-            String::from_utf8_lossy(&errors)
-        );
-        assert!(
-            errors.is_empty(),
-            "CLI stderr={}",
-            String::from_utf8_lossy(&errors)
-        );
-        serde_json::from_slice(&output).expect("CLI stdout must be one JSON value")
-    }
-
-    fn file(&self, name: &str, value: &impl serde::Serialize) -> PathBuf {
-        let path = self.profile.join(name);
-        std::fs::write(&path, serde_json::to_vec(value).unwrap()).unwrap();
-        path
-    }
-
     async fn query(&self, action: &str, target: &Target, params: Value) -> QueryResult {
-        let target = self.file("query-target.json", target);
-        let params = self.file("query-params.json", &params);
-        let reply = self
-            .json(&[
-                "query",
-                action,
-                "--target-json",
-                target.to_str().unwrap(),
-                "--params-json",
-                params.to_str().unwrap(),
-                "--json",
-            ])
-            .await;
-        query_result(success(serde_json::from_value(reply).unwrap()))
+        query_result(success(self.query_reply(action, target, &params).await))
     }
 
     async fn invoke(
@@ -228,35 +128,6 @@ impl Cli {
         .await
         .expect("CLI operation did not finish")
     }
-}
-
-async fn tool(
-    peer: &rmcp::Peer<rmcp::RoleClient>,
-    name: &str,
-    target: &Target,
-    params: Value,
-) -> rmcp::model::CallToolResult {
-    peer.call_tool(
-        CallToolRequestParams::new(name.to_owned()).with_arguments(
-            json!({"target":target,"params":params})
-                .as_object()
-                .unwrap()
-                .clone(),
-        ),
-    )
-    .await
-    .expect("official SDK call_tool")
-}
-
-fn structured(result: rmcp::model::CallToolResult) -> Value {
-    assert_ne!(
-        result.is_error,
-        Some(true),
-        "MCP business error: {result:?}"
-    );
-    result
-        .structured_content
-        .expect("MCP structured domain result")
 }
 
 fn rx_bytes(events: &[RawEvent]) -> Vec<u8> {
@@ -539,6 +410,47 @@ async fn cli_client_and_official_mcp_share_virtual_session_events_and_receipt() 
             mcp_read, direct_read,
             "official MCP SDK independent raw connection"
         );
+        let derived_params = json!({
+            "operationId":tx.operation_id,"after":"0","maxSamples":"1","maxBytes":"16384"
+        });
+        let cli_derived = cli
+            .query_reply("stream.derivedRead", &session, &derived_params)
+            .await;
+        let RpcReply::Failure {
+            error: cli_error, ..
+        } = cli_derived
+        else {
+            panic!("Derived read must report an unpublished stream");
+        };
+        assert_eq!(cli_error.code, "NOT_FOUND");
+        let mcp_derived = tool(
+            &peer,
+            "swb_stream_x2E_derivedRead",
+            &session,
+            derived_params,
+        )
+        .await;
+        assert_eq!(mcp_derived.is_error, Some(true));
+        let mcp_error: HostError =
+            serde_json::from_str(&mcp_derived.content[0].as_text().unwrap().text).unwrap();
+        assert_eq!(
+            mcp_error.code, "NOT_FOUND",
+            "Derived MCP link can attach while Raw is attached"
+        );
+        let repeated_mcp_read: StreamReadResult = serde_json::from_value(structured(
+            tool(
+                &peer,
+                "swb_stream_x2E_read",
+                &session,
+                json!({
+                    "sessionId":session.id,"sessionEpoch":session.session_epoch,
+                    "startEventSeq":"1","maxEvents":"100","maxBytes":"262144"
+                }),
+            )
+            .await,
+        ))
+        .unwrap();
+        assert_eq!(repeated_mcp_read, mcp_read);
         assert!(!direct_read.has_more);
         assert!(
             direct_read

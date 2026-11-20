@@ -2,6 +2,7 @@ use super::{
     containment::Containment,
     evidence::{Case, write_json},
     fault_transport::{self, Mode},
+    node_load,
     process::{Binaries, Processes, Result, checked},
 };
 use serde_json::{Value, json};
@@ -9,7 +10,11 @@ use serial_workbench_core::*;
 use serial_workbench_host::{Host, ipc::HostServer};
 use std::{path::PathBuf, sync::Arc, time::SystemTime};
 
-pub(super) async fn owned_host(profile: PathBuf, log_dir: PathBuf) -> Result<()> {
+pub(super) async fn owned_host(
+    profile: PathBuf,
+    log_dir: PathBuf,
+    runtime: Option<PathBuf>,
+) -> Result<()> {
     let mut server = checked(HostServer::bind(&profile).await)?;
     let directory = log_dir.clone();
     let opener: serial_workbench_host::device::TransportOpener = Arc::new(move |device, config| {
@@ -36,15 +41,27 @@ pub(super) async fn owned_host(profile: PathBuf, log_dir: PathBuf) -> Result<()>
             Some(directory.join(name)),
         ))
     });
-    let host = checked(
-        Host::with_runtime(
-            server.store(),
-            server.auth(),
-            Arc::new(checked(serial_workbench_host::clock::SystemClock::new())?),
-            opener,
-        )
-        .await,
-    )?;
+    let clock = Arc::new(checked(serial_workbench_host::clock::SystemClock::new())?);
+    let host = if let Some(runtime) = runtime {
+        use serial_workbench_host::node_runtime::{NodeRuntimeLimits, verify_node_runtime};
+        let verified = checked(verify_node_runtime(
+            &runtime,
+            &NodeRuntimeLimits::default(),
+            &std::sync::atomic::AtomicBool::new(false),
+        ))?;
+        checked(
+            Host::with_verified_node_runtime(
+                server.store(),
+                server.auth(),
+                clock,
+                opener,
+                verified,
+            )
+            .await,
+        )?
+    } else {
+        checked(Host::with_runtime(server.store(), server.auth(), clock, opener).await)?
+    };
     checked(
         server
             .serve_until(Arc::new(host), std::future::pending::<()>())
@@ -71,6 +88,7 @@ pub(super) async fn run(
     duration: u64,
     result: PathBuf,
     log_dir: PathBuf,
+    node: Option<node_load::Inputs>,
 ) -> Result<()> {
     if duration != 600 || !profile.is_absolute() || !result.is_absolute() || !log_dir.is_absolute()
     {
@@ -156,15 +174,23 @@ pub(super) async fn run(
             t04.finish(controls, &log_dir)?;
             let disk = super::disk::run(&mut t05, &mut processes, &binaries).await;
             t05.finish(disk, &log_dir)?;
-            let load = super::load::run(
-                &mut t06,
-                &mut processes,
-                &private_profile,
-                host_index,
-                &user,
-                &control,
-            )
-            .await;
+            let load = match node {
+                Some(node) => {
+                    node_scenario(&mut t06, &mut processes, &binaries, &profile, node).await
+                }
+                None => {
+                    super::load::run(
+                        &mut t06,
+                        &log_dir,
+                        &private_profile,
+                        processes.children[host_index].record.pid,
+                        &user,
+                        &control,
+                        None,
+                    )
+                    .await
+                }
+            };
             match load {
                 Ok(value) => {
                     telemetry = value;
@@ -203,4 +229,51 @@ pub(super) async fn run(
             log_dir.display()
         ))
     }
+}
+
+async fn node_scenario(
+    case: &mut Case,
+    processes: &mut Processes,
+    binaries: &Binaries,
+    root: &std::path::Path,
+    node: node_load::Inputs,
+) -> Result<Value> {
+    // T04 的域故障不进入 Node 负载实例，保留各自的停止与退出事实。
+    let profile = root.join("node-load");
+    checked(std::fs::create_dir(&profile))?;
+    let index = processes.start_node_host(&binaries.harness, &profile, &node.runtime)?;
+    let pid = processes.children[index].record.pid;
+    let result = async {
+        let (user, control) = super::scenarios::setup(&profile).await?;
+        super::load::run(
+            case,
+            &processes.log_dir,
+            &profile,
+            pid,
+            &user,
+            &control,
+            Some(&node.parser),
+        )
+        .await
+    }
+    .await;
+    let exit = result
+        .as_ref()
+        .ok()
+        .and_then(|report| report["nodeDerived"]["nodePid"].as_u64())
+        .and_then(|pid| u32::try_from(pid).ok())
+        .map(super::node_owner_exit::ProcessExit::observe);
+    let stop = processes
+        .cli(&binaries.cli, &profile, &["host".into(), "stop".into()])
+        .await;
+    let waiting = processes.children[index].wait(15).await;
+    let mut report = result?;
+    stop?;
+    waiting?;
+    let mut exit = exit.ok_or("Missing actual Node PID for shutdown verification")?;
+    if !checked(tokio::task::spawn_blocking(move || exit.wait()).await)? {
+        return Err("The observed Node process did not exit with its Host".into());
+    }
+    report["nodeDerived"]["ownerExited"] = json!(true);
+    Ok(report)
 }

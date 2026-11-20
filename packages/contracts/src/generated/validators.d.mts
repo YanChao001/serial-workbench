@@ -71,6 +71,14 @@ import type {
   DataBits,
   Delta,
   Dependency,
+  DerivedMemoryMetrics,
+  DerivedProvenance,
+  DerivedPublishParams,
+  DerivedPublishResult,
+  DerivedQuality,
+  DerivedReadParams,
+  DerivedReadResult,
+  DerivedSample,
   DeviceBindingReference,
   DeviceDescriptor,
   DeviceList,
@@ -122,16 +130,41 @@ import type {
   MessageFragment,
   Motion,
   NetworkMode,
+  NodeExecutionTrust,
+  NodeMetrics,
+  NodePackageChangeResult,
+  NodePackageDetailsReadParams,
+  NodePackageDetailsReadResult,
   NodePackageId,
+  NodePackageIdentityParams,
+  NodePackageInstallParams,
+  NodePackageInstallSource,
+  NodePackageInstallation,
   NodePackageIntegrity,
+  NodePackageListParams,
+  NodePackageListResult,
   NodePackageManifest,
   NodePackagePath,
   NodePackageRegistration,
+  NodePackageRuntimeParams,
+  NodePackageRuntimePhase,
+  NodePackageRuntimeStatus,
+  NodePackageSetEnabledParams,
   NodePackageSignature,
+  NodePackageSourceKey,
+  NodePackageSummary,
+  NodePackageUninstallResult,
   NodePackageVersion,
   NodeRuntimeLibraryRelease,
   NodeRuntimeRelease,
   NodeRuntimeSelfTest,
+  NodeSourceApproveParams,
+  NodeSourceChangeResult,
+  NodeSourceListParams,
+  NodeSourceListResult,
+  NodeSourceRevokeParams,
+  NodeViewAssetReadParams,
+  NodeViewAssetReadResult,
   ObjectReadResult,
   ObjectRef,
   OpenParams,
@@ -160,6 +193,7 @@ import type {
   PurgeScope,
   Query,
   QueryResult,
+  QueryValue,
   QueueStatus,
   Radius,
   RawBatch,
@@ -206,6 +240,7 @@ import type {
   Snapshot,
   SourceGap,
   SourceGapReason,
+  SourceRange,
   StartupConfigSnapshot,
   StartupConfigSource,
   StartupLogLevel,
@@ -247,9 +282,12 @@ import type {
   TxReceipt,
   U64,
   VerificationReport,
+  VerifiedNodePackageSource,
   WaitBoundaryParams,
   WaitBoundaryReceipt,
   WireFrame,
+  WorkerMemorySample,
+  WorkerObservation,
   WorkspaceDocument,
   WorkspaceDocumentResult,
   WorkspaceListParams,
@@ -444,6 +482,30 @@ export declare function validateCursor(value: unknown): value is Cursor;
 export declare function validateDataBits(value: unknown): value is DataBits;
 export declare function validateDelta(value: unknown): value is Delta;
 export declare function validateDependency(value: unknown): value is Dependency;
+export declare function validateDerivedMemoryMetrics(
+  value: unknown,
+): value is DerivedMemoryMetrics;
+export declare function validateDerivedProvenance(
+  value: unknown,
+): value is DerivedProvenance;
+export declare function validateDerivedPublishParams(
+  value: unknown,
+): value is DerivedPublishParams;
+export declare function validateDerivedPublishResult(
+  value: unknown,
+): value is DerivedPublishResult;
+export declare function validateDerivedQuality(
+  value: unknown,
+): value is DerivedQuality;
+export declare function validateDerivedReadParams(
+  value: unknown,
+): value is DerivedReadParams;
+export declare function validateDerivedReadResult(
+  value: unknown,
+): value is DerivedReadResult;
+export declare function validateDerivedSample(
+  value: unknown,
+): value is DerivedSample;
 export declare function validateDeviceBindingReference(
   value: unknown,
 ): value is DeviceBindingReference;
@@ -559,12 +621,45 @@ export declare function validateMotion(value: unknown): value is Motion;
 export declare function validateNetworkMode(
   value: unknown,
 ): value is NetworkMode;
+export declare function validateNodeExecutionTrust(
+  value: unknown,
+): value is NodeExecutionTrust;
+export declare function validateNodeMetrics(
+  value: unknown,
+): value is NodeMetrics;
+export declare function validateNodePackageChangeResult(
+  value: unknown,
+): value is NodePackageChangeResult;
+export declare function validateNodePackageDetailsReadParams(
+  value: unknown,
+): value is NodePackageDetailsReadParams;
+export declare function validateNodePackageDetailsReadResult(
+  value: unknown,
+): value is NodePackageDetailsReadResult;
 export declare function validateNodePackageId(
   value: unknown,
 ): value is NodePackageId;
+export declare function validateNodePackageIdentityParams(
+  value: unknown,
+): value is NodePackageIdentityParams;
+export declare function validateNodePackageInstallParams(
+  value: unknown,
+): value is NodePackageInstallParams;
+export declare function validateNodePackageInstallSource(
+  value: unknown,
+): value is NodePackageInstallSource;
+export declare function validateNodePackageInstallation(
+  value: unknown,
+): value is NodePackageInstallation;
 export declare function validateNodePackageIntegrity(
   value: unknown,
 ): value is NodePackageIntegrity;
+export declare function validateNodePackageListParams(
+  value: unknown,
+): value is NodePackageListParams;
+export declare function validateNodePackageListResult(
+  value: unknown,
+): value is NodePackageListResult;
 export declare function validateNodePackageManifest(
   value: unknown,
 ): value is NodePackageManifest;
@@ -574,9 +669,30 @@ export declare function validateNodePackagePath(
 export declare function validateNodePackageRegistration(
   value: unknown,
 ): value is NodePackageRegistration;
+export declare function validateNodePackageRuntimeParams(
+  value: unknown,
+): value is NodePackageRuntimeParams;
+export declare function validateNodePackageRuntimePhase(
+  value: unknown,
+): value is NodePackageRuntimePhase;
+export declare function validateNodePackageRuntimeStatus(
+  value: unknown,
+): value is NodePackageRuntimeStatus;
+export declare function validateNodePackageSetEnabledParams(
+  value: unknown,
+): value is NodePackageSetEnabledParams;
 export declare function validateNodePackageSignature(
   value: unknown,
 ): value is NodePackageSignature;
+export declare function validateNodePackageSourceKey(
+  value: unknown,
+): value is NodePackageSourceKey;
+export declare function validateNodePackageSummary(
+  value: unknown,
+): value is NodePackageSummary;
+export declare function validateNodePackageUninstallResult(
+  value: unknown,
+): value is NodePackageUninstallResult;
 export declare function validateNodePackageVersion(
   value: unknown,
 ): value is NodePackageVersion;
@@ -589,6 +705,27 @@ export declare function validateNodeRuntimeRelease(
 export declare function validateNodeRuntimeSelfTest(
   value: unknown,
 ): value is NodeRuntimeSelfTest;
+export declare function validateNodeSourceApproveParams(
+  value: unknown,
+): value is NodeSourceApproveParams;
+export declare function validateNodeSourceChangeResult(
+  value: unknown,
+): value is NodeSourceChangeResult;
+export declare function validateNodeSourceListParams(
+  value: unknown,
+): value is NodeSourceListParams;
+export declare function validateNodeSourceListResult(
+  value: unknown,
+): value is NodeSourceListResult;
+export declare function validateNodeSourceRevokeParams(
+  value: unknown,
+): value is NodeSourceRevokeParams;
+export declare function validateNodeViewAssetReadParams(
+  value: unknown,
+): value is NodeViewAssetReadParams;
+export declare function validateNodeViewAssetReadResult(
+  value: unknown,
+): value is NodeViewAssetReadResult;
 export declare function validateObjectReadResult(
   value: unknown,
 ): value is ObjectReadResult;
@@ -653,6 +790,7 @@ export declare function validateQuery(value: unknown): value is Query;
 export declare function validateQueryResult(
   value: unknown,
 ): value is QueryResult;
+export declare function validateQueryValue(value: unknown): value is QueryValue;
 export declare function validateQueueStatus(
   value: unknown,
 ): value is QueueStatus;
@@ -765,6 +903,9 @@ export declare function validateSourceGap(value: unknown): value is SourceGap;
 export declare function validateSourceGapReason(
   value: unknown,
 ): value is SourceGapReason;
+export declare function validateSourceRange(
+  value: unknown,
+): value is SourceRange;
 export declare function validateStartupConfigSnapshot(
   value: unknown,
 ): value is StartupConfigSnapshot;
@@ -864,6 +1005,9 @@ export declare function validateU64(value: unknown): value is U64;
 export declare function validateVerificationReport(
   value: unknown,
 ): value is VerificationReport;
+export declare function validateVerifiedNodePackageSource(
+  value: unknown,
+): value is VerifiedNodePackageSource;
 export declare function validateWaitBoundaryParams(
   value: unknown,
 ): value is WaitBoundaryParams;
@@ -871,6 +1015,12 @@ export declare function validateWaitBoundaryReceipt(
   value: unknown,
 ): value is WaitBoundaryReceipt;
 export declare function validateWireFrame(value: unknown): value is WireFrame;
+export declare function validateWorkerMemorySample(
+  value: unknown,
+): value is WorkerMemorySample;
+export declare function validateWorkerObservation(
+  value: unknown,
+): value is WorkerObservation;
 export declare function validateWorkspaceDocument(
   value: unknown,
 ): value is WorkspaceDocument;

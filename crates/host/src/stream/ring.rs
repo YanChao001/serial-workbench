@@ -43,6 +43,12 @@ impl Budget {
     pub(crate) fn peak(&self) -> usize {
         self.peak.load(Ordering::Acquire)
     }
+    pub(crate) fn metrics(&self) -> MemoryBudget {
+        let used = self.used();
+        // 快照可能先于正在接纳的租约看到新占用，发布这个实际水位避免峰值回退。
+        let peak = self.peak.fetch_max(used, Ordering::AcqRel).max(used);
+        crate::metrics::budget(used, peak, self.limit)
+    }
 }
 pub(crate) struct Lease {
     budget: Arc<Budget>,

@@ -2,20 +2,23 @@
 mod archive;
 mod install;
 mod installed;
+mod manager;
 mod paths;
+mod runtime;
 mod source;
 mod source_store;
+pub(crate) mod ui_assets;
 
 pub use archive::verify_node_package;
 pub use install::{
-    InstalledNodePackage, NodeExecutionTrust, NodePackageInstallReceipt, NodePackageInstaller,
-    NodePackageSnapshot,
+    InstalledNodePackage, NodePackageInstallReceipt, NodePackageInstaller, NodePackageSnapshot,
 };
 pub use installed::VerifiedNodeInstallation;
-use serde::{Deserialize, Serialize};
+pub(crate) use manager::NodePackageManager;
 use serial_workbench_core::{
     Digest, HostError, HostResult, Id, NodePackageIntegrity, NodePackageManifest,
 };
+pub use serial_workbench_core::{NodeExecutionTrust, VerifiedNodePackageSource};
 pub use source_store::{NodePackageSourceKey, NodePackageSourceSnapshot, NodePackageSources};
 use std::{
     fmt,
@@ -56,14 +59,6 @@ pub enum NodePackageSource<'a> {
         key_id: &'a Id,
         public_key: &'a [u8; 32],
     },
-}
-
-#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize)]
-#[serde(rename_all = "camelCase", deny_unknown_fields)]
-pub struct VerifiedNodePackageSource {
-    pub source: Id,
-    pub key_id: Id,
-    pub public_key_sha256: Digest,
 }
 
 pub struct VerifiedNodePackage {
@@ -107,6 +102,7 @@ impl fmt::Debug for VerifiedNodePackage {
 
 fn failure(code: &str, reason: &str) -> HostError {
     let mut error = HostError::new(code, "Node package verification failed");
+    error.retryable = code == "HOST_BUSY";
     error.details = Some(Box::new(
         serde_json::from_value(serde_json::json!({
             "component":"nodePackage", "reason":reason

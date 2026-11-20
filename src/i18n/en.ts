@@ -6,6 +6,91 @@ import { enShell } from "./en-shell";
 export const en = {
   ...enRecovery,
   ...enShell,
+  "nav.plugins": "Plugins",
+  "plugins.installed": "Installed",
+  "plugins.empty": "No plugins installed yet",
+  "plugins.emptyDescription":
+    "Install a plugin from your computer to add tools to the workbench.",
+  "plugins.install": "Install plugin",
+  "plugins.installDescription":
+    "Choose a plugin file from your computer. After installing it, you can decide whether to let it run.",
+  "plugins.chooseFile": "Choose plugin file",
+  "plugins.installing": "Installing plugin…",
+  "plugins.installedMessage": "Installed {name}.",
+  "plugins.installSource": "Plugin source",
+  "plugins.localFile": "Local file",
+  "plugins.sourceUnavailable":
+    "This source is no longer trusted. Choose another source.",
+  "plugins.unverified": "Unverified source",
+  "plugins.verifiedSource": "Signature verified · {source}",
+  "plugins.sourceNoLongerTrusted": "Trust removed for {source}",
+  "plugins.sources": "Manage sources",
+  "plugins.sourceHelp":
+    "Add a trusted source when your team or a publisher gives you signing information.",
+  "plugins.sourceId": "Source name",
+  "plugins.keyId": "Signing key name",
+  "plugins.publicKey": "Publisher’s public key",
+  "plugins.publicKeyHint":
+    "Paste the 64-character hexadecimal key from the publisher.",
+  "plugins.invalidSource":
+    "Check the source name, key name and public key format.",
+  "plugins.reviewSource": "Add source",
+  "plugins.approveSource": "Trust this source",
+  "plugins.approveSourceDescription":
+    "Confirm through a trusted channel that the publisher provided this key. Workbench will use it to verify plugin signatures from this source.",
+  "plugins.revokeSource": "Remove source trust",
+  "plugins.revokeSourceDescription":
+    "Plugins verified with this key will lose source trust.",
+  "plugins.revoked": "Trust removed",
+  "plugins.executionPending": "Needs your approval",
+  "plugins.confirmExecution": "Trust this plugin",
+  "plugins.viewSession": "Connection",
+  "plugins.selectViewSession": "Choose a connection",
+  "plugins.noViewSession":
+    "Connect a device in the workbench to open this plugin.",
+  "plugins.openView": "Open plugin",
+  "plugins.openViewNumber": "Open view {number}",
+  "plugins.confirmExecutionDescription":
+    "When enabled, this plugin can access files and the network and start programs with your account permissions. Continue if you trust this plugin.",
+  "plugins.revokeExecution": "Remove plugin trust",
+  "plugins.revokeExecutionDescription":
+    "The plugin will stop running. You’ll need to approve it again before using it.",
+  "plugins.permissions": "Workbench access requested",
+  "plugins.readSerial": "Read serial data",
+  "plugins.readConnections": "View connection information",
+  "plugins.readFiles": "Read files or recordings",
+  "plugins.readData": "Read workbench data",
+  "plugins.controlSerial": "Send data or change serial settings",
+  "plugins.changeWorkspace": "Change workbench data",
+  "plugins.changeSettings": "Change app settings",
+  "plugins.useExternalTools": "Start tools on your computer",
+  "plugins.otherPermissions": "Use other workbench features",
+  "plugins.version": "Version {version}",
+  "plugins.unnamed": "Unnamed plugin",
+  "plugins.enabled": "Enabled",
+  "plugins.disabled": "Disabled",
+  "plugins.enable": "Enable",
+  "plugins.disable": "Disable",
+  "plugins.retryActivation": "Restart plugin",
+  "plugins.uninstall": "Uninstall",
+  "plugins.uninstallDescription":
+    "The plugin will stop and be removed from this computer.",
+  "plugins.starting": "Starting plugin…",
+  "plugins.stopping": "Stopping plugin…",
+  "plugins.failed":
+    "The plugin couldn’t start. Try restarting it or disable it.",
+  "plugins.refreshDetails": "Refresh details",
+  "plugins.pending": "Applying changes…",
+  "plugins.moreActions": "More actions",
+  "plugins.loadError": "Couldn’t load plugin information.",
+  "plugins.actionError":
+    "Couldn’t apply the change. Check the current plugin status before trying again.",
+  "plugins.installError":
+    "Couldn’t install the plugin. Check the file and selected source, then try again.",
+  "plugins.viewError":
+    "Couldn’t open the plugin. Check the connection, then try again.",
+  "plugins.dismissError": "Dismiss",
+  "plugins.viewSessionNumber": "Connection {number}",
   "settings.search": "Search settings",
   "settings.searchPlaceholder": "Language, theme, fonts…",
   "settings.searchEmpty": "No matching settings",

@@ -38,7 +38,7 @@ test("keeps Tauri resource list file, directory and glob destinations while addi
   assert.throws(() => runtimeResourceMap(plan, runtime), /no files/);
 });
 
-test("Linux runtime uses directory copies for deb, RPM and AppImage so SONAME links survive", () => {
+test("Linux runtime uses directory copies for deb, RPM and AppImage staging", () => {
   const runtime = { resources: resolve("prepared-runtime") };
   const plan = {
     platform: "linux",

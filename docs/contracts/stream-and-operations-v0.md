@@ -68,7 +68,13 @@ RawEvent 的源端 gap payload 为 `{reason,missingEventRange?,missingByteRange?
 
 读者丢失使用独立 `ReaderGap={hostId,instanceEpoch,sessionId,sessionEpoch,reason,missingEventRange,missingByteRanges?}`，reason 为 `reader_overflow|capture_overflow|capture_paused|network_loss`，描述该 reader/capture/转发副本未得到的源事件；missingEventRange 必填且精确，missingByteRanges 如已知则为 `{direction: rx|tx,start,end}[]`。TX 字节损失归属于丢失的意图；仅缺少最终回执时记录事件缺口，不重复记录意图字节损失。省略字节范围表示无法确定完整字节损失，空数组表示已知没有丢失 RX/TX 字节。ReaderGap 不含 eventSeq、配置 revision 或虚构源时间，不写入其他 reader 或源权威流。源端 RawEvent gap 与 ReaderGap 都要求解析器重置连续帧状态，不跨缺口拼帧。
 
-派生来源 `SourceRange={hostId,sessionId,sessionEpoch,eventStart,eventEnd,byteStart?,byteEnd?,direction?}`；字节范围存在时 direction 必填。`DerivedProvenance={sources: SourceRange[],parserId,parserVersion,configurationDigest,quality,unit?}`；quality 为 schema 注册的字符串数组，基座标记 `complete|gap|partial|unknown|transformed`。数字采样派生另携 sample clock 与区间。任何降采样/过滤/脱敏保留来源与变换标记，显示降采样不等于源缺口。
+派生来源 `SourceRange={hostId,sessionId,sessionEpoch,eventStart,eventEnd,byteStart?,byteEnd?,direction?}`，范围左闭右开，字节范围存在时 direction 必填。`DerivedProvenance={sources: SourceRange[],parserId,parserVersion,configurationDigest,quality,unit?}`，quality 为 schema 注册的字符串数组，基座标记 `complete|gap|partial|unknown|transformed`。数字采样派生另携 sample clock 与区间，该专用格式随采样能力提供。任何降采样、过滤或脱敏保留来源与变换标记。
+
+`stream.derivedRead` 使用独立 Raw 连接分页，目标为来源会话的精确代次，读取要求 `content.read`。入参为 `{operationId,after,maxSamples,maxBytes}`，返回 `{operationId,instanceEpoch,samples,nextPosition,hasMore}`；每个样本包含 `position`、`provenance` 和 `value`。每个生产 Operation 的 position 从 `"1"` 递增，读者从 `after="0"` 开始，此后沿用 `nextPosition`。源 Host 重启后以新 instanceEpoch 重新定位。过期时返回 `CURSOR_EXPIRED`，同一流仍有留存时附带 `oldestPosition`；读者可确认缺口后用 `oldestPosition - 1` 续读。
+
+Host 最多留存 32 条派生流，每条最多 64 个样本和 1 MiB 计账内存。样本按序淘汰，满额时新发布者只能淘汰已结束的流；仍在执行的发布者占满名额时返回 `HOST_BUSY`。读页最多 64 个样本和 64 KiB JSON，输出使用独立的 8 MiB 内存预算，保留至写入完成或丢弃。留存与读页使用独立游标及内存，慢读者只影响自己的读页。授权在构造与交付页时复核。
+
+`host.metrics` 的 `derived` 对象包含 `retained` 和 `reader`，均记录 `usedBytes`、`peakBytes`、`limitBytes`。留存字段按各流当前保留的样本预算合计，发布任务结束仍可留存样本，淘汰后当前占用下降。读页字段按实际并发输出租约计账，包含准备页与发送期间的预留。两项峰值按 Host 实例累计，以字节表示预算占用。新版 Host 在无派生数据时报告零占用和实际限额，客户端可接受旧快照省略整个 `derived` 对象。
 
 `stream.read` 使用 Query，params=`sessionId,sessionEpoch,startEventSeq,maxEvents,maxBytes`；结果=`events: RawEvent[],nextEventSeq,hasMore`，两个最大值 U64，hasMore 为 boolean。读取范围已不在保留历史时返回 CURSOR_EXPIRED 与可用的 captureRef，不把读者缺失伪装成源 RawEvent。`stream.subscribe` params=`scopeId,after: Cursor,queueBytes: U64,initialCreditBytes: U64,overflowPolicy: drop_with_gap|stop|flow_control`，返回 subscriptionId；沿用快照/游标规则与 Host maxReaderQueueBytes/maxBatchBytes。flow_control 只有后端支持且用户明确允许时启用，失败转 stop 并发布错误。每个 reader 的队列、游标、投递进度独立；一个 reader 丢弃不能推进另一 reader。GUI 通常 drop_with_gap，协议/capture 可 stop 或受许可流控。原始录制有独立写盘队列，慢视图不反压设备。控制、批量原始流、派生输出分别设有界队列，停止/状态通道保留独立容量，不能被原始流队列挤死。
 
@@ -127,7 +133,7 @@ purge 中 ranges 是带 direction 的字节区间，unknownExtent 为 boolean。
 
 ## 录制、验证与回放
 
-新录制格式 `formatVersion="0.1"`，M1 定义其容器编码与生成 schema；这是新体系首版，不承诺旧软件录制、插件包或缓存格式的读取/迁移。格式版本独立于协议版本；读取未来格式返回 FUTURE_FORMAT，文件只读保留。M0 先固定以下逻辑结构与验证语义，容器选型不得削弱它们。
+录制格式 `0.1` 的卷编码、完整性水位与恢复流程见 [Capture 容器](./capture-container-v0.md)。格式版本独立于协议版本，不迁移旧软件存档；遇到未来格式返回 `FUTURE_FORMAT` 并只读保留原件。
 
 Capture 包含 `captureId,formatVersion,mode,sourceHosts,streams,volumes,index,state,watermarks`。mode=`raw|redacted`，redacted 明确记录变换摘要，未经用户选择不另存原始副本。streams 固定源 host/session/epoch/配置及时间精度；原始事件保留源序号、最终 TX 意图与实际回执、源 Gap、控制和生命周期事件。TX 意图和回执按 owner operationId 关联任务，块结算以真实源 host/session/sessionEpoch 与 byteStart/byteEnd 区分；同一文件发送 owner 的不同块合法，同源同块重复结算仍拒绝。完整性报告按块跟踪尚无最终回执的意图，并将 unsettledOperations 聚合为去重的 operationId；视图按源字节范围更新该任务的结果而不重复显示字节。捕获某 reader/转发副本时，ReaderGap 作为独立记录保存，只有捕获 recordOrdinal，不虚构源 eventSeq；完整性报告将其覆盖源范围计为不连续。B 的原始录制为来源权威，A 的副本必须标网络缺口，不能改造源序号制造完整性。
 
@@ -142,18 +148,21 @@ volume 项包含 `volumeId,ordinal,recordStart,recordEnd,length,digest`，ordina
 
 capture state=`recording|finalizing|complete|incomplete|failed`。正常 stop 进入 finalizing，flush、sync 全部卷和索引，再独立验证；仅全部一致且无未声明缺口时 complete。预期内容中明确记录的设备 Gap 仍可成为结构完整 capture，但完整性报告必须区分 `containerComplete: true` 与 `sourceContinuous: false`。写盘失败/满盘立即停止该 capture 订阅并记 CAPTURE_IO_FAILED，已接受部分保留为 failed；Host 继续采集且其他 reader 不阻塞。异常退出/缺尾为 incomplete；不伪造同步/验证水位。
 
-| 动作 ID                 | params                                                                       | 结果                                                                                                  |
-| ----------------------- | ---------------------------------------------------------------------------- | ----------------------------------------------------------------------------------------------------- |
-| `capture.start`         | `sessionIds: Id[],mode,targetRef: ObjectRef,overflowPolicy`                  | 独立 operation，result 指 capture；targetRef 是授权创建位置，不是裸路径                               |
-| `capture.stop`          | `captureRef: ObjectRef`                                                      | 完成 finalizing 后返回 capture state/watermarks/完整性报告                                            |
-| `capture.verify`        | `captureRef`                                                                 | `verificationId: Id,sourceFingerprint: Digest,verifiedPrefix: U64,volumeResults,recoverable: boolean` |
-| `capture.recoverPrefix` | `verificationId,sourceFingerprint,targetRef`                                 | 新 captureRef，state=incomplete、`recoveredFrom` 与 verifiedPrefix；原件不改写                        |
-| `replay.open`           | `captureRef`                                                                 | 只读 replay 会话，能力只含 read/seek/pause/step，打开不发设备字节                                     |
-| `replay.transmit`       | `captureRef,targetSessionId,targetSessionEpoch,selection,rate,previewDigest` | 独立发送任务；需要 device.modify 与明确预览确认范围                                                   |
+| 动作 ID           | params                                                                                                    | 领域结果（非接纳回执）                                                        |
+| ----------------- | --------------------------------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
+| `capture.start`   | `sessionRefs: Target[],targetRef,overflowPolicy`；可选 `mode,writeMode,expectedFingerprint,storageLimits` | Host 按会话目标及代次录制；返回 `captureRef` 与 `summary`，目标位置必须已授权 |
+| `capture.stop`    | `captureRef`                                                                                              | 完成 finalizing 后返回 `captureRef` 与最终 `summary`                          |
+| `capture.verify`  | `captureRef`                                                                                              | 返回验证租约、源指纹、已验证前缀及逐卷结果，不修改原件                        |
+| `capture.recover` | `verificationId,sourceFingerprint,targetRef`                                                              | 成功返回新件的 `resultRef`；另存已验证前缀，不修补原件                        |
+| `replay.open`     | `captureRef`；可选 `mode`                                                                                 | 打开只读会话，返回 `sessionId,sessionEpoch` 等会话信息，不发设备字节          |
 
-volumeResults 项包含 volumeId、`status: verified|missing|corrupt`、verifiedPrefix 与可公开错误。sourceFingerprint 覆盖被验证源文件的身份、长度及内容摘要；verify 后保存只读源句柄/身份依据，另存前再次核对全部相关源。源变化 SOURCE_CHANGED；目标已有文件 TARGET_EXISTS；两种失败均不覆盖原件/既有目标。恢复仅复制跨卷连续验证前缀，遇缺卷/损坏停止，不跳过拼接；先写独占新临时目标并同步验证，再以不覆盖语义发布。失败保留可诊断临时证据，不把半成品标完整。
+Host 内部录制 reader 使用接纳后实际绑定的源会话读取规则和文件写入规则。追加与这两项规则无关的授权可以继续录制。绑定规则撤销、过期或被替换时结束录制，撤销后重授只允许发起新的录制。逐规则版本保留在当前 Host 的内存授权快照中。客户端 Raw 订阅仍按其自身的授权代次管理。
 
-replay.transmit 的 selection 为按源方向及 SourceRange 组成的明确选择，rate 为正十进制字符串及单位；预览固定目标、源 TX 接受区间、最终字节、速率和范围摘要。默认仅可选已确认 accepted 字节；unknown 尾段不可推定重放。用户选择发送其他捕获字节必须作为新的明确发送意图独立预览授权，不修改原始 TX 事实。设备模拟另登记独立任务，查看 capture 不启动模拟。执行前重新校验 previewDigest、源指纹、目标 epoch 与权限。
+volumeResults 项包含 volumeId、`status: verified|missing|corrupt` 和 verifiedPrefix。sourceFingerprint 覆盖被验证源文件的身份、长度及内容摘要；verify 后保存只读源句柄/身份依据，另存前再次核对全部相关源。源变化 SOURCE_CHANGED；目标已有文件 TARGET_EXISTS；两种失败均不覆盖原件/既有目标。恢复仅复制跨卷连续验证前缀，遇缺卷/损坏停止，不跳过拼接；先写独占新临时目标并同步验证，再以不覆盖语义发布。失败保留可诊断临时证据，不把半成品标完整。
+
+当前回放使用 `replay.read`、`replay.control` 和 `replay.close`，参数与结果见[生成目录](../../packages/contracts/src/generated/catalog.json)。
+
+**后续设计（未注册）：** `replay.transmit` 拟按源方向和 SourceRange 选择数据，速率包含正十进制字符串和单位；预览固定目标、源 TX 接受区间、最终字节、速率和范围摘要。默认仅可选已确认 accepted 字节；unknown 尾段不可推定重放。用户选择发送其他捕获字节必须作为新的明确发送意图独立预览授权，不修改原始 TX 事实。设备模拟另登记独立任务，查看 capture 不启动模拟。执行前重新校验 previewDigest、源指纹、目标 epoch 与权限。
 
 ## 可迁为测试的验收向量
 
@@ -169,7 +178,7 @@ replay.transmit 的 selection 为按源方向及 SourceRange 组成的明确选�
 | S06 | BREAK assert 已 confirmed，duration=10ms                        | 到期或取消时注入 clear 失败，再请求 TX/自动重连           | clear failed/unknown、O 失败或 unknown、control_unknown，TX/自动重连均停；责任未隐去，不向新持有者放行                               |
 | S07 | 快 reader Q1、慢 reader Q2、capture Q3；Q2 满                   | 持续投递序号 100—200                                      | Q1/Q3 原字节 hash 一致，Q2 有准确 Gap/或停止；解析器跨 Gap 不拼帧，源采集不因慢 GUI 阻塞                                             |
 | S08 | capture written=100/flushed=90/synced=80/verified=70            | 注入满盘，继续设备 RX                                     | capture failed/CAPTURE_IO_FAILED，水位不虚增，原件前缀保留；其他 reader 继续，停止通道可响应                                         |
-| S09 | 卷1完整、卷2中段损坏、卷3存在                                   | verify，再 recoverPrefix 至新目标                         | verifiedPrefix 截止卷2首个损坏前的连续记录，不跳到卷3；新件 incomplete，原件字节不变                                                 |
+| S09 | 卷1完整、卷2中段损坏、卷3存在                                   | `capture.verify` 后 `capture.recover` 至新目标            | verifiedPrefix 截止卷2首个损坏前的连续记录，不跳到卷3；新件 incomplete，原件字节不变                                                 |
 | S10 | verify 得 fingerprint F、恢复边界 K                             | 修改任一源卷后另存；另一路目标已存在                      | 分别 SOURCE_CHANGED/TARGET_EXISTS；原源和既有目标均不被覆盖，验证证据保留                                                            |
 | S11 | 应用队列含 O1/O2，O1 已进驱动；OS 尚有字节                      | waitBoundary(O1) 取消，再 purge(application,tx)，再 drain | 等待取消不撤 O1；仅未执行 O2 终结，历史 TX 保留；drain 自己报告完成/未知，不假装对端响应                                             |
 | S12 | A interactive 租约及 B 接纳的 independent 任务 T；B 本地任务 L  | A Host 失联至租约到期，再 B 撤销 A 共享                   | 首步交互未执行写入终结、T/L 继续；撤销后 T 按取消点结算，L 继续；A 重连查旧 O，不复活队列                                            |

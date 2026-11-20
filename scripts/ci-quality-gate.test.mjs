@@ -6,9 +6,14 @@ import { qualityGateFailures } from "./ci-quality-gate.mjs";
 
 function results() {
   return Object.fromEntries(
-    ["frontend", "browser-smoke", "rust", "bindings", "desktop-e2e"].map(
-      (job) => [job, { result: "success" }],
-    ),
+    [
+      "frontend",
+      "browser-smoke",
+      "rust",
+      "linux-node-backend",
+      "bindings",
+      "desktop-e2e",
+    ].map((job) => [job, { result: "success" }]),
   );
 }
 
@@ -39,7 +44,13 @@ test("disabling desktop does not hide desktop failure, a missing job or skipped 
     needs["desktop-e2e"].result = result;
     assert.equal(qualityGateFailures(needs, { desktopE2E: false }).length, 1);
   }
-  for (const job of ["frontend", "browser-smoke", "rust", "bindings"]) {
+  for (const job of [
+    "frontend",
+    "browser-smoke",
+    "rust",
+    "linux-node-backend",
+    "bindings",
+  ]) {
     const needs = results();
     needs[job].result = "skipped";
     needs.changes = {

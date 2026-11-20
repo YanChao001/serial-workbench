@@ -155,6 +155,7 @@ export type HostContextValue = {
   waitForOperation(
     operation: Operation,
     signal?: AbortSignal,
+    until?: "running" | "succeeded",
   ): Promise<Operation>;
   checkAction(
     input: HostActionCheckInput,

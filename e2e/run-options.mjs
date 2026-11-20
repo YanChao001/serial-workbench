@@ -1,7 +1,27 @@
 /** 原生窗口测试会主动激活窗口，必须在启动构建或进程前明确选择前台运行。 */
 export function parseE2EOptions(args) {
-  if (args.some((arg) => !["--interactive", "--skip-build"].includes(arg)))
-    throw new Error("Usage: pnpm test:e2e --interactive [--skip-build].");
+  const referencePhases = [
+    "terminal-manual",
+    "terminal-automated",
+    "chart-automated",
+  ].filter((phase) => args.includes(`--${phase}`));
+  if (
+    referencePhases.length > 1 ||
+    args.some(
+      (arg) =>
+        ![
+          "--interactive",
+          "--skip-build",
+          "--with-node-runtime",
+          "--terminal-manual",
+          "--terminal-automated",
+          "--chart-automated",
+        ].includes(arg),
+    )
+  )
+    throw new Error(
+      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime | --terminal-manual | --terminal-automated | --chart-automated].",
+    );
   if (!args.includes("--interactive"))
     throw new Error(
       "真实桌面 E2E 会显示、激活和切换窗口，可能打断当前输入；默认不启动。\n" +
@@ -9,6 +29,11 @@ export function parseE2EOptions(args) {
     );
   return {
     skipBuild: args.includes("--skip-build"),
-    phases: ["fresh", "persisted", "centered"],
+    withNodeRuntime:
+      referencePhases.length > 0 || args.includes("--with-node-runtime"),
+    phases:
+      referencePhases.length > 0
+        ? referencePhases
+        : ["fresh", "persisted", "centered"],
   };
 }

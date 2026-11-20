@@ -2,7 +2,8 @@ use super::{
     client::*,
     containment::rss,
     evidence::{Case, percentile, write_json},
-    process::{Processes, Result, checked},
+    node_load,
+    process::{Result, checked},
     scenarios::*,
 };
 use base64::{Engine, engine::general_purpose::STANDARD};
@@ -27,12 +28,17 @@ struct Fast {
 }
 pub(super) async fn run(
     case: &mut Case,
-    processes: &mut Processes,
+    log_dir: &Path,
     profile: &Path,
-    host_index: usize,
+    pid: u32,
     user: &HostClient,
     control: &HostClient,
+    parser_script: Option<&Path>,
 ) -> Result<Value> {
+    let archive = match parser_script {
+        Some(script) => Some(node_load::install(user, control, script, log_dir).await?),
+        None => None,
+    };
     let session = open(user, "harness:producer").await?;
     let fast = Arc::new(connect(profile, "scenario-user", ClientKind::Desktop).await?);
     let fast_raw = checked(fast.connect_raw().await)?;
@@ -107,19 +113,50 @@ pub(super) async fn run(
     let mut slow_bytes = 0_u64;
     let mut slow_batches = Vec::new();
     let mut gaps = Vec::new();
-    let destination = register(control, &processes.log_dir.join("T06-capture")).await?;
+    let destination = register(control, &log_dir.join("T06-capture")).await?;
     let (capture_owner, capture) = start_capture(user, &session, &destination).await?;
+    let mut node = match archive {
+        Some(digest) => {
+            Some(node_load::Parser::start(user, profile, &session, digest, log_dir).await?)
+        }
+        None => None,
+    };
+    let node_pid = if node.is_some() {
+        Some(checked(
+            tokio::time::timeout(Duration::from_secs(5), async {
+                loop {
+                    let QueryResult::HostMetrics(metrics) =
+                        ask(user, "host.metrics", &host_target(user), json!({})).await?
+                    else {
+                        return Err("Expected Node-backed Host metrics".to_string());
+                    };
+                    if let Some(node) = metrics.node
+                        && node.rss_bytes.is_some()
+                    {
+                        return checked(u32::try_from(node.process_id.get()));
+                    }
+                    tokio::time::sleep(Duration::from_millis(25)).await;
+                }
+            })
+            .await,
+        )??)
+    } else {
+        None
+    };
     let started = Instant::now();
+    checked(std::fs::write(
+        log_dir.join("producer-start"),
+        b"start independent generation",
+    ))?;
     let mut samples = Vec::new();
     let mut raw_samples = checked(
         std::fs::OpenOptions::new()
             .create_new(true)
             .write(true)
-            .open(processes.log_dir.join("T06-samples.jsonl")),
+            .open(log_dir.join("T06-samples.jsonl")),
     )?;
     case.artifact("T06-samples.jsonl");
     let mut peaks = [0_u64; 3];
-    let pid = processes.children[host_index].record.pid;
     let mut sample = |metrics: HostMetrics, elapsed: f64, latency: f64| -> Result<()> {
         if metrics.process_id.get() != u64::from(pid)
             || metrics.host_id != user.attachment().host_id
@@ -138,7 +175,27 @@ pub(super) async fn run(
         }
         let host_rss = rss(pid)?;
         let client_rss = rss(std::process::id())?;
-        let value = json!({"elapsedSeconds":elapsed,"processTreeRssBytes":host_rss+client_rss,"sourceQueueBytes":metrics.source.used_bytes.get(),"readerQueueBytes":metrics.reader.used_bytes.get(),"captureQueueBytes":metrics.capture_queue.used_bytes.get(),"controlLatencyMs":latency,"bytesObserved":observed.load(Ordering::SeqCst),"ownedProcesses":[{"pid":pid,"role":"Host","rssBytes":host_rss},{"pid":std::process::id(),"role":"actual Rust clients","rssBytes":client_rss}],"hostMetrics":metrics});
+        let mut owned = vec![
+            json!({"pid":pid,"role":"Host","rssBytes":host_rss}),
+            json!({"pid":std::process::id(),"role":"actual Rust clients","rssBytes":client_rss}),
+        ];
+        let mut total_rss = host_rss + client_rss;
+        if let Some(node_pid) = node_pid {
+            let actual = metrics
+                .node
+                .as_ref()
+                .ok_or("Missing Node metrics during combined load")?;
+            if actual.process_id.get() != u64::from(node_pid) || actual.rss_bytes.is_none() {
+                return Err("Node owner changed or stopped during combined load".into());
+            }
+            if metrics.derived.is_none() {
+                return Err("Missing derived memory budgets during combined load".into());
+            }
+            let node_rss = rss(node_pid)?;
+            total_rss += node_rss;
+            owned.push(json!({"pid":node_pid,"role":"Node owner","rssBytes":node_rss}));
+        }
+        let value = json!({"elapsedSeconds":elapsed,"processTreeRssBytes":total_rss,"sourceQueueBytes":metrics.source.used_bytes.get(),"readerQueueBytes":metrics.reader.used_bytes.get(),"captureQueueBytes":metrics.capture_queue.used_bytes.get(),"controlLatencyMs":latency,"bytesObserved":observed.load(Ordering::SeqCst),"ownedProcesses":owned,"hostMetrics":metrics});
         checked(raw_samples.write_all(&checked(serde_json::to_vec(&value))?))?;
         checked(raw_samples.write_all(b"\n"))?;
         samples.push(value);
@@ -158,6 +215,9 @@ pub(super) async fn run(
         sample(metric, started.elapsed().as_secs_f64(), latency)?;
         if fast_task.is_finished() {
             return Err("Fast reader ended before the 600-second workload".into());
+        }
+        if let Some(node) = &mut node {
+            node.collect().await?;
         }
         if second > 0 && second % 10 == 0 {
             // Acknowledge the last actual batch without increasing the cumulative
@@ -186,10 +246,10 @@ pub(super) async fn run(
         }
     }
     checked(std::fs::write(
-        processes.log_dir.join("producer-stop"),
+        log_dir.join("producer-stop"),
         b"stop independent generation",
     ))?;
-    let stopped = processes.log_dir.join("producer-stopped.json");
+    let stopped = log_dir.join("producer-stopped.json");
     checked(
         tokio::time::timeout(Duration::from_secs(2), async {
             while !stopped.is_file() {
@@ -222,8 +282,53 @@ pub(super) async fn run(
         sent.elapsed().as_secs_f64() * 1000.,
     )?;
     let elapsed = started.elapsed().as_secs_f64();
-    write_json(&processes.log_dir.join("T06-samples.json"), &samples)?;
+    write_json(&log_dir.join("T06-samples.json"), &samples)?;
     case.artifact("T06-samples.json");
+    let parsed = match node {
+        Some(node) => {
+            let hash = produced["generatedSha256"]
+                .as_str()
+                .ok_or("Producer missing SHA-256")?;
+            let mut result = node.stop(user, generated, hash, log_dir).await?;
+            let drained = checked(
+                tokio::time::timeout(Duration::from_secs(5), async {
+                    loop {
+                        let QueryResult::HostMetrics(metrics) =
+                            ask(user, "host.metrics", &host_target(user), json!({})).await?
+                        else {
+                            return Err(
+                                "Expected Host metrics after derived pages drain".to_string()
+                            );
+                        };
+                        let derived = metrics
+                            .derived
+                            .ok_or("Missing final derived memory budgets")?;
+                        if derived.reader.used_bytes.get() == 0 {
+                            return Ok::<_, String>(derived);
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await,
+            )??;
+            if drained.reader.peak_bytes.get() == 0 || drained.retained.used_bytes.get() == 0 {
+                return Err(
+                    "Derived memory metrics did not observe published data and live reader leases"
+                        .into(),
+                );
+            }
+            result["memoryAfterDrain"] = json!(drained);
+            for path in [
+                "T06-parser.zip",
+                "T06-derived.jsonl",
+                "T06-parser-result.json",
+            ] {
+                case.artifact(path);
+            }
+            Some(result)
+        }
+        None => None,
+    };
     let finalized = stop_capture(user, &capture).await?;
     let captured_owner = settled(user, &capture_owner, false).await?;
     action(user, "session.close", &session, json!({})).await?;
@@ -232,12 +337,9 @@ pub(super) async fn run(
         tokio::time::timeout(Duration::from_secs(5), fast_task).await,
     )?)??;
     let probe: Value = checked(serde_json::from_slice(&checked(std::fs::read(
-        processes.log_dir.join("producer-probe.json"),
+        log_dir.join("producer-probe.json"),
     ))?))?;
-    write_json(
-        &processes.log_dir.join("T06-slow-batches.json"),
-        &slow_batches,
-    )?;
+    write_json(&log_dir.join("T06-slow-batches.json"), &slow_batches)?;
     case.artifact("T06-slow-batches.json");
     case.check("slow_reader_isolated",!gaps.is_empty()&&fast.bytes==generated&&slow_bytes<fast.bytes&&!slow_batches.is_empty(),json!({"policy":"drop_with_gap","readCadenceSeconds":10,"creditWindowBytes":4096,"slowQueueBytes":131072,"batchCount":slow_batches.len(),"slowBytesObserved":slow_bytes,"fastObserved":fast.bytes,"hostPeaks":peaks,"gaps":gaps}))?;
     let latencies: Vec<f64> = samples
@@ -253,12 +355,12 @@ pub(super) async fn run(
         });
     case.check("control_responsive",responsive,json!({"configuredSeconds":600,"elapsedSeconds":elapsed,"completedQueries":latencies.len(),"method":"monotonic send-to-response; no unspecified performance cutoff","p50Ms":percentile(&latencies,0.5),"p95Ms":percentile(&latencies,0.95),"p99Ms":percentile(&latencies,0.99)}))?;
     let scan = checked(serial_workbench_host::capture::verify::verify_directory(
-        &processes.log_dir.join("T06-capture"),
+        &log_dir.join("T06-capture"),
     ))?;
     // Independent production-format replay checks each captured RX byte against
     // its original producer offset; the capture starts after session creation.
     let mut replay = checked(serial_workbench_host::capture::replay::ReplayReader::open(
-        &processes.log_dir.join("T06-capture"),
+        &log_dir.join("T06-capture"),
         ReplayMode::Fastest,
     ))?;
     let mut capture_bytes = 0;
@@ -289,10 +391,24 @@ pub(super) async fn run(
             break;
         }
     }
-    case.check("loss_accounted",probe["producer"]["generated"].as_u64()==Some(fast.bytes)&&probe["producer"]["delivered"].as_u64()==Some(fast.bytes)&&probe["producer"]["dropped"].as_u64()==Some(0)&&probe["producer"]["pending"].as_u64()==Some(0)&&produced["generatedSha256"].as_str()==Some(fast.hash.as_str())&&scan.report.container_complete&&scan.report.source_continuous&&capture_bytes>0&&next_offset==Some(fast.bytes),json!({"independentProducer":probe,"fast":{"bytes":fast.bytes,"sha256":fast.hash,"nextEventSeq":fast.next},"capture":{"bytes":capture_bytes,"sha256":format!("{:x}",capture_hash.finalize()),"lastSourceOffset":next_offset,"verification":scan.report,"finalized":finalized,"owner":captured_owner},"slowGaps":gaps}))?;
+    let capture_sha = format!("{:x}", capture_hash.finalize());
+    case.check("loss_accounted",probe["producer"]["generated"].as_u64()==Some(fast.bytes)&&probe["producer"]["delivered"].as_u64()==Some(fast.bytes)&&probe["producer"]["dropped"].as_u64()==Some(0)&&probe["producer"]["pending"].as_u64()==Some(0)&&produced["generatedSha256"].as_str()==Some(fast.hash.as_str())&&scan.report.container_complete&&scan.report.source_continuous&&capture_bytes==generated&&capture_sha==fast.hash&&next_offset==Some(fast.bytes),json!({"independentProducer":probe,"fast":{"bytes":fast.bytes,"sha256":fast.hash,"nextEventSeq":fast.next},"capture":{"bytes":capture_bytes,"sha256":capture_sha,"lastSourceOffset":next_offset,"verification":scan.report,"finalized":finalized,"owner":captured_owner},"slowGaps":gaps}))?;
     case.artifact("producer-probe.json");
     case.artifact("T06-capture/manifest.json");
-    Ok(
-        json!({"durationSeconds":600,"elapsedSeconds":elapsed,"sampleCount":samples.len(),"samples":"T06-samples.json","sources":{"rss":"OS RSS for the owned Host PID and actual Rust client process; Host self-reported host.metrics RSS retained in every sample","queues":"production host.metrics source/reader/captureQueue memory budget owners","controlLatency":"Rust client Instant send-to-response host.metrics; milliseconds; nearest-rank percentiles"},"processTreeRssBytesPeak":samples.iter().map(|s|s["processTreeRssBytes"].as_u64().expect("sample")).max(),"sourceQueueBytesPeak":peaks[0],"readerQueueBytesPeak":peaks[1],"captureQueueBytesPeak":peaks[2],"bytesProduced":generated,"bytesObserved":fast.bytes,"controlLatencyMs":{"p50":percentile(&latencies,0.5),"p95":percentile(&latencies,0.95),"p99":percentile(&latencies,0.99)}}),
-    )
+    let rss_source = if node_pid.is_some() {
+        "OS RSS for the Host, test clients and Host-attested Node owner; auxiliary processes excluded"
+    } else {
+        "OS RSS for the owned Host PID and actual Rust client process; Host self-reported host.metrics RSS retained in every sample"
+    };
+    let queues_source = if node_pid.is_some() {
+        "production host.metrics source/reader/captureQueue and derived retained/reader memory budget owners"
+    } else {
+        "production host.metrics source/reader/captureQueue memory budget owners"
+    };
+    let mut telemetry = json!({"durationSeconds":600,"elapsedSeconds":elapsed,"sampleCount":samples.len(),"samples":"T06-samples.json","sources":{"rss":rss_source,"queues":queues_source,"controlLatency":"Rust client Instant send-to-response host.metrics; milliseconds; nearest-rank percentiles"},"processTreeRssBytesPeak":samples.iter().map(|s|s["processTreeRssBytes"].as_u64().expect("sample")).max(),"sourceQueueBytesPeak":peaks[0],"readerQueueBytesPeak":peaks[1],"captureQueueBytesPeak":peaks[2],"bytesProduced":generated,"bytesObserved":fast.bytes,"controlLatencyMs":{"p50":percentile(&latencies,0.5),"p95":percentile(&latencies,0.95),"p99":percentile(&latencies,0.99)}});
+    if let (Some(node_pid), Some(parsed)) = (node_pid, parsed) {
+        telemetry["nodeDerived"] = parsed;
+        telemetry["nodeDerived"]["nodePid"] = json!(node_pid);
+    }
+    Ok(telemetry)
 }

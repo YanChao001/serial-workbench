@@ -108,12 +108,18 @@ pub struct StreamCursorResult {
     deny_unknown_fields
 )]
 pub enum QueryResult {
+    Extension(QueryValue),
     ActionCheck(ActionCheckResult),
     WorkspaceImportPreview(WorkspaceDocument),
     ClientEffect(ClientEffectResult),
     Clients(ClientListResult),
     HostMetrics(HostMetrics),
     StartupConfig(StartupConfigSnapshot),
+    NodePackages(NodePackageListResult),
+    NodePackageDetails(NodePackageDetailsReadResult),
+    NodePackageRuntime(NodePackageRuntimeStatus),
+    NodeViewAsset(Box<NodeViewAssetReadResult>),
+    NodePackageSources(NodeSourceListResult),
     CaptureStatus(CaptureStatusResult),
     CaptureTail(CaptureTailResult),
     ReplayRead(ReplayReadResult),
@@ -128,6 +134,7 @@ pub enum QueryResult {
     Workspaces(WorkspaceListResult),
     DocumentJson(DocumentJsonResult),
     StreamRead(StreamReadResult),
+    StreamDerivedRead(DerivedReadResult),
     StreamSubscribe(StreamSubscribeResult),
     StreamCredit(StreamCreditResult),
     Devices(DeviceList),
@@ -181,6 +188,7 @@ impl RpcRequest {
         Ok(match id {
             "stream.cursor"
             | "stream.read"
+            | "stream.derivedRead"
             | "stream.subscribe"
             | "stream.credit"
             | "file.read"
@@ -232,6 +240,20 @@ impl BuiltinAction {
             Self::DeviceRebind => typed!(RebindParams),
             Self::FavoritesSave => typed!(FavoritesSaveParams),
             Self::FileRegister => typed!(RegisterFileParams),
+            Self::NodePackagesInstall => typed!(NodePackageInstallParams),
+            Self::NodePackageSetEnabled => typed!(NodePackageSetEnabledParams),
+            Self::NodePackageRuntime => typed!(NodePackageRuntimeParams),
+            Self::NodeViewAssetRead => typed!(NodeViewAssetReadParams),
+            Self::NodePackageConfirmExecutionTrust
+            | Self::NodePackageRevokeExecutionTrust
+            | Self::NodePackageUninstall => {
+                typed!(NodePackageIdentityParams)
+            }
+            Self::NodePackagesList => typed!(NodePackageListParams),
+            Self::NodePackageDetailsRead => typed!(NodePackageDetailsReadParams),
+            Self::NodeSourcesList => typed!(NodeSourceListParams),
+            Self::NodeSourceApproveKey => typed!(NodeSourceApproveParams),
+            Self::NodeSourceRevokeKey => typed!(NodeSourceRevokeParams),
             Self::FileMetadata => typed!(FileMetadataParams),
             Self::FileRead => typed!(FileReadParams),
             Self::TransferReceiptsRead => typed!(FileTransferReceiptsParams),
@@ -271,6 +293,7 @@ impl BuiltinAction {
                     return Err(invalid());
                 }
             }
+            Self::StreamDerivedRead => decode::<DerivedReadParams>(&query.params)?.validate()?,
             Self::StreamSubscribe => {
                 let params: StreamSubscribeParams = decode(&query.params)?;
                 if params.scope_id.as_str()

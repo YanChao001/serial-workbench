@@ -43,6 +43,8 @@ pub struct CaptureService {
     queue_budget: Arc<Semaphore>,
     queue_peak: Arc<AtomicUsize>,
     tail_budget: Arc<Semaphore>,
+    #[cfg(test)]
+    pub(crate) before_queue: crate::node_test_gates::GateSlot,
 }
 struct ActiveCapture {
     location_id: Id,
@@ -76,6 +78,8 @@ struct PumpBudget {
     host: Arc<Semaphore>,
     peak: Arc<AtomicUsize>,
     reader_credit: u64,
+    #[cfg(test)]
+    before_queue: crate::node_test_gates::GateSlot,
 }
 struct CapturedBatch {
     entries: Vec<CaptureEntry>,
@@ -116,6 +120,8 @@ impl CaptureService {
             queue_budget: Arc::new(Semaphore::new(HOST_CAPTURE_QUEUE_BYTES)),
             queue_peak: Arc::new(AtomicUsize::new(0)),
             tail_budget: Arc::new(Semaphore::new(1)),
+            #[cfg(test)]
+            before_queue: crate::node_test_gates::GateSlot::default(),
         }
     }
     pub fn memory_usage(&self) -> CaptureMemory {
@@ -187,13 +193,21 @@ impl CaptureService {
         let files = self.runtime.files.clone();
         let reference = params.target_ref.clone();
         let actor_copy = actor.clone();
-        let guard = blocking(move || files.resolve(&reference, &actor_copy, true)).await?;
+        let (guard, write_authority) = blocking(move || {
+            let authority =
+                files.authorization_target(&reference, &actor_copy, "workspace.modify")?;
+            let guard = files.resolve(&reference, &actor_copy, true)?;
+            Ok((guard, authority))
+        })
+        .await?;
         let reader_bytes = CAPTURE_READERS_BYTES / params.session_refs.len();
         let budget = PumpBudget {
             capture: Arc::new(Semaphore::new(CAPTURE_QUEUE_BYTES)),
             host: self.queue_budget.clone(),
             peak: self.queue_peak.clone(),
             reader_credit: reader_bytes as u64,
+            #[cfg(test)]
+            before_queue: self.before_queue.clone(),
         };
         let reserved =
             u32::try_from(reader_bytes * params.session_refs.len() + CAPTURE_QUEUE_METADATA)
@@ -262,7 +276,7 @@ impl CaptureService {
             match self
                 .runtime
                 .streams
-                .subscribe(
+                .subscribe_capture(
                     actor,
                     StreamSubscribeParams {
                         scope_id: cursor.scope_id.clone(),
@@ -271,6 +285,7 @@ impl CaptureService {
                         initial_credit_bytes: (reader_bytes as u64).into(),
                         overflow_policy: OverflowPolicy::Stop,
                     },
+                    write_authority.clone(),
                 )
                 .await
             {
@@ -872,10 +887,6 @@ async fn pump(
         }
         let batch = tokio::select! {biased;_ = stopped.changed()=>return Ok(()),batch=reader.next()=>batch?};
         let Some(batch) = batch else { return Ok(()) };
-        let files = runtime.files.clone();
-        let r = reference.clone();
-        let a = actor.clone();
-        blocking(move || files.resolve(&r, &a, true).map(|_| ())).await?;
         let encoded = serde_json::to_vec(batch.batch())
             .map_err(|_| invalid())?
             .len();
@@ -907,13 +918,45 @@ async fn pump(
                 StreamItem::ReaderGap { gap } => CaptureEntry::ReaderGap(Box::new(gap.clone())),
             })
             .collect();
-        sender
-            .try_send(CapturedBatch {
-                entries: items,
-                _capture: local,
-                _host: global,
+        let files = runtime.files.clone();
+        let auth = runtime.auth.clone();
+        let r = reference.clone();
+        let a = actor.clone();
+        let sender = sender.clone();
+        let stamp = batch.stamp.clone().ok_or_else(|| {
+            HostError::new(
+                "PERMISSION_DENIED",
+                "Capture requires bound recording grants",
+            )
+        })?;
+        #[cfg(test)]
+        let before_queue = batch
+            .batch()
+            .items
+            .iter()
+            .any(|item| {
+                matches!(item, StreamItem::Source { event } if matches!(event.payload, RawPayload::Rx(_)))
             })
-            .map_err(|_| queue_overflow())?;
+            .then(|| budget.before_queue.clone());
+        blocking(move || {
+            files.resolve(&r, &a, true)?;
+            #[cfg(test)]
+            if let Some(before_queue) = before_queue {
+                before_queue.arrive();
+            }
+            // Admission is the authorization boundary. The writer drains admitted batches
+            // without holding the auth lock during file I/O.
+            auth.commit_grant_stamp(&stamp, || {
+                sender
+                    .try_send(CapturedBatch {
+                        entries: items,
+                        _capture: local,
+                        _host: global,
+                    })
+                    .map_err(|_| queue_overflow())
+            })
+        })
+        .await?;
         reader.mark_sent(&batch)?;
         granted = granted.checked_add(encoded as u64).ok_or_else(invalid)?;
         runtime

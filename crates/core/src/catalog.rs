@@ -152,6 +152,18 @@ pub enum BuiltinAction {
     ClientList,
     HostMetrics,
     StartupConfigGet,
+    NodePackagesList,
+    NodePackageDetailsRead,
+    NodePackagesInstall,
+    NodePackageSetEnabled,
+    NodePackageUninstall,
+    NodePackageRuntime,
+    NodeViewAssetRead,
+    NodePackageConfirmExecutionTrust,
+    NodePackageRevokeExecutionTrust,
+    NodeSourcesList,
+    NodeSourceApproveKey,
+    NodeSourceRevokeKey,
     CaptureStart,
     CaptureStop,
     CaptureStatus,
@@ -212,12 +224,13 @@ pub enum BuiltinAction {
     TxDrain,
     SessionPurge,
     StreamRead,
+    StreamDerivedRead,
     StreamSubscribe,
     StreamCredit,
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 90] = [
+    pub const ALL: [Self; 103] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
@@ -245,6 +258,18 @@ impl BuiltinAction {
         Self::ClientList,
         Self::HostMetrics,
         Self::StartupConfigGet,
+        Self::NodePackagesList,
+        Self::NodePackageDetailsRead,
+        Self::NodePackagesInstall,
+        Self::NodePackageSetEnabled,
+        Self::NodePackageUninstall,
+        Self::NodePackageRuntime,
+        Self::NodeViewAssetRead,
+        Self::NodePackageConfirmExecutionTrust,
+        Self::NodePackageRevokeExecutionTrust,
+        Self::NodeSourcesList,
+        Self::NodeSourceApproveKey,
+        Self::NodeSourceRevokeKey,
         Self::CaptureStart,
         Self::CaptureStop,
         Self::CaptureStatus,
@@ -305,6 +330,7 @@ impl BuiltinAction {
         Self::TxDrain,
         Self::SessionPurge,
         Self::StreamRead,
+        Self::StreamDerivedRead,
         Self::StreamSubscribe,
         Self::StreamCredit,
         Self::HostShutdown,
@@ -315,6 +341,18 @@ impl BuiltinAction {
             Self::ClientList => "client.list",
             Self::HostMetrics => "host.metrics",
             Self::StartupConfigGet => "startup.config.get",
+            Self::NodePackagesList => "node.packages.list",
+            Self::NodePackageDetailsRead => "node.packages.detailsRead",
+            Self::NodePackagesInstall => "node.packages.install",
+            Self::NodePackageSetEnabled => "node.packages.setEnabled",
+            Self::NodePackageUninstall => "node.packages.uninstall",
+            Self::NodePackageRuntime => "node.packages.runtime",
+            Self::NodeViewAssetRead => "node.views.assetRead",
+            Self::NodePackageConfirmExecutionTrust => "node.packages.confirmExecutionTrust",
+            Self::NodePackageRevokeExecutionTrust => "node.packages.revokeExecutionTrust",
+            Self::NodeSourcesList => "node.sources.list",
+            Self::NodeSourceApproveKey => "node.sources.approveKey",
+            Self::NodeSourceRevokeKey => "node.sources.revokeKey",
             Self::CaptureStart => "capture.start",
             Self::CaptureStop => "capture.stop",
             Self::CaptureStatus => "capture.status",
@@ -377,6 +415,7 @@ impl BuiltinAction {
             Self::TxDrain => "tx.drain",
             Self::SessionPurge => "session.purge",
             Self::StreamRead => "stream.read",
+            Self::StreamDerivedRead => "stream.derivedRead",
             Self::StreamSubscribe => "stream.subscribe",
             Self::StreamCredit => "stream.credit",
             Self::HostShutdown => "host.shutdown",
@@ -408,6 +447,18 @@ impl BuiltinAction {
                 | Self::TxWaitBoundary
                 | Self::TxDrain
                 | Self::SessionPurge
+        )
+    }
+    pub fn is_node_mutation(self) -> bool {
+        matches!(
+            self,
+            Self::NodePackagesInstall
+                | Self::NodePackageSetEnabled
+                | Self::NodePackageUninstall
+                | Self::NodePackageConfirmExecutionTrust
+                | Self::NodePackageRevokeExecutionTrust
+                | Self::NodeSourceApproveKey
+                | Self::NodeSourceRevokeKey
         )
     }
     pub fn is_capture_api(self) -> bool {
@@ -458,6 +509,13 @@ impl BuiltinAction {
             || matches!(
                 self,
                 Self::OperationCancel
+                    | Self::NodePackagesInstall
+                    | Self::NodePackageSetEnabled
+                    | Self::NodePackageUninstall
+                    | Self::NodePackageConfirmExecutionTrust
+                    | Self::NodePackageRevokeExecutionTrust
+                    | Self::NodeSourceApproveKey
+                    | Self::NodeSourceRevokeKey
                     | Self::Authorize
                     | Self::Revoke
                     | Self::HostShutdown
@@ -465,7 +523,14 @@ impl BuiltinAction {
             );
         let auth = matches!(
             self,
-            Self::Authorize | Self::Revoke | Self::HostShutdown | Self::FileRegister
+            Self::Authorize
+                | Self::Revoke
+                | Self::HostShutdown
+                | Self::FileRegister
+                | Self::NodeSourceApproveKey
+                | Self::NodePackageConfirmExecutionTrust
+                | Self::NodePackageRevokeExecutionTrust
+                | Self::NodeSourceRevokeKey
         );
         let kinds: &[&str] = match self {
             Self::ActionCheck => &[
@@ -493,8 +558,8 @@ impl BuiltinAction {
             | Self::ReplayOpen => &["file", "capture"],
             Self::ReplayRead | Self::ReplayControl | Self::ReplayClose => &["session"],
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
-            Self::FileMetadata => &["file", "capture"],
-            Self::FileRead => &["file", "capture_record"],
+            Self::FileMetadata => &["file", "capture", "plugin_result"],
+            Self::FileRead => &["file", "capture_record", "plugin_result"],
             Self::TransferReceiptsRead => &["transfer_receipts"],
             Self::SettingsRead
             | Self::SettingsSave
@@ -525,9 +590,10 @@ impl BuiltinAction {
             | Self::TxDrain
             | Self::SessionPurge
             | Self::StreamRead
+            | Self::StreamDerivedRead
             | Self::StreamSubscribe
             | Self::StreamCredit => &["session"],
-            Self::OperationCancel => &["operation"],
+            Self::OperationCancel | Self::NodeViewAssetRead => &["operation"],
             Self::StateSnapshot | Self::StateSubscribe | Self::SubscriptionClose => {
                 &["host", "settings", "workspace", "session"]
             }
@@ -547,7 +613,14 @@ impl BuiltinAction {
                 .collect(),
             execution_location: ExecutionLocation::ResourceHost,
             permissions: vec![
-                if matches!(self, Self::SettingsSave | Self::SettingsImport) {
+                if matches!(
+                    self,
+                    Self::NodePackagesInstall
+                        | Self::NodePackageSetEnabled
+                        | Self::NodePackageUninstall
+                ) {
+                    "plugins.manage"
+                } else if matches!(self, Self::SettingsSave | Self::SettingsImport) {
                     "settings.modify"
                 } else if matches!(
                     self,
@@ -567,6 +640,7 @@ impl BuiltinAction {
                         | Self::FileRead
                         | Self::TransferReceiptsRead
                         | Self::StreamRead
+                        | Self::StreamDerivedRead
                         | Self::StreamSubscribe
                         | Self::StreamCredit
                 ) {
@@ -592,7 +666,10 @@ impl BuiltinAction {
                 }
                 .into(),
             ],
-            cancellation: if self.is_device_action() || self == Self::CaptureStart {
+            cancellation: if self.is_device_action()
+                || matches!(self, Self::CaptureStart)
+                || self.is_node_mutation()
+            {
                 Cancellation::Cooperative
             } else {
                 Cancellation::None
@@ -605,10 +682,13 @@ impl BuiltinAction {
                 result_ref: None,
             },
         };
-        if self == Self::TransferFile {
+        if matches!(self, Self::TransferFile | Self::NodePackagesInstall) {
             meta.permissions.push("content.read".into());
         }
-        if matches!(self, Self::SessionMetrics | Self::SessionInputs) {
+        if matches!(
+            self,
+            Self::SessionMetrics | Self::SessionInputs | Self::NodeViewAssetRead
+        ) {
             meta.state_scopes.clear();
             meta.event_types.clear();
         }
@@ -706,6 +786,51 @@ impl BuiltinAction {
             Self::StartupConfigGet => {
                 ActionSpec::of_with_dialect::<EmptyParams, StartupConfigSnapshot>(meta, dialect)
             }
+            Self::NodePackagesList => ActionSpec::of_with_dialect::<
+                NodePackageListParams,
+                NodePackageListResult,
+            >(meta, dialect),
+            Self::NodePackageDetailsRead => ActionSpec::of_with_dialect::<
+                NodePackageDetailsReadParams,
+                NodePackageDetailsReadResult,
+            >(meta, dialect),
+            Self::NodePackagesInstall => ActionSpec::of_with_dialect::<
+                NodePackageInstallParams,
+                NodePackageChangeResult,
+            >(meta, dialect),
+            Self::NodePackageSetEnabled => ActionSpec::of_with_dialect::<
+                NodePackageSetEnabledParams,
+                NodePackageChangeResult,
+            >(meta, dialect),
+            Self::NodePackageUninstall => ActionSpec::of_with_dialect::<
+                NodePackageIdentityParams,
+                NodePackageUninstallResult,
+            >(meta, dialect),
+            Self::NodePackageRuntime => ActionSpec::of_with_dialect::<
+                NodePackageRuntimeParams,
+                NodePackageRuntimeStatus,
+            >(meta, dialect),
+            Self::NodeViewAssetRead => ActionSpec::of_with_dialect::<
+                NodeViewAssetReadParams,
+                NodeViewAssetReadResult,
+            >(meta, dialect),
+            Self::NodePackageConfirmExecutionTrust | Self::NodePackageRevokeExecutionTrust => {
+                ActionSpec::of_with_dialect::<NodePackageIdentityParams, NodePackageChangeResult>(
+                    meta, dialect,
+                )
+            }
+            Self::NodeSourcesList => ActionSpec::of_with_dialect::<
+                NodeSourceListParams,
+                NodeSourceListResult,
+            >(meta, dialect),
+            Self::NodeSourceApproveKey => ActionSpec::of_with_dialect::<
+                NodeSourceApproveParams,
+                NodeSourceChangeResult,
+            >(meta, dialect),
+            Self::NodeSourceRevokeKey => ActionSpec::of_with_dialect::<
+                NodeSourceRevokeParams,
+                NodeSourceChangeResult,
+            >(meta, dialect),
             Self::CaptureStart => ActionSpec::of_with_dialect::<
                 CaptureStartParams,
                 CaptureStatusResult,
@@ -818,6 +943,9 @@ impl BuiltinAction {
             }
             Self::StreamRead => {
                 ActionSpec::of_with_dialect::<StreamReadParams, StreamReadResult>(meta, dialect)
+            }
+            Self::StreamDerivedRead => {
+                ActionSpec::of_with_dialect::<DerivedReadParams, DerivedReadResult>(meta, dialect)
             }
             Self::StreamSubscribe => ActionSpec::of_with_dialect::<
                 StreamSubscribeParams,

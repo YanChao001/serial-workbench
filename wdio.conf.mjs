@@ -1,5 +1,13 @@
 import { mkdirSync } from "node:fs";
-import { join, resolve } from "node:path";
+import { isAbsolute, join, resolve } from "node:path";
+
+const phase = process.env.STARTER_E2E_PHASE;
+const referenceDirectory =
+  phase === "terminal-automated"
+    ? process.env.STARTER_E2E_TERMINAL_DIR
+    : phase === "chart-automated"
+      ? process.env.STARTER_E2E_CHART_DIR
+      : null;
 
 if (
   !process.env.STARTER_E2E_BINARY ||
@@ -7,14 +15,23 @@ if (
   !/^\d+$/.test(process.env.STARTER_E2E_PORT ?? "") ||
   Number(process.env.STARTER_E2E_PORT) < 1 ||
   Number(process.env.STARTER_E2E_PORT) > 65535 ||
-  !["fresh", "persisted", "centered", "previews"].includes(
-    process.env.STARTER_E2E_PHASE,
-  )
+  ![
+    "fresh",
+    "persisted",
+    "centered",
+    "previews",
+    "terminal-automated",
+    "chart-automated",
+  ].includes(phase) ||
+  (referenceDirectory !== null && !isAbsolute(referenceDirectory ?? ""))
 )
   throw new Error(
     "请通过 pnpm test:e2e --interactive 或 pnpm docs:capture --interactive 运行隔离窗口。",
   );
-const outputDir = resolve("artifacts", "e2e", process.env.STARTER_E2E_PHASE);
+const outputDir = resolve(
+  referenceDirectory ?? join("artifacts", "e2e"),
+  phase,
+);
 mkdirSync(outputDir, { recursive: true });
 
 export const config = {
@@ -23,7 +40,7 @@ export const config = {
   port: Number(process.env.STARTER_E2E_PORT),
   path: "/",
   automationProtocol: "webdriver",
-  specs: [`./e2e/specs/${process.env.STARTER_E2E_PHASE}.spec.mjs`],
+  specs: [`./e2e/specs/${phase}.spec.mjs`],
   maxInstances: 1,
   capabilities: [
     {

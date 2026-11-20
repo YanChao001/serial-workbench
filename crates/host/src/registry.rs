@@ -3,10 +3,15 @@ use crate::{
     storage::Store,
 };
 use serial_workbench_core::*;
-use std::{collections::VecDeque, sync::Mutex};
+use std::{
+    collections::VecDeque,
+    sync::{Arc, Mutex},
+};
+mod node_catalog;
+pub(crate) use node_catalog::RuntimeCatalog;
 
 pub struct Registry {
-    store: Store,
+    pub(crate) runtime: Arc<RuntimeCatalog>,
     auth: AuthService,
     pages: Mutex<VecDeque<(String, Page)>>,
 }
@@ -25,10 +30,8 @@ pub(crate) struct CatalogVisibility {
 }
 impl Registry {
     pub fn new(store: Store, auth: AuthService) -> HostResult<Self> {
-        let bytes = serde_json::to_vec(builtin_catalog()).map_err(|_| invalid())?;
-        store.synchronize_catalog(&hash(&bytes))?;
         Ok(Self {
-            store,
+            runtime: Arc::new(RuntimeCatalog::new(store)?),
             auth,
             pages: Mutex::new(VecDeque::new()),
         })
@@ -42,7 +45,7 @@ impl Registry {
         if !(1..=100).contains(&size) {
             return Err(invalid());
         }
-        let version = self.store.identity()?.catalog_version;
+        let (version, extensions) = self.runtime.snapshot()?;
         let authorization = self.auth.snapshot(actor)?;
         let grant_revision = authorization.grant_revision();
         let stamp = authorization.capture_grants();
@@ -74,12 +77,13 @@ impl Registry {
         } else {
             0
         };
-        let items = self.visible_actions(&authorization)?;
+        let items = self.visible_actions(&authorization, &extensions)?;
         let has_more = items.len() > offset.saturating_add(size);
-        let items = items.into_iter().skip(offset).take(size).cloned().collect();
+        let items = items.into_iter().skip(offset).take(size).collect();
         if let Some(stamp) = &stamp {
             self.auth.validate_grants(stamp).map_err(|_| changed())?;
         }
+        self.runtime.validate_version(version)?;
         let next_page_token = if has_more {
             let token = uuid::Uuid::new_v4().to_string();
             let mut pages = self.pages.lock().map_err(|_| invalid())?;
@@ -110,9 +114,13 @@ impl Registry {
     fn visible_actions(
         &self,
         authorization: &AuthorizationSnapshot,
-    ) -> HostResult<Vec<&'static ActionSpec>> {
+        extensions: &[Arc<crate::node_backend::RegisteredHandler>],
+    ) -> HostResult<Vec<ActionSpec>> {
         let mut items = Vec::new();
-        let catalog = builtin_catalog();
+        let catalog: Vec<&ActionSpec> = builtin_catalog()
+            .iter()
+            .chain(extensions.iter().map(|query| query.spec()))
+            .collect();
         let operation_resources: Vec<ResourceKind> = catalog
             .iter()
             .filter(|spec| spec.kind == ActionKind::Action)
@@ -120,17 +128,27 @@ impl Registry {
             .collect();
         for spec in catalog {
             let mut visible = true;
+            let action = BuiltinAction::find(spec.action_id.as_str()).ok();
             for permission in &spec.permissions {
-                let action = BuiltinAction::find(spec.action_id.as_str())?;
+                if matches!(
+                    action,
+                    Some(BuiltinAction::FileMetadata | BuiltinAction::FileRead)
+                ) {
+                    // 历史插件结果沿用原动作资源的权限，其类型可不同于结果引用。
+                    visible &= authorization.can_discover_on(permission, |_| true);
+                    continue;
+                }
                 let target_kinds = if matches!(
                     action,
-                    BuiltinAction::OperationGet | BuiltinAction::OperationInput
+                    Some(BuiltinAction::OperationGet | BuiltinAction::OperationInput)
                 ) {
                     // Inspection permissions apply to the original resource, not its lookup envelope.
                     operation_resources.clone()
-                } else if action.is_capture_api() {
+                } else if action.is_some_and(BuiltinAction::is_capture_api) {
                     vec![ResourceKind::try_from(
-                        if action == BuiltinAction::CaptureStart && permission == "content.read" {
+                        if action == Some(BuiltinAction::CaptureStart)
+                            && permission == "content.read"
+                        {
                             "session"
                         } else {
                             "file"
@@ -138,7 +156,7 @@ impl Registry {
                     )?]
                 } else if matches!(
                     spec.action_id.as_str(),
-                    "transfer.file" | "transfer.receiptsRead"
+                    "transfer.file" | "transfer.receiptsRead" | "node.packages.install"
                 ) && permission == "content.read"
                 {
                     vec![ResourceKind::try_from("file")?]
@@ -148,7 +166,7 @@ impl Registry {
                 visible &= authorization.can_discover(permission, &target_kinds);
             }
             if visible {
-                items.push(spec);
+                items.push(spec.clone());
             }
         }
         items.sort_by(|left, right| left.action_id.as_str().cmp(right.action_id.as_str()));
@@ -157,11 +175,12 @@ impl Registry {
     pub(crate) fn visibility(&self, actor: &AuthenticatedActor) -> HostResult<CatalogVisibility> {
         let authorization = self.auth.snapshot(actor)?;
         let stamp = authorization.capture_grants();
-        let version = self.store.identity()?.catalog_version;
-        let items = self.visible_actions(&authorization)?;
+        let (version, extensions) = self.runtime.snapshot()?;
+        let items = self.visible_actions(&authorization, &extensions)?;
         if let Some(stamp) = &stamp {
             self.auth.validate_grants(stamp).map_err(|_| changed())?;
         }
+        self.runtime.validate_version(version)?;
         let bytes = serde_json::to_vec(&items).map_err(|_| invalid())?;
         Ok(CatalogVisibility {
             version,

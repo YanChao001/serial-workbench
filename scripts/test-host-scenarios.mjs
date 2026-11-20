@@ -1,4 +1,5 @@
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   existsSync,
   mkdtempSync,
@@ -36,10 +37,20 @@ const DURATION = 600;
 export function parseOptions(args) {
   let output,
     harness,
+    nodeRuntime,
+    nodeParser,
     durationSeconds = DURATION;
   for (let i = 0; i < args.length; i++) {
     const key = args[i];
-    if (!["--output", "--harness", "--duration-seconds"].includes(key))
+    if (
+      ![
+        "--output",
+        "--harness",
+        "--duration-seconds",
+        "--node-runtime",
+        "--node-parser",
+      ].includes(key)
+    )
       throw new Error(`Unknown option: ${key}`);
     const value = args[++i];
     if (!value || value.startsWith("--"))
@@ -52,6 +63,14 @@ export function parseOptions(args) {
       if (harness) throw new Error("Duplicate harness");
       harness = value;
     }
+    if (key === "--node-runtime") {
+      if (nodeRuntime) throw new Error("Duplicate Node runtime");
+      nodeRuntime = value;
+    }
+    if (key === "--node-parser") {
+      if (nodeParser) throw new Error("Duplicate Node parser");
+      nodeParser = value;
+    }
     if (key === "--duration-seconds") {
       durationSeconds = Number(value);
       if (durationSeconds !== DURATION)
@@ -59,10 +78,20 @@ export function parseOptions(args) {
     }
   }
   if (!output) throw new Error("Missing --output evidence directory");
+  if (Boolean(nodeRuntime) !== Boolean(nodeParser))
+    throw new Error("Supply --node-runtime and --node-parser together");
   return {
     output: resolve(output),
     harness: harness ? resolve(harness) : undefined,
     durationSeconds,
+    ...(nodeRuntime && nodeParser
+      ? {
+          nodeLoad: {
+            runtime: resolve(nodeRuntime),
+            parser: resolve(nodeParser),
+          },
+        }
+      : {}),
   };
 }
 
@@ -101,7 +130,12 @@ function percentile(values, q) {
   return [...values].sort((a, b) => a - b)[Math.ceil(values.length * q) - 1];
 }
 
-export function validateEvidence(root, result, wrapperElapsedSeconds) {
+export function validateEvidence(
+  root,
+  result,
+  wrapperElapsedSeconds,
+  requireNode = false,
+) {
   if (
     !result ||
     typeof result.version !== "string" ||
@@ -235,10 +269,145 @@ export function validateEvidence(root, result, wrapperElapsedSeconds) {
       throw new Error(`Latency percentile ${key} differs from samples`);
   if (
     number(t.bytesProduced, "produced bytes") <= 0 ||
+    t.bytesProduced !== t.bytesObserved ||
     number(t.bytesObserved, "observed bytes") !== previousBytes
   )
     throw new Error("Invalid throughput counters");
+  if (requireNode) validateNodeLoad(root, result, samples);
   return { ...t, observedBytesPerSecond: t.bytesObserved / previous };
+}
+
+function validateNodeLoad(root, result, measurements) {
+  const telemetry = result.telemetry;
+  const node = telemetry.nodeDerived;
+  const digest = /^[a-f0-9]{64}$/;
+  if (
+    node?.parserId !== "example.t06.parse" ||
+    node.bytes !== telemetry.bytesObserved ||
+    node.ownerExited !== true ||
+    !Number.isSafeInteger(node.nodePid) ||
+    node.nodePid <= 0 ||
+    !digest.test(node.sha256) ||
+    !digest.test(node.archiveSha256) ||
+    !Number.isSafeInteger(node.samplesPublished) ||
+    node.samplesPublished <= 64 ||
+    node.samplesPublished !== node.samplesRead ||
+    node.slowReaderError !== "CURSOR_EXPIRED" ||
+    node.oldestPosition !== node.resumedAt ||
+    !/^[1-9]\d*$/.test(node.oldestPosition) ||
+    typeof node.slowAfter !== "number" ||
+    node.slowAfter < 1 ||
+    Number(node.oldestPosition) <= node.slowAfter + 1
+  )
+    throw new Error(
+      "Missing or invalid Node parser, derived cursor or owner exit evidence",
+    );
+  const actual = result.cases
+    .find((entry) => entry.id === "T06")
+    .assertions.find((entry) => entry.name === "loss_accounted").actual;
+  if (
+    actual.fast?.sha256 !== node.sha256 ||
+    actual.capture?.sha256 !== node.sha256 ||
+    actual.capture.bytes !== node.bytes
+  ) {
+    throw new Error("Node parser, fast Raw reader and recorded bytes differ");
+  }
+  const archive = readFileSync(evidencePath(root, node.archive));
+  if (createHash("sha256").update(archive).digest("hex") !== node.archiveSha256)
+    throw new Error(
+      "Node parser archive SHA-256 differs from the installed archive",
+    );
+  let offset = 0;
+  let position = 0;
+  const lines = readFileSync(evidencePath(root, node.samples), "utf8")
+    .trimEnd()
+    .split("\n");
+  for (const line of lines) {
+    const sample = JSON.parse(line);
+    const sources = sample.provenance?.sources;
+    const source = sources?.[0];
+    const end = Number(source?.byteEnd);
+    if (
+      sample.position !== String(++position) ||
+      sources?.length !== 1 ||
+      source?.byteStart !== String(offset) ||
+      !Number.isSafeInteger(end) ||
+      source.byteEnd !== String(end) ||
+      source.direction !== "rx" ||
+      end <= offset ||
+      sample.value !== end - offset ||
+      sample.provenance.parserId !== node.parserId
+    ) {
+      throw new Error(
+        "Derived sample sequence or byte provenance is incomplete",
+      );
+    }
+    offset = end;
+  }
+  if (offset !== node.bytes || position !== node.samplesPublished)
+    throw new Error("Derived sample evidence does not cover recorded input");
+  const derived = measurements.map((sample) => sample.hostMetrics?.derived);
+  for (const kind of ["retained", "reader"]) {
+    let previousPeak = 0;
+    let expectedLimit;
+    for (const snapshot of [...derived, node.memoryAfterDrain]) {
+      const budget = snapshot?.[kind];
+      const [used, peak, limit] = ["usedBytes", "peakBytes", "limitBytes"].map(
+        (key) => {
+          const value = Number(budget?.[key]);
+          if (
+            !Number.isSafeInteger(value) ||
+            value < 0 ||
+            String(value) !== budget?.[key]
+          ) {
+            throw new Error(`Missing or invalid derived ${kind} memory budget`);
+          }
+          return value;
+        },
+      );
+      expectedLimit ??= limit;
+      if (
+        limit !== expectedLimit ||
+        limit === 0 ||
+        used > peak ||
+        peak > limit ||
+        peak < previousPeak
+      ) {
+        throw new Error(`Invalid measured derived ${kind} queue peak or limit`);
+      }
+      previousPeak = peak;
+    }
+  }
+  if (
+    node.memoryAfterDrain.reader.usedBytes !== "0" ||
+    node.memoryAfterDrain.reader.peakBytes === "0" ||
+    node.memoryAfterDrain.retained.usedBytes === "0"
+  ) {
+    throw new Error(
+      "Derived readers did not release their measured leases, or retention was not observed",
+    );
+  }
+  for (const measurement of measurements) {
+    const processes = measurement.ownedProcesses;
+    if (
+      measurement.hostMetrics?.node?.processId !== String(node.nodePid) ||
+      !Array.isArray(processes) ||
+      !processes.some(
+        (owner) =>
+          owner.pid === node.nodePid &&
+          owner.role === "Node owner" &&
+          owner.rssBytes > 0,
+      ) ||
+      processes.reduce(
+        (total, owner) => total + number(owner.rssBytes, "owned RSS"),
+        0,
+      ) !== measurement.processTreeRssBytes
+    ) {
+      throw new Error(
+        "Node owner RSS must be measured throughout the complete workload",
+      );
+    }
+  }
 }
 
 export function runProcess(
@@ -401,6 +570,16 @@ export async function runScenarios(
     throw new Error("Missing built scenario harness; provide --harness <path>");
   if (options.durationSeconds !== DURATION)
     throw new Error("Duration must be 600 seconds");
+  if (
+    options.nodeLoad &&
+    (!existsSync(options.nodeLoad.runtime) ||
+      !statSync(options.nodeLoad.runtime).isDirectory() ||
+      !existsSync(options.nodeLoad.parser) ||
+      !statSync(options.nodeLoad.parser).isFile())
+  )
+    throw new Error(
+      "Provide prepared Node resources and the compiled SDK parser",
+    );
   mkdirSync(options.output);
   const profile = mkdtempSync(join(tempBase, "swb-host-scenario-"));
   const resultPath = join(options.output, "result.json");
@@ -417,6 +596,14 @@ export async function runScenarios(
         resultPath,
         "--log-dir",
         options.output,
+        ...(options.nodeLoad
+          ? [
+              "--node-runtime",
+              options.nodeLoad.runtime,
+              "--node-parser",
+              options.nodeLoad.parser,
+            ]
+          : []),
       ],
       { logPath: join(options.output, "harness.log") },
     );
@@ -445,7 +632,12 @@ export async function runScenarios(
       )
     )
       throw new Error("Missing owned process cleanup evidence");
-    const telemetry = validateEvidence(options.output, report, elapsed);
+    const telemetry = validateEvidence(
+      options.output,
+      report,
+      elapsed,
+      Boolean(options.nodeLoad),
+    );
     writeFileSync(
       join(options.output, "summary.json"),
       `${JSON.stringify({ version: report.version, target: report.target, platform: report.platform, protocol: report.protocol, startedAt: report.startedAt, endedAt: report.endedAt, wrapperElapsedSeconds: elapsed, observedBytesPerSecond: telemetry.observedBytesPerSecond, controlLatencyMs: telemetry.controlLatencyMs, processTreeRssBytesPeak: telemetry.processTreeRssBytesPeak }, null, 2)}\n`,

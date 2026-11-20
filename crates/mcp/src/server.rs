@@ -38,6 +38,7 @@ struct Connection {
     healthy: Arc<AtomicBool>,
     pump: JoinHandle<()>,
     raw: Mutex<Option<Arc<RawLink>>>,
+    derived: Mutex<Option<Arc<RawLink>>>,
     raw_ids: Arc<StdMutex<HashSet<Id>>>,
 }
 struct RawLink {
@@ -92,19 +93,20 @@ impl McpBridge {
         let client = current.client.reconnect().await?;
         let replacement = Connection::new(client, self.inner.changes.clone());
         // Host 目录 watch 绑定物理连接；先恢复基线再向并发调用发布新连接。
-        Self::catalog_page_on(&replacement, None).await?;
+        Self::catalog_page_on(&replacement, None, None).await?;
         *self.inner.connection.write().await = replacement.clone();
         Ok(replacement)
     }
 
     async fn catalog_page(&self, token: Option<String>) -> HostResult<CatalogListResult> {
         let connection = self.connection().await?;
-        Self::catalog_page_on(&connection, token).await
+        Self::catalog_page_on(&connection, token, None).await
     }
 
     async fn catalog_page_on(
         connection: &Connection,
         token: Option<String>,
+        expected_version: Option<U64>,
     ) -> HostResult<CatalogListResult> {
         let attach = connection.client.attachment();
         let input = ToolInput {
@@ -119,7 +121,7 @@ impl McpBridge {
                 serde_json::to_value(CatalogListParams {
                     page_size: 100.into(),
                     page_token: token,
-                    catalog_version: None,
+                    catalog_version: expected_version,
                 })
                 .map_err(|_| invalid())?,
             )
@@ -129,7 +131,7 @@ impl McpBridge {
             lease_id: None,
             execution_mode: None,
         };
-        let query = query(&connection.client, BuiltinAction::CatalogList, input);
+        let query = query(&connection.client, BuiltinAction::CatalogList.spec(), input);
         match connection.request(RpcRequest::Query(query)).await? {
             RpcReply::Success { result, .. } => match *result {
                 RpcResult::Query(QueryResult::Catalog(page)) => Ok(page),
@@ -139,9 +141,46 @@ impl McpBridge {
         }
     }
 
-    async fn execute(&self, action: BuiltinAction, input: ToolInput) -> HostResult<Value> {
-        let connection = self.connection().await?;
-        let spec = action.spec();
+    async fn resolve_tool_on(
+        connection: &Connection,
+        name: &str,
+    ) -> HostResult<Option<ActionSpec>> {
+        let mut token = None;
+        let mut version = None;
+        let mut names = HashSet::new();
+        let mut selected = None;
+        loop {
+            let page = Self::catalog_page_on(connection, token, version).await?;
+            if version.is_some_and(|expected| expected != page.catalog_version) {
+                return Err(HostError::new(
+                    "CATALOG_CHANGED",
+                    "Host catalog changed during tool resolution",
+                ));
+            }
+            version = Some(page.catalog_version);
+            for spec in page.items {
+                let tool_name = catalog::tool_name(spec.action_id.as_str())?;
+                let matches = tool_name == name;
+                if !names.insert(tool_name) {
+                    return Err(ambiguous_tool());
+                }
+                if matches {
+                    selected = Some(spec);
+                }
+            }
+            token = page.next_page_token;
+            if token.is_none() {
+                // 必须读完同一目录快照，不能在后页存在同名工具时提前执行。
+                return Ok(selected);
+            }
+        }
+    }
+
+    async fn execute_on(
+        connection: &Arc<Connection>,
+        spec: &ActionSpec,
+        input: ToolInput,
+    ) -> HostResult<Value> {
         let request = if spec.kind == ActionKind::Action {
             let attach = connection.client.attachment();
             RpcRequest::Invoke(Call {
@@ -166,13 +205,16 @@ impl McpBridge {
             {
                 return Err(invalid());
             }
-            RpcRequest::Query(query(&connection.client, action, input))
+            RpcRequest::Query(query(&connection.client, spec, input))
         };
         let close_id = match &request {
-            RpcRequest::Query(q) if action == BuiltinAction::SubscriptionClose => q
-                .params
-                .get("subscriptionId")
-                .and_then(|v| serde_json::from_value::<Id>(serde_json::to_value(v).ok()?).ok()),
+            RpcRequest::Query(q)
+                if spec.action_id.as_str() == BuiltinAction::SubscriptionClose.action_id() =>
+            {
+                q.params
+                    .get("subscriptionId")
+                    .and_then(|v| serde_json::from_value::<Id>(serde_json::to_value(v).ok()?).ok())
+            }
             _ => None,
         };
         let raw = request.required_channel()? == RequestChannel::Raw
@@ -184,7 +226,13 @@ impl McpBridge {
                     .contains(id)
             });
         let reply = if raw {
-            let reply = connection.raw().await?.client.request(request).await;
+            let derived = spec.action_id.as_str() == BuiltinAction::StreamDerivedRead.action_id();
+            let reply = connection
+                .raw_link(derived)
+                .await?
+                .client
+                .request(request)
+                .await;
             if reply.is_err() {
                 connection.healthy.store(false, Ordering::Release);
             }
@@ -261,6 +309,7 @@ impl Connection {
             healthy,
             pump,
             raw: Mutex::new(None),
+            derived: Mutex::new(None),
             raw_ids: Arc::new(StdMutex::new(HashSet::new())),
         })
     }
@@ -271,23 +320,46 @@ impl Connection {
         }
         reply
     }
-    async fn raw(&self) -> HostResult<Arc<RawLink>> {
-        let mut slot = self.raw.lock().await;
+    async fn raw_link(&self, derived: bool) -> HostResult<Arc<RawLink>> {
+        let slot = if derived { &self.derived } else { &self.raw };
+        let mut slot = slot.lock().await;
         if let Some(raw) = &*slot {
             return Ok(raw.clone());
         }
-        let client = Arc::new(self.client.connect_raw().await?);
+        // 一个控制连接只允许一个 Raw 附接；派生分页使用同身份的独立连接对。
+        let control = if derived {
+            let attached = self.client.reconnect().await?;
+            let origin = self.client.attachment();
+            let actual = attached.attachment();
+            if actual.host_id != origin.host_id
+                || actual.instance_epoch != origin.instance_epoch
+                || actual.actor_id != origin.actor_id
+            {
+                self.healthy.store(false, Ordering::Release);
+                return Err(HostError::new(
+                    "EPOCH_MISMATCH",
+                    "Derived connection identity changed",
+                ));
+            }
+            Arc::new(attached)
+        } else {
+            self.client.clone()
+        };
+        let client = Arc::new(control.connect_raw().await?);
         let source = client.clone();
         let ids = self.raw_ids.clone();
         let pump = tokio::spawn(async move {
-            while let Ok(Some(frame)) = source.next_event().await {
-                if let IpcMessage::SubscriptionEnded {
-                    subscription_id, ..
-                } = frame.body
-                {
-                    ids.lock()
-                        .expect("subscription mutex")
-                        .remove(&subscription_id);
+            loop {
+                tokio::select! {
+                    result = source.next_event() => {
+                        let Ok(Some(frame)) = result else { break };
+                        if let IpcMessage::SubscriptionEnded { subscription_id, .. } = frame.body {
+                            ids.lock().expect("subscription mutex").remove(&subscription_id);
+                        }
+                    }
+                    result = control.next_event(), if derived => {
+                        if !matches!(result, Ok(Some(_))) { break; }
+                    }
                 }
             }
         });
@@ -359,10 +431,17 @@ impl ServerHandler for McpBridge {
             .catalog_page(request.and_then(|p| p.cursor))
             .await
             .map_err(protocol_error)?;
+        let mut names = HashSet::new();
         let tools = page
             .items
             .iter()
-            .map(catalog::tool)
+            .map(|spec| {
+                let tool = catalog::tool(spec)?;
+                if !names.insert(tool.name.clone()) {
+                    return Err(ambiguous_tool());
+                }
+                Ok(tool)
+            })
             .collect::<HostResult<Vec<_>>>()
             .map_err(protocol_error)?;
         let mut result = ListToolsResult::with_all_items(tools)
@@ -376,22 +455,32 @@ impl ServerHandler for McpBridge {
         request: CallToolRequestParams,
         context: RequestContext<RoleServer>,
     ) -> Result<CallToolResponse, ErrorData> {
-        let action = catalog::resolve(&request.name).ok_or_else(|| {
-            ErrorData::new(ErrorCode::METHOD_NOT_FOUND, "Unknown Host tool", None)
-        })?;
         let input = serde_json::from_value::<ToolInput>(Value::Object(
             request.arguments.unwrap_or_default(),
         ));
-        let result = match input {
-            Ok(input) => tokio::select! {
-                biased;
-                () = context.ct.cancelled() => Err(HostError::new("CANCELLED", "MCP request waiting was cancelled")),
-                result = self.execute(action,input) => result,
-            },
-            Err(_) => Err(invalid()),
+        let execute = async {
+            let connection = self.connection().await?;
+            let Some(spec) = Self::resolve_tool_on(&connection, &request.name).await? else {
+                return Ok(None);
+            };
+            Self::execute_on(&connection, &spec, input.map_err(|_| invalid())?)
+                .await
+                .map(Some)
+        };
+        let result = tokio::select! {
+            biased;
+            () = context.ct.cancelled() => Err(HostError::new("CANCELLED", "MCP request waiting was cancelled")),
+            result = execute => result,
         };
         Ok(match result {
-            Ok(value) => CallToolResult::structured(value),
+            Ok(Some(value)) => CallToolResult::structured(value),
+            Ok(None) => {
+                return Err(ErrorData::new(
+                    ErrorCode::METHOD_NOT_FOUND,
+                    "Unknown Host tool",
+                    None,
+                ));
+            }
             Err(error) => CallToolResult::error(vec![ContentBlock::text(
                 serde_json::to_string(&error).expect("HostError JSON"),
             )]),
@@ -464,7 +553,7 @@ impl ServerHandler for McpBridge {
     }
 }
 
-fn query(client: &HostClient, action: BuiltinAction, input: ToolInput) -> Query {
+fn query(client: &HostClient, spec: &ActionSpec, input: ToolInput) -> Query {
     let attach = client.attachment();
     Query {
         protocol_version: attach.protocol_version,
@@ -472,10 +561,10 @@ fn query(client: &HostClient, action: BuiltinAction, input: ToolInput) -> Query 
         instance_epoch: attach.instance_epoch,
         actor_id: attach.actor_id.clone(),
         request_id: input.request_id.unwrap_or_else(request_id),
-        action_id: Id::try_from(action.action_id()).expect("builtin action"),
+        action_id: spec.action_id.clone(),
         target: input.target,
         params: input.params,
-        reveal_target: action.spec().reveal_target.clone(),
+        reveal_target: spec.reveal_target.clone(),
     }
 }
 fn request_id() -> RequestId {
@@ -485,6 +574,12 @@ fn invalid() -> HostError {
     HostError::new(
         "INVALID_ARGUMENT",
         "Invalid Host tool parameters or response",
+    )
+}
+fn ambiguous_tool() -> HostError {
+    HostError::new(
+        "PROTOCOL_ERROR",
+        "Host catalog has ambiguous MCP tool names",
     )
 }
 fn protocol_error(error: HostError) -> ErrorData {

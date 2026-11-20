@@ -33,6 +33,22 @@ pub enum SchemaValue {
     Object(SchemaObject),
 }
 
+/// 查询领域结果允许JSON小数；U64字段仍由各自领域schema要求十进制字符串。
+#[derive(Debug, Clone, PartialEq, Serialize, JsonSchema, Type)]
+#[serde(untagged)]
+pub enum QueryValue {
+    Null(()),
+    Bool(bool),
+    Number(
+        #[schemars(schema_with = "schema_number")]
+        #[specta(type=specta_typescript::Number)]
+        serde_json::Number,
+    ),
+    String(String),
+    Array(Vec<QueryValue>),
+    Object(BTreeMap<String, QueryValue>),
+}
+
 // 递归 untagged 派生会为每个节点反复缓存和尝试其它类型；大投影与目录因此阻塞 RPC。
 // JSON 已提供节点类型，直接分派一次；数字仍交给各自原有的校验器，wire/schema 不变。
 macro_rules! deserialize_json_value {
@@ -106,6 +122,7 @@ macro_rules! deserialize_json_value {
 }
 deserialize_json_value!(JsonValue, SafeInteger);
 deserialize_json_value!(SchemaValue, serde_json::Number);
+deserialize_json_value!(QueryValue, serde_json::Number);
 
 fn schema_number(_: &mut SchemaGenerator) -> Schema {
     schemars::json_schema!({"type":"number"})

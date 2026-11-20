@@ -8,7 +8,7 @@ use std::{
     collections::BTreeMap,
     sync::{
         Arc, Mutex,
-        atomic::{AtomicBool, Ordering},
+        atomic::{AtomicBool, AtomicU64, Ordering},
         mpsc,
     },
     thread::{self, JoinHandle},
@@ -58,6 +58,7 @@ struct RuntimeState {
     projections: ProjectionStore,
     state: Mutex<DirectoryState>,
     stopping: AtomicBool,
+    started: AtomicU64,
     changed: tokio::sync::watch::Sender<u64>,
 }
 pub struct DeviceRuntime {
@@ -107,6 +108,7 @@ impl DeviceRuntime {
                 anchors: BTreeMap::new(),
             }),
             stopping: AtomicBool::new(false),
+            started: AtomicU64::new(0),
             changed: tokio::sync::watch::channel(0).0,
         });
         let worker_state = inner.clone();
@@ -117,6 +119,7 @@ impl DeviceRuntime {
                     if worker_state.stopping.load(Ordering::SeqCst) {
                         break;
                     }
+                    let scan = worker_state.started.fetch_add(1, Ordering::AcqRel) + 1;
                     let result = worker_state.provider.enumerate().and_then(|devices| {
                         if devices.iter().any(|device| {
                             device.host_id != worker_state.identity.host_id
@@ -156,9 +159,7 @@ impl DeviceRuntime {
                             }
                         }
                     }
-                    worker_state
-                        .changed
-                        .send_modify(|version| *version = version.wrapping_add(1));
+                    worker_state.changed.send_replace(scan);
                     match requests.recv_timeout(Duration::from_millis(500)) {
                         Ok(()) | Err(mpsc::RecvTimeoutError::Timeout) => {}
                         Err(mpsc::RecvTimeoutError::Disconnected) => break,
@@ -188,11 +189,16 @@ impl DeviceRuntime {
         if self.inner.stopping.load(Ordering::SeqCst) {
             return Err(stopped());
         }
+        // An in-flight scan may already have collected the old OS snapshot.
+        let started = self.inner.started.load(Ordering::Acquire);
         match self.request.try_send(()) {
             Ok(()) | Err(mpsc::TrySendError::Full(())) => {}
             Err(mpsc::TrySendError::Disconnected(())) => return Err(stopped()),
         }
-        changed.changed().await.map_err(|_| stopped())?;
+        changed
+            .wait_for(|complete| *complete > started || self.inner.stopping.load(Ordering::SeqCst))
+            .await
+            .map_err(|_| stopped())?;
         if self.inner.stopping.load(Ordering::SeqCst) {
             return Err(stopped());
         }
@@ -242,9 +248,7 @@ impl DeviceRuntime {
     }
     pub fn stop(&self) {
         self.inner.stopping.store(true, Ordering::SeqCst);
-        self.inner
-            .changed
-            .send_modify(|version| *version = version.wrapping_add(1));
+        self.inner.changed.send_modify(|_| {});
         let _ = self.request.try_send(());
     }
 }

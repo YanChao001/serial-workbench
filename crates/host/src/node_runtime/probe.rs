@@ -1,8 +1,8 @@
-use super::{Control, NodeRuntimeLimits, VerifiedNodeRuntime, failure};
-use serial_workbench_core::{HostResult, NodeRuntimeSelfTest, bundled_node_runtime_release};
+use super::{Control, NodeRuntimeLimits, RuntimeChild, VerifiedNodeRuntime, failure};
+use serial_workbench_core::{HostResult, NodeRuntimeSelfTest};
 use std::{
     io::{self, Read},
-    process::{Child, Command, ExitStatus, Stdio},
+    process::{ExitStatus, Stdio},
     sync::{
         Arc,
         atomic::{AtomicBool, AtomicUsize, Ordering},
@@ -22,9 +22,29 @@ pub struct NodeRuntimeProbeDiagnostics {
     pub stdout: Vec<u8>,
     pub stderr: Vec<u8>,
     pub io_error: Option<String>,
+    pub launch_errno: Option<i32>,
     pub image_cdhash: Option<String>,
     pub image_signature_flags: Option<u32>,
     pub image_sealed: bool,
+}
+impl NodeRuntimeProbeDiagnostics {
+    fn append_io_error(&mut self, detail: &str) {
+        if let Some(error) = &mut self.io_error {
+            error.push_str("; ");
+            error.push_str(detail);
+        } else {
+            self.io_error = Some(detail.to_owned());
+        }
+    }
+
+    #[cfg(target_os = "macos")]
+    pub(super) fn record_startup_exit(&mut self, child: &RuntimeChild) {
+        if let Some((code, status)) = child.startup_exit() {
+            self.append_io_error(&format!(
+                "Node exit observed before resume: si_code={code} si_status={status}"
+            ));
+        }
+    }
 }
 #[derive(Debug)]
 pub struct NodeRuntimeProbeReport {
@@ -85,7 +105,7 @@ enum ProbeStream {
     Stderr,
 }
 struct ProbeOwner {
-    child: Child,
+    child: RuntimeChild,
     readers: Vec<(ProbeStream, JoinHandle<Capture>)>,
     reaped: bool,
 }
@@ -98,7 +118,7 @@ impl ProbeOwner {
             match self.child.wait() {
                 Err(error) if error.kind() == io::ErrorKind::Interrupted => continue,
                 result => {
-                    self.reaped = result.is_ok();
+                    self.reaped = self.child.is_closed();
                     return result;
                 }
             }
@@ -112,8 +132,11 @@ impl ProbeOwner {
                 diagnostics.reaped = true;
             }
             Err(error) => {
-                diagnostics.io_error = Some(error.to_string());
-                return;
+                diagnostics.append_io_error(&error.to_string());
+                diagnostics.reaped = self.child.is_closed();
+                if !diagnostics.reaped {
+                    return;
+                }
             }
         }
         for (stream, reader) in self.readers.drain(..) {
@@ -170,23 +193,9 @@ impl VerifiedNodeRuntime {
         }
         let control = Control::new(cancel, limits.probe_timeout, "probeDeadline")?;
         control.check()?;
-        let environment = std::env::vars_os().filter(|(key, _)| {
-            let key = key.to_string_lossy().to_ascii_uppercase();
-            !["NODE_", "LD_", "DYLD_", "OPENSSL_", "_RLD_"]
-                .iter()
-                .any(|prefix| key.starts_with(prefix))
-                && !["GCONV_PATH", "GLIBC_TUNABLES", "MALLOC_TRACE"].contains(&key.as_str())
-        });
-        #[cfg(target_os = "linux")]
-        let executable = self.image.executable();
-        #[cfg(not(target_os = "linux"))]
-        let executable = &self.executable;
-        let mut command = Command::new(executable);
+        let mut command = self.command();
         command
             .args(["--input-type=module", "--eval", PROBE])
-            .current_dir(&self.runtime_directory)
-            .env_clear()
-            .envs(environment)
             .stdin(Stdio::null())
             .stdout(Stdio::piped())
             .stderr(Stdio::piped());
@@ -194,24 +203,9 @@ impl VerifiedNodeRuntime {
             // 私有库由封印 fd preload；原目录不能成为其余系统依赖的搜索入口。
             command.env("LD_DEBUG", "libs");
         }
-        #[cfg(target_os = "linux")]
-        {
-            self.image.configure(&mut command);
-            diagnostics.image_sealed = true;
-        }
-        #[cfg(target_os = "macos")]
-        self.image.configure(&mut command).map_err(|error| {
-            diagnostics.io_error = Some(error.to_string());
-            failure("NODE_RUNTIME_START_FAILED", "processConfiguration")
-        })?;
-        #[cfg(windows)]
-        {
-            use std::os::windows::process::CommandExt;
-            initialize_headless_errors();
-            command.creation_flags(windows_sys::Win32::System::Threading::CREATE_NO_WINDOW);
-        }
+        let launch = self.configure(&mut command, diagnostics)?;
         control.check()?;
-        let child = command.spawn().map_err(|error| {
+        let child = launch.spawn(command).map_err(|error| {
             diagnostics.io_error = Some(error.to_string());
             let code = if error.kind() == io::ErrorKind::NotFound {
                 if self.executable.exists() {
@@ -224,19 +218,29 @@ impl VerifiedNodeRuntime {
             };
             failure(code, "processLaunch")
         })?;
-        drop(command);
-        diagnostics.process_id = Some(child.id());
         let mut owner = ProbeOwner {
             child,
             readers: Vec::new(),
             reaped: false,
         };
+        if let Err(error) = self.initialize_child(&mut owner.child, &control, diagnostics) {
+            if owner.child.id() != 0 {
+                diagnostics.process_id = Some(owner.child.id());
+            }
+            owner.finish(true, diagnostics);
+            #[cfg(target_os = "macos")]
+            diagnostics.record_startup_exit(&owner.child);
+            return Err(error);
+        }
+        diagnostics.process_id = Some(owner.child.id());
         #[cfg(target_os = "macos")]
         if let Err(error) = self
             .image
-            .authenticate_and_resume(&owner.child, &control, diagnostics)
+            .authenticate(owner.child.id(), &control, diagnostics)
+            .and_then(|()| owner.child.resume())
         {
             owner.finish(true, diagnostics);
+            diagnostics.record_startup_exit(&owner.child);
             return Err(error);
         }
         let budget = Arc::new(OutputBudget {
@@ -245,8 +249,8 @@ impl VerifiedNodeRuntime {
             exceeded: AtomicBool::new(false),
             read_failed: AtomicBool::new(false),
         });
-        let stdout = owner.child.stdout.take().expect("piped stdout");
-        let stderr = owner.child.stderr.take().expect("piped stderr");
+        let stdout = owner.child.io().stdout.take().expect("piped stdout");
+        let stderr = owner.child.io().stderr.take().expect("piped stderr");
         let readers = [
             (ProbeStream::Stdout, start_reader(stdout, budget.clone())),
             (ProbeStream::Stderr, start_reader(stderr, budget.clone())),
@@ -319,22 +323,7 @@ impl VerifiedNodeRuntime {
         }
         let probe: NodeRuntimeSelfTest = serde_json::from_slice(&diagnostics.stdout)
             .map_err(|_| failure("NODE_RUNTIME_INCOMPATIBLE", "probeResponse"))?;
-        self.spec
-            .validate_self_test(bundled_node_runtime_release(), &probe)
-            .map_err(|_| failure("NODE_RUNTIME_INCOMPATIBLE", "probeAbi"))?;
-        #[cfg(target_os = "linux")]
-        let matches_executable = self.image.matches_executable(&probe.exec_path)?;
-        #[cfg(not(target_os = "linux"))]
-        let matches_executable = std::path::Path::new(&probe.exec_path)
-            .canonicalize()
-            .map_err(|_| failure("NODE_RUNTIME_INCOMPATIBLE", "probeExecutable"))?
-            == self
-                .executable
-                .canonicalize()
-                .map_err(|_| failure("NODE_RUNTIME_INTEGRITY_FAILED", "resourcePath"))?;
-        if !matches_executable {
-            return Err(failure("NODE_RUNTIME_INCOMPATIBLE", "probeExecutable"));
-        }
+        self.validate_process_probe(&probe)?;
         if !self.spec.required_private_libraries.is_empty() {
             #[cfg(target_os = "linux")]
             let library = self.image.library();

@@ -235,8 +235,15 @@ impl Producer {
         let stopped = Arc::new(AtomicBool::new(false));
         let shared = state.clone();
         let stop = stopped.clone();
-        let started = Instant::now();
         let worker = thread::spawn(move || {
+            // 等待标记属于发生器线程，设备打开必须先返回。
+            if let Some(directory) = &directory {
+                let start = directory.join("producer-start");
+                while !start.is_file() && !stop.load(Ordering::SeqCst) {
+                    thread::sleep(Duration::from_millis(5));
+                }
+            }
+            let started = Instant::now();
             while !stop.load(Ordering::SeqCst) {
                 thread::sleep(Duration::from_millis(100));
                 if stop.load(Ordering::SeqCst)
@@ -373,5 +380,24 @@ mod tests {
             assert_eq!(*byte, (offset % 251) as u8);
         }
         device.close().unwrap();
+    }
+
+    #[test]
+    fn paced_producer_opens_before_the_start_marker() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().to_path_buf();
+        let (opened, receiver) = std::sync::mpsc::sync_channel(1);
+        let worker = std::thread::spawn(move || opened.send(Producer::new(Some(path))));
+        let result = receiver.recv_timeout(Duration::from_secs(2));
+        // 即使打开回归为同步等待，也先放行并回收测试线程。
+        std::fs::write(directory.path().join("producer-start"), b"ready").unwrap();
+        worker.join().unwrap().unwrap();
+        let timely = result.is_ok();
+        let mut producer = result.unwrap_or_else(|_| receiver.recv().unwrap());
+        producer.stop();
+        assert!(
+            timely,
+            "Device open must not wait for the producer start marker"
+        );
     }
 }

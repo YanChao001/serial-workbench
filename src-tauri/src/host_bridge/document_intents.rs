@@ -120,8 +120,19 @@ impl DesktopHostBridge {
             lease_id: None,
             execution_mode: Some(ExecutionMode::Interactive),
         };
-        // 重复授予相同权限也会退休旧订阅；明确保存先只读验权，缺权才使用控制入口。
-        // 此检查不替代提交时的验权，也不为普通业务调用或读取恢复补授权。
+        self.invoke_local_business(window, generation, business.client_id, permission, call)
+            .await
+    }
+
+    // 仅由原生的封闭用户意图调用。重复授权会退休旧订阅，先只读检查现有权限。
+    pub(super) async fn invoke_local_business(
+        &self,
+        window: &str,
+        generation: U64,
+        client_id: Id,
+        permission: &str,
+        call: Call,
+    ) -> HostResult<Operation> {
         let check = Query {
             protocol_version: call.protocol_version,
             host_id: call.host_id.clone(),
@@ -142,7 +153,7 @@ impl DesktopHostBridge {
         {
             RpcReply::Success { result, .. } => match *result {
                 RpcResult::Query(QueryResult::ActionCheck(result))
-                    if result.action_id == call.action_id && result.target == target =>
+                    if result.action_id == call.action_id && result.target == call.target =>
                 {
                     result.allowed
                 }
@@ -158,9 +169,9 @@ impl DesktopHostBridge {
                 generation,
                 "auth.authorize",
                 serde_json::to_value(AuthorizeParams {
-                    client_id: business.client_id,
+                    client_id,
                     permissions: vec![permission.into()],
-                    targets: vec![target],
+                    targets: vec![call.target.clone()],
                     expires_at: None,
                 })
                 .map_err(|_| invalid_document_intent())?,
@@ -178,7 +189,7 @@ impl DesktopHostBridge {
                 RpcResult::Operation(result) => Ok(result.operation),
                 _ => Err(HostError::new(
                     "INTERNAL",
-                    "Invalid document operation response",
+                    "Invalid local operation response",
                 )),
             },
             RpcReply::Failure { error, .. } => Err(error),
@@ -195,7 +206,7 @@ fn invalid_document_intent() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid local document parameters")
 }
 
-fn document_request_id() -> HostResult<RequestId> {
+pub(crate) fn document_request_id() -> HostResult<RequestId> {
     use sha2::Digest as _;
     let token = serial_workbench_ipc::identity::random_token();
     let hash = format!("{:x}", sha2::Sha256::digest(token.as_str().as_bytes()));

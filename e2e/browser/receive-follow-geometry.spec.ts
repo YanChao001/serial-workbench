@@ -1,7 +1,7 @@
 /// <reference lib="dom" />
+import { defaults } from "./json-fixtures";
 import { expect, test } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 

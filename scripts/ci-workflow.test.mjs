@@ -69,7 +69,13 @@ test("both native matrices cover all four targets without scope or tree reuse", 
     );
   }
   assert.doesNotMatch(ci, /docs_only|rust_required|reused_run|needs: changes/);
-  for (const name of ["frontend", "browser-smoke", "rust", "bindings"]) {
+  for (const name of [
+    "frontend",
+    "browser-smoke",
+    "rust",
+    "linux-node-backend",
+    "bindings",
+  ]) {
     assert.match(
       job(name),
       /^ {4}if: \$\{\{ !inputs\.native_preflight && !inputs\.runtime_preflight \}\}$/m,
@@ -112,6 +118,22 @@ test("preflight shares the full native runner and retains successful source rece
     preflight,
     /target: \$\{\{ inputs\.native_preflight_target \|\| 'x86_64-unknown-linux-gnu' \}\}/,
   );
+  assert.match(
+    preflight,
+    /native_file_dialogs: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' \}\}/,
+  );
+  assert.match(
+    job("desktop-e2e"),
+    /native_file_dialogs: \$\{\{ matrix\.target == 'x86_64-pc-windows-msvc' \}\}/,
+  );
+  assert.match(
+    native,
+    /if: runner\.os != 'Linux' && !inputs\.chart_only && !\(runner\.os == 'Windows' && inputs\.native_file_dialogs\)\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
+  );
+  assert.match(
+    native,
+    /if: runner\.os == 'Windows' && inputs\.native_file_dialogs && !inputs\.chart_only\n\s+env:\n\s+SWB_E2E_WINDOWS_NATIVE_PICKERS: "1"\n\s+run: pnpm test:e2e --interactive --skip-build --terminal-automated/,
+  );
   const triggers = native.split(/^on:\s*$/m)[1]?.split(/^\S/m)[0];
   assert.deepEqual(
     [...triggers.matchAll(/^ {2}([\w-]+):/gm)].map((match) => match[1]),
@@ -119,7 +141,22 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(native, /runs-on: \$\{\{ inputs\.platform \}\}/);
   assert.match(native, /保留原生收据、截图与测试日志\n {8}if: always\(\)/);
-  assert.match(native, /pnpm test:e2e --interactive --skip-build/);
+  assert.match(
+    native,
+    /if: runner\.os != 'Linux' && !inputs\.chart_only && !\(runner\.os == 'Windows' && inputs\.windows_reference_only\)\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
+  );
+  assert.match(
+    ci,
+    /windows_reference_only: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
+  );
+  assert.match(
+    preflight,
+    /chart_only: \$\{\{ inputs\.native_preflight_chart \}\}/,
+  );
+  assert.match(
+    native,
+    /if: runner\.os != 'Linux' && inputs\.chart_only\n\s+run: pnpm test:e2e --interactive --skip-build --chart-automated/,
+  );
   assert.match(
     job("quality-gate"),
     /name: \$\{\{ inputs\.native_preflight && '原生预检结果（非里程碑验收）' \|\| '质量门禁' \}\}/,
@@ -138,7 +175,7 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   );
   assert.match(
     job("quality-gate"),
-    /needs:\s*\[frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight\]/,
+    /needs:\s*\[\s*frontend,\s*browser-smoke,\s*rust,\s*linux-node-backend,\s*bindings,\s*desktop-e2e,\s*native-preflight,?\s*\]/,
   );
   assert.match(
     job("quality-gate"),
@@ -154,6 +191,28 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
           : job(name);
     assert.match(runner, /timeout-minutes: \d+/, name);
   }
+});
+
+test("Linux verified backend checks are required and use an independent fixed runtime", () => {
+  const backend = job("linux-node-backend");
+  assert.match(backend, /runs-on: ubuntu-22\.04/);
+  assert.match(backend, /timeout-minutes: 60/);
+  assert.match(backend, /RUNTIME_TARGET: x86_64-unknown-linux-gnu/);
+  assert.match(backend, /node scripts\/ci-prepare-node-runtime\.mjs/);
+  const suite =
+    "cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture";
+  assert.ok(backend.includes(suite));
+  assert.match(
+    job("rust"),
+    /if \[\[ "\$RUNNER_OS" != "Linux" \]\]; then\n\s+cargo test --locked -p serial-workbench-host --test node_packages verified_backend_/,
+  );
+  assert.ok(job("rust").includes("--duration-seconds 600"));
+  assert.doesNotMatch(
+    backend,
+    /pnpm app:build|pnpm test:e2e|ci-linux-deps\.sh/,
+  );
+  assert.match(backend, /shell: bash/);
+  assert.match(backend, /if: always\(\)/);
 });
 
 test("runtime diagnostics cannot replace the full milestone gate or launch desktop jobs", () => {
@@ -174,14 +233,109 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   );
   assert.match(
     runtime,
-    /cargo build --locked -p serial-workbench-host --example node_runtime_probe/,
+    /cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp\s+--example node_runtime_probe --bin serial-workbench-cli --bin serial-workbench-mcp/,
   );
   assert.match(
     runtime,
     /cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1/,
   );
+  for (const workflow of [ci, runtime]) {
+    assert.match(
+      workflow,
+      /cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1/,
+    );
+    assert.match(
+      workflow,
+      /cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture/,
+    );
+    assert.match(
+      workflow,
+      /export SWB_TEST_CLI_BIN="\$PWD\/src-tauri\/target\/debug\/serial-workbench-cli\$suffix"/,
+    );
+    assert.match(
+      workflow,
+      /export SWB_TEST_MCP_BIN="\$PWD\/src-tauri\/target\/debug\/serial-workbench-mcp\$suffix"/,
+    );
+    assert.match(
+      workflow,
+      /export SWB_TEST_CLI_BIN=.*\n\s+export SWB_TEST_MCP_BIN=.*\n\s+cargo test --locked -p serial-workbench-host --lib native_node_/,
+    );
+    assert.match(workflow, /pnpm plugin-sdk:fixture/);
+    assert.match(
+      workflow,
+      /export SWB_TEST_NODE_SDK_FIXTURE="\$PWD\/\.cache\/plugin-sdk\/examples\/native-parity\.js"/,
+    );
+    assert.match(
+      workflow,
+      /cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture/,
+    );
+    assert.match(
+      workflow,
+      /if \[\[ "\$RUNNER_OS" == "macOS" \]\]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi/,
+    );
+    for (const prefix of [
+      "node-backend-",
+      "host-node-backend-",
+      "macos-node-before-auth-",
+    ]) {
+      assert.ok(workflow.includes(`artifacts/rust-failures/${prefix}*/**`));
+    }
+    assert.ok(
+      workflow.includes(
+        "artifacts/rust-failures/host-node-task-derived-*/derived.events",
+      ),
+    );
+  }
+  assert.match(
+    ci,
+    /cargo build --locked -p serial-workbench-host \\\n\s+--example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation/,
+  );
+  assert.match(
+    ci,
+    /cargo test --locked -p serial-workbench --lib native_reference_terminal_ -- --ignored --test-threads=1 --nocapture/,
+  );
+  assert.ok(
+    ci.includes(
+      'SWB_TEST_TERMINAL_HOST_BIN="$installed/serial-workbench-host$suffix"',
+    ),
+  );
+  assert.ok(ci.includes("artifacts/reference-terminal/signed-terminal.json"));
+  assert.ok(ci.includes("artifacts/reference-terminal/native-reader.log"));
+  for (const [name, testName, log] of [
+    [
+      "chart",
+      "native_chart_samples_exact_rx_from_the_signed_reference_package",
+      "native-samples",
+    ],
+    [
+      "automation",
+      "native_automation_uses_exact_responses_and_keeps_capture_running",
+      "native-response",
+    ],
+  ]) {
+    assert.ok(
+      ci.includes(
+        `cargo test --locked -p serial-workbench --lib ${testName} -- --ignored --test-threads=1 --nocapture`,
+      ),
+    );
+    assert.ok(ci.includes(`artifacts/reference-${name}/signed-${name}.json`));
+    assert.ok(ci.includes(`artifacts/reference-${name}/${log}.log`));
+  }
   assert.match(runtime, /name: runtime-preflight-\$\{\{ matrix\.target \}\}/);
   assert.match(runtime, /fail-fast: false/);
+  for (const [step, suite] of [
+    ["验证原生 runtime 安装布局与故障", "all"],
+    ["定向验证 Host 管道和自动恢复", "host-ipc"],
+    ["定向验证 macOS 进程签名", "macos-signature"],
+    ["验证 Debian 实际离线安装与参考包", "linux-offline-installer"],
+    ["验证 macOS DMG 实际离线安装与参考包", "macos-offline-installer"],
+  ]) {
+    assert.ok(
+      runtime.includes(
+        `- name: ${step}\n        if: inputs.suite == '${suite}'`,
+      ),
+    );
+  }
   assert.match(
     ci,
     /runtime_preflight:[\s\S]*?type: boolean\n {8}default: false/,
@@ -200,8 +354,8 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
   t.after(() => {
     if (t.passed) removeProjectPath(root, relative(root, directory));
   });
-  const run = (target, conflict = "false") => {
-    const output = join(directory, `${target}-${conflict}.txt`);
+  const run = (target, conflict = "false", suite = "all") => {
+    const output = join(directory, `${target}-${conflict}-${suite}.txt`);
     const result = spawnSync(process.execPath, ["--input-type=module"], {
       cwd: root,
       input: script,
@@ -210,6 +364,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
       env: {
         ...process.env,
         RUNTIME_TARGET: target,
+        RUNTIME_SUITE: suite,
         CONFLICTING_PREFLIGHT: conflict,
         GITHUB_OUTPUT: output,
       },
@@ -228,17 +383,39 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     { target: "aarch64-apple-darwin", platform: "macos-15" },
     { target: "x86_64-apple-darwin", platform: "macos-15-intel" },
   ]);
-  const one = run("aarch64-apple-darwin");
-  assert.equal(one.result.status, 0, one.result.stderr);
-  assert.equal(
-    JSON.parse(readFileSync(one.output, "utf8").trim().slice(7)).include.length,
-    1,
-  );
-  for (const [target, conflict, message] of [
-    ["all", "true", /mutually exclusive/],
-    ["unknown", "false", /Unsupported runtime preflight target/],
+  for (const [target, suite, platform] of [
+    ["aarch64-apple-darwin", "host-ipc", "macos-15"],
+    ["x86_64-apple-darwin", "macos-signature", "macos-15-intel"],
+    ["x86_64-unknown-linux-gnu", "linux-offline-installer", "ubuntu-22.04"],
+    ["aarch64-apple-darwin", "macos-offline-installer", "macos-15"],
   ]) {
-    const { result } = run(target, conflict);
+    const one = run(target, "false", suite);
+    assert.equal(one.result.status, 0, one.result.stderr);
+    assert.deepEqual(
+      JSON.parse(readFileSync(one.output, "utf8").trim().slice(7)).include,
+      [{ target, platform }],
+    );
+  }
+  for (const [target, conflict, suite, message] of [
+    ["all", "true", "all", /mutually exclusive/],
+    ["unknown", "false", "all", /Unsupported runtime preflight target/],
+    ["all", "false", "unknown", /Unsupported runtime preflight suite/],
+    ["all", "false", "host-ipc", /needs one target/],
+    ["x86_64-pc-windows-msvc", "false", "macos-signature", /requires macOS/],
+    [
+      "x86_64-apple-darwin",
+      "false",
+      "linux-offline-installer",
+      /requires Linux x64/,
+    ],
+    [
+      "x86_64-pc-windows-msvc",
+      "false",
+      "macos-offline-installer",
+      /requires macOS/,
+    ],
+  ]) {
+    const { result } = run(target, conflict, suite);
     assert.equal(result.status, 1);
     assert.match(result.stderr, message);
   }

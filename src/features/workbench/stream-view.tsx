@@ -98,7 +98,7 @@ export type StreamViewProps = {
   labels: WorkbenchLabels;
   error?: Error | null;
   trimmed?: boolean;
-  onOpenCapture?: () => void;
+  onOpenCapture?: (trigger: HTMLButtonElement) => void;
   onOpenActivity?: () => void;
   onClearView?: () => void;
   captureActive?: boolean;
@@ -772,7 +772,7 @@ export function StreamView({
           <WorkbenchIconButton
             label={labels.capture}
             aria-pressed={captureActive}
-            onClick={onOpenCapture}
+            onClick={(event) => onOpenCapture(event.currentTarget)}
           >
             <Circle aria-hidden="true" />
           </WorkbenchIconButton>

@@ -33,6 +33,7 @@ import type {
   SelectedFileResource,
   MediaResolution,
   LocalDocumentIntent_Deserialize,
+  LocalNodeIntent_Deserialize,
 } from "./generated/bindings";
 
 export type {
@@ -51,10 +52,27 @@ export type {
   CaptureNameHint,
   SelectedFileResource,
   MediaResolution,
+  LocalNodeIntent_Deserialize as LocalNodeIntent,
 } from "./generated/bindings";
 
 export function readClientState(): Promise<ClientStateSnapshot> {
   return callNative((commands) => commands.clientStateRead());
+}
+
+export function hostOpenNodeView(
+  generation: U64,
+  operationId: string,
+  viewId: string,
+  locale: string,
+  dark: boolean,
+): Promise<string> {
+  return callHost((commands) =>
+    commands.hostOpenNodeView(generation, operationId, viewId, locale, dark),
+  );
+}
+
+export async function hostCloseNodeView(id: string): Promise<void> {
+  await callHost((commands) => commands.hostCloseNodeView(id));
 }
 export function saveClientState(
   state: ClientWindowStateInput,
@@ -104,6 +122,19 @@ export async function hostApplyDocumentIntent(
 ): Promise<Operation> {
   const operation = await callHost((commands) =>
     commands.hostApplyDocumentIntent(generation, intent),
+  );
+  const reply = parseReply({ ok: true, result: { operation } });
+  if (!reply.ok || !("operation" in reply.result))
+    throw new ContractValidationError();
+  return reply.result.operation;
+}
+
+export async function hostApplyNodeIntent(
+  generation: U64,
+  intent: LocalNodeIntent_Deserialize,
+): Promise<Operation> {
+  const operation = await callHost((commands) =>
+    commands.hostApplyNodeIntent(generation, intent),
   );
   const reply = parseReply({ ok: true, result: { operation } });
   if (!reply.ok || !("operation" in reply.result))
@@ -328,6 +359,12 @@ export function onUpdateProgress(
   handler: (progress: UpdateProgress) => void,
 ): Promise<() => void> {
   return onNativeEvent("app://update-progress", handler);
+}
+
+export function onHostCatalogChanged(
+  handler: (generation: U64) => void,
+): Promise<() => void> {
+  return onNativeEvent("app://host-catalog-changed", handler);
 }
 
 export async function openSecondaryWindow(): Promise<void> {

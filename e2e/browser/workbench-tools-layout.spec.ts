@@ -1,11 +1,11 @@
 /// <reference lib="dom" />
+import { defaults } from "./json-fixtures";
 import { expect, test, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { en } from "../../src/i18n/en";
 import { zhCN } from "../../src/i18n/zh-CN";
 import { session } from "../../src/features/workbench/test-fixtures";
 import type { WorkspaceDocument } from "@serial-workbench/contracts";
-import defaults from "../../packages/contracts/src/generated/defaults.json" with { type: "json" };
 
 async function openTool(page: Page, name: string) {
   const menu = page.getByRole("button", {

@@ -1,7 +1,7 @@
+import { appConfig } from "./json-fixtures";
 import { seedBrowserSettings } from "./browser-settings.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
-import appConfig from "../../app.config.json" with { type: "json" };
 
 const SETTINGS_KEY = `${appConfig.browserStorageNamespace}:preview-settings-v0`;
 const browserFailures = new WeakMap<Page, string[]>();
@@ -50,7 +50,7 @@ test("the empty workspace and HashRouter load below the product subpath", async 
   ).toBeDisabled();
   await expect(page.getByRole("tab")).toHaveCount(0);
   const sidebar = page.locator("#app-sidebar-navigation");
-  await expect(sidebar.getByRole("link")).toHaveCount(1);
+  await expect(sidebar.getByRole("link")).toHaveCount(2);
   await expect(
     page.locator(".app-sidebar-tools").getByRole("link", {
       name: "Settings",
@@ -59,6 +59,14 @@ test("the empty workspace and HashRouter load below the product subpath", async 
   ).toBeVisible();
   await expect(sidebar.locator('a[href="#/diagnostics"]')).toHaveCount(0);
   await expect(sidebar.locator('a[href="#/recovery"]')).toHaveCount(0);
+  await sidebar.getByRole("link", { name: "Plugins", exact: true }).click();
+  await expect(page).toHaveURL(/\/serial-workbench\/#\/plugins$/);
+  await expect(
+    page.getByRole("heading", { name: "Plugins", exact: true }),
+  ).toBeVisible();
+  await expect(
+    page.getByRole("button", { name: "Install plugin" }),
+  ).toHaveCount(0);
   await page.goto("./#/settings");
   await page.reload();
   await expect(page).toHaveURL(/\/serial-workbench\/#\/settings$/);

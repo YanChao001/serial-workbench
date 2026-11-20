@@ -1,0 +1,14 @@
+{
+  "extends": "../../tsconfig.node.json",
+  "compilerOptions": {
+    "noEmit": false,
+    "allowImportingTsExtensions": false,
+    "rewriteRelativeImportExtensions": true,
+    "noEmitOnError": true,
+    "rootDir": ".",
+    "outDir": "../../.cache/plugin-sdk",
+    "declaration": false,
+    "sourceMap": false
+  },
+  "include": ["src/**/*.ts", "examples/**/*.ts", "type-tests/**/*.ts"]
+}

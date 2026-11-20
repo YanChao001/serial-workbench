@@ -17,6 +17,7 @@ struct Provider {
     devices: Mutex<HostResult<Vec<DeviceDescriptor>>>,
     opens: Mutex<Vec<DeviceDescriptor>>,
     gate: Mutex<Option<Arc<Gate>>>,
+    publish_gate: Mutex<Option<Arc<Gate>>>,
     active: AtomicUsize,
     overlap: AtomicBool,
 }
@@ -30,6 +31,10 @@ impl DeviceProvider for Provider {
             gate.hold();
         }
         let result = self.devices.lock().unwrap().clone();
+        let gate = self.publish_gate.lock().unwrap().take();
+        if let Some(gate) = gate {
+            gate.hold();
+        }
         self.active.fetch_sub(1, Ordering::SeqCst);
         result
     }
@@ -63,6 +68,7 @@ fn provider(host: &Id) -> Arc<Provider> {
         }])),
         opens: Mutex::new(vec![]),
         gate: Mutex::new(None),
+        publish_gate: Mutex::new(None),
         active: AtomicUsize::new(0),
         overlap: AtomicBool::new(false),
     })
@@ -147,8 +153,39 @@ async fn opaque_id_resolves_trusted_locator_and_renumbering_preserves_identity()
         .unwrap();
     let open = runtime.opener();
     assert!(open(&id("COM42"), &SerialConfiguration::default()).is_err());
+    let old_scan = Arc::new(Gate::default());
+    *p.publish_gate.lock().unwrap() = Some(old_scan.clone());
+    old_scan.entered().await;
     p.devices.lock().unwrap().as_mut().unwrap()[0].system_name = "COM43".into();
-    runtime.refresh().await.unwrap();
+    let next_scan = Arc::new(Gate::default());
+    *p.gate.lock().unwrap() = Some(next_scan.clone());
+    let refreshed = runtime.refresh();
+    tokio::pin!(refreshed);
+    tokio::select! {
+        biased;
+        result = &mut refreshed => panic!("Refresh returned before the held scan was released: {result:?}"),
+        () = std::future::ready(()) => {}
+    }
+    old_scan.release();
+    next_scan.entered().await;
+    tokio::select! {
+        biased;
+        result = &mut refreshed => {
+            next_scan.release();
+            panic!("Refresh returned the previous scan: {result:?}");
+        }
+        () = std::future::ready(()) => {}
+    }
+    next_scan.release();
+    let refreshed = tokio::time::timeout(Duration::from_secs(5), refreshed)
+        .await
+        .unwrap()
+        .unwrap();
+    assert!(
+        refreshed.devices.iter().any(|device| {
+            device.device_id == serial.device_id && device.system_name == "COM43"
+        })
+    );
     let mut transport = open(&serial.device_id, &SerialConfiguration::default()).unwrap();
     assert_eq!(p.opens.lock().unwrap()[0].system_name, "COM43");
     transport.close().unwrap();

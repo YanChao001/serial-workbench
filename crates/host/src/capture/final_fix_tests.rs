@@ -304,6 +304,49 @@ async fn written_rx(path: &std::path::Path, volume: u64, expected: &str) {
     .expect("capture must write actual RX before the stop boundary");
 }
 
+#[tokio::test]
+async fn capture_source_revoke_before_queue_admission_keeps_only_the_authorized_prefix() {
+    let f = Fixture::new(CaptureLimits::default()).await;
+    let (owner, _) = f.start(false).await;
+    f.tx("AQ==").await;
+    written_rx(&f.path, 1, "AQ==").await;
+
+    let mut admission = f.h.host.inner.capture_api.capture_queue_gate().arm();
+    f.tx("Ag==").await;
+    admission.entered().await;
+    f.h.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.h.actor.id().clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![f.session.clone()],
+            },
+        )
+        .unwrap();
+    admission.release();
+
+    let failed = f.h.wait(&owner.operation_id).await;
+    assert_eq!(failed.state, OperationState::Failed);
+    assert_eq!(failed.error.unwrap().code, "PERMISSION_DENIED");
+    let mut scan = verify_directory(&f.path).unwrap();
+    scan.bind_files(&f.path).unwrap();
+    let received: Vec<_> = (0..scan.index.records.len())
+        .filter_map(
+            |position| match scan.read_verified_record(position).unwrap().entry {
+                CaptureEntry::Event(event) => match event.payload {
+                    RawPayload::Rx(rx) => Some(rx.bytes_base64.to_string()),
+                    _ => None,
+                },
+                CaptureEntry::ReaderGap(_) | CaptureEntry::TxSettlement(_) => None,
+            },
+        )
+        .collect();
+    assert_eq!(received, ["AQ=="]);
+    drop(scan);
+    f.h.host.shutdown().await.unwrap();
+}
+
 struct CaptureGateRelease(Arc<crate::test_support::Gate>);
 impl Drop for CaptureGateRelease {
     fn drop(&mut self) {

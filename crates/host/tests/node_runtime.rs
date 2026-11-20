@@ -85,6 +85,32 @@ fn replacing_node_after_verification_cannot_run_the_substitute() {
     assert_changed_runtime_cannot_execute_unverified_code(true);
 }
 
+#[cfg(target_os = "macos")]
+#[test]
+#[ignore = "Requires the prepared native macOS distribution and its compiled image binding"]
+fn failed_native_exec_keeps_start_error_and_reaps_owned_processes() {
+    use std::os::unix::fs::PermissionsExt;
+    let (_profile, root) = native_runtime_fixture();
+    let limits = NodeRuntimeLimits::default();
+    let cancel = AtomicBool::new(false);
+    let runtime = verify_node_runtime(&root, &limits, &cancel).unwrap();
+    let mut permissions = fs::metadata(runtime.executable()).unwrap().permissions();
+    permissions.set_mode(permissions.mode() & !0o111);
+    fs::set_permissions(runtime.executable(), permissions).unwrap();
+    let report = runtime.self_test(&limits, &cancel);
+    assert_eq!(
+        report.outcome.unwrap_err().code,
+        "NODE_RUNTIME_START_FAILED"
+    );
+    assert_eq!(report.diagnostics.launch_errno, Some(libc::EACCES));
+    assert_eq!(
+        report.diagnostics.io_error,
+        Some(std::io::Error::from_raw_os_error(libc::EACCES).to_string())
+    );
+    assert!(report.diagnostics.reaped);
+    assert_child_exited(report.diagnostics.process_id.unwrap());
+}
+
 #[cfg(unix)]
 #[test]
 #[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT pointing to a prepared native distribution"]

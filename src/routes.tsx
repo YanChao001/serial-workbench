@@ -1,6 +1,7 @@
 import { lazy, type ComponentType, type LazyExoticComponent } from "react";
 import {
   LayoutDashboardIcon,
+  PuzzleIcon,
   SettingsIcon,
   MonitorIcon,
   ActivityIcon,
@@ -86,6 +87,13 @@ export const APP_ROUTES: AppRoute[] = [
     keepRunning: true,
     index: true,
     exact: true,
+  },
+  {
+    path: "/plugins",
+    labelKey: "nav.plugins",
+    group: "system",
+    icon: PuzzleIcon,
+    ...lazyPage(() => import("@/pages/plugins")),
   },
   {
     path: "/recovery",

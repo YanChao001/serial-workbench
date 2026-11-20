@@ -1,11 +1,11 @@
 name: 里程碑检查
-run-name: ${{ inputs.runtime_preflight && format('运行时预检 {0}', inputs.runtime_preflight_target || 'all') || inputs.native_preflight && format('原生预检 {0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || '完整四目标检查' }} · ${{ github.ref_name }}
+run-name: ${{ inputs.runtime_preflight && format('运行时预检 {0} / {1}', inputs.runtime_preflight_target || 'all', inputs.runtime_preflight_suite || 'all') || inputs.native_preflight && format('原生预检 {0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || '完整四目标检查' }} · ${{ github.ref_name }}
 
 on:
   workflow_dispatch:
     inputs:
       desktop_e2e:
-        description: 在独立 runner 执行四目标真实桌面 E2E
+        description: 执行四目标真实桌面 E2E。Windows 原生预检关闭此项时只跑签名参考包场景
         type: boolean
         default: true
         required: true
@@ -15,7 +15,7 @@ on:
         default: false
         required: true
       runtime_preflight:
-        description: 仅验证固定运行时来源、原生启动与故障，不作为里程碑验收
+        description: 定向验证固定运行时或离线安装，不作为里程碑验收
         type: boolean
         default: false
         required: true
@@ -30,6 +30,17 @@ on:
           - aarch64-apple-darwin
           - x86_64-apple-darwin
         required: true
+      runtime_preflight_suite:
+        description: 运行时预检范围；定向套件须选择单一目标
+        type: choice
+        default: all
+        options:
+          - all
+          - host-ipc
+          - macos-signature
+          - linux-offline-installer
+          - macos-offline-installer
+        required: true
       native_preflight_target:
         description: 原生预检目标；完整四目标模式不使用此选项
         type: choice
@@ -39,6 +50,11 @@ on:
           - x86_64-pc-windows-msvc
           - aarch64-apple-darwin
           - x86_64-apple-darwin
+        required: true
+      native_preflight_chart:
+        description: 原生预检只运行签名图表和实际窗口场景
+        type: boolean
+        default: false
         required: true
 
 permissions:
@@ -250,6 +266,44 @@ jobs:
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
           pnpm test:runtime --target '${{ matrix.target }}' --resources 'src-tauri/target/${{ matrix.target }}/release' --probe "src-tauri/target/debug/examples/node_runtime_probe$suffix" --output artifacts/node-runtime
           cargo test --locked -p serial-workbench-host --test node_runtime -- --include-ignored --test-threads=1
+          if [[ "$RUNNER_OS" != "Linux" ]]; then
+            cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture
+          fi
+          export SWB_TEST_CLI_BIN="$PWD/src-tauri/target/debug/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$PWD/src-tauri/target/debug/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench-host --lib native_node_ -- --ignored --test-threads=1 --nocapture
+          pnpm plugin-sdk:fixture
+          export SWB_TEST_NODE_SDK_FIXTURE="$PWD/.cache/plugin-sdk/examples/native-parity.js"
+          cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
+          if [[ "$RUNNER_OS" == "macOS" ]]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi
+          mkdir -p artifacts/reference-terminal artifacts/reference-chart artifacts/reference-automation
+          seed="artifacts/test-reference-package.seed"
+          node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), { flag: "wx", mode: 0o600 })' "$seed"
+          trap 'rm -f -- "$seed"' EXIT
+          cargo build --locked -p serial-workbench-host \
+            --example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation
+          for reference in terminal chart automation; do
+            output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/reference-$reference")"
+            "src-tauri/target/debug/examples/sign_reference_${reference}$suffix" \
+              ".cache/plugin-sdk/examples/reference-$reference/main.js" "$seed" \
+              "$output/reference-$reference.zip" "$reference-reference" ci-acceptance \
+              > "artifacts/reference-$reference/signed-$reference.json"
+          done
+          rm -- "$seed"
+          trap - EXIT
+          export SWB_TEST_SIGNED_TERMINAL_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-terminal/signed-terminal.json")')"
+          export SWB_TEST_SIGNED_CHART_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-chart/signed-chart.json")')"
+          export SWB_TEST_SIGNED_AUTOMATION_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-automation/signed-automation.json")')"
+          installed="$PWD/src-tauri/target/${{ matrix.target }}/release"
+          export SWB_TEST_TERMINAL_HOST_BIN="$installed/serial-workbench-host$suffix"
+          export SWB_TEST_CLI_BIN="$installed/serial-workbench-cli$suffix"
+          export SWB_TEST_MCP_BIN="$installed/serial-workbench-mcp$suffix"
+          cargo test --locked -p serial-workbench --lib native_reference_terminal_ -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-terminal/native-reader.log
+          cargo test --locked -p serial-workbench --lib native_chart_samples_exact_rx_from_the_signed_reference_package -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-chart/native-samples.log
+          cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-automation/native-response.log
 
       - name: 保留 runtime 验收收据与原始输出
         if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
@@ -271,6 +325,15 @@ jobs:
             artifacts/node-runtime/**/probe.stdout
             artifacts/node-runtime/**/probe.stderr
             artifacts/node-runtime/**/probe-io.txt
+            artifacts/reference-terminal/reference-terminal.zip
+            artifacts/reference-terminal/signed-terminal.json
+            artifacts/reference-terminal/native-reader.log
+            artifacts/reference-chart/reference-chart.zip
+            artifacts/reference-chart/signed-chart.json
+            artifacts/reference-chart/native-samples.log
+            artifacts/reference-automation/reference-automation.zip
+            artifacts/reference-automation/signed-automation.json
+            artifacts/reference-automation/native-response.log
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
@@ -284,7 +347,63 @@ jobs:
             artifacts/node-runtime
             .cache/node-runtime
             artifacts/rust-failures/node-runtime-*/**
+            artifacts/rust-failures/node-backend-*/**
+            artifacts/rust-failures/host-node-backend-*/**
+            artifacts/rust-failures/host-node-task-derived-*/derived.events
+            artifacts/rust-failures/macos-node-before-auth-*/**
           include-hidden-files: true
+          if-no-files-found: ignore
+          retention-days: 7
+
+  linux-node-backend:
+    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
+    name: Linux x64 签名插件后台
+    runs-on: ubuntu-22.04
+    timeout-minutes: 60
+    env:
+      CARGO_PROFILE_DEV_DEBUG: "0"
+      CARGO_PROFILE_TEST_DEBUG: "0"
+      RUNTIME_TARGET: x86_64-unknown-linux-gnu
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - uses: actions/setup-node@949feb2413d6458794dcd2491c4babbbce0c15c1 # v7.1.0
+        with:
+          node-version-file: .nvmrc
+      - name: 安装 Rust 工具链
+        run: rustup toolchain install
+      - uses: Swatinem/rust-cache@d1527c8f67ef9af357290475d4af4b0fab8f12e0 # v2.9.3
+        with:
+          workspaces: . -> src-tauri/target
+          key: node-backend-${{ env.RUNTIME_TARGET }}
+          cache-on-failure: true
+      - name: 验签并准备固定原生运行时
+        run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 验证签名插件后台
+        shell: bash
+        run: |
+          mkdir -p artifacts/linux-node-backend
+          echo "source=$GITHUB_SHA target=$RUNTIME_TARGET" | tee artifacts/linux-node-backend/results.log
+          cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee -a artifacts/linux-node-backend/results.log
+      - name: 保留测试输出与运行时来源
+        if: always()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-node-backend-x64
+          path: |
+            artifacts/linux-node-backend/results.log
+            .cache/node-runtime/layouts/**/runtime-preparation.json
+          include-hidden-files: true
+          if-no-files-found: warn
+          retention-days: 7
+      - name: 保留失败夹具
+        if: failure()
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-node-backend-failures-x64
+          path: |
+            artifacts/rust-failures/node-backend-*/**
+            artifacts/rust-failures/host-node-backend-*/**
           if-no-files-found: ignore
           retention-days: 7
 
@@ -331,6 +450,7 @@ jobs:
     uses: ./.github/workflows/runtime-preflight.yml
     with:
       target: ${{ inputs.runtime_preflight_target || 'all' }}
+      suite: ${{ inputs.runtime_preflight_suite || 'all' }}
       conflicting_preflight: ${{ inputs.native_preflight }}
 
   native-preflight:
@@ -340,6 +460,9 @@ jobs:
     with:
       platform: ${{ fromJSON('{"x86_64-unknown-linux-gnu":"ubuntu-22.04","x86_64-pc-windows-msvc":"windows-2022","aarch64-apple-darwin":"macos-15","x86_64-apple-darwin":"macos-15-intel"}')[inputs.native_preflight_target || 'x86_64-unknown-linux-gnu'] }}
       target: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
+      native_file_dialogs: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' }}
+      chart_only: ${{ inputs.native_preflight_chart }}
+      windows_reference_only: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
 
   desktop-e2e:
     if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight
@@ -360,12 +483,21 @@ jobs:
     with:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
+      native_file_dialogs: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
 
   quality-gate:
     name: ${{ inputs.native_preflight && '原生预检结果（非里程碑验收）' || '质量门禁' }}
     if: always() && !inputs.runtime_preflight
     needs:
-      [frontend, browser-smoke, rust, bindings, desktop-e2e, native-preflight]
+      [
+        frontend,
+        browser-smoke,
+        rust,
+        linux-node-backend,
+        bindings,
+        desktop-e2e,
+        native-preflight,
+      ]
     runs-on: ubuntu-22.04
     timeout-minutes: 5
     steps:

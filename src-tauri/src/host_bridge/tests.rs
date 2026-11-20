@@ -117,7 +117,7 @@ fn item_limit_applies_across_distinct_closed_subscriptions() {
     assert_eq!(ledger.pending(), (2, 2));
 }
 
-fn query(
+pub(super) fn query(
     attachment: &serial_workbench_core::AttachResult,
     action: &str,
     params: serde_json::Value,
@@ -384,6 +384,77 @@ async fn stale_generation_never_commits_platform_effects() {
         .await;
     assert_eq!(result.unwrap_err().code, "EPOCH_MISMATCH");
     assert!(!ran.load(Ordering::SeqCst));
+}
+
+#[tokio::test]
+async fn native_view_reveal_guards_current_generation_even_when_the_document_survives() {
+    use serial_workbench_host::{Host, ipc::HostServer};
+    use std::sync::Arc;
+
+    let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let mut server = HostServer::bind(directory.path()).await.unwrap();
+    let host = Host::new(server.store(), server.auth()).await.unwrap();
+    let (stop, done) = tokio::sync::oneshot::channel();
+    let running = tokio::spawn(async move {
+        server
+            .serve_until(Arc::new(host), async {
+                let _ = done.await;
+            })
+            .await
+    });
+    let bridge = DesktopHostBridge::new(directory.path().to_path_buf());
+    let previous = bridge.attach("main").await.unwrap();
+    let document = bridge
+        .window_instance_at_generation("main", previous.generation)
+        .await
+        .unwrap();
+    let retired_view = bridge
+        .watch_view_generation_end("main", previous.generation)
+        .await
+        .unwrap();
+
+    {
+        let reveal = bridge
+            .lock_current_generation("main", previous.generation)
+            .await
+            .unwrap();
+        let disconnect = bridge.disconnect_for_test("main");
+        tokio::pin!(disconnect);
+        tokio::select! {
+            biased;
+            () = &mut disconnect => panic!("Connection removal must wait for the final window effect"),
+            () = std::future::ready(()) => {}
+        }
+        drop(reveal);
+        disconnect.await;
+    }
+    assert!(retired_view.has_changed().is_err());
+
+    let replacement = bridge.attach("main").await.unwrap();
+    assert_ne!(replacement.generation, previous.generation);
+    assert_eq!(
+        bridge
+            .window_instance_at_generation("main", replacement.generation)
+            .await
+            .unwrap(),
+        document
+    );
+    let late_reveal = bridge
+        .lock_current_generation("main", previous.generation)
+        .await;
+    assert!(matches!(late_reveal, Err(error) if error.code == "EPOCH_MISMATCH"));
+    let current_view = bridge
+        .watch_view_generation_end("main", replacement.generation)
+        .await
+        .unwrap();
+    assert!(!current_view.has_changed().unwrap());
+    bridge
+        .lock_current_generation("main", replacement.generation)
+        .await
+        .unwrap();
+    drop(bridge);
+    stop.send(()).unwrap();
+    running.await.unwrap().unwrap();
 }
 
 #[tokio::test]
