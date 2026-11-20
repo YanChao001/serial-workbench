@@ -783,7 +783,7 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
         serde_json::to_string(&calls).unwrap(),
         serde_json::to_string(&started).unwrap(),
         serde_json::to_string(&crash_node).unwrap(),
-        marker_source = support::node_package::PUBLISH_MARKER_JS,
+        marker_source = support::PUBLISH_MARKER_JS,
     );
     let mut spec = node_host_actions::spec();
     spec.permissions = vec![

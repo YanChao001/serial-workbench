@@ -18,6 +18,16 @@ use std::{
     time::Duration,
 };
 
+// Node 夹具先写临时文件，保证按存在性等待的接收方读到完整内容。
+// 调用方从 node:fs 导入 writeFileSync 和 renameSync。
+pub const PUBLISH_MARKER_JS: &str = r#"
+function publishMarker(path, contents) {
+  const pending = path + '.tmp';
+  writeFileSync(pending, contents);
+  renameSync(pending, path);
+}
+"#;
+
 pub fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()
 }

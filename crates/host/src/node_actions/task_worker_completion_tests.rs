@@ -189,7 +189,7 @@ async fn native_node_task_worker_failed_handler_has_a_bounded_native_cleanup() {
         "const {{renameSync,writeFileSync}}=require('node:fs');{marker_source}
          publishMarker({},String(process.pid));setInterval(()=>{{}},1000);",
         serde_json::to_string(&child_pid).unwrap(),
-        marker_source = support::node_package::PUBLISH_MARKER_JS,
+        marker_source = support::PUBLISH_MARKER_JS,
     );
     let source = format!(
         r#"import {{appendFileSync,writeFileSync,existsSync}} from 'node:fs';

@@ -183,7 +183,7 @@ export async function register(c){{
             serde_json::to_string(&events).unwrap(),
             serde_json::to_string(&entered).unwrap(),
             if expires { 4500 } else { 0 },
-            marker_source = support::node_package::PUBLISH_MARKER_JS,
+            marker_source = support::PUBLISH_MARKER_JS,
         );
         let fixture = node_host_actions::Fixture::installed_program_with_activation(
             node_host_actions::spec(),

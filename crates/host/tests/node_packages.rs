@@ -16,10 +16,8 @@ use std::{collections::BTreeMap, sync::atomic::AtomicBool};
 use zip::CompressionMethod;
 
 use support::{
-    node_owner_exit,
-    node_package::{
-        PUBLISH_MARKER_JS, archive, archive_with_compression, manifest, payloads, with_metadata,
-    },
+    PUBLISH_MARKER_JS, node_owner_exit,
+    node_package::{archive, archive_with_compression, manifest, payloads, with_metadata},
 };
 
 fn verify_local(

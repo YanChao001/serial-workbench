@@ -187,7 +187,7 @@ async fn native_node_expired_resource_grant_stays_denied_after_root_window() {
 }
 
 async fn root_window(finite_grant: bool) {
-    let source = [support::node_package::PUBLISH_MARKER_JS, r#"
+    let source = [support::PUBLISH_MARKER_JS, r#"
         import {existsSync,renameSync,writeFileSync} from 'node:fs';
         export function register(context) {
           context.actions.register('example.terminal.compute',async (call,task)=>{

@@ -21,7 +21,7 @@ export function register(context){{
 }}"#,
         events = serde_json::to_string(&events).unwrap(),
         node_pid = serde_json::to_string(&node_pid).unwrap(),
-        marker_source = support::node_package::PUBLISH_MARKER_JS,
+        marker_source = support::PUBLISH_MARKER_JS,
     );
     let fixture = node_host_actions::Fixture::program_with_virtual(
         node_host_actions::spec(),

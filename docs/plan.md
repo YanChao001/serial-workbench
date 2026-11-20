@@ -150,6 +150,8 @@
 
 Intel Rust 的监督进程失效用例在发出故障信号前读到空 PID 文件。Node 签名夹具共用原子发布逻辑，用于存在性就绪检查后读取的进程标记、worker 完成状态和持久子动作收据。原退出、取消和时长断言继续执行。Windows 复验覆盖 4 项签名后台和 7 项 Host 用例，均已通过。Intel 本轮在此步骤停止，后续签名参考用例以离线预检证据单独记录。[Intel 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44669249898/job/136065996585)
 
+**原生夹具复验（`08f1906`）。** 本机综合检查和全量无头 Chromium 203 项通过。Intel macOS 原失败的监督用例已通过，同批签名包用例 109 项全部通过。预检触及 25 分钟作业时限，剩余原生 Host 用例未跑完。完整矩阵的四个 Rust 目标均在 Clippy 发现同一问题，离线验收示例引用的签名包模块包含未使用的测试常量。原子标记移入原生测试共用模块，示例继续使用签名包辅助代码。[Intel 专项](https://github.com/YanChao001/serial-workbench/actions/runs/44674949590/job/136084539520) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44679817658)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
