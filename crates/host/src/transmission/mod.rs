@@ -32,6 +32,7 @@ use std::{
 };
 use tokio::sync::Notify;
 type RuntimeMap = HashMap<(Id, U64), Arc<Runtime>>;
+type AdmissionScope = (Id, U64, Id);
 #[cfg(test)]
 type TestGate = Arc<
     Mutex<
@@ -49,6 +50,7 @@ pub struct TransmissionService {
     ready: Arc<Notify>,
     runtimes: Arc<Mutex<RuntimeMap>>,
     admissions: Arc<AtomicUsize>,
+    session_admissions: Arc<Mutex<HashMap<AdmissionScope, usize>>>,
     quiescing: Arc<AtomicBool>,
     quiesce_cancel: Arc<AtomicBool>,
     #[cfg(test)]
@@ -69,6 +71,7 @@ struct ControlToken {
     done: Notify,
     wake: Notify,
     session_id: Option<Id>,
+    session_epoch: Option<U64>,
     is_close: bool,
     grant_stamp: Option<crate::auth::GrantStamp>,
     lease_id: Option<Id>,
@@ -82,6 +85,8 @@ impl ControlToken {
 }
 pub(crate) struct AdmissionGuard {
     count: Arc<AtomicUsize>,
+    session_counts: Arc<Mutex<HashMap<AdmissionScope, usize>>>,
+    scope: Option<AdmissionScope>,
     ready: Arc<Notify>,
 }
 pub(crate) struct OperationPreparation {
@@ -93,6 +98,18 @@ pub(crate) struct OperationPreparation {
 }
 impl Drop for AdmissionGuard {
     fn drop(&mut self) {
+        if let Some(scope) = &self.scope {
+            let mut counts = self
+                .session_counts
+                .lock()
+                .unwrap_or_else(std::sync::PoisonError::into_inner);
+            if let Some(count) = counts.get_mut(scope) {
+                *count -= 1;
+                if *count == 0 {
+                    counts.remove(scope);
+                }
+            }
+        }
         self.count.fetch_sub(1, Ordering::SeqCst);
         self.ready.notify_waiters();
     }
@@ -120,6 +137,7 @@ impl TransmissionService {
             ready: Arc::new(Notify::new()),
             runtimes: Arc::new(Mutex::new(HashMap::new())),
             admissions: Arc::new(AtomicUsize::new(0)),
+            session_admissions: Arc::default(),
             quiescing: Arc::new(AtomicBool::new(false)),
             quiesce_cancel: Arc::new(AtomicBool::new(false)),
             #[cfg(test)]
@@ -132,16 +150,27 @@ impl TransmissionService {
             settlement_gap: Arc::new(Mutex::new(None)),
         }
     }
-    pub(crate) fn admission(&self, allow_stop: bool) -> HostResult<AdmissionGuard> {
+    pub(crate) fn admission(
+        &self,
+        allow_stop: bool,
+        call: Option<&Call>,
+    ) -> HostResult<AdmissionGuard> {
         if self.quiescing.load(Ordering::SeqCst) && !allow_stop {
             return Err(HostError::new(
                 "HOST_BUSY",
                 "Host transmission admission is closed",
             ));
         }
+        let scope = call.and_then(|call| Self::admission_scope(&call.target, &call.actor_id));
+        if let Some(scope) = &scope {
+            let mut counts = self.session_admissions.lock().map_err(|_| invalid())?;
+            *counts.entry(scope.clone()).or_default() += 1;
+        }
         self.admissions.fetch_add(1, Ordering::SeqCst);
         let guard = AdmissionGuard {
             count: self.admissions.clone(),
+            session_counts: self.session_admissions.clone(),
+            scope,
             ready: self.ready.clone(),
         };
         if self.quiescing.load(Ordering::SeqCst) && !allow_stop {
@@ -151,6 +180,21 @@ impl TransmissionService {
             ));
         }
         Ok(guard)
+    }
+    fn admission_scope(target: &Target, actor: &Id) -> Option<AdmissionScope> {
+        Some((
+            target.session_id.clone()?,
+            target.session_epoch?,
+            actor.clone(),
+        ))
+    }
+    fn has_session_admission(&self, target: &Target, actor: &Id) -> HostResult<bool> {
+        let key = Self::admission_scope(target, actor).ok_or_else(invalid)?;
+        Ok(self
+            .session_admissions
+            .lock()
+            .map_err(|_| invalid())?
+            .contains_key(&key))
     }
     pub(crate) fn prepare(&self, call: &Call) -> HostResult<OperationPreparation> {
         let session = if call.target.kind.as_str() == "session" {
@@ -254,6 +298,7 @@ impl TransmissionService {
                     done: Notify::new(),
                     wake: Notify::new(),
                     session_id,
+                    session_epoch: operation.target.session_epoch,
                     is_close,
                     grant_stamp,
                     lease_id: if operation.action_id.as_str().starts_with("lease.") {

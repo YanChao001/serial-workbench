@@ -22144,7 +22144,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "devices"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["host"]
@@ -22326,7 +22327,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "devices"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["host"]
@@ -22780,7 +22782,8 @@
       },
       "permissions": ["workspace.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "devices"
       },
       "stateScopes": ["host.operations", "workspace:<id>"],
       "targetKinds": ["workspace"]
@@ -23234,7 +23237,8 @@
       },
       "permissions": ["workspace.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "devices"
       },
       "stateScopes": ["host.operations", "workspace:<id>"],
       "targetKinds": ["workspace"]
@@ -23908,7 +23912,8 @@
       },
       "permissions": ["content.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "transfer"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["transfer_receipts"]
@@ -24180,7 +24185,8 @@
       },
       "permissions": ["device.modify", "content.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "transfer"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -26316,7 +26322,8 @@
       },
       "permissions": [],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "workspace"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["host"]
@@ -26755,7 +26762,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "workspace"
       },
       "stateScopes": ["host.activity", "workspace:<id>"],
       "targetKinds": ["workspace"]
@@ -27532,7 +27540,8 @@
       },
       "permissions": ["workspace.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "workspace"
       },
       "stateScopes": ["host.operations", "workspace:<id>"],
       "targetKinds": ["workspace"]
@@ -27563,7 +27572,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "workspace"
       },
       "stateScopes": ["host.activity", "workspace:<id>"],
       "targetKinds": ["workspace"]
@@ -28008,7 +28018,8 @@
       },
       "permissions": ["workspace.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "workspace"
       },
       "stateScopes": ["host.operations", "workspace:<id>"],
       "targetKinds": ["workspace"]
@@ -31826,7 +31837,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "activity"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["host", "operation"]
@@ -33359,7 +33371,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "activity"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["host", "operation"]
@@ -33424,7 +33437,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "activity"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["operation"]
@@ -34072,7 +34086,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "devices"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["host"]
@@ -34329,7 +34344,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "terminal"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["device"]
@@ -34742,7 +34758,8 @@
       },
       "permissions": ["metadata.read"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "terminal"
       },
       "stateScopes": ["host.activity"],
       "targetKinds": ["session"]
@@ -35670,7 +35687,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "send"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -35955,7 +35973,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "parameters"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -36020,7 +36039,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "controls"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -36209,7 +36229,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "controls"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -36628,7 +36649,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "controls"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -36687,7 +36709,8 @@
       },
       "permissions": ["auth.manage"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "activity"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -37159,7 +37182,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "controls"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]
@@ -37279,7 +37303,8 @@
       },
       "permissions": ["device.modify"],
       "revealTarget": {
-        "pageId": "workbench"
+        "pageId": "workbench",
+        "panelId": "controls"
       },
       "stateScopes": ["host.operations"],
       "targetKinds": ["session"]

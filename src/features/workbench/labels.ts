@@ -85,6 +85,9 @@ export type WorkbenchLabels = Record<
   | "pinned"
   | "readOnly"
   | "takeover"
+  | "takeoverPending"
+  | "browserTakeoverPending"
+  | "takeoverDone"
   | "terminal"
   | "text"
   | "hex"
@@ -147,6 +150,8 @@ export type WorkbenchLabels = Record<
   | "tasks"
   | "activity"
   | "emptyTasks"
+  | "mcpClient"
+  | "mcpUnbound"
   | "locate"
   | "follow"
   | "pauseFollow"
@@ -190,5 +195,7 @@ export type WorkbenchLabels = Record<
   string
 > & {
   operationText: OperationText;
+  takeoverPort: (port: string) => string;
+  requestTakeoverPort: (port: string) => string;
   captureStates: Record<CaptureState, string>;
 };

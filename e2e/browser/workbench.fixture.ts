@@ -3,6 +3,8 @@ import { type Page } from "@playwright/test";
 import { catalog, clientDefaults, defaults } from "./json-fixtures";
 import { TX_MAX_BYTES } from "../../packages/contracts/src/generated/types";
 import type {
+  BrowserAccessState,
+  BrowserTakeoverRequest,
   QueryResult,
   RpcRequest,
   SharedSettings,
@@ -33,6 +35,7 @@ import type {
   DiagnosticsReport,
   HostSettingsEffectsReceipt,
   LocalNodeIntent,
+  LocalBrowserAccess,
   WindowGeometry,
   SelectedFileResource,
   CaptureNameHint,
@@ -69,6 +72,7 @@ export type ReplayLayoutFixture = {
   >;
 };
 export type WorkbenchFixture = {
+  browserTakeoverDecisions: { takeoverId: string; approve: boolean }[];
   rawSubscriptions: string[];
   emitRaw: (items: unknown[]) => number;
   endRaw: (error: HostError) => number;
@@ -185,6 +189,7 @@ export async function seedWorkbenchFixture(
     connectFailure,
     connectionDefaults,
     plugin,
+    pendingTakeover,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -206,6 +211,7 @@ export async function seedWorkbenchFixture(
     replay?: ReplayLayoutFixture;
     connectFailure?: HostError;
     connectionDefaults?: ClientWindowState["connectionDefaults"];
+    pendingTakeover?: BrowserTakeoverRequest;
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -340,6 +346,14 @@ export async function seedWorkbenchFixture(
         scopes: [
           settingsScope,
           workspaceScope,
+          ...(pendingTakeover
+            ? [
+                {
+                  scopeId: "host.activity",
+                  target: { hostId, kind: "host", id: hostId },
+                },
+              ]
+            : []),
           ...(replayScope
             ? [
                 {
@@ -424,6 +438,7 @@ export async function seedWorkbenchFixture(
     replaySummary,
     connectFailure: connectFailure ?? null,
     plugin,
+    pendingTakeover,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -452,6 +467,7 @@ export async function seedWorkbenchFixture(
       replaySummary,
       connectFailure,
       plugin,
+      pendingTakeover,
     } = JSON.parse(raw) as typeof fixturePayload;
     let pluginRevision = 0;
     let activePluginReads = 0;
@@ -533,7 +549,9 @@ export async function seedWorkbenchFixture(
       }
     >();
     let nextCallback = 1;
+    let browserAccess: BrowserAccessState = { kind: "disabled" };
     const fixture: WorkbenchFixture = {
+      browserTakeoverDecisions: [],
       rawSubscriptions: [],
       emitRaw(items) {
         const bytes = items.reduce<bigint>(
@@ -737,6 +755,45 @@ export async function seedWorkbenchFixture(
                 await new Promise<void>((resolve) => hostWaiters.push(resolve));
               if (hostAvailability === "failed") throw startupFailure;
               return hostAttachment;
+            case "host_browser_access": {
+              if (args.generation !== hostAttachment.generation)
+                throw {
+                  code: "EPOCH_MISMATCH",
+                  message: "Stale connection",
+                  retryable: false,
+                };
+              const intent = args.intent as LocalBrowserAccess;
+              if (intent.kind === "pair") {
+                const url = "http://127.0.0.1:9240";
+                browserAccess = { kind: "enabled", url, mode: intent.mode };
+                return {
+                  kind: "pairing",
+                  mode: intent.mode,
+                  entry: {
+                    url,
+                    pairingCode: "a".repeat(43),
+                    clientId: "browser-hidden-fixture",
+                  },
+                } satisfies BrowserAccessState;
+              }
+              if (intent.kind === "revoke")
+                browserAccess = { kind: "disabled" };
+              return browserAccess;
+            }
+            case "host_decide_browser_takeover": {
+              if (
+                !pendingTakeover ||
+                args.generation !== hostAttachment.generation ||
+                args.takeoverId !== pendingTakeover.takeoverId ||
+                typeof args.approve !== "boolean"
+              )
+                throw new Error("Invalid browser takeover decision");
+              fixture.browserTakeoverDecisions.push({
+                takeoverId: pendingTakeover.takeoverId,
+                approve: args.approve,
+              });
+              return null;
+            }
             case "choose_file_resource": {
               fixture.filePickerCalls.push({
                 role: String(args.role),
@@ -1349,6 +1406,26 @@ export async function seedWorkbenchFixture(
                 };
               if (query.actionId === "state.snapshot") {
                 const scopeId = query.params.scopeId;
+                if (scopeId === "host.activity" && pendingTakeover)
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "snapshot",
+                      value: {
+                        hostId: hostAttachment.attachment.hostId,
+                        instanceEpoch: hostAttachment.attachment.instanceEpoch,
+                        revision: "1",
+                        cursor: {
+                          hostId: hostAttachment.attachment.hostId,
+                          instanceEpoch:
+                            hostAttachment.attachment.instanceEpoch,
+                          scopeId,
+                          position: "0",
+                        },
+                        state: { items: [], pendingTakeover },
+                      },
+                    },
+                  };
                 if (
                   replayProfile &&
                   replayScope &&

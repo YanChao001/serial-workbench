@@ -1,6 +1,7 @@
 import {
   ContractValidationError,
   defaults,
+  parseActivitySnapshot,
   parseReply,
   parseOperationsSnapshot,
 } from "@serial-workbench/contracts";
@@ -28,6 +29,7 @@ import type { HostConnection } from "@/lib/host-client";
 import { confirmProjectionHost, HostProjectionError } from "@/lib/host-client";
 import { abortError, waitForHost } from "@/lib/host-native-transport";
 import { reportClientError } from "@/lib/report-error";
+import { rpcJsonObject } from "@/lib/rpc-json";
 import { createSessionReaders } from "@/lib/host-session-readers";
 import { createHostActionObserver } from "./host-action-observer";
 import { readReplayRecord as readRecord } from "@/lib/host-reader";
@@ -35,6 +37,8 @@ import {
   hostConnectDevice,
   chooseFileResource,
   hostApplyDocumentIntent,
+  hostTakeoverSession,
+  hostDecideBrowserTakeover,
 } from "@/lib/tauri";
 import type { FileResourceRole } from "@/lib/tauri";
 import type {
@@ -77,6 +81,8 @@ type HostUserActions = {
   connectDevice: typeof hostConnectDevice;
   chooseFile: typeof chooseFileResource;
   applyDocumentIntent: typeof hostApplyDocumentIntent;
+  takeoverSession?: typeof hostTakeoverSession;
+  decideBrowserTakeover?: typeof hostDecideBrowserTakeover;
 };
 function sameTarget(a: Target, b: Target) {
   return (
@@ -89,10 +95,12 @@ function sameTarget(a: Target, b: Target) {
 }
 export function createHostWorkspace(
   connection: HostConnection,
-  userActions: HostUserActions = {
+  userActions: HostUserActions | null = {
     connectDevice: hostConnectDevice,
     chooseFile: chooseFileResource,
     applyDocumentIntent: hostApplyDocumentIntent,
+    takeoverSession: hostTakeoverSession,
+    decideBrowserTakeover: hostDecideBrowserTakeover,
   },
 ) {
   const lifetime = new AbortController();
@@ -373,7 +381,9 @@ export function createHostWorkspace(
     const scopes = (await connection.refreshScopes(lifetime.signal)).filter(
       (scope) =>
         scope.target.kind === "session" ||
-        ["host.devices", "host.operations"].includes(scope.scopeId) ||
+        ["host.devices", "host.operations", "host.activity"].includes(
+          scope.scopeId,
+        ) ||
         scope.scopeId === state.workspace?.scope.scopeId,
     );
     if (lifetime.signal.aborted) return;
@@ -388,6 +398,8 @@ export function createHostWorkspace(
         entry.controller.abort();
         entry.close();
         projections.delete(id);
+        if (id === "host.activity")
+          change({ activities: undefined, pendingTakeover: undefined });
       }
     }
     for (const scope of scopes) {
@@ -417,6 +429,8 @@ export function createHostWorkspace(
               entry.close();
               if (projections.get(scope.scopeId) === entry)
                 projections.delete(scope.scopeId);
+              if (scope.scopeId === "host.activity")
+                change({ activities: undefined, pendingTakeover: undefined });
               if (
                 scope.target.kind === "session" &&
                 event.error instanceof HostRequestError &&
@@ -460,6 +474,18 @@ export function createHostWorkspace(
                 state.workspace?.scope.scopeId === scope.scopeId
               )
                 change({ workspace: parsed.value });
+            } else if (scope.scopeId === "host.activity") {
+              try {
+                const activity = parseActivitySnapshot(payload);
+                change({
+                  activities: activity.items.filter(
+                    (item) => item.mcpClientId !== undefined,
+                  ),
+                  pendingTakeover: activity.pendingTakeover,
+                });
+              } catch (error) {
+                report(error);
+              }
             } else if (scope.scopeId === "host.operations")
               void operationMetadata(payload, event.type === "snapshot").catch(
                 report,
@@ -602,10 +628,15 @@ export function createHostWorkspace(
       : lifetime.signal;
     waiting.throwIfAborted();
     const selection = workspaceSelection;
-    const accepted = userActions.applyDocumentIntent(
-      connection.generation,
-      intent,
-    );
+    const accepted = userActions
+      ? userActions.applyDocumentIntent(connection.generation, intent)
+      : connection.client.invoke(
+          connection.buildCall(actionId, target, rpcJsonObject(intent.params), {
+            expectedRevision: intent.expectedRevision,
+            executionMode: "interactive",
+          }),
+          waiting,
+        );
     // The gesture may complete after its caller stopped waiting. Only refresh UI rights then.
     void accepted
       .finally(() => {
@@ -964,6 +995,13 @@ export function createHostWorkspace(
     signal?: AbortSignal,
     selectedSessionId?: string,
   ) {
+    if (!userActions)
+      return Promise.reject(
+        failure(
+          "UNSUPPORTED_CAPABILITY",
+          "This client has no Host file picker",
+        ),
+      );
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
       : lifetime.signal;
@@ -1003,6 +1041,7 @@ export function createHostWorkspace(
     signal?: AbortSignal,
     configuration: SerialConfiguration = defaults.serialConfiguration,
   ): Promise<SessionSnapshot> {
+    if (!userActions) return open(deviceId, signal, configuration);
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
       : lifetime.signal;
@@ -1308,18 +1347,80 @@ export function createHostWorkspace(
       signal,
     );
   }
-  async function takeover(sessionId: string, signal?: AbortSignal) {
-    const session = sessionById(sessionId);
-    if (session.readOnly)
-      throw failure("PERMISSION_DENIED", "Session is read only");
-    return invoke(
-      {
-        actionId: "session.takeover",
-        target: sessionTarget(session),
-        params: { actorId: connection.attachment.actorId, reason: "user" },
-        executionMode: "interactive",
-      },
-      signal,
+  async function takeover(
+    target: Target,
+    actorId: string,
+    signal?: AbortSignal,
+  ) {
+    const waiting = signal
+      ? AbortSignal.any([signal, lifetime.signal])
+      : lifetime.signal;
+    waiting.throwIfAborted();
+    const session = target.sessionId && sessionById(target.sessionId);
+    if (
+      !session ||
+      !sameTarget(target, sessionTarget(session)) ||
+      session.state !== "open"
+    )
+      throw failure(
+        "EPOCH_MISMATCH",
+        "Session connection changed before takeover",
+      );
+    if (actorId === connection.attachment.actorId)
+      throw failure("PERMISSION_DENIED", "Takeover requires another actor");
+    const pending = userActions?.takeoverSession
+      ? userActions.takeoverSession(connection.generation, target, actorId)
+      : requestBrowserTakeover(target, actorId, waiting);
+    const operation = await waitForHost(pending, waiting);
+    if (
+      operation.actionId !== "session.takeover" ||
+      !sameTarget(operation.target, target)
+    )
+      throw new ContractValidationError("Invalid takeover operation");
+    updateOperation(operation);
+    try {
+      const settled = await waitForOperation(operation, waiting);
+      if (settled.result?.kind !== "takeover")
+        throw new ContractValidationError("Invalid takeover result");
+      return settled;
+    } finally {
+      invalidateActions();
+    }
+  }
+  async function requestBrowserTakeover(
+    target: Target,
+    actorId: string,
+    waiting: AbortSignal,
+  ) {
+    if (!connection.browser)
+      throw failure("PERMISSION_DENIED", "A paired browser is required");
+    const reply = parseReply(
+      await connection.transport.request(
+        {
+          method: "browser.takeover",
+          params: { kind: "request", target, actorId },
+        },
+        waiting,
+      ),
+    );
+    if (!reply.ok) throw new HostRequestError(reply.error);
+    if (!("operation" in reply.result))
+      throw new ContractValidationError("Invalid takeover operation");
+    return reply.result.operation;
+  }
+  async function decideBrowserTakeover(id: string, approve: boolean) {
+    if (
+      !userActions?.decideBrowserTakeover ||
+      id !== state.pendingTakeover?.takeoverId
+    )
+      throw failure(
+        "NOT_FOUND",
+        "Browser takeover is no longer awaiting confirmation",
+      );
+    lifetime.signal.throwIfAborted();
+    return waitForHost(
+      userActions.decideBrowserTakeover(connection.generation, id, approve),
+      lifetime.signal,
     );
   }
   function watchSession(sessionId: string, listener: () => void): () => void {
@@ -1353,7 +1454,11 @@ export function createHostWorkspace(
     watchActions,
     open,
     send,
-    takeover,
+    takeover:
+      userActions?.takeoverSession || connection.browser ? takeover : undefined,
+    decideBrowserTakeover: userActions?.decideBrowserTakeover
+      ? decideBrowserTakeover
+      : undefined,
     invoke,
     watchSession,
   };

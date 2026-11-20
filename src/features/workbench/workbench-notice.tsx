@@ -84,6 +84,7 @@ export function WorkbenchNotice({
   log,
   eventKey,
   duration = 5000,
+  dismissible = true,
 }: {
   children: ReactNode;
   noticeKey: string;
@@ -92,6 +93,7 @@ export function WorkbenchNotice({
   eventKey?: string;
   /** 持续状态可延长至完成；独立事件仍沿用五秒寿命。 */
   duration?: number;
+  dismissible?: boolean;
 }) {
   const id = useId();
   const active = useRef<{
@@ -140,9 +142,10 @@ export function WorkbenchNotice({
     notifyCustom(() => <NoticeContent content={owned.content} />, {
       id: owned.id,
       duration,
-      closeButton: true,
+      closeButton: dismissible,
+      dismissible,
     });
-  }, [children, id, log, noticeKey, eventKey, duration]);
+  }, [children, id, log, noticeKey, eventKey, duration, dismissible]);
   useEffect(
     () => () => {
       if (active.current) {

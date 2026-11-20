@@ -27,6 +27,8 @@ it("shows human activity summaries and keeps technical identities in explicit de
       operations={[summary]}
       labels={labels}
       following={false}
+      onMcpChange={vi.fn()}
+      onLocateQuery={vi.fn()}
       onFollowChange={vi.fn()}
       onLocate={locate}
     />,

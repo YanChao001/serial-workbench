@@ -1,13 +1,35 @@
 # 路线与进度
 
-**当前接续点（2026-11-20）为 M2 C / Task14.5。** M2 B 已经 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 合入 `main` 的 `118bc40`。继续验收串口监听、图表和自动化三个参考包。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
+**当前接续点（2026-11-20）为 M2 配对浏览器。** M2 B 与 C 已分别经 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 和 [PR #50](https://github.com/YanChao001/serial-workbench/pull/50) 合入 `main`。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
 
 ## 当前执行与下一步
 
 1. **B / 14.3–14.4 已验收。** 同一候选 `9090867` 通过自审、本机综合检查、无头 UI 203 项和完整四目标 CI。四个原生桌面均验证同连接的目录恢复与关窗录制，重开补读的三段 RX 与 69 字节录制一致。Windows 实际打开和保存对话框均返回同一窗口焦点，两种 macOS 架构完成进程回收。打开中的插件实时更新语言仍待交付，UX-13 保留为部分软件进展。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44681253676)
-2. **C / 14.5 正在验收。** 同一个只读参考包以「串口监听」展示所选串口的收发数据。插件名放在窗口标题，正文收到数据后从顶部直接显示，等待和异常按需提示。新版已复查中英文、明暗和窄窗布局，最终候选仍在验证。三个参考包按公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。四目标已验证实际图表窗口。
-3. **Windows 断网实装移至 M6。** 用户确认将未安装 WebView2 的独立 Windows x64 环境中的断网实装纳入 M6 发行候选验收。M2 和 M3 继续核对 Windows 安装包内置 Runtime、固定 Node 资源和软件参考场景。已从 `2a26df5` 重建 Windows 0.1.0 x64 未签名 NSIS，核对内置 WebView2 安装程序的来源和 Authenticode 签名。候选和验收材料见 `.cache/evidence/m2-node-backend/windows-offline-nsis-2a26df5/transfer/README.md`。[M6 安装验收](./testing.md#安装与发行验收)
-4. **M2 其余出口。** 完成 Task14 的软件验收后，依次验收浏览器连接与跟随、LAN 双 Host。通过上述出口后进入 M3。
+2. **C / 14.5 已合入 `7befd10`。** 同源候选 `bfd37d6` 通过本机综合检查、203 项无头 UI 和完整四目标 CI 的 13 项作业。四个原生桌面核对关窗录制、重开补读和撤权。Debian x64 与 macOS arm64/x64 的实际断网安装通过三个签名参考场景。图表证据覆盖采样值与原始字节区间，界面交叉定位仍在 M3 到 M4 验收。[PR #50](https://github.com/YanChao001/serial-workbench/pull/50) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44705059778)
+3. **Windows 断网实装移至 M6。** `bfd37d6` 的未签名 Windows x64 NSIS 已确认内置 WebView2 离线安装程序、固定 Node 和三个伴随程序。Microsoft 安装程序的 Authenticode 验证有效。用户确认用 M6 发行候选，在未安装 WebView2 的独立 Windows x64 环境实际断网安装及首次启动。此前的安装材料和失败记录保留。[M6 安装验收](./testing.md#安装与发行验收)
+4. **M2 其余出口。** 先完成浏览器连接真实 Host、共享状态、跟随及接管，再验收 LAN 双 Host。通过这两个出口后进入 M3。
+
+**FUT-08 配对浏览器（工作树，Windows）。** Host 提供显式启用的 loopback 页面与 WebSocket 入口。真实回环测试通过 Host 与 Origin 校验、一次性配对、专属普通身份附着和控制连接关闭后的 Raw 清理。复审后改用浏览器独立随机生成的重连凭据，拒绝用已消费的配对码重连、重新绑定凭据或冒用桌面身份。复验也核对了未读完静态下载时关停及重开同一 profile。无头启动器可通过受保护的继承管道接收配对码。真实 Host 通过三项定向检查，真实 Chromium 在另一个浏览器上下文重用配对码被拒绝。证据见 `.cache/evidence/m2-browser-pairing/browser-review-auth-host-retest.log` 与 `browser-review-exact-20261120-221938/`。
+
+同一真实 Host 提供生产构建的工作台。无头 Chromium 拒绝错误配对码，经本地 CLI 显式授权后配对，从界面打开 Virtual Echo 并收到回显。CLI 读取到浏览器保存的布局与语言。刷新后重用配对、恢复布局，显式打开视图后仍在同一会话 ID 与代次收发，Host 正常退出。定向用例见 [paired-browser.mjs](../e2e/paired-browser.mjs)，源码与产物摘要、收据和截图见 `.cache/evidence/m2-browser-pairing/browser-workbench-verified/`。
+
+**已运行 Host 的配对与撤销（工作树，Windows）。** 本机用户控制连接可设置只读或操作权限。普通 IPC 与浏览器均无法管理入口。真实 Host 用例验证只读浏览器获得原串口的 Raw 游标且不可发送，撤销关闭浏览器控制与 Raw 连接，原桌面身份仍可在同一串口会话发送并读回成功回执。无窗口桌面桥验证当前连接代次、配对、状态查询和撤销，窄窗口 Chromium 用桥接替身查配对码、撤销及焦点。Tauri 构建复制的 57 个工作台文件与同轮前端构建一致，10 项便携布局与资源复用检查通过。证据见 `.cache/evidence/m2-browser-pairing/` 中的 `live-browser-host-verified.log`、`live-browser-desktop-bridge.log`、`live-browser-ui-verified.log`、`live-browser-resource-copy.json` 和 `live-browser-portable.log`。原生窗口全程、实际安装产物、绑定窗口的 MCP 跟随、暂停及接管继续验收。
+
+用当前 Host 和 CLI 直接提供 Tauri 构建目录中的浏览器资源，无头 Chromium 复验通过配对、共享设置和工作区、刷新与同会话收发。收据、程序摘要和源码入口见 `.cache/evidence/m2-browser-pairing/live-browser-resource-e2e/`。
+
+**FUT-03、FUT-08 命名 MCP 客户端跟随（工作树，Windows）。** 工作台「活动」可选择要跟随的 MCP 客户端。实际 stdio MCP 与 Rust Host 核对两个名字对应两个 actor，同一个查询重用活动记录，动作重试沿用已接纳的操作。生产前端用无头 Chromium 配对到同一个 Host。重复查询及未选客户端的新查询均不触发跳页，选中客户端的新查询只带回绑定窗口。目录为设备、工作区、串口参数及控制、传输、录制和活动等工具声明面板。实际 `device.list` 查询验收通过，绑定窗口在草稿移开焦点后打开设备面板，另一窗口留在设置，重复轮询未重开面板，草稿保留。暂停后 MCP 在原会话仍能发送并收到 Virtual Echo。目录生成、类型检查、构建和 97 项前端回归通过。源码、程序摘要、双窗口收据及截图见 `.cache/evidence/m2-browser-pairing/mcp-panel-real-workbench-20261120-213505/`，早期证据保存于父目录。真实桌面窗口及插件贡献视图的定位仍需验收。
+
+**FUT-03 本机人工接管（工作树，Windows）。** 在「活动」面板按所选 MCP 客户端和当前串口代次提交接管。真实 Host 与无窗口桌面桥确认普通身份和旧窗口代次的请求被拒绝。本机用户操作结算成功后，所选客户端失去原串口写入权，另一身份仍有写入权，原串口和桌面连接代次均保留。三个 Host 用例分别验证撤权期间的未接纳请求、排队写入、在途结果、其他串口继续执行及无法确认时的隔离。207 项前端定向检查通过，覆盖保留草稿和等待终态的反馈。日志见 `.cache/evidence/m2-browser-pairing/` 下的 `takeover-scoped-admission.log`、`takeover-control-state.log`、`takeover-desktop-bridge.log` 和 `takeover-frontend.log`。
+
+同轮生产前端及重新构建的 Host、CLI、MCP 复验配对、同会话收发、双窗口跟随及暂停。桌面绑定与生成默认值校验通过。源码、程序和测试收据对应关系见 `.cache/evidence/m2-browser-pairing/takeover-browser-regression-20261120-204505/`。
+
+**FUT-03、FUT-08 浏览器请求接管（工作树，Windows）。** 真实 Host 的三项 `browser_pairing` 检查通过。浏览器不能自行批准，拒绝及断开保留原写入权。批准后两端收到同一操作，结算成功后所选 MCP 失去该会话写入权限，另一身份仍可发送。生产浏览器工作台用真实 Host、CLI 与 MCP 发起接管，CLI 读回与请求匹配的串口会话代次及 MCP 客户端。关闭发起请求的窗口后，待确认项清除，原 MCP 仍有发送权限。无头桌面 UI 用桥接替身核对请求文案及确认命令参数，并通过 190 项前端定向回归。证据见 `.cache/evidence/m2-browser-pairing/` 下的 `browser-takeover-host.log`、`browser-takeover-real-workbench-20261120-212109/`、`browser-takeover-approval-ui-retest.log` 和 `browser-takeover-frontend-regression.log`。待验收真实桌面窗口全流程及 LAN 双 Host。
+
+Windows 独立桌面在 `f40bc2d` 通过实际配对和确认接管。所选 MCP 失去发送工具，另一身份仍在原会话完成回显。停止浏览器访问后仍可继续串口工作。原生打开、保存和焦点返回通过，签名终端回放核对 69 字节 RX 与 9 条容器记录。该轮托管无头用例在点击确认后立即读取 IPC 记录，首跑和重试均读到空数组。本机及上一轮托管无头结果保留，测试按现有异步等待原则改为观察精确确认调用，无头和四目标最终候选待复验。[Windows 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44763714623/job/136383999839) · [Windows 产物](https://github.com/YanChao001/serial-workbench/actions/runs/44763714623/artifacts/14644740514) · [无头失败](https://github.com/YanChao001/serial-workbench/actions/runs/44763714623/job/136383999371)
+
+复审补齐了开始顺序和撤权证据。真实 Chromium 在保持草稿焦点时收到两项 MCP 活动，离开输入框后依次打开设备与工作区面板，重复查询从原活动更新。真实 Host 在浏览器只丧失指定串口写入权时清除该串口的待确认请求，许可恢复后可重新请求，并实际拒绝已被接管 MCP 的发送。证据与同轮程序摘要见 `.cache/evidence/m2-browser-pairing/browser-review-exact-20261120-221938/` 和 `browser-review-auth-host-retest.log`。
+
+配对浏览器候选的 Windows 本机门槛已通过。`pnpm verify --jobs 1`、`pnpm test:ui --workers=1` 的 205 项无头用例、Host 契约与 IPC 绑定校验、Host 与 MCP 等相关 Rust 包的 Clippy 均通过。结果与候选指纹保存在 `.cache/evidence/m2-browser-pairing/` 的 `browser-candidate-*` 与 `browser-reviewed-*`。四目标 CI 和真实桌面验收进入托管阶段。
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 

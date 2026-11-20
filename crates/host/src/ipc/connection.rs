@@ -1,4 +1,5 @@
 use super::{
+    browser::{BrowserCommand, request_access},
     protocol::*,
     server::{AuthorizedEvent, ConnectionContext, EventFrame, RequestHandler},
 };
@@ -14,6 +15,7 @@ use serial_workbench_ipc::{
 };
 use std::{
     collections::HashMap,
+    future::Future,
     sync::{
         Arc, Mutex, Weak,
         atomic::{AtomicBool, Ordering},
@@ -21,6 +23,7 @@ use std::{
     time::Duration,
 };
 use tokio::{
+    io::{AsyncRead, AsyncWrite},
     sync::{OwnedSemaphorePermit, Semaphore, mpsc, watch},
     task::JoinSet,
 };
@@ -30,6 +33,7 @@ pub(super) struct ControlSession {
     actor: AuthenticatedActor,
     alive: watch::Sender<bool>,
     raw_attached: AtomicBool,
+    client_kind: std::sync::OnceLock<ClientKind>,
 }
 pub(super) type Sessions = Arc<Mutex<HashMap<ContextToken, Weak<ControlSession>>>>;
 struct ConnectionGuard {
@@ -59,6 +63,7 @@ struct PendingReply {
     stamp: Option<GrantStamp>,
     _raw_output_lease: Option<crate::stream::RawOutputLease>,
 }
+#[derive(Clone)]
 pub(super) struct ConnectionState {
     pub store: Store,
     pub auth: AuthService,
@@ -70,11 +75,35 @@ pub(super) struct ConnectionState {
     pub handler: Arc<dyn RequestHandler>,
 }
 impl ConnectionState {
-    pub async fn serve(self, mut stream: LocalStream) -> HostResult<()> {
-        let (session, token, channel) =
-            tokio::time::timeout(Duration::from_secs(5), self.handshake(&mut stream))
-                .await
-                .map_err(|_| unauthenticated())??;
+    pub async fn serve(
+        self,
+        mut stream: LocalStream,
+        browser: mpsc::Sender<BrowserCommand>,
+    ) -> HostResult<()> {
+        let attached = tokio::time::timeout(Duration::from_secs(5), self.handshake(&mut stream))
+            .await
+            .map_err(|_| unauthenticated())??;
+        let (reader, writer) = tokio::io::split(stream);
+        self.serve_frames(
+            reader,
+            writer,
+            attached,
+            std::future::pending(),
+            Some(browser),
+            None,
+        )
+        .await
+    }
+
+    pub(super) async fn serve_frames(
+        self,
+        mut reader: impl FrameReader,
+        writer: impl FrameWriter,
+        (session, token, channel): (Arc<ControlSession>, Option<ContextToken>, IpcChannel),
+        transport_closed: impl Future<Output = ()> + Send,
+        browser: Option<mpsc::Sender<BrowserCommand>>,
+        browser_stopped: Option<watch::Receiver<bool>>,
+    ) -> HostResult<()> {
         let (replies_tx, replies_rx) = mpsc::channel(256);
         let (events_tx, events_rx) = mpsc::channel(256);
         let (catalog_changed, catalog_rx) = watch::channel(None);
@@ -82,6 +111,7 @@ impl ConnectionState {
             connection_id: session.connection_id.clone(),
             actor: session.actor.clone(),
             channel,
+            browser_stopped,
             events: events_tx,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
@@ -100,15 +130,15 @@ impl ConnectionState {
         if channel == IpcChannel::Raw && !*alive.borrow() {
             return Err(unauthenticated());
         }
-        let (mut read, write) = tokio::io::split(stream);
         let mut writer_future = Box::pin(output_writer(
-            write,
+            writer,
             replies_rx,
             events_rx,
             catalog_rx,
             self.auth.clone(),
             context.actor.clone(),
         ));
+        tokio::pin!(transport_closed);
         let mut requests = JoinSet::new();
         loop {
             while requests.try_join_next().is_some() {}
@@ -116,7 +146,8 @@ impl ConnectionState {
                 _ = &mut writer_future => break,
                 _ = context.failed.notified() => break,
                 _ = alive.changed(), if channel == IpcChannel::Raw => break,
-                incoming = read_frame(&mut read, MAX_FRAME_BYTES) => incoming,
+                _ = &mut transport_closed => break,
+                incoming = reader.read_wire() => incoming,
             };
             let frame = match incoming {
                 Ok(Some(frame)) => frame,
@@ -150,11 +181,16 @@ impl ConnectionState {
                     continue;
                 }
             };
-            let context = context.clone();
+            let mut context = context.clone();
+            if session.client_kind.get() == Some(&ClientKind::Mcp) {
+                context.actor.observe_as_mcp();
+            }
             let store = self.store.clone();
             let identity = self.identity.clone();
             let handler = self.handler.clone();
             let auth = self.auth.clone();
+            let browser = browser.clone();
+            let session = session.clone();
             let sender = replies_tx.clone();
             let request_id = frame.request_id;
             requests.spawn(async move {
@@ -171,13 +207,35 @@ impl ConnectionState {
                 let reply = match validation {
                     Err(error) => failure(error).into(),
                     Ok(()) => match *request {
-                        RpcRequest::Attach(params) => {
-                            match attach(&store, &identity, &context.actor, params).await {
-                                Ok(result) => RpcReply::Success {
+                        RpcRequest::BrowserAccess(params) => {
+                            match request_access(browser.as_ref(), params).await {
+                                Ok(browser_access) => RpcReply::Success {
                                     ok: True,
-                                    result: Box::new(RpcResult::Attach(result)),
+                                    result: Box::new(RpcResult::BrowserAccess(
+                                        BrowserAccessResult { browser_access },
+                                    )),
                                 }
                                 .into(),
+                                Err(error) => failure(error).into(),
+                            }
+                        }
+                        RpcRequest::Attach(params) => {
+                            let kind = if browser.is_some() {
+                                params.client_kind
+                            } else {
+                                ClientKind::Browser
+                            };
+                            match attach(&store, &identity, &context.actor, params).await {
+                                Ok(result) => {
+                                    if channel == IpcChannel::Control {
+                                        let _ = session.client_kind.set(kind);
+                                    }
+                                    RpcReply::Success {
+                                        ok: True,
+                                        result: Box::new(RpcResult::Attach(result)),
+                                    }
+                                    .into()
+                                }
                                 Err(error) => failure(error).into(),
                             }
                         }
@@ -272,16 +330,7 @@ impl ConnectionState {
                 let IpcMessage::RawAttach { token } = next.body else {
                     return Err(unauthenticated());
                 };
-                let session = self
-                    .sessions
-                    .lock()
-                    .map_err(|_| storage())?
-                    .get(&token)
-                    .and_then(Weak::upgrade)
-                    .ok_or_else(unauthenticated)?;
-                if !*session.alive.borrow() || session.raw_attached.swap(true, Ordering::AcqRel) {
-                    return Err(unauthenticated());
-                }
+                let session = self.attach_raw(&token)?;
                 if let Err(error) = write_frame(
                     stream,
                     &WireFrame {
@@ -293,7 +342,7 @@ impl ConnectionState {
                 )
                 .await
                 {
-                    session.raw_attached.store(false, Ordering::Release);
+                    self.abandon_handshake(&session, None);
                     return Err(error);
                 }
                 return Ok((session, None, channel));
@@ -319,18 +368,7 @@ impl ConnectionState {
                 }
                 _ => return Err(unauthenticated()),
             };
-            let (alive, _) = watch::channel(true);
-            let session = Arc::new(ControlSession {
-                connection_id: new_id(),
-                actor: authentication.actor,
-                alive,
-                raw_attached: AtomicBool::new(false),
-            });
-            let token = random_token();
-            self.sessions
-                .lock()
-                .map_err(|_| storage())?
-                .insert(token.clone(), Arc::downgrade(&session));
+            let (session, token) = self.open_control(authentication.actor)?;
             if let Err(error) = write_frame(
                 stream,
                 &WireFrame {
@@ -345,7 +383,7 @@ impl ConnectionState {
             )
             .await
             {
-                self.sessions.lock().map_err(|_| storage())?.remove(&token);
+                self.abandon_handshake(&session, Some(&token));
                 return Err(error);
             }
             Ok((session, Some(token), channel))
@@ -361,10 +399,86 @@ impl ConnectionState {
         }
         result
     }
+
+    pub(super) fn open_control(
+        &self,
+        actor: AuthenticatedActor,
+    ) -> HostResult<(Arc<ControlSession>, ContextToken)> {
+        let (alive, _) = watch::channel(true);
+        let session = Arc::new(ControlSession {
+            connection_id: new_id(),
+            actor,
+            alive,
+            raw_attached: AtomicBool::new(false),
+            client_kind: std::sync::OnceLock::new(),
+        });
+        let token = random_token();
+        self.sessions
+            .lock()
+            .map_err(|_| storage())?
+            .insert(token.clone(), Arc::downgrade(&session));
+        Ok((session, token))
+    }
+
+    pub(super) fn attach_raw(&self, token: &ContextToken) -> HostResult<Arc<ControlSession>> {
+        let session = self
+            .sessions
+            .lock()
+            .map_err(|_| storage())?
+            .get(token)
+            .and_then(Weak::upgrade)
+            .ok_or_else(unauthenticated)?;
+        if !*session.alive.borrow() || session.raw_attached.swap(true, Ordering::AcqRel) {
+            return Err(unauthenticated());
+        }
+        Ok(session)
+    }
+
+    pub(super) fn abandon_handshake(&self, session: &ControlSession, token: Option<&ContextToken>) {
+        if let Some(token) = token {
+            session.alive.send_replace(false);
+            if let Ok(mut sessions) = self.sessions.lock() {
+                sessions.remove(token);
+            }
+        } else {
+            session.raw_attached.store(false, Ordering::Release);
+        }
+    }
 }
+
+pub(super) trait FrameReader: Send {
+    fn read_wire(&mut self) -> impl Future<Output = HostResult<Option<WireFrame>>> + Send;
+}
+impl<R: AsyncRead + Unpin + Send> FrameReader for R {
+    async fn read_wire(&mut self) -> HostResult<Option<WireFrame>> {
+        read_frame(self, MAX_FRAME_BYTES).await
+    }
+}
+
+pub(super) trait FrameWriter: Send {
+    fn write_wire<'a>(
+        &'a mut self,
+        frame: &'a WireFrame,
+        started: &'a mut bool,
+    ) -> impl Future<Output = HostResult<()>> + Send + 'a;
+}
+impl<W: AsyncWrite + Unpin + Send> FrameWriter for W {
+    async fn write_wire(&mut self, frame: &WireFrame, started: &mut bool) -> HostResult<()> {
+        write_frame(
+            &mut WriteProgress {
+                writer: self,
+                started,
+            },
+            frame,
+            MAX_FRAME_BYTES,
+        )
+        .await
+    }
+}
+
 struct WriteProgress<'a, W> {
     writer: &'a mut W,
-    started: bool,
+    started: &'a mut bool,
 }
 impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for WriteProgress<'_, W> {
     fn poll_write(
@@ -375,7 +489,7 @@ impl<W: tokio::io::AsyncWrite + Unpin> tokio::io::AsyncWrite for WriteProgress<'
         let this = self.get_mut();
         let result = std::pin::Pin::new(&mut *this.writer).poll_write(cx, bytes);
         if matches!(result, std::task::Poll::Ready(Ok(written)) if written > 0) {
-            this.started = true;
+            *this.started = true;
         }
         result
     }
@@ -396,33 +510,30 @@ enum GuardedWrite {
     Written,
     NotWritten(HostError),
 }
-async fn write_guarded_frame<W: tokio::io::AsyncWrite + Unpin>(
-    writer: &mut W,
+async fn write_guarded_frame(
+    writer: &mut impl FrameWriter,
     frame: &WireFrame,
     invalidated: impl std::future::Future<Output = HostError> + Send,
 ) -> HostResult<GuardedWrite> {
-    let mut progress = WriteProgress {
-        writer,
-        started: false,
-    };
+    let mut started = false;
     let interrupted = {
         tokio::select! {
             biased;
             error = invalidated => Some(error),
-            result = tokio::time::timeout(Duration::from_secs(5), write_frame(&mut progress, frame, MAX_FRAME_BYTES)) => {
+            result = tokio::time::timeout(Duration::from_secs(5), writer.write_wire(frame, &mut started)) => {
                 result.map_err(|_| busy())??;
                 None
             },
         }
     };
     match interrupted {
-        Some(error) if progress.started => Err(error),
+        Some(error) if started => Err(error),
         Some(error) => Ok(GuardedWrite::NotWritten(error)),
         None => Ok(GuardedWrite::Written),
     }
 }
-async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
-    mut writer: W,
+async fn output_writer(
+    mut writer: impl FrameWriter,
     mut replies: mpsc::Receiver<PendingReply>,
     mut events: mpsc::Receiver<AuthorizedEvent>,
     mut catalog_changed: watch::Receiver<Option<WireFrame>>,
@@ -453,17 +564,17 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                             Ok(GuardedWrite::NotWritten(error)) => {
                                 reply.frame.body = IpcMessage::Reply { reply: Box::new(failure(error)) };
                                 reply._raw_output_lease = None;
-                                tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())?
+                                tokio::time::timeout(Duration::from_secs(5), writer.write_wire(&reply.frame, &mut false)).await.map_err(|_| busy())?
                             },
                             Err(error) => Err(error),
                         }
                     } else {
-                        tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &reply.frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())?
+                        tokio::time::timeout(Duration::from_secs(5), writer.write_wire(&reply.frame, &mut false)).await.map_err(|_| busy())?
                     };
                     if let Err(error) = result {
                         if error.code != "LIMIT_EXCEEDED" { return Err(error); }
                         let rejected = error_frame(reply.frame.request_id.clone(), reply.frame.channel, error);
-                        tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &rejected, MAX_FRAME_BYTES)).await.map_err(|_| busy())??;
+                        tokio::time::timeout(Duration::from_secs(5), writer.write_wire(&rejected, &mut false)).await.map_err(|_| busy())??;
                     }
                     continue;
                 },
@@ -473,7 +584,7 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                 if changed.is_err() { break; }
                 let latest = catalog_changed.borrow_and_update().clone();
                 if let Some(frame) = latest {
-                    tokio::time::timeout(Duration::from_secs(5), write_frame(&mut writer, &frame, MAX_FRAME_BYTES)).await.map_err(|_| busy())??;
+                    tokio::time::timeout(Duration::from_secs(5), writer.write_wire(&frame, &mut false)).await.map_err(|_| busy())??;
                 }
                 continue;
             },
@@ -557,7 +668,7 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                 drop(event);
                 tokio::time::timeout(
                     Duration::from_secs(5),
-                    write_frame(&mut writer, &ended, MAX_FRAME_BYTES),
+                    writer.write_wire(&ended, &mut false),
                 )
                 .await
                 .map_err(|_| busy())??;
@@ -585,12 +696,9 @@ async fn output_writer<W: tokio::io::AsyncWrite + Unpin>(
                 continue;
             }
         } else {
-            tokio::time::timeout(
-                Duration::from_secs(5),
-                write_frame(&mut writer, frame, MAX_FRAME_BYTES),
-            )
-            .await
-            .map_err(|_| busy())??;
+            tokio::time::timeout(Duration::from_secs(5), writer.write_wire(frame, &mut false))
+                .await
+                .map_err(|_| busy())??;
         }
         if let EventFrame::Raw { delivery, batch } = event.frame {
             // 实际写出已结束；先归还临时预算，再由 mark_written 唤醒待发送者。
@@ -712,6 +820,7 @@ mod tests {
                 connection_id: id("raw-connection"),
                 actor: actor.clone(),
                 channel: IpcChannel::Raw,
+                browser_stopped: None,
                 events,
                 event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
                 subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
@@ -1576,6 +1685,7 @@ mod tests {
             actor: f.actor.clone(),
             alive: watch::channel(true).0,
             raw_attached: AtomicBool::new(true),
+            client_kind: std::sync::OnceLock::new(),
         });
         drop(ConnectionGuard {
             context: f.context,
@@ -1788,6 +1898,7 @@ mod tests {
             connection_id: id("connection"),
             actor: actor.clone(),
             channel: IpcChannel::Control,
+            browser_stopped: None,
             events,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),

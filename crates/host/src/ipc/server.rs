@@ -1,5 +1,6 @@
 use super::{
     InstanceGuard,
+    browser::{BrowserCommand, BrowserListener, manage_access},
     connection::{ConnectionState, Sessions},
     protocol::*,
 };
@@ -42,6 +43,7 @@ pub struct ConnectionContext {
     pub connection_id: Id,
     pub actor: AuthenticatedActor,
     pub channel: IpcChannel,
+    pub(crate) browser_stopped: Option<tokio::sync::watch::Receiver<bool>>,
     pub(super) events: mpsc::Sender<AuthorizedEvent>,
     pub(super) event_budget: Arc<Semaphore>,
     pub(super) subscriptions: Arc<Mutex<HashSet<Id>>>,
@@ -59,6 +61,7 @@ pub(crate) fn test_context(
             connection_id,
             actor,
             channel: IpcChannel::Control,
+            browser_stopped: None,
             events,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
@@ -339,6 +342,7 @@ pub struct HostServer {
     sessions: Sessions,
     normal: Arc<Semaphore>,
     urgent: Arc<Semaphore>,
+    browser: Option<BrowserListener>,
     // Rust 按声明顺序释放字段，锁必须在其他运行态资源之后释放。
     _guard: InstanceGuard,
 }
@@ -422,6 +426,7 @@ impl HostServer {
             sessions: Arc::new(Mutex::new(HashMap::new())),
             normal: Arc::new(Semaphore::new(crate::limits::NORMAL_OPERATIONS)),
             urgent: Arc::new(Semaphore::new(crate::limits::STOP_OPERATIONS)),
+            browser: None,
         })
     }
     pub fn auth(&self) -> AuthService {
@@ -436,6 +441,33 @@ impl HostServer {
     pub fn write_bootstrap_capability(&self) -> HostResult<()> {
         local::write_bootstrap_capability(self.control.as_str().as_bytes())
     }
+    pub async fn enable_browser(&mut self, assets: &Path) -> HostResult<BrowserEntry> {
+        if self.browser.is_some() {
+            return Err(busy());
+        }
+        let mode = BrowserAccessMode::ReadOnly;
+        let auth = self.auth();
+        let (listener, entry) =
+            BrowserListener::bind(assets, self._guard.namespace(), auth.clone(), mode).await?;
+        let client_id = entry.client_id.clone();
+        blocking(move || auth.set_browser_access(&client_id, Some(mode))).await?;
+        self.browser = Some(listener);
+        Ok(entry)
+    }
+
+    fn connection_state(&self, handler: Arc<dyn RequestHandler>) -> ConnectionState {
+        ConnectionState {
+            store: self.store.clone(),
+            auth: self.auth.clone(),
+            identity: self.identity.clone(),
+            pin: self.pin.clone(),
+            sessions: self.sessions.clone(),
+            normal: self.normal.clone(),
+            urgent: self.urgent.clone(),
+            handler,
+        }
+    }
+
     pub async fn serve_until<F: Future<Output = ()>>(
         &mut self,
         handler: Arc<dyn RequestHandler>,
@@ -444,6 +476,12 @@ impl HostServer {
         tokio::pin!(shutdown);
         let stop_requested = handler.stop_requested();
         tokio::pin!(stop_requested);
+        let connection = self.connection_state(handler.clone());
+        let mut browser = self
+            .browser
+            .take()
+            .map(|listener| listener.start(connection.clone()));
+        let (browser_access, mut browser_requests) = mpsc::channel::<BrowserCommand>(8);
         let connections = Arc::new(Semaphore::new(128));
         let mut tasks = JoinSet::new();
         let mut failure = None;
@@ -451,6 +489,9 @@ impl HostServer {
         let mut settlement: Option<Pin<Box<dyn Future<Output = HostResult<()>> + Send>>> = None;
         let mut retry_at = None;
         loop {
+            if stopping && let Some(browser) = &browser {
+                browser.stop_accepting();
+            }
             tokio::select! {
                 _ = &mut shutdown, if !stopping => {
                     stopping = true;
@@ -482,6 +523,16 @@ impl HostServer {
                     }
                 },
                 Some(_) = tasks.join_next(), if !tasks.is_empty() => {},
+                Some(command) = browser_requests.recv() => {
+                    let result = if stopping {
+                        Err(HostError::new("HOST_UNAVAILABLE", "Host is stopping"))
+                    } else {
+                        manage_access(command.params, self._guard.namespace(), &connection, &mut browser)
+                            .await
+                    };
+                    // The explicit local action was accepted and still settles if its waiter closed.
+                    let _ = command.response.send(result);
+                },
                 stream = async {
                     #[cfg(test)]
                     if let Some(error) = self.accept_error.take() { return Err(error); }
@@ -504,12 +555,19 @@ impl HostServer {
                         let _ = tokio::time::timeout(Duration::from_millis(100), write_frame(&mut stream, &frame, MAX_FRAME_BYTES)).await;
                         continue;
                     };
-                    let state = ConnectionState { store: self.store.clone(), auth: self.auth.clone(), identity: self.identity.clone(), pin: self.pin.clone(), sessions: self.sessions.clone(), normal: self.normal.clone(), urgent: self.urgent.clone(), handler: handler.clone() };
-                    tasks.spawn(async move { let _permit = permit; let _ = state.serve(stream).await; });
+                    let state = connection.clone();
+                    let browser = browser_access.clone();
+                    tasks.spawn(async move { let _permit = permit; let _ = state.serve(stream, browser).await; });
                 }
             }
         }
+        drop(browser_requests);
         tasks.shutdown().await;
+        if let Some(browser) = browser
+            && let Err(error) = browser.finish().await
+        {
+            failure.get_or_insert(error);
+        }
         // Only a completed barrier (or a non-Host handler's ordinary error)
         // reaches here. Incomplete Host settlement never releases this server.
         let store = self.store.clone();

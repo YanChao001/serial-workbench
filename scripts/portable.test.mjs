@@ -44,6 +44,9 @@ function fixture(t) {
     outputDir: dirname(executable),
     target: "x86_64-pc-windows-msvc",
   };
+  const browserAssets = join(root, "dist");
+  mkdirSync(browserAssets);
+  writeFileSync(join(browserAssets, "index.html"), "<p>Browser workbench</p>");
   const resources = join(root, "runtime-resources");
   mkdirSync(join(resources, "runtime"), { recursive: true });
   writeFileSync(
@@ -63,17 +66,18 @@ function fixture(t) {
   ])
     writeFileSync(join(built.outputDir, `${name}.exe`), pe);
   built.components = inspectComponents(plan, built.outputDir);
-  return { root, plan, built };
+  return { root, plan, built, browserAssets };
 }
 
 test("portable distribution includes complete project licenses and existing third-party notices", (t) => {
-  const { root, plan, built } = fixture(t);
+  const { root, plan, built, browserAssets } = fixture(t);
   const projectRoot = resolve(import.meta.dirname, "..");
   const entries = portableArtifactEntries(projectRoot, {
     executable: built.executable,
     executableName: "Serial Workbench.exe",
     readme: "Portable distribution fixture\n",
     runtime: built.runtime,
+    browserAssets,
   });
   const output = publishArtifacts(root, {
     version: plan.version,
@@ -199,7 +203,7 @@ test("portable receipt rejects changed or missing release components", (t) => {
 });
 
 test("portable distribution puts components and their manifest beside the client", (t) => {
-  const { root, built } = fixture(t);
+  const { root, built, browserAssets } = fixture(t);
   const projectRoot = resolve(import.meta.dirname, "..");
   const entries = portableArtifactEntries(projectRoot, {
     executable: built.executable,
@@ -207,6 +211,7 @@ test("portable distribution puts components and their manifest beside the client
     readme: "fixture",
     components: built.components,
     runtime: built.runtime,
+    browserAssets,
   });
   const output = publishArtifacts(root, {
     version: "1.2.3",
@@ -224,6 +229,10 @@ test("portable distribution puts components and their manifest beside the client
     readFileSync(join(output, "runtime", "node-release.json"), "utf8"),
     "runtime fixture",
   );
+  assert.equal(
+    readFileSync(join(output, "browser-workbench", "index.html"), "utf8"),
+    "<p>Browser workbench</p>",
+  );
 });
 
 test("skip-build rejects missing runtime receipts and changed runtime or license bytes", (t) => {
@@ -238,6 +247,16 @@ test("skip-build rejects missing runtime receipts and changed runtime or license
     "altered runtime",
   );
   assert.throws(() => loadPortableBuild(plan), /runtime.*changed/i);
+});
+
+test("skip-build refuses browser assets that differ from the packaged desktop build", (t) => {
+  const { plan, built, browserAssets } = fixture(t);
+  recordPortableBuild(plan, built);
+  writeFileSync(join(browserAssets, "index.html"), "<p>Changed</p>");
+  assert.throws(
+    () => loadPortableBuild(plan),
+    /browser workbench files have changed/i,
+  );
 });
 
 test("skip-build reuses the receipt target without guessing the current host", (t) => {

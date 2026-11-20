@@ -4,6 +4,7 @@ import {
   parseReply,
 } from "@serial-workbench/contracts";
 import type {
+  BrowserAccessState,
   HostError,
   ObjectRef,
   OpenParams,
@@ -15,6 +16,7 @@ import type {
   SessionSnapshot,
   U64,
   Operation,
+  Target,
 } from "@serial-workbench/contracts";
 import type {
   DesktopAttachment,
@@ -37,10 +39,12 @@ import type {
   SelectedFileResource,
   MediaResolution,
   LocalDocumentIntent_Deserialize,
+  LocalBrowserAccess,
   LocalNodeIntent_Deserialize,
 } from "./generated/bindings";
 
 export type {
+  LocalBrowserAccess,
   ClientPreferences,
   ClientStateSnapshot_Serialize as ClientStateSnapshot,
   ClientWindowState_Serialize as ClientWindowState,
@@ -61,6 +65,13 @@ export type {
 
 export function readClientState(): Promise<ClientStateSnapshot> {
   return callNative((commands) => commands.clientStateRead());
+}
+
+export function hostBrowserAccess(
+  generation: U64,
+  intent: LocalBrowserAccess,
+): Promise<BrowserAccessState> {
+  return callHost((commands) => commands.hostBrowserAccess(generation, intent));
 }
 
 export function hostOpenNodeView(
@@ -119,6 +130,35 @@ export function hostConnectDevice(
   );
 }
 
+function parseHostOperation(operation: unknown): Operation {
+  const reply = parseReply({ ok: true, result: { operation } });
+  if (!reply.ok || !("operation" in reply.result))
+    throw new ContractValidationError();
+  return reply.result.operation;
+}
+
+export async function hostTakeoverSession(
+  generation: U64,
+  target: Target,
+  actorId: string,
+): Promise<Operation> {
+  return parseHostOperation(
+    await callHost((commands) =>
+      commands.hostTakeoverSession(generation, target, actorId),
+    ),
+  );
+}
+
+export async function hostDecideBrowserTakeover(
+  generation: U64,
+  takeoverId: string,
+  approve: boolean,
+): Promise<void> {
+  await callHost((commands) =>
+    commands.hostDecideBrowserTakeover(generation, takeoverId, approve),
+  );
+}
+
 export async function hostApplyDocumentIntent(
   generation: U64,
   intent: LocalDocumentIntent_Deserialize,
@@ -126,10 +166,7 @@ export async function hostApplyDocumentIntent(
   const operation = await callHost((commands) =>
     commands.hostApplyDocumentIntent(generation, intent),
   );
-  const reply = parseReply({ ok: true, result: { operation } });
-  if (!reply.ok || !("operation" in reply.result))
-    throw new ContractValidationError();
-  return reply.result.operation;
+  return parseHostOperation(operation);
 }
 
 export async function hostApplyNodeIntent(
@@ -139,10 +176,7 @@ export async function hostApplyNodeIntent(
   const operation = await callHost((commands) =>
     commands.hostApplyNodeIntent(generation, intent),
   );
-  const reply = parseReply({ ok: true, result: { operation } });
-  if (!reply.ok || !("operation" in reply.result))
-    throw new ContractValidationError();
-  return reply.result.operation;
+  return parseHostOperation(operation);
 }
 
 export class NativeBridgeError extends Error {

@@ -270,6 +270,10 @@ pub struct CatalogListResult {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "method", content = "params", deny_unknown_fields)]
 pub enum RpcRequest {
+    #[serde(rename = "browser.access")]
+    BrowserAccess(BrowserAccessParams),
+    #[serde(rename = "browser.takeover")]
+    BrowserTakeover(BrowserTakeoverParams),
     #[serde(rename = "client.register")]
     ClientRegister(ClientRegisterParams),
     #[serde(rename = "client.unregister")]
@@ -308,6 +312,7 @@ pub enum RpcRequest {
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(untagged)]
 pub enum RpcResult {
+    BrowserAccess(BrowserAccessResult),
     ClientRegistration(ClientRegistration),
     ClientEffectAcknowledged(ClientEffectAcknowledged),
     Query(QueryResult),
@@ -320,6 +325,92 @@ pub enum RpcResult {
     Object(ObjectReadResult),
     StreamRead(StreamReadResult),
     StreamCredit(StreamCreditResult),
+}
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase")]
+pub enum BrowserAccessMode {
+    ReadOnly,
+    Operate,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum BrowserAccessParams {
+    Status {},
+    Pair {
+        assets_dir: String,
+        mode: BrowserAccessMode,
+    },
+    Revoke {},
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum BrowserTakeoverParams {
+    Request { target: Target, actor_id: Id },
+    Decide { takeover_id: Id, approve: bool },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserTakeoverRequest {
+    pub takeover_id: Id,
+    pub client_id: Id,
+    pub device_id: Id,
+    pub target: Target,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserEntry {
+    pub url: String,
+    pub pairing_code: ContextToken,
+    pub client_id: Id,
+}
+impl std::fmt::Debug for BrowserEntry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("BrowserEntry")
+            .field("url", &self.url)
+            .field("client_id", &self.client_id)
+            .finish_non_exhaustive()
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(
+    tag = "kind",
+    rename_all = "camelCase",
+    rename_all_fields = "camelCase",
+    deny_unknown_fields
+)]
+pub enum BrowserAccessState {
+    Disabled {},
+    Enabled {
+        url: String,
+        mode: BrowserAccessMode,
+    },
+    Pairing {
+        entry: BrowserEntry,
+        mode: BrowserAccessMode,
+    },
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct BrowserAccessResult {
+    pub browser_access: BrowserAccessState,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(untagged, deny_unknown_fields)]

@@ -12,13 +12,14 @@ import {
 
 export function portableArtifactEntries(
   root,
-  { executable, executableName, readme, components, runtime },
+  { executable, executableName, readme, components, runtime, browserAssets },
 ) {
   if (!runtime?.resources)
     throw new Error("Portable distribution requires bundled runtime resources");
   return [
     { source: executable, path: executableName },
     { source: join(runtime.resources, "runtime"), path: "runtime" },
+    { source: browserAssets, path: "browser-workbench" },
     ...(components
       ? [
           ...components.files,
@@ -96,6 +97,7 @@ manifest.json 记录版本、目标平台和文件 SHA-256，可用于检查分�
       readme,
       components: built.components,
       runtime: built.runtime,
+      browserAssets: join(root, "dist"),
     }),
   });
   console.log(`Portable build created: ${relative(root, output)}`);

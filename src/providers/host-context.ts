@@ -6,6 +6,8 @@ import type {
   ActionCheckParams,
   ActionCheckResult,
   ActionSpec,
+  ActivitySummary,
+  BrowserTakeoverRequest,
   CaptureRecord,
   CaptureStatusResult,
   CaptureTailResult,
@@ -65,6 +67,8 @@ export type HostState = {
   operations: Operation[];
   operationSummaries: OperationSummary[];
   operationSummariesReady: boolean;
+  activities?: readonly ActivitySummary[];
+  pendingTakeover?: BrowserTakeoverRequest;
   streams: ReadonlyMap<string, HostStreamView>;
   workspace?: WorkspaceDocumentResult;
 };
@@ -177,7 +181,12 @@ export type HostContextValue = {
     signal?: AbortSignal,
     writeWaitMs?: string,
   ): Promise<Operation>;
-  takeover(sessionId: string, signal?: AbortSignal): Promise<Operation>;
+  takeover?(
+    target: Target,
+    actorId: string,
+    signal?: AbortSignal,
+  ): Promise<Operation>;
+  decideBrowserTakeover?(id: string, approve: boolean): Promise<void>;
   invoke(input: HostInvocation, signal?: AbortSignal): Promise<Operation>;
   watchSession(sessionId: string, listener: () => void): () => void;
 };

@@ -132,9 +132,9 @@ impl McpBridge {
             execution_mode: None,
         };
         let query = query(&connection.client, BuiltinAction::CatalogList.spec(), input);
-        match connection.request(RpcRequest::Query(query)).await? {
+        match connection.request(RpcRequest::CatalogList(query)).await? {
             RpcReply::Success { result, .. } => match *result {
-                RpcResult::Query(QueryResult::Catalog(page)) => Ok(page),
+                RpcResult::Catalog(page) => Ok(page),
                 _ => Err(invalid()),
             },
             RpcReply::Failure { error, .. } => Err(error),

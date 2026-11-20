@@ -72,7 +72,7 @@ export function createWorkbenchFileActions(
         captureRef: selected.reference,
         mode: "original_timing",
       };
-      await current().invoke(
+      return current().invoke(
         {
           actionId: "replay.open",
           target: {

@@ -94,6 +94,7 @@ try {
   const manual = phases.includes("terminal-manual");
   const automated = phases.includes("terminal-automated");
   const chart = phases.includes("chart-automated");
+  const browserTakeover = phases.includes("browser-takeover");
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&
@@ -170,6 +171,8 @@ try {
       { flag: "wx" },
     );
   }
+  if (browserTakeover)
+    artifacts = mkdtempSync(join(artifacts, "browser-takeover-"));
   writeFileSync(
     join(artifacts, "candidate.json"),
     JSON.stringify(receipt, null, 2),
@@ -249,6 +252,12 @@ try {
       env.STARTER_E2E_TERMINAL_CLI = suiteCli;
     }
     if (chart) env.STARTER_E2E_CHART_DIR = artifacts;
+    if (browserTakeover) {
+      env.STARTER_E2E_CLI = suiteCli;
+      env.STARTER_E2E_MCP = component("serial-workbench-mcp");
+      env.STARTER_E2E_BROWSER_DIR = artifacts;
+      env.SWB_DEV_EXPECTED_HOST_EXECUTABLE = suiteHostBinary;
+    }
     const app = spawnOwned(binary, [], {
       cwd: root,
       env,
@@ -279,7 +288,7 @@ try {
           {
             cwd: root,
             env,
-            ...(automated || chart
+            ...(automated || chart || browserTakeover
               ? { logPath: join(phaseArtifacts, "webdriver.log") }
               : {}),
           },

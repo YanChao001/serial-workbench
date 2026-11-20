@@ -1,5 +1,6 @@
 import {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useRef,
@@ -10,8 +11,8 @@ import {
 } from "react";
 import { defaults } from "@serial-workbench/contracts";
 import type {
+  ActivitySummary,
   SerialConfiguration,
-  OperationSummary,
   Operation,
   WorkspaceDocument,
   SessionSnapshot,
@@ -25,6 +26,7 @@ import type {
   HostContextValue,
 } from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
+import { ActivityNavigationContext } from "@/providers/commands-context";
 import { bytesToBase64 } from "@/lib/base64";
 import { nativeErrorCode } from "@/lib/native-error";
 import type { UserLogInput, UserLogModule } from "@/lib/user-log";
@@ -133,6 +135,42 @@ export type WorkbenchTool =
   | "transfer"
   | "captureTools"
   | "diagnostics";
+type WorkbenchPanel =
+  WorkbenchTool | "capture" | "activity" | "tasks" | "metrics" | "logs";
+type ActivityLocation = Pick<
+  ActivitySummary,
+  "operationId" | "target" | "revealTarget" | "actionId"
+>;
+
+function activityPanel(
+  page: string,
+  panel?: string,
+): WorkbenchPanel | undefined {
+  if (page !== "workbench") return;
+  switch (panel) {
+    case "workspace":
+    case "parameters":
+    case "controls":
+    case "devices":
+    case "transfer":
+    case "captureTools":
+    case "diagnostics":
+    case "capture":
+    case "activity":
+    case "tasks":
+    case "metrics":
+    case "logs":
+      return panel;
+  }
+}
+
+function editingField(element: EventTarget | null): boolean {
+  return (
+    element instanceof HTMLElement &&
+    !!element.closest('textarea, input, [contenteditable="true"]')
+  );
+}
+
 export type WorkbenchToolContext = {
   trackCapture: CaptureTracker;
   selectedViewId?: string;
@@ -225,7 +263,7 @@ export type WorkspaceLayoutProps = {
     sessionId: string,
     signal?: AbortSignal,
   ) => Promise<Operation | undefined>;
-  onOpenReplay?: (signal?: AbortSignal) => Promise<void>;
+  onOpenReplay?: (signal?: AbortSignal) => Promise<Operation | undefined>;
   onCloseSession?: (
     sessionId: string,
     signal?: AbortSignal,
@@ -305,6 +343,7 @@ export function WorkspaceLayout({
   unboundDraftMessage,
 }: WorkspaceLayoutProps) {
   const { state, watchSession, watchActions } = host;
+  const revealActivityPage = useContext(ActivityNavigationContext);
   // Host 暂时离线会保留标签和本地编辑，草稿归属也必须随这些标签保留。
   const retainedDraftScope = useRef(receivedDraftScope);
   if (receivedDraftScope !== undefined)
@@ -453,6 +492,20 @@ export function WorkspaceLayout({
     : undefined;
   const [openError, setOpenError] = useState(false);
   const [following, setFollowing] = useState(true);
+  const [mcpClient, setMcpClient] = useState<{
+    actorId: string;
+    name: string;
+  }>();
+  const [lastFollowedActivity, setLastFollowedActivity] = useState<string>();
+  const [takeoverReceipt, setTakeoverReceipt] = useState<{
+    scope: string;
+    state: "pending" | "done";
+  }>();
+  const takeoverInProgress = useRef(false);
+  const [pendingReplay, setPendingReplay] = useState<{
+    operationId: string;
+    focus: number;
+  }>();
   const [connectionConfigurations, setConnectionConfigurations] = useState<
     Readonly<Record<string, SerialConfiguration>>
   >({});
@@ -484,9 +537,8 @@ export function WorkspaceLayout({
         : choice,
     );
   }, [selected, workspaceKey, state.devices]);
-  const [dialog, setDialog] = useState<
-    WorkbenchTool | "capture" | "activity" | "tasks" | "metrics" | "logs" | null
-  >(null);
+  const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
+  const [editing, setEditing] = useState(false);
   const dialogTrigger = useRef<HTMLElement | null>(null);
   const [clearThrough, setClearThrough] = useState<
     ReadonlyMap<string, { source: string; position: HistoryPosition }>
@@ -511,16 +563,6 @@ export function WorkspaceLayout({
   const focusRevision = useRef(0);
   const pending = useRef(new Set<AbortController>());
   const watched = useRef(new Map<string, () => void>());
-  const seenOperations = useRef(
-    new Set(state.operationSummaries.map((operation) => operation.operationId)),
-  );
-  const latestActivityId = useRef<string | undefined>(undefined);
-  const latestActivityTime = useRef(
-    state.operationSummaries.reduce(
-      (latest, operation) => Math.max(latest, Date.parse(operation.acceptedAt)),
-      -Infinity,
-    ),
-  );
   const submittedLayout = useRef<{
     key: string | undefined;
     selection: number | undefined;
@@ -1014,51 +1056,161 @@ export function WorkspaceLayout({
       draftScopeKey,
     ],
   );
-  const activitySessionId = useCallback(
-    (summary: OperationSummary) => {
-      const detail = state.operations.find(
-        (operation) => operation.operationId === summary.operationId,
+  const resolveActivity = useCallback(
+    (activity: ActivityLocation) => {
+      const detail = activity.operationId
+        ? state.operations.find(
+            (item) => item.operationId === activity.operationId,
+          )
+        : undefined;
+      const result = detail?.result;
+      const opened =
+        result?.kind === "opened" || result?.kind === "session"
+          ? result.value
+          : undefined;
+      const id =
+        opened?.sessionId ??
+        activity.revealTarget.sessionId ??
+        activity.target.sessionId;
+      const epoch = opened?.sessionEpoch ?? activity.target.sessionEpoch;
+      const session = state.sessions.find(
+        (session) =>
+          session.sessionId === id &&
+          (epoch === undefined || session.sessionEpoch === epoch),
       );
       if (
-        detail?.result?.kind === "opened" ||
-        detail?.result?.kind === "session"
+        !session &&
+        (id ||
+          activity.actionId === "device.open" ||
+          activity.actionId === "replay.open")
       )
-        return detail.result.value.sessionId;
-      return summary.revealTarget.sessionId;
+        return;
+      const { pageId, panelId } = activity.revealTarget;
+      const panel = activityPanel(pageId, panelId);
+      return {
+        session,
+        pageId,
+        panel,
+        canLocate: !!session || !!panel || pageId !== "workbench",
+      };
     },
-    [state.operations],
+    [state.operations, state.sessions],
+  );
+  const showObservedSession = useCallback(
+    (snapshot: SessionSnapshot) => {
+      const device = state.devices.find(
+        (item) => item.deviceId === snapshot.deviceId,
+      );
+      // 跟随只改变观看位置。人工草稿仍留在原标签，包括未连接的草稿。
+      setViews((current) => {
+        let nextTabs = current.tabs;
+        if (!nextTabs.length && draftStore.snapshot().unconnected) {
+          localDraftTabId.current = "unconnected";
+          nextTabs = [{ id: localDraftTabId.current }];
+        }
+        const currentView = nextTabs.find(
+          (tab) =>
+            tab.id === current.selected && tab.sessionId === snapshot.sessionId,
+        );
+        return connectSessionTabs(
+          nextTabs,
+          initialWorkspace,
+          snapshot.sessionId,
+          device,
+          state.sessions,
+          currentView?.id,
+          snapshot,
+        );
+      });
+    },
+    [state.devices, state.sessions, draftStore, initialWorkspace],
+  );
+  const showDialog = useCallback(
+    (next: WorkbenchPanel, returnPoint?: HTMLElement | null) => {
+      if (returnPoint?.isConnected) dialogTrigger.current = returnPoint;
+      else if (dialog === null) {
+        const active = document.activeElement;
+        dialogTrigger.current = active instanceof HTMLElement ? active : null;
+      }
+      setDialog(next);
+    },
+    [dialog],
+  );
+  const revealActivity = useCallback(
+    (location: NonNullable<ReturnType<typeof resolveActivity>>) => {
+      if (location.session) showObservedSession(location.session);
+      revealActivityPage?.(location.pageId);
+      if (location.panel) showDialog(location.panel);
+      else setDialog(null);
+    },
+    [revealActivityPage, showDialog, showObservedSession],
   );
   useEffect(() => {
-    for (const operation of state.operationSummaries) {
-      const accepted = Date.parse(operation.acceptedAt);
-      if (
-        !seenOperations.current.has(operation.operationId) &&
-        accepted >= latestActivityTime.current
-      ) {
-        latestActivityId.current = operation.operationId;
-        latestActivityTime.current = accepted;
-      }
-    }
-    seenOperations.current = new Set(
-      state.operationSummaries.map((operation) => operation.operationId),
-    );
-    const newest = state.operationSummaries.find(
-      (operation) => operation.operationId === latestActivityId.current,
-    );
-    const id = newest ? activitySessionId(newest) : undefined;
     if (
-      following &&
-      id &&
-      state.sessions.some((value) => value.sessionId === id)
+      state.status !== "ready" ||
+      !mcpClient ||
+      !following ||
+      dialog ||
+      editing ||
+      !draftsReady ||
+      opening
     )
-      selectSession(id);
+      return;
+    const activities = state.activities?.filter(
+      (item) => item.actorId === mcpClient.actorId,
+    );
+    if (!activities?.length) return;
+    const nextIndex =
+      activities.findIndex((item) => item.activityId === lastFollowedActivity) +
+      1;
+    const next = activities[nextIndex];
+    if (!next) return;
+    const location = resolveActivity(next);
+    // 目标尚不可定位时等待当前结果。若更晚活动已开始，晚到的结果只更新原活动。
+    if (!location && nextIndex === activities.length - 1) return;
+    setLastFollowedActivity(next.activityId);
+    if (location) revealActivity(location);
   }, [
-    state.operationSummaries,
-    state.sessions,
+    state.activities,
+    state.status,
+    mcpClient,
     following,
-    selectSession,
-    activitySessionId,
+    dialog,
+    editing,
+    draftsReady,
+    opening,
+    lastFollowedActivity,
+    resolveActivity,
+    revealActivity,
   ]);
+  useEffect(() => {
+    if (!pendingReplay) return;
+    if (pendingReplay.focus !== focusRevision.current) {
+      setPendingReplay(undefined);
+      return;
+    }
+    const operation = state.operations.find(
+      (item) => item.operationId === pendingReplay.operationId,
+    );
+    if (!operation) return;
+    if (operation.result?.kind === "opened") {
+      const { sessionId, sessionEpoch } = operation.result.value;
+      const replaySession = state.sessions.find(
+        (item) =>
+          item.sessionId === sessionId && item.sessionEpoch === sessionEpoch,
+      );
+      if (!replaySession) return;
+      showObservedSession(replaySession);
+      setDialog(null);
+    } else if (
+      operation.state === "queued" ||
+      operation.state === "running" ||
+      operation.state === "cancel_requested"
+    ) {
+      return;
+    }
+    setPendingReplay(undefined);
+  }, [pendingReplay, state.operations, state.sessions, showObservedSession]);
   const saveDrafts = async (signal?: AbortSignal) => {
     if (!draftsReady || !onSaveDrafts) throw new Error(labels.unavailable);
     const snapshot = { ...draftStore.snapshot() };
@@ -1255,12 +1407,22 @@ export function WorkspaceLayout({
     choosingResource.current = false;
     if (!aborted) setChoosing(false);
   }
-  function locate(operation: OperationSummary) {
-    const id = activitySessionId(operation);
-    if (!id || !state.sessions.some((value) => value.sessionId === id)) return;
+  function openReplay() {
+    if (!onOpenReplay) return;
+    const focus = ++focusRevision.current;
+    setFollowing(false);
+    void choose(async (signal) => {
+      const operation = await onOpenReplay(signal);
+      if (operation && !signal.aborted && focus === focusRevision.current)
+        setPendingReplay({ operationId: operation.operationId, focus });
+    });
+  }
+  function locate(activity: ActivityLocation) {
+    const location = resolveActivity(activity);
+    if (!location?.canLocate) return;
     focusRevision.current++;
     setFollowing(false);
-    selectSession(id);
+    revealActivity(location);
   }
   const disabled =
     !draftsReady || state.status !== "ready" || connectionDefaultsLoading;
@@ -1319,7 +1481,6 @@ export function WorkspaceLayout({
     sendingConfiguration && checkBytes?.length
       ? sendWaitMs(sendingConfiguration, checkBytes.length, writeWaitMode)
       : currentWriteWaitMs;
-  const actorId = host.connection?.attachment.actorId ?? "";
   const target = useMemo<Target | undefined>(() => {
     return targetSessionId && targetSessionEpoch && targetHostId
       ? {
@@ -1343,21 +1504,11 @@ export function WorkspaceLayout({
             writeWaitMs: checkedWriteWaitMs,
           },
         });
-      values.push(
-        { actionId: "session.close", target, params: {} },
-        {
-          actionId: "session.takeover",
-          target,
-          params: {
-            actorId,
-            reason: "user",
-          },
-        },
-      );
+      values.push({ actionId: "session.close", target, params: {} });
     }
     if (connectionCloseInput) values.push(connectionCloseInput);
     return values;
-  }, [target, checkedWriteWaitMs, checkBytes, actorId, connectionCloseInput]);
+  }, [target, checkedWriteWaitMs, checkBytes, connectionCloseInput]);
   useEffect(() => {
     setAvailability([]);
     let active = true;
@@ -1412,8 +1563,6 @@ export function WorkspaceLayout({
       nativeErrorCode(current?.error) !== "PERMISSION_DENIED"
     );
   }
-  const controlsDisabled =
-    disabled || !session || session.readOnly || session.state !== "open";
   const connectionReadError = connectionSession
     ? nativeErrorCode(state.streams.get(connectionSession.sessionId)?.error)
     : undefined;
@@ -1532,18 +1681,6 @@ export function WorkspaceLayout({
     });
     if (!aborted) setSavingLayout(false);
   }
-  const showDialog = (
-    next: NonNullable<typeof dialog>,
-    returnPoint?: HTMLElement | null,
-  ) => {
-    if (returnPoint?.isConnected) dialogTrigger.current = returnPoint;
-    else if (dialog === null)
-      dialogTrigger.current =
-        document.activeElement instanceof HTMLElement
-          ? document.activeElement
-          : null;
-    setDialog(next);
-  };
   const closeSession = () => {
     if (!draftsReady || !session || !onCloseSession) return;
     void act(
@@ -1551,9 +1688,54 @@ export function WorkspaceLayout({
       "connection",
     );
   };
+  const takeoverScope = JSON.stringify([
+    host.connection?.generation,
+    target,
+    mcpClient?.actorId,
+  ]);
+  const takeoverState =
+    takeoverReceipt?.scope === takeoverScope
+      ? takeoverReceipt.state
+      : undefined;
+  const takeoverPort = state.devices.find(
+    (device) => device.deviceId === session?.deviceId,
+  )?.systemName;
+  const browserTakeover = Boolean(host.connection?.browser);
+  const canTakeover =
+    !disabled &&
+    !!target &&
+    !!mcpClient &&
+    !isReplay &&
+    !isCapture &&
+    (!browserTakeover ||
+      (takeoverPort !== undefined && allowed("session.close"))) &&
+    session?.state === "open";
   const takeover = () => {
-    if (!draftsReady || !session) return;
-    void act((signal) => host.takeover(session.sessionId, signal));
+    if (
+      !canTakeover ||
+      !target ||
+      !mcpClient ||
+      !host.takeover ||
+      takeoverInProgress.current
+    )
+      return;
+    takeoverInProgress.current = true;
+    setFollowing(false);
+    setTakeoverReceipt({ scope: takeoverScope, state: "pending" });
+    const takeControl = host.takeover;
+    const actorId = mcpClient.actorId;
+    void act(async (signal) => {
+      try {
+        await takeControl(target, actorId, signal);
+        if (!signal.aborted)
+          setTakeoverReceipt({ scope: takeoverScope, state: "done" });
+      } catch (error) {
+        if (!signal.aborted) setTakeoverReceipt(undefined);
+        throw error;
+      } finally {
+        takeoverInProgress.current = false;
+      }
+    }, "connection");
   };
   function closeView(id: string) {
     focusRevision.current++;
@@ -1574,6 +1756,14 @@ export function WorkspaceLayout({
     <section
       className="workbench"
       ref={workbenchRoot}
+      onFocusCapture={(event) => setEditing(editingField(event.target))}
+      onBlurCapture={(event) => {
+        if (
+          !(event.relatedTarget instanceof Node) ||
+          !event.currentTarget.contains(event.relatedTarget)
+        )
+          setEditing(false);
+      }}
       data-surface="panel"
       aria-label={labels.title}
     >
@@ -1592,14 +1782,6 @@ export function WorkspaceLayout({
               !!session &&
               session.state !== "closed",
             run: closeSession,
-          },
-          {
-            actionId: "session.takeover",
-            label: labels.takeover,
-            target,
-            available:
-              allowed("session.takeover") && !controlsDisabled && !isReplay,
-            run: takeover,
           },
         ]}
       />
@@ -1727,13 +1909,6 @@ export function WorkspaceLayout({
           !!initialWorkspace &&
           !savingLayout
         }
-        canTakeover={
-          !isCapture &&
-          connectionSession?.sessionId === session?.sessionId &&
-          !controlsDisabled &&
-          !isReplay &&
-          allowed("session.takeover")
-        }
         canReplay={!disabled && !choosing && !!onOpenReplay}
         toolsAvailable={draftsReady && !!renderTool}
         onDeviceChange={(id) => {
@@ -1760,13 +1935,7 @@ export function WorkspaceLayout({
           void act(() => host.refresh({ enumerateDevices: true }), "connection")
         }
         onUnavailableFocus={focusConnection}
-        onTakeover={takeover}
-        onReplay={() => {
-          if (onOpenReplay) {
-            setFollowing(true);
-            void choose(onOpenReplay);
-          }
-        }}
+        onReplay={openReplay}
       />
 
       <WorkbenchNotice
@@ -2074,13 +2243,7 @@ export function WorkspaceLayout({
                   isReplay ||
                   isCapture,
                 replayDisabled: disabled || choosing,
-                onOpenReplay: onOpenReplay
-                  ? () => {
-                      latestActivityId.current = undefined;
-                      setFollowing(true);
-                      void choose(onOpenReplay);
-                    }
-                  : undefined,
+                onOpenReplay: onOpenReplay ? openReplay : undefined,
                 onStart:
                   onStartCapture && sessionId
                     ? () =>
@@ -2098,6 +2261,24 @@ export function WorkspaceLayout({
             {dialog === "activity" && (
               <ActivityPanel
                 operations={state.operationSummaries}
+                activities={state.activities}
+                mcpClient={mcpClient}
+                onMcpChange={(client) => {
+                  // 选择客户端时定位当前最后一次活动。之后按 Host 的开始顺序处理新增活动。
+                  setLastFollowedActivity(
+                    client
+                      ? state.activities
+                          ?.filter((item) => item.actorId === client.actorId)
+                          .at(-2)?.activityId
+                      : undefined,
+                  );
+                  setMcpClient(client);
+                  setFollowing(true);
+                }}
+                canLocateQuery={(activity) =>
+                  !!resolveActivity(activity)?.canLocate
+                }
+                onLocateQuery={locate}
                 currentActorId={host.connection?.attachment.actorId}
                 describeTarget={(operation) => {
                   const targetSession = state.sessions.find(
@@ -2117,30 +2298,31 @@ export function WorkspaceLayout({
                 }}
                 labels={labels}
                 following={following}
+                takeover={
+                  canTakeover &&
+                  host.takeover &&
+                  (takeoverReceipt?.state !== "pending" ||
+                    takeoverState === "pending")
+                    ? {
+                        label: takeoverPort
+                          ? (browserTakeover
+                              ? labels.requestTakeoverPort
+                              : labels.takeoverPort)(takeoverPort)
+                          : labels.takeover,
+                        pendingLabel: browserTakeover
+                          ? labels.browserTakeoverPending
+                          : labels.takeoverPending,
+                        start: takeover,
+                        state: takeoverState,
+                      }
+                    : undefined
+                }
                 readInput={readOperationInput}
-                canLocate={(operation) => !!activitySessionId(operation)}
-                onLocate={(operation) => {
-                  locate(operation);
-                  setDialog(null);
-                }}
-                onFollowChange={(value) => {
-                  setFollowing(value);
-                  if (value) {
-                    const latest = state.operationSummaries.reduce<
-                      OperationSummary | undefined
-                    >(
-                      (candidate, operation) =>
-                        !candidate ||
-                        Date.parse(operation.acceptedAt) >=
-                          Date.parse(candidate.acceptedAt)
-                          ? operation
-                          : candidate,
-                      undefined,
-                    );
-                    const id = latest ? activitySessionId(latest) : undefined;
-                    if (id) selectSession(id);
-                  }
-                }}
+                canLocate={(operation) =>
+                  !!resolveActivity(operation)?.canLocate
+                }
+                onLocate={locate}
+                onFollowChange={setFollowing}
               />
             )}
             {dialog === "logs" && <WorkbenchLogPanel />}

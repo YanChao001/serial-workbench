@@ -30,6 +30,7 @@ import {
 } from "@/lib/settings-sync";
 import { createHostSettingsBackend } from "@/lib/host-settings";
 import type { HostConnection } from "@/lib/host-client";
+import { browserHostClientId } from "@/lib/browser-host-page";
 import { createMediaPort, type MediaPort } from "@/lib/media";
 import { reportClientError } from "@/lib/report-error";
 import {
@@ -57,6 +58,7 @@ export function SettingsProvider({
   const host = useContext(HostContext);
   const connection = host?.connection;
   const native = isTauri();
+  const hostBacked = native || browserHostClientId() !== undefined;
   const media = useMemo(
     () =>
       injectedMedia ??
@@ -76,7 +78,7 @@ export function SettingsProvider({
   const [initialClient] = useState(readInitialClientPreferences);
   const [settings, setSettings] = useState(initial.settings);
   const [sharedPersistence, setPersistence] = useState<PersistenceStatus>(
-    initial.error ? "error" : native ? "loading" : "saved",
+    initial.error ? "error" : hostBacked ? "loading" : "saved",
   );
   const [sharedError, setPersistenceError] = useState(initial.error);
   const [sharedErrorEventKey, setSharedErrorEventKey] = useState<string>();
@@ -103,7 +105,7 @@ export function SettingsProvider({
       effectsCompleted?.revision !== committedRevision ||
       effectsCompleted?.retry !== effectsRetry);
   const attachmentError =
-    native && !connection && host?.state.status === "error"
+    hostBacked && !connection && host?.state.status === "error"
       ? settingsErrorCode(host.state.error)
       : null;
   const persistenceError =
@@ -125,7 +127,7 @@ export function SettingsProvider({
             : undefined;
   const persistence: PersistenceStatus = persistenceError
     ? "error"
-    : (native && !connection) ||
+    : (hostBacked && !connection) ||
         sharedPersistence === "loading" ||
         clientState.status === "loading" ||
         connections.status === "loading"
@@ -183,10 +185,10 @@ export function SettingsProvider({
     applySettings(settings, { includeTheme: false });
   }, [settings]);
   useEffect(() => {
-    if (!native) savePreview(current.current);
-  }, [native, savePreview]);
+    if (!hostBacked) savePreview(current.current);
+  }, [hostBacked, savePreview]);
   useEffect(() => {
-    if (!native || !connection) return;
+    if (!hostBacked || !connection) return;
     const backend = createHostSettingsBackend(connection);
     sharedBackend.current = backend;
     const coordinator = new SettingsSync(
@@ -210,7 +212,7 @@ export function SettingsProvider({
       sharedBackend.current = null;
       sync.current = null;
     };
-  }, [connection, native, publish]);
+  }, [connection, hostBacked, publish]);
   useEffect(() => {
     const coordinator = new SettingsSync(
       clientPreferences(current.current),
@@ -294,12 +296,12 @@ export function SettingsProvider({
         }
       }
       if (Object.keys(shared).length) {
-        if (!native) {
+        if (!hostBacked) {
           previewPending.current = { ...previewPending.current, ...shared };
           publish({ ...current.current, ...shared });
           savePreview(current.current);
         } else if (sync.current) {
-          sharedBackend.current?.markExplicitEdit();
+          if (native) sharedBackend.current?.markExplicitEdit();
           sync.current.update(shared);
         } else {
           unsaved.current = { ...unsaved.current, ...shared };
@@ -307,10 +309,10 @@ export function SettingsProvider({
         }
       }
     },
-    [native, publish, savePreview],
+    [hostBacked, native, publish, savePreview],
   );
   const reset = useCallback(async () => {
-    if (!native) {
+    if (!hostBacked) {
       if (blockedPreview.current || clientState.error)
         throw { code: persistenceError ?? "INVALID_DOCUMENT" };
       const next = {
@@ -327,7 +329,7 @@ export function SettingsProvider({
     if (!sync.current || !clientSync.current)
       throw { code: "HOST_UNAVAILABLE" };
     if (persistenceError) throw { code: persistenceError };
-    sharedBackend.current?.markExplicitEdit();
+    if (native) sharedBackend.current?.markExplicitEdit();
     await Promise.all([
       sync.current.replace({
         ...defaults.settings,
@@ -335,13 +337,20 @@ export function SettingsProvider({
       }),
       clientSync.current.replace(DEFAULT_CLIENT_PREFERENCES),
     ]);
-  }, [native, persistenceError, clientState.error, publish, savePreview]);
+  }, [
+    hostBacked,
+    native,
+    persistenceError,
+    clientState.error,
+    publish,
+    savePreview,
+  ]);
   const retrySave = useCallback(() => {
     void retryConnections();
     if (clientSync.current) void clientSync.current.retry();
-    if (native) {
+    if (hostBacked) {
       if (sync.current) {
-        sharedBackend.current?.markExplicitEdit();
+        if (native) sharedBackend.current?.markExplicitEdit();
         void sync.current.retry();
       } else
         void host?.refresh().catch((error) => {
@@ -349,7 +358,7 @@ export function SettingsProvider({
           setPersistenceError(settingsErrorCode(error));
           setSharedErrorEventKey(undefined);
         });
-      setEffectsRetry((value) => value + 1);
+      if (native) setEffectsRetry((value) => value + 1);
       return;
     }
     if (blockedPreview.current) {
@@ -364,7 +373,7 @@ export function SettingsProvider({
       publish(next);
       savePreview(next);
     } else savePreview(current.current);
-  }, [host, native, publish, savePreview, retryConnections]);
+  }, [host, hostBacked, native, publish, savePreview, retryConnections]);
   const value = useMemo<SettingsContextValue>(
     () => ({
       settings,

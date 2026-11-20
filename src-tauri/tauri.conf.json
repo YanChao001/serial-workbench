@@ -46,6 +46,7 @@
     "license": "Apache-2.0",
     "licenseFile": "../LICENSE",
     "resources": {
+      "../dist/": "browser-workbench/",
       "../LICENSE": "LICENSE",
       "../NOTICE": "NOTICE",
       "../resources/third-party/tauri.LICENSE": "third-party/tauri.LICENSE",

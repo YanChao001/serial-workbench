@@ -600,6 +600,33 @@ impl BuiltinAction {
             Self::OperationGet | Self::OperationInput => &["host", "operation"],
             _ => &["host"],
         };
+        let panel = match self {
+            Self::DeviceList
+            | Self::DeviceRefresh
+            | Self::RecentList
+            | Self::DeviceRebind
+            | Self::FavoritesSave => Some("devices"),
+            Self::WorkspaceList
+            | Self::WorkspaceRead
+            | Self::WorkspaceSave
+            | Self::WorkspaceExport
+            | Self::WorkspaceImport => Some("workspace"),
+            Self::SessionConfigure => Some("parameters"),
+            Self::SessionControl
+            | Self::SessionBreak
+            | Self::SessionSetReadOnly
+            | Self::SessionPurge
+            | Self::TxDrain => Some("controls"),
+            Self::TransferFile | Self::TransferReceiptsRead => Some("transfer"),
+            Self::OperationGet
+            | Self::OperationInput
+            | Self::OperationCancel
+            | Self::SessionTakeover => Some("activity"),
+            Self::SessionGet | Self::DeviceOpen => Some("terminal"),
+            Self::SessionTx => Some("send"),
+            action if action.is_capture_api() => Some("capture"),
+            _ => None,
+        };
         let mut meta = ActionMetadata {
             action_id: Id::try_from(self.action_id()).expect("builtin Id"),
             kind: if action {
@@ -678,7 +705,7 @@ impl BuiltinAction {
                 page_id: Id::try_from("workbench").expect("page"),
                 workspace_id: None,
                 session_id: None,
-                panel_id: None,
+                panel_id: panel.map(|id| Id::try_from(id).expect("panel")),
                 result_ref: None,
             },
         };
@@ -751,7 +778,6 @@ impl BuiltinAction {
             .into_iter()
             .map(str::to_owned)
             .collect();
-            meta.reveal_target.panel_id = Some(Id::try_from("capture").expect("panel"));
         }
         match self {
             Self::ClientList => {

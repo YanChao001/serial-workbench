@@ -3535,6 +3535,199 @@
       "title": "ActionSpec",
       "type": "object"
     },
+    "ActivitySnapshot": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "ActivitySummary": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "activityId": {
+              "$ref": "#/definitions/Id"
+            },
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "mcpClientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "observations": {
+              "$ref": "#/definitions/U64"
+            },
+            "observedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": [
+            "activityId",
+            "actorId",
+            "requestId",
+            "actionId",
+            "target",
+            "revealTarget",
+            "observations",
+            "observedAt"
+          ],
+          "type": "object"
+        },
+        "BrowserTakeoverRequest": {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deviceId": {
+              "$ref": "#/definitions/Id"
+            },
+            "takeoverId": {
+              "$ref": "#/definitions/Id"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["takeoverId", "clientId", "deviceId", "target"],
+          "type": "object"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "RequestId": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "RevealTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "pageId": {
+              "$ref": "#/definitions/Id"
+            },
+            "panelId": {
+              "$ref": "#/definitions/Id"
+            },
+            "resultRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "workspaceId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["pageId"],
+          "type": "object"
+        },
+        "Target": {
+          "additionalProperties": false,
+          "dependencies": {
+            "sessionEpoch": ["sessionId"],
+            "sessionId": ["sessionEpoch"]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "session"
+              }
+            },
+            "required": ["kind"]
+          },
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "sessionEpoch": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/U64"
+                }
+              ],
+              "default": null
+            },
+            "sessionId": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "then": {
+            "required": ["sessionId", "sessionEpoch"]
+          },
+          "type": "object"
+        },
+        "Timestamp": {
+          "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "items": {
+          "items": {
+            "$ref": "#/definitions/ActivitySummary"
+          },
+          "type": "array"
+        },
+        "pendingTakeover": {
+          "$ref": "#/definitions/BrowserTakeoverRequest"
+        }
+      },
+      "required": ["items"],
+      "title": "ActivitySnapshot",
+      "type": "object"
+    },
     "Admission": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "definitions": {
@@ -15266,6 +15459,166 @@
           "required": ["assert", "clear"],
           "type": "object"
         },
+        "BrowserAccessMode": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "BrowserAccessParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "status",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "assetsDir": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "pair",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "assetsDir", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "revoke",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserAccessResult": {
+          "additionalProperties": false,
+          "properties": {
+            "browserAccess": {
+              "$ref": "#/definitions/BrowserAccessState"
+            }
+          },
+          "required": ["browserAccess"],
+          "type": "object"
+        },
+        "BrowserAccessState": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "disabled",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "enabled",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "url", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "entry": {
+                  "$ref": "#/definitions/BrowserEntry"
+                },
+                "kind": {
+                  "const": "pairing",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "entry", "mode"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "pairingCode": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["url", "pairingCode", "clientId"],
+          "type": "object"
+        },
+        "BrowserTakeoverParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actorId": {
+                  "$ref": "#/definitions/Id"
+                },
+                "kind": {
+                  "const": "request",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "actorId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "approve": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "decide",
+                  "type": "string"
+                },
+                "takeoverId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "takeoverId", "approve"],
+              "type": "object"
+            }
+          ]
+        },
         "ByteRange": {
           "additionalProperties": false,
           "properties": {
@@ -19910,6 +20263,34 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "browser.access",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserAccessParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "browser.takeover",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserTakeoverParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "client.register",
                   "type": "string"
                 },
@@ -20148,6 +20529,9 @@
         },
         "RpcResult": {
           "anyOf": [
+            {
+              "$ref": "#/definitions/BrowserAccessResult"
+            },
             {
               "$ref": "#/definitions/ClientRegistration"
             },
@@ -21624,6 +22008,31 @@
             }
           },
           "required": ["type", "clientId", "credential"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "pairingCode": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "reconnectCredential": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "type": {
+              "const": "browserPair",
+              "type": "string"
+            }
+          },
+          "required": [
+            "type",
+            "clientId",
+            "pairingCode",
+            "reconnectCredential"
+          ],
           "type": "object"
         },
         {
@@ -45855,6 +46264,85 @@
           "required": ["assert", "clear"],
           "type": "object"
         },
+        "BrowserAccessMode": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "BrowserAccessResult": {
+          "additionalProperties": false,
+          "properties": {
+            "browserAccess": {
+              "$ref": "#/definitions/BrowserAccessState"
+            }
+          },
+          "required": ["browserAccess"],
+          "type": "object"
+        },
+        "BrowserAccessState": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "disabled",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "enabled",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "url", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "entry": {
+                  "$ref": "#/definitions/BrowserEntry"
+                },
+                "kind": {
+                  "const": "pairing",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "entry", "mode"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "pairingCode": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["url", "pairingCode", "clientId"],
+          "type": "object"
+        },
         "ByteRange": {
           "additionalProperties": false,
           "properties": {
@@ -50139,6 +50627,9 @@
         "RpcResult": {
           "anyOf": [
             {
+              "$ref": "#/definitions/BrowserAccessResult"
+            },
+            {
               "$ref": "#/definitions/ClientRegistration"
             },
             {
@@ -51506,6 +51997,91 @@
           "required": ["supportedProtocolVersions", "clientKind", "clientId"],
           "type": "object"
         },
+        "BrowserAccessMode": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "BrowserAccessParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "status",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "assetsDir": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "pair",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "assetsDir", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "revoke",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserTakeoverParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actorId": {
+                  "$ref": "#/definitions/Id"
+                },
+                "kind": {
+                  "const": "request",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "actorId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "approve": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "decide",
+                  "type": "string"
+                },
+                "takeoverId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "takeoverId", "approve"],
+              "type": "object"
+            }
+          ]
+        },
         "Call": {
           "additionalProperties": false,
           "properties": {
@@ -52605,6 +53181,34 @@
           "additionalProperties": false,
           "properties": {
             "method": {
+              "const": "browser.access",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/BrowserAccessParams"
+            }
+          },
+          "required": ["method", "params"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
+              "const": "browser.takeover",
+              "type": "string"
+            },
+            "params": {
+              "$ref": "#/definitions/BrowserTakeoverParams"
+            }
+          },
+          "required": ["method", "params"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "method": {
               "const": "client.register",
               "type": "string"
             },
@@ -52845,6 +53449,9 @@
     "RpcResult": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "anyOf": [
+        {
+          "$ref": "#/definitions/BrowserAccessResult"
+        },
         {
           "$ref": "#/definitions/ClientRegistration"
         },
@@ -53559,6 +54166,85 @@
             }
           },
           "required": ["assert", "clear"],
+          "type": "object"
+        },
+        "BrowserAccessMode": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "BrowserAccessResult": {
+          "additionalProperties": false,
+          "properties": {
+            "browserAccess": {
+              "$ref": "#/definitions/BrowserAccessState"
+            }
+          },
+          "required": ["browserAccess"],
+          "type": "object"
+        },
+        "BrowserAccessState": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "disabled",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "enabled",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "url", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "entry": {
+                  "$ref": "#/definitions/BrowserEntry"
+                },
+                "kind": {
+                  "const": "pairing",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "entry", "mode"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "pairingCode": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["url", "pairingCode", "clientId"],
           "type": "object"
         },
         "ByteRange": {
@@ -65483,6 +66169,166 @@
           "required": ["assert", "clear"],
           "type": "object"
         },
+        "BrowserAccessMode": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "BrowserAccessParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "status",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "assetsDir": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "pair",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "assetsDir", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "revoke",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserAccessResult": {
+          "additionalProperties": false,
+          "properties": {
+            "browserAccess": {
+              "$ref": "#/definitions/BrowserAccessState"
+            }
+          },
+          "required": ["browserAccess"],
+          "type": "object"
+        },
+        "BrowserAccessState": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "disabled",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "enabled",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                },
+                "url": {
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "url", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "entry": {
+                  "$ref": "#/definitions/BrowserEntry"
+                },
+                "kind": {
+                  "const": "pairing",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "entry", "mode"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "pairingCode": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "url": {
+              "type": "string"
+            }
+          },
+          "required": ["url", "pairingCode", "clientId"],
+          "type": "object"
+        },
+        "BrowserTakeoverParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actorId": {
+                  "$ref": "#/definitions/Id"
+                },
+                "kind": {
+                  "const": "request",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "actorId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "approve": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "decide",
+                  "type": "string"
+                },
+                "takeoverId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "takeoverId", "approve"],
+              "type": "object"
+            }
+          ]
+        },
         "ByteRange": {
           "additionalProperties": false,
           "properties": {
@@ -68081,6 +68927,31 @@
             {
               "additionalProperties": false,
               "properties": {
+                "clientId": {
+                  "$ref": "#/definitions/Id"
+                },
+                "pairingCode": {
+                  "$ref": "#/definitions/ContextToken"
+                },
+                "reconnectCredential": {
+                  "$ref": "#/definitions/ContextToken"
+                },
+                "type": {
+                  "const": "browserPair",
+                  "type": "string"
+                }
+              },
+              "required": [
+                "type",
+                "clientId",
+                "pairingCode",
+                "reconnectCredential"
+              ],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
                 "credential": {
                   "$ref": "#/definitions/ContextToken"
                 },
@@ -70388,6 +71259,34 @@
               "additionalProperties": false,
               "properties": {
                 "method": {
+                  "const": "browser.access",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserAccessParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "browser.takeover",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserTakeoverParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
                   "const": "client.register",
                   "type": "string"
                 },
@@ -70626,6 +71525,9 @@
         },
         "RpcResult": {
           "anyOf": [
+            {
+              "$ref": "#/definitions/BrowserAccessResult"
+            },
             {
               "$ref": "#/definitions/ClientRegistration"
             },

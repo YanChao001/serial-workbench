@@ -1,4 +1,5 @@
 //! Window-scoped accounting for WebView deliveries. The bridge module is registered by root.
+pub(crate) mod browser_access;
 mod client_effects;
 mod connect_device;
 pub(crate) mod document_intents;
@@ -7,6 +8,7 @@ pub(crate) mod node_intents;
 mod pending_frames;
 mod platform_effects;
 mod read_requests;
+pub(crate) mod session_takeover;
 use pending_frames::PendingFrames;
 use serial_workbench_core::{HostError, HostResult, Id};
 use std::collections::{HashMap, VecDeque};
@@ -1704,6 +1706,8 @@ impl DesktopHostBridge {
         if matches!(
             &request,
             RpcRequest::Attach(_)
+                | RpcRequest::BrowserAccess(_)
+                | RpcRequest::BrowserTakeover(_)
                 | RpcRequest::ClientRegister(_)
                 | RpcRequest::ClientUnregister(_)
                 | RpcRequest::ClientReceipt(_)
@@ -1717,8 +1721,8 @@ impl DesktopHostBridge {
             ));
         }
         if matches!(&request, RpcRequest::Query(query) if matches!(query.action_id.as_str(), "state.subscribe" | "stream.subscribe" | "subscription.close" | "file.register" | "auth.authorize" | "auth.revoke" | "client.register" | "client.unregister" | "client.receipt"))
-            || matches!(&request, RpcRequest::Invoke(call) if matches!(call.action_id.as_str(), "file.register" | "auth.authorize" | "auth.revoke" | "client.register" | "client.unregister" | "client.receipt"))
-            || matches!(&request, RpcRequest::InvokeChild(call) if matches!(call.action_id.as_str(), "file.register" | "auth.authorize" | "auth.revoke" | "client.register" | "client.unregister" | "client.receipt"))
+            || matches!(&request, RpcRequest::Invoke(call) if matches!(call.action_id.as_str(), "file.register" | "auth.authorize" | "auth.revoke" | "session.takeover" | "client.register" | "client.unregister" | "client.receipt"))
+            || matches!(&request, RpcRequest::InvokeChild(call) if matches!(call.action_id.as_str(), "file.register" | "auth.authorize" | "auth.revoke" | "session.takeover" | "client.register" | "client.unregister" | "client.receipt"))
         {
             return Err(HostError::new(
                 "PERMISSION_DENIED",

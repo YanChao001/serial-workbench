@@ -6,6 +6,7 @@ import type {
   ActionKind,
   ActionResult,
   ActionSpec,
+  ActivitySnapshot,
   Admission,
   AttachParams,
   AttachResult,
@@ -309,6 +310,9 @@ export declare function validateActionResult(
   value: unknown,
 ): value is ActionResult;
 export declare function validateActionSpec(value: unknown): value is ActionSpec;
+export declare function validateActivitySnapshot(
+  value: unknown,
+): value is ActivitySnapshot;
 export declare function validateAdmission(value: unknown): value is Admission;
 export declare function validateAttachParams(
   value: unknown,

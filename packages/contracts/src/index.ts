@@ -1,4 +1,5 @@
 import type {
+  ActivitySnapshot,
   CaptureRecord,
   CaptureStorageLimits,
   ObjectRef,
@@ -11,6 +12,7 @@ import type {
   WorkspaceDocument,
 } from "./generated/types.ts";
 import {
+  validateActivitySnapshot,
   validateCaptureRecord,
   validateCaptureStorageLimits,
   validateObjectRef,
@@ -109,6 +111,12 @@ export function parseObjectRef(value: unknown): ObjectRef {
 export function parseOperationsSnapshot(value: unknown): OperationsSnapshot {
   if (!validateOperationsSnapshot(value))
     throw new ContractValidationError("Invalid Host operations snapshot");
+  return value;
+}
+
+export function parseActivitySnapshot(value: unknown): ActivitySnapshot {
+  if (!validateActivitySnapshot(value))
+    throw new ContractValidationError("Invalid Host activity snapshot");
   return value;
 }
 

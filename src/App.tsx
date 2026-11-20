@@ -19,6 +19,9 @@ import { RecoveryGate } from "@/components/recovery-gate";
 import { DEFAULT_SETTINGS, THEME_STORAGE_KEY } from "@/lib/settings-model";
 import { ThemeEffects } from "@/components/theme-effects";
 import { OperationFailureObserver } from "@/features/workbench/operation-failure-notices";
+import { BrowserPairingScreen } from "@/features/browser/browser-pairing-screen";
+import { BrowserTakeoverNotice } from "@/features/browser/browser-takeover-notice";
+import { useBrowserPairing } from "@/features/browser/use-browser-pairing";
 
 function AppEffects() {
   useExternalLinks();
@@ -27,8 +30,12 @@ function AppEffects() {
   return null;
 }
 export default function App() {
+  const browser = useBrowserPairing();
   return (
-    <HostProvider>
+    <HostProvider
+      enabled={browser.clientId ? browser.paired : undefined}
+      connect={browser.clientId ? browser.connect : undefined}
+    >
       <ClientDraftsProvider>
         <SettingsProvider>
           <I18nProvider>
@@ -45,38 +52,43 @@ export default function App() {
               >
                 <ThemeEffects />
                 <OperationFailureObserver />
+                <BrowserTakeoverNotice />
                 <TooltipProvider>
-                  {/* HashRouter：生产构建下用的是自定义协议，hash 路由不会出现刷新 404 */}
-                  <HashRouter>
-                    <CommandsProvider>
-                      <DesktopEffects />
-                      <CommandPalette />
-                      <Routes>
-                        <Route
-                          element={
-                            <RecoveryGate>
-                              <AppShell />
-                            </RecoveryGate>
-                          }
-                        >
-                          {APP_ROUTES.map(
-                            ({ path, component: Page, index }) => (
-                              <Route
-                                key={path}
-                                index={index}
-                                path={index ? undefined : path}
-                                element={<Page />}
-                              />
-                            ),
-                          )}
+                  {/* HashRouter 保留自定义协议和浏览器子路径的刷新入口。 */}
+                  {browser.clientId && !browser.paired ? (
+                    <BrowserPairingScreen pair={browser.pair} />
+                  ) : (
+                    <HashRouter>
+                      <CommandsProvider>
+                        <DesktopEffects />
+                        <CommandPalette />
+                        <Routes>
                           <Route
-                            path="*"
-                            element={<Navigate to="/" replace />}
-                          />
-                        </Route>
-                      </Routes>
-                    </CommandsProvider>
-                  </HashRouter>
+                            element={
+                              <RecoveryGate>
+                                <AppShell />
+                              </RecoveryGate>
+                            }
+                          >
+                            {APP_ROUTES.map(
+                              ({ path, component: Page, index }) => (
+                                <Route
+                                  key={path}
+                                  index={index}
+                                  path={index ? undefined : path}
+                                  element={<Page />}
+                                />
+                              ),
+                            )}
+                            <Route
+                              path="*"
+                              element={<Navigate to="/" replace />}
+                            />
+                          </Route>
+                        </Routes>
+                      </CommandsProvider>
+                    </HashRouter>
+                  )}
                   <Toaster
                     position="bottom-right"
                     offset={{ bottom: "var(--workbench-toast-bottom, 24px)" }}

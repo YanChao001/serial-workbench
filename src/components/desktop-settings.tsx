@@ -17,6 +17,7 @@ import {
   isTauri,
 } from "@/lib/tauri";
 import { nativeErrorText } from "@/lib/native-error";
+import { BrowserAccessSettings } from "@/features/browser/browser-access-settings";
 async function loadDesktop() {
   const status = await getDesktopStatus();
   const autostart = status.autostartSupported
@@ -143,6 +144,7 @@ export function DesktopSettings() {
             {t("desktop.openWindow")}
           </Button>
         </SettingRow>
+        {native && <BrowserAccessSettings />}
       </div>
     </section>
   );

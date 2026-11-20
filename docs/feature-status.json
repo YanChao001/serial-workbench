@@ -1600,7 +1600,8 @@
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/38",
           "https://github.com/YanChao001/serial-workbench/pull/40",
-          "https://github.com/YanChao001/serial-workbench/pull/49"
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/50"
         ]
       },
       "hardware": {
@@ -2753,7 +2754,8 @@
         "status": "in-progress",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/48",
-          "https://github.com/YanChao001/serial-workbench/pull/49"
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/50"
         ]
       },
       "hardware": {
@@ -3402,7 +3404,8 @@
           "https://github.com/YanChao001/serial-workbench/pull/40",
           "https://github.com/YanChao001/serial-workbench/pull/42",
           "https://github.com/YanChao001/serial-workbench/pull/47",
-          "https://github.com/YanChao001/serial-workbench/pull/49"
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/50"
         ]
       },
       "hardware": {
@@ -3442,7 +3445,8 @@
           "https://github.com/YanChao001/serial-workbench/pull/40",
           "https://github.com/YanChao001/serial-workbench/pull/45",
           "https://github.com/YanChao001/serial-workbench/pull/47",
-          "https://github.com/YanChao001/serial-workbench/pull/49"
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/50"
         ]
       },
       "hardware": {
@@ -3849,7 +3853,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -3937,7 +3941,7 @@
       "scope": "included",
       "scopeNote": "本轮浏览器作为独立 Host 的共享 GUI 客户端；零安装 Web Serial 为后续专项。见[范围边界](./requirements.md#范围边界)。",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -4138,7 +4142,10 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/49"]
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/50"
+        ]
       },
       "hardware": {
         "status": "not-started",
@@ -4356,7 +4363,10 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/49"]
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/49",
+          "https://github.com/YanChao001/serial-workbench/pull/50"
+        ]
       },
       "hardware": {
         "status": "not-started",

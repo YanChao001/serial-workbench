@@ -2,12 +2,14 @@ import { mkdirSync } from "node:fs";
 import { isAbsolute, join, resolve } from "node:path";
 
 const phase = process.env.STARTER_E2E_PHASE;
-const referenceDirectory =
+const phaseDirectory =
   phase === "terminal-automated"
     ? process.env.STARTER_E2E_TERMINAL_DIR
     : phase === "chart-automated"
       ? process.env.STARTER_E2E_CHART_DIR
-      : null;
+      : phase === "browser-takeover"
+        ? process.env.STARTER_E2E_BROWSER_DIR
+        : null;
 
 if (
   !process.env.STARTER_E2E_BINARY ||
@@ -22,16 +24,14 @@ if (
     "previews",
     "terminal-automated",
     "chart-automated",
+    "browser-takeover",
   ].includes(phase) ||
-  (referenceDirectory !== null && !isAbsolute(referenceDirectory ?? ""))
+  (phaseDirectory !== null && !isAbsolute(phaseDirectory ?? ""))
 )
   throw new Error(
     "请通过 pnpm test:e2e --interactive 或 pnpm docs:capture --interactive 运行隔离窗口。",
   );
-const outputDir = resolve(
-  referenceDirectory ?? join("artifacts", "e2e"),
-  phase,
-);
+const outputDir = resolve(phaseDirectory ?? join("artifacts", "e2e"), phase);
 mkdirSync(outputDir, { recursive: true });
 
 export const config = {
@@ -61,6 +61,12 @@ export const config = {
   async afterTest(test, _context, { passed }) {
     if (!passed) {
       const { browser } = await import("@wdio/globals");
+      if (phase === "browser-takeover") {
+        await browser.execute(() => {
+          const field = document.querySelector("#desktop-browser-code");
+          if (field) field.value = "";
+        });
+      }
       await browser.saveScreenshot(
         join(outputDir, `${test.title.replace(/[^a-z0-9]+/gi, "-")}.png`),
       );

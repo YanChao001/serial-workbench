@@ -67,6 +67,8 @@ impl RequestDiagnostic {
     fn of(request: &RpcRequest) -> Self {
         let (method, action) = match request {
             RpcRequest::Attach(_) => ("host.attach", None),
+            RpcRequest::BrowserAccess(_) => ("browser.access", None),
+            RpcRequest::BrowserTakeover(_) => ("browser.takeover", None),
             RpcRequest::Invoke(call) => ("action.invoke", Some(&call.action_id)),
             RpcRequest::InvokeChild(call) => ("action.invokeChild", Some(&call.action_id)),
             RpcRequest::Query(query) => ("action.query", Some(&query.action_id)),
@@ -553,6 +555,8 @@ impl Drop for WriteGuard<'_> {
 fn request_id(request: &RpcRequest) -> RequestId {
     match request {
         RpcRequest::Attach(_)
+        | RpcRequest::BrowserAccess(_)
+        | RpcRequest::BrowserTakeover(_)
         | RpcRequest::InvokeChild(_)
         | RpcRequest::ClientRegister(_)
         | RpcRequest::ClientUnregister(_)

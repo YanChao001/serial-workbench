@@ -264,19 +264,95 @@ impl AuthService {
         if credential.is_some() {
             return Err(unauthenticated());
         }
+        let credential = random_token();
+        let actor = self.register_client(revision, &document, client_id, &credential)?;
+        Ok(Authentication {
+            actor,
+            issued_credential: Some(credential),
+        })
+    }
+
+    // Only the local Host launcher owns this credential. Reserve its generated
+    // identity before the browser listener can accept connections.
+    pub(crate) fn authenticate_browser_identity(
+        &self,
+        client_id: &Id,
+        credential: &ContextToken,
+    ) -> HostResult<AuthenticatedActor> {
+        let _guard = self.serial.lock().map_err(|_| corrupt())?;
+        let (revision, document) = self.load()?;
+        if let Some(record) = document.clients.get(client_id) {
+            if !verify_credential(&record.verifier, credential) {
+                return Err(unauthenticated());
+            }
+            return Ok(AuthenticatedActor::from_verified(
+                record.actor_id.clone(),
+                client_id.clone(),
+                record.grant_revision,
+                false,
+            ));
+        }
+        self.register_client(revision, &document, client_id, credential)
+    }
+
+    pub(crate) fn set_browser_access(
+        &self,
+        client_id: &Id,
+        mode: Option<BrowserAccessMode>,
+    ) -> HostResult<()> {
+        let _guard = self.serial.lock().map_err(|_| corrupt())?;
+        let (revision, document) = self.load()?;
+        let mut document = (*document).clone();
+        let record = document.clients.get_mut(client_id).ok_or_else(denied)?;
+        let permissions: &[&str] = match mode {
+            None => &[],
+            Some(BrowserAccessMode::ReadOnly) => &["metadata.read", "content.read"],
+            Some(BrowserAccessMode::Operate) => &[
+                "metadata.read",
+                "content.read",
+                "device.modify",
+                "workspace.modify",
+                "settings.modify",
+            ],
+        };
+        let target = host_target(self.store.identity()?.host_id);
+        record.grant_revision = record.grant_revision.checked_next()?;
+        record.rules = permissions
+            .iter()
+            .map(|permission| Rule {
+                permission: (*permission).into(),
+                target: target.clone(),
+                allowed: true,
+                expires_at: None,
+                epoch: None,
+                deadline_ns: None,
+                changed_at_revision: record.grant_revision.get(),
+            })
+            .collect();
+        let committed = self.save(revision, document)?;
+        self.changes.send_replace(committed);
+        Ok(())
+    }
+
+    fn register_client(
+        &self,
+        revision: U64,
+        document: &GrantDocument,
+        client_id: &Id,
+        credential: &ContextToken,
+    ) -> HostResult<AuthenticatedActor> {
         if document.clients.len() >= 1024 {
             return Err(limit());
         }
-        let mut document = (*document).clone();
+        let mut document = document.clone();
         let identity = self.store.identity()?;
-        let credential = random_token();
         let actor_id = Id::try_from(uuid::Uuid::new_v4().to_string().as_str())?;
         document.clients.insert(
             client_id.clone(),
             ClientRecord {
                 actor_id: actor_id.clone(),
                 grant_revision: 1.into(),
-                verifier: credential_verifier(&credential),
+                verifier: credential_verifier(credential),
                 rules: vec![Rule {
                     permission: "metadata.read".into(),
                     target: host_target(identity.host_id),
@@ -289,10 +365,12 @@ impl AuthService {
             },
         );
         self.save(revision, document)?;
-        Ok(Authentication {
-            actor: AuthenticatedActor::from_verified(actor_id, client_id.clone(), 1.into(), false),
-            issued_credential: Some(credential),
-        })
+        Ok(AuthenticatedActor::from_verified(
+            actor_id,
+            client_id.clone(),
+            1.into(),
+            false,
+        ))
     }
     pub fn authenticate_user_control(
         &self,

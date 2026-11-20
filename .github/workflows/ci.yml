@@ -199,11 +199,8 @@ jobs:
       - name: Clippy 静态检查
         run: cargo clippy --locked --workspace --all-targets -- -D warnings
 
-      - name: 构建 Host 与真实适配器测试入口
-        run: cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins
-
       - name: 单元测试
-        # 收集全部测试程序的失败；任一失败仍使该步骤失败。
+        # 保留全部测试程序的结果。后续步骤复用本次编译的三个伴随程序及 software_scenarios。
         run: cargo test --locked --workspace --no-fail-fast
 
       - name: 保留失败 Rust 场景现场
@@ -214,10 +211,6 @@ jobs:
           path: artifacts/rust-failures
           if-no-files-found: ignore
           retention-days: 7
-
-      - name: 构建 Ubuntu 正式软件场景入口
-        if: runner.os == 'Linux'
-        run: cargo build --locked -p serial-workbench-host --example software_scenarios
 
       - name: Ubuntu 离线六场景与 600 秒负载
         id: host-offline

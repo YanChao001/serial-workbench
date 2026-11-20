@@ -13,3 +13,6 @@ export type CommandsContextValue = {
 };
 
 export const CommandsContext = createContext<CommandsContextValue | null>(null);
+export const ActivityNavigationContext = createContext<
+  ((pageId: string) => void) | undefined
+>(undefined);

@@ -673,6 +673,7 @@ impl TransmissionService {
                     *id != &accepted.operation.operation_id
                         && other.actor_id == params.actor_id
                         && other.session_id.as_ref() == Some(&accepted.call.target.id)
+                        && other.session_epoch == accepted.call.target.session_epoch
                 })
                 .map(|(id, _)| id.clone())
                 .collect::<Vec<_>>()
@@ -697,6 +698,8 @@ impl TransmissionService {
             let wake = self.ready.notified();
             tokio::pin!(wake);
             wake.as_mut().enable();
+            // 接纳守卫在 token 登记后才释放。先读守卫，再读 token，覆盖两者交接。
+            let admitting = self.has_session_admission(&accepted.call.target, &params.actor_id)?;
             let remaining = {
                 let tokens = self.tokens.lock().map_err(|_| invalid())?;
                 let mut remaining = 0;
@@ -704,6 +707,7 @@ impl TransmissionService {
                     *id != &accepted.operation.operation_id
                         && other.actor_id == params.actor_id
                         && other.session_id.as_ref() == Some(&accepted.call.target.id)
+                        && other.session_epoch == accepted.call.target.session_epoch
                 }) {
                     if !affected.contains(id) {
                         affected.push(id.clone());
@@ -713,7 +717,7 @@ impl TransmissionService {
                 }
                 remaining
             };
-            if remaining == 0 && self.admissions.load(Ordering::SeqCst) == 0 {
+            if remaining == 0 && !admitting {
                 break;
             }
             tokio::select! { _ = &mut wake => {}, _ = tokio::time::sleep(Duration::from_millis(20)) => {} }

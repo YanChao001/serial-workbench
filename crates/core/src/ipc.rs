@@ -64,6 +64,11 @@ pub enum IpcMessage {
         client_id: Id,
         credential: ContextToken,
     },
+    BrowserPair {
+        client_id: Id,
+        pairing_code: ContextToken,
+        reconnect_credential: ContextToken,
+    },
     Authenticated {
         #[serde(
             default,

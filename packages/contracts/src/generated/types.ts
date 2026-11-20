@@ -130,6 +130,48 @@ export type ActionSpec_Serialize = {
   revealTarget: RevealTarget_Serialize;
 };
 
+export type ActivitySnapshot =
+  ActivitySnapshot_Serialize | ActivitySnapshot_Deserialize;
+
+export type ActivitySnapshot_Deserialize = {
+  items: ActivitySummary_Deserialize[];
+  pendingTakeover?: BrowserTakeoverRequest_Deserialize;
+};
+
+export type ActivitySnapshot_Serialize = {
+  items: ActivitySummary_Serialize[];
+  pendingTakeover?: BrowserTakeoverRequest_Serialize;
+};
+
+export type ActivitySummary =
+  ActivitySummary_Serialize | ActivitySummary_Deserialize;
+
+export type ActivitySummary_Deserialize = {
+  activityId: Id;
+  actorId: Id;
+  requestId: RequestId;
+  actionId: Id;
+  target: Target_Deserialize;
+  revealTarget: RevealTarget_Deserialize;
+  observations: U64;
+  observedAt: Timestamp;
+  mcpClientId?: Id;
+  operationId?: Id;
+};
+
+export type ActivitySummary_Serialize = {
+  activityId: Id;
+  actorId: Id;
+  requestId: RequestId;
+  actionId: Id;
+  target: Target_Serialize;
+  revealTarget: RevealTarget_Serialize;
+  observations: U64;
+  observedAt: Timestamp;
+  mcpClientId?: Id;
+  operationId?: Id;
+};
+
 export type Admission =
   | { kind: "request"; requestContextDigest: Digest }
   | {
@@ -250,6 +292,68 @@ export type BreakReceipt_Deserialize = {
 export type BreakReceipt_Serialize = {
   assert: ControlTransition_Serialize;
   clear: ControlTransition_Serialize;
+};
+
+export type BrowserAccessMode = "readOnly" | "operate";
+
+export type BrowserAccessParams =
+  | { kind: "status" }
+  | { kind: "pair"; assetsDir: string; mode: BrowserAccessMode }
+  | { kind: "revoke" };
+
+export type BrowserAccessResult = {
+  browserAccess: BrowserAccessState;
+};
+
+export type BrowserAccessState =
+  | { kind: "disabled" }
+  | { kind: "enabled"; url: string; mode: BrowserAccessMode }
+  | { kind: "pairing"; entry: BrowserEntry; mode: BrowserAccessMode };
+
+export type BrowserEntry = {
+  url: string;
+  pairingCode: ContextToken;
+  clientId: Id;
+};
+
+export type BrowserTakeoverParams =
+  BrowserTakeoverParams_Serialize | BrowserTakeoverParams_Deserialize;
+
+export type BrowserTakeoverParams_Deserialize =
+  | ({ kind: "request"; target: Target_Deserialize; actorId: Id } & {
+      approve?: never;
+      takeoverId?: never;
+    })
+  | ({ kind: "decide"; takeoverId: Id; approve: boolean } & {
+      actorId?: never;
+      target?: never;
+    });
+
+export type BrowserTakeoverParams_Serialize =
+  | ({ kind: "request"; target: Target_Serialize; actorId: Id } & {
+      approve?: never;
+      takeoverId?: never;
+    })
+  | ({ kind: "decide"; takeoverId: Id; approve: boolean } & {
+      actorId?: never;
+      target?: never;
+    });
+
+export type BrowserTakeoverRequest =
+  BrowserTakeoverRequest_Serialize | BrowserTakeoverRequest_Deserialize;
+
+export type BrowserTakeoverRequest_Deserialize = {
+  takeoverId: Id;
+  clientId: Id;
+  deviceId: Id;
+  target: Target_Deserialize;
+};
+
+export type BrowserTakeoverRequest_Serialize = {
+  takeoverId: Id;
+  clientId: Id;
+  deviceId: Id;
+  target: Target_Serialize;
 };
 
 export type ByteRange = {
@@ -1672,9 +1776,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       serverNonce?: never;
       subscriptionId?: never;
@@ -1696,9 +1802,11 @@ export type IpcMessage_Deserialize =
       error?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1722,7 +1830,9 @@ export type IpcMessage_Deserialize =
       delta?: never;
       error?: never;
       expectedHostId?: never;
+      pairingCode?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       subscriptionId?: never;
@@ -1739,9 +1849,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1758,6 +1870,34 @@ export type IpcMessage_Deserialize =
       batch?: never;
       catalogVersion?: never;
       clientNonce?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      hostId?: never;
+      instanceEpoch?: never;
+      pairingCode?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reconnectCredential?: never;
+      reply?: never;
+      request?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({
+      type: "browserPair";
+      clientId: Id;
+      pairingCode: ContextToken;
+      reconnectCredential: ContextToken;
+    } & {
+      batch?: never;
+      catalogVersion?: never;
+      clientNonce?: never;
+      credential?: never;
       delta?: never;
       error?: never;
       expectedHostId?: never;
@@ -1788,8 +1928,10 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1809,9 +1951,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1830,9 +1974,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1852,9 +1998,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       serverNonce?: never;
       subscriptionId?: never;
@@ -1873,9 +2021,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       request?: never;
       serverNonce?: never;
       subscriptionId?: never;
@@ -1893,9 +2043,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1914,9 +2066,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1935,9 +2089,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1959,9 +2115,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -1983,9 +2141,11 @@ export type IpcMessage_Deserialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2006,9 +2166,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       serverNonce?: never;
       subscriptionId?: never;
@@ -2030,9 +2192,11 @@ export type IpcMessage_Serialize =
       error?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2056,7 +2220,9 @@ export type IpcMessage_Serialize =
       delta?: never;
       error?: never;
       expectedHostId?: never;
+      pairingCode?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       subscriptionId?: never;
@@ -2073,9 +2239,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2092,6 +2260,34 @@ export type IpcMessage_Serialize =
       batch?: never;
       catalogVersion?: never;
       clientNonce?: never;
+      delta?: never;
+      error?: never;
+      expectedHostId?: never;
+      hostId?: never;
+      instanceEpoch?: never;
+      pairingCode?: never;
+      proof?: never;
+      protocolVersion?: never;
+      rawAttachToken?: never;
+      reconnectCredential?: never;
+      reply?: never;
+      request?: never;
+      serverNonce?: never;
+      subscriptionId?: never;
+      supportedProtocolVersions?: never;
+      token?: never;
+      visibilityToken?: never;
+    })
+  | ({
+      type: "browserPair";
+      clientId: Id;
+      pairingCode: ContextToken;
+      reconnectCredential: ContextToken;
+    } & {
+      batch?: never;
+      catalogVersion?: never;
+      clientNonce?: never;
+      credential?: never;
       delta?: never;
       error?: never;
       expectedHostId?: never;
@@ -2122,8 +2318,10 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2143,9 +2341,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2164,9 +2364,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2186,9 +2388,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       serverNonce?: never;
       subscriptionId?: never;
@@ -2207,9 +2411,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       request?: never;
       serverNonce?: never;
       subscriptionId?: never;
@@ -2227,9 +2433,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2248,9 +2456,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2269,9 +2479,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2293,9 +2505,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -2317,9 +2531,11 @@ export type IpcMessage_Serialize =
       expectedHostId?: never;
       hostId?: never;
       instanceEpoch?: never;
+      pairingCode?: never;
       proof?: never;
       protocolVersion?: never;
       rawAttachToken?: never;
+      reconnectCredential?: never;
       reply?: never;
       request?: never;
       serverNonce?: never;
@@ -3870,6 +4086,8 @@ export type RpcReply_Serialize =
 export type RpcRequest = RpcRequest_Serialize | RpcRequest_Deserialize;
 
 export type RpcRequest_Deserialize =
+  | { method: "browser.access"; params: BrowserAccessParams }
+  | { method: "browser.takeover"; params: BrowserTakeoverParams_Deserialize }
   | { method: "client.register"; params: ClientRegisterParams }
   | { method: "client.unregister"; params: ClientUnregisterParams }
   | { method: "client.receipt"; params: ClientReceiptSubmission_Deserialize }
@@ -3889,6 +4107,8 @@ export type RpcRequest_Deserialize =
   | { method: "stream.credit"; params: Query_Deserialize };
 
 export type RpcRequest_Serialize =
+  | { method: "browser.access"; params: BrowserAccessParams }
+  | { method: "browser.takeover"; params: BrowserTakeoverParams_Serialize }
   | { method: "client.register"; params: ClientRegisterParams }
   | { method: "client.unregister"; params: ClientUnregisterParams }
   | { method: "client.receipt"; params: ClientReceiptSubmission_Serialize }
@@ -3910,6 +4130,7 @@ export type RpcRequest_Serialize =
 export type RpcResult = RpcResult_Serialize | RpcResult_Deserialize;
 
 export type RpcResult_Deserialize =
+  | BrowserAccessResult
   | ClientRegistration_Deserialize
   | ClientEffectAcknowledged
   | QueryResult_Deserialize
@@ -3924,6 +4145,7 @@ export type RpcResult_Deserialize =
   | StreamCreditResult;
 
 export type RpcResult_Serialize =
+  | BrowserAccessResult
   | ClientRegistration_Serialize
   | ClientEffectAcknowledged
   | QueryResult_Serialize

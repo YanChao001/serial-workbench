@@ -16,7 +16,7 @@
 
 根据本次需要确认的用户行为、契约或故障后果选测试。先看现有用例能否发现同一种回归，再选能给出结论的最低成本层级。仅当真实系统、平台差异或跨进程行为会改变结论时增加集成场景；替身用例可复用为诊断。夹具只准备实际用到的输入，用应用就绪信号区分准备与业务响应。定向检查能支持本次交付判断时停止复跑，阶段出口执行相应的正式验收。功能删减时同步清理失去用途的用例。
 
-异步场景依次核对请求接纳、执行者实际收到信号和最终结算。需要验证特定次序时，用该阶段的真实信号放行下一步，超时只用于报告该阶段没有发生。跨进程夹具用文件传递就绪时，先完整写入，再将文件发布到接收方轮询的路径。接口确认规则提交后，如果执行者还在处理旧任务，按实际效果和回执验收最终状态。
+异步场景依次核对请求接纳、执行者实际收到信号和最终结算。需要验证特定次序时，用该阶段的真实信号放行下一步，超时只用于报告该阶段没有发生。点击或按键完成后，等目标界面、IPC 记录或回执达到预期状态，再检查精确内容。跨进程夹具用文件传递就绪时，先完整写入，再将文件发布到接收方轮询的路径。接口确认规则提交后，如果执行者还在处理旧任务，按实际效果和回执验收最终状态。
 
 多个 Rust 目标共用夹具源码时，按实际调用方放置辅助代码。涉及示例程序、集成测试等不同编译入口的改动，先对受影响包跑 `cargo clippy --locked -p <包> --all-targets -- -D warnings`，复验原故障后再启动完整矩阵。
 
@@ -39,7 +39,7 @@ node --test <相关脚本.test.mjs>
 pnpm verify --jobs 1
 ```
 
-verify 的实际步骤见 [verify.mjs](../scripts/verify.mjs)，本轮日志写入 `.cache/verify/`。浏览器、预览端口和报告目录不并发运行；Cargo/生成任务共用 target 时顺序执行。
+verify 的实际步骤见 [verify.mjs](../scripts/verify.mjs)，本轮日志写入 `.cache/verify/`。浏览器、预览端口和报告目录不并发运行。Cargo 与生成任务共用 target 时顺序执行。Windows 先确认占用同一产物路径的测试进程已退出，再重建该可执行文件。
 
 组件测试 mock Tauri 门面，传输测试 mock 底层；进程测试用独立 profile 和自有进程。常规无头 UI 核对长草稿经过连续按键和大段插入后的完整内容。
 
@@ -57,6 +57,14 @@ pnpm test:ui
 ```
 
 此入口构建生产 `dist-web/` 并运行 `e2e/browser/`，检查子路径资源、工作台/设置、键盘、无障碍、CSP 与运行时错误。视觉改动核对明暗、透明背景、减少动效、窄窗口和焦点；必要时实际查看生成截图。
+
+配对浏览器定向验证先运行 `pnpm build`，用 `cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins` 准备同源程序，再运行 `node e2e/paired-browser.mjs <Host> <CLI> dist <新证据目录> <MCP>`。脚本经本机继承管道启动独立 Host，显式授权临时浏览器身份。无头 Chromium 验证错码拒绝、虚拟串口回显、保存布局及刷新后的会话代次，CLI 对照工作区与共享设置。传入 MCP 程序时，同一场景用两组命名身份和两个窗口复验跟随范围、查询轮询、暂停及草稿保留。实际设备查询在草稿编辑期间等待，离开输入框后只在绑定窗口打开目录指定面板，查询轮询不重新打开。暂停期间从实际 MCP 发送并经 Virtual Echo 回显。浏览器发起接管后从 CLI 核对等待确认的客户端与串口。关闭请求窗口后核对清理及原写入权。失败时 WebSocket 诊断记录消息类型、动作和结果码。
+
+桌面人工接管在「活动」中选择 MCP 客户端，再接管当前串口。Host 定向用例用 `cargo test --locked -p serial-workbench-host --test control_state takeover` 核对排队、在途结算和无法确认的控制结果。`takeover_waits_for_the_selected_admission_but_not_another_serial_port` 检查接纳中的请求与其他串口并发。准备 `dist` 后运行 `cargo test --locked -p serial-workbench --lib desktop_takeover_revokes_the_selected_actor_and_keeps_the_session`，使用无窗口桌面桥和实际 Host 确认撤销范围、终态及原会话代次。真实窗口按桌面运行前提验收。
+
+已运行的 Host 用 `cargo test --locked -p serial-workbench-host --test browser_pairing` 验证本机配对、只读授权、撤销和接管。撤销后确认两个浏览器连接关闭，再在同一串口会话核对桌面发送的终态。接管用实际 WebSocket 发起，核对浏览器不能自行批准，拒绝及断开后原写入权保留，批准后只有所选 MCP 失去当前串口写入权。桌面设置的无头用例为 `pnpm test:ui e2e/browser/browser-access.spec.ts --workers=1`，验证配对与停用、窄窗口和焦点，以及明确显示端口和客户端后传递当前确认编号。正式桌面验收从实际设置页生成配对码，用该候选安装资源打开浏览器，再从真实桌面窗口确认浏览器发起的接管。
+
+Windows 托管原生作业复用同一 E2E 构建，准备 Chromium headless shell 后运行 `pnpm test:e2e --interactive --skip-build --browser-takeover`。本机只在独立环境或约定的前台时段运行。原生设置页选「查看和操作」并生成配对码，无头 Chromium 使用该入口及实际资源加入。原生确认后检查浏览器收到终态、所选 MCP 失去写入权及另一客户端仍可发送。关闭浏览器访问后核对连接退出和原会话的真实回显。`artifacts/e2e/browser-takeover-*` 保留同源构建收据、原生确认截图、权限与会话结果及日志，截图隐藏配对码。
 
 真实桌面通过 `pnpm e2e:build` 与 `pnpm test:e2e --interactive --skip-build` 运行 `e2e/specs/`，使用测试配置和 WebDriver。构建包含相邻同源 Host/CLI/MCP，收据校验源码、target/profile 与程序哈希；runner 使用独立 Host profile、持有 PID、正常 CLI 认证及实际退出，失败保留现场。工作台场景在同一窗口内请求 runner 重启其持有的 Host，核对旧实例退出、新 epoch、显式重新附着、订阅及未发送草稿。
 
@@ -237,6 +245,8 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 ## 持续集成
 
 [手动 CI](../.github/workflows/ci.yml)覆盖 Windows x64、Linux x64、macOS arm64/x64。里程碑选择完整模式，检查四个 Rust 和四个 Native 目标实际执行，核对收据、源码与未签名构建，Ubuntu 正式场景须在隔离网络中运行。runtime 专项、单目标诊断和关闭 Native 的运行均不替代完整候选。
+
+工作区测试的集成目标同时构建 Host、CLI、MCP 和默认示例。后续步骤使用这次编译生成的正式入口。遇到重复构建时，先从 Cargo 的 `compiler-artifact` 核对后续所需的可执行路径和目标特性，再合并构建步骤。原测试范围与负载继续执行。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
 完整模式将 Linux x64 的 `verified_backend_` 用例放在独立必跑作业。该作业按同一候选验签并准备固定运行时，串行执行原筛选范围，保存候选 SHA、完整测试输出、运行时收据和失败夹具。Ubuntu Rust 作业仍覆盖 workspace、离线六场景和 600 秒负载，并在同次未签名构建上验证运行时安装布局及三个签名参考包。两个作业均须通过，单项断言和原 60 分钟作业上限继续适用。
 

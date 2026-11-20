@@ -12,6 +12,7 @@ import {
   createHostClient,
   HostRequestError,
 } from "@serial-workbench/host-client";
+import type { HostTransport } from "@serial-workbench/host-client";
 import {
   abortError,
   createNativeTransport,
@@ -127,15 +128,36 @@ export async function confirmProjectionHost(
 }
 export async function createHostConnection(port: HostNativePort = nativePort) {
   const desktop = await port.attachment();
+  return bindHostConnection(
+    createNativeTransport(desktop, port),
+    () => desktop.generation,
+    (listener) =>
+      port.onCatalogChanged?.((generation) => {
+        if (generation === desktop.generation) listener();
+      }) ?? Promise.resolve(() => {}),
+  );
+}
+
+export type WorkbenchHostTransport = HostTransport &
+  Pick<
+    ReturnType<typeof createNativeTransport>,
+    "setScopes" | "openRawChannel" | "rawRequest" | "dispose"
+  >;
+
+export function bindHostConnection(
+  transport: WorkbenchHostTransport,
+  getGeneration: () => string,
+  subscribeCatalog: (listener: () => void) => Promise<() => void>,
+) {
+  const attachment = transport.getAttachment();
   const originalIdentity = {
-    hostId: desktop.attachment.hostId,
-    instanceEpoch: desktop.attachment.instanceEpoch,
-    actorId: desktop.attachment.actorId,
-    clientId: desktop.attachment.clientId,
-    generation: desktop.generation,
+    hostId: attachment.hostId,
+    instanceEpoch: attachment.instanceEpoch,
+    actorId: attachment.actorId,
+    clientId: attachment.clientId,
+    generation: getGeneration(),
   };
   let disposed = false;
-  const transport = createNativeTransport(desktop, port);
   const projectionBinding = { identity: originalIdentity, disposed: false };
   projectionBindings.set(transport, projectionBinding);
   const rpcClient = createHostClient(transport);
@@ -154,7 +176,6 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
       }, signal);
     },
   };
-  const { attachment } = desktop;
   const hostTarget: Target = {
     hostId: attachment.hostId,
     kind: "host",
@@ -196,7 +217,7 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
       const current = transport.getAttachment();
       return (
         !disposed &&
-        desktop.generation === identity.generation &&
+        getGeneration() === identity.generation &&
         current.hostId === identity.hostId &&
         current.instanceEpoch === identity.instanceEpoch &&
         current.actorId === identity.actorId &&
@@ -219,7 +240,7 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
             transport,
             attachment: originalIdentity,
             get generation() {
-              return desktop.generation;
+              return getGeneration();
             },
             buildQuery,
             hostTarget,
@@ -248,17 +269,16 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
     client,
     transport,
     attachment,
-    generation: desktop.generation,
+    generation: originalIdentity.generation,
     hostTarget,
     buildQuery,
     buildCall,
     refreshScopes,
     onCatalogChanged(listener: () => void): Promise<() => void> {
-      return (
-        port.onCatalogChanged?.((generation) => {
-          if (!disposed && generation === desktop.generation) listener();
-        }) ?? Promise.resolve(() => {})
-      );
+      return subscribeCatalog(() => {
+        if (!disposed && getGeneration() === originalIdentity.generation)
+          listener();
+      });
     },
     dispose: () => {
       disposed = true;
@@ -267,7 +287,9 @@ export async function createHostConnection(port: HostNativePort = nativePort) {
     },
   };
 }
-export type HostConnection = Awaited<ReturnType<typeof createHostConnection>>;
+export type HostConnection = ReturnType<typeof bindHostConnection> & {
+  browser?: { closed: AbortSignal };
+};
 // The provider owns connection lifetime; reattachment is explicit, never an RPC retry.
 export function getHostClient(): Promise<HostConnection> {
   return createHostConnection();
