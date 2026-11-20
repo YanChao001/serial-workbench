@@ -84,6 +84,7 @@ struct ViewContext {
     snapshot_pending: AtomicBool,
     shell_token: String,
     frame_id: String,
+    display_name: String,
     locale: String,
     dark: bool,
 }
@@ -116,12 +117,31 @@ fn trace_terminal_view(
 }
 
 impl ViewContext {
+    fn title(&self) -> &str {
+        let display_name = self.display_name.trim();
+        if !display_name.is_empty() {
+            display_name
+        } else if self.locale == "zh-CN" {
+            "插件视图"
+        } else {
+            "Plugin view"
+        }
+    }
+
     fn stop(&self) {
         self.stopped.send_replace(true);
         if let Ok(mut reader) = self.reader.try_lock() {
             reader.take();
         }
     }
+}
+
+#[derive(serde::Deserialize, serde::Serialize, specta::Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub(crate) struct NodeViewPresentation {
+    title: String,
+    locale: String,
+    dark: bool,
 }
 
 #[tauri::command]
@@ -131,8 +151,7 @@ pub(crate) async fn host_open_node_view(
     generation: U64,
     operation_id: Id,
     view_id: Id,
-    locale: String,
-    dark: bool,
+    presentation: NodeViewPresentation,
     bridge: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<Id> {
     let owner = ViewOwner {
@@ -164,8 +183,20 @@ pub(crate) async fn host_open_node_view(
         snapshot_pending: AtomicBool::new(true),
         shell_token: token(),
         frame_id,
-        locale: if locale == "zh" { "zh-CN" } else { "en" }.into(),
-        dark,
+        display_name: presentation
+            .title
+            .trim()
+            .chars()
+            .filter(|character| !character.is_control())
+            .take(128)
+            .collect(),
+        locale: if presentation.locale == "zh" {
+            "zh-CN"
+        } else {
+            "en"
+        }
+        .into(),
+        dark: presentation.dark,
     });
     let label = Id::try_from(format!("node-view-{}", context.frame_id).as_str())?;
     let retired = bridge
@@ -255,7 +286,7 @@ fn prepare_view(
 ) -> HostResult<PendingView> {
     let window = tauri::window::WindowBuilder::new(app, id.as_str())
         .visible(false)
-        .title(context.host.entry.package_id.as_str())
+        .title(context.title())
         .inner_size(780.0, 440.0)
         .build()
         .map_err(|error| {

@@ -176,6 +176,7 @@ export function PackageDetails({
           key={JSON.stringify([archiveSha256, runtime.generation])}
           connection={connection}
           packageId={id}
+          displayName={name}
           archiveSha256={archiveSha256}
           views={manifest.contributes.views}
         />

@@ -114,7 +114,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 ## 终端参考包验收
 
-M2 B 的第一个场景使用 C 将继续交付的终端包。以公开 SDK 构建并签名，在独立 profile 中运行同一候选的桌面、Host、CLI 和 MCP。按[桌面边界](#桌面边界)运行真实桌面步骤。记录包摘要、Host 和会话代次，以及已知 Virtual 输入的字节范围与摘要。
+M2 B 的第一个场景使用 C 继续交付的「串口监听」参考包。打开只读视图可查看所选串口的收发数据。以公开 SDK 构建并签名，在独立 profile 中运行同一候选的桌面、Host、CLI 和 MCP。按[桌面边界](#桌面边界)运行真实桌面步骤。在验收收据记录包摘要、Host 和会话代次，以及已知 Virtual 输入的字节范围与摘要。
 
 终端源码位于 [SDK 示例](../packages/plugin-sdk/examples/reference-terminal/)。先运行 `pnpm plugin-sdk:fixture`。签名工具读取单独准备的 32 字节 Ed25519 测试种子，输出 ZIP 和一行包含包摘要、来源 ID 和公钥的 JSON。保存 stdout 作为本轮签名收据，公钥用该收据核对。
 
@@ -252,13 +252,13 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 ## 安装与发行验收
 
-Windows x64 在预先未安装 WebView2 Runtime 的独立环境验证 NSIS。按[当前候选收据](./plan.md#当前执行与下一步)转移安装包与验收材料，记录 WebView2 的系统和当前用户注册信息、网络状态及安装前后的版本。断网状态下实际安装并首次启动，使用已安装的程序运行三个签名参考场景。记录系统版本、安装退出码、组件摘要、首次打开窗口及用例结果。最低系统和正式发行签名随阶段复验。 [Microsoft 离线部署](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)
+M6 用发行候选在预先未安装 WebView2 Runtime 的独立 Windows x64 环境验证 NSIS。将本轮发行候选的安装包和同源验收材料转移到环境中，记录 WebView2 的系统和当前用户注册信息、网络状态及安装前后的版本。断网状态下实际安装并首次启动，使用已安装的程序运行三个签名参考场景。记录系统版本、安装退出码、组件摘要、首次打开窗口及用例结果。M2 和 M3 验证 Windows 安装包内置的离线 Runtime、固定 Node 安装布局和软件参考场景。最低系统和正式发行签名按 M6 矩阵验收。 [Microsoft 离线部署](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)
 
 Ubuntu x64 的实际 Debian 离线安装可在[手动 CI](../.github/workflows/ci.yml)选 `runtime_preflight=true`、`runtime_preflight_target=x86_64-unknown-linux-gnu` 和 `runtime_preflight_suite=linux-offline-installer`。作业在线构建同源 `.deb` 和签名参考包，进入仅有停用 loopback 的隔离网络后执行 `dpkg --install`。无外网环境中以普通用户运行现有参考包用例。终端使用安装后的 Host、CLI 与 MCP，图表和自动化使用安装后的 runtime 和客户端。收据保留 `.deb` 与安装组件摘要、隔离观察、三个签名包签名回执和测试输出。此专项用于 T14 的 Ubuntu 离线软件验收，原生窗口、最低系统和发行安装器另行验收。
 
 macOS 使用 `runtime_preflight_suite=macos-offline-installer`，目标选择 `aarch64-apple-darwin` 或 `x86_64-apple-darwin`。作业检查 Seatbelt 实际拒绝 IPv4 和 IPv6 连接，保留本机 Unix socket。在同一规则下挂载实际 DMG，把 `.app` 复制到本轮独立安装目录，卸载映像后使用副本运行现有三个参考场景。记录系统、架构、进程隔离、映像与安装组件摘要。签名与公证按正式发行验收执行。
 
-进入 M6 时，按[验收场景映射](./requirements.md#附件验收方案与功能映射)核对纳入需求在前序阶段应完成的软件验证。例如 T04 此时已有能力与配置回执，接线与仪器结果留在 M6 实测。PERF-08 的实际 72 小时在本阶段完成。T14 的离线包和后台升级分别在 M2、M3 验证，M6 用发行候选核验最终产物。退出 M6 时逐项核对适用的软件、硬件和发行证据，排除或推迟项沿用账本中的范围决定。
+进入 M6 时，按[验收场景映射](./requirements.md#附件验收方案与功能映射)核对纳入需求在前序阶段应完成的软件验证。例如 T04 此时已有能力与配置回执，接线与仪器结果留在 M6 实测。PERF-08 的实际 72 小时在本阶段完成。T14 在 M2 验证离线包，在 M3 验证后台升级，M6 用发行候选核验 Windows 断网实装和最终产物。退出 M6 时逐项核对适用的软件、硬件和发行证据，排除或推迟项沿用账本中的范围决定。
 
 安装升级前先按变更选择数据验证：CAS 冲突、未来格式拒写、读/写/备份失败、替换竞态及中断恢复均核对原件和最终状态。隔离恢复同时检查暂存、明确重启、归档及回滚；只读 fixture 或成功返回不足以确认恢复正确。
 

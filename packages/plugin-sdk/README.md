@@ -73,7 +73,7 @@ const page = await task.streams.read({
 
 声明 `feed: "derived"` 的桌面视图使用 `connectDerivedView({ onSession, onPage, onError })`。`onPage` 收到打开动作所发布的留存样本，第二个参数在游标跨越缺口时提供 `previousPosition` 和 `skippedThrough`。SDK 在回调完成后确认读页。浏览器入口和运行中的主题、语言、缩放联动由后续场景验收。生命周期、授权和预算见 [Node 扩展合同](../../docs/contracts/node-extension-v0.md)。
 
-[终端参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图打开动作，并声明同包的 Web UI 入口。编译、签名与原生管理验证见[终端参考包验收](../../docs/testing.md#终端参考包验收)。
+[串口监听参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图，显示已连接串口的收发数据。编译、签名与原生管理验证见[终端参考包验收](../../docs/testing.md#终端参考包验收)。
 
 [图表参考包](./examples/reference-chart/) 从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/testing.md#图表参考包后台采样)。
 

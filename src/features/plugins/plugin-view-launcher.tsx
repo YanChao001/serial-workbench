@@ -29,11 +29,13 @@ function sessionKey(session: SessionSnapshot) {
 export function PluginViewLauncher({
   connection,
   packageId,
+  displayName,
   archiveSha256,
   views,
 }: {
   connection: HostConnection;
   packageId: string;
+  displayName: string;
   archiveSha256: string;
   views: readonly NodePackageView[];
 }) {
@@ -115,8 +117,11 @@ export function PluginViewLauncher({
         connection.generation,
         operationId,
         view.id,
-        language,
-        document.documentElement.classList.contains("dark"),
+        {
+          title: displayName,
+          locale: language,
+          dark: document.documentElement.classList.contains("dark"),
+        },
       );
       if (owner.signal.aborted) await hostCloseNodeView(opened);
     } catch (reason) {

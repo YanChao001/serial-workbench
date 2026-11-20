@@ -1,7 +1,7 @@
 # 安装验收共用签名输入和用例，联网阶段编译，断网阶段运行安装产物。
 prepare_offline_references() (
   set -euo pipefail
-  local output=$1 seed reference dir
+  local output=$1 seed reference dir build_log
   pnpm plugin-sdk:fixture >&2
   cargo build --locked -p serial-workbench-host \
     --example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation
@@ -19,11 +19,13 @@ prepare_offline_references() (
   rm -- "$seed"
   trap - EXIT
 
-  cargo test --locked -p serial-workbench --lib --no-run --message-format=json-render-diagnostics | \
-    node -e 'for (const line of require("node:fs").readFileSync(0, "utf8").trim().split("\n")) {
-      const event = JSON.parse(line);
-      if (event.reason === "compiler-artifact" && event.target.name === "serial_workbench_lib" && event.profile.test && event.executable) process.stdout.write(event.executable);
-    }'
+  # 先落盘 Cargo 收据，避免 Node 读取管道时中断安装验收。
+  build_log="$output/reference-test-build.log"
+  cargo test --locked -p serial-workbench --lib --no-run --message-format=json-render-diagnostics > "$build_log"
+  node -e 'for (const line of require("node:fs").readFileSync(process.argv[1], "utf8").trim().split("\n")) {
+    const event = JSON.parse(line);
+    if (event.reason === "compiler-artifact" && event.target.name === "serial_workbench_lib" && event.profile.test && event.executable) process.stdout.write(event.executable);
+  }' "$build_log"
 )
 
 run_offline_references() {

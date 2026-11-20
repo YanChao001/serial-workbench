@@ -1,14 +1,18 @@
 import { expect, test } from "@playwright/test";
 import { build } from "esbuild";
 import { readFile } from "node:fs/promises";
-import type { RawBatch, SessionSnapshot } from "@serial-workbench/contracts";
+import type {
+  RawBatch,
+  RawEvent,
+  SessionSnapshot,
+} from "@serial-workbench/contracts";
 
 const example = "packages/plugin-sdk/examples/reference-terminal";
 const shellOrigin = "https://plugin-shell.example";
 const assetOrigin = "https://plugin-assets.example";
 const identity = "a".repeat(43);
 
-test("signed terminal renderer accepts scoped read-only batches in an opaque iframe", async ({
+test("signed monitor renderer accepts scoped read-only batches in an opaque iframe", async ({
   page,
 }) => {
   const [shell, html, css, bundle, fixturesJson] = await Promise.all([
@@ -35,32 +39,76 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
   const overflow = fixtures.valid.find(
     (fixture) => fixture.name === "raw-reader-gap-batch",
   )!.value as RawBatch;
+  const tx = fixtures.valid.find((fixture) => fixture.name === "raw-tx-final")!
+    .value as RawEvent;
   const item = batch.items[0];
   if (item?.kind !== "source" || item.event?.kind !== "rx")
     throw new Error("Missing RX fixture");
+  if (tx.kind !== "tx") throw new Error("Missing TX fixture");
   const gap = overflow.items[0];
   if (gap?.kind !== "reader_gap") throw new Error("Missing reader gap fixture");
   const browserScript = bundle.outputFiles[0]?.text;
   if (!browserScript) throw new Error("Missing terminal view bundle");
   const marker = '<img src="https://unexpected.example/" onerror="alert(1)">';
   item.event.sessionEpoch = session.sessionEpoch;
-  item.event.payload.bytesBase64 = Buffer.from(marker).toString("base64");
-  item.event.payload.byteEnd = String(Buffer.byteLength(marker));
+  const rxLine = `${marker}\n`;
+  const txLine = "X\r\n";
+  const firstRead = `${marker}\r`;
+  item.event.payload.bytesBase64 = Buffer.from(firstRead).toString("base64");
+  item.event.payload.byteEnd = String(Buffer.byteLength(firstRead));
+  const lineEnd = (BigInt(item.event.payload.byteEnd) + 1n).toString();
+  const txPosition = (BigInt(batch.cursor.position) + 1n).toString();
+  batch.items.push({
+    kind: "source",
+    event: {
+      ...tx,
+      eventSeq: txPosition,
+      sessionEpoch: session.sessionEpoch,
+      payload: {
+        ...tx.payload,
+        bytesBase64: Buffer.from(txLine).toString("base64"),
+        byteEnd: String(Buffer.byteLength(txLine)),
+      },
+    },
+  });
+  batch.cursor.position = txPosition;
+  const continuationPosition = (BigInt(txPosition) + 1n).toString();
+  const continuation: RawBatch = {
+    ...batch,
+    previousCursor: batch.cursor,
+    cursor: { ...batch.cursor, position: continuationPosition },
+    items: [
+      {
+        kind: "source",
+        event: {
+          ...item.event,
+          eventSeq: continuationPosition,
+          payload: {
+            ...item.event.payload,
+            bytesBase64: "Cg==",
+            byteStart: item.event.payload.byteEnd,
+            byteEnd: lineEnd,
+          },
+        },
+      },
+    ],
+  };
   const frame = {
     requestId: "33333333-3333-4333-8333-333333333333",
     channel: "raw",
     body: { type: "rawBatch", batch },
   };
   const afterGap = "serial data after recovery";
+  const finalRead = `${afterGap}\r`;
   const missing = {
-    start: (BigInt(batch.cursor.position) + 1n).toString(),
-    end: (BigInt(batch.cursor.position) + 4n).toString(),
+    start: (BigInt(continuationPosition) + 1n).toString(),
+    end: (BigInt(continuationPosition) + 4n).toString(),
   };
-  overflow.previousCursor = batch.cursor;
+  overflow.previousCursor = continuation.cursor;
   overflow.cursor.position = missing.end;
   gap.gap.sessionEpoch = session.sessionEpoch;
   gap.gap.missingEventRange = missing;
-  const byteStart = item.event.payload.byteEnd;
+  const byteStart = lineEnd;
   overflow.items.push({
     kind: "source",
     event: {
@@ -68,10 +116,10 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
       eventSeq: missing.end,
       payload: {
         ...item.event.payload,
-        bytesBase64: Buffer.from(afterGap).toString("base64"),
+        bytesBase64: Buffer.from(finalRead).toString("base64"),
         byteStart,
         byteEnd: (
-          BigInt(byteStart) + BigInt(Buffer.byteLength(afterGap))
+          BigInt(byteStart) + BigInt(Buffer.byteLength(finalRead))
         ).toString(),
       },
     },
@@ -79,11 +127,13 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
   const payloads = [
     { snapshot: session },
     { frame },
+    { frame: { ...frame, body: { ...frame.body, batch: continuation } } },
     { frame: { ...frame, body: { ...frame.body, batch: overflow } } },
     { frame: null },
   ];
   let pulls = 0;
   let stops = 0;
+  let dataReady = false;
   const unexpected: string[] = [];
   await page.route("https://unexpected.example/**", (route) => {
     unexpected.push(route.request().url());
@@ -109,7 +159,9 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
         body: shell,
       });
     if (path === "/next.js") {
-      const payload = payloads[pulls++] ?? { frame: null };
+      const payload = (pulls === 0 || dataReady
+        ? payloads[pulls++]
+        : undefined) ?? { frame: null };
       return route.fulfill({
         contentType: "application/javascript",
         body: `globalThis.swbViewReceive(JSON.parse(${JSON.stringify(JSON.stringify(payload))}));`,
@@ -138,17 +190,21 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
 
   await page.goto(`${shellOrigin}/index.html`);
   const view = page.frameLocator('iframe[title="Plugin view"]');
-  await expect(view.getByRole("status")).toHaveText("会话 session");
+  await expect(view.getByRole("status")).toHaveText("等待串口数据…");
+  dataReady = true;
   await expect(view.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(view.locator("#receive")).toHaveText(
-    `${marker}\n[数据缺口 ${missing.start}–${missing.end}]\n${afterGap}`,
+  await expect(view.locator("#receive")).toHaveJSProperty(
+    "textContent",
+    `${rxLine}[TX] X\n[部分串口数据缺失]\n${afterGap}\n`,
   );
+  await expect(view.getByRole("heading")).toHaveCount(0);
+  await expect(view.getByRole("status")).toBeHidden();
   await expect(view.locator("#receive img")).toHaveCount(0);
   expect(await view.locator("html").evaluate(() => globalThis.origin)).toBe(
     "null",
   );
   expect(unexpected).toEqual([]);
-  await expect.poll(() => pulls).toBeGreaterThanOrEqual(4);
+  await expect.poll(() => pulls).toBeGreaterThanOrEqual(5);
 
   await view.locator("html").evaluate(() => location.reload());
   await expect(page.getByRole("status")).toHaveText(

@@ -16,7 +16,11 @@ import type {
   U64,
   Operation,
 } from "@serial-workbench/contracts";
-import type { DesktopAttachment, DeliveryStream } from "./generated/bindings";
+import type {
+  DesktopAttachment,
+  DeliveryStream,
+  NodeViewPresentation,
+} from "./generated/bindings";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type {
   DesktopStatus,
@@ -63,11 +67,10 @@ export function hostOpenNodeView(
   generation: U64,
   operationId: string,
   viewId: string,
-  locale: string,
-  dark: boolean,
+  presentation: NodeViewPresentation,
 ): Promise<string> {
   return callHost((commands) =>
-    commands.hostOpenNodeView(generation, operationId, viewId, locale, dark),
+    commands.hostOpenNodeView(generation, operationId, viewId, presentation),
   );
 }
 
