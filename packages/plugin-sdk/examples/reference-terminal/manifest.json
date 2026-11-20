@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.terminal",
-  "version": "0.1.0",
-  "displayName": "Serial Workbench Terminal",
-  "description": "Read-only terminal for a Host session",
+  "version": "0.1.1",
+  "displayName": "Serial Monitor",
+  "description": "Watch the data sent and received on a connected serial port.",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE"],
   "hostProtocolVersion": "0.1",

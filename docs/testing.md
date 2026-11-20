@@ -114,7 +114,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 ## 终端参考包验收
 
-M2 B 的第一个场景使用 C 将继续交付的终端包。以公开 SDK 构建并签名，在独立 profile 中运行同一候选的桌面、Host、CLI 和 MCP。按[桌面边界](#桌面边界)运行真实桌面步骤。记录包摘要、Host 和会话代次，以及已知 Virtual 输入的字节范围与摘要。
+M2 B 的第一个场景使用 C 继续交付的「串口监听」参考包。打开只读视图可查看所选串口的收发数据。以公开 SDK 构建并签名，在独立 profile 中运行同一候选的桌面、Host、CLI 和 MCP。按[桌面边界](#桌面边界)运行真实桌面步骤。在验收收据记录包摘要、Host 和会话代次，以及已知 Virtual 输入的字节范围与摘要。
 
 终端源码位于 [SDK 示例](../packages/plugin-sdk/examples/reference-terminal/)。先运行 `pnpm plugin-sdk:fixture`。签名工具读取单独准备的 32 字节 Ed25519 测试种子，输出 ZIP 和一行包含包摘要、来源 ID 和公钥的 JSON。保存 stdout 作为本轮签名收据，公钥用该收据核对。
 

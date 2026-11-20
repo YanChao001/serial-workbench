@@ -116,6 +116,14 @@ fn trace_terminal_view(
 }
 
 impl ViewContext {
+    fn title(&self) -> &'static str {
+        if self.locale == "zh-CN" {
+            "插件视图"
+        } else {
+            "Plugin view"
+        }
+    }
+
     fn stop(&self) {
         self.stopped.send_replace(true);
         if let Ok(mut reader) = self.reader.try_lock() {
@@ -255,7 +263,7 @@ fn prepare_view(
 ) -> HostResult<PendingView> {
     let window = tauri::window::WindowBuilder::new(app, id.as_str())
         .visible(false)
-        .title(context.host.entry.package_id.as_str())
+        .title(context.title())
         .inner_size(780.0, 440.0)
         .build()
         .map_err(|error| {

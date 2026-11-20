@@ -17,16 +17,38 @@ main {
   display: grid;
   grid-template-rows: auto minmax(0, 1fr);
 }
+header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 4px 16px;
+  padding: 8px 12px;
+  border-bottom: 1px solid color-mix(in srgb, CanvasText 18%, Canvas);
+}
+#title,
 #connection {
   margin: 0;
-  padding: 8px 12px;
-  border-bottom: 1px solid GrayText;
+}
+#title {
+  font-size: 1rem;
+  font-weight: 600;
+}
+#connection {
+  font-size: 0.875rem;
+  color: color-mix(in srgb, CanvasText 78%, Canvas);
 }
 #receive {
   min-height: 0;
   margin: 0;
-  padding: 12px;
+  padding: 8px 12px;
   overflow: auto;
+  font:
+    13px/1.4 ui-monospace,
+    "Cascadia Mono",
+    Consolas,
+    "Liberation Mono",
+    monospace;
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   unicode-bidi: plaintext;

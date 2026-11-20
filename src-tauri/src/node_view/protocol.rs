@@ -120,10 +120,11 @@ impl ViewContext {
                     .replace('"', "&quot;")
                     .replace('<', "&lt;")
                     .replace('>', "&gt;");
-                let (opening, title) = if self.locale == "zh-CN" {
-                    ("正在打开插件视图…", "插件视图")
+                let title = self.title();
+                let opening = if self.locale == "zh-CN" {
+                    "正在打开插件视图…"
                 } else {
-                    ("Opening plugin view…", "Plugin view")
+                    "Opening plugin view…"
                 };
                 let html = format!(
                     r#"<!doctype html><html lang="{}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><meta name="color-scheme" content="{dark}"><title>{title}</title><link rel="stylesheet" href="shell.css"><script defer src="shell.js"></script></head><body data-frame="{}"><p role="status">{opening}</p><template><iframe title="{title}" sandbox="allow-scripts" referrerpolicy="no-referrer" data-src="{frame_url}"></iframe></template></body></html>"#,

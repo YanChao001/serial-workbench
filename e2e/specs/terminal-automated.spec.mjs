@@ -27,8 +27,7 @@ const useWindowsPickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
 const readJson = (path) => JSON.parse(readFileSync(path, "utf8"));
 const file = (name) => join(directory, name);
 
-const showTerminalDetails = () =>
-  showPluginDetails("Serial Workbench Terminal");
+const showTerminalDetails = () => showPluginDetails("Serial Monitor");
 
 async function selectFile(element, action, path) {
   if (!useWindowsPickers) {

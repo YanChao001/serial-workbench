@@ -2,11 +2,13 @@
 import { connectReadOnlyView } from "@serial-workbench/plugin-sdk/web";
 
 const status = document.querySelector<HTMLElement>("#connection");
+const title = document.querySelector<HTMLElement>("#title");
 const receive = document.querySelector<HTMLPreElement>("#receive");
-if (!status || !receive) throw new Error("Terminal layout is missing");
+if (!status || !title || !receive) throw new Error("Monitor layout is missing");
 
 const displayLimit = 256 * 1024;
 let displayed = 0;
+let lineStart = true;
 let zh = false;
 let rx = new TextDecoder();
 const deviceText = (value: string) =>
@@ -42,42 +44,49 @@ function decode(base64: string, decoder: TextDecoder, stream = false) {
   return deviceText(decoder.decode(bytes, { stream }));
 }
 
+function addDisplayLine(parts: string[], text: string) {
+  if (!lineStart) parts.push("\n");
+  parts.push(text);
+  if (!text.endsWith("\n")) parts.push("\n");
+  lineStart = true;
+}
+
 const view = connectReadOnlyView({
-  onSession(session) {
-    status.textContent = zh
-      ? `会话 ${session.sessionId}`
-      : `Session ${session.sessionId}`;
+  onSession() {
+    status.textContent = zh ? "正在监听" : "Listening";
   },
   onBatch(batch) {
     const terms: string[] = [];
     for (const item of batch.items) {
       if (item.kind === "reader_gap" || item.event.kind === "gap") {
         rx = new TextDecoder();
-        const range =
-          item.kind === "reader_gap" ? item.gap.missingEventRange : undefined;
-        const detail = range ? ` ${range.start}–${range.end}` : "";
-        terms.push(zh ? `\n[数据缺口${detail}]\n` : `\n[Data gap${detail}]\n`);
+        addDisplayLine(
+          terms,
+          zh ? "[部分串口数据缺失]" : "[Some serial data is missing]",
+        );
       } else if (item.event.kind === "rx") {
-        terms.push(decode(item.event.payload.bytesBase64, rx, true));
+        const text = decode(item.event.payload.bytesBase64, rx, true);
+        terms.push(text);
+        if (text) lineStart = text.endsWith("\n");
       } else if (item.event.kind === "tx") {
-        terms.push(
-          `\n[TX] ${decode(item.event.payload.bytesBase64, new TextDecoder())}\n`,
+        addDisplayLine(
+          terms,
+          `[TX] ${decode(item.event.payload.bytesBase64, new TextDecoder())}`,
         );
       }
     }
     append(terms.join(""));
   },
   onError() {
-    status.textContent = zh
-      ? "终端视图连接已断开"
-      : "Terminal view disconnected";
+    status.textContent = zh ? "监听已断开" : "Monitor disconnected";
   },
 });
 zh = view.locale === "zh-CN";
 document.documentElement.lang = view.locale;
 document.documentElement.dataset.theme = view.dark ? "dark" : "light";
 if (zh) {
-  document.title = "串口工作台终端";
-  status.textContent = "正在连接 Host 会话…";
-  receive.setAttribute("aria-label", "收到的数据");
+  document.title = "串口监听";
+  title.textContent = document.title;
+  status.textContent = "正在连接…";
+  receive.setAttribute("aria-label", "串口数据");
 }

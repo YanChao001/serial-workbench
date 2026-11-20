@@ -75,11 +75,9 @@ test("install, trust and enable a plugin without exposing internal identifiers",
   await page.screenshot({ path: testInfo.outputPath("install-dark.png") });
   await installer.getByRole("button", { name: "Choose plugin file" }).click();
 
-  await expect(
-    page.getByText("Installed Serial Workbench Terminal."),
-  ).toHaveCount(1);
+  await expect(page.getByText("Installed Serial Monitor.")).toHaveCount(1);
   const row = page.getByRole("button", {
-    name: /Serial Workbench Terminal.*Version 0.1.0.*Needs your approval/,
+    name: /Serial Monitor.*Version 0\.1\.1.*Needs your approval/,
   });
   await expect(row).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Signature verified · Workbench")).toBeVisible();
@@ -111,11 +109,11 @@ test("install, trust and enable a plugin without exposing internal identifiers",
     page.getByRole("button", { name: "Enable", exact: true }),
   ).toBeVisible();
   await expect(
-    page.getByRole("button", { name: /Serial Workbench Terminal.*Disabled/ }),
+    page.getByRole("button", { name: /Serial Monitor.*Disabled/ }),
   ).toBeVisible();
   await page.getByRole("button", { name: "Enable", exact: true }).click();
   await expect(
-    page.getByRole("button", { name: /Serial Workbench Terminal.*Enabled/ }),
+    page.getByRole("button", { name: /Serial Monitor.*Enabled/ }),
   ).toBeVisible();
 
   await page.locator('a[href="#/"]').click();
