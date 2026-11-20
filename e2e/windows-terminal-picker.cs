@@ -194,7 +194,7 @@ internal static class TerminalPickerWindow
 
         if (GetForegroundWindow() != dialog || GetWindow(dialog, OwnerWindow) != owner || !BelongsTo(edit, pid))
             throw new InvalidOperationException("The owned " + action + " dialog lost foreground focus before entering the path.");
-        EnterPath(dialog, edit, path);
+        edit = EnterPath(dialog, edit, pid, path);
         if (!HasFocus(dialog, edit) || GetDlgItem(dialog, ConfirmButtonId) != button || !IsWindowEnabled(button))
             throw new InvalidOperationException("The owned " + action + " dialog lost focus or its confirmation button became unavailable.");
         Console.Error.WriteLine("Verified " + action + " filename");
@@ -233,23 +233,34 @@ internal static class TerminalPickerWindow
         return GetClassName(window, name, name.Capacity) == 0 ? "" : name.ToString();
     }
 
-    private static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid, bool save)
+    private static bool IsFileNameEdit(IntPtr dialog, IntPtr edit, uint applicationPid)
     {
         const int fileNameComboId = 1148;
         const int fileNameEditId = 1152;
+        if (!BelongsTo(edit, applicationPid) || !IsChild(dialog, edit) || WindowClass(edit) != "Edit")
+            return false;
+        for (IntPtr control = edit; control != dialog && control != IntPtr.Zero; control = GetParent(control))
+        {
+            int id = GetDlgCtrlID(control);
+            if (id == fileNameComboId || id == fileNameEditId) return true;
+        }
+        return false;
+    }
+
+    private static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid, bool save)
+    {
+        // 文件对话框可能保留多个同一 ID 的控件，优先使用已获焦的文件名框。
+        IntPtr focused = FocusedControl(dialog);
+        if (IsFileNameEdit(dialog, focused, applicationPid)) return focused;
         IntPtr result = IntPtr.Zero;
         IntPtr suggestedName = IntPtr.Zero;
         int suggestedNames = 0;
         EnumChildWindows(dialog, (child, extra) => {
             if (!BelongsTo(child, applicationPid) || WindowClass(child) != "Edit") return true;
-            for (IntPtr control = child; control != dialog && control != IntPtr.Zero; control = GetParent(control))
+            if (IsFileNameEdit(dialog, child, applicationPid))
             {
-                int id = GetDlgCtrlID(control);
-                if (id == fileNameComboId || id == fileNameEditId)
-                {
-                    result = child;
-                    return false;
-                }
+                result = child;
+                return false;
             }
             if (save && Regex.IsMatch(ReadFileName(child, 256), @"\A[0-9]{8}T[0-9]{6}Z_.+_[0-9a-f]{12}(\.swb)?\z"))
             {
@@ -318,7 +329,7 @@ internal static class TerminalPickerWindow
             throw new InvalidOperationException("Windows did not accept all file dialog keystrokes.");
     }
 
-    private static void EnterPath(IntPtr dialog, IntPtr edit, string path)
+    private static IntPtr EnterPath(IntPtr dialog, IntPtr edit, uint applicationPid, string path)
     {
         if (!HasFocus(dialog, edit))
         {
@@ -329,7 +340,15 @@ internal static class TerminalPickerWindow
             SendKeys(new[] { Key(alt, 0, 0), Key('N', 0, 0), Key('N', 0, KeyUp), Key(alt, 0, KeyUp) });
             var focus = Stopwatch.StartNew();
             while (!HasFocus(dialog, edit) && GetForegroundWindow() == dialog && focus.Elapsed.TotalSeconds < 2)
+            {
+                IntPtr focused = FocusedControl(dialog);
+                if (IsFileNameEdit(dialog, focused, applicationPid))
+                {
+                    edit = focused;
+                    break;
+                }
                 Thread.Sleep(50);
+            }
         }
         if (!HasFocus(dialog, edit))
         {
@@ -353,7 +372,7 @@ internal static class TerminalPickerWindow
         var entry = Stopwatch.StartNew();
         do
         {
-            if (ReadFileName(edit, path.Length + 2) == path) return;
+            if (ReadFileName(edit, path.Length + 2) == path) return edit;
             Thread.Sleep(50);
         } while (entry.Elapsed.TotalSeconds < 2 && GetForegroundWindow() == dialog);
         throw new InvalidOperationException("The owned dialog did not receive the typed filename.");
