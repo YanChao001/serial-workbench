@@ -4,7 +4,7 @@
 
 ## 当前执行与下一步
 
-1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、慢读者及其他平台原生观察。复核草稿输入门槛。候选验收保留安装准备和关停压力的未决记录。
+1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、慢读者及其他平台原生观察。复核草稿输入门槛。安装等待和饱和关停随同源出口候选复验。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
 3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 离线候选已由 `3ffd6ff` 构建并校验归档，内置 WebView2 离线安装程序。候选、复用的三个签名参考包与验收程序记录在 `.cache/evidence/m2-node-backend/windows-offline-nsis-3ffd6ff/checkpoint.json`，实际安装和用例待可断网且能操作控制台的独立 Windows 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
@@ -132,6 +132,8 @@
 
 同轮 Apple Silicon 签名后台 109 项通过。H14/H15 用例观察到撤销会话发送权后，排队发送停止、新键被拒绝、旧水位保持，父任务自身结算为成功。原用例又要求父任务中断，口径待用户确认。本机实验及失败证据保存在 `h14-h15-narrow-revocation.log` 和 `h14-h15-proposed-acceptance.patch`，实验补丁未提交。[Apple Silicon 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852361)
 
+**安装等待、饱和关停与 Node 故障隔离。** `4b66269` 的四目标 Rust 作业均通过饱和关停。Windows 的 `8cbc7e7` 和其余三目标的 `4b66269` 均通过签名包安装后的动态 Schema 预算用例。原本机超时时安装收据已提交，但测试未观察到终态，原样保存在 `.cache/m2-node-actions-schema-generated-reference-scope-restored.log` 和 `.cache/evidence/m2-node-backend/schema-cache-install-timeout-diagnosis.json`。四目标的同组实际 Node 用例还分别验证了单个 worker 自身异常时兄弟任务和另一个包可用，以及旧 Node 进程实际退出至新进程恢复期间 Virtual Echo、Raw 和录制连续。按 PERF-02、SEC-09 记录软件部分。下次在同源候选中复验这些已覆盖场景及整轮门禁。[Windows](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565/job/135550786712) · [Linux 签名安装](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790851529) · [Linux Rust](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852095) · [macOS arm64](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852361) · [macOS x64](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852222)
+
 ## 验证基线
 
 | 范围                                     | 可据以继续开发的事实                                                                                                                                                                                                                                            | 不代表                                                  |
@@ -175,7 +177,7 @@ Windows `pnpm verify` 通过，前端 2558 项通过，脚本 353 项通过、4 
 
 原生平台验收使用独立环境或安排好的前台时段。检查实际 WebView 隔离、Tauri 全局、子 frame 导航、旧端口投递与关窗资源回收，并核对焦点、语言、主题和缩放。参见 [锁定版 Wry 的 WebView 构建接口](https://docs.rs/wry/0.57.0/wry/struct.WebViewBuilder.html)和 [HTML 消息端口](https://html.spec.whatwg.org/multipage/web-messaging.html#message-channels)。
 
-**仍需观察。** 安装准备超时和关停压力失败尚未确认修复。候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。草稿输入的 100 毫秒硬门槛待复核。40 次采样中一条记录即可让两种 p95 算法判出不同结果，原生文本框对照也曾超标。评估时先确定代表性环境及会影响用户的性能回归，再决定门槛是否适合做 CI 硬门禁。原判定与样本保存在 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `runtime-supervision-exact-ui-failure`、`composer-read-exact-ui-failure` 和 `composer-input-latency-353df06`。取舍见[设计与复核测试门槛](./testing.md#设计与复核测试门槛)。
+**仍需观察。** 候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。草稿输入的 100 毫秒硬门槛待复核。40 次采样中一条记录即可让两种 p95 算法判出不同结果，原生文本框对照也曾超标。评估时先确定代表性环境及会影响用户的性能回归，再决定门槛是否适合做 CI 硬门禁。原判定与样本保存在 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `runtime-supervision-exact-ui-failure`、`composer-read-exact-ui-failure` 和 `composer-input-latency-353df06`。取舍见[设计与复核测试门槛](./testing.md#设计与复核测试门槛)。
 
 ## 阶段路线
 
