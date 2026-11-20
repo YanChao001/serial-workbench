@@ -11,6 +11,7 @@ export type SettingsSearchEntry = {
   descriptionKey?: DictKey;
   searchKeys?: readonly DictKey[];
   keywords: readonly string[];
+  desktopOnly?: boolean;
 };
 
 /** 设置搜索与应用命令面板共用的搜索入口 */
@@ -272,6 +273,21 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
     ],
   },
   {
+    id: "browserAccess",
+    anchor: "settings-browser-access",
+    labelKey: "browserAccess.title",
+    descriptionKey: "browserAccess.description",
+    keywords: [
+      "browser",
+      "pairing",
+      "pairing code",
+      "浏览器",
+      "配对码",
+      "撤销",
+    ],
+    desktopOnly: true,
+  },
+  {
     id: "updates",
     anchor: "settings-updates-check",
     labelKey: "updates.check",
@@ -302,6 +318,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
 export function searchSettings(
   query: string,
   t: Translate,
+  desktop = false,
 ): SettingsSearchEntry[] {
   const normalized = query.trim().normalize("NFKC").toLocaleLowerCase();
   if (!normalized) return [];
@@ -325,7 +342,7 @@ export function searchSettings(
       matches: terms.every((term) => haystack.includes(term)),
     };
   })
-    .filter((item) => item.matches)
+    .filter(({ entry, matches }) => matches && (!entry.desktopOnly || desktop))
     .sort(
       (a, b) =>
         Number(b.label === normalized) - Number(a.label === normalized) ||

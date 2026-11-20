@@ -163,7 +163,7 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 本地增量消息为 `{type:"delta",subscriptionId,delta:Delta}`。错误终止使用 `{type:"subscriptionEnded",subscriptionId,error}`；错误只含稳定 code 与固定说明，不含正文、引用或 details。终止通道只允许本连接已登记的订阅，即使正文权限已撤销也能报告终止；若连接队列连终止通知也无法容纳，则关闭连接，客户端重新附着并取快照。显式 `subscription.close` 返回 `closed:true`，不存在时同样返回；它不停止 Host 业务。队列和历史同时按条数、字节限制，溢出清空该订阅正文并通过独立终止槽报告 `CURSOR_EXPIRED`，不静默跳过增量。
 
-`host.activity` 与 `host.operations` 的公共投影仅发布明确元数据，禁止携带 Call.params、credential、完整 Operation.result 或 error.details。查询活动按 actorId/requestId 复用，当前 Host 保留最多 1024 条最近活动；操作详情轮询、状态投影、Raw 读取/续额及指标等自监控请求不追加活动，避免观察自身产生整份历史更新。操作投影从持久 Store 读取最多 256 条在途优先的近期记录，完整保留结果仍通过 operation.get 按当前原始资源权限查询。
+`host.activity` 与 `host.operations` 的公共投影仅发布明确元数据，禁止携带 Call.params、credential、完整 Operation.result、结果引用或 error.details。`host.activity` 按 Host 记录的活动开始顺序保留最多 1024 条，并为单帧投影保留信封空间。查询按 actorId/requestId 复用，保留原位置并增加观察次数；本机以 MCP 类型附着的普通身份标记 `mcpClientId`，首次接纳的 MCP 动作带 `operationId`，可关联独立的操作进度与结果。附着类型仅用于标注投影来源，所有业务继续按认证身份及授权判定。目录同步、操作详情轮询、状态投影、Raw 读取/续额及指标等请求不追加活动。操作投影从持久 Store 读取最多 256 条在途优先的近期记录，完整保留结果仍通过 operation.get 按当前原始资源权限查询。
 
 ## 本地 IPC 与用户控制
 
@@ -187,7 +187,15 @@ Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe
 
 共享状态包括连接、配置、任务、工作区与插件公开业务。导航、焦点、滚动、编辑草稿、跟随状态和窗口布局实例属于 clientId。所有功能（含查询）有 revealTarget；查询轮询更新原活动。暂停跟随只改变导航，人工接管撤销该 AI 对目标的新修改、取消排队写入并结算在途工作。窗口/剪贴板动作必须指定 client target；不存在具备能力的客户端返回 CLIENT_REQUIRED，details 为 `requiredCapabilities: string[]`，后台业务继续可运行。
 
+`session.takeover` 使用本机用户控制权限和精确的串口会话代次。Host 撤销参数指定 actor 在目标上的 `device.modify`，复核仍在接纳过程中的请求，并等同一 actor、会话及代次已接纳的操作结算。已在设备执行的写入按其实际结果记录。如果控制状态无法确认，接管结算为 `unknown` 并保持写入隔离。恢复跟随只恢复观看，重新授权仍走独立的本机用户入口。
+
 本地 IPC 仅当前 OS 用户可访问。浏览器由 Host 同源提供页面/API，默认仅绑定 loopback，校验 Host header、Origin 与 WebSocket 握手身份；无 Origin 的非浏览器客户端走独立认证入口，不能借缺省 Origin 绕过浏览器检查。首次配对经本地可信用户入口确认，凭据不放 URL/日志；具体凭据存储与轮换在 M2 传输实现验收。
+
+`browser.access` 由 Host 在本机用户控制连接上处理。桌面发送 `status`、`pair` 或 `revoke`。配对提交应用的资源目录及 `readOnly` 或 `operate` 权限，成功回执一次返回配对码。状态查询返回入口及当前权限。撤销确认表示浏览器监听和已附着的控制、Raw 连接都已退出，该身份的授权已退休。配对和撤销保留同一 Host 与串口会话。普通本机客户端、浏览器和 Raw 连接均拒绝该请求。
+
+初次 WebSocket 控制握手使用 `browserPair`，提交 `clientId`、`pairingCode` 和浏览器独立生成的 `reconnectCredential`。Host 消耗配对码并绑定重连凭据的校验值，在 `authenticated` 中只返回 Raw 附着令牌。后续使用 `authenticate` 与该重连凭据，已消耗的配对码不能重连或修改该绑定。本机 IPC 不接受 `browserPair`。
+
+`browser.takeover` 的 `request` 仅接受已配对的浏览器控制连接。浏览器需拥有指定串口会话代次的 `device.modify`，并提交「活动」中所选 MCP 的 `actorId`。每个 Host 同时保留一条确认请求，由 `host.activity.pendingTakeover` 提供确认编号、客户端名称和目标。仅本机用户控制连接可用 `decide` 提交该编号及决定。拒绝、确认前断开或撤权、等待超过两分钟均结束请求。批准时 Host 再核对浏览器与目标的授权，由 `session.takeover` 接纳并返回同一操作回执。浏览器根据该操作的终态显示结果。
 
 LAN 入口显式启用，配对绑定 Host 密钥身份并使用认证加密链路，发现广播不建立信任。B 唯一持口；A 转发 actorId/requestId 与执行 B 的 target/epoch，B 依据受验证的委托链和自身共享权限取交集。时序敏感工作固定 B，通用派生可在 A；Operation 的 executionHostId 与依赖版本创建后不迁移。文件先经受控传输在 B 建立 ObjectRef，禁止把 A 路径当 B 路径。A GUI 关闭不等于 A Host 失联；交互租约与独立任务分别按 [租约合同](./stream-and-operations-v0.md#会话与租约) 结算。
 

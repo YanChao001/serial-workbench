@@ -1,4 +1,6 @@
 //! 统一动作接纳与连接适配；持久操作由 Store 持有，执行任务由 Host 持有。
+#[path = "browser_takeover.rs"]
+mod browser_takeover;
 #[path = "node_actions.rs"]
 mod node_actions;
 #[path = "node_queries.rs"]
@@ -54,7 +56,7 @@ struct HostInner {
     client_effects: crate::client_effects::ClientEffects,
     clock: Arc<dyn Clock>,
     projections: ProjectionStore,
-    activities: Mutex<VecDeque<Activity>>,
+    activities: Mutex<ActivityLog>,
     jobs: Mutex<Jobs>,
     capacity: Arc<Semaphore>,
     stop_capacity: Arc<Semaphore>,
@@ -102,16 +104,11 @@ struct Pump {
     target: Target,
     stop: oneshot::Sender<()>,
 }
-#[derive(Clone, Serialize)]
-#[serde(rename_all = "camelCase")]
-struct Activity {
-    activity_id: Id,
-    actor_id: Id,
-    request_id: RequestId,
-    action_id: Id,
-    target: Target,
-    reveal_target: RevealTarget,
-    observations: U64,
+#[derive(Default)]
+struct ActivityLog {
+    records: VecDeque<(ActivitySummary, usize)>,
+    reserved: usize,
+    pending_takeover: Option<browser_takeover::PendingTakeover>,
 }
 pub(crate) struct AcceptedCall {
     pub actor: AuthenticatedActor,
@@ -326,7 +323,7 @@ impl Host {
                 clock,
                 registry,
                 projections,
-                activities: Mutex::new(VecDeque::new()),
+                activities: Mutex::new(ActivityLog::default()),
                 jobs: Mutex::new(Jobs {
                     closing: false,
                     handles: Vec::new(),
@@ -379,7 +376,12 @@ impl Host {
         &self.inner.files
     }
     pub fn activity_count(&self) -> usize {
-        self.inner.activities.lock().expect("activity mutex").len()
+        self.inner
+            .activities
+            .lock()
+            .expect("activity mutex")
+            .records
+            .len()
     }
     async fn validate(
         &self,
@@ -589,14 +591,31 @@ impl Host {
         &self,
         actor: &AuthenticatedActor,
         query: &Query,
-        reveal_target: RevealTarget,
+        mut reveal_target: RevealTarget,
     ) -> HostResult<()> {
+        reveal_target.result_ref = None;
+        self.record_activity(ActivitySummary {
+            activity_id: new_id(),
+            actor_id: actor.id().clone(),
+            action_id: query.action_id.clone(),
+            request_id: query.request_id.clone(),
+            target: query.target.clone(),
+            reveal_target,
+            observations: 1.into(),
+            observed_at: self.inner.clock.wall_time(),
+            mcp_client_id: actor.mcp_client_id().cloned(),
+            operation_id: None,
+        })
+    }
+    fn record_activity(&self, activity: ActivitySummary) -> HostResult<()> {
         let mut activities = self.inner.activities.lock().map_err(|_| busy())?;
-        if let Some(existing) = activities
-            .iter_mut()
-            .find(|entry| entry.actor_id == *actor.id() && entry.request_id == query.request_id)
-        {
-            if existing.action_id != query.action_id || existing.target != query.target {
+        if let Some((existing, _)) = activities.records.iter_mut().find(|(entry, _)| {
+            activity.operation_id.is_none()
+                && entry.operation_id.is_none()
+                && entry.actor_id == activity.actor_id
+                && entry.request_id == activity.request_id
+        }) {
+            if existing.action_id != activity.action_id || existing.target != activity.target {
                 return Err(HostError::new(
                     "REQUEST_CONFLICT",
                     "Query identity already refers to another activity",
@@ -604,21 +623,31 @@ impl Host {
             }
             existing.observations = existing.observations.checked_next()?;
         } else {
-            if activities.len() == 1024 {
-                activities.pop_front();
+            // 活动是整份投影，须为 wire 信封和 U64 观察次数增长预留空间。
+            let bytes = serde_json::to_vec(&activity).map_err(|_| invalid())?.len() + 21;
+            let limit = serial_workbench_ipc::frame::MAX_FRAME_BYTES * 3 / 4;
+            while activities.records.len() >= 1024 || activities.reserved + bytes > limit {
+                let Some((_, retired)) = activities.records.pop_front() else {
+                    return Err(invalid());
+                };
+                activities.reserved -= retired;
             }
-            activities.push_back(Activity {
-                activity_id: new_id(),
-                actor_id: actor.id().clone(),
-                request_id: query.request_id.clone(),
-                action_id: query.action_id.clone(),
-                target: query.target.clone(),
-                reveal_target,
-                observations: 1.into(),
-            });
+            activities.records.push_back((activity, bytes));
+            activities.reserved += bytes;
         }
+        self.publish_activity(&activities)
+    }
+    fn publish_activity(&self, activities: &ActivityLog) -> HostResult<()> {
         // 这里只发布活动元数据，params、正文、令牌及错误详情不进入共享投影。
-        let state = object(serde_json::json!({"items":&*activities}))?;
+        let items: Vec<_> = activities.records.iter().map(|(item, _)| item).collect();
+        let mut state = object(serde_json::json!({"items":items}))?;
+        if let Some(pending) = &activities.pending_takeover {
+            let value = serde_json::to_value(&pending.summary).map_err(|_| invalid())?;
+            state.insert(
+                "pendingTakeover".into(),
+                serde_json::from_value(value).map_err(|_| invalid())?,
+            );
+        }
         self.inner.projections.commit(
             &id("host.activity"),
             id("activity.changed"),
@@ -626,6 +655,30 @@ impl Host {
             state,
         )?;
         Ok(())
+    }
+    async fn observe_mcp_operation(&self, actor: &AuthenticatedActor, operation: &Operation) {
+        let Some(client_id) = actor.mcp_client_id() else {
+            return;
+        };
+        let mut reveal_target = operation.reveal_target.clone();
+        reveal_target.result_ref = None;
+        let activity = ActivitySummary {
+            activity_id: new_id(),
+            actor_id: operation.actor_id.clone(),
+            action_id: operation.action_id.clone(),
+            request_id: operation.request_id.clone(),
+            target: operation.target.clone(),
+            reveal_target,
+            observations: 1.into(),
+            observed_at: operation.accepted_at.clone(),
+            mcp_client_id: Some(client_id.clone()),
+            operation_id: Some(operation.operation_id.clone()),
+        };
+        let host = self.clone();
+        if let Err(error) = blocking(move || host.record_activity(activity)).await {
+            // 观察失败不撤回已经持久接纳的操作。
+            eprintln!("MCP activity publication failed: {}", error.code);
+        }
     }
     async fn preflight_node_install(
         &self,
@@ -726,7 +779,7 @@ impl Host {
         })
     }
     pub async fn query(&self, actor: &AuthenticatedActor, query: Query) -> HostResult<QueryResult> {
-        self.query_connected(actor, query, None)
+        self.query_connected(actor, query, None, true)
             .await
             .map(|output| output.result)
     }
@@ -735,6 +788,7 @@ impl Host {
         actor: &AuthenticatedActor,
         query: Query,
         connection: Option<ConnectionContext>,
+        observe: bool,
     ) -> HostResult<QueryOutput> {
         if BuiltinAction::find(query.action_id.as_str()).is_err() {
             return self
@@ -746,25 +800,27 @@ impl Host {
                 });
         }
         let action = self.validate(actor, &query, ActionKind::Query).await?;
-        if !matches!(
-            action,
-            BuiltinAction::ActionCheck
-                | BuiltinAction::WorkspaceImportPreview
-                | BuiltinAction::SessionMetrics
-                | BuiltinAction::SessionInputs
-                | BuiltinAction::HostMetrics
-                | BuiltinAction::OperationGet
-                | BuiltinAction::NodeViewAssetRead
-                | BuiltinAction::StateScopes
-                | BuiltinAction::StateSnapshot
-                | BuiltinAction::StateSubscribe
-                | BuiltinAction::SubscriptionClose
-                | BuiltinAction::StreamCursor
-                | BuiltinAction::StreamRead
-                | BuiltinAction::StreamDerivedRead
-                | BuiltinAction::StreamSubscribe
-                | BuiltinAction::StreamCredit
-        ) {
+        if observe
+            && !matches!(
+                action,
+                BuiltinAction::ActionCheck
+                    | BuiltinAction::WorkspaceImportPreview
+                    | BuiltinAction::SessionMetrics
+                    | BuiltinAction::SessionInputs
+                    | BuiltinAction::HostMetrics
+                    | BuiltinAction::OperationGet
+                    | BuiltinAction::NodeViewAssetRead
+                    | BuiltinAction::StateScopes
+                    | BuiltinAction::StateSnapshot
+                    | BuiltinAction::StateSubscribe
+                    | BuiltinAction::SubscriptionClose
+                    | BuiltinAction::StreamCursor
+                    | BuiltinAction::StreamRead
+                    | BuiltinAction::StreamDerivedRead
+                    | BuiltinAction::StreamSubscribe
+                    | BuiltinAction::StreamCredit
+            )
+        {
             // 传输、投影和任务轮询不再观测自身；否则一次更新会放大为整份活动历史。
             // 显式查询仍保留活动，但序列化/投影提交不能阻塞异步 I/O 调度线程。
             let host = self.clone();
@@ -1619,7 +1675,7 @@ impl Host {
             .then(|| {
                 self.inner
                     .sessions
-                    .admission(crate::limits::is_stop(call.action_id.as_str()))
+                    .admission(crate::limits::is_stop(call.action_id.as_str()), Some(&call))
             })
             .transpose()?;
         let preparation = if device_action {
@@ -1655,7 +1711,16 @@ impl Host {
                 let accept_auth = host.inner.auth.clone();
                 let accept_files = host.inner.files.clone();
                 let acceptance = blocking(move || {
-                    let stamp = accept_auth.capture_grants(&accept_actor)?;
+                    let authority = accept_auth.snapshot(&accept_actor)?;
+                    if device_action && accept_call.target.kind.as_str() == "session" {
+                        let permission = if action == BuiltinAction::SessionTakeover {
+                            "auth.manage"
+                        } else {
+                            "device.modify"
+                        };
+                        authority.require(permission, &accept_call.target)?;
+                    }
+                    let stamp = authority.capture_grants();
                     let acceptance = store.accept_with_source(
                         &accept_actor,
                         &accept_call,
@@ -1687,6 +1752,7 @@ impl Host {
                     Ok((Acceptance::New(operation), stamp)) => {
                         let mut call = call;
                         call.request_id = operation.request_id.clone();
+                        host.observe_mcp_operation(&actor, &operation).await;
                         if let Some(prepared) = client_preparation {
                             let accepted = AcceptedCall {
                                 actor,
@@ -2186,9 +2252,13 @@ impl RequestHandler for Host {
                 ));
             }
             let generic = matches!(request, RpcRequest::Query(_));
+            let observe = !matches!(request, RpcRequest::CatalogList(_));
             let actor = context.actor.clone();
             let mut raw_output_lease = None;
             let result = match request {
+                RpcRequest::BrowserTakeover(params) => {
+                    host.browser_takeover(context, params).await?
+                }
                 RpcRequest::ClientRegister(params) => {
                     if !actor.is_user_control() {
                         return Err(HostError::new(
@@ -2248,7 +2318,9 @@ impl RequestHandler for Host {
                 | RpcRequest::StreamRead(q)
                 | RpcRequest::StreamSubscribe(q)
                 | RpcRequest::StreamCredit(q) => {
-                    let output = host.query_connected(&actor, q, Some(context)).await?;
+                    let output = host
+                        .query_connected(&actor, q, Some(context), observe)
+                        .await?;
                     raw_output_lease = output.raw_output_lease;
                     let result = output.result;
                     if generic {
@@ -2339,6 +2411,7 @@ fn action_reveal(action: BuiltinAction, target: &Target) -> RevealTarget {
     if target.kind.as_str() == "workspace" {
         reveal.workspace_id = Some(target.id.clone());
     }
+    reveal.session_id = target.session_id.clone();
     reveal
 }
 fn decode<T: DeserializeOwned>(params: &JsonObject) -> HostResult<T> {
@@ -2460,6 +2533,89 @@ mod tests {
         h.host.shutdown().await.unwrap();
         assert!(h.host.inner.catalog_watchers.lock().await.is_empty());
     }
+    #[tokio::test]
+    async fn takeover_waits_for_the_selected_admission_but_not_another_serial_port() {
+        use crate::test_support as support;
+        let h = support::Harness::new().await;
+        let target = h.open("takeover-selected").await;
+        let other = h.open("takeover-other").await;
+        let operator = h
+            .auth
+            .authenticate_user_control(
+                &id("operator"),
+                &ContextToken::try_from("test-user-control").unwrap(),
+            )
+            .unwrap();
+        let mut pending = Vec::new();
+        for serial in [&target, &other] {
+            let (entered, ready) = oneshot::channel();
+            let (release, held) = oneshot::channel();
+            *h.host.inner.admission_gate.lock().unwrap() = Some((entered, held));
+            let host = h.host.clone();
+            let actor = h.actor.clone();
+            let call = h.call(
+                serial,
+                "session.tx",
+                serde_json::json!({"bytesBase64":"WA==","writeWaitMs":"1000"}),
+            );
+            let waiting = tokio::spawn(async move { host.invoke(&actor, call).await });
+            ready.await.unwrap();
+            pending.push((release, waiting));
+        }
+        let takeover = h
+            .host
+            .invoke(
+                &operator,
+                h.call_as(
+                    &operator,
+                    &target,
+                    "session.takeover",
+                    serde_json::json!({"actorId":h.actor.id(),"reason":"user"}),
+                ),
+            )
+            .await
+            .unwrap();
+        support::until(|| h.auth.require(&h.actor, "device.modify", &target).is_err()).await;
+        assert!(
+            !h.store
+                .get(&operator, &takeover.operation_id)
+                .unwrap()
+                .state
+                .is_terminal()
+        );
+        let (release_other, write_other) = pending.pop().unwrap();
+        let (release_target, write_target) = pending.pop().unwrap();
+        release_target.send(()).unwrap();
+        assert_eq!(
+            write_target.await.unwrap().unwrap_err().code,
+            "PERMISSION_DENIED"
+        );
+        support::until(|| {
+            h.store
+                .get(&operator, &takeover.operation_id)
+                .unwrap()
+                .state
+                .is_terminal()
+        })
+        .await;
+        assert_eq!(
+            h.store
+                .get(&operator, &takeover.operation_id)
+                .unwrap()
+                .state,
+            OperationState::Succeeded
+        );
+        assert_eq!(h.write_count(), 0);
+        release_other.send(()).unwrap();
+        let sent = write_other.await.unwrap().unwrap();
+        assert_eq!(
+            h.wait(&sent.operation_id).await.state,
+            OperationState::Succeeded
+        );
+        assert_eq!(h.write_count(), 1);
+        h.host.shutdown().await.unwrap();
+    }
+
     #[tokio::test]
     async fn duplicate_transfer_admission_rechecks_source_after_another_call_settles() {
         let h = crate::test_support::Harness::new().await;

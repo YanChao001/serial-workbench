@@ -884,7 +884,7 @@ describe("Serial Workbench 首页", () => {
     };
     const view = render(
       <I18nContext value={i18n}>
-        <HostProvider desktop connect={connect}>
+        <HostProvider enabled connect={connect}>
           <Overview draftStore={createClientDraftStore(port)} />
         </HostProvider>
       </I18nContext>,
@@ -1012,7 +1012,7 @@ describe("Serial Workbench 首页", () => {
     };
     render(
       <I18nContext value={chinese}>
-        <HostProvider desktop connect={connect}>
+        <HostProvider enabled connect={connect}>
           <Overview draftStore={createClientDraftStore(port)} />
         </HostProvider>
       </I18nContext>,
@@ -1060,7 +1060,7 @@ describe("Serial Workbench 首页", () => {
     const connect = vi.fn(() => connecting.promise);
     render(
       <I18nContext value={chinese}>
-        <HostProvider desktop connect={connect}>
+        <HostProvider enabled connect={connect}>
           <Overview
             draftStore={createClientDraftStore({
               read: async () => localSnapshot({ unconnected: "RESTORED" }),
@@ -1122,7 +1122,7 @@ describe("Serial Workbench 首页", () => {
       });
       const view = render(
         <I18nContext value={i18n}>
-          <HostProvider desktop connect={connect}>
+          <HostProvider enabled connect={connect}>
             <Overview draftStore={createClientDraftStore(port)} />
           </HostProvider>
         </I18nContext>,
@@ -1215,7 +1215,7 @@ describe("Serial Workbench 首页", () => {
     const connect = vi.fn().mockRejectedValue(startupError());
     render(
       <I18nContext value={chinese}>
-        <HostProvider desktop connect={connect}>
+        <HostProvider enabled connect={connect}>
           <Overview draftStore={createClientDraftStore(port)} />
         </HostProvider>
       </I18nContext>,
@@ -1327,7 +1327,7 @@ describe("Serial Workbench 首页", () => {
     const connect = vi.fn().mockRejectedValue(startupError());
     render(
       <I18nContext value={chinese}>
-        <HostProvider desktop connect={connect}>
+        <HostProvider enabled connect={connect}>
           <Overview draftStore={createClientDraftStore(port)} />
         </HostProvider>
       </I18nContext>,
@@ -2614,7 +2614,7 @@ describe("Serial Workbench 首页", () => {
     localStorage.clear();
     render(
       <I18nContext value={i18n}>
-        <HostProvider desktop={false}>
+        <HostProvider enabled={false}>
           <Overview />
         </HostProvider>
       </I18nContext>,

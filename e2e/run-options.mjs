@@ -1,12 +1,13 @@
 /** 原生窗口测试会主动激活窗口，必须在启动构建或进程前明确选择前台运行。 */
 export function parseE2EOptions(args) {
-  const referencePhases = [
+  const specializedPhases = [
     "terminal-manual",
     "terminal-automated",
     "chart-automated",
+    "browser-takeover",
   ].filter((phase) => args.includes(`--${phase}`));
   if (
-    referencePhases.length > 1 ||
+    specializedPhases.length > 1 ||
     args.some(
       (arg) =>
         ![
@@ -16,11 +17,12 @@ export function parseE2EOptions(args) {
           "--terminal-manual",
           "--terminal-automated",
           "--chart-automated",
+          "--browser-takeover",
         ].includes(arg),
     )
   )
     throw new Error(
-      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime | --terminal-manual | --terminal-automated | --chart-automated].",
+      "Usage: pnpm test:e2e --interactive [--skip-build] [--with-node-runtime | --terminal-manual | --terminal-automated | --chart-automated | --browser-takeover].",
     );
   if (!args.includes("--interactive"))
     throw new Error(
@@ -30,10 +32,11 @@ export function parseE2EOptions(args) {
   return {
     skipBuild: args.includes("--skip-build"),
     withNodeRuntime:
-      referencePhases.length > 0 || args.includes("--with-node-runtime"),
+      specializedPhases.some((phase) => phase !== "browser-takeover") ||
+      args.includes("--with-node-runtime"),
     phases:
-      referencePhases.length > 0
-        ? referencePhases
+      specializedPhases.length > 0
+        ? specializedPhases
         : ["fresh", "persisted", "centered"],
   };
 }

@@ -334,7 +334,7 @@ async function sessionProjectionRace(
     return <span>{current.state.status}</span>;
   }
   const view = render(
-    <HostProvider desktop connect={connect}>
+    <HostProvider enabled connect={connect}>
       <RaceProbe />
     </HostProvider>,
   );
@@ -704,7 +704,7 @@ describe("HostProvider lifecycle", () => {
   it("ordinary browser preview never initializes native attachment", () => {
     const connect = vi.fn();
     render(
-      <HostProvider connect={connect} desktop={false}>
+      <HostProvider connect={connect} enabled={false}>
         <Probe />
       </HostProvider>,
     );
@@ -728,7 +728,7 @@ describe("HostProvider lifecycle", () => {
       .mockResolvedValue(second);
     const view = render(
       <StrictMode>
-        <HostProvider connect={connect} desktop>
+        <HostProvider connect={connect} enabled>
           <Probe />
         </HostProvider>
       </StrictMode>,
@@ -912,7 +912,7 @@ it("retries attachment only after an explicit refresh following a connection fai
     .mockRejectedValueOnce(new Error("offline"))
     .mockResolvedValue(connected);
   const view = render(
-    <HostProvider desktop connect={connect}>
+    <HostProvider enabled connect={connect}>
       <RetryProbe />
     </HostProvider>,
   );
@@ -943,7 +943,7 @@ it("forwards explicit COM enumeration through the published Host provider", asyn
   }
   const connect = vi.fn().mockResolvedValue(connection);
   const view = render(
-    <HostProvider desktop connect={connect}>
+    <HostProvider enabled connect={connect}>
       <Probe />
     </HostProvider>,
   );
@@ -985,7 +985,7 @@ async function establishedProvider() {
   }
   const connect = vi.fn(async () => connection);
   const view = render(
-    <HostProvider desktop connect={connect}>
+    <HostProvider enabled connect={connect}>
       <EstablishedProbe />
     </HostProvider>,
   );
@@ -1161,7 +1161,7 @@ it.each(["PERMISSION_DENIED", "STORAGE_UNAVAILABLE"])(
       return <span>{current.state.status}</span>;
     }
     const view = render(
-      <HostProvider desktop connect={connect}>
+      <HostProvider enabled connect={connect}>
         <InitialRefreshProbe />
       </HostProvider>,
     );

@@ -12,6 +12,7 @@ test("desktop runs require an explicit foreground choice, including reused build
     ["--terminal-manual"],
     ["--terminal-automated"],
     ["--chart-automated"],
+    ["--browser-takeover"],
   ])
     assert.throws(() => parseE2EOptions(args), /默认不启动/);
   const phases = ["fresh", "persisted", "centered"];
@@ -47,6 +48,10 @@ test("desktop runs require an explicit foreground choice, including reused build
     parseE2EOptions(["--interactive", "--skip-build", "--chart-automated"]),
     { skipBuild: true, withNodeRuntime: true, phases: ["chart-automated"] },
   );
+  assert.deepEqual(
+    parseE2EOptions(["--interactive", "--skip-build", "--browser-takeover"]),
+    { skipBuild: true, withNodeRuntime: false, phases: ["browser-takeover"] },
+  );
 });
 
 test("invalid foreground flags fail without enabling the desktop runner", () => {
@@ -73,6 +78,7 @@ for (const args of [
   ["--terminal-manual"],
   ["--terminal-automated"],
   ["--chart-automated"],
+  ["--browser-takeover"],
 ]) {
   test(`the CLI refuses ${args.join(" ") || "a default run"} before build lookup or launch`, () => {
     const result = spawnSync(

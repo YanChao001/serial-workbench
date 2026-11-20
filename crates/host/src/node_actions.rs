@@ -330,6 +330,7 @@ impl Host {
                         let _ = sent.send(replay);
                     }
                     Ok(Acceptance::New(operation)) => {
+                        host.observe_mcp_operation(&actor, &operation).await;
                         let _ = sent.send(Ok(operation.clone()));
                         let mut call = call;
                         call.request_id = operation.request_id.clone();
@@ -368,11 +369,13 @@ impl Host {
         let output = blocking(move || {
             let authority = Arc::new(ActionAuthority::new(host.clone(), id.clone(), caller)?);
             authority.check()?;
-            host.activity_with_reveal(
-                &accepted.actor,
-                &call_query(&accepted.call),
-                binding.spec().reveal_target.clone(),
-            )?;
+            if accepted.actor.mcp_client_id().is_none() {
+                host.activity_with_reveal(
+                    &accepted.actor,
+                    &call_query(&accepted.call),
+                    binding.spec().reveal_target.clone(),
+                )?;
+            }
             let check = authority.clone();
             let dispatch = authority.clone();
             let dispatcher = host.clone();

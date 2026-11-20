@@ -14,6 +14,7 @@ pub struct AuthenticatedActor {
     client_id: Id,
     grant_revision: U64,
     user_control: bool,
+    mcp_observer_source: bool,
     task: Option<std::sync::Arc<super::task_scope::TaskAuthority>>,
 }
 impl AuthenticatedActor {
@@ -28,6 +29,7 @@ impl AuthenticatedActor {
             client_id,
             grant_revision,
             user_control,
+            mcp_observer_source: false,
             task: None,
         }
     }
@@ -42,6 +44,13 @@ impl AuthenticatedActor {
     }
     pub fn is_user_control(&self) -> bool {
         self.user_control && self.task.is_none()
+    }
+    /// 附着类型只用于标注活动来源。授权仍以认证身份与当前 grant 为准。
+    pub(crate) fn observe_as_mcp(&mut self) {
+        self.mcp_observer_source = !self.user_control;
+    }
+    pub(crate) fn mcp_client_id(&self) -> Option<&Id> {
+        (self.mcp_observer_source && self.task.is_none()).then_some(&self.client_id)
     }
     pub(crate) fn persistent_reference(&self) -> Option<ActorReference> {
         (!self.user_control && self.task.is_none()).then(|| ActorReference {

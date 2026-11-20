@@ -80,6 +80,31 @@ pub(super) fn validate_request(
     }
     let (actor, host, epoch, target, inner_id) = match request {
         RpcRequest::Attach(_) => return Ok(()),
+        RpcRequest::BrowserAccess(_) => {
+            if !context.actor.is_user_control() {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "Managing browser access requires local user control",
+                ));
+            }
+            return Ok(());
+        }
+        RpcRequest::BrowserTakeover(params) => {
+            let allowed = match params {
+                BrowserTakeoverParams::Request { .. } => context.browser_stopped.is_some(),
+                BrowserTakeoverParams::Decide { .. } => {
+                    context.browser_stopped.is_none() && context.actor.is_user_control()
+                }
+            };
+            return if allowed {
+                Ok(())
+            } else {
+                Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "Invalid authority for browser takeover",
+                ))
+            };
+        }
         RpcRequest::ClientRegister(_)
         | RpcRequest::ClientUnregister(_)
         | RpcRequest::ClientReceipt(_) => {
@@ -144,6 +169,8 @@ pub(super) fn validate_request(
 }
 pub(super) fn is_urgent(request: &RpcRequest) -> bool {
     let action = match request {
+        RpcRequest::BrowserAccess(BrowserAccessParams::Revoke {}) => return true,
+        RpcRequest::BrowserTakeover(BrowserTakeoverParams::Decide { .. }) => return true,
         RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => call.action_id.as_str(),
         RpcRequest::Query(query) | RpcRequest::SubscriptionClose(query) => query.action_id.as_str(),
         _ => return false,

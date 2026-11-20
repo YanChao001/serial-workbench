@@ -61,7 +61,6 @@ export function WorkbenchConnection({
   canControl,
   canRestoreAccess,
   canSave,
-  canTakeover,
   canReplay,
   toolsAvailable,
   onDeviceChange,
@@ -71,7 +70,6 @@ export function WorkbenchConnection({
   onSave,
   onRefresh,
   onUnavailableFocus,
-  onTakeover,
   onReplay,
   onCloseOtherViews,
   onCloseAllViews,
@@ -96,7 +94,6 @@ export function WorkbenchConnection({
   canControl: boolean;
   canRestoreAccess: boolean;
   canSave: boolean;
-  canTakeover: boolean;
   canReplay: boolean;
   toolsAvailable: boolean;
   onDeviceChange: (id: string) => void;
@@ -109,7 +106,6 @@ export function WorkbenchConnection({
   onSave: () => void;
   onUnavailableFocus?: () => void;
   onRefresh: () => void;
-  onTakeover: () => void;
   onReplay: () => void;
   onCloseOtherViews?: () => void;
   onCloseAllViews?: () => void;
@@ -391,10 +387,6 @@ export function WorkbenchConnection({
               </DropdownMenuItem>
             </>
           }
-          <DropdownMenuItem disabled={!canTakeover} onSelect={onTakeover}>
-            <Settings2 aria-hidden="true" />
-            {labels.takeover}
-          </DropdownMenuItem>
           <DropdownMenuItem disabled={!canReplay} onSelect={onReplay}>
             <Play aria-hidden="true" />
             {labels.openReplay}

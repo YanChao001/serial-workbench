@@ -42,9 +42,13 @@ serial-workbench-cli --profile <绝对目录> operation get --request-id <原uui
 
 `authorize`/`revoke` 是明确的本地用户控制入口。文件业务先经 `file.register` 登记再使用 ObjectRef，普通请求不自动读取用户控制凭据。MCP 使用 `serial-workbench-mcp --profile <绝对目录>`，stdout 仅承载官方 SDK 协议，工具来自同一目录和权限；取消工具等待不代替 `operation.cancel`。
 
+需要在同一 Host 上区分多个 MCP 客户端时，为各自的 MCP 配置追加 `--client-id <名称>`。名称用字母、数字及 `._:-`，作为该客户端的授权身份和工作台「活动」中的选择项。已有未命名的配置沿用 `serial-workbench-mcp`。新增名称首次连接按新身份注册，由本地用户按实际目标授权。
+
 Host/CLI/MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录选择配置。相对路径绑定启动 cwd，不展开变量或 `~`；Windows 盘符相对/根相对路径拒绝。`SWB_LOG_LEVEL` 接受 off/error/warn/info/debug/trace，默认 info；空值和过滤表达式拒绝。日志写 stderr，CLI JSON/MCP 协议写 stdout；`startup.config.get` 提供脱敏来源。
 
 CLI 的 `query`/`invoke` 和 MCP 的 `tools/list` 使用 Host 当前授权且实际登记的贡献。按返回名称调用，目录变化后重新发现；不要因名称或权限变化而重放业务。插件作者从 [Node SDK](../packages/plugin-sdk/README.md) 开始，真实包的验证入口见[测试指南](./testing.md#rust-与生成)。
+
+桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发模式连接真实 Host 前可用 `pnpm build` 准备 `dist/`。
 
 ## 工作区操作
 

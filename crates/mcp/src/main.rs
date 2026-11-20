@@ -15,11 +15,16 @@ async fn main() {
 
 async fn run() -> HostResult<()> {
     let mut profile: Option<PathBuf> = None;
+    let mut client_id = None;
     let mut args = std::env::args_os().skip(1);
     while let Some(arg) = args.next() {
         match arg.to_str() {
             Some("--profile") if profile.is_none() => {
                 profile = Some(args.next().ok_or_else(invalid_args)?.into());
+            }
+            Some("--client-id") if client_id.is_none() => {
+                let value = args.next().ok_or_else(invalid_args)?;
+                client_id = Some(Id::try_from(value.to_str().ok_or_else(invalid_args)?)?);
             }
             _ => return Err(invalid_args()),
         }
@@ -29,7 +34,7 @@ async fn run() -> HostResult<()> {
     startup_config::log_startup_configuration(&startup.snapshot());
     let client = HostClient::connect_or_start(ConnectOptions::new(
         startup.profile().to_path_buf(),
-        Id::try_from("serial-workbench-mcp")?,
+        client_id.unwrap_or(Id::try_from("serial-workbench-mcp")?),
         ClientKind::Mcp,
     ))
     .await?;
@@ -47,6 +52,6 @@ async fn run() -> HostResult<()> {
 fn invalid_args() -> HostError {
     HostError::new(
         "INVALID_ARGUMENT",
-        "Usage: serial-workbench-mcp [--profile <directory>]",
+        "Usage: serial-workbench-mcp [--profile <directory>] [--client-id <name>]",
     )
 }

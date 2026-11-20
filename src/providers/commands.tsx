@@ -51,7 +51,7 @@ import {
 } from "@/lib/tauri";
 import { useSettings } from "@/providers/settings";
 import { APP_ROUTES, settingsLocation } from "@/routes";
-import { CommandsContext } from "./commands-context";
+import { ActivityNavigationContext, CommandsContext } from "./commands-context";
 
 export function CommandsProvider({ children }: { children: ReactNode }) {
   const navigate = useNavigate();
@@ -70,6 +70,17 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     Map<symbol, readonly AppCommand[]>
   >(() => new Map());
   const running = useRef(new Set<string>());
+  const revealActivityPage = useCallback(
+    (pageId: string) => {
+      const path = pageId === "workbench" ? "/" : `/${pageId}`;
+      if (
+        path !== pathname &&
+        APP_ROUTES.some((route) => route.path === path && !route.hidden)
+      )
+        navigate(path, { replace: true });
+    },
+    [navigate, pathname],
+  );
 
   const builtins = useMemo<AppCommand[]>(
     () => [
@@ -98,6 +109,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         icon: SETTINGS_ICONS[entry.id],
         keywords: [...entry.keywords],
         keywordKeys: entry.searchKeys,
+        available: entry.desktopOnly ? isTauri : undefined,
         run: () => navigate(settingsLocation(entry.id)),
       })),
       {
@@ -322,7 +334,9 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   );
   return (
     <CommandsContext.Provider value={value}>
-      {children}
+      <ActivityNavigationContext.Provider value={revealActivityPage}>
+        {children}
+      </ActivityNavigationContext.Provider>
     </CommandsContext.Provider>
   );
 }

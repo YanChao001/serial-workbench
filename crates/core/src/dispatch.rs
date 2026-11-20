@@ -162,6 +162,8 @@ impl RpcRequest {
     pub fn required_channel(&self) -> HostResult<RequestChannel> {
         let (id, expected) = match self {
             Self::Attach(_)
+            | Self::BrowserAccess(_)
+            | Self::BrowserTakeover(_)
             | Self::ClientRegister(_)
             | Self::ClientUnregister(_)
             | Self::ClientReceipt(_) => return Ok(RequestChannel::Control),

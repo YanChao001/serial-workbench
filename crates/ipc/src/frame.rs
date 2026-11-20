@@ -68,6 +68,16 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
     frame: &WireFrame,
     max_bytes: usize,
 ) -> HostResult<()> {
+    let body = encode_frame(frame, max_bytes)?;
+    writer
+        .write_all(&(body.len() as u32).to_be_bytes())
+        .await
+        .map_err(|_| disconnected())?;
+    writer.write_all(&body).await.map_err(|_| disconnected())?;
+    writer.flush().await.map_err(|_| disconnected())
+}
+
+pub fn encode_frame(frame: &WireFrame, max_bytes: usize) -> HostResult<Vec<u8>> {
     // 限额写入器避免先把超大结果完整序列化进内存。
     struct Bounded {
         bytes: Vec<u8>,
@@ -90,15 +100,7 @@ pub async fn write_frame<W: AsyncWrite + Unpin>(
         limit: max_bytes.min(u32::MAX as usize),
     };
     serde_json::to_writer(&mut body, frame).map_err(|_| too_large())?;
-    writer
-        .write_all(&(body.bytes.len() as u32).to_be_bytes())
-        .await
-        .map_err(|_| disconnected())?;
-    writer
-        .write_all(&body.bytes)
-        .await
-        .map_err(|_| disconnected())?;
-    writer.flush().await.map_err(|_| disconnected())
+    Ok(body.bytes)
 }
 fn invalid() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid IPC frame")

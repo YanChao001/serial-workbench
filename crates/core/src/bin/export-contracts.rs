@@ -1610,6 +1610,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ClientEffectAcknowledged,
         OperationSummary,
         OperationsSnapshot,
+        ActivitySnapshot,
         OperationInputParams,
         OperationInputRedaction,
         OperationInput,

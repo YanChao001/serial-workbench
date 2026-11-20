@@ -6,6 +6,7 @@ pub(crate) fn is_stop(action: &str) -> bool {
         action,
         "operation.cancel"
             | "session.close"
+            | "session.takeover"
             | "lease.release"
             | "subscription.close"
             | "host.shutdown"

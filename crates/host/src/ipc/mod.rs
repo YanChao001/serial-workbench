@@ -1,7 +1,9 @@
 //! 单实例生命周期与认证后的本地连接。
+mod browser;
 mod connection;
 mod protocol;
 mod server;
+pub use serial_workbench_core::BrowserEntry;
 use serial_workbench_core::{HostError, HostResult};
 #[cfg(test)]
 pub(crate) use server::test_context;

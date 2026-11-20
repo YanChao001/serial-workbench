@@ -385,6 +385,23 @@ export const en = {
   "workbench.noSession": "Select a device to open a session",
   "workbench.readOnly": "Read only",
   "workbench.takeover": "Take control",
+  "workbench.takeoverPort": "Take control of {port}",
+  "workbench.takeoverPending": "Waiting for serial writes to settle…",
+  "workbench.browserTakeoverPending":
+    "Waiting for desktop confirmation and serial writes to settle…",
+  "workbench.requestTakeoverPort": "Request control of {port}",
+  "browserTakeover.request":
+    "The browser asks to stop {client} from writing to {port}.",
+  "browserTakeover.missingPort": "The requested port is unavailable.",
+  "browserTakeover.approve": "Confirm takeover",
+  "browserTakeover.decline": "Decline",
+  "browserTakeover.declined":
+    "The desktop user declined this takeover request.",
+  "browserTakeover.expired":
+    "The takeover request expired. Make a new request if needed.",
+  "browserTakeover.pending":
+    "Another takeover request is waiting for desktop confirmation.",
+  "workbench.takeoverDone": "AI write access to this port was revoked.",
   "workbench.terminal": "Receive",
   "workbench.text": "Text",
   "workbench.hex": "HEX",
@@ -484,6 +501,9 @@ export const en = {
   "workbench.stopRequested": "Waiting for recording to stop",
   "workbench.tasks": "Tasks",
   "workbench.activity": "Activity",
+  "workbench.mcpClient": "AI client to follow",
+  "workbench.mcpUnbound": "Choose an AI client",
+  "workbench.operation.sessionQuery": "Read serial connection",
   "workbench.emptyTasks": "No tasks",
   "workbench.locate": "Locate",
   "workbench.follow": "Follow activity",
@@ -530,6 +550,44 @@ export const en = {
   "workbench.errorDetails": "Error details",
   "workbench.bytes": "bytes",
   "workbench.unavailable": "Host is unavailable",
+  "browserAccess.title": "Browser access",
+  "browserAccess.configure": "Configure",
+  "browserAccess.manage": "Configure browser access",
+  "browserAccess.description":
+    "Use Serial Workbench in a local browser with the same sessions and settings as the desktop app.",
+  "browserAccess.loading": "Checking browser access…",
+  "browserAccess.enabled": "Browser access is on.",
+  "browserAccess.mode": "Access level",
+  "browserAccess.readOnly": "View only",
+  "browserAccess.operate": "View and operate",
+  "browserAccess.readOnlyDescription":
+    "View serial data, recordings, and workspaces.",
+  "browserAccess.operateDescription":
+    "Also control ports, send data, and edit shared workspaces and settings.",
+  "browserAccess.replace":
+    "Pairing again disconnects the current browser. Serial sessions keep running.",
+  "browserAccess.pair": "Generate pairing code",
+  "browserAccess.pairAgain": "Pair again",
+  "browserAccess.pairing": "Generating…",
+  "browserAccess.revoke": "Turn off browser access",
+  "browserAccess.revoking": "Turning off…",
+  "browserAccess.copy": "Copy",
+  "browserAccess.copied": "Copied",
+  "browserAccess.paste":
+    "Paste the pairing code in the browser. You can use it once.",
+  "browserAccess.open": "Open in browser",
+  "browserAccess.assetsUnavailable":
+    "Browser workbench files are missing. In a development build, build the frontend and retry.",
+  "browserPairing.title": "Connect to Serial Workbench",
+  "browserPairing.instructions":
+    "Enter the pairing code from the local Serial Workbench.",
+  "browserPairing.code": "Pairing code",
+  "browserPairing.connect": "Connect",
+  "browserPairing.connecting": "Connecting…",
+  "browserPairing.invalid":
+    "This code is invalid or expired. Get a new code from Serial Workbench.",
+  "browserPairing.unavailable":
+    "Could not connect. Check that Serial Workbench is running and try again.",
   "workbench.hostConnecting": "Connecting to the local service…",
   "workbench.hostUnavailable":
     "The local service could not connect. Please retry.",

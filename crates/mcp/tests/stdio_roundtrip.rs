@@ -97,6 +97,133 @@ async fn settled(
 }
 
 #[tokio::test]
+async fn named_mcp_activity_retains_start_order_and_reuses_query_identity() {
+    let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+    let mut server = HostServer::bind(directory.path()).await.unwrap();
+    let auth = server.auth();
+    let control = serial_workbench_client::read_user_control_credential(directory.path()).unwrap();
+    let operator = auth
+        .authenticate_user_control(&id("test-local-user"), &control)
+        .unwrap();
+    let store = server.store();
+    let host_id = store.identity().unwrap().host_id;
+    let host = Host::new(store, auth.clone()).await.unwrap();
+    let (stop, done) = oneshot::channel();
+    let handler = host.clone();
+    let running = tokio::spawn(async move {
+        server
+            .serve_until(Arc::new(handler), async {
+                let _ = done.await;
+            })
+            .await
+    });
+    let mut clients = Vec::new();
+    for name in ["bench-primary", "bench-secondary"] {
+        let mut command = tokio::process::Command::new(env!("CARGO_BIN_EXE_serial-workbench-mcp"));
+        command
+            .arg("--profile")
+            .arg(directory.path())
+            .args(["--client-id", name]);
+        #[cfg(windows)]
+        command.creation_flags(0x0800_0000);
+        clients.push(
+            ().serve(TokioChildProcess::new(command).unwrap())
+                .await
+                .unwrap(),
+        );
+    }
+    let first = clients[0].peer();
+    let second = clients[1].peer();
+    let host_target = Target {
+        id: host_id.clone(),
+        host_id,
+        kind: ResourceKind::try_from("host").unwrap(),
+        session_id: None,
+        session_epoch: None,
+    };
+    auth.authorize(
+        &operator,
+        AuthorizeParams {
+            client_id: id("bench-primary"),
+            permissions: vec!["device.modify".into()],
+            targets: vec![host_target.clone()],
+            expires_at: None,
+        },
+    )
+    .unwrap();
+    let select_id = RequestId::try_from("7b1190a9-9034-402a-ac68-9f5acfa41f6d").unwrap();
+    let open_id = RequestId::try_from("6b1190a9-9034-402a-ac68-9f5acfa41f6d").unwrap();
+    let device = Target {
+        kind: ResourceKind::try_from("device").unwrap(),
+        id: id("virtual:echo"),
+        ..host_target.clone()
+    };
+    let open_params = serde_json::json!({"configuration": SerialConfiguration::default()});
+    let opened = tool(
+        first,
+        "device.open",
+        &device,
+        open_params.clone(),
+        Some(&open_id),
+    )
+    .await;
+    let operation: Operation = serde_json::from_value(opened.structured_content.unwrap()).unwrap();
+    let settled = settled(first, &host_target, &operation).await;
+    let Some(ActionResult::Opened(session)) = settled.result else {
+        panic!("{settled:?}");
+    };
+    let target = Target {
+        kind: ResourceKind::try_from("session").unwrap(),
+        id: session.session_id.clone(),
+        session_id: Some(session.session_id.clone()),
+        session_epoch: Some(session.session_epoch),
+        ..host_target.clone()
+    };
+    for client in [first, second, first] {
+        let queried = tool(
+            client,
+            "session.get",
+            &target,
+            serde_json::json!({}),
+            Some(&select_id),
+        )
+        .await;
+        assert_ne!(queried.is_error, Some(true), "{queried:?}");
+    }
+    let retried = tool(first, "device.open", &device, open_params, Some(&open_id)).await;
+    let retried: Operation = serde_json::from_value(retried.structured_content.unwrap()).unwrap();
+    assert_eq!(retried.operation_id, operation.operation_id);
+
+    let snapshot = host
+        .projections()
+        .snapshot(&operator, &id("host.activity"))
+        .await
+        .unwrap();
+    let snapshot: ActivitySnapshot =
+        serde_json::from_value(serde_json::to_value(snapshot.state).unwrap()).unwrap();
+    let [opened, selected, other] = snapshot.items.as_slice() else {
+        panic!("{snapshot:?}");
+    };
+    assert_eq!(opened.operation_id.as_ref(), Some(&operation.operation_id));
+    assert_eq!(opened.mcp_client_id.as_ref(), Some(&id("bench-primary")));
+    assert_eq!(selected.actor_id, opened.actor_id);
+    assert_eq!(selected.observations, 2.into());
+    assert_eq!(
+        selected.reveal_target.session_id.as_ref(),
+        Some(&session.session_id)
+    );
+    assert_eq!(selected.target, target);
+    assert_eq!(other.mcp_client_id.as_ref(), Some(&id("bench-secondary")));
+    assert_ne!(other.actor_id, selected.actor_id);
+    assert_eq!(other.observations, 1.into());
+    for client in clients {
+        client.cancel().await.unwrap();
+    }
+    let _ = stop.send(());
+    running.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn sdk_stdio_virtual_open_tx_raw_read_receipt_and_close() {
     let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut server = HostServer::bind(directory.path()).await.unwrap();

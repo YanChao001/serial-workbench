@@ -14,13 +14,18 @@ import {
   SETTINGS_SEARCH_ENTRIES,
 } from "@/commands/settings-search";
 import { useI18n } from "@/providers/i18n";
+import { isTauri } from "@/lib/tauri";
 
 export function SettingsSearch() {
   const { t } = useI18n();
   const [query, setQuery] = useState("");
   const [params] = useSearchParams();
   const { key: locationKey } = useLocation();
-  const results = useMemo(() => searchSettings(query, t), [query, t]);
+  const desktop = isTauri();
+  const results = useMemo(
+    () => searchSettings(query, t, desktop),
+    [query, t, desktop],
+  );
   const id = useId();
   const input = useRef<HTMLInputElement>(null);
   const anchor = useRef<HTMLDivElement>(null);
@@ -35,12 +40,14 @@ export function SettingsSearch() {
       input.current?.focus({ preventScroll: true });
       return;
     }
-    const entry = SETTINGS_SEARCH_ENTRIES.find((item) => item.id === requested);
+    const entry = SETTINGS_SEARCH_ENTRIES.find(
+      (item) => item.id === requested && (!item.desktopOnly || desktop),
+    );
     if (entry) focusSetting(entry.anchor);
     else if (section === "desktop") focusSetting("settings-desktop");
     else if (section === "updates") focusSetting("settings-updates");
     else if (section === "recovery") focusSetting("settings-recovery");
-  }, [requested, section, locationKey]);
+  }, [requested, section, locationKey, desktop]);
   function chooseSetting(target: string) {
     focusSetting(target);
     setQuery("");

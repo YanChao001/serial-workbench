@@ -62,28 +62,30 @@ const empty = (status: HostState["status"]): HostContextValue => ({
   },
   open: async () => unavailable(),
   send: async () => unavailable(),
-  takeover: async () => unavailable(),
   invoke: async () => unavailable(),
   watchSession: () => () => {},
 });
 export function HostProvider({
   children,
   connect = getHostClient,
-  desktop = isTauri(),
+  enabled = isTauri(),
 }: {
   children: ReactNode;
   connect?: () => Promise<HostConnection>;
-  desktop?: boolean;
+  enabled?: boolean;
 }) {
   const [value, setValue] = useState(() =>
-    empty(desktop ? "connecting" : "preview"),
+    empty(enabled ? "connecting" : "preview"),
   );
   useEffect(() => {
-    if (!desktop) return;
+    if (!enabled) return;
     let active = true;
     let workspace: ReturnType<typeof createHostWorkspace> | undefined;
     let attaching: Promise<void> | undefined;
+    let removeClosedListener: (() => void) | undefined;
     const disposeWorkspace = () => {
+      removeClosedListener?.();
+      removeClosedListener = undefined;
       const previous = workspace;
       workspace = undefined;
       previous?.dispose();
@@ -118,8 +120,28 @@ export function HostProvider({
           connection.dispose();
           return;
         }
-        const attachedWorkspace = createHostWorkspace(connection);
+        const closed = connection.browser?.closed;
+        if (closed?.aborted) {
+          connection.dispose();
+          const reason: unknown = closed.reason;
+          throw reason;
+        }
+        const attachedWorkspace = createHostWorkspace(
+          connection,
+          connection.browser ? null : undefined,
+        );
         workspace = attachedWorkspace;
+        if (closed) {
+          const lost = () => {
+            if (workspace !== attachedWorkspace) return;
+            const reason: unknown = closed.reason;
+            disposeWorkspace();
+            failed(reason);
+          };
+          closed.addEventListener("abort", lost, { once: true });
+          removeClosedListener = () =>
+            closed.removeEventListener("abort", lost);
+        }
         attachedWorkspace.subscribe(() => publish(attachedWorkspace));
         publish(attachedWorkspace);
         await attachedWorkspace.refresh();
@@ -166,8 +188,8 @@ export function HostProvider({
     void attach();
     return () => {
       active = false;
-      workspace?.dispose();
+      disposeWorkspace();
     };
-  }, [connect, desktop]);
+  }, [connect, enabled]);
   return <HostContext value={value}>{children}</HostContext>;
 }

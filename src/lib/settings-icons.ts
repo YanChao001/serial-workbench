@@ -44,6 +44,7 @@ export const SETTINGS_ICONS = {
   autostart: PowerIcon,
   background: PanelTopIcon,
   windows: MonitorIcon,
+  browserAccess: GlobeIcon,
   updates: DownloadIcon,
   autoUpdates: RefreshCwIcon,
   version: InfoIcon,

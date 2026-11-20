@@ -11,7 +11,10 @@ import {
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import userEvent from "@testing-library/user-event";
 import { Toaster } from "sonner";
-import type { WorkspaceDocument } from "@serial-workbench/contracts";
+import type {
+  ActivitySummary,
+  WorkspaceDocument,
+} from "@serial-workbench/contracts";
 import { WorkspaceLayout, type WorkbenchHost } from "./workspace-layout";
 import { addSessionView } from "./workspace-model";
 import {
@@ -2290,26 +2293,37 @@ it("reports a failed replay import without guessing a device connection diagnosi
     screen.queryByText(/EXPLICIT_FIXTURE_SECRET|cargo run|C:\/private/),
   ).not.toBeInTheDocument();
 });
-it("follows a new replay result when its real session arrives after admission", () => {
+it("opens the replay selected here when its real session arrives after admission", async () => {
   const adapter = host();
   const replay = { read: vi.fn(), readRecord: vi.fn(), control: vi.fn() };
-  const view = render(
-    <WorkspaceLayout host={adapter} labels={labels} replay={replay} />,
-  );
   const queued = {
     ...operation("replay"),
     actionId: "replay.open",
     state: "queued" as const,
     revealTarget: { pageId: "workbench" },
   };
+  const openReplay = vi.fn().mockResolvedValue(queued);
+  const layout = () => (
+    <WorkspaceLayout
+      host={adapter}
+      labels={labels}
+      replay={replay}
+      onOpenReplay={openReplay}
+    />
+  );
+  const view = render(layout());
+  fireEvent.pointerDown(screen.getByRole("button", { name: "Expand" }), {
+    button: 0,
+    ctrlKey: false,
+  });
+  fireEvent.click(screen.getByRole("menuitem", { name: "Open replay" }));
+  await waitFor(() => expect(openReplay).toHaveBeenCalledOnce());
   adapter.state = {
     ...adapter.state,
     operations: [queued],
     operationSummaries: [queued],
   };
-  view.rerender(
-    <WorkspaceLayout host={adapter} labels={labels} replay={replay} />,
-  );
+  view.rerender(layout());
   const settled = {
     ...queued,
     state: "succeeded" as const,
@@ -2329,9 +2343,7 @@ it("follows a new replay result when its real session arrives after admission", 
     operations: [settled],
     operationSummaries: [settled],
   };
-  view.rerender(
-    <WorkspaceLayout host={adapter} labels={labels} replay={replay} />,
-  );
+  view.rerender(layout());
   expect(
     screen.getByRole("button", { name: "Read replay" }),
   ).toBeInTheDocument();
@@ -2618,26 +2630,113 @@ it("restores client drafts without sending and keeps duplicate views independent
     "STATUS?",
   );
 });
-it("does not follow a previously unseen old result after a newer activity", () => {
+it("follows and takes over only the selected MCP client while preserving a draft", async () => {
   const adapter = host();
+  function query(
+    id: string,
+    client: string,
+    sessionId: string,
+  ): ActivitySummary {
+    return {
+      activityId: id,
+      actorId: client,
+      mcpClientId: client,
+      requestId: id,
+      actionId: "session.get",
+      target: { hostId: "host", id: sessionId, kind: "session" },
+      revealTarget: { pageId: "workbench", sessionId },
+      observations: "1",
+      observedAt: "2026-11-20T00:00:00Z",
+    };
+  }
+  const first = query("first", "Bench assistant", "session");
+  const other = query("other", "Other assistant", "other");
+  const newer = query("newer", "Bench assistant", "other");
+  adapter.state = { ...adapter.state, activities: [first, other] };
   const view = render(<WorkspaceLayout host={adapter} labels={labels} />);
-  const newer = {
-    ...operation("newer", "other"),
-    acceptedAt: "2026-11-08T00:01:00Z",
-  };
-  adapter.state = { ...adapter.state, operationSummaries: [newer] };
-  view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
-  expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-    labels.sessionLabel,
+  fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+  fireEvent.keyDown(screen.getByRole("combobox", { name: labels.mcpClient }), {
+    key: "ArrowDown",
+  });
+  fireEvent.click(
+    await screen.findByRole("option", { name: "Bench assistant" }),
   );
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: labels.closeView,
+    }),
+  );
+  expect(
+    await screen.findByRole("tab", { name: "Virtual serial", selected: true }),
+  ).toBeInTheDocument();
+  fireEvent.change(screen.getByRole("textbox", { name: "Send input" }), {
+    target: { value: "Keep my draft" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+  fireEvent.click(screen.getByRole("button", { name: labels.pauseFollow }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: labels.closeView,
+    }),
+  );
+  adapter.state = { ...adapter.state, activities: [first, other, newer] };
+  view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
+  expect(
+    await screen.findByRole("textbox", { name: "Send input" }),
+  ).toHaveValue("Keep my draft");
+  fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+  fireEvent.click(screen.getByRole("button", { name: labels.follow }));
+  fireEvent.click(
+    within(screen.getByRole("dialog")).getByRole("button", {
+      name: labels.closeView,
+    }),
+  );
+  expect(
+    await screen.findByRole("tab", {
+      name: labels.sessionLabel,
+      selected: true,
+    }),
+  ).toBeInTheDocument();
   adapter.state = {
     ...adapter.state,
-    operationSummaries: [newer, operation("older", "session")],
+    activities: [{ ...first, observations: "2" }, other, newer],
   };
   view.rerender(<WorkspaceLayout host={adapter} labels={labels} />);
-  expect(screen.getByRole("tab", { selected: true })).toHaveTextContent(
-    labels.sessionLabel,
+  expect(
+    screen.getByRole("tab", { name: labels.sessionLabel, selected: true }),
+  ).toBeInTheDocument();
+  fireEvent.click(screen.getByRole("tab", { name: "Virtual serial" }));
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    "Keep my draft",
   );
+  expect(adapter.send).not.toHaveBeenCalled();
+  let finishTakeover!: (value: ReturnType<typeof operation>) => void;
+  vi.mocked(adapter.takeover!).mockReturnValueOnce(
+    new Promise((resolve) => {
+      finishTakeover = resolve;
+    }),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Activity" }));
+  const take = screen.getByRole("button", {
+    name: "Take control of Virtual serial",
+  });
+  fireEvent.click(take);
+  expect(adapter.takeover).toHaveBeenCalledWith(
+    {
+      hostId: "host",
+      kind: "session",
+      id: "session",
+      sessionId: "session",
+      sessionEpoch: "1",
+    },
+    "Bench assistant",
+    expect.any(AbortSignal),
+  );
+  expect(take).toBeDisabled();
+  expect(screen.getByText(labels.takeoverPending)).toBeInTheDocument();
+  expect(screen.queryByText(labels.takeoverDone)).not.toBeInTheDocument();
+  finishTakeover(operation("takeover-result"));
+  expect(await screen.findByText(labels.takeoverDone)).toBeInTheDocument();
 });
 it("does not open devices while the Host is unavailable", () => {
   const adapter = host();

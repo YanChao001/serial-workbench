@@ -34,31 +34,29 @@ function receiptPath(plan) {
   return join(plan.metadata.target_directory, ".starter-portable.json");
 }
 
-function runtimeFiles(plan, runtime) {
-  if (typeof runtime?.resources !== "string")
-    throw new Error("Missing portable runtime resources");
-  const resources = publicationPath(plan.root, runtime.resources);
+function resourceFiles(plan, directory, name) {
+  const resources = publicationPath(plan.root, directory);
   if (!lstatSync(resources).isDirectory())
-    throw new Error("Invalid portable runtime directory");
+    throw new Error(`Invalid portable ${name} directory`);
   const files = [];
   let nodes = 0,
     size = 0;
   const visit = (directory) => {
     for (const name of readdirSync(directory).sort()) {
       if (++nodes > 10_000)
-        throw new Error("Portable runtime file budget exceeded");
+        throw new Error(`Portable ${name} file budget exceeded`);
       const file = join(directory, name),
         info = lstatSync(file);
       if (info.isSymbolicLink())
-        throw new Error("Portable runtime links are not allowed");
+        throw new Error(`Portable ${name} links are not allowed`);
       if (info.isDirectory()) {
         visit(file);
         continue;
       }
-      if (!info.isFile()) throw new Error("Invalid portable runtime file");
+      if (!info.isFile()) throw new Error(`Invalid portable ${name} file`);
       size += info.size;
       if (size > 512 * 1024 * 1024)
-        throw new Error("Portable runtime byte budget exceeded");
+        throw new Error(`Portable ${name} byte budget exceeded`);
       projectFile(plan.root, relative(plan.root, file));
       files.push({
         path: relative(resources, file).split(sep).join("/"),
@@ -68,8 +66,14 @@ function runtimeFiles(plan, runtime) {
     }
   };
   visit(resources);
-  if (!files.length) throw new Error("Empty portable runtime resources");
+  if (!files.length) throw new Error(`Empty portable ${name} resources`);
   return files;
+}
+
+function runtimeFiles(plan, runtime) {
+  if (typeof runtime?.resources !== "string")
+    throw new Error("Missing portable runtime resources");
+  return resourceFiles(plan, runtime.resources, "runtime");
 }
 
 function fingerprint(plan) {
@@ -113,6 +117,11 @@ export function recordPortableBuild(plan, built) {
     components: components.manifest,
     runtime: built.runtime,
     runtimeFiles: runtimeFiles(plan, built.runtime),
+    browserFiles: resourceFiles(
+      plan,
+      join(plan.root, "dist"),
+      "browser workbench",
+    ),
     componentsSha256: createHash("sha256")
       .update(`${JSON.stringify(components.manifest, null, 2)}\n`)
       .digest("hex"),
@@ -159,6 +168,13 @@ export function loadPortableBuild(plan) {
       JSON.stringify(runtimeFiles(plan, receipt.runtime))
     )
       throw new Error("The runtime or license files have changed");
+    if (
+      JSON.stringify(receipt.browserFiles) !==
+      JSON.stringify(
+        resourceFiles(plan, join(plan.root, "dist"), "browser workbench"),
+      )
+    )
+      throw new Error("The browser workbench files have changed");
     if (
       !offset ||
       offset === ".." ||

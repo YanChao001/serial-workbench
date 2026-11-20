@@ -21,6 +21,7 @@ export function operationText(
   return {
     actions: {
       "device.open": t("workbench.operation.connect"),
+      "session.get": t("workbench.operation.sessionQuery"),
       "session.close": t("workbench.closeSession"),
       "session.reconnect": t("workbench.operation.connect"),
       "session.tx": t("workbench.send"),

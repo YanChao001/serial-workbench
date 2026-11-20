@@ -5,13 +5,13 @@
   type Operation,
   type SettingsDocumentResult,
   type Target,
-  type JsonValue,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type { HostConnection } from "./host-client";
 
 import type { SettingsBackend } from "./settings-sync";
 import { hostApplyDocumentIntent } from "./tauri";
+import { rpcJsonObject } from "./rpc-json";
 
 const abortError = () => new DOMException("Waiting was aborted", "AbortError");
 const pendingStates = new Set<Operation["state"]>([
@@ -19,19 +19,6 @@ const pendingStates = new Set<Operation["state"]>([
   "running",
   "cancel_requested",
 ]);
-function jsonValue(value: unknown): JsonValue {
-  if (value === null || typeof value === "boolean" || typeof value === "string")
-    return value;
-  if (typeof value === "number" && Number.isFinite(value)) return value;
-  if (Array.isArray(value)) return value.map(jsonValue);
-  if (typeof value === "object" && value !== null)
-    return Object.fromEntries(
-      Object.entries(value)
-        .filter(([, field]) => field !== undefined)
-        .map(([key, field]) => [key, jsonValue(field)]),
-    );
-  throw new ContractValidationError("Settings contain a non-JSON value");
-}
 function pause(signal: AbortSignal): Promise<void> {
   if (signal.aborted) return Promise.reject(abortError());
   return new Promise((resolve, reject) => {
@@ -102,7 +89,7 @@ export function createHostSettingsBackend(
       // 在等待前一次性取走标记，保存期间的新编辑保留给下一次提交。
       const useIntent = explicitEdit;
       explicitEdit = false;
-      const params = { value: jsonValue(value) };
+      const params = { value: rpcJsonObject(value) };
       let operation = useIntent
         ? await hostApplyDocumentIntent(connection.generation, {
             kind: "settingsSave",

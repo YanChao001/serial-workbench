@@ -1,6 +1,16 @@
-import type { OperationSummary } from "@serial-workbench/contracts";
+import type {
+  ActivitySummary,
+  OperationSummary,
+} from "@serial-workbench/contracts";
 import { useState } from "react";
 import { Button } from "@/components/ui/button";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import type { WorkbenchLabels } from "./labels";
 import { OperationDetails } from "./operation-details";
 import {
@@ -14,8 +24,14 @@ import {
 } from "./operation-input";
 export function ActivityPanel({
   operations,
+  activities,
+  mcpClient,
+  canLocateQuery,
+  onMcpChange,
+  onLocateQuery,
   labels,
   following,
+  takeover,
   onFollowChange,
   onLocate,
   readInput,
@@ -24,8 +40,19 @@ export function ActivityPanel({
   describeTarget,
 }: {
   operations: readonly OperationSummary[];
+  activities?: readonly ActivitySummary[];
+  mcpClient?: { actorId: string; name: string };
+  canLocateQuery?: (activity: ActivitySummary) => boolean;
+  onMcpChange: (value?: { actorId: string; name: string }) => void;
+  onLocateQuery: (activity: ActivitySummary) => void;
   labels: WorkbenchLabels;
   following: boolean;
+  takeover?: {
+    label: string;
+    pendingLabel: string;
+    start: () => void;
+    state?: "pending" | "done";
+  };
   onFollowChange: (value: boolean) => void;
   onLocate: (operation: OperationSummary) => void;
   readInput?: OperationInputReader;
@@ -35,7 +62,22 @@ export function ActivityPanel({
 }) {
   const [showBackground, setShowBackground] = useState(false);
   const text = labels.operationText;
-  const visible = operations.filter(
+  const clients = new Map<string, string>();
+  if (mcpClient) clients.set(mcpClient.actorId, mcpClient.name);
+  for (const activity of activities ?? []) {
+    if (activity.mcpClientId)
+      clients.set(activity.actorId, activity.mcpClientId);
+  }
+  const queries = (activities ?? [])
+    .filter(
+      (activity) =>
+        !activity.operationId && activity.actorId === mcpClient?.actorId,
+    )
+    .reverse();
+  const scopedOperations = mcpClient
+    ? operations.filter((operation) => operation.actorId === mcpClient.actorId)
+    : operations;
+  const visible = scopedOperations.filter(
     (operation) => showBackground || !isBackgroundOperation(operation.actionId),
   );
   return (
@@ -46,27 +88,104 @@ export function ActivityPanel({
     >
       <div className="workbench-toolbar">
         <h2 className="sr-only">{labels.activity}</h2>
-        <Button
-          size="sm"
-          variant="outline"
-          aria-pressed={following}
-          onClick={() => onFollowChange(!following)}
-        >
-          {following ? labels.pauseFollow : labels.follow}
-        </Button>
-        <label className="workbench-inline-check">
-          <input
-            type="checkbox"
-            checked={showBackground}
-            onChange={(event) => setShowBackground(event.target.checked)}
-          />
-          {text.background}
-        </label>
+        {clients.size > 0 && (
+          <Select
+            value={mcpClient?.actorId ?? "none"}
+            onValueChange={(actorId) => {
+              const name = clients.get(actorId);
+              onMcpChange(name ? { actorId, name } : undefined);
+            }}
+          >
+            <SelectTrigger
+              size="sm"
+              aria-label={labels.mcpClient}
+              className="max-w-full"
+            >
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="none">{labels.mcpUnbound}</SelectItem>
+              {[...clients].map(([actorId, name]) => (
+                <SelectItem key={actorId} value={actorId}>
+                  {name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        )}
+        {mcpClient && (
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => onFollowChange(!following)}
+          >
+            {following ? labels.pauseFollow : labels.follow}
+          </Button>
+        )}
+        {takeover && (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={takeover.state === "pending"}
+            onClick={takeover.start}
+          >
+            {takeover.label}
+          </Button>
+        )}
+        {scopedOperations.some((operation) =>
+          isBackgroundOperation(operation.actionId),
+        ) && (
+          <label className="workbench-inline-check">
+            <input
+              type="checkbox"
+              checked={showBackground}
+              onChange={(event) => setShowBackground(event.target.checked)}
+            />
+            {text.background}
+          </label>
+        )}
       </div>
-      {!visible.length && (
+      {takeover?.state && (
+        <p role="status" className="text-muted-foreground">
+          {takeover.state === "pending"
+            ? takeover.pendingLabel
+            : labels.takeoverDone}
+        </p>
+      )}
+      {visible.length === 0 && queries.length === 0 && (
         <p className="text-muted-foreground">{labels.emptyTasks}</p>
       )}
       <ol>
+        {queries.map((activity) => (
+          <li key={activity.activityId}>
+            <div>
+              <time dateTime={activity.observedAt}>
+                {new Date(activity.observedAt).toLocaleTimeString(undefined, {
+                  hourCycle: "h23",
+                })}
+              </time>
+              {" · "}
+              {activity.mcpClientId}
+              {" · "}
+              <span className="font-medium">
+                {operationName(activity.actionId, text)}
+              </span>
+              {activity.observations !== "1" && (
+                <span> ×{activity.observations}</span>
+              )}
+            </div>
+            {(canLocateQuery?.(activity) ??
+              !!activity.revealTarget.sessionId) && (
+              <Button
+                size="sm"
+                variant="ghost"
+                onClick={() => onLocateQuery(activity)}
+              >
+                {labels.locate}
+              </Button>
+            )}
+          </li>
+        ))}
         {visible.map((operation) => (
           <li key={operation.operationId}>
             <div>
@@ -81,7 +200,7 @@ export function ActivityPanel({
               <span>
                 {operation.actorId === currentActorId
                   ? text.thisClient
-                  : text.otherClient}
+                  : (clients.get(operation.actorId) ?? text.otherClient)}
               </span>
               {" · "}
               {describeTarget?.(operation) && (

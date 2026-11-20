@@ -15,7 +15,7 @@ async fn boundary_capture_includes_owner_tracked_and_settled_during_capture() {
         serde_json::json!({"bytesBase64":"AQIDBAU=","writeWaitMs":"100"}),
     );
     let preparation = service.prepare(&call).unwrap();
-    let admission = service.admission(false).unwrap();
+    let admission = service.admission(false, None).unwrap();
     let Acceptance::New(operation) = h
         .store
         .accept(&h.actor, &call, &canonical_digest(&call).unwrap())
@@ -722,7 +722,7 @@ async fn boundary_cannot_succeed_for_persistently_accepted_untracked_tx() {
         serde_json::json!({"bytesBase64":"AQIDBAU=","writeWaitMs":"100"}),
     );
     let preparation = service.prepare(&call).unwrap();
-    let admission = service.admission(false).unwrap();
+    let admission = service.admission(false, None).unwrap();
     let Acceptance::New(operation) = h
         .store
         .accept(&h.actor, &call, &canonical_digest(&call).unwrap())

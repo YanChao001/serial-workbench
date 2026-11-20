@@ -6,6 +6,49 @@ use specta::Type;
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivitySummary {
+    pub activity_id: Id,
+    pub actor_id: Id,
+    pub request_id: RequestId,
+    pub action_id: Id,
+    pub target: Target,
+    pub reveal_target: RevealTarget,
+    pub observations: U64,
+    pub observed_at: Timestamp,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "Id")]
+    #[specta(type=Id,optional)]
+    pub mcp_client_id: Option<Id>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "Id")]
+    #[specta(type=Id,optional)]
+    pub operation_id: Option<Id>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ActivitySnapshot {
+    pub items: Vec<ActivitySummary>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "BrowserTakeoverRequest")]
+    #[specta(type=BrowserTakeoverRequest,optional)]
+    pub pending_takeover: Option<BrowserTakeoverRequest>,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct OperationSummary {
     pub operation_id: Id,
     pub execution_host_id: Id,
