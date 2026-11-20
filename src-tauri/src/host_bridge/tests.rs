@@ -408,6 +408,10 @@ async fn native_view_reveal_guards_current_generation_even_when_the_document_sur
         .window_instance_at_generation("main", previous.generation)
         .await
         .unwrap();
+    let retired_view = bridge
+        .watch_view_generation_end("main", previous.generation)
+        .await
+        .unwrap();
 
     {
         let reveal = bridge
@@ -424,6 +428,7 @@ async fn native_view_reveal_guards_current_generation_even_when_the_document_sur
         drop(reveal);
         disconnect.await;
     }
+    assert!(retired_view.has_changed().is_err());
 
     let replacement = bridge.attach("main").await.unwrap();
     assert_ne!(replacement.generation, previous.generation);
@@ -438,6 +443,11 @@ async fn native_view_reveal_guards_current_generation_even_when_the_document_sur
         .lock_current_generation("main", previous.generation)
         .await;
     assert!(matches!(late_reveal, Err(error) if error.code == "EPOCH_MISMATCH"));
+    let current_view = bridge
+        .watch_view_generation_end("main", replacement.generation)
+        .await
+        .unwrap();
+    assert!(!current_view.has_changed().unwrap());
     bridge
         .lock_current_generation("main", replacement.generation)
         .await

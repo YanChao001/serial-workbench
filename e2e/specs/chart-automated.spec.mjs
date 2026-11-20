@@ -11,7 +11,7 @@ import {
   sendHex,
   showPluginDetails,
 } from "./reference-plugin.mjs";
-import { openVirtual } from "./workbench.mjs";
+import { openVirtual, restartOwnedHost } from "./workbench.mjs";
 
 const directory = process.env.STARTER_E2E_CHART_DIR;
 const source = () =>
@@ -57,7 +57,7 @@ async function acceptedSamples(view, until) {
 }
 
 describe("Signed chart on the real desktop", () => {
-  it("plots while sampling and reopens the same result after visiting the workbench", async () => {
+  it("reopens the live chart result and closes the view when its Host exits", async () => {
     const fixture = JSON.parse(
       readFileSync(join(directory, "chart-inputs.json"), "utf8"),
     );
@@ -85,14 +85,21 @@ describe("Signed chart on the real desktop", () => {
       operation: live.operation,
       values: [1.25, -2, 3.5],
     });
-    await nativeValue("host_close_node_view", { id: reopened });
+    const firstHost = JSON.parse(
+      readFileSync(join(directory, "host.json"), "utf8"),
+    );
+    const restart = await restartOwnedHost();
+    assert.equal(restart.previousPid, firstHost.pid);
+    assert.notEqual(restart.pid, firstHost.pid);
+    assert.equal(restart.hostId, firstHost.hostId);
+    assert.ok(BigInt(restart.instanceEpoch) > BigInt(firstHost.instanceEpoch));
     await waitForMatch(
       (log) => log.includes(`e2e_chart_window view=${reopened} event=closed`),
-      "The reopened chart was not destroyed",
+      "The reopened chart was not destroyed when its Host connection ended",
     );
     writeFileSync(
       join(directory, "chart-window.json"),
-      JSON.stringify({ first, reopened, live, retained }, null, 2),
+      JSON.stringify({ first, reopened, live, retained, restart }, null, 2),
       { flag: "wx" },
     );
   });

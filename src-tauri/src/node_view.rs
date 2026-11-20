@@ -168,6 +168,9 @@ pub(crate) async fn host_open_node_view(
         dark,
     });
     let label = Id::try_from(format!("node-view-{}", context.frame_id).as_str())?;
+    let retired = bridge
+        .watch_view_generation_end(&owner.label, generation)
+        .await?;
     let id = label.clone();
     let app = window.app_handle().clone();
     let handle = app.clone();
@@ -180,7 +183,7 @@ pub(crate) async fn host_open_node_view(
         if !send.is_closed() {
             let result = view_owner
                 .require_current(&owned_bridge, &owned_window)
-                .and_then(|()| prepare_view(&handle, &id, &view_owner, context));
+                .and_then(|()| prepare_view(&handle, &id, &view_owner, context, retired));
             let _ = send.send(result);
         }
     })
@@ -248,6 +251,7 @@ fn prepare_view(
     id: &Id,
     owner: &ViewOwner,
     context: Arc<ViewContext>,
+    mut retired: watch::Receiver<()>,
 ) -> HostResult<PendingView> {
     let window = tauri::window::WindowBuilder::new(app, id.as_str())
         .visible(false)
@@ -314,9 +318,26 @@ fn prepare_view(
         crate::e2e_zoom::observe(&window, renderer.controller());
     }
     let label = id.as_str().to_owned();
+    let app = app.clone();
+    let retired_label = label.clone();
+    let watch_connection = tauri::async_runtime::spawn(async move {
+        let _ = retired.changed().await;
+        let _ = app.run_on_main_thread(move || {
+            let window = VIEWS.with_borrow(|views| {
+                views.get(&retired_label).map(|view| {
+                    view.context.stop();
+                    view.window.clone()
+                })
+            });
+            if let Some(window) = window {
+                let _ = window.destroy();
+            }
+        });
+    });
     let stop = context.clone();
     window.on_window_event(move |event| {
         if matches!(event, tauri::WindowEvent::Destroyed) {
+            watch_connection.abort();
             stop.stop();
             VIEWS.with_borrow_mut(|views| views.remove(&label));
             #[cfg(feature = "e2e")]

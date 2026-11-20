@@ -179,7 +179,7 @@ struct BridgeState {
 }
 
 pub(crate) struct CurrentGeneration {
-    _state: tokio::sync::OwnedMutexGuard<BridgeState>,
+    state: tokio::sync::OwnedMutexGuard<BridgeState>,
 }
 
 #[derive(Default)]
@@ -241,6 +241,7 @@ impl WindowInstances {
 struct BridgeWindow {
     instance: u64,
     generation: u64,
+    view_generation_end: tokio::sync::watch::Sender<()>,
     client: std::sync::Arc<serial_workbench_client::HostClient>,
     control: std::sync::Arc<serial_workbench_client::HostClient>,
     raw: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<RawLink>>>>,
@@ -1652,6 +1653,7 @@ impl DesktopHostBridge {
             BridgeWindow {
                 instance,
                 generation,
+                view_generation_end: tokio::sync::watch::channel(()).0,
                 client,
                 control,
                 raw: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
@@ -1758,7 +1760,19 @@ impl DesktopHostBridge {
                 "Window Host connection changed",
             ));
         }
-        Ok(CurrentGeneration { _state: state })
+        Ok(CurrentGeneration { state })
+    }
+
+    pub(crate) async fn watch_view_generation_end(
+        &self,
+        window: &str,
+        generation: serial_workbench_core::U64,
+    ) -> HostResult<tokio::sync::watch::Receiver<()>> {
+        let current = self.lock_current_generation(window, generation).await?;
+        // 连接被移除时发送端随该代连接销毁，已打开的视图不再依赖页面轮询。
+        Ok(current.state.windows[window]
+            .view_generation_end
+            .subscribe())
     }
     #[cfg(test)]
     async fn subscribe(

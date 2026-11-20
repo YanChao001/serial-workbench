@@ -48,6 +48,28 @@ async function clickEnabled(selector) {
   await button.click();
   return button;
 }
+
+export async function restartOwnedHost() {
+  const directory = process.env.STARTER_E2E_DATA_ROOT;
+  const id = randomUUID();
+  const request = join(directory, "host-restart-request.json");
+  writeFileSync(request + ".tmp", JSON.stringify({ id, action: "restart" }));
+  renameSync(request + ".tmp", request);
+  let response;
+  await browser.waitUntil(() => {
+    try {
+      response = JSON.parse(
+        readFileSync(join(directory, "host-restart-response.json"), "utf8"),
+      );
+    } catch (error) {
+      if (error.code === "ENOENT" || error instanceof SyntaxError) return false;
+      throw error;
+    }
+    return response.id === id;
+  });
+  assert.equal(response.ok, true, response.error);
+  return response;
+}
 async function saveDrafts() {
   const button = await clickEnabled("button[aria-label='Save drafts']");
   await button.waitForEnabled({ reverse: true });
@@ -607,25 +629,7 @@ export function workbenchChecks() {
 
   it("reattaches and subscribes after the owned Host restarts without replaying the draft", async () => {
     const previous = await nativeValue("host_attachment");
-    const directory = process.env.STARTER_E2E_DATA_ROOT;
-    const id = randomUUID();
-    const request = join(directory, "host-restart-request.json");
-    writeFileSync(request + ".tmp", JSON.stringify({ id, action: "restart" }));
-    renameSync(request + ".tmp", request);
-    let response;
-    await browser.waitUntil(() => {
-      try {
-        response = JSON.parse(
-          readFileSync(join(directory, "host-restart-response.json"), "utf8"),
-        );
-      } catch (error) {
-        if (error.code === "ENOENT" || error instanceof SyntaxError)
-          return false;
-        throw error;
-      }
-      return response.id === id;
-    });
-    assert.equal(response.ok, true, response.error);
+    const response = await restartOwnedHost();
     assert.equal(response.hostId, previous.attachment.hostId);
     assert.ok(
       BigInt(response.instanceEpoch) >

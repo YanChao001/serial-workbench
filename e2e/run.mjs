@@ -194,7 +194,8 @@ try {
       JSON.stringify({ hostId, instanceEpoch, pid }, null, 2),
       { flag: "wx" },
     );
-  } else
+  }
+  if (!terminal)
     suiteControl = serveSuiteHostRestarts(dataRoot, async () => {
       const previous = suiteHost;
       await stopSuiteHost();
