@@ -46,11 +46,15 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
     );
     options.expected_host_executable =
         std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
+    options.lan_route = arguments.lan_route;
     if let Command::HostStop { request_id } = &arguments.command {
         return stop_existing_host(options, request_id.clone()).await;
     }
     let client = HostClient::connect_or_start(options.clone()).await?;
-    let client = if matches!(arguments.command, Command::UserControl { .. }) {
+    let client = if matches!(
+        arguments.command,
+        Command::UserControl { .. } | Command::Lan(_)
+    ) {
         drop(client);
         // 只有显式本地用户入口读取该凭据，clientKind 本身不授予权限。
         options.user_control_credential = Some(read_user_control_credential(profile)?);
@@ -59,6 +63,7 @@ async fn run(arguments: args::Args) -> HostResult<serde_json::Value> {
         client
     };
     let reply = match arguments.command {
+        Command::Lan(params) => client.request(RpcRequest::LanAccess(params)).await?,
         Command::Context { out } => {
             save_context(&out, client.attachment())?;
             return serde_json::to_value(client.attachment())

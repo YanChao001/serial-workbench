@@ -18,6 +18,7 @@ import {
 } from "@/lib/tauri";
 import { nativeErrorText } from "@/lib/native-error";
 import { BrowserAccessSettings } from "@/features/browser/browser-access-settings";
+import { LanAccessSettings } from "@/features/lan/lan-access-settings";
 async function loadDesktop() {
   const status = await getDesktopStatus();
   const autostart = status.autostartSupported
@@ -145,6 +146,7 @@ export function DesktopSettings() {
           </Button>
         </SettingRow>
         {native && <BrowserAccessSettings />}
+        {native && <LanAccessSettings />}
       </div>
     </section>
   );

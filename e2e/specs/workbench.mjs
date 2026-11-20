@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { openDeepLink, reloadDocument } from "../helpers.mjs";
+import { sessionScopes } from "../session-scopes.mjs";
 import {
   hostQuery,
   nativeValue,
@@ -132,9 +133,7 @@ async function closeVirtualWithoutReaderFault() {
   }
   const scopes = await hostQuery("state.scopes", "host");
   assert.equal(scopes.kind, "scopes");
-  const sessions = scopes.value.scopes.filter(
-    (scope) => scope.target.kind === "session",
-  );
+  const sessions = sessionScopes(scopes.value.scopes);
   assert.equal(sessions.length, 1, "The restarted owned Host has one session");
   const target = sessions[0].target;
   const beforeSession = await query("session.get", target);

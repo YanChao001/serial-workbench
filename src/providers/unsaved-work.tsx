@@ -425,9 +425,11 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
           <DialogHeader>
             <DialogTitle>{t("lifecycle.title")}</DialogTitle>
             <DialogDescription>
-              {t("lifecycle.description", {
-                count: presented.current?.count ?? 1,
-              })}
+              {request?.kind === "scope"
+                ? t("lifecycle.scopeDescription")
+                : t("lifecycle.description", {
+                    count: presented.current?.count ?? 1,
+                  })}
             </DialogDescription>
           </DialogHeader>
           <ul className="list-inside list-disc text-sm">

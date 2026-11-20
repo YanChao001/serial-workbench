@@ -1,7 +1,9 @@
 use super::{
     InstanceGuard,
     browser::{BrowserCommand, BrowserListener, manage_access},
-    connection::{ConnectionState, Sessions},
+    connection::{ConnectionState, LocalAccess, Sessions},
+    lan_access::{LanAccess, LanCommand},
+    lan_route::LanEndpoints,
     protocol::*,
 };
 use crate::{
@@ -22,8 +24,10 @@ use std::{
     sync::{Arc, Mutex},
     time::Duration,
 };
-use tokio::sync::{OwnedSemaphorePermit, Semaphore, mpsc};
-use tokio::task::JoinSet;
+use tokio::{
+    sync::{OwnedSemaphorePermit, Semaphore, mpsc},
+    task::JoinSet,
+};
 
 pub struct HandlerReply {
     pub wire_reply: RpcReply,
@@ -438,6 +442,13 @@ impl HostServer {
     pub fn identity(&self) -> &HostIdentity {
         &self.identity
     }
+    pub fn lan_endpoint(&mut self) -> HostResult<crate::lan::LanEndpoint> {
+        crate::lan::LanEndpoint::load(
+            self._guard.namespace(),
+            self.identity.clone(),
+            self.auth.clone(),
+        )
+    }
     pub fn write_bootstrap_capability(&self) -> HostResult<()> {
         local::write_bootstrap_capability(self.control.as_str().as_bytes())
     }
@@ -473,6 +484,14 @@ impl HostServer {
         handler: Arc<dyn RequestHandler>,
         shutdown: F,
     ) -> HostResult<()> {
+        self.serve(handler, shutdown).await
+    }
+
+    async fn serve<F: Future<Output = ()>>(
+        &mut self,
+        handler: Arc<dyn RequestHandler>,
+        shutdown: F,
+    ) -> HostResult<()> {
         tokio::pin!(shutdown);
         let stop_requested = handler.stop_requested();
         tokio::pin!(stop_requested);
@@ -483,6 +502,21 @@ impl HostServer {
             .map(|listener| listener.start(connection.clone()));
         let (browser_access, mut browser_requests) = mpsc::channel::<BrowserCommand>(8);
         let connections = Arc::new(Semaphore::new(128));
+        let lan_connections = Arc::new(Semaphore::new(32));
+        let mut lan_state = connection.clone();
+        lan_state.sessions = Sessions::default();
+        let (lan_commands, mut lan_requests) = mpsc::channel::<LanCommand>(8);
+        let endpoints = LanEndpoints::new(
+            self._guard.namespace().to_path_buf(),
+            self.identity.clone(),
+            self.auth.clone(),
+        );
+        let access = LocalAccess {
+            browser: browser_access,
+            lan: lan_commands,
+            endpoints: endpoints.clone(),
+        };
+        let mut lan = LanAccess::new(endpoints);
         let mut tasks = JoinSet::new();
         let mut failure = None;
         let mut stopping = false;
@@ -495,10 +529,12 @@ impl HostServer {
             tokio::select! {
                 _ = &mut shutdown, if !stopping => {
                     stopping = true;
+                    lan.stop();
                     settlement = Some(handler.shutdown());
                 },
                 _ = &mut stop_requested, if !stopping => {
                     stopping = true;
+                    lan.stop();
                     settlement = Some(handler.shutdown());
                 },
                 _ = async { tokio::time::sleep_until(retry_at.expect("retry deadline")).await }, if retry_at.is_some() => {
@@ -533,6 +569,31 @@ impl HostServer {
                     // The explicit local action was accepted and still settles if its waiter closed.
                     let _ = command.response.send(result);
                 },
+                Some(command) = lan_requests.recv() => {
+                    let result = if stopping {
+                        Err(HostError::new("HOST_STOPPING", "The Host is stopping"))
+                    } else {
+                        lan.manage(command.operator, command.params).await
+                    };
+                    let _ = command.reply.send(result);
+                },
+                peer = lan.accept(), if !stopping => {
+                    match peer {
+                        Ok((stream, admission, lifetime)) => {
+                            if let Ok(permit) = lan_connections.clone().try_acquire_owned() {
+                                let state = lan_state.clone();
+                                tasks.spawn(async move {
+                                    let _permit = permit;
+                                    let _ = state.serve_lan(&admission, stream, lifetime).await;
+                                });
+                            }
+                        }
+                        Err(_) => {
+                            eprintln!("LAN listener failed: LAN_CONNECTION_FAILED");
+                            lan.stop();
+                        }
+                    }
+                },
                 stream = async {
                     #[cfg(test)]
                     if let Some(error) = self.accept_error.take() { return Err(error); }
@@ -543,6 +604,7 @@ impl HostServer {
                         Err(error) => {
                             failure = Some(error);
                             stopping = true;
+                            lan.stop();
                             if settlement.is_none() {
                                 retry_at = None;
                                 settlement = Some(handler.shutdown());
@@ -556,12 +618,13 @@ impl HostServer {
                         continue;
                     };
                     let state = connection.clone();
-                    let browser = browser_access.clone();
-                    tasks.spawn(async move { let _permit = permit; let _ = state.serve(stream, browser).await; });
+                    let access = access.clone();
+                    tasks.spawn(async move { let _permit = permit; let _ = state.serve(stream, access).await; });
                 }
             }
         }
         drop(browser_requests);
+        drop(lan_requests);
         tasks.shutdown().await;
         if let Some(browser) = browser
             && let Err(error) = browser.finish().await

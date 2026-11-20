@@ -100,6 +100,7 @@ export const zhShell = {
   "navContext.commands": "快捷操作",
   "nativeError.clipboardWriteFailed": "复制失败，请重试。",
   "nativeError.busy": "操作繁忙，请稍后重试。",
+  "lifecycle.scopeDescription": "请先保存或放弃修改，再继续。",
   "lifecycle.title": "保存未完成的工作",
   "lifecycle.description":
     "先保存或处理未完成的工作，{count} 个窗口全部就绪后才会继续。",

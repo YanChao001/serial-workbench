@@ -25,6 +25,7 @@ import {
 export function ActivityPanel({
   operations,
   activities,
+  includeUnlistedOperations = false,
   mcpClient,
   canLocateQuery,
   onMcpChange,
@@ -41,6 +42,7 @@ export function ActivityPanel({
 }: {
   operations: readonly OperationSummary[];
   activities?: readonly ActivitySummary[];
+  includeUnlistedOperations?: boolean;
   mcpClient?: { actorId: string; name: string };
   canLocateQuery?: (activity: ActivitySummary) => boolean;
   onMcpChange: (value?: { actorId: string; name: string }) => void;
@@ -68,10 +70,13 @@ export function ActivityPanel({
     if (activity.mcpClientId)
       clients.set(activity.actorId, activity.mcpClientId);
   }
-  const queries = (activities ?? [])
+  const summarized = new Set(operations.map((item) => item.operationId));
+  const observed = (activities ?? [])
     .filter(
       (activity) =>
-        !activity.operationId && activity.actorId === mcpClient?.actorId,
+        activity.actorId === mcpClient?.actorId &&
+        (!activity.operationId ||
+          (includeUnlistedOperations && !summarized.has(activity.operationId))),
     )
     .reverse();
   const scopedOperations = mcpClient
@@ -152,11 +157,11 @@ export function ActivityPanel({
             : labels.takeoverDone}
         </p>
       )}
-      {visible.length === 0 && queries.length === 0 && (
+      {visible.length === 0 && observed.length === 0 && (
         <p className="text-muted-foreground">{labels.emptyTasks}</p>
       )}
       <ol>
-        {queries.map((activity) => (
+        {observed.map((activity) => (
           <li key={activity.activityId}>
             <div>
               <time dateTime={activity.observedAt}>

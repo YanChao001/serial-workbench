@@ -117,6 +117,8 @@ import type {
   IpcChannel,
   IpcMessage,
   JsonValue,
+  LanAccessParams,
+  LanAccessResult,
   Language,
   LayoutTemplate,
   Lease,
@@ -597,6 +599,12 @@ export declare function validateId(value: unknown): value is Id;
 export declare function validateIpcChannel(value: unknown): value is IpcChannel;
 export declare function validateIpcMessage(value: unknown): value is IpcMessage;
 export declare function validateJsonValue(value: unknown): value is JsonValue;
+export declare function validateLanAccessParams(
+  value: unknown,
+): value is LanAccessParams;
+export declare function validateLanAccessResult(
+  value: unknown,
+): value is LanAccessResult;
 export declare function validateLanguage(value: unknown): value is Language;
 export declare function validateLayoutTemplate(
   value: unknown,

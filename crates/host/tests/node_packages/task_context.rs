@@ -132,7 +132,7 @@ async fn verified_backend_host_task_child_cancellation_waits_for_cleanup_and_clo
         action,
         br#"
         export function register(context) {
-          let started=0,finished=0,late;
+          let started=0,finished=0,childAccepted=false,late;
           context.actions.register('example.terminal.compute',async (call,task)=>{
             if(call.params.value===0) {
               started++;
@@ -144,14 +144,17 @@ async fn verified_backend_host_task_child_cancellation_waits_for_cleanup_and_clo
                 task.signal.throwIfAborted();
               } finally {finished++;}
             }
-            if(call.params.value===-1) {
+            if(call.params.value===-1) return {started,finished,childAccepted};
+            if(call.params.value===-2) {
               let lateCode;
               try {await late({actionId:call.actionId,target:call.target,params:{value:0}});}
               catch(error){lateCode=error.code;}
               return {started,finished,lateCode};
             }
             late=task.actions.invokeChild;
-            return {child:await late({actionId:call.actionId,target:call.target,params:{value:0}})};
+            const child=await late({actionId:call.actionId,target:call.target,params:{value:0}});
+            childAccepted=true;
+            return {child};
           });return ()=>{};
         }
     "#,
@@ -183,8 +186,8 @@ async fn verified_backend_host_task_child_cancellation_waits_for_cleanup_and_clo
                 .await;
             let probe = fixture.wait(&fixture.client, &probe.operation_id).await;
             let result = fixture.result(&fixture.client, &probe).await;
-            if result["started"] == 1 {
-                assert_eq!(result["lateCode"], "OPERATION_NOT_RUNNING");
+            if result["started"] == 1 && result["childAccepted"] == true {
+                assert_eq!(result["finished"], 0);
                 break;
             }
             tokio::time::sleep(Duration::from_millis(20)).await;
@@ -243,7 +246,7 @@ async fn verified_backend_host_task_child_cancellation_waits_for_cleanup_and_clo
                 &fixture.client,
                 &fixture.target,
                 "example.terminal.compute",
-                json!({"value":-1}),
+                json!({"value":-2}),
             ),
         )
         .await;

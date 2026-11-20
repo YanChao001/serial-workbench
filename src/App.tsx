@@ -22,6 +22,8 @@ import { OperationFailureObserver } from "@/features/workbench/operation-failure
 import { BrowserPairingScreen } from "@/features/browser/browser-pairing-screen";
 import { BrowserTakeoverNotice } from "@/features/browser/browser-takeover-notice";
 import { useBrowserPairing } from "@/features/browser/use-browser-pairing";
+import { LanWorkbench } from "@/features/lan/lan-workbench";
+import { getLocalHostClient } from "@/lib/host-client";
 
 function AppEffects() {
   useExternalLinks();
@@ -34,7 +36,7 @@ export default function App() {
   return (
     <HostProvider
       enabled={browser.clientId ? browser.paired : undefined}
-      connect={browser.clientId ? browser.connect : undefined}
+      connect={browser.clientId ? browser.connect : getLocalHostClient}
     >
       <ClientDraftsProvider>
         <SettingsProvider>
@@ -76,7 +78,15 @@ export default function App() {
                                   key={path}
                                   index={index}
                                   path={index ? undefined : path}
-                                  element={<Page />}
+                                  element={
+                                    index ? (
+                                      <LanWorkbench>
+                                        <Page />
+                                      </LanWorkbench>
+                                    ) : (
+                                      <Page />
+                                    )
+                                  }
                                 />
                               ),
                             )}

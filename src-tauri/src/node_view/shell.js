@@ -22,7 +22,7 @@ function retire(code) {
   port?.close();
   frame.remove();
   const stop = document.createElement("script");
-  stop.src = "stop.js";
+  stop.src = `stop.js?${encodeURIComponent(code)}`;
   document.head.append(stop);
   status.hidden = false;
   status.textContent = zh ? `视图已停止（${code}）` : `View stopped (${code})`;

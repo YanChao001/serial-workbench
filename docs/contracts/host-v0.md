@@ -37,7 +37,7 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 
 一个数据配置仅允许一个持锁 Host。发现记录只是连接提示，客户端必须完成认证和握手；启动锁由 OS 排他机制管理，不因超时直接抢活锁。Host 健康但暂忙时返回 `HOST_BUSY`，客户端附着同一实例。关闭 GUI 不释放 Host 启动锁。
 
-本节区分传输方法（`method`）与业务目录 ID（`actionId`）。当前桌面、CLI 和 MCP 使用本机 IPC；浏览器和 LAN 适配属于后续阶段。方法与结果信封以 [Rust wire DTO](../../crates/core/src/wire.rs) 为准；能调用哪些业务及其参数，以当前身份的 `catalog.list` 为准。
+本节区分传输方法（`method`）与业务目录 ID（`actionId`）。桌面、CLI 和 MCP 通过本机 IPC 附着，配对浏览器通过 WebSocket 附着，CLI 和 MCP 可由本机 Host 接入 LAN 路由。方法与结果信封以 [Rust wire DTO](../../crates/core/src/wire.rs) 为准。业务与参数以当前身份的 `catalog.list` 为准。
 
 | RPC                  | 输入                                                                                                                                                     | 成功结果                                                                                                               | 特定错误                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
@@ -155,6 +155,8 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 `state.snapshot` 在线性化点 S 返回状态及 cursor C；增量订阅 `after=C` 只返回严格晚于 S 的提交。读取快照与开始订阅之间的事件从有界历史补齐，不能要求客户端依赖碰巧及时的监听注册。`Delta={cursor,previousCursor,revision,eventType,payload}`；同一 scope 内串行且 cursor 单调，previousCursor 是同订阅上一次投递位置。状态字段与该 scope 的 revision 在一次提交内更新。
 
+会话活动由 `state.scopes` 发布为 `session-activity:<sessionId>`，目标为所属 Host 的精确 `sessionId` 与 `sessionEpoch`。快照和 `activity.changed` 增量均采用 `ActivitySnapshot`，最多 32 条命名 MCP 的该会话活动，保留原活动编号及观察次数。只发布当前会话的摘要。调用按 `metadata.read` 验权，权限收回终止活动订阅；重开换代清空活动和历史。
+
 客户端忽略 cursor 已处理的重复事件，遇到 previousCursor 不匹配停止应用并重新取快照；不可把后到的旧 epoch 消息混入当前状态。历史不足返回 CURSOR_EXPIRED，details 提供 `scopeId,oldestCursor,snapshotRequired:true` 和已授权的 `captureRef?`；快照重新建立状态，录制补读用于原始数据完整性。原始流的真实缺口使用 Gap，见 [事件模型](./stream-and-operations-v0.md#原始事件与独立-reader)。
 
 每个 subscriptionId 独立队列与限额。投递后再撤权的历史记录不能撤回；服务端立即停止后续敏感输出，清空未投递队列并结束订阅为 PERMISSION_DENIED。重建订阅与引用读取均复核授权。多资源快照只有显式同 scope 的提交才原子，不提供跨 Host 全局顺序。
@@ -177,6 +179,8 @@ Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe
 
 通用 `action.query` 与专用 RPC 按同一[通道路由](../../crates/core/src/dispatch.rs)分流：例如 `stream.read`、`file.read`、`capture.tail` 和 `replay.read` 走 raw；`subscription.close` 可走任一通道，但必须匹配订阅归属。其余按映射走 control，专用 method 必须匹配信封的 actionId。连接关闭时释放所属订阅，包括晚到的建立结果；已持久接纳的任务仍由 Host 负责。
 
+`lan.access` 仅接受本地用户控制的 Control 连接。状态返回监听、对端和共享目标。启用监听收到具体 IPv4 或 IPv6 地址和端口，绑定失败时保留原监听。配对和共享以同一次授权事务记录，解除配对按 Host ID 与已确认公钥校验。停用监听后，原配对保留，已接纳操作沿用 Host 的结算规则。[LAN DTO](../../crates/core/src/lan.rs)
+
 ## 权限、客户端与 LAN
 
 授权由用户控制入口建立，作用域包含执行 Host、workspace/资源、actor、有效期及具体能力。初始外部客户端仅有 `metadata.read`（元数据/限量脱敏摘要）；`content.read`（原始流、日志/文件正文）、`device.modify`（已登记设备操作）、`code.execute`（任意 JS/TS/外部命令）、`plugins.manage` 各自授予；工作区/设置修改用目录独立权限 `workspace.modify`/`settings.modify`。普通设备授权不能运行自由代码，可信插件的 OS 执行信任也不替代代理调用者的 API 权限。
@@ -198,6 +202,8 @@ Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe
 `browser.takeover` 的 `request` 仅接受已配对的浏览器控制连接。浏览器需拥有指定串口会话代次的 `device.modify`，并提交「活动」中所选 MCP 的 `actorId`。每个 Host 同时保留一条确认请求，由 `host.activity.pendingTakeover` 提供确认编号、客户端名称和目标。仅本机用户控制连接可用 `decide` 提交该编号及决定。拒绝、确认前断开或撤权、等待超过两分钟均结束请求。批准时 Host 再核对浏览器与目标的授权，由 `session.takeover` 接纳并返回同一操作回执。浏览器根据该操作的终态显示结果。
 
 LAN 入口显式启用，配对绑定 Host 密钥身份并使用认证加密链路，发现广播不建立信任。B 唯一持口；A 转发 actorId/requestId 与执行 B 的 target/epoch，B 依据受验证的委托链和自身共享权限取交集。时序敏感工作固定 B，通用派生可在 A；Operation 的 executionHostId 与依赖版本创建后不迁移。文件先经受控传输在 B 建立 ObjectRef，禁止把 A 路径当 B 路径。A GUI 关闭不等于 A Host 失联；交互租约与独立任务分别按 [租约合同](./stream-and-operations-v0.md#会话与租约) 结算。
+
+本机 IPC 的 `authenticateLan` 在收到 A 的已验证 Host 问候后提交客户端凭据、客户端类型与 `route:{hostId,address}`。A 先返回普通的 `authenticated`，客户端保存新签发的本机凭据。A 核对本机 `lan.connect` 授权及已配对的 B，在同一请求编号下返回 `lanRouted` 中的 B Host ID、实例代次和 B 分配的客户端 ID。之后该控制连接中继 B 的正常附着及请求帧。Raw 仍向 A 提交原本机附着令牌，A 从对应控制连接建立同一 B 实例上的 Raw，确认后回复 `rawAttached`。撤销 A 的路由权限或在一端解除配对会关闭对应通道。原操作由 B 按其已有接纳规则结算。
 
 ## Host 验收向量
 

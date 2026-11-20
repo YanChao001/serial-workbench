@@ -10,6 +10,7 @@ import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { startMcpFixture } from "./mcp-fixture.mjs";
+import { sessionScopes } from "./session-scopes.mjs";
 
 const [hostPath, cliPath, assetsPath, outputPath, mcpPath] =
   process.argv.slice(2);
@@ -183,9 +184,7 @@ try {
     cli("query", action, "--target-json", target, "--params-json", params);
   async function liveSession() {
     const scopes = await query("state.scopes", hostTargetPath);
-    const sessions = scopes.result.value.scopes.filter(
-      ({ target }) => target.kind === "session",
-    );
+    const sessions = sessionScopes(scopes.result.value.scopes);
     assert.equal(
       sessions.length,
       1,

@@ -64,6 +64,19 @@ pub enum IpcMessage {
         client_id: Id,
         credential: ContextToken,
     },
+    AuthenticateLan {
+        client_id: Id,
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "crate::identity::non_null_option"
+        )]
+        #[schemars(with = "ContextToken")]
+        #[specta(type=ContextToken, optional)]
+        credential: Option<ContextToken>,
+        route: LanRoute,
+        client_kind: ClientKind,
+    },
     BrowserPair {
         client_id: Id,
         pairing_code: ContextToken,
@@ -79,6 +92,11 @@ pub enum IpcMessage {
         #[specta(type=ContextToken, optional)]
         credential: Option<ContextToken>,
         raw_attach_token: ContextToken,
+    },
+    LanRouted {
+        host_id: Id,
+        instance_epoch: U64,
+        client_id: Id,
     },
     RawAttach {
         token: ContextToken,

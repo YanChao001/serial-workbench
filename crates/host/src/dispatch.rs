@@ -366,6 +366,20 @@ impl Host {
     pub fn projections(&self) -> &ProjectionStore {
         &self.inner.projections
     }
+    #[cfg(test)]
+    pub(crate) async fn with_native_test_clock(
+        store: Store,
+        auth: AuthService,
+        clock: Arc<dyn Clock>,
+    ) -> HostResult<Self> {
+        Self::initialize(store, auth, clock, DeviceSource::Native, None, None).await
+    }
+    #[cfg(test)]
+    pub(crate) fn hold_next_session_dispatch(
+        &self,
+    ) -> (oneshot::Receiver<()>, oneshot::Sender<()>) {
+        self.inner.sessions.hold_next_dispatch()
+    }
     pub fn devices(&self) -> &DeviceService {
         &self.inner.devices
     }
@@ -465,6 +479,14 @@ impl Host {
                     authorization = Some(auth.snapshot(&actor)?);
                 }
                 if let Some(authorization) = &authorization {
+                    if matches!(
+                        action,
+                        BuiltinAction::StateScopes | BuiltinAction::DeviceList
+                    ) && authorization.is_lan_peer()
+                    {
+                        // 此目录由 list_scopes 逐项验权，配对身份只看到 B 明确共享的范围。
+                        continue;
+                    }
                     authorization.require(permission, &query.target)?;
                 }
             }
@@ -608,6 +630,9 @@ impl Host {
         })
     }
     fn record_activity(&self, activity: ActivitySummary) -> HostResult<()> {
+        let shared_target = (activity.mcp_client_id.is_some()
+            && activity.target.kind.as_str() == "session")
+            .then(|| activity.target.clone());
         let mut activities = self.inner.activities.lock().map_err(|_| busy())?;
         if let Some((existing, _)) = activities.records.iter_mut().find(|(entry, _)| {
             activity.operation_id.is_none()
@@ -635,7 +660,40 @@ impl Host {
             activities.records.push_back((activity, bytes));
             activities.reserved += bytes;
         }
-        self.publish_activity(&activities)
+        self.publish_activity(&activities)?;
+        if let Some(target) = shared_target {
+            self.publish_session_activity(&activities, &target)?;
+        }
+        Ok(())
+    }
+    fn publish_session_activity(
+        &self,
+        activities: &ActivityLog,
+        target: &Target,
+    ) -> HostResult<()> {
+        let mut items: Vec<_> = activities
+            .records
+            .iter()
+            .rev()
+            .map(|(item, _)| item)
+            .filter(|item| item.mcp_client_id.is_some() && &item.target == target)
+            .take(32)
+            .collect();
+        items.reverse();
+        let state = object(serde_json::json!({"items":items}))?;
+        let result = self.inner.projections.commit_for_current_target(
+            &crate::state::session_activity_scope(&target.id)?,
+            target,
+            id("activity.changed"),
+            state.clone(),
+            state,
+        );
+        match result {
+            Ok(_) => Ok(()),
+            // 迟到查询或操作观察不能附着到同一串口的新会话代次。
+            Err(error) if matches!(error.code.as_str(), "NOT_FOUND" | "EPOCH_MISMATCH") => Ok(()),
+            Err(error) => Err(error),
+        }
     }
     fn publish_activity(&self, activities: &ActivityLog) -> HostResult<()> {
         // 这里只发布活动元数据，params、正文、令牌及错误详情不进入共享投影。
@@ -1162,42 +1220,49 @@ impl Host {
             }
             BuiltinAction::DeviceList => {
                 let _: EmptyParams = decode(&query.params)?;
-                if let Some(runtime) = &self.inner.device_runtime {
-                    return Ok(QueryOutput {
-                        result: QueryResult::Devices(runtime.list()?),
-                        raw_output_lease: None,
-                    });
-                }
-                Ok(QueryResult::Devices(DeviceList {
-                    devices: vec![DeviceDescriptor {
-                        device_id: id("virtual:echo"),
-                        host_id: query.target.host_id.clone(),
-                        system_name: "virtual:echo".into(),
-                        description: Some("Virtual echo".into()),
-                        manufacturer: None,
-                        driver: None,
-                        fingerprint: DeviceFingerprint {
-                            transport: DeviceTransportKind::Virtual,
-                            vid: None,
-                            pid: None,
-                            serial_number: None,
-                            topology_path: None,
-                            evidence: IdentityEvidence::Unreliable,
-                        },
-                        capabilities: TransportCapabilities {
-                            semantics: TransportSemantics::Stream,
-                            configuration: true,
-                            dtr: true,
-                            rts: true,
-                            finite_break: true,
-                            queue_status: true,
-                            drain: true,
-                            purge_rx: true,
-                            purge_tx: true,
-                        },
-                    }],
-                    stale: false,
-                }))
+                let listed = if let Some(runtime) = &self.inner.device_runtime {
+                    runtime.list()?
+                } else {
+                    DeviceList {
+                        devices: vec![DeviceDescriptor {
+                            device_id: id("virtual:echo"),
+                            host_id: query.target.host_id.clone(),
+                            system_name: "virtual:echo".into(),
+                            description: Some("Virtual echo".into()),
+                            manufacturer: None,
+                            driver: None,
+                            fingerprint: DeviceFingerprint {
+                                transport: DeviceTransportKind::Virtual,
+                                vid: None,
+                                pid: None,
+                                serial_number: None,
+                                topology_path: None,
+                                evidence: IdentityEvidence::Unreliable,
+                            },
+                            capabilities: TransportCapabilities {
+                                semantics: TransportSemantics::Stream,
+                                configuration: true,
+                                dtr: true,
+                                rts: true,
+                                finite_break: true,
+                                queue_status: true,
+                                drain: true,
+                                purge_rx: true,
+                                purge_tx: true,
+                            },
+                        }],
+                        stale: false,
+                    }
+                };
+                let auth = self.inner.auth.clone();
+                let device_service = self.inner.devices.clone();
+                let actor = actor.clone();
+                let host_id = query.target.host_id.clone();
+                let listed = blocking(move || {
+                    filter_lan_devices(&auth, &actor, &device_service, host_id, listed)
+                })
+                .await?;
+                Ok(QueryResult::Devices(listed))
             }
             BuiltinAction::SessionGet => {
                 let _: EmptyParams = decode(&query.params)?;
@@ -1712,15 +1777,17 @@ impl Host {
                 let accept_files = host.inner.files.clone();
                 let acceptance = blocking(move || {
                     let authority = accept_auth.snapshot(&accept_actor)?;
-                    if device_action && accept_call.target.kind.as_str() == "session" {
-                        let permission = if action == BuiltinAction::SessionTakeover {
-                            "auth.manage"
+                    let stamp = if device_action && accept_call.target.kind.as_str() == "session" {
+                        if action == BuiltinAction::SessionTakeover {
+                            authority.require("auth.manage", &accept_call.target)?;
+                            authority.capture_grants()
                         } else {
-                            "device.modify"
-                        };
-                        authority.require(permission, &accept_call.target)?;
-                    }
-                    let stamp = authority.capture_grants();
+                            authority.require("device.modify", &accept_call.target)?;
+                            authority.capture_session_write_grants(&accept_call.target)
+                        }
+                    } else {
+                        authority.capture_grants()
+                    };
                     let acceptance = store.accept_with_source(
                         &accept_actor,
                         &accept_call,
@@ -2372,6 +2439,72 @@ impl RequestHandler for Host {
         }
     }
 }
+fn filter_lan_devices(
+    auth: &AuthService,
+    actor: &AuthenticatedActor,
+    service: &DeviceService,
+    host_id: Id,
+    mut listed: DeviceList,
+) -> HostResult<DeviceList> {
+    let authorization = auth.snapshot(actor)?;
+    if !authorization.is_lan_peer() {
+        return Ok(listed);
+    }
+    let mut visible_sessions = std::collections::HashSet::new();
+    for session in service.sessions()? {
+        let snapshot = session.snapshot()?;
+        if authorization
+            .require(
+                "metadata.read",
+                &Target {
+                    host_id: host_id.clone(),
+                    kind: ResourceKind::try_from("session")?,
+                    id: snapshot.session_id.clone(),
+                    session_id: Some(snapshot.session_id),
+                    session_epoch: Some(snapshot.session_epoch),
+                },
+            )
+            .is_ok()
+        {
+            visible_sessions.insert(snapshot.device_id);
+        }
+    }
+    let device_kind = ResourceKind::try_from("device")?;
+    listed.devices.retain_mut(|device| {
+        let explicitly_shared = authorization
+            .require(
+                "metadata.read",
+                &Target {
+                    host_id: device.host_id.clone(),
+                    kind: device_kind.clone(),
+                    id: device.device_id.clone(),
+                    session_id: None,
+                    session_epoch: None,
+                },
+            )
+            .is_ok();
+        if explicitly_shared {
+            return true;
+        }
+        if !visible_sessions.contains(&device.device_id) {
+            return false;
+        }
+        device.description = None;
+        device.manufacturer = None;
+        device.driver = None;
+        device.fingerprint = DeviceFingerprint {
+            transport: device.fingerprint.transport,
+            evidence: IdentityEvidence::Unreliable,
+            vid: None,
+            pid: None,
+            serial_number: None,
+            topology_path: None,
+        };
+        true
+    });
+    Ok(listed)
+}
+
 fn require_reference_target(target: &Target, reference: &ObjectRef) -> HostResult<()> {
     if target.host_id != reference.host_id
         || target.kind != reference.kind

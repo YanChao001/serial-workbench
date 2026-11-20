@@ -19,10 +19,16 @@ Commands:
   operation cancel <id> [--request-id <uuid>]
   authorize --params-json <file> [--request-id <uuid>]
   revoke --params-json <file> [--request-id <uuid>]
+  lan status
+  lan enable <ip:port>
+  lan disable
+  lan --params-json <file>
   host stop [--request-id <uuid>]
 
 All results are JSON. Authorize/revoke accept the Core AuthorizeParams/RevokeParams JSON.
-Only authorize, revoke, and host stop use local user-control credentials.
+Authorize, revoke, LAN management, and host stop use local user-control credentials.
+LAN configuration files accept the Core LanAccessParams JSON.
+For a paired Host, add --lan-peer <hostId> and --lan-address <ip:port> to ordinary commands.
 Host stop waits for the attached Host instance to end; another instance may start.
 When the profile lock is free, host stop reports alreadyStopped without starting a Host.
 Invoke returns the accepted Operation without waiting or retrying; use operation get.
@@ -36,6 +42,7 @@ Use --help to show this help.";
 
 pub struct Args {
     pub profile: Option<PathBuf>,
+    pub lan_route: Option<LanRoute>,
     pub command: Command,
 }
 pub enum Command {
@@ -69,6 +76,7 @@ pub enum Command {
         params: JsonObject,
         request_id: RequestId,
     },
+    Lan(LanAccessParams),
     HostStop {
         request_id: RequestId,
     },
@@ -114,6 +122,8 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
             Some(key) if key.starts_with('-') => {
                 if ![
                     "--profile",
+                    "--lan-peer",
+                    "--lan-address",
                     "--out",
                     "--target-json",
                     "--params-json",
@@ -144,6 +154,18 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
         }
     }
     let profile = options.remove("--profile").map(PathBuf::from);
+    let lan_route = match (
+        text(&mut options, "--lan-peer")?,
+        text(&mut options, "--lan-address")?,
+    ) {
+        (Some(peer), Some(address)) => Some(LanRoute::parse(&peer, address)?),
+        (None, None) => None,
+        _ => {
+            return Err(invalid(
+                "--lan-peer and --lan-address are required together",
+            ));
+        }
+    };
     let command = match words
         .iter()
         .map(String::as_str)
@@ -246,6 +268,24 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
                 request_id: request_id(&mut options)?,
             }
         }
+        ["lan", "status"] => {
+            allowed(&options, &[])?;
+            Command::Lan(LanAccessParams::Status {})
+        }
+        ["lan", "enable", address] => {
+            allowed(&options, &[])?;
+            Command::Lan(LanAccessParams::Enable {
+                address: (*address).into(),
+            })
+        }
+        ["lan", "disable"] => {
+            allowed(&options, &[])?;
+            Command::Lan(LanAccessParams::Disable {})
+        }
+        ["lan"] => {
+            allowed(&options, &["--params-json"])?;
+            Command::Lan(file(&mut options, "--params-json")?)
+        }
         ["host", "stop"] => {
             allowed(&options, &["--request-id"])?;
             Command::HostStop {
@@ -254,7 +294,21 @@ pub fn parse(arguments: impl IntoIterator<Item = OsString>) -> HostResult<Option
         }
         _ => return Err(invalid("Invalid command or missing argument; use --help")),
     };
-    Ok(Some(Args { profile, command }))
+    if lan_route.is_some()
+        && matches!(
+            command,
+            Command::UserControl { .. } | Command::Lan(_) | Command::HostStop { .. }
+        )
+    {
+        return Err(invalid(
+            "Local user control commands do not accept a LAN route",
+        ));
+    }
+    Ok(Some(Args {
+        profile,
+        lan_route,
+        command,
+    }))
 }
 fn allowed(options: &BTreeMap<String, OsString>, allowed: &[&str]) -> HostResult<()> {
     if options.keys().any(|key| !allowed.contains(&key.as_str())) {

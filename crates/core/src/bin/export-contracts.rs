@@ -54,6 +54,16 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         ..Fixtures::default()
     };
     node_package_fixtures(&mut f)?;
+    f.add::<RpcRequest>(
+        "local-lan-enable",
+        json!({"method":"lan.access","params":{"kind":"enable","address":"[::1]:9240"}}),
+        true,
+    )?;
+    f.add::<RpcRequest>(
+        "local-lan-unknown-control-field",
+        json!({"method":"lan.access","params":{"kind":"disable","confirmed":true}}),
+        false,
+    )?;
     let capture_ref = json!({"hostId":"host","kind":"capture","id":"capture"});
     for (name, receive, send, valid) in [
         ("terminal-gbk", json!("gbk"), json!("gbk"), true),
@@ -1439,6 +1449,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         IpcChannel,
         WireFrame,
         IpcMessage,
+        LanAccessParams,
+        LanAccessResult,
         ActionCheckParams,
         ActionCheckResult,
         AuthorizeParams,

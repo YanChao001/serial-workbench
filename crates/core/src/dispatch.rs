@@ -164,6 +164,7 @@ impl RpcRequest {
             Self::Attach(_)
             | Self::BrowserAccess(_)
             | Self::BrowserTakeover(_)
+            | Self::LanAccess(_)
             | Self::ClientRegister(_)
             | Self::ClientUnregister(_)
             | Self::ClientReceipt(_) => return Ok(RequestChannel::Control),

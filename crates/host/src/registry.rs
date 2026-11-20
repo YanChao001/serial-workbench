@@ -48,7 +48,7 @@ impl Registry {
         let (version, extensions) = self.runtime.snapshot()?;
         let authorization = self.auth.snapshot(actor)?;
         let grant_revision = authorization.grant_revision();
-        let stamp = authorization.capture_grants();
+        let stamp = authorization.capture_catalog_grants();
         if params
             .catalog_version
             .is_some_and(|expected| expected != version)
@@ -129,6 +129,15 @@ impl Registry {
         for spec in catalog {
             let mut visible = true;
             let action = BuiltinAction::find(spec.action_id.as_str()).ok();
+            if matches!(
+                action,
+                Some(BuiltinAction::StateScopes | BuiltinAction::DeviceList)
+            ) && authorization.is_lan_peer()
+            {
+                // 配对身份调用此目录时，逐项查看已共享的投影。
+                items.push(spec.clone());
+                continue;
+            }
             for permission in &spec.permissions {
                 if matches!(
                     action,
@@ -174,7 +183,7 @@ impl Registry {
     }
     pub(crate) fn visibility(&self, actor: &AuthenticatedActor) -> HostResult<CatalogVisibility> {
         let authorization = self.auth.snapshot(actor)?;
-        let stamp = authorization.capture_grants();
+        let stamp = authorization.capture_catalog_grants();
         let (version, extensions) = self.runtime.snapshot()?;
         let items = self.visible_actions(&authorization, &extensions)?;
         if let Some(stamp) = &stamp {

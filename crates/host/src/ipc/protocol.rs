@@ -105,6 +105,16 @@ pub(super) fn validate_request(
                 ))
             };
         }
+        RpcRequest::LanAccess(_) => {
+            return if context.actor.is_user_control() {
+                Ok(())
+            } else {
+                Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "LAN management requires local user control",
+                ))
+            };
+        }
         RpcRequest::ClientRegister(_)
         | RpcRequest::ClientUnregister(_)
         | RpcRequest::ClientReceipt(_) => {
@@ -168,6 +178,12 @@ pub(super) fn validate_request(
     target.validate()
 }
 pub(super) fn is_urgent(request: &RpcRequest) -> bool {
+    if matches!(
+        request,
+        RpcRequest::LanAccess(LanAccessParams::Disable {} | LanAccessParams::Unpair { .. })
+    ) {
+        return true;
+    }
     let action = match request {
         RpcRequest::BrowserAccess(BrowserAccessParams::Revoke {}) => return true,
         RpcRequest::BrowserTakeover(BrowserTakeoverParams::Decide { .. }) => return true,

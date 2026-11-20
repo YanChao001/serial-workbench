@@ -4,13 +4,14 @@ mod client_effects;
 mod connect_device;
 pub(crate) mod document_intents;
 pub(crate) use document_intents::document_request_id as local_request_id;
+pub(crate) mod lan;
 pub(crate) mod node_intents;
 mod pending_frames;
 mod platform_effects;
 mod read_requests;
 pub(crate) mod session_takeover;
 use pending_frames::PendingFrames;
-use serial_workbench_core::{HostError, HostResult, Id};
+use serial_workbench_core::{HostError, HostResult, Id, LanRoute, U64};
 use std::collections::{HashMap, VecDeque};
 
 #[derive(
@@ -157,6 +158,25 @@ mod tests;
 pub(crate) struct DesktopAttachment {
     pub(crate) attachment: serial_workbench_core::AttachResult,
     pub(crate) generation: serial_workbench_core::U64,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    #[specta(type = LanRoute, optional)]
+    pub(crate) lan_route: Option<LanRoute>,
+}
+
+#[derive(Clone)]
+struct SelectedLanRoute {
+    route: LanRoute,
+    actor_id: Id,
+}
+
+enum AttachSelection {
+    Current,
+    Local,
+    Switch {
+        generation: Option<U64>,
+        route: Option<LanRoute>,
+        authorize_desktop: bool,
+    },
 }
 
 type CatalogNotifier = std::sync::Arc<
@@ -177,7 +197,59 @@ pub(crate) struct DesktopHostBridge {
 struct BridgeState {
     next_generation: u64,
     windows: HashMap<String, BridgeWindow>,
-    ledgers: HashMap<String, (u64, std::sync::Arc<std::sync::Mutex<DeliveryLedger>>)>,
+    lan_windows: HashMap<String, BridgeWindow>,
+    ledgers: WindowLedgers,
+    lan_ledgers: WindowLedgers,
+}
+
+type WindowLedgers = HashMap<String, (u64, std::sync::Arc<std::sync::Mutex<DeliveryLedger>>)>;
+
+impl BridgeState {
+    fn windows_for_route(&self, lan: bool) -> &HashMap<String, BridgeWindow> {
+        if lan {
+            &self.lan_windows
+        } else {
+            &self.windows
+        }
+    }
+
+    fn windows_for_route_mut(&mut self, lan: bool) -> &mut HashMap<String, BridgeWindow> {
+        if lan {
+            &mut self.lan_windows
+        } else {
+            &mut self.windows
+        }
+    }
+
+    fn ledgers_for_route_mut(&mut self, lan: bool) -> &mut WindowLedgers {
+        if lan {
+            &mut self.lan_ledgers
+        } else {
+            &mut self.ledgers
+        }
+    }
+
+    fn connection(&self, window: &str, generation: u64) -> Option<&BridgeWindow> {
+        [&self.windows, &self.lan_windows]
+            .into_iter()
+            .find_map(|connections| {
+                connections
+                    .get(window)
+                    .filter(|connection| connection.generation == generation)
+            })
+    }
+
+    fn remove_generation(&mut self, window: &str, generation: u64) -> Option<BridgeWindow> {
+        let lan = self.connection(window, generation)?.lan_route.is_some();
+        self.windows_for_route_mut(lan).remove(window)
+    }
+
+    fn generation_in_slot(&self, window: &str, instance: u64, lan: bool) -> Option<u64> {
+        self.windows_for_route(lan)
+            .get(window)
+            .filter(|connection| connection.instance == instance)
+            .map(|connection| connection.generation)
+    }
 }
 
 pub(crate) struct CurrentGeneration {
@@ -190,6 +262,7 @@ struct WindowInstances {
     active: HashMap<String, u64>,
     identities: HashMap<String, usize>,
     closed: HashMap<String, tokio::sync::watch::Sender<bool>>,
+    lan_routes: HashMap<String, SelectedLanRoute>,
 }
 impl WindowInstances {
     fn new() -> Self {
@@ -204,12 +277,14 @@ impl WindowInstances {
         self.closed.insert(window.to_owned(), closed);
         self.active.insert(window.to_owned(), self.next);
         self.identities.remove(window);
+        self.lan_routes.remove(window);
         self.next
     }
     fn destroy(&mut self, window: &str, instance: u64) {
         if self.current(window, instance) {
             self.active.remove(window);
             self.identities.remove(window);
+            self.lan_routes.remove(window);
             if let Some(closed) = self.closed.remove(window) {
                 closed.send_replace(true);
             }
@@ -246,6 +321,7 @@ struct BridgeWindow {
     view_generation_end: tokio::sync::watch::Sender<()>,
     client: std::sync::Arc<serial_workbench_client::HostClient>,
     control: std::sync::Arc<serial_workbench_client::HostClient>,
+    lan_route: Option<LanRoute>,
     raw: std::sync::Arc<tokio::sync::Mutex<Option<std::sync::Arc<RawLink>>>>,
     subscriptions: std::sync::Arc<std::sync::Mutex<Subscriptions>>,
     pump: tokio::task::JoinHandle<()>,
@@ -293,6 +369,14 @@ impl Drop for BridgeWindow {
 }
 
 impl BridgeWindow {
+    fn attachment(&self) -> DesktopAttachment {
+        DesktopAttachment {
+            attachment: self.client.attachment().clone(),
+            generation: self.generation.into(),
+            lan_route: self.lan_route.clone(),
+        }
+    }
+
     async fn stop(mut self) {
         self.pump.abort();
         let _ = (&mut self.pump).await;
@@ -354,6 +438,9 @@ impl DesktopHostBridge {
                 .ok_or_else(|| {
                     HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
                 })?;
+            if connected.lan_route.is_some() {
+                return Err(local_control_only());
+            }
             if let Some(registration) = &connected.effects_registration {
                 return Ok(registration.clone());
             }
@@ -470,15 +557,12 @@ impl DesktopHostBridge {
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let state = self.inner.lock().await;
         let connected = state
-            .windows
-            .get(window)
+            .connection(window, generation.get())
             .filter(|connected| {
-                connected.generation == generation.get()
-                    && self
-                        .instances
-                        .lock()
-                        .expect("window instances")
-                        .current(window, connected.instance)
+                self.instances
+                    .lock()
+                    .expect("window instances")
+                    .current(window, connected.instance)
             })
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?;
         if !self
@@ -557,28 +641,30 @@ impl DesktopHostBridge {
         Some(previous)
     }
     async fn retire_instance(&self, label: &str, instance: u64) {
-        let connected = {
+        let (local, lan) = {
             let mut state = self.inner.lock().await;
-            if state
-                .ledgers
-                .get(label)
-                .is_some_and(|(owner, _)| *owner == instance)
-            {
-                state.ledgers.remove(label);
+            for lan in [false, true] {
+                let ledgers = state.ledgers_for_route_mut(lan);
+                if ledgers
+                    .get(label)
+                    .is_some_and(|(owner, _)| *owner == instance)
+                {
+                    ledgers.remove(label);
+                }
             }
-            if state
-                .windows
-                .get(label)
-                .is_some_and(|connected| connected.instance == instance)
-            {
-                state.windows.remove(label)
-            } else {
-                None
-            }
+            let local = state.generation_in_slot(label, instance, false);
+            let lan = state.generation_in_slot(label, instance, true);
+            (
+                local.and_then(|generation| state.remove_generation(label, generation)),
+                lan.and_then(|generation| state.remove_generation(label, generation)),
+            )
         };
-        if let Some(connected) = connected {
-            connected.stop().await;
+        async fn stop(connection: Option<BridgeWindow>) {
+            if let Some(connection) = connection {
+                connection.stop().await;
+            }
         }
+        tokio::join!(stop(local), stop(lan));
     }
     fn bind_instance_listener(
         &self,
@@ -795,15 +881,12 @@ impl DesktopHostBridge {
         let (slot, generation) = {
             let state = self.inner.lock().await;
             let connected = state
-                .windows
-                .get(window)
+                .connection(window, requested_generation.get())
                 .filter(|connected| {
-                    connected.generation == requested_generation.get()
-                        && self
-                            .instances
-                            .lock()
-                            .expect("window instances")
-                            .current(window, connected.instance)
+                    self.instances
+                        .lock()
+                        .expect("window instances")
+                        .current(window, connected.instance)
                 })
                 .ok_or_else(|| {
                     HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
@@ -927,11 +1010,9 @@ impl DesktopHostBridge {
         let slot = {
             let state = self.inner.lock().await;
             state
-                .windows
-                .get(window)
+                .connection(window, generation.get())
                 .filter(|connected| {
-                    connected.generation == generation.get()
-                        && connected.instance == instance
+                    connected.instance == instance
                         && self
                             .instances
                             .lock()
@@ -1007,14 +1088,15 @@ impl DesktopHostBridge {
         let raw = self.raw_link_at_generation(window, generation).await?;
         let result = raw.connection.request(request).await;
         let state = self.inner.lock().await;
-        if !state.windows.get(window).is_some_and(|connected| {
-            connected.generation == generation.get()
-                && self
-                    .instances
+        if !state
+            .connection(window, generation.get())
+            .is_some_and(|connected| {
+                self.instances
                     .lock()
                     .expect("window instances")
                     .current(window, connected.instance)
-        }) {
+            })
+        {
             return Err(HostError::new(
                 "EPOCH_MISMATCH",
                 "Window Host connection changed; the request may have completed",
@@ -1032,15 +1114,12 @@ impl DesktopHostBridge {
         let (client, raw, ledger) = {
             let state = self.inner.lock().await;
             let connected = state
-                .windows
-                .get(window)
+                .connection(window, generation.get())
                 .filter(|connected| {
-                    connected.generation == generation.get()
-                        && self
-                            .instances
-                            .lock()
-                            .expect("window instances")
-                            .current(window, connected.instance)
+                    self.instances
+                        .lock()
+                        .expect("window instances")
+                        .current(window, connected.instance)
                 })
                 .ok_or_else(|| {
                     HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
@@ -1048,7 +1127,12 @@ impl DesktopHostBridge {
             (
                 connected.client.clone(),
                 connected.raw.clone(),
-                state.ledgers.get(window).expect("window ledger").1.clone(),
+                connected
+                    .subscriptions
+                    .lock()
+                    .expect("subscription lock")
+                    .ledger
+                    .clone(),
             )
         };
         let raw = {
@@ -1160,22 +1244,33 @@ impl DesktopHostBridge {
     ) -> HostResult<()> {
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
-        let ledger = self
-            .inner
-            .lock()
-            .await
-            .ledgers
-            .get(window)
-            .map(|(_, ledger)| ledger.clone())
-            .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?;
-        ledger.lock().expect("delivery ledger").acknowledge(
-            &DeliveryKey {
-                generation: generation.get(),
-                subscription_id,
-                stream,
-            },
-            ordinal.get(),
-        )
+        let state = self.inner.lock().await;
+        let key = DeliveryKey {
+            generation: generation.get(),
+            subscription_id,
+            stream,
+        };
+        let mut has_ledger = false;
+        for ledgers in [&state.ledgers, &state.lan_ledgers] {
+            if let Some((_, ledger)) = ledgers.get(window) {
+                has_ledger = true;
+                let mut ledger = ledger.lock().expect("delivery ledger");
+                if ledger.entries.contains_key(&key) {
+                    return ledger.acknowledge(&key, ordinal.get());
+                }
+            }
+        }
+        if has_ledger {
+            Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Unknown delivery stream",
+            ))
+        } else {
+            Err(HostError::new(
+                "EPOCH_MISMATCH",
+                "Window Host connection changed",
+            ))
+        }
     }
     pub(crate) async fn control_attachment_at_generation(
         &self,
@@ -1186,17 +1281,17 @@ impl DesktopHostBridge {
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let state = self.inner.lock().await;
         let connected = state
-            .windows
-            .get(window)
+            .connection(window, generation.get())
             .filter(|connected| {
-                connected.generation == generation.get()
-                    && self
-                        .instances
-                        .lock()
-                        .expect("window instances")
-                        .current(window, connected.instance)
+                self.instances
+                    .lock()
+                    .expect("window instances")
+                    .current(window, connected.instance)
             })
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?;
+        if connected.lan_route.is_some() {
+            return Err(local_control_only());
+        }
         Ok(connected.control.attachment().clone())
     }
     pub(crate) async fn control_request_at_generation(
@@ -1205,35 +1300,38 @@ impl DesktopHostBridge {
         generation: serial_workbench_core::U64,
         request: serial_workbench_core::RpcRequest,
     ) -> HostResult<serial_workbench_core::RpcReply> {
+        let manage_lan = matches!(&request, serial_workbench_core::RpcRequest::LanAccess(_));
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let client = {
             let state = self.inner.lock().await;
-            state
-                .windows
-                .get(window)
+            let connected = state
+                .connection(window, generation.get())
                 .filter(|connected| {
-                    connected.generation == generation.get()
-                        && self
-                            .instances
-                            .lock()
-                            .expect("window instances")
-                            .current(window, connected.instance)
+                    self.instances
+                        .lock()
+                        .expect("window instances")
+                        .current(window, connected.instance)
                 })
-                .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?
-                .control
-                .clone()
+                .ok_or_else(|| {
+                    HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
+                })?;
+            if connected.lan_route.is_some() && !manage_lan {
+                return Err(local_control_only());
+            }
+            connected.control.clone()
         };
         let result = client.request(request).await;
         let state = self.inner.lock().await;
-        if !state.windows.get(window).is_some_and(|connected| {
-            connected.generation == generation.get()
-                && self
-                    .instances
+        if !state
+            .connection(window, generation.get())
+            .is_some_and(|connected| {
+                self.instances
                     .lock()
                     .expect("window instances")
                     .current(window, connected.instance)
-        }) {
+            })
+        {
             return Err(HostError::new(
                 "EPOCH_MISMATCH",
                 "Window Host connection changed; the request may have completed",
@@ -1272,10 +1370,7 @@ impl DesktopHostBridge {
                     "Window Host connection changed; attach explicitly",
                 )
             })?;
-        Ok(DesktopAttachment {
-            attachment: connected.client.attachment().clone(),
-            generation: connected.generation.into(),
-        })
+        Ok(connected.attachment())
     }
     pub(crate) async fn attachment_at_generation(
         &self,
@@ -1286,15 +1381,12 @@ impl DesktopHostBridge {
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let state = self.inner.lock().await;
         let connected = state
-            .windows
-            .get(window)
+            .connection(window, generation.get())
             .filter(|connected| {
-                connected.generation == generation.get()
-                    && self
-                        .instances
-                        .lock()
-                        .expect("window instances")
-                        .current(window, connected.instance)
+                self.instances
+                    .lock()
+                    .expect("window instances")
+                    .current(window, connected.instance)
             })
             .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?;
         Ok(connected.client.attachment().clone())
@@ -1356,15 +1448,12 @@ impl DesktopHostBridge {
         {
             let state = self.inner.lock().await;
             Ok(state
-                .windows
-                .get(window)
+                .connection(window, generation.get())
                 .filter(|connected| {
-                    connected.generation == generation.get()
-                        && self
-                            .instances
-                            .lock()
-                            .expect("window instances")
-                            .current(window, connected.instance)
+                    self.instances
+                        .lock()
+                        .expect("window instances")
+                        .current(window, connected.instance)
                 })
                 .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window Host connection changed"))?
                 .client
@@ -1427,32 +1516,100 @@ impl DesktopHostBridge {
         after_attach: F,
         first_start: G,
     ) -> HostResult<DesktopAttachment> {
+        self.attach_selected(
+            window,
+            instance,
+            AttachSelection::Current,
+            after_attach,
+            first_start,
+        )
+        .await
+    }
+
+    async fn attach_selected<
+        F: std::future::Future<Output = ()>,
+        G: std::future::Future<Output = HostResult<()>>,
+    >(
+        &self,
+        window: &str,
+        instance: u64,
+        selection: AttachSelection,
+        after_attach: F,
+        first_start: G,
+    ) -> HostResult<DesktopAttachment> {
         let _initialization = self.initialization.lock().await;
-        let mut closed = self
-            .instances
-            .lock()
-            .expect("window instances")
-            .subscribe_closed(window, instance)
-            .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
-        let retired = {
+        let (mut closed, previous_route) = {
+            let instances = self.instances.lock().expect("window instances");
+            let closed = instances
+                .subscribe_closed(window, instance)
+                .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Window instance closed"))?;
+            (closed, instances.lan_routes.get(window).cloned())
+        };
+        let was_lan = previous_route.is_some();
+        let local_only = matches!(selection, AttachSelection::Local);
+        let authorize_desktop = matches!(
+            selection,
+            AttachSelection::Switch {
+                authorize_desktop: true,
+                ..
+            }
+        );
+        let (route, expected_actor, switched_generation) = match selection {
+            AttachSelection::Current => match previous_route {
+                Some(selected) => (Some(selected.route), Some(selected.actor_id), None),
+                None => (None, None, None),
+            },
+            AttachSelection::Local => (None, None, None),
+            AttachSelection::Switch {
+                generation, route, ..
+            } => (route, None, Some(generation.map(U64::get))),
+        };
+        let is_lan = route.is_some();
+        let (reuse, retired) = {
             let mut state = self.inner.lock().await;
-            if let Some(connected) = state.windows.get(window) {
-                if connected.instance == instance {
-                    return Ok(DesktopAttachment {
-                        attachment: connected.client.attachment().clone(),
-                        generation: connected.generation.into(),
-                    });
+            let mut instances = self.instances.lock().expect("window instances");
+            if !instances.current(window, instance) {
+                return Err(HostError::new("EPOCH_MISMATCH", "Window instance closed"));
+            }
+            if let Some(expected) = switched_generation
+                && state.generation_in_slot(window, instance, was_lan) != expected
+            {
+                return Err(HostError::new(
+                    "EPOCH_MISMATCH",
+                    "Window Host connection changed",
+                ));
+            }
+            let connected = state.windows_for_route(is_lan).get(window);
+            match connected {
+                Some(connection) if connection.instance != instance => {
+                    (None, state.windows_for_route_mut(is_lan).remove(window))
                 }
-                state.ledgers.remove(window);
-                state.windows.remove(window)
-            } else {
-                None
+                Some(connection) if connection.lan_route == route => {
+                    let attachment = connection.attachment();
+                    let retired = if switched_generation.is_some() && was_lan && !is_lan {
+                        instances.lan_routes.remove(window);
+                        state.lan_ledgers.remove(window);
+                        state.lan_windows.remove(window)
+                    } else {
+                        None
+                    };
+                    (Some(attachment), retired)
+                }
+                _ => (None, None),
             }
         };
         if let Some(retired) = retired {
             retired.stop().await;
         }
+        if let Some(attachment) = reuse {
+            return Ok(attachment);
+        }
         let connect = async {
+            if let Some(route) = &route
+                && authorize_desktop
+            {
+                self.authorize_paired_lan(window, instance, route).await?;
+            }
             let mut options = serial_workbench_client::ConnectOptions::new(
                 self.profile.clone(),
                 Id::try_from("desktop").expect("desktop identity"),
@@ -1484,18 +1641,26 @@ impl DesktopHostBridge {
             let control = std::sync::Arc::new(
                 serial_workbench_client::HostClient::connect_or_start(control_options).await?,
             );
-            let client = match prestarted {
-                Some(client) => client,
-                None => std::sync::Arc::new(
+            options.lan_route.clone_from(&route);
+            let client = match (prestarted, &route) {
+                (Some(client), None) => client,
+                _ => std::sync::Arc::new(
                     serial_workbench_client::HostClient::connect_or_start(options).await?,
                 ),
             };
-            if control.attachment().host_id != client.attachment().host_id
-                || control.attachment().instance_epoch != client.attachment().instance_epoch
-            {
+            if control.local_instance() != client.local_instance() {
                 return Err(HostError::new(
                     "EPOCH_MISMATCH",
                     "Host changed while attaching",
+                ));
+            }
+            if expected_actor
+                .as_ref()
+                .is_some_and(|actor| actor != &client.attachment().actor_id)
+            {
+                return Err(HostError::new(
+                    "ACTOR_MISMATCH",
+                    "The paired actor changed while reconnecting",
                 ));
             }
             after_attach.await;
@@ -1505,166 +1670,189 @@ impl DesktopHostBridge {
             result = connect => result?,
             _ = closed.changed() => return Err(HostError::new("EPOCH_MISMATCH", "Window instance closed")),
         };
-        let mut state = self.inner.lock().await;
-        if !self
-            .instances
-            .lock()
-            .expect("window instances")
-            .current(window, instance)
-        {
-            return Err(HostError::new("EPOCH_MISMATCH", "Window instance closed"));
-        }
-        state.next_generation = state.next_generation.checked_add(1).ok_or_else(|| {
-            HostError::new("COUNTER_EXHAUSTED", "Connection generation exhausted")
-        })?;
-        let generation = state.next_generation;
-        let attachment = DesktopAttachment {
-            attachment: client.attachment().clone(),
-            generation: generation.into(),
-        };
-        if state
-            .ledgers
-            .get(window)
-            .is_some_and(|(owner, _)| *owner != instance)
-        {
-            state.ledgers.remove(window);
-        }
-        let ledger = state
-            .ledgers
-            .entry(window.to_owned())
-            .or_insert_with(|| {
-                (
-                    instance,
-                    std::sync::Arc::new(std::sync::Mutex::new(DeliveryLedger::new(
-                        self.delivery_limits.0,
-                        self.delivery_limits.1,
-                    ))),
-                )
-            })
-            .1
-            .clone();
-        let subscriptions = std::sync::Arc::new(std::sync::Mutex::new(Subscriptions {
-            active: HashMap::new(),
-            setups: Default::default(),
-            ledger,
-            failed: false,
-        }));
-        let events = subscriptions.clone();
-        let source = client.clone();
-        let owner = std::sync::Arc::downgrade(&self.inner);
-        let owner_label = window.to_owned();
-        let instances = self.instances.clone();
-        let notify_catalog = self.catalog_notifier.clone();
-        let pump = tokio::spawn(async move {
-            let stopped = loop {
-                let frame = match source.next_event().await {
-                    Ok(Some(frame)) => frame,
-                    Ok(None) => break "event_stream_ended",
-                    Err(_) => break "event_stream_failed",
-                };
-                let id = match &frame.body {
-                    serial_workbench_core::IpcMessage::Delta {
-                        subscription_id, ..
-                    }
-                    | serial_workbench_core::IpcMessage::SubscriptionEnded {
-                        subscription_id,
-                        ..
-                    } => subscription_id,
-                    serial_workbench_core::IpcMessage::CatalogChanged {
-                        catalog_version, ..
-                    } if frame.channel == serial_workbench_core::IpcChannel::Control => {
-                        let current = instances
-                            .lock()
-                            .expect("window instances")
-                            .current(&owner_label, instance);
-                        if current && let Some(notify) = &notify_catalog {
-                            notify(&owner_label, generation.into(), *catalog_version);
+        let (attachment, retired) = {
+            let mut state = self.inner.lock().await;
+            let mut instances = self.instances.lock().expect("window instances");
+            if !instances.current(window, instance) {
+                return Err(HostError::new("EPOCH_MISMATCH", "Window instance closed"));
+            }
+            if let Some(expected) = switched_generation
+                && state.generation_in_slot(window, instance, was_lan) != expected
+            {
+                return Err(HostError::new(
+                    "EPOCH_MISMATCH",
+                    "Window Host connection changed",
+                ));
+            }
+            state.next_generation = state.next_generation.checked_add(1).ok_or_else(|| {
+                HostError::new("COUNTER_EXHAUSTED", "Connection generation exhausted")
+            })?;
+            let generation = state.next_generation;
+            let attachment = DesktopAttachment {
+                attachment: client.attachment().clone(),
+                generation: generation.into(),
+                lan_route: route.clone(),
+            };
+            let ledgers = state.ledgers_for_route_mut(is_lan);
+            if (is_lan && switched_generation.is_some())
+                || ledgers
+                    .get(window)
+                    .is_some_and(|(owner, _)| *owner != instance)
+            {
+                ledgers.remove(window);
+            }
+            let ledger = ledgers
+                .entry(window.to_owned())
+                .or_insert_with(|| {
+                    (
+                        instance,
+                        std::sync::Arc::new(std::sync::Mutex::new(DeliveryLedger::new(
+                            self.delivery_limits.0,
+                            self.delivery_limits.1,
+                        ))),
+                    )
+                })
+                .1
+                .clone();
+            let subscriptions = std::sync::Arc::new(std::sync::Mutex::new(Subscriptions {
+                active: HashMap::new(),
+                setups: Default::default(),
+                ledger,
+                failed: false,
+            }));
+            let events = subscriptions.clone();
+            let source = client.clone();
+            let owner = std::sync::Arc::downgrade(&self.inner);
+            let owner_label = window.to_owned();
+            let event_instances = self.instances.clone();
+            let notify_catalog = self.catalog_notifier.clone();
+            let pump = tokio::spawn(async move {
+                let stopped = loop {
+                    let frame = match source.next_event().await {
+                        Ok(Some(frame)) => frame,
+                        Ok(None) => break "event_stream_ended",
+                        Err(_) => break "event_stream_failed",
+                    };
+                    let id = match &frame.body {
+                        serial_workbench_core::IpcMessage::Delta {
+                            subscription_id, ..
                         }
-                        continue;
+                        | serial_workbench_core::IpcMessage::SubscriptionEnded {
+                            subscription_id,
+                            ..
+                        } => subscription_id,
+                        serial_workbench_core::IpcMessage::CatalogChanged {
+                            catalog_version,
+                            ..
+                        } if frame.channel == serial_workbench_core::IpcChannel::Control => {
+                            let current = event_instances
+                                .lock()
+                                .expect("window instances")
+                                .current(&owner_label, instance);
+                            if current && let Some(notify) = &notify_catalog {
+                                notify(&owner_label, generation.into(), *catalog_version);
+                            }
+                            continue;
+                        }
+                        _ => continue,
+                    };
+                    let id = id.clone();
+                    {
+                        let subscriptions = events.lock().expect("subscription lock");
+                        if !subscriptions.active.contains_key(&id) {
+                            if subscriptions
+                                .setups
+                                .lock()
+                                .expect("pending subscription frames")
+                                .push(frame)
+                                .is_err()
+                            {
+                                break "pending_frames_overflow";
+                            }
+                            continue;
+                        }
                     }
-                    _ => continue,
+                    let close = tokio::select! {
+                        result = deliver_state_when_ready(&events, generation, &frame) => result,
+                        _ = source.wait_for_disconnect() => break "event_stream_failed",
+                    };
+                    let failed = events.lock().expect("subscription lock").failed;
+                    if let Some(query) = close {
+                        let client = source.clone();
+                        tokio::spawn(async move {
+                            let _ = close_subscription(client, query, id).await;
+                        });
+                    }
+                    if failed {
+                        break "state_delivery_failed";
+                    }
                 };
-                let id = id.clone();
+                // 仅记录固定原因，不包含目标、请求、状态正文或凭据。
+                log::warn!("Native Host state pump stopped: reason={stopped}");
                 {
-                    let subscriptions = events.lock().expect("subscription lock");
-                    if !subscriptions.active.contains_key(&id) {
-                        if subscriptions
-                            .setups
-                            .lock()
-                            .expect("pending subscription frames")
-                            .push(frame)
-                            .is_err()
-                        {
-                            break "pending_frames_overflow";
-                        }
-                        continue;
+                    let mut subscriptions = events.lock().expect("subscription lock");
+                    let pending: Vec<_> = subscriptions
+                        .active
+                        .iter()
+                        .map(|(id, item)| (id.clone(), item.query.request_id.clone()))
+                        .collect();
+                    for (id, request_id) in pending {
+                        let frame = serial_workbench_core::WireFrame {
+                            request_id,
+                            channel: serial_workbench_core::IpcChannel::State,
+                            body: serial_workbench_core::IpcMessage::SubscriptionEnded {
+                                subscription_id: id,
+                                error: HostError::new("UNAUTHENTICATED", "Host connection closed"),
+                            },
+                        };
+                        let _ = deliver_state(&mut subscriptions, generation, frame);
                     }
                 }
-                let close = tokio::select! {
-                    result = deliver_state_when_ready(&events, generation, &frame) => result,
-                    _ = source.wait_for_disconnect() => break "event_stream_failed",
-                };
-                let failed = events.lock().expect("subscription lock").failed;
-                if let Some(query) = close {
-                    let client = source.clone();
+                let _ = source.close().await;
+                if let Some(owner) = owner.upgrade() {
                     tokio::spawn(async move {
-                        let _ = close_subscription(client, query, id).await;
+                        let mut state = owner.lock().await;
+                        state.remove_generation(&owner_label, generation);
                     });
                 }
-                if failed {
-                    break "state_delivery_failed";
-                }
+            });
+            let retired = state.windows_for_route_mut(is_lan).insert(
+                window.to_owned(),
+                BridgeWindow {
+                    instance,
+                    generation,
+                    view_generation_end: tokio::sync::watch::channel(()).0,
+                    client,
+                    control,
+                    lan_route: route.clone(),
+                    raw: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
+                    subscriptions,
+                    pump,
+                    effects_pump: None,
+                    effects_registration: None,
+                },
+            );
+            let retired = if let Some(route) = route {
+                instances.lan_routes.insert(
+                    window.to_owned(),
+                    SelectedLanRoute {
+                        route,
+                        actor_id: attachment.attachment.actor_id.clone(),
+                    },
+                );
+                retired
+            } else if !local_only && was_lan {
+                instances.lan_routes.remove(window);
+                state.lan_ledgers.remove(window);
+                state.lan_windows.remove(window)
+            } else {
+                retired
             };
-            // 仅记录固定原因，不包含目标、请求、状态正文或凭据。
-            log::warn!("Native Host state pump stopped: reason={stopped}");
-            {
-                let mut subscriptions = events.lock().expect("subscription lock");
-                let pending: Vec<_> = subscriptions
-                    .active
-                    .iter()
-                    .map(|(id, item)| (id.clone(), item.query.request_id.clone()))
-                    .collect();
-                for (id, request_id) in pending {
-                    let frame = serial_workbench_core::WireFrame {
-                        request_id,
-                        channel: serial_workbench_core::IpcChannel::State,
-                        body: serial_workbench_core::IpcMessage::SubscriptionEnded {
-                            subscription_id: id,
-                            error: HostError::new("UNAUTHENTICATED", "Host connection closed"),
-                        },
-                    };
-                    let _ = deliver_state(&mut subscriptions, generation, frame);
-                }
-            }
-            let _ = source.close().await;
-            if let Some(owner) = owner.upgrade() {
-                tokio::spawn(async move {
-                    let mut state = owner.lock().await;
-                    if state
-                        .windows
-                        .get(&owner_label)
-                        .is_some_and(|connected| connected.generation == generation)
-                    {
-                        state.windows.remove(&owner_label);
-                    }
-                });
-            }
-        });
-        state.windows.insert(
-            window.to_owned(),
-            BridgeWindow {
-                instance,
-                generation,
-                view_generation_end: tokio::sync::watch::channel(()).0,
-                client,
-                control,
-                raw: std::sync::Arc::new(tokio::sync::Mutex::new(None)),
-                subscriptions,
-                pump,
-                effects_pump: None,
-                effects_registration: None,
-            },
-        );
+            (attachment, retired)
+        };
+        if let Some(retired) = retired {
+            retired.stop().await;
+        }
         Ok(attachment)
     }
     #[cfg(test)]
@@ -1708,6 +1896,7 @@ impl DesktopHostBridge {
             RpcRequest::Attach(_)
                 | RpcRequest::BrowserAccess(_)
                 | RpcRequest::BrowserTakeover(_)
+                | RpcRequest::LanAccess(_)
                 | RpcRequest::ClientRegister(_)
                 | RpcRequest::ClientUnregister(_)
                 | RpcRequest::ClientReceipt(_)
@@ -1751,14 +1940,15 @@ impl DesktopHostBridge {
         crate::commands::require_host_window(window)
             .map_err(|_| HostError::new("PERMISSION_DENIED", "Window cannot access Host"))?;
         let state = self.inner.clone().lock_owned().await;
-        if !state.windows.get(window).is_some_and(|connected| {
-            connected.generation == generation.get()
-                && self
-                    .instances
+        if !state
+            .connection(window, generation.get())
+            .is_some_and(|connected| {
+                self.instances
                     .lock()
                     .expect("window instances")
                     .current(window, connected.instance)
-        }) {
+            })
+        {
             return Err(HostError::new(
                 "EPOCH_MISMATCH",
                 "Window Host connection changed",
@@ -1774,7 +1964,10 @@ impl DesktopHostBridge {
     ) -> HostResult<tokio::sync::watch::Receiver<()>> {
         let current = self.lock_current_generation(window, generation).await?;
         // 连接被移除时发送端随该代连接销毁，已打开的视图不再依赖页面轮询。
-        Ok(current.state.windows[window]
+        Ok(current
+            .state
+            .connection(window, generation.get())
+            .expect("locked generation")
             .view_generation_end
             .subscribe())
     }
@@ -1850,12 +2043,8 @@ impl DesktopHostBridge {
         let (client, subscriptions, generation) = {
             let state = self.inner.lock().await;
             let connected = state
-                .windows
-                .get(window)
-                .filter(|connected| {
-                    connected.instance == instance
-                        && connected.generation == requested_generation.get()
-                })
+                .connection(window, requested_generation.get())
+                .filter(|connected| connected.instance == instance)
                 .ok_or_else(|| {
                     HostError::new("EPOCH_MISMATCH", "Window Host connection changed")
                 })?;
@@ -1887,9 +2076,9 @@ impl DesktopHostBridge {
         };
         let alive = {
             let state = self.inner.lock().await;
-            state.windows.get(window).is_some_and(|connected| {
-                connected.instance == instance && connected.generation == generation
-            })
+            state
+                .connection(window, generation)
+                .is_some_and(|connected| connected.instance == instance)
         };
         let instance_current = self
             .instances
@@ -1969,15 +2158,12 @@ impl DesktopHostBridge {
         let (client, subscriptions, generation) = {
             let state = self.inner.lock().await;
             let connected = state
-                .windows
-                .get(window)
+                .connection(window, requested_generation.get())
                 .filter(|connected| {
-                    connected.generation == requested_generation.get()
-                        && self
-                            .instances
-                            .lock()
-                            .expect("window instances")
-                            .current(window, connected.instance)
+                    self.instances
+                        .lock()
+                        .expect("window instances")
+                        .current(window, connected.instance)
                 })
                 .ok_or_else(|| HostError::new("UNAUTHENTICATED", "Window disconnected"))?;
             (
@@ -2320,23 +2506,62 @@ pub(crate) async fn host_attachment(
     window: tauri::WebviewWindow,
     state: tauri::State<'_, DesktopHostBridge>,
 ) -> HostResult<DesktopAttachment> {
-    use platform_effects::PlatformEffectExecutor;
-    use tauri::Manager;
     let instance = state.bind_window(&window)?;
     let attachment = state
         .attach_guarded(window.label(), instance, async {}, async { Ok(()) })
         .await?;
+    register_effects(&window, &state, &attachment).await?;
+    Ok(attachment)
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn host_local_attachment(
+    window: tauri::WebviewWindow,
+    state: tauri::State<'_, DesktopHostBridge>,
+) -> HostResult<DesktopAttachment> {
+    let instance = state.bind_window(&window)?;
+    let attachment = state
+        .attach_selected(
+            window.label(),
+            instance,
+            AttachSelection::Local,
+            async {},
+            async { Ok(()) },
+        )
+        .await?;
+    register_effects(&window, &state, &attachment).await?;
+    Ok(attachment)
+}
+
+async fn register_effects(
+    window: &tauri::WebviewWindow,
+    bridge: &DesktopHostBridge,
+    attachment: &DesktopAttachment,
+) -> HostResult<()> {
+    use platform_effects::PlatformEffectExecutor;
+    use tauri::Manager;
+    if attachment.lan_route.is_some() {
+        return Ok(());
+    }
     let executor = std::sync::Arc::new(platform_effects::PlatformEffects::new(
         window.app_handle().clone(),
         window.clone(),
         attachment.generation,
     ));
     if !executor.capabilities().is_empty() {
-        state
+        bridge
             .start_effects(window.label(), attachment.generation, executor)
             .await?;
     }
-    Ok(attachment)
+    Ok(())
+}
+
+fn local_control_only() -> HostError {
+    HostError::new(
+        "PERMISSION_DENIED",
+        "This operation is available on the local Host",
+    )
 }
 
 #[tauri::command]

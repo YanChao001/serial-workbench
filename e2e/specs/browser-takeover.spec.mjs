@@ -8,6 +8,7 @@ import { $, browser } from "@wdio/globals";
 import { Key } from "webdriverio";
 import { language, navigate, ready } from "../helpers.mjs";
 import { startMcpFixture } from "../mcp-fixture.mjs";
+import { sessionScopes } from "../session-scopes.mjs";
 import { hostQuery } from "../settings.mjs";
 import { byText, button, click, dialogButton } from "./reference-plugin.mjs";
 import { openVirtual } from "./workbench.mjs";
@@ -67,9 +68,7 @@ async function grantWrites(clientId, target) {
 
 async function liveSession() {
   const scopes = await hostQuery("state.scopes", "host");
-  const active = scopes.value.scopes.filter(
-    ({ target }) => target.kind === "session",
-  );
+  const active = sessionScopes(scopes.value.scopes);
   assert.equal(active.length, 1);
   return active[0].target;
 }

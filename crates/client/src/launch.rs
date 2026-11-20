@@ -36,7 +36,12 @@ impl HostClient {
     /// Attach first, or start the adjacent Host after the existing OS instance lock proves idle.
     /// Readiness requires the normal authenticated attach. No business request is replayed.
     pub async fn connect_or_start(options: ConnectOptions) -> HostResult<Self> {
-        let deadline = Instant::now() + STARTUP_LIMIT;
+        let routing = if options.lan_route.is_some() {
+            serial_workbench_core::LAN_ATTACH_TIMEOUT
+        } else {
+            Duration::ZERO
+        };
+        let deadline = Instant::now() + STARTUP_LIMIT + routing;
         let last_code = match timeout_at(deadline, Self::connect_for_startup(options.clone())).await
         {
             Ok(Ok(client)) => return Ok(client),

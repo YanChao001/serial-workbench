@@ -9,7 +9,9 @@ const phaseDirectory =
       ? process.env.STARTER_E2E_CHART_DIR
       : phase === "browser-takeover"
         ? process.env.STARTER_E2E_BROWSER_DIR
-        : null;
+        : phase === "lan-owner" || phase === "lan-caller"
+          ? process.env.STARTER_E2E_LAN_DIR
+          : null;
 
 if (
   !process.env.STARTER_E2E_BINARY ||
@@ -25,6 +27,8 @@ if (
     "terminal-automated",
     "chart-automated",
     "browser-takeover",
+    "lan-owner",
+    "lan-caller",
   ].includes(phase) ||
   (phaseDirectory !== null && !isAbsolute(phaseDirectory ?? ""))
 )
