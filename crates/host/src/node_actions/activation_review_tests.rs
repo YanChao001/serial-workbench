@@ -162,7 +162,25 @@ async fn native_node_activation_review_total_deadline_bounds_register_and_then_c
         let events = markers.path().join("events.txt");
         let entered = markers.path().join("registered.pid");
         let source = format!(
-            "import {{appendFileSync,readFileSync,writeFileSync}} from 'node:fs';const path={};const event=s=>appendFileSync(path,s+'\\n');export async function register(c){{event('register');if(readFileSync(path,'utf8').split('\\n').filter(s=>s==='register').length===1)throw Error('Initial registration fails');writeFileSync({},String(process.pid));await new Promise(r=>setTimeout(r,{}));let calls=0;c.actions.register('example.terminal.compute',q=>{{event('call');return {{value:q.params.value,calls:++calls}};}});return ()=>event('dispose');}}",
+            r#"import {{appendFileSync,readFileSync,renameSync,writeFileSync}} from 'node:fs';
+const path={};
+const entered={};
+const event=s=>appendFileSync(path,s+'\n');
+export async function register(c){{
+  event('register');
+  if(readFileSync(path,'utf8').split('\n').filter(s=>s==='register').length===1)
+    throw Error('Initial registration fails');
+  // Rust observes the marker as soon as it exists. Publish the entire PID at once.
+  writeFileSync(entered+'.tmp',String(process.pid));
+  renameSync(entered+'.tmp',entered);
+  await new Promise(r=>setTimeout(r,{}));
+  let calls=0;
+  c.actions.register('example.terminal.compute',q=>{{
+    event('call');
+    return {{value:q.params.value,calls:++calls}};
+  }});
+  return ()=>event('dispose');
+}}"#,
             serde_json::to_string(&events).unwrap(),
             serde_json::to_string(&entered).unwrap(),
             if expires { 4500 } else { 0 }

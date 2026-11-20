@@ -853,7 +853,7 @@ async fn with_embedded_host(exercise: impl AsyncFnOnce(&Path)) {
         &AtomicBool::new(false),
     )
     .unwrap();
-    let profile = tempfile::tempdir().unwrap();
+    let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let mut server = HostServer::bind(profile.path()).await.unwrap();
     let host = Host::with_verified_node_runtime(
         server.store(),
@@ -920,7 +920,7 @@ async fn native_reference_terminal_uses_installed_runtime_through_formal_host() 
     );
     let dir = tempfile::Builder::new()
         .prefix("swb-formal-terminal-")
-        .tempdir()
+        .tempdir_in(std::env::temp_dir().canonicalize().unwrap())
         .unwrap();
     let profile = dir.path().join("profile");
     let cwd = dir.path().join("unrelated-working-directory");
