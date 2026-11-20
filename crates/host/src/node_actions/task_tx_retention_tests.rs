@@ -25,6 +25,7 @@ export function register(context) {
       receipt=await task.operations.get({operationId:child.operationId});
     }
     if(receipt.state!=='succeeded')throw new Error('Initial actual TX did not succeed');
+    task.signal.addEventListener('abort',()=>writeFileSync(call.params.cancelObserved,'true'),{once:true});
     writeFileSync(call.params.ready,JSON.stringify({receipt,calls:count}));
     // 保留真实执行owner供可信Rust重试旧键；撤权后也只等测试释放，不再发SDK动作。
     while(!existsSync(call.params.release))await new Promise(resolve=>setTimeout(resolve,5));
@@ -53,6 +54,11 @@ async fn native_node_tx_child_prune_and_current_revocation_preserve_live_parent_
     let fixture = TaskHost::new_with_spec(RETENTION_SOURCE, action).await;
     let session = fixture.h.open("tx-retention-live-parent").await;
     let ready_path = fixture.h.dir.path().join("tx-retention-ready.json");
+    let cancel_observed_path = fixture
+        .h
+        .dir
+        .path()
+        .join("tx-retention-cancel-observed.json");
     let release_path = fixture.h.dir.path().join("tx-retention-release");
     let events_path = fixture.h.dir.path().join("tx-retention.events");
     let node_pid_path = fixture.h.dir.path().join("tx-retention-node.pid");
@@ -71,6 +77,7 @@ async fn native_node_tx_child_prune_and_current_revocation_preserve_live_parent_
         }));
     let mut root_call = fixture.h.call(&fixture.target, "example.terminal.compute", json!({
         "target":session,"ready":ready_path.to_str().unwrap(),"release":release_path.to_str().unwrap(),
+        "cancelObserved":cancel_observed_path.to_str().unwrap(),
         "events":events_path.to_str().unwrap(),"nodePid":node_pid_path.to_str().unwrap()
     }));
     root_call.execution_mode = Some(ExecutionMode::Independent);
@@ -351,6 +358,8 @@ async fn native_node_tx_child_prune_and_current_revocation_preserve_live_parent_
         .require(&blocker_actor, "device.modify", &session);
     let writes_after_denial = fixture.h.write_count();
     let gate_was_held = !gate.is_released();
+    // 撤权回执确认规则提交。等真实 Node 收到取消后，再让父任务从处理器返回。
+    assert_eq!(retention_marker(&cancel_observed_path).await, json!(true));
     gate.release();
     std::fs::write(&release_path, b"release").unwrap();
     let blocker = fixture
@@ -545,7 +554,7 @@ async fn native_node_tx_child_prune_and_current_revocation_preserve_live_parent_
     assert_eq!(events, "start\nreleased\n");
     assert_eq!(std::fs::read_to_string(&events_path).unwrap(), events);
     eprintln!(
-        "native_task_tx_retention logical_advance_ms={AFTER_TX_RETENTION_MS} actual_initial_tx=100 watermark_before_prune=100 actual_old_rows_pruned=100 old_same_and_changed=RESULT_EXPIRED old_root_context=RESULT_EXPIRED actual_key101=true key102_queued_before_revoke=true key102_terminal={:?} key102_not_dispatched=true key103_host_denied=true independent_blocker=Succeeded actual_writes=102 child_watermark=102 retained_child_rows=2 parent=Interrupted no_real_long_soak_claim=true",
+        "native_task_tx_retention logical_advance_ms={AFTER_TX_RETENTION_MS} actual_initial_tx=100 watermark_before_prune=100 actual_old_rows_pruned=100 old_same_and_changed=RESULT_EXPIRED old_root_context=RESULT_EXPIRED actual_key101=true key102_queued_before_revoke=true key102_terminal={:?} key102_not_dispatched=true key103_host_denied=true independent_blocker=Succeeded actual_writes=102 child_watermark=102 retained_child_rows=2 parent_abort_observed=true parent=Interrupted no_real_long_soak_claim=true",
         queued_done.state
     );
 }
