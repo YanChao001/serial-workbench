@@ -187,8 +187,8 @@ async fn native_node_expired_resource_grant_stays_denied_after_root_window() {
 }
 
 async fn root_window(finite_grant: bool) {
-    let fixture = TaskHost::new(br#"
-        import {existsSync,writeFileSync} from 'node:fs';
+    let source = [support::node_package::PUBLISH_MARKER_JS, r#"
+        import {existsSync,renameSync,writeFileSync} from 'node:fs';
         export function register(context) {
           context.actions.register('example.terminal.compute',async (call,task)=>{
             if(call.params.probe) return {alive:true};
@@ -201,7 +201,7 @@ async fn root_window(finite_grant: bool) {
               receipt=await task.operations.get({operationId:first.operationId});
             }
             if(receipt.state!=='succeeded') throw new Error('First save did not commit');
-            writeFileSync(call.params.ready,JSON.stringify({firstOperationId:first.operationId}));
+            publishMarker(call.params.ready,JSON.stringify({firstOperationId:first.operationId}));
             while(!existsSync(call.params.release)) {
               task.signal.throwIfAborted();
               await new Promise(resolve=>setTimeout(resolve,10));
@@ -210,7 +210,8 @@ async fn root_window(finite_grant: bool) {
             return {first,second};
           });return ()=>{};
         }
-    "#).await;
+    "#].concat();
+    let fixture = TaskHost::new(source.as_bytes()).await;
     let target = Target {
         kind: ResourceKind::try_from("workspace").unwrap(),
         id: id("task-after-root-window"),

@@ -755,7 +755,8 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
     let crash_node = markers.path().join("crash-node");
     let source = format!(
         r#"
-        import {{appendFileSync,existsSync,writeFileSync}} from 'node:fs';
+        import {{appendFileSync,existsSync,renameSync,writeFileSync}} from 'node:fs';
+        {marker_source}
         export function register(context) {{
           appendFileSync({},'registered\n'); writeFileSync({},String(process.pid));
           context.actions.register('example.terminal.compute',async (call,task)=>{{
@@ -769,7 +770,7 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
               saved=await task.operations.get({{operationId:child.operationId}});
             }}
             if(saved.state!=='succeeded') throw new Error('Child did not commit');
-            writeFileSync({},JSON.stringify({{operationId:child.operationId}}));
+            publishMarker({},JSON.stringify({{operationId:child.operationId}}));
             while(true) {{
               if(existsSync({})) process.exit(77);
               task.signal.throwIfAborted();await new Promise(resolve=>setTimeout(resolve,10));
@@ -781,7 +782,8 @@ async fn restart_task(boundary: RestartBoundary, automatic: bool) {
         serde_json::to_string(&node_pid).unwrap(),
         serde_json::to_string(&calls).unwrap(),
         serde_json::to_string(&started).unwrap(),
-        serde_json::to_string(&crash_node).unwrap()
+        serde_json::to_string(&crash_node).unwrap(),
+        marker_source = support::node_package::PUBLISH_MARKER_JS,
     );
     let mut spec = node_host_actions::spec();
     spec.permissions = vec![

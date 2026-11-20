@@ -9,6 +9,16 @@ use std::{
 };
 use zip::{CompressionMethod, ZipWriter, write::SimpleFileOptions};
 
+// Node 夹具先写临时文件，保证按存在性等待的接收方读到完整内容。
+// 调用方从 node:fs 导入 writeFileSync 和 renameSync。
+pub(crate) const PUBLISH_MARKER_JS: &str = r#"
+function publishMarker(path, contents) {
+  const pending = path + '.tmp';
+  writeFileSync(pending, contents);
+  renameSync(pending, path);
+}
+"#;
+
 pub(crate) fn manifest() -> Value {
     json!({
         "schemaVersion":"0.1","id":"example.terminal","version":"1.0.0",

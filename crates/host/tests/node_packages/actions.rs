@@ -430,10 +430,11 @@ fn verified_backend_uncooperative_action_returns_only_after_actual_owner_exit() 
     let started = markers.path().join("started");
     let source = format!(
         r#"
-import {{writeFileSync}} from 'node:fs';
+import {{renameSync,writeFileSync}} from 'node:fs';
+{PUBLISH_MARKER_JS}
 export function register(context) {{
   context.actions.register('example.terminal.compute', async () => {{
-    writeFileSync({}, String(process.pid));
+    publishMarker({}, String(process.pid));
     await new Promise(() => {{}});
   }});
   return () => {{}};

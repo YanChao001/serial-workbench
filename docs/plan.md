@@ -4,9 +4,9 @@
 
 ## 当前执行与下一步
 
-1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的原生目录恢复、语言和主题。Windows 托管的实际桌面场景已验证录制中追加读取权和连接失效时的插件窗口回收，桌面桥已用签名终端验证慢读者恢复。录制中追加读取权、安装等待、饱和关停和草稿完整性随同源出口候选复验。
+1. **B / 14.3–14.4**　`ea78367` 已在四个原生桌面验证同连接的目录恢复。Windows 实拍取得英语深色和中文浅色的终端窗口证据。打开中的插件实时更新语言仍待交付，UX-13 保留为部分软件进展。录制中追加读取权、安装等待、饱和关停和草稿完整性随同源出口候选复验。[终端参考包验收](./testing.md#终端参考包验收)
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
-3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 已从 `2a26df5` 重建，内置 WebView2 离线安装程序已核对来源和 Authenticode 签名。候选、构建收据、三份签名参考包和验收程序见 `.cache/evidence/m2-node-backend/windows-offline-nsis-2a26df5/transfer/README.md`。实装待提供可断网、可操作本地控制台、未安装 WebView2 Runtime 的独立 Windows x64 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
+3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS 双架构均已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 已从 `2a26df5` 重建，内置 WebView2 离线安装程序已核对来源和 Authenticode 签名。候选、构建收据、三份签名参考包和验收程序见 `.cache/evidence/m2-node-backend/windows-offline-nsis-2a26df5/transfer/README.md`。实装待提供可断网、可操作本地控制台、未安装 WebView2 Runtime 的独立 Windows x64 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
 签名终端的桌面 E2E 构建使用 `pnpm e2e:build --with-node-runtime` 准备同源测试程序及固定 Node。资源与程序一起写入构建收据。Windows 无窗口构建和 Host 接线结果记录在 `.cache/evidence/m2-node-backend/native-terminal-build-20261119/checkpoint.json`。独立环境或约定的前台时段使用 `--terminal-manual` 完成实际文件选择、关窗和重开。runner 保存签名输入和进程日志，退出后按本轮 Host 回放核对录制。窗口观察另留证据。
 
@@ -141,6 +141,14 @@
 **同源候选 `2a26df5`。** 本机 `pnpm verify --jobs 1` 与全量无头 Chromium 203 项通过。四目标桌面产物均确认追加读取权后录制仍在运行，关窗释放读者、重开后撤权，以及同一会话三段 RX 共 69 字节的回放。Windows 系统打开、保存和焦点恢复通过，其他目标用了文件选择夹具。日志和校验记录在 `.cache/evidence/m2-node-backend/four-target-2a26df5/`。
 
 四目标 CI 用时 40 分 51 秒。Windows 和 Linux Rust 作业通过，两个 macOS 的 Rust 作业失败。Apple Silicon 注册截止用例看见 PID 文件后读到空内容，改为完整写入后原子发布。修订在 Windows 定向验证成功与超时两个分支，首跑的初始启用等待失败也已保留。Intel macOS 的两个无头签名终端用例经系统 `/var` 别名访问临时私有目录，被 IPC 路径校验拒绝。夹具改用已解析的根，保持原权限校验。两项修订待原失败平台复验。[四目标运行](https://github.com/YanChao001/serial-workbench/actions/runs/44659098133) · [Apple Silicon](https://github.com/YanChao001/serial-workbench/actions/runs/44659098133/job/136032595061) · [Intel macOS](https://github.com/YanChao001/serial-workbench/actions/runs/44659098133/job/136032595174)
+
+**macOS 定向复验（`0b65023`）。** Apple Silicon 的注册截止用例在超时分支实际回收 owner，在及时注册分支保留同一进程代次。Intel 实际 DMG 离线安装后的三个签名参考包全部通过，IPv4 和 IPv6 探针均被拒绝，终端由实际安装的 Host 回放 69 字节并退出。[Apple Silicon](https://github.com/YanChao001/serial-workbench/actions/runs/44665649841/job/136054213475) · [Intel 离线](https://github.com/YanChao001/serial-workbench/actions/runs/44665696657/job/136054389179)
+
+**同源桌面候选（`ea78367`）。** 本机 `pnpm verify --jobs 1` 和单 worker 无头 Chromium 203 项检查通过。四个原生套件的运行产物逐一确认撤权关闭旧视图、重新信任并启用后使用同一桌面连接，新窗口补读的三段 RX 与 69 字节录制回放一致。Windows 实拍英语深色与中文浅色，并用系统对话框核对选择和焦点。Intel 的实际图表窗口重开后补读原采样任务的三个点，Host 实际换代后旧图表窗回收。完整运行的桌面产物已归档至 `.cache/evidence/m2-node-backend/four-target-ea78367/`。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44669249898) · [Windows 实拍](https://github.com/YanChao001/serial-workbench/actions/runs/44667360387/artifacts/14599075883) · [Intel 原生图表](https://github.com/YanChao001/serial-workbench/actions/runs/44667562545/artifacts/14598393142)
+
+同轮 Windows、Linux 和 Apple Silicon 的 Rust 作业通过。Ubuntu 隔离网络内完成六个 Host 软件场景，T06 实跑 600.071 秒，快读者与录制分别核对 6,911,649 字节，控制查询 p99 为 1.275 毫秒。原始样本在 `four-target-ea78367/host-offline-linux/`。[Ubuntu 软件验收](https://github.com/YanChao001/serial-workbench/actions/runs/44669249898/artifacts/14600246045)
+
+Intel Rust 的监督进程失效用例在发出故障信号前读到空 PID 文件。Node 签名夹具共用原子发布逻辑，用于存在性就绪检查后读取的进程标记、worker 完成状态和持久子动作收据。原退出、取消和时长断言继续执行。Windows 复验覆盖 4 项签名后台和 7 项 Host 用例，均已通过。Intel 本轮在此步骤停止，后续签名参考用例以离线预检证据单独记录。[Intel 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44669249898/job/136065996585)
 
 ## 验证基线
 

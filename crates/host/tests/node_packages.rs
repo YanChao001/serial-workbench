@@ -17,7 +17,9 @@ use zip::CompressionMethod;
 
 use support::{
     node_owner_exit,
-    node_package::{archive, archive_with_compression, manifest, payloads, with_metadata},
+    node_package::{
+        PUBLISH_MARKER_JS, archive, archive_with_compression, manifest, payloads, with_metadata,
+    },
 };
 
 fn verify_local(
@@ -634,7 +636,7 @@ fn verified_backend_disposal_terminates_busy_workers_before_awaiting_plugin_clea
     let marker_json = serde_json::to_string(&marker).unwrap();
     let mut files = payloads();
     files.insert("dist/main.mjs".into(), format!("import {{writeFileSync}} from 'node:fs'; export function register(context) {{ const worker = context.workers.start('dist/busy.mjs'); return async () => {{ const result = await worker.finished; writeFileSync({marker_json}, 'exited:'+result.exitCode); }}; }}").into_bytes());
-    files.insert("dist/busy.mjs".into(), format!("import {{writeFileSync}} from 'node:fs'; writeFileSync({marker_json}, 'busy'); while (true) {{}} ").into_bytes());
+    files.insert("dist/busy.mjs".into(), format!("import {{renameSync,writeFileSync}} from 'node:fs';{PUBLISH_MARKER_JS}publishMarker({marker_json}, 'busy'); while (true) {{}} ").into_bytes());
     let installed = installer
         .install(
             verify_local(&with_metadata(files, false)).unwrap(),
@@ -711,7 +713,7 @@ fn verified_backend_reclaims_finished_worker_capacity_across_140_background_task
     let marker = profile.path().join("completed-workers.txt");
     let marker_json = serde_json::to_string(&marker).unwrap();
     let mut files = payloads();
-    files.insert("dist/main.mjs".into(), format!("import {{writeFileSync}} from 'node:fs'; export function register(context) {{ const work = (async () => {{ for (let count=0; count<140; count++) {{ const result = await context.workers.start('dist/empty.mjs').finished; if (result.exitCode !== 0) throw new Error('Worker failed'); }} writeFileSync({marker_json}, '140'); }})(); const settled = work.catch(() => writeFileSync({marker_json}, 'failed')); context.onDispose(() => settled); return () => {{}}; }}").into_bytes());
+    files.insert("dist/main.mjs".into(), format!("import {{renameSync,writeFileSync}} from 'node:fs';{PUBLISH_MARKER_JS}export function register(context) {{ const work = (async () => {{ for (let count=0; count<140; count++) {{ const result = await context.workers.start('dist/empty.mjs').finished; if (result.exitCode !== 0) throw new Error('Worker failed'); }} publishMarker({marker_json}, '140'); }})(); const settled = work.catch(() => publishMarker({marker_json}, 'failed')); context.onDispose(() => settled); return () => {{}}; }}").into_bytes());
     files.insert(
         "dist/empty.mjs".into(),
         b"export const completed = true;".to_vec(),
@@ -1501,20 +1503,24 @@ fn node_backend_parent_exit_fixture() {
     let child_marker = serde_json::to_string(&directory.join("child.pid")).unwrap();
     let supervisor_marker = serde_json::to_string(&directory.join("supervisor.pid")).unwrap();
     let observer_marker = serde_json::to_string(&directory.join("observer.pid")).unwrap();
+    let publish_node = format!(
+        "import {{renameSync,writeFileSync}} from 'node:fs';{PUBLISH_MARKER_JS}
+         const publishNode = () => publishMarker({marker}, String(process.pid));"
+    );
     let mut files = payloads();
     let script = match mode.as_str() {
         "main" => format!(
-            "import {{writeFileSync}} from 'node:fs'; export function register() {{writeFileSync({marker},String(process.pid)); while(true) {{}} }}"
+            "{publish_node}export function register() {{publishNode(); while(true) {{}} }}"
         ),
         "await" => format!(
-            "import {{writeFileSync}} from 'node:fs'; export async function register() {{writeFileSync({marker},String(process.pid)); await new Promise(() => {{}}); return () => {{}}; }}"
+            "{publish_node}export async function register() {{publishNode(); await new Promise(() => {{}}); return () => {{}}; }}"
         ),
         "worker" => {
-            files.insert("dist/busy.mjs".into(),format!("import {{writeFileSync}} from 'node:fs'; writeFileSync({marker},String(process.pid)); while(true) {{}}").into_bytes());
+            files.insert("dist/busy.mjs".into(),format!("{publish_node}publishNode(); while(true) {{}}").into_bytes());
             "export function register(context) {context.workers.start('dist/busy.mjs'); return () => {}; }".into()
         }
         "guardian-busy" => format!(
-            "import {{writeFileSync}} from 'node:fs'; import {{spawn,spawnSync}} from 'node:child_process';
+            "{publish_node}import {{spawn,spawnSync}} from 'node:child_process';
              export function register() {{
                process.on('SIGHUP', () => {{}});
                const child = spawn('/bin/sleep', ['300'], {{stdio:'ignore'}});
@@ -1523,7 +1529,7 @@ fn node_backend_parent_exit_fixture() {
                const group = spawnSync('/bin/ps', ['-p',String(process.ppid),'-o','pgid='], {{encoding:'utf8'}});
                if(group.status !== 0) throw new Error('Native monitor group lookup failed');
                writeFileSync({observer_marker},group.stdout.trim());
-               writeFileSync({marker},String(process.pid));
+               publishNode();
                while(true) {{}}
              }}"
         ),
@@ -1534,14 +1540,14 @@ fn node_backend_parent_exit_fixture() {
                 "await new Promise(() => {});"
             };
             format!(
-                "import {{writeFileSync}} from 'node:fs'; import {{spawn}} from 'node:child_process';
+                "{publish_node}import {{spawn}} from 'node:child_process';
                 export async function register() {{
                   const child = process.platform === 'win32'
                     ? spawn(process.execPath, ['--eval', 'setInterval(() => {{}}, 1000)'], {{stdio:'ignore',windowsHide:true}})
                     : spawn('/bin/sleep', ['300'], {{stdio:'ignore'}});
                   await new Promise((resolve,reject) => {{child.once('spawn',resolve);child.once('error',reject);}});
                   writeFileSync({child_marker},String(child.pid));
-                  writeFileSync({marker},String(process.pid));
+                  publishNode();
                   {waiting}
                 }}"
             )

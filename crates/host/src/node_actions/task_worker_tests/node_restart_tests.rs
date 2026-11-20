@@ -8,10 +8,11 @@ async fn native_node_restart_preserves_rust_raw_and_capture_continuity() {
     let events = markers.path().join("node.events");
     let node_pid = markers.path().join("node.pid");
     let source = format!(
-        r#"import {{appendFileSync,writeFileSync}} from 'node:fs';
+        r#"import {{appendFileSync,renameSync,writeFileSync}} from 'node:fs';
+{marker_source}
 const event=s=>appendFileSync({events},s+'\n');
 export function register(context){{
-  event('register:'+process.pid);writeFileSync({node_pid},String(process.pid));let calls=0;
+  event('register:'+process.pid);publishMarker({node_pid},String(process.pid));let calls=0;
   context.actions.register('example.terminal.compute',call=>{{
     const value=call.params.value;const count=++calls;event('call:'+value+':'+process.pid);
     if(value===77){{event('exit-request:'+process.pid);process.exit(77);}}
@@ -20,6 +21,7 @@ export function register(context){{
 }}"#,
         events = serde_json::to_string(&events).unwrap(),
         node_pid = serde_json::to_string(&node_pid).unwrap(),
+        marker_source = support::node_package::PUBLISH_MARKER_JS,
     );
     let fixture = node_host_actions::Fixture::program_with_virtual(
         node_host_actions::spec(),

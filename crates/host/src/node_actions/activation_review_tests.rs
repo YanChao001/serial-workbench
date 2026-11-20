@@ -163,6 +163,7 @@ async fn native_node_activation_review_total_deadline_bounds_register_and_then_c
         let entered = markers.path().join("registered.pid");
         let source = format!(
             r#"import {{appendFileSync,readFileSync,renameSync,writeFileSync}} from 'node:fs';
+{marker_source}
 const path={};
 const entered={};
 const event=s=>appendFileSync(path,s+'\n');
@@ -170,9 +171,7 @@ export async function register(c){{
   event('register');
   if(readFileSync(path,'utf8').split('\n').filter(s=>s==='register').length===1)
     throw Error('Initial registration fails');
-  // Rust observes the marker as soon as it exists. Publish the entire PID at once.
-  writeFileSync(entered+'.tmp',String(process.pid));
-  renameSync(entered+'.tmp',entered);
+  publishMarker(entered,String(process.pid));
   await new Promise(r=>setTimeout(r,{}));
   let calls=0;
   c.actions.register('example.terminal.compute',q=>{{
@@ -183,7 +182,8 @@ export async function register(c){{
 }}"#,
             serde_json::to_string(&events).unwrap(),
             serde_json::to_string(&entered).unwrap(),
-            if expires { 4500 } else { 0 }
+            if expires { 4500 } else { 0 },
+            marker_source = support::node_package::PUBLISH_MARKER_JS,
         );
         let fixture = node_host_actions::Fixture::installed_program_with_activation(
             node_host_actions::spec(),

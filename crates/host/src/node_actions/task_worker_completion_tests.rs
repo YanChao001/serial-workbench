@@ -186,8 +186,10 @@ async fn native_node_task_worker_failed_handler_has_a_bounded_native_cleanup() {
     let node_pid = markers.path().join("node.pid");
     let child_pid = markers.path().join("child.pid");
     let child = format!(
-        "require('node:fs').writeFileSync({},String(process.pid));setInterval(()=>{{}},1000);",
-        serde_json::to_string(&child_pid).unwrap()
+        "const {{renameSync,writeFileSync}}=require('node:fs');{marker_source}
+         publishMarker({},String(process.pid));setInterval(()=>{{}},1000);",
+        serde_json::to_string(&child_pid).unwrap(),
+        marker_source = support::node_package::PUBLISH_MARKER_JS,
     );
     let source = format!(
         r#"import {{appendFileSync,writeFileSync,existsSync}} from 'node:fs';
