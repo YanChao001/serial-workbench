@@ -216,7 +216,12 @@ async fn invoke(
     receipt.operation
 }
 
-async fn tx(bridge: &DesktopHostBridge, attachment: &AttachResult, session: &Target, bytes: &[u8]) {
+async fn submit_tx(
+    bridge: &DesktopHostBridge,
+    attachment: &AttachResult,
+    session: &Target,
+    bytes: &[u8],
+) -> TxReceipt {
     let accepted = invoke(
         bridge,
         attachment,
@@ -226,10 +231,15 @@ async fn tx(bridge: &DesktopHostBridge, attachment: &AttachResult, session: &Tar
         ExecutionMode::Interactive,
     )
     .await;
-    assert!(matches!(
-        wait(bridge, attachment, accepted).await.result,
-        Some(ActionResult::Tx(_))
-    ));
+    let Some(ActionResult::Tx(receipt)) = wait(bridge, attachment, accepted).await.result else {
+        panic!("Missing Virtual Echo send receipt");
+    };
+    receipt
+}
+
+async fn tx(bridge: &DesktopHostBridge, attachment: &AttachResult, session: &Target, bytes: &[u8]) {
+    let receipt = submit_tx(bridge, attachment, session, bytes).await;
+    assert_eq!(receipt.outcome, TxOutcome::Accepted, "{receipt:?}");
 }
 
 async fn install_signed_reference(
@@ -499,6 +509,112 @@ async fn verify_capture_across_readers(
     )
     .await;
     reader
+}
+
+async fn verify_slow_reader_gap(
+    bridge: &DesktopHostBridge,
+    attachment: &AttachResult,
+    session: &Target,
+    reader: &mut TestView,
+) {
+    // 保持签名视图 reader 暂停，走正常 TX 路径填满它的独立队列。
+    // 每笔留出回显余量，区分设备队列满与视图 reader 队列满。
+    let block = vec![b'x'; 32 * 1024];
+    // 每笔产生 TX 与对应 RX，另留出给已在途的批次。
+    let blocks = attachment.limits.max_reader_queue_bytes.get() / (2 * block.len() as u64) + 12;
+    for _ in 0..blocks {
+        tx(bridge, attachment, session, &block).await;
+    }
+    let marker = b"terminal-reader-resumed-after-gap\n";
+    tx(bridge, attachment, session, marker).await;
+
+    tokio::time::timeout(Duration::from_secs(10), async {
+        let mut first_gap = None;
+        let mut received = Vec::new();
+        loop {
+            let Some(frame) = reader.next().await.unwrap() else {
+                continue;
+            };
+            let IpcMessage::RawBatch { batch } = frame.body else {
+                panic!("Slow reader stopped before recovering: {frame:?}");
+            };
+            let mut next_seq = batch.previous_cursor.position.get() + 1;
+            for item in batch.items {
+                match item {
+                    StreamItem::ReaderGap { gap } => {
+                        assert_eq!(gap.reason, ReaderGapReason::ReaderOverflow);
+                        assert_eq!(&gap.session_id, session.session_id.as_ref().unwrap());
+                        assert_eq!(Some(gap.session_epoch), session.session_epoch);
+                        assert_eq!(gap.missing_event_range.start.get(), next_seq);
+                        next_seq = gap.missing_event_range.end.get();
+                        first_gap.get_or_insert(gap.missing_event_range);
+                        received.clear();
+                    }
+                    StreamItem::Source { event } => {
+                        assert_eq!(event.event_seq.get(), next_seq);
+                        next_seq += 1;
+                        if let RawPayload::Rx(rx) = event.payload {
+                            received.extend(STANDARD.decode(rx.bytes_base64.as_str()).unwrap());
+                        }
+                    }
+                }
+            }
+            assert_eq!(batch.cursor.position.get() + 1, next_seq);
+            if received.ends_with(marker) {
+                let gap = first_gap.expect("A paused terminal reader must report overflow");
+                eprintln!(
+                    "terminal_native_reader_gap pause_bytes={} missing_events={}..{} resumed=true",
+                    blocks * block.len() as u64,
+                    gap.start,
+                    gap.end
+                );
+                break;
+            }
+        }
+    })
+    .await
+    .expect("Terminal reader did not continue to the post-overflow marker");
+}
+
+async fn verify_maximum_tx_event(
+    bridge: &DesktopHostBridge,
+    attachment: &AttachResult,
+    session: &Target,
+    reader: &mut TestView,
+) {
+    let bytes = vec![b'y'; TX_MAX_BYTES];
+    // Virtual Echo 允许部分写入，合法的 TX intent 仍包含完整请求。
+    let submitted = submit_tx(bridge, attachment, session, &bytes).await;
+    tokio::time::timeout(Duration::from_secs(10), async {
+        loop {
+            let Some(frame) = reader.next().await.unwrap() else {
+                continue;
+            };
+            let IpcMessage::RawBatch { batch } = frame.body else {
+                panic!("The terminal reader stopped on a valid TX event: {frame:?}");
+            };
+            for item in batch.items {
+                let StreamItem::Source { event } = item else {
+                    panic!("Unexpected reader gap during a single TX: {item:?}");
+                };
+                if let RawPayload::TxIntent(intent) = event.payload
+                    && intent.operation_id == submitted.operation_id
+                {
+                    assert_eq!(
+                        STANDARD.decode(intent.bytes_base64.as_str()).unwrap(),
+                        bytes
+                    );
+                    eprintln!(
+                        "terminal_native_maximum_tx_event bytes={} preserved=true",
+                        bytes.len()
+                    );
+                    return;
+                }
+            }
+        }
+    })
+    .await
+    .expect("The terminal reader did not deliver the maximum TX intent");
 }
 
 fn view_request(
@@ -1055,6 +1171,10 @@ async fn exercise_terminal(
     .await;
     let mut renderer_reader =
         verify_capture_across_readers(&bridge, &attached, profile, &session, &view).await;
+    if expected_host_pid.is_none() {
+        verify_slow_reader_gap(&bridge, business, &session, &mut renderer_reader).await;
+        verify_maximum_tx_event(&bridge, business, &session, &mut renderer_reader).await;
+    }
     let view_params = serde_json::json!({"viewId":"swb.reference.terminal.view", "offset":"0"});
 
     let ActionResult::NodePackageChanged(revoked) = apply(

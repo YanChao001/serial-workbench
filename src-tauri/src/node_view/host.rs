@@ -269,12 +269,8 @@ impl ViewHost {
         let mut after = reference.cursor;
         after.position = 0.into();
         let beginning = after.clone();
-        let credit = self
-            .attachment
-            .limits
-            .max_reader_queue_bytes
-            .get()
-            .min(512 * 1024);
+        let queue = self.attachment.limits.max_reader_queue_bytes.get();
+        let credit = queue.min(512 * 1024);
         for _ in 0..3 {
             let request = query(
                 &self.attachment,
@@ -283,7 +279,8 @@ impl ViewHost {
                 StreamSubscribeParams {
                     scope_id: after.scope_id.clone(),
                     after: after.clone(),
-                    queue_bytes: credit.into(),
+                    // 与工作台一致，队列预算同时承担编码分配和待确认的批次。
+                    queue_bytes: queue.into(),
                     initial_credit_bytes: credit.into(),
                     overflow_policy: OverflowPolicy::DropWithGap,
                 },

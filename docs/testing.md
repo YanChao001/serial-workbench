@@ -116,7 +116,7 @@ M2 B 的第一个场景使用 C 将继续交付的终端包。以公开 SDK 构�
 cargo run --locked -p serial-workbench-host --example sign_reference_terminal -- .cache/plugin-sdk/examples/reference-terminal/main.js <测试种子文件> <新ZIP绝对路径> terminal-reference local-acceptance
 ```
 
-按[真实 Node 包](#rust-与生成)准备 `SWB_NODE_RUNTIME_TEST_ROOT`，将 `SWB_TEST_SIGNED_TERMINAL_RECEIPT` 设为签名收据的绝对路径。无头桥接测试使用文件选择夹具，覆盖实际管理事务、精确 Virtual 会话上的视图资源与 Raw reader、撤权和重新激活。测试关闭 reader 后继续录制，重开读取留存数据，并回放已完成的录制核对关闭前、中、后的 RX 字节与会话代次。Host 分段测试检查后段同长度篡改。无头 Chromium 测试载入实际壳脚本和 SDK 终端包，检查 sandbox 端口、确认序号、设备文字安全和 iframe 重载。原生窗口、实际产品客户端及平台差异按下面的场景验收。
+按[真实 Node 包](#rust-与生成)准备 `SWB_NODE_RUNTIME_TEST_ROOT`，将 `SWB_TEST_SIGNED_TERMINAL_RECEIPT` 设为签名收据的绝对路径。无头桥接测试使用文件选择夹具，覆盖实际管理事务、精确 Virtual 会话上的视图资源与 Raw reader、撤权和重新激活。测试关闭 reader 后继续录制，重开读取留存数据，并回放已完成的录制核对关闭前、中、后的 RX 字节与会话代次。嵌入式 Host 场景暂缓视图确认，用正常 Virtual Echo 输入验证缺口与后续数据，再核对协议上限的 TX 意图完整到达。Host 分段测试检查后段同长度篡改。无头 Chromium 测试载入实际壳脚本和 SDK 终端包，检查 sandbox 端口、确认序号、缺口提示、恢复后的内容、设备文字安全和 iframe 重载。原生窗口、实际产品客户端及平台差异按下面的场景验收。
 
 将 `SWB_TEST_CLI_BIN` 和 `SWB_TEST_MCP_BIN` 指向同源的两个程序。无头桥接用例会在同一 Host 上对照桌面 reader、实际 CLI 和官方 MCP SDK 读到的会话数据与录制结果，再撤销 MCP 对该会话和录制的读取授权，复核 CLI 仍可读取。两个变量均缺失时日志会记录跳过这部分用例，四目标里程碑 CI 提供两个程序。
 

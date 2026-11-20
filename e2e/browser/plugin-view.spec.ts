@@ -32,9 +32,14 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
   const batch = fixtures.valid.find(
     (fixture) => fixture.name === "raw-source-batch",
   )!.value as RawBatch;
+  const overflow = fixtures.valid.find(
+    (fixture) => fixture.name === "raw-reader-gap-batch",
+  )!.value as RawBatch;
   const item = batch.items[0];
   if (item?.kind !== "source" || item.event?.kind !== "rx")
     throw new Error("Missing RX fixture");
+  const gap = overflow.items[0];
+  if (gap?.kind !== "reader_gap") throw new Error("Missing reader gap fixture");
   const browserScript = bundle.outputFiles[0]?.text;
   if (!browserScript) throw new Error("Missing terminal view bundle");
   const marker = '<img src="https://unexpected.example/" onerror="alert(1)">';
@@ -46,7 +51,37 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
     channel: "raw",
     body: { type: "rawBatch", batch },
   };
-  const payloads = [{ snapshot: session }, { frame }, { frame: null }];
+  const afterGap = "serial data after recovery";
+  const missing = {
+    start: (BigInt(batch.cursor.position) + 1n).toString(),
+    end: (BigInt(batch.cursor.position) + 4n).toString(),
+  };
+  overflow.previousCursor = batch.cursor;
+  overflow.cursor.position = missing.end;
+  gap.gap.sessionEpoch = session.sessionEpoch;
+  gap.gap.missingEventRange = missing;
+  const byteStart = item.event.payload.byteEnd;
+  overflow.items.push({
+    kind: "source",
+    event: {
+      ...item.event,
+      eventSeq: missing.end,
+      payload: {
+        ...item.event.payload,
+        bytesBase64: Buffer.from(afterGap).toString("base64"),
+        byteStart,
+        byteEnd: (
+          BigInt(byteStart) + BigInt(Buffer.byteLength(afterGap))
+        ).toString(),
+      },
+    },
+  });
+  const payloads = [
+    { snapshot: session },
+    { frame },
+    { frame: { ...frame, body: { ...frame.body, batch: overflow } } },
+    { frame: null },
+  ];
   let pulls = 0;
   let stops = 0;
   const unexpected: string[] = [];
@@ -105,13 +140,15 @@ test("signed terminal renderer accepts scoped read-only batches in an opaque ifr
   const view = page.frameLocator('iframe[title="Plugin view"]');
   await expect(view.getByRole("status")).toHaveText("会话 session");
   await expect(view.locator("html")).toHaveAttribute("data-theme", "dark");
-  await expect(view.locator("#receive")).toHaveText(marker);
+  await expect(view.locator("#receive")).toHaveText(
+    `${marker}\n[数据缺口 ${missing.start}–${missing.end}]\n${afterGap}`,
+  );
   await expect(view.locator("#receive img")).toHaveCount(0);
   expect(await view.locator("html").evaluate(() => globalThis.origin)).toBe(
     "null",
   );
   expect(unexpected).toEqual([]);
-  await expect.poll(() => pulls).toBeGreaterThanOrEqual(3);
+  await expect.poll(() => pulls).toBeGreaterThanOrEqual(4);
 
   await view.locator("html").evaluate(() => location.reload());
   await expect(page.getByRole("status")).toHaveText(
