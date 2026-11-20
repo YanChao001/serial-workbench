@@ -143,7 +143,11 @@ test("preflight shares the full native runner and retains successful source rece
   assert.match(native, /保留原生收据、截图与测试日志\n {8}if: always\(\)/);
   assert.match(
     native,
-    /if: runner\.os != 'Linux' && !inputs\.chart_only\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
+    /if: runner\.os != 'Linux' && !inputs\.chart_only && !\(runner\.os == 'Windows' && inputs\.windows_reference_only\)\n\s+run: pnpm test:e2e --interactive --skip-build$/m,
+  );
+  assert.match(
+    ci,
+    /windows_reference_only: \$\{\{ inputs\.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs\.desktop_e2e \}\}/,
   );
   assert.match(
     preflight,

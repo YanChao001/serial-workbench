@@ -312,7 +312,6 @@ describe("Signed terminal on the real desktop", () => {
 
     await verifyWindowsZoom("main");
     const first = await openPlugin();
-    await verifyWindowsZoom(first, true);
     await send(beforeClose);
     await expectAcknowledgedRx(first, beforeClose);
     const open = await readerBytes();
@@ -342,6 +341,7 @@ describe("Signed terminal on the real desktop", () => {
     await send(whileClosed);
     const second = await openPlugin(first);
     await expectAcknowledgedRx(second, beforeClose, whileClosed);
+    await verifyWindowsZoom(second, true);
     await send(afterReopen);
     await expectAcknowledgedRx(second, beforeClose, whileClosed, afterReopen);
 

@@ -5,7 +5,7 @@ on:
   workflow_dispatch:
     inputs:
       desktop_e2e:
-        description: 在独立 runner 执行四目标真实桌面 E2E
+        description: 执行四目标真实桌面 E2E。Windows 原生预检关闭此项时只跑签名参考包场景
         type: boolean
         default: true
         required: true
@@ -462,6 +462,7 @@ jobs:
       target: ${{ inputs.native_preflight_target || 'x86_64-unknown-linux-gnu' }}
       native_file_dialogs: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' }}
       chart_only: ${{ inputs.native_preflight_chart }}
+      windows_reference_only: ${{ inputs.native_preflight_target == 'x86_64-pc-windows-msvc' && !inputs.desktop_e2e }}
 
   desktop-e2e:
     if: inputs.desktop_e2e && !inputs.native_preflight && !inputs.runtime_preflight

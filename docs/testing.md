@@ -134,9 +134,11 @@ pnpm test:ui e2e/browser/plugin-view.spec.ts
 
 在独立桌面或已约定的前台时段，保持 `SWB_TEST_SIGNED_TERMINAL_RECEIPT` 指向本轮签名收据并运行 `pnpm test:e2e --interactive --terminal-manual --skip-build`。runner 核对已准备固定 Node 的构建，启动独立 Host 和桌面程序，并输出 `terminal-inputs.json`。从该文件复制来源 ID、密钥 ID 和公钥十六进制，使用实际文件对话框选择其中的 ZIP 和录制路径。在无其他输入的 Virtual Echo 会话中依次发送 `writes` 中的三个 HEX 值，分别在关窗前、关窗期间和重开后发送，关闭发送区的额外行尾。完成录制、停用和撤权步骤后退出应用。runner 等待本轮 Host 停止，再按本轮 Host 及实例代次回放核对完整录制、同一会话和全部 69 字节。窗口焦点、显示、语言、主题、缩放及隔离观察另记录在同一 `artifacts/e2e/signed-terminal-*` 目录。
 
-四目标独立桌面通过 `pnpm test:e2e --interactive --terminal-automated --skip-build` 执行签名场景。`pnpm e2e:build --with-node-runtime` 在同一次 Cargo 构建准备桌面、伴随程序、签名工具和录制核对工具。runner 校验收据中的工具路径和摘要，再在 Host 退出后运行预编译的录制核对工具。场景使用真实主窗、Host 和独立 Wry 渲染器。从主窗安装并显式授权，录制期间通过实际 CLI 追加读取权，核对关闭和重开中的 Raw 确认位置、累计 RX 字节、撤权停止及最终回放。缩放按手动入口验证。
+四目标独立桌面通过 `pnpm test:e2e --interactive --terminal-automated --skip-build` 执行签名场景。`pnpm e2e:build --with-node-runtime` 在同一次 Cargo 构建准备桌面、伴随程序、签名工具和录制核对工具。runner 校验收据中的工具路径和摘要，再在 Host 退出后运行预编译的录制核对工具。场景使用真实主窗、Host 和独立 Wry 渲染器。从主窗安装并显式授权，录制期间通过实际 CLI 追加读取权，核对关闭和重开中的 Raw 确认位置、累计 RX 字节、撤权停止及最终回放。
 
 Windows 四目标桌面作业和 Windows 原生预检各用真实系统对话框执行一次完整签名场景。先构建并自检一次辅助程序，WebDriver 在打开和保存时调用同一个程序。它只操作该次启动的应用 PID 所拥有的前台对话框，确认文件名控件持有键盘焦点后由系统键盘输入路径，读回核对再按 Enter。随后按 Host 实际登记的目标路径验证开始录制。打开和保存分别记录原生窗口句柄、所属应用、输入方式、提交路径和焦点返回。证据为 `native-picker-open.json`、`native-picker-save.json` 和同一次原生场景日志。Linux 与 macOS 的自动化使用文件选择夹具，其他原生桌面观察按阶段出口验收。
+
+同一次 Windows 签名场景用系统键盘输入 `Ctrl+=` 和 `Ctrl+0`，从真实 WebView2 controller 观察前台主窗和插件窗各自的放大与恢复。插件窗口在确认回读录制期间的输入后保留放大前后的原生截图。仅复验签名场景时，在[手动 CI](../.github/workflows/ci.yml)设置 `native_preflight=true`、Windows x64 目标和 `desktop_e2e=false`。四目标里程碑继续执行基础桌面用例和参考包场景。
 
 需要从桌面核对录制正文时，用本地用户控制入口给桌面身份授予所选输出引用的 `content.read`。验证录制期间追加权限时，先开始录制，再提交这项授权。随后发送已知字节，停止录制并回放核对。Host 定向用例使用 `cargo test --locked -p serial-workbench-host --test capture_api_host`。同组还覆盖源读取或目标写入撤销后空闲录制的真实终态。
 
