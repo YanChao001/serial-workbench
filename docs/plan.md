@@ -4,7 +4,7 @@
 
 ## 当前执行与下一步
 
-1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、连接失效时的窗口回收、语言、主题、慢读者及其他平台原生观察。复核草稿输入门槛。安装等待和饱和关停随同源出口候选复验。
+1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、语言、主题、慢读者及其他平台原生观察。Windows 已验证连接失效时的原生插件窗口回收。复核草稿输入门槛。安装等待和饱和关停随同源出口候选复验。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
 3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 离线候选已由 `3ffd6ff` 构建并校验归档，内置 WebView2 离线安装程序。候选、复用的三个签名参考包与验收程序记录在 `.cache/evidence/m2-node-backend/windows-offline-nsis-3ffd6ff/checkpoint.json`，实际安装和用例待可断网且能操作控制台的独立 Windows 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
@@ -27,6 +27,8 @@
 **C 图表实时采样和留存视图（候选，Windows）**。签名包将 Virtual Echo 的拆分 RX 发布为 `1.25`、`-2`、`3.5` V，保留三段原始字节范围。桌面桥可在取样任务运行中打开视图，先等待输入，再读到两个样本，任务结算后在同一视图读到第三个。重开、CLI 和实际 MCP 读页对照同一数值、会话代次及来源范围。撤权后禁止视图读页。图表和终端可以在工作台已占用 Raw 通道时打开。无头 Chromium 验证隔离视图显示缺口和样本。修复前拒绝打开及复验见 `.cache/evidence/m2-node-backend/chart-live-sampling-20261120/checkpoint.json`，视图原验证见 `.cache/evidence/m2-node-backend/reference-chart-view-20261119/checkpoint.json`。这次覆盖 AUTO-13 和 VIZ-16 的软件部分。
 
 **C 原生图表窗口（`bfd5767`）**。Windows WebView2、Linux WebKitGTK 和 Apple Silicon WKWebView 分别通过签名安装与实际隔离窗口场景。工作台发送的第一项 `1.25` V 在开窗时由 iframe 确认，关窗后发送的两项在重开时一并读出。切换工作台与插件页后仍使用同一采样任务，各自两次窗口都正常关闭。三份 `chart-window.json`、构建收据和原始日志见 `.cache/evidence/m2-node-backend/native-chart-window-20261120/checkpoint.json`。这是 AUTO-13 和 VIZ-16 的软件证据。此轮运行图表专项，四目标候选与实机继续按阶段验收。[Windows](https://github.com/YanChao001/serial-workbench/actions/runs/44633063233/job/135944487697) · [Linux](https://github.com/YanChao001/serial-workbench/actions/runs/44634041074/job/135947868169) · [Apple Silicon](https://github.com/YanChao001/serial-workbench/actions/runs/44634047514/job/135947888641)
+
+**连接失效后的插件窗口（`3595b2b`，Windows x64）**。签名图表重开后读到同一任务的 `1.25`、`-2`、`3.5` V。runner 实际停止旧 Host，重开的原生窗口随旧连接销毁。新 Host 使用同一身份及更高代次，两次 Host 退出正常。本机桥接回归确认同一主窗文档的旧连接结束能通知旧视图，新连接保有独立的寿命。这是 SEC-07、AUTO-13 的 Windows 软件证据。收据和原始窗口事件见 `.cache/evidence/m2-node-backend/host-view-retirement-3595b2b/checkpoint.json`。[原生图表预检](https://github.com/YanChao001/serial-workbench/actions/runs/44648236146/job/135996248761)
 
 **C 自动化后台参考包（候选，Windows）**。公开 SDK 提交同一会话的发送子动作，按实际发送回执和 RX 来源范围核对每步应答。实际签名包在嵌入式 Rust Host 上通过双步骤匹配。应答不符、收到前缀后超时、等待应答时取消都只执行首步。取消用例先等真实 RX，再核对取消接纳回执和父动作终态。Virtual Echo 录制回放逐字节核对 32 字节和会话代次。实际 MCP 程序随后执行一步，CLI 读到同一结果字节和来源。Host 目录现能按会话读取授权公布结果读取工具，撤权后 MCP 无法调用，CLI 的独立授权继续有效。覆盖 IO-10、AUTO-05、AUTO-13 和 SEC-12 的软件部分。首轮目录错误和三项定向复验见 `.cache/evidence/m2-node-backend/automation-client-parity-20261120/checkpoint.json`，录制原证据见 `.cache/evidence/m2-node-backend/reference-automation-20261119/checkpoint.json`。窗口、三平台离线安装及完整 C 场景继续验收。
 
