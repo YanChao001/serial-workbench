@@ -4,7 +4,7 @@
 
 ## 当前执行与下一步
 
-1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的目录恢复、录制中追加读取权、语言、主题及其他平台原生观察。Windows 已验证连接失效时的原生插件窗口回收，桌面桥已用签名终端验证慢读者恢复。复核草稿输入门槛。安装等待和饱和关停随同源出口候选复验。
+1. **B / 14.3–14.4**　继续[终端参考包验收](./testing.md#终端参考包验收)的原生目录恢复、语言和主题。Windows 托管的实际桌面场景已验证录制中追加读取权和连接失效时的插件窗口回收，桌面桥已用签名终端验证慢读者恢复。录制中追加读取权、安装等待、饱和关停和草稿完整性随同源出口候选复验。
 2. **B 的出口**　同一候选完成管理与监督、SDK 和三入口复审、本机综合检查、无头 UI 及完整四目标 CI。补齐四目标桌面流程的签名包管理、视图接线和录制检查，实际文件对话框及独立渲染器保留对应平台的观察证据。Windows 托管实际对话框已在完整签名场景完成过相同的录制和撤权断言，启用该入口时签名场景执行一次。两个 macOS 架构均须实际编译、运行并回收原生监护进程。[Windows 对照作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852530)
 3. **C / 14.5**　在同一个终端包上补齐剩余场景，加入图表与自动化包。三个正式包均经离线安装、公开 SDK 和获准入口验收，并覆盖 Node/worker 故障时 Rust 串口及录制连续性。Ubuntu x64 的 Debian 与 macOS arm64/x64 的 DMG 已验证实际安装和三个参考场景。Windows x64、Linux x64 和 macOS arm64 已验证实际图表窗口。Windows 0.1.0 x64 未签名 NSIS 离线候选已由 `3ffd6ff` 构建并校验归档，内置 WebView2 离线安装程序。候选、复用的三个签名参考包与验收程序记录在 `.cache/evidence/m2-node-backend/windows-offline-nsis-3ffd6ff/checkpoint.json`，实际安装和用例待可断网且能操作控制台的独立 Windows 环境。Task14 退出后依次推进浏览器连接与跟随、LAN 双 Host。
 
@@ -14,7 +14,7 @@
 
 **桌面目录恢复（工作树，Windows）**。修复桌面桥丢弃 `catalogChanged`。嵌入式和正式 Host 均在同一桌面连接验证显式启用、撤销执行信任及重新启用的通知与目录可见性。前端回归验证旧窗口通知和晚到目录页不会覆盖新结果。原生窗口复查仍待安排。见 `.cache/evidence/m2-node-backend/catalog-reactivation-20261119/checkpoint.json`，覆盖 AUTO-13 和 SEC-07 的软件部分。
 
-**录制期间追加读取权（工作树，Windows）**。真实 Host 复现同一身份追加目标文件读取权导致录制以 `PERMISSION_DENIED` 结束。修复后，Host 录制绑定实际使用的源读取与目标写入权限。回归从本地控制入口追加文件读取权，再发送并回放核对 3 个 RX 字节。撤销任一录制权限都使空闲录制失败结算，立即重授仍拒绝原绑定。证据见 `.cache/evidence/m2-node-backend/capture-grant-20261119/checkpoint.json`，属于 LOG-01 和 SEC-12 的软件部分。原生窗口仍待复验。
+**录制期间追加读取权（Windows）**。真实 Host 复现同一身份追加目标文件读取权导致录制以 `PERMISSION_DENIED` 结束。修复后，Host 录制绑定实际使用的源读取与目标写入权限。回归从本地控制入口追加文件读取权，再发送并回放核对 3 个 RX 字节。撤销任一录制权限都使空闲录制失败结算，立即重授仍拒绝原绑定。证据见 `.cache/evidence/m2-node-backend/capture-grant-20261119/checkpoint.json`，属于 LOG-01 和 SEC-12 的软件部分。托管 `2371213` 用原生保存框启动录制，`active-read-grant.json` 记录追加目标文件的 `content.read`，`active-read-settlement.json` 记录授权成功后录制仍为 `running`。同一运行后续校验 69 字节，覆盖开窗、关窗及重开三段 RX。[Windows 原生作业](https://github.com/YanChao001/serial-workbench/actions/runs/44644885767/job/135984830398) · [产物](https://github.com/YanChao001/serial-workbench/actions/runs/44644885767/artifacts/14587179936)
 
 **同源候选复审（工作树，Windows）**。固定 Node 候选通过终端、图表和自动化的四项真实 Host 用例。正式 Host 的终端流程通过实际 CLI、MCP 和 Claude Code，后者核对 69 个 RX 字节及撤权。`pnpm verify` 通过。全量无头 Chromium 通过 202 项，草稿输入 p95 为 106.2 毫秒，超过 100 毫秒门槛。三次单独复测中一项通过，两项失败。复审确认录制入队与撤权存在竞态，并发现原生迟到窗口和四目标签名场景的覆盖缺口。构建收据、失败样本和复审见 `.cache/evidence/m2-node-backend/capture-grant-candidate-20261119/checkpoint.json`。录制授权修复后须重新构建并验收同源候选。
 
@@ -134,7 +134,7 @@
 
 同轮 Intel Rust 通过 109 项签名后台和 73 项 Host 专项，监护故障用例在准备后原生屏障就绪前超时。安装布局根是 Cargo release 目录，夹具曾整体复制该目录，失败产物约 1.27 GB。`b692f6e` 只复制验证器实际读取的 `runtime/`，同架构预检通过 109 项签名后台、73 项 Host 专项及 2 项 CLI/MCP。三项监护与回收用例均通过，共用时 18.6 秒。[Intel 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852222) · [Intel 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44598756495)
 
-同轮 Apple Silicon 签名后台 109 项通过。H14/H15 用例在撤销会话发送权后验证了排队发送停止、新键被拒绝和水位保持，随后在父任务终态断言失败。旧夹具收到授权提交回执后放行父任务，Node 可能在实际收到合作取消前返回成功。更新后的夹具等待 Node 实际收到取消再放行父任务，保留中断、`PERMISSION_DENIED`、无父结果和全部子发送断言。Windows x64 使用固定 Node 定向通过，收据见 `.cache/evidence/m2-node-backend/h14-h15-cancel-order-20261120/checkpoint.json`，Apple Silicon 待复验。原始本机实验及差异仍保存在 `terminal-desktop-automation-20261119/h14-h15-narrow-revocation.log` 和 `h14-h15-proposed-acceptance.patch`。[Apple Silicon 失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852361)
+同轮 Apple Silicon 的 H14/H15 用例先通过了撤权停止排队发送、拒绝新键和保持水位的断言，随后在父任务终态断言失败。旧夹具在授权提交回执后放行父任务，Node 可能先返回成功。`86ba3af` 等待 Node 实际收到合作取消，再放行父任务并核对中断、`PERMISSION_DENIED`、无父结果和全部子发送断言。Windows x64 和 Apple Silicon 都验证了新次序，Apple Silicon 的 109 项签名后台和 73 项原生 Host 用例均通过。完整四目标仍待同源候选验收。本机收据见 `.cache/evidence/m2-node-backend/h14-h15-cancel-order-20261120/checkpoint.json`，原实验在 `terminal-desktop-automation-20261119/h14-h15-narrow-revocation.log` 和 `h14-h15-proposed-acceptance.patch`。[原失败作业](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852361) · [Apple Silicon 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44655815906/job/136021731644)
 
 **安装等待、饱和关停与 Node 故障隔离。** `4b66269` 的四目标 Rust 作业均通过饱和关停。Windows 的 `8cbc7e7` 和其余三目标的 `4b66269` 均通过签名包安装后的动态 Schema 预算用例。原本机超时时安装收据已提交，但测试未观察到终态，原样保存在 `.cache/m2-node-actions-schema-generated-reference-scope-restored.log` 和 `.cache/evidence/m2-node-backend/schema-cache-install-timeout-diagnosis.json`。四目标的同组实际 Node 用例还分别验证了单个 worker 自身异常时兄弟任务和另一个包可用，以及旧 Node 进程实际退出至新进程恢复期间 Virtual Echo、Raw 和录制连续。按 PERF-02、SEC-09 记录软件部分。下次在同源候选中复验这些已覆盖场景及整轮门禁。[Windows](https://github.com/YanChao001/serial-workbench/actions/runs/44520104565/job/135550786712) · [Linux 签名安装](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790851529) · [Linux Rust](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852095) · [macOS arm64](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852361) · [macOS x64](https://github.com/YanChao001/serial-workbench/actions/runs/44589360155/job/135790852222)
 
@@ -181,7 +181,7 @@ Windows `pnpm verify` 通过，前端 2558 项通过，脚本 353 项通过、4 
 
 原生平台验收使用独立环境或安排好的前台时段。检查实际 WebView 隔离、Tauri 全局、子 frame 导航、旧端口投递与关窗资源回收，并核对焦点、语言、主题和缩放。参见 [锁定版 Wry 的 WebView 构建接口](https://docs.rs/wry/0.57.0/wry/struct.WebViewBuilder.html)和 [HTML 消息端口](https://html.spec.whatwg.org/multipage/web-messaging.html#message-channels)。
 
-**仍需观察。** 候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。草稿输入的 100 毫秒硬门槛待复核。40 次采样中一条记录即可让两种 p95 算法判出不同结果，原生文本框对照也曾超标。评估时先确定代表性环境及会影响用户的性能回归，再决定门槛是否适合做 CI 硬门禁。原判定与样本保存在 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/` 下的 `runtime-supervision-exact-ui-failure`、`composer-read-exact-ui-failure` 和 `composer-input-latency-353df06`。取舍见[设计与复核测试门槛](./testing.md#设计与复核测试门槛)。
+**性能验收与诊断。** 候选上的全局 CPU 和完整进程树峰值 RSS 仍待测。`4b66269` 托管首跑和复跑的 32 个按键样本均低于 100 毫秒，8 次大段插入分别有 3 次和 1 次达到门槛。原生文本框对照也有一次大段插入达到 130.5 毫秒。依据用户确认，常规 CI 继续验证草稿完整性，4 倍 CPU 降速和 100 毫秒参考值改为按需诊断，连续按键和大段插入分别报告。T06 按现有固定负载和阶段预算验收。原样本在 `.cache/evidence/m2-node-backend/terminal-desktop-automation-20261119/hosted-4b66269-browser` 和 `composer-control-opt-in`。[测试入口](./testing.md#前端与脚本)
 
 ## 阶段路线
 

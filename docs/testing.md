@@ -39,7 +39,9 @@ pnpm verify --jobs 1
 
 verify 的实际步骤见 [verify.mjs](../scripts/verify.mjs)，本轮日志写入 `.cache/verify/`。浏览器、预览端口和报告目录不并发运行；Cargo/生成任务共用 target 时顺序执行。
 
-组件测试 mock Tauri 门面，传输测试 mock 底层；进程测试用独立 profile 和自有进程。界面输入性能的定向入口见[长草稿基准](../e2e/browser/composer-input-latency.spec.ts)。排查浏览器本身的输入成本时，设置 `SWB_TEST_COMPOSER_NATIVE_CONTROL=1` 定向运行该文件，产物会附带原生文本框对照。
+组件测试 mock Tauri 门面，传输测试 mock 底层；进程测试用独立 profile 和自有进程。常规无头 UI 核对长草稿经过连续按键和大段插入后的完整内容。
+
+输入性能排查时，设置 `SWB_TEST_COMPOSER_PERF=1` 并运行 `pnpm test:ui e2e/browser/composer-input-latency.spec.ts --workers=1`。诊断在 4 倍 CPU 降速下分别记录连续按键和大段插入从 `input` 事件到动画帧回调的样本，报告达到 100 毫秒参考值的次数。设置 `SWB_TEST_COMPOSER_NATIVE_CONTROL=1` 可同时采集原生文本框对照。100 毫秒参考值只用于诊断，T06 按固定负载和阶段预算验收。 [长草稿用例](../e2e/browser/composer-input-latency.spec.ts)
 
 ## 桌面边界
 
