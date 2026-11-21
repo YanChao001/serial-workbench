@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { browser } from "@wdio/globals";
@@ -79,6 +80,27 @@ describe("Signed chart on the real desktop", () => {
     await sendHex(Buffer.from("-2\n").toString("hex"));
     await sendHex(Buffer.from("3.5\n").toString("hex"));
 
+    await showPluginDetails("Serial Workbench Chart");
+    await click(button("Save SVG…"));
+    await browser.waitUntil(
+      () =>
+        browser.execute(() =>
+          document.body.textContent.includes("Chart saved."),
+        ),
+      { timeoutMsg: "The desktop did not confirm the chart was saved" },
+    );
+    const exported = readFileSync(join(directory, "exported-chart.svg"));
+    assert.ok(exported.toString("utf8").startsWith("<svg "));
+    assert.match(
+      exported.toString("utf8"),
+      /points="72\.00,154\.25 344\.00,295\.64 616\.00,56\.36"/,
+    );
+    const exportReceipt = {
+      file: "exported-chart.svg",
+      bytes: exported.length,
+      sha256: createHash("sha256").update(exported).digest("hex"),
+    };
+
     const reopened = await openChart(first);
     const retained = await acceptedSamples(reopened, 3);
     assert.deepEqual(retained, {
@@ -99,7 +121,11 @@ describe("Signed chart on the real desktop", () => {
     );
     writeFileSync(
       join(directory, "chart-window.json"),
-      JSON.stringify({ first, reopened, live, retained, restart }, null, 2),
+      JSON.stringify(
+        { first, reopened, live, retained, restart, exportReceipt },
+        null,
+        2,
+      ),
       { flag: "wx" },
     );
   });

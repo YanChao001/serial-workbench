@@ -111,7 +111,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         let cli = parity_clients::Cli { binary: parity_clients::binary("SWB_TEST_CLI_BIN", "serial-workbench-cli"), profile: profile.to_path_buf() };
         assert_eq!(derived(success(cli.query_reply("stream.derivedRead", &session, &first_params).await)), first);
         verify_mcp_pages(profile, &session, [(first_params, &first), (last_params, &last)]).await;
-        verify_svg_export(profile, &bridge, business, &session).await;
+        verify_svg_export(profile, &bridge, business, desktop.generation, &session).await;
 
         let end = wait_reference_rx_end(&bridge, business, &session, 13).await;
         let overflow = invoke(&bridge, business, &session, SAMPLE,
@@ -143,6 +143,7 @@ async fn verify_svg_export(
     profile: &Path,
     bridge: &DesktopHostBridge,
     business: &AttachResult,
+    generation: U64,
     session: &Target,
 ) {
     let sdk = start_reference_mcp(profile).await;
@@ -191,8 +192,21 @@ async fn verify_svg_export(
         svg.contains("points=\"72.00,154.25 344.00,295.64 616.00,56.36\""),
         "{svg}"
     );
+    let saved = profile.join("chart.svg");
+    assert!(
+        crate::file_commands::save_chart_svg(
+            bridge,
+            "main",
+            generation,
+            settled.operation_id,
+            || std::future::ready(Ok(Some(saved.clone()))),
+        )
+        .await
+        .unwrap()
+    );
+    assert_eq!(std::fs::read(saved).unwrap(), svg.as_bytes());
     eprintln!(
-        "reference_chart_svg actual_mcp_action=true desktop_mcp_file_match=true bytes={}",
+        "reference_chart_svg actual_mcp_action=true saved_file_matches_mcp=true bytes={}",
         svg.len()
     );
 }

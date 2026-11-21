@@ -8,6 +8,10 @@ export const commands = {
     typedError<string | null, NativeError>(
       __TAURI_INVOKE("save_text_export", { name, content }),
     ),
+  hostSaveChartSvg: (generation: U64, operationId: Id) =>
+    typedError<boolean, HostError_Serialize>(
+      __TAURI_INVOKE("host_save_chart_svg", { generation, operationId }),
+    ),
   chooseFileResource: (
     role: FileResourceRole,
     generation: U64,

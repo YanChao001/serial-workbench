@@ -32,7 +32,7 @@ fn checked_file(path: &Path) -> NativeResult<PathBuf> {
     fs::canonicalize(path).map_err(io_error)
 }
 
-fn atomic_save(path: &Path, bytes: &[u8]) -> NativeResult<()> {
+pub(crate) fn atomic_save(path: &Path, bytes: &[u8]) -> NativeResult<()> {
     let parent = path
         .parent()
         .ok_or_else(|| invalid("Invalid save destination"))?;

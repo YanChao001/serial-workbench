@@ -91,6 +91,14 @@ export function hostOpenNodeView(
 export async function hostCloseNodeView(id: string): Promise<void> {
   await callHost((commands) => commands.hostCloseNodeView(id));
 }
+export function hostSaveChartSvg(
+  generation: U64,
+  operationId: string,
+): Promise<boolean> {
+  return callHost((commands) =>
+    commands.hostSaveChartSvg(generation, operationId),
+  );
+}
 export function saveClientState(
   state: ClientWindowStateInput,
   expectedRevision: U64,

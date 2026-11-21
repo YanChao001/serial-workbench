@@ -42,6 +42,10 @@ export const zhCN = {
   "plugins.selectViewSession": "选择连接",
   "plugins.noViewSession": "在工作台连接设备后即可打开此插件。",
   "plugins.openView": "打开插件",
+  "plugins.exportChartSvg": "另存为 SVG…",
+  "plugins.chartSaved": "图表已保存。",
+  "plugins.chartExportError":
+    "无法保存图表。请确认会话中有足够的样本，然后重试。",
   "plugins.openViewNumber": "打开视图 {number}",
   "plugins.confirmExecutionDescription":
     "启用后，插件可以用你的账户权限访问电脑上的文件和网络，也可以启动其他程序。请确认你信任此插件。",

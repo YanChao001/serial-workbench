@@ -9,6 +9,7 @@ pub fn builder() -> Builder<tauri::Wry> {
     Builder::new()
         .commands(collect_commands![
             crate::file_commands::save_text_export,
+            crate::file_commands::host_save_chart_svg,
             file_resource_commands::choose_file_resource,
             media_protocol::media_resolve,
             media_protocol::media_release,
