@@ -797,6 +797,19 @@ impl AuthorizationSnapshot {
         self.capture_bound_grants(&[("content.read", source), ("workspace.modify", destination)])
     }
 
+    pub(crate) fn capture_projection_grant(
+        &self,
+        permission: &str,
+        target: &Target,
+    ) -> HostResult<Option<GrantStamp>> {
+        if self.grants.is_some() && !self.is_lan_peer() {
+            return self.capture_bound_grants(&[(permission, target)]).map(Some);
+        }
+        // User control has no stored rule. LAN grants also depend on share bindings.
+        self.require(permission, target)?;
+        Ok(self.capture_grants())
+    }
+
     pub(crate) fn capture_bound_grants(
         &self,
         scopes: &[(&str, &Target)],

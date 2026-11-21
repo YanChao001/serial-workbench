@@ -1,5 +1,5 @@
 import { execFile, spawn } from "node:child_process";
-import { createWriteStream, mkdirSync } from "node:fs";
+import { createWriteStream, mkdirSync, readFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { finished } from "node:stream/promises";
 import { setTimeout as delay } from "node:timers/promises";
@@ -8,7 +8,11 @@ import { promisify } from "node:util";
 const exec = promisify(execFile);
 
 /** 每个句柄只代表本 runner 直接创建的进程；Unix 使用独立进程组。 */
-export function spawnOwned(command, args, { cwd, env, logPath } = {}) {
+export function spawnOwned(
+  command,
+  args,
+  { cwd, env, logPath, windowsJobReceipt } = {},
+) {
   const detached = process.platform !== "win32";
   let log;
   if (logPath) {
@@ -29,7 +33,9 @@ export function spawnOwned(command, args, { cwd, env, logPath } = {}) {
   });
   const child = spawn(command, args, {
     cwd,
-    env,
+    env: windowsJobReceipt
+      ? { ...env, STARTER_E2E_WINDOWS_JOB_RECEIPT: windowsJobReceipt }
+      : env,
     detached,
     windowsHide: true,
     stdio: log ? ["ignore", "pipe", "pipe"] : "inherit",
@@ -48,7 +54,29 @@ export function spawnOwned(command, args, { cwd, env, logPath } = {}) {
       done({ code, signal, error: state.error });
     });
   });
-  return { child, state, exited, log, logPath, logFailed, detached };
+  return {
+    child,
+    state,
+    exited,
+    log,
+    logPath,
+    logFailed,
+    detached,
+    windowsJobReceipt,
+  };
+}
+
+function hasWindowsJobReceipt(owned) {
+  if (!owned.windowsJobReceipt) return false;
+  try {
+    return (
+      readFileSync(owned.windowsJobReceipt, "utf8").trim() ===
+      String(owned.child.pid)
+    );
+  } catch (error) {
+    if (error.code === "ENOENT") return false;
+    throw error;
+  }
 }
 
 function assertLog(owned) {
@@ -104,9 +132,25 @@ export async function stopOwned(owned) {
     if (process.platform === "win32") {
       if (child.exitCode === null && child.signalCode === null) {
         try {
-          await exec("taskkill.exe", ["/PID", String(child.pid), "/T", "/F"], {
-            windowsHide: true,
-          });
+          if (hasWindowsJobReceipt(owned)) {
+            // The test app entered its own job before initializing any WebView.
+            // Its sole job handle closes with this exact process.
+            if (
+              !child.kill() &&
+              child.exitCode === null &&
+              child.signalCode === null
+            )
+              throw new Error(`无法停止 Job 内的测试应用 ${child.pid}`);
+            owned.log?.write(`\n[e2e] windows-job-stop pid=${child.pid}\n`);
+          } else {
+            await exec(
+              "taskkill.exe",
+              ["/PID", String(child.pid), "/T", "/F"],
+              {
+                windowsHide: true,
+              },
+            );
+          }
         } catch (error) {
           state.cleanupError = new Error(
             `受控子树清理失败，无法确认后代进程退出；保留测试数据：${error.message}`,

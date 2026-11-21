@@ -16,6 +16,8 @@ mod commands;
 mod desktop;
 mod diagnostics;
 #[cfg(all(windows, feature = "e2e"))]
+mod e2e_process;
+#[cfg(all(windows, feature = "e2e"))]
 mod e2e_zoom;
 mod error;
 mod file_access;
@@ -77,6 +79,11 @@ pub fn run() {
             .map(std::path::PathBuf::from)
             .filter(|path| path.is_absolute() && path.parent().is_some())
             .expect("E2E requires an absolute STARTER_TEST_DATA_DIR");
+        #[cfg(windows)]
+        if let Some(receipt) = std::env::var_os("STARTER_E2E_WINDOWS_JOB_RECEIPT") {
+            e2e_process::contain(std::path::Path::new(&receipt))
+                .expect("Failed to contain the E2E desktop process tree");
+        }
         for window in &mut context.config_mut().app.windows {
             window.data_directory = Some(path.join("webview").join(&window.label));
             // WKWebView 不支持 data_directory，使用非持久化存储

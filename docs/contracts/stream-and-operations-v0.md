@@ -112,6 +112,10 @@ TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,
 
 客户端 RPC 的等待超时是传输层设置，与以上业务超时独立。传输超时后先查 operation，不提交新 ID 自动补发。
 
+自动化参考包对每个请求单独获取 `transaction` 租约。以本次完整写入的 `tx` 回执原始事件为起算点，用执行 Host 的同一 `clockId` 比较应答最后一段 RX 的 `sourceMonoNs`。已在写入结算前到达的响应可按实际字节判定。SDK 用本地单调时钟限制轮询时间，到达轮询截止时间后补读有界的留存页。来源时钟决定应答是否越过截止点。超过补读预算仍无法核对完整来源时，结果为 `source_changed`。
+
+可选 `lateResponseWaitMs` 默认 `0`，上限 3000 毫秒，用于在同一租约内继续观察。晚到且字节完全匹配的应答保留 `lateResponse` 源范围和原发送 `operationId`，结果仍为 `response_timeout`，后续步骤停止。误配数据、缺口、代次变化均不能作为匹配证据。确认应答或结束观察后等待租约释放再继续。其他发送的排队意图不表示实际写入，应答窗口内若出现其已接受或未知写入区间，则报告来源变化。任务取消由 Host 结算已接纳子动作和租约。
+
 ## 配置、控制线与队列
 
 `SerialConfiguration={baudRate,dataBits,parity,stopBits,flowControl,readWaitMs,writeWaitMs,reconnectBackoffMs}` 是完整配置，所有字段必填；baudRate 为正 U64，枚举及正时限按生成 schema 校验。`session.configure` params=`requested: SerialConfiguration`，回执 requested 也保持同一完整类型，Call 必带 expectedRevision。Host 在持口端仲裁，保存请求值与逐字段结果：`ConfigReceipt={requested,fields,readback,revision,boundaryEventSeq,txGate}`。fields 项为 `{field,status: applied|rejected|unknown,actual?}`；actual 有值时必须是真实字段值，不接受 null，无法读回时省略；readback 是实际可读回字段对象，未支持读回的值不得填成请求值。配置只有部分字段 applied 或任一字段 unknown 时进入 configuration_pending，停止新 TX 和发送任务；不静默“回滚成功”。操作已知部分应用可 succeeded 且 txGate=configuration_pending，无法确认则 unknown。完成显式完整配置并核实全部必要字段后才恢复 ready。每次配置尝试的 confirmed、partial 或 unknown 结果都推进 configurationRevision，并用于随后的 RX；configuration 对象仅在完整确认时更新。owner 在配置结果返回后暂停 RX，直到该 receipt、边界和状态发布完成；失败保持 configuration_pending 并终止该源，不能放行未描述的新 RX。revision 在发布该结果时推进，boundaryEventSeq 指 `configuration_boundary` 原始事件，payload 含 `revision,certainty: confirmed|uncertain,receiptRef`，receiptRef 为 ObjectRef。不能回溯改写此前数据的配置。

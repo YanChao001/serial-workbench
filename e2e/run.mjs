@@ -312,6 +312,10 @@ try {
       cwd: root,
       env,
       logPath: join(phaseArtifacts, "native.log"),
+      windowsJobReceipt:
+        process.platform === "win32"
+          ? join(dataRoot, `windows-job-owner-${phase}.txt`)
+          : undefined,
     });
     owned.push(app);
     if (nativePickers) env.STARTER_E2E_APP_PID = String(app.child.pid);
