@@ -2,7 +2,6 @@
 use super::node_queries::QueryAuthority;
 use super::*;
 use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
-use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 pub(super) struct ActionAuthority {
     host: Host,
@@ -423,6 +422,7 @@ impl Host {
                 .output_schema
                 .contains_key(NODE_FILE_RESULT_KEY)
             {
+                use base64::{Engine as _, engine::general_purpose::STANDARD};
                 return value
                     .as_str()
                     .and_then(|encoded| STANDARD.decode(encoded).ok())

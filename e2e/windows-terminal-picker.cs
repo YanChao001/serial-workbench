@@ -87,6 +87,11 @@ internal static class TerminalPickerWindow
         {
             if (args.Length == 1 && args[0] == "--check")
             {
+                if (!MatchesSuggestedFileName("chart.svg", "chart.svg") ||
+                    !MatchesSuggestedFileName("chart", "chart.svg") ||
+                    MatchesSuggestedFileName("other.svg", "chart.svg") ||
+                    !MatchesSuggestedFileName("20261121T051200Z_Virtual_0123456789ab.swb", null))
+                    throw new InvalidOperationException("The expected native save filenames were not recognized.");
                 WriteReceipt(new { ready = true });
                 return 0;
             }
@@ -103,11 +108,12 @@ internal static class TerminalPickerWindow
                 DriveZoom(pid, new IntPtr(handle), args);
                 return 0;
             }
-            if (args.Length != 3 || !uint.TryParse(args[0], out pid) || pid == 0 ||
-                (args[1] != "Open" && args[1] != "Save") || !Path.IsPathRooted(args[2]))
-                throw new ArgumentException("Expected application PID, Open or Save, and an absolute fixture path.");
+            if ((args.Length != 3 && args.Length != 4) || !uint.TryParse(args[0], out pid) || pid == 0 ||
+                (args[1] != "Open" && args[1] != "Save") || !Path.IsPathRooted(args[2]) ||
+                (args.Length == 4 && (args[1] != "Save" || args[3].Length == 0 || Path.GetFileName(args[3]) != args[3])))
+                throw new ArgumentException("Expected application PID, Open or Save, an absolute fixture path, and an optional suggested save filename.");
 
-            Drive(pid, args[1], args[2]);
+            Drive(pid, args[1], args[2], args.Length == 4 ? args[3] : null);
             return 0;
         }
         catch (Exception error)
@@ -153,7 +159,7 @@ internal static class TerminalPickerWindow
         SendKeys(new[] { Key(control, 0, 0), Key(key, 0, 0), Key(key, 0, KeyUp), Key(control, 0, KeyUp) });
     }
 
-    private static void Drive(uint pid, string action, string path)
+    private static void Drive(uint pid, string action, string path, string suggestedFileName)
     {
         bool save = action == "Save";
         var observation = Stopwatch.StartNew();
@@ -182,7 +188,7 @@ internal static class TerminalPickerWindow
         IntPtr button = IntPtr.Zero;
         do
         {
-            edit = FileNameEdit(dialog, pid, save);
+            edit = FileNameEdit(dialog, pid, save, suggestedFileName);
             button = GetDlgItem(dialog, ConfirmButtonId);
             if (edit != IntPtr.Zero && BelongsTo(button, pid) && WindowClass(button) == "Button") break;
             button = IntPtr.Zero;
@@ -247,7 +253,7 @@ internal static class TerminalPickerWindow
         return false;
     }
 
-    private static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid, bool save)
+    private static IntPtr FileNameEdit(IntPtr dialog, uint applicationPid, bool save, string suggestedFileName)
     {
         // 文件对话框可能保留多个同一 ID 的控件，优先使用已获焦的文件名框。
         IntPtr focused = FocusedControl(dialog);
@@ -262,7 +268,7 @@ internal static class TerminalPickerWindow
                 result = child;
                 return false;
             }
-            if (save && Regex.IsMatch(ReadFileName(child, 256), @"\A[0-9]{8}T[0-9]{6}Z_.+_[0-9a-f]{12}(\.swb)?\z"))
+            if (save && MatchesSuggestedFileName(ReadFileName(child, 256), suggestedFileName))
             {
                 suggestedName = child;
                 suggestedNames++;
@@ -271,6 +277,14 @@ internal static class TerminalPickerWindow
         }, IntPtr.Zero);
         if (result != IntPtr.Zero) return result;
         return suggestedNames == 1 ? suggestedName : IntPtr.Zero;
+    }
+
+    private static bool MatchesSuggestedFileName(string actual, string expected)
+    {
+        if (expected == null)
+            return Regex.IsMatch(actual, @"\A[0-9]{8}T[0-9]{6}Z_.+_[0-9a-f]{12}(\.swb)?\z");
+        return string.Equals(actual, expected, StringComparison.OrdinalIgnoreCase) ||
+            string.Equals(actual, Path.GetFileNameWithoutExtension(expected), StringComparison.OrdinalIgnoreCase);
     }
 
     private static string NativeInputControls(IntPtr dialog, uint applicationPid)

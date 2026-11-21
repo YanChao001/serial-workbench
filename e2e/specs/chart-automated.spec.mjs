@@ -85,7 +85,12 @@ describe("Signed chart on the real desktop", () => {
     const save = button("Save SVG…");
     const exportPath = join(directory, "exported-chart.svg");
     if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1") {
-      const picker = await selectWindowsFile(save, "Save", exportPath);
+      const picker = await selectWindowsFile(
+        save,
+        "Save",
+        exportPath,
+        "chart.svg",
+      );
       writeFileSync(
         join(directory, "native-chart-save.json"),
         JSON.stringify(picker, null, 2),
