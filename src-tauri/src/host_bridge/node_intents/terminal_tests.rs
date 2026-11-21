@@ -27,7 +27,7 @@ use serial_workbench_core::*;
 use serial_workbench_host::{
     Host,
     clock::SystemClock,
-    device::DeviceService,
+    device::{DeviceService, TransportOpener},
     ipc::HostServer,
     node_runtime::{NodeRuntimeLimits, verify_node_runtime},
 };
@@ -353,22 +353,45 @@ async fn wait_reference_rx_end(
     session: &Target,
     byte_end: u64,
 ) -> StreamReadResult {
+    wait_reference_source(
+        bridge,
+        client,
+        session,
+        |event| matches!(&event.payload, RawPayload::Rx(rx) if rx.byte_end.get() == byte_end),
+    )
+    .await
+}
+
+async fn wait_reference_source(
+    bridge: &DesktopHostBridge,
+    client: &AttachResult,
+    session: &Target,
+    seen: impl Fn(&RawEvent) -> bool,
+) -> StreamReadResult {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let RpcResult::Query(QueryResult::StreamRead(page)) = read_reference_raw(
-                bridge, client, session, "stream.read", serde_json::json!({
+                bridge,
+                client,
+                session,
+                "stream.read",
+                serde_json::json!({
                     "sessionId": session.id, "sessionEpoch": session.session_epoch,
                     "startEventSeq": "1", "maxEvents": "100", "maxBytes": "65536"
                 }),
-            ).await else {
+            )
+            .await
+            else {
                 panic!("Missing reference source page");
             };
-            if page.events.iter().any(|event| matches!(&event.payload, RawPayload::Rx(rx) if rx.byte_end.get() == byte_end)) {
+            if page.events.iter().any(&seen) {
                 break page;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
         }
-    }).await.expect("Virtual serial input did not arrive")
+    })
+    .await
+    .expect("Expected virtual serial source event did not arrive")
 }
 
 async fn start_reference_capture(
@@ -843,6 +866,10 @@ async fn native_reference_terminal_install_enable_and_revoke_through_desktop_bri
 }
 
 async fn with_embedded_host(exercise: impl AsyncFnOnce(&Path)) {
+    with_embedded_opener(DeviceService::virtual_opener(), exercise).await;
+}
+
+async fn with_embedded_opener(opener: TransportOpener, exercise: impl AsyncFnOnce(&Path)) {
     let root = PathBuf::from(
         std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").expect("prepared runtime root"),
     );
@@ -859,7 +886,7 @@ async fn with_embedded_host(exercise: impl AsyncFnOnce(&Path)) {
         server.store(),
         server.auth(),
         Arc::new(SystemClock::new().unwrap()),
-        DeviceService::virtual_opener(),
+        opener,
         node,
     )
     .await

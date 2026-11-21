@@ -68,7 +68,7 @@ bindings = []
 
 [target.'cfg(windows)'.dependencies]
 windows-registry = "0.6"
-windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_UI_WindowsAndMessaging"] }
+windows-sys = { version = "0.61", features = ["Win32_Foundation", "Win32_Security", "Win32_System_JobObjects", "Win32_System_Threading", "Win32_UI_WindowsAndMessaging"] }
 # Reuse Tauri/Wry's locked COM bindings to separate pinch input from page zoom.
 webview2-com = "=0.39.1"
 windows-core = "=0.62.2"

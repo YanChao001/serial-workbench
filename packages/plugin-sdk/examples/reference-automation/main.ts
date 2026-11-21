@@ -5,6 +5,7 @@ import type {
   NodeTaskContext,
   Operation,
   SourceRange,
+  StreamReadResult,
 } from "@serial-workbench/plugin-sdk/node";
 
 const action = "swb.reference.automation.run";
@@ -12,10 +13,12 @@ const maxSteps = 8;
 const maxBytes = 256;
 const maxPageReads = 32;
 const txWaitMs = 1000;
+const transactionTtlMs = "15000";
 const settleMs = 4000;
 const pollMs = 20;
 
 type Session = Call["target"] & { sessionId: string; sessionEpoch: string };
+type EventTime = StreamReadResult["events"][number]["time"];
 type Outcome =
   | "matched"
   | "unexpected_response"
@@ -25,6 +28,12 @@ type Outcome =
 type StepResult = {
   operationId: string;
   outcome: Outcome;
+  source?: SourceRange;
+  lateResponse?: SourceRange;
+};
+type ObservedResponse = {
+  outcome: "matched" | "unexpected_response";
+  time: EventTime;
   source?: SourceRange;
 };
 
@@ -84,14 +93,61 @@ async function retainedTail(
   throw new Error("Automation requires a recent source event cursor");
 }
 
-async function settledTx(task: NodeTaskContext, child: Operation) {
+function pending(child: Operation) {
+  return ["queued", "running", "cancel_requested"].includes(child.state);
+}
+
+async function settledOperation(task: NodeTaskContext, child: Operation) {
   const deadline = performance.now() + settleMs;
-  while (["queued", "running", "cancel_requested"].includes(child.state)) {
+  while (pending(child)) {
     if (performance.now() >= deadline) return undefined;
     await delay(pollMs, undefined, { signal: task.signal });
     child = await task.operations.get({ operationId: child.operationId });
   }
   return child;
+}
+
+async function acquireTransaction(task: NodeTaskContext, session: Session) {
+  let owner = await task.actions.invokeChild({
+    actionId: "lease.acquire",
+    target: session,
+    params: { kind: "transaction", ttlMs: transactionTtlMs },
+  });
+  while (pending(owner)) {
+    task.signal.throwIfAborted();
+    const receipt = owner.result;
+    if (
+      owner.state === "running" &&
+      receipt?.kind === "lease" &&
+      receipt.value.state === "active"
+    )
+      return receipt.value.leaseId;
+    await delay(pollMs, undefined, { signal: task.signal });
+    owner = await task.operations.get({ operationId: owner.operationId });
+  }
+  throw new Error("The serial transaction lease did not become active");
+}
+
+async function releaseTransaction(
+  task: NodeTaskContext,
+  session: Session,
+  leaseId: string,
+) {
+  const released = await settledOperation(
+    task,
+    await task.actions.invokeChild({
+      actionId: "lease.release",
+      target: session,
+      params: { leaseId },
+    }),
+  );
+  if (
+    released?.state !== "succeeded" ||
+    released.result?.kind !== "lease" ||
+    released.result.value.leaseId !== leaseId ||
+    released.result.value.state !== "released"
+  )
+    throw new Error("The serial transaction lease release was not confirmed");
 }
 
 async function response(
@@ -101,18 +157,38 @@ async function response(
   expected: Buffer,
   cursor: string,
   timeoutMs: number,
+  lateResponseWaitMs: number,
 ): Promise<{ nextEventSeq: string; result: StepResult }> {
-  const deadline = performance.now() + timeoutMs;
+  const responseNs = BigInt(timeoutMs) * 1_000_000n;
+  const observationNs = BigInt(timeoutMs + lateResponseWaitMs) * 1_000_000n;
+  const deadline = performance.now() + timeoutMs + lateResponseWaitMs;
   let intentSeen = false;
+  let written: EventTime | undefined;
+  let observed: ObservedResponse | undefined;
   let matched = 0;
   let firstEvent: string | undefined;
   let firstByte: string | undefined;
   let nextByte: string | undefined;
-  const finish = (outcome: Outcome, source?: SourceRange) => ({
+  const finish = (
+    outcome: Outcome,
+    ranges: Pick<StepResult, "source" | "lateResponse"> = {},
+  ) => ({
     nextEventSeq: cursor,
-    result: { operationId, outcome, ...(source ? { source } : {}) },
+    result: { operationId, outcome, ...ranges },
   });
-  while (performance.now() < deadline) {
+  const classify = (tx: EventTime, rx: ObservedResponse) => {
+    if (tx.clockId !== rx.time.clockId) return finish("source_changed");
+    const elapsed = BigInt(rx.time.sourceMonoNs) - BigInt(tx.sourceMonoNs);
+    if (elapsed <= responseNs)
+      return finish(rx.outcome, rx.source ? { source: rx.source } : {});
+    return finish(
+      "response_timeout",
+      elapsed <= observationNs && rx.source ? { lateResponse: rx.source } : {},
+    );
+  };
+  let finalPages = 0;
+  while (true) {
+    const finalRead = performance.now() >= deadline;
     const page = await read(task, session, cursor);
     for (const event of page.events) {
       task.signal.throwIfAborted();
@@ -126,11 +202,23 @@ async function response(
       if (event.kind === "gap" || event.kind === "configuration_boundary")
         return finish("source_changed");
       if (event.kind === "tx_intent") {
-        if (intentSeen) return finish("source_changed");
-        intentSeen = event.payload.operationId === operationId;
+        if (event.payload.operationId === operationId) intentSeen = true;
         continue;
       }
-      if (!intentSeen || event.kind !== "rx") continue;
+      if (!intentSeen) continue;
+      if (event.kind === "tx") {
+        if (event.payload.operationId === operationId) {
+          written = event.time;
+          if (observed) return classify(written, observed);
+        } else if (
+          event.payload.acceptedRanges.length ||
+          event.payload.unknownRanges.length
+        ) {
+          return finish("source_changed");
+        }
+        continue;
+      }
+      if (event.kind !== "rx" || observed) continue;
 
       const { byteStart, byteEnd, bytesBase64 } = event.payload;
       const bytes = Buffer.from(bytesBase64, "base64");
@@ -143,31 +231,49 @@ async function response(
       firstEvent ??= event.eventSeq;
       firstByte ??= byteStart;
       nextByte = byteEnd;
-      if (!expected.subarray(matched, matched + bytes.length).equals(bytes))
-        return finish("unexpected_response");
-      matched += bytes.length;
-      if (matched === expected.length)
-        return finish("matched", {
-          hostId: session.hostId,
-          sessionId: session.sessionId,
-          sessionEpoch: session.sessionEpoch,
-          direction: "rx",
-          eventStart: firstEvent,
-          eventEnd: cursor,
-          byteStart: firstByte,
-          byteEnd,
-        });
+      if (!expected.subarray(matched, matched + bytes.length).equals(bytes)) {
+        observed = { outcome: "unexpected_response", time: event.time };
+      } else {
+        matched += bytes.length;
+        if (matched === expected.length)
+          observed = {
+            outcome: "matched",
+            time: event.time,
+            source: {
+              hostId: session.hostId,
+              sessionId: session.sessionId,
+              sessionEpoch: session.sessionEpoch,
+              direction: "rx",
+              eventStart: firstEvent,
+              eventEnd: cursor,
+              byteStart: firstByte,
+              byteEnd,
+            },
+          };
+      }
+      if (observed && written) return classify(written, observed);
     }
     cursor = page.nextEventSeq;
-    if (!page.hasMore) await delay(pollMs, undefined, { signal: task.signal });
+    if (finalRead) {
+      if (!page.hasMore) return finish("response_timeout");
+      finalPages++;
+      if (finalPages >= maxPageReads) return finish("source_changed");
+    } else if (!page.hasMore) {
+      const wait = Math.min(pollMs, deadline - performance.now());
+      if (wait > 0) await delay(wait, undefined, { signal: task.signal });
+    }
   }
-  return finish("response_timeout");
 }
 
 export const register: NodeRegister = (context) => {
   context.actions.register(action, async ({ target, params }, task) => {
     const { sessionId, sessionEpoch } = target;
-    const { steps, startEventSeq = "1", responseTimeoutMs = 1000 } = params;
+    const {
+      steps,
+      startEventSeq = "1",
+      responseTimeoutMs = 1000,
+      lateResponseWaitMs = 0,
+    } = params;
     if (
       target.kind !== "session" ||
       target.id !== sessionId ||
@@ -182,7 +288,11 @@ export const register: NodeRegister = (context) => {
       typeof responseTimeoutMs !== "number" ||
       !Number.isInteger(responseTimeoutMs) ||
       responseTimeoutMs < 50 ||
-      responseTimeoutMs > 5000
+      responseTimeoutMs > 5000 ||
+      typeof lateResponseWaitMs !== "number" ||
+      !Number.isInteger(lateResponseWaitMs) ||
+      lateResponseWaitMs < 0 ||
+      lateResponseWaitMs > 3000
     )
       throw new Error(
         "Automation requires an exact session, a cursor and a bounded sequence",
@@ -194,43 +304,52 @@ export const register: NodeRegister = (context) => {
     const attempted: StepResult[] = [];
     for (const [index, step] of sequence.entries()) {
       task.signal.throwIfAborted();
-      const child = await task.actions.invokeChild({
-        actionId: "session.tx",
-        target: session,
-        params: {
-          bytesBase64: step.sendBase64,
-          writeWaitMs: String(txWaitMs),
-          queueWaitMs: String(txWaitMs),
-        },
-      });
-      const finished = await settledTx(task, child);
-      task.signal.throwIfAborted();
-      const receipt = finished?.result;
-      if (
-        finished?.state !== "succeeded" ||
-        receipt?.kind !== "tx" ||
-        receipt.value.outcome !== "accepted" ||
-        receipt.value.operationId !== child.operationId ||
-        receipt.value.sessionId !== sessionId ||
-        receipt.value.sessionEpoch !== sessionEpoch ||
-        receipt.value.bytesBase64 !== step.sendBase64
-      ) {
-        const outcome = "transmit_unconfirmed";
-        attempted.push({ operationId: child.operationId, outcome });
-        return { outcome, completedSteps: index, attempted };
+      const leaseId = await acquireTransaction(task, session);
+      try {
+        const child = await task.actions.invokeChild({
+          actionId: "session.tx",
+          target: session,
+          leaseId,
+          params: {
+            bytesBase64: step.sendBase64,
+            writeWaitMs: String(txWaitMs),
+            queueWaitMs: String(txWaitMs),
+          },
+        });
+        const finished = await settledOperation(task, child);
+        task.signal.throwIfAborted();
+        const receipt = finished?.result;
+        if (
+          finished?.state !== "succeeded" ||
+          receipt?.kind !== "tx" ||
+          receipt.value.outcome !== "accepted" ||
+          receipt.value.operationId !== child.operationId ||
+          receipt.value.sessionId !== sessionId ||
+          receipt.value.sessionEpoch !== sessionEpoch ||
+          receipt.value.bytesBase64 !== step.sendBase64
+        ) {
+          const outcome = "transmit_unconfirmed";
+          attempted.push({ operationId: child.operationId, outcome });
+          return { outcome, completedSteps: index, attempted };
+        }
+        const { nextEventSeq, result } = await response(
+          task,
+          session,
+          child.operationId,
+          step.expect,
+          cursor,
+          responseTimeoutMs,
+          lateResponseWaitMs,
+        );
+        cursor = nextEventSeq;
+        attempted.push(result);
+        if (result.outcome !== "matched")
+          return { outcome: result.outcome, completedSteps: index, attempted };
+      } finally {
+        // The Host cancels the acquire child during parent cancellation and settles its lease.
+        if (!task.signal.aborted)
+          await releaseTransaction(task, session, leaseId);
       }
-      const { nextEventSeq, result } = await response(
-        task,
-        session,
-        child.operationId,
-        step.expect,
-        cursor,
-        responseTimeoutMs,
-      );
-      cursor = nextEventSeq;
-      attempted.push(result);
-      if (result.outcome !== "matched")
-        return { outcome: result.outcome, completedSteps: index, attempted };
       task.progress.report({
         completed: String(index + 1),
         total: String(sequence.length),

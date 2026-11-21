@@ -773,8 +773,7 @@ async fn check(
     let permission = permission.to_owned();
     tokio::task::spawn_blocking(move || {
         let authorization = auth.snapshot(&actor)?;
-        let stamp = authorization.capture_grants();
-        authorization.require(&permission, &target)?;
+        let stamp = authorization.capture_projection_grant(&permission, &target)?;
         if let Some(stamp) = &stamp {
             authorization.validate_grants(stamp)?;
         }
@@ -945,6 +944,67 @@ mod tests {
             .await
             .unwrap();
         assert_eq!(auth.document_reads() - before, 1);
+    }
+    #[tokio::test]
+    async fn granting_a_session_keeps_host_state_subscribed() {
+        let (_directory, projections, auth, actor, session) = delivery_fixture();
+        let control = auth
+            .authenticate_user_control(
+                &id("delivery-control"),
+                &ContextToken::try_from("delivery-user-control").unwrap(),
+            )
+            .unwrap();
+        let host = Target {
+            host_id: session.host_id.clone(),
+            id: session.host_id.clone(),
+            kind: ResourceKind::try_from("host").unwrap(),
+            session_id: None,
+            session_epoch: None,
+        };
+        let scope = id("host.operations");
+        projections
+            .register_scope(
+                scope.clone(),
+                host,
+                "metadata.read".into(),
+                JsonObject::new(),
+            )
+            .unwrap();
+        let cursor = projections.snapshot(&actor, &scope).await.unwrap().cursor;
+        let mut reader = projections
+            .subscribe(&actor, &scope, &cursor)
+            .await
+            .unwrap();
+        let guard = reader.delivery_liveness();
+        let stamp = reader.grant_stamp().unwrap();
+        projections
+            .commit(
+                &scope,
+                id("operations.changed"),
+                JsonObject::new(),
+                JsonObject::new(),
+            )
+            .unwrap();
+
+        auth.authorize(
+            &control,
+            AuthorizeParams {
+                client_id: actor.client_id().clone(),
+                permissions: vec![
+                    "metadata.read".into(),
+                    "content.read".into(),
+                    "device.modify".into(),
+                ],
+                targets: vec![session],
+                expires_at: None,
+            },
+        )
+        .unwrap();
+
+        let queued = reader.next().await.unwrap().unwrap();
+        auth.validate_grants(&stamp).unwrap();
+        assert_eq!(queued.revision.get(), 1);
+        assert!(*guard.borrow());
     }
     #[tokio::test]
     async fn delivery_liveness_rebind_invalidates_old_guard_before_next_and_new_reader_is_live() {
