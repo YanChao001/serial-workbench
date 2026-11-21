@@ -266,6 +266,8 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 工作区测试的集成目标同时构建 Host、CLI、MCP 和默认示例。后续步骤使用这次编译生成的正式入口。遇到重复构建时，先从 Cargo 的 `compiler-artifact` 核对后续所需的可执行路径和目标特性，再合并构建步骤。原测试范围与负载继续执行。[Cargo 测试目标选择](https://doc.rust-lang.org/cargo/commands/cargo-test.html#target-selection)
 
+固定运行时的探针和三个参考包签名工具使用同一 Cargo 包和运行时镜像。四个入口在一次调用构建，后续从原路径执行探针与签名。
+
 完整模式将 Linux x64 的 `verified_backend_` 用例放在独立必跑作业。该作业按同一候选验签并准备固定运行时，串行执行原筛选范围，保存候选 SHA、完整测试输出、运行时收据和失败夹具。Ubuntu Rust 作业仍覆盖 workspace、离线六场景和 600 秒负载，并在同次未签名构建上验证运行时安装布局及三个签名参考包。两个作业均须通过，单项断言和原 60 分钟作业上限继续适用。
 
 ### 失败定位与复验顺序

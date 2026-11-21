@@ -238,13 +238,15 @@ jobs:
       - name: 构建未签名原生程序（不打包、不发布）
         run: pnpm app:build --no-bundle --target ${{ matrix.target }} --optimize speed
 
-      - name: 构建无界面 runtime 验收入口
+      - name: 构建 runtime 探针与参考包签名工具
         shell: bash
         run: |
           unset SWB_NODE_RUNTIME_BUILD_IMAGE
           binding="$PWD/src-tauri/target/${{ matrix.target }}/release/runtime/node-image.json"
           if [[ "$RUNNER_OS" == "macOS" ]]; then export SWB_NODE_RUNTIME_BUILD_IMAGE="$binding"; fi
-          cargo build --locked -p serial-workbench-host --example node_runtime_probe
+          cargo build --locked -p serial-workbench-host \
+            --example node_runtime_probe --example sign_reference_terminal \
+            --example sign_reference_chart --example sign_reference_automation
 
       - name: 验证原生 runtime 安装布局与故障
         id: node-runtime
@@ -273,8 +275,6 @@ jobs:
           seed="artifacts/test-reference-package.seed"
           node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), { flag: "wx", mode: 0o600 })' "$seed"
           trap 'rm -f -- "$seed"' EXIT
-          cargo build --locked -p serial-workbench-host \
-            --example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation
           for reference in terminal chart automation; do
             output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/reference-$reference")"
             "src-tauri/target/debug/examples/sign_reference_${reference}$suffix" \

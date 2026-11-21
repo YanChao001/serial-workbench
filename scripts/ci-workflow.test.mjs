@@ -287,8 +287,12 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     );
   }
   assert.match(
-    ci,
-    /cargo build --locked -p serial-workbench-host \\\n\s+--example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation/,
+    job("rust"),
+    /cargo build --locked -p serial-workbench-host \\\n\s+--example node_runtime_probe --example sign_reference_terminal \\\n\s+--example sign_reference_chart --example sign_reference_automation/,
+  );
+  assert.equal(
+    (job("rust").match(/--example sign_reference_terminal/g) ?? []).length,
+    1,
   );
   assert.match(
     ci,
