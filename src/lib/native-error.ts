@@ -43,6 +43,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   UPDATE_PLATFORM_UNAVAILABLE: "updates.platformUnavailable",
   UPDATE_DOWNLOAD_FAILED: "errors.UPDATE",
   UPDATE_INSTALL_FAILED: "errors.UPDATE",
+  UPDATE_HOST_RECOVERY_REQUIRED: "updates.hostRecoveryRequired",
   WINDOW_ERROR: "errors.WINDOW_ERROR",
   VALIDATION: "errors.VALIDATION",
   CONFLICT: "errors.CONFLICT",

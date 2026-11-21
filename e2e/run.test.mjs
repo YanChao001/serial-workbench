@@ -163,7 +163,7 @@ test("native picker automation refuses the local desktop before build or launch"
   );
   assert.equal(result.error, undefined);
   assert.equal(result.status, 1);
-  assert.match(result.stderr, /independent Windows CI terminal scenario/);
+  assert.match(result.stderr, /independent Windows CI reference scenario/);
   assert.equal(result.stdout, "");
 });
 

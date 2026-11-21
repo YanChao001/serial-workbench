@@ -23,6 +23,7 @@ pub enum ErrorCode {
     UpdatePlatformUnavailable,
     UpdateDownloadFailed,
     UpdateInstallFailed,
+    UpdateHostRecoveryRequired,
     WindowError,
     Internal,
 }

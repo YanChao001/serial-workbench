@@ -155,7 +155,15 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(
     native,
-    /if: runner\.os != 'Linux' && inputs\.chart_only\n\s+run: pnpm test:e2e --interactive --skip-build --chart-automated/,
+    /if: runner\.os != 'Linux' && \(inputs\.chart_only \|\| inputs\.chart_with_desktop\)\n\s+env:\n\s+SWB_E2E_WINDOWS_NATIVE_PICKERS: .*inputs\.native_file_dialogs.*\n\s+run: pnpm test:e2e --interactive --skip-build --chart-automated/,
+  );
+  assert.match(
+    job("desktop-e2e"),
+    /chart_with_desktop: \$\{\{ inputs\.desktop_chart && matrix\.target == 'x86_64-pc-windows-msvc' \}\}/,
+  );
+  assert.match(
+    native,
+    /REFERENCES: .*inputs\.chart_with_desktop && 'terminal chart'/,
   );
   assert.match(
     job("quality-gate"),
@@ -287,8 +295,12 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     );
   }
   assert.match(
-    ci,
-    /cargo build --locked -p serial-workbench-host \\\n\s+--example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation/,
+    job("rust"),
+    /cargo build --locked -p serial-workbench-host \\\n\s+--example node_runtime_probe --example sign_reference_terminal \\\n\s+--example sign_reference_chart --example sign_reference_automation/,
+  );
+  assert.equal(
+    (job("rust").match(/--example sign_reference_terminal/g) ?? []).length,
+    1,
   );
   assert.match(
     ci,

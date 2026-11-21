@@ -14,13 +14,18 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PluginError } from "./plugin-error";
-import { hostCloseNodeView, hostOpenNodeView } from "@/lib/tauri";
+import {
+  hostCloseNodeView,
+  hostOpenNodeView,
+  hostSaveChartSvg,
+} from "@/lib/tauri";
 import { useI18n } from "@/providers/i18n";
 import { useHost } from "@/providers/host-context";
 import type { HostConnection } from "@/lib/host-client";
 
 type DerivedFeed = { key: string; operationId: string };
 const derivedFeeds = new WeakMap<HostConnection, Map<string, DerivedFeed>>();
+const chartExportAction = "swb.reference.chart.exportSvg";
 
 function sessionKey(session: SessionSnapshot) {
   return JSON.stringify([session.sessionId, session.sessionEpoch]);
@@ -44,7 +49,11 @@ export function PluginViewLauncher({
   const id = useId();
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
-  const [error, setError] = useState<unknown>(null);
+  const [error, setError] = useState<{
+    reason: unknown;
+    exporting: boolean;
+  } | null>(null);
+  const [saved, setSaved] = useState(false);
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
 
@@ -59,16 +68,25 @@ export function PluginViewLauncher({
   const session =
     sessions.find((session) => sessionKey(session) === selected) ??
     (selected === "" && sessions.length === 1 ? sessions[0] : undefined);
-  if (!available.length) return null;
+  const canExport =
+    packageId === "swb.reference.chart" &&
+    state.catalog.some(
+      (action) =>
+        action.actionId === chartExportAction &&
+        action.targetKinds.includes("session") &&
+        action.outputSchema["x-swb-file-result"] === "image/svg+xml",
+    );
+  if (!available.length && !canExport) return null;
 
-  async function open(view: NodePackageView) {
+  async function run(view?: NodePackageView) {
     if (!session || pending.current) return;
     const owner = new AbortController();
     pending.current = owner;
     setBusy(true);
     setError(null);
+    setSaved(false);
     const feedKey =
-      view.feed === "derived"
+      view?.feed === "derived"
         ? JSON.stringify([archiveSha256, sessionKey(session), view.id])
         : null;
     const remembered = feedKey && derivedFeeds.get(connection)?.get(packageId);
@@ -78,7 +96,7 @@ export function PluginViewLauncher({
       if (!operationId) {
         const accepted = await invoke(
           {
-            actionId: view.actionId,
+            actionId: view?.actionId ?? chartExportAction,
             target: {
               kind: "session",
               hostId: connection.hostTarget.hostId,
@@ -87,7 +105,7 @@ export function PluginViewLauncher({
               sessionEpoch: session.sessionEpoch,
             },
             params: {},
-            executionMode: feedKey ? "independent" : "interactive",
+            executionMode: feedKey || !view ? "independent" : "interactive",
           },
           owner.signal,
         );
@@ -103,7 +121,7 @@ export function PluginViewLauncher({
           )
         )
           throw new ContractValidationError(
-            "Plugin archive changed while opening a view",
+            "Plugin archive changed during the operation",
           );
         operationId = operation.operationId;
         if (feedKey) {
@@ -112,6 +130,14 @@ export function PluginViewLauncher({
           feeds.set(packageId, { key: feedKey, operationId });
           derivedFeeds.set(connection, feeds);
         }
+      }
+      if (!view) {
+        const written = await hostSaveChartSvg(
+          connection.generation,
+          operationId,
+        );
+        if (!owner.signal.aborted) setSaved(written);
+        return;
       }
       const opened = await hostOpenNodeView(
         connection.generation,
@@ -128,7 +154,7 @@ export function PluginViewLauncher({
       const feeds = derivedFeeds.get(connection);
       if (feedKey && feeds?.get(packageId)?.operationId === operationId)
         feeds.delete(packageId);
-      if (!owner.signal.aborted) setError(reason);
+      if (!owner.signal.aborted) setError({ reason, exporting: !view });
     } finally {
       pending.current = null;
       if (!owner.signal.aborted) setBusy(false);
@@ -145,8 +171,10 @@ export function PluginViewLauncher({
   return (
     <div className="grid gap-2">
       <PluginError
-        error={error}
-        message="plugins.viewError"
+        error={error?.reason}
+        message={
+          error?.exporting ? "plugins.chartExportError" : "plugins.viewError"
+        }
         dismiss={() => setError(null)}
       />
       <div className="flex flex-wrap items-end gap-2">
@@ -185,14 +213,29 @@ export function PluginViewLauncher({
             key={view.id}
             size="sm"
             disabled={!session || busy}
-            onClick={() => void open(view)}
+            onClick={() => void run(view)}
           >
             {available.length === 1
               ? t("plugins.openView")
               : t("plugins.openViewNumber", { number: index + 1 })}
           </Button>
         ))}
+        {canExport ? (
+          <Button
+            size="sm"
+            variant="outline"
+            disabled={!session || busy}
+            onClick={() => void run()}
+          >
+            {t("plugins.exportChartSvg")}
+          </Button>
+        ) : null}
       </div>
+      {saved ? (
+        <p role="status" className="text-sm text-muted-foreground">
+          {t("plugins.chartSaved")}
+        </p>
+      ) : null}
     </div>
   );
 }

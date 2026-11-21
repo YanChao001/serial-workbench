@@ -197,7 +197,7 @@ impl PlatformEffectExecutor for PlatformEffects {
                 ClientEffectAction::UpdaterInstall {} => {
                     // 此服务内部进行 InstallUpdate 授权与策略复核，真实安装成功才回执。
                     app.state::<updater::UpdateManager>()
-                        .install(&app)
+                        .install(&app, updater::InstallOrigin::HostEffect)
                         .await
                         .map_err(native_error)?;
                     ClientEffectResult::Installed {}
@@ -335,6 +335,7 @@ fn native_error(value: NativeError) -> HostError {
         ErrorCode::UpdatePlatformUnavailable => "UPDATE_PLATFORM_UNAVAILABLE",
         ErrorCode::UpdateDownloadFailed => "UPDATE_DOWNLOAD_FAILED",
         ErrorCode::UpdateInstallFailed => "UPDATE_INSTALL_FAILED",
+        ErrorCode::UpdateHostRecoveryRequired => "UPDATE_HOST_RECOVERY_REQUIRED",
         ErrorCode::WindowError => "WINDOW_ERROR",
         ErrorCode::Internal => "INTERNAL",
     };

@@ -14,6 +14,9 @@ use tauri::{Emitter, Manager};
 use tauri_plugin_updater::{Update, UpdaterExt};
 use url::Url;
 
+#[path = "updater/host.rs"]
+mod host;
+
 use crate::{
     blocking,
     error::{ErrorCode, NativeError, NativeResult, bounded_text},
@@ -23,6 +26,11 @@ use crate::{
 };
 
 pub const UPDATE_EVENT: &str = "app://update-progress";
+
+pub(crate) enum InstallOrigin {
+    DesktopSettings,
+    HostEffect,
+}
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
 #[serde(rename_all = "camelCase")]
@@ -270,11 +278,15 @@ impl UpdateManager {
         Ok(status)
     }
 
-    pub async fn install(&self, app: &tauri::AppHandle) -> NativeResult<()> {
+    pub(crate) async fn install(
+        &self,
+        app: &tauri::AppHandle,
+        origin: InstallOrigin,
+    ) -> NativeResult<()> {
         let _guard = self.enter()?;
         let operation_id = self.next_operation()?;
         self.event(app, operation_id, UpdateStage::Downloading, None, None);
-        let result = self.install_inner(app, operation_id).await;
+        let result = self.install_inner(app, operation_id, origin).await;
         match &result {
             Ok(()) => self.event(app, operation_id, UpdateStage::Installed, None, None),
             Err(error) if error.code == ErrorCode::UserCancelled => {
@@ -291,7 +303,12 @@ impl UpdateManager {
         result
     }
 
-    async fn install_inner(&self, app: &tauri::AppHandle, operation_id: i32) -> NativeResult<()> {
+    async fn install_inner(
+        &self,
+        app: &tauri::AppHandle,
+        operation_id: i32,
+        origin: InstallOrigin,
+    ) -> NativeResult<()> {
         let (policy, mut update) = self
             .pending
             .lock()
@@ -356,11 +373,26 @@ impl UpdateManager {
             None,
         )
         .await?;
+        let host_reservation = if matches!(origin, InstallOrigin::DesktopSettings) {
+            let paths = app.state::<DataPaths>().inner().clone();
+            let expected_policy = policy.clone();
+            blocking::run(move || require_unchanged_policy(load_policy(&paths)?, &expected_policy))
+                .await?;
+            let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
+            let reservation = host::stop_and_reserve(bridge.local_profile())
+                .await
+                .map_err(host::install_error)?;
+            Some(reservation)
+        } else {
+            // The authenticated Host effect is already inside its own settlement barrier.
+            None
+        };
         self.event(app, operation_id, UpdateStage::Installing, None, None);
         let paths = app.state::<DataPaths>().inner().clone();
         blocking::run(move || {
             // 停止等待不会取消阻塞安装；占用必须随真实安装任务完成后再释放。
             let _authorization = authorization;
+            let _host_reservation = host_reservation;
             // 下载与退出协商可能耗时数分钟；提交安装前重新确认部署仍允许此次更新。
             require_unchanged_policy(load_policy(&paths)?, &policy)?;
             update.install(bytes).map_err(|e| {

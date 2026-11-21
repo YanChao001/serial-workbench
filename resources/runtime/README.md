@@ -29,7 +29,7 @@ Linux 打包保留 SONAME 链接、模式和摘要。Tauri 的 Debian 数据归�
 
 ## 验证实际输出
 
-准备器成功后会输出 JSON。`resources` 是含 `runtime/` 的资源根，不是 Node 可执行文件所在目录。运行[原生包测试](../../docs/testing.md#rust-与生成)时将 `SWB_NODE_RUNTIME_TEST_ROOT` 指向该根的绝对路径；此变量供测试夹具使用，不是产品查找系统 Node 的开关。
+准备器成功后会输出 JSON。`resources` 是含 `runtime/` 的资源根，不是 Node 可执行文件所在目录。运行[原生包测试](../../docs/acceptance.md#签名运行时与-sdk)时将 `SWB_NODE_RUNTIME_TEST_ROOT` 指向该根的绝对路径；此变量供测试夹具使用，不是产品查找系统 Node 的开关。
 
 以下占位符替换为本机 target、待检查的资源根和同一 target 的 probe 路径。使用默认 target-dir 和下列显式 `--target` 时，probe 在 `src-tauri/target/<triple>/debug/examples/`（Windows 带 `.exe`）。传准备器输出检查的是暂存布局，传最终构建资源根才检查该构建。
 
@@ -38,4 +38,4 @@ cargo build --locked -p serial-workbench-host --example node_runtime_probe --tar
 pnpm test:runtime --target <triple> --resources <资源根> --probe <实际构建的node_runtime_probe路径>
 ```
 
-使用实际输出复制独立布局，检查缺失、篡改、错架构、超时/取消与进程退出。不修改来源；夹具不证明真实安装器或操作系统断网。相关 ignored 用例与环境变量见[测试指南](../../docs/testing.md#rust-与生成)，平台限制见[分发契约](../../docs/contracts/runtime-distribution.md)。
+使用实际输出复制独立布局，检查缺失、篡改、错架构、超时/取消与进程退出。不修改来源；夹具不证明真实安装器或操作系统断网。相关 ignored 用例与环境变量见[测试指南](../../docs/acceptance.md#签名运行时与-sdk)，平台限制见[分发契约](../../docs/contracts/runtime-distribution.md)。

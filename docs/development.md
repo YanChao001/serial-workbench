@@ -40,21 +40,23 @@ serial-workbench-cli --profile <绝对目录> operation get --request-id <原uui
 
 正常调用返回接纳 Operation，使用 `operation get <operationId>` 查询终态；`operation cancel` 请求合作取消，退出客户端保留任务。`host stop` 的接纳和实际停止分别确认。目录定义 query/invoke、目标和参数 schema，CAS 写入通过 `--expected-revision`；完整参数与退出码以 [args.rs](../crates/cli/src/args.rs) 和 `--help` 为准。
 
+CLI 的 `query`、`invoke` 和 MCP 的 `tools/list` 使用当前身份可见的实际目录。目录变化后重新发现入口，已接纳的业务按原回执查询。 [插件 SDK](../packages/plugin-sdk/README.md)
+
 `authorize`/`revoke` 是明确的本地用户控制入口。文件业务先经 `file.register` 登记再使用 ObjectRef，普通请求不自动读取用户控制凭据。MCP 使用 `serial-workbench-mcp --profile <绝对目录>`，stdout 仅承载官方 SDK 协议，工具来自同一目录和权限；取消工具等待不代替 `operation.cancel`。
 
 需要在同一 Host 上区分多个 MCP 客户端时，为各自的 MCP 配置追加 `--client-id <名称>`。名称用字母、数字及 `._:-`，作为该客户端的授权身份和工作台「活动」中的选择项。已有未命名的配置沿用 `serial-workbench-mcp`。新增名称首次连接按新身份注册，由本地用户按实际目标授权。
 
-LAN 本机管理使用同一 profile 的用户控制凭据。用 `lan status` 获取本地身份与当前共享状态，按双端管理员确认的对端身份提供 `lan --params-json <文件>`。文件使用 `setShares` 或 `unpair` 并按 Core DTO 提供对端和共享目标。B 用 `lan enable <ip:port>` 启用监听，IPv6 地址用方括号包裹。用 `lan disable` 停用监听并保留配对。Host 重启后需显式启用监听。[LAN DTO](../crates/core/src/lan.rs)
+Host/CLI/MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录选择配置。相对路径绑定启动 cwd，变量和 `~` 保持原样。Windows 盘符相对或根相对路径会被拒绝。日志写 stderr，CLI JSON 和 MCP 协议写 stdout。`SWB_LOG_LEVEL` 的可用级别及默认值由[启动配置](../crates/ipc/src/startup_config.rs)维护，`startup.config.get` 可查看脱敏来源。
 
-桌面可从设置搜索「局域网共享」。两端各复制本机配对信息并在另一端粘贴，核对来源后建立配对。持口端先在工作台连接串口，再为该对端选择「仅查看」或「查看和操作」。使用对端可达的本机地址开启监听。停止监听保留配对，需要收回对端身份时使用「解除配对」。
+### 局域网共享
 
-持口端开启监听后，复制的配对信息附带可连接的地址。在使用端完成配对，再从工作台的菜单打开「局域网连接」，粘贴该信息。连上后从设备列表选择并打开共享的串口视图。工作台的设置和工作区仍在本机保存。用同一菜单返回本机，已连接地址保留供下次选择。
+在两台桌面的「局域网共享」设置交换并核对配对信息。持口端 B 连接串口，选择对端的查看或操作权限，并在对端可达的地址开启监听。使用端 A 从工作台打开「局域网连接」，粘贴 B 开启监听后复制的信息，再选择共享串口。设置和工作区仍保存在 A。停止监听保留配对，解除配对收回对端身份。
+
+CLI 管理用同一 profile 的本机用户控制身份。`lan status` 查看身份与共享，`lan --params-json <文件>` 提交 `setShares` 或 `unpair`。`lan enable <ip:port>` 启用监听，IPv6 地址加方括号。`lan disable` 停止监听，Host 重启后须显式启用。 [LAN DTO](../crates/core/src/lan.rs)
 
 在 A 用 `authorize` 为已注册的 CLI 或命名 MCP 客户端授予 `lan.connect`。授权目标的 `hostId` 用 A 的 Host ID，`kind` 为 `swb:lan-peer`，`id` 用 B 的 Host ID。CLI 的查询、操作与回执命令和 MCP 启动参数都可加 `--lan-peer <B Host ID> --lan-address <B IP:端口>`，`--profile` 继续使用 A 的本机配置。业务目标使用 B 命名空间，CLI 调用需用同一路由保存的上下文。配对、授权与停止 Host 仍在所属机器执行。可复现流程见 [LAN 进程验收](../e2e/lan-route.mjs)。
 
-Host/CLI/MCP 按 `--profile`、`SWB_PROFILE`、平台默认目录选择配置。相对路径绑定启动 cwd，不展开变量或 `~`；Windows 盘符相对/根相对路径拒绝。`SWB_LOG_LEVEL` 接受 off/error/warn/info/debug/trace，默认 info；空值和过滤表达式拒绝。日志写 stderr，CLI JSON/MCP 协议写 stdout；`startup.config.get` 提供脱敏来源。
-
-CLI 的 `query`/`invoke` 和 MCP 的 `tools/list` 使用 Host 当前授权且实际登记的贡献。按返回名称调用，目录变化后重新发现；不要因名称或权限变化而重放业务。插件作者从 [Node SDK](../packages/plugin-sdk/README.md) 开始，真实包的验证入口见[测试指南](./testing.md#rust-与生成)。
+### 浏览器访问
 
 桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发模式连接真实 Host 前可用 `pnpm build` 准备 `dist/`。
 
@@ -102,7 +104,7 @@ ReactDOM 的[本地补丁](../patches/react-dom@19.3.1.patch)仅跳过 textarea 
 
 ## 构建与发布
 
-当前发布/Pages 模板停用，签名和更新配置待启用。手动 CI 见[测试](./testing.md#持续集成)；正式分发前按本节准备并验收。
+当前发布/Pages 模板停用，签名和更新配置待启用。手动 CI 见[测试指南](./testing.md#持续集成)，安装包和实机验证见[安装与发行验收](./acceptance.md#安装与发行验收)。
 
 ```sh
 pnpm version:check

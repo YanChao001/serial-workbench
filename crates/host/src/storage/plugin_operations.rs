@@ -143,12 +143,7 @@ impl Store {
         let id = id.clone();
         self.request(move |database| database.plugin_result(&id))
     }
-    pub(crate) fn record_plugin_result(
-        &self,
-        id: &Id,
-        value: &serde_json::Value,
-    ) -> HostResult<ActionResult> {
-        let bytes = serde_json::to_vec(value).map_err(|_| unavailable())?;
+    pub(crate) fn record_plugin_result(&self, id: &Id, bytes: &[u8]) -> HostResult<ActionResult> {
         if bytes.len() > serial_workbench_ipc::frame::MAX_FRAME_BYTES {
             return Err(HostError::new(
                 "LIMIT_EXCEEDED",
@@ -158,9 +153,9 @@ impl Store {
         let document = PluginResult {
             format_version: "0.1".into(),
             operation_id: id.clone(),
-            bytes_base64: Bytes::try_from(STANDARD.encode(&bytes).as_str())?,
+            bytes_base64: Bytes::try_from(STANDARD.encode(bytes).as_str())?,
             length: (bytes.len() as u64).into(),
-            fingerprint: Digest::try_from(format!("{:x}", Sha256::digest(&bytes)).as_str())?,
+            fingerprint: Digest::try_from(format!("{:x}", Sha256::digest(bytes)).as_str())?,
         };
         let id = id.clone();
         let result = self.request(move |database| database.record_plugin_result(&id, document))?;

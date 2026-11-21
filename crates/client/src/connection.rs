@@ -187,6 +187,41 @@ impl HostClient {
             self.raw.discovery.instance_epoch,
         )
     }
+    /// Keep a handle to the same authenticated Windows Host until program replacement.
+    #[cfg(windows)]
+    pub async fn observe_local_host_process(&self) -> HostResult<local::LocalHostProcess> {
+        let discovery = &self.raw.discovery;
+        let mut stream = connect_endpoint(discovery, true).await?;
+        let process = local::LocalHostProcess::observe(&stream, discovery.pid)?;
+        verify_host(&mut stream, discovery, &self.raw.pin, IpcChannel::Control).await?;
+        Ok(process)
+    }
+
+    /// 维护调用方持有本机实例锁，并在阻塞任务中验证关停回执。
+    pub fn verify_local_shutdown_completed(&self) -> HostResult<()> {
+        local::shutdown::verify_completed_shutdown(
+            &self.options.profile.join("host-v0"),
+            &self.raw.pin,
+            self.raw.discovery.instance_epoch,
+        )
+    }
+
+    /// 持有实例锁时核对关停回执，并持久化实际 Windows 退出结果。
+    #[cfg(windows)]
+    pub fn verify_local_shutdown_exit(
+        &self,
+        process: &local::LocalHostProcess,
+        timeout: Duration,
+    ) -> HostResult<()> {
+        local::shutdown::verify_shutdown_process_exit(
+            &self.options.profile.join("host-v0"),
+            &self.raw.pin,
+            self.raw.discovery.instance_epoch,
+            process,
+            timeout,
+        )
+    }
+
     /// Reattach using the same private identity. Never start a Host or replay a business request.
     pub async fn reconnect(&self) -> HostResult<Self> {
         let reconnected = Self::connect(self.options.clone()).await?;
@@ -401,10 +436,19 @@ async fn verified_connection(
     channel: IpcChannel,
     wait_for_endpoint: bool,
 ) -> HostResult<LocalStream> {
+    let mut stream = connect_endpoint(discovery, wait_for_endpoint).await?;
+    verify_host(&mut stream, discovery, pin, channel).await?;
+    Ok(stream)
+}
+
+async fn connect_endpoint(
+    discovery: &DiscoveryRecord,
+    wait_for_endpoint: bool,
+) -> HostResult<LocalStream> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    let mut stream = loop {
+    loop {
         match local::connect(&discovery.endpoint).await {
-            Ok(stream) => break stream,
+            Ok(stream) => return Ok(stream),
             Err(error)
                 if wait_for_endpoint
                     && error.code == "HOST_BUSY"
@@ -414,11 +458,19 @@ async fn verified_connection(
             }
             Err(error) => return Err(error),
         }
-    };
+    }
+}
+
+async fn verify_host(
+    stream: &mut LocalStream,
+    discovery: &DiscoveryRecord,
+    pin: &IdentityPin,
+    channel: IpcChannel,
+) -> HostResult<()> {
     let id = new_request_id();
     let client_nonce = random_token();
     write_frame(
-        &mut stream,
+        stream,
         &WireFrame {
             request_id: id.clone(),
             channel,
@@ -431,8 +483,8 @@ async fn verified_connection(
         MAX_FRAME_BYTES,
     )
     .await?;
-    let response = receive(&mut stream, &id, channel, LOCAL_ATTACH_TIMEOUT).await?;
-    local::verify_peer(&stream)?;
+    let response = receive(stream, &id, channel, LOCAL_ATTACH_TIMEOUT).await?;
+    local::verify_peer(stream)?;
     let IpcMessage::HostHello {
         protocol_version: ProtocolVersion::V0_1,
         host_id,
@@ -453,7 +505,7 @@ async fn verified_connection(
         ));
     }
     pin.verify(instance_epoch, &client_nonce, &server_nonce, &proof)?;
-    Ok(stream)
+    Ok(())
 }
 async fn receive(
     stream: &mut LocalStream,

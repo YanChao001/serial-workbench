@@ -242,7 +242,7 @@ pub(crate) fn resource_target(reference: &ObjectRef) -> Target {
         session_epoch: None,
     }
 }
-fn query(
+pub(crate) fn query(
     attachment: &AttachResult,
     action: &str,
     target: Target,
@@ -266,7 +266,7 @@ fn query(
         },
     })
 }
-fn reply(reply: RpcReply) -> HostResult<RpcResult> {
+pub(crate) fn reply(reply: RpcReply) -> HostResult<RpcResult> {
     match reply {
         RpcReply::Success { result, .. } => Ok(*result),
         RpcReply::Failure { error, .. } => Err(error),

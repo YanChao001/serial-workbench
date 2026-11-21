@@ -94,6 +94,8 @@ export const enShell = {
     "No update information yet. Retry later or find installers in version history.",
   "updates.platformUnavailable":
     "No package for your system and installation type. Check version history.",
+  "updates.hostRecoveryRequired":
+    "Quit and reopen the current installation of Serial Workbench, then check for updates again.",
   "updates.endpoint": "Update source",
   "updates.endpointDisabled": "Automatic updates not enabled",
   "updates.keyMissing": "Update verification not configured",

@@ -6,6 +6,29 @@ use crate::{
 use serial_workbench_core::*;
 use serial_workbench_ipc::frame::MAX_FRAME_BYTES;
 
+pub(super) fn negotiate_protocol(peer_versions: &[String]) -> HostResult<ProtocolVersion> {
+    const CURRENT: &str = "0.1";
+    if peer_versions.iter().any(|version| version == CURRENT) {
+        return Ok(ProtocolVersion::V0_1);
+    }
+    let mut error = HostError::new(
+        "PROTOCOL_UNSUPPORTED",
+        format!("Host protocol {CURRENT} is required"),
+    );
+    let target = JsonValue::String(CURRENT.into());
+    error.details = Some(Box::new(
+        [
+            (
+                "supportedProtocolVersions".into(),
+                JsonValue::Array(vec![target.clone()]),
+            ),
+            ("upgradeTarget".into(), target),
+        ]
+        .into(),
+    ));
+    Err(error)
+}
+
 pub(super) async fn attach(
     store: &Store,
     identity: &HostIdentity,
@@ -25,16 +48,7 @@ pub(super) async fn attach(
     {
         return Err(host_mismatch());
     }
-    if !params
-        .supported_protocol_versions
-        .iter()
-        .any(|v| v == "0.1")
-    {
-        return Err(HostError::new(
-            "PROTOCOL_UNSUPPORTED",
-            "Host protocol 0.1 is required",
-        ));
-    }
+    let protocol_version = negotiate_protocol(&params.supported_protocol_versions)?;
     let store = store.clone();
     let current_actor = actor.clone();
     let (context, current_identity) =
@@ -42,7 +56,7 @@ pub(super) async fn attach(
     Ok(AttachResult {
         host_id: identity.host_id.clone(),
         instance_epoch: identity.instance_epoch,
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version,
         catalog_version: current_identity.catalog_version,
         actor_id: actor.id().clone(),
         client_id: actor.client_id().clone(),

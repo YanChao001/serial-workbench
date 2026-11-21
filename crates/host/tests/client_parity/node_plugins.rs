@@ -6,6 +6,9 @@ use rmcp::model::{ErrorCode, PaginatedRequestParams, Tool};
 mod support;
 use support::node_host_actions::{Fixture, spec};
 
+#[path = "uart_gold.rs"]
+mod uart_gold;
+
 #[tokio::test]
 #[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT and same-source SWB_TEST_CLI_BIN/SWB_TEST_MCP_BIN"]
 async fn native_node_dynamic_action_cli_and_official_mcp_preserve_receipts_and_revocation() {

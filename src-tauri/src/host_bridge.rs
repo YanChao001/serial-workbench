@@ -1471,6 +1471,10 @@ impl DesktopHostBridge {
             state.windows.remove(window);
         }
     }
+    pub(crate) fn local_profile(&self) -> &std::path::Path {
+        &self.profile
+    }
+
     pub(crate) fn new(profile: std::path::PathBuf) -> Self {
         Self {
             profile,
@@ -1617,16 +1621,12 @@ impl DesktopHostBridge {
             );
             options.expected_host_executable =
                 std::env::var_os("SWB_DEV_EXPECTED_HOST_EXECUTABLE").map(Into::into);
-            let fresh = match std::fs::symlink_metadata(self.profile.join("host-v0")) {
-                Err(error) if error.kind() == std::io::ErrorKind::NotFound => true,
-                Ok(_) => false,
-                Err(_) => {
-                    return Err(HostError::new(
-                        "STORAGE_UNAVAILABLE",
-                        "Host profile is unavailable",
-                    ));
-                }
-            };
+            let profile = self.profile.clone();
+            let fresh = !crate::blocking::run(move || {
+                Ok(serial_workbench_ipc::profile_has_host_state(&profile))
+            })
+            .await
+            .map_err(|_| HostError::new("STORAGE_UNAVAILABLE", "Host profile is unavailable"))??;
             let prestarted = if fresh {
                 first_start.await?;
                 Some(std::sync::Arc::new(

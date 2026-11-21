@@ -1,10 +1,27 @@
 use serial_workbench_core::{HostError, HostResult};
 use std::{
-    fs::{File, TryLockError},
+    fs::{self, File, TryLockError},
     path::Path,
 };
 
 pub const INSTANCE_LOCK_NAME: &str = "instance.lock";
+
+/// 升级预备可先建立协调锁。只有 Host 状态才表示该 profile 已启动过。
+pub fn profile_has_host_state(profile: &Path) -> HostResult<bool> {
+    let namespace = profile.join("host-v0");
+    match fs::symlink_metadata(&namespace) {
+        Ok(metadata) if metadata.file_type().is_dir() => {}
+        Ok(_) => return Err(unavailable()),
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(false),
+        Err(_) => return Err(unavailable()),
+    }
+    for entry in fs::read_dir(namespace).map_err(|_| unavailable())? {
+        if entry.map_err(|_| unavailable())?.file_name() != INSTANCE_LOCK_NAME {
+            return Ok(true);
+        }
+    }
+    Ok(false)
+}
 
 /// 持有当前调用取得的协调锁；释放时显式解锁，不等待派生进程关闭继承句柄。
 pub struct PrivateFileLock {
@@ -39,6 +56,19 @@ pub fn profile_has_running_host(profile: &Path) -> HostResult<bool> {
         Err(TryLockError::WouldBlock) => Ok(true),
         Err(TryLockError::Error(_)) => Err(unavailable()),
     }
+}
+
+/// Acquire the same protected lock for Host startup and program replacement.
+pub fn reserve_host_instance(namespace: &Path) -> HostResult<PrivateFileLock> {
+    crate::prepare_private_directory(namespace)?;
+    let path = namespace.join(INSTANCE_LOCK_NAME);
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if !metadata.file_type().is_file() => return Err(unavailable()),
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(unavailable()),
+        _ => {}
+    }
+    try_lock_private_file(&path)?
+        .ok_or_else(|| HostError::new("HOST_BUSY", "This profile already has a running Host"))
 }
 
 /// A private, persistent coordination file. Dropping the returned guard releases its OS lock.

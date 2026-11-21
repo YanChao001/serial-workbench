@@ -132,12 +132,8 @@ function snapshot() {
   for (const property of appearance)
     if (property.startsWith("--"))
       root.style.setProperty(property, appearance.getPropertyValue(property));
-  for (const property of [
-    "font-size",
-    "font-family",
-    "line-height",
-    "color-scheme",
-  ])
+  // 保留样式表的无单位行高，让字号不同的子元素各自计算行高。
+  for (const property of ["font-size", "font-family", "color-scheme"])
     root.style.setProperty(property, appearance.getPropertyValue(property));
   root.style.width = "100%";
   root.style.height = "100%";

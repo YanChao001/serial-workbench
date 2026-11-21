@@ -2,6 +2,7 @@
 use super::node_queries::QueryAuthority;
 use super::*;
 use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
+use serial_workbench_core::NODE_FILE_RESULT_KEY;
 
 pub(super) struct ActionAuthority {
     host: Host,
@@ -390,7 +391,7 @@ impl Host {
             let observation_id = id.clone();
             let observation_instance = binding.instance_id().clone();
             let observation_epoch = accepted.call.instance_epoch;
-            binding.invoke_reserved(
+            let value = binding.invoke_reserved(
                 accepted.call,
                 permit,
                 move || check.check(),
@@ -416,14 +417,30 @@ impl Host {
                         )
                         .map(|_| ())
                 }),
-            )
+            )?;
+            if binding
+                .spec()
+                .output_schema
+                .contains_key(NODE_FILE_RESULT_KEY)
+            {
+                use base64::{Engine as _, engine::general_purpose::STANDARD};
+                return value
+                    .as_str()
+                    .and_then(|encoded| STANDARD.decode(encoded).ok())
+                    .filter(|bytes| !bytes.is_empty())
+                    .ok_or_else(|| {
+                        HostError::new("NODE_OUTPUT_INVALID", "Artifact output must be base64")
+                    });
+            }
+            serde_json::to_vec(&value)
+                .map_err(|_| HostError::new("NODE_OUTPUT_INVALID", "Cannot encode plugin result"))
         })
         .await;
         let child_outcome = self.wait_task_children(&operation_id).await;
         let store = self.inner.store.clone();
         let _ = blocking(move || {
             let mut outcome = match output {
-                Ok(value) => match store.record_plugin_result(&operation_id, &value) {
+                Ok(bytes) => match store.record_plugin_result(&operation_id, &bytes) {
                     Ok(result) => Settlement {
                         state: OperationState::Succeeded,
                         result: Some(result),

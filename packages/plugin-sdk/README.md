@@ -50,6 +50,8 @@ context.actions.register("example.terminal.forward", async (call, task) => {
 
 `invokeChild` 返回接纳状态，`operations.get` 返回当前 Operation，结果保留生成契约的 `kind/value` 结构。处理器返回后关闭新接纳，Host 等待已接纳子项结算。进度报告计数为十进制字符串，按实际完成工作递增；报告合并为最新快照。查询处理器只接收 `Query`，没有任务第二参数。
 
+签名动作可以在 `outputSchema` 声明 `type: "string"`、`contentEncoding: "base64"` 和 `x-swb-file-result: "image/svg+xml"`。处理器返回 Base64，Host 验证并将解码后的字节保存为结果文件。客户端通过终态的 `resultRef` 和 `file.read` 获取同一份内容，读取仍需要来源权限。图表参考包的 `swb.reference.chart.exportSvg` 可在无窗口环境运行。
+
 动作处理器通过 `task.streams.read(params)` 分页读取 Host 留存的原始事件。参数和返回值分别沿用生成的 `StreamReadParams` 与 `StreamReadResult`。插件需声明会话上的 `content.read`，Host 同时校验当前调用者授权以及父任务的会话和代次范围。
 
 ```ts
@@ -73,10 +75,10 @@ const page = await task.streams.read({
 
 声明 `feed: "derived"` 的桌面视图使用 `connectDerivedView({ onSession, onPage, onError })`。`onPage` 收到打开动作所发布的留存样本，第二个参数在游标跨越缺口时提供 `previousPosition` 和 `skippedThrough`。SDK 在回调完成后确认读页。浏览器入口和运行中的主题、语言、缩放联动由后续场景验收。生命周期、授权和预算见 [Node 扩展合同](../../docs/contracts/node-extension-v0.md)。
 
-[串口监听参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图，显示已连接串口的收发数据。编译、签名与原生管理验证见[终端参考包验收](../../docs/testing.md#终端参考包验收)。
+[串口监听参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图，显示已连接串口的收发数据。编译、签名与原生管理验证见[终端参考包验收](../../docs/acceptance.md#终端参考包验收)。
 
-[图表参考包](./examples/reference-chart/) 从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/testing.md#图表参考包后台采样)。
+[图表参考包](./examples/reference-chart/) 从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/acceptance.md#图表参考包后台采样)。
 
-[自动化参考包](./examples/reference-automation/) 在精确的会话代次依次发送最多八步。每步等待实际发送回执，再对照相应发送意图之后的 RX 字节。成功结果保留发送子动作和匹配的来源区间。应答不符、超时、来源变化、发送未确认或取消都会停止后续步骤。签名与验收见[自动化参考包后台应答](../../docs/testing.md#自动化参考包后台应答)。
+[自动化参考包](./examples/reference-automation/) 在精确的会话代次依次发送最多八步。每步等待实际发送回执，再对照相应发送意图之后的 RX 字节。成功结果保留发送子动作和匹配的来源区间。应答不符、超时、来源变化、发送未确认或取消都会停止后续步骤。签名与验收见[自动化参考包后台应答](../../docs/acceptance.md#自动化参考包后台应答)。
 
 从仓库根运行 `pnpm plugin-sdk:fixture`，检查作者类型和误用约束，编译[验收示例](./examples/native-parity.ts)。它不是可直接安装的包：[原生夹具](../../crates/host/tests/client_parity/node_plugins.rs)将占位 ID 替换为 manifest 中的 ID，选取动作或查询入口导出为 `register`，再签名、安装并经 CLI/MCP 调用。只通过编译不证明权限、重放或结果读取正确；实际运行见[测试指南](../../docs/testing.md#rust-与生成)。

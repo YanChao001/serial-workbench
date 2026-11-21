@@ -1,6 +1,6 @@
 # Node runtime 与四目标分发基线
 
-本契约规定随包 Node 的来源、安装布局、自检和升级条件。[资源准备指南](../../resources/runtime/README.md)给出操作命令；[路线与进度](../plan.md#验证基线)区分已过的四目标自检与尚未完成的最低系统、最终安装器和发行验收。
+本契约规定随包 Node 的来源、布局、自检和升级条件。操作命令见[资源准备](../../resources/runtime/README.md)，交付范围见[验证基线](../plan.md#验证基线)。
 
 ## 版本与来源
 
@@ -25,20 +25,20 @@ Tauri 使用 Windows WebView2、macOS WKWebView 和 Linux WebKitGTK，见[官方
 
 Node 的平台策略明确排除供应商已结束支持的系统，即使平台表仍列该版本。[Windows 10 Home/Pro 22H2](https://learn.microsoft.com/en-us/lifecycle/products/windows-10-home-and-pro)常规支持已于 2025-10-14 结束。[ESU 不延长产品生命周期或恢复一般技术支持](https://learn.microsoft.com/en-us/lifecycle/faq/extended-security-updates)；不能自行推断 ESU 设备获得 Node 的平台支持。[WebView2 在 Windows 10 22H2 至少更新至 2028 年 10 月且不要求 ESU](https://learn.microsoft.com/en-us/deployedge/microsoft-edge-supported-operating-systems)，这是独立组件的承诺。
 
-因此保留 Windows 10 22H2 的产品验收目标，同时将普通 EOL 环境标为“产品兼容待验、Node 上游支持冲突”，不能写“Node 官方支持 Windows 10 22H2”。验收记录须注明系统 edition/build、补丁与 ESU 状态。若公开发行需要承诺支持该 EOL 目标，须由用户决定是否承担产品自身的兼容维护责任；若要改最低系统或 runtime 路线，也须另行确认范围变更。M0 不据此删除目标。
+Windows 10 22H2 仍是产品验收目标，普通 EOL 环境记录为「产品兼容待验、Node 上游支持冲突」。验收需注明 edition/build、补丁和 ESU。对该目标作公开兼容承诺前，由用户决定是否承担产品自身的兼容维护责任。最低系统或 runtime 路线变更另行确认。
 
 ### 全新离线环境与 Linux libatomic
 
 Windows 安装包的离线验收必须含 WebView2 缺失场景，采用 Tauri 的 [`offlineInstaller`](https://v2.tauri.app/distribute/windows-installer/#offline-installer)方式随安装器提供 Evergreen 完整安装程序，并锁定来源/hash/许可；在线 bootstrapper 不能满足这项验收。便携 ZIP 保持依赖系统 WebView2，并随包提供离线部署材料和检测说明；缺失时从原生启动入口给出安装指引。WebView2 的版本、签名、安装结果按 [Microsoft 离线部署流程](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)记录。
 
-Node 25 起的官方 Linux 二进制新增 `libatomic` 动态依赖，见 [BUILDING.md 官方二进制说明](https://github.com/nodejs/node/blob/v26.13.0/BUILDING.md#official-binary-platforms-and-toolchains)。M2 采用**私有随包 libatomic**，避免要求离线用户临时联网安装：
+官方 Linux Node 依赖 `libatomic`，发行包随带私有库以支持离线安装。 [Node 官方二进制说明](https://github.com/nodejs/node/blob/v26.13.0/BUILDING.md#official-binary-platforms-and-toolchains)
 
 1. [机器清单](../../resources/runtime/libatomic-jammy.json)固定 Ubuntu Jammy 的包版本、签名索引、二进制与对应源码、库和许可的摘要。只从已核验的发行材料准备私有库，不从开发机任意复制 `.so`。
 2. 将所需 `libatomic.so.1` 及其真实库文件放入下述 runtime 私有 `lib/`，保留 SONAME 链接、模式和许可；检查 ELF `NEEDED`、符号版本及传递依赖在 Ubuntu 22.04、24.04、Debian 12 均满足。该库许可通常是 GPL-3.0-or-later WITH GCC-exception-3.1，按选中包实际 copyright 核对，提供对应源码及必要补丁/构建信息；不能套用 Node 的 MIT 许可。许可依据见 [GCC libatomic 声明](https://github.com/gcc-mirror/gcc/blob/releases/gcc-11.5.0/libatomic/libatomic_i.h)及 [Runtime Library Exception](https://github.com/gcc-mirror/gcc/blob/releases/gcc-11.5.0/COPYING.RUNTIME)，此版本链接只说明许可结构，未选定库版本。
-3. Host 仅对 Node 子进程指定已核验的私有 libatomic 来源，以封印 fd preload，清理继承的加载注入配置；原安装目录不作为其他系统依赖的通用搜索入口，不更改全局环境或系统库。M2 通过动态加载记录确认真正使用随包库；deb 与 AppImage 都检查，不能依赖打包器自动发现 Node 的依赖。其余系统库和 WebKitGTK 按包依赖/离线部署材料交付。
+3. Host 仅为 Node 子进程以封印 fd preload 私有库，并清理继承的加载注入配置。其余系统依赖沿用平台加载规则，全局环境和系统库保持原样。deb 与 AppImage 均核对动态加载记录，确认实际使用随包库。其余系统库和 WebKitGTK 由包依赖及离线材料提供。
 4. 启动前验证文件、架构和完整性，运行有超时的 runtime 自检取得版本、架构与 ABI，再启动插件宿主。缺 `libatomic`、glibc/GLIBCXX 版本不符、其他 DLL/库缺失均归入可诊断的依赖错误，报告缺少的组件与对应离线修复包。缺库时插件执行不可用，Rust 基础服务和已存在的原始录制继续；不循环重启、不改用 PATH Node。
 
-M2 验收须移除系统 `libatomic1` 或使用确实缺库的干净镜像，断网验证私有库方案；再移除随包库验证诊断路径。未完成来源、许可和真实加载验证前，Linux 整包离线项保持待验。
+在缺少系统 `libatomic1` 的独立环境断网验证私有库，再移除随包库核对诊断。Linux 整包离线验收同时核对库来源、许可和实际加载。
 
 ## 安装布局与启动
 
@@ -105,12 +105,12 @@ native addon 按**精确 Node runtime / ABI / target**分包：记录 `process.v
 
 M3 升级按[更新与分发](../architecture.md#更新与分发)：下载并验证新版本目录，附着当前 Host 停止接纳新任务，结算在途任务，相关进程真实退出后切换整套组件。用户可推迟以继续录制；失败保留切换前的安装、用户数据和诊断证据。较早版本的浏览器客户端重连握手后提示刷新，新体系较早版本程序遇到较新数据格式按未来格式保护处理。卸载/更新不得边运行边替换 Node、addon 或工具文件。
 
-签名、公证和更新签名遵循[签名与更新](../development.md#签名与更新)。当前 SignPath 范围仅 NSIS 外层，不覆盖安装后的 Host、Node、addon、工具或 MSI；M2/M3 须按最终组件组合扩展或记录实际范围。macOS 包含 Node、addon、工具后重新验签/公证，并验证 Node JIT 所需 entitlement。先完成代码签名，再对最终交付字节生成更新签名和清单。
+签名、公证和更新签名遵循[签名与更新](../development.md#签名与更新)。当前 SignPath 只覆盖 NSIS 外层，安装后的 Host、Node、addon、工具及 MSI 依最终发行方案处理。验收逐项记录签名范围。macOS 包含这些组件后重新验签和公证，并验证 Node JIT 所需 entitlement。先完成代码签名，再对最终交付字节生成更新签名和清单。
 
-## 验收与 M2 实现入口
+## 验收入口
 
 分别核验上游支持与签名材料、目标架构运行与实际加载、最低系统整套断网运行、最终安装/升级/签名。固定来源核验不等于成功启动，构造的安装布局不等于最终安装器。
 
 每个目标均使用没有系统 Node/npm 的断网环境，实际从最终包启动 GUI、独立 Host、CLI/MCP 和至少一个正式随包插件；验证从其他当前目录启动仍使用固定 runtime。负例覆盖错架构、损坏/缺失 runtime、缺少系统依赖、addon ABI 不符，以及录制/插件任务在后台时推迟升级、停止接新任务、结算失败保留旧版和成功整套切换。原生图形界面与浏览器分别记录结果，架构模拟运行不替代本架构验收。
 
-实际验收入口沿用[安装与发行验收](../testing.md#安装与发行验收)、[交付检查](../development.md#交付检查)和[桌面边界](../testing.md#桌面边界)，在独立机器/虚拟机或用户安排的前台时段运行。PR/Release 记录版本、commit、target、系统 edition/build、依赖版本、最终包 hash、签名身份/状态、执行步骤、结果和未通过项，据此声明实际可交付范围。
+实际验收入口沿用[安装与发行验收](../acceptance.md#安装与发行验收)、[交付检查](../development.md#交付检查)和[桌面边界](../testing.md#桌面边界)，在独立机器/虚拟机或用户安排的前台时段运行。PR/Release 记录版本、commit、target、系统 edition/build、依赖版本、最终包 hash、签名身份/状态、执行步骤、结果和未通过项，据此声明实际可交付范围。

@@ -508,12 +508,7 @@ impl ConnectionState {
             else {
                 return Err(invalid());
             };
-            if !supported_protocol_versions.iter().any(|v| v == "0.1") {
-                return Err(HostError::new(
-                    "PROTOCOL_UNSUPPORTED",
-                    "Host protocol 0.1 is required",
-                ));
-            }
+            let protocol_version = negotiate_protocol(&supported_protocol_versions)?;
             if expected_host_id.is_some_and(|id| id != self.identity.host_id) {
                 return Err(host_mismatch());
             }
@@ -527,7 +522,7 @@ impl ConnectionState {
                     request_id: first.request_id,
                     channel,
                     body: IpcMessage::HostHello {
-                        protocol_version: ProtocolVersion::V0_1,
+                        protocol_version,
                         host_id: self.identity.host_id.clone(),
                         instance_epoch: self.identity.instance_epoch,
                         server_nonce,

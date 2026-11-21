@@ -49,6 +49,10 @@ export const en = {
   "plugins.noViewSession":
     "Connect a device in the workbench to open this plugin.",
   "plugins.openView": "Open plugin",
+  "plugins.exportChartSvg": "Save SVG…",
+  "plugins.chartSaved": "Chart saved.",
+  "plugins.chartExportError":
+    "Could not save the chart. Check that the session has enough samples and try again.",
   "plugins.openViewNumber": "Open view {number}",
   "plugins.confirmExecutionDescription":
     "When enabled, this plugin can access files and the network and start programs with your account permissions. Continue if you trust this plugin.",

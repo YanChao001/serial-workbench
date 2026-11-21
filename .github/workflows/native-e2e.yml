@@ -15,6 +15,9 @@ on:
       chart_only:
         type: boolean
         default: false
+      chart_with_desktop:
+        type: boolean
+        default: false
       windows_reference_only:
         type: boolean
         default: false
@@ -33,7 +36,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
 
       - name: 构建 Windows 文件对话框辅助程序
-        if: runner.os == 'Windows' && inputs.native_file_dialogs && !inputs.chart_only
+        if: runner.os == 'Windows' && inputs.native_file_dialogs
         shell: powershell
         timeout-minutes: 2
         run: |
@@ -78,21 +81,23 @@ jobs:
       - name: 准备桌面验收用签名参考包
         shell: bash
         env:
-          REFERENCE: ${{ inputs.chart_only && 'chart' || 'terminal' }}
+          REFERENCES: ${{ inputs.chart_only && 'chart' || (inputs.chart_with_desktop && 'terminal chart' || 'terminal') }}
         run: |
           pnpm plugin-sdk:fixture
-          output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/e2e/$REFERENCE-fixture")"
-          mkdir -p "$output"
           seed="$(mktemp)"
           trap 'rm -f -- "$seed"' EXIT
           node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), {mode:0o600})' "$seed"
           suffix=""
           if [[ "$RUNNER_OS" == "Windows" ]]; then suffix=".exe"; fi
-          "src-tauri/target/e2e/${{ inputs.target }}/debug/examples/sign_reference_$REFERENCE$suffix" \
-            ".cache/plugin-sdk/examples/reference-$REFERENCE/main.js" "$seed" \
-            "$output/reference-$REFERENCE.zip" "$REFERENCE-reference" native-ci > "$output/signed-$REFERENCE.json"
-          receipt="SWB_TEST_SIGNED_$(printf '%s' "$REFERENCE" | tr '[:lower:]' '[:upper:]')_RECEIPT"
-          echo "$receipt=$output/signed-$REFERENCE.json" >> "$GITHUB_ENV"
+          for reference in $REFERENCES; do
+            output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/e2e/$reference-fixture")"
+            mkdir -p "$output"
+            "src-tauri/target/e2e/${{ inputs.target }}/debug/examples/sign_reference_$reference$suffix" \
+              ".cache/plugin-sdk/examples/reference-$reference/main.js" "$seed" \
+              "$output/reference-$reference.zip" "$reference-reference" native-ci > "$output/signed-$reference.json"
+            receipt="SWB_TEST_SIGNED_$(printf '%s' "$reference" | tr '[:lower:]' '[:upper:]')_RECEIPT"
+            echo "$receipt=$output/signed-$reference.json" >> "$GITHUB_ENV"
+          done
 
       - name: 桌面 E2E（Windows / macOS）
         if: runner.os != 'Linux' && !inputs.chart_only && !(runner.os == 'Windows' && inputs.windows_reference_only)
@@ -119,7 +124,9 @@ jobs:
         run: pnpm test:e2e --interactive --skip-build --terminal-automated
 
       - name: 签名图表实际窗口（Windows / macOS）
-        if: runner.os != 'Linux' && inputs.chart_only
+        if: runner.os != 'Linux' && (inputs.chart_only || inputs.chart_with_desktop)
+        env:
+          SWB_E2E_WINDOWS_NATIVE_PICKERS: ${{ runner.os == 'Windows' && inputs.native_file_dialogs && '1' || '0' }}
         run: pnpm test:e2e --interactive --skip-build --chart-automated
 
       - name: 桌面 E2E（Linux）

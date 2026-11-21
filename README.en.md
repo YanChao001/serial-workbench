@@ -1,6 +1,6 @@
 # Serial Workbench
 
-A cross-platform serial workbench. The Tauri desktop app, CLI and MCP share a Rust Host that owns serial ports, sessions and recordings. The workbench supports text/hex I/O, file sending, recording, read-only replay, workspaces and shared settings. See the [roadmap and status](./docs/plan.md) for Node extensions, browser access and LAN sharing.
+A cross-platform serial workbench. The Tauri desktop app, CLI and MCP share a Rust Host that owns serial ports, sessions and recordings. It supports text/hex I/O, file sending, recording, read-only replay, workspaces and shared settings. Trusted Node plugins extend the workbench, and pairing enables browser access or serial port sharing over LAN. [Roadmap and status](./docs/plan.md)
 
 [中文](./README.md) · [Engineering docs](./docs/README.md) · [Contributing](./CONTRIBUTING.md)
 
