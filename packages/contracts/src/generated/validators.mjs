@@ -44,8 +44,8 @@ var require_ucs2length = __commonJS({
 });
 
 // host-validators.mjs
-var validateAccent = validate1900;
-var schema447 = {
+var validateAccent = validate1903;
+var schema448 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "neutral",
@@ -66,7 +66,7 @@ var schema447 = {
   title: "Accent",
   type: "string",
 };
-function validate1900(
+function validate1903(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -107,7 +107,7 @@ function validate1900(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema447.enum },
+      params: { allowedValues: schema448.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -117,10 +117,10 @@ function validate1900(
     }
     errors++;
   }
-  validate1900.errors = vErrors;
+  validate1903.errors = vErrors;
   return errors === 0;
 }
-var validateActionCheckParams = validate1901;
+var validateActionCheckParams = validate1904;
 var func0 = Object.prototype.hasOwnProperty;
 var pattern1 = new RegExp("^[A-Za-z0-9._:-]{1,128}$", "u");
 function validate28(
@@ -415,7 +415,7 @@ function validate309(
   validate309.errors = vErrors;
   return errors === 0;
 }
-function validate1901(
+function validate1904(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -538,10 +538,10 @@ function validate1901(
     }
     errors++;
   }
-  validate1901.errors = vErrors;
+  validate1904.errors = vErrors;
   return errors === 0;
 }
-var validateActionCheckResult = validate1904;
+var validateActionCheckResult = validate1907;
 var pattern5 = new RegExp(
   "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
   "u",
@@ -948,7 +948,7 @@ function validate541(
   validate541.errors = vErrors;
   return errors === 0;
 }
-function validate1904(
+function validate1907(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -1081,17 +1081,17 @@ function validate1904(
     }
     errors++;
   }
-  validate1904.errors = vErrors;
+  validate1907.errors = vErrors;
   return errors === 0;
 }
-var validateActionKind = validate1907;
-var schema450 = {
+var validateActionKind = validate1910;
+var schema451 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["query", "action"],
   title: "ActionKind",
   type: "string",
 };
-function validate1907(
+function validate1910(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -1117,7 +1117,7 @@ function validate1907(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema450.enum },
+      params: { allowedValues: schema451.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -1127,7 +1127,7 @@ function validate1907(
     }
     errors++;
   }
-  validate1907.errors = vErrors;
+  validate1910.errors = vErrors;
   return errors === 0;
 }
 var validateActionResult = validate270;
@@ -27237,8 +27237,8 @@ function validate270(
   validate270.errors = vErrors;
   return errors === 0;
 }
-var validateActionSpec = validate1908;
-var schema451 = {
+var validateActionSpec = validate1911;
+var schema452 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -27597,7 +27597,7 @@ function validate113(
   validate113.errors = vErrors;
   return errors === 0;
 }
-function validate1908(
+function validate1911(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -27773,7 +27773,7 @@ function validate1908(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema451.properties, key0)) {
+      if (!func0.call(schema452.properties, key0)) {
         const err11 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -28110,11 +28110,11 @@ function validate1908(
     }
     errors++;
   }
-  validate1908.errors = vErrors;
+  validate1911.errors = vErrors;
   return errors === 0;
 }
-var validateActivitySnapshot = validate1917;
-var schema453 = {
+var validateActivitySnapshot = validate1920;
+var schema454 = {
   additionalProperties: false,
   properties: {
     actionId: { $ref: "#/definitions/shared/definitions/Id" },
@@ -28188,7 +28188,7 @@ function validate1000(
   validate1000.errors = vErrors;
   return errors === 0;
 }
-function validate1918(
+function validate1921(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -28316,7 +28316,7 @@ function validate1918(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema453.properties, key0)) {
+      if (!func0.call(schema454.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -28507,10 +28507,10 @@ function validate1918(
     }
     errors++;
   }
-  validate1918.errors = vErrors;
+  validate1921.errors = vErrors;
   return errors === 0;
 }
-function validate1930(
+function validate1933(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -28678,10 +28678,10 @@ function validate1930(
     }
     errors++;
   }
-  validate1930.errors = vErrors;
+  validate1933.errors = vErrors;
   return errors === 0;
 }
-function validate1917(
+function validate1920(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -28726,7 +28726,7 @@ function validate1917(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1918(data0[i0], {
+            !validate1921(data0[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -28735,8 +28735,8 @@ function validate1917(
           ) {
             vErrors =
               vErrors === null
-                ? validate1918.errors
-                : vErrors.concat(validate1918.errors);
+                ? validate1921.errors
+                : vErrors.concat(validate1921.errors);
             errors = vErrors.length;
           }
         }
@@ -28761,7 +28761,7 @@ function validate1917(
       func0.call(data, "pendingTakeover")
     ) {
       if (
-        !validate1930(data.pendingTakeover, {
+        !validate1933(data.pendingTakeover, {
           instancePath: instancePath + "/pendingTakeover",
           parentData: data,
           parentDataProperty: "pendingTakeover",
@@ -28770,8 +28770,8 @@ function validate1917(
       ) {
         vErrors =
           vErrors === null
-            ? validate1930.errors
-            : vErrors.concat(validate1930.errors);
+            ? validate1933.errors
+            : vErrors.concat(validate1933.errors);
         errors = vErrors.length;
       }
     }
@@ -28790,11 +28790,11 @@ function validate1917(
     }
     errors++;
   }
-  validate1917.errors = vErrors;
+  validate1920.errors = vErrors;
   return errors === 0;
 }
-var validateAdmission = validate1936;
-function validate1936(
+var validateAdmission = validate1939;
+function validate1939(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -29153,10 +29153,10 @@ function validate1936(
       }
     }
   }
-  validate1936.errors = vErrors;
+  validate1939.errors = vErrors;
   return errors === 0;
 }
-var validateAttachParams = validate1941;
+var validateAttachParams = validate1944;
 var schema310 = {
   enum: ["desktop", "browser", "cli", "mcp", "node", "peer"],
   type: "string",
@@ -29207,7 +29207,7 @@ function validate1207(
   validate1207.errors = vErrors;
   return errors === 0;
 }
-function validate1941(
+function validate1944(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -29387,11 +29387,11 @@ function validate1941(
     }
     errors++;
   }
-  validate1941.errors = vErrors;
+  validate1944.errors = vErrors;
   return errors === 0;
 }
-var validateAttachResult = validate1945;
-var schema457 = {
+var validateAttachResult = validate1948;
+var schema458 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -29843,7 +29843,7 @@ function validate1222(
   validate1222.errors = vErrors;
   return errors === 0;
 }
-function validate1945(
+function validate1948(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -29992,7 +29992,7 @@ function validate1945(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema457.properties, key0)) {
+      if (!func0.call(schema458.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -30173,11 +30173,11 @@ function validate1945(
     }
     errors++;
   }
-  validate1945.errors = vErrors;
+  validate1948.errors = vErrors;
   return errors === 0;
 }
-var validateAuthorizationResult = validate1955;
-function validate1955(
+var validateAuthorizationResult = validate1958;
+function validate1958(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -30247,11 +30247,11 @@ function validate1955(
     }
     errors++;
   }
-  validate1955.errors = vErrors;
+  validate1958.errors = vErrors;
   return errors === 0;
 }
-var validateAuthorizeParams = validate1608;
-function validate1608(
+var validateAuthorizeParams = validate1611;
+function validate1611(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -30445,17 +30445,17 @@ function validate1608(
     }
     errors++;
   }
-  validate1608.errors = vErrors;
+  validate1611.errors = vErrors;
   return errors === 0;
 }
-var validateBackgroundFit = validate1957;
-var schema459 = {
+var validateBackgroundFit = validate1960;
+var schema460 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["cover", "contain"],
   title: "BackgroundFit",
   type: "string",
 };
-function validate1957(
+function validate1960(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -30481,7 +30481,7 @@ function validate1957(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema459.enum },
+      params: { allowedValues: schema460.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -30491,11 +30491,11 @@ function validate1957(
     }
     errors++;
   }
-  validate1957.errors = vErrors;
+  validate1960.errors = vErrors;
   return errors === 0;
 }
-var validateBackgroundPreset = validate1958;
-var schema460 = {
+var validateBackgroundPreset = validate1961;
+var schema461 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "plain",
@@ -30511,7 +30511,7 @@ var schema460 = {
   title: "BackgroundPreset",
   type: "string",
 };
-function validate1958(
+function validate1961(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -30547,7 +30547,7 @@ function validate1958(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema460.enum },
+      params: { allowedValues: schema461.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -30557,11 +30557,11 @@ function validate1958(
     }
     errors++;
   }
-  validate1958.errors = vErrors;
+  validate1961.errors = vErrors;
   return errors === 0;
 }
-var validateBackgroundSelection = validate1959;
-function validate1959(
+var validateBackgroundSelection = validate1962;
+function validate1962(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -30989,11 +30989,11 @@ function validate1959(
       }
     }
   }
-  validate1959.errors = vErrors;
+  validate1962.errors = vErrors;
   return errors === 0;
 }
-var validateBreakParams = validate1760;
-function validate1760(
+var validateBreakParams = validate1763;
+function validate1763(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31063,11 +31063,11 @@ function validate1760(
     }
     errors++;
   }
-  validate1760.errors = vErrors;
+  validate1763.errors = vErrors;
   return errors === 0;
 }
-var validateBreakReceipt = validate1766;
-function validate1766(
+var validateBreakReceipt = validate1769;
+function validate1769(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31168,11 +31168,11 @@ function validate1766(
     }
     errors++;
   }
-  validate1766.errors = vErrors;
+  validate1769.errors = vErrors;
   return errors === 0;
 }
-var validateByteRange = validate1964;
-function validate1964(
+var validateByteRange = validate1967;
+function validate1967(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31273,7 +31273,7 @@ function validate1964(
     }
     errors++;
   }
-  validate1964.errors = vErrors;
+  validate1967.errors = vErrors;
   return errors === 0;
 }
 var validateBytes = validate1277;
@@ -31793,14 +31793,14 @@ function validate1281(
   validate1281.errors = vErrors;
   return errors === 0;
 }
-var validateCancelReason = validate1967;
-var schema463 = {
+var validateCancelReason = validate1970;
+var schema464 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["user", "revoked", "takeover", "shutdown"],
   title: "CancelReason",
   type: "string",
 };
-function validate1967(
+function validate1970(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31831,7 +31831,7 @@ function validate1967(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema463.enum },
+      params: { allowedValues: schema464.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -31841,17 +31841,17 @@ function validate1967(
     }
     errors++;
   }
-  validate1967.errors = vErrors;
+  validate1970.errors = vErrors;
   return errors === 0;
 }
-var validateCancellation = validate1968;
-var schema464 = {
+var validateCancellation = validate1971;
+var schema465 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["none", "cooperative"],
   title: "Cancellation",
   type: "string",
 };
-function validate1968(
+function validate1971(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31877,7 +31877,7 @@ function validate1968(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema464.enum },
+      params: { allowedValues: schema465.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -31887,11 +31887,11 @@ function validate1968(
     }
     errors++;
   }
-  validate1968.errors = vErrors;
+  validate1971.errors = vErrors;
   return errors === 0;
 }
-var validateCancellationResult = validate1969;
-function validate1969(
+var validateCancellationResult = validate1972;
+function validate1972(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -31992,11 +31992,11 @@ function validate1969(
     }
     errors++;
   }
-  validate1969.errors = vErrors;
+  validate1972.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureRecord = validate1972;
-function validate1972(
+var validateCaptureRecord = validate1975;
+function validate1975(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32097,10 +32097,10 @@ function validate1972(
     }
     errors++;
   }
-  validate1972.errors = vErrors;
+  validate1975.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStartParams = validate1975;
+var validateCaptureStartParams = validate1978;
 var schema274 = { enum: ["raw", "redacted"], type: "string" };
 function validate1079(
   data,
@@ -32332,7 +32332,7 @@ function validate1089(
   validate1089.errors = vErrors;
   return errors === 0;
 }
-function validate1975(
+function validate1978(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32559,11 +32559,11 @@ function validate1975(
     }
     errors++;
   }
-  validate1975.errors = vErrors;
+  validate1978.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStatusResult = validate1983;
-function validate1983(
+var validateCaptureStatusResult = validate1986;
+function validate1986(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32687,11 +32687,11 @@ function validate1983(
     }
     errors++;
   }
-  validate1983.errors = vErrors;
+  validate1986.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStopParams = validate1987;
-function validate1987(
+var validateCaptureStopParams = validate1990;
+function validate1990(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32761,11 +32761,11 @@ function validate1987(
     }
     errors++;
   }
-  validate1987.errors = vErrors;
+  validate1990.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureStorageLimits = validate1989;
-function validate1989(
+var validateCaptureStorageLimits = validate1992;
+function validate1992(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -32866,7 +32866,7 @@ function validate1989(
     }
     errors++;
   }
-  validate1989.errors = vErrors;
+  validate1992.errors = vErrors;
   return errors === 0;
 }
 var validateCaptureTailParams = validate1259;
@@ -33364,8 +33364,8 @@ function validate1261(
   validate1261.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureTxSettlement = validate1992;
-function validate1992(
+var validateCaptureTxSettlement = validate1995;
+function validate1995(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33501,11 +33501,11 @@ function validate1992(
     }
     errors++;
   }
-  validate1992.errors = vErrors;
+  validate1995.errors = vErrors;
   return errors === 0;
 }
-var validateCaptureVerifyParams = validate1996;
-function validate1996(
+var validateCaptureVerifyParams = validate1999;
+function validate1999(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33575,11 +33575,11 @@ function validate1996(
     }
     errors++;
   }
-  validate1996.errors = vErrors;
+  validate1999.errors = vErrors;
   return errors === 0;
 }
-var validateCatalogListParams = validate1998;
-function validate1998(
+var validateCatalogListParams = validate2001;
+function validate2001(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -33686,10 +33686,10 @@ function validate1998(
     }
     errors++;
   }
-  validate1998.errors = vErrors;
+  validate2001.errors = vErrors;
   return errors === 0;
 }
-var validateCatalogListResult = validate2001;
+var validateCatalogListResult = validate2004;
 var schema31 = {
   additionalProperties: false,
   properties: {
@@ -34251,7 +34251,7 @@ function validate105(
   validate105.errors = vErrors;
   return errors === 0;
 }
-function validate2001(
+function validate2004(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34393,17 +34393,17 @@ function validate2001(
     }
     errors++;
   }
-  validate2001.errors = vErrors;
+  validate2004.errors = vErrors;
   return errors === 0;
 }
-var validateCertainty = validate2004;
-var schema475 = {
+var validateCertainty = validate2007;
+var schema476 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["confirmed", "uncertain"],
   title: "Certainty",
   type: "string",
 };
-function validate2004(
+function validate2007(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -34429,7 +34429,7 @@ function validate2004(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema475.enum },
+      params: { allowedValues: schema476.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -34439,7 +34439,7 @@ function validate2004(
     }
     errors++;
   }
-  validate2004.errors = vErrors;
+  validate2007.errors = vErrors;
   return errors === 0;
 }
 var validateChildCall = validate1295;
@@ -34936,8 +34936,8 @@ function validate1295(
   validate1295.errors = vErrors;
   return errors === 0;
 }
-var validateClientAutostartParams = validate2005;
-function validate2005(
+var validateClientAutostartParams = validate2008;
+function validate2008(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35008,11 +35008,11 @@ function validate2005(
     }
     errors++;
   }
-  validate2005.errors = vErrors;
+  validate2008.errors = vErrors;
   return errors === 0;
 }
-var validateClientCapability = validate2006;
-var schema477 = {
+var validateClientCapability = validate2009;
+var schema478 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "client.window.read",
@@ -35041,7 +35041,7 @@ var schema477 = {
   title: "ClientCapability",
   type: "string",
 };
-function validate2006(
+function validate2009(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35090,7 +35090,7 @@ function validate2006(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema477.enum },
+      params: { allowedValues: schema478.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -35100,11 +35100,11 @@ function validate2006(
     }
     errors++;
   }
-  validate2006.errors = vErrors;
+  validate2009.errors = vErrors;
   return errors === 0;
 }
-var validateClientClipboardWriteParams = validate2007;
-function validate2007(
+var validateClientClipboardWriteParams = validate2010;
+function validate2010(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35175,11 +35175,11 @@ function validate2007(
     }
     errors++;
   }
-  validate2007.errors = vErrors;
+  validate2010.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectAcknowledged = validate2008;
-function validate2008(
+var validateClientEffectAcknowledged = validate2011;
+function validate2011(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -35249,11 +35249,11 @@ function validate2008(
     }
     errors++;
   }
-  validate2008.errors = vErrors;
+  validate2011.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectAction = validate2010;
-function validate2010(
+var validateClientEffectAction = validate2013;
+function validate2013(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39109,11 +39109,11 @@ function validate2010(
       }
     }
   }
-  validate2010.errors = vErrors;
+  validate2013.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectOutcome = validate2013;
-function validate2013(
+var validateClientEffectOutcome = validate2016;
+function validate2016(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39387,10 +39387,10 @@ function validate2013(
       }
     }
   }
-  validate2013.errors = vErrors;
+  validate2016.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectReceipt = validate2016;
+var validateClientEffectReceipt = validate2019;
 function validate978(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -39668,7 +39668,7 @@ function validate978(
   validate978.errors = vErrors;
   return errors === 0;
 }
-function validate2016(
+function validate2019(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -39900,10 +39900,10 @@ function validate2016(
     }
     errors++;
   }
-  validate2016.errors = vErrors;
+  validate2019.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectRequest = validate2023;
+var validateClientEffectRequest = validate2026;
 function validate1101(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -43763,7 +43763,7 @@ function validate1101(
   validate1101.errors = vErrors;
   return errors === 0;
 }
-function validate2023(
+function validate2026(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -44044,11 +44044,11 @@ function validate2023(
     }
     errors++;
   }
-  validate2023.errors = vErrors;
+  validate2026.errors = vErrors;
   return errors === 0;
 }
-var validateClientEffectResult = validate2032;
-function validate2032(
+var validateClientEffectResult = validate2035;
+function validate2035(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -46532,11 +46532,11 @@ function validate2032(
       }
     }
   }
-  validate2032.errors = vErrors;
+  validate2035.errors = vErrors;
   return errors === 0;
 }
-var validateClientFullscreenParams = validate2043;
-function validate2043(
+var validateClientFullscreenParams = validate2046;
+function validate2046(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -46607,17 +46607,17 @@ function validate2043(
     }
     errors++;
   }
-  validate2043.errors = vErrors;
+  validate2046.errors = vErrors;
   return errors === 0;
 }
-var validateClientKind = validate2044;
-var schema486 = {
+var validateClientKind = validate2047;
+var schema487 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["desktop", "browser", "cli", "mcp", "node", "peer"],
   title: "ClientKind",
   type: "string",
 };
-function validate2044(
+function validate2047(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -46650,7 +46650,7 @@ function validate2044(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema486.enum },
+      params: { allowedValues: schema487.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -46660,10 +46660,10 @@ function validate2044(
     }
     errors++;
   }
-  validate2044.errors = vErrors;
+  validate2047.errors = vErrors;
   return errors === 0;
 }
-var validateClientListItem = validate2045;
+var validateClientListItem = validate2048;
 var schema213 = {
   enum: [
     "client.window.read",
@@ -47051,7 +47051,7 @@ function validate738(
   validate738.errors = vErrors;
   return errors === 0;
 }
-function validate2045(
+function validate2048(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -47140,10 +47140,10 @@ function validate2045(
     }
     errors++;
   }
-  validate2045.errors = vErrors;
+  validate2048.errors = vErrors;
   return errors === 0;
 }
-var validateClientListResult = validate2048;
+var validateClientListResult = validate2051;
 function validate731(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -47236,7 +47236,7 @@ function validate731(
   validate731.errors = vErrors;
   return errors === 0;
 }
-function validate2048(
+function validate2051(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -47326,10 +47326,10 @@ function validate2048(
     }
     errors++;
   }
-  validate2048.errors = vErrors;
+  validate2051.errors = vErrors;
   return errors === 0;
 }
-var validateClientReceiptSubmission = validate2050;
+var validateClientReceiptSubmission = validate2053;
 function validate972(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -47565,7 +47565,7 @@ function validate972(
   validate972.errors = vErrors;
   return errors === 0;
 }
-function validate2050(
+function validate2053(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -47839,11 +47839,11 @@ function validate2050(
       }
     }
   }
-  validate2050.errors = vErrors;
+  validate2053.errors = vErrors;
   return errors === 0;
 }
-var validateClientRegisterParams = validate1897;
-function validate1897(
+var validateClientRegisterParams = validate1900;
+function validate1900(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -47964,11 +47964,11 @@ function validate1897(
     }
     errors++;
   }
-  validate1897.errors = vErrors;
+  validate1900.errors = vErrors;
   return errors === 0;
 }
-var validateClientRegistration = validate2053;
-function validate2053(
+var validateClientRegistration = validate2056;
+function validate2056(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48124,11 +48124,11 @@ function validate2053(
     }
     errors++;
   }
-  validate2053.errors = vErrors;
+  validate2056.errors = vErrors;
   return errors === 0;
 }
-var validateClientResetGeometryParams = validate2057;
-function validate2057(
+var validateClientResetGeometryParams = validate2060;
+function validate2060(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48199,11 +48199,11 @@ function validate2057(
     }
     errors++;
   }
-  validate2057.errors = vErrors;
+  validate2060.errors = vErrors;
   return errors === 0;
 }
-var validateClientSettingsObservation = validate2058;
-function validate2058(
+var validateClientSettingsObservation = validate2061;
+function validate2061(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48339,11 +48339,11 @@ function validate2058(
     }
     errors++;
   }
-  validate2058.errors = vErrors;
+  validate2061.errors = vErrors;
   return errors === 0;
 }
-var validateClientUnregisterParams = validate2062;
-function validate2062(
+var validateClientUnregisterParams = validate2065;
+function validate2065(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48444,11 +48444,11 @@ function validate2062(
     }
     errors++;
   }
-  validate2062.errors = vErrors;
+  validate2065.errors = vErrors;
   return errors === 0;
 }
-var validateClientWindowSizeParams = validate2065;
-function validate2065(
+var validateClientWindowSizeParams = validate2068;
+function validate2068(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48549,11 +48549,11 @@ function validate2065(
     }
     errors++;
   }
-  validate2065.errors = vErrors;
+  validate2068.errors = vErrors;
   return errors === 0;
 }
-var validateClosedResult = validate2068;
-function validate2068(
+var validateClosedResult = validate2071;
+function validate2071(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48623,11 +48623,11 @@ function validate2068(
     }
     errors++;
   }
-  validate2068.errors = vErrors;
+  validate2071.errors = vErrors;
   return errors === 0;
 }
-var validateConfigField = validate1752;
-function validate1752(
+var validateConfigField = validate1755;
+function validate1755(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -48782,11 +48782,11 @@ function validate1752(
     }
     errors++;
   }
-  validate1752.errors = vErrors;
+  validate1755.errors = vErrors;
   return errors === 0;
 }
-var validateConfigReceipt = validate1745;
-function validate1745(
+var validateConfigReceipt = validate1748;
+function validate1748(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49066,11 +49066,11 @@ function validate1745(
     }
     errors++;
   }
-  validate1745.errors = vErrors;
+  validate1748.errors = vErrors;
   return errors === 0;
 }
-var validateConfigurationBoundary = validate2070;
-function validate2070(
+var validateConfigurationBoundary = validate2073;
+function validate2073(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49206,11 +49206,11 @@ function validate2070(
     }
     errors++;
   }
-  validate2070.errors = vErrors;
+  validate2073.errors = vErrors;
   return errors === 0;
 }
-var validateConfigureParams = validate1743;
-function validate1743(
+var validateConfigureParams = validate1746;
+function validate1746(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49280,11 +49280,11 @@ function validate1743(
     }
     errors++;
   }
-  validate1743.errors = vErrors;
+  validate1746.errors = vErrors;
   return errors === 0;
 }
-var validateContextToken = validate2074;
-function validate2074(
+var validateContextToken = validate2077;
+function validate2077(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49321,17 +49321,17 @@ function validate2074(
     }
     errors++;
   }
-  validate2074.errors = vErrors;
+  validate2077.errors = vErrors;
   return errors === 0;
 }
-var validateControlLine = validate1668;
-var schema383 = {
+var validateControlLine = validate1671;
+var schema384 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["dtr", "rts"],
   title: "ControlLine",
   type: "string",
 };
-function validate1668(
+function validate1671(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49357,7 +49357,7 @@ function validate1668(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema383.enum },
+      params: { allowedValues: schema384.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -49367,11 +49367,11 @@ function validate1668(
     }
     errors++;
   }
-  validate1668.errors = vErrors;
+  validate1671.errors = vErrors;
   return errors === 0;
 }
-var validateControlParams = validate1755;
-function validate1755(
+var validateControlParams = validate1758;
+function validate1758(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49473,11 +49473,11 @@ function validate1755(
     }
     errors++;
   }
-  validate1755.errors = vErrors;
+  validate1758.errors = vErrors;
   return errors === 0;
 }
-var validateControlReceipt = validate1757;
-function validate1757(
+var validateControlReceipt = validate1760;
+function validate1760(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49632,17 +49632,17 @@ function validate1757(
     }
     errors++;
   }
-  validate1757.errors = vErrors;
+  validate1760.errors = vErrors;
   return errors === 0;
 }
-var validateControlState = validate1667;
-var schema382 = {
+var validateControlState = validate1670;
+var schema383 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["clear", "asserting", "asserted", "clearing", "unknown"],
   title: "ControlState",
   type: "string",
 };
-function validate1667(
+function validate1670(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49674,7 +49674,7 @@ function validate1667(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema382.enum },
+      params: { allowedValues: schema383.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -49684,17 +49684,17 @@ function validate1667(
     }
     errors++;
   }
-  validate1667.errors = vErrors;
+  validate1670.errors = vErrors;
   return errors === 0;
 }
-var validateControlStatus = validate2075;
-var schema498 = {
+var validateControlStatus = validate2078;
+var schema499 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["confirmed", "failed", "unknown"],
   title: "ControlStatus",
   type: "string",
 };
-function validate2075(
+function validate2078(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49720,7 +49720,7 @@ function validate2075(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema498.enum },
+      params: { allowedValues: schema499.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -49730,11 +49730,11 @@ function validate2075(
     }
     errors++;
   }
-  validate2075.errors = vErrors;
+  validate2078.errors = vErrors;
   return errors === 0;
 }
-var validateControlTransition = validate1762;
-function validate1762(
+var validateControlTransition = validate1765;
+function validate1765(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -49851,11 +49851,11 @@ function validate1762(
     }
     errors++;
   }
-  validate1762.errors = vErrors;
+  validate1765.errors = vErrors;
   return errors === 0;
 }
-var validateCursor = validate1811;
-function validate1811(
+var validateCursor = validate1814;
+function validate1814(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -50023,17 +50023,17 @@ function validate1811(
     }
     errors++;
   }
-  validate1811.errors = vErrors;
+  validate1814.errors = vErrors;
   return errors === 0;
 }
-var validateDataBits = validate1617;
-var schema362 = {
+var validateDataBits = validate1620;
+var schema363 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["5", "6", "7", "8"],
   title: "DataBits",
   type: "string",
 };
-function validate1617(
+function validate1620(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -50059,7 +50059,7 @@ function validate1617(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema362.enum },
+      params: { allowedValues: schema363.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -50069,10 +50069,10 @@ function validate1617(
     }
     errors++;
   }
-  validate1617.errors = vErrors;
+  validate1620.errors = vErrors;
   return errors === 0;
 }
-var validateDelta = validate2076;
+var validateDelta = validate2079;
 function validate858(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -50244,7 +50244,7 @@ function validate858(
   validate858.errors = vErrors;
   return errors === 0;
 }
-function validate2076(
+function validate2079(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -50466,11 +50466,11 @@ function validate2076(
     }
     errors++;
   }
-  validate2076.errors = vErrors;
+  validate2079.errors = vErrors;
   return errors === 0;
 }
-var validateDependency = validate2082;
-function validate2082(
+var validateDependency = validate2085;
+function validate2085(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -50603,10 +50603,10 @@ function validate2082(
     }
     errors++;
   }
-  validate2082.errors = vErrors;
+  validate2085.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedMemoryMetrics = validate1894;
+var validateDerivedMemoryMetrics = validate1897;
 function validate746(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -50746,7 +50746,7 @@ function validate746(
   validate746.errors = vErrors;
   return errors === 0;
 }
-function validate1894(
+function validate1897(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -50847,10 +50847,10 @@ function validate1894(
     }
     errors++;
   }
-  validate1894.errors = vErrors;
+  validate1897.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedProvenance = validate2085;
+var validateDerivedProvenance = validate2088;
 var schema244 = {
   enum: ["complete", "gap", "partial", "unknown", "transformed"],
   type: "string",
@@ -51154,7 +51154,7 @@ function validate895(
   validate895.errors = vErrors;
   return errors === 0;
 }
-function validate2085(
+function validate2088(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -51419,10 +51419,10 @@ function validate2085(
     }
     errors++;
   }
-  validate2085.errors = vErrors;
+  validate2088.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedPublishParams = validate1831;
+var validateDerivedPublishParams = validate1834;
 var wrapper4 = { validate: validate722 };
 function validate722(
   data,
@@ -51615,7 +51615,7 @@ function validate722(
   validate722.errors = vErrors;
   return errors === 0;
 }
-function validate1831(
+function validate1834(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -51901,11 +51901,11 @@ function validate1831(
     }
     errors++;
   }
-  validate1831.errors = vErrors;
+  validate1834.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedPublishResult = validate1835;
-function validate1835(
+var validateDerivedPublishResult = validate1838;
+function validate1838(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52006,17 +52006,17 @@ function validate1835(
     }
     errors++;
   }
-  validate1835.errors = vErrors;
+  validate1838.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedQuality = validate2090;
-var schema502 = {
+var validateDerivedQuality = validate2093;
+var schema503 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["complete", "gap", "partial", "unknown", "transformed"],
   title: "DerivedQuality",
   type: "string",
 };
-function validate2090(
+function validate2093(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52048,7 +52048,7 @@ function validate2090(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema502.enum },
+      params: { allowedValues: schema503.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -52058,11 +52058,11 @@ function validate2090(
     }
     errors++;
   }
-  validate2090.errors = vErrors;
+  validate2093.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedReadParams = validate1838;
-function validate1838(
+var validateDerivedReadParams = validate1841;
+function validate1841(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52230,10 +52230,10 @@ function validate1838(
     }
     errors++;
   }
-  validate1838.errors = vErrors;
+  validate1841.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedReadResult = validate1843;
+var validateDerivedReadResult = validate1846;
 function validate890(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -52637,7 +52637,7 @@ function validate888(
   validate888.errors = vErrors;
   return errors === 0;
 }
-function validate1843(
+function validate1846(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52858,11 +52858,11 @@ function validate1843(
     }
     errors++;
   }
-  validate1843.errors = vErrors;
+  validate1846.errors = vErrors;
   return errors === 0;
 }
-var validateDerivedSample = validate2091;
-function validate2091(
+var validateDerivedSample = validate2094;
+function validate2094(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -52994,11 +52994,11 @@ function validate2091(
     }
     errors++;
   }
-  validate2091.errors = vErrors;
+  validate2094.errors = vErrors;
   return errors === 0;
 }
-var validateDeviceBindingReference = validate1723;
-function validate1723(
+var validateDeviceBindingReference = validate1726;
+function validate1726(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53099,11 +53099,11 @@ function validate1723(
     }
     errors++;
   }
-  validate1723.errors = vErrors;
+  validate1726.errors = vErrors;
   return errors === 0;
 }
-var validateDeviceDescriptor = validate1716;
-function validate1716(
+var validateDeviceDescriptor = validate1719;
+function validate1719(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53358,10 +53358,10 @@ function validate1716(
     }
     errors++;
   }
-  validate1716.errors = vErrors;
+  validate1719.errors = vErrors;
   return errors === 0;
 }
-var validateDeviceList = validate1721;
+var validateDeviceList = validate1724;
 function validate919(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -53620,7 +53620,7 @@ function validate919(
   validate919.errors = vErrors;
   return errors === 0;
 }
-function validate1721(
+function validate1724(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53742,11 +53742,11 @@ function validate1721(
     }
     errors++;
   }
-  validate1721.errors = vErrors;
+  validate1724.errors = vErrors;
   return errors === 0;
 }
-var validateDigest = validate2095;
-function validate2095(
+var validateDigest = validate2098;
+function validate2098(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53783,17 +53783,17 @@ function validate2095(
     }
     errors++;
   }
-  validate2095.errors = vErrors;
+  validate2098.errors = vErrors;
   return errors === 0;
 }
-var validateDirection = validate2096;
-var schema505 = {
+var validateDirection = validate2099;
+var schema506 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["rx", "tx"],
   title: "Direction",
   type: "string",
 };
-function validate2096(
+function validate2099(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53819,7 +53819,7 @@ function validate2096(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema505.enum },
+      params: { allowedValues: schema506.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -53829,11 +53829,11 @@ function validate2096(
     }
     errors++;
   }
-  validate2096.errors = vErrors;
+  validate2099.errors = vErrors;
   return errors === 0;
 }
-var validateDirectionalRange = validate2097;
-function validate2097(
+var validateDirectionalRange = validate2100;
+function validate2100(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -53965,11 +53965,11 @@ function validate2097(
     }
     errors++;
   }
-  validate2097.errors = vErrors;
+  validate2100.errors = vErrors;
   return errors === 0;
 }
-var validateDocumentImportParams = validate1663;
-function validate1663(
+var validateDocumentImportParams = validate1666;
+function validate1666(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54040,11 +54040,11 @@ function validate1663(
     }
     errors++;
   }
-  validate1663.errors = vErrors;
+  validate1666.errors = vErrors;
   return errors === 0;
 }
-var validateDocumentJsonResult = validate1664;
-function validate1664(
+var validateDocumentJsonResult = validate1667;
+function validate1667(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54115,11 +54115,11 @@ function validate1664(
     }
     errors++;
   }
-  validate1664.errors = vErrors;
+  validate1667.errors = vErrors;
   return errors === 0;
 }
-var validateDrainParams = validate1793;
-function validate1793(
+var validateDrainParams = validate1796;
+function validate1796(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54189,11 +54189,11 @@ function validate1793(
     }
     errors++;
   }
-  validate1793.errors = vErrors;
+  validate1796.errors = vErrors;
   return errors === 0;
 }
-var validateDrainReceipt = validate1795;
-function validate1795(
+var validateDrainReceipt = validate1798;
+function validate1798(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54263,11 +54263,11 @@ function validate1795(
     }
     errors++;
   }
-  validate1795.errors = vErrors;
+  validate1798.errors = vErrors;
   return errors === 0;
 }
-var validateDurationMs = validate1437;
-function validate1437(
+var validateDurationMs = validate1461;
+function validate1461(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54346,11 +54346,11 @@ function validate1437(
     }
     errors++;
   }
-  validate1437.errors = vErrors;
+  validate1461.errors = vErrors;
   return errors === 0;
 }
-var validateEmptyParams = validate1715;
-function validate1715(
+var validateEmptyParams = validate1718;
+function validate1718(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54387,11 +54387,11 @@ function validate1715(
     }
     errors++;
   }
-  validate1715.errors = vErrors;
+  validate1718.errors = vErrors;
   return errors === 0;
 }
-var validateEventTime = validate2101;
-function validate2101(
+var validateEventTime = validate2104;
+function validate2104(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54582,17 +54582,17 @@ function validate2101(
     }
     errors++;
   }
-  validate2101.errors = vErrors;
+  validate2104.errors = vErrors;
   return errors === 0;
 }
-var validateExecutionLocation = validate2107;
-var schema508 = {
+var validateExecutionLocation = validate2110;
+var schema509 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["resource_host", "client"],
   title: "ExecutionLocation",
   type: "string",
 };
-function validate2107(
+function validate2110(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54618,7 +54618,7 @@ function validate2107(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema508.enum },
+      params: { allowedValues: schema509.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -54628,17 +54628,17 @@ function validate2107(
     }
     errors++;
   }
-  validate2107.errors = vErrors;
+  validate2110.errors = vErrors;
   return errors === 0;
 }
-var validateExecutionMode = validate2108;
-var schema509 = {
+var validateExecutionMode = validate2111;
+var schema510 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["interactive", "independent"],
   title: "ExecutionMode",
   type: "string",
 };
-function validate2108(
+function validate2111(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54664,7 +54664,7 @@ function validate2108(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema509.enum },
+      params: { allowedValues: schema510.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -54674,17 +54674,17 @@ function validate2108(
     }
     errors++;
   }
-  validate2108.errors = vErrors;
+  validate2111.errors = vErrors;
   return errors === 0;
 }
-var validateExplicitLeaseKind = validate1673;
-var schema388 = {
+var validateExplicitLeaseKind = validate1676;
+var schema389 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["transaction", "exclusive"],
   title: "ExplicitLeaseKind",
   type: "string",
 };
-function validate1673(
+function validate1676(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54710,7 +54710,7 @@ function validate1673(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema388.enum },
+      params: { allowedValues: schema389.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -54720,11 +54720,11 @@ function validate1673(
     }
     errors++;
   }
-  validate1673.errors = vErrors;
+  validate1676.errors = vErrors;
   return errors === 0;
 }
-var validateFavoritesSaveParams = validate2109;
-function validate2109(
+var validateFavoritesSaveParams = validate2112;
+function validate2112(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54814,17 +54814,17 @@ function validate2109(
     }
     errors++;
   }
-  validate2109.errors = vErrors;
+  validate2112.errors = vErrors;
   return errors === 0;
 }
-var validateFieldStatus = validate2111;
-var schema511 = {
+var validateFieldStatus = validate2114;
+var schema512 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["applied", "rejected", "unknown"],
   title: "FieldStatus",
   type: "string",
 };
-function validate2111(
+function validate2114(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -54850,7 +54850,7 @@ function validate2111(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema511.enum },
+      params: { allowedValues: schema512.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -54860,11 +54860,11 @@ function validate2111(
     }
     errors++;
   }
-  validate2111.errors = vErrors;
+  validate2114.errors = vErrors;
   return errors === 0;
 }
-var validateFileMetadata = validate2112;
-function validate2112(
+var validateFileMetadata = validate2115;
+function validate2115(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55032,11 +55032,11 @@ function validate2112(
     }
     errors++;
   }
-  validate2112.errors = vErrors;
+  validate2115.errors = vErrors;
   return errors === 0;
 }
-var validateFileMetadataParams = validate2117;
-function validate2117(
+var validateFileMetadataParams = validate2120;
+function validate2120(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55106,11 +55106,11 @@ function validate2117(
     }
     errors++;
   }
-  validate2117.errors = vErrors;
+  validate2120.errors = vErrors;
   return errors === 0;
 }
-var validateFileReadParams = validate2119;
-function validate2119(
+var validateFileReadParams = validate2122;
+function validate2122(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55242,11 +55242,11 @@ function validate2119(
     }
     errors++;
   }
-  validate2119.errors = vErrors;
+  validate2122.errors = vErrors;
   return errors === 0;
 }
-var validateFileReadResult = validate2123;
-function validate2123(
+var validateFileReadResult = validate2126;
+function validate2126(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55511,11 +55511,11 @@ function validate2123(
     }
     errors++;
   }
-  validate2123.errors = vErrors;
+  validate2126.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferParams = validate2130;
-function validate2130(
+var validateFileTransferParams = validate2133;
+function validate2133(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55764,11 +55764,11 @@ function validate2130(
     }
     errors++;
   }
-  validate2130.errors = vErrors;
+  validate2133.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReceipt = validate2138;
-function validate2138(
+var validateFileTransferReceipt = validate2141;
+function validate2141(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -55869,11 +55869,11 @@ function validate2138(
     }
     errors++;
   }
-  validate2138.errors = vErrors;
+  validate2141.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReceiptsParams = validate2141;
-function validate2141(
+var validateFileTransferReceiptsParams = validate2144;
+function validate2144(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56041,10 +56041,10 @@ function validate2141(
     }
     errors++;
   }
-  validate2141.errors = vErrors;
+  validate2144.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferReceiptsResult = validate2146;
+var validateFileTransferReceiptsResult = validate2149;
 function validate851(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -56149,7 +56149,7 @@ function validate851(
   validate851.errors = vErrors;
   return errors === 0;
 }
-function validate2146(
+function validate2149(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56403,11 +56403,11 @@ function validate2146(
     }
     errors++;
   }
-  validate2146.errors = vErrors;
+  validate2149.errors = vErrors;
   return errors === 0;
 }
-var validateFileTransferResult = validate2151;
-function validate2151(
+var validateFileTransferResult = validate2154;
+function validate2154(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56614,17 +56614,17 @@ function validate2151(
     }
     errors++;
   }
-  validate2151.errors = vErrors;
+  validate2154.errors = vErrors;
   return errors === 0;
 }
-var validateFlowControl = validate1620;
-var schema365 = {
+var validateFlowControl = validate1623;
+var schema366 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["none", "rtsCts", "xonXoff", "dsrDtr"],
   title: "FlowControl",
   type: "string",
 };
-function validate1620(
+function validate1623(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56655,7 +56655,7 @@ function validate1620(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema365.enum },
+      params: { allowedValues: schema366.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -56665,17 +56665,17 @@ function validate1620(
     }
     errors++;
   }
-  validate1620.errors = vErrors;
+  validate1623.errors = vErrors;
   return errors === 0;
 }
-var validateFont = validate2156;
-var schema521 = {
+var validateFont = validate2159;
+var schema522 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["geist", "system", "serif", "mono"],
   title: "Font",
   type: "string",
 };
-function validate2156(
+function validate2159(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56706,7 +56706,7 @@ function validate2156(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema521.enum },
+      params: { allowedValues: schema522.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -56716,17 +56716,17 @@ function validate2156(
     }
     errors++;
   }
-  validate2156.errors = vErrors;
+  validate2159.errors = vErrors;
   return errors === 0;
 }
-var validateFontSize = validate2157;
-var schema522 = {
+var validateFontSize = validate2160;
+var schema523 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["sm", "md", "lg"],
   title: "FontSize",
   type: "string",
 };
-function validate2157(
+function validate2160(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56752,7 +56752,7 @@ function validate2157(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema522.enum },
+      params: { allowedValues: schema523.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -56762,11 +56762,11 @@ function validate2157(
     }
     errors++;
   }
-  validate2157.errors = vErrors;
+  validate2160.errors = vErrors;
   return errors === 0;
 }
-var validateHostError = validate2158;
-function validate2158(
+var validateHostError = validate2161;
+function validate2161(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -56978,11 +56978,11 @@ function validate2158(
     }
     errors++;
   }
-  validate2158.errors = vErrors;
+  validate2161.errors = vErrors;
   return errors === 0;
 }
-var validateHostMetrics = validate1882;
-var schema444 = {
+var validateHostMetrics = validate1885;
+var schema445 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   description:
@@ -57306,7 +57306,7 @@ function validate757(
   validate757.errors = vErrors;
   return errors === 0;
 }
-function validate1882(
+function validate1885(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57449,7 +57449,7 @@ function validate1882(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema444.properties, key0)) {
+      if (!func0.call(schema445.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -57656,11 +57656,11 @@ function validate1882(
     }
     errors++;
   }
-  validate1882.errors = vErrors;
+  validate1885.errors = vErrors;
   return errors === 0;
 }
-var validateHostMetricsParams = validate2162;
-function validate2162(
+var validateHostMetricsParams = validate2165;
+function validate2165(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -57697,111 +57697,24 @@ function validate2162(
     }
     errors++;
   }
-  validate2162.errors = vErrors;
+  validate2165.errors = vErrors;
   return errors === 0;
 }
-var validateId = validate2163;
-function validate2163(
-  data,
-  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
-) {
-  let vErrors = null;
-  let errors = 0;
-  if (typeof data === "string") {
-    if (!pattern1.test(data)) {
-      const err0 = {
-        instancePath,
-        schemaPath: "#/pattern",
-        keyword: "pattern",
-        params: { pattern: "^[A-Za-z0-9._:-]{1,128}$" },
-        message: 'must match pattern "^[A-Za-z0-9._:-]{1,128}$"',
-      };
-      if (vErrors === null) {
-        vErrors = [err0];
-      } else {
-        vErrors.push(err0);
-      }
-      errors++;
-    }
-  } else {
-    const err1 = {
-      instancePath,
-      schemaPath: "#/type",
-      keyword: "type",
-      params: { type: "string" },
-      message: "must be string",
-    };
-    if (vErrors === null) {
-      vErrors = [err1];
-    } else {
-      vErrors.push(err1);
-    }
-    errors++;
-  }
-  validate2163.errors = vErrors;
-  return errors === 0;
-}
-var validateIpcChannel = validate1566;
-var schema355 = {
-  $schema: "http://json-schema.org/draft-07/schema#",
-  enum: ["control", "raw", "state"],
-  title: "IpcChannel",
-  type: "string",
-};
-function validate1566(
-  data,
-  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
-) {
-  let vErrors = null;
-  let errors = 0;
-  if (typeof data !== "string") {
-    const err0 = {
-      instancePath,
-      schemaPath: "#/type",
-      keyword: "type",
-      params: { type: "string" },
-      message: "must be string",
-    };
-    if (vErrors === null) {
-      vErrors = [err0];
-    } else {
-      vErrors.push(err0);
-    }
-    errors++;
-  }
-  if (!(data === "control" || data === "raw" || data === "state")) {
-    const err1 = {
-      instancePath,
-      schemaPath: "#/enum",
-      keyword: "enum",
-      params: { allowedValues: schema355.enum },
-      message: "must be equal to one of the allowed values",
-    };
-    if (vErrors === null) {
-      vErrors = [err1];
-    } else {
-      vErrors.push(err1);
-    }
-    errors++;
-  }
-  validate1566.errors = vErrors;
-  return errors === 0;
-}
-var validateIpcMessage = validate1482;
-function validate1483(
+var validateHttpControlEntry = validate2166;
+function validate2166(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
   let vErrors = null;
   let errors = 0;
   if (data && typeof data == "object" && !Array.isArray(data)) {
-    if (data.hostId === void 0 || !func0.call(data, "hostId")) {
+    if (data.url === void 0 || !func0.call(data, "url")) {
       const err0 = {
         instancePath,
         schemaPath: "#/required",
         keyword: "required",
-        params: { missingProperty: "hostId" },
-        message: "must have required property 'hostId'",
+        params: { missingProperty: "url" },
+        message: "must have required property 'url'",
       };
       if (vErrors === null) {
         vErrors = [err0];
@@ -57810,13 +57723,13 @@ function validate1483(
       }
       errors++;
     }
-    if (data.instanceEpoch === void 0 || !func0.call(data, "instanceEpoch")) {
+    if (data.clientId === void 0 || !func0.call(data, "clientId")) {
       const err1 = {
         instancePath,
         schemaPath: "#/required",
         keyword: "required",
-        params: { missingProperty: "instanceEpoch" },
-        message: "must have required property 'instanceEpoch'",
+        params: { missingProperty: "clientId" },
+        message: "must have required property 'clientId'",
       };
       if (vErrors === null) {
         vErrors = [err1];
@@ -57825,13 +57738,13 @@ function validate1483(
       }
       errors++;
     }
-    if (data.clientTargetId === void 0 || !func0.call(data, "clientTargetId")) {
+    if (data.credential === void 0 || !func0.call(data, "credential")) {
       const err2 = {
         instancePath,
         schemaPath: "#/required",
         keyword: "required",
-        params: { missingProperty: "clientTargetId" },
-        message: "must have required property 'clientTargetId'",
+        params: { missingProperty: "credential" },
+        message: "must have required property 'credential'",
       };
       if (vErrors === null) {
         vErrors = [err2];
@@ -57840,300 +57753,14 @@ function validate1483(
       }
       errors++;
     }
-    if (data.generation === void 0 || !func0.call(data, "generation")) {
-      const err3 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "generation" },
-        message: "must have required property 'generation'",
-      };
-      if (vErrors === null) {
-        vErrors = [err3];
-      } else {
-        vErrors.push(err3);
-      }
-      errors++;
-    }
-    if (data.deliveryId === void 0 || !func0.call(data, "deliveryId")) {
-      const err4 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "deliveryId" },
-        message: "must have required property 'deliveryId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err4];
-      } else {
-        vErrors.push(err4);
-      }
-      errors++;
-    }
-    if (data.requestId === void 0 || !func0.call(data, "requestId")) {
-      const err5 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "requestId" },
-        message: "must have required property 'requestId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err5];
-      } else {
-        vErrors.push(err5);
-      }
-      errors++;
-    }
-    if (data.action === void 0 || !func0.call(data, "action")) {
-      const err6 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "action" },
-        message: "must have required property 'action'",
-      };
-      if (vErrors === null) {
-        vErrors = [err6];
-      } else {
-        vErrors.push(err6);
-      }
-      errors++;
-    }
     for (const key0 of Object.keys(data)) {
-      if (!(
-        key0 === "action" ||
-        key0 === "clientTargetId" ||
-        key0 === "deliveryId" ||
-        key0 === "generation" ||
-        key0 === "hostId" ||
-        key0 === "instanceEpoch" ||
-        key0 === "operationId" ||
-        key0 === "requestId"
-      )) {
-        const err7 = {
-          instancePath,
-          schemaPath: "#/additionalProperties",
-          keyword: "additionalProperties",
-          params: { additionalProperty: key0 },
-          message: "must NOT have additional properties",
-        };
-        if (vErrors === null) {
-          vErrors = [err7];
-        } else {
-          vErrors.push(err7);
-        }
-        errors++;
-      }
-    }
-    if (data.action !== void 0 && func0.call(data, "action")) {
-      if (
-        !validate1101(data.action, {
-          instancePath: instancePath + "/action",
-          parentData: data,
-          parentDataProperty: "action",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate1101.errors
-            : vErrors.concat(validate1101.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.clientTargetId !== void 0 && func0.call(data, "clientTargetId")) {
-      if (
-        !validate28(data.clientTargetId, {
-          instancePath: instancePath + "/clientTargetId",
-          parentData: data,
-          parentDataProperty: "clientTargetId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.deliveryId !== void 0 && func0.call(data, "deliveryId")) {
-      if (
-        !validate28(data.deliveryId, {
-          instancePath: instancePath + "/deliveryId",
-          parentData: data,
-          parentDataProperty: "deliveryId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.generation !== void 0 && func0.call(data, "generation")) {
-      if (
-        !validate32(data.generation, {
-          instancePath: instancePath + "/generation",
-          parentData: data,
-          parentDataProperty: "generation",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate32.errors
-            : vErrors.concat(validate32.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.hostId !== void 0 && func0.call(data, "hostId")) {
-      if (
-        !validate28(data.hostId, {
-          instancePath: instancePath + "/hostId",
-          parentData: data,
-          parentDataProperty: "hostId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.instanceEpoch !== void 0 && func0.call(data, "instanceEpoch")) {
-      if (
-        !validate32(data.instanceEpoch, {
-          instancePath: instancePath + "/instanceEpoch",
-          parentData: data,
-          parentDataProperty: "instanceEpoch",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate32.errors
-            : vErrors.concat(validate32.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.operationId !== void 0 && func0.call(data, "operationId")) {
-      if (
-        !validate28(data.operationId, {
-          instancePath: instancePath + "/operationId",
-          parentData: data,
-          parentDataProperty: "operationId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.requestId !== void 0 && func0.call(data, "requestId")) {
-      if (
-        !validate1000(data.requestId, {
-          instancePath: instancePath + "/requestId",
-          parentData: data,
-          parentDataProperty: "requestId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate1000.errors
-            : vErrors.concat(validate1000.errors);
-        errors = vErrors.length;
-      }
-    }
-  } else {
-    const err8 = {
-      instancePath,
-      schemaPath: "#/type",
-      keyword: "type",
-      params: { type: "object" },
-      message: "must be object",
-    };
-    if (vErrors === null) {
-      vErrors = [err8];
-    } else {
-      vErrors.push(err8);
-    }
-    errors++;
-  }
-  validate1483.errors = vErrors;
-  return errors === 0;
-}
-function validate1507(
-  data,
-  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
-) {
-  let vErrors = null;
-  let errors = 0;
-  if (data && typeof data == "object" && !Array.isArray(data)) {
-    if (data.hostId === void 0 || !func0.call(data, "hostId")) {
-      const err0 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "hostId" },
-        message: "must have required property 'hostId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err0];
-      } else {
-        vErrors.push(err0);
-      }
-      errors++;
-    }
-    if (data.address === void 0 || !func0.call(data, "address")) {
-      const err1 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "address" },
-        message: "must have required property 'address'",
-      };
-      if (vErrors === null) {
-        vErrors = [err1];
-      } else {
-        vErrors.push(err1);
-      }
-      errors++;
-    }
-    for (const key0 of Object.keys(data)) {
-      if (!(key0 === "address" || key0 === "hostId")) {
-        const err2 = {
-          instancePath,
-          schemaPath: "#/additionalProperties",
-          keyword: "additionalProperties",
-          params: { additionalProperty: key0 },
-          message: "must NOT have additional properties",
-        };
-        if (vErrors === null) {
-          vErrors = [err2];
-        } else {
-          vErrors.push(err2);
-        }
-        errors++;
-      }
-    }
-    if (data.address !== void 0 && func0.call(data, "address")) {
-      if (typeof data.address !== "string") {
+      if (!(key0 === "clientId" || key0 === "credential" || key0 === "url")) {
         const err3 = {
-          instancePath: instancePath + "/address",
-          schemaPath: "#/properties/address/type",
-          keyword: "type",
-          params: { type: "string" },
-          message: "must be string",
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
         };
         if (vErrors === null) {
           vErrors = [err3];
@@ -58143,12 +57770,12 @@ function validate1507(
         errors++;
       }
     }
-    if (data.hostId !== void 0 && func0.call(data, "hostId")) {
+    if (data.clientId !== void 0 && func0.call(data, "clientId")) {
       if (
-        !validate28(data.hostId, {
-          instancePath: instancePath + "/hostId",
+        !validate28(data.clientId, {
+          instancePath: instancePath + "/clientId",
           parentData: data,
-          parentDataProperty: "hostId",
+          parentDataProperty: "clientId",
           rootData,
         })
       ) {
@@ -58159,8 +57786,41 @@ function validate1507(
         errors = vErrors.length;
       }
     }
+    if (data.credential !== void 0 && func0.call(data, "credential")) {
+      if (
+        !validate1222(data.credential, {
+          instancePath: instancePath + "/credential",
+          parentData: data,
+          parentDataProperty: "credential",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate1222.errors
+            : vErrors.concat(validate1222.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.url !== void 0 && func0.call(data, "url")) {
+      if (typeof data.url !== "string") {
+        const err4 = {
+          instancePath: instancePath + "/url",
+          schemaPath: "#/properties/url/type",
+          keyword: "type",
+          params: { type: "string" },
+          message: "must be string",
+        };
+        if (vErrors === null) {
+          vErrors = [err4];
+        } else {
+          vErrors.push(err4);
+        }
+        errors++;
+      }
+    }
   } else {
-    const err4 = {
+    const err5 = {
       instancePath,
       schemaPath: "#/type",
       keyword: "type",
@@ -58168,15 +57828,16 @@ function validate1507(
       message: "must be object",
     };
     if (vErrors === null) {
-      vErrors = [err4];
+      vErrors = [err5];
     } else {
-      vErrors.push(err4);
+      vErrors.push(err5);
     }
     errors++;
   }
-  validate1507.errors = vErrors;
+  validate2166.errors = vErrors;
   return errors === 0;
 }
+var validateHttpControlRequest = validate1437;
 var schema299 = { enum: ["readOnly", "operate"], type: "string" };
 function validate1162(
   data,
@@ -61841,7 +61502,7 @@ function validate1228(
   validate1228.errors = vErrors;
   return errors === 0;
 }
-function validate1519(
+function validate1438(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -64576,7 +64237,588 @@ function validate1519(
       }
     }
   }
-  validate1519.errors = vErrors;
+  validate1438.errors = vErrors;
+  return errors === 0;
+}
+function validate1437(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.requestId === void 0 || !func0.call(data, "requestId")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "requestId" },
+        message: "must have required property 'requestId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.request === void 0 || !func0.call(data, "request")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "request" },
+        message: "must have required property 'request'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(key0 === "request" || key0 === "requestId")) {
+        const err2 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err2];
+        } else {
+          vErrors.push(err2);
+        }
+        errors++;
+      }
+    }
+    if (data.request !== void 0 && func0.call(data, "request")) {
+      if (
+        !validate1438(data.request, {
+          instancePath: instancePath + "/request",
+          parentData: data,
+          parentDataProperty: "request",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate1438.errors
+            : vErrors.concat(validate1438.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.requestId !== void 0 && func0.call(data, "requestId")) {
+      if (
+        !validate1000(data.requestId, {
+          instancePath: instancePath + "/requestId",
+          parentData: data,
+          parentDataProperty: "requestId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate1000.errors
+            : vErrors.concat(validate1000.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err3 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err3];
+    } else {
+      vErrors.push(err3);
+    }
+    errors++;
+  }
+  validate1437.errors = vErrors;
+  return errors === 0;
+}
+var validateId = validate2169;
+function validate2169(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (typeof data === "string") {
+    if (!pattern1.test(data)) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/pattern",
+        keyword: "pattern",
+        params: { pattern: "^[A-Za-z0-9._:-]{1,128}$" },
+        message: 'must match pattern "^[A-Za-z0-9._:-]{1,128}$"',
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+  } else {
+    const err1 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "string" },
+      message: "must be string",
+    };
+    if (vErrors === null) {
+      vErrors = [err1];
+    } else {
+      vErrors.push(err1);
+    }
+    errors++;
+  }
+  validate2169.errors = vErrors;
+  return errors === 0;
+}
+var validateIpcChannel = validate1569;
+var schema356 = {
+  $schema: "http://json-schema.org/draft-07/schema#",
+  enum: ["control", "raw", "state"],
+  title: "IpcChannel",
+  type: "string",
+};
+function validate1569(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (typeof data !== "string") {
+    const err0 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "string" },
+      message: "must be string",
+    };
+    if (vErrors === null) {
+      vErrors = [err0];
+    } else {
+      vErrors.push(err0);
+    }
+    errors++;
+  }
+  if (!(data === "control" || data === "raw" || data === "state")) {
+    const err1 = {
+      instancePath,
+      schemaPath: "#/enum",
+      keyword: "enum",
+      params: { allowedValues: schema356.enum },
+      message: "must be equal to one of the allowed values",
+    };
+    if (vErrors === null) {
+      vErrors = [err1];
+    } else {
+      vErrors.push(err1);
+    }
+    errors++;
+  }
+  validate1569.errors = vErrors;
+  return errors === 0;
+}
+var validateIpcMessage = validate1506;
+function validate1507(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.hostId === void 0 || !func0.call(data, "hostId")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "hostId" },
+        message: "must have required property 'hostId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.instanceEpoch === void 0 || !func0.call(data, "instanceEpoch")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "instanceEpoch" },
+        message: "must have required property 'instanceEpoch'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.clientTargetId === void 0 || !func0.call(data, "clientTargetId")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "clientTargetId" },
+        message: "must have required property 'clientTargetId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    if (data.generation === void 0 || !func0.call(data, "generation")) {
+      const err3 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "generation" },
+        message: "must have required property 'generation'",
+      };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
+    if (data.deliveryId === void 0 || !func0.call(data, "deliveryId")) {
+      const err4 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "deliveryId" },
+        message: "must have required property 'deliveryId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err4];
+      } else {
+        vErrors.push(err4);
+      }
+      errors++;
+    }
+    if (data.requestId === void 0 || !func0.call(data, "requestId")) {
+      const err5 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "requestId" },
+        message: "must have required property 'requestId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err5];
+      } else {
+        vErrors.push(err5);
+      }
+      errors++;
+    }
+    if (data.action === void 0 || !func0.call(data, "action")) {
+      const err6 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "action" },
+        message: "must have required property 'action'",
+      };
+      if (vErrors === null) {
+        vErrors = [err6];
+      } else {
+        vErrors.push(err6);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(
+        key0 === "action" ||
+        key0 === "clientTargetId" ||
+        key0 === "deliveryId" ||
+        key0 === "generation" ||
+        key0 === "hostId" ||
+        key0 === "instanceEpoch" ||
+        key0 === "operationId" ||
+        key0 === "requestId"
+      )) {
+        const err7 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err7];
+        } else {
+          vErrors.push(err7);
+        }
+        errors++;
+      }
+    }
+    if (data.action !== void 0 && func0.call(data, "action")) {
+      if (
+        !validate1101(data.action, {
+          instancePath: instancePath + "/action",
+          parentData: data,
+          parentDataProperty: "action",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate1101.errors
+            : vErrors.concat(validate1101.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.clientTargetId !== void 0 && func0.call(data, "clientTargetId")) {
+      if (
+        !validate28(data.clientTargetId, {
+          instancePath: instancePath + "/clientTargetId",
+          parentData: data,
+          parentDataProperty: "clientTargetId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.deliveryId !== void 0 && func0.call(data, "deliveryId")) {
+      if (
+        !validate28(data.deliveryId, {
+          instancePath: instancePath + "/deliveryId",
+          parentData: data,
+          parentDataProperty: "deliveryId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.generation !== void 0 && func0.call(data, "generation")) {
+      if (
+        !validate32(data.generation, {
+          instancePath: instancePath + "/generation",
+          parentData: data,
+          parentDataProperty: "generation",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.hostId !== void 0 && func0.call(data, "hostId")) {
+      if (
+        !validate28(data.hostId, {
+          instancePath: instancePath + "/hostId",
+          parentData: data,
+          parentDataProperty: "hostId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.instanceEpoch !== void 0 && func0.call(data, "instanceEpoch")) {
+      if (
+        !validate32(data.instanceEpoch, {
+          instancePath: instancePath + "/instanceEpoch",
+          parentData: data,
+          parentDataProperty: "instanceEpoch",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.operationId !== void 0 && func0.call(data, "operationId")) {
+      if (
+        !validate28(data.operationId, {
+          instancePath: instancePath + "/operationId",
+          parentData: data,
+          parentDataProperty: "operationId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.requestId !== void 0 && func0.call(data, "requestId")) {
+      if (
+        !validate1000(data.requestId, {
+          instancePath: instancePath + "/requestId",
+          parentData: data,
+          parentDataProperty: "requestId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate1000.errors
+            : vErrors.concat(validate1000.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err8 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err8];
+    } else {
+      vErrors.push(err8);
+    }
+    errors++;
+  }
+  validate1507.errors = vErrors;
+  return errors === 0;
+}
+function validate1531(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.hostId === void 0 || !func0.call(data, "hostId")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "hostId" },
+        message: "must have required property 'hostId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (data.address === void 0 || !func0.call(data, "address")) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "address" },
+        message: "must have required property 'address'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!(key0 === "address" || key0 === "hostId")) {
+        const err2 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err2];
+        } else {
+          vErrors.push(err2);
+        }
+        errors++;
+      }
+    }
+    if (data.address !== void 0 && func0.call(data, "address")) {
+      if (typeof data.address !== "string") {
+        const err3 = {
+          instancePath: instancePath + "/address",
+          schemaPath: "#/properties/address/type",
+          keyword: "type",
+          params: { type: "string" },
+          message: "must be string",
+        };
+        if (vErrors === null) {
+          vErrors = [err3];
+        } else {
+          vErrors.push(err3);
+        }
+        errors++;
+      }
+    }
+    if (data.hostId !== void 0 && func0.call(data, "hostId")) {
+      if (
+        !validate28(data.hostId, {
+          instancePath: instancePath + "/hostId",
+          parentData: data,
+          parentDataProperty: "hostId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err4 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err4];
+    } else {
+      vErrors.push(err4);
+    }
+    errors++;
+  }
+  validate1531.errors = vErrors;
   return errors === 0;
 }
 function validate1340(
@@ -89676,7 +89918,7 @@ function validate1336(
   validate1336.errors = vErrors;
   return errors === 0;
 }
-function validate1541(
+function validate1544(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -89906,10 +90148,10 @@ function validate1541(
       }
     }
   }
-  validate1541.errors = vErrors;
+  validate1544.errors = vErrors;
   return errors === 0;
 }
-function validate1456(
+function validate1480(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -90183,10 +90425,10 @@ function validate1456(
       }
     }
   }
-  validate1456.errors = vErrors;
+  validate1480.errors = vErrors;
   return errors === 0;
 }
-function validate1548(
+function validate1551(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -90312,7 +90554,7 @@ function validate1548(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1456(data1[i0], {
+            !validate1480(data1[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -90321,8 +90563,8 @@ function validate1548(
           ) {
             vErrors =
               vErrors === null
-                ? validate1456.errors
-                : vErrors.concat(validate1456.errors);
+                ? validate1480.errors
+                : vErrors.concat(validate1480.errors);
             errors = vErrors.length;
           }
         }
@@ -90389,10 +90631,10 @@ function validate1548(
     }
     errors++;
   }
-  validate1548.errors = vErrors;
+  validate1551.errors = vErrors;
   return errors === 0;
 }
-function validate1554(
+function validate1557(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -90614,10 +90856,10 @@ function validate1554(
     }
     errors++;
   }
-  validate1554.errors = vErrors;
+  validate1557.errors = vErrors;
   return errors === 0;
 }
-function validate1482(
+function validate1506(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -90677,7 +90919,7 @@ function validate1482(
     }
     if (data.request !== void 0 && func0.call(data, "request")) {
       if (
-        !validate1483(data.request, {
+        !validate1507(data.request, {
           instancePath: instancePath + "/request",
           parentData: data,
           parentDataProperty: "request",
@@ -90686,8 +90928,8 @@ function validate1482(
       ) {
         vErrors =
           vErrors === null
-            ? validate1483.errors
-            : vErrors.concat(validate1483.errors);
+            ? validate1507.errors
+            : vErrors.concat(validate1507.errors);
         errors = vErrors.length;
       }
     }
@@ -91639,7 +91881,7 @@ function validate1482(
             }
             if (data.route !== void 0 && func0.call(data, "route")) {
               if (
-                !validate1507(data.route, {
+                !validate1531(data.route, {
                   instancePath: instancePath + "/route",
                   parentData: data,
                   parentDataProperty: "route",
@@ -91648,8 +91890,8 @@ function validate1482(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1507.errors
-                    : vErrors.concat(validate1507.errors);
+                    ? validate1531.errors
+                    : vErrors.concat(validate1531.errors);
                 errors = vErrors.length;
               }
             }
@@ -92541,7 +92783,7 @@ function validate1482(
                           func0.call(data, "request")
                         ) {
                           if (
-                            !validate1519(data.request, {
+                            !validate1438(data.request, {
                               instancePath: instancePath + "/request",
                               parentData: data,
                               parentDataProperty: "request",
@@ -92550,8 +92792,8 @@ function validate1482(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1519.errors
-                                : vErrors.concat(validate1519.errors);
+                                ? validate1438.errors
+                                : vErrors.concat(validate1438.errors);
                             errors = vErrors.length;
                           }
                         }
@@ -92676,7 +92918,7 @@ function validate1482(
                             func0.call(data, "reply")
                           ) {
                             if (
-                              !validate1541(data.reply, {
+                              !validate1544(data.reply, {
                                 instancePath: instancePath + "/reply",
                                 parentData: data,
                                 parentDataProperty: "reply",
@@ -92685,8 +92927,8 @@ function validate1482(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1541.errors
-                                  : vErrors.concat(validate1541.errors);
+                                  ? validate1544.errors
+                                  : vErrors.concat(validate1544.errors);
                               errors = vErrors.length;
                             }
                           }
@@ -92957,7 +93199,7 @@ function validate1482(
                                 func0.call(data, "batch")
                               ) {
                                 if (
-                                  !validate1548(data.batch, {
+                                  !validate1551(data.batch, {
                                     instancePath: instancePath + "/batch",
                                     parentData: data,
                                     parentDataProperty: "batch",
@@ -92966,8 +93208,8 @@ function validate1482(
                                 ) {
                                   vErrors =
                                     vErrors === null
-                                      ? validate1548.errors
-                                      : vErrors.concat(validate1548.errors);
+                                      ? validate1551.errors
+                                      : vErrors.concat(validate1551.errors);
                                   errors = vErrors.length;
                                 }
                               }
@@ -93126,7 +93368,7 @@ function validate1482(
                                   func0.call(data, "delta")
                                 ) {
                                   if (
-                                    !validate1554(data.delta, {
+                                    !validate1557(data.delta, {
                                       instancePath: instancePath + "/delta",
                                       parentData: data,
                                       parentDataProperty: "delta",
@@ -93135,8 +93377,8 @@ function validate1482(
                                   ) {
                                     vErrors =
                                       vErrors === null
-                                        ? validate1554.errors
-                                        : vErrors.concat(validate1554.errors);
+                                        ? validate1557.errors
+                                        : vErrors.concat(validate1557.errors);
                                     errors = vErrors.length;
                                   }
                                 }
@@ -93648,7 +93890,7 @@ function validate1482(
       }
     }
   }
-  validate1482.errors = vErrors;
+  validate1506.errors = vErrors;
   return errors === 0;
 }
 var validateJsonValue = validate1279;
@@ -93843,8 +94085,8 @@ function validate1279(
   validate1279.errors = vErrors;
   return errors === 0;
 }
-var validateLanAccessParams = validate2164;
-function validate2164(
+var validateLanAccessParams = validate2170;
+function validate2170(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94477,11 +94719,11 @@ function validate2164(
       }
     }
   }
-  validate2164.errors = vErrors;
+  validate2170.errors = vErrors;
   return errors === 0;
 }
-var validateLanAccessResult = validate2168;
-function validate2168(
+var validateLanAccessResult = validate2174;
+function validate2174(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94633,17 +94875,17 @@ function validate2168(
     }
     errors++;
   }
-  validate2168.errors = vErrors;
+  validate2174.errors = vErrors;
   return errors === 0;
 }
-var validateLanguage = validate2172;
-var schema528 = {
+var validateLanguage = validate2178;
+var schema530 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["zh", "en"],
   title: "Language",
   type: "string",
 };
-function validate2172(
+function validate2178(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94669,7 +94911,7 @@ function validate2172(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema528.enum },
+      params: { allowedValues: schema530.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -94679,11 +94921,11 @@ function validate2172(
     }
     errors++;
   }
-  validate2172.errors = vErrors;
+  validate2178.errors = vErrors;
   return errors === 0;
 }
-var validateLayoutTemplate = validate2173;
-function validate2173(
+var validateLayoutTemplate = validate2179;
+function validate2179(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -94862,11 +95104,11 @@ function validate2173(
     }
     errors++;
   }
-  validate2173.errors = vErrors;
+  validate2179.errors = vErrors;
   return errors === 0;
 }
-var validateLease = validate1705;
-var schema396 = {
+var validateLease = validate1708;
+var schema397 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -94894,7 +95136,7 @@ var schema396 = {
   title: "Lease",
   type: "object",
 };
-function validate1705(
+function validate1708(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95043,7 +95285,7 @@ function validate1705(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema396.properties, key0)) {
+      if (!func0.call(schema397.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -95224,12 +95466,12 @@ function validate1705(
     }
     errors++;
   }
-  validate1705.errors = vErrors;
+  validate1708.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseAcquireParams = validate1770;
-var schema415 = { enum: ["transaction", "exclusive"], type: "string" };
-function validate1771(
+var validateLeaseAcquireParams = validate1773;
+var schema416 = { enum: ["transaction", "exclusive"], type: "string" };
+function validate1774(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95255,7 +95497,7 @@ function validate1771(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema415.enum },
+      params: { allowedValues: schema416.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -95265,10 +95507,10 @@ function validate1771(
     }
     errors++;
   }
-  validate1771.errors = vErrors;
+  validate1774.errors = vErrors;
   return errors === 0;
 }
-function validate1770(
+function validate1773(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95324,7 +95566,7 @@ function validate1770(
     }
     if (data.kind !== void 0 && func0.call(data, "kind")) {
       if (
-        !validate1771(data.kind, {
+        !validate1774(data.kind, {
           instancePath: instancePath + "/kind",
           parentData: data,
           parentDataProperty: "kind",
@@ -95333,8 +95575,8 @@ function validate1770(
       ) {
         vErrors =
           vErrors === null
-            ? validate1771.errors
-            : vErrors.concat(validate1771.errors);
+            ? validate1774.errors
+            : vErrors.concat(validate1774.errors);
         errors = vErrors.length;
       }
     }
@@ -95369,17 +95611,17 @@ function validate1770(
     }
     errors++;
   }
-  validate1770.errors = vErrors;
+  validate1773.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseKind = validate1672;
-var schema387 = {
+var validateLeaseKind = validate1675;
+var schema388 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["ordinary", "transaction", "exclusive"],
   title: "LeaseKind",
   type: "string",
 };
-function validate1672(
+function validate1675(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95409,7 +95651,7 @@ function validate1672(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema387.enum },
+      params: { allowedValues: schema388.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -95419,11 +95661,11 @@ function validate1672(
     }
     errors++;
   }
-  validate1672.errors = vErrors;
+  validate1675.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseReleaseParams = validate1777;
-function validate1777(
+var validateLeaseReleaseParams = validate1780;
+function validate1780(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95493,11 +95735,11 @@ function validate1777(
     }
     errors++;
   }
-  validate1777.errors = vErrors;
+  validate1780.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseRenewParams = validate1774;
-function validate1774(
+var validateLeaseRenewParams = validate1777;
+function validate1777(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95598,17 +95840,17 @@ function validate1774(
     }
     errors++;
   }
-  validate1774.errors = vErrors;
+  validate1777.errors = vErrors;
   return errors === 0;
 }
-var validateLeaseState = validate1674;
-var schema389 = {
+var validateLeaseState = validate1677;
+var schema390 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["active", "revoking", "released", "expired"],
   title: "LeaseState",
   type: "string",
 };
-function validate1674(
+function validate1677(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95639,7 +95881,7 @@ function validate1674(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema389.enum },
+      params: { allowedValues: schema390.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -95649,11 +95891,11 @@ function validate1674(
     }
     errors++;
   }
-  validate1674.errors = vErrors;
+  validate1677.errors = vErrors;
   return errors === 0;
 }
-var validateLimits = validate2174;
-function validate2174(
+var validateLimits = validate2180;
+function validate2180(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -95903,11 +96145,11 @@ function validate2174(
     }
     errors++;
   }
-  validate2174.errors = vErrors;
+  validate2180.errors = vErrors;
   return errors === 0;
 }
-var validateLineEnding = validate1621;
-function validate1621(
+var validateLineEnding = validate1624;
+function validate1624(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96426,11 +96668,11 @@ function validate1621(
       }
     }
   }
-  validate1621.errors = vErrors;
+  validate1624.errors = vErrors;
   return errors === 0;
 }
-var validateMemoryBudget = validate2181;
-function validate2181(
+var validateMemoryBudget = validate2187;
+function validate2187(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96566,11 +96808,11 @@ function validate2181(
     }
     errors++;
   }
-  validate2181.errors = vErrors;
+  validate2187.errors = vErrors;
   return errors === 0;
 }
-var validateMessageFragment = validate2185;
-function validate2185(
+var validateMessageFragment = validate2191;
+function validate2191(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96739,17 +96981,17 @@ function validate2185(
     }
     errors++;
   }
-  validate2185.errors = vErrors;
+  validate2191.errors = vErrors;
   return errors === 0;
 }
-var validateMotion = validate2189;
-var schema533 = {
+var validateMotion = validate2195;
+var schema535 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["full", "reduced"],
   title: "Motion",
   type: "string",
 };
-function validate2189(
+function validate2195(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96775,7 +97017,7 @@ function validate2189(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema533.enum },
+      params: { allowedValues: schema535.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -96785,17 +97027,17 @@ function validate2189(
     }
     errors++;
   }
-  validate2189.errors = vErrors;
+  validate2195.errors = vErrors;
   return errors === 0;
 }
-var validateNetworkMode = validate2190;
-var schema534 = {
+var validateNetworkMode = validate2196;
+var schema536 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["system", "direct"],
   title: "NetworkMode",
   type: "string",
 };
-function validate2190(
+function validate2196(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -96821,7 +97063,7 @@ function validate2190(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema534.enum },
+      params: { allowedValues: schema536.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -96831,10 +97073,10 @@ function validate2190(
     }
     errors++;
   }
-  validate2190.errors = vErrors;
+  validate2196.errors = vErrors;
   return errors === 0;
 }
-var validateNodeExecutionTrust = validate2191;
+var validateNodeExecutionTrust = validate2197;
 function validate160(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
@@ -97331,7 +97573,7 @@ function validate222(
   validate222.errors = vErrors;
   return errors === 0;
 }
-function validate2191(
+function validate2197(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97502,11 +97744,11 @@ function validate2191(
     }
     errors++;
   }
-  validate2191.errors = vErrors;
+  validate2197.errors = vErrors;
   return errors === 0;
 }
-var validateNodeMetrics = validate1876;
-function validate1876(
+var validateNodeMetrics = validate1879;
+function validate1879(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -97691,7 +97933,7 @@ function validate1876(
     }
     errors++;
   }
-  validate1876.errors = vErrors;
+  validate1879.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageChangeResult = validate263;
@@ -98820,8 +99062,8 @@ function validate1131(
   validate1131.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageInstallSource = validate2195;
-function validate2195(
+var validateNodePackageInstallSource = validate2201;
+function validate2201(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -99095,7 +99337,7 @@ function validate2195(
       }
     }
   }
-  validate2195.errors = vErrors;
+  validate2201.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageInstallation = validate217;
@@ -103486,14 +103728,14 @@ function validate712(
   validate712.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageRuntimePhase = validate2198;
-var schema537 = {
+var validateNodePackageRuntimePhase = validate2204;
+var schema539 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["inactive", "starting", "active", "stopping", "failed"],
   title: "NodePackageRuntimePhase",
   type: "string",
 };
-function validate2198(
+function validate2204(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -103525,7 +103767,7 @@ function validate2198(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema537.enum },
+      params: { allowedValues: schema539.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -103535,7 +103777,7 @@ function validate2198(
     }
     errors++;
   }
-  validate2198.errors = vErrors;
+  validate2204.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageRuntimeStatus = validate714;
@@ -104376,8 +104618,8 @@ function validate1137(
   validate1137.errors = vErrors;
   return errors === 0;
 }
-var validateNodePackageSummary = validate2199;
-function validate2199(
+var validateNodePackageSummary = validate2205;
+function validate2205(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -104622,7 +104864,7 @@ function validate2199(
     }
     errors++;
   }
-  validate2199.errors = vErrors;
+  validate2205.errors = vErrors;
   return errors === 0;
 }
 var validateNodePackageUninstallResult = validate266;
@@ -108708,8 +108950,8 @@ function validate1127(
   validate1127.errors = vErrors;
   return errors === 0;
 }
-var validateNodeViewAssetReadResult = validate2202;
-var schema539 = {
+var validateNodeViewAssetReadResult = validate2208;
+var schema541 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -108743,7 +108985,7 @@ var schema539 = {
   title: "NodeViewAssetReadResult",
   type: "object",
 };
-function validate2202(
+function validate2208(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -108931,7 +109173,7 @@ function validate2202(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema539.properties, key0)) {
+      if (!func0.call(schema541.properties, key0)) {
         const err12 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -109154,11 +109396,11 @@ function validate2202(
     }
     errors++;
   }
-  validate2202.errors = vErrors;
+  validate2208.errors = vErrors;
   return errors === 0;
 }
-var validateObjectReadResult = validate2215;
-function validate2215(
+var validateObjectReadResult = validate2221;
+function validate2221(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -109311,7 +109553,7 @@ function validate2215(
     }
     errors++;
   }
-  validate2215.errors = vErrors;
+  validate2221.errors = vErrors;
   return errors === 0;
 }
 var validateObjectRef = validate1271;
@@ -109471,8 +109713,8 @@ function validate1271(
   validate1271.errors = vErrors;
   return errors === 0;
 }
-var validateOpenParams = validate1726;
-function validate1726(
+var validateOpenParams = validate1729;
+function validate1729(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -109558,11 +109800,11 @@ function validate1726(
     }
     errors++;
   }
-  validate1726.errors = vErrors;
+  validate1729.errors = vErrors;
   return errors === 0;
 }
-var validateOpenResult = validate1729;
-function validate1729(
+var validateOpenResult = validate1732;
+function validate1732(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -109748,7 +109990,7 @@ function validate1729(
     }
     errors++;
   }
-  validate1729.errors = vErrors;
+  validate1732.errors = vErrors;
   return errors === 0;
 }
 var validateOperation = validate1309;
@@ -110506,12 +110748,12 @@ function validate1309(
   validate1309.errors = vErrors;
   return errors === 0;
 }
-var validateOperationCancelParams = validate2220;
-var schema542 = {
+var validateOperationCancelParams = validate2226;
+var schema544 = {
   enum: ["user", "revoked", "takeover", "shutdown"],
   type: "string",
 };
-function validate2221(
+function validate2227(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110542,7 +110784,7 @@ function validate2221(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema542.enum },
+      params: { allowedValues: schema544.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -110552,10 +110794,10 @@ function validate2221(
     }
     errors++;
   }
-  validate2221.errors = vErrors;
+  validate2227.errors = vErrors;
   return errors === 0;
 }
-function validate2220(
+function validate2226(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110596,7 +110838,7 @@ function validate2220(
     }
     if (data.reason !== void 0 && func0.call(data, "reason")) {
       if (
-        !validate2221(data.reason, {
+        !validate2227(data.reason, {
           instancePath: instancePath + "/reason",
           parentData: data,
           parentDataProperty: "reason",
@@ -110605,8 +110847,8 @@ function validate2220(
       ) {
         vErrors =
           vErrors === null
-            ? validate2221.errors
-            : vErrors.concat(validate2221.errors);
+            ? validate2227.errors
+            : vErrors.concat(validate2227.errors);
         errors = vErrors.length;
       }
     }
@@ -110625,11 +110867,11 @@ function validate2220(
     }
     errors++;
   }
-  validate2220.errors = vErrors;
+  validate2226.errors = vErrors;
   return errors === 0;
 }
-var validateOperationGetParams = validate2223;
-function validate2223(
+var validateOperationGetParams = validate2229;
+function validate2229(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -110991,11 +111233,11 @@ function validate2223(
       }
     }
   }
-  validate2223.errors = vErrors;
+  validate2229.errors = vErrors;
   return errors === 0;
 }
-var validateOperationInput = validate2231;
-function validate2231(
+var validateOperationInput = validate2237;
+function validate2237(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -112443,11 +112685,11 @@ function validate2231(
       }
     }
   }
-  validate2231.errors = vErrors;
+  validate2237.errors = vErrors;
   return errors === 0;
 }
-var validateOperationInputParams = validate2243;
-function validate2243(
+var validateOperationInputParams = validate2249;
+function validate2249(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -112517,11 +112759,11 @@ function validate2243(
     }
     errors++;
   }
-  validate2243.errors = vErrors;
+  validate2249.errors = vErrors;
   return errors === 0;
 }
-var validateOperationInputRedaction = validate2245;
-var schema546 = {
+var validateOperationInputRedaction = validate2251;
+var schema548 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "sensitive_path",
@@ -112532,7 +112774,7 @@ var schema546 = {
   title: "OperationInputRedaction",
   type: "string",
 };
-function validate2245(
+function validate2251(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -112563,7 +112805,7 @@ function validate2245(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema546.enum },
+      params: { allowedValues: schema548.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -112573,11 +112815,11 @@ function validate2245(
     }
     errors++;
   }
-  validate2245.errors = vErrors;
+  validate2251.errors = vErrors;
   return errors === 0;
 }
-var validateOperationResult = validate2246;
-function validate2246(
+var validateOperationResult = validate2252;
+function validate2252(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -112647,11 +112889,11 @@ function validate2246(
     }
     errors++;
   }
-  validate2246.errors = vErrors;
+  validate2252.errors = vErrors;
   return errors === 0;
 }
-var validateOperationState = validate2248;
-var schema548 = {
+var validateOperationState = validate2254;
+var schema550 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "queued",
@@ -112666,7 +112908,7 @@ var schema548 = {
   title: "OperationState",
   type: "string",
 };
-function validate2248(
+function validate2254(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -112701,7 +112943,7 @@ function validate2248(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema548.enum },
+      params: { allowedValues: schema550.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -112711,11 +112953,11 @@ function validate2248(
     }
     errors++;
   }
-  validate2248.errors = vErrors;
+  validate2254.errors = vErrors;
   return errors === 0;
 }
-var validateOperationSummary = validate2249;
-var schema549 = {
+var validateOperationSummary = validate2255;
+var schema551 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -112749,463 +112991,7 @@ var schema549 = {
   title: "OperationSummary",
   type: "object",
 };
-function validate2249(
-  data,
-  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
-) {
-  let vErrors = null;
-  let errors = 0;
-  if (data && typeof data == "object" && !Array.isArray(data)) {
-    if (data.operationId === void 0 || !func0.call(data, "operationId")) {
-      const err0 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "operationId" },
-        message: "must have required property 'operationId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err0];
-      } else {
-        vErrors.push(err0);
-      }
-      errors++;
-    }
-    if (
-      data.executionHostId === void 0 ||
-      !func0.call(data, "executionHostId")
-    ) {
-      const err1 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "executionHostId" },
-        message: "must have required property 'executionHostId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err1];
-      } else {
-        vErrors.push(err1);
-      }
-      errors++;
-    }
-    if (data.actorId === void 0 || !func0.call(data, "actorId")) {
-      const err2 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "actorId" },
-        message: "must have required property 'actorId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err2];
-      } else {
-        vErrors.push(err2);
-      }
-      errors++;
-    }
-    if (data.actionId === void 0 || !func0.call(data, "actionId")) {
-      const err3 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "actionId" },
-        message: "must have required property 'actionId'",
-      };
-      if (vErrors === null) {
-        vErrors = [err3];
-      } else {
-        vErrors.push(err3);
-      }
-      errors++;
-    }
-    if (data.target === void 0 || !func0.call(data, "target")) {
-      const err4 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "target" },
-        message: "must have required property 'target'",
-      };
-      if (vErrors === null) {
-        vErrors = [err4];
-      } else {
-        vErrors.push(err4);
-      }
-      errors++;
-    }
-    if (data.executionMode === void 0 || !func0.call(data, "executionMode")) {
-      const err5 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "executionMode" },
-        message: "must have required property 'executionMode'",
-      };
-      if (vErrors === null) {
-        vErrors = [err5];
-      } else {
-        vErrors.push(err5);
-      }
-      errors++;
-    }
-    if (data.state === void 0 || !func0.call(data, "state")) {
-      const err6 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "state" },
-        message: "must have required property 'state'",
-      };
-      if (vErrors === null) {
-        vErrors = [err6];
-      } else {
-        vErrors.push(err6);
-      }
-      errors++;
-    }
-    if (data.revision === void 0 || !func0.call(data, "revision")) {
-      const err7 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "revision" },
-        message: "must have required property 'revision'",
-      };
-      if (vErrors === null) {
-        vErrors = [err7];
-      } else {
-        vErrors.push(err7);
-      }
-      errors++;
-    }
-    if (data.revealTarget === void 0 || !func0.call(data, "revealTarget")) {
-      const err8 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "revealTarget" },
-        message: "must have required property 'revealTarget'",
-      };
-      if (vErrors === null) {
-        vErrors = [err8];
-      } else {
-        vErrors.push(err8);
-      }
-      errors++;
-    }
-    if (data.acceptedAt === void 0 || !func0.call(data, "acceptedAt")) {
-      const err9 = {
-        instancePath,
-        schemaPath: "#/required",
-        keyword: "required",
-        params: { missingProperty: "acceptedAt" },
-        message: "must have required property 'acceptedAt'",
-      };
-      if (vErrors === null) {
-        vErrors = [err9];
-      } else {
-        vErrors.push(err9);
-      }
-      errors++;
-    }
-    for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema549.properties, key0)) {
-        const err10 = {
-          instancePath,
-          schemaPath: "#/additionalProperties",
-          keyword: "additionalProperties",
-          params: { additionalProperty: key0 },
-          message: "must NOT have additional properties",
-        };
-        if (vErrors === null) {
-          vErrors = [err10];
-        } else {
-          vErrors.push(err10);
-        }
-        errors++;
-      }
-    }
-    if (data.acceptedAt !== void 0 && func0.call(data, "acceptedAt")) {
-      if (
-        !validate301(data.acceptedAt, {
-          instancePath: instancePath + "/acceptedAt",
-          parentData: data,
-          parentDataProperty: "acceptedAt",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate301.errors
-            : vErrors.concat(validate301.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.actionId !== void 0 && func0.call(data, "actionId")) {
-      if (
-        !validate28(data.actionId, {
-          instancePath: instancePath + "/actionId",
-          parentData: data,
-          parentDataProperty: "actionId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.actorId !== void 0 && func0.call(data, "actorId")) {
-      if (
-        !validate28(data.actorId, {
-          instancePath: instancePath + "/actorId",
-          parentData: data,
-          parentDataProperty: "actorId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.errorCode !== void 0 && func0.call(data, "errorCode")) {
-      if (typeof data.errorCode !== "string") {
-        const err11 = {
-          instancePath: instancePath + "/errorCode",
-          schemaPath: "#/properties/errorCode/type",
-          keyword: "type",
-          params: { type: "string" },
-          message: "must be string",
-        };
-        if (vErrors === null) {
-          vErrors = [err11];
-        } else {
-          vErrors.push(err11);
-        }
-        errors++;
-      }
-    }
-    if (
-      data.executionHostId !== void 0 &&
-      func0.call(data, "executionHostId")
-    ) {
-      if (
-        !validate28(data.executionHostId, {
-          instancePath: instancePath + "/executionHostId",
-          parentData: data,
-          parentDataProperty: "executionHostId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.executionMode !== void 0 && func0.call(data, "executionMode")) {
-      if (
-        !validate622(data.executionMode, {
-          instancePath: instancePath + "/executionMode",
-          parentData: data,
-          parentDataProperty: "executionMode",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate622.errors
-            : vErrors.concat(validate622.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.operationId !== void 0 && func0.call(data, "operationId")) {
-      if (
-        !validate28(data.operationId, {
-          instancePath: instancePath + "/operationId",
-          parentData: data,
-          parentDataProperty: "operationId",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate28.errors
-            : vErrors.concat(validate28.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.progress !== void 0 && func0.call(data, "progress")) {
-      if (
-        !validate996(data.progress, {
-          instancePath: instancePath + "/progress",
-          parentData: data,
-          parentDataProperty: "progress",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate996.errors
-            : vErrors.concat(validate996.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.revealTarget !== void 0 && func0.call(data, "revealTarget")) {
-      if (
-        !validate116(data.revealTarget, {
-          instancePath: instancePath + "/revealTarget",
-          parentData: data,
-          parentDataProperty: "revealTarget",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate116.errors
-            : vErrors.concat(validate116.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.revision !== void 0 && func0.call(data, "revision")) {
-      if (
-        !validate32(data.revision, {
-          instancePath: instancePath + "/revision",
-          parentData: data,
-          parentDataProperty: "revision",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate32.errors
-            : vErrors.concat(validate32.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.settledAt !== void 0 && func0.call(data, "settledAt")) {
-      if (
-        !validate301(data.settledAt, {
-          instancePath: instancePath + "/settledAt",
-          parentData: data,
-          parentDataProperty: "settledAt",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate301.errors
-            : vErrors.concat(validate301.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.startedAt !== void 0 && func0.call(data, "startedAt")) {
-      if (
-        !validate301(data.startedAt, {
-          instancePath: instancePath + "/startedAt",
-          parentData: data,
-          parentDataProperty: "startedAt",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate301.errors
-            : vErrors.concat(validate301.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.state !== void 0 && func0.call(data, "state")) {
-      if (
-        !validate703(data.state, {
-          instancePath: instancePath + "/state",
-          parentData: data,
-          parentDataProperty: "state",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate703.errors
-            : vErrors.concat(validate703.errors);
-        errors = vErrors.length;
-      }
-    }
-    if (data.target !== void 0 && func0.call(data, "target")) {
-      if (
-        !validate541(data.target, {
-          instancePath: instancePath + "/target",
-          parentData: data,
-          parentDataProperty: "target",
-          rootData,
-        })
-      ) {
-        vErrors =
-          vErrors === null
-            ? validate541.errors
-            : vErrors.concat(validate541.errors);
-        errors = vErrors.length;
-      }
-    }
-  } else {
-    const err12 = {
-      instancePath,
-      schemaPath: "#/type",
-      keyword: "type",
-      params: { type: "object" },
-      message: "must be object",
-    };
-    if (vErrors === null) {
-      vErrors = [err12];
-    } else {
-      vErrors.push(err12);
-    }
-    errors++;
-  }
-  validate2249.errors = vErrors;
-  return errors === 0;
-}
-var validateOperationsSnapshot = validate2263;
-var schema551 = {
-  additionalProperties: false,
-  properties: {
-    acceptedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
-    actionId: { $ref: "#/definitions/shared/definitions/Id" },
-    actorId: { $ref: "#/definitions/shared/definitions/Id" },
-    errorCode: { type: "string" },
-    executionHostId: { $ref: "#/definitions/shared/definitions/Id" },
-    executionMode: { $ref: "#/definitions/shared/definitions/ExecutionMode" },
-    operationId: { $ref: "#/definitions/shared/definitions/Id" },
-    progress: { $ref: "#/definitions/shared/definitions/Progress" },
-    revealTarget: { $ref: "#/definitions/shared/definitions/RevealTarget" },
-    revision: { $ref: "#/definitions/shared/definitions/U64" },
-    settledAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
-    startedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
-    state: { $ref: "#/definitions/shared/definitions/OperationState" },
-    target: { $ref: "#/definitions/shared/definitions/Target" },
-  },
-  required: [
-    "operationId",
-    "executionHostId",
-    "actorId",
-    "actionId",
-    "target",
-    "executionMode",
-    "state",
-    "revision",
-    "revealTarget",
-    "acceptedAt",
-  ],
-  type: "object",
-};
-function validate2264(
+function validate2255(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -113625,10 +113411,466 @@ function validate2264(
     }
     errors++;
   }
-  validate2264.errors = vErrors;
+  validate2255.errors = vErrors;
   return errors === 0;
 }
-function validate2263(
+var validateOperationsSnapshot = validate2269;
+var schema553 = {
+  additionalProperties: false,
+  properties: {
+    acceptedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
+    actionId: { $ref: "#/definitions/shared/definitions/Id" },
+    actorId: { $ref: "#/definitions/shared/definitions/Id" },
+    errorCode: { type: "string" },
+    executionHostId: { $ref: "#/definitions/shared/definitions/Id" },
+    executionMode: { $ref: "#/definitions/shared/definitions/ExecutionMode" },
+    operationId: { $ref: "#/definitions/shared/definitions/Id" },
+    progress: { $ref: "#/definitions/shared/definitions/Progress" },
+    revealTarget: { $ref: "#/definitions/shared/definitions/RevealTarget" },
+    revision: { $ref: "#/definitions/shared/definitions/U64" },
+    settledAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
+    startedAt: { $ref: "#/definitions/shared/definitions/Timestamp" },
+    state: { $ref: "#/definitions/shared/definitions/OperationState" },
+    target: { $ref: "#/definitions/shared/definitions/Target" },
+  },
+  required: [
+    "operationId",
+    "executionHostId",
+    "actorId",
+    "actionId",
+    "target",
+    "executionMode",
+    "state",
+    "revision",
+    "revealTarget",
+    "acceptedAt",
+  ],
+  type: "object",
+};
+function validate2270(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (data && typeof data == "object" && !Array.isArray(data)) {
+    if (data.operationId === void 0 || !func0.call(data, "operationId")) {
+      const err0 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "operationId" },
+        message: "must have required property 'operationId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err0];
+      } else {
+        vErrors.push(err0);
+      }
+      errors++;
+    }
+    if (
+      data.executionHostId === void 0 ||
+      !func0.call(data, "executionHostId")
+    ) {
+      const err1 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "executionHostId" },
+        message: "must have required property 'executionHostId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err1];
+      } else {
+        vErrors.push(err1);
+      }
+      errors++;
+    }
+    if (data.actorId === void 0 || !func0.call(data, "actorId")) {
+      const err2 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "actorId" },
+        message: "must have required property 'actorId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err2];
+      } else {
+        vErrors.push(err2);
+      }
+      errors++;
+    }
+    if (data.actionId === void 0 || !func0.call(data, "actionId")) {
+      const err3 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "actionId" },
+        message: "must have required property 'actionId'",
+      };
+      if (vErrors === null) {
+        vErrors = [err3];
+      } else {
+        vErrors.push(err3);
+      }
+      errors++;
+    }
+    if (data.target === void 0 || !func0.call(data, "target")) {
+      const err4 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "target" },
+        message: "must have required property 'target'",
+      };
+      if (vErrors === null) {
+        vErrors = [err4];
+      } else {
+        vErrors.push(err4);
+      }
+      errors++;
+    }
+    if (data.executionMode === void 0 || !func0.call(data, "executionMode")) {
+      const err5 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "executionMode" },
+        message: "must have required property 'executionMode'",
+      };
+      if (vErrors === null) {
+        vErrors = [err5];
+      } else {
+        vErrors.push(err5);
+      }
+      errors++;
+    }
+    if (data.state === void 0 || !func0.call(data, "state")) {
+      const err6 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "state" },
+        message: "must have required property 'state'",
+      };
+      if (vErrors === null) {
+        vErrors = [err6];
+      } else {
+        vErrors.push(err6);
+      }
+      errors++;
+    }
+    if (data.revision === void 0 || !func0.call(data, "revision")) {
+      const err7 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "revision" },
+        message: "must have required property 'revision'",
+      };
+      if (vErrors === null) {
+        vErrors = [err7];
+      } else {
+        vErrors.push(err7);
+      }
+      errors++;
+    }
+    if (data.revealTarget === void 0 || !func0.call(data, "revealTarget")) {
+      const err8 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "revealTarget" },
+        message: "must have required property 'revealTarget'",
+      };
+      if (vErrors === null) {
+        vErrors = [err8];
+      } else {
+        vErrors.push(err8);
+      }
+      errors++;
+    }
+    if (data.acceptedAt === void 0 || !func0.call(data, "acceptedAt")) {
+      const err9 = {
+        instancePath,
+        schemaPath: "#/required",
+        keyword: "required",
+        params: { missingProperty: "acceptedAt" },
+        message: "must have required property 'acceptedAt'",
+      };
+      if (vErrors === null) {
+        vErrors = [err9];
+      } else {
+        vErrors.push(err9);
+      }
+      errors++;
+    }
+    for (const key0 of Object.keys(data)) {
+      if (!func0.call(schema553.properties, key0)) {
+        const err10 = {
+          instancePath,
+          schemaPath: "#/additionalProperties",
+          keyword: "additionalProperties",
+          params: { additionalProperty: key0 },
+          message: "must NOT have additional properties",
+        };
+        if (vErrors === null) {
+          vErrors = [err10];
+        } else {
+          vErrors.push(err10);
+        }
+        errors++;
+      }
+    }
+    if (data.acceptedAt !== void 0 && func0.call(data, "acceptedAt")) {
+      if (
+        !validate301(data.acceptedAt, {
+          instancePath: instancePath + "/acceptedAt",
+          parentData: data,
+          parentDataProperty: "acceptedAt",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate301.errors
+            : vErrors.concat(validate301.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.actionId !== void 0 && func0.call(data, "actionId")) {
+      if (
+        !validate28(data.actionId, {
+          instancePath: instancePath + "/actionId",
+          parentData: data,
+          parentDataProperty: "actionId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.actorId !== void 0 && func0.call(data, "actorId")) {
+      if (
+        !validate28(data.actorId, {
+          instancePath: instancePath + "/actorId",
+          parentData: data,
+          parentDataProperty: "actorId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.errorCode !== void 0 && func0.call(data, "errorCode")) {
+      if (typeof data.errorCode !== "string") {
+        const err11 = {
+          instancePath: instancePath + "/errorCode",
+          schemaPath: "#/properties/errorCode/type",
+          keyword: "type",
+          params: { type: "string" },
+          message: "must be string",
+        };
+        if (vErrors === null) {
+          vErrors = [err11];
+        } else {
+          vErrors.push(err11);
+        }
+        errors++;
+      }
+    }
+    if (
+      data.executionHostId !== void 0 &&
+      func0.call(data, "executionHostId")
+    ) {
+      if (
+        !validate28(data.executionHostId, {
+          instancePath: instancePath + "/executionHostId",
+          parentData: data,
+          parentDataProperty: "executionHostId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.executionMode !== void 0 && func0.call(data, "executionMode")) {
+      if (
+        !validate622(data.executionMode, {
+          instancePath: instancePath + "/executionMode",
+          parentData: data,
+          parentDataProperty: "executionMode",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate622.errors
+            : vErrors.concat(validate622.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.operationId !== void 0 && func0.call(data, "operationId")) {
+      if (
+        !validate28(data.operationId, {
+          instancePath: instancePath + "/operationId",
+          parentData: data,
+          parentDataProperty: "operationId",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate28.errors
+            : vErrors.concat(validate28.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.progress !== void 0 && func0.call(data, "progress")) {
+      if (
+        !validate996(data.progress, {
+          instancePath: instancePath + "/progress",
+          parentData: data,
+          parentDataProperty: "progress",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate996.errors
+            : vErrors.concat(validate996.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.revealTarget !== void 0 && func0.call(data, "revealTarget")) {
+      if (
+        !validate116(data.revealTarget, {
+          instancePath: instancePath + "/revealTarget",
+          parentData: data,
+          parentDataProperty: "revealTarget",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate116.errors
+            : vErrors.concat(validate116.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.revision !== void 0 && func0.call(data, "revision")) {
+      if (
+        !validate32(data.revision, {
+          instancePath: instancePath + "/revision",
+          parentData: data,
+          parentDataProperty: "revision",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate32.errors
+            : vErrors.concat(validate32.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.settledAt !== void 0 && func0.call(data, "settledAt")) {
+      if (
+        !validate301(data.settledAt, {
+          instancePath: instancePath + "/settledAt",
+          parentData: data,
+          parentDataProperty: "settledAt",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate301.errors
+            : vErrors.concat(validate301.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.startedAt !== void 0 && func0.call(data, "startedAt")) {
+      if (
+        !validate301(data.startedAt, {
+          instancePath: instancePath + "/startedAt",
+          parentData: data,
+          parentDataProperty: "startedAt",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate301.errors
+            : vErrors.concat(validate301.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.state !== void 0 && func0.call(data, "state")) {
+      if (
+        !validate703(data.state, {
+          instancePath: instancePath + "/state",
+          parentData: data,
+          parentDataProperty: "state",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate703.errors
+            : vErrors.concat(validate703.errors);
+        errors = vErrors.length;
+      }
+    }
+    if (data.target !== void 0 && func0.call(data, "target")) {
+      if (
+        !validate541(data.target, {
+          instancePath: instancePath + "/target",
+          parentData: data,
+          parentDataProperty: "target",
+          rootData,
+        })
+      ) {
+        vErrors =
+          vErrors === null
+            ? validate541.errors
+            : vErrors.concat(validate541.errors);
+        errors = vErrors.length;
+      }
+    }
+  } else {
+    const err12 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "object" },
+      message: "must be object",
+    };
+    if (vErrors === null) {
+      vErrors = [err12];
+    } else {
+      vErrors.push(err12);
+    }
+    errors++;
+  }
+  validate2270.errors = vErrors;
+  return errors === 0;
+}
+function validate2269(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -113673,7 +113915,7 @@ function validate2263(
         const len0 = data0.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate2264(data0[i0], {
+            !validate2270(data0[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data0,
               parentDataProperty: i0,
@@ -113682,8 +113924,8 @@ function validate2263(
           ) {
             vErrors =
               vErrors === null
-                ? validate2264.errors
-                : vErrors.concat(validate2264.errors);
+                ? validate2270.errors
+                : vErrors.concat(validate2270.errors);
             errors = vErrors.length;
           }
         }
@@ -113718,17 +113960,17 @@ function validate2263(
     }
     errors++;
   }
-  validate2263.errors = vErrors;
+  validate2269.errors = vErrors;
   return errors === 0;
 }
-var validateOverflowPolicy = validate2279;
-var schema552 = {
+var validateOverflowPolicy = validate2285;
+var schema554 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["drop_with_gap", "stop", "flow_control"],
   title: "OverflowPolicy",
   type: "string",
 };
-function validate2279(
+function validate2285(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -113758,7 +114000,7 @@ function validate2279(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema552.enum },
+      params: { allowedValues: schema554.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -113768,11 +114010,11 @@ function validate2279(
     }
     errors++;
   }
-  validate2279.errors = vErrors;
+  validate2285.errors = vErrors;
   return errors === 0;
 }
-var validateOwner = validate2280;
-function validate2280(
+var validateOwner = validate2286;
+function validate2286(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -113890,17 +114132,17 @@ function validate2280(
     }
     errors++;
   }
-  validate2280.errors = vErrors;
+  validate2286.errors = vErrors;
   return errors === 0;
 }
-var validateOwnerKind = validate2283;
-var schema554 = {
+var validateOwnerKind = validate2289;
+var schema556 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["host", "plugin"],
   title: "OwnerKind",
   type: "string",
 };
-function validate2283(
+function validate2289(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -113926,7 +114168,7 @@ function validate2283(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema554.enum },
+      params: { allowedValues: schema556.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -113936,17 +114178,17 @@ function validate2283(
     }
     errors++;
   }
-  validate2283.errors = vErrors;
+  validate2289.errors = vErrors;
   return errors === 0;
 }
-var validateParity = validate1618;
-var schema363 = {
+var validateParity = validate1621;
+var schema364 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["none", "even", "odd", "mark", "space"],
   title: "Parity",
   type: "string",
 };
-function validate1618(
+function validate1621(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -113978,7 +114220,7 @@ function validate1618(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema363.enum },
+      params: { allowedValues: schema364.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -113988,11 +114230,11 @@ function validate1618(
     }
     errors++;
   }
-  validate1618.errors = vErrors;
+  validate1621.errors = vErrors;
   return errors === 0;
 }
-var validatePositiveU64 = validate2284;
-function validate2284(
+var validatePositiveU64 = validate2290;
+function validate2290(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114071,11 +114313,11 @@ function validate2284(
     }
     errors++;
   }
-  validate2284.errors = vErrors;
+  validate2290.errors = vErrors;
   return errors === 0;
 }
-var validateProgress = validate2285;
-function validate2285(
+var validateProgress = validate2291;
+function validate2291(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114193,17 +114435,17 @@ function validate2285(
     }
     errors++;
   }
-  validate2285.errors = vErrors;
+  validate2291.errors = vErrors;
   return errors === 0;
 }
-var validateProtocolVersion = validate2288;
-var schema557 = {
+var validateProtocolVersion = validate2294;
+var schema559 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["0.1"],
   title: "ProtocolVersion",
   type: "string",
 };
-function validate2288(
+function validate2294(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114229,7 +114471,7 @@ function validate2288(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema557.enum },
+      params: { allowedValues: schema559.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -114239,17 +114481,17 @@ function validate2288(
     }
     errors++;
   }
-  validate2288.errors = vErrors;
+  validate2294.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeDirection = validate1669;
-var schema384 = {
+var validatePurgeDirection = validate1672;
+var schema385 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["rx", "tx", "both"],
   title: "PurgeDirection",
   type: "string",
 };
-function validate1669(
+function validate1672(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114275,7 +114517,7 @@ function validate1669(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema384.enum },
+      params: { allowedValues: schema385.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -114285,17 +114527,17 @@ function validate1669(
     }
     errors++;
   }
-  validate1669.errors = vErrors;
+  validate1672.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeOutcome = validate1671;
-var schema386 = {
+var validatePurgeOutcome = validate1674;
+var schema387 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["completed", "partial", "unknown"],
   title: "PurgeOutcome",
   type: "string",
 };
-function validate1671(
+function validate1674(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114321,7 +114563,7 @@ function validate1671(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema386.enum },
+      params: { allowedValues: schema387.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -114331,11 +114573,11 @@ function validate1671(
     }
     errors++;
   }
-  validate1671.errors = vErrors;
+  validate1674.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeParams = validate1797;
-function validate1797(
+var validatePurgeParams = validate1800;
+function validate1800(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114436,11 +114678,11 @@ function validate1797(
     }
     errors++;
   }
-  validate1797.errors = vErrors;
+  validate1800.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeReceipt = validate1800;
-function validate1800(
+var validatePurgeReceipt = validate1803;
+function validate1803(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114719,17 +114961,17 @@ function validate1800(
     }
     errors++;
   }
-  validate1800.errors = vErrors;
+  validate1803.errors = vErrors;
   return errors === 0;
 }
-var validatePurgeScope = validate1670;
-var schema385 = {
+var validatePurgeScope = validate1673;
+var schema386 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["application", "driver", "both"],
   title: "PurgeScope",
   type: "string",
 };
-function validate1670(
+function validate1673(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114755,7 +114997,7 @@ function validate1670(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema385.enum },
+      params: { allowedValues: schema386.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -114765,11 +115007,11 @@ function validate1670(
     }
     errors++;
   }
-  validate1670.errors = vErrors;
+  validate1673.errors = vErrors;
   return errors === 0;
 }
-var validateQuery = validate2289;
-var schema558 = {
+var validateQuery = validate2295;
+var schema560 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -114804,7 +115046,7 @@ var schema558 = {
   title: "Query",
   type: "object",
 };
-function validate2289(
+function validate2295(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -114950,7 +115192,7 @@ function validate2289(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema558.properties, key0)) {
+      if (!func0.call(schema560.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -115150,7 +115392,7 @@ function validate2289(
     }
     errors++;
   }
-  validate2289.errors = vErrors;
+  validate2295.errors = vErrors;
   return errors === 0;
 }
 var validateQueryResult = validate721;
@@ -122778,9 +123020,9 @@ function validate721(
   validate721.errors = vErrors;
   return errors === 0;
 }
-var validateQueryValue = validate2299;
-var wrapper8 = { validate: validate2299 };
-function validate2299(
+var validateQueryValue = validate2305;
+var wrapper8 = { validate: validate2305 };
+function validate2305(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -122968,11 +123210,11 @@ function validate2299(
       }
     }
   }
-  validate2299.errors = vErrors;
+  validate2305.errors = vErrors;
   return errors === 0;
 }
-var validateQueueStatus = validate1790;
-function validate1790(
+var validateQueueStatus = validate1793;
+function validate1793(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -123073,17 +123315,17 @@ function validate1790(
     }
     errors++;
   }
-  validate1790.errors = vErrors;
+  validate1793.errors = vErrors;
   return errors === 0;
 }
-var validateRadius = validate2300;
-var schema560 = {
+var validateRadius = validate2306;
+var schema562 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["sharp", "soft", "round"],
   title: "Radius",
   type: "string",
 };
-function validate2300(
+function validate2306(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -123109,7 +123351,7 @@ function validate2300(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema560.enum },
+      params: { allowedValues: schema562.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -123119,11 +123361,11 @@ function validate2300(
     }
     errors++;
   }
-  validate2300.errors = vErrors;
+  validate2306.errors = vErrors;
   return errors === 0;
 }
-var validateRawBatch = validate1454;
-function validate1454(
+var validateRawBatch = validate1478;
+function validate1478(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -123249,7 +123491,7 @@ function validate1454(
         const len0 = data1.length;
         for (let i0 = 0; i0 < len0; i0++) {
           if (
-            !validate1456(data1[i0], {
+            !validate1480(data1[i0], {
               instancePath: instancePath + "/items/" + i0,
               parentData: data1,
               parentDataProperty: i0,
@@ -123258,8 +123500,8 @@ function validate1454(
           ) {
             vErrors =
               vErrors === null
-                ? validate1456.errors
-                : vErrors.concat(validate1456.errors);
+                ? validate1480.errors
+                : vErrors.concat(validate1480.errors);
             errors = vErrors.length;
           }
         }
@@ -123326,11 +123568,11 @@ function validate1454(
     }
     errors++;
   }
-  validate1454.errors = vErrors;
+  validate1478.errors = vErrors;
   return errors === 0;
 }
-var validateRawEvent = validate1439;
-var schema343 = {
+var validateRawEvent = validate1463;
+var schema345 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   oneOf: [
@@ -123426,7 +123668,7 @@ var schema343 = {
   title: "RawEvent",
   type: "object",
 };
-function validate1439(
+function validate1463(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -124358,7 +124600,7 @@ function validate1439(
       errors++;
     }
     for (const key2 of Object.keys(data)) {
-      if (!func0.call(schema343.properties, key2)) {
+      if (!func0.call(schema345.properties, key2)) {
         const err45 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -124504,11 +124746,11 @@ function validate1439(
     }
     errors++;
   }
-  validate1439.errors = vErrors;
+  validate1463.errors = vErrors;
   return errors === 0;
 }
-var validateRawPayload = validate2301;
-function validate2301(
+var validateRawPayload = validate2307;
+function validate2307(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -125449,11 +125691,11 @@ function validate2301(
       }
     }
   }
-  validate2301.errors = vErrors;
+  validate2307.errors = vErrors;
   return errors === 0;
 }
-var validateReaderGap = validate1462;
-function validate1462(
+var validateReaderGap = validate1486;
+function validate1486(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -125731,11 +125973,11 @@ function validate1462(
     }
     errors++;
   }
-  validate1462.errors = vErrors;
+  validate1486.errors = vErrors;
   return errors === 0;
 }
-var validateReaderGapReason = validate2309;
-var schema562 = {
+var validateReaderGapReason = validate2315;
+var schema564 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "reader_overflow",
@@ -125746,7 +125988,7 @@ var schema562 = {
   title: "ReaderGapReason",
   type: "string",
 };
-function validate2309(
+function validate2315(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -125777,7 +126019,7 @@ function validate2309(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema562.enum },
+      params: { allowedValues: schema564.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -125787,11 +126029,11 @@ function validate2309(
     }
     errors++;
   }
-  validate2309.errors = vErrors;
+  validate2315.errors = vErrors;
   return errors === 0;
 }
-var validateRebindParams = validate2310;
-function validate2310(
+var validateRebindParams = validate2316;
+function validate2316(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -125892,11 +126134,11 @@ function validate2310(
     }
     errors++;
   }
-  validate2310.errors = vErrors;
+  validate2316.errors = vErrors;
   return errors === 0;
 }
-var validateRecentList = validate2313;
-function validate2313(
+var validateRecentList = validate2319;
+function validate2319(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126017,17 +126259,17 @@ function validate2313(
     }
     errors++;
   }
-  validate2313.errors = vErrors;
+  validate2319.errors = vErrors;
   return errors === 0;
 }
-var validateReconnectState = validate1700;
-var schema394 = {
+var validateReconnectState = validate1703;
+var schema395 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["idle", "waiting", "attempting", "requires_rebind", "stopped"],
   title: "ReconnectState",
   type: "string",
 };
-function validate1700(
+function validate1703(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126059,7 +126301,7 @@ function validate1700(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema394.enum },
+      params: { allowedValues: schema395.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -126069,11 +126311,11 @@ function validate1700(
     }
     errors++;
   }
-  validate1700.errors = vErrors;
+  validate1703.errors = vErrors;
   return errors === 0;
 }
-var validateReconnectStatus = validate1701;
-function validate1701(
+var validateReconnectStatus = validate1704;
+function validate1704(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126190,11 +126432,11 @@ function validate1701(
     }
     errors++;
   }
-  validate1701.errors = vErrors;
+  validate1704.errors = vErrors;
   return errors === 0;
 }
-var validateRecoverPrefixParams = validate2316;
-function validate2316(
+var validateRecoverPrefixParams = validate2322;
+function validate2322(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126336,7 +126578,7 @@ function validate2316(
     }
     errors++;
   }
-  validate2316.errors = vErrors;
+  validate2322.errors = vErrors;
   return errors === 0;
 }
 var validateRegisterFileParams = validate1268;
@@ -126445,8 +126687,8 @@ function validate1268(
   validate1268.errors = vErrors;
   return errors === 0;
 }
-var validateReplayControlParams = validate2320;
-function validate2320(
+var validateReplayControlParams = validate2326;
+function validate2326(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126600,12 +126842,12 @@ function validate2320(
     }
     errors++;
   }
-  validate2320.errors = vErrors;
+  validate2326.errors = vErrors;
   return errors === 0;
 }
-var validateReplayOpenParams = validate2324;
-var schema568 = { enum: ["original_timing", "fastest"], type: "string" };
-function validate2326(
+var validateReplayOpenParams = validate2330;
+var schema570 = { enum: ["original_timing", "fastest"], type: "string" };
+function validate2332(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126631,7 +126873,7 @@ function validate2326(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema568.enum },
+      params: { allowedValues: schema570.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -126641,10 +126883,10 @@ function validate2326(
     }
     errors++;
   }
-  validate2326.errors = vErrors;
+  validate2332.errors = vErrors;
   return errors === 0;
 }
-function validate2324(
+function validate2330(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126701,7 +126943,7 @@ function validate2324(
     }
     if (data.mode !== void 0 && func0.call(data, "mode")) {
       if (
-        !validate2326(data.mode, {
+        !validate2332(data.mode, {
           instancePath: instancePath + "/mode",
           parentData: data,
           parentDataProperty: "mode",
@@ -126710,8 +126952,8 @@ function validate2324(
       ) {
         vErrors =
           vErrors === null
-            ? validate2326.errors
-            : vErrors.concat(validate2326.errors);
+            ? validate2332.errors
+            : vErrors.concat(validate2332.errors);
         errors = vErrors.length;
       }
     }
@@ -126730,11 +126972,11 @@ function validate2324(
     }
     errors++;
   }
-  validate2324.errors = vErrors;
+  validate2330.errors = vErrors;
   return errors === 0;
 }
-var validateReplayReadParams = validate2328;
-function validate2328(
+var validateReplayReadParams = validate2334;
+function validate2334(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -126902,11 +127144,11 @@ function validate2328(
     }
     errors++;
   }
-  validate2328.errors = vErrors;
+  validate2334.errors = vErrors;
   return errors === 0;
 }
-var validateReplayReadResult = validate2333;
-function validate2333(
+var validateReplayReadResult = validate2339;
+function validate2339(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -127101,11 +127343,11 @@ function validate2333(
     }
     errors++;
   }
-  validate2333.errors = vErrors;
+  validate2339.errors = vErrors;
   return errors === 0;
 }
-var validateReplayRecord = validate2337;
-function validate2337(
+var validateReplayRecord = validate2343;
+function validate2343(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -127478,11 +127720,11 @@ function validate2337(
       }
     }
   }
-  validate2337.errors = vErrors;
+  validate2343.errors = vErrors;
   return errors === 0;
 }
-var validateRequestId = validate2343;
-function validate2343(
+var validateRequestId = validate2349;
+function validate2349(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -127523,7 +127765,7 @@ function validate2343(
     }
     errors++;
   }
-  validate2343.errors = vErrors;
+  validate2349.errors = vErrors;
   return errors === 0;
 }
 var validateResourceKind = validate1270;
@@ -127571,8 +127813,8 @@ function validate1270(
   validate1270.errors = vErrors;
   return errors === 0;
 }
-var validateResultReference = validate2344;
-function validate2344(
+var validateResultReference = validate2350;
+function validate2350(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -127642,11 +127884,11 @@ function validate2344(
     }
     errors++;
   }
-  validate2344.errors = vErrors;
+  validate2350.errors = vErrors;
   return errors === 0;
 }
-var validateRetentionMs = validate1438;
-function validate1438(
+var validateRetentionMs = validate1462;
+function validate1462(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -127725,11 +127967,11 @@ function validate1438(
     }
     errors++;
   }
-  validate1438.errors = vErrors;
+  validate1462.errors = vErrors;
   return errors === 0;
 }
-var validateRevealTarget = validate2346;
-function validate2346(
+var validateRevealTarget = validate2352;
+function validate2352(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -127869,11 +128111,11 @@ function validate2346(
     }
     errors++;
   }
-  validate2346.errors = vErrors;
+  validate2352.errors = vErrors;
   return errors === 0;
 }
-var validateRevokeParams = validate1612;
-function validate1612(
+var validateRevokeParams = validate1615;
+function validate1615(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -128050,7 +128292,7 @@ function validate1612(
     }
     errors++;
   }
-  validate1612.errors = vErrors;
+  validate1615.errors = vErrors;
   return errors === 0;
 }
 var validateRpcReply = validate1334;
@@ -131026,8 +131268,8 @@ function validate1160(
   validate1160.errors = vErrors;
   return errors === 0;
 }
-var validateRpcResult = validate2352;
-function validate2352(
+var validateRpcResult = validate2358;
+function validate2358(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131323,11 +131565,11 @@ function validate2352(
       }
     }
   }
-  validate2352.errors = vErrors;
+  validate2358.errors = vErrors;
   return errors === 0;
 }
-var validateRxPayload = validate2367;
-function validate2367(
+var validateRxPayload = validate2373;
+function validate2373(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131480,11 +131722,11 @@ function validate2367(
     }
     errors++;
   }
-  validate2367.errors = vErrors;
+  validate2373.errors = vErrors;
   return errors === 0;
 }
-var validateSafeInteger = validate2372;
-function validate2372(
+var validateSafeInteger = validate2378;
+function validate2378(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131542,11 +131784,11 @@ function validate2372(
       errors++;
     }
   }
-  validate2372.errors = vErrors;
+  validate2378.errors = vErrors;
   return errors === 0;
 }
-var validateSerialConfiguration = validate1676;
-function validate1676(
+var validateSerialConfiguration = validate1679;
+function validate1679(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -131848,11 +132090,11 @@ function validate1676(
     }
     errors++;
   }
-  validate1676.errors = vErrors;
+  validate1679.errors = vErrors;
   return errors === 0;
 }
-var validateSessionInputs = validate2373;
-function validate2373(
+var validateSessionInputs = validate2379;
+function validate2379(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -132152,11 +132394,11 @@ function validate2373(
     }
     errors++;
   }
-  validate2373.errors = vErrors;
+  validate2379.errors = vErrors;
   return errors === 0;
 }
-var validateSessionMetrics = validate2378;
-var schema579 = {
+var validateSessionMetrics = validate2384;
+var schema581 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   description:
@@ -132202,7 +132444,7 @@ var schema579 = {
   title: "SessionMetrics",
   type: "object",
 };
-function validate2378(
+function validate2384(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -132486,7 +132728,7 @@ function validate2378(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema579.properties, key0)) {
+      if (!func0.call(schema581.properties, key0)) {
         const err17 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -132810,11 +133052,11 @@ function validate2378(
     }
     errors++;
   }
-  validate2378.errors = vErrors;
+  validate2384.errors = vErrors;
   return errors === 0;
 }
-var validateSessionSnapshot = validate1687;
-var schema393 = {
+var validateSessionSnapshot = validate1690;
+var schema394 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -132852,7 +133094,7 @@ var schema393 = {
   title: "SessionSnapshot",
   type: "object",
 };
-function validate1687(
+function validate1690(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133028,7 +133270,7 @@ function validate1687(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema393.properties, key0)) {
+      if (!func0.call(schema394.properties, key0)) {
         const err11 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -133271,17 +133513,17 @@ function validate1687(
     }
     errors++;
   }
-  validate1687.errors = vErrors;
+  validate1690.errors = vErrors;
   return errors === 0;
 }
-var validateSessionState = validate1666;
-var schema381 = {
+var validateSessionState = validate1669;
+var schema382 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["closed", "opening", "open", "disconnected", "closing"],
   title: "SessionState",
   type: "string",
 };
-function validate1666(
+function validate1669(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133313,7 +133555,7 @@ function validate1666(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema381.enum },
+      params: { allowedValues: schema382.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -133323,11 +133565,11 @@ function validate1666(
     }
     errors++;
   }
-  validate1666.errors = vErrors;
+  validate1669.errors = vErrors;
   return errors === 0;
 }
-var validateSetReadOnlyParams = validate1769;
-function validate1769(
+var validateSetReadOnlyParams = validate1772;
+function validate1772(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133398,11 +133640,11 @@ function validate1769(
     }
     errors++;
   }
-  validate1769.errors = vErrors;
+  validate1772.errors = vErrors;
   return errors === 0;
 }
-var validateSettingsDocumentResult = validate1649;
-function validate1649(
+var validateSettingsDocumentResult = validate1652;
+function validate1652(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133503,11 +133745,11 @@ function validate1649(
     }
     errors++;
   }
-  validate1649.errors = vErrors;
+  validate1652.errors = vErrors;
   return errors === 0;
 }
-var validateSettingsSaveParams = validate1640;
-function validate1640(
+var validateSettingsSaveParams = validate1643;
+function validate1643(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133577,11 +133819,11 @@ function validate1640(
     }
     errors++;
   }
-  validate1640.errors = vErrors;
+  validate1643.errors = vErrors;
   return errors === 0;
 }
-var validateSettingsSnapshot = validate2396;
-function validate2396(
+var validateSettingsSnapshot = validate2402;
+function validate2402(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133682,11 +133924,11 @@ function validate2396(
     }
     errors++;
   }
-  validate2396.errors = vErrors;
+  validate2402.errors = vErrors;
   return errors === 0;
 }
-var validateSharedSettings = validate1623;
-var schema367 = {
+var validateSharedSettings = validate1626;
+var schema368 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -133726,7 +133968,7 @@ var schema367 = {
   title: "SharedSettings",
   type: "object",
 };
-function validate1623(
+function validate1626(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -133953,7 +134195,7 @@ function validate1623(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema367.properties, key0)) {
+      if (!func0.call(schema368.properties, key0)) {
         const err14 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -134276,58 +134518,17 @@ function validate1623(
     }
     errors++;
   }
-  validate1623.errors = vErrors;
+  validate1626.errors = vErrors;
   return errors === 0;
 }
-var validateShutdownMode = validate2399;
-var schema581 = {
+var validateShutdownMode = validate2405;
+var schema583 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["settle", "cancel_and_settle"],
   title: "ShutdownMode",
   type: "string",
 };
-function validate2399(
-  data,
-  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
-) {
-  let vErrors = null;
-  let errors = 0;
-  if (typeof data !== "string") {
-    const err0 = {
-      instancePath,
-      schemaPath: "#/type",
-      keyword: "type",
-      params: { type: "string" },
-      message: "must be string",
-    };
-    if (vErrors === null) {
-      vErrors = [err0];
-    } else {
-      vErrors.push(err0);
-    }
-    errors++;
-  }
-  if (!(data === "settle" || data === "cancel_and_settle")) {
-    const err1 = {
-      instancePath,
-      schemaPath: "#/enum",
-      keyword: "enum",
-      params: { allowedValues: schema581.enum },
-      message: "must be equal to one of the allowed values",
-    };
-    if (vErrors === null) {
-      vErrors = [err1];
-    } else {
-      vErrors.push(err1);
-    }
-    errors++;
-  }
-  validate2399.errors = vErrors;
-  return errors === 0;
-}
-var validateShutdownReport = validate2400;
-var schema583 = { enum: ["settle", "cancel_and_settle"], type: "string" };
-function validate2404(
+function validate2405(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134363,10 +134564,51 @@ function validate2404(
     }
     errors++;
   }
-  validate2404.errors = vErrors;
+  validate2405.errors = vErrors;
   return errors === 0;
 }
-function validate2400(
+var validateShutdownReport = validate2406;
+var schema585 = { enum: ["settle", "cancel_and_settle"], type: "string" };
+function validate2410(
+  data,
+  { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
+) {
+  let vErrors = null;
+  let errors = 0;
+  if (typeof data !== "string") {
+    const err0 = {
+      instancePath,
+      schemaPath: "#/type",
+      keyword: "type",
+      params: { type: "string" },
+      message: "must be string",
+    };
+    if (vErrors === null) {
+      vErrors = [err0];
+    } else {
+      vErrors.push(err0);
+    }
+    errors++;
+  }
+  if (!(data === "settle" || data === "cancel_and_settle")) {
+    const err1 = {
+      instancePath,
+      schemaPath: "#/enum",
+      keyword: "enum",
+      params: { allowedValues: schema585.enum },
+      message: "must be equal to one of the allowed values",
+    };
+    if (vErrors === null) {
+      vErrors = [err1];
+    } else {
+      vErrors.push(err1);
+    }
+    errors++;
+  }
+  validate2410.errors = vErrors;
+  return errors === 0;
+}
+function validate2406(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134604,7 +134846,7 @@ function validate2400(
     }
     if (data.mode !== void 0 && func0.call(data, "mode")) {
       if (
-        !validate2404(data.mode, {
+        !validate2410(data.mode, {
           instancePath: instancePath + "/mode",
           parentData: data,
           parentDataProperty: "mode",
@@ -134613,8 +134855,8 @@ function validate2400(
       ) {
         vErrors =
           vErrors === null
-            ? validate2404.errors
-            : vErrors.concat(validate2404.errors);
+            ? validate2410.errors
+            : vErrors.concat(validate2410.errors);
         errors = vErrors.length;
       }
     }
@@ -134711,11 +134953,11 @@ function validate2400(
     }
     errors++;
   }
-  validate2400.errors = vErrors;
+  validate2406.errors = vErrors;
   return errors === 0;
 }
-var validateShutdownRequested = validate1615;
-function validate1615(
+var validateShutdownRequested = validate1618;
+function validate1618(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134785,11 +135027,11 @@ function validate1615(
     }
     errors++;
   }
-  validate1615.errors = vErrors;
+  validate1618.errors = vErrors;
   return errors === 0;
 }
-var validateSignedDecimal = validate2408;
-function validate2408(
+var validateSignedDecimal = validate2414;
+function validate2414(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -134826,11 +135068,11 @@ function validate2408(
     }
     errors++;
   }
-  validate2408.errors = vErrors;
+  validate2414.errors = vErrors;
   return errors === 0;
 }
-var validateSnapshot = validate2409;
-function validate2409(
+var validateSnapshot = validate2415;
+function validate2415(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135052,11 +135294,11 @@ function validate2409(
     }
     errors++;
   }
-  validate2409.errors = vErrors;
+  validate2415.errors = vErrors;
   return errors === 0;
 }
-var validateSourceGap = validate2415;
-function validate2415(
+var validateSourceGap = validate2421;
+function validate2421(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135218,17 +135460,17 @@ function validate2415(
     }
     errors++;
   }
-  validate2415.errors = vErrors;
+  validate2421.errors = vErrors;
   return errors === 0;
 }
-var validateSourceGapReason = validate2420;
-var schema587 = {
+var validateSourceGapReason = validate2426;
+var schema589 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["network_loss", "backend_loss", "purge", "source_unknown"],
   title: "SourceGapReason",
   type: "string",
 };
-function validate2420(
+function validate2426(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135259,7 +135501,7 @@ function validate2420(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema587.enum },
+      params: { allowedValues: schema589.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135269,11 +135511,11 @@ function validate2420(
     }
     errors++;
   }
-  validate2420.errors = vErrors;
+  validate2426.errors = vErrors;
   return errors === 0;
 }
-var validateSourceRange = validate1822;
-function validate1822(
+var validateSourceRange = validate1825;
+function validate1825(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135524,11 +135766,11 @@ function validate1822(
     }
     errors++;
   }
-  validate1822.errors = vErrors;
+  validate1825.errors = vErrors;
   return errors === 0;
 }
-var validateStartupConfigSnapshot = validate2421;
-function validate2421(
+var validateStartupConfigSnapshot = validate2427;
+function validate2427(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135702,17 +135944,17 @@ function validate2421(
     }
     errors++;
   }
-  validate2421.errors = vErrors;
+  validate2427.errors = vErrors;
   return errors === 0;
 }
-var validateStartupConfigSource = validate2426;
-var schema589 = {
+var validateStartupConfigSource = validate2432;
+var schema591 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["argument", "environment", "default"],
   title: "StartupConfigSource",
   type: "string",
 };
-function validate2426(
+function validate2432(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135738,7 +135980,7 @@ function validate2426(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema589.enum },
+      params: { allowedValues: schema591.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135748,17 +135990,17 @@ function validate2426(
     }
     errors++;
   }
-  validate2426.errors = vErrors;
+  validate2432.errors = vErrors;
   return errors === 0;
 }
-var validateStartupLogLevel = validate2427;
-var schema590 = {
+var validateStartupLogLevel = validate2433;
+var schema592 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["off", "error", "warn", "info", "debug", "trace"],
   title: "StartupLogLevel",
   type: "string",
 };
-function validate2427(
+function validate2433(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135791,7 +136033,7 @@ function validate2427(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema590.enum },
+      params: { allowedValues: schema592.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135801,17 +136043,17 @@ function validate2427(
     }
     errors++;
   }
-  validate2427.errors = vErrors;
+  validate2433.errors = vErrors;
   return errors === 0;
 }
-var validateStartupProfileReference = validate2428;
-var schema591 = {
+var validateStartupProfileReference = validate2434;
+var schema593 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["host:profile"],
   title: "StartupProfileReference",
   type: "string",
 };
-function validate2428(
+function validate2434(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135837,7 +136079,7 @@ function validate2428(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema591.enum },
+      params: { allowedValues: schema593.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -135847,11 +136089,11 @@ function validate2428(
     }
     errors++;
   }
-  validate2428.errors = vErrors;
+  validate2434.errors = vErrors;
   return errors === 0;
 }
-var validateStateScopeRef = validate1644;
-function validate1644(
+var validateStateScopeRef = validate1647;
+function validate1647(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -135952,11 +136194,11 @@ function validate1644(
     }
     errors++;
   }
-  validate1644.errors = vErrors;
+  validate1647.errors = vErrors;
   return errors === 0;
 }
-var validateStateScopesResult = validate1647;
-function validate1647(
+var validateStateScopesResult = validate1650;
+function validate1650(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136046,11 +136288,11 @@ function validate1647(
     }
     errors++;
   }
-  validate1647.errors = vErrors;
+  validate1650.errors = vErrors;
   return errors === 0;
 }
-var validateStateSnapshotParams = validate2429;
-function validate2429(
+var validateStateSnapshotParams = validate2435;
+function validate2435(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136120,11 +136362,11 @@ function validate2429(
     }
     errors++;
   }
-  validate2429.errors = vErrors;
+  validate2435.errors = vErrors;
   return errors === 0;
 }
-var validateStateSubscribeParams = validate2431;
-function validate2431(
+var validateStateSubscribeParams = validate2437;
+function validate2437(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136225,17 +136467,17 @@ function validate2431(
     }
     errors++;
   }
-  validate2431.errors = vErrors;
+  validate2437.errors = vErrors;
   return errors === 0;
 }
-var validateStopBits = validate1619;
-var schema364 = {
+var validateStopBits = validate1622;
+var schema365 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["one", "onePointFive", "two"],
   title: "StopBits",
   type: "string",
 };
-function validate1619(
+function validate1622(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136261,7 +136503,7 @@ function validate1619(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema364.enum },
+      params: { allowedValues: schema365.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -136271,11 +136513,11 @@ function validate1619(
     }
     errors++;
   }
-  validate1619.errors = vErrors;
+  validate1622.errors = vErrors;
   return errors === 0;
 }
-var validateStreamCreditParams = validate1859;
-function validate1859(
+var validateStreamCreditParams = validate1862;
+function validate1862(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136417,11 +136659,11 @@ function validate1859(
     }
     errors++;
   }
-  validate1859.errors = vErrors;
+  validate1862.errors = vErrors;
   return errors === 0;
 }
-var validateStreamCreditResult = validate1863;
-function validate1863(
+var validateStreamCreditResult = validate1866;
+function validate1866(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136601,11 +136843,11 @@ function validate1863(
     }
     errors++;
   }
-  validate1863.errors = vErrors;
+  validate1866.errors = vErrors;
   return errors === 0;
 }
-var validateStreamCursorResult = validate2434;
-function validate2434(
+var validateStreamCursorResult = validate2440;
+function validate2440(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136706,11 +136948,11 @@ function validate2434(
     }
     errors++;
   }
-  validate2434.errors = vErrors;
+  validate2440.errors = vErrors;
   return errors === 0;
 }
-var validateStreamItem = validate2437;
-function validate2437(
+var validateStreamItem = validate2443;
+function validate2443(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -136984,11 +137226,11 @@ function validate2437(
       }
     }
   }
-  validate2437.errors = vErrors;
+  validate2443.errors = vErrors;
   return errors === 0;
 }
-var validateStreamReadParams = validate1816;
-function validate1816(
+var validateStreamReadParams = validate1819;
+function validate1819(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137188,11 +137430,11 @@ function validate1816(
     }
     errors++;
   }
-  validate1816.errors = vErrors;
+  validate1819.errors = vErrors;
   return errors === 0;
 }
-var validateStreamReadResult = validate1848;
-function validate1848(
+var validateStreamReadResult = validate1851;
+function validate1851(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137349,11 +137591,11 @@ function validate1848(
     }
     errors++;
   }
-  validate1848.errors = vErrors;
+  validate1851.errors = vErrors;
   return errors === 0;
 }
-var validateStreamSubscribeParams = validate1851;
-function validate1851(
+var validateStreamSubscribeParams = validate1854;
+function validate1854(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137559,11 +137801,11 @@ function validate1851(
     }
     errors++;
   }
-  validate1851.errors = vErrors;
+  validate1854.errors = vErrors;
   return errors === 0;
 }
-var validateStreamSubscribeResult = validate1857;
-function validate1857(
+var validateStreamSubscribeResult = validate1860;
+function validate1860(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137633,11 +137875,11 @@ function validate1857(
     }
     errors++;
   }
-  validate1857.errors = vErrors;
+  validate1860.errors = vErrors;
   return errors === 0;
 }
-var validateSubscriptionCloseParams = validate2440;
-function validate2440(
+var validateSubscriptionCloseParams = validate2446;
+function validate2446(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137707,11 +137949,11 @@ function validate2440(
     }
     errors++;
   }
-  validate2440.errors = vErrors;
+  validate2446.errors = vErrors;
   return errors === 0;
 }
-var validateSubscriptionResult = validate2442;
-function validate2442(
+var validateSubscriptionResult = validate2448;
+function validate2448(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137781,12 +138023,12 @@ function validate2442(
     }
     errors++;
   }
-  validate2442.errors = vErrors;
+  validate2448.errors = vErrors;
   return errors === 0;
 }
-var validateTakeoverParams = validate1779;
-var schema419 = { enum: ["user"], type: "string" };
-function validate1781(
+var validateTakeoverParams = validate1782;
+var schema420 = { enum: ["user"], type: "string" };
+function validate1784(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137812,7 +138054,7 @@ function validate1781(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema419.enum },
+      params: { allowedValues: schema420.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -137822,10 +138064,10 @@ function validate1781(
     }
     errors++;
   }
-  validate1781.errors = vErrors;
+  validate1784.errors = vErrors;
   return errors === 0;
 }
-function validate1779(
+function validate1782(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137897,7 +138139,7 @@ function validate1779(
     }
     if (data.reason !== void 0 && func0.call(data, "reason")) {
       if (
-        !validate1781(data.reason, {
+        !validate1784(data.reason, {
           instancePath: instancePath + "/reason",
           parentData: data,
           parentDataProperty: "reason",
@@ -137906,8 +138148,8 @@ function validate1779(
       ) {
         vErrors =
           vErrors === null
-            ? validate1781.errors
-            : vErrors.concat(validate1781.errors);
+            ? validate1784.errors
+            : vErrors.concat(validate1784.errors);
         errors = vErrors.length;
       }
     }
@@ -137926,17 +138168,17 @@ function validate1779(
     }
     errors++;
   }
-  validate1779.errors = vErrors;
+  validate1782.errors = vErrors;
   return errors === 0;
 }
-var validateTakeoverReason = validate1675;
-var schema390 = {
+var validateTakeoverReason = validate1678;
+var schema391 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["user"],
   title: "TakeoverReason",
   type: "string",
 };
-function validate1675(
+function validate1678(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -137962,7 +138204,7 @@ function validate1675(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema390.enum },
+      params: { allowedValues: schema391.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -137972,11 +138214,11 @@ function validate1675(
     }
     errors++;
   }
-  validate1675.errors = vErrors;
+  validate1678.errors = vErrors;
   return errors === 0;
 }
-var validateTakeoverReceipt = validate1783;
-function validate1783(
+var validateTakeoverReceipt = validate1786;
+function validate1786(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -138072,11 +138314,11 @@ function validate1783(
     }
     errors++;
   }
-  validate1783.errors = vErrors;
+  validate1786.errors = vErrors;
   return errors === 0;
 }
-var validateTarget = validate2444;
-function validate2444(
+var validateTarget = validate2450;
+function validate2450(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -138383,17 +138625,17 @@ function validate2444(
     }
     errors++;
   }
-  validate2444.errors = vErrors;
+  validate2450.errors = vErrors;
   return errors === 0;
 }
-var validateTerminalMode = validate2450;
-var schema599 = {
+var validateTerminalMode = validate2456;
+var schema601 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["text", "hex"],
   title: "TerminalMode",
   type: "string",
 };
-function validate2450(
+function validate2456(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -138419,7 +138661,7 @@ function validate2450(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema599.enum },
+      params: { allowedValues: schema601.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -138429,7 +138671,7 @@ function validate2450(
     }
     errors++;
   }
-  validate2450.errors = vErrors;
+  validate2456.errors = vErrors;
   return errors === 0;
 }
 var validateTerminalSettings = validate1252;
@@ -138676,8 +138918,8 @@ function validate1252(
   validate1252.errors = vErrors;
   return errors === 0;
 }
-var validateTerminalTypography = validate2451;
-function validate2451(
+var validateTerminalTypography = validate2457;
+function validate2457(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -138982,11 +139224,11 @@ function validate2451(
     }
     errors++;
   }
-  validate2451.errors = vErrors;
+  validate2457.errors = vErrors;
   return errors === 0;
 }
-var validateTextExportParams = validate2452;
-function validate2452(
+var validateTextExportParams = validate2458;
+function validate2458(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139087,17 +139329,17 @@ function validate2452(
     }
     errors++;
   }
-  validate2452.errors = vErrors;
+  validate2458.errors = vErrors;
   return errors === 0;
 }
-var validateTheme = validate2455;
-var schema602 = {
+var validateTheme = validate2461;
+var schema604 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["light", "dark", "system"],
   title: "Theme",
   type: "string",
 };
-function validate2455(
+function validate2461(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139123,7 +139365,7 @@ function validate2455(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema602.enum },
+      params: { allowedValues: schema604.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -139133,11 +139375,11 @@ function validate2455(
     }
     errors++;
   }
-  validate2455.errors = vErrors;
+  validate2461.errors = vErrors;
   return errors === 0;
 }
-var validateTimePrecision = validate2456;
-function validate2456(
+var validateTimePrecision = validate2462;
+function validate2462(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139328,17 +139570,17 @@ function validate2456(
     }
     errors++;
   }
-  validate2456.errors = vErrors;
+  validate2462.errors = vErrors;
   return errors === 0;
 }
-var validateTimeSource = validate2462;
-var schema604 = {
+var validateTimeSource = validate2468;
+var schema606 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["host_read", "device", "line_capture", "sample_clock"],
   title: "TimeSource",
   type: "string",
 };
-function validate2462(
+function validate2468(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139369,7 +139611,7 @@ function validate2462(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema604.enum },
+      params: { allowedValues: schema606.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -139379,7 +139621,7 @@ function validate2462(
     }
     errors++;
   }
-  validate2462.errors = vErrors;
+  validate2468.errors = vErrors;
   return errors === 0;
 }
 var validateTimestamp = validate1278;
@@ -139427,8 +139669,8 @@ function validate1278(
   validate1278.errors = vErrors;
   return errors === 0;
 }
-var validateTransformReference = validate1734;
-function validate1734(
+var validateTransformReference = validate1737;
+function validate1737(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139571,11 +139813,11 @@ function validate1734(
     }
     errors++;
   }
-  validate1734.errors = vErrors;
+  validate1737.errors = vErrors;
   return errors === 0;
 }
-var validateTransportCapabilities = validate1685;
-var schema392 = {
+var validateTransportCapabilities = validate1688;
+var schema393 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -139603,7 +139845,7 @@ var schema392 = {
   title: "TransportCapabilities",
   type: "object",
 };
-function validate1685(
+function validate1688(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139746,7 +139988,7 @@ function validate1685(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema392.properties, key0)) {
+      if (!func0.call(schema393.properties, key0)) {
         const err9 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -139929,17 +140171,17 @@ function validate1685(
     }
     errors++;
   }
-  validate1685.errors = vErrors;
+  validate1688.errors = vErrors;
   return errors === 0;
 }
-var validateTransportSemantics = validate1665;
-var schema380 = {
+var validateTransportSemantics = validate1668;
+var schema381 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["stream", "message"],
   title: "TransportSemantics",
   type: "string",
 };
-function validate1665(
+function validate1668(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -139965,7 +140207,7 @@ function validate1665(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema380.enum },
+      params: { allowedValues: schema381.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -139975,11 +140217,11 @@ function validate1665(
     }
     errors++;
   }
-  validate1665.errors = vErrors;
+  validate1668.errors = vErrors;
   return errors === 0;
 }
-var validateTxGate = validate2463;
-var schema605 = {
+var validateTxGate = validate2469;
+var schema607 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: [
     "ready",
@@ -139991,7 +140233,7 @@ var schema605 = {
   title: "TxGate",
   type: "string",
 };
-function validate2463(
+function validate2469(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -140023,7 +140265,7 @@ function validate2463(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema605.enum },
+      params: { allowedValues: schema607.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -140033,11 +140275,11 @@ function validate2463(
     }
     errors++;
   }
-  validate2463.errors = vErrors;
+  validate2469.errors = vErrors;
   return errors === 0;
 }
-var validateTxIntent = validate1806;
-function validate1806(
+var validateTxIntent = validate1809;
+function validate1809(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -140205,17 +140447,17 @@ function validate1806(
     }
     errors++;
   }
-  validate1806.errors = vErrors;
+  validate1809.errors = vErrors;
   return errors === 0;
 }
-var validateTxOutcome = validate2464;
-var schema606 = {
+var validateTxOutcome = validate2470;
+var schema608 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   enum: ["accepted", "partial", "rejected", "unknown"],
   title: "TxOutcome",
   type: "string",
 };
-function validate2464(
+function validate2470(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -140246,7 +140488,7 @@ function validate2464(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema606.enum },
+      params: { allowedValues: schema608.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -140256,11 +140498,11 @@ function validate2464(
     }
     errors++;
   }
-  validate2464.errors = vErrors;
+  validate2470.errors = vErrors;
   return errors === 0;
 }
-var validateTxParams = validate1737;
-function validate1737(
+var validateTxParams = validate1740;
+function validate1740(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -140578,11 +140820,11 @@ function validate1737(
     }
     errors++;
   }
-  validate1737.errors = vErrors;
+  validate1740.errors = vErrors;
   return errors === 0;
 }
-var validateTxReceipt = validate1470;
-var schema347 = {
+var validateTxReceipt = validate1494;
+var schema349 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -140619,7 +140861,7 @@ var schema347 = {
   title: "TxReceipt",
   type: "object",
 };
-function validate1470(
+function validate1494(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -140780,7 +141022,7 @@ function validate1470(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema347.properties, key0)) {
+      if (!func0.call(schema349.properties, key0)) {
         const err10 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -141030,7 +141272,7 @@ function validate1470(
     }
     errors++;
   }
-  validate1470.errors = vErrors;
+  validate1494.errors = vErrors;
   return errors === 0;
 }
 var validateU64 = validate1276;
@@ -141078,8 +141320,8 @@ function validate1276(
   validate1276.errors = vErrors;
   return errors === 0;
 }
-var validateVerificationReport = validate2465;
-function validate2465(
+var validateVerificationReport = validate2471;
+function validate2471(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -141442,11 +141684,11 @@ function validate2465(
     }
     errors++;
   }
-  validate2465.errors = vErrors;
+  validate2471.errors = vErrors;
   return errors === 0;
 }
-var validateVerifiedNodePackageSource = validate2471;
-function validate2471(
+var validateVerifiedNodePackageSource = validate2477;
+function validate2477(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -141588,11 +141830,11 @@ function validate2471(
     }
     errors++;
   }
-  validate2471.errors = vErrors;
+  validate2477.errors = vErrors;
   return errors === 0;
 }
-var validateWaitBoundaryParams = validate1785;
-function validate1785(
+var validateWaitBoundaryParams = validate1788;
+function validate1788(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -141699,11 +141941,11 @@ function validate1785(
     }
     errors++;
   }
-  validate1785.errors = vErrors;
+  validate1788.errors = vErrors;
   return errors === 0;
 }
-var validateWaitBoundaryReceipt = validate1788;
-function validate1788(
+var validateWaitBoundaryReceipt = validate1791;
+function validate1791(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -141779,11 +142021,11 @@ function validate1788(
     }
     errors++;
   }
-  validate1788.errors = vErrors;
+  validate1791.errors = vErrors;
   return errors === 0;
 }
-var validateWireFrame = validate1567;
-function validate1568(
+var validateWireFrame = validate1570;
+function validate1571(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -141843,7 +142085,7 @@ function validate1568(
     }
     if (data.request !== void 0 && func0.call(data, "request")) {
       if (
-        !validate1483(data.request, {
+        !validate1507(data.request, {
           instancePath: instancePath + "/request",
           parentData: data,
           parentDataProperty: "request",
@@ -141852,8 +142094,8 @@ function validate1568(
       ) {
         vErrors =
           vErrors === null
-            ? validate1483.errors
-            : vErrors.concat(validate1483.errors);
+            ? validate1507.errors
+            : vErrors.concat(validate1507.errors);
         errors = vErrors.length;
       }
     }
@@ -142805,7 +143047,7 @@ function validate1568(
             }
             if (data.route !== void 0 && func0.call(data, "route")) {
               if (
-                !validate1507(data.route, {
+                !validate1531(data.route, {
                   instancePath: instancePath + "/route",
                   parentData: data,
                   parentDataProperty: "route",
@@ -142814,8 +143056,8 @@ function validate1568(
               ) {
                 vErrors =
                   vErrors === null
-                    ? validate1507.errors
-                    : vErrors.concat(validate1507.errors);
+                    ? validate1531.errors
+                    : vErrors.concat(validate1531.errors);
                 errors = vErrors.length;
               }
             }
@@ -143707,7 +143949,7 @@ function validate1568(
                           func0.call(data, "request")
                         ) {
                           if (
-                            !validate1519(data.request, {
+                            !validate1438(data.request, {
                               instancePath: instancePath + "/request",
                               parentData: data,
                               parentDataProperty: "request",
@@ -143716,8 +143958,8 @@ function validate1568(
                           ) {
                             vErrors =
                               vErrors === null
-                                ? validate1519.errors
-                                : vErrors.concat(validate1519.errors);
+                                ? validate1438.errors
+                                : vErrors.concat(validate1438.errors);
                             errors = vErrors.length;
                           }
                         }
@@ -143842,7 +144084,7 @@ function validate1568(
                             func0.call(data, "reply")
                           ) {
                             if (
-                              !validate1541(data.reply, {
+                              !validate1544(data.reply, {
                                 instancePath: instancePath + "/reply",
                                 parentData: data,
                                 parentDataProperty: "reply",
@@ -143851,8 +144093,8 @@ function validate1568(
                             ) {
                               vErrors =
                                 vErrors === null
-                                  ? validate1541.errors
-                                  : vErrors.concat(validate1541.errors);
+                                  ? validate1544.errors
+                                  : vErrors.concat(validate1544.errors);
                               errors = vErrors.length;
                             }
                           }
@@ -144123,7 +144365,7 @@ function validate1568(
                                 func0.call(data, "batch")
                               ) {
                                 if (
-                                  !validate1548(data.batch, {
+                                  !validate1551(data.batch, {
                                     instancePath: instancePath + "/batch",
                                     parentData: data,
                                     parentDataProperty: "batch",
@@ -144132,8 +144374,8 @@ function validate1568(
                                 ) {
                                   vErrors =
                                     vErrors === null
-                                      ? validate1548.errors
-                                      : vErrors.concat(validate1548.errors);
+                                      ? validate1551.errors
+                                      : vErrors.concat(validate1551.errors);
                                   errors = vErrors.length;
                                 }
                               }
@@ -144292,7 +144534,7 @@ function validate1568(
                                   func0.call(data, "delta")
                                 ) {
                                   if (
-                                    !validate1554(data.delta, {
+                                    !validate1557(data.delta, {
                                       instancePath: instancePath + "/delta",
                                       parentData: data,
                                       parentDataProperty: "delta",
@@ -144301,8 +144543,8 @@ function validate1568(
                                   ) {
                                     vErrors =
                                       vErrors === null
-                                        ? validate1554.errors
-                                        : vErrors.concat(validate1554.errors);
+                                        ? validate1557.errors
+                                        : vErrors.concat(validate1557.errors);
                                     errors = vErrors.length;
                                   }
                                 }
@@ -144814,11 +145056,11 @@ function validate1568(
       }
     }
   }
-  validate1568.errors = vErrors;
+  validate1571.errors = vErrors;
   return errors === 0;
 }
-var schema358 = { enum: ["control", "raw", "state"], type: "string" };
-function validate1605(
+var schema359 = { enum: ["control", "raw", "state"], type: "string" };
+function validate1608(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -144844,7 +145086,7 @@ function validate1605(
       instancePath,
       schemaPath: "#/enum",
       keyword: "enum",
-      params: { allowedValues: schema358.enum },
+      params: { allowedValues: schema359.enum },
       message: "must be equal to one of the allowed values",
     };
     if (vErrors === null) {
@@ -144854,10 +145096,10 @@ function validate1605(
     }
     errors++;
   }
-  validate1605.errors = vErrors;
+  validate1608.errors = vErrors;
   return errors === 0;
 }
-function validate1567(
+function validate1570(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -144928,7 +145170,7 @@ function validate1567(
     }
     if (data.body !== void 0 && func0.call(data, "body")) {
       if (
-        !validate1568(data.body, {
+        !validate1571(data.body, {
           instancePath: instancePath + "/body",
           parentData: data,
           parentDataProperty: "body",
@@ -144937,14 +145179,14 @@ function validate1567(
       ) {
         vErrors =
           vErrors === null
-            ? validate1568.errors
-            : vErrors.concat(validate1568.errors);
+            ? validate1571.errors
+            : vErrors.concat(validate1571.errors);
         errors = vErrors.length;
       }
     }
     if (data.channel !== void 0 && func0.call(data, "channel")) {
       if (
-        !validate1605(data.channel, {
+        !validate1608(data.channel, {
           instancePath: instancePath + "/channel",
           parentData: data,
           parentDataProperty: "channel",
@@ -144953,8 +145195,8 @@ function validate1567(
       ) {
         vErrors =
           vErrors === null
-            ? validate1605.errors
-            : vErrors.concat(validate1605.errors);
+            ? validate1608.errors
+            : vErrors.concat(validate1608.errors);
         errors = vErrors.length;
       }
     }
@@ -144989,11 +145231,11 @@ function validate1567(
     }
     errors++;
   }
-  validate1567.errors = vErrors;
+  validate1570.errors = vErrors;
   return errors === 0;
 }
-var validateWorkerMemorySample = validate1868;
-function validate1868(
+var validateWorkerMemorySample = validate1871;
+function validate1871(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -145141,11 +145383,11 @@ function validate1868(
     }
     errors++;
   }
-  validate1868.errors = vErrors;
+  validate1871.errors = vErrors;
   return errors === 0;
 }
-var validateWorkerObservation = validate1872;
-function validate1872(
+var validateWorkerObservation = validate1875;
+function validate1875(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -145266,11 +145508,11 @@ function validate1872(
     }
     errors++;
   }
-  validate1872.errors = vErrors;
+  validate1875.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceDocument = validate1634;
-function validate1634(
+var validateWorkspaceDocument = validate1637;
+function validate1637(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -145607,11 +145849,11 @@ function validate1634(
     }
     errors++;
   }
-  validate1634.errors = vErrors;
+  validate1637.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceDocumentResult = validate1652;
-function validate1652(
+var validateWorkspaceDocumentResult = validate1655;
+function validate1655(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -145712,11 +145954,11 @@ function validate1652(
     }
     errors++;
   }
-  validate1652.errors = vErrors;
+  validate1655.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceListParams = validate1655;
-function validate1655(
+var validateWorkspaceListParams = validate1658;
+function validate1658(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -145821,11 +146063,11 @@ function validate1655(
     }
     errors++;
   }
-  validate1655.errors = vErrors;
+  validate1658.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceListResult = validate1660;
-function validate1660(
+var validateWorkspaceListResult = validate1663;
+function validate1663(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -145981,11 +146223,11 @@ function validate1660(
     }
     errors++;
   }
-  validate1660.errors = vErrors;
+  validate1663.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceSaveParams = validate1642;
-function validate1642(
+var validateWorkspaceSaveParams = validate1645;
+function validate1645(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -146055,11 +146297,11 @@ function validate1642(
     }
     errors++;
   }
-  validate1642.errors = vErrors;
+  validate1645.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceSnapshot = validate2475;
-function validate2475(
+var validateWorkspaceSnapshot = validate2481;
+function validate2481(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -146160,11 +146402,11 @@ function validate2475(
     }
     errors++;
   }
-  validate2475.errors = vErrors;
+  validate2481.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceSummary = validate1657;
-function validate1657(
+var validateWorkspaceSummary = validate1660;
+function validate1660(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -146297,11 +146539,11 @@ function validate1657(
     }
     errors++;
   }
-  validate1657.errors = vErrors;
+  validate1660.errors = vErrors;
   return errors === 0;
 }
-var validateWorkspaceView = validate2478;
-var schema610 = {
+var validateWorkspaceView = validate2484;
+var schema612 = {
   $schema: "http://json-schema.org/draft-07/schema#",
   additionalProperties: false,
   properties: {
@@ -146338,7 +146580,7 @@ var schema610 = {
   title: "WorkspaceView",
   type: "object",
 };
-function validate2478(
+function validate2484(
   data,
   { instancePath = "", parentData, parentDataProperty, rootData = data } = {},
 ) {
@@ -146466,7 +146708,7 @@ function validate2478(
       errors++;
     }
     for (const key0 of Object.keys(data)) {
-      if (!func0.call(schema610.properties, key0)) {
+      if (!func0.call(schema612.properties, key0)) {
         const err8 = {
           instancePath,
           schemaPath: "#/additionalProperties",
@@ -146714,7 +146956,7 @@ function validate2478(
     }
     errors++;
   }
-  validate2478.errors = vErrors;
+  validate2484.errors = vErrors;
   return errors === 0;
 }
 export {
@@ -146831,6 +147073,8 @@ export {
   validateHostError,
   validateHostMetrics,
   validateHostMetricsParams,
+  validateHttpControlEntry,
+  validateHttpControlRequest,
   validateId,
   validateIpcChannel,
   validateIpcMessage,

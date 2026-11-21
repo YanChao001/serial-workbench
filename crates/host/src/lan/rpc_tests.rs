@@ -143,6 +143,28 @@ async fn paired_host_uses_owner_session_for_tx_and_raw_and_unpair_closes_only_la
         .await
         .unwrap();
     let attached = client.control().attachment();
+    let unsupported = client
+        .control()
+        .request(RpcRequest::Attach(AttachParams {
+            supported_protocol_versions: vec!["future".into()],
+            client_kind: ClientKind::Peer,
+            client_id: attached.client_id.clone(),
+            expected_host_id: Some(owner_id.host_id.clone()),
+        }))
+        .await
+        .unwrap();
+    let RpcReply::Failure { error, .. } = unsupported else {
+        panic!("Host accepted an unsupported protocol version");
+    };
+    assert_eq!(error.code, "PROTOCOL_UNSUPPORTED");
+    assert_eq!(
+        serde_json::to_value(&error.details).unwrap(),
+        json!({
+            "supportedProtocolVersions": ["0.1"],
+            "upgradeTarget": "0.1",
+        })
+    );
+    assert_eq!(attached.protocol_version, ProtocolVersion::V0_1);
     let remote = client
         .control()
         .request(RpcRequest::LanAccess(LanAccessParams::Status {}))

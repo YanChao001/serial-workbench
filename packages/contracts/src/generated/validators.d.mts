@@ -113,6 +113,8 @@ import type {
   HostError,
   HostMetrics,
   HostMetricsParams,
+  HttpControlEntry,
+  HttpControlRequest,
   Id,
   IpcChannel,
   IpcMessage,
@@ -595,6 +597,12 @@ export declare function validateHostMetrics(
 export declare function validateHostMetricsParams(
   value: unknown,
 ): value is HostMetricsParams;
+export declare function validateHttpControlEntry(
+  value: unknown,
+): value is HttpControlEntry;
+export declare function validateHttpControlRequest(
+  value: unknown,
+): value is HttpControlRequest;
 export declare function validateId(value: unknown): value is Id;
 export declare function validateIpcChannel(value: unknown): value is IpcChannel;
 export declare function validateIpcMessage(value: unknown): value is IpcMessage;

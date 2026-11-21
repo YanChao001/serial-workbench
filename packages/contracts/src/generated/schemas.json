@@ -14744,6 +14744,1643 @@
       "title": "HostMetricsParams",
       "type": "object"
     },
+    "HttpControlEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "ContextToken": {
+          "pattern": "^[A-Za-z0-9_-]{1,2048}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "clientId": {
+          "$ref": "#/definitions/Id"
+        },
+        "credential": {
+          "$ref": "#/definitions/ContextToken"
+        },
+        "url": {
+          "type": "string"
+        }
+      },
+      "required": ["url", "clientId", "credential"],
+      "title": "HttpControlEntry",
+      "type": "object"
+    },
+    "HttpControlRequest": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "AttachParams": {
+          "additionalProperties": false,
+          "properties": {
+            "clientId": {
+              "$ref": "#/definitions/Id"
+            },
+            "clientKind": {
+              "$ref": "#/definitions/ClientKind"
+            },
+            "expectedHostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "supportedProtocolVersions": {
+              "items": {
+                "type": "string"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["supportedProtocolVersions", "clientKind", "clientId"],
+          "type": "object"
+        },
+        "BrowserAccessMode": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "BrowserAccessParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "status",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "assetsDir": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "pair",
+                  "type": "string"
+                },
+                "mode": {
+                  "$ref": "#/definitions/BrowserAccessMode"
+                }
+              },
+              "required": ["kind", "assetsDir", "mode"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "revoke",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            }
+          ]
+        },
+        "BrowserTakeoverParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actorId": {
+                  "$ref": "#/definitions/Id"
+                },
+                "kind": {
+                  "const": "request",
+                  "type": "string"
+                },
+                "target": {
+                  "$ref": "#/definitions/Target"
+                }
+              },
+              "required": ["kind", "target", "actorId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "approve": {
+                  "type": "boolean"
+                },
+                "kind": {
+                  "const": "decide",
+                  "type": "string"
+                },
+                "takeoverId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "takeoverId", "approve"],
+              "type": "object"
+            }
+          ]
+        },
+        "Call": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "executionMode": {
+              "$ref": "#/definitions/ExecutionMode"
+            },
+            "expectedRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "leaseId": {
+              "$ref": "#/definitions/Id"
+            },
+            "params": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            },
+            "protocolVersion": {
+              "$ref": "#/definitions/ProtocolVersion"
+            },
+            "requestContext": {
+              "$ref": "#/definitions/ContextToken"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": [
+            "protocolVersion",
+            "hostId",
+            "instanceEpoch",
+            "actorId",
+            "requestId",
+            "requestContext",
+            "actionId",
+            "target",
+            "params",
+            "revealTarget"
+          ],
+          "type": "object"
+        },
+        "ChildCall": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "childKey": {
+              "$ref": "#/definitions/PositiveU64"
+            },
+            "expectedRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "leaseId": {
+              "$ref": "#/definitions/Id"
+            },
+            "params": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            },
+            "parentOperationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "protocolVersion": {
+              "$ref": "#/definitions/ProtocolVersion"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            },
+            "taskContext": {
+              "$ref": "#/definitions/ContextToken"
+            }
+          },
+          "required": [
+            "protocolVersion",
+            "hostId",
+            "instanceEpoch",
+            "actorId",
+            "taskContext",
+            "parentOperationId",
+            "childKey",
+            "actionId",
+            "target",
+            "params",
+            "revealTarget"
+          ],
+          "type": "object"
+        },
+        "ClientCapability": {
+          "enum": [
+            "client.window.read",
+            "client.window.minimize",
+            "client.window.toggleMaximize",
+            "client.window.setFullscreen",
+            "client.window.setSize",
+            "client.window.resetGeometry",
+            "client.window.showMain",
+            "client.window.openSecondary",
+            "client.window.close",
+            "client.clipboard.readText",
+            "client.clipboard.writeText",
+            "client.system.read",
+            "client.system.setAutostart",
+            "client.settings.applyEffects",
+            "client.updater.check",
+            "client.updater.read",
+            "client.updater.install",
+            "client.app.restart",
+            "client.app.quit",
+            "client.diagnostics.read",
+            "client.recovery.read",
+            "client.recovery.stage"
+          ],
+          "type": "string"
+        },
+        "ClientDesktopStatus": {
+          "additionalProperties": false,
+          "properties": {
+            "autostartSupported": {
+              "type": "boolean"
+            },
+            "runInBackground": {
+              "type": "boolean"
+            },
+            "secondaryOpen": {
+              "type": "boolean"
+            },
+            "trayAvailable": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "trayAvailable",
+            "secondaryOpen",
+            "autostartSupported",
+            "runInBackground"
+          ],
+          "type": "object"
+        },
+        "ClientDiagnosticsReport": {
+          "additionalProperties": false,
+          "properties": {
+            "appVersion": {
+              "type": "string"
+            },
+            "architecture": {
+              "type": "string"
+            },
+            "autostartEnabled": {
+              "type": "boolean"
+            },
+            "desktop": {
+              "$ref": "#/definitions/ClientDesktopStatus"
+            },
+            "platform": {
+              "type": "string"
+            },
+            "recentLogs": {
+              "type": "string"
+            },
+            "settingsRevision": {
+              "$ref": "#/definitions/U64"
+            },
+            "tauriVersion": {
+              "type": "string"
+            },
+            "updaterConfigured": {
+              "type": "boolean"
+            },
+            "windowLabel": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "appVersion",
+            "tauriVersion",
+            "platform",
+            "architecture",
+            "windowLabel",
+            "desktop",
+            "updaterConfigured",
+            "recentLogs"
+          ],
+          "type": "object"
+        },
+        "ClientEffectOutcome": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "succeeded",
+                  "type": "string"
+                },
+                "result": {
+                  "$ref": "#/definitions/ClientEffectResult"
+                }
+              },
+              "required": ["kind", "result"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "error": {
+                  "$ref": "#/definitions/HostError"
+                },
+                "kind": {
+                  "const": "failed",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "error"],
+              "type": "object"
+            }
+          ]
+        },
+        "ClientEffectReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deliveryId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "outcome": {
+              "$ref": "#/definitions/ClientEffectOutcome"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "clientTargetId",
+            "generation",
+            "deliveryId",
+            "outcome"
+          ],
+          "type": "object"
+        },
+        "ClientEffectResult": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "window",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientWindowSnapshot"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "geometry",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientWindowGeometry"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "maximized",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "maximized": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["maximized"],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "fullscreen",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "fullscreen": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["fullscreen"],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "applied",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "requested",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "effect": {
+                      "$ref": "#/definitions/ClientRequestedEffect"
+                    }
+                  },
+                  "required": ["effect"],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "clipboard_text",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "text": {
+                      "type": "string"
+                    }
+                  },
+                  "required": ["text"],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "clipboard_written",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "written": {
+                      "$ref": "#/definitions/True"
+                    }
+                  },
+                  "required": ["written"],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "system",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientSystemStatus"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "autostart",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "properties": {
+                    "enabled": {
+                      "type": "boolean"
+                    }
+                  },
+                  "required": ["enabled"],
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "settings_applied",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientSettingsEffectsReceipt"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "update_status",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientUpdateStatus"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "update_progress",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientUpdateSnapshot"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "installed",
+                  "type": "string"
+                },
+                "value": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "diagnostics",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientDiagnosticsReport"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "recovery",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientRecoveryStatus"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            }
+          ]
+        },
+        "ClientKind": {
+          "enum": ["desktop", "browser", "cli", "mcp", "node", "peer"],
+          "type": "string"
+        },
+        "ClientPlatformEffects": {
+          "additionalProperties": false,
+          "properties": {
+            "networkMode": {
+              "type": "boolean"
+            },
+            "runInBackground": {
+              "type": "boolean"
+            },
+            "trayLanguage": {
+              "type": "boolean"
+            }
+          },
+          "required": ["trayLanguage", "networkMode", "runInBackground"],
+          "type": "object"
+        },
+        "ClientReceiptSubmission": {
+          "description": "A delivery receipt can settle only its matching pending operation. A settings\nobservation updates one live target's latest applied revision, never an operation.",
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "effect",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientEffectReceipt"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "settings_observed",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientSettingsObservation"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            }
+          ]
+        },
+        "ClientRecoveryStatus": {
+          "additionalProperties": false,
+          "properties": {
+            "active": {
+              "type": "boolean"
+            },
+            "archiveId": {
+              "type": "string"
+            },
+            "pending": {
+              "type": "boolean"
+            },
+            "reason": {
+              "type": "string"
+            }
+          },
+          "required": ["active", "pending"],
+          "type": "object"
+        },
+        "ClientRegisterParams": {
+          "additionalProperties": false,
+          "properties": {
+            "capabilities": {
+              "items": {
+                "$ref": "#/definitions/ClientCapability"
+              },
+              "type": "array"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["generation", "capabilities"],
+          "type": "object"
+        },
+        "ClientRequestedEffect": {
+          "enum": [
+            "main_window_requested",
+            "secondary_window_requested",
+            "close_requested",
+            "restart_requested",
+            "quit_requested"
+          ],
+          "type": "string"
+        },
+        "ClientSettingsEffectsReceipt": {
+          "additionalProperties": false,
+          "properties": {
+            "effects": {
+              "$ref": "#/definitions/ClientPlatformEffects"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "instanceEpoch", "revision", "effects"],
+          "type": "object"
+        },
+        "ClientSettingsObservation": {
+          "additionalProperties": false,
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "receipt": {
+              "$ref": "#/definitions/ClientSettingsEffectsReceipt"
+            }
+          },
+          "required": ["clientTargetId", "generation", "receipt"],
+          "type": "object"
+        },
+        "ClientSystemStatus": {
+          "additionalProperties": false,
+          "properties": {
+            "autostartEnabled": {
+              "type": "boolean"
+            },
+            "desktop": {
+              "$ref": "#/definitions/ClientDesktopStatus"
+            }
+          },
+          "required": ["desktop"],
+          "type": "object"
+        },
+        "ClientUnregisterParams": {
+          "additionalProperties": false,
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["clientTargetId", "generation"],
+          "type": "object"
+        },
+        "ClientUpdateProgress": {
+          "additionalProperties": false,
+          "properties": {
+            "downloaded": {
+              "$ref": "#/definitions/U64"
+            },
+            "error": {
+              "$ref": "#/definitions/HostError"
+            },
+            "nativeOperationId": {
+              "$ref": "#/definitions/U64"
+            },
+            "stage": {
+              "$ref": "#/definitions/ClientUpdateStage"
+            },
+            "status": {
+              "$ref": "#/definitions/ClientUpdateStatus"
+            },
+            "total": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["nativeOperationId", "stage", "downloaded"],
+          "type": "object"
+        },
+        "ClientUpdateSnapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "progress": {
+              "$ref": "#/definitions/ClientUpdateProgress"
+            }
+          },
+          "type": "object"
+        },
+        "ClientUpdateStage": {
+          "enum": [
+            "checking",
+            "checked",
+            "downloading",
+            "installing",
+            "installed",
+            "cancelled",
+            "failed"
+          ],
+          "type": "string"
+        },
+        "ClientUpdateStatus": {
+          "additionalProperties": false,
+          "properties": {
+            "available": {
+              "type": "boolean"
+            },
+            "body": {
+              "type": "string"
+            },
+            "checkedAt": {
+              "$ref": "#/definitions/Timestamp"
+            },
+            "configured": {
+              "type": "boolean"
+            },
+            "currentVersion": {
+              "type": "string"
+            },
+            "date": {
+              "type": "string"
+            },
+            "endpoint": {
+              "type": "string"
+            },
+            "nativeOperationId": {
+              "$ref": "#/definitions/U64"
+            },
+            "version": {
+              "type": "string"
+            }
+          },
+          "required": [
+            "nativeOperationId",
+            "configured",
+            "available",
+            "currentVersion"
+          ],
+          "type": "object"
+        },
+        "ClientWindowGeometry": {
+          "additionalProperties": false,
+          "properties": {
+            "defaultHeight": {
+              "$ref": "#/definitions/U64"
+            },
+            "defaultWidth": {
+              "$ref": "#/definitions/U64"
+            },
+            "height": {
+              "$ref": "#/definitions/U64"
+            },
+            "maxHeight": {
+              "$ref": "#/definitions/U64"
+            },
+            "maxWidth": {
+              "$ref": "#/definitions/U64"
+            },
+            "minHeight": {
+              "$ref": "#/definitions/U64"
+            },
+            "minWidth": {
+              "$ref": "#/definitions/U64"
+            },
+            "width": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "width",
+            "height",
+            "minWidth",
+            "minHeight",
+            "maxWidth",
+            "maxHeight",
+            "defaultWidth",
+            "defaultHeight"
+          ],
+          "type": "object"
+        },
+        "ClientWindowSnapshot": {
+          "additionalProperties": false,
+          "properties": {
+            "fullscreen": {
+              "type": "boolean"
+            },
+            "geometry": {
+              "$ref": "#/definitions/ClientWindowGeometry"
+            },
+            "maximized": {
+              "type": "boolean"
+            }
+          },
+          "required": ["geometry", "maximized", "fullscreen"],
+          "type": "object"
+        },
+        "ContextToken": {
+          "pattern": "^[A-Za-z0-9_-]{1,2048}$",
+          "type": "string"
+        },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "ExecutionMode": {
+          "enum": ["interactive", "independent"],
+          "type": "string"
+        },
+        "HostError": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            },
+            "message": {
+              "type": "string"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            }
+          },
+          "required": ["code", "message", "retryable"],
+          "type": "object"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "JsonValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/SafeInteger"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "LanAccessParams": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "status",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "address": {
+                  "type": "string"
+                },
+                "kind": {
+                  "const": "enable",
+                  "type": "string"
+                }
+              },
+              "required": ["kind", "address"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "disable",
+                  "type": "string"
+                }
+              },
+              "required": ["kind"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "setShares",
+                  "type": "string"
+                },
+                "peer": {
+                  "$ref": "#/definitions/LanPeer"
+                },
+                "shares": {
+                  "items": {
+                    "$ref": "#/definitions/LanShare"
+                  },
+                  "type": "array"
+                }
+              },
+              "required": ["kind", "peer", "shares"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "unpair",
+                  "type": "string"
+                },
+                "peer": {
+                  "$ref": "#/definitions/LanPeer"
+                }
+              },
+              "required": ["kind", "peer"],
+              "type": "object"
+            }
+          ]
+        },
+        "LanPeer": {
+          "additionalProperties": false,
+          "properties": {
+            "fingerprint": {
+              "$ref": "#/definitions/Digest"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["hostId", "fingerprint"],
+          "type": "object"
+        },
+        "LanShare": {
+          "additionalProperties": false,
+          "properties": {
+            "access": {
+              "$ref": "#/definitions/LanShareAccess"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": ["target", "access"],
+          "type": "object"
+        },
+        "LanShareAccess": {
+          "enum": ["readOnly", "operate"],
+          "type": "string"
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "PositiveU64": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        },
+        "ProtocolVersion": {
+          "enum": ["0.1"],
+          "type": "string"
+        },
+        "Query": {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "actorId": {
+              "$ref": "#/definitions/Id"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "params": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            },
+            "protocolVersion": {
+              "$ref": "#/definitions/ProtocolVersion"
+            },
+            "requestId": {
+              "$ref": "#/definitions/RequestId"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            },
+            "target": {
+              "$ref": "#/definitions/Target"
+            }
+          },
+          "required": [
+            "protocolVersion",
+            "hostId",
+            "instanceEpoch",
+            "actorId",
+            "requestId",
+            "actionId",
+            "target",
+            "params",
+            "revealTarget"
+          ],
+          "type": "object"
+        },
+        "RequestId": {
+          "pattern": "^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$",
+          "type": "string"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "RevealTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "pageId": {
+              "$ref": "#/definitions/Id"
+            },
+            "panelId": {
+              "$ref": "#/definitions/Id"
+            },
+            "resultRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "workspaceId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["pageId"],
+          "type": "object"
+        },
+        "RpcRequest": {
+          "oneOf": [
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "browser.access",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserAccessParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "browser.takeover",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/BrowserTakeoverParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "lan.access",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/LanAccessParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "client.register",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ClientRegisterParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "client.unregister",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ClientUnregisterParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "client.receipt",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ClientReceiptSubmission"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "action.query",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "host.attach",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/AttachParams"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "catalog.list",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "action.invoke",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Call"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "action.invokeChild",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/ChildCall"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "operation.get",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "operation.cancel",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Call"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "state.snapshot",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "state.subscribe",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "subscription.close",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "object.read",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "stream.read",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "stream.subscribe",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "method": {
+                  "const": "stream.credit",
+                  "type": "string"
+                },
+                "params": {
+                  "$ref": "#/definitions/Query"
+                }
+              },
+              "required": ["method", "params"],
+              "type": "object"
+            }
+          ]
+        },
+        "SafeInteger": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "Target": {
+          "additionalProperties": false,
+          "dependencies": {
+            "sessionEpoch": ["sessionId"],
+            "sessionId": ["sessionEpoch"]
+          },
+          "if": {
+            "properties": {
+              "kind": {
+                "const": "session"
+              }
+            },
+            "required": ["kind"]
+          },
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "sessionEpoch": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/U64"
+                }
+              ],
+              "default": null
+            },
+            "sessionId": {
+              "allOf": [
+                {
+                  "$ref": "#/definitions/Id"
+                }
+              ],
+              "default": null
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "then": {
+            "required": ["sessionId", "sessionEpoch"]
+          },
+          "type": "object"
+        },
+        "Timestamp": {
+          "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
+          "type": "string"
+        },
+        "True": {
+          "const": true,
+          "type": "boolean"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "request": {
+          "$ref": "#/definitions/RpcRequest"
+        },
+        "requestId": {
+          "$ref": "#/definitions/RequestId"
+        }
+      },
+      "required": ["requestId", "request"],
+      "title": "HttpControlRequest",
+      "type": "object"
+    },
     "Id": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "pattern": "^[A-Za-z0-9._:-]{1,128}$",

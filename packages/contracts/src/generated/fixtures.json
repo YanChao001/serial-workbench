@@ -11923,6 +11923,21 @@
       }
     },
     {
+      "name": "http-control-attach",
+      "schema": "HttpControlRequest",
+      "value": {
+        "request": {
+          "method": "host.attach",
+          "params": {
+            "clientId": "http-client",
+            "clientKind": "cli",
+            "supportedProtocolVersions": ["0.1"]
+          }
+        },
+        "requestId": "33333333-3333-4333-8333-333333333333"
+      }
+    },
+    {
       "name": "duration-min",
       "schema": "DurationMs",
       "value": "1"

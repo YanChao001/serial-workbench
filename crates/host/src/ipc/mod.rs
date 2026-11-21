@@ -1,11 +1,13 @@
 //! 单实例生命周期与认证后的本地连接。
 mod browser;
 mod connection;
+mod http_control;
 mod lan_access;
 mod lan_route;
+mod loopback;
 mod protocol;
 mod server;
-pub use serial_workbench_core::BrowserEntry;
+pub use serial_workbench_core::{BrowserEntry, HttpControlEntry};
 use serial_workbench_core::{HostError, HostResult};
 #[cfg(test)]
 pub(crate) use server::test_context;

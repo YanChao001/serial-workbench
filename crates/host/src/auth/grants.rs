@@ -290,9 +290,8 @@ impl AuthService {
         })
     }
 
-    // Only the local Host launcher owns this credential. Reserve its generated
-    // identity before the browser listener can accept connections.
-    pub(crate) fn authenticate_browser_identity(
+    // 监听器的私有注册凭据只由本机 Host 持有，不作为网络凭据使用。
+    pub(crate) fn ensure_listener_identity(
         &self,
         client_id: &Id,
         credential: &ContextToken,
@@ -300,7 +299,7 @@ impl AuthService {
         let _guard = self.serial.lock().map_err(|_| corrupt())?;
         let (revision, document) = self.load()?;
         if let Some(record) = document.clients.get(client_id) {
-            if !verify_credential(&record.verifier, credential) {
+            if record.lan_peer.is_some() || !verify_credential(&record.verifier, credential) {
                 return Err(unauthenticated());
             }
             return Ok(AuthenticatedActor::from_verified(

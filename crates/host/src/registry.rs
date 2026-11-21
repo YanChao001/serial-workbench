@@ -22,6 +22,7 @@ struct Page {
     stamp: Option<GrantStamp>,
     size: U64,
     offset: usize,
+    supports_events: bool,
 }
 pub(crate) struct CatalogVisibility {
     pub version: U64,
@@ -40,6 +41,15 @@ impl Registry {
         &self,
         actor: &AuthenticatedActor,
         params: CatalogListParams,
+    ) -> HostResult<CatalogListResult> {
+        self.list_for_delivery(actor, params, true)
+    }
+
+    pub(crate) fn list_for_delivery(
+        &self,
+        actor: &AuthenticatedActor,
+        params: CatalogListParams,
+        supports_events: bool,
     ) -> HostResult<CatalogListResult> {
         let size = usize::try_from(params.page_size.get()).map_err(|_| invalid())?;
         if !(1..=100).contains(&size) {
@@ -62,7 +72,10 @@ impl Registry {
                 .find(|(key, _)| key == token)
                 .map(|(_, page)| page)
                 .ok_or_else(invalid)?;
-            if &page.actor_id != actor.id() || page.size != params.page_size {
+            if &page.actor_id != actor.id()
+                || page.size != params.page_size
+                || page.supports_events != supports_events
+            {
                 return Err(invalid());
             }
             if page.version != version || page.grant_revision != grant_revision {
@@ -77,7 +90,10 @@ impl Registry {
         } else {
             0
         };
-        let items = self.visible_actions(&authorization, &extensions)?;
+        let mut items = self.visible_actions(&authorization, &extensions)?;
+        if !supports_events {
+            items.retain(|spec| !requires_events(spec.action_id.as_str()));
+        }
         let has_more = items.len() > offset.saturating_add(size);
         let items = items.into_iter().skip(offset).take(size).collect();
         if let Some(stamp) = &stamp {
@@ -99,6 +115,7 @@ impl Registry {
                     stamp,
                     size: params.page_size,
                     offset: offset + size,
+                    supports_events,
                 },
             ));
             Some(token)
@@ -198,6 +215,13 @@ impl Registry {
         })
     }
 }
+pub(crate) fn requires_events(action_id: &str) -> bool {
+    matches!(
+        action_id,
+        "state.subscribe" | "stream.subscribe" | "stream.credit" | "subscription.close"
+    )
+}
+
 fn invalid() -> HostError {
     HostError::new(
         "INVALID_PAGE_TOKEN",

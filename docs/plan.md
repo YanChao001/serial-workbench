@@ -4,19 +4,19 @@
 
 ## 当前执行与下一步
 
-**当前阶段为 M3。** 本轮交付包括版本协商、签名 UART 金样、SVG 离屏导出和更新前关停。后续交付从最新 `main` 接续，完成下表所列的 HTTP、公开 SDK 和整套升级验收后冻结 v1。 [PR #55](https://github.com/YanChao001/serial-workbench/pull/55)
+**当前阶段为 M3。** PR #55 已合入 `443f4f9`，交付版本协商、签名 UART 金样、SVG 离屏导出和更新前关停。本轮接续 HTTP 控制。公开 SDK 的其余扩展点、长脚本、独占工具交接与整套升级按下表继续。 [PR #55](https://github.com/YanChao001/serial-workbench/pull/55)
 
-PR #55 的验收包括 IPC、Client、Host 和桌面的定向 Clippy，确认原失败项后，对同一候选完成 `pnpm verify`、全量无头 UI、专项验收和四目标 CI。完整模式设置 `desktop_chart=true`，让 Windows 桌面作业复用同一次构建运行签名终端和图表。候选及验收结论从 PR 和 CI 追溯。 [首轮四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44869976974)
+PR #55 的同源候选 `b1d7fe6` 通过本机综合检查、208 项无头 UI 与四目标 CI 的 13 项必跑作业。Windows 同一次原生构建通过签名终端和实际图表保存。Intel macOS 首轮的收据上传失败已保留，原候选定向重跑后通过。 [完整四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44893314699)
 
-| M3 事项                        | 已有证据与下一步                                                                                                                                                                                                                                                                  |
-| ------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| 版本协商与签名 UART（DIAG-08） | 工作树提供版本不兼容指引。Windows 真实 Host 用公开 SDK 签名夹具验证双向 UART 波形、原始区间和超出 JS 安全整数的采样序号。继续同源矩阵复验。VCD/CSV、校验位和 BREAK 按 M5 验收。                                                                                                   |
-| 图表离屏导出（VIZ-13）         | `f053fdb` 的 Windows 独立桌面使用真实保存对话框落盘 SVG，验证焦点返回、曲线和 Host 换代。无窗口原生测试验证 MCP 结果与磁盘文件字节一致。继续同源矩阵复验，其余格式按 M4/M5 验收。 [Windows 专项](https://github.com/YanChao001/serial-workbench/actions/runs/44871141751)         |
-| 后台升级（T14）                | Windows 已验证实际进程退出、非零退出在重试中保留、取消等待后继续持锁。旧 Host `3492986` 正常退出，手动启动候选 Host 在同一 profile 从代次 1 恢复到 2，两次安装准备通过。本机 Windows Job 限制了自动启动。独立环境的自动启动、安装器持锁交接、整套替换、重启和安装失败恢复仍待验。 |
-| 网络 API（AUTO-12）            | 配对 WebSocket 和双 Host TCP 已有独立认证与权限过滤的软件证据。交付外部程序 HTTP 控制入口，并验证三种入口的版本协商、游标、来源和授权。 [PR #51](https://github.com/YanChao001/serial-workbench/pull/51) · [PR #52](https://github.com/YanChao001/serial-workbench/pull/52)       |
-| 公开 SDK 合约                  | 签名事务已合入，实际 Claude Code stdio MCP 使用签名终端的本机证据已取得。还需验证长脚本、独占工具交接、四类扩展点及对应故障恢复。按 [M3 契约冻结](./acceptance.md#m3-契约冻结)核对后冻结 v1。                                                                                     |
+| M3 事项                        | 已有证据与下一步                                                                                                                                                                                                                                                                                                                |
+| ------------------------------ | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| 版本协商与签名 UART（DIAG-08） | 四个 Rust 目标通过版本不兼容引导与签名公开 SDK 的双向 UART 金样。VCD/CSV、校验位和 BREAK 按 M5 验收。                                                                                                                                                                                                                           |
+| 图表离屏导出（VIZ-13）         | Windows 真实保存对话框核对焦点返回、曲线和 Host 换代，签名参考场景核对 MCP 文件结果。其余格式按 M4/M5 验收。 [Windows 复验](https://github.com/YanChao001/serial-workbench/actions/runs/44893314699/artifacts/14702887521)                                                                                                      |
+| 后台升级（T14）                | Windows 已验证实际关停、非零退出重试、取消等待后的持锁与手动恢复同一 profile。隔离 Windows CI 的两版本自动恢复被 runner Job 限制。结算与失败路径先用受控夹具推进，实际安装器持锁、替换、重启及恢复待有条件复验。 [自动恢复诊断](https://github.com/YanChao001/serial-workbench/actions/runs/44897832985/artifacts/14705060787)  |
+| 网络 API（AUTO-12）            | 本轮加入独立回环 HTTP。Windows 定向通过 HTTP、WebSocket 和 TCP 的独立认证与版本拒绝。Virtual Echo 核对 HTTP 来源、游标和重试。正式 Host 与 CLI 核对凭据轮换、授权跨重启保留和撤权。完成同一候选的完整矩阵后合入。 [PR #56](https://github.com/YanChao001/serial-workbench/pull/56) · [专项验收](./acceptance.md#本机-http-控制) |
+| 公开 SDK 合约                  | 签名事务已合入，实际 Claude Code stdio MCP 使用签名终端的本机证据已取得。还需验证长脚本、独占工具交接、四类扩展点及对应故障恢复。按 [M3 契约冻结](./acceptance.md#m3-契约冻结)核对后冻结 v1。                                                                                                                                   |
 
-本机证据入口均相对主工作区的 `.cache/evidence/`。UART 查 `m3-uart-gold-20261121/`，图表查 `m3-contracts-20261121/f053fdb/windows-chart/checked-chart.json`，两版本恢复和中止的 Clippy 查 `m3-contracts-20261121/updater-exit-recovery/refreshed-worktree-build/`，本轮复验查 `m3-contracts-20261121/resume-20261121-180211/`，MCP 产品和 Windows T06 查 `m3-transaction-20261121/`。
+本机证据入口均相对主工作区 `.cache/evidence/`。PR #55 查 `m3-contracts-20261121/resume-20261121-180211/checkpoint.json`。HTTP 定向查 `m3-http-20261121/cc19652/`。实际 MCP 产品和 Windows T06 查 `m3-transaction-20261121/`。
 
 ## 验证基线
 
@@ -30,6 +30,8 @@ PR #55 的验收包括 IPC、Client、Host 和桌面的定向 Clippy，确认原
 | 串口监听参考包更新  | 同一签名来源的 `0.1.1` 到 `0.1.2` 原地升级保留启用及执行信任，正文直接显示收发数据。 [PR #54](https://github.com/YanChao001/serial-workbench/pull/54) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44859539929)                                                                                                                                                                                                                                                                                                                                                               |
 
 ### 验收边界与未决问题
+
+- 用户确认当前没有可用的独立实机与虚拟机环境。优先用 Virtual Echo、PTY、双 Host、故障注入和隔离 CI 验证适用软件场景，按实际覆盖记账。平台矩阵中的物理设备、72 小时实跑和缺 WebView2 的断网实装待有条件验收。
 
 - Windows x64 NSIS 已核对内置 WebView2 离线安装程序、固定 Node 和伴随程序。用户确认缺 WebView2 的独立环境断网实装与首次启动安排在 M6。该环境尚未就绪。 [安装与发行验收](./acceptance.md#安装与发行验收)
 - Windows 两台物理机在 IPv4/IPv6 互换 LAN 角色、目标设备、最低系统、正式签名和三平台各 72 小时长稳均待 M6。既有回环、虚拟设备和组合负载证据沿用各自范围。完整进程树峰值 RSS 与全局 CPU 仍按候选和适用负载收集。

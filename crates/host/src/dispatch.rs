@@ -1304,13 +1304,19 @@ impl Host {
             }
             BuiltinAction::CatalogList => {
                 let params = decode(&query.params)?;
-                if let Some(context) = connection {
+                let supports_events = connection
+                    .as_ref()
+                    .is_none_or(|context| context.supports_events);
+                if let Some(context) = connection
+                    && supports_events
+                {
                     self.ensure_catalog_watch(context).await?;
                 }
                 let registry = self.inner.registry.clone();
                 let actor = actor.clone();
                 Ok(QueryResult::Catalog(
-                    blocking(move || registry.list(&actor, params)).await?,
+                    blocking(move || registry.list_for_delivery(&actor, params, supports_events))
+                        .await?,
                 ))
             }
             BuiltinAction::OperationGet => {

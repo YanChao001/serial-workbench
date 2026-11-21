@@ -1756,6 +1756,25 @@ export type HostMetrics_Serialize = {
   node?: NodeMetrics_Serialize;
 };
 
+export type HttpControlEntry = {
+  url: string;
+  clientId: Id;
+  credential: ContextToken;
+};
+
+export type HttpControlRequest =
+  HttpControlRequest_Serialize | HttpControlRequest_Deserialize;
+
+export type HttpControlRequest_Deserialize = {
+  requestId: RequestId;
+  request: RpcRequest_Deserialize;
+};
+
+export type HttpControlRequest_Serialize = {
+  requestId: RequestId;
+  request: RpcRequest_Serialize;
+};
+
 export type Id = string;
 
 export type IdentityEvidence = "serialNumber" | "topology" | "unreliable";

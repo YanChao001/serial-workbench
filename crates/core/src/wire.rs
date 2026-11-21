@@ -374,6 +374,31 @@ pub struct BrowserTakeoverRequest {
     pub target: Target,
 }
 
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HttpControlRequest {
+    pub request_id: RequestId,
+    pub request: Box<RpcRequest>,
+}
+
+#[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct HttpControlEntry {
+    pub url: String,
+    pub client_id: Id,
+    pub credential: ContextToken,
+}
+
+impl std::fmt::Debug for HttpControlEntry {
+    fn fmt(&self, formatter: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        formatter
+            .debug_struct("HttpControlEntry")
+            .field("url", &self.url)
+            .field("client_id", &self.client_id)
+            .finish_non_exhaustive()
+    }
+}
+
 #[derive(Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct BrowserEntry {

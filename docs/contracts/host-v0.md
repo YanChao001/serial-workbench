@@ -37,7 +37,7 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 
 一个数据配置仅允许一个持锁 Host。发现记录只是连接提示，客户端必须完成认证和握手；启动锁由 OS 排他机制管理，不因超时直接抢活锁。Host 健康但暂忙时返回 `HOST_BUSY`，客户端附着同一实例。关闭 GUI 不释放 Host 启动锁。
 
-本节区分传输方法（`method`）与业务目录 ID（`actionId`）。桌面、CLI 和 MCP 通过本机 IPC 附着，配对浏览器通过 WebSocket 附着，CLI 和 MCP 可由本机 Host 接入 LAN 路由。方法与结果信封以 [Rust wire DTO](../../crates/core/src/wire.rs) 为准。业务与参数以当前身份的 `catalog.list` 为准。
+本节区分传输方法（`method`）与业务目录 ID（`actionId`）。桌面、CLI 和 MCP 通过本机 IPC 附着，配对浏览器通过 WebSocket 附着，CLI 和 MCP 可由本机 Host 接入 LAN 路由，外部本机程序可通过 [HTTP](#本机-http-控制)附着。方法与结果信封以 [Rust wire DTO](../../crates/core/src/wire.rs) 为准。业务与参数以当前身份的 `catalog.list` 为准。
 
 本机 `ClientHello` 在身份挑战前拒绝无共同版本的连接。`host.attach` 在签发 `requestContext` 前执行同一检查。`PROTOCOL_UNSUPPORTED.details` 提供 Host 的 `supportedProtocolVersions` 列表与建议的 `upgradeTarget` 协议版本。客户端可据此选择支持目标协议的程序，再附着到原 Host。
 
@@ -182,6 +182,16 @@ Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe
 通用 `action.query` 与专用 RPC 按同一[通道路由](../../crates/core/src/dispatch.rs)分流：例如 `stream.read`、`file.read`、`capture.tail` 和 `replay.read` 走 raw；`subscription.close` 可走任一通道，但必须匹配订阅归属。其余按映射走 control，专用 method 必须匹配信封的 actionId。连接关闭时释放所属订阅，包括晚到的建立结果；已持久接纳的任务仍由 Host 负责。
 
 `lan.access` 仅接受本地用户控制的 Control 连接。状态返回监听、对端和共享目标。启用监听收到具体 IPv4 或 IPv6 地址和端口，绑定失败时保留原监听。配对和共享以同一次授权事务记录，解除配对按 Host ID 与已确认公钥校验。停用监听后，原配对保留，已接纳操作沿用 Host 的结算规则。[LAN DTO](../../crates/core/src/lan.rs)
+
+## 本机 HTTP 控制
+
+启动器显式请求 HTTP 入口时，Host 绑定 `127.0.0.1` 的分配端口。受保护的继承管道以四字节大端长度加 UTF-8 JSON 交付 `{url,clientId,credential}`。`url` 是完整的 `/api/rpc` 地址，`credential` 是本轮监听的独立 Bearer 凭据。同一 profile 的普通 HTTP actor 可由本地用户控制入口授予或撤销权限。
+
+客户端向该地址发送 POST，请求省略 URL 查询参数和 `Origin`。`Host` 必须精确匹配监听的主机和端口，`Authorization` 使用 `Bearer <credential>`，`Content-Type` 使用 `application/json`。正文为 `{requestId,request}`，其中 `request` 是 [RpcRequest](../../crates/core/src/wire.rs)。如内层含 `requestId`，其值须与外层一致。每个请求独立认证，按 Host 的请求和响应限额处理。首次调用 `host.attach` 协商版本并取得后续业务信封所需的 Host 标识、实例代次、actor 和请求上下文。
+
+RPC 答复使用 HTTP 200 和同源的 `RpcReply`，客户端读取 `ok` 和 `error.code` 判断结果。HTTP 层拒绝使用相应状态及稳定错误码。地址、来源或查询参数校验拒绝为 403，凭据拒绝为 401，媒体类型拒绝为 415，正文解析失败为 400，正文超限或无法完整读取为 413，正文等待超时为 408，入口停止接纳为 503。答复禁用缓存，连接随本次答复关闭。
+
+HTTP 支持目录、状态快照、查询、调用、操作结果与取消。通过 `action.query` 调用 `stream.cursor` 获取游标，再用 `stream.read` 按 `nextEventSeq` 续读有界原始数据页，Host 核对目标会话代次和当前权限。订阅和推送使用既有持久连接。HTTP 目录分页按可调用的动作范围和当前授权过滤，页令牌绑定返回该页的投递方式。调用返回 Operation 接纳回执，终态通过 `operation.get` 查询。响应丢失后以原请求编号和上下文查询，重试仍使用原参数与编号。 [HTTP 接线示例](../development.md#本机-http-控制)
 
 ## 权限、客户端与 LAN
 
