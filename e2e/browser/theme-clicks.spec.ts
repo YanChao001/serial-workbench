@@ -8,6 +8,54 @@ import { zhCN } from "../../src/i18n/zh-CN";
 
 test.use({ reducedMotion: "no-preference" });
 
+test("theme reveal keeps the collapsed Plugins icon in its navigation slot", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    language: "zh",
+    theme: "light",
+    motion: "full",
+    sidebarCollapsed: true,
+  });
+  await page.addInitScript(() => {
+    const attach = Element.prototype.attachShadow;
+    Element.prototype.attachShadow = function (options) {
+      return attach.call(
+        this,
+        this.hasAttribute("data-theme-reveal") ? { mode: "open" } : options,
+      );
+    };
+    const animate = Element.prototype.animate;
+    Element.prototype.animate = function (...args) {
+      const animation = animate.apply(this, args);
+      if (this.hasAttribute("data-theme-reveal")) animation.pause();
+      return animation;
+    };
+  });
+  await page.goto("./#/plugins");
+  await expect(
+    page.getByRole("heading", { name: "插件", exact: true }),
+  ).toBeVisible();
+  await page.evaluate(() => document.fonts.ready);
+  const iconSelector = '#app-sidebar-navigation a[href="#/plugins"] svg';
+  const icon = page.locator("#root").locator(iconSelector);
+  const original = (await icon.boundingBox())!;
+  const button = page.getByRole("button", {
+    name: zhCN["title.toggleTheme"],
+    exact: true,
+  });
+  const layer = page.locator("[data-theme-reveal]");
+  for (const dark of [true, false, true, false]) {
+    await button.click();
+    await expect(layer).toHaveCount(1);
+    await expect(page.locator(":root")).toHaveClass(dark ? /dark/ : /light/);
+    const live = (await icon.boundingBox())!;
+    const copied = (await layer.locator(iconSelector).boundingBox())!;
+    expect(Math.abs(live.y - original.y)).toBeLessThan(1);
+    expect(Math.abs(copied.y - live.y)).toBeLessThan(1);
+  }
+});
+
 test("every interrupted theme click restarts an outward reveal from the control", async ({
   page,
 }, info) => {
