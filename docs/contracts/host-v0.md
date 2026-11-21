@@ -39,6 +39,8 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 
 本节区分传输方法（`method`）与业务目录 ID（`actionId`）。桌面、CLI 和 MCP 通过本机 IPC 附着，配对浏览器通过 WebSocket 附着，CLI 和 MCP 可由本机 Host 接入 LAN 路由。方法与结果信封以 [Rust wire DTO](../../crates/core/src/wire.rs) 为准。业务与参数以当前身份的 `catalog.list` 为准。
 
+本机 `ClientHello` 在身份挑战前拒绝无共同版本的连接。`host.attach` 在签发 `requestContext` 前执行同一检查。`PROTOCOL_UNSUPPORTED.details` 提供 Host 的 `supportedProtocolVersions` 列表与建议的 `upgradeTarget` 协议版本。客户端可据此选择支持目标协议的程序，再附着到原 Host。
+
 | RPC                  | 输入                                                                                                                                                     | 成功结果                                                                                                               | 特定错误                                                                                          |
 | -------------------- | -------------------------------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------- |
 | `host.attach`        | `supportedProtocolVersions: string[]`、`clientKind: desktop\|browser\|cli\|mcp\|node\|peer`、`clientId: Id`、可选 `expectedHostId: Id`；认证凭据在传输层 | `hostId,instanceEpoch,protocolVersion,catalogVersion,actorId,clientId,limits,requestContext,requestContextAcceptUntil` | `UNAUTHENTICATED`、`HOST_ID_MISMATCH`、`PROTOCOL_UNSUPPORTED`；后者含允许公开的支持版本与升级目标 |

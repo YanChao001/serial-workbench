@@ -98,6 +98,105 @@ async fn authenticated_attach_dispatch_and_disconnect_leave_host_running() {
 }
 
 #[tokio::test]
+async fn incompatible_protocol_returns_recovery_details_before_admission() {
+    use serial_workbench_ipc::{
+        DiscoveryRecord,
+        frame::{MAX_FRAME_BYTES, read_frame, write_frame},
+        identity::random_token,
+    };
+
+    let directory = temporary_profile();
+    let mut host = HostServer::bind(directory.path()).await.unwrap();
+    let discovery =
+        DiscoveryRecord::read(&directory.path().join("host-v0/discovery.json")).unwrap();
+    let dispatched = Arc::new(AtomicUsize::new(0));
+    let (stop, done) = oneshot::channel();
+    let handler = Arc::new(CountingHandler(dispatched.clone()));
+    let running = tokio::spawn(async move {
+        host.serve_until(handler, async {
+            let _ = done.await;
+        })
+        .await
+    });
+    let mut stream = serial_workbench_ipc::connect(&discovery.endpoint)
+        .await
+        .unwrap();
+    let hello = WireFrame {
+        request_id: request_id(),
+        channel: IpcChannel::Control,
+        body: IpcMessage::ClientHello {
+            supported_protocol_versions: vec!["future".into()],
+            client_nonce: random_token(),
+            expected_host_id: Some(discovery.host_id.clone()),
+        },
+    };
+    write_frame(&mut stream, &hello, MAX_FRAME_BYTES)
+        .await
+        .unwrap();
+    let frame = tokio::time::timeout(
+        Duration::from_secs(5),
+        read_frame(&mut stream, MAX_FRAME_BYTES),
+    )
+    .await
+    .unwrap()
+    .unwrap()
+    .unwrap();
+    assert_eq!(frame.request_id, hello.request_id);
+    assert_eq!(frame.channel, hello.channel);
+    let IpcMessage::Error {
+        error: handshake_error,
+    } = frame.body
+    else {
+        panic!("The incompatible connection must end with a handshake error");
+    };
+    drop(stream);
+    assert_eq!(dispatched.load(Ordering::SeqCst), 0);
+
+    let client_id = id("version-check");
+    let client = HostClient::connect(ConnectOptions::new(
+        directory.path().to_path_buf(),
+        client_id.clone(),
+        ClientKind::Cli,
+    ))
+    .await
+    .unwrap();
+    let reply = client
+        .request(RpcRequest::Attach(AttachParams {
+            supported_protocol_versions: vec!["future".into()],
+            client_kind: ClientKind::Cli,
+            client_id,
+            expected_host_id: Some(discovery.host_id),
+        }))
+        .await
+        .unwrap();
+    let RpcReply::Failure {
+        error: attach_error,
+        ..
+    } = reply
+    else {
+        panic!("An incompatible attach must not issue a request context");
+    };
+    let expected = serde_json::json!({
+        "supportedProtocolVersions": ["0.1"],
+        "upgradeTarget": "0.1",
+    });
+    for error in [&handshake_error, &attach_error] {
+        assert_eq!(error.code, "PROTOCOL_UNSUPPORTED");
+        assert!(!error.retryable);
+        assert_eq!(serde_json::to_value(&error.details).unwrap(), expected);
+    }
+    assert_eq!(dispatched.load(Ordering::SeqCst), 0);
+    assert!(matches!(
+        client.request(query(&client)).await.unwrap(),
+        RpcReply::Success { .. }
+    ));
+    assert_eq!(dispatched.load(Ordering::SeqCst), 1);
+    client.close().await.unwrap();
+    stop.send(()).unwrap();
+    running.await.unwrap().unwrap();
+}
+
+#[tokio::test]
 async fn forged_actor_and_stale_epoch_are_rejected_before_dispatch() {
     let directory = temporary_profile();
     let mut host = HostServer::bind(directory.path()).await.unwrap();
