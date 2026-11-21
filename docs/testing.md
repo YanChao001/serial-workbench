@@ -280,6 +280,8 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 以至少两个仅使用公开 SDK 的参考插件验证终端、协议事务、长脚本、网络和独占工具交接、合成 UART 波形及图表离屏导出。核对 schema 与类型、获准入口的结果、revision/epoch、撤权、取消、unknown、写盘恢复及未来格式。完成不兼容版本拒绝、实际 MCP 产品客户端、正式 Node 离线包、后台整套升级和故障回收后冻结 v1。
 
+DIAG-08 的 M3 金样由 [签名 Host 用例](../crates/host/tests/client_parity/uart_gold.rs) 生成双通道 8N1 电平，再通过 [公开 SDK 示例](../packages/plugin-sdk/examples/uart-gold.ts) 读取字节、原始采样区间和相对纳秒偏移。用例核对两路共用的采样时钟、超过 JavaScript 安全整数的采样序号，以及获准客户端通过文件引用读回的实际结果。先按[真实 Node 包](#rust-与生成)准备 `SWB_NODE_RUNTIME_TEST_ROOT` 并运行 `pnpm plugin-sdk:fixture`，再按需选择 `cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_uart_gold_ -- --ignored --nocapture`。四目标 CI 的原生 runtime 检查包含该用例。VCD 和带采样率的 CSV 导入、校验位与 BREAK 在 M5 验收。
+
 ## 安装与发行验收
 
 M6 用发行候选在预先未安装 WebView2 Runtime 的独立 Windows x64 环境验证 NSIS。将本轮发行候选的安装包和同源验收材料转移到环境中，记录 WebView2 的系统和当前用户注册信息、网络状态及安装前后的版本。断网状态下实际安装并首次启动，使用已安装的程序运行三个签名参考场景。记录系统版本、安装退出码、组件摘要、首次打开窗口及用例结果。M2 和 M3 验证 Windows 安装包内置的离线 Runtime、固定 Node 安装布局和软件参考场景。最低系统和正式发行签名按 M6 矩阵验收。 [Microsoft 离线部署](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)
