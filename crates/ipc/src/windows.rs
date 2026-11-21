@@ -12,13 +12,17 @@ use std::{
     pin::Pin,
     ptr::{null, null_mut},
     task::{Context, Poll},
+    time::Duration,
 };
 use tokio::{
     io::{AsyncRead, AsyncWrite, ReadBuf},
     net::windows::named_pipe::{ClientOptions, NamedPipeClient, NamedPipeServer, ServerOptions},
 };
 use windows_sys::Win32::{
-    Foundation::{GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, LocalFree},
+    Foundation::{
+        GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0,
+        WAIT_TIMEOUT,
+    },
     Security::{
         ACCESS_ALLOWED_ACE, ACL,
         Authorization::{
@@ -42,7 +46,8 @@ use windows_sys::Win32::{
     System::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeInfo, GetNamedPipeServerProcessId},
         Threading::{
-            GetCurrentProcess, OpenProcess, OpenProcessToken, PROCESS_QUERY_LIMITED_INFORMATION,
+            GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken,
+            PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZATION_SYNCHRONIZE, WaitForSingleObject,
         },
     },
 };
@@ -540,6 +545,10 @@ pub async fn connect(endpoint: &str) -> HostResult<LocalStream> {
         .map_err(|_| HostError::new("HOST_BUSY", "Local pipe endpoint is unavailable"))
 }
 pub fn verify_peer(stream: &LocalStream) -> HostResult<()> {
+    open_peer_process(stream, PROCESS_QUERY_LIMITED_INFORMATION).map(|_| ())
+}
+
+fn open_peer_process(stream: &LocalStream, access: u32) -> HostResult<(u32, OwnedHandle)> {
     unsafe {
         let mut pid = 0;
         let success = match stream {
@@ -553,7 +562,7 @@ pub fn verify_peer(stream: &LocalStream) -> HostResult<()> {
         if success == 0 || pid == 0 {
             return Err(denied());
         }
-        let process = OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, 0, pid);
+        let process = OpenProcess(access, 0, pid);
         if process.is_null() {
             return Err(denied());
         }
@@ -563,7 +572,54 @@ pub fn verify_peer(stream: &LocalStream) -> HostResult<()> {
         if EqualSid(peer.as_ptr(), current.as_ptr()) == 0 {
             return Err(denied());
         }
-        Ok(())
+        Ok((pid, process))
+    }
+}
+
+/// Stable handle to the named pipe server process, acquired before its Host proof.
+pub struct LocalHostProcess(OwnedHandle);
+
+impl LocalHostProcess {
+    pub fn observe(stream: &LocalStream, expected_pid: u32) -> HostResult<Self> {
+        if !matches!(stream, LocalStream::Client(_)) {
+            return Err(denied());
+        }
+        let (pid, process) = open_peer_process(
+            stream,
+            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZATION_SYNCHRONIZE,
+        )?;
+        if pid != expected_pid {
+            return Err(HostError::new(
+                "HOST_ID_MISMATCH",
+                "The named pipe server process changed before maintenance",
+            ));
+        }
+        Ok(Self(process))
+    }
+
+    pub fn wait_for_clean_exit(&self, timeout: Duration) -> HostResult<()> {
+        let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX - 1)) as u32;
+        let process = self.0.as_raw_handle();
+        match unsafe { WaitForSingleObject(process, timeout_ms) } {
+            WAIT_OBJECT_0 => {
+                let mut code = 0;
+                if unsafe { GetExitCodeProcess(process, &mut code) } == 0 || code != 0 {
+                    return Err(HostError::new(
+                        "SHUTDOWN_INCOMPLETE",
+                        "The old Host has no successful process exit",
+                    ));
+                }
+                Ok(())
+            }
+            WAIT_TIMEOUT => Err(HostError::new(
+                "HOST_STOP_TIMEOUT",
+                "The old Host process is still running",
+            )),
+            _ => Err(HostError::new(
+                "SHUTDOWN_INCOMPLETE",
+                "Cannot observe the old Host process exit",
+            )),
+        }
     }
 }
 pub fn prepare_private_directory(path: &Path) -> HostResult<()> {

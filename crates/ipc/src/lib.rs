@@ -3,10 +3,12 @@ mod discovery;
 pub mod frame;
 pub mod identity;
 mod instance;
+pub mod shutdown;
 pub mod startup_config;
 pub use discovery::DiscoveryRecord;
 pub use instance::{
-    INSTANCE_LOCK_NAME, PrivateFileLock, profile_has_running_host, try_lock_private_file,
+    INSTANCE_LOCK_NAME, PrivateFileLock, profile_has_running_host, reserve_host_instance,
+    try_lock_private_file,
 };
 
 #[cfg(unix)]

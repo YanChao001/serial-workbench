@@ -643,7 +643,13 @@ impl HostServer {
                 failure = Some(error);
             }
         }
-        failure.map_or(Ok(()), Err)
+        if let Some(error) = failure {
+            return Err(error);
+        }
+        let namespace = self._guard.namespace().to_path_buf();
+        let pin = self.pin.clone();
+        let epoch = self.identity.instance_epoch;
+        blocking(move || local::shutdown::record_completed_shutdown(&namespace, &pin, epoch)).await
     }
 }
 impl Drop for HostServer {

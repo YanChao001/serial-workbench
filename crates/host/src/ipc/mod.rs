@@ -10,10 +10,7 @@ use serial_workbench_core::{HostError, HostResult};
 #[cfg(test)]
 pub(crate) use server::test_context;
 pub use server::{ConnectionContext, HandlerFuture, HandlerReply, HostServer, RequestHandler};
-use std::{
-    fs,
-    path::{Path, PathBuf},
-};
+use std::path::{Path, PathBuf};
 
 pub struct InstanceGuard {
     _lock: serial_workbench_ipc::PrivateFileLock,
@@ -30,17 +27,7 @@ impl InstanceGuard {
                 .join(profile)
         };
         let namespace = profile.join("host-v0");
-        serial_workbench_ipc::prepare_private_directory(&namespace)?;
-        let lock_path = namespace.join(serial_workbench_ipc::INSTANCE_LOCK_NAME);
-        match fs::symlink_metadata(&lock_path) {
-            Ok(metadata) if !metadata.file_type().is_file() => return Err(unavailable()),
-            Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(unavailable()),
-            _ => {}
-        }
-        // 新锁原子指定当前用户 owner 和私有权限；已有未知对象只验证，不修复。
-        let file = serial_workbench_ipc::try_lock_private_file(&lock_path)?.ok_or_else(|| {
-            HostError::new("HOST_BUSY", "This profile already has a running Host")
-        })?;
+        let file = serial_workbench_ipc::reserve_host_instance(&namespace)?;
         Ok(Self {
             _lock: file,
             profile,

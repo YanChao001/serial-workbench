@@ -1471,6 +1471,10 @@ impl DesktopHostBridge {
             state.windows.remove(window);
         }
     }
+    pub(crate) fn local_profile(&self) -> &std::path::Path {
+        &self.profile
+    }
+
     pub(crate) fn new(profile: std::path::PathBuf) -> Self {
         Self {
             profile,

@@ -41,6 +41,19 @@ pub fn profile_has_running_host(profile: &Path) -> HostResult<bool> {
     }
 }
 
+/// Acquire the same protected lock for Host startup and program replacement.
+pub fn reserve_host_instance(namespace: &Path) -> HostResult<PrivateFileLock> {
+    crate::prepare_private_directory(namespace)?;
+    let path = namespace.join(INSTANCE_LOCK_NAME);
+    match std::fs::symlink_metadata(&path) {
+        Ok(metadata) if !metadata.file_type().is_file() => return Err(unavailable()),
+        Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(unavailable()),
+        _ => {}
+    }
+    try_lock_private_file(&path)?
+        .ok_or_else(|| HostError::new("HOST_BUSY", "This profile already has a running Host"))
+}
+
 /// A private, persistent coordination file. Dropping the returned guard releases its OS lock.
 pub fn try_lock_private_file(path: &Path) -> HostResult<Option<PrivateFileLock>> {
     let file = crate::open_private_lock_file(path)?;

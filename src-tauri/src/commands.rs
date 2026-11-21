@@ -270,7 +270,9 @@ pub async fn download_and_install_update(
     window: tauri::WebviewWindow,
 ) -> NativeResult<()> {
     require_host_window(window.label())?;
-    app.state::<UpdateManager>().install(&app).await
+    app.state::<UpdateManager>()
+        .install(&app, crate::updater::InstallOrigin::DesktopSettings)
+        .await
 }
 
 #[tauri::command]

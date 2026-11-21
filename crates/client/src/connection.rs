@@ -187,6 +187,33 @@ impl HostClient {
             self.raw.discovery.instance_epoch,
         )
     }
+    /// Keep a handle to the same authenticated Windows Host until program replacement.
+    #[cfg(windows)]
+    pub async fn observe_local_host_process(&self) -> HostResult<local::LocalHostProcess> {
+        let discovery = &self.raw.discovery;
+        let mut stream = connect_endpoint(discovery, true).await?;
+        let process = local::LocalHostProcess::observe(&stream, discovery.pid)?;
+        verify_host(&mut stream, discovery, &self.raw.pin, IpcChannel::Control).await?;
+        Ok(process)
+    }
+
+    /// The maintenance caller holds the local instance lock during verification.
+    pub async fn verify_local_shutdown_completed(&self) -> HostResult<()> {
+        let namespace = self.options.profile.join("host-v0");
+        let pin = self.raw.pin.clone();
+        let epoch = self.raw.discovery.instance_epoch;
+        tokio::task::spawn_blocking(move || {
+            local::shutdown::verify_completed_shutdown(&namespace, &pin, epoch)
+        })
+        .await
+        .map_err(|_| {
+            HostError::new(
+                "STORAGE_UNAVAILABLE",
+                "Cannot read Host shutdown completion",
+            )
+        })?
+    }
+
     /// Reattach using the same private identity. Never start a Host or replay a business request.
     pub async fn reconnect(&self) -> HostResult<Self> {
         let reconnected = Self::connect(self.options.clone()).await?;
@@ -401,10 +428,19 @@ async fn verified_connection(
     channel: IpcChannel,
     wait_for_endpoint: bool,
 ) -> HostResult<LocalStream> {
+    let mut stream = connect_endpoint(discovery, wait_for_endpoint).await?;
+    verify_host(&mut stream, discovery, pin, channel).await?;
+    Ok(stream)
+}
+
+async fn connect_endpoint(
+    discovery: &DiscoveryRecord,
+    wait_for_endpoint: bool,
+) -> HostResult<LocalStream> {
     let deadline = tokio::time::Instant::now() + Duration::from_secs(5);
-    let mut stream = loop {
+    loop {
         match local::connect(&discovery.endpoint).await {
-            Ok(stream) => break stream,
+            Ok(stream) => return Ok(stream),
             Err(error)
                 if wait_for_endpoint
                     && error.code == "HOST_BUSY"
@@ -414,11 +450,19 @@ async fn verified_connection(
             }
             Err(error) => return Err(error),
         }
-    };
+    }
+}
+
+async fn verify_host(
+    stream: &mut LocalStream,
+    discovery: &DiscoveryRecord,
+    pin: &IdentityPin,
+    channel: IpcChannel,
+) -> HostResult<()> {
     let id = new_request_id();
     let client_nonce = random_token();
     write_frame(
-        &mut stream,
+        stream,
         &WireFrame {
             request_id: id.clone(),
             channel,
@@ -431,8 +475,8 @@ async fn verified_connection(
         MAX_FRAME_BYTES,
     )
     .await?;
-    let response = receive(&mut stream, &id, channel, LOCAL_ATTACH_TIMEOUT).await?;
-    local::verify_peer(&stream)?;
+    let response = receive(stream, &id, channel, LOCAL_ATTACH_TIMEOUT).await?;
+    local::verify_peer(stream)?;
     let IpcMessage::HostHello {
         protocol_version: ProtocolVersion::V0_1,
         host_id,
@@ -453,7 +497,7 @@ async fn verified_connection(
         ));
     }
     pin.verify(instance_epoch, &client_nonce, &server_nonce, &proof)?;
-    Ok(stream)
+    Ok(())
 }
 async fn receive(
     stream: &mut LocalStream,

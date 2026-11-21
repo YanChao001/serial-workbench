@@ -286,30 +286,7 @@ async fn stop_host(
 ) -> HostResult<serde_json::Value> {
     let host_id = client.attachment().host_id.clone();
     let instance_epoch = client.attachment().instance_epoch;
-    let request = RpcRequest::Invoke(call(
-        client,
-        id("host.shutdown"),
-        host_target(client),
-        args::object(EmptyParams {})?,
-        InvokeOptions::new(request_id),
-    ));
-    // 停机可能关闭回包连接；只发送一次，随后验证原实例的生命周期。
-    let operation =
-        match tokio::time::timeout(Duration::from_secs(10), client.request(request)).await {
-            Ok(Ok(RpcReply::Success { result, .. })) => match *result {
-                RpcResult::Operation(result) => Some(result.operation),
-                _ => {
-                    return Err(HostError::new(
-                        "INVALID_ARGUMENT",
-                        "Host returned an invalid shutdown response",
-                    ));
-                }
-            },
-            Ok(Ok(RpcReply::Failure { error, .. })) => return Err(error),
-            Ok(Err(error)) if error.code == "UNAUTHENTICATED" => None,
-            Ok(Err(error)) => return Err(error),
-            Err(_) => None,
-        };
+    let operation = client.request_shutdown(Some(request_id)).await?;
     let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
     loop {
         let running = serial_workbench_ipc::profile_has_running_host(profile)?;

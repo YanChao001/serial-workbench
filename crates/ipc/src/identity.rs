@@ -57,12 +57,7 @@ impl IdentityPin {
             ))
         }
     }
-    fn mac(
-        &self,
-        epoch: U64,
-        client: &ContextToken,
-        server: &ContextToken,
-    ) -> HostResult<HmacSha256> {
+    pub(crate) fn transcript_mac(&self, transcript: &impl Serialize) -> HostResult<HmacSha256> {
         let secret = URL_SAFE_NO_PAD
             .decode(self.secret.as_str())
             .map_err(|_| invalid())?;
@@ -70,7 +65,17 @@ impl IdentityPin {
             return Err(invalid());
         }
         let mut mac = HmacSha256::new_from_slice(&secret).expect("32-byte HMAC key");
-        let transcript = serde_json::to_vec(&(
+        mac.update(&serde_json::to_vec(transcript).map_err(|_| invalid())?);
+        Ok(mac)
+    }
+
+    fn mac(
+        &self,
+        epoch: U64,
+        client: &ContextToken,
+        server: &ContextToken,
+    ) -> HostResult<HmacSha256> {
+        self.transcript_mac(&(
             "serial-workbench/host-proof",
             ProtocolVersion::V0_1,
             &self.host_id,
@@ -79,9 +84,10 @@ impl IdentityPin {
             client,
             server,
         ))
-        .map_err(|_| invalid())?;
-        mac.update(&transcript);
-        Ok(mac)
+    }
+
+    pub(crate) fn profile_binding(&self) -> &Digest {
+        &self.profile_binding
     }
     pub fn proof(
         &self,

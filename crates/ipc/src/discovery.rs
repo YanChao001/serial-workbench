@@ -17,25 +17,28 @@ pub struct DiscoveryRecord {
 }
 impl DiscoveryRecord {
     pub fn read(path: &Path) -> HostResult<Self> {
-        let metadata = fs::symlink_metadata(path).map_err(|_| unavailable())?;
-        if !metadata.file_type().is_file() || metadata.len() > 65536 {
-            return Err(unavailable());
-        }
-        let mut bytes = Vec::new();
-        fs::File::open(path)
-            .map_err(|_| unavailable())?
-            .take(65537)
-            .read_to_end(&mut bytes)
-            .map_err(|_| unavailable())?;
-        if bytes.len() > 65536 {
-            return Err(unavailable());
-        }
+        let bytes = read_bounded_metadata(path, 65536).ok_or_else(unavailable)?;
         serde_json::from_slice(&bytes).map_err(|_| unavailable())
     }
     pub fn write(&self, path: &Path) -> HostResult<()> {
         crate::write_atomic(path, &serde_json::to_vec(self).map_err(|_| unavailable())?)
     }
 }
+
+pub(crate) fn read_bounded_metadata(path: &Path, limit: u64) -> Option<Vec<u8>> {
+    let metadata = fs::symlink_metadata(path).ok()?;
+    if !metadata.file_type().is_file() || metadata.len() > limit {
+        return None;
+    }
+    let mut bytes = Vec::new();
+    fs::File::open(path)
+        .ok()?
+        .take(limit + 1)
+        .read_to_end(&mut bytes)
+        .ok()?;
+    (bytes.len() as u64 <= limit).then_some(bytes)
+}
+
 fn unavailable() -> HostError {
     HostError::new("STORAGE_UNAVAILABLE", "Host discovery is unavailable")
 }

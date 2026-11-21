@@ -197,7 +197,7 @@ impl PlatformEffectExecutor for PlatformEffects {
                 ClientEffectAction::UpdaterInstall {} => {
                     // 此服务内部进行 InstallUpdate 授权与策略复核，真实安装成功才回执。
                     app.state::<updater::UpdateManager>()
-                        .install(&app)
+                        .install(&app, updater::InstallOrigin::HostEffect)
                         .await
                         .map_err(native_error)?;
                     ClientEffectResult::Installed {}
