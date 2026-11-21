@@ -1,6 +1,6 @@
 # Capture 容器 0.1
 
-本文定义原始录制和只读回放的容器、验证与恢复格式；任务语义见[流与操作](./stream-and-operations-v0.md#录制验证与回放)，独立 reader 验证入口见[测试](../testing.md#独立录制格式)。
+本文定义原始录制和只读回放的容器、验证与恢复格式；任务语义见[流与操作](./stream-and-operations-v0.md#录制验证与回放)，独立 reader 验证入口见[测试](../acceptance.md#独立录制格式)。
 
 ## 目录与记录
 

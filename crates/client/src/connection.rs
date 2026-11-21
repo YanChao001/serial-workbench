@@ -197,21 +197,29 @@ impl HostClient {
         Ok(process)
     }
 
-    /// The maintenance caller holds the local instance lock during verification.
-    pub async fn verify_local_shutdown_completed(&self) -> HostResult<()> {
-        let namespace = self.options.profile.join("host-v0");
-        let pin = self.raw.pin.clone();
-        let epoch = self.raw.discovery.instance_epoch;
-        tokio::task::spawn_blocking(move || {
-            local::shutdown::verify_completed_shutdown(&namespace, &pin, epoch)
-        })
-        .await
-        .map_err(|_| {
-            HostError::new(
-                "STORAGE_UNAVAILABLE",
-                "Cannot read Host shutdown completion",
-            )
-        })?
+    /// 维护调用方持有本机实例锁，并在阻塞任务中验证关停回执。
+    pub fn verify_local_shutdown_completed(&self) -> HostResult<()> {
+        local::shutdown::verify_completed_shutdown(
+            &self.options.profile.join("host-v0"),
+            &self.raw.pin,
+            self.raw.discovery.instance_epoch,
+        )
+    }
+
+    /// 持有实例锁时核对关停回执，并持久化实际 Windows 退出结果。
+    #[cfg(windows)]
+    pub fn verify_local_shutdown_exit(
+        &self,
+        process: &local::LocalHostProcess,
+        timeout: Duration,
+    ) -> HostResult<()> {
+        local::shutdown::verify_shutdown_process_exit(
+            &self.options.profile.join("host-v0"),
+            &self.raw.pin,
+            self.raw.discovery.instance_epoch,
+            process,
+            timeout,
+        )
     }
 
     /// Reattach using the same private identity. Never start a Host or replay a business request.

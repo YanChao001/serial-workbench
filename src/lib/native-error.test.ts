@@ -85,6 +85,7 @@ describe("native error presentation", () => {
     ["UNSUPPORTED_CAPABILITY", "errors.UNSUPPORTED"],
     ["ACCESS_DENIED", "nativeError.accessDenied"],
     ["PERMISSION_DENIED", "nativeError.permissionDenied"],
+    ["UPDATE_HOST_RECOVERY_REQUIRED", "updates.hostRecoveryRequired"],
   ] as const)("presents %s with its stable localized message", (code, key) => {
     const error = { code, message: "unverified payload details" };
     expect(nativeErrorText(error, createTranslator(en))).toBe(en[key]);

@@ -2,6 +2,7 @@
 use super::node_queries::QueryAuthority;
 use super::*;
 use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
+use serial_workbench_core::NODE_FILE_RESULT_KEY;
 
 pub(super) struct ActionAuthority {
     host: Host,

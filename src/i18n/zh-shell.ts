@@ -81,6 +81,8 @@ export const zhShell = {
     "暂无更新信息，请稍后重试，或从版本记录查看安装包。",
   "updates.platformUnavailable":
     "暂无适合当前系统和安装方式的更新包，请查看版本记录。",
+  "updates.hostRecoveryRequired":
+    "请退出并重新打开当前安装的串口工作台，然后重新检查更新。",
   "updates.endpoint": "更新来源",
   "updates.endpointDisabled": "尚未启用自动更新",
   "updates.keyMissing": "更新验证尚未配置",

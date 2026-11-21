@@ -1,6 +1,6 @@
 # Serial Workbench
 
-跨平台串口工作台。独立 Rust Host 管理串口、会话与录制，Tauri 桌面、CLI 和 MCP 共用同一后端。支持 Text/HEX 收发、文件发送、录制与只读回放、工作区及共享设置。Node 扩展的开发状态、浏览器与 LAN 计划见[路线与进度](./docs/plan.md)。
+跨平台串口工作台。独立 Rust Host 管理串口、会话与录制，Tauri 桌面、CLI 和 MCP 共用同一后端。支持 Text/HEX 收发、文件发送、录制与只读回放、工作区及共享设置。通过可信 Node 插件扩展能力，配对后可从浏览器访问或在局域网共享串口。 [路线与进度](./docs/plan.md)
 
 [English](./README.en.md) · [工程文档](./docs/README.md) · [贡献](./CONTRIBUTING.md)
 

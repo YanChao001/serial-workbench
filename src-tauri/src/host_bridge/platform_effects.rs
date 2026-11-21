@@ -335,6 +335,7 @@ fn native_error(value: NativeError) -> HostError {
         ErrorCode::UpdatePlatformUnavailable => "UPDATE_PLATFORM_UNAVAILABLE",
         ErrorCode::UpdateDownloadFailed => "UPDATE_DOWNLOAD_FAILED",
         ErrorCode::UpdateInstallFailed => "UPDATE_INSTALL_FAILED",
+        ErrorCode::UpdateHostRecoveryRequired => "UPDATE_HOST_RECOVERY_REQUIRED",
         ErrorCode::WindowError => "WINDOW_ERROR",
         ErrorCode::Internal => "INTERNAL",
     };

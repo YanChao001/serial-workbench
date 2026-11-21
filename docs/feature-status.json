@@ -2734,8 +2734,11 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
-        "evidence": []
+        "status": "in-progress",
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/51",
+          "https://github.com/YanChao001/serial-workbench/pull/52"
+        ]
       },
       "hardware": {
         "status": "not-started",

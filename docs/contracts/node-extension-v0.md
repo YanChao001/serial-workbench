@@ -254,4 +254,4 @@ Host动作的`task.progress.report({completed,unit,total?})`复用Operation进�
 | 浏览器断线、GUI 关页、A Host 失联       | 分别验证视图释放、后台继续，以及 interactive 租约到期 / independent 已接纳任务继续，不能把关页当断开 Host。            |
 | 三平台离线安装与加载                    | 正式包完整，固定 runtime 通过校验，无下载或安装钩子，无 PATH 依赖。                                                    |
 
-M2 三个正式参考包的交付顺序见[当前路线](../plan.md#当前执行与下一步)。v1 冻结条件见[M3 契约冻结](../testing.md#m3-契约冻结)。
+三个签名参考包见 [SDK 示例](../../packages/plugin-sdk/README.md)。交付证据见[验证基线](../plan.md#验证基线)，v1 冻结条件见[M3 契约冻结](../acceptance.md#m3-契约冻结)。

@@ -576,8 +576,11 @@ fn open_peer_process(stream: &LocalStream, access: u32) -> HostResult<(u32, Owne
     }
 }
 
-/// Stable handle to the named pipe server process, acquired before its Host proof.
-pub struct LocalHostProcess(OwnedHandle);
+/// 命名管道认证期间取得的稳定进程句柄。
+pub struct LocalHostProcess {
+    handle: OwnedHandle,
+    pid: u32,
+}
 
 fn process_creation_time(process: HANDLE) -> HostResult<u64> {
     let mut created = FILETIME::default();
@@ -594,37 +597,6 @@ pub(crate) fn current_process_creation_time() -> HostResult<u64> {
     process_creation_time(unsafe { GetCurrentProcess() })
 }
 
-pub(crate) fn wait_for_recorded_process_exit(
-    pid: u32,
-    created: u64,
-    timeout: Duration,
-) -> HostResult<()> {
-    if pid == 0 {
-        return Err(unobserved_shutdown());
-    }
-    let handle = unsafe {
-        OpenProcess(
-            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZATION_SYNCHRONIZE,
-            0,
-            pid,
-        )
-    };
-    if handle.is_null() {
-        return if io::Error::last_os_error().raw_os_error() == Some(ERROR_INVALID_PARAMETER as i32)
-        {
-            Ok(())
-        } else {
-            Err(unobserved_shutdown())
-        };
-    }
-    let process = LocalHostProcess(unsafe { OwnedHandle::from_raw_handle(handle) });
-    // PID 可复用，只有创建时间与回执一致的进程属于该次 Host 启动。
-    if process_creation_time(process.0.as_raw_handle())? != created {
-        return Ok(());
-    }
-    process.wait_for_clean_exit(timeout)
-}
-
 fn unobserved_shutdown() -> HostError {
     HostError::new(
         "SHUTDOWN_INCOMPLETE",
@@ -633,6 +605,38 @@ fn unobserved_shutdown() -> HostError {
 }
 
 impl LocalHostProcess {
+    pub(crate) fn reopen(pid: u32, created: u64) -> HostResult<Option<Self>> {
+        if pid == 0 {
+            return Err(unobserved_shutdown());
+        }
+        let handle = unsafe {
+            OpenProcess(
+                PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZATION_SYNCHRONIZE,
+                0,
+                pid,
+            )
+        };
+        if handle.is_null() {
+            return if io::Error::last_os_error().raw_os_error()
+                == Some(ERROR_INVALID_PARAMETER as i32)
+            {
+                Ok(None)
+            } else {
+                Err(unobserved_shutdown())
+            };
+        }
+        let process = Self {
+            handle: unsafe { OwnedHandle::from_raw_handle(handle) },
+            pid,
+        };
+        Ok(process.matches(pid, created)?.then_some(process))
+    }
+
+    pub(crate) fn matches(&self, pid: u32, created: u64) -> HostResult<bool> {
+        // PID 可复用，创建时间绑定实际的旧进程。
+        Ok(self.pid == pid && process_creation_time(self.handle.as_raw_handle())? == created)
+    }
+
     pub fn observe(stream: &LocalStream, expected_pid: u32) -> HostResult<Self> {
         if !matches!(stream, LocalStream::Client(_)) {
             return Err(denied());
@@ -647,22 +651,22 @@ impl LocalHostProcess {
                 "The named pipe server process changed before maintenance",
             ));
         }
-        Ok(Self(process))
+        Ok(Self {
+            handle: process,
+            pid,
+        })
     }
 
-    pub fn wait_for_clean_exit(&self, timeout: Duration) -> HostResult<()> {
+    pub(crate) fn wait_for_exit(&self, timeout: Duration) -> HostResult<u32> {
         let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX - 1)) as u32;
-        let process = self.0.as_raw_handle();
+        let process = self.handle.as_raw_handle();
         match unsafe { WaitForSingleObject(process, timeout_ms) } {
             WAIT_OBJECT_0 => {
                 let mut code = 0;
-                if unsafe { GetExitCodeProcess(process, &mut code) } == 0 || code != 0 {
-                    return Err(HostError::new(
-                        "SHUTDOWN_INCOMPLETE",
-                        "The old Host has no successful process exit",
-                    ));
+                if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
+                    return Err(unobserved_shutdown());
                 }
-                Ok(())
+                Ok(code)
             }
             WAIT_TIMEOUT => Err(HostError::new(
                 "HOST_STOP_TIMEOUT",

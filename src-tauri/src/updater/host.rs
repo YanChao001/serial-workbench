@@ -10,6 +10,13 @@ use crate::error::{ErrorCode, NativeError};
 const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) fn install_error(error: HostError) -> NativeError {
+    if error.code == "SHUTDOWN_INCOMPLETE" {
+        return NativeError::operation(
+            ErrorCode::UpdateHostRecoveryRequired,
+            "Restart Serial Workbench from the current installation, then check for updates again",
+            error,
+        );
+    }
     NativeError::operation(
         ErrorCode::UpdateInstallFailed,
         "Cannot confirm local Host shutdown before installing the update",
@@ -48,15 +55,17 @@ pub(super) async fn stop_and_reserve(profile: &Path) -> HostResult<PrivateFileLo
         let namespace = profile.join("host-v0");
         match inspect_local_host(move || reserve_host_instance(&namespace)).await {
             Ok(reservation) => {
-                client.verify_local_shutdown_completed().await?;
-                #[cfg(windows)]
-                inspect_local_host(move || {
-                    process.wait_for_clean_exit(
+                return inspect_local_host(move || {
+                    #[cfg(not(windows))]
+                    client.verify_local_shutdown_completed()?;
+                    #[cfg(windows)]
+                    client.verify_local_shutdown_exit(
+                        &process,
                         deadline.saturating_duration_since(tokio::time::Instant::now()),
-                    )
+                    )?;
+                    Ok(reservation)
                 })
-                .await?;
-                return Ok(reservation);
+                .await;
             }
             Err(error) if error.code == "HOST_BUSY" => {}
             Err(error) => return Err(error),
@@ -150,12 +159,18 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn desktop_install_waits_for_the_actual_windows_host_process() {
-        check_windows_process_exit(false).await;
-        check_windows_process_exit(true).await;
+        check_windows_process_exit(false, 0, false).await;
+        check_windows_process_exit(true, 0, false).await;
+        check_windows_process_exit(false, 7, false).await;
+        check_windows_process_exit(false, 0, true).await;
     }
 
     #[cfg(windows)]
-    async fn check_windows_process_exit(shutdown_before_prepare: bool) {
+    async fn check_windows_process_exit(
+        shutdown_before_prepare: bool,
+        expected_exit: i32,
+        cancel_preparation: bool,
+    ) {
         let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let profile = directory.path().to_path_buf();
         let mut child = tokio::process::Command::new(std::env::current_exe().unwrap());
@@ -166,6 +181,7 @@ mod tests {
                 "updater::host::tests::desktop_update_windows_host_child",
             ])
             .env("SWB_TEST_UPDATER_HOST_CHILD_PROFILE", &profile)
+            .env("SWB_TEST_UPDATER_HOST_EXIT", expected_exit.to_string())
             .creation_flags(0x0800_0000)
             .kill_on_drop(true)
             .spawn()
@@ -182,7 +198,6 @@ mod tests {
         }
         let observer = HostClient::connect(options).await.unwrap();
         let old_epoch = observer.local_instance().1;
-        let process = observer.observe_local_host_process().await.unwrap();
         if shutdown_before_prepare {
             observer.request_shutdown(None).await.unwrap();
             wait_for_test_marker(&profile.join("settled")).await;
@@ -205,27 +220,62 @@ mod tests {
         })
         .await
         .unwrap();
-        assert_eq!(
-            process
-                .wait_for_clean_exit(Duration::ZERO)
-                .unwrap_err()
-                .code,
-            "HOST_STOP_TIMEOUT"
-        );
         assert!(child.try_wait().unwrap().is_none());
         assert!(!prepare.is_finished());
+        if cancel_preparation {
+            let pending = profile.join(format!("host-v0/shutdown-exit-{old_epoch}.json"));
+            wait_for_test_marker(&pending).await;
+            prepare.abort();
+            assert!(
+                prepare
+                    .await
+                    .err()
+                    .expect("cancelled preparation")
+                    .is_cancelled()
+            );
+            assert!(serial_workbench_ipc::profile_has_running_host(&profile).unwrap());
+            std::fs::write(profile.join("allow-exit"), []).unwrap();
+            assert!(child.wait().await.unwrap().success());
+            wait_until_profile_idle(&profile).await;
+            drop(stop_and_reserve(&profile).await.unwrap());
+            eprintln!(
+                "windows_update host_pid={pid} old_epoch={old_epoch} cancellation_retained_instance_lock=true"
+            );
+            return;
+        }
         std::fs::write(profile.join("allow-exit"), []).unwrap();
-        let reserved = prepare.await.unwrap().unwrap();
-        assert!(child.try_wait().unwrap().unwrap().success());
-        assert!(matches!(
-            HostServer::bind(&profile).await,
-            Err(error) if error.code == "HOST_BUSY"
-        ));
-        drop(reserved);
+        let outcome = prepare.await.unwrap();
+        assert_eq!(
+            child.try_wait().unwrap().unwrap().code(),
+            Some(expected_exit)
+        );
+        drop(child);
+        drop(observer);
+        if expected_exit == 0 {
+            let reserved = outcome.unwrap();
+            assert!(matches!(
+                HostServer::bind(&profile).await,
+                Err(error) if error.code == "HOST_BUSY"
+            ));
+            drop(reserved);
+            drop(stop_and_reserve(&profile).await.unwrap());
+        } else {
+            let first = outcome.err().expect("nonzero exit must refuse install");
+            let retry = stop_and_reserve(&profile)
+                .await
+                .err()
+                .expect("nonzero exit persists");
+            assert!(first.message.contains("status 7"));
+            assert_eq!(retry, first);
+            assert_eq!(
+                install_error(retry).code,
+                ErrorCode::UpdateHostRecoveryRequired
+            );
+        }
         let restarted = HostServer::bind(&profile).await.unwrap();
         assert!(restarted.identity().instance_epoch > old_epoch);
         eprintln!(
-            "windows_update host_pid={pid} old_epoch={old_epoch} idle_retry={shutdown_before_prepare} exited_before_install_ready=true"
+            "windows_update host_pid={pid} old_epoch={old_epoch} idle_retry={shutdown_before_prepare} exit_code={expected_exit} repeated_after_handles_closed=true"
         );
     }
 
@@ -243,6 +293,103 @@ mod tests {
         drop(server);
         std::fs::write(profile.join("settled"), []).unwrap();
         wait_for_test_marker(&profile.join("allow-exit")).await;
+        let code: i32 = std::env::var("SWB_TEST_UPDATER_HOST_EXIT")
+            .unwrap()
+            .parse()
+            .unwrap();
+        if code != 0 {
+            std::process::exit(code);
+        }
+    }
+
+    #[cfg(windows)]
+    #[tokio::test]
+    #[ignore = "requires actual previous and current bundled Windows Host executables"]
+    async fn desktop_install_recovers_through_current_host_after_legacy_shutdown() {
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let profile = directory.path();
+        let legacy_binary = std::env::var_os("SWB_TEST_UPDATER_LEGACY_HOST_BIN").unwrap();
+        let current_binary = std::env::var_os("SWB_TEST_UPDATER_CURRENT_HOST_BIN").unwrap();
+        let manual_start =
+            std::env::var("SWB_TEST_UPDATER_MANUAL_HOST_START").as_deref() == Ok("1");
+        let mut legacy = spawn_fixture_host(&legacy_binary, profile);
+        let mut options = ConnectOptions::new(
+            profile.to_path_buf(),
+            Id::try_from("update-legacy-verifier").unwrap(),
+            ClientKind::Desktop,
+        );
+        let previous = attach_fixture_host(&options).await;
+        let (host_id, old_epoch) = previous.local_instance();
+        let host_id = host_id.clone();
+        options.expected_host_id = Some(host_id.clone());
+        options.expected_host_executable = Some(std::path::PathBuf::from(&current_binary));
+        let blocked = stop_and_reserve(profile)
+            .await
+            .err()
+            .expect("legacy has no new receipt");
+        assert_eq!(
+            install_error(blocked).code,
+            ErrorCode::UpdateHostRecoveryRequired
+        );
+        assert!(
+            tokio::time::timeout(Duration::from_secs(10), legacy.wait())
+                .await
+                .unwrap()
+                .unwrap()
+                .success()
+        );
+        drop(previous);
+        assert!(!profile.join("host-v0/shutdown-complete.json").exists());
+        // 显式选择受 Windows Job 限制时的启动方式，保留独立桌面的自动启动用例。
+        let (recovered, mut manual_host, startup) = if manual_start {
+            let host = spawn_fixture_host(&current_binary, profile);
+            (attach_fixture_host(&options).await, Some(host), "manual")
+        } else {
+            (
+                HostClient::connect_or_start(options).await.unwrap(),
+                None,
+                "automatic",
+            )
+        };
+        let (recovered_id, recovered_epoch) = recovered.local_instance();
+        assert_eq!(recovered_id, &host_id);
+        assert!(recovered_epoch > old_epoch);
+        drop(stop_and_reserve(profile).await.unwrap());
+        drop(stop_and_reserve(profile).await.unwrap());
+        if let Some(host) = &mut manual_host {
+            assert!(host.try_wait().unwrap().unwrap().success());
+        }
+        eprintln!(
+            "windows_legacy_update startup={startup} old_epoch={old_epoch} recovered_epoch={recovered_epoch} current_host_settled=true"
+        );
+    }
+
+    #[cfg(windows)]
+    fn spawn_fixture_host(binary: &std::ffi::OsStr, profile: &Path) -> tokio::process::Child {
+        tokio::process::Command::new(binary)
+            .arg("--profile")
+            .arg(profile)
+            .creation_flags(0x0800_0000)
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap()
+    }
+
+    #[cfg(windows)]
+    async fn attach_fixture_host(options: &ConnectOptions) -> HostClient {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                match HostClient::connect(options.clone()).await {
+                    Ok(client) => break client,
+                    Err(error)
+                        if matches!(error.code.as_str(), "HOST_BUSY" | "STORAGE_UNAVAILABLE") => {}
+                    Err(error) => panic!("Host fixture did not attach: {error:?}"),
+                }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        })
+        .await
+        .expect("Host fixture did not attach before the deadline")
     }
 
     #[cfg(windows)]
@@ -254,6 +401,17 @@ mod tests {
         })
         .await
         .unwrap_or_else(|_| panic!("Host test marker missing: {}", path.display()));
+    }
+
+    #[cfg(windows)]
+    async fn wait_until_profile_idle(profile: &Path) {
+        tokio::time::timeout(Duration::from_secs(10), async {
+            while serial_workbench_ipc::profile_has_running_host(profile).unwrap() {
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .expect("the detached observation must release the instance lock");
     }
 
     #[tokio::test]
@@ -268,7 +426,10 @@ mod tests {
         ));
         assert!(!profile.join("host-v0/state.sqlite3").exists());
         drop(reserved);
-        assert!(HostServer::bind(&profile).await.is_ok());
+        assert!(!serial_workbench_ipc::profile_has_host_state(&profile).unwrap());
+        let host = HostServer::bind(&profile).await.unwrap();
+        assert!(serial_workbench_ipc::profile_has_host_state(&profile).unwrap());
+        drop(host);
     }
 
     #[tokio::test]
