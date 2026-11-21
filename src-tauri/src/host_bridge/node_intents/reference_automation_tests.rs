@@ -5,6 +5,9 @@ use serde_json::{Value, json};
 use std::sync::atomic::Ordering;
 use tokio::time::timeout;
 
+#[path = "reference_automation_long_script.rs"]
+mod long_script;
+
 const RUN: &str = "swb.reference.automation.run";
 const MCP_RUN: &str = "swb_swb_x2E_reference_x2E_automation_x2E_run";
 const CAPTURED_RX: &[u8] = b"one\ntwo\nwrong\nwait\nlate\nafter-late\ncancel\nqueued\nafter\n";
@@ -114,7 +117,7 @@ async fn native_automation_uses_exact_responses_and_keeps_capture_running() {
                 "main",
                 desktop.generation,
                 Id::try_from("virtual:echo").unwrap(),
-                OpenParams { configuration: SerialConfiguration::default(), binding: None },
+                OpenParams { transport_params: None, configuration: SerialConfiguration::default(), binding: None },
             )
             .await
             .unwrap();
@@ -126,6 +129,7 @@ async fn native_automation_uses_exact_responses_and_keeps_capture_running() {
             session_epoch: Some(opened.session_epoch),
         };
         let capture_path = profile.join("automation-continuity.swbcap");
+        let capture_start = automation_source_position(&bridge, client, &session).await;
         let (capture, live, _) = start_reference_capture(&bridge, &desktop, &session, &capture_path).await;
 
         let matched = invoke(
@@ -254,8 +258,17 @@ async fn native_automation_uses_exact_responses_and_keeps_capture_running() {
         wait_reference_rx_end(&bridge, client, &session, partial_rx_end + b"queued\n".len() as u64).await;
         timeout(Duration::from_secs(12), competing_mcp.cancel())
             .await.expect("Competing MCP did not exit").unwrap();
-        tx(&bridge, client, &session, b"after\n").await;
-        let end = wait_reference_rx_end(&bridge, client, &session, CAPTURED_RX.len() as u64).await;
+        let final_tx = submit_tx(&bridge, client, &session, b"after\n").await;
+        let end = wait_automation_capture(
+            &bridge,
+            client,
+            &session,
+            &live,
+            capture_start,
+            &final_tx,
+            CAPTURED_RX.len() as u64,
+        )
+        .await;
         let stopped = invoke(
             &bridge,
             client,
@@ -282,6 +295,74 @@ async fn native_automation_uses_exact_responses_and_keeps_capture_running() {
         eprintln!("reference_automation matched_steps=2 mismatch_stopped=true timeout_stopped=true late_reply_attributed=true cancellation_settled=true competing_mcp_after_release=true capture_rx_bytes={} source_continuous=true mcp_step=true cli_same_result=true", CAPTURED_RX.len());
     })
     .await;
+}
+
+async fn automation_source_position(
+    bridge: &DesktopHostBridge,
+    client: &AttachResult,
+    session: &Target,
+) -> U64 {
+    let RpcResult::Query(QueryResult::StreamCursor(position)) =
+        read_reference_raw(bridge, client, session, "stream.cursor", json!({})).await
+    else {
+        panic!("Missing automation recording start cursor");
+    };
+    position.cursor.position
+}
+
+async fn wait_automation_capture(
+    bridge: &DesktopHostBridge,
+    client: &AttachResult,
+    session: &Target,
+    live: &ObjectRef,
+    capture_start: U64,
+    final_tx: &TxReceipt,
+    rx_end: u64,
+) -> StreamReadResult {
+    assert_eq!(final_tx.outcome, TxOutcome::Accepted, "{final_tx:?}");
+    let end = wait_reference_page(bridge, client, session, |page| {
+        page.events.iter().any(|event| {
+            matches!(&event.payload, RawPayload::Rx(rx) if rx.byte_end.get() == rx_end)
+        }) && page.events.iter().any(|event| {
+            matches!(&event.payload, RawPayload::Tx(receipt) if receipt.operation_id == final_tx.operation_id)
+        })
+    })
+    .await;
+    // 单会话录制从启动游标之后开始。源读者已看到的事件仍需由录制读者写入。
+    let required = end
+        .next_event_seq
+        .get()
+        .checked_sub(1)
+        .and_then(|last| last.checked_sub(capture_start.get()))
+        .expect("Automation source cursor moved backwards");
+    let target = resource_target(live);
+    let mut written = 0;
+    timeout(Duration::from_secs(5), async {
+        loop {
+            let mut request = host_query(client, "capture.status", json!({"captureRef":live}));
+            request.target = target.clone();
+            let RpcResult::Query(QueryResult::CaptureStatus(status)) = success(
+                bridge
+                    .request("main", RpcRequest::Query(request))
+                    .await
+                    .unwrap(),
+            ) else {
+                panic!("Missing automation capture status");
+            };
+            assert_eq!(status.summary.state, CaptureState::Recording, "{status:?}");
+            written = status.summary.watermarks.written.get();
+            if written >= required {
+                break;
+            }
+            tokio::time::sleep(Duration::from_millis(25)).await;
+        }
+    })
+    .await
+    .unwrap_or_else(|_| panic!("Automation capture wrote {written} of {required} source records"));
+    eprintln!(
+        "reference_automation_capture_ready source_records={required} written_records={written}"
+    );
+    end
 }
 
 async fn queue_mcp_write(
@@ -403,13 +484,12 @@ async fn verify_late_response(
     end
 }
 
-async fn verify_public_automation(
+async fn authorize_automation_clients(
     bridge: &DesktopHostBridge,
     desktop: &DesktopAttachment,
     profile: &Path,
     session: &Target,
-    start_event_seq: U64,
-) {
+) -> Id {
     let mcp_id = Id::try_from("serial-workbench-mcp").unwrap();
     let cli_id = Id::try_from("serial-workbench-cli").unwrap();
     let mcp = HostClient::connect(ConnectOptions::new(
@@ -448,7 +528,17 @@ async fn verify_public_automation(
     let mcp_actor = mcp.attachment().actor_id.clone();
     mcp.close().await.unwrap();
     cli.close().await.unwrap();
+    mcp_actor
+}
 
+async fn verify_public_automation(
+    bridge: &DesktopHostBridge,
+    desktop: &DesktopAttachment,
+    profile: &Path,
+    session: &Target,
+    start_event_seq: U64,
+) {
+    let mcp_actor = authorize_automation_clients(bridge, desktop, profile, session).await;
     let sdk = start_reference_mcp(profile).await;
     let reply = timeout(
         Duration::from_secs(10),

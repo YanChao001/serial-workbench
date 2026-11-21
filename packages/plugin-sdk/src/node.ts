@@ -91,6 +91,47 @@ export interface NodeQueries {
   ): void;
 }
 
+export interface NodeConfiguration {
+  registerQuery: NodeQueries["register"];
+  registerAction: NodeActions["register"];
+}
+
+export interface TransportOpenOptions {
+  readonly params: Readonly<Call["params"]>;
+  readonly signal: AbortSignal;
+}
+
+export interface TransportReadOptions {
+  readonly maxBytes: number;
+  readonly waitMs: number;
+  readonly signal: AbortSignal;
+}
+
+export interface TransportWriteOptions {
+  readonly bytes: Uint8Array;
+  readonly waitMs: number;
+  readonly signal: AbortSignal;
+}
+
+export interface TransportConnection {
+  /** 最多返回 maxBytes 字节。空数组表示本次没有数据，null 表示输入已结束。 */
+  read(
+    options: TransportReadOptions,
+  ): Uint8Array | null | Promise<Uint8Array | null>;
+  /** 返回已确认接纳的连续前缀字节数。无法确认接纳时抛出错误。 */
+  write(options: TransportWriteOptions): number | Promise<number>;
+  /** 等待底层连接实际关闭，可重复调用。 */
+  close(): void | Promise<void>;
+}
+
+export type TransportOpenHandler = (
+  options: TransportOpenOptions,
+) => TransportConnection | Promise<TransportConnection>;
+
+export interface NodeTransports {
+  register(actionId: Call["actionId"], open: TransportOpenHandler): void;
+}
+
 export interface NodeContributions {
   register(selection: NodeContributionSelection): void;
 }
@@ -116,7 +157,11 @@ export interface NodeContext {
   onDispose(cleanup: NodeDispose): void;
   readonly contributions: NodeContributions;
   readonly actions: NodeActions;
+  /** 按已签名的解析器声明登记会话动作。 */
+  readonly parsers: NodeActions;
   readonly queries: NodeQueries;
+  readonly configuration: NodeConfiguration;
+  readonly transports: NodeTransports;
   readonly workers: NodeWorkers;
 }
 

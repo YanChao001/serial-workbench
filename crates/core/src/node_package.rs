@@ -1,7 +1,7 @@
 //! Node 正式包的公共元数据；执行、来源信任和文件系统责任由 Host 持有。
 use crate::{
-    ActionKind, ActionSpec, Digest, HostError, HostResult, Id, ProtocolVersion, ResourceKind,
-    SchemaObject, SchemaValue, U64,
+    ActionKind, ActionSpec, Digest, ExecutionLocation, HostError, HostResult, Id, ProtocolVersion,
+    ResourceKind, SchemaObject, SchemaValue, U64,
 };
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
@@ -589,6 +589,16 @@ impl NodePackageManifest {
             }
             Ok(())
         };
+        if self.contributes.parsers.iter().any(|spec| {
+            !matches!(spec.target_kinds.as_slice(), [kind] if kind.as_str() == "session")
+                || spec.execution_location != ExecutionLocation::ResourceHost
+                || !spec
+                    .permissions
+                    .iter()
+                    .any(|permission| permission == "content.read")
+        }) {
+            return Err(invalid_metadata());
+        }
         let groups: [(&[ActionSpec], Option<ActionKind>); 5] = [
             (&self.contributes.actions, Some(ActionKind::Action)),
             (&self.contributes.queries, Some(ActionKind::Query)),

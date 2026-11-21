@@ -1,0 +1,74 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.reference.theme",
+  "version": "0.1.0",
+  "displayName": "Bench Teal",
+  "description": "A signed accent palette for the serial workbench.",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["metadata.read"],
+        "targetKinds": ["host"]
+      }
+    ],
+    "executionPurposes": ["theme"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [],
+    "queries": [],
+    "transports": [],
+    "parsers": [],
+    "views": [],
+    "themes": [
+      {
+        "id": "swb.reference.theme.bench-teal",
+        "path": "themes/bench-teal.json",
+        "resourceSchema": {
+          "type": "object",
+          "properties": {
+            "accent": {
+              "type": "string",
+              "pattern": "^#[0-9A-Fa-f]{6}$"
+            }
+          },
+          "required": ["accent"],
+          "additionalProperties": false
+        },
+        "configurationActionId": "swb.reference.theme.configuration"
+      }
+    ],
+    "configuration": [
+      {
+        "actionId": "swb.reference.theme.configuration",
+        "kind": "query",
+        "inputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "additionalProperties": false
+        },
+        "targetKinds": ["host"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "none",
+        "revealTarget": {
+          "pageId": "settings"
+        }
+      }
+    ]
+  },
+  "dataSchemaVersion": "1"
+}

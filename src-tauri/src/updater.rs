@@ -29,7 +29,7 @@ pub const UPDATE_EVENT: &str = "app://update-progress";
 
 pub(crate) enum InstallOrigin {
     DesktopSettings,
-    HostEffect,
+    HostEffect(crate::host_bridge::UpdatePreparation),
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -373,19 +373,28 @@ impl UpdateManager {
             None,
         )
         .await?;
-        let host_reservation = if matches!(origin, InstallOrigin::DesktopSettings) {
-            let paths = app.state::<DataPaths>().inner().clone();
-            let expected_policy = policy.clone();
-            blocking::run(move || require_unchanged_policy(load_policy(&paths)?, &expected_policy))
-                .await?;
-            let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
-            let reservation = host::stop_and_reserve(bridge.local_profile())
-                .await
-                .map_err(host::install_error)?;
-            Some(reservation)
-        } else {
-            // The authenticated Host effect is already inside its own settlement barrier.
-            None
+        let paths = app.state::<DataPaths>().inner().clone();
+        let expected_policy = policy.clone();
+        blocking::run(move || require_unchanged_policy(load_policy(&paths)?, &expected_policy))
+            .await?;
+        let host_reservation = match origin {
+            InstallOrigin::DesktopSettings => {
+                let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
+                let reservation = host::stop_and_reserve(bridge.local_profile())
+                    .await
+                    .map_err(host::install_error)?;
+                Some(reservation)
+            }
+            InstallOrigin::HostEffect(preparation) => {
+                preparation.quiesce().await.map_err(|error| {
+                    NativeError::operation(
+                        ErrorCode::UpdateInstallFailed,
+                        "Cannot confirm Host preparation before installing the update",
+                        error,
+                    )
+                })?;
+                None
+            }
         };
         self.event(app, operation_id, UpdateStage::Installing, None, None);
         let paths = app.state::<DataPaths>().inner().clone();

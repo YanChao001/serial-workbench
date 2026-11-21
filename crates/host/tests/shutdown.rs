@@ -404,8 +404,11 @@ async fn wait_as(
 }
 
 struct ClientShutdownFixture {
-    _profile: tempfile::TempDir,
+    profile: tempfile::TempDir,
     host: Host,
+    store: Store,
+    auth: AuthService,
+    control_actor: AuthenticatedActor,
     executor: HostClient,
     caller: HostClient,
     target: Target,
@@ -489,8 +492,11 @@ impl ClientShutdownFixture {
             first_caller.attachment().actor_id
         );
         Self {
-            _profile: profile,
+            profile,
             host,
+            store,
+            auth,
+            control_actor,
             executor,
             caller,
             target: registration.target,
@@ -534,6 +540,20 @@ impl ClientShutdownFixture {
         .expect("real control transport must deliver the fixed client effect")
     }
 
+    async fn wait_for_terminal(&self, id: &Id) -> Operation {
+        tokio::time::timeout(Duration::from_secs(5), async {
+            loop {
+                let operation = self.store.get(&self.control_actor, id).unwrap();
+                if support::terminal(operation.state) {
+                    break operation;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap()
+    }
+
     async fn finish(self) {
         self.stop.send(()).unwrap();
         tokio::time::timeout(Duration::from_secs(6), self.running)
@@ -544,6 +564,48 @@ impl ClientShutdownFixture {
     }
 }
 
+fn operation_call(
+    query: Query,
+    request_context: ContextToken,
+    execution_mode: Option<ExecutionMode>,
+) -> Call {
+    Call {
+        protocol_version: query.protocol_version,
+        host_id: query.host_id,
+        instance_epoch: query.instance_epoch,
+        actor_id: query.actor_id,
+        request_id: query.request_id,
+        request_context,
+        action_id: query.action_id,
+        target: query.target,
+        params: query.params,
+        reveal_target: query.reveal_target,
+        expected_revision: None,
+        lease_id: None,
+        execution_mode,
+    }
+}
+
+async fn invoke_client_operation(
+    client: &HostClient,
+    query: Query,
+    execution_mode: Option<ExecutionMode>,
+) -> Operation {
+    let call = operation_call(
+        query,
+        client.attachment().request_context.clone(),
+        execution_mode,
+    );
+    let reply = client.request(RpcRequest::Invoke(call)).await.unwrap();
+    let RpcReply::Success { result, .. } = reply else {
+        panic!("real Host action was not admitted: {reply:?}")
+    };
+    let RpcResult::Operation(accepted) = *result else {
+        panic!("expected persistent action owner: {result:?}")
+    };
+    accepted.operation
+}
+
 #[tokio::test]
 async fn dispatched_native_action_keeps_real_delivery_evidence_until_receipt_and_retry() {
     let f = ClientShutdownFixture::new(ClientCapability::ClipboardWriteText).await;
@@ -551,46 +613,22 @@ async fn dispatched_native_action_keeps_real_delivery_evidence_until_receipt_and
         ClientCapability::ClipboardWriteText,
         json!({"text":"shutdown evidence"}),
     );
-    let call = Call {
-        protocol_version: query.protocol_version,
-        host_id: query.host_id,
-        instance_epoch: query.instance_epoch,
-        actor_id: query.actor_id,
-        request_id: query.request_id,
-        request_context: f.caller.attachment().request_context.clone(),
-        action_id: query.action_id,
-        target: query.target,
-        params: query.params,
-        reveal_target: query.reveal_target,
-        expected_revision: None,
-        lease_id: None,
-        execution_mode: None,
-    };
-    let reply = f.caller.request(RpcRequest::Invoke(call)).await.unwrap();
-    let RpcReply::Success { result, .. } = reply else {
-        panic!("real Host action was not admitted: {reply:?}")
-    };
-    let RpcResult::Operation(accepted) = *result else {
-        panic!("expected persistent action owner: {result:?}")
-    };
+    let accepted = invoke_client_operation(&f.caller, query, None).await;
     let request = f.delivery().await;
     assert!(!request.action.capability().is_query());
-    assert_eq!(
-        request.operation_id.as_ref(),
-        Some(&accepted.operation.operation_id)
-    );
+    assert_eq!(request.operation_id.as_ref(), Some(&accepted.operation_id));
     let mut owner_query = f.query(ClientCapability::WindowRead, json!({}));
     owner_query.action_id = support::id("operation.get");
     owner_query.target = Target {
         host_id: request.host_id.clone(),
         kind: ResourceKind::try_from("operation").unwrap(),
-        id: accepted.operation.operation_id.clone(),
+        id: accepted.operation_id.clone(),
         session_id: None,
         session_epoch: None,
     };
     owner_query.params = serde_json::from_value(
         serde_json::to_value(OperationGetParams::ById {
-            operation_id: accepted.operation.operation_id.clone(),
+            operation_id: accepted.operation_id.clone(),
             request_context: Some(f.caller.attachment().request_context.clone()),
         })
         .unwrap(),
@@ -660,6 +698,277 @@ async fn dispatched_native_action_keeps_real_delivery_evidence_until_receipt_and
         retry.completed,
         "a real receipt must permit a fresh barrier: {retry:?}"
     );
+}
+
+#[tokio::test]
+async fn update_preparation_preserves_capture_until_the_bound_desktop_consents() {
+    let mut f = ClientShutdownFixture::new(ClientCapability::UpdaterInstall).await;
+    let opened = f
+        .host
+        .devices()
+        .open(
+            &Target {
+                host_id: f.target.host_id.clone(),
+                kind: ResourceKind::try_from("device").unwrap(),
+                id: support::id("virtual:echo"),
+                session_id: None,
+                session_epoch: None,
+            },
+            OpenParams {
+                binding: None,
+                transport_params: None,
+                configuration: SerialConfiguration::default(),
+            },
+        )
+        .await
+        .unwrap();
+    let session = Target {
+        host_id: f.target.host_id.clone(),
+        kind: ResourceKind::try_from("session").unwrap(),
+        id: opened.session_id.clone(),
+        session_id: Some(opened.session_id),
+        session_epoch: Some(opened.session_epoch),
+    };
+    let recorder_id = support::id("shutdown-recorder");
+    let recorder = f.auth.authenticate(&recorder_id, None).unwrap().actor;
+    let credential =
+        serial_workbench_client::read_user_control_credential(f.profile.path()).unwrap();
+    let file_selector = f
+        .auth
+        .authenticate_user_control(&recorder_id, &credential)
+        .unwrap();
+    let destination = f
+        .host
+        .files()
+        .register(
+            RegisterFileParams {
+                path: f.profile.path().join("capture").to_str().unwrap().into(),
+                purpose: FilePurpose::CaptureTarget,
+            },
+            &file_selector,
+        )
+        .unwrap();
+    let capture_target = Target {
+        host_id: destination.host_id.clone(),
+        kind: destination.kind.clone(),
+        id: destination.id.clone(),
+        session_id: None,
+        session_epoch: None,
+    };
+    f.auth
+        .authorize(
+            &f.control_actor,
+            AuthorizeParams {
+                client_id: recorder_id,
+                permissions: vec![
+                    "metadata.read".into(),
+                    "content.read".into(),
+                    "workspace.modify".into(),
+                ],
+                targets: vec![session.clone(), capture_target.clone()],
+                expires_at: None,
+            },
+        )
+        .unwrap();
+    f.caller = f.caller.reconnect().await.unwrap();
+    let mut query = f.query(
+        ClientCapability::UpdaterInstall,
+        json!({"sessionRefs":[session],"targetRef":destination,"overflowPolicy":"stop"}),
+    );
+    query.actor_id = recorder.id().clone();
+    query.action_id = support::id("capture.start");
+    query.target = capture_target;
+    let capture = f
+        .host
+        .invoke(
+            &recorder,
+            operation_call(
+                query,
+                f.store.issue_context(&recorder).unwrap().token,
+                Some(ExecutionMode::Independent),
+            ),
+        )
+        .await
+        .unwrap();
+    let current_capture = || f.store.get(&recorder, &capture.operation_id).unwrap();
+    let active = tokio::time::timeout(Duration::from_secs(5), async {
+        loop {
+            let operation = current_capture();
+            if operation.result.is_some() || support::terminal(operation.state) {
+                break operation;
+            }
+            tokio::time::sleep(Duration::from_millis(10)).await;
+        }
+    })
+    .await
+    .unwrap();
+    assert_eq!(active.state, OperationState::Running, "{active:?}");
+    let Some(ActionResult::Reference(live)) = active.result else {
+        panic!("expected live capture evidence: {active:?}")
+    };
+
+    let updater = || f.query(ClientCapability::UpdaterInstall, json!({}));
+    let first = invoke_client_operation(&f.caller, updater(), None).await;
+    let delivery = f.delivery().await;
+    assert_eq!(current_capture().state, OperationState::Running);
+    assert_eq!(
+        delivery.action,
+        ClientEffectAction::UpdaterInstallPrepared {}
+    );
+    assert_eq!(delivery.operation_id.as_ref(), Some(&first.operation_id));
+
+    let ordinary = f
+        .caller
+        .request(update_preparation(&delivery, delivery.generation))
+        .await
+        .unwrap();
+    assert!(matches!(ordinary, RpcReply::Failure { .. }), "{ordinary:?}");
+    let other_control = f.executor.reconnect().await.unwrap();
+    let wrong_receiver = other_control
+        .request(update_preparation(&delivery, delivery.generation))
+        .await
+        .unwrap();
+    assert!(
+        matches!(wrong_receiver, RpcReply::Failure { .. }),
+        "{wrong_receiver:?}"
+    );
+    let stale = f
+        .executor
+        .request(update_preparation(&delivery, 2.into()))
+        .await
+        .unwrap();
+    assert!(matches!(stale, RpcReply::Failure { .. }), "{stale:?}");
+    let installed = || ClientEffectOutcome::Succeeded {
+        result: ClientEffectResult::Installed {},
+    };
+    let premature = f
+        .executor
+        .request(effect_receipt(&delivery, installed()))
+        .await
+        .unwrap();
+    assert!(
+        matches!(premature, RpcReply::Failure { .. }),
+        "{premature:?}"
+    );
+    assert_eq!(current_capture().state, OperationState::Running);
+
+    let queued = invoke_client_operation(&f.caller, updater(), None).await;
+    let queued_delivery = f.delivery().await;
+    assert_eq!(
+        queued_delivery.operation_id.as_ref(),
+        Some(&queued.operation_id)
+    );
+    let blocked = f
+        .executor
+        .request(update_preparation(&delivery, delivery.generation))
+        .await
+        .unwrap();
+    assert!(
+        matches!(blocked, RpcReply::Failure { error, .. } if error.code == "HOST_BUSY" && error.retryable)
+    );
+    assert_eq!(current_capture().state, OperationState::Running);
+    let queued_failure = f
+        .executor
+        .request(effect_receipt(
+            &queued_delivery,
+            ClientEffectOutcome::Failed {
+                error: HostError::new("UPDATE_BUSY", "Another update is pending"),
+            },
+        ))
+        .await
+        .unwrap();
+    assert_effect_acknowledged(queued_failure);
+    assert_eq!(
+        f.wait_for_terminal(&queued.operation_id).await.state,
+        OperationState::Failed
+    );
+
+    let declined = f
+        .executor
+        .request(effect_receipt(
+            &delivery,
+            ClientEffectOutcome::Failed {
+                error: HostError::new("USER_CANCELLED", "Update deferred"),
+            },
+        ))
+        .await
+        .unwrap();
+    assert_effect_acknowledged(declined);
+    let first_outcome = f.wait_for_terminal(&first.operation_id).await;
+    assert_eq!(first_outcome.state, OperationState::Failed);
+    assert_eq!(first_outcome.error.unwrap().code, "USER_CANCELLED");
+    assert_eq!(current_capture().state, OperationState::Running);
+
+    let second = invoke_client_operation(&f.caller, updater(), None).await;
+    let delivery = f.delivery().await;
+    assert_eq!(delivery.operation_id.as_ref(), Some(&second.operation_id));
+    let prepared = f
+        .executor
+        .request(update_preparation(&delivery, delivery.generation))
+        .await
+        .unwrap();
+    assert_effect_acknowledged(prepared);
+    let settled = current_capture();
+    assert_eq!(settled.state, OperationState::Succeeded, "{settled:?}");
+    let published = f
+        .host
+        .files()
+        .metadata(&live.result_ref, &recorder)
+        .unwrap();
+    assert_eq!(published.file_ref.id, live.result_ref.id);
+    assert!(published.file_ref.revision.is_some());
+    assert_eq!(
+        f.store
+            .get(&f.control_actor, &second.operation_id)
+            .unwrap()
+            .state,
+        OperationState::Running
+    );
+
+    let completed = f
+        .executor
+        .request(effect_receipt(&delivery, installed()))
+        .await
+        .unwrap();
+    assert_effect_acknowledged(completed);
+    let result = f.wait_for_terminal(&second.operation_id).await;
+    assert_eq!(result.state, OperationState::Succeeded, "{result:?}");
+    f.finish().await;
+}
+
+fn update_preparation(request: &ClientEffectRequest, generation: U64) -> RpcRequest {
+    RpcRequest::ClientReceipt(ClientReceiptSubmission::UpdatePreparation(
+        ClientUpdatePreparation {
+            host_id: request.host_id.clone(),
+            instance_epoch: request.instance_epoch,
+            client_target_id: request.client_target_id.clone(),
+            generation,
+            delivery_id: request.delivery_id.clone(),
+        },
+    ))
+}
+
+fn effect_receipt(request: &ClientEffectRequest, outcome: ClientEffectOutcome) -> RpcRequest {
+    RpcRequest::ClientReceipt(ClientReceiptSubmission::Effect(Box::new(
+        ClientEffectReceipt {
+            host_id: request.host_id.clone(),
+            instance_epoch: request.instance_epoch,
+            client_target_id: request.client_target_id.clone(),
+            generation: request.generation,
+            delivery_id: request.delivery_id.clone(),
+            outcome,
+        },
+    )))
+}
+
+fn assert_effect_acknowledged(reply: RpcReply) {
+    let RpcReply::Success { result, .. } = reply else {
+        panic!("correct Native receipt was rejected: {reply:?}")
+    };
+    assert!(matches!(
+        *result,
+        RpcResult::ClientEffectAcknowledged(ClientEffectAcknowledged { accepted: True })
+    ));
 }
 
 #[tokio::test]

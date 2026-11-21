@@ -324,6 +324,11 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
       "native_automation_uses_exact_responses_and_keeps_capture_running",
       "native-response",
     ],
+    [
+      "automation",
+      "native_automation_long_script_survives_caller_disconnect_and_settles_workers",
+      "native-long-script",
+    ],
   ]) {
     assert.ok(
       ci.includes(

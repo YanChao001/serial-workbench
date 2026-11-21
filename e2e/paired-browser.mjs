@@ -5,7 +5,7 @@ import { once } from "node:events";
 import { createWriteStream } from "node:fs";
 import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
@@ -21,7 +21,8 @@ assert.ok(
 const hostExecutable = resolve(hostPath);
 const output = resolve(outputPath);
 await mkdir(output, { recursive: true });
-const root = await mkdtemp(join(tmpdir(), "swb-browser-"));
+const temporary = resolve(tmpdir());
+const root = await mkdtemp(join(temporary, "swb-browser-"));
 const profile = join(root, "profile");
 const cli = async (...args) => {
   const { stdout } = await promisify(execFile)(
@@ -80,10 +81,21 @@ async function startAssistant(clientId) {
 }
 
 const frames = [];
+const rawBatches = [];
+let collectingRawEvidence = false;
 function recordWire(socket, direction) {
   socket.on(direction, ({ payload }) => {
     if (typeof payload !== "string") return;
     const { channel, requestId, body } = JSON.parse(payload);
+    if (
+      collectingRawEvidence &&
+      direction === "framereceived" &&
+      channel === "raw" &&
+      body.type === "rawBatch"
+    ) {
+      // Compare only the isolated Virtual Echo events in memory.
+      rawBatches.push(body.batch);
+    }
     // Only record message metadata. Exclude credentials, request context and serial payloads.
     frames.push({
       direction,
@@ -193,13 +205,34 @@ try {
     return sessions[0].target;
   }
 
+  collectingRawEvidence = true;
   async function echo(text) {
+    const start = rawBatches.length;
     await page.getByRole("textbox", { name: /发送草稿|Send draft/ }).fill(text);
     await page.getByRole("button", { name: /^(发送|Send)$/ }).click();
     const rx = page.locator('.workbench-stream-row[data-direction="rx"]');
     await expect(rx.filter({ hasText: text })).toHaveCount(1);
+    const bytes = Buffer.from(text).toString("base64");
+    const matching = () =>
+      rawBatches
+        .slice(start)
+        .flatMap(({ items, cursor, previousCursor }) =>
+          items
+            .filter(
+              ({ kind, event }) =>
+                kind === "source" &&
+                (event.kind === "tx" || event.kind === "rx") &&
+                event.payload.bytesBase64 === bytes,
+            )
+            .map(({ event }) => ({ event, cursor, previousCursor })),
+        );
+    await expect.poll(() => matching().length).toBe(2);
+    const events = matching();
+    assert.equal(events.filter(({ event }) => event.kind === "tx").length, 1);
+    assert.equal(events.filter(({ event }) => event.kind === "rx").length, 1);
+    return events;
   }
-  await echo("paired browser before reload");
+  const beforeReload = await echo("paired browser before reload");
   const original = await liveSession();
   await page
     .getByRole("button", { name: /保存当前布局|Save current layout/ })
@@ -218,7 +251,9 @@ try {
   // The saved layout restores the view. The user explicitly attaches it to the live port.
   await openMonitor.click();
   await expect(closed).toBeEnabled();
-  await echo("paired browser after reload");
+  const afterReload = await echo("paired browser after reload");
+  collectingRawEvidence = false;
+  rawBatches.length = 0;
   await page.screenshot({ path: join(output, "workbench.png") });
   assert.equal(
     frames.filter(({ action }) => action === "session.tx").length,
@@ -230,6 +265,84 @@ try {
     original,
     "reload changed the Host session or its epoch",
   );
+  const rawTargetPath = join(root, "raw-target.json");
+  const rawGrantPath = join(root, "raw-grant.json");
+  await writeFile(rawTargetPath, JSON.stringify(original), { flag: "wx" });
+  await writeFile(
+    rawGrantPath,
+    JSON.stringify({
+      clientId: context.clientId,
+      permissions: ["content.read"],
+      targets: [original],
+    }),
+    { flag: "wx" },
+  );
+  await cli("authorize", "--params-json", rawGrantPath);
+  const readParams = async (name, startEventSeq, maxEvents) => {
+    const path = join(root, name + ".json");
+    await writeFile(
+      path,
+      JSON.stringify({
+        sessionId: original.id,
+        sessionEpoch: original.sessionEpoch,
+        startEventSeq,
+        maxEvents,
+        maxBytes: "262144",
+      }),
+      { flag: "wx" },
+    );
+    return path;
+  };
+  const browserEvents = [...beforeReload, ...afterReload];
+  for (const { event, cursor, previousCursor } of browserEvents) {
+    assert.equal(event.hostId, original.hostId);
+    assert.equal(event.instanceEpoch, context.instanceEpoch);
+    assert.equal(event.sessionId, original.id);
+    assert.equal(event.sessionEpoch, original.sessionEpoch);
+    assert.equal(cursor.hostId, event.hostId);
+    assert.equal(cursor.instanceEpoch, event.instanceEpoch);
+    assert.deepEqual({ ...previousCursor, position: cursor.position }, cursor);
+    assert.ok(BigInt(previousCursor.position) < BigInt(event.eventSeq));
+    assert.ok(BigInt(event.eventSeq) <= BigInt(cursor.position));
+  }
+  const firstParams = await readParams(
+    "raw-first",
+    browserEvents[0].event.eventSeq,
+    "1",
+  );
+  let firstPage;
+  await expect
+    .poll(async () => {
+      try {
+        firstPage = (await query("stream.read", rawTargetPath, firstParams))
+          .result.value;
+        return true;
+      } catch (error) {
+        if (
+          error.code === 3 &&
+          JSON.parse(error.stdout).error?.code === "PERMISSION_DENIED"
+        )
+          return false;
+        throw error;
+      }
+    })
+    .toBe(true);
+  assert.equal(firstPage.events.length, 1);
+  assert.equal(firstPage.hasMore, true);
+  const continuation = await readParams(
+    "raw-continuation",
+    firstPage.nextEventSeq,
+    "100",
+  );
+  const nextPage = (await query("stream.read", rawTargetPath, continuation))
+    .result.value;
+  const localEvents = [...firstPage.events, ...nextPage.events];
+  for (const { event } of browserEvents) {
+    const local = localEvents.find(
+      ({ eventSeq }) => eventSeq === event.eventSeq,
+    );
+    assert.deepEqual(local, event, "WebSocket and IPC Raw events differ");
+  }
   const settingsPath = join(root, "settings.json");
   await writeFile(
     settingsPath,
@@ -429,6 +542,19 @@ try {
     cliObservedSettingsSavedByBrowser: true,
     virtualEchoRxBeforeAndAfterReload: true,
     sessionEpochPreserved: true,
+    rawParity: {
+      hostId: original.hostId,
+      instanceEpoch: context.instanceEpoch,
+      sessionId: original.id,
+      sessionEpoch: original.sessionEpoch,
+      events: browserEvents.map(({ event, cursor }) => ({
+        kind: event.kind,
+        eventSeq: event.eventSeq,
+        cursor: cursor.position,
+        bytes: Buffer.from(event.payload.bytesBase64, "base64").length,
+      })),
+      nextEventSeq: firstPage.nextEventSeq,
+    },
     ...(mcpPath && followedNamedMcp
       ? {
           mcpFollow: {
@@ -474,6 +600,7 @@ try {
     }
   }
   const [code] = await completed;
+  assert.equal(dirname(root), temporary);
   await rm(root, { recursive: true });
   if (result) {
     assert.equal(stopped && code === 0, true, "Host did not exit cleanly");

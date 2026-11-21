@@ -181,6 +181,7 @@ mod tests {
                 generation,
                 Id::try_from("virtual:echo").unwrap(),
                 OpenParams {
+                    transport_params: None,
                     configuration: SerialConfiguration::default(),
                     binding: None,
                 },

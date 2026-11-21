@@ -252,6 +252,10 @@ jobs:
             --example node_runtime_probe --example sign_reference_terminal \
             --example sign_reference_chart --example sign_reference_automation
 
+      - name: 准备 Windows 签名浏览器验收
+        if: runner.os == 'Windows'
+        run: pnpm exec playwright install --only-shell chromium
+
       - name: 验证原生 runtime 安装布局与故障
         id: node-runtime
         shell: bash
@@ -301,6 +305,15 @@ jobs:
             | tee artifacts/reference-chart/native-samples.log
           cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --test-threads=1 --nocapture 2>&1 \
             | tee artifacts/reference-automation/native-response.log
+          cargo test --locked -p serial-workbench --lib native_automation_long_script_survives_caller_disconnect_and_settles_workers -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-automation/native-long-script.log
+          if [[ "$RUNNER_OS" == "Windows" ]]; then
+            export SWB_TEST_BROWSER_ASSETS="$(node -p 'require("node:path").resolve("dist")')"
+            export SWB_TEST_BROWSER_NODE_BIN="$(node -p 'process.execPath')"
+            export SWB_TEST_BROWSER_TERMINAL_OUTPUT="$(node -p 'require("node:path").resolve("artifacts/reference-terminal/paired-browser")')"
+            cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_opens_and_retires_a_signed_terminal_view -- --ignored --test-threads=1 --nocapture 2>&1 \
+              | tee artifacts/reference-terminal/paired-browser.log
+          fi
 
       - name: 保留 runtime 验收收据与原始输出
         if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
@@ -325,12 +338,15 @@ jobs:
             artifacts/reference-terminal/reference-terminal.zip
             artifacts/reference-terminal/signed-terminal.json
             artifacts/reference-terminal/native-reader.log
+            artifacts/reference-terminal/paired-browser.log
+            artifacts/reference-terminal/paired-browser/**
             artifacts/reference-chart/reference-chart.zip
             artifacts/reference-chart/signed-chart.json
             artifacts/reference-chart/native-samples.log
             artifacts/reference-automation/reference-automation.zip
             artifacts/reference-automation/signed-automation.json
             artifacts/reference-automation/native-response.log
+            artifacts/reference-automation/native-long-script.log
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7

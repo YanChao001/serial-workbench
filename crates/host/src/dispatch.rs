@@ -193,6 +193,23 @@ impl Host {
         )
         .await
     }
+    pub async fn with_verified_node_runtime_native(
+        store: Store,
+        auth: AuthService,
+        clock: Arc<dyn Clock>,
+        runtime: crate::node_runtime::VerifiedNodeRuntime,
+    ) -> HostResult<Self> {
+        Self::initialize(
+            store,
+            auth,
+            clock,
+            DeviceSource::Native,
+            None,
+            Some(runtime),
+        )
+        .await
+    }
+
     async fn initialize(
         store: Store,
         auth: AuthService,
@@ -259,6 +276,10 @@ impl Host {
             #[cfg(test)]
             node_test_gates.clone(),
         ));
+        if let Some(runtime) = &device_runtime {
+            let packages = node_packages.clone();
+            runtime.attach_plugin_catalog(move || packages.registered_transports())?;
+        }
         if let Some(node) = node {
             node_packages.provide_runtime(node)?;
         }
@@ -435,6 +456,15 @@ impl Host {
                 ));
             }
             let action = BuiltinAction::find(query.action_id.as_str())?;
+            if action == BuiltinAction::ToolHandoff && !cfg!(windows) {
+                return Err(HostError::new(
+                    "UNSUPPORTED_CAPABILITY",
+                    "This Host has no contained external serial tool executor",
+                ));
+            }
+            if action == BuiltinAction::ToolHandoff {
+                auth.require_control(&actor)?;
+            }
             let spec = action.spec();
             if spec.kind != kind || !spec.target_kinds.contains(&query.target.kind) {
                 return Err(invalid());
@@ -446,6 +476,7 @@ impl Host {
                     | BuiltinAction::NodeSourceRevokeKey
                     | BuiltinAction::NodePackageConfirmExecutionTrust
                     | BuiltinAction::NodePackageRevokeExecutionTrust
+                    | BuiltinAction::ToolHandoff
             ) && !actor.is_user_control()
             {
                 return Err(HostError::new(
@@ -469,6 +500,7 @@ impl Host {
                             | BuiltinAction::TransferReceiptsRead
                             | BuiltinAction::OperationGet
                             | BuiltinAction::OperationInput
+                            | BuiltinAction::OperationCancel
                             | BuiltinAction::NodeViewAssetRead
                             | BuiltinAction::CatalogList
                     )
@@ -756,6 +788,17 @@ impl Host {
         target: &Target,
         params: ActionCheckParams,
     ) -> HostResult<ActionCheckResult> {
+        self.check_action_connected(actor, target, params, false)
+            .await
+    }
+
+    async fn check_action_connected(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        params: ActionCheckParams,
+        paired_browser: bool,
+    ) -> HostResult<ActionCheckResult> {
         if BuiltinAction::find(params.action_id.as_str()).is_err() {
             return self.check_extension_query(actor, target, params).await;
         }
@@ -805,7 +848,7 @@ impl Host {
                 .await
                 .map(|()| BuiltinAction::NodePackagesInstall),
             Ok(BuiltinAction::NodeViewAssetRead) => self
-                .check_node_view_asset(actor, &query)
+                .check_node_view_asset(actor, &query, paired_browser)
                 .await
                 .map(|()| BuiltinAction::NodeViewAssetRead),
             result => result,
@@ -868,6 +911,7 @@ impl Host {
                     | BuiltinAction::HostMetrics
                     | BuiltinAction::OperationGet
                     | BuiltinAction::NodeViewAssetRead
+                    | BuiltinAction::NodeThemesList
                     | BuiltinAction::StateScopes
                     | BuiltinAction::StateSnapshot
                     | BuiltinAction::StateSubscribe
@@ -886,9 +930,17 @@ impl Host {
             let observed = query.clone();
             blocking(move || host.activity(&observer, &observed, action)).await?;
         }
+        let paired_browser = connection
+            .as_ref()
+            .is_some_and(|context| context.browser_stopped.is_some());
         let result = match action {
             BuiltinAction::ActionCheck => self
-                .check_action(actor, &query.target, decode(&query.params)?)
+                .check_action_connected(
+                    actor,
+                    &query.target,
+                    decode(&query.params)?,
+                    paired_browser,
+                )
                 .await
                 .map(QueryResult::ActionCheck),
             BuiltinAction::WorkspaceImportPreview => {
@@ -914,6 +966,16 @@ impl Host {
                         )
                     })
             }
+            BuiltinAction::NodeThemesList => {
+                let registry = self.inner.registry.clone();
+                let actor = actor.clone();
+                blocking(move || {
+                    registry
+                        .node_themes(&actor, &query.target)
+                        .map(QueryResult::NodeThemes)
+                })
+                .await
+            }
             BuiltinAction::NodePackagesList => {
                 let params: NodePackageListParams = decode(&query.params)?;
                 let manager = self.inner.node_packages.clone();
@@ -926,7 +988,7 @@ impl Host {
                 .await
             }
             BuiltinAction::NodeViewAssetRead => self
-                .read_node_view_asset(actor, query.target, decode(&query.params)?)
+                .read_node_view_asset(actor, query.target, decode(&query.params)?, paired_browser)
                 .await
                 .map(|asset| QueryResult::NodeViewAsset(Box::new(asset))),
             BuiltinAction::NodePackageRuntime => {
@@ -1628,6 +1690,12 @@ impl Host {
         let action = self.validate(actor, &query, ActionKind::Action).await?;
         let replay_session = call.target.kind.as_str() == "session"
             && self.inner.capture_api.owns_replay(&call.target.id);
+        if replay_session && action == BuiltinAction::ToolHandoff {
+            return Err(HostError::new(
+                "UNSUPPORTED_CAPABILITY",
+                "External tools require a native serial session",
+            ));
+        }
         let device_action = action.is_device_action() && !replay_session;
         call.params = match action {
             BuiltinAction::Client(capability) => {
@@ -1782,9 +1850,15 @@ impl Host {
                 let accept_auth = host.inner.auth.clone();
                 let accept_files = host.inner.files.clone();
                 let acceptance = blocking(move || {
+                    if action == BuiltinAction::ToolHandoff {
+                        accept_auth.require_control(&accept_actor)?;
+                    }
                     let authority = accept_auth.snapshot(&accept_actor)?;
                     let stamp = if device_action && accept_call.target.kind.as_str() == "session" {
-                        if action == BuiltinAction::SessionTakeover {
+                        if matches!(
+                            action,
+                            BuiltinAction::SessionTakeover | BuiltinAction::ToolHandoff
+                        ) {
                             authority.require("auth.manage", &accept_call.target)?;
                             authority.capture_grants()
                         } else {
@@ -1944,23 +2018,6 @@ impl Host {
                     return Err(error);
                 }
             };
-            if accepted.call.action_id.as_str() == "client.updater.install" {
-                let barrier = self.quiesce_for_update(&accepted).await;
-                if !matches!(&barrier, Ok(report) if report.completed) {
-                    let error = barrier.err().unwrap_or_else(|| {
-                        HostError::new(
-                            "SHUTDOWN_INCOMPLETE",
-                            "Host has unsettled work before update installation",
-                        )
-                    });
-                    let clients = self.inner.client_effects.clone();
-                    let delivery_id = waiter.delivery_id.clone();
-                    let rejected = error.clone();
-                    let _ =
-                        blocking(move || clients.reject_undelivered(&delivery_id, rejected)).await;
-                    return Err(error);
-                }
-            }
             self.send_client_effect(dispatch).await?;
             Ok(match waiter.wait().await {
                 Ok(ClientEffectOutcome::Succeeded { result }) => Settlement {
@@ -2098,8 +2155,17 @@ impl Host {
                                     "Device is absent from the directory",
                                 )
                             })?;
+                        if descriptor.fingerprint.transport == DeviceTransportKind::Plugin {
+                            return Err(HostError::new(
+                                "UNSUPPORTED_CAPABILITY",
+                                "Plugin transport bindings need explicit parameters",
+                            ));
+                        }
                         if directory.stale
-                            && descriptor.fingerprint.transport != DeviceTransportKind::Virtual
+                            && matches!(
+                                descriptor.fingerprint.transport,
+                                DeviceTransportKind::Serial | DeviceTransportKind::Pty
+                            )
                         {
                             return Err(HostError::new(
                                 "DISCOVERY_STALE",
@@ -2220,10 +2286,20 @@ impl Host {
         let actor = actor.clone();
         let target = target.clone();
         blocking(move || {
-            auth.require(&actor, "metadata.read", &target)?;
-            // TransmissionService::cancel and Store::request_cancel use this same
-            // retained-operation ownership gate before signalling or changing state.
-            store.get(&actor, &target.id).map(|_| ())
+            let readable = || auth.require(&actor, "metadata.read", &target);
+            if !actor.is_user_control() {
+                readable()?;
+            }
+            // TransmissionService::cancel and Store::request_cancel check ownership again
+            // before signalling or changing state.
+            let operation = store.get(&actor, &target.id)?;
+            if operation.action_id.as_str() == "session.toolHandoff" {
+                auth.require_control(&actor)
+            } else if actor.is_user_control() {
+                readable()
+            } else {
+                Ok(())
+            }
         })
         .await
     }
@@ -2365,13 +2441,16 @@ impl RequestHandler for Host {
                             "Client receiver management requires user control",
                         ));
                     }
-                    let clients = host.inner.client_effects.clone();
-                    blocking(move || {
-                        clients
-                            .receipt(&context, params)
-                            .map(RpcResult::ClientEffectAcknowledged)
-                    })
-                    .await?
+                    let acknowledged = match params {
+                        ClientReceiptSubmission::UpdatePreparation(preparation) => {
+                            host.prepare_client_update(context, preparation).await?
+                        }
+                        receipt => {
+                            let clients = host.inner.client_effects.clone();
+                            blocking(move || clients.receipt(&context, receipt)).await?
+                        }
+                    };
+                    RpcResult::ClientEffectAcknowledged(acknowledged)
                 }
                 RpcRequest::Invoke(call) | RpcRequest::OperationCancel(call) => {
                     RpcResult::Operation(Box::new(OperationResult {

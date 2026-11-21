@@ -197,6 +197,12 @@ impl Drop for CancelOnDrop {
 }
 
 impl NodePackageManager {
+    pub(crate) fn registered_transports(
+        &self,
+    ) -> HostResult<Vec<crate::node_backend::RegisteredTransport>> {
+        self.runtime.registered_transports()
+    }
+
     pub(crate) fn recover_installations(
         &self,
         limits: &NodePackageLimits,

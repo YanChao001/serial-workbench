@@ -1,5 +1,6 @@
 import { appConfig } from "./json-fixtures";
 import { seedBrowserSettings } from "./browser-settings.fixture";
+import { seedWorkbenchFixture } from "./workbench.fixture";
 /// <reference lib="dom" />
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import { PRESET_ACCENTS } from "../../src/lib/accent-colors";
@@ -118,6 +119,109 @@ async function primaryPixel(page: Page) {
     return [...context.getImageData(0, 0, 1, 1).data].join(",");
   });
 }
+
+test("a plugin theme follows the saved archive and restores the base accent when unavailable", async ({
+  page,
+}) => {
+  const reference = {
+    packageId: "swb.reference.theme",
+    themeId: "swb.reference.theme.accent",
+    archiveSha256: "a".repeat(64),
+  };
+  const theme = { ...reference, displayName: "Harbor", accent: "#1A6A73" };
+  const owner = { hostId: "paired-owner", address: "192.168.1.8:8022" };
+  await seedWorkbenchFixture(page, {
+    theme: "dark",
+    nodeThemes: [theme],
+    lanOwner: owner,
+    sharedSettings: { accent: "rose", customAccent: "#8A3957" },
+  });
+  await page.goto("./#/settings");
+  const picker = page.getByRole("combobox", { name: "Plugin theme" });
+  const root = page.locator("html");
+  await expect(picker).toHaveText("Use base accent");
+  await expect(root).toHaveAttribute("data-accent", "rose");
+  const base = await primaryPixel(page);
+
+  await picker.click();
+  await page.getByRole("option", { name: "Harbor", exact: true }).click();
+  await expect(root).toHaveAttribute("data-accent", "custom");
+  await expect(root).toHaveClass(/\bdark\b/);
+  const applied = await primaryPixel(page);
+  expect(applied).not.toEqual(base);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const saved = window.workbenchFixture.settingsWrites.at(-1);
+        return {
+          nodeTheme: saved?.nodeTheme,
+          accent: saved?.accent,
+          customAccent: saved?.customAccent,
+        };
+      }),
+    )
+    .toEqual({
+      nodeTheme: reference,
+      accent: "rose",
+      customAccent: "#8A3957",
+    });
+  await page.reload();
+  await expect(picker).toHaveText("Harbor");
+  await expect.poll(() => primaryPixel(page)).toEqual(applied);
+
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Workspace menu" }).click();
+  await page.getByRole("menuitem", { name: "LAN connection" }).click();
+  const lan = page.getByRole("dialog", { name: "LAN connection" });
+  await lan
+    .getByLabel("Connection information")
+    .fill(JSON.stringify({ ...owner, fingerprint: "b".repeat(64) }));
+  await lan.getByRole("button", { name: "Connect", exact: true }).click();
+  await expect(
+    page.getByRole("button", { name: "Open Shared UART" }),
+  ).toBeEnabled();
+  await expect.poll(() => primaryPixel(page)).toEqual(applied);
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.queryInputs
+        .filter((query) => query.actionId === "node.themes.list")
+        .map((query) => query.target.hostId),
+    ),
+  ).toEqual(["workbench-gui-host"]);
+  await page.goto("./#/settings");
+
+  await page.evaluate((theme) => {
+    window.workbenchFixture.setNodeThemes([
+      { ...theme, archiveSha256: "b".repeat(64), accent: "#437A24" },
+    ]);
+  }, theme);
+  await expect(picker).toHaveText("Theme unavailable. Using base accent.");
+  await expect.poll(() => primaryPixel(page)).toEqual(base);
+
+  await page.evaluate((theme) => {
+    window.workbenchFixture.setNodeThemes([theme]);
+  }, theme);
+  await expect.poll(() => primaryPixel(page)).toEqual(applied);
+  await picker.click();
+  await page.getByRole("option", { name: "Use base accent" }).click();
+  await expect.poll(() => primaryPixel(page)).toEqual(base);
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const saved = window.workbenchFixture.settingsWrites.at(-1);
+        return saved && !Object.hasOwn(saved, "nodeTheme");
+      }),
+    )
+    .toBe(true);
+
+  await picker.click();
+  await page.getByRole("option", { name: "Harbor", exact: true }).click();
+  await expect.poll(() => primaryPixel(page)).toEqual(applied);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.failHost()),
+  ).toBeGreaterThan(0);
+  await expect.poll(() => primaryPixel(page)).toEqual(base);
+});
 
 async function primaryButtonContrast(button: Locator) {
   await button.scrollIntoViewIfNeeded();

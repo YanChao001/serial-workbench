@@ -25,6 +25,7 @@ pub(super) trait PlatformEffectExecutor: Send + Sync {
     fn execute<'a>(
         &'a self,
         action: ClientEffectAction,
+        preparation: Option<super::UpdatePreparation>,
     ) -> Pin<Box<dyn Future<Output = HostResult<ClientEffectResult>> + Send + 'a>>;
 }
 
@@ -56,6 +57,7 @@ impl PlatformEffectExecutor for PlatformEffects {
     fn execute<'a>(
         &'a self,
         action: ClientEffectAction,
+        preparation: Option<super::UpdatePreparation>,
     ) -> Pin<Box<dyn Future<Output = HostResult<ClientEffectResult>> + Send + 'a>> {
         Box::pin(async move {
             action.validate()?;
@@ -194,13 +196,24 @@ impl PlatformEffectExecutor for PlatformEffects {
                         .transpose()?;
                     ClientEffectResult::UpdateProgress(ClientUpdateSnapshot { progress })
                 }
-                ClientEffectAction::UpdaterInstall {} => {
-                    // 此服务内部进行 InstallUpdate 授权与策略复核，真实安装成功才回执。
+                ClientEffectAction::UpdaterInstallPrepared {} => {
+                    let preparation = preparation.ok_or_else(|| {
+                        HostError::new(
+                            "PERMISSION_DENIED",
+                            "The update delivery has no preparation binding",
+                        )
+                    })?;
                     app.state::<updater::UpdateManager>()
-                        .install(&app, updater::InstallOrigin::HostEffect)
+                        .install(&app, updater::InstallOrigin::HostEffect(preparation))
                         .await
                         .map_err(native_error)?;
                     ClientEffectResult::Installed {}
+                }
+                ClientEffectAction::UpdaterInstall {} => {
+                    return Err(HostError::new(
+                        "PROTOCOL_UNSUPPORTED",
+                        "The old Host cannot confirm update preparation; restart the bundled Host",
+                    ));
                 }
                 ClientEffectAction::AppRestart {} => {
                     lifecycle::request_action(&app, LifecycleAction::Restart, None);

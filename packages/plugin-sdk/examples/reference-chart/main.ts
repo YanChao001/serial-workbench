@@ -166,7 +166,7 @@ function renderSvg(samples: number[]) {
 }
 
 export const register: NodeRegister = (context) => {
-  context.actions.register(action, async (call, task) => {
+  context.parsers.register(action, async (call, task) => {
     let lastPosition = "0";
     const samples = await readSamples(call, task, async (value, source) => {
       const receipt = await task.streams.publishDerived({

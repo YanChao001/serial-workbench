@@ -5,6 +5,7 @@ import type {
   NodeContext,
   NodeRegister,
   NodeTaskContext,
+  TransportConnection,
 } from "@serial-workbench/plugin-sdk/node";
 
 export function authoringConstraints(
@@ -56,6 +57,22 @@ export function authoringConstraints(
   void task.streams.publishDerived({ ...publication, quality: ["verified"] });
   // @ts-expect-error 查询没有任务上下文参数。
   context.queries.register("example.status", (_query, _task) => ({}));
+  const connection: TransportConnection = {
+    read: ({ signal }) => {
+      signal.throwIfAborted();
+      return new Uint8Array();
+    },
+    write: ({ bytes }) => bytes.byteLength,
+    close: async () => {},
+  };
+  context.transports.register("example.transport.open", async (options) => {
+    options.signal.throwIfAborted();
+    // @ts-expect-error 打开连接时只提供参数和停止信号。
+    void options.actorId;
+    return connection;
+  });
+  // @ts-expect-error 传输读操作使用数字字节上限。
+  void connection.read({ maxBytes: "32768", waitMs: 10, signal: task.signal });
   // @ts-expect-error register必须返回清理函数。
   const missingDispose: NodeRegister = () => {};
   return missingDispose;

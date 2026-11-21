@@ -21,6 +21,7 @@ pub fn sign(
     example: &str,
     manifest_bytes: &[u8],
     view: Option<(&[u8], &[u8])>,
+    assets: &[(&str, &[u8])],
 ) -> Result<(), Box<dyn std::error::Error>> {
     let [module, seed_file, output, source, key_id] = <[std::ffi::OsString; 5]>::try_from(
         std::env::args_os().skip(1).collect::<Vec<_>>(),
@@ -67,6 +68,7 @@ pub fn sign(
             ("ui/view.js", script.as_slice()),
         ]);
     }
+    files.extend_from_slice(assets);
     let manifest: NodePackageManifest = serde_json::from_slice(manifest_bytes)?;
     let integrity: NodePackageIntegrity = serde_json::from_value(serde_json::json!({
         "schemaVersion": "0.1",

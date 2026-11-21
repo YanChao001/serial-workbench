@@ -3,6 +3,9 @@
 mod linux;
 #[cfg(target_os = "macos")]
 mod macos;
+#[cfg(all(test, windows))]
+#[path = "../tool_handoff_sim_provider.rs"]
+pub(crate) mod tool_handoff_sim_provider;
 #[cfg(unix)]
 mod unix;
 #[cfg(windows)]
@@ -23,13 +26,17 @@ use std::{
 #[derive(Clone)]
 pub struct SerialProvider {
     host_id: Id,
-    claims: Arc<Mutex<HashMap<Id, Vec<String>>>>,
+    claims: SerialClaims,
+    #[cfg(all(test, windows))]
+    simulated_open: Option<tool_handoff_sim_provider::SimulatedOpen>,
 }
 impl SerialProvider {
     pub fn new(host_id: Id) -> Self {
         Self {
             host_id,
             claims: Arc::new(Mutex::new(HashMap::new())),
+            #[cfg(all(test, windows))]
+            simulated_open: None,
         }
     }
     pub fn enumerate(&self) -> HostResult<Vec<DeviceDescriptor>> {
@@ -52,65 +59,44 @@ impl SerialProvider {
         device: &DeviceDescriptor,
         configuration: &SerialConfiguration,
     ) -> BackendResult<Box<dyn Transport>> {
-        if device.host_id != self.host_id
-            || !matches!(
-                device.fingerprint.transport,
-                DeviceTransportKind::Serial | DeviceTransportKind::Pty
-            )
-        {
-            return Err(HostError::new(
-                "DEVICE_NOT_FOUND",
-                "Device does not belong to this serial provider",
-            )
-            .into());
+        self.open_owned(device, configuration, None)
+    }
+
+    fn open_owned(
+        &self,
+        device: &DeviceDescriptor,
+        configuration: &SerialConfiguration,
+        handoff: Option<&Id>,
+    ) -> BackendResult<Box<dyn Transport>> {
+        #[cfg(all(test, windows))]
+        if let Some(open) = &self.simulated_open {
+            return open(device, configuration, self.claim_native(device, handoff)?);
         }
-        let mut keys = vec![
-            format!("id:{}", device.device_id.as_str()),
-            format!("locator:{}", device.system_name),
-        ];
-        if device.fingerprint.evidence == IdentityEvidence::SerialNumber
-            && let Some(serial) = &device.fingerprint.serial_number
-        {
-            keys.push(format!(
-                "serial:{:?}:{:?}:{}",
-                device.fingerprint.vid, device.fingerprint.pid, serial
-            ));
-        }
-        let mut claims = self
-            .claims
-            .lock()
-            .map_err(|_| HostError::new("HOST_BUSY", "Serial reservation is unavailable"))?;
-        if claims
-            .values()
-            .any(|existing| existing.iter().any(|key| keys.contains(key)))
-        {
-            return Err(HostError::new(
-                "DEVICE_BUSY",
-                "Device is open or has unresolved native work",
-            )
-            .into());
-        }
-        if claims.len() >= 16 {
-            return Err(
-                HostError::new("LIMIT_EXCEEDED", "Native serial capacity is exhausted").into(),
-            );
-        }
-        claims.insert(device.device_id.clone(), keys);
-        drop(claims);
-        let isolated = Arc::new(AtomicBool::new(false));
-        let claim = SerialClaim {
-            id: device.device_id.clone(),
-            claims: self.claims.clone(),
-            isolated: isolated.clone(),
-            released: false,
+        #[cfg(windows)]
+        let (device, interface) = match handoff {
+            Some(_) => {
+                let (device, path) = windows::resolve_handoff_port(device)?;
+                (device, Some(path))
+            }
+            None => (device.clone(), None),
         };
-        let device = device.clone();
+        #[cfg(unix)]
+        let device = match handoff {
+            Some(_) => {
+                let mut current = find_handoff_identity(device, &self.enumerate()?)?.clone();
+                current.device_id.clone_from(&device.device_id);
+                current
+            }
+            None => device.clone(),
+        };
+        let claim = self.claim_native(&device, handoff)?;
+        let isolated = claim.isolated.clone();
         let config = configuration.clone();
         start_native(
             move || {
                 #[cfg(windows)]
                 {
-                    windows::open(&device, &config, claim)
+                    windows::open(&device, &config, claim, interface)
                 }
                 #[cfg(unix)]
                 {
@@ -120,11 +106,318 @@ impl SerialProvider {
             isolated,
         )
     }
+
+    fn claim_native(
+        &self,
+        device: &DeviceDescriptor,
+        handoff: Option<&Id>,
+    ) -> HostResult<SerialClaim> {
+        let keys = self.device_keys(device)?;
+        let owner = SerialOwner::Native(device.device_id.clone());
+        let mut claims = self.claims.lock().map_err(|_| reservation_unavailable())?;
+        if let Some(id) = handoff
+            && !claims
+                .get(&SerialOwner::Tool(id.clone()))
+                .is_some_and(|previous| overlaps(previous, &keys))
+        {
+            return Err(device_busy());
+        }
+        if claims.iter().any(|(owner, existing)| {
+            !matches!(owner, SerialOwner::Tool(id) if Some(id) == handoff)
+                && overlaps(existing, &keys)
+        }) {
+            return Err(device_busy());
+        }
+        if claims
+            .keys()
+            .filter(|owner| matches!(owner, SerialOwner::Native(_)))
+            .count()
+            >= 16
+        {
+            return Err(HostError::new(
+                "LIMIT_EXCEEDED",
+                "Native serial capacity is exhausted",
+            ));
+        }
+        claims.insert(owner, keys);
+        drop(claims);
+        Ok(SerialClaim {
+            id: device.device_id.clone(),
+            claims: self.claims.clone(),
+            isolated: Arc::new(AtomicBool::new(false)),
+            released: false,
+        })
+    }
+
+    /// 在旧句柄仍归本提供器时先占位，避免关停与启动工具之间出现可抢占窗口。
+    pub fn reserve_tool_handoff(&self, device: &DeviceDescriptor) -> HostResult<SerialHandoff> {
+        let keys = self.device_keys(device)?;
+        let mut claims = self.claims.lock().map_err(|_| reservation_unavailable())?;
+        let native_owner = SerialOwner::Native(device.device_id.clone());
+        if claims.get(&native_owner) != Some(&keys) {
+            return Err(HostError::new(
+                "DEVICE_NOT_FOUND",
+                "The live native owner no longer matches this device",
+            ));
+        }
+        if claims
+            .iter()
+            .any(|(owner, existing)| *owner != native_owner && overlaps(existing, &keys))
+        {
+            return Err(device_busy());
+        }
+        let id = crate::device::sessions::new_id();
+        claims.insert(SerialOwner::Tool(id.clone()), keys);
+        drop(claims);
+        Ok(SerialHandoff {
+            provider: self.clone(),
+            device: device.clone(),
+            id,
+            phase: HandoffPhase::Reserved,
+        })
+    }
+
+    pub(crate) fn require_tool_quiescence(&self) -> HostResult<()> {
+        let claims = self.claims.lock().map_err(|_| reservation_unavailable())?;
+        if claims
+            .keys()
+            .any(|owner| matches!(owner, SerialOwner::Tool(_)))
+        {
+            return Err(HostError::new(
+                "TOOL_EXIT_UNCONFIRMED",
+                "External serial owner has not been released",
+            ));
+        }
+        Ok(())
+    }
+
+    fn device_keys(&self, device: &DeviceDescriptor) -> HostResult<Vec<SerialAddress>> {
+        if device.host_id != self.host_id
+            || !matches!(
+                device.fingerprint.transport,
+                DeviceTransportKind::Serial | DeviceTransportKind::Pty
+            )
+        {
+            return Err(HostError::new(
+                "DEVICE_NOT_FOUND",
+                "Device does not belong to this serial provider",
+            ));
+        }
+        let locator = if cfg!(windows) {
+            device.system_name.to_ascii_lowercase()
+        } else {
+            device.system_name.clone()
+        };
+        let mut keys = vec![
+            SerialAddress::Device(device.device_id.clone()),
+            SerialAddress::Locator(locator),
+        ];
+        let fingerprint = &device.fingerprint;
+        if fingerprint.evidence == IdentityEvidence::SerialNumber
+            && let Some(serial) = fingerprint
+                .serial_number
+                .as_ref()
+                .filter(|value| !value.trim().is_empty())
+        {
+            keys.push(SerialAddress::Fingerprint {
+                transport: fingerprint.transport,
+                vid: fingerprint.vid,
+                pid: fingerprint.pid,
+                serial: serial.clone(),
+            });
+        }
+        Ok(keys)
+    }
+}
+
+#[derive(PartialEq, Eq)]
+enum SerialAddress {
+    Device(Id),
+    Locator(String),
+    Fingerprint {
+        transport: DeviceTransportKind,
+        vid: Option<u16>,
+        pid: Option<u16>,
+        serial: String,
+    },
+}
+impl SerialAddress {
+    fn overlaps(&self, other: &Self) -> bool {
+        match (self, other) {
+            (
+                Self::Fingerprint {
+                    transport,
+                    vid,
+                    pid,
+                    serial,
+                },
+                Self::Fingerprint {
+                    transport: other_transport,
+                    vid: other_vid,
+                    pid: other_pid,
+                    serial: other_serial,
+                },
+            ) => {
+                transport == other_transport
+                    && serial == other_serial
+                    && (vid.is_none() || other_vid.is_none() || vid == other_vid)
+                    && (pid.is_none() || other_pid.is_none() || pid == other_pid)
+            }
+            _ => self == other,
+        }
+    }
+}
+
+fn overlaps(left: &[SerialAddress], right: &[SerialAddress]) -> bool {
+    left.iter()
+        .any(|key| right.iter().any(|other| key.overlaps(other)))
+}
+fn reservation_unavailable() -> HostError {
+    HostError::new("HOST_BUSY", "Serial reservation is unavailable")
+}
+fn device_busy() -> HostError {
+    HostError::new("DEVICE_BUSY", "Device has a native or external owner")
+}
+
+#[derive(PartialEq, Eq, Hash)]
+enum SerialOwner {
+    Native(Id),
+    Tool(Id),
+}
+type SerialClaims = Arc<Mutex<HashMap<SerialOwner, Vec<SerialAddress>>>>;
+
+#[derive(PartialEq, Eq)]
+enum HandoffPhase {
+    Reserved,
+    ToolMayOwnDevice,
+    ToolExited,
+}
+
+/// 物理占用由 Host 的工具任务拥有，操作取消等待不会撤销它。
+pub struct SerialHandoff {
+    provider: SerialProvider,
+    device: DeviceDescriptor,
+    id: Id,
+    phase: HandoffPhase,
+}
+impl SerialHandoff {
+    pub(crate) fn initial_locator(&self) -> &str {
+        &self.device.system_name
+    }
+
+    /// 关停后读取新鲜目录并核对身份，仍可能持有原生句柄时拒绝移交。
+    pub fn begin_tool(&mut self, devices: &DeviceList) -> HostResult<String> {
+        if self.phase != HandoffPhase::Reserved {
+            return Err(device_busy());
+        }
+        let device = self.find_same_device(devices)?;
+        let keys = self.provider.device_keys(device)?;
+        let mut claims = self
+            .provider
+            .claims
+            .lock()
+            .map_err(|_| reservation_unavailable())?;
+        let owner = SerialOwner::Tool(self.id.clone());
+        if claims
+            .iter()
+            .any(|(other, existing)| other != &owner && overlaps(existing, &keys))
+        {
+            return Err(device_busy());
+        }
+        let reserved = claims.get_mut(&owner).ok_or_else(device_busy)?;
+        for key in keys {
+            if !reserved.contains(&key) {
+                reserved.push(key);
+            }
+        }
+        self.phase = HandoffPhase::ToolMayOwnDevice;
+        Ok(device.system_name.clone())
+    }
+
+    pub(in crate::device) fn is_for(&self, device: &Id) -> bool {
+        &self.device.device_id == device
+    }
+
+    /// 只在启动明确未发生或工具及其后代实际退出后调用。
+    pub fn confirm_tool_exit(&mut self) {
+        if self.phase == HandoffPhase::ToolMayOwnDevice {
+            self.phase = HandoffPhase::ToolExited;
+        }
+    }
+
+    pub(in crate::device) fn return_opener(
+        &self,
+        devices: &DeviceList,
+    ) -> HostResult<(Id, super::TransportOpener)> {
+        let device = self.return_device(devices)?.clone();
+        let provider = self.provider.clone();
+        let proof = self.id.clone();
+        Ok((
+            device.device_id.clone(),
+            Arc::new(move |id, configuration| {
+                if id != &device.device_id {
+                    return Err(device_busy().into());
+                }
+                provider.open_owned(&device, configuration, Some(&proof))
+            }),
+        ))
+    }
+
+    fn return_device<'a>(&self, devices: &'a DeviceList) -> HostResult<&'a DeviceDescriptor> {
+        if self.phase != HandoffPhase::ToolExited {
+            return Err(device_busy());
+        }
+        self.find_same_device(devices)
+    }
+
+    fn find_same_device<'a>(&self, devices: &'a DeviceList) -> HostResult<&'a DeviceDescriptor> {
+        if devices.stale {
+            return Err(HostError::new(
+                "DISCOVERY_STALE",
+                "Fresh device discovery is required after tool handoff",
+            ));
+        }
+        find_handoff_identity(&self.device, &devices.devices)
+    }
+}
+
+fn find_handoff_identity<'a>(
+    expected: &DeviceDescriptor,
+    devices: &'a [DeviceDescriptor],
+) -> HostResult<&'a DeviceDescriptor> {
+    let candidates: Vec<_> = devices
+        .iter()
+        .filter(|device| device.host_id == expected.host_id)
+        .cloned()
+        .collect();
+    let super::MatchResult::Exact(id) =
+        super::IdentityMatcher::match_device(&expected.fingerprint, &candidates)
+    else {
+        return Err(HostError::new(
+            "REQUIRES_REBIND",
+            "The device identity after tool exit could not be established",
+        ));
+    };
+    devices
+        .iter()
+        .find(|device| device.host_id == expected.host_id && device.device_id == id)
+        .ok_or_else(|| HostError::new("DEVICE_NOT_FOUND", "The handoff device is absent"))
+}
+
+impl Drop for SerialHandoff {
+    fn drop(&mut self) {
+        // 若 owner 在回收期间丢失，保持占用并拒绝普通打开，避免争抢。
+        if self.phase != HandoffPhase::ToolMayOwnDevice
+            && let Ok(mut claims) = self.provider.claims.lock()
+        {
+            claims.remove(&SerialOwner::Tool(self.id.clone()));
+        }
+    }
 }
 
 struct SerialClaim {
     id: Id,
-    claims: Arc<Mutex<HashMap<Id, Vec<String>>>>,
+    claims: SerialClaims,
     isolated: Arc<AtomicBool>,
     released: bool,
 }
@@ -137,7 +430,7 @@ impl SerialClaim {
             .claims
             .lock()
             .map_err(|_| HostError::new("HOST_BUSY", "Serial reservation is unavailable"))?;
-        claims.remove(&self.id);
+        claims.remove(&SerialOwner::Native(self.id.clone()));
         // 解除后旧 guard 的 Drop 不得再删除随后取得同一设备的新占用。
         self.released = true;
         Ok(())
@@ -170,6 +463,9 @@ trait NativePort: Send + 'static {
 
 #[cfg(test)]
 mod final_fix_tests;
+
+#[cfg(test)]
+mod handoff_tests;
 
 #[cfg(test)]
 mod tests {

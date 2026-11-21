@@ -310,6 +310,7 @@ async fn attach(
 }
 fn bound_params() -> OpenParams {
     OpenParams {
+        transport_params: None,
         configuration: SerialConfiguration::default(),
         binding: Some(DeviceBindingReference {
             workspace_id: id("bench"),

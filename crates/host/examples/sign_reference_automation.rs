@@ -7,5 +7,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         "sign_reference_automation",
         include_bytes!("../../../packages/plugin-sdk/examples/reference-automation/manifest.json"),
         None,
+        &[],
     )
 }

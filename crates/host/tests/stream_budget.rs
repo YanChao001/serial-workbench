@@ -1160,6 +1160,7 @@ impl LiveRaw {
             .open(
                 &device,
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },

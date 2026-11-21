@@ -1,4 +1,7 @@
-use super::observability::{InputPermit, InputSample, SessionObservability};
+use super::{
+    observability::{InputPermit, InputSample, SessionObservability},
+    serial::SerialHandoff,
+};
 use crate::{
     auth::{AuthService, AuthenticatedActor, HostIdentity},
     state::ProjectionStore,
@@ -9,7 +12,7 @@ use serial_workbench_core::*;
 use std::{
     collections::HashMap,
     sync::{
-        Arc, Mutex,
+        Arc, Mutex, OnceLock,
         atomic::{AtomicBool, Ordering},
         mpsc,
     },
@@ -61,6 +64,7 @@ pub(crate) struct Session {
     pub closing: Arc<AtomicBool>,
     completed: tokio::sync::watch::Receiver<Option<HostResult<()>>>,
     pub snapshot: Arc<Mutex<SessionSnapshot>>,
+    plugin_binding: Option<(Id, JsonObject)>,
     pub source: StreamSource,
     sender: mpsc::SyncSender<BackendCommand>,
     join: OwnerJoin,
@@ -68,6 +72,7 @@ pub(crate) struct Session {
     projections: ProjectionStore,
     pub(crate) observability: Arc<Mutex<SessionObservability>>,
     input_pending: Arc<AtomicBool>,
+    binding_admission: OnceLock<OpenAdmission>,
 }
 struct OpeningOwner {
     closing: Arc<AtomicBool>,
@@ -214,8 +219,30 @@ struct RuntimeAttachment {
     directory: Arc<super::DeviceRuntime>,
     resolver: BindingResolver,
 }
+#[derive(Clone, Copy)]
+enum OpenAuthority {
+    DeviceModify,
+    ToolReturn,
+}
+impl OpenAuthority {
+    fn require(
+        self,
+        auth: &AuthService,
+        actor: &AuthenticatedActor,
+        target: &Target,
+    ) -> HostResult<()> {
+        match self {
+            Self::DeviceModify => auth.require(actor, "device.modify", target),
+            Self::ToolReturn => {
+                auth.require_control(actor)?;
+                auth.require(actor, "auth.manage", target)
+            }
+        }
+    }
+}
 #[derive(Clone)]
 struct OpenAdmission {
+    authority: OpenAuthority,
     actor: AuthenticatedActor,
     grant_stamp: Option<crate::auth::GrantStamp>,
     binding: Option<(DeviceBindingReference, DeviceBinding)>,
@@ -232,6 +259,23 @@ impl Drop for ResponsibilityPin {
         self.0.unpin(&self.1);
     }
 }
+/// 外部工具运行期间也保留旧逻辑会话，由另一个端口的打开操作触发的清理不得退休它。
+pub struct ReservedToolPort {
+    native: SerialHandoff,
+    _slot: DeviceSlot,
+    _identity: ResponsibilityPin,
+    stopped_reconnect: Option<ReconnectStatus>,
+}
+impl ReservedToolPort {
+    pub(crate) fn initial_locator(&self) -> &str {
+        self.native.initial_locator()
+    }
+
+    pub fn confirm_tool_exit(&mut self) {
+        self.native.confirm_tool_exit();
+    }
+}
+
 impl DeviceService {
     pub fn attach_runtime(
         &self,
@@ -258,6 +302,25 @@ impl DeviceService {
         params: OpenParams,
         cancelled: Arc<AtomicBool>,
     ) -> HostResult<OpenResult> {
+        self.open_authorized_with(
+            actor,
+            target,
+            params,
+            cancelled,
+            self.inner.opener.clone(),
+            OpenAuthority::DeviceModify,
+        )
+        .await
+    }
+    async fn open_authorized_with(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        params: OpenParams,
+        cancelled: Arc<AtomicBool>,
+        opener: TransportOpener,
+        authority: OpenAuthority,
+    ) -> HostResult<OpenResult> {
         if cancelled.load(Ordering::SeqCst) {
             return Err(open_cancelled());
         }
@@ -266,10 +329,7 @@ impl DeviceService {
         let requested = target.clone();
         let reference = params.binding.clone();
         let admission = blocking(move || {
-            service
-                .inner
-                .auth
-                .require(&actor, "device.modify", &requested)?;
+            authority.require(&service.inner.auth, &actor, &requested)?;
             let binding = reference
                 .as_ref()
                 .map(|reference| {
@@ -280,6 +340,7 @@ impl DeviceService {
                 })
                 .transpose()?;
             Ok(OpenAdmission {
+                authority,
                 grant_stamp: service.inner.auth.capture_grants(&actor)?,
                 actor,
                 binding,
@@ -291,7 +352,7 @@ impl DeviceService {
         self.check_open(target, &params.configuration, &admission)
             .await?;
         let mut opened = self
-            .open_inner(target, params.clone(), Some(&admission))
+            .open_with(target, params.clone(), Some(&admission), opener)
             .await?;
         self.record_recent(target, &params.configuration, &mut opened)
             .await;
@@ -360,12 +421,81 @@ impl DeviceService {
         params: OpenParams,
         admission: Option<&OpenAdmission>,
     ) -> HostResult<OpenResult> {
+        self.open_with(target, params, admission, self.inner.opener.clone())
+            .await
+    }
+
+    async fn open_with(
+        &self,
+        target: &Target,
+        params: OpenParams,
+        admission: Option<&OpenAdmission>,
+        opener: TransportOpener,
+    ) -> HostResult<OpenResult> {
         if target.host_id != self.inner.identity.host_id || target.kind.as_str() != "device" {
             return Err(invalid());
         }
         if self.inner.closing.load(Ordering::SeqCst) {
             return Err(closing());
         }
+        let provider = self
+            .runtime_attachment()?
+            .map(|runtime| runtime.directory.plugin_transport(&target.id))
+            .transpose()?
+            .flatten();
+        let plugin = if let Some(provider) = provider {
+            if params.binding.is_some() {
+                return Err(HostError::new(
+                    "UNSUPPORTED_CAPABILITY",
+                    "Plugin transport opens need explicit parameters",
+                ));
+            }
+            let admission = admission.cloned().ok_or_else(|| {
+                HostError::new(
+                    "PERMISSION_DENIED",
+                    "Plugin transport opens require caller authorization",
+                )
+            })?;
+            let service = self.clone();
+            let device_target = target.clone();
+            let configuration = params.configuration.clone();
+            let permissions = provider.spec().permissions.clone();
+            let authorize: Arc<dyn Fn() -> HostResult<()> + Send + Sync> = Arc::new(move || {
+                service.check_open_now(&device_target, &configuration, &admission)?;
+                for permission in &permissions {
+                    service
+                        .inner
+                        .auth
+                        .require(&admission.actor, permission, &device_target)?;
+                }
+                Ok(())
+            });
+            let supplied = params.transport_params.clone().unwrap_or_default();
+            let validate = provider.clone();
+            let caller = authorize.clone();
+            let normalized = blocking(move || {
+                caller()?;
+                validate.current()?;
+                validate.normalize_parameters(&supplied)
+            })
+            .await?;
+            Some((provider, normalized, authorize))
+        } else {
+            if params.transport_params.is_some() {
+                if let Some(admission) = admission {
+                    self.check_open(target, &params.configuration, admission)
+                        .await?;
+                }
+                return Err(HostError::new(
+                    "INVALID_ARGUMENT",
+                    "Transport parameters require an active plugin device",
+                ));
+            }
+            None
+        };
+        let plugin_binding = plugin
+            .as_ref()
+            .map(|(provider, normalized, _)| (provider.instance_id().clone(), normalized.clone()));
         let slot = {
             let mut slots = self.inner.slots.lock().map_err(|_| unavailable())?;
             let mut retired = Vec::new();
@@ -439,7 +569,9 @@ impl DeviceService {
                 ));
             }
             if snapshot.state == SessionState::Open {
-                if snapshot.configuration != params.configuration {
+                if snapshot.configuration != params.configuration
+                    || session.plugin_binding != plugin_binding
+                {
                     return Err(HostError::new(
                         "CONFIGURATION_CONFLICT",
                         "Device is open with a different configuration",
@@ -506,7 +638,7 @@ impl DeviceService {
             completed: completed.clone(),
             join: Arc::new(Mutex::new(None)),
         });
-        let opener = self.inner.opener.clone();
+        let open_plugin = plugin.clone();
         let device = target.id.clone();
         let config = params.configuration.clone();
         let clock = self.inner.clock.clone();
@@ -562,7 +694,11 @@ impl DeviceService {
             let join = thread::Builder::new()
                 .name(format!("device-{}", target.id.as_str()))
                 .spawn(move || {
-                    let mut backend = match opener(&device, &config) {
+                    let opened = match open_plugin {
+                        Some((provider, params, authorize)) => provider.open(params, authorize),
+                        None => opener(&device, &config),
+                    };
+                    let mut backend = match opened {
                         Ok(v) => v,
                         Err(e) => {
                             let _ = ready.send(Err((*e.error).clone()));
@@ -617,6 +753,13 @@ impl DeviceService {
             if let Some(admission) = admission {
                 self.check_open(target, &params.configuration, admission)
                     .await?;
+            }
+            if let Some((provider, _, authorize)) = plugin {
+                blocking(move || {
+                    provider.current()?;
+                    authorize()
+                })
+                .await?;
             }
             let snapshot = SessionSnapshot {
                 reconnect: None,
@@ -728,6 +871,7 @@ impl DeviceService {
             closing: closing_signal,
             completed,
             snapshot,
+            plugin_binding,
             source,
             sender,
             join: owner.join.clone(),
@@ -735,6 +879,11 @@ impl DeviceService {
             projections: self.inner.projections.clone(),
             observability,
             input_pending: Arc::new(AtomicBool::new(false)),
+            binding_admission: admission
+                .filter(|request| request.binding.is_some())
+                .cloned()
+                .map(OnceLock::from)
+                .unwrap_or_default(),
         });
         let result = session.snapshot()?;
         self.inner
@@ -756,6 +905,198 @@ impl DeviceService {
             recent_error: None,
         })
     }
+    /// 先预留实际原生设备，再由传输调度器结算并关闭精确会话代次。
+    pub async fn reserve_native_tool(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+    ) -> HostResult<ReservedToolPort> {
+        self.require_tool_control(actor, target).await?;
+        let session = self.session(target)?;
+        let device = session.snapshot()?.device_id;
+        let slot = self
+            .inner
+            .slots
+            .lock()
+            .map_err(|_| unavailable())?
+            .get(&device)
+            .cloned()
+            .ok_or_else(unavailable)?;
+        let current = slot.lock().await;
+        let state = session.snapshot()?;
+        if self.inner.closing.load(Ordering::SeqCst)
+            || !current
+                .as_ref()
+                .is_some_and(|active| Arc::ptr_eq(active, &session))
+            || state.state != SessionState::Open
+            || state.control_state != ControlState::Clear
+            || state.tx_gate != TxGate::Ready
+        {
+            return Err(tool_handoff_unavailable());
+        }
+        let runtime = self
+            .runtime_attachment()?
+            .ok_or_else(unavailable)?
+            .directory;
+        let native = runtime.reserve_tool_handoff(&device)?;
+        Ok(ReservedToolPort {
+            native,
+            _slot: slot.clone(),
+            _identity: ResponsibilityPin(runtime, device),
+            stopped_reconnect: state
+                .reconnect
+                .filter(|status| status.state == ReconnectState::Stopped),
+        })
+    }
+
+    /// 工具只能取得已经核对的端口地址。新鲜目录和旧 owner 的实际退出都必须通过。
+    pub async fn begin_native_tool(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        handoff: &mut ReservedToolPort,
+    ) -> HostResult<String> {
+        self.require_tool_control(actor, target).await?;
+        let session = self.session(target)?;
+        let previous = session.snapshot()?;
+        if !handoff.native.is_for(&previous.device_id)
+            || previous.control_state != ControlState::Clear
+            || previous.tx_gate == TxGate::ControlUnknown
+            || !session.cleanup_confirmed()?
+        {
+            return Err(tool_handoff_unavailable());
+        }
+        let directory = self.refresh().await?;
+        self.require_tool_control(actor, target).await?;
+        handoff.native.begin_tool(&directory)
+    }
+
+    /// 按正常会话持久化及授权路径开启新代次。返回前一直保留独占预约。
+    pub async fn return_native_tool(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+        handoff: &ReservedToolPort,
+        cancelled: Arc<AtomicBool>,
+    ) -> HostResult<OpenResult> {
+        self.require_tool_control(actor, target).await?;
+        let session = self.session(target)?;
+        let previous = session.snapshot()?;
+        if !handoff.native.is_for(&previous.device_id) || !session.cleanup_confirmed()? {
+            return Err(tool_handoff_unavailable());
+        }
+        let (device, opener) = handoff.native.return_opener(&self.refresh().await?)?;
+        if device != previous.device_id {
+            return Err(HostError::new(
+                "REQUIRES_REBIND",
+                "The device directory identity changed during handoff",
+            ));
+        }
+        let target = Target {
+            host_id: target.host_id.clone(),
+            kind: ResourceKind::try_from("device")?,
+            id: device,
+            session_id: None,
+            session_epoch: None,
+        };
+        let mut opened = self
+            .open_authorized_with(
+                actor,
+                &target,
+                OpenParams {
+                    configuration: previous.configuration,
+                    binding: None,
+                    transport_params: None,
+                },
+                cancelled,
+                opener,
+                OpenAuthority::ToolReturn,
+            )
+            .await?;
+        if !opened.reused
+            && let Some(binding) = session.binding_admission.get().cloned()
+        {
+            self.restore_tool_binding(
+                &target,
+                &mut opened,
+                binding,
+                handoff.stopped_reconnect.as_ref(),
+            )
+            .await;
+        }
+        Ok(opened)
+    }
+
+    async fn restore_tool_binding(
+        &self,
+        device: &Target,
+        opened: &mut OpenResult,
+        mut admission: OpenAdmission,
+        stopped: Option<&ReconnectStatus>,
+    ) {
+        let target = open_target(&self.inner.identity, opened);
+        let Ok(session) = self.session(&target) else {
+            return;
+        };
+        let Ok(snapshot) = session.snapshot() else {
+            return;
+        };
+        let Some((_, binding)) = admission.binding.as_ref() else {
+            return;
+        };
+        let enabled = binding.reconnect.enabled;
+        // 归还旧绑定沿用原打开者的授权戳。新代次的重连期望由原有登记路径设置。
+        admission.expected_session = None;
+        let valid = self
+            .check_open(device, &snapshot.configuration, &admission)
+            .await;
+        if valid.is_ok() {
+            let _ = session.binding_admission.set(admission.clone());
+        }
+        if enabled {
+            match (stopped, valid) {
+                (Some(status), _) => {
+                    let _ = self
+                        .reconnect_status(
+                            &session,
+                            ReconnectState::Stopped,
+                            status.attempts.get(),
+                            status.last_error.clone(),
+                        )
+                        .await;
+                }
+                (None, Err(error)) => {
+                    let _ = self
+                        .reconnect_status(&session, ReconnectState::Stopped, 0, Some(error))
+                        .await;
+                }
+                (None, Ok(())) => {
+                    self.register_reconnect(device.clone(), opened, admission)
+                        .await
+                }
+            }
+        }
+        if let Ok(snapshot) = session.snapshot() {
+            opened.revision = snapshot.revision;
+        }
+    }
+
+    async fn require_tool_control(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+    ) -> HostResult<()> {
+        if target.session_id.as_ref() != Some(&target.id)
+            || self.inner.closing.load(Ordering::SeqCst)
+        {
+            return Err(tool_handoff_unavailable());
+        }
+        let auth = self.inner.auth.clone();
+        let actor = actor.clone();
+        let target = target.clone();
+        blocking(move || OpenAuthority::ToolReturn.require(&auth, &actor, &target)).await
+    }
+
     pub async fn snapshot(&self, target: &Target) -> HostResult<SessionSnapshot> {
         self.session(target)?.snapshot()
     }
@@ -837,7 +1178,8 @@ impl DeviceService {
         for owner in &opening {
             owner.closing.store(true, Ordering::SeqCst);
         }
-        if let Some(runtime) = self.runtime_attachment()? {
+        let runtime = self.runtime_attachment()?;
+        if let Some(runtime) = &runtime {
             runtime.directory.stop();
         }
         let jobs: Vec<_> = self
@@ -854,7 +1196,8 @@ impl DeviceService {
         for job in jobs {
             let _ = job.task.await;
         }
-        let mut failure = None;
+        let mut failure =
+            runtime.and_then(|attachment| attachment.directory.require_tool_quiescence().err());
         for owner in opening {
             if let Err(error) = owner.wait().await {
                 failure.get_or_insert(error);
@@ -1645,6 +1988,12 @@ fn scope_id(session: &Id) -> HostResult<Id> {
 pub(crate) fn new_id() -> Id {
     Id::try_from(uuid::Uuid::new_v4().to_string().as_str()).expect("UUID")
 }
+fn tool_handoff_unavailable() -> HostError {
+    HostError::new(
+        "DEVICE_BUSY",
+        "The serial session is not ready for tool handoff",
+    )
+}
 pub(crate) fn invalid() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid session parameters")
 }
@@ -1694,6 +2043,7 @@ mod mailbox_tests {
             .open(
                 &h.device("read-wait-policy"),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration,
                 },
@@ -1766,6 +2116,7 @@ mod mailbox_tests {
             .open(
                 &h.device(name),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },
@@ -1794,6 +2145,7 @@ mod mailbox_tests {
             .open(
                 &h.device(name),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },
@@ -1825,6 +2177,7 @@ mod mailbox_tests {
             .open(
                 &h.device(name),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },
@@ -1859,10 +2212,12 @@ mod mailbox_tests {
             .open_inner(
                 &h.device(name),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },
                 Some(&OpenAdmission {
+                    authority: OpenAuthority::DeviceModify,
                     actor: h.actor.clone(),
                     grant_stamp: None,
                     binding: None,
@@ -1896,6 +2251,7 @@ mod mailbox_tests {
             .open(
                 &device,
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },
@@ -2429,14 +2785,14 @@ impl DeviceService {
         if self.inner.store.identity()?.instance_epoch != self.inner.identity.instance_epoch {
             return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
         }
-        self.inner
-            .auth
-            .require(&admission.actor, "device.modify", target)?;
+        admission
+            .authority
+            .require(&self.inner.auth, &admission.actor, target)?;
         if let Some(stamp) = &admission.grant_stamp {
             self.inner.auth.validate_grants(stamp)?;
         }
         if let Some(runtime) = self.runtime_attachment()? {
-            let list = runtime.directory.list()?;
+            let (list, native_stale) = runtime.directory.list_with_native_stale()?;
             let descriptor = list
                 .devices
                 .iter()
@@ -2444,7 +2800,12 @@ impl DeviceService {
                 .ok_or_else(|| {
                     HostError::new("DEVICE_NOT_FOUND", "Device is absent from the directory")
                 })?;
-            if list.stale && descriptor.fingerprint.transport != DeviceTransportKind::Virtual {
+            if native_stale
+                && matches!(
+                    descriptor.fingerprint.transport,
+                    DeviceTransportKind::Serial | DeviceTransportKind::Pty
+                )
+            {
                 return Err(HostError::new(
                     "DISCOVERY_STALE",
                     "Device discovery must succeed before opening",
@@ -2534,6 +2895,9 @@ impl DeviceService {
                 return Ok(());
             };
             let descriptor = runtime.directory.descriptor(&target.id)?;
+            if descriptor.fingerprint.transport == DeviceTransportKind::Plugin {
+                return Ok(());
+            }
             let recent = super::RecentConnections::new(self.inner.store.clone());
             let entry = RecentConnection {
                 device_id: target.id.clone(),
@@ -2605,16 +2969,19 @@ impl DeviceService {
             old.stop.store(true, Ordering::SeqCst);
             let _ = old.task.await;
         }
-        let pin = runtime
+        let pin = match runtime
             .directory
             .descriptor(&device.id)
-            .and_then(|descriptor| runtime.directory.pin(&descriptor));
-        if let Err(error) = pin {
-            let _ = self
-                .reconnect_status(&session, ReconnectState::Stopped, 0, Some(error))
-                .await;
-            return;
-        }
+            .and_then(|descriptor| runtime.directory.pin(&descriptor))
+        {
+            Ok(()) => ResponsibilityPin(runtime.directory.clone(), device.id.clone()),
+            Err(error) => {
+                let _ = self
+                    .reconnect_status(&session, ReconnectState::Stopped, 0, Some(error))
+                    .await;
+                return;
+            }
+        };
         let _ = self
             .reconnect_status(&session, ReconnectState::Idle, 0, None)
             .await;
@@ -2625,7 +2992,7 @@ impl DeviceService {
         let stop = Arc::new(AtomicBool::new(false));
         let stopped = stop.clone();
         let job = tokio::spawn(async move {
-            let _pin = ResponsibilityPin(runtime.directory.clone(), device.id.clone());
+            let _pin = pin;
             let mut target = target;
             let mut schedule: Option<super::ReconnectResponsibility> = None;
             let mut attempts = 0;
@@ -2740,13 +3107,17 @@ impl DeviceService {
                                 .reconnect_status(&session, ReconnectState::Waiting, attempts, None)
                                 .await;
                         }
-                        let list = runtime.directory.list();
-                        let identity = list.as_ref().ok().filter(|list| !list.stale).map(|list| {
-                            super::IdentityMatcher::match_device(
-                                &binding.fingerprint,
-                                &list.devices,
-                            )
-                        });
+                        let list = runtime.directory.list_with_native_stale();
+                        let identity = list
+                            .as_ref()
+                            .ok()
+                            .filter(|(_, native_stale)| !*native_stale)
+                            .map(|(list, _)| {
+                                super::IdentityMatcher::match_device(
+                                    &binding.fingerprint,
+                                    &list.devices,
+                                )
+                            });
                         let exact = matches!(&identity, Some(super::MatchResult::Exact(id)) if id == &device.id);
                         if matches!(identity, Some(super::MatchResult::RequiresRebind(_))) {
                             let _ = service
@@ -2782,6 +3153,7 @@ impl DeviceService {
                                         )
                                         .await;
                                     let params = OpenParams {
+                                        transport_params: None,
                                         configuration: binding.configuration.clone(),
                                         binding: admission
                                             .binding
@@ -3080,6 +3452,7 @@ mod responsibility_budget_tests {
                     &h.actor,
                     &h.device(descriptor.device_id.as_str()),
                     OpenParams {
+                        transport_params: None,
                         configuration: SerialConfiguration::default(),
                         binding: Some(DeviceBindingReference {
                             workspace_id: support::id("bench"),

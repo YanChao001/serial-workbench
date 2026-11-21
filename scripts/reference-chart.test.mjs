@@ -6,7 +6,8 @@ test("the chart cannot join a partially read sample across a source gap", async 
   let sample;
   register({
     contributions: { register() {} },
-    actions: {
+    actions: { register() {} },
+    parsers: {
       register: (_, handler) => {
         sample = handler;
       },

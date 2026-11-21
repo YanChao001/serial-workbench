@@ -77,9 +77,13 @@ export function sharedSettings(value: AppSettings): SharedSettings {
     sidebarCollapsed: _sidebarCollapsed,
     sidebarWidth: _sidebarWidth,
     receiveHistory: _receiveHistory,
+    nodeTheme,
     ...shared
   } = value;
-  return parseSharedSettings(shared);
+  return parseSharedSettings({
+    ...shared,
+    ...(nodeTheme === undefined ? {} : { nodeTheme }),
+  });
 }
 export function normalizeSettingsPatch(
   current: AppSettings,
@@ -159,7 +163,10 @@ export function loadSettings(): AppSettings {
 }
 export function applySettings(
   settings: AppSettings,
-  { includeTheme = true }: { includeTheme?: boolean } = {},
+  {
+    includeTheme = true,
+    nodeAccent,
+  }: { includeTheme?: boolean; nodeAccent?: string } = {},
 ) {
   setReceiveHistoryLimits(settings.receiveHistory ?? DEFAULT_RECEIVE_HISTORY);
   const root = document.documentElement;
@@ -174,7 +181,7 @@ export function applySettings(
     root.style.colorScheme = dark ? "dark" : "light";
   }
   for (const [name, value] of Object.entries({
-    accent: settings.accent,
+    accent: nodeAccent === undefined ? settings.accent : "custom",
     radius: settings.radius,
     font: settings.font,
     fontSize: settings.fontSize,
@@ -189,7 +196,7 @@ export function applySettings(
     language: settings.language,
   }))
     root.dataset[name] = String(value);
-  const customAccent = customAccentPalette(settings.customAccent);
+  const customAccent = customAccentPalette(nodeAccent ?? settings.customAccent);
   root.style.setProperty("--custom-accent-light", customAccent.light);
   root.style.setProperty("--custom-accent-dark", customAccent.dark);
   root.style.setProperty(

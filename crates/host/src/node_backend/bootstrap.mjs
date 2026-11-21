@@ -640,7 +640,14 @@ const workerBootstrapUrl = new URL(
 function selection() {
   return Object.fromEntries(groups.map((key) => [key, []]));
 }
-function registerHandler(owner, packageId, group, id, handler) {
+function registerHandler(
+  owner,
+  packageId,
+  group,
+  id,
+  handler,
+  category = group,
+) {
   const handlers = owner[group];
   if (
     owner.closed ||
@@ -653,7 +660,7 @@ function registerHandler(owner, packageId, group, id, handler) {
   )
     throw new Error("Invalid contribution handler");
   handlers.set(id, handler);
-  owner.contributes[group].push(id);
+  owner.contributes[category].push(id);
 }
 function resultFrame(kind, requestId, value) {
   const serialized = JSON.stringify(value);
@@ -674,6 +681,11 @@ async function dispose(id) {
   owner.closed = true;
   let failed = false;
   for (const task of owner.tasks) stopTask(task);
+  for (const result of await Promise.allSettled(
+    [...owner.transportLanes].map((lane) => lane.stop()),
+  )) {
+    if (result.status === "rejected") failed = true;
+  }
   // 先结束执行任务，再调用插件清理；清理函数可以等待 worker.finished。
   for (const result of await Promise.allSettled(
     [...owner.workers].map((worker) => worker.terminate()),
@@ -697,6 +709,9 @@ async function dispose(id) {
 async function activate(message) {
   if (packages.has(message.id)) throw new Error("Package already active");
   moduleRoots.add(realpathSync.native(message.root));
+  const configurationKinds = new Map(
+    Object.entries(message.configurationKinds ?? {}),
+  );
   const owner = {
     closed: false,
     registering: true,
@@ -705,6 +720,9 @@ async function activate(message) {
     contributes: selection(),
     queries: new Map(),
     actions: new Map(),
+    parsers: new Map(),
+    transports: new Map(),
+    transportLanes: new Set(),
     tasks: new Set(),
   };
   packages.set(message.id, owner);
@@ -748,6 +766,42 @@ async function activate(message) {
     actions: Object.freeze({
       register(id, handler) {
         registerHandler(owner, message.id, "actions", id, handler);
+      },
+    }),
+    parsers: Object.freeze({
+      register(id, handler) {
+        registerHandler(owner, message.id, "parsers", id, handler);
+      },
+    }),
+    configuration: Object.freeze({
+      registerQuery(id, handler) {
+        if (configurationKinds.get(id) !== "query")
+          throw new Error("Configuration is not a declared query");
+        registerHandler(
+          owner,
+          message.id,
+          "queries",
+          id,
+          handler,
+          "configuration",
+        );
+      },
+      registerAction(id, handler) {
+        if (configurationKinds.get(id) !== "action")
+          throw new Error("Configuration is not a declared action");
+        registerHandler(
+          owner,
+          message.id,
+          "actions",
+          id,
+          handler,
+          "configuration",
+        );
+      },
+    }),
+    transports: Object.freeze({
+      register(id, open) {
+        registerHandler(owner, message.id, "transports", id, open);
       },
     }),
     workers: Object.freeze({
@@ -857,6 +911,18 @@ async function activate(message) {
       throw new Error("Selected query has no handler");
     if (owner.contributes.actions.some((id) => !owner.actions.has(id)))
       throw new Error("Selected action has no handler");
+    if (owner.contributes.parsers.some((id) => !owner.parsers.has(id)))
+      throw new Error("Selected parser has no handler");
+    if (
+      owner.contributes.configuration.some((id) => {
+        const kind = configurationKinds.get(id);
+        if (kind === "query") return !owner.queries.has(id);
+        return kind !== "action" || !owner.actions.has(id);
+      })
+    )
+      throw new Error("Selected configuration has no handler");
+    if (owner.contributes.transports.some((id) => !owner.transports.has(id)))
+      throw new Error("Selected transport has no provider");
     owner.registering = false;
     return owner.contributes;
   } catch (error) {
@@ -866,7 +932,9 @@ async function activate(message) {
 }
 function invoke(message) {
   const owner = packages.get(message.id);
-  const handler = owner?.actions.get(message.call.actionId);
+  const handler =
+    owner?.actions.get(message.call.actionId) ??
+    owner?.parsers.get(message.call.actionId);
   if (
     !owner ||
     owner.closed ||
@@ -971,13 +1039,23 @@ function valid(message) {
       typeof message.reply === "object" &&
       typeof message.reply.ok === "boolean"
     );
-  if (message.kind === "activate")
+  if (message.kind === "activate") {
+    const { configurationKinds } = message;
     return (
-      Object.keys(message).length === 5 &&
+      Object.keys(message).length ===
+        (configurationKinds === undefined ? 5 : 6) &&
       typeof message.id === "string" &&
       typeof message.entry === "string" &&
-      typeof message.root === "string"
+      typeof message.root === "string" &&
+      (configurationKinds === undefined ||
+        (configurationKinds !== null &&
+          typeof configurationKinds === "object" &&
+          !Array.isArray(configurationKinds) &&
+          Object.values(configurationKinds).every(
+            (kind) => kind === "query" || kind === "action",
+          )))
     );
+  }
   if (message.kind === "dispose")
     return Object.keys(message).length === 3 && typeof message.id === "string";
   if (message.kind === "query")
@@ -1003,6 +1081,19 @@ function valid(message) {
       typeof message.call === "object" &&
       !Array.isArray(message.call) &&
       typeof message.call.actionId === "string"
+    );
+  if (message.kind === "open_transport")
+    return (
+      Object.keys(message).length === 7 &&
+      typeof message.id === "string" &&
+      typeof message.transportId === "string" &&
+      typeof message.address === "string" &&
+      typeof message.credential === "string" &&
+      /^127[.]0[.]0[.]1:[1-9][0-9]{0,4}$/.test(message.address) &&
+      /^[A-Za-z0-9_-]{43}$/.test(message.credential) &&
+      message.params !== null &&
+      typeof message.params === "object" &&
+      !Array.isArray(message.params)
     );
   if (message.kind === "cancel_action")
     return Object.keys(message).length === 2;
@@ -1030,6 +1121,31 @@ async function command(message) {
     else if (message.kind === "dispose") {
       await dispose(message.id);
       emit({ kind: "disposed", requestId: message.requestId });
+    } else if (message.kind === "open_transport") {
+      const owner = packages.get(message.id);
+      const open = owner?.transports.get(message.transportId);
+      if (
+        !owner ||
+        owner.closed ||
+        owner.registering ||
+        typeof open !== "function" ||
+        owner.transportLanes.size >= 16
+      )
+        throw new Error("Transport provider unavailable");
+      const lane = taskScope.run(undefined, () =>
+        createPluginTransportLane({
+          address: message.address,
+          credential: message.credential,
+          params: Object.freeze(message.params),
+          open,
+        }),
+      );
+      owner.transportLanes.add(lane);
+      lane.finished.then(
+        () => owner.transportLanes.delete(lane),
+        () => process.exit(1),
+      );
+      emit({ kind: "transport_started", requestId: message.requestId });
     } else if (message.kind === "query") {
       const owner = packages.get(message.id);
       const handler = owner?.queries.get(message.query.actionId);

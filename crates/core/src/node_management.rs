@@ -9,6 +9,42 @@ use specta::Type;
 
 pub const NODE_VIEW_ASSET_CHUNK_BYTES: usize = 32768;
 
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NodeThemeReference {
+    pub package_id: NodePackageId,
+    pub theme_id: Id,
+    pub archive_sha256: Digest,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NodeThemeTokens {
+    #[serde(deserialize_with = "crate::settings::accent_color")]
+    #[schemars(regex(pattern = "^#[0-9A-Fa-f]{6}$"))]
+    #[specta(type = String)]
+    pub accent: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NodeThemeEntry {
+    pub package_id: NodePackageId,
+    pub theme_id: Id,
+    pub archive_sha256: Digest,
+    pub display_name: String,
+    #[serde(deserialize_with = "crate::settings::accent_color")]
+    #[schemars(regex(pattern = "^#[0-9A-Fa-f]{6}$"))]
+    #[specta(type = String)]
+    pub accent: String,
+}
+
+#[derive(Debug, Clone, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct NodeThemesResult {
+    pub themes: Vec<NodeThemeEntry>,
+}
+
 /// 此查询的 operation 目标引用已完成的视图打开动作。
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]

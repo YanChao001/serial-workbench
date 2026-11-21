@@ -119,6 +119,7 @@ pub enum QueryResult {
     NodePackageDetails(NodePackageDetailsReadResult),
     NodePackageRuntime(NodePackageRuntimeStatus),
     NodeViewAsset(Box<NodeViewAssetReadResult>),
+    NodeThemes(NodeThemesResult),
     NodePackageSources(NodeSourceListResult),
     CaptureStatus(CaptureStatusResult),
     CaptureTail(CaptureTailResult),
@@ -247,6 +248,7 @@ impl BuiltinAction {
             Self::NodePackageSetEnabled => typed!(NodePackageSetEnabledParams),
             Self::NodePackageRuntime => typed!(NodePackageRuntimeParams),
             Self::NodeViewAssetRead => typed!(NodeViewAssetReadParams),
+
             Self::NodePackageConfirmExecutionTrust
             | Self::NodePackageRevokeExecutionTrust
             | Self::NodePackageUninstall => {
@@ -313,7 +315,8 @@ impl BuiltinAction {
                 }
             }
             Self::StreamCredit => typed!(StreamCreditParams),
-            Self::StateScopes => {
+            Self::ToolHandoff => typed!(ToolHandoffParams),
+            Self::StateScopes | Self::NodeThemesList => {
                 typed!(EmptyParams);
                 if query.target.id != query.host_id {
                     return Err(invalid());

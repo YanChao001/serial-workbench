@@ -75,6 +75,7 @@ export type ReplayLayoutFixture = {
   >;
 };
 export type WorkbenchFixture = {
+  setNodeThemes: (themes: FixtureNodeThemes) => void;
   browserTakeoverDecisions: { takeoverId: string; approve: boolean }[];
   lanCommands: LanAccessParams[];
   copiedLanInfo: string[];
@@ -126,6 +127,10 @@ export type WorkbenchFixture = {
   failRefresh: () => void;
   failHost: () => number;
 };
+type FixtureNodeThemes = Extract<
+  QueryResult,
+  { kind: "node_themes" }
+>["value"]["themes"];
 declare global {
   interface Window {
     workbenchFixture: WorkbenchFixture;
@@ -198,6 +203,7 @@ export async function seedWorkbenchFixture(
     plugin,
     pendingTakeover,
     lanOwner,
+    nodeThemes = [],
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -221,6 +227,7 @@ export async function seedWorkbenchFixture(
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     pendingTakeover?: BrowserTakeoverRequest;
     lanOwner?: { hostId: string; address: string };
+    nodeThemes?: FixtureNodeThemes;
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -449,6 +456,7 @@ export async function seedWorkbenchFixture(
     plugin,
     pendingTakeover,
     lanOwner,
+    nodeThemes,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -479,6 +487,7 @@ export async function seedWorkbenchFixture(
       plugin,
       pendingTakeover,
       lanOwner,
+      nodeThemes,
     } = JSON.parse(raw) as typeof fixturePayload;
     let remoteAttachment: DesktopAttachment | undefined;
     let remoteGeneration = 1;
@@ -589,6 +598,8 @@ export async function seedWorkbenchFixture(
       }
     >();
     let nextCallback = 1;
+    const catalogListeners = new Set<number>();
+    let themes = nodeThemes;
     let browserAccess: BrowserAccessState = { kind: "disabled" };
     let lanAccess: LanAccessResult = {
       localPeer: { hostId: "workbench-gui-host", fingerprint: "a".repeat(64) },
@@ -596,6 +607,15 @@ export async function seedWorkbenchFixture(
       peers: [],
     };
     const fixture: WorkbenchFixture = {
+      setNodeThemes(next) {
+        themes = next;
+        for (const id of catalogListeners)
+          callbacks.get(id)?.({
+            event: "app://host-catalog-changed",
+            id,
+            payload: hostAttachment.generation,
+          });
+      },
       browserTakeoverDecisions: [],
       lanCommands: [],
       copiedLanInfo: [],
@@ -803,8 +823,10 @@ export async function seedWorkbenchFixture(
     Object.assign(window, {
       workbenchFixture: fixture,
       __TAURI_EVENT_PLUGIN_INTERNALS__: {
-        unregisterListener: (_event: string, id: number) =>
-          callbacks.delete(id),
+        unregisterListener: (_event: string, id: number) => {
+          catalogListeners.delete(id);
+          return callbacks.delete(id);
+        },
       },
       __TAURI_INTERNALS__: {
         metadata: {
@@ -820,6 +842,11 @@ export async function seedWorkbenchFixture(
         async invoke(command: string, args: Record<string, unknown> = {}) {
           switch (command) {
             case "plugin:event|listen":
+              if (
+                args.event === "app://host-catalog-changed" &&
+                typeof args.handler === "number"
+              )
+                catalogListeners.add(args.handler);
               return args.handler;
             case "plugin:event|unlisten":
             case "host_delivery_ack":
@@ -1610,6 +1637,11 @@ export async function seedWorkbenchFixture(
                 return {
                   ok: true,
                   result: { kind: "settings", value: currentSettings },
+                };
+              if (query.actionId === "node.themes.list")
+                return {
+                  ok: true,
+                  result: { kind: "node_themes", value: { themes } },
                 };
               if (query.actionId === "action.check") {
                 if (query.params.actionId === "session.configure") {

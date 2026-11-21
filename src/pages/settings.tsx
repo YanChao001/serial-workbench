@@ -11,6 +11,7 @@ import { toast } from "sonner";
 import { LanguageSwitch } from "@/components/language-switch";
 import { SkinPicker } from "@/components/skin-picker";
 import { AccentPicker } from "@/components/accent-picker";
+import { NodeThemePicker } from "@/components/node-theme-picker";
 import { SettingsSearch } from "@/components/settings-search";
 import {
   SettingsPersistence,
@@ -358,6 +359,7 @@ export default function Settings() {
           </div>
 
           <AccentPicker />
+          <NodeThemePicker />
 
           <SettingRow
             id="settings-radius"

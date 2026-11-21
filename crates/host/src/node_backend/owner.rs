@@ -8,8 +8,8 @@ use crate::{
 };
 use serde::{Deserialize, Serialize};
 use serial_workbench_core::{
-    Call, HostError, HostResult, NodeContributionSelection, NodePackageId, NodePackageRegistration,
-    Query, U64,
+    ActionKind, Call, HostError, HostResult, Id, NodeContributionSelection, NodePackageId,
+    NodePackageRegistration, Query, U64,
 };
 use std::{
     collections::BTreeMap,
@@ -47,6 +47,8 @@ enum Command<'a> {
         id: &'a NodePackageId,
         entry: &'a str,
         root: &'a str,
+        #[serde(skip_serializing_if = "BTreeMap::is_empty")]
+        configuration_kinds: &'a BTreeMap<&'a Id, ActionKind>,
     },
     Dispose {
         request_id: U64,
@@ -56,6 +58,14 @@ enum Command<'a> {
         request_id: U64,
         id: &'a NodePackageId,
         query: &'a Query,
+    },
+    OpenTransport {
+        request_id: U64,
+        id: &'a NodePackageId,
+        transport_id: &'a serial_workbench_core::Id,
+        address: &'a str,
+        credential: &'a serial_workbench_core::ContextToken,
+        params: &'a serial_workbench_core::JsonObject,
     },
     Invoke {
         request_id: U64,
@@ -123,6 +133,9 @@ enum Frame {
         value: serde_json::Value,
     },
     QueryFailed {
+        request_id: U64,
+    },
+    TransportStarted {
         request_id: U64,
     },
     ActionCompleted {
@@ -342,6 +355,45 @@ impl Owner {
         self.sequence = self.sequence.checked_next()?;
         Ok(self.sequence)
     }
+    fn start_transport(
+        &mut self,
+        package: NodePackageId,
+        definition: Arc<definitions::Definition>,
+        endpoint: super::transport::TransportEndpoint,
+        params: serial_workbench_core::JsonObject,
+        authorize: &dyn Fn() -> HostResult<()>,
+    ) -> HostResult<()> {
+        self.health(false)?;
+        self.check_active()?;
+        self.registrations
+            .validate_transport(&package, &definition)?;
+        authorize()?;
+        let request_id = self.next()?;
+        self.send(Command::OpenTransport {
+            request_id,
+            id: &package,
+            transport_id: &definition.spec().action_id,
+            address: &endpoint.address,
+            credential: &endpoint.credential,
+            params: &params,
+        })?;
+        // 仅接收私有线路启动回执。对端 connect 及流 I/O 不等待控制队列。
+        match self.frame(Instant::now() + self.limits.command_timeout, false, &|| {
+            Ok(())
+        })? {
+            Frame::TransportStarted {
+                request_id: received,
+            } if received == request_id => Ok(()),
+            Frame::Failed {
+                request_id: received,
+            } if received == request_id => {
+                self.effect_started = false;
+                Err(error("HOST_BUSY", "backendTransportRejected"))
+            }
+            _ => Err(error("PROTOCOL_ERROR", "backendTransportResponse")),
+        }
+    }
+
     fn activate(
         &mut self,
         package: VerifiedNodeInstallation,
@@ -370,6 +422,7 @@ impl Owner {
         let id = installed.manifest.id.clone();
         let archive_sha256 = installed.archive_sha256.clone();
         let ui_assets = package.ui_assets();
+        let verified_themes = package.themes().to_vec();
         let manifest = installed.manifest.clone();
         if self.registrations.contains(&id)? {
             return Err(error("REVISION_CONFLICT", "backendAlreadyActive"));
@@ -396,11 +449,19 @@ impl Owner {
             .package_objects
             .insert(package.package().object_id());
         self.process.packages.push(package);
+        // 只把已验签清单中的配置种类交给私有运行时，用于核对登记的处理器。
+        let configuration_kinds = manifest
+            .contributes
+            .configuration
+            .iter()
+            .map(|spec| (&spec.action_id, spec.kind))
+            .collect();
         self.send(Command::Activate {
             request_id,
             id: &id,
             entry: &entry,
             root: &root,
+            configuration_kinds: &configuration_kinds,
         })?;
         // Node 模块缓存仍可引用该代内容；dispose 后也保持证明到真实进程退出。
         let frame = self.frame(
@@ -437,6 +498,20 @@ impl Owner {
             .into_iter()
             .filter(|view| selected_views.contains(&view.id))
             .collect();
+        let themes = verified_themes
+            .into_iter()
+            .filter(|theme| {
+                registration
+                    .contributes
+                    .themes
+                    .contains(&theme.entry.theme_id)
+                    && registration
+                        .contributes
+                        .configuration
+                        .contains(&theme.configuration)
+            })
+            .map(|theme| (theme.configuration, theme.entry))
+            .collect();
         let execution = Arc::new(registrations::PackageExecution {
             id: id.clone(),
             version: manifest.version,
@@ -446,6 +521,7 @@ impl Owner {
             )?,
             host_api: manifest.permissions.host_api,
             views,
+            themes,
             ui_assets,
         });
         authorize()?;
@@ -858,6 +934,31 @@ impl Owner {
                     }
                     let _ = reply.send(result);
                 }
+                Ok(Request::OpenTransport {
+                    package,
+                    definition,
+                    endpoint,
+                    params,
+                    authorize,
+                    reply,
+                }) => {
+                    self.effect_started = false;
+                    let result = self.start_transport(
+                        package,
+                        definition,
+                        endpoint,
+                        params,
+                        authorize.as_ref(),
+                    );
+                    if let Err(cause) = &result
+                        && self.effect_started
+                    {
+                        let report = self.finish(Some(cause.clone()));
+                        let _ = reply.send(result);
+                        return report;
+                    }
+                    let _ = reply.send(result);
+                }
                 Ok(Request::Invoke {
                     package,
                     call,
@@ -1048,7 +1149,12 @@ impl Process {
         cancel: &AtomicBool,
         observation: Arc<Mutex<ExitObservation>>,
     ) -> HostResult<Self> {
-        let bootstrap = include_bytes!("bootstrap.mjs").as_slice();
+        let bootstrap = concat!(
+            include_str!("transport.mjs"),
+            "\n",
+            include_str!("bootstrap.mjs")
+        )
+        .as_bytes();
         if bootstrap.is_empty() || bootstrap.len() > serial_workbench_ipc::frame::MAX_FRAME_BYTES {
             return Err(error("LIMIT_EXCEEDED", "backendBootstrapFrame"));
         }
