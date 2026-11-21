@@ -142,6 +142,8 @@ M2 B 的第一个场景使用 C 继续交付的「串口监听」参考包。打
 
 终端源码位于 [SDK 示例](../packages/plugin-sdk/examples/reference-terminal/)。先运行 `pnpm plugin-sdk:fixture`。签名工具读取单独准备的 32 字节 Ed25519 测试种子，输出 ZIP 和一行包含包摘要、来源 ID 和公钥的 JSON。保存 stdout 作为本轮签名收据，公钥用该收据核对。
 
+已交付的签名参考包变更后递增包版本，并用原来源签发升级包。验收用户可见的包内修复时，从上一版已安装的状态走升级入口，再打开视图检查结果。串口监听从 `0.1.1` 升到 `0.1.2` 后，收发数据直接从系统标题栏下方开始显示。
+
 ```sh
 cargo run --locked -p serial-workbench-host --example sign_reference_terminal -- .cache/plugin-sdk/examples/reference-terminal/main.js <测试种子文件> <新ZIP绝对路径> terminal-reference local-acceptance
 ```

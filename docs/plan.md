@@ -1,6 +1,6 @@
 # 路线与进度
 
-**当前接续点（2026-11-21）为 M3 事务契约验证。** M2 B、C、配对浏览器和 LAN 双 Host 已经 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 至 [PR #52](https://github.com/YanChao001/serial-workbench/pull/52) 合入 `main`。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
+**当前接续点（2026-11-21）为 M3 契约冻结。** M2 B、C、配对浏览器和 LAN 双 Host 已经 [PR #49](https://github.com/YanChao001/serial-workbench/pull/49) 至 [PR #52](https://github.com/YanChao001/serial-workbench/pull/52) 合入 `main`。M3 的签名事务场景已随 [PR #53](https://github.com/YanChao001/serial-workbench/pull/53) 合入。逐项软件、硬件和发行状态见[需求账本](./feature-status.json)。
 
 ## 当前执行与下一步
 
@@ -9,15 +9,15 @@
 3. **Windows 断网实装移至 M6。** `bfd37d6` 的未签名 Windows x64 NSIS 已确认内置 WebView2 离线安装程序、固定 Node 和三个伴随程序。Microsoft 安装程序的 Authenticode 验证有效。用户确认用 M6 发行候选，在未安装 WebView2 的独立 Windows x64 环境实际断网安装及首次启动。此前的安装材料和失败记录保留。[M6 安装验收](./testing.md#安装与发行验收)
 4. **配对浏览器已合入 `d504166`。** 同一候选 `92f0d5f` 通过本机综合检查、205 项无头 UI 和四目标 CI 的 13 项作业，两项专项预检按运行模式跳过。Windows 原生桌面通过实际配对及接管，所选 MCP 失去当前串口的写入权，另一身份在同一会话继续收发。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44770530228)
 5. **LAN 双 Host 已合入 `cb394e9`，M2 软件出口完成。** 同一候选 `b205af2` 通过本机综合检查、207 项无头 UI 和完整四目标 CI 的 13 项必跑作业。Windows 原生场景完成接管、两端参数读回、离开草稿后跟随和保存后返回本机。真实 Host 验证断线事务结算、独立写入及重连取回执。LAN-01、NET-07 和 NET-11 登记本次软件证据，后续阶段按各自验收继续。[PR #52](https://github.com/YanChao001/serial-workbench/pull/52) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44829397705)
-6. **M3 从公开 SDK 事务场景接续。** 用签名自动化包验证等待应答期间的竞争写入和迟到应答，复用 Host 事务租约、源字节范围和操作结算。Ubuntu 同一候选的断网六场景通过，T06 实测 600 秒，录制与发生器均为 6,911,042 字节且摘要一致，控制查询 p95 为 1.99 毫秒。M3 按固定负载继续验证组合场景，M6 再通过跨机、设备、长稳和发行验收。[M3 契约冻结](./testing.md#m3-契约冻结) · [Ubuntu 作业](https://github.com/YanChao001/serial-workbench/actions/runs/44829397705/job/136610227405)
+6. **M3 事务切片已合入 `e879d4b`。** 同一候选 `7c1384b` 通过本机综合检查、207 项无头 UI 和四目标 CI 的 13 项必跑作业。Windows 签名自动化场景通过事务租约、竞争写入、按源时钟归属迟到应答、取消及 GUI/CLI/MCP 录制一致性。Ubuntu 运行了隔离网络内的六个软件场景及 600 秒负载。接续版本协商、合成 UART、长脚本、网络与独占交接、图表离屏导出和后台升级。[四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44853898708) · [M3 契约冻结](./testing.md#m3-契约冻结)
 
-**M3 自动化事务（工作树，Windows）。** 签名参考包 `0.1.1` 用公开 SDK 获取 Host 事务租约。无窗口原生用例在同一会话验证 S13，200 毫秒期限对应的应答在 Host 同一时钟的 353 毫秒到达。结果为超时，迟到应答指回原发送与 RX `[19,24)`，竞争 MCP 在迟到事件之后完成写入。另验取消释放后的排队写入，55 字节录制回放和 CLI/MCP 结果范围一致。跨平台复验与后续契约场景仍待完成。程序、包与日志见 `.cache/evidence/m3-transaction-20261121/late-response/`。
+**M3 自动化事务（合入候选 `7c1384b`，Windows）。** 真实签名包用公开 SDK 获取租约。200 毫秒请求的迟到应答按同一 Host 时钟在 389 毫秒到达，指回原发送和 RX `[19,24)`。竞争 MCP 在迟到事件后完成写入。取消后排队写入得到结算，55 字节录制回放与 CLI/MCP 的结果一致。截止点缺页的两项定向回归及签名包证据见 `.cache/evidence/m3-transaction-20261121/`。[PR #53](https://github.com/YanChao001/serial-workbench/pull/53)
 
 **M3 实际 MCP 产品（工作树，Windows）。** Claude Code `2.1.314` 使用独立配置、回环预设响应与实际 stdio MCP。验收用离线准备的正式 Host 和固定 Node 调用签名终端，对照 CLI 的 69 字节录制，并复核撤权后的目录与旧引用。Host 正常退出。程序摘要与获准、撤权两轮产品事件见 `.cache/evidence/m3-transaction-20261121/terminal-product/`。
 
-**M3 T06 组合负载（候选 `96c0961`，Windows x64）。** 签名公开 SDK 解析器、快速 Raw 读者、慢读者与录制并行，实测 600 秒，六场景 18 项断言通过。发生器、快速读者、解析器和录制回放均为 6,912,009 字节，摘要一致。派生读者从过期游标恢复，读取全部 597 条样本。控制查询 p95 为 10.58 毫秒，进程树 RSS 峰值 177 MiB，Host 和 Node owner 均已退出。首次失败是验收程序主线程栈溢出，复验仅为该程序设置 4 MiB 栈保留，正式程序沿用同轮构建。两轮日志、签名包、采样及退出收据见 `.cache/evidence/m3-transaction-20261121/candidate-96c0961/`。
+**M3 T06 组合负载（候选 `0ba36bc`，Windows x64）。** 签名公开 SDK 解析器、快慢 Raw 读者与录制并行，实测 600.086 秒，六场景 18 项断言通过。发生器、快速读者、解析器和录制回放的 6,911,679 字节摘要一致，派生读者从过期游标恢复并收齐 597 条样本。控制查询 p95 为 8.14 毫秒，进程树 RSS 峰值为 181 MiB，Host 和 Node 进程已退出。验收程序沿用先前排除栈溢出所需的 4 MiB 栈保留。Windows 组合负载所用 Host、运行时与解析器源码从该候选到合入候选一致。原始收据与两轮失败证据见 `.cache/evidence/m3-transaction-20261121/`。
 
-**M3 四目标门禁。** `96c0961` 在 Apple Silicon 打开串口时中断状态发送，在 Windows 无法确认测试应用子树退出。修复候选 `0ba36bc` 的本机综合检查、207 项无头 UI、Windows 600 秒组合负载和四目标 CI 的 13 项必跑作业均通过。最后复审用可控时钟复现轮询截止点漏读，导致准时应答被判超时，或遗失迟到应答的来源。补读留存页的修正通过两项定向回归，真实签名包与新候选门禁继续复验。原始失败和两轮完整证据保存在 `.cache/evidence/m3-transaction-20261121/`。[首次四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44842577735) · [修复候选四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44847909791)
+**串口监听参考包升级。** 已安装的早期 `0.1.1` 可从同签名来源原地升到 `0.1.2`，保留启用与执行信任。新版正文从系统标题栏下方直接显示收发数据。Windows 隔离配置实测升级，三项无头用例通过。签名包和升级收据见 `.cache/evidence/serial-monitor-upgrade-20261121/`。[PR #54](https://github.com/YanChao001/serial-workbench/pull/54)
 
 **FUT-08 配对浏览器（工作树，Windows）。** Host 提供显式启用的 loopback 页面与 WebSocket 入口。真实回环测试通过 Host 与 Origin 校验、一次性配对、专属普通身份附着和控制连接关闭后的 Raw 清理。复审后改用浏览器独立随机生成的重连凭据，拒绝用已消费的配对码重连、重新绑定凭据或冒用桌面身份。复验也核对了未读完静态下载时关停及重开同一 profile。无头启动器可通过受保护的继承管道接收配对码。真实 Host 通过三项定向检查，真实 Chromium 在另一个浏览器上下文重用配对码被拒绝。证据见 `.cache/evidence/m2-browser-pairing/browser-review-auth-host-retest.log` 与 `browser-review-exact-20261120-221938/`。
 
