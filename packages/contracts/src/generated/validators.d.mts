@@ -55,6 +55,7 @@ import type {
   ClientResetGeometryParams,
   ClientSettingsObservation,
   ClientUnregisterParams,
+  ClientUpdatePreparation,
   ClientWindowSizeParams,
   ClosedResult,
   ConfigField,
@@ -168,6 +169,10 @@ import type {
   NodeSourceListParams,
   NodeSourceListResult,
   NodeSourceRevokeParams,
+  NodeThemeEntry,
+  NodeThemeReference,
+  NodeThemeTokens,
+  NodeThemesResult,
   NodeViewAssetReadParams,
   NodeViewAssetReadResult,
   ObjectReadResult,
@@ -277,6 +282,8 @@ import type {
   TimePrecision,
   TimeSource,
   Timestamp,
+  ToolHandoffParams,
+  ToolHandoffResult,
   TransformReference,
   TransportCapabilities,
   TransportSemantics,
@@ -447,6 +454,9 @@ export declare function validateClientSettingsObservation(
 export declare function validateClientUnregisterParams(
   value: unknown,
 ): value is ClientUnregisterParams;
+export declare function validateClientUpdatePreparation(
+  value: unknown,
+): value is ClientUpdatePreparation;
 export declare function validateClientWindowSizeParams(
   value: unknown,
 ): value is ClientWindowSizeParams;
@@ -740,6 +750,18 @@ export declare function validateNodeSourceListResult(
 export declare function validateNodeSourceRevokeParams(
   value: unknown,
 ): value is NodeSourceRevokeParams;
+export declare function validateNodeThemeEntry(
+  value: unknown,
+): value is NodeThemeEntry;
+export declare function validateNodeThemeReference(
+  value: unknown,
+): value is NodeThemeReference;
+export declare function validateNodeThemeTokens(
+  value: unknown,
+): value is NodeThemeTokens;
+export declare function validateNodeThemesResult(
+  value: unknown,
+): value is NodeThemesResult;
 export declare function validateNodeViewAssetReadParams(
   value: unknown,
 ): value is NodeViewAssetReadParams;
@@ -1007,6 +1029,12 @@ export declare function validateTimePrecision(
 ): value is TimePrecision;
 export declare function validateTimeSource(value: unknown): value is TimeSource;
 export declare function validateTimestamp(value: unknown): value is Timestamp;
+export declare function validateToolHandoffParams(
+  value: unknown,
+): value is ToolHandoffParams;
+export declare function validateToolHandoffResult(
+  value: unknown,
+): value is ToolHandoffResult;
 export declare function validateTransformReference(
   value: unknown,
 ): value is TransformReference;

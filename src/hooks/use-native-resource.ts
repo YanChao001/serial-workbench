@@ -1,15 +1,18 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { isTauri } from "@/lib/tauri";
-export function useNativeResource<T>(load: () => Promise<T>) {
+export function useNativeResource<T>(
+  load: () => Promise<T>,
+  enabled = isTauri(),
+) {
   const [data, setData] = useState<T | null>(null);
   const [error, setError] = useState<unknown>(null);
-  const [loading, setLoading] = useState(isTauri);
+  const [loading, setLoading] = useState(enabled);
   const generation = useRef(0);
   const invalidate = useCallback(() => {
     generation.current++;
   }, []);
   const reload = useCallback(async () => {
-    if (!isTauri()) return;
+    if (!enabled) return;
     const current = ++generation.current;
     setLoading(true);
     setError(null);
@@ -21,7 +24,7 @@ export function useNativeResource<T>(load: () => Promise<T>) {
     } finally {
       if (generation.current === current) setLoading(false);
     }
-  }, [load]);
+  }, [enabled, load]);
   useEffect(() => {
     void reload();
     return invalidate;

@@ -185,6 +185,51 @@ impl Fixture {
         activation: Vec<Id>,
         opener: serial_workbench_host::device::TransportOpener,
     ) -> Self {
+        let mut fixture = Self::connected(permissions, opener).await;
+        fixture.approve_test_source().await;
+        let mut metadata = manifest();
+        metadata["activation"] = json!(activation);
+        metadata["permissions"]["hostApi"] =
+            json!([{"permissions":spec.permissions,"targetKinds":spec.target_kinds}]);
+        metadata["contributes"][if spec.kind == ActionKind::Query {
+            "queries"
+        } else {
+            "actions"
+        }] = json!([spec]);
+        let mut files = payloads();
+        files.insert(
+            "manifest.json".into(),
+            serde_json::to_vec(&metadata).unwrap(),
+        );
+        files.insert("dist/main.mjs".into(), source.to_vec());
+        let path = fixture.dir.path().join("signed-actions.zip");
+        std::fs::write(&path, archive(&with_metadata(files, true))).unwrap();
+        let installed = fixture
+            .install_archive(
+                &path,
+                json!({"kind":"trusted","source":"test-source","keyId":"test-key"}),
+            )
+            .await;
+        assert_eq!(installed.state, OperationState::Succeeded, "{installed:?}");
+        let Some(ActionResult::NodePackageInstalled(installed)) = installed.result else {
+            panic!("Expected package")
+        };
+        fixture.archive = installed.package.archive_sha256;
+        let confirmed = fixture
+            .mutate(
+                &fixture.user,
+                "node.packages.confirmExecutionTrust",
+                json!({"id":"example.terminal","archiveSha256":fixture.archive}),
+                1,
+            )
+            .await;
+        assert_eq!(confirmed.state, OperationState::Succeeded, "{confirmed:?}");
+        fixture
+    }
+    pub(crate) async fn connected(
+        permissions: Vec<String>,
+        opener: serial_workbench_host::device::TransportOpener,
+    ) -> Self {
         let runtime = tokio::task::spawn_blocking(|| {
             verify_node_runtime(
                 std::path::Path::new(&std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap()),
@@ -256,7 +301,7 @@ impl Fixture {
             },
         )
         .unwrap();
-        let mut fixture = Self {
+        Self {
             host,
             client,
             user,
@@ -265,59 +310,37 @@ impl Fixture {
             target,
             archive: Digest::try_from("0".repeat(64).as_str()).unwrap(),
             dir,
-        };
+        }
+    }
+    pub(crate) async fn approve_test_source(&self) {
         let key = SigningKey::from_bytes(&[7; 32]).verifying_key().to_bytes();
         let key_digest = Digest::try_from(format!("{:x}", Sha256::digest(key)).as_str()).unwrap();
-        let approved=fixture.mutate(&fixture.user,"node.sources.approveKey",json!({"source":"test-source","keyId":"test-key","publicKey":key,"publicKeySha256":key_digest}),0).await;
+        let approved=self.mutate(&self.user,"node.sources.approveKey",json!({"source":"test-source","keyId":"test-key","publicKey":key,"publicKeySha256":key_digest}),0).await;
         assert_eq!(approved.state, OperationState::Succeeded, "{approved:?}");
-        let mut metadata = manifest();
-        metadata["activation"] = json!(activation);
-        metadata["permissions"]["hostApi"] =
-            json!([{"permissions":spec.permissions,"targetKinds":spec.target_kinds}]);
-        metadata["contributes"][if spec.kind == ActionKind::Query {
-            "queries"
-        } else {
-            "actions"
-        }] = json!([spec]);
-        let mut files = payloads();
-        files.insert(
-            "manifest.json".into(),
-            serde_json::to_vec(&metadata).unwrap(),
-        );
-        files.insert("dist/main.mjs".into(), source.to_vec());
-        let path = fixture.dir.path().join("signed-actions.zip");
-        std::fs::write(&path, archive(&with_metadata(files, true))).unwrap();
-        let registered = fixture
+    }
+    pub(crate) async fn install_archive(&self, path: &std::path::Path, source: Value) -> Operation {
+        let registered = self
             .invoke(
-                &fixture.user,
-                fixture.call(
-                    &fixture.user,
-                    &fixture.target,
+                &self.user,
+                self.call(
+                    &self.user,
+                    &self.target,
                     "file.register",
                     json!({"path":path.to_str().unwrap(),"purpose":"read_file"}),
                 ),
             )
             .await;
-        let registered = fixture.wait(&fixture.user, &registered.operation_id).await;
+        let registered = self.wait(&self.user, &registered.operation_id).await;
         let Some(ActionResult::FileMetadata(reference)) = registered.result else {
-            panic!("Expected registered archive")
+            panic!("Expected registered archive");
         };
-        let installed=fixture.mutate(&fixture.client,"node.packages.install",json!({"archiveRef":reference.file_ref,"source":{"kind":"trusted","source":"test-source","keyId":"test-key"}}),0).await;
-        assert_eq!(installed.state, OperationState::Succeeded, "{installed:?}");
-        let Some(ActionResult::NodePackageInstalled(installed)) = installed.result else {
-            panic!("Expected package")
-        };
-        fixture.archive = installed.package.archive_sha256;
-        let confirmed = fixture
-            .mutate(
-                &fixture.user,
-                "node.packages.confirmExecutionTrust",
-                json!({"id":"example.terminal","archiveSha256":fixture.archive}),
-                1,
-            )
-            .await;
-        assert_eq!(confirmed.state, OperationState::Succeeded, "{confirmed:?}");
-        fixture
+        self.mutate(
+            &self.client,
+            "node.packages.install",
+            json!({"archiveRef":reference.file_ref,"source":source}),
+            0,
+        )
+        .await
     }
     pub(crate) fn query_call(
         &self,

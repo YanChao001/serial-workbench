@@ -419,6 +419,7 @@ async fn native_device_connection_recovers_only_the_original_operation_and_sessi
             fixture.attached.generation,
             Id::try_from("virtual:echo").unwrap(),
             OpenParams {
+                transport_params: None,
                 configuration: SerialConfiguration::default(),
                 binding: None,
             },

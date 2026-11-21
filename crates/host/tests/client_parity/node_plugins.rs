@@ -2,9 +2,10 @@
 use super::*;
 use rmcp::model::{ErrorCode, PaginatedRequestParams, Tool};
 
-#[path = "../support/mod.rs"]
-mod support;
 use support::node_host_actions::{Fixture, spec};
+
+#[path = "reference_theme.rs"]
+mod reference_theme;
 
 #[path = "uart_gold.rs"]
 mod uart_gold;

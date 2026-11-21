@@ -291,7 +291,10 @@ export function bindHostConnection(
   };
 }
 export type HostConnection = ReturnType<typeof bindHostConnection> & {
-  browser?: { closed: AbortSignal };
+  browser?: {
+    closed: AbortSignal;
+    openViewConnection(signal: AbortSignal): Promise<HostConnection>;
+  };
   lanRoute?: LanRoute;
 };
 // The provider owns connection lifetime; reattachment is explicit, never an RPC retry.

@@ -40,5 +40,6 @@ run_offline_references() {
   "$test_bin" --ignored --test-threads=1 --nocapture \
     native_reference_terminal_uses_installed_runtime_through_formal_host \
     native_chart_samples_exact_rx_from_the_signed_reference_package \
-    native_automation_uses_exact_responses_and_keeps_capture_running
+    native_automation_uses_exact_responses_and_keeps_capture_running \
+    native_automation_long_script_survives_caller_disconnect_and_settles_workers
 }

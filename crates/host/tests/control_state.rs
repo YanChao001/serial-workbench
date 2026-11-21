@@ -700,6 +700,7 @@ async fn break_clear_failure_isolates_transmission_and_prevents_reopen() {
             .open(
                 &h.device("break"),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default()
                 }

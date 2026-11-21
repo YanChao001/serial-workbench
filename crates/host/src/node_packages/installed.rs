@@ -4,10 +4,13 @@ use super::{
     VerifiedNodePackage, failure, limit, paths::PackagePaths, verify_node_package,
 };
 use crate::files::references::{PathGuard, directory_identity};
-use serial_workbench_core::{HostResult, U64};
+use serial_workbench_core::{
+    HostResult, Id, NodePackageFile, NodePackagePath, NodePackageResourceKind, NodeThemeEntry,
+    NodeThemeTokens, U64,
+};
 use sha2::{Digest as _, Sha256};
 use std::{
-    collections::BTreeMap,
+    collections::{BTreeMap, HashSet},
     fmt,
     fs::{self, File, Metadata},
     io::{Cursor, Read},
@@ -17,11 +20,22 @@ use std::{
 };
 use zip::ZipArchive;
 
+const MAX_THEME_BYTES: u64 = 4096;
+const MAX_PACKAGE_THEMES: usize = 16;
+
+#[derive(Clone)]
+pub(crate) struct VerifiedNodeTheme {
+    pub(crate) configuration: Id,
+    pub(crate) entry: NodeThemeEntry,
+}
+
 pub struct VerifiedNodeInstallation {
     package: InstalledNodePackage,
     revision: U64,
     code: Arc<PathGuard>,
+    tool_files: Box<[NodePackageFile]>,
     ui_assets: Option<Arc<super::ui_assets::VerifiedUiAssets>>,
+    themes: Vec<VerifiedNodeTheme>,
     #[cfg(windows)]
     _directories: Vec<PathGuard>,
     #[cfg(windows)]
@@ -51,6 +65,12 @@ impl VerifiedNodeInstallation {
     }
     pub fn code_directory(&self) -> &Path {
         self.code.checked_path()
+    }
+    pub(super) fn tool_file(&self, path: &NodePackagePath) -> Option<&NodePackageFile> {
+        self.tool_files.iter().find(|file| &file.path == path)
+    }
+    pub(crate) fn themes(&self) -> &[VerifiedNodeTheme] {
+        &self.themes
     }
     pub(crate) fn ui_assets(&self) -> Option<Arc<super::ui_assets::VerifiedUiAssets>> {
         self.ui_assets.clone()
@@ -136,6 +156,14 @@ pub(super) fn verify_contents(
     {
         return Err(integrity("installedRecordMismatch"));
     }
+    let declared_themes = if verified.verified_source().is_some() {
+        verified.manifest().contributes.themes.as_slice()
+    } else {
+        &[]
+    };
+    if declared_themes.len() > MAX_PACKAGE_THEMES {
+        return Err(limit("themeCount"));
+    }
     let expected = expected_tree(&verified, control)?;
     let objects = open_directory(&root, "objects")?;
     let code = Arc::new(open_directory(&objects, &object_id.to_string())?);
@@ -145,6 +173,10 @@ pub(super) fn verify_contents(
         limits,
         control,
         ui_index: super::ui_assets::UiAssetIndex::from_archive(&verified),
+        theme_resources: declared_themes
+            .iter()
+            .map(|theme| (path_key(theme.path.as_str()), Vec::new()))
+            .collect(),
         #[cfg(windows)]
         files: Vec::new(),
         #[cfg(windows)]
@@ -155,9 +187,43 @@ pub(super) fn verify_contents(
         return Err(integrity("missingInstalledEntry"));
     }
     control.check()?;
+    let mut themes = Vec::with_capacity(declared_themes.len());
+    for theme in declared_themes {
+        control.check()?;
+        let bytes = check
+            .theme_resources
+            .get(&path_key(theme.path.as_str()))
+            .ok_or_else(|| integrity("themeResource"))?;
+        let tokens: NodeThemeTokens =
+            serde_json::from_slice(bytes).map_err(|_| integrity("themeResource"))?;
+        crate::node_backend::validate_theme_resource(
+            &theme.resource_schema,
+            &serde_json::to_value(&tokens).map_err(|_| integrity("themeResource"))?,
+        )?;
+        themes.push(VerifiedNodeTheme {
+            configuration: theme.configuration_action_id.clone(),
+            entry: NodeThemeEntry {
+                package_id: package.manifest.id.clone(),
+                theme_id: theme.id.clone(),
+                archive_sha256: package.archive_sha256.clone(),
+                display_name: package.manifest.display_name.chars().take(80).collect(),
+                accent: tokens.accent,
+            },
+        });
+    }
+    control.check()?;
     let ui_assets = check
         .ui_index
         .map(|index| Arc::new(index.seal(code.clone())));
+    let tool_paths: HashSet<_> = verified
+        .manifest
+        .platform_resources
+        .iter()
+        .filter(|resource| resource.kind == NodePackageResourceKind::Tool)
+        .map(|resource| &resource.path)
+        .collect();
+    let mut tool_files = verified.integrity.files;
+    tool_files.retain(|file| tool_paths.contains(&file.path));
     #[cfg(windows)]
     let directories = {
         check.directories.extend([root, staging, stage, objects]);
@@ -167,7 +233,9 @@ pub(super) fn verify_contents(
         package,
         revision,
         code,
+        tool_files: tool_files.into_boxed_slice(),
         ui_assets,
+        themes,
         #[cfg(windows)]
         _directories: directories,
         #[cfg(windows)]
@@ -257,6 +325,7 @@ struct TreeCheck<'a, 'b> {
     limits: &'a NodePackageLimits,
     control: &'a Control<'b>,
     ui_index: Option<super::ui_assets::UiAssetIndex>,
+    theme_resources: BTreeMap<String, Vec<u8>>,
     #[cfg(windows)]
     files: Vec<File>,
     #[cfg(windows)]
@@ -349,6 +418,10 @@ impl TreeCheck<'_, '_> {
                 return Err(integrity("installedFileMode"));
             }
         }
+        let mut theme = self.theme_resources.get_mut(&path_key(path));
+        if theme.is_some() && expected.size > MAX_THEME_BYTES {
+            return Err(limit("themeBytes"));
+        }
         let mut hash = Sha256::new();
         let mut remaining = expected.size;
         let mut buffer = [0_u8; serial_workbench_core::NODE_VIEW_ASSET_CHUNK_BYTES];
@@ -363,6 +436,9 @@ impl TreeCheck<'_, '_> {
             file.read_exact(chunk)
                 .map_err(|_| integrity("installedFile"))?;
             hash.update(&*chunk);
+            if let Some(bytes) = theme.as_mut() {
+                bytes.extend_from_slice(chunk);
+            }
             if let Some(chunks) = index.as_mut() {
                 chunks.push(Sha256::digest(chunk).into());
             }

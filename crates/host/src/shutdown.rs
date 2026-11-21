@@ -1,5 +1,6 @@
 //! Host-owned settlement, kept under dispatch so private ownership stays private.
-use super::{AcceptedCall, Host};
+use super::Host;
+use crate::{client_effects::ClientEffectDispatch, ipc::ConnectionContext};
 use serial_workbench_core::*;
 use std::sync::{Arc, Mutex};
 use tokio::{task::JoinHandle, time::Instant};
@@ -69,48 +70,34 @@ impl Host {
             .await
     }
 
-    /// The only internal exclusion is the authenticated, persisted install owner.
-    pub(crate) async fn quiesce_for_update(
+    pub(super) async fn prepare_client_update(
         &self,
-        accepted: &AcceptedCall,
-    ) -> HostResult<ShutdownReport> {
+        context: ConnectionContext,
+        preparation: ClientUpdatePreparation,
+    ) -> HostResult<ClientEffectAcknowledged> {
         let deadline = Instant::now() + BUDGET;
-        let store = self.inner.store.clone();
-        let actor = accepted.actor.clone();
-        let expected = accepted.operation.operation_id.clone();
-        let expected_actor = actor.id().clone();
-        let operation_id = expected.clone();
-        let request_host = accepted.call.host_id.clone();
-        let request_epoch = accepted.call.instance_epoch;
-        let valid = tokio::time::timeout_at(
+        let clients = self.inner.client_effects.clone();
+        let dispatch = tokio::time::timeout_at(
             deadline,
-            super::blocking(move || {
-                let identity = store.identity()?;
-                let persisted = store.get(&actor, &operation_id)?;
-                Ok(persisted.operation_id == operation_id
-                    && persisted.actor_id == expected_actor
-                    && persisted.execution_host_id == identity.host_id
-                    && request_host == identity.host_id
-                    && request_epoch == identity.instance_epoch
-                    && persisted.action_id.as_str() == "client.updater.install"
-                    && persisted.state == OperationState::Running)
-            }),
+            super::blocking(move || clients.update_dispatch(&context, preparation)),
         )
         .await
         .map_err(|_| incomplete("Install owner validation exceeded the shutdown budget"))??;
-        if !valid || accepted.call.action_id.as_str() != "client.updater.install" {
-            return Err(HostError::new(
-                "INVALID_OPERATION_OWNER",
-                "Only the current running Host install owner may exclude itself",
+        let report = self
+            .quiesce_owned(
+                ShutdownMode::CancelAndSettle,
+                dispatch.request.operation_id.clone(),
+                deadline,
+                Some(&dispatch),
+            )
+            .await?;
+        if !report.completed {
+            return Err(incomplete(
+                "Host has unsettled work before update installation",
             ));
         }
-        self.quiesce_owned(
-            ShutdownMode::CancelAndSettle,
-            Some(expected),
-            deadline,
-            Some(accepted),
-        )
-        .await
+        self.inner.client_effects.mark_update_prepared(&dispatch)?;
+        Ok(ClientEffectAcknowledged { accepted: True })
     }
 
     /// Called by the no-argument process teardown entry. A report is not an exit.
@@ -148,12 +135,16 @@ impl Host {
         mode: ShutdownMode,
         excluded: Option<Id>,
         deadline: Instant,
-        update: Option<&AcceptedCall>,
+        update: Option<&ClientEffectDispatch>,
     ) -> HostResult<ShutdownReport> {
         let work_deadline = deadline - REPORT_RESERVE;
         let mut state = tokio::time::timeout_at(deadline, self.inner.shutdown.state.lock())
             .await
             .map_err(|_| incomplete("Another Host settlement barrier is still running"))?;
+        // 安装投递和源权限通过复核后，才开始关闭后台和录制。
+        let client_pending = self
+            .quiesce_client_effects(&mut state, update, deadline)
+            .await?;
         self.inner
             .node_packages
             .request_quiesce(mode == ShutdownMode::CancelAndSettle);
@@ -164,9 +155,6 @@ impl Host {
             ));
         }
         self.observe_owned_jobs(&mut state)?;
-        let client_pending = self
-            .quiesce_client_effects(&mut state, update, deadline)
-            .await?;
         self.read_shutdown_operations(&mut state, deadline).await?;
         self.inner
             .sessions
@@ -454,7 +442,7 @@ impl Host {
     async fn quiesce_client_effects(
         &self,
         state: &mut ShutdownState,
-        update: Option<&AcceptedCall>,
+        update: Option<&ClientEffectDispatch>,
         deadline: Instant,
     ) -> HostResult<Vec<crate::client_effects::PendingClientEffect>> {
         if let Some(task) = state.client_effects.as_mut() {
@@ -465,13 +453,9 @@ impl Host {
             result.map_err(|_| super::busy())??;
         }
         let clients = self.inner.client_effects.clone();
-        let update = update.map(|accepted| AcceptedCall {
-            actor: accepted.actor.clone(),
-            call: accepted.call.clone(),
-            operation: accepted.operation.clone(),
-        });
+        let update = update.cloned();
         state.client_effects = Some(tokio::spawn(super::blocking(move || match update {
-            Some(accepted) => clients.quiesce_for_update(&accepted),
+            Some(dispatch) => clients.quiesce_for_update(&dispatch),
             None => clients.quiesce(),
         })));
         let Some(task) = state.client_effects.as_mut() else {

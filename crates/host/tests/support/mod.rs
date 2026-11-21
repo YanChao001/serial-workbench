@@ -251,6 +251,7 @@ impl Harness {
             .open(
                 &self.device(name),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },

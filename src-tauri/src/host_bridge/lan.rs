@@ -187,6 +187,7 @@ mod tests {
             .open(
                 &device,
                 OpenParams {
+                    transport_params: None,
                     configuration: SerialConfiguration::default(),
                     binding: None,
                 },

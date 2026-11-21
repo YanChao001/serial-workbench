@@ -4,7 +4,7 @@ mod output;
 use args::{Command, InvokeOptions};
 use serial_workbench_client::{ConnectOptions, HostClient, read_user_control_credential};
 use serial_workbench_core::*;
-use serial_workbench_ipc::startup_config;
+use serial_workbench_ipc::{DiscoveryRecord, startup_config};
 use std::{path::Path, process::ExitCode, time::Duration};
 
 #[tokio::main]
@@ -293,7 +293,7 @@ async fn stop_host(
         let replaced = running
             && tokio::time::timeout_at(
                 deadline,
-                authenticated_replacement(client, &host_id, instance_epoch),
+                authenticated_replacement(client, profile, &host_id, instance_epoch),
             )
             .await
             .unwrap_or(false);
@@ -317,7 +317,19 @@ async fn stop_host(
     }
 }
 
-async fn authenticated_replacement(client: &HostClient, host_id: &Id, instance_epoch: U64) -> bool {
+async fn authenticated_replacement(
+    client: &HostClient,
+    profile: &Path,
+    host_id: &Id,
+    instance_epoch: U64,
+) -> bool {
+    // 发现文件只决定何时尝试连接，真实换代仍由认证后的 Host 确认。
+    // 旧代次持锁退出期间轮询锁，避免在关闭中的控制通道反复握手。
+    let candidate = DiscoveryRecord::read(&profile.join("host-v0/discovery.json"));
+    if !candidate.is_ok_and(|hint| &hint.host_id == host_id && hint.instance_epoch > instance_epoch)
+    {
+        return false;
+    }
     client.reconnect().await.is_ok_and(|replacement| {
         let attached = replacement.attachment();
         &attached.host_id == host_id && attached.instance_epoch > instance_epoch
@@ -407,7 +419,7 @@ mod tests {
         let client = HostClient::connect(options).await.unwrap();
         let same_instance = tokio::time::timeout(
             Duration::from_secs(10),
-            authenticated_replacement(&client, &host_id, old_epoch),
+            authenticated_replacement(&client, directory.path(), &host_id, old_epoch),
         )
         .await;
         let _ = stop.send(());
@@ -435,7 +447,7 @@ mod tests {
         let lock_before = serial_workbench_ipc::profile_has_running_host(directory.path());
         let authenticated = tokio::time::timeout(
             Duration::from_secs(10),
-            authenticated_replacement(&client, &host_id, old_epoch),
+            authenticated_replacement(&client, directory.path(), &host_id, old_epoch),
         )
         .await;
         let lock_after = serial_workbench_ipc::profile_has_running_host(directory.path());

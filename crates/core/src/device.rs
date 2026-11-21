@@ -12,6 +12,7 @@ pub enum DeviceTransportKind {
     Serial,
     Pty,
     Virtual,
+    Plugin,
     Replay,
 }
 

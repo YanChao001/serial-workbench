@@ -368,6 +368,18 @@ async fn wait_reference_source(
     session: &Target,
     seen: impl Fn(&RawEvent) -> bool,
 ) -> StreamReadResult {
+    wait_reference_page(bridge, client, session, |page| {
+        page.events.iter().any(&seen)
+    })
+    .await
+}
+
+async fn wait_reference_page(
+    bridge: &DesktopHostBridge,
+    client: &AttachResult,
+    session: &Target,
+    ready: impl Fn(&StreamReadResult) -> bool,
+) -> StreamReadResult {
     tokio::time::timeout(Duration::from_secs(5), async {
         loop {
             let RpcResult::Query(QueryResult::StreamRead(page)) = read_reference_raw(
@@ -384,7 +396,7 @@ async fn wait_reference_source(
             else {
                 panic!("Missing reference source page");
             };
-            if page.events.iter().any(&seen) {
+            if ready(&page) {
                 break page;
             }
             tokio::time::sleep(Duration::from_millis(25)).await;
@@ -1170,6 +1182,7 @@ async fn exercise_terminal(
             attached.generation,
             Id::try_from("virtual:echo").unwrap(),
             OpenParams {
+                transport_params: None,
                 configuration: SerialConfiguration::default(),
                 binding: None,
             },

@@ -157,6 +157,10 @@ Windows 的证明对象持有拒绝写入/删除共享的文件句柄及目录�
 - 每个 Prepared 的校验缓存同时限制 128 项与 8 MiB；进程级 128 MiB 逻辑额度涵盖初次构建、常驻图与生成缓存。单份超额为 `LIMIT_EXCEEDED`，并发争用为可重试的 `HOST_BUSY`。构建、校验与清理持有名额至真实完成，不把逻辑权重当作 CPU 或 RSS 硬上限。
 - 超预算拒绝不得创建业务 Operation；显式输入和已接纳的请求身份不受新编译失败改写。各类工作量上限、计算方法及对应反例集中在 [Host 参数校验模块](../../crates/host/src/node_backend/definitions/parameters/)，不在客户端复刻。
 
+**传输提供器。** 公开 SDK 在 `register(context)` 内用 `context.transports.register(id, open)` 选择已签名清单的传输条目。Host 在设备目录发布实际登记的传输，普通动作目录继续发布查询和动作。Host 的 `device.open` 以 `transportParams` 传入参数，沿用正常会话回执。Host 用条目的输入 schema 验证参数并补齐默认值，核对目标设备和授权后才调用提供器。插件参数由显式打开给定，串口绑定和自动重连沿用原有串口路径。
+
+`open({params, signal})` 建立当前连接。句柄提供 `read({maxBytes, waitMs, signal})`、`write({bytes, waitMs, signal})` 和 `close()`。空读表示本次等待未取得数据，`null` 表示 EOF。写入回执的整数表示已知接纳的连续字节前缀。派发后取消、掉线或退出而缺少可靠回执时，Host 保留未知区间，重试沿用现有请求去重。关闭处理器须等待实际资源关闭，Host 在真实关闭得到证明时记录清理成功。[参考包](../../packages/plugin-sdk/examples/reference-transport/)
+
 自动登记使用原激活主体及 epoch，重核当前授权、来源、执行信任与内容证明；首次人工激活失败不当作 owner 崩溃自动重试。同包显式启用可合并等待，但仍各自验权且不延长总预算，真实失败状态发布后才归还名额。相容升级只在安装 CAS 成功后以原主体登记精确新归档；撤权或扩大权限不导入新版。按需触发分别核验原主体登记资格和此次调用者权限，不重新派发旧业务。
 
 | 阶段      | 必须行为                                                                                                         |
@@ -201,7 +205,19 @@ Host动作的`task.progress.report({completed,unit,total?})`复用Operation进�
 
 派生发布单独使用四个在途名额和 32 KiB 请求帧。控制帧优先，Raw 与派生回复交替获得发送机会。提交成功返回 `{operationId,position}`，运行任务取消时仅未提交的发布失效，已留存的数据可由有权读者继续分页。派生读取见 [原始事件与独立 reader](./stream-and-operations-v0.md#原始事件与独立-reader)。
 
+### 协议解析器
+
+签名清单在 `contributes.parsers` 声明解析器动作。目标限定为 `session`，执行归属为 `resource_host`，声明须包含 `content.read`。后台在 `register` 内调用 `context.parsers.register(id, handler)`。Host 校验已登记 ID 和签名清单，并通过常规 `catalog.list` 公开获准解析器。调用沿用 `action.invoke`、精确会话代次及 Operation 终态，处理器可以从起始游标拉取 Raw，并按上述方式发布派生值。登记随后台运行代次，停用或撤销信任后即从目录退役。图表参考包演示跨事件组帧、来源范围、游标与撤权。 [图表参考包验收](../acceptance.md#图表参考包后台采样)
+
 页面重开按 [快照与订阅](./host-v0.md#快照与订阅) 先拿快照再接续增量，过期 cursor 走公共恢复流程；不能把上代 instanceEpoch 的增量合入新状态。
+
+### 签名主题
+
+主题引用归档完整性清单中的 JSON 文件。每个签名包最多声明 16 个主题，每份资源最多 4096 字节。安装内容校验按原文件摘要读取资源，再对照 `resourceSchema` 和固定的 `{accent: "#RRGGBB"}` 类型。额外字段、CSS、脚本及 URL 均不能作为主题令牌。未签名的包不提供主题。
+
+后台通过 `context.configuration.registerQuery` 或 `registerAction` 登记配置处理器，并通过 `context.contributions.register` 选择主题 ID。`node.themes.list` 以本机 Host 为目标，返回同一活跃登记中已选且仍获准的主题。结果只有包 ID、主题 ID、归档摘要、显示名和颜色。桌面和已配对浏览器使用同一查询，LAN 对端不提供此目录。
+
+共享设置可选的 `nodeTheme` 保存上述两个 ID 与归档摘要，缺省时使用原强调色。仅确切匹配当前列表时应用主题色。离线、撤权、停用或归档变更时回到基础设置，已保存的引用可以由用户重新选择或清除。主题选择沿用共享设置的 revision 校验。
 
 ## 5. Web UI 与客户端效果
 

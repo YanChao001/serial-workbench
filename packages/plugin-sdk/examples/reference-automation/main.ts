@@ -1,4 +1,5 @@
 import { setTimeout as delay } from "node:timers/promises";
+import { isMainThread } from "node:worker_threads";
 import type {
   Call,
   NodeRegister,
@@ -10,12 +11,16 @@ import type {
 
 const action = "swb.reference.automation.run";
 const maxSteps = 8;
+const maxRounds = 8;
+const roundPauseMs = 3000;
 const maxBytes = 256;
 const maxPageReads = 32;
 const txWaitMs = 1000;
 const transactionTtlMs = "15000";
 const settleMs = 4000;
 const pollMs = 20;
+
+if (!isMainThread) await delay(roundPauseMs);
 
 type Session = Call["target"] & { sessionId: string; sessionEpoch: string };
 type EventTime = StreamReadResult["events"][number]["time"];
@@ -270,6 +275,7 @@ export const register: NodeRegister = (context) => {
     const { sessionId, sessionEpoch } = target;
     const {
       steps,
+      rounds = 1,
       startEventSeq = "1",
       responseTimeoutMs = 1000,
       lateResponseWaitMs = 0,
@@ -285,6 +291,10 @@ export const register: NodeRegister = (context) => {
       !Array.isArray(steps) ||
       steps.length < 1 ||
       steps.length > maxSteps ||
+      typeof rounds !== "number" ||
+      !Number.isInteger(rounds) ||
+      rounds < 1 ||
+      rounds > maxRounds ||
       typeof responseTimeoutMs !== "number" ||
       !Number.isInteger(responseTimeoutMs) ||
       responseTimeoutMs < 50 ||
@@ -298,7 +308,8 @@ export const register: NodeRegister = (context) => {
         "Automation requires an exact session, a cursor and a bounded sequence",
       );
 
-    const sequence = steps.map(parseStep);
+    const round = steps.map(parseStep);
+    const sequence = Array.from({ length: rounds }, () => round).flat();
     const session = { ...target, sessionId, sessionEpoch };
     let cursor = await retainedTail(task, session, startEventSeq);
     const attempted: StepResult[] = [];
@@ -355,6 +366,13 @@ export const register: NodeRegister = (context) => {
         total: String(sequence.length),
         unit: "steps",
       });
+      if ((index + 1) % round.length === 0 && index + 1 < sequence.length) {
+        // 工作线程随任务取消。上一轮已释放事务租约，其他调用者可以继续收发。
+        const worker = context.workers.start("dist/main.mjs");
+        const { exitCode } = await worker.finished;
+        task.signal.throwIfAborted();
+        if (exitCode !== 0) throw new Error("Automation round wait failed");
+      }
     }
     return { outcome: "matched", completedSteps: sequence.length, attempted };
   });

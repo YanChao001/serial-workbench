@@ -1,8 +1,50 @@
 //! Typed native client-effect admission; only Host-issued effects enter this path.
+use serial_workbench_client::HostClient;
 use serial_workbench_core::{
-    ClientEffectRequest, ClientRegistration, HostError, HostResult, Id, U64,
+    ClientEffectRequest, ClientReceiptSubmission, ClientRegistration, ClientUpdatePreparation,
+    HostError, HostResult, Id, RpcReply, RpcRequest, RpcResult, U64,
 };
-use std::collections::VecDeque;
+use std::{collections::VecDeque, sync::Arc};
+
+pub(crate) struct UpdatePreparation {
+    pub(super) control: Arc<HostClient>,
+    pub(super) delivery: ClientUpdatePreparation,
+    pub(super) window_is_current: Box<dyn Fn() -> bool + Send>,
+}
+impl UpdatePreparation {
+    pub(crate) async fn quiesce(self) -> HostResult<()> {
+        let Self {
+            control,
+            delivery,
+            window_is_current,
+        } = self;
+        let require_current_window = move || {
+            if window_is_current() {
+                Ok(())
+            } else {
+                Err(HostError::new(
+                    "EPOCH_MISMATCH",
+                    "The update window changed",
+                ))
+            }
+        };
+        require_current_window()?;
+        let request =
+            RpcRequest::ClientReceipt(ClientReceiptSubmission::UpdatePreparation(delivery));
+        match control.request(request).await? {
+            RpcReply::Success { result, .. }
+                if matches!(*result, RpcResult::ClientEffectAcknowledged(_)) =>
+            {
+                require_current_window()
+            }
+            RpcReply::Failure { error, .. } => Err(error),
+            _ => Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Invalid Host update preparation reply",
+            )),
+        }
+    }
+}
 
 pub(crate) fn validate_delivery(
     host_id: &Id,

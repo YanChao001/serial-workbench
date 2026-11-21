@@ -28,6 +28,7 @@ import generatedDefaults from "./generated/defaults.json";
 
 export type * from "./generated/types.ts";
 export {
+  validateCursor,
   validateNodePackageId,
   validateNodePackageIntegrity,
   validateNodePackageInstallation,

@@ -17,6 +17,7 @@ pub(super) struct Definition {
     spec: ActionSpec,
     input: parameters::CompiledSchema,
     output: parameters::CompiledSchema,
+    transport: bool,
 }
 impl Definitions {
     pub(super) fn compile(
@@ -24,12 +25,37 @@ impl Definitions {
         backtrack_limit: usize,
     ) -> HostResult<Self> {
         let mut items = BTreeMap::new();
-        for spec in manifest
+        if manifest.contributes.transports.len() > 16 {
+            return Err(error("LIMIT_EXCEEDED", "backendTransportProviders"));
+        }
+        for (spec, transport) in manifest
             .contributes
             .queries
             .iter()
             .chain(&manifest.contributes.actions)
+            .chain(&manifest.contributes.parsers)
+            .chain(&manifest.contributes.configuration)
+            .map(|spec| (spec, false))
+            .chain(
+                manifest
+                    .contributes
+                    .transports
+                    .iter()
+                    .map(|spec| (spec, true)),
+            )
         {
+            if transport
+                && (!spec
+                    .target_kinds
+                    .iter()
+                    .all(|kind| kind.as_str() == "device")
+                    || !spec
+                        .permissions
+                        .iter()
+                        .any(|permission| permission == "device.modify"))
+            {
+                return Err(error("INVALID_ARGUMENT", "backendTransportScope"));
+            }
             if spec.target_kinds.iter().any(|kind| {
                 spec.permissions.iter().any(|permission| {
                     !manifest.permissions.host_api.iter().any(|scope| {
@@ -62,6 +88,7 @@ impl Definitions {
                     spec: spec.clone(),
                     input,
                     output,
+                    transport,
                 }),
             );
         }
@@ -73,6 +100,9 @@ impl Definitions {
             .queries
             .iter()
             .chain(&registration.contributes.actions)
+            .chain(&registration.contributes.parsers)
+            .chain(&registration.contributes.configuration)
+            .chain(&registration.contributes.transports)
             .map(|id| id.as_str())
             .collect();
         self.0.retain(|id, _| selected.contains(id.as_str()));
@@ -89,6 +119,9 @@ impl Definitions {
     }
 }
 impl Definition {
+    pub(super) fn is_transport(&self) -> bool {
+        self.transport
+    }
     pub(super) fn spec(&self) -> &ActionSpec {
         &self.spec
     }
@@ -166,6 +199,17 @@ impl Definition {
         )
     }
 }
+pub(super) fn validate_theme_resource(
+    schema: &serial_workbench_core::SchemaObject,
+    value: &serde_json::Value,
+) -> HostResult<()> {
+    parameters::CompiledSchema::compile(schema, MAX_BACKTRACK_LIMIT, ActionKind::Query)?.validate(
+        value,
+        "INVALID_NODE_PACKAGE",
+        "themeResourceSchema",
+    )
+}
+
 pub(super) fn normalize_parameters(
     spec: &ActionSpec,
     params: &serial_workbench_core::JsonObject,

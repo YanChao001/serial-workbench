@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.automation",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "displayName": "Serial Workbench Automation",
-  "description": "Send a bounded sequence and verify each serial response",
+  "description": "Run one or more paced rounds and verify each serial response",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE"],
   "hostProtocolVersion": "0.1",
@@ -48,6 +48,13 @@
               "maximum": 3000,
               "default": 0
             },
+            "rounds": {
+              "description": "Expected-response rounds with a three-second pause between rounds",
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 8,
+              "default": 1
+            },
             "steps": {
               "type": "array",
               "minItems": 1,
@@ -78,11 +85,15 @@
           "type": "object",
           "properties": {
             "outcome": { "$ref": "#/$defs/outcome" },
-            "completedSteps": { "type": "integer", "minimum": 0, "maximum": 8 },
+            "completedSteps": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64
+            },
             "attempted": {
               "type": "array",
               "minItems": 1,
-              "maxItems": 8,
+              "maxItems": 64,
               "items": {
                 "type": "object",
                 "properties": {

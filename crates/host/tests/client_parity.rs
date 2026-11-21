@@ -7,12 +7,17 @@ use serial_workbench_host::{Host, ipc::HostServer};
 use std::{path::PathBuf, process::Stdio, sync::Arc, time::Duration};
 use tokio::{process::Command, sync::oneshot, time::timeout};
 
+mod support;
+
 #[path = "support/parity_clients.rs"]
 mod parity_clients;
 use parity_clients::{Cli, binary, drain, structured, tool};
 
 #[path = "client_parity/node_plugins.rs"]
 mod node_plugins;
+
+#[path = "client_parity/node_transport.rs"]
+mod node_transport;
 
 fn id(value: &str) -> Id {
     Id::try_from(value).unwrap()

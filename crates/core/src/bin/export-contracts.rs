@@ -273,6 +273,22 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         json!({"kind":"authorization_changed","value":{"grantRevision":"1","secret":"forbidden"}}),
         false,
     )?;
+    let handoff = json!({
+        "packageId": "example.serial-tool",
+        "expectedInstallRevision": "1",
+        "archiveSha256": "a".repeat(64),
+        "toolId": "probe",
+        "timeoutMs": "2000"
+    });
+    f.add::<ToolHandoffParams>("tool-handoff", handoff.clone(), true)?;
+    let mut handoff_extra = handoff;
+    handoff_extra["executablePath"] = json!("unsigned.exe");
+    f.add::<ToolHandoffParams>("tool-handoff-local-path", handoff_extra, false)?;
+    f.add::<ActionResult>(
+        "tool-handoff-receipt",
+        json!({"kind":"tool_handoff","value":{"exitCode":0,"ownershipUnconfirmed":false}}),
+        true,
+    )?;
     for key in ["requestContext", "instanceEpoch", "revealTarget"] {
         let mut v = call.clone();
         v.as_object_mut().unwrap().remove(key);
@@ -712,6 +728,26 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         settings.clone(),
         &["customBackground"],
     )?;
+    let mut picked_theme = settings.clone();
+    picked_theme["nodeTheme"] = json!({
+        "packageId":"swb.reference.theme",
+        "themeId":"swb.reference.theme.bench-teal",
+        "archiveSha256":"a".repeat(64),
+    });
+    f.add::<SharedSettings>("shared-settings-node-theme", picked_theme.clone(), true)?;
+    picked_theme["nodeTheme"] = Value::Null;
+    f.add::<SharedSettings>("shared-settings-null-node-theme", picked_theme, false)?;
+    f.add::<NodeThemeTokens>("node-theme-color", json!({"accent":"#1A6A73"}), true)?;
+    f.add::<NodeThemeTokens>(
+        "node-theme-css",
+        json!({"accent":"url(https://example.invalid/style.css)"}),
+        false,
+    )?;
+    f.add::<NodeThemeTokens>(
+        "node-theme-unknown-token",
+        json!({"accent":"#1A6A73","script":"alert(1)"}),
+        false,
+    )?;
     f.object::<WorkspaceDocument>("workspace-document-default", workspace.clone(), &[])?;
     f.object::<SettingsSaveParams>("settings-save", json!({"value":settings}), &[])?;
     f.object::<WorkspaceSaveParams>("workspace-save", json!({"value":workspace}), &[])?;
@@ -860,6 +896,11 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         &[],
     )?;
     f.object::<OpenParams>("open-params", json!({"configuration":configuration,"binding":{"workspaceId":"workspace","bindingId":"binding"}}), &["binding"])?;
+    f.object::<OpenParams>(
+        "plugin-open-params",
+        json!({"configuration":configuration,"transportParams":{"port":43210}}),
+        &["transportParams"],
+    )?;
     let opened = json!({"sessionId":"session","sessionEpoch":"9007199254740993","revision":"1","reused":false});
     f.object::<OpenResult>("open-result", opened.clone(), &["recentError"])?;
     let transform =
@@ -1624,6 +1665,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ClientListResult,
         ClientEffectRequest,
         ClientEffectReceipt,
+        ClientUpdatePreparation,
         ClientEffectOutcome,
         ClientEffectResult,
         ClientEffectAcknowledged,
@@ -1642,6 +1684,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         OpenParams,
         DeviceBindingReference,
         OpenResult,
+        ToolHandoffParams,
+        ToolHandoffResult,
         TransformReference,
         TxParams,
         ConfigureParams,
@@ -1736,6 +1780,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         NodePackageRuntimeParams,
         NodeViewAssetReadParams,
         NodeViewAssetReadResult,
+        NodeThemeReference,
+        NodeThemeTokens,
+        NodeThemeEntry,
+        NodeThemesResult,
         NodePackageRuntimePhase,
         NodePackageRuntimeStatus,
         NodePackageSourceKey,

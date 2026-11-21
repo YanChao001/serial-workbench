@@ -1,4 +1,6 @@
 //! Browser transport for the local Host. A trusted launcher receives the initial ticket.
+mod plugin_frame;
+
 use super::{
     connection::{ConnectionState, ControlSession, FrameReader, FrameWriter, Sessions},
     loopback::{LoopbackListener, listener_actor, only_header, wait_for_stop},
@@ -234,6 +236,7 @@ impl BrowserListener {
         };
         let router = Router::new()
             .route("/api/ws", get(upgrade))
+            .route(plugin_frame::PATH, get(plugin_frame::serve))
             .route("/", get(asset))
             .route("/{*path}", get(asset))
             .with_state(state);
@@ -513,8 +516,9 @@ async fn asset(
         header::HeaderValue::from_static("nosniff"),
     );
     let policy = format!(
-        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' ws://{}; frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
+        "default-src 'self'; script-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data: blob:; media-src 'self' blob:; font-src 'self'; connect-src 'self' ws://{0}; frame-src http://{0}{1}; frame-ancestors 'none'; object-src 'none'; base-uri 'none'",
         state.authority,
+        plugin_frame::PATH,
     );
     response.headers_mut().insert(
         header::CONTENT_SECURITY_POLICY,

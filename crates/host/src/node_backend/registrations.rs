@@ -3,7 +3,7 @@ use super::{Authority, definitions, error};
 use crate::node_packages::ui_assets::VerifiedUiAssets;
 use serial_workbench_core::{
     ActionKind, Digest, HostResult, Id, NodeHostApiScope, NodePackageId, NodePackageVersion,
-    NodePackageView,
+    NodePackageView, NodeThemeEntry,
 };
 use std::{
     collections::BTreeMap,
@@ -26,6 +26,7 @@ pub(super) struct PackageExecution {
     pub instance_id: Id,
     pub host_api: Vec<NodeHostApiScope>,
     pub views: Vec<NodePackageView>,
+    pub themes: Vec<(Id, NodeThemeEntry)>,
     pub ui_assets: Option<Arc<VerifiedUiAssets>>,
 }
 pub(super) struct RegisteredDefinition {
@@ -123,7 +124,7 @@ impl Registrations {
             .get(package.as_str())
             .ok_or_else(|| error("UNSUPPORTED_CAPABILITY", inactive))?;
         let definition = package.definitions.get(action)?;
-        if definition.spec().kind != kind {
+        if definition.is_transport() || definition.spec().kind != kind {
             return Err(error("INVALID_ARGUMENT", mismatch));
         }
         Ok(RegisteredDefinition {
@@ -180,6 +181,54 @@ impl Registrations {
         authorize()?;
         Ok(definitions)
     }
+    pub(super) fn validate_transport(
+        &self,
+        package: &NodePackageId,
+        expected: &Arc<definitions::Definition>,
+    ) -> HostResult<()> {
+        let packages = self
+            .packages
+            .lock()
+            .map_err(|_| error("HOST_BUSY", "backendRegistrations"))?;
+        let package = packages
+            .get(package.as_str())
+            .ok_or_else(|| error("CATALOG_CHANGED", "backendTransportInactive"))?;
+        let actual = package
+            .definitions
+            .get(expected.spec().action_id.as_str())?;
+        if !actual.is_transport() || !Arc::ptr_eq(&actual, expected) {
+            return Err(error(
+                "CATALOG_CHANGED",
+                "backendTransportRegistrationChanged",
+            ));
+        }
+        Ok(())
+    }
+
+    pub(super) fn transports(&self) -> HostResult<Vec<RegisteredDefinition>> {
+        let packages = self
+            .packages
+            .lock()
+            .map_err(|_| error("HOST_BUSY", "backendRegistrations"))?;
+        let entries = packages
+            .values()
+            .flat_map(|package| {
+                package
+                    .definitions
+                    .definitions()
+                    .into_iter()
+                    .filter(|definition| definition.is_transport())
+                    .map(|definition| RegisteredDefinition {
+                        authorize: package.authorize.clone(),
+                        definition,
+                        execution: package.execution.clone(),
+                    })
+                    .collect::<Vec<_>>()
+            })
+            .collect();
+        Ok(entries)
+    }
+
     pub(super) fn clear(&self) {
         self.packages
             .lock()

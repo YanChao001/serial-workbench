@@ -128,6 +128,35 @@ impl Registry {
             next_page_token,
         })
     }
+    pub(crate) fn node_themes(
+        &self,
+        actor: &AuthenticatedActor,
+        target: &Target,
+    ) -> HostResult<NodeThemesResult> {
+        let authorize = || {
+            let authorization = self.auth.snapshot(actor)?;
+            if authorization.is_lan_peer() {
+                return Err(HostError::new(
+                    "PERMISSION_DENIED",
+                    "Themes belong to the local Host",
+                ));
+            }
+            authorization.require("metadata.read", target)
+        };
+        authorize()?;
+        let (version, handlers) = self.runtime.snapshot()?;
+        let mut themes = Vec::new();
+        for handler in handlers {
+            let mut entries = handler.themes().peekable();
+            if entries.peek().is_some() && handler.current().is_ok() {
+                themes.extend(entries.cloned());
+            }
+        }
+        self.runtime.validate_version(version)?;
+        authorize()?;
+        Ok(NodeThemesResult { themes })
+    }
+
     fn visible_actions(
         &self,
         authorization: &AuthorizationSnapshot,
@@ -146,6 +175,12 @@ impl Registry {
         for spec in catalog {
             let mut visible = true;
             let action = BuiltinAction::find(spec.action_id.as_str()).ok();
+            if action == Some(BuiltinAction::ToolHandoff) && !cfg!(windows) {
+                continue;
+            }
+            if action == Some(BuiltinAction::NodeThemesList) && authorization.is_lan_peer() {
+                continue;
+            }
             if matches!(
                 action,
                 Some(BuiltinAction::StateScopes | BuiltinAction::DeviceList)

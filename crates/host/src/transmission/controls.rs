@@ -11,48 +11,11 @@ impl TransmissionService {
         let action = accepted.call.action_id.as_str();
         if action == "session.close" {
             if let Err(error) = self.dispatch(accepted, token, session).await {
-                runtime.closing.store(false, Ordering::SeqCst);
-                runtime.changed.notify_waiters();
+                Self::release_close_gate(runtime);
                 return Err(error);
             }
-            {
-                let mut state = session.snapshot.lock().map_err(|_| invalid())?;
-                state.state = SessionState::Closing;
-                if state.tx_gate != TxGate::ControlUnknown {
-                    state.tx_gate = TxGate::Closing;
-                }
-                state.revision = state.revision.checked_next()?;
-            }
-            self.devices.persist(session).await?;
-            loop {
-                let wake = self.ready.notified();
-                let remaining = {
-                    let tokens = self.tokens.lock().map_err(|_| invalid())?;
-                    tokens
-                        .values()
-                        .filter(|other| {
-                            other.session_id.as_ref() == Some(&accepted.call.target.id)
-                                && !other.is_close
-                        })
-                        .map(|other| {
-                            other.cancel();
-                            1usize
-                        })
-                        .sum::<usize>()
-                };
-                if remaining == 0 && self.admissions.load(Ordering::SeqCst) == 0 {
-                    break;
-                }
-                tokio::select! {_=wake=>{},_=tokio::time::sleep(Duration::from_millis(20))=>{}}
-            }
-            session.close().await?;
-            {
-                let mut state = session.snapshot.lock().map_err(|_| invalid())?;
-                state.revision = state.revision.checked_next()?;
-            }
-            self.devices.persist(session).await?;
             return Ok(Completion::success(ActionResult::Session(
-                session.snapshot()?,
+                self.close_owner(accepted, session).await?,
             )));
         }
         if action == "tx.waitBoundary" {
@@ -157,6 +120,82 @@ impl TransmissionService {
             _ => Err(invalid()),
         }
     }
+    pub(super) fn release_close_gate(runtime: &Runtime) {
+        runtime.closing.store(false, Ordering::SeqCst);
+        runtime.changed.notify_waiters();
+    }
+
+    pub(super) async fn close_owner(
+        &self,
+        accepted: &AcceptedCall,
+        session: &Session,
+    ) -> HostResult<SessionSnapshot> {
+        let target = &accepted.call.target;
+        let handoff = accepted.call.action_id.as_str() == "session.toolHandoff";
+        {
+            let mut state = session.snapshot.lock().map_err(|_| invalid())?;
+            let revision = state.revision.checked_next()?;
+            state.state = SessionState::Closing;
+            if state.tx_gate != TxGate::ControlUnknown {
+                state.tx_gate = TxGate::Closing;
+            }
+            state.revision = revision;
+        }
+        let staged = self.devices.persist(session).await;
+        if !handoff {
+            staged.clone()?;
+        }
+        let mut affected = HashSet::new();
+        loop {
+            let wake = self.ready.notified();
+            // 先观察接纳守卫，之后再读取 token，覆盖两者的交接。
+            let admitting = if handoff {
+                self.session_admissions
+                    .lock()
+                    .map_err(|_| invalid())?
+                    .keys()
+                    .any(|(id, epoch, _)| id == &target.id && Some(*epoch) == target.session_epoch)
+            } else {
+                self.admissions.load(Ordering::SeqCst) != 0
+            };
+            let remaining = {
+                let tokens = self.tokens.lock().map_err(|_| invalid())?;
+                let mut remaining = 0;
+                for (id, other) in tokens.iter().filter(|(_, other)| {
+                    other.session_id.as_ref() == Some(&target.id)
+                        && (!handoff || other.session_epoch == target.session_epoch)
+                        && !other.is_close
+                }) {
+                    if handoff {
+                        affected.insert(id.clone());
+                    }
+                    other.cancel();
+                    remaining += 1;
+                }
+                remaining
+            };
+            if remaining == 0 && !admitting {
+                break;
+            }
+            tokio::select! { _ = wake => {}, _ = tokio::time::sleep(Duration::from_millis(20)) => {} }
+        }
+        let durable = if handoff {
+            let affected: Vec<_> = affected.into_iter().collect();
+            self.wait_control_settlement(&affected).await
+        } else {
+            Ok(())
+        };
+        session.close().await?;
+        {
+            let mut state = session.snapshot.lock().map_err(|_| invalid())?;
+            state.revision = state.revision.checked_next()?;
+        }
+        self.devices.persist(session).await?;
+        staged?;
+        durable?;
+        session.snapshot()
+    }
+
     async fn purge(
         &self,
         accepted: &AcceptedCall,

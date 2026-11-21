@@ -1,0 +1,85 @@
+{
+  "schemaVersion": "0.1",
+  "id": "reference.transport",
+  "version": "0.1.0",
+  "displayName": "Loopback TCP Transport",
+  "description": "Open a session against a TCP peer on this machine.",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["device.modify"],
+        "targetKinds": ["device"]
+      }
+    ],
+    "executionPurposes": ["loopback-tcp"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [],
+    "queries": [],
+    "transports": [
+      {
+        "actionId": "reference.transport.tcp",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "port": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 65535
+            }
+          },
+          "required": ["port"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "sessionId": {
+              "type": "string"
+            },
+            "sessionEpoch": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "revision": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "reused": {
+              "type": "boolean"
+            },
+            "recentError": {
+              "type": "object"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision", "reused"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["device"],
+        "executionLocation": "resource_host",
+        "permissions": ["device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      }
+    ],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

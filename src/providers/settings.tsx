@@ -1,4 +1,4 @@
-﻿import {
+import {
   useCallback,
   useContext,
   useEffect,
@@ -30,6 +30,7 @@ import {
 } from "@/lib/settings-sync";
 import { createHostSettingsBackend } from "@/lib/host-settings";
 import type { HostConnection } from "@/lib/host-client";
+import { nodeThemeKey, useNodeThemes } from "./use-node-themes";
 import { browserHostClientId } from "@/lib/browser-host-page";
 import { createMediaPort, type MediaPort } from "@/lib/media";
 import { reportClientError } from "@/lib/report-error";
@@ -89,7 +90,25 @@ export function SettingsProvider({
     status: initialClient.error ? "error" : "loading",
     error: initialClient.error,
   });
-  const [committedRevision, setCommittedRevision] = useState<string>();
+  const [committed, setCommitted] = useState<{
+    connection: HostConnection;
+    revision: string;
+    themeKey?: string;
+  }>();
+  const localSettings =
+    committed?.connection === connection ? committed : undefined;
+  const committedRevision = localSettings?.revision;
+  const supportsNodeThemes = host?.state.catalog?.some(
+    (action) => action.actionId === "node.themes.list",
+  );
+  const themes = useNodeThemes(
+    hostBacked && supportsNodeThemes ? connection : undefined,
+  );
+  const nodeThemes = hostBacked ? themes : undefined;
+  const themeKey = localSettings?.themeKey;
+  const nodeAccent = themes.find(
+    (theme) => nodeThemeKey(theme) === themeKey,
+  )?.accent;
   const [effectsError, setEffectsError] = useState<string | null>(null);
   const [effectsRetry, setEffectsRetry] = useState(0);
   const [effectsCompleted, setEffectsCompleted] = useState<{
@@ -182,8 +201,8 @@ export function SettingsProvider({
     }
   }, []);
   useEffect(() => {
-    applySettings(settings, { includeTheme: false });
-  }, [settings]);
+    applySettings(settings, { includeTheme: false, nodeAccent });
+  }, [settings, nodeAccent]);
   useEffect(() => {
     if (!hostBacked) savePreview(current.current);
   }, [hostBacked, savePreview]);
@@ -199,7 +218,24 @@ export function SettingsProvider({
         setPersistence(state.status);
         setPersistenceError(state.error);
         setSharedErrorEventKey(state.errorEventKey);
-        setCommittedRevision(state.revision);
+        const { revision } = state;
+        setCommitted((previous) => {
+          if (revision === undefined) return undefined;
+          const sameConnection = previous?.connection === connection;
+          // The overlay follows a saved selection instead of an optimistic edit.
+          const themeKey =
+            state.status === "saved"
+              ? state.settings.nodeTheme &&
+                nodeThemeKey(state.settings.nodeTheme)
+              : sameConnection
+                ? previous.themeKey
+                : undefined;
+          return sameConnection &&
+            previous.revision === revision &&
+            previous.themeKey === themeKey
+            ? previous
+            : { connection, revision, themeKey };
+        });
       },
     );
     sync.current = coordinator;
@@ -321,7 +357,11 @@ export function SettingsProvider({
         ...DEFAULT_CLIENT_PREFERENCES,
       };
       if (!savePreview(next)) throw { code: "STORAGE_UNAVAILABLE" };
-      publish({ ...current.current, ...sharedSettings(next) });
+      publish({
+        ...current.current,
+        nodeTheme: undefined,
+        ...sharedSettings(next),
+      });
       if (!clientSync.current) throw { code: "STORAGE_UNAVAILABLE" };
       await clientSync.current.replace(DEFAULT_CLIENT_PREFERENCES);
       return;
@@ -334,6 +374,7 @@ export function SettingsProvider({
       sync.current.replace({
         ...defaults.settings,
         language: current.current.language,
+        nodeTheme: undefined,
       }),
       clientSync.current.replace(DEFAULT_CLIENT_PREFERENCES),
     ]);
@@ -386,6 +427,7 @@ export function SettingsProvider({
       retrySave,
       media,
       connections,
+      nodeThemes,
     }),
     [
       settings,
@@ -398,6 +440,7 @@ export function SettingsProvider({
       retrySave,
       media,
       connections,
+      nodeThemes,
     ],
   );
   return (

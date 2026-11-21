@@ -17,6 +17,7 @@ use std::{
 pub(super) struct UiAssetIndex {
     entry: NodePackagePath,
     files: BTreeMap<String, UiAsset>,
+    source_verified: bool,
 }
 
 struct UiAsset {
@@ -57,7 +58,11 @@ impl UiAssetIndex {
                 )
             })
             .collect();
-        Some(Self { entry, files })
+        Some(Self {
+            entry,
+            files,
+            source_verified: package.verified_source().is_some(),
+        })
     }
 
     pub(super) fn chunks(&mut self, path: &str) -> Option<&mut Vec<[u8; 32]>> {
@@ -70,6 +75,16 @@ impl UiAssetIndex {
 }
 
 impl VerifiedUiAssets {
+    pub(crate) fn require_signed_source(&self) -> HostResult<()> {
+        if self.index.source_verified {
+            return Ok(());
+        }
+        Err(HostError::new(
+            "PERMISSION_DENIED",
+            "Paired browser views require a verified package signature",
+        ))
+    }
+
     pub(crate) fn entry(&self) -> &NodePackagePath {
         &self.index.entry
     }
@@ -156,6 +171,7 @@ mod tests {
         let sha256 = Digest::try_from(format!("{:x}", Sha256::digest(&html)).as_str()).unwrap();
         let index = UiAssetIndex {
             entry: path.clone(),
+            source_verified: false,
             files: BTreeMap::from([(
                 path.as_str().into(),
                 UiAsset {
@@ -170,6 +186,10 @@ mod tests {
             )]),
         };
         let proof = index.seal(Arc::new(PathGuard::new(directory.path()).unwrap()));
+        assert_eq!(
+            proof.require_signed_source().unwrap_err().code,
+            "PERMISSION_DENIED"
+        );
         let first = proof.read(&path, 0.into()).unwrap();
         let second = proof.read(&path, (page as u64).into()).unwrap();
         assert_eq!(first.bytes, html[..page]);

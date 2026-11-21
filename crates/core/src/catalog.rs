@@ -159,6 +159,7 @@ pub enum BuiltinAction {
     NodePackageUninstall,
     NodePackageRuntime,
     NodeViewAssetRead,
+    NodeThemesList,
     NodePackageConfirmExecutionTrust,
     NodePackageRevokeExecutionTrust,
     NodeSourcesList,
@@ -210,6 +211,7 @@ pub enum BuiltinAction {
     SessionMetrics,
     SessionInputs,
     SessionClose,
+    ToolHandoff,
     SessionTx,
     SessionConfigure,
     SessionControl,
@@ -230,7 +232,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 103] = [
+    pub const ALL: [Self; 105] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
@@ -265,6 +267,7 @@ impl BuiltinAction {
         Self::NodePackageUninstall,
         Self::NodePackageRuntime,
         Self::NodeViewAssetRead,
+        Self::NodeThemesList,
         Self::NodePackageConfirmExecutionTrust,
         Self::NodePackageRevokeExecutionTrust,
         Self::NodeSourcesList,
@@ -316,6 +319,7 @@ impl BuiltinAction {
         Self::SessionMetrics,
         Self::SessionInputs,
         Self::SessionClose,
+        Self::ToolHandoff,
         Self::SessionTx,
         Self::SessionConfigure,
         Self::SessionControl,
@@ -348,6 +352,7 @@ impl BuiltinAction {
             Self::NodePackageUninstall => "node.packages.uninstall",
             Self::NodePackageRuntime => "node.packages.runtime",
             Self::NodeViewAssetRead => "node.views.assetRead",
+            Self::NodeThemesList => "node.themes.list",
             Self::NodePackageConfirmExecutionTrust => "node.packages.confirmExecutionTrust",
             Self::NodePackageRevokeExecutionTrust => "node.packages.revokeExecutionTrust",
             Self::NodeSourcesList => "node.sources.list",
@@ -401,6 +406,7 @@ impl BuiltinAction {
             Self::SessionMetrics => "session.metrics",
             Self::SessionInputs => "session.inputs",
             Self::SessionClose => "session.close",
+            Self::ToolHandoff => "session.toolHandoff",
             Self::SessionTx => "session.tx",
             Self::SessionConfigure => "session.configure",
             Self::SessionControl => "session.control",
@@ -435,6 +441,7 @@ impl BuiltinAction {
             Self::DeviceOpen
                 | Self::TransferFile
                 | Self::SessionClose
+                | Self::ToolHandoff
                 | Self::SessionTx
                 | Self::SessionConfigure
                 | Self::SessionControl
@@ -527,6 +534,7 @@ impl BuiltinAction {
                 | Self::Revoke
                 | Self::HostShutdown
                 | Self::FileRegister
+                | Self::ToolHandoff
                 | Self::NodeSourceApproveKey
                 | Self::NodePackageConfirmExecutionTrust
                 | Self::NodePackageRevokeExecutionTrust
@@ -576,6 +584,7 @@ impl BuiltinAction {
             | Self::TransferFile
             | Self::StreamCursor
             | Self::SessionClose
+            | Self::ToolHandoff
             | Self::SessionTx
             | Self::SessionConfigure
             | Self::SessionControl
@@ -836,6 +845,9 @@ impl BuiltinAction {
                 NodePackageRuntimeParams,
                 NodePackageRuntimeStatus,
             >(meta, dialect),
+            Self::NodeThemesList => {
+                ActionSpec::of_with_dialect::<EmptyParams, NodeThemesResult>(meta, dialect)
+            }
             Self::NodeViewAssetRead => ActionSpec::of_with_dialect::<
                 NodeViewAssetReadParams,
                 NodeViewAssetReadResult,
@@ -985,6 +997,9 @@ impl BuiltinAction {
             }
             Self::DeviceOpen => {
                 ActionSpec::of_with_dialect::<OpenParams, OpenResult>(meta, dialect)
+            }
+            Self::ToolHandoff => {
+                ActionSpec::of_with_dialect::<ToolHandoffParams, ToolHandoffResult>(meta, dialect)
             }
             Self::SessionGet | Self::SessionClose => {
                 ActionSpec::of_with_dialect::<EmptyParams, SessionSnapshot>(meta, dialect)

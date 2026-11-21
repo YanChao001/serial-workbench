@@ -1,5 +1,6 @@
 //! 离线正式包的验证、原子安装与内容复核；来源由 Host 信任仓库提供，包内声明不能自授权。
 mod archive;
+mod external_tool;
 mod install;
 mod installed;
 mod manager;
@@ -10,6 +11,7 @@ mod source_store;
 pub(crate) mod ui_assets;
 
 pub use archive::verify_node_package;
+pub(crate) use external_tool::VerifiedExternalTool;
 pub use install::{
     InstalledNodePackage, NodePackageInstallReceipt, NodePackageInstaller, NodePackageSnapshot,
 };

@@ -471,12 +471,12 @@ pub(super) fn interrupt_thread(join: &JoinHandle<()>) {
 #[cfg(test)]
 mod tests {
     use super::*;
-    type TestClaims = Arc<std::sync::Mutex<std::collections::HashMap<Id, Vec<String>>>>;
+    type TestClaims = super::super::SerialClaims;
     fn isolated_descriptor() -> (UnixPort, TestClaims) {
         let id = Id::try_from("isolated-test-descriptor").unwrap();
         let claims = Arc::new(std::sync::Mutex::new(std::collections::HashMap::from([(
-            id.clone(),
-            vec!["locator:test-fd".to_owned()],
+            super::super::SerialOwner::Native(id.clone()),
+            vec![super::super::SerialAddress::Locator("test-fd".to_owned())],
         )])));
         let resource = Arc::new(PortResource::new(
             tempfile::tempfile().unwrap().into(),

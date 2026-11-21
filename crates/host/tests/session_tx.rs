@@ -188,6 +188,7 @@ impl PendingWrite for TestWrite {
 async fn concurrent_open_of_one_device_opens_backend_once() {
     let fixture = Fixture::new();
     let params = OpenParams {
+        transport_params: None,
         binding: None,
         configuration: SerialConfiguration::default(),
     };
@@ -208,6 +209,7 @@ async fn different_configuration_never_silently_reconfigures_open_device() {
         .open(
             &fixture.target,
             OpenParams {
+                transport_params: None,
                 binding: None,
                 configuration: SerialConfiguration::default(),
             },
@@ -224,6 +226,7 @@ async fn different_configuration_never_silently_reconfigures_open_device() {
             .open(
                 &fixture.target,
                 OpenParams {
+                    transport_params: None,
                     configuration,
                     binding: None
                 }

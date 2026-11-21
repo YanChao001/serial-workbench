@@ -1,6 +1,7 @@
 mod discovery;
 pub mod identity;
 mod observability;
+pub(crate) mod plugin_transport;
 mod reconnect;
 pub mod serial;
 pub(crate) mod sessions;

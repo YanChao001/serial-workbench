@@ -35,6 +35,7 @@ async fn paired_host_uses_owner_session_for_tx_and_raw_and_unpair_closes_only_la
         .open(
             &device,
             OpenParams {
+                transport_params: None,
                 binding: None,
                 configuration: SerialConfiguration::default(),
             },

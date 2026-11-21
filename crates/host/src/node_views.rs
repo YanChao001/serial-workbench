@@ -30,6 +30,7 @@ impl Host {
         actor: &AuthenticatedActor,
         operation_target: &Target,
         params: &NodeViewAssetReadParams,
+        paired_browser: bool,
     ) -> HostResult<ViewAccess> {
         let permit = self
             .inner
@@ -76,6 +77,9 @@ impl Host {
                 "Plugin view is not registered for this action",
             )
         })?;
+        if paired_browser {
+            assets.require_signed_source()?;
+        }
         if operation.state == OperationState::Running
             && view.feed != Some(NodePackageViewFeed::Derived)
         {
@@ -101,13 +105,14 @@ impl Host {
         &self,
         actor: &AuthenticatedActor,
         query: &Query,
+        paired_browser: bool,
     ) -> HostResult<()> {
         let params: NodeViewAssetReadParams = decode(&query.params)?;
         let host = self.clone();
         let actor = actor.clone();
         let target = query.target.clone();
         blocking(move || {
-            let access = host.node_view_access(&actor, &target, &params)?;
+            let access = host.node_view_access(&actor, &target, &params, paired_browser)?;
             access.assets.check_range(
                 params.path.as_ref().unwrap_or(access.assets.entry()),
                 params.offset,
@@ -122,11 +127,13 @@ impl Host {
         actor: &AuthenticatedActor,
         operation_target: Target,
         params: NodeViewAssetReadParams,
+        paired_browser: bool,
     ) -> HostResult<NodeViewAssetReadResult> {
         let host = self.clone();
         let actor = actor.clone();
         blocking(move || {
-            let access = host.node_view_access(&actor, &operation_target, &params)?;
+            let access =
+                host.node_view_access(&actor, &operation_target, &params, paired_browser)?;
             let entry = access.assets.entry().clone();
             let chunk = access
                 .assets
