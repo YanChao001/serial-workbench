@@ -1101,7 +1101,7 @@ async fn exercise_terminal(
         installed.package.display_name.as_deref(),
         Some("Serial Monitor")
     );
-    assert_eq!(installed.package.version.as_deref(), Some("0.1.1"));
+    assert_eq!(installed.package.version.as_deref(), Some("0.1.2"));
     assert_eq!(installed.package.archive_sha256, terminal.archive_sha256);
     assert!(installed.package.source_verified);
     assert!(!installed.package.enabled && !installed.package.execution_approved);

@@ -77,7 +77,7 @@ test("install, trust and enable a plugin without exposing internal identifiers",
 
   await expect(page.getByText("Installed Serial Monitor.")).toHaveCount(1);
   const row = page.getByRole("button", {
-    name: /Serial Monitor.*Version 0\.1\.1.*Needs your approval/,
+    name: /Serial Monitor.*Version 0\.1\.2.*Needs your approval/,
   });
   await expect(row).toHaveAttribute("aria-expanded", "true");
   await expect(page.getByText("Signature verified · Workbench")).toBeVisible();
