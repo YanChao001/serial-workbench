@@ -3,6 +3,7 @@ use serde_json::{Value, json};
 use tokio::time::timeout;
 
 const SAMPLE: &str = "swb.reference.chart.sample";
+const EXPORT_SVG: &str = "swb_swb_x2E_reference_x2E_chart_x2E_exportSvg";
 
 #[tokio::test]
 #[ignore = "requires prepared Node, the signed chart receipt and same-source CLI/MCP"]
@@ -89,7 +90,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             assert_eq!(serde_json::to_value(&sample.value).unwrap(), value);
             assert_eq!(sample.position.get(), index as u64 + 1);
             assert_eq!(sample.provenance.parser_id.as_str(), SAMPLE);
-            assert_eq!(sample.provenance.parser_version, "0.1.0");
+            assert_eq!(sample.provenance.parser_version, "0.1.1");
             assert_eq!(sample.provenance.unit.as_deref(), Some("V"));
             assert_eq!(sample.provenance.quality, [DerivedQuality::Complete, DerivedQuality::Transformed]);
             let [source] = &sample.provenance.sources[..] else { panic!("One exact RX source range"); };
@@ -110,6 +111,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         let cli = parity_clients::Cli { binary: parity_clients::binary("SWB_TEST_CLI_BIN", "serial-workbench-cli"), profile: profile.to_path_buf() };
         assert_eq!(derived(success(cli.query_reply("stream.derivedRead", &session, &first_params).await)), first);
         verify_mcp_pages(profile, &session, [(first_params, &first), (last_params, &last)]).await;
+        verify_svg_export(profile, &bridge, business, &session).await;
 
         let end = wait_reference_rx_end(&bridge, business, &session, 13).await;
         let overflow = invoke(&bridge, business, &session, SAMPLE,
@@ -135,6 +137,64 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         assert!(matches!(reopened.next().await, Err(error) if error.code == "UNSUPPORTED_CAPABILITY"));
         eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] samples_while_running=2 same_view_after_completion=true two_pages=true cli_match=true official_mcp_pages=2 scoped_view_reopened=true viewer_revoked=true overlong_rejected=true raw_bytes=78");
     }).await;
+}
+
+async fn verify_svg_export(
+    profile: &Path,
+    bridge: &DesktopHostBridge,
+    business: &AttachResult,
+    session: &Target,
+) {
+    let sdk = start_reference_mcp(profile).await;
+    let accepted = timeout(
+        Duration::from_secs(10),
+        parity_clients::tool_reply(
+            sdk.peer(),
+            EXPORT_SVG,
+            session,
+            json!({"startEventSeq":"1","sampleCount":3}),
+        ),
+    )
+    .await
+    .expect("MCP SVG export admission timed out")
+    .unwrap();
+    let accepted = serde_json::from_value(parity_clients::structured(accepted)).unwrap();
+    let settled = wait(bridge, business, accepted).await;
+    let Some(ActionResult::Reference(output)) = settled.result else {
+        panic!("SVG export did not settle with a result reference: {settled:?}");
+    };
+    let target = resource_target(&output.result_ref);
+    let params = json!({"fileRef":output.result_ref,"offset":"0","maxBytes":"8192"});
+    let RpcResult::Query(QueryResult::FileRead(desktop)) =
+        read_reference_raw(bridge, business, &target, "file.read", params.clone()).await
+    else {
+        panic!("Desktop failed to read the chart result");
+    };
+    let mcp = timeout(
+        Duration::from_secs(10),
+        parity_clients::tool_reply(sdk.peer(), "swb_file_x2E_read", &target, params),
+    )
+    .await
+    .expect("MCP SVG read timed out")
+    .unwrap();
+    let mcp: FileReadResult = serde_json::from_value(parity_clients::structured(mcp)).unwrap();
+    timeout(Duration::from_secs(12), sdk.cancel())
+        .await
+        .unwrap()
+        .unwrap();
+    assert_eq!(desktop, mcp);
+    assert!(desktop.at_end);
+    let svg = String::from_utf8(STANDARD.decode(desktop.bytes_base64.as_str()).unwrap()).unwrap();
+    assert!(svg.starts_with("<svg "));
+    assert!(svg.ends_with("</svg>"));
+    assert!(
+        svg.contains("points=\"72.00,154.25 344.00,295.64 616.00,56.36\""),
+        "{svg}"
+    );
+    eprintln!(
+        "reference_chart_svg actual_mcp_action=true desktop_mcp_file_match=true bytes={}",
+        svg.len()
+    );
 }
 
 async fn verify_mcp_pages(

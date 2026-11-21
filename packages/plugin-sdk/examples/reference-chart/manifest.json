@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.chart",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "Serial Workbench Chart",
-  "description": "Publish chart samples with source byte ranges from a Host session",
+  "description": "Publish samples with source byte ranges and export a voltage chart as SVG",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE"],
   "hostProtocolVersion": "0.1",
@@ -64,6 +64,40 @@
           "pageId": "plugins",
           "panelId": "swb.reference.chart.view"
         }
+      },
+      {
+        "actionId": "swb.reference.chart.exportSvg",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "default": "1"
+            },
+            "sampleCount": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 128,
+              "default": 3
+            }
+          },
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "string",
+          "contentEncoding": "base64",
+          "x-swb-file-result": "image/svg+xml",
+          "maxLength": 32768
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": { "pageId": "plugins" }
       }
     ],
     "queries": [],

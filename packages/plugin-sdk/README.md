@@ -50,6 +50,8 @@ context.actions.register("example.terminal.forward", async (call, task) => {
 
 `invokeChild` 返回接纳状态，`operations.get` 返回当前 Operation，结果保留生成契约的 `kind/value` 结构。处理器返回后关闭新接纳，Host 等待已接纳子项结算。进度报告计数为十进制字符串，按实际完成工作递增；报告合并为最新快照。查询处理器只接收 `Query`，没有任务第二参数。
 
+签名动作可以在 `outputSchema` 声明 `type: "string"`、`contentEncoding: "base64"` 和 `x-swb-file-result: "image/svg+xml"`。处理器返回 Base64，Host 验证并将解码后的字节保存为结果文件。客户端通过终态的 `resultRef` 和 `file.read` 获取同一份内容，读取仍需要来源权限。图表参考包的 `swb.reference.chart.exportSvg` 可在无窗口环境运行。
+
 动作处理器通过 `task.streams.read(params)` 分页读取 Host 留存的原始事件。参数和返回值分别沿用生成的 `StreamReadParams` 与 `StreamReadResult`。插件需声明会话上的 `content.read`，Host 同时校验当前调用者授权以及父任务的会话和代次范围。
 
 ```ts

@@ -17,7 +17,11 @@
 
 **M3 T06 组合负载（候选 `0ba36bc`，Windows x64）。** 签名公开 SDK 解析器、快慢 Raw 读者与录制并行，实测 600.086 秒，六场景 18 项断言通过。发生器、快速读者、解析器和录制回放的 6,911,679 字节摘要一致，派生读者从过期游标恢复并收齐 597 条样本。控制查询 p95 为 8.14 毫秒，进程树 RSS 峰值为 181 MiB，Host 和 Node 进程已退出。验收程序沿用先前排除栈溢出所需的 4 MiB 栈保留。Windows 组合负载所用 Host、运行时与解析器源码从该候选到合入候选一致。原始收据与两轮失败证据见 `.cache/evidence/m3-transaction-20261121/`。
 
-**串口监听参考包升级。** 已安装的早期 `0.1.1` 可从同签名来源原地升到 `0.1.2`，保留启用与执行信任。新版正文从系统标题栏下方直接显示收发数据。Windows 隔离配置实测升级，三项无头用例通过。签名包和升级收据见 `.cache/evidence/serial-monitor-upgrade-20261121/`。[PR #54](https://github.com/YanChao001/serial-workbench/pull/54)
+**串口监听参考包升级已合入 `3492986`。** 已安装的早期 `0.1.1` 可从同签名来源原地升到 `0.1.2`，保留启用与执行信任。新版正文从系统标题栏下方直接显示收发数据。候选 `152517e` 在 Windows 隔离配置实测升级，通过综合检查、207 项无头 UI 和完整四目标 CI 的 13 项必跑作业。签名包和升级收据见 `.cache/evidence/serial-monitor-upgrade-20261121/`。[PR #54](https://github.com/YanChao001/serial-workbench/pull/54) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44859539929)
+
+**M3 T14 后台关停（工作树，Windows x64）。** 独立配置上的真实 Windows Host 正常清理、产出当前代次的关停回执，并在允许安装前退出。3 项更新预备用例和 13 项 IPC 测试通过。继续将准备阶段的实例锁交给实际安装进程，再复验替换、重启及失败恢复。原始日志与回执见 `.cache/evidence/m3-upgrade-20261121/checkpoint.json`。
+
+**M3 图表离屏导出（VIZ-13，Windows x64 工作树）。** 使用公开 SDK 签名的图表参考包 `0.1.1`。真实 MCP 从同一串口代次的留存数据发起导出，原生桌面桥和 MCP 从同一结果引用读到完全一致的 1,266 字节 SVG。核对了三个采样值对应的曲线坐标。原有实时采样、分页、重开和撤权用例同时通过。接续实际 GUI 保存及四目标复验。程序、签名包和输出日志见 `.cache/evidence/m3-chart-export-20261121/checkpoint.json`。
 
 **FUT-08 配对浏览器（工作树，Windows）。** Host 提供显式启用的 loopback 页面与 WebSocket 入口。真实回环测试通过 Host 与 Origin 校验、一次性配对、专属普通身份附着和控制连接关闭后的 Raw 清理。复审后改用浏览器独立随机生成的重连凭据，拒绝用已消费的配对码重连、重新绑定凭据或冒用桌面身份。复验也核对了未读完静态下载时关停及重开同一 profile。无头启动器可通过受保护的继承管道接收配对码。真实 Host 通过三项定向检查，真实 Chromium 在另一个浏览器上下文重用配对码被拒绝。证据见 `.cache/evidence/m2-browser-pairing/browser-review-auth-host-retest.log` 与 `browser-review-exact-20261120-221938/`。
 

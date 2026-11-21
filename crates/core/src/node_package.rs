@@ -1,7 +1,7 @@
 //! Node 正式包的公共元数据；执行、来源信任和文件系统责任由 Host 持有。
 use crate::{
     ActionKind, ActionSpec, Digest, HostError, HostResult, Id, ProtocolVersion, ResourceKind,
-    SchemaObject, U64,
+    SchemaObject, SchemaValue, U64,
 };
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
@@ -11,6 +11,9 @@ use std::{
     collections::{HashMap, HashSet},
     fmt,
 };
+
+/// 签名动作声明此字段后，Host 将解码后的输出保存为结果文件。
+pub const NODE_FILE_RESULT_KEY: &str = "x-swb-file-result";
 
 fn invalid_metadata() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid Node package metadata")
@@ -597,6 +600,16 @@ impl NodePackageManifest {
         for (specs, expected_kind) in groups {
             for spec in specs {
                 declare(&spec.action_id)?;
+                if let Some(format) = spec.output_schema.get(NODE_FILE_RESULT_KEY) {
+                    let has_schema_value = |key, expected: &str| matches!(spec.output_schema.get(key), Some(SchemaValue::String(value)) if value == expected);
+                    if spec.kind != ActionKind::Action
+                        || !matches!(format, SchemaValue::String(value) if value == "image/svg+xml")
+                        || !has_schema_value("type", "string")
+                        || !has_schema_value("contentEncoding", "base64")
+                    {
+                        return Err(invalid_metadata());
+                    }
+                }
                 if expected_kind.is_some_and(|kind| spec.kind != kind)
                     || spec.target_kinds.is_empty()
                     || spec
