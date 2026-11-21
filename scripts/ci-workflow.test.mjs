@@ -155,7 +155,15 @@ test("preflight shares the full native runner and retains successful source rece
   );
   assert.match(
     native,
-    /if: runner\.os != 'Linux' && inputs\.chart_only\n\s+run: pnpm test:e2e --interactive --skip-build --chart-automated/,
+    /if: runner\.os != 'Linux' && \(inputs\.chart_only \|\| inputs\.chart_with_desktop\)\n\s+env:\n\s+SWB_E2E_WINDOWS_NATIVE_PICKERS: .*inputs\.native_file_dialogs.*\n\s+run: pnpm test:e2e --interactive --skip-build --chart-automated/,
+  );
+  assert.match(
+    job("desktop-e2e"),
+    /chart_with_desktop: \$\{\{ inputs\.desktop_chart && matrix\.target == 'x86_64-pc-windows-msvc' \}\}/,
+  );
+  assert.match(
+    native,
+    /REFERENCES: .*inputs\.chart_with_desktop && 'terminal chart'/,
   );
   assert.match(
     job("quality-gate"),

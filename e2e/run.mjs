@@ -102,12 +102,12 @@ try {
   const nativePickers = process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1";
   if (
     nativePickers &&
-    (!automated ||
+    (!(automated || chart) ||
       process.platform !== "win32" ||
       process.env.GITHUB_ACTIONS !== "true")
   ) {
     throw new Error(
-      "Native file dialog automation requires the independent Windows CI terminal scenario.",
+      "Native file dialog automation requires an independent Windows CI reference scenario.",
     );
   }
   const picker = process.env.SWB_E2E_WINDOWS_PICKER_BIN;

@@ -1,5 +1,40 @@
+import assert from "node:assert/strict";
+import { execFile } from "node:child_process";
+import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { navigate } from "../helpers.mjs";
+
+const execute = promisify(execFile);
+
+export async function selectWindowsFile(element, action, path) {
+  const pid = Number(process.env.STARTER_E2E_APP_PID);
+  assert.ok(
+    Number.isSafeInteger(pid) && pid > 0,
+    "Missing owned application PID",
+  );
+  const [{ stdout }] = await Promise.all([
+    execute(
+      process.env.SWB_E2E_WINDOWS_PICKER_BIN,
+      [String(pid), action, path],
+      {
+        timeout: 30000,
+        windowsHide: true,
+      },
+    ).catch((error) => {
+      throw new Error(
+        `Native ${action} picker failed (exit=${error.code}, signal=${error.signal}, killed=${error.killed}): ${error.message}`,
+        { cause: error },
+      );
+    }),
+    click(element),
+  ]);
+  const evidence = JSON.parse(stdout);
+  assert.equal(evidence.action, action);
+  assert.equal(evidence.applicationPid, pid);
+  assert.equal(evidence.path, path);
+  assert.equal(evidence.returnedFocus, true);
+  return evidence;
+}
 
 export function byText(tag, text, within = "") {
   return $(`${within}//${tag}[normalize-space()=${JSON.stringify(text)}]`);

@@ -1,9 +1,13 @@
 use serial_workbench_client::{ConnectOptions, HostClient, read_user_control_credential};
 use serial_workbench_core::{ClientKind, HostError, HostResult, Id};
-use serial_workbench_ipc::{PrivateFileLock, reserve_host_instance};
+use serial_workbench_ipc::{
+    PrivateFileLock, reserve_host_instance, shutdown::verify_idle_profile_shutdown,
+};
 use std::{path::Path, time::Duration};
 
 use crate::error::{ErrorCode, NativeError};
+
+const STOP_TIMEOUT: Duration = Duration::from_secs(15);
 
 pub(super) fn install_error(error: HostError) -> NativeError {
     NativeError::operation(
@@ -14,8 +18,14 @@ pub(super) fn install_error(error: HostError) -> NativeError {
 }
 
 pub(super) async fn stop_and_reserve(profile: &Path) -> HostResult<PrivateFileLock> {
-    let namespace = profile.join("host-v0");
-    match reserve_host_instance(&namespace) {
+    let idle_profile = profile.to_owned();
+    match inspect_local_host(move || {
+        let reservation = reserve_host_instance(&idle_profile.join("host-v0"))?;
+        verify_idle_profile_shutdown(&idle_profile, STOP_TIMEOUT)?;
+        Ok(reservation)
+    })
+    .await
+    {
         Ok(reservation) => return Ok(reservation),
         Err(error) if error.code == "HOST_BUSY" => {}
         Err(error) => return Err(error),
@@ -25,30 +35,27 @@ pub(super) async fn stop_and_reserve(profile: &Path) -> HostResult<PrivateFileLo
         Id::try_from("desktop-updater").expect("valid updater identity"),
         ClientKind::Desktop,
     );
-    options.user_control_credential = Some(read_user_control_credential(profile)?);
+    let active_profile = profile.to_owned();
+    options.user_control_credential =
+        Some(inspect_local_host(move || read_user_control_credential(&active_profile)).await?);
     let client = HostClient::connect(options).await?;
     #[cfg(windows)]
     let process = client.observe_local_host_process().await?;
     client.request_shutdown(None).await?;
-    // A shutdown reply alone does not release the instance lock or sidecar handles.
-    let deadline = tokio::time::Instant::now() + Duration::from_secs(15);
+    // 接纳回执出来后，继续等待已结算的关停证明和实际进程退出。
+    let deadline = tokio::time::Instant::now() + STOP_TIMEOUT;
     loop {
-        match reserve_host_instance(&namespace) {
+        let namespace = profile.join("host-v0");
+        match inspect_local_host(move || reserve_host_instance(&namespace)).await {
             Ok(reservation) => {
                 client.verify_local_shutdown_completed().await?;
                 #[cfg(windows)]
-                tokio::task::spawn_blocking(move || {
+                inspect_local_host(move || {
                     process.wait_for_clean_exit(
                         deadline.saturating_duration_since(tokio::time::Instant::now()),
                     )
                 })
-                .await
-                .map_err(|_| {
-                    HostError::new(
-                        "SHUTDOWN_INCOMPLETE",
-                        "Cannot observe the old Host process exit",
-                    )
-                })??;
+                .await?;
                 return Ok(reservation);
             }
             Err(error) if error.code == "HOST_BUSY" => {}
@@ -62,6 +69,14 @@ pub(super) async fn stop_and_reserve(profile: &Path) -> HostResult<PrivateFileLo
         }
         tokio::time::sleep(Duration::from_millis(25)).await;
     }
+}
+
+async fn inspect_local_host<T: Send + 'static>(
+    task: impl FnOnce() -> HostResult<T> + Send + 'static,
+) -> HostResult<T> {
+    crate::blocking::run(move || Ok(task()))
+        .await
+        .map_err(|_| HostError::new("SHUTDOWN_INCOMPLETE", "Cannot inspect the local Host"))?
 }
 
 #[cfg(test)]
@@ -135,6 +150,12 @@ mod tests {
     #[cfg(windows)]
     #[tokio::test]
     async fn desktop_install_waits_for_the_actual_windows_host_process() {
+        check_windows_process_exit(false).await;
+        check_windows_process_exit(true).await;
+    }
+
+    #[cfg(windows)]
+    async fn check_windows_process_exit(shutdown_before_prepare: bool) {
         let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let profile = directory.path().to_path_buf();
         let mut child = tokio::process::Command::new(std::env::current_exe().unwrap());
@@ -151,18 +172,39 @@ mod tests {
             .unwrap();
         let pid = child.id().unwrap();
         wait_for_test_marker(&profile.join("ready")).await;
-        let observer = HostClient::connect(ConnectOptions::new(
+        let mut options = ConnectOptions::new(
             profile.clone(),
             Id::try_from("update-verifier").unwrap(),
             ClientKind::Desktop,
-        ))
-        .await
-        .unwrap();
+        );
+        if shutdown_before_prepare {
+            options.user_control_credential = Some(read_user_control_credential(&profile).unwrap());
+        }
+        let observer = HostClient::connect(options).await.unwrap();
         let old_epoch = observer.local_instance().1;
         let process = observer.observe_local_host_process().await.unwrap();
+        if shutdown_before_prepare {
+            observer.request_shutdown(None).await.unwrap();
+            wait_for_test_marker(&profile.join("settled")).await;
+            assert!(!serial_workbench_ipc::profile_has_running_host(&profile).unwrap());
+        }
         let update_profile = profile.clone();
         let prepare = tokio::spawn(async move { stop_and_reserve(&update_profile).await });
         wait_for_test_marker(&profile.join("settled")).await;
+        tokio::time::timeout(Duration::from_secs(10), async {
+            loop {
+                assert!(
+                    !prepare.is_finished(),
+                    "installation became ready before Host exit"
+                );
+                if serial_workbench_ipc::profile_has_running_host(&profile).unwrap() {
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(10)).await;
+            }
+        })
+        .await
+        .unwrap();
         assert_eq!(
             process
                 .wait_for_clean_exit(Duration::ZERO)
@@ -183,7 +225,7 @@ mod tests {
         let restarted = HostServer::bind(&profile).await.unwrap();
         assert!(restarted.identity().instance_epoch > old_epoch);
         eprintln!(
-            "windows_update host_pid={pid} old_epoch={old_epoch} exited_before_install_ready=true"
+            "windows_update host_pid={pid} old_epoch={old_epoch} idle_retry={shutdown_before_prepare} exited_before_install_ready=true"
         );
     }
 
@@ -248,5 +290,9 @@ mod tests {
             "STORAGE_UNAVAILABLE"
         );
         assert!(reserve_host_instance(&profile.join("host-v0")).is_ok());
+        assert!(matches!(
+            stop_and_reserve(profile).await,
+            Err(error) if error.code == "SHUTDOWN_INCOMPLETE"
+        ));
     }
 }

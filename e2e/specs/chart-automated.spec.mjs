@@ -9,6 +9,7 @@ import {
   button,
   click,
   installPlugin,
+  selectWindowsFile,
   sendHex,
   showPluginDetails,
 } from "./reference-plugin.mjs";
@@ -81,7 +82,18 @@ describe("Signed chart on the real desktop", () => {
     await sendHex(Buffer.from("3.5\n").toString("hex"));
 
     await showPluginDetails("Serial Workbench Chart");
-    await click(button("Save SVG…"));
+    const save = button("Save SVG…");
+    const exportPath = join(directory, "exported-chart.svg");
+    if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1") {
+      const picker = await selectWindowsFile(save, "Save", exportPath);
+      writeFileSync(
+        join(directory, "native-chart-save.json"),
+        JSON.stringify(picker, null, 2),
+        { flag: "wx" },
+      );
+    } else {
+      await click(save);
+    }
     await browser.waitUntil(
       () =>
         browser.execute(() =>
@@ -89,7 +101,7 @@ describe("Signed chart on the real desktop", () => {
         ),
       { timeoutMsg: "The desktop did not confirm the chart was saved" },
     );
-    const exported = readFileSync(join(directory, "exported-chart.svg"));
+    const exported = readFileSync(exportPath);
     assert.ok(exported.toString("utf8").startsWith("<svg "));
     assert.match(
       exported.toString("utf8"),

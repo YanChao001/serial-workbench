@@ -201,7 +201,7 @@ pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts
 
 桌面桥接用例在生产 Operation 运行中开启图表。首个样本发布前视图保持等待，输入两个完整样本后先读取这两项，再发送最后一段并经同一视图读完。重开后对照留存页，撤销执行信任后复查读页。用例还经真实 MCP 发起离屏 SVG 导出，核对同一结果引用的字节与桌面实际另存的文件一致。无头 Chromium 用实际壳和图表脚本验证 iframe 隔离、留存缺口、曲线与样本值。
 
-实际图表窗口可在[手动 CI](../.github/workflows/ci.yml)选择 `native_preflight=true`、目标和 `native_preflight_chart=true`。独立桌面上经插件页安装签名包，开窗后切回工作台发送一组电压。第一个样本获实际隔离 iframe 确认后关闭图表，再发送两个样本。回到插件页选择「另存为 SVG…」，核对文件中的曲线和文件摘要。自动化使用固定的测试保存路径，正式桌面从系统对话框选择目标。重开图表并核对同一任务的三项样本。随后让 runner 停止并重启持有的 Host，核对新进程和代次，以及重开的原生窗口随旧连接关闭。SVG、收据与原始日志保存在 `artifacts/e2e/signed-chart-*`。完整四目标按阶段出口执行。
+实际图表窗口可在[手动 CI](../.github/workflows/ci.yml)选择 `native_preflight=true`、目标和 `native_preflight_chart=true`。独立桌面上经插件页安装签名包，开窗后切回工作台发送一组电压。第一个样本获实际隔离 iframe 确认后关闭图表，再发送两个样本。回到插件页选择「另存为 SVG…」，核对文件中的曲线和文件摘要。Windows CI 通过实际系统保存对话框选择目标并记录焦点返回，其他平台由夹具提供目标。重开图表并核对同一任务的三项样本。随后让 runner 停止并重启持有的 Host，核对新进程和代次，以及重开的原生窗口随旧连接关闭。SVG、收据与原始日志保存在 `artifacts/e2e/signed-chart-*`。需验收图表的完整四目标候选设置 `desktop_chart=true`，Windows 桌面作业共用一套构建和固定 Node，并执行签名终端及图表场景。
 
 ## 自动化参考包后台应答
 

@@ -9,6 +9,10 @@ on:
         type: boolean
         default: true
         required: true
+      desktop_chart:
+        description: 完整检查时在同一个 Windows 桌面作业补跑签名图表
+        type: boolean
+        default: false
       native_preflight:
         description: 仅执行所选目标的原生全场景预检，不作为里程碑验收
         type: boolean
@@ -477,6 +481,7 @@ jobs:
       platform: ${{ matrix.platform }}
       target: ${{ matrix.target }}
       native_file_dialogs: ${{ matrix.target == 'x86_64-pc-windows-msvc' }}
+      chart_with_desktop: ${{ inputs.desktop_chart && matrix.target == 'x86_64-pc-windows-msvc' }}
 
   quality-gate:
     name: ${{ inputs.native_preflight && '原生预检结果（非里程碑验收）' || '质量门禁' }}

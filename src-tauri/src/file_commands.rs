@@ -44,6 +44,7 @@ pub(crate) async fn host_save_chart_svg(
         blocking::run(move || {
             #[cfg(feature = "e2e")]
             if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("chart-automated")
+                && std::env::var("SWB_E2E_WINDOWS_NATIVE_PICKERS").as_deref() != Ok("1")
                 && let Some(directory) = std::env::var_os("STARTER_E2E_CHART_DIR")
             {
                 return Ok(Some(PathBuf::from(directory).join("exported-chart.svg")));
@@ -115,7 +116,7 @@ where
     let Some(path) = pick().await.map_err(chart_storage_error)? else {
         return Ok(false);
     };
-    // The dialog can outlive the window connection or a source grant.
+    // 对话框返回后，按当前窗口代次与来源授权读取文件。
     let QueryResult::FileRead(page) = query_resource(
         bridge,
         window,

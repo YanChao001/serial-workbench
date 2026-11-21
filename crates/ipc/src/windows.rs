@@ -20,8 +20,8 @@ use tokio::{
 };
 use windows_sys::Win32::{
     Foundation::{
-        GENERIC_READ, GENERIC_WRITE, HANDLE, INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0,
-        WAIT_TIMEOUT,
+        ERROR_INVALID_PARAMETER, FILETIME, GENERIC_READ, GENERIC_WRITE, HANDLE,
+        INVALID_HANDLE_VALUE, LocalFree, WAIT_OBJECT_0, WAIT_TIMEOUT,
     },
     Security::{
         ACCESS_ALLOWED_ACE, ACL,
@@ -46,7 +46,7 @@ use windows_sys::Win32::{
     System::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeInfo, GetNamedPipeServerProcessId},
         Threading::{
-            GetCurrentProcess, GetExitCodeProcess, OpenProcess, OpenProcessToken,
+            GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, OpenProcess, OpenProcessToken,
             PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZATION_SYNCHRONIZE, WaitForSingleObject,
         },
     },
@@ -579,6 +579,59 @@ fn open_peer_process(stream: &LocalStream, access: u32) -> HostResult<(u32, Owne
 /// Stable handle to the named pipe server process, acquired before its Host proof.
 pub struct LocalHostProcess(OwnedHandle);
 
+fn process_creation_time(process: HANDLE) -> HostResult<u64> {
+    let mut created = FILETIME::default();
+    let mut exited = FILETIME::default();
+    let mut kernel = FILETIME::default();
+    let mut user = FILETIME::default();
+    if unsafe { GetProcessTimes(process, &mut created, &mut exited, &mut kernel, &mut user) } == 0 {
+        return Err(unobserved_shutdown());
+    }
+    Ok((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
+}
+
+pub(crate) fn current_process_creation_time() -> HostResult<u64> {
+    process_creation_time(unsafe { GetCurrentProcess() })
+}
+
+pub(crate) fn wait_for_recorded_process_exit(
+    pid: u32,
+    created: u64,
+    timeout: Duration,
+) -> HostResult<()> {
+    if pid == 0 {
+        return Err(unobserved_shutdown());
+    }
+    let handle = unsafe {
+        OpenProcess(
+            PROCESS_QUERY_LIMITED_INFORMATION | SYNCHRONIZATION_SYNCHRONIZE,
+            0,
+            pid,
+        )
+    };
+    if handle.is_null() {
+        return if io::Error::last_os_error().raw_os_error() == Some(ERROR_INVALID_PARAMETER as i32)
+        {
+            Ok(())
+        } else {
+            Err(unobserved_shutdown())
+        };
+    }
+    let process = LocalHostProcess(unsafe { OwnedHandle::from_raw_handle(handle) });
+    // PID 可复用，只有创建时间与回执一致的进程属于该次 Host 启动。
+    if process_creation_time(process.0.as_raw_handle())? != created {
+        return Ok(());
+    }
+    process.wait_for_clean_exit(timeout)
+}
+
+fn unobserved_shutdown() -> HostError {
+    HostError::new(
+        "SHUTDOWN_INCOMPLETE",
+        "Cannot observe the old Host process exit",
+    )
+}
+
 impl LocalHostProcess {
     pub fn observe(stream: &LocalStream, expected_pid: u32) -> HostResult<Self> {
         if !matches!(stream, LocalStream::Client(_)) {
@@ -615,10 +668,7 @@ impl LocalHostProcess {
                 "HOST_STOP_TIMEOUT",
                 "The old Host process is still running",
             )),
-            _ => Err(HostError::new(
-                "SHUTDOWN_INCOMPLETE",
-                "Cannot observe the old Host process exit",
-            )),
+            _ => Err(unobserved_shutdown()),
         }
     }
 }

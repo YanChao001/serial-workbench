@@ -19,9 +19,9 @@
 
 **串口监听参考包升级已合入 `3492986`。** 已安装的早期 `0.1.1` 可从同签名来源原地升到 `0.1.2`，保留启用与执行信任。新版正文从系统标题栏下方直接显示收发数据。候选 `152517e` 在 Windows 隔离配置实测升级，通过综合检查、207 项无头 UI 和完整四目标 CI 的 13 项必跑作业。签名包和升级收据见 `.cache/evidence/serial-monitor-upgrade-20261121/`。[PR #54](https://github.com/YanChao001/serial-workbench/pull/54) · [四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44859539929)
 
-**M3 T14 后台关停（工作树，Windows x64）。** 独立配置上的真实 Windows Host 正常清理、产出当前代次的关停回执，并在允许安装前退出。3 项更新预备用例和 13 项 IPC 测试通过。继续将准备阶段的实例锁交给实际安装进程，再复验替换、重启及失败恢复。原始日志与回执见 `.cache/evidence/m3-upgrade-20261121/checkpoint.json`。
+**M3 T14 后台关停（工作树，Windows x64）。** 独立配置上的真实 Windows Host 正常清理、产出当前代次的关停回执，并在允许安装前退出。同一失败结算后的再次准备拒绝继续。真实进程夹具覆盖正常关停与实例锁已释放的重试，两条路径均等待旧进程退出。继续验证同协议旧版 Host 的恢复、安装器锁交接、实际替换及失败恢复。原始日志见 `.cache/evidence/m3-upgrade-20261121/checkpoint.json` 和 `.cache/evidence/m3-contracts-20261121/updater-retry/native.log`。
 
-**M3 图表离屏导出（VIZ-13，Windows x64 工作树）。** 使用公开 SDK 签名的图表参考包 `0.1.1`。真实 MCP 从同一串口代次的留存数据发起导出，桌面桥另存的 SVG 与 MCP 从同一结果引用读到的 1,266 字节完全一致。核对了三个采样值对应的曲线坐标。原有实时采样、分页、重开和撤权用例同时通过。桌面保存入口已接线，真实窗口预检和四目标复验继续验收。程序、签名包和输出日志见 `.cache/evidence/m3-chart-export-20261121/checkpoint.json` 与 `desktop-save/`。
+**M3 图表离屏导出（VIZ-13，Windows x64）。** 候选 `a79c5f1` 的真实桌面用签名图表参考包 `0.1.1` 点击另存并写出 1,266 字节 SVG，核对摘要、三个曲线坐标和同一任务的图表重开。另用同候选的实际 Node 和 MCP 对照磁盘文件与同一结果引用，逐字节一致。桌面自动化使用固定保存路径，系统保存对话框仍待实测。预检的桌面构建 473 秒，图表场景 77 秒，需图表验收的完整矩阵将其放入同一个 Windows 桌面作业。源码、签名包和本机输出见 `.cache/evidence/m3-chart-export-20261121/`，实际窗口产物见 `.cache/evidence/m3-contracts-20261121/a79c5f1/windows-chart/`。[Windows 图表预检](https://github.com/YanChao001/serial-workbench/actions/runs/44868254085)
 
 **FUT-08 配对浏览器（工作树，Windows）。** Host 提供显式启用的 loopback 页面与 WebSocket 入口。真实回环测试通过 Host 与 Origin 校验、一次性配对、专属普通身份附着和控制连接关闭后的 Raw 清理。复审后改用浏览器独立随机生成的重连凭据，拒绝用已消费的配对码重连、重新绑定凭据或冒用桌面身份。复验也核对了未读完静态下载时关停及重开同一 profile。无头启动器可通过受保护的继承管道接收配对码。真实 Host 通过三项定向检查，真实 Chromium 在另一个浏览器上下文重用配对码被拒绝。证据见 `.cache/evidence/m2-browser-pairing/browser-review-auth-host-retest.log` 与 `browser-review-exact-20261120-221938/`。
 
