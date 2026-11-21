@@ -1,8 +1,7 @@
 //! Browser transport for the local Host. A trusted launcher receives the initial ticket.
-mod listener;
-
 use super::{
     connection::{ConnectionState, ControlSession, FrameReader, FrameWriter, Sessions},
+    loopback::{LoopbackListener, listener_actor, only_header, wait_for_stop},
     protocol::{blocking, busy, error_frame, invalid, storage, unauthenticated},
 };
 use crate::auth::{AuthService, AuthenticatedActor};
@@ -125,31 +124,6 @@ struct Pairing {
     reconnect_verifier: Option<ContextToken>,
 }
 
-#[derive(serde::Serialize, serde::Deserialize)]
-struct BrowserIdentity {
-    id: uuid::Uuid,
-    credential: ContextToken,
-}
-
-fn load_browser_actor(namespace: &Path, auth: &AuthService) -> HostResult<AuthenticatedActor> {
-    let path = namespace.join("browser-identity.secret");
-    let identity = match serial_workbench_ipc::read_secret(&path)? {
-        Some(saved) => serde_json::from_slice(&saved).map_err(|_| unauthenticated())?,
-        None => {
-            let identity = BrowserIdentity {
-                id: uuid::Uuid::new_v4(),
-                credential: random_token(),
-            };
-            // Save first so a failed registration can retry the same private identity.
-            let encoded = serde_json::to_vec(&identity).map_err(|_| storage())?;
-            serial_workbench_ipc::write_secret_new(&path, &encoded)?;
-            identity
-        }
-    };
-    let client_id = Id::try_from(format!("browser-{}", identity.id).as_str())?;
-    auth.authenticate_browser_identity(&client_id, &identity.credential)
-}
-
 impl Pairing {
     fn pair(
         &mut self,
@@ -216,7 +190,7 @@ impl BrowserListener {
         let authority = socket.local_addr().map_err(|_| unavailable())?.to_string();
         let code = random_token();
         let namespace = namespace.to_path_buf();
-        let actor = blocking(move || load_browser_actor(&namespace, &auth)).await?;
+        let actor = blocking(move || listener_actor(&namespace, "browser", &auth)).await?;
         let entry = BrowserEntry {
             url: format!("http://{authority}"),
             pairing_code: code.clone(),
@@ -264,7 +238,7 @@ impl BrowserListener {
             .route("/{*path}", get(asset))
             .with_state(state);
         let task = tokio::spawn(async move {
-            let listener = listener::BrowserTcpListener::new(self.socket, stopped.clone());
+            let listener = LoopbackListener::new(self.socket, stopped.clone());
             let result = axum::serve(listener, router)
                 .with_graceful_shutdown(wait_for_stop(stopped))
                 .await;
@@ -312,23 +286,13 @@ struct BrowserState {
     stopped: watch::Receiver<bool>,
 }
 
-async fn wait_for_stop(mut stopped: watch::Receiver<bool>) {
-    let _ = stopped.wait_for(|value| *value).await;
-}
-
-fn has_header(headers: &HeaderMap, name: header::HeaderName, expected: &str) -> bool {
-    let values = headers.get_all(name);
-    let mut entries = values.iter();
-    entries.next().is_some_and(|value| value == expected) && entries.next().is_none()
-}
-
 async fn upgrade(
     State(state): State<BrowserState>,
     headers: HeaderMap,
     socket: WebSocketUpgrade,
 ) -> Response {
-    if !has_header(&headers, header::HOST, &state.authority)
-        || !has_header(&headers, header::ORIGIN, &state.origin)
+    if !only_header(&headers, header::HOST).is_some_and(|value| value == &state.authority)
+        || !only_header(&headers, header::ORIGIN).is_some_and(|value| value == &state.origin)
     {
         return StatusCode::FORBIDDEN.into_response();
     }
@@ -486,7 +450,7 @@ async fn asset(
     headers: HeaderMap,
     path: Option<AssetPath<String>>,
 ) -> Response {
-    if !has_header(&headers, header::HOST, &state.authority) {
+    if !only_header(&headers, header::HOST).is_some_and(|value| value == &state.authority) {
         return StatusCode::FORBIDDEN.into_response();
     }
     let path = path.as_ref().map_or("index.html", |AssetPath(path)| path);

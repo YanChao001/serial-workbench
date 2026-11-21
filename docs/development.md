@@ -60,6 +60,64 @@ CLI 管理用同一 profile 的本机用户控制身份。`lan status` 查看身
 
 桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发模式连接真实 Host 前可用 `pnpm build` 准备 `dist/`。
 
+### 本机 HTTP 控制
+
+本机调用方启动受信任的 Host 程序时可显式开启 HTTP。下面的 Node 示例使用独立 profile，`hostExe` 和 `profile` 均使用绝对路径。启动器读取管道后直接将本轮凭据放入请求头。
+
+```js
+import { spawn } from "node:child_process";
+import { randomUUID } from "node:crypto";
+
+const host = spawn(hostExe, ["--profile", profile, "--http-control-stdio"], {
+  stdio: ["ignore", "pipe", "inherit"],
+  windowsHide: true,
+});
+async function readEntry(pipe) {
+  let bytes = Buffer.alloc(0);
+  for await (const chunk of pipe) {
+    bytes = Buffer.concat([bytes, chunk]);
+    if (bytes.length < 4) continue;
+    const length = bytes.readUInt32BE();
+    if (length < 1 || length > 2048) throw new Error("Invalid Host handoff");
+    if (bytes.length >= 4 + length) {
+      return JSON.parse(bytes.subarray(4, 4 + length).toString("utf8"));
+    }
+  }
+  throw new Error("Host exited before HTTP handoff");
+}
+const { url, clientId, credential } = await readEntry(host.stdout);
+const response = await fetch(url, {
+  method: "POST",
+  redirect: "error",
+  headers: {
+    authorization: `Bearer ${credential}`,
+    connection: "close",
+    "content-type": "application/json",
+  },
+  body: JSON.stringify({
+    requestId: randomUUID(),
+    request: {
+      method: "host.attach",
+      params: {
+        supportedProtocolVersions: ["0.1"],
+        clientKind: "cli",
+        clientId,
+      },
+    },
+  }),
+});
+const attach = await response.json();
+if (!attach.ok) throw new Error(attach.error.code);
+```
+
+使用附着回执构建 `catalog.list` 的 Query，并按该身份的目录选择后续动作。授权参数文件用交付中的 `clientId`、所需权限和实际目标，撤权参数文件用附着结果的 `actorId`、对应权限和目标。 [RPC 信封](./contracts/host-v0.md#附着版本与目录) · [授权 DTO](../crates/core/src/auth.rs) · [本机 HTTP 控制验收](./acceptance.md#本机-http-控制)
+
+```sh
+serial-workbench-cli --profile <绝对目录> authorize --params-json grants.json
+serial-workbench-cli --profile <绝对目录> revoke --params-json revocations.json
+serial-workbench-cli --profile <绝对目录> host stop
+```
+
 ## 工作区操作
 
 编辑器可以从当前布局或空白工作区开始；选择视图只切换配置表单。保存提交视图、设备绑定与连接预设；另存为不复制发送草稿或运行连接。删除保留原件，默认工作区不可删除。加载配置不打开端口，关闭标签也不等于断开设备。

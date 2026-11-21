@@ -296,6 +296,7 @@ impl ConnectionState {
             actor: session.actor.clone(),
             channel,
             browser_stopped,
+            supports_events: writer.supports_events(),
             events: events_tx,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
@@ -716,6 +717,10 @@ impl<R: AsyncRead + Unpin + Send> FrameReader for R {
 }
 
 pub(super) trait FrameWriter: Send {
+    fn supports_events(&self) -> bool {
+        true
+    }
+
     fn write_wire<'a>(
         &'a mut self,
         frame: &'a WireFrame,
@@ -1081,6 +1086,7 @@ mod tests {
                 actor: actor.clone(),
                 channel: IpcChannel::Raw,
                 browser_stopped: None,
+                supports_events: true,
                 events,
                 event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
                 subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),
@@ -2160,6 +2166,7 @@ mod tests {
             actor: actor.clone(),
             channel: IpcChannel::Control,
             browser_stopped: None,
+            supports_events: true,
             events,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(std::collections::HashSet::new())),

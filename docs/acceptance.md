@@ -5,6 +5,7 @@
 | 要验证的能力                            | 入口                                                                                    |
 | --------------------------------------- | --------------------------------------------------------------------------------------- |
 | 真实桌面、浏览器配对、双 Host 和接管    | [原生桌面](#原生桌面) · [配对浏览器与 LAN](#配对浏览器与-lan)                           |
+| 本机 HTTP 控制、版本拒绝和重启恢复      | [本机 HTTP 控制](#本机-http-控制)                                                       |
 | 固定 Node、签名包后台、Raw/派生流和 SDK | [签名运行时与 SDK](#签名运行时与-sdk)                                                   |
 | 签名终端、图表和自动化                  | [终端](#终端参考包验收) · [图表](#图表参考包后台采样) · [自动化](#自动化参考包后台应答) |
 | 六个 Host 软件场景、T06 与录制校验      | [Host 软件验收](#host-软件验收) · [独立录制格式](#独立录制格式)                         |
@@ -25,6 +26,19 @@ WebDriver 命令报错前可能已触发原生副作用，按一次投递观察�
 Native 刷新需观察旧文档被替换，再检查新窗口 IPC 就绪。同一阶段串行复用 profile，首个失败后保留现场；成功时核对实际进程退出、非空阶段日志及零意外 RPC 冲突。系统文件选择夹具、条件跳过和无头截图分别标明，不计为真实系统交互。
 
 隔离插件视图须在各平台实际验证。Windows Wry 会把标记为仅主框架的初始化脚本注入子框架，Linux 的原生 IPC 请求也可能报告主框架 URL。验证子框架拿不到 Tauri 全局和通用原生 IPC，并检查导航、旧消息端口失效、关窗回收、焦点、语言、主题及缩放。 [锁定版 Wry 接口](https://docs.rs/wry/0.57.0/wry/struct.WebViewBuilder.html) · [插件视图契约](./contracts/node-extension-v0.md#5-web-ui-与客户端效果)
+
+## 本机 HTTP 控制
+
+AUTO-12 的 HTTP、WebSocket 和 LAN TCP 使用同一候选。附着拒绝核对 `supportedProtocolVersions` 和 `upgradeTarget`，实际收发比较源 Host、会话代次、游标和原始事件。三类入口使用各自的认证和当前 Host 授权。
+
+```sh
+cargo test --locked -p serial-workbench-host --test http_control --test browser_pairing -- --test-threads=1
+cargo test --locked -p serial-workbench-host --lib paired_host_uses_owner_session_for_tx_and_raw_and_unpair_closes_only_lan
+cargo build --locked -p serial-workbench-host -p serial-workbench-cli --bins
+node e2e/http-control.mjs <Host绝对路径> <CLI绝对路径> <新证据目录>
+```
+
+HTTP 用例以实际 Virtual Echo 核对获准的写入、同一请求重试、改参冲突、读页接续及撤权，并确认未完成的 HTTP 正文不会阻止正式 Host 退出。进程专项使用同轮且相邻的 Host 和 CLI，启动独立 profile，经继承管道取得 HTTP 入口，使用实际 CLI 授权、撤权和停止。重开时核对 Host 与 actor 保持、实例代次递增、旧凭据失效、授予范围保留以及两次进程退出。原始收据记录程序摘要，失败保留独立 profile 与进程日志。 [进程验收入口](../e2e/http-control.mjs) · [HTTP 契约](./contracts/host-v0.md#本机-http-控制)
 
 ## 配对浏览器与 LAN
 

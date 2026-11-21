@@ -2737,7 +2737,8 @@
         "status": "in-progress",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/51",
-          "https://github.com/YanChao001/serial-workbench/pull/52"
+          "https://github.com/YanChao001/serial-workbench/pull/52",
+          "https://github.com/YanChao001/serial-workbench/pull/56"
         ]
       },
       "hardware": {

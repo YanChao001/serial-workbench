@@ -634,6 +634,28 @@ async fn explicit_browser_pairing_attaches_to_the_live_host_and_owns_its_raw_con
     else {
         panic!("local pairing did not create an ordinary browser credential");
     };
+    let unsupported = exchange(
+        &mut control,
+        IpcChannel::Control,
+        request(RpcRequest::Attach(AttachParams {
+            supported_protocol_versions: vec!["future".into()],
+            client_kind: ClientKind::Browser,
+            client_id: client_id.clone(),
+            expected_host_id: Some(host_id.clone()),
+        })),
+    )
+    .await;
+    let RpcReply::Failure { error, .. } = self::reply(unsupported) else {
+        panic!("Host accepted an unsupported protocol version");
+    };
+    assert_eq!(error.code, "PROTOCOL_UNSUPPORTED");
+    assert_eq!(
+        serde_json::to_value(&error.details).unwrap(),
+        json!({
+            "supportedProtocolVersions": ["0.1"],
+            "upgradeTarget": "0.1",
+        })
+    );
     let reply = exchange(
         &mut control,
         IpcChannel::Control,
@@ -658,6 +680,7 @@ async fn explicit_browser_pairing_attaches_to_the_live_host_and_owns_its_raw_con
     };
     assert_eq!(attached.client_id, client_id);
     assert_eq!(attached.host_id, host_id);
+    assert_eq!(attached.protocol_version, ProtocolVersion::V0_1);
 
     for rejected in [
         pairing_frame(&entry, &random_token()),
@@ -892,9 +915,36 @@ async fn local_user_control_revokes_browser_access_without_closing_the_serial_se
     else {
         panic!("Browser cursor request was not answered");
     };
+    let RpcResult::Query(QueryResult::StreamCursor(result)) = success(*reply) else {
+        panic!("Browser cursor was not returned");
+    };
+    assert_eq!(result.target, session_target);
+    assert_eq!(result.cursor.host_id, attachment.host_id);
+    assert_eq!(result.cursor.instance_epoch, attachment.instance_epoch);
+    let subscribe = query(
+        &attachment,
+        session_target.clone(),
+        "stream.subscribe",
+        json!({
+            "scopeId": result.cursor.scope_id,
+            "after": Cursor { scope_id: client("foreign-scope"), ..result.cursor },
+            "queueBytes": "65536",
+            "initialCreditBytes": "0",
+            "overflowPolicy": "drop_with_gap",
+        }),
+    );
+    let rejected = exchange(
+        &mut raw,
+        IpcChannel::Raw,
+        request(RpcRequest::Query(subscribe)),
+    )
+    .await;
+    let IpcMessage::Reply { reply } = rejected else {
+        panic!("Browser subscription rejection was not returned");
+    };
     assert!(matches!(
-        success(*reply),
-        RpcResult::Query(QueryResult::StreamCursor(_))
+        *reply,
+        RpcReply::Failure { error, .. } if error.code == "INVALID_ARGUMENT"
     ));
     let write_check = query(
         &attachment,

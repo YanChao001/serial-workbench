@@ -2,6 +2,7 @@ use super::{
     InstanceGuard,
     browser::{BrowserCommand, BrowserListener, manage_access},
     connection::{ConnectionState, LocalAccess, Sessions},
+    http_control::HttpControlListener,
     lan_access::{LanAccess, LanCommand},
     lan_route::LanEndpoints,
     protocol::*,
@@ -48,6 +49,7 @@ pub struct ConnectionContext {
     pub actor: AuthenticatedActor,
     pub channel: IpcChannel,
     pub(crate) browser_stopped: Option<tokio::sync::watch::Receiver<bool>>,
+    pub(crate) supports_events: bool,
     pub(super) events: mpsc::Sender<AuthorizedEvent>,
     pub(super) event_budget: Arc<Semaphore>,
     pub(super) subscriptions: Arc<Mutex<HashSet<Id>>>,
@@ -66,6 +68,7 @@ pub(crate) fn test_context(
             actor,
             channel: IpcChannel::Control,
             browser_stopped: None,
+            supports_events: true,
             events,
             event_budget: Arc::new(Semaphore::new(4 * 1024 * 1024)),
             subscriptions: Arc::new(Mutex::new(HashSet::new())),
@@ -347,6 +350,7 @@ pub struct HostServer {
     normal: Arc<Semaphore>,
     urgent: Arc<Semaphore>,
     browser: Option<BrowserListener>,
+    http_control: Option<HttpControlListener>,
     // Rust 按声明顺序释放字段，锁必须在其他运行态资源之后释放。
     _guard: InstanceGuard,
 }
@@ -431,6 +435,7 @@ impl HostServer {
             normal: Arc::new(Semaphore::new(crate::limits::NORMAL_OPERATIONS)),
             urgent: Arc::new(Semaphore::new(crate::limits::STOP_OPERATIONS)),
             browser: None,
+            http_control: None,
         })
     }
     pub fn auth(&self) -> AuthService {
@@ -463,6 +468,16 @@ impl HostServer {
         let client_id = entry.client_id.clone();
         blocking(move || auth.set_browser_access(&client_id, Some(mode))).await?;
         self.browser = Some(listener);
+        Ok(entry)
+    }
+
+    pub async fn enable_http_control(&mut self) -> HostResult<HttpControlEntry> {
+        if self.http_control.is_some() {
+            return Err(busy());
+        }
+        let (listener, entry) =
+            HttpControlListener::bind(self._guard.namespace(), self.auth()).await?;
+        self.http_control = Some(listener);
         Ok(entry)
     }
 
@@ -500,6 +515,10 @@ impl HostServer {
             .browser
             .take()
             .map(|listener| listener.start(connection.clone()));
+        let http_control = self
+            .http_control
+            .take()
+            .map(|listener| listener.start(connection.clone()));
         let (browser_access, mut browser_requests) = mpsc::channel::<BrowserCommand>(8);
         let connections = Arc::new(Semaphore::new(128));
         let lan_connections = Arc::new(Semaphore::new(32));
@@ -523,8 +542,13 @@ impl HostServer {
         let mut settlement: Option<Pin<Box<dyn Future<Output = HostResult<()>> + Send>>> = None;
         let mut retry_at = None;
         loop {
-            if stopping && let Some(browser) = &browser {
-                browser.stop_accepting();
+            if stopping {
+                if let Some(browser) = &browser {
+                    browser.stop_accepting();
+                }
+                if let Some(http_control) = &http_control {
+                    http_control.stop_accepting();
+                }
             }
             tokio::select! {
                 _ = &mut shutdown, if !stopping => {
@@ -628,6 +652,11 @@ impl HostServer {
         tasks.shutdown().await;
         if let Some(browser) = browser
             && let Err(error) = browser.finish().await
+        {
+            failure.get_or_insert(error);
+        }
+        if let Some(http_control) = http_control
+            && let Err(error) = http_control.finish().await
         {
             failure.get_or_insert(error);
         }

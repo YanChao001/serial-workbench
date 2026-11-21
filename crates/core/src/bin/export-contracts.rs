@@ -339,6 +339,11 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         false,
     )?;
     f.add::<RpcRequest>("rpc-attach",json!({"method":"host.attach","params":{"supportedProtocolVersions":["0.1"],"clientKind":"cli","clientId":"cli"}}),true)?;
+    f.add::<HttpControlRequest>(
+        "http-control-attach",
+        json!({"requestId":"33333333-3333-4333-8333-333333333333","request":{"method":"host.attach","params":{"supportedProtocolVersions":["0.1"],"clientKind":"cli","clientId":"http-client"}}}),
+        true,
+    )?;
     f.add::<RpcRequest>(
         "rpc-unknown-method",
         json!({"method":"unknown","params":{}}),
@@ -1449,6 +1454,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         IpcChannel,
         WireFrame,
         IpcMessage,
+        HttpControlRequest,
+        HttpControlEntry,
         LanAccessParams,
         LanAccessResult,
         ActionCheckParams,
