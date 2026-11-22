@@ -361,7 +361,7 @@ try {
   if (mcpPath) {
     const first = await startAssistant("bench-primary");
     const other = await startAssistant("bench-secondary");
-    const firstRead = randomUUID();
+    const firstRead = { requestId: randomUUID() };
     const sessionQuery = "swb_session_x2E_get";
     await first(sessionQuery, original, {}, firstRead);
     await other(sessionQuery, original);
@@ -398,6 +398,8 @@ try {
       .getByRole("link", { name: "Settings", exact: true })
       .click();
     await settings.click();
+    await expect(page).toHaveURL(settingsRoute);
+    await expect(otherWindow).toHaveURL(settingsRoute);
     const activityDeltas = () =>
       frames.filter(({ scope }) => scope === "host.activity").length;
     const previousActivity = activityDeltas();
@@ -412,7 +414,7 @@ try {
     await expect(otherWindow).toHaveURL(settingsRoute);
     await expect(draft).toHaveValue("manual draft stays in this window");
 
-    const deviceListCall = randomUUID();
+    const deviceListCall = { requestId: randomUUID() };
     const deviceListTool = "swb_device_x2E_list";
     const devicesPanel = page.getByRole("dialog", {
       name: "Devices",

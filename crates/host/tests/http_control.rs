@@ -650,7 +650,7 @@ async fn production_host_transfers_http_entry_only_through_an_inherited_pipe() {
         .arg(&profile)
         .arg("--http-control-stdio")
         .stdin(Stdio::null())
-        .stderr(Stdio::null())
+        .stderr(Stdio::inherit())
         .kill_on_drop(true);
     let mut redirected = command.stdout(Stdio::null()).spawn().unwrap();
     let failed = timeout(Duration::from_secs(10), redirected.wait())
@@ -662,11 +662,20 @@ async fn production_host_transfers_http_entry_only_through_an_inherited_pipe() {
     let mut child = command.stdout(Stdio::piped()).spawn().unwrap();
     let mut pipe = child.stdout.take().unwrap();
     let entry: HttpControlEntry =
-        timeout(Duration::from_secs(10), read_json_frame(&mut pipe, 2048))
+        match timeout(Duration::from_secs(10), read_json_frame(&mut pipe, 2048))
             .await
             .expect("Host did not transfer HTTP entry")
             .unwrap()
-            .unwrap();
+        {
+            Some(entry) => entry,
+            None => {
+                let status = timeout(Duration::from_secs(10), child.wait())
+                    .await
+                    .expect("Host closed its HTTP entry pipe without exiting")
+                    .unwrap();
+                panic!("Host exited before sending an HTTP entry: {status}");
+            }
+        };
     let mut options =
         ConnectOptions::new(profile.clone(), id("http-startup-local"), ClientKind::Cli);
     options.user_control_credential = Some(read_user_control_credential(&profile).unwrap());
