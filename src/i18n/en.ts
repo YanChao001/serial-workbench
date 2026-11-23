@@ -446,6 +446,12 @@ export const en = {
   "workbench.encodingAuto": "Auto",
   "workbench.encodingAutoShort": "Auto",
   "workbench.encodingPending": "Auto · waiting",
+  "workbench.encodingCandidates": "Detected candidates",
+  "workbench.encodingSampleBytes": "Sample bytes",
+  "workbench.encodingEvidencePending": "Insufficient evidence",
+  "workbench.encodingEvidenceBom": "Byte-order mark",
+  "workbench.encodingEvidenceUtf8": "Valid UTF-8 bytes",
+  "workbench.encodingEvidenceGuess": "Byte distribution",
   "workbench.encodingGuessHelp":
     "Estimated from a bounded byte sample. Short text and binary data can be ambiguous. Select an encoding manually if needed.",
   "workbench.invalidEncoding":

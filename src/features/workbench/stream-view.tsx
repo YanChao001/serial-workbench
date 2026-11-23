@@ -148,6 +148,7 @@ export function StreamView({
 }: StreamViewProps) {
   const id = useId();
   const [localEncoding, setEncoding] = useState<TextEncoding | null>();
+  const [encodingMenuOpen, setEncodingMenuOpen] = useState(false);
   const encoding = receiveEncodingFor(
     controlledEncoding,
     localEncoding,
@@ -264,13 +265,14 @@ export function StreamView({
     setReviewed(null);
   };
   const projected = useMemo(() => projectStreamItems(displayed), [displayed]);
+  const detectEncoding = encoding === null || encodingMenuOpen;
   const encodingSample = useMemo(
-    () => (encoding === null ? receiveEncodingSample(displayed) : ""),
-    [encoding, displayed],
+    () => (detectEncoding ? receiveEncodingSample(displayed) : ""),
+    [detectEncoding, displayed],
   );
   const detection = useMemo(
-    () => (encoding === null ? detectTextEncoding(encodingSample) : undefined),
-    [encoding, encodingSample],
+    () => (detectEncoding ? detectTextEncoding(encodingSample) : undefined),
+    [detectEncoding, encodingSample],
   );
   const receiveCodec = encoding ?? detection?.encoding ?? "utf-8";
   const sendCodec = sendEncoding ?? terminalSettings?.sendEncoding ?? "utf-8";
@@ -781,6 +783,8 @@ export function StreamView({
               : `${labels.encodingAutoShort} · ${ENCODING_NAMES[receiveCodec]}`
           }
           hint={encoding === null ? labels.encodingGuessHelp : undefined}
+          evidence={detection && { detection, labels }}
+          onOpenChange={setEncodingMenuOpen}
           onChange={(value) => {
             setEncoding(value);
             onEncodingChange?.(value);

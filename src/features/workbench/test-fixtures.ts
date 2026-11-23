@@ -189,6 +189,12 @@ export const labels: WorkbenchLabels = {
   sendEncoding: "Send encoding",
   encodingAuto: "Auto",
   encodingAutoShort: "Auto",
+  encodingCandidates: "Detected candidates",
+  encodingSampleBytes: "Sample bytes",
+  encodingEvidencePending: "Insufficient evidence",
+  encodingEvidenceBom: "Byte-order mark",
+  encodingEvidenceUtf8: "Valid UTF-8 bytes",
+  encodingEvidenceGuess: "Byte distribution",
   encodingPending: "Auto · waiting",
   encodingGuessHelp:
     "Detected from a byte sample. Select an encoding manually if needed.",

@@ -408,6 +408,12 @@ export const zhCN = {
   "workbench.encodingAuto": "自动识别",
   "workbench.encodingAutoShort": "自动",
   "workbench.encodingPending": "自动 · 待识别",
+  "workbench.encodingCandidates": "识别候选",
+  "workbench.encodingSampleBytes": "样本字节数",
+  "workbench.encodingEvidencePending": "证据不足",
+  "workbench.encodingEvidenceBom": "字节顺序标记",
+  "workbench.encodingEvidenceUtf8": "有效的 UTF-8 字节",
+  "workbench.encodingEvidenceGuess": "字节分布",
   "workbench.encodingGuessHelp":
     "根据有界字节样本推测编码，短文本或二进制数据可能无法准确判断，可手动切换。",
   "workbench.invalidEncoding": "这些字节不符合所选编码，已保留原草稿。",
