@@ -46,6 +46,83 @@ function packets(
   });
 }
 
+test("sets the live idle gap without reframing existing packets or restarting the reader", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  const flows = log.locator('[data-direction="rx"]');
+  const emit = async (start: number, sourceNs: string[]) => {
+    const fixture = workbenchStreamItems().find(
+      (item) => item.kind === "source" && item.event.kind === "rx",
+    );
+    if (fixture?.kind !== "source") throw new Error("Missing RX");
+    const items = sourceNs.map((sourceMonoNs, index) => {
+      const offset = start + index;
+      return {
+        kind: "source",
+        event: {
+          ...fixture.event,
+          eventSeq: String(offset + 20),
+          time: { ...fixture.event.time, sourceMonoNs },
+          payload: {
+            bytesBase64: Buffer.from(String.fromCharCode(65 + offset)).toString(
+              "base64",
+            ),
+            byteStart: String(offset),
+            byteEnd: String(offset + 1),
+          },
+        },
+      };
+    });
+    await page.evaluate(
+      (events) => window.workbenchFixture.emitRaw(events),
+      items,
+    );
+  };
+  await emit(0, ["0", "50000000"]);
+  await expect(flows).toHaveCount(1);
+  await expect(flows.nth(0).locator(".workbench-payload")).toHaveText("AB");
+  await expect(flows.nth(0).locator("time")).toHaveAttribute(
+    "title",
+    "Receive idle gap 100 ms · Host read · 1000 ns",
+  );
+  await expect(
+    flows.nth(0).locator('.workbench-stream-meta [title="2 B"]'),
+  ).toBeVisible();
+
+  await terminal.getByRole("button", { name: "Display options" }).click();
+  const threshold = page.getByRole("combobox", { name: "Receive idle gap" });
+  await expect(threshold).toHaveText("100 ms");
+  await expect(page.getByText(/USB buffering can hide gaps/)).toBeVisible();
+  await choose(page, "Receive idle gap", "10 ms");
+  await expect(threshold).toHaveText("10 ms");
+  await threshold.press("Escape");
+
+  await emit(2, ["51000000", "61000000", "71000001"]);
+  await expect(flows).toHaveCount(3);
+  await expect(flows.nth(0).locator(".workbench-payload")).toHaveText("AB");
+  await expect(flows.nth(1).locator(".workbench-payload")).toHaveText("CD");
+  await expect(flows.nth(2).locator(".workbench-payload")).toHaveText("E");
+  await expect(flows.nth(1).locator("time")).toHaveAttribute(
+    "title",
+    "Receive idle gap 10 ms · Host read · 1000 ns",
+  );
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("folds long receive messages until requested and shows only one bounded page", async ({
   page,
 }) => {

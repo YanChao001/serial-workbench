@@ -1569,6 +1569,7 @@ export function createHostWorkspace(
       : undefined,
     invoke,
     watchSession,
+    setReceiveIdleMs: readers.setReceiveIdleMs,
   };
   snapshot = { state, ...actions, connection };
   const catalogListener = connection

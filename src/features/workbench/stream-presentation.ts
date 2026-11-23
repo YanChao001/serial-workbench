@@ -9,7 +9,28 @@ import {
   type TxGate,
   type TxOutcome,
 } from "@serial-workbench/contracts";
+import type { HistoryStreamItem } from "@/lib/receive-history";
 import type { WorkbenchLabels } from "./labels";
+
+export function receivePacketTiming(
+  item: HistoryStreamItem,
+  labels: WorkbenchLabels,
+): string | undefined {
+  if (
+    item.kind !== "source" ||
+    item.event.kind !== "rx" ||
+    item.receiveIdleMs === undefined
+  )
+    return;
+  const { source, resolutionNs } = item.event.time.precision;
+  const sourceLabel = {
+    host_read: labels.receiveTimeHostRead,
+    device: labels.receiveTimeDevice,
+    line_capture: labels.receiveTimeLineCapture,
+    sample_clock: labels.receiveTimeSampleClock,
+  }[source];
+  return `${labels.receiveIdleGap} ${item.receiveIdleMs} ms · ${sourceLabel} · ${resolutionNs} ns`;
+}
 
 export function workbenchStatus(
   status: SessionState | OperationState | TxGate | TxOutcome,

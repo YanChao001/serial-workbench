@@ -234,6 +234,13 @@ export const labels: WorkbenchLabels = {
   disconnected: "Disconnected",
   encodingHelp: "Switch to HEX to inspect original bytes",
   wrapReceiveText: "Wrap received text",
+  receiveIdleGap: "Receive idle gap",
+  receiveIdleHelp:
+    "Applies to new receive data. Packets use source timestamps on receive chunks. USB buffering can hide gaps on the wire.",
+  receiveTimeHostRead: "Host read",
+  receiveTimeDevice: "Device",
+  receiveTimeLineCapture: "Line capture",
+  receiveTimeSampleClock: "Sample clock",
   showTransmitEcho: "Show outgoing bytes",
   transmitSource: "Transmit (TX)",
   hexColumns: "HEX bytes per line",

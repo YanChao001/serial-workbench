@@ -516,6 +516,13 @@ export const zhCN = {
   "workbench.disconnected": "连接已断开",
   "workbench.encodingHelp": "切换到 HEX 检查原始字节",
   "workbench.wrapReceiveText": "接收文本自动折行",
+  "workbench.receiveIdleGap": "接收静默间隔",
+  "workbench.receiveIdleHelp":
+    "适用于后续接收数据。分包依据收块的源时间戳，USB 合块可能掩盖线路上的间隔。",
+  "workbench.receiveTimeHostRead": "主机收块",
+  "workbench.receiveTimeDevice": "设备时钟",
+  "workbench.receiveTimeLineCapture": "线路采集",
+  "workbench.receiveTimeSampleClock": "采样时钟",
   "workbench.showTransmitEcho": "显示发送回显",
   "workbench.transmitSource": "发送（TX）",
   "workbench.hexColumns": "每行 HEX 字节数",

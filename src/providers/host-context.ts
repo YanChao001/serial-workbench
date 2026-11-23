@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { HostConnection } from "@/lib/host-client";
+import type { ReceiveIdleMs } from "@/lib/receive-history";
 import type { FileResourceRole, SelectedFileResource } from "@/lib/tauri";
 import type {
   Call,
@@ -50,6 +51,7 @@ export type HostStreamView = {
   items: readonly import("@/lib/receive-history").HistoryStreamItem[];
   error: Error | null;
   trimmed: boolean;
+  receiveIdleMs?: ReceiveIdleMs;
   removed?: import("@/lib/receive-history").HistoryPosition;
 };
 export type HostActionCheckInput = ActionCheckParams & { target: Target };
@@ -193,6 +195,11 @@ export type HostContextValue = {
   decideBrowserTakeover?(id: string, approve: boolean): Promise<void>;
   invoke(input: HostInvocation, signal?: AbortSignal): Promise<Operation>;
   watchSession(sessionId: string, listener: () => void): () => void;
+  setReceiveIdleMs?(
+    sessionId: string,
+    sessionEpoch: string,
+    value: ReceiveIdleMs,
+  ): void;
 };
 export const HostContext = createContext<HostContextValue | null>(null);
 export function useHost(): HostContextValue {

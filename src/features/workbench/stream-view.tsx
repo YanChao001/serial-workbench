@@ -79,6 +79,7 @@ import {
 } from "./stream-model";
 import {
   presentStreamTimes,
+  receivePacketTiming,
   terminalTypographyStyle,
   compactStreamTime,
   workbenchStatus,
@@ -128,8 +129,10 @@ import {
 import { ReceiveHistoryControls } from "./receive-history-controls";
 import {
   DEFAULT_RECEIVE_HISTORY,
+  RECEIVE_IDLE_MS,
   ReceiveHistoryBuffer,
   type ReceiveHistory,
+  type ReceiveIdleMs,
   type HistoryStreamItem,
 } from "@/lib/receive-history";
 
@@ -143,6 +146,8 @@ export type StreamViewProps = {
   keyboard?: AnsiKeyboardTarget;
   historyLimits?: Readonly<ReceiveHistory>;
   onHistoryLimitsChange?: (value: ReceiveHistory) => void;
+  receiveIdleMs?: ReceiveIdleMs;
+  onReceiveIdleMsChange?: (value: ReceiveIdleMs) => void;
   encoding?: TextEncoding | null;
   sendEncoding?: TextEncoding;
   onEncodingChange?: (encoding: TextEncoding | null) => void;
@@ -169,6 +174,8 @@ export function StreamView({
   keyboard,
   historyLimits,
   onHistoryLimitsChange,
+  receiveIdleMs,
+  onReceiveIdleMsChange,
   items,
   labels,
   error,
@@ -875,6 +882,10 @@ export function StreamView({
               <time
                 className="workbench-stream-time"
                 dateTime={times[row.displayIndex]!.absolute ?? undefined}
+                title={receivePacketTiming(
+                  displayed[projected[row.displayIndex]!.itemIndex]!,
+                  labels,
+                )}
               >
                 {timeMode === "absolute"
                   ? times[row.displayIndex]!.absolute
@@ -976,6 +987,8 @@ export function StreamView({
       replay,
       presentationLabels,
       times,
+      displayed,
+      projected,
       timeMode,
       mode,
       terminalSettings,
@@ -1220,6 +1233,46 @@ export function StreamView({
             >
               {labels.ansiScreen}
             </Button>
+            {receiveIdleMs !== undefined && onReceiveIdleMsChange && (
+              <div className="grid gap-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <label htmlFor={id + "-receive-idle"}>
+                    {labels.receiveIdleGap}
+                  </label>
+                  <Select
+                    value={String(receiveIdleMs)}
+                    onValueChange={(value) => {
+                      const threshold = RECEIVE_IDLE_MS.find(
+                        (option) => String(option) === value,
+                      );
+                      if (threshold !== undefined)
+                        onReceiveIdleMsChange(threshold);
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      id={id + "-receive-idle"}
+                      aria-describedby={id + "-receive-idle-help"}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECEIVE_IDLE_MS.map((threshold) => (
+                        <SelectItem key={threshold} value={String(threshold)}>
+                          {threshold} ms
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p
+                  id={id + "-receive-idle-help"}
+                  className="text-xs text-muted-foreground"
+                >
+                  {labels.receiveIdleHelp}
+                </p>
+              </div>
+            )}
             {showAnsi && (
               <label className="flex items-center justify-between gap-3 text-sm">
                 {labels.ansiConvertLf}

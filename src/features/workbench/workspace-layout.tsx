@@ -127,6 +127,7 @@ export type WorkbenchHost = Pick<
   | "waitForOperation"
   | "takeover"
   | "watchSession"
+  | "setReceiveIdleMs"
   | "watchActions"
   | "checkAction"
   | "connection"
@@ -2162,6 +2163,17 @@ export function WorkspaceLayout({
             }
             historyLimits={receiveHistory}
             onHistoryLimitsChange={onReceiveHistoryChange}
+            receiveIdleMs={stream?.receiveIdleMs}
+            onReceiveIdleMsChange={
+              session?.state === "open" && host.setReceiveIdleMs
+                ? (value) =>
+                    host.setReceiveIdleMs?.(
+                      session.sessionId,
+                      session.sessionEpoch,
+                      value,
+                    )
+                : undefined
+            }
             onOpenCapture={(trigger) => showDialog("capture", trigger)}
             onOpenActivity={() => showDialog("activity")}
             onClearView={() =>

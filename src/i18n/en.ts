@@ -564,6 +564,13 @@ export const en = {
   "workbench.disconnected": "Disconnected",
   "workbench.encodingHelp": "Switch to HEX to inspect original bytes",
   "workbench.wrapReceiveText": "Wrap received text",
+  "workbench.receiveIdleGap": "Receive idle gap",
+  "workbench.receiveIdleHelp":
+    "Applies to new receive data. Packets use source timestamps on receive chunks. USB buffering can hide gaps on the wire.",
+  "workbench.receiveTimeHostRead": "Host read",
+  "workbench.receiveTimeDevice": "Device",
+  "workbench.receiveTimeLineCapture": "Line capture",
+  "workbench.receiveTimeSampleClock": "Sample clock",
   "workbench.showTransmitEcho": "Show outgoing bytes",
   "workbench.transmitSource": "Transmit (TX)",
   "workbench.hexColumns": "HEX bytes per line",
