@@ -1539,7 +1539,12 @@ export function StreamView({
           className="workbench-toolbar workbench-stream-search"
           data-surface="popover"
           onKeyDown={(event) => {
-            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+            if (
+              event.key === "Escape" &&
+              !event.nativeEvent.isComposing &&
+              event.target instanceof Node &&
+              event.currentTarget.contains(event.target)
+            ) {
               event.preventDefault();
               setSearchOpen(false);
               searchTrigger.current?.focus();

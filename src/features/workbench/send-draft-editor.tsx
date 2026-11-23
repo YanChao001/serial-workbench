@@ -202,10 +202,13 @@ export function SendDraftEditor({
     });
     return [...parts, source.slice(offset)];
   }, [grammar, source]);
+  // A draft without line breaks keeps the soft wrapping of the plain send field.
+  const softWrap = !source.includes("\n");
   const editor = (
     <div
       className="workbench-source-editor"
       data-syntax={painted ? "" : undefined}
+      data-soft-wrap={softWrap || undefined}
       style={style}
     >
       <div className="workbench-source-gutter" aria-hidden="true">
@@ -227,7 +230,7 @@ export function SendDraftEditor({
           className={cn("workbench-draft", className)}
           style={style}
           maxLength={maxLength}
-          wrap="off"
+          wrap={softWrap ? "soft" : "off"}
           aria-keyshortcuts={["]", "[", ...(grammar === "mixed" ? ["/"] : [])]
             .map((key) => (isMacOS() ? "Meta+" : "Control+") + key)
             .join(" ")}

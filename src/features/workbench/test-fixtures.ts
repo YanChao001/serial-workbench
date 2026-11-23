@@ -144,6 +144,7 @@ export const labels: WorkbenchLabels = {
   searchTimeout: "Search timed out",
   searchEncoding: "Invalid encoding",
   searchLimit: "Narrow the search range",
+  searchFilters: "Record filters",
   searchDirection: "Direction",
   searchAllDirections: "Both directions",
   searchMatchVisibility: "Match visibility",

@@ -512,15 +512,12 @@
   flex-wrap: wrap;
 }
 .workbench-search-filters {
-  display: flex;
-  flex: 1 0 100%;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 0.5rem 0.75rem;
+  width: min(20rem, calc(100vw - 1rem));
 }
 .workbench-search-filters label {
   display: flex;
   align-items: center;
+  justify-content: space-between;
   gap: 0.5rem;
   font-size: var(--text-xs);
 }
@@ -690,6 +687,15 @@
   inset: 0;
   pointer-events: none;
   user-select: none;
+}
+.workbench-source-editor[data-soft-wrap]
+  :is(.workbench-draft, .workbench-source-backdrop) {
+  scrollbar-gutter: stable;
+}
+.workbench-source-editor[data-soft-wrap]
+  :is(.workbench-draft, .workbench-source-ink) {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
 }
 .workbench-source-editor[data-syntax] .workbench-draft {
   color: transparent;

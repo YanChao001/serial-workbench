@@ -422,6 +422,7 @@ export const zhCN = {
   "workbench.encodingLoading": "正在加载编码…",
   "workbench.encodingLoadFailed": "编码加载失败，请切换编码后重试。",
   "workbench.searchLimit": "内容较多，请缩小搜索范围",
+  "workbench.searchFilters": "记录筛选",
   "workbench.searchDirection": "方向",
   "workbench.searchAllDirections": "收发双向",
   "workbench.searchMatchVisibility": "匹配显示",

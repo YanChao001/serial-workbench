@@ -9,6 +9,20 @@ async function choose(page: Page, name: string, value: string) {
   await page.getByRole("combobox", { name, exact: true }).click();
   await page.getByRole("option", { name: value, exact: true }).click();
 }
+
+async function chooseFilter(page: Page, label: string, option: string) {
+  const filters = page.getByRole("button", { name: "Record filters" });
+  const panel = page.getByRole("dialog", { name: "Record filters" });
+  await filters.click();
+  await expect(panel).toBeVisible();
+  await choose(page, label, option);
+  await panel
+    .getByRole("combobox", { name: label, exact: true })
+    .press("Escape");
+  await expect(panel).toHaveCount(0);
+  await expect(filters).toBeFocused();
+}
+
 function packets(
   start: number,
   count: number,
@@ -429,7 +443,7 @@ test("numbers display records and restores an exact copied event through filteri
   await expect(trigger).toBeFocused();
 
   await terminal.getByRole("button", { name: "Search bytes" }).click();
-  await choose(page, "Direction", "TX");
+  await chooseFilter(page, "Direction", "TX");
   await expect(log.locator('[data-direction="rx"]')).toHaveCount(0);
   await trigger.click();
   await jump("Copied location", expected);
@@ -525,20 +539,20 @@ test("filters regex matches across receive records and isolates transmit search 
   await expect(span("rx", 11)).toContainText("END");
   await expect(span("tx", 0)).toContainText("HIT-TX");
   await search.click();
-  await choose(page, "Direction", "TX");
+  await chooseFilter(page, "Direction", "TX");
   await expect(span("rx", 0)).toHaveCount(0);
   await expect(span("tx", 6)).toContainText("quiet-tx");
   await expect(
     terminal.getByRole("group", { name: en["workbench.displayedRxBytes"] }),
   ).toContainText("0 B");
-  await choose(page, "Direction", "Both directions");
+  await chooseFilter(page, "Direction", "Both directions");
 
   await terminal
     .getByRole("button", { name: en["workbench.searchRegex"] })
     .click();
   await input.fill("HIT-(END|TX)");
   await expect(result).toContainText("1/2");
-  await choose(page, "Match visibility", "Matching records only");
+  await chooseFilter(page, "Match visibility", "Matching records only");
   await expect(span("rx", 0)).toContainText("prefix HIT-");
   await expect(span("rx", 11)).toContainText("END");
   await expect(span("tx", 0)).toContainText("HIT-TX");
@@ -551,15 +565,15 @@ test("filters regex matches across receive records and isolates transmit search 
     terminal.getByRole("group", { name: en["workbench.displayedTxBytes"] }),
   ).toContainText("6 B");
 
-  await choose(page, "Direction", "TX");
+  await chooseFilter(page, "Direction", "TX");
   await expect(result).toContainText("1/1");
   await expect(span("tx", 0)).toContainText("HIT-TX");
   await expect(span("rx", 11)).toHaveCount(0);
-  await choose(page, "Match visibility", "Hide matching records");
+  await chooseFilter(page, "Match visibility", "Hide matching records");
   await expect(span("tx", 0)).toHaveCount(0);
   await expect(span("tx", 6)).toContainText("quiet-tx");
 
-  await choose(page, "Direction", "Both directions");
+  await chooseFilter(page, "Direction", "Both directions");
   await expect(result).toContainText("1/2");
   await expect(span("rx", 0)).toHaveCount(0);
   await expect(span("rx", 11)).toHaveCount(0);

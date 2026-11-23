@@ -462,6 +462,7 @@ export const en = {
   "workbench.encodingLoadFailed":
     "Encoding could not load. Change the encoding and retry.",
   "workbench.searchLimit": "Narrow the search range.",
+  "workbench.searchFilters": "Record filters",
   "workbench.searchDirection": "Direction",
   "workbench.searchAllDirections": "Both directions",
   "workbench.searchMatchVisibility": "Match visibility",

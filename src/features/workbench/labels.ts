@@ -117,6 +117,7 @@ export type WorkbenchLabels = Record<
   | "searchTimeout"
   | "searchEncoding"
   | "searchLimit"
+  | "searchFilters"
   | "searchDirection"
   | "searchAllDirections"
   | "searchMatchVisibility"

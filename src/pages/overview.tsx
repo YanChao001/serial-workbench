@@ -429,6 +429,7 @@ export default function Overview({
       encodingLoading: t("workbench.encodingLoading"),
       encodingLoadFailed: t("workbench.encodingLoadFailed"),
       searchLimit: t("workbench.searchLimit"),
+      searchFilters: t("workbench.searchFilters"),
       searchDirection: t("workbench.searchDirection"),
       searchAllDirections: t("workbench.searchAllDirections"),
       searchMatchVisibility: t("workbench.searchMatchVisibility"),
