@@ -144,6 +144,7 @@ export type WorkbenchTool =
   | "devices"
   | "transfer"
   | "captureTools"
+  | "framing"
   | "diagnostics";
 type WorkbenchPanel =
   WorkbenchTool | "capture" | "activity" | "tasks" | "metrics" | "logs";
@@ -164,6 +165,7 @@ function activityPanel(
     case "devices":
     case "transfer":
     case "captureTools":
+    case "framing":
     case "diagnostics":
     case "capture":
     case "activity":
@@ -240,7 +242,7 @@ export type WorkspaceLayoutProps = {
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
   toolLabels?: Record<
-    | WorkbenchTool
+    | Exclude<WorkbenchTool, "framing">
     | "more"
     | "chooseDevice"
     | "displayOptions"
@@ -250,7 +252,7 @@ export type WorkspaceLayoutProps = {
     | "saveCurrentLayout"
     | "deviceListStale",
     string
-  > & { saveCurrentLayoutHint?: string };
+  > & { saveCurrentLayoutHint?: string; framing?: string };
   renderTool?: (
     tool: WorkbenchTool,
     context: WorkbenchToolContext,

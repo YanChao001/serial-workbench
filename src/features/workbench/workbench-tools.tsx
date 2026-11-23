@@ -6,6 +6,7 @@
   useRef,
   useState,
 } from "react";
+import { Link } from "react-router-dom";
 import {
   defaults,
   type SerialConfiguration,
@@ -42,6 +43,8 @@ import { connectionKey } from "@/lib/client-connection-defaults";
 import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
 import { DiagnosticPanel } from "./diagnostic-panel";
+import { FramingTool } from "./framing-tool";
+import { framingAction } from "./framing-model";
 import { workbenchToolLabels } from "./tool-labels";
 import { WorkbenchNotice } from "./workbench-notice";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
@@ -462,6 +465,48 @@ export function WorkbenchTools({
         }
       />
     );
+  if (tool === "framing") {
+    const target = context.target;
+    if (!ready || !target?.sessionId || context.isReplay)
+      return <p>{t("workbench.framing.selectSession")}</p>;
+    if (
+      !catalog.some(
+        (spec) =>
+          spec.actionId === framingAction &&
+          spec.targetKinds.includes("session"),
+      )
+    )
+      return (
+        <div className="space-y-2">
+          <p>{t("workbench.framing.unavailable")}</p>
+          <Link className="underline underline-offset-4" to="/plugins">
+            {t("workbench.framing.openPlugins")}
+          </Link>
+        </div>
+      );
+    return (
+      <FramingTool
+        key={JSON.stringify([
+          target.hostId,
+          target.sessionId,
+          target.sessionEpoch,
+          generation,
+        ])}
+        target={target}
+        sourceName={
+          host.state.devices.find(
+            (device) =>
+              device.hostId === target.hostId &&
+              device.deviceId === context.session?.deviceId,
+          )?.systemName
+        }
+        items={context.items}
+        invoke={invoke}
+        waitForOperation={host.waitForOperation}
+        readFile={host.readFile}
+      />
+    );
+  }
   if (tool === "captureTools")
     return (
       <CaptureTools

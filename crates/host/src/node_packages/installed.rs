@@ -1,7 +1,7 @@
 //! 从已提交记录、保留的原始 ZIP 及实际目录建立内容证明；不会执行安装内容。
 use super::{
     Control, InstalledNodePackage, NodePackageLimits, NodePackageSource, NodePackageSources,
-    VerifiedNodePackage, failure, limit, paths::PackagePaths, verify_node_package,
+    VerifiedNodePackage, failure, limit, paths::PackagePaths, product, verify_node_package,
 };
 use crate::files::references::{PathGuard, directory_identity};
 use serial_workbench_core::{
@@ -136,13 +136,17 @@ pub(super) fn verify_contents(
     };
     let verified = if let Some(source) = package.verified_source.as_ref() {
         sources.require_current(source)?;
-        sources.verify(
-            bytes,
-            &source.source,
-            &source.key_id,
-            &nested_limits,
-            control.cancel,
-        )?
+        if product::is_product_source(&source.source) {
+            product::verify(bytes, &nested_limits, control.cancel)?
+        } else {
+            sources.verify(
+                bytes,
+                &source.source,
+                &source.key_id,
+                &nested_limits,
+                control.cancel,
+            )?
+        }
     } else {
         verify_node_package(
             bytes,

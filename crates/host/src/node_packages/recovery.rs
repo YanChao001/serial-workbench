@@ -1,8 +1,8 @@
 //! 恢复只重新登记当前可执行贡献；不读取旧业务Call，也不重新派发历史Operation。
 use super::*;
 use crate::node_packages::{
-    InstalledNodePackage, NodePackageSnapshot,
-    runtime::{ExecutionLease, LeaseRequest},
+    InstalledNodePackage, NodePackageSnapshot, product,
+    runtime::{ExecutionLease, LeaseAuthority, LeaseRequest},
 };
 use std::{collections::BTreeMap, sync::Weak, time::Duration};
 
@@ -194,13 +194,14 @@ impl NodePackageManager {
             let previous_instance = package
                 .activation_authority
                 .as_ref()
-                .is_some_and(|authority| authority.instance_epoch < epoch)
+                .is_some_and(|authority| authority.instance_epoch < epoch);
+            let activate_at_startup = (previous_instance || product::has_product_origin(package))
                 && package
                     .manifest
                     .activation
                     .iter()
                     .any(|id| id.as_str() == "startup");
-            if requested.is_none() && !previous_instance && !self.runtime.can_recover(package) {
+            if requested.is_none() && !activate_at_startup && !self.runtime.can_recover(package) {
                 continue;
             }
             attempt.healthy_since = None;
@@ -274,21 +275,28 @@ impl NodePackageManager {
         stopping: &Arc<AtomicBool>,
         deadline: Instant,
     ) -> HostResult<()> {
-        let origin = package
-            .activation_authority
-            .as_ref()
-            .ok_or_else(|| failure("PERMISSION_DENIED", "activationActorRequired"))?;
-        let actor = self.auth.restore_actor(&origin.actor)?;
         let identity = self.store.identity()?;
-        if origin.instance_epoch > identity.instance_epoch {
-            return Err(failure("EPOCH_MISMATCH", "activationAuthorityEpoch"));
-        }
-        let target = Target {
-            host_id: identity.host_id.clone(),
-            kind: ResourceKind::try_from("host")?,
-            id: identity.host_id,
-            session_id: None,
-            session_epoch: None,
+        let authority = if let Some(origin) = &package.activation_authority {
+            if origin.instance_epoch > identity.instance_epoch {
+                return Err(failure("EPOCH_MISMATCH", "activationAuthorityEpoch"));
+            }
+            LeaseAuthority::User {
+                actor: Box::new(self.auth.restore_actor(&origin.actor)?),
+                target: Target {
+                    host_id: identity.host_id.clone(),
+                    kind: ResourceKind::try_from("host")?,
+                    id: identity.host_id,
+                    session_id: None,
+                    session_epoch: None,
+                },
+                cleanup: false,
+            }
+        } else if product::has_product_origin(package) {
+            LeaseAuthority::Product {
+                instance_epoch: identity.instance_epoch,
+            }
+        } else {
+            return Err(failure("PERMISSION_DENIED", "activationActorRequired"));
         };
         let limits = NodePackageLimits::default();
         let check = || {
@@ -301,7 +309,10 @@ impl NodePackageManager {
             if self.store.identity()?.instance_epoch != identity.instance_epoch {
                 return Err(failure("EPOCH_MISMATCH", "nodeRecoveryEpoch"));
             }
-            self.auth.require(&actor, "plugins.manage", &target)
+            if let LeaseAuthority::User { actor, target, .. } = &authority {
+                self.auth.require(actor, "plugins.manage", target)?;
+            }
+            Ok(())
         };
         check()?;
         self.recover_installations(
@@ -328,11 +339,9 @@ impl NodePackageManager {
         let lease = ExecutionLease::new(LeaseRequest {
             store: self.store.clone(),
             auth: self.auth.clone(),
-            actor: actor.clone(),
-            target: target.clone(),
+            authority: authority.clone(),
             id: package.manifest.id.clone(),
             archive: package.archive_sha256.clone(),
-            cleanup: false,
             stopping: stopping.clone(),
             initial: None,
             packages: self.package_changes.subscribe(),

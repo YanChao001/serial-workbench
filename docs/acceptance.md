@@ -306,6 +306,36 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 运行 `cargo test --locked -p serial-workbench-host --test shared_documents_host command_archives` 核对真实 IPC 和落盘。存储用例 `cargo test --locked -p serial-workbench-host --lib command_archive` 对照跨页顺序和失败回滚。`pnpm test:ui e2e/browser/command-library.spec.ts` 使用无头浏览器核对选择、取消和终态刷新。Windows 原生桌面门禁使用同一应用窗口的打开与保存对话框，核对导入后列表、导出归档的正文、备注、编码和行尾。保存路径的写入授权可读取导出终态，读取归档正文仍需独立文件授权。该作业保留 `command-archive-roundtrip.json`，记录对话框归属、焦点归还、归档 revision、文件字节数和摘要。
 
+### 通用分帧（PROTO-01）
+
+通用分帧通过 `swb.reference.framing.scan` 动作读取获准会话代次的 Raw RX。`startEventSeq` 和 `endEventSeq` 选定左闭右开的已留存事件区间。返回的帧包含原始字节、起止事件及字节范围。`incompleteBytes` 统计范围内未组成完整帧的字节，包括噪声、超长候选和未闭合帧。
+
+签名分帧包启用后，选择实际串口会话，从「工作区菜单」打开「协议分帧」。用「使用已接收范围」填入当前可见接收数据的区间，或手动填写事件序号。扫描提交时复核动作授权。成功后核对十六进制帧、事件和字节位置，结果有续页时可请求下一页。关闭面板停止等待，已接纳的操作由 Host 结算。手动安装与启用测试签名包用现有插件管理流程，正式随包分发按发行环境验收。
+
+安装并发回归用固定 Node 触发已有包恢复，定点暂停恢复名额的归还。对另一签名包发起安装后，核对操作保持排队且尚未执行。解除恢复屏障后，核对原安装操作成功结算，新包仍待启用。用例为 `native_node_install_waits_for_other_package_recovery`，与正式 Host 首启后安装参考终端的 CI 场景互补。
+
+正式 Host 的参考终端验收还检查共享 Node 的卸载保护。停用终端并撤销其来源后，分帧仍活动时卸载返回 `HOST_BUSY`，安装快照及分帧登记保持一致。通过本机管理入口停用分帧后，按新的安装 revision 卸载终端，再恢复原分帧包。验收核对同一归档和来源、重新登记及最终安装快照。
+
+每次扫描最多处理 1024 个事件和 65,536 个 RX 字节，最多返回 128 帧。还有可返回的帧时，结果包含 `nextCursor`。下一次调用沿用原来的 `endEventSeq` 和分帧配置，把游标的 `eventSeq`、`byteStart` 分别传给 `startEventSeq`、`startByte`。未完成字节计数覆盖本次处理的区间，到下一帧起点为止。即使相邻帧在同一个 Raw 事件中，后续调用仍可从准确字节继续。
+
+- 用 `fixedLength`、`delimiterBase64` 或 `lengthField` 选择主边界。长度字段按给出的偏移、位宽和端序读无符号整数，再加 `adjustment` 得到整帧原始字节数。
+- 可添加 `headerBase64` 和 `footerBase64` 核对帧头帧尾。仅用帧尾时，它也是结束标记。指定独立分隔符时，帧尾紧邻分隔符之前。`escapeByte` 保护紧随其后的一个字节，输出保留原始转义。
+- `idleTimeoutMs` 可独立分帧，也可结束其他模式的连续段。仅按静默分帧时，由同源接收时钟的下一次收块确认边界。换钟、来源精度变化、回退、缺口和未观测到后续收块的末段保留为未完成数据。
+
+先按[签名运行时与 SDK](#签名运行时与-sdk)准备固定 Node 和 `SWB_NODE_RUNTIME_TEST_ROOT`，然后运行分帧的软件与原生验收。
+
+```sh
+node --test scripts/reference-framing.test.mjs
+pnpm plugin-sdk:fixture
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_reference_framing_ -- --ignored --nocapture
+```
+
+软件测试核对跨页字节、超长帧恢复、转义、缺口与同源静默。原生测试用本轮测试签名的清单安装并启用插件，以 Virtual Echo 返回一段包含无效长度的输入。通过真实 Host IPC 调用解析器，核对两帧的正文及来源和三字节未完成计数。独立设备上的线路静默和正式发行包按各自条件验收。
+
+首方归档使用 `node --test scripts/product-framing.test.mjs` 对照 TypeScript 编译结果、清单和完整 ZIP 摘要。运行 `cargo test --locked -p serial-workbench-host --lib node_packages::product::tests` 核对签名、原子安装后的内容证明和外部安装入口的来源隔离。发行描述的 `bundledNodePackages` 记录包版本、归档摘要及承载它的 Host 组件。
+
+在同一固定运行时环境执行 `cargo test --locked -p serial-workbench-host --lib native_node_bundled_framing_ -- --ignored --nocapture`。用独立 profile 验证首次自动登记、真实 Node 解析器发布、重启后 Host 换代及安装 revision 保持。产品单测另验取消后重试、同 ID 本地包保持原信任，以及停用和卸载后继续尊重用户选择。断网安装、打开真实桌面和线路样本按发行与实机专项覆盖。
+
 ### 发送草稿转义（IO-03）
 
 在文本草稿使用“将转义转为 HEX”展开 `\r`、`\n`、`\t`、`\0`、`\xNN`、独立的 `0xNN`、`\h(4F 4B)` 和 `<CR>`、`<LF>`。普通正文沿用选定发送编码，转义生成的字节直接保留，正文空白和另选行尾分别处理。核对草稿保留与选区、保存大小边界、转换后的预览和随后独立发送的字节。转换沿用现有草稿登记。

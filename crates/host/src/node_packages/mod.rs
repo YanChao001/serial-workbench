@@ -5,6 +5,7 @@ mod install;
 mod installed;
 mod manager;
 mod paths;
+mod product;
 mod runtime;
 mod source;
 mod source_store;

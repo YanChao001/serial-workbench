@@ -1,4 +1,4 @@
-use rusqlite::{OptionalExtension, TransactionBehavior, params};
+use rusqlite::{OptionalExtension, Transaction, TransactionBehavior, params};
 use serde::{Serialize, de::DeserializeOwned};
 use serial_workbench_core::{HostError, HostResult, Id, JsonObject, SchemaObject, U64};
 
@@ -62,6 +62,28 @@ impl Database {
         let revision = self.save_document_value(id, expected, &value, None, false)?;
         Ok(StoredDocument { revision, value })
     }
+    /// Publishes the initial package and its persistent opt-out boundary together.
+    pub(crate) fn initialize_schema_document(
+        &mut self,
+        id: &Id,
+        expected: U64,
+        value: SchemaObject,
+        marker: &Id,
+    ) -> HostResult<StoredDocument<SchemaObject>> {
+        let transaction = self
+            .connection
+            .transaction_with_behavior(TransactionBehavior::Immediate)
+            .map_err(|_| unavailable())?;
+        let revision = Self::write_document(&transaction, id, expected, &value)?;
+        Self::write_document(
+            &transaction,
+            marker,
+            0.into(),
+            &serde_json::json!({"formatVersion": "1"}),
+        )?;
+        transaction.commit().map_err(|_| unavailable())?;
+        Ok(StoredDocument { revision, value })
+    }
     pub fn compare_and_swap_workspace(
         &mut self,
         id: &Id,
@@ -94,6 +116,28 @@ impl Database {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| unavailable())?;
+        let revision = Self::write_document(&transaction, id, expected, value)?;
+        if let Some(workspace_id) = workspace_id {
+            if archived {
+                transaction
+                    .execute(
+                        "DELETE FROM workspace_directory WHERE workspace_id=?1 AND document_id=?2",
+                        params![workspace_id.as_str(), id.as_str()],
+                    )
+                    .map_err(|_| unavailable())?;
+            } else {
+                transaction.execute("INSERT INTO workspace_directory(workspace_id,document_id) VALUES(?1,?2) ON CONFLICT(workspace_id) DO UPDATE SET document_id=excluded.document_id", params![workspace_id.as_str(), id.as_str()]).map_err(|_| unavailable())?;
+            }
+        }
+        transaction.commit().map_err(|_| unavailable())?;
+        Ok(revision)
+    }
+    fn write_document<T: Serialize>(
+        transaction: &Transaction<'_>,
+        id: &Id,
+        expected: U64,
+        value: &T,
+    ) -> HostResult<U64> {
         let previous: Option<String> = transaction
             .query_row(
                 "SELECT revision FROM documents WHERE id=?1",
@@ -116,19 +160,6 @@ impl Database {
         let revision = current.checked_next()?;
         let json = serde_json::to_string(value).map_err(|_| unavailable())?;
         transaction.execute("INSERT INTO documents(id,revision,value_json) VALUES(?1,?2,?3) ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,value_json=excluded.value_json", params![id.as_str(), revision.to_string(), json]).map_err(|_| unavailable())?;
-        if let Some(workspace_id) = workspace_id {
-            if archived {
-                transaction
-                    .execute(
-                        "DELETE FROM workspace_directory WHERE workspace_id=?1 AND document_id=?2",
-                        params![workspace_id.as_str(), id.as_str()],
-                    )
-                    .map_err(|_| unavailable())?;
-            } else {
-                transaction.execute("INSERT INTO workspace_directory(workspace_id,document_id) VALUES(?1,?2) ON CONFLICT(workspace_id) DO UPDATE SET document_id=excluded.document_id", params![workspace_id.as_str(), id.as_str()]).map_err(|_| unavailable())?;
-            }
-        }
-        transaction.commit().map_err(|_| unavailable())?;
         Ok(revision)
     }
     pub fn register_workspace(&self, id: &Id, workspace_id: &Id) -> HostResult<()> {

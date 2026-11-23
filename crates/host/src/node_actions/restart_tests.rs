@@ -1,6 +1,6 @@
 //! 真实 Host 进程退出后的持久任务恢复，不以调用 recover 代替进程边界。
 use super::*;
-use crate::test_support::{self as support, node_host_actions};
+use crate::test_support::{self as support, node_host_actions, node_package};
 use serde_json::{Value, json};
 use serial_workbench_client::{ConnectOptions, HostClient};
 use std::{
@@ -384,6 +384,99 @@ async fn native_node_explicit_enable_joins_same_package_recovery() {
     eprintln!(
         "native_recovery_join actual_wait_observed=true queued_before_slot=true operation=succeeded registrations=2"
     );
+}
+
+#[tokio::test]
+#[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT pointing to a prepared native distribution"]
+async fn native_node_install_waits_for_other_package_recovery() {
+    let fixture = node_host_actions::Fixture::program(
+        node_host_actions::spec(),
+        b"export function register(context) {context.actions.register('example.terminal.compute',()=>process.exit(77));return ()=>{};}",
+    )
+    .await;
+    let mut manifest = node_package::manifest();
+    manifest["id"] = json!("example.other");
+    let mut payloads = node_package::payloads();
+    payloads.insert(
+        "manifest.json".into(),
+        serde_json::to_vec(&manifest).unwrap(),
+    );
+    let path = fixture.dir.path().join("other-signed.zip");
+    std::fs::write(
+        &path,
+        node_package::archive(&node_package::with_metadata(payloads, true)),
+    )
+    .unwrap();
+    let reference = fixture
+        .invoke(
+            &fixture.user,
+            fixture.call(
+                &fixture.user,
+                &fixture.target,
+                "file.register",
+                json!({"path":path.to_str().unwrap(),"purpose":"read_file"}),
+            ),
+        )
+        .await;
+    let reference = fixture.wait(&fixture.user, &reference.operation_id).await;
+    let Some(ActionResult::FileMetadata(reference)) = reference.result else {
+        panic!("Expected the archive reference");
+    };
+    let gates = &fixture.host.inner.node_test_gates;
+    let mut finishing = gates.recovery_before_release.arm();
+    let mut joined = gates.waiting_for_recovery.arm();
+    let crashed = fixture
+        .invoke(
+            &fixture.client,
+            fixture.call(
+                &fixture.client,
+                &fixture.target,
+                "example.terminal.compute",
+                json!({"value":77}),
+            ),
+        )
+        .await;
+    let crashed = fixture.wait(&fixture.client, &crashed.operation_id).await;
+    assert_eq!(crashed.state, OperationState::Unknown, "{crashed:?}");
+    finishing.entered().await;
+    let mut install = fixture.call(
+        &fixture.client,
+        &fixture.target,
+        "node.packages.install",
+        json!({"archiveRef":reference.file_ref,"source":{"kind":"trusted","source":"test-source","keyId":"test-key"}}),
+    );
+    install.expected_revision = Some(3.into());
+    let accepted = fixture.invoke(&fixture.client, install).await;
+    tokio::select! {
+        _ = joined.entered() => {}
+        terminal = fixture.wait(&fixture.client, &accepted.operation_id) => {
+            panic!("Install settled before recovery released the work slot: {terminal:?}");
+        }
+    }
+    let QueryResult::Operation(waiting) = fixture
+        .query(
+            &fixture.client,
+            &fixture.target,
+            "operation.get",
+            json!({"operationId":accepted.operation_id}),
+        )
+        .await
+    else {
+        panic!("Expected the queued installation");
+    };
+    assert_eq!(waiting.operation.state, OperationState::Queued);
+    assert!(waiting.operation.started_at.is_none());
+    joined.release();
+    finishing.release();
+    let installed = fixture.wait(&fixture.client, &accepted.operation_id).await;
+    assert_eq!(installed.state, OperationState::Succeeded, "{installed:?}");
+    let Some(ActionResult::NodePackageInstalled(receipt)) = installed.result else {
+        panic!("Expected the new package receipt");
+    };
+    assert_eq!(receipt.package.id.as_str(), "example.other");
+    assert_eq!(receipt.revision, 4.into());
+    assert!(!receipt.package.enabled);
+    let _profile = fixture.finish().await;
 }
 
 #[tokio::test]

@@ -1506,6 +1506,40 @@
   min-height: 0;
   gap: 1rem;
 }
+.workbench-framing fieldset {
+  display: grid;
+  gap: 0.65rem;
+}
+.workbench-framing-fields {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 10rem), 1fr));
+  gap: 0.65rem;
+}
+.workbench-framing-results {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  margin: 0;
+  padding: 0;
+}
+.workbench-framing-results:empty {
+  display: none;
+}
+.workbench-framing-results > li {
+  display: grid;
+  min-inline-size: 0;
+  gap: 0.35rem;
+  padding: 0.6rem 0.8rem;
+}
+.workbench-framing-results > li + li {
+  border-block-start: 1px solid var(--border);
+}
+.workbench-framing-results code {
+  overflow-wrap: anywhere;
+}
+.workbench-framing-results span {
+  color: var(--muted-foreground);
+  font-size: 0.8rem;
+}
 .workbench-dialog-body .workbench-tool-footer {
   margin-block-start: 1rem;
   justify-content: flex-end;

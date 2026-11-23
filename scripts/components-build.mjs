@@ -7,6 +7,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import { fileSha256 } from "./artifact-lib.mjs";
 
@@ -102,6 +103,14 @@ export function inspectComponents(plan, outputDir) {
       protocol: hostCatalog.protocolVersion,
       target: plan.target,
       architecture: plan.target.split("-")[0],
+      bundledNodePackages: [
+        {
+          id: framing.id,
+          version: framing.version,
+          archiveSha256: framing.archiveSha256,
+          hostComponent: `serial-workbench-host${suffix}`,
+        },
+      ],
       components: files.map(({ source, path }) => ({
         path,
         sha256: fileSha256(source),

@@ -1,7 +1,7 @@
 //! 来源认可与 Node 执行确认分开；当前密钥变化不删除历史公开材料。
 use super::{
     NodePackageLimits, NodePackageSource, VerifiedNodePackage, VerifiedNodePackageSource, failure,
-    verify_node_package,
+    product, verify_node_package,
 };
 use crate::storage::Store;
 use ed25519_dalek::VerifyingKey;
@@ -95,6 +95,7 @@ impl NodePackageSources {
         expected_revision: U64,
         authorize: impl FnMut() -> HostResult<G>,
     ) -> HostResult<NodePackageSourceSnapshot> {
+        product::require_external_source(&source)?;
         validate_key(&public_key)?;
         let (revision, mut document) = self.load()?;
         if revision != expected_revision {
@@ -139,6 +140,7 @@ impl NodePackageSources {
         expected_revision: U64,
         authorize: impl FnMut() -> HostResult<G>,
     ) -> HostResult<NodePackageSourceSnapshot> {
+        product::require_external_source(source)?;
         let (revision, mut document) = self.load()?;
         if revision != expected_revision {
             return Err(failure("REVISION_CONFLICT", "sourceTrustRevision"));
@@ -178,6 +180,7 @@ impl NodePackageSources {
     }
 
     fn current(&self, source: &Id, key_id: &Id) -> HostResult<NodePackageSourceKey> {
+        product::require_external_source(source)?;
         self.load()?
             .1
             .keys
@@ -188,6 +191,9 @@ impl NodePackageSources {
 
     /// 这是本次观察的当前状态；生产效果接纳仍须协调撤权与实际执行 owner。
     pub fn require_current(&self, receipt: &VerifiedNodePackageSource) -> HostResult<()> {
+        if product::is_product_source(&receipt.source) {
+            return product::require_current(receipt);
+        }
         let key = self.current(&receipt.source, &receipt.key_id)?;
         if key.public_key_sha256 != receipt.public_key_sha256 {
             return Err(failure("PERMISSION_DENIED", "sourceKeyChanged"));
