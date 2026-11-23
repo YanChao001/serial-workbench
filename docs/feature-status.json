@@ -3799,10 +3799,11 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
+        "status": "passed",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/38",
-          "https://github.com/YanChao001/serial-workbench/pull/40"
+          "https://github.com/YanChao001/serial-workbench/pull/40",
+          "https://github.com/YanChao001/serial-workbench/pull/59"
         ]
       },
       "hardware": {
@@ -3819,7 +3820,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
+        "status": "passed",
         "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {

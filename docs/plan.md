@@ -22,6 +22,7 @@
 
 - PR #58 的 `cf4b4fc` 在隔离 Windows 完成真实 NSIS 0.1.0 到 0.1.1 的换入、Host 代次 1 到 2、同一身份与 profile 恢复，以及摘要拒绝和注册写入中断恢复。这里的注册恢复由隔离验证程序执行。独立产品升级场景首轮完成两版构建后达到任务时限，新的复验分别记录证书准备和真实桌面升级阶段。 [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [两版安装收据](https://github.com/YanChao001/serial-workbench/actions/runs/45194202380/artifacts/14828417740) · [桌面更新复验](https://github.com/YanChao001/serial-workbench/actions/runs/45204372209)
 - M4 工作台基础已随 #59 合入。集成范围包括混合发送、HEX 校验定位、转义与追加校验、带原始偏移的录制导出、多源只读回放、脱敏诊断、快捷键、插件视图语言和 ANSI 终端。精确候选 `bf1563b` 通过四个 Rust 目标、四个平台真实桌面及最终门禁，合入提交 `85f1190` 的文件树与候选一致。模拟串口验证 `transfer.paste` 的独占顺序、编号回执与取消前缀，物理串口和发行包继续按对应专项验收。 [PR #59](https://github.com/YanChao001/serial-workbench/pull/59) · [四目标综合 CI](https://github.com/YanChao001/serial-workbench/actions/runs/45218765368)
+- 基础候选的快捷键速查（DIAG-05）通过 F1、命令搜索、发送模式、冲突和重载复验。诊断包（DIAG-06）通过脱敏测试及 Windows 原生保存。收据验证预览与落盘数据一致，记录格式、字节数与摘要，发行安装场景仍按 T14 验收。 [快捷键浏览器作业](https://github.com/YanChao001/serial-workbench/actions/runs/45218765368/job/137847867653) · [Windows 保存收据](https://github.com/YanChao001/serial-workbench/actions/runs/45218765368/artifacts/14840297881)
 - ANSI 鼠标和链接（TERM-11）在独立工作树接续。无头 Chromium 核对 SGR 和经典鼠标原始字节、选区优先、真实焦点、合成事件拒绝，以及 OSC 8 的原生外链调用夹具、键盘和中键激活与接收缺口清理。待合入候选复验真实桌面外链和设备端交互。
 - 同一独立工作树补齐编码识别依据（TERM-07）。编码单元测试核对 BOM、UTF-8、GB18030 和证据不足。无头 Chromium 以跨包 GBK 数据对照样本数、字节分布得分、手动误选与候选重解码，并复查自动设置和 UTF-16 发送。
 - ANSI 回滚历史（TERM-15）加入窗口偏好、保留范围、淘汰提示与行号跳转。无头 Chromium 以 12,000 行连续 RX 核对首次启用和保存行数上限、首尾与中段跳转、冻结时接收与恢复、缩小缓冲后的淘汰、以及应用切到备用屏幕和返回。真实桌面与物理串口仍待同一候选验收。
