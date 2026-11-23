@@ -218,7 +218,8 @@ mod tests {
 
     #[test]
     fn omitted_log_tail_distinguishes_missing_log_from_an_unusable_path() {
-        let directory = tempfile::tempdir().unwrap();
+        // The system temp path may include an alias such as macOS /var.
+        let directory = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let path = directory.path().join("app.log");
         assert_eq!(collect_log_tail(&path), Some(String::new()));
         std::fs::create_dir(&path).unwrap();
