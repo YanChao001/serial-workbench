@@ -1,5 +1,9 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { requestAnsiSearch, requestStreamSearch } from "./stream-search-client";
+import {
+  requestAnsiSearch,
+  requestStreamHighlights,
+  requestStreamSearch,
+} from "./stream-search-client";
 import type { StreamSearchResult } from "./stream-search";
 import type { StreamItem } from "@serial-workbench/contracts";
 import { txItem } from "./test-fixtures";
@@ -116,4 +120,18 @@ it("terminates an obsolete ANSI screen search and detaches its result handler", 
   expect(worker.terminate).toHaveBeenCalledOnce();
   expect(worker.onmessage).toBeNull();
   expect(worker.onerror).toBeNull();
+});
+
+it("stops an over-budget display highlight request and releases its worker", async () => {
+  vi.useFakeTimers();
+  vi.stubGlobal("Worker", SearchWorker);
+  const input = { mode: "highlight", texts: ["LOG 12"], rules: [] } as const;
+  const pending = requestStreamHighlights(input, new AbortController().signal);
+  const worker = SearchWorker.instances[0]!;
+  expect(worker.postMessage).toHaveBeenCalledWith(input);
+  const timeout = expect(pending).rejects.toThrow("SEARCH_TIMEOUT");
+  await vi.advanceTimersByTimeAsync(500);
+  await timeout;
+  expect(worker.terminate).toHaveBeenCalledTimes(1);
+  expect(worker.onmessage).toBeNull();
 });

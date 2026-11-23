@@ -46,6 +46,120 @@ function packets(
   });
 }
 
+test("applies ordered text highlights and keeps receiving when a rule is invalid", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  const display = terminal.getByRole("button", { name: "Display options" });
+  const editor = page.getByRole("dialog", { name: "Text highlight rules" });
+  const openEditor = async () => {
+    await display.click();
+    await page.getByRole("button", { name: "Text highlight rules" }).click();
+    await expect(editor).toBeVisible();
+  };
+  const rule = (number: number) =>
+    editor.getByRole("group", { name: "Rule " + number, exact: true });
+  const add = editor.getByRole("button", { name: "Add rule", exact: true });
+  const rx = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (rx?.kind !== "source") throw new Error("Missing RX");
+  const addText = async (text: string, start: number, time: string) => {
+    await page.evaluate((item) => window.workbenchFixture.emitRaw([item]), {
+      kind: "source",
+      event: {
+        ...rx.event,
+        eventSeq: String(start + 30),
+        time: { ...rx.event.time, sourceMonoNs: time },
+        payload: {
+          bytesBase64: Buffer.from(text).toString("base64"),
+          byteStart: String(start),
+          byteEnd: String(start + Buffer.byteLength(text)),
+        },
+      },
+    });
+  };
+
+  await addText("ERROR code=42", 0, "1");
+  await openEditor();
+  await add.click();
+  await rule(1).getByRole("textbox", { name: "Pattern" }).fill("ERR");
+  await rule(1).getByRole("switch", { name: "Text color" }).click();
+  await rule(1)
+    .getByLabel("Text color", { exact: true })
+    .and(rule(1).locator('input[type="color"]'))
+    .fill("#b50000");
+
+  await add.click();
+  await rule(2).getByRole("combobox", { name: "Match type" }).click();
+  await page.getByRole("option", { name: "Regular expression" }).click();
+  await rule(2).getByRole("textbox", { name: "Pattern" }).fill("ERR\\w+|\\d+");
+  await rule(2).getByRole("switch", { name: "Background color" }).click();
+  await rule(2).getByRole("switch", { name: "Bold" }).click();
+  await page.keyboard.press("Escape");
+  await expect(display).toBeFocused();
+
+  const highlights = log.locator("[data-stream-highlight]");
+  await expect(highlights).toHaveText(["ERR", "OR", "42"]);
+  await expect(highlights.nth(0)).toHaveCSS("color", "rgb(181, 0, 0)");
+  await expect(highlights.nth(0)).toHaveCSS("font-weight", "700");
+  await expect(highlights.nth(1)).toHaveCSS(
+    "background-color",
+    "rgb(255, 235, 153)",
+  );
+
+  await openEditor();
+  await rule(2).getByRole("button", { name: "Move rule up" }).click();
+  await page.keyboard.press("Escape");
+  await expect(highlights).toHaveText(["ERROR", "42"]);
+
+  await openEditor();
+  await rule(1).getByRole("switch", { name: "Enabled" }).click();
+  await add.click();
+  await rule(3).getByRole("combobox", { name: "Match type" }).click();
+  await page.getByRole("option", { name: "Regular expression" }).click();
+  await rule(3).getByRole("textbox", { name: "Pattern" }).fill("[");
+  await expect(rule(3).getByRole("status")).toHaveText(
+    "Invalid regular expression",
+  );
+  await page.keyboard.press("Escape");
+  await expect(highlights).toHaveText(["ERR"]);
+
+  await addText("ERR second", 13, "200000001");
+  await expect(highlights).toHaveText(["ERR", "ERR"]);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  await expect(highlights).toHaveCount(0);
+  await expect(log.locator("[data-hex-source]").first()).toHaveText(
+    "45 52 52 4F 52 20 63 6F 64 65 3D 34 32",
+  );
+
+  await terminal.getByRole("radio", { name: "Text", exact: true }).click();
+  await addText("A".repeat(65536) + "ERR tail", 23, "400000001");
+  const detail = log.locator(".workbench-long-record");
+  const pageHighlights = detail.locator("[data-stream-highlight]");
+  await expect(detail.locator("summary")).toContainText("65544 B");
+  await expect(pageHighlights).toHaveCount(0);
+  await detail.locator("summary").click();
+  await expect(detail.getByRole("status")).toContainText("1/2");
+  await expect(pageHighlights).toHaveCount(0);
+  await detail.getByRole("button", { name: "Next record page" }).click();
+  await expect(pageHighlights).toHaveText("ERR");
+});
+
 test("sets the live idle gap without reframing existing packets or restarting the reader", async ({
   page,
 }) => {

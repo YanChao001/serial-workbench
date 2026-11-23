@@ -234,6 +234,28 @@ export const labels: WorkbenchLabels = {
   disconnected: "Disconnected",
   encodingHelp: "Switch to HEX to inspect original bytes",
   wrapReceiveText: "Wrap received text",
+  highlightRules: "Text highlight rules",
+  highlightHelp:
+    "Rules match displayed text with case sensitivity. Higher rules win where matches overlap.",
+  highlightRule: "Rule",
+  highlightEnabled: "Enabled",
+  highlightUp: "Move rule up",
+  highlightDown: "Move rule down",
+  highlightRemove: "Remove rule",
+  highlightMode: "Match type",
+  highlightKeyword: "Keyword",
+  highlightRegex: "Regular expression",
+  highlightPattern: "Pattern",
+  highlightForeground: "Text color",
+  highlightBackground: "Background color",
+  highlightBold: "Bold",
+  highlightAdd: "Add rule",
+  highlightInvalid: "Invalid regular expression",
+  highlightLimit: "This record has more highlights than can be displayed.",
+  highlightTimeout:
+    "Highlight matching timed out. Edit or disable a rule to retry.",
+  highlightFailed:
+    "Highlight matching stopped. Edit or disable a rule to retry.",
   receiveIdleGap: "Receive idle gap",
   receiveIdleHelp:
     "Applies to new receive data. Packets use source timestamps on receive chunks. USB buffering can hide gaps on the wire.",

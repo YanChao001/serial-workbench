@@ -1,3 +1,4 @@
+import { compileStreamTextPattern } from "./stream-text-pattern";
 import type { StreamItem, TextEncoding } from "@serial-workbench/contracts";
 import {
   createTextDecoder,
@@ -135,9 +136,10 @@ function searchLane(
   }
   let pattern: RegExp;
   try {
-    pattern = new RegExp(
-      options.regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      `gu${options.caseSensitive ? "" : "i"}`,
+    pattern = compileStreamTextPattern(
+      query,
+      options.regex,
+      options.caseSensitive,
     );
   } catch {
     return { matches, error: "syntax" };

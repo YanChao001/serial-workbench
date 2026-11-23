@@ -1,3 +1,8 @@
+import {
+  findStreamHighlights,
+  type StreamHighlightRequest,
+  type StreamHighlightResult,
+} from "./stream-highlight";
 import type { StreamItem } from "@serial-workbench/contracts";
 import { projectStreamItems } from "./stream-model";
 import {
@@ -72,9 +77,20 @@ export function requestAnsiSearch(
   return runSearchWorker<AnsiSearchResult>(request, signal);
 }
 
+export function requestStreamHighlights(
+  request: StreamHighlightRequest,
+  signal: AbortSignal,
+): Promise<StreamHighlightResult> {
+  signal.throwIfAborted();
+  if (import.meta.env.MODE === "test" && typeof Worker === "undefined")
+    return Promise.resolve(findStreamHighlights(request));
+  return runSearchWorker<StreamHighlightResult>(request, signal);
+}
+
 function runSearchWorker<Result>(
   request:
     | AnsiSearchRequest
+    | StreamHighlightRequest
     | {
         items: readonly StreamItem[];
         query: string;

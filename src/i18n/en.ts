@@ -564,6 +564,29 @@ export const en = {
   "workbench.disconnected": "Disconnected",
   "workbench.encodingHelp": "Switch to HEX to inspect original bytes",
   "workbench.wrapReceiveText": "Wrap received text",
+  "workbench.highlightRules": "Text highlight rules",
+  "workbench.highlightHelp":
+    "Rules match displayed text with case sensitivity. Higher rules win where matches overlap.",
+  "workbench.highlightRule": "Rule",
+  "workbench.highlightEnabled": "Enabled",
+  "workbench.highlightUp": "Move rule up",
+  "workbench.highlightDown": "Move rule down",
+  "workbench.highlightRemove": "Remove rule",
+  "workbench.highlightMode": "Match type",
+  "workbench.highlightKeyword": "Keyword",
+  "workbench.highlightRegex": "Regular expression",
+  "workbench.highlightPattern": "Pattern",
+  "workbench.highlightForeground": "Text color",
+  "workbench.highlightBackground": "Background color",
+  "workbench.highlightBold": "Bold",
+  "workbench.highlightAdd": "Add rule",
+  "workbench.highlightInvalid": "Invalid regular expression",
+  "workbench.highlightLimit":
+    "This record has more highlights than can be displayed.",
+  "workbench.highlightTimeout":
+    "Highlight matching timed out. Edit or disable a rule to retry.",
+  "workbench.highlightFailed":
+    "Highlight matching stopped. Edit or disable a rule to retry.",
   "workbench.receiveIdleGap": "Receive idle gap",
   "workbench.receiveIdleHelp":
     "Applies to new receive data. Packets use source timestamps on receive chunks. USB buffering can hide gaps on the wire.",

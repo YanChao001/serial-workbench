@@ -1,3 +1,4 @@
+import { compileStreamTextPattern } from "./stream-text-pattern";
 import type { IBufferLine, Terminal } from "@xterm/xterm";
 
 export const MAX_ANSI_SEARCH_UNITS = 8_000_000;
@@ -30,10 +31,7 @@ export function findAnsiMatches({
   if (query.length > MAX_ANSI_SEARCH_QUERY) return { matches, error: "limit" };
   let pattern: RegExp;
   try {
-    pattern = new RegExp(
-      regex ? query : query.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
-      `gu${caseSensitive ? "" : "i"}`,
-    );
+    pattern = compileStreamTextPattern(query, regex, caseSensitive);
   } catch {
     return { matches, error: "syntax" };
   }

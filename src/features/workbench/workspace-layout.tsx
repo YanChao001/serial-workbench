@@ -1,3 +1,4 @@
+import type { StreamHighlightRule } from "./stream-highlight";
 import {
   useCallback,
   useContext,
@@ -354,6 +355,9 @@ export function WorkspaceLayout({
   unboundDraftMessage,
 }: WorkspaceLayoutProps) {
   const { state, watchSession, watchActions } = host;
+  const [highlightRules, setHighlightRules] = useState<StreamHighlightRule[]>(
+    [],
+  );
   const revealActivityPage = useContext(ActivityNavigationContext);
   // Host 暂时离线会保留标签和本地编辑，草稿归属也必须随这些标签保留。
   const retainedDraftScope = useRef(receivedDraftScope);
@@ -2108,6 +2112,8 @@ export function WorkspaceLayout({
           <ReplayPanel
             key={`${session.sessionId}:${session.sessionEpoch}`}
             {...replay}
+            highlightRules={highlightRules}
+            onHighlightRulesChange={setHighlightRules}
             terminalSettings={terminalSettings}
             presentationLabels={presentationLabels}
             session={session}
@@ -2164,6 +2170,8 @@ export function WorkspaceLayout({
             historyLimits={receiveHistory}
             onHistoryLimitsChange={onReceiveHistoryChange}
             receiveIdleMs={stream?.receiveIdleMs}
+            highlightRules={highlightRules}
+            onHighlightRulesChange={setHighlightRules}
             onReceiveIdleMsChange={
               session?.state === "open" && host.setReceiveIdleMs
                 ? (value) =>

@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useId, useMemo, useState, type ReactNode } from "react";
 import type { TextEncoding, TxReceipt } from "@serial-workbench/contracts";
 import { ArrowLeft, ArrowRight } from "lucide-react";
 import { Button } from "@/components/ui/button";
@@ -12,6 +12,11 @@ import {
 } from "./stream-long-record";
 import { workbenchStatus } from "./stream-presentation";
 
+type LongRecordHighlight = {
+  track: (id: string, text?: string) => void;
+  render: (text: string) => ReactNode;
+};
+
 export function LongStreamRecordView({
   record,
   labels,
@@ -20,6 +25,7 @@ export function LongStreamRecordView({
   hexFormat,
   receipt,
   hexSource,
+  highlight,
 }: {
   record: LongStreamRecord;
   labels: WorkbenchLabels;
@@ -28,6 +34,7 @@ export function LongStreamRecordView({
   hexFormat: HexFormat;
   receipt?: TxReceipt;
   hexSource?: string;
+  highlight?: LongRecordHighlight;
 }) {
   const [opened, setOpened] = useState(false);
   const length = record.end - record.offset;
@@ -58,6 +65,7 @@ export function LongStreamRecordView({
           encoding={encoding}
           hexFormat={hexFormat}
           hexSource={hexSource}
+          highlight={highlight}
         />
       )}
     </details>
@@ -71,6 +79,7 @@ function LongRecordPage({
   encoding,
   hexFormat,
   hexSource,
+  highlight,
 }: {
   record: LongStreamRecord;
   labels: WorkbenchLabels;
@@ -78,6 +87,7 @@ function LongRecordPage({
   encoding: TextEncoding;
   hexFormat: HexFormat;
   hexSource?: string;
+  highlight?: LongRecordHighlight;
 }) {
   const [requested, setRequested] = useState(0);
   const pageCount = Math.max(
@@ -89,6 +99,13 @@ function LongRecordPage({
     () => presentLongRecordPage(record, page, mode, encoding),
     [record, page, mode, encoding],
   );
+  const id = useId();
+  const track = highlight?.track;
+  useEffect(() => {
+    if (mode === "hex" || !track) return;
+    track(id, content.text);
+    return () => track(id);
+  }, [track, id, content.text, mode]);
   const hex = useMemo(
     () =>
       mode === "text"
@@ -135,7 +152,7 @@ function LongRecordPage({
           aria-label={labels.text}
           tabIndex={0}
         >
-          {content.text}
+          {highlight ? highlight.render(content.text) : content.text}
         </pre>
       )}
       {mode !== "text" && (

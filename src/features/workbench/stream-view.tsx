@@ -110,6 +110,10 @@ import { streamNumberSample, type StreamNumberSample } from "./stream-number";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { formatByteSize } from "./metric-format";
 import { requestStreamSearch } from "./stream-search-client";
+import type { StreamHighlightRule } from "./stream-highlight";
+import { StreamHighlightEditor } from "./stream-highlight-editor";
+import { renderStreamHighlights } from "./stream-highlight-text";
+import { useStreamHighlights } from "./use-stream-highlights";
 import {
   filterStreamRows,
   streamMatchRanges,
@@ -148,6 +152,8 @@ export type StreamViewProps = {
   onHistoryLimitsChange?: (value: ReceiveHistory) => void;
   receiveIdleMs?: ReceiveIdleMs;
   onReceiveIdleMsChange?: (value: ReceiveIdleMs) => void;
+  highlightRules?: readonly StreamHighlightRule[];
+  onHighlightRulesChange?: (rules: StreamHighlightRule[]) => void;
   encoding?: TextEncoding | null;
   sendEncoding?: TextEncoding;
   onEncodingChange?: (encoding: TextEncoding | null) => void;
@@ -176,6 +182,8 @@ export function StreamView({
   onHistoryLimitsChange,
   receiveIdleMs,
   onReceiveIdleMsChange,
+  highlightRules: sharedHighlightRules,
+  onHighlightRulesChange,
   items,
   labels,
   error,
@@ -213,6 +221,27 @@ export function StreamView({
   }>();
   const [split, setSplit] = useState(false);
   const [showAnsi, setShowAnsi] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const displayTrigger = useRef<HTMLButtonElement>(null);
+  const openingHighlights = useRef(false);
+  const [highlightEditorOpen, setHighlightEditorOpen] = useState(false);
+  const [localHighlightRules, setLocalHighlightRules] = useState<
+    StreamHighlightRule[]
+  >([]);
+  const highlightRules = sharedHighlightRules ?? localHighlightRules;
+  const setHighlightRules = onHighlightRulesChange ?? setLocalHighlightRules;
+  const [longTexts, setLongTexts] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const trackLongText = useCallback((key: string, text?: string) => {
+    setLongTexts((previous) => {
+      if (previous.get(key) === text) return previous;
+      const next = new Map(previous);
+      if (text === undefined) next.delete(key);
+      else next.set(key, text);
+      return next;
+    });
+  }, []);
   const [ansiConvertEol, setAnsiConvertEol] = useState(true);
   const [wrapReceiveText, setWrapReceiveText] = useState(true);
   const [showTransmitEcho, setShowTransmitEcho] = useState(true);
@@ -803,6 +832,50 @@ export function StreamView({
         : rows,
     [rows, searchOpen, searchDirection, matchVisibility, currentSearch?.ranges],
   );
+  const highlightEnabled =
+    !showAnsi &&
+    mode !== "hex" &&
+    highlightRules.some((rule) => rule.enabled && rule.pattern);
+  const highlightTexts = useMemo(
+    () =>
+      highlightEnabled
+        ? [
+            ...longTexts.values(),
+            ...[...visibleRows]
+              .reverse()
+              .flatMap((row) =>
+                !row.longRecord &&
+                (row.kind === "rx" || (row.kind === "tx" && showTransmitEcho))
+                  ? [row.text]
+                  : [],
+              ),
+          ]
+        : [],
+    [highlightEnabled, longTexts, visibleRows, showTransmitEcho],
+  );
+  const highlights = useStreamHighlights(
+    highlightRules,
+    highlightTexts,
+    highlightEnabled,
+  );
+  const highlightText = useCallback(
+    (text: string) =>
+      renderStreamHighlights(
+        text,
+        highlights?.ranges.get(text),
+        highlightRules,
+      ),
+    [highlightRules, highlights],
+  );
+  const highlightNotice =
+    highlights?.failed === "timeout"
+      ? labels.highlightTimeout
+      : highlights?.failed
+        ? labels.highlightFailed
+        : highlights?.limited
+          ? labels.highlightLimit
+          : undefined;
+
   const totals = useMemo(() => {
     let rx = 0n,
       tx = 0n;
@@ -938,6 +1011,11 @@ export function StreamView({
                 encoding={row.kind === "tx" ? sendCodec : receiveCodec}
                 hexFormat={hexFormat}
                 hexSource={row.hexSource}
+                highlight={
+                  highlightEnabled
+                    ? { track: trackLongText, render: highlightText }
+                    : undefined
+                }
                 receipt={row.kind === "tx" ? row.receipt : undefined}
               />
             ) : row.kind === "rx" || row.kind === "tx" ? (
@@ -955,7 +1033,7 @@ export function StreamView({
                       : undefined
                   }
                 >
-                  {row.text}
+                  {mode === "hex" ? row.text : highlightText(row.text)}
                 </span>
                 {mode !== "text" && (
                   <span
@@ -997,6 +1075,9 @@ export function StreamView({
       hexFormat,
       receiveCodec,
       sendCodec,
+      highlightEnabled,
+      highlightText,
+      trackLongText,
     ],
   );
   return (
@@ -1170,7 +1251,9 @@ export function StreamView({
           </Popover>
         )}
         <Popover
+          open={displayOpen}
           onOpenChange={(open) => {
+            setDisplayOpen(open);
             if (!open) return;
             changedHexFormat.current = false;
             previousHexSelection.current =
@@ -1180,6 +1263,7 @@ export function StreamView({
         >
           <PopoverTrigger asChild>
             <WorkbenchIconButton
+              ref={displayTrigger}
               label={displayLabels?.displayOptions ?? labels.encodingHelp}
               onPointerDownCapture={() => {
                 previousHexSelection.current = readStreamHexSelection(
@@ -1195,7 +1279,11 @@ export function StreamView({
             align="end"
             className="workbench-display-options"
             aria-label={displayLabels?.displayOptions ?? labels.encodingHelp}
-            onCloseAutoFocus={() => {
+            onCloseAutoFocus={(event) => {
+              if (openingHighlights.current) {
+                event.preventDefault();
+                openingHighlights.current = false;
+              }
               const saved = previousHexSelection.current;
               previousHexSelection.current = undefined;
               if (saved && changedHexFormat.current)
@@ -1207,6 +1295,17 @@ export function StreamView({
             <PopoverTitle>
               {displayLabels?.displayOptions ?? labels.encodingHelp}
             </PopoverTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                openingHighlights.current = true;
+                setDisplayOpen(false);
+                setHighlightEditorOpen(true);
+              }}
+            >
+              {labels.highlightRules}
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -1408,6 +1507,16 @@ export function StreamView({
             )}
           </PopoverContent>
         </Popover>
+        <StreamHighlightEditor
+          open={highlightEditorOpen}
+          onOpenChange={setHighlightEditorOpen}
+          restoreFocus={() => displayTrigger.current?.focus()}
+          rules={highlightRules}
+          onRulesChange={setHighlightRules}
+          invalid={highlights?.invalid}
+          notice={highlightNotice}
+          labels={labels}
+        />
         {onClearView && (
           <WorkbenchIconButton
             label={displayLabels?.clearView ?? labels.terminal}
