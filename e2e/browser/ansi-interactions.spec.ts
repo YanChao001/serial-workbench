@@ -1,13 +1,31 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
+import { readFileSync } from "node:fs";
+import type {
+  SharedSettings,
+  TerminalTypography,
+} from "@serial-workbench/contracts";
+import { defaults } from "./json-fixtures";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
-async function openAnsi(page: Page, theme?: "light" | "dark") {
+async function openAnsi(
+  page: Page,
+  theme?: "light" | "dark",
+  typography?: TerminalTypography,
+) {
   await seedWorkbenchFixture(page, {
     sidebarCollapsed: true,
     language: "en",
     theme,
+    sharedSettings: typography
+      ? {
+          terminal: {
+            ...(defaults.settings as SharedSettings).terminal,
+            typography,
+          },
+        }
+      : {},
   });
   await page.goto("./#/");
   await page.getByRole("button", { name: "Open Virtual serial" }).click();
@@ -358,5 +376,74 @@ for (const theme of ["light", "dark"] as const) {
     expect(content).toContain("LINK");
     expect(content).not.toContain("https://example.invalid/private");
     expect(content.endsWith("\x1b[0m")).toBe(true);
+  });
+}
+
+for (const ligatures of [false, true]) {
+  test(`ANSI maintains cell selection with programming ligatures ${ligatures ? "on" : "off"}`, async ({
+    page,
+  }) => {
+    const fontSource = readFileSync(
+      new URL("./fixtures/ansi-ligature.ttf", import.meta.url),
+      "base64",
+    );
+    await page.addInitScript((source) => {
+      const font = new FontFace(
+        "SWB Ligature Fixture",
+        `url(data:font/ttf;base64,${source})`,
+      );
+      document.fonts.add(font);
+      void font.load();
+    }, fontSource);
+    const ansi = await openAnsi(page, "light", {
+      fontFamily: '"SWB Ligature Fixture", monospace',
+      fontSize: 20,
+      lineHeightPercent: 175,
+      ligatures,
+    });
+    await page.evaluate(() =>
+      document.fonts.load('20px "SWB Ligature Fixture"'),
+    );
+    await ansi.feed("A=>B\r\nW");
+    const first = ansi.rows.locator(":scope > div").first();
+    await expect(first).toHaveText("A=>B");
+    await expect(ansi.viewer).toHaveCSS(
+      "font-variant-ligatures",
+      ligatures ? "normal" : "none",
+    );
+    // The fixture font gives two ordinary cells 1000 units and the calt glyph 800.
+    const glyphWidth = await first.evaluate((row) => {
+      const sample = document.createElement("span");
+      const style = getComputedStyle(row);
+      sample.style.fontFamily = style.fontFamily;
+      sample.style.fontSize = style.fontSize;
+      sample.style.fontFeatureSettings = style.fontFeatureSettings;
+      sample.style.fontVariantLigatures = style.fontVariantLigatures;
+      sample.style.position = "absolute";
+      sample.textContent = "=>";
+      document.body.append(sample);
+      const width = sample.getBoundingClientRect().width;
+      sample.remove();
+      return width;
+    });
+    expect(glyphWidth).toBe(ligatures ? 16 : 20);
+    if (ligatures)
+      await expect(first.getByText("=>", { exact: true })).toBeVisible();
+
+    await page.setViewportSize({ width: 1100, height: 750 });
+    const box = await first.boundingBox();
+    if (!box) throw new Error("Missing first ANSI row");
+    const cellWidth = 10;
+    const y = box.y + box.height / 2;
+    await page.mouse.move(box.x + 2.2 * cellWidth, y);
+    await page.mouse.down();
+    await page.mouse.move(box.x + 2.8 * cellWidth, y, { steps: 3 });
+    await page.mouse.up();
+    const copied = await ansi.terminal.evaluate((terminal) => {
+      const clipboardData = new DataTransfer();
+      terminal.dispatchEvent(new ClipboardEvent("copy", { clipboardData }));
+      return clipboardData.getData("text/plain");
+    });
+    expect(copied).toBe(">");
   });
 }

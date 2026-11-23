@@ -48,6 +48,13 @@ import { useAnsiPaste } from "./use-ansi-paste";
 
 const WRITE_BATCH_BYTES = 64 * 1024;
 
+function joinOperatorRuns(text: string): [number, number][] {
+  return Array.from(text.matchAll(/[!#%&*+./:;<=>?^|~-]{2,}/g), (match) => [
+    match.index,
+    match.index + match[0].length,
+  ]);
+}
+
 type Projection = {
   terminal: Terminal;
   fit: FitAddon;
@@ -61,6 +68,7 @@ type Projection = {
   convertEol: boolean;
   scrollback: number;
   typography?: TerminalTypography;
+  ligatureJoiner?: number;
   disposeMouse?: () => void;
   disposeHistory?: () => void;
 };
@@ -73,6 +81,7 @@ function project(
   scrollback: number,
 ): Projection {
   const terminal = new Terminal({
+    allowProposedApi: true,
     disableStdin: true,
     macOptionIsMeta: true,
     macOptionClickForcesSelection: true,
@@ -420,6 +429,17 @@ export default function AnsiScreen({
       ).fontFamily;
       screen.terminal.options.fontSize = typography.fontSize;
       screen.terminal.options.lineHeight = typography.lineHeightPercent / 100;
+      screen.terminal.element?.style.setProperty(
+        "font-feature-settings",
+        typography.ligatures ? '"calt" on' : "",
+      );
+      if (typography.ligatures && screen.ligatureJoiner === undefined) {
+        screen.ligatureJoiner =
+          screen.terminal.registerCharacterJoiner(joinOperatorRuns);
+      } else if (!typography.ligatures && screen.ligatureJoiner !== undefined) {
+        screen.terminal.deregisterCharacterJoiner(screen.ligatureJoiner);
+        screen.ligatureJoiner = undefined;
+      }
       screen.fit.fit();
     }
     screen.terminal.options.theme = palette;
