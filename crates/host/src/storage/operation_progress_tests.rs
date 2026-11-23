@@ -8,7 +8,7 @@ fn progress_is_monotone_and_terminal_updates_preserve_original_evidence() {
     let store = Store::open(profile.path()).unwrap();
     let identity = store.begin_instance().unwrap();
     let actor = auth::actor("progress-owner");
-    let call: Call = serde_json::from_value(serde_json::json!({"protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,"actorId":actor.id(),"requestId":"33333333-3333-4333-8333-333333333333","requestContext":store.issue_context(&actor).unwrap().token,"actionId":"capture.start","target":{"hostId":identity.host_id,"kind":"file","id":"target"},"params":{},"revealTarget":{"pageId":"workbench"},"executionMode":"independent"})).unwrap();
+    let call: Call = serde_json::from_value(serde_json::json!({"protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,"actorId":actor.id(),"requestId":"33333333-3333-4333-8333-333333333333","requestContext":store.issue_context(&actor).unwrap().token,"actionId":"capture.start","target":{"hostId":identity.host_id,"kind":"file","id":"target"},"params":{},"revealTarget":{"pageId":"workbench"},"executionMode":"independent"})).unwrap();
     let Acceptance::New(operation) = store
         .accept(&actor, &call, &canonical_digest(&call).unwrap())
         .unwrap()

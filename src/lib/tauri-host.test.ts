@@ -1,4 +1,4 @@
-﻿import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 import {
   hostAttachment,
   hostRequest,
@@ -208,7 +208,7 @@ describe("Host native facade", () => {
     };
     bridge.hostRequest.mockResolvedValue({ status: "ok", data: reply });
     const query: Query = {
-      protocolVersion: "0.1",
+      protocolVersion: "1.0",
       hostId: "host",
       instanceEpoch: "1",
       actorId: "actor",

@@ -51,7 +51,7 @@ impl Fixture {
     fn running(&self) -> Operation {
         let identity = self.store.identity().unwrap();
         let call: Call = serde_json::from_value(serde_json::json!({
-            "protocolVersion":"0.1", "hostId":identity.host_id, "instanceEpoch":identity.instance_epoch,
+            "protocolVersion":"1.0", "hostId":identity.host_id, "instanceEpoch":identity.instance_epoch,
             "actorId":self.actor.id(), "requestId":uuid::Uuid::new_v4().to_string(),
             "requestContext":self.store.issue_context(&self.actor).unwrap().token,
             "actionId":"transfer.file", "executionMode":"independent",

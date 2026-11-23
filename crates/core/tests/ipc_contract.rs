@@ -2,16 +2,22 @@ use serde::{Serialize, de::DeserializeOwned};
 use serde_json::{Value, json};
 use serial_workbench_core::*;
 
+#[test]
+fn advertised_protocol_matches_the_serialized_wire_version() {
+    let current = ProtocolVersion::CURRENT;
+    assert_eq!(serde_json::to_value(current).unwrap(), current.as_wire());
+}
+
 fn bodies() -> Vec<Value> {
     let cursor = json!({"hostId":"host","instanceEpoch":"7","scopeId":"scope","position":"1"});
     vec![
-        json!({"type":"clientHello","supportedProtocolVersions":["0.1"],"clientNonce":"nonce"}),
-        json!({"type":"hostHello","protocolVersion":"0.1","hostId":"host","instanceEpoch":"9007199254740993","serverNonce":"nonce","proof":"proof"}),
+        json!({"type":"clientHello","supportedProtocolVersions":["1.0"],"clientNonce":"nonce"}),
+        json!({"type":"hostHello","protocolVersion":"1.0","hostId":"host","instanceEpoch":"9007199254740993","serverNonce":"nonce","proof":"proof"}),
         json!({"type":"authenticate","clientId":"client"}),
         json!({"type":"authenticated","rawAttachToken":"token"}),
         json!({"type":"rawAttach","token":"token"}),
         json!({"type":"rawAttached"}),
-        json!({"type":"request","request":{"method":"host.attach","params":{"supportedProtocolVersions":["0.1"],"clientKind":"cli","clientId":"client"}}}),
+        json!({"type":"request","request":{"method":"host.attach","params":{"supportedProtocolVersions":["1.0"],"clientKind":"cli","clientId":"client"}}}),
         json!({"type":"reply","reply":{"ok":true,"result":{"closed":true}}}),
         json!({"type":"error","error":{"code":"NOT_FOUND","message":"Missing","retryable":false}}),
         json!({"type":"rawBatch","batch":{"subscriptionId":"subscription","cursor":cursor,"previousCursor":cursor,"items":[{"kind":"reader_gap","gap":{"hostId":"host","instanceEpoch":"7","sessionId":"session","sessionEpoch":"2","reason":"reader_overflow","missingEventRange":{"start":"1","end":"2"},"missingByteRanges":[]}}]}}),
@@ -66,7 +72,7 @@ fn all_message_shapes_and_channels_roundtrip() {
         }
     }
     for body in [
-        json!({"type":"clientHello","supportedProtocolVersions":["future","0.1"],"clientNonce":"nonce","expectedHostId":"host"}),
+        json!({"type":"clientHello","supportedProtocolVersions":["future","1.0"],"clientNonce":"nonce","expectedHostId":"host"}),
         json!({"type":"authenticate","clientId":"client","credential":"credential"}),
         json!({"type":"authenticated","credential":"credential","rawAttachToken":"token"}),
         json!({"type":"reply","reply":{"ok":false,"error":{"code":"DENIED","message":"Denied","retryable":false}}}),

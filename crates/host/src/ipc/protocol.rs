@@ -7,15 +7,15 @@ use serial_workbench_core::*;
 use serial_workbench_ipc::frame::MAX_FRAME_BYTES;
 
 pub(super) fn negotiate_protocol(peer_versions: &[String]) -> HostResult<ProtocolVersion> {
-    const CURRENT: &str = "0.1";
-    if peer_versions.iter().any(|version| version == CURRENT) {
-        return Ok(ProtocolVersion::V0_1);
+    let current = ProtocolVersion::CURRENT.as_wire();
+    if peer_versions.iter().any(|version| version == current) {
+        return Ok(ProtocolVersion::CURRENT);
     }
     let mut error = HostError::new(
         "PROTOCOL_UNSUPPORTED",
-        format!("Host protocol {CURRENT} is required"),
+        format!("Host protocol {current} is required"),
     );
-    let target = JsonValue::String(CURRENT.into());
+    let target = JsonValue::String(current.into());
     error.details = Some(Box::new(
         [
             (

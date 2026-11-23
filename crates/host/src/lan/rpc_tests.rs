@@ -147,7 +147,7 @@ async fn paired_host_uses_owner_session_for_tx_and_raw_and_unpair_closes_only_la
     let unsupported = client
         .control()
         .request(RpcRequest::Attach(AttachParams {
-            supported_protocol_versions: vec!["future".into()],
+            supported_protocol_versions: vec!["0.1".into()],
             client_kind: ClientKind::Peer,
             client_id: attached.client_id.clone(),
             expected_host_id: Some(owner_id.host_id.clone()),
@@ -161,11 +161,11 @@ async fn paired_host_uses_owner_session_for_tx_and_raw_and_unpair_closes_only_la
     assert_eq!(
         serde_json::to_value(&error.details).unwrap(),
         json!({
-            "supportedProtocolVersions": ["0.1"],
-            "upgradeTarget": "0.1",
+            "supportedProtocolVersions": ["1.0"],
+            "upgradeTarget": "1.0",
         })
     );
-    assert_eq!(attached.protocol_version, ProtocolVersion::V0_1);
+    assert_eq!(attached.protocol_version, ProtocolVersion::V1_0);
     let remote = client
         .control()
         .request(RpcRequest::LanAccess(LanAccessParams::Status {}))

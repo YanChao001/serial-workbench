@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import {
+  copyFileSync,
   createReadStream,
   mkdirSync,
   readFileSync,
@@ -14,6 +15,7 @@ import { join, resolve } from "node:path";
 import { setTimeout as delay } from "node:timers/promises";
 import { chromium } from "@playwright/test";
 import { spawnOwned, stopOwned } from "../e2e/process.mjs";
+import { showUpgradeWorkbench } from "../e2e/update-workbench-navigation.ts";
 import { fileSha256 } from "./artifact-lib.mjs";
 import { bindWindowsUpdaterSignature } from "./hosting/windows-updater-signature.mjs";
 
@@ -27,6 +29,10 @@ const fixture = fixtureValue("DIRECTORY");
 const evidence = fixtureValue("EVIDENCE");
 const oldVersion = fixtureValue("OLD_VERSION");
 const newVersion = fixtureValue("NEW_VERSION");
+const oldCommit = fixtureValue("OLD_COMMIT");
+const newCommit = fixtureValue("NEW_COMMIT");
+const oldProtocol = fixtureValue("OLD_PROTOCOL");
+const newProtocol = fixtureValue("NEW_PROTOCOL");
 const oldSetup = fixtureValue("OLD_INSTALLER");
 const newSetup = fixtureValue("NEW_INSTALLER");
 const password = fixtureValue("PASSWORD");
@@ -53,6 +59,33 @@ function run(file, args, options = {}) {
   });
   assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   return result.stdout.trim();
+}
+
+function verifyRetiredClient(executable) {
+  const result = spawnSync(
+    executable,
+    ["catalog", "--profile", profile, "--json"],
+    {
+      env: testEnv,
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 20_000,
+    },
+  );
+  assert.ifError(result.error);
+  assert.ok(result.status !== null && result.status !== 0);
+  const reply = JSON.parse(result.stdout);
+  assert.equal(reply.ok, false);
+  assert.equal(reply.error.code, "PROTOCOL_UNSUPPORTED");
+  assert.deepEqual(reply.error.details, {
+    supportedProtocolVersions: [newProtocol],
+    upgradeTarget: newProtocol,
+  });
+  return {
+    sha256: fileSha256(executable),
+    code: reply.error.code,
+    ...reply.error.details,
+  };
 }
 
 function powerShell(script, env = {}) {
@@ -95,7 +128,32 @@ function discovery() {
   );
 }
 
+async function desktopAttachment(page, record, protocol) {
+  return waitFor(
+    async () => {
+      const attachment = await page.evaluate(async () => {
+        const { attachment } =
+          await globalThis.__TAURI_INTERNALS__.invoke("host_attachment");
+        return {
+          hostId: attachment.hostId,
+          instanceEpoch: attachment.instanceEpoch,
+          protocolVersion: attachment.protocolVersion,
+        };
+      });
+      assert.deepEqual(attachment, {
+        hostId: record.hostId,
+        instanceEpoch: record.instanceEpoch,
+        protocolVersion: protocol,
+      });
+      return attachment;
+    },
+    20_000,
+    "the desktop attachment for Host protocol " + protocol,
+  );
+}
+
 let observedDesktopVersion;
+let observedOldClientRejection;
 
 async function openDesktop(expectedVersion) {
   return waitFor(
@@ -239,6 +297,14 @@ try {
   assert.equal(original.InstallLocation, `"${install}"`);
   const originalDesktop = fileSha256(executable);
   assert.notEqual(originalDesktop, candidateDesktop);
+  let retiredCli;
+  if (oldProtocol !== newProtocol) {
+    assert.notEqual(oldCommit, newCommit);
+    const retired = join(fixture, "retired-cli");
+    mkdirSync(retired);
+    retiredCli = join(retired, "serial-workbench-cli.exe");
+    copyFileSync(join(install, "serial-workbench-cli.exe"), retiredCli);
+  }
   const deployment = join(testEnv.APPDATA, config.identifier);
   mkdirSync(deployment, { recursive: true });
   writeFileSync(
@@ -286,10 +352,17 @@ try {
   console.log("previous desktop started");
   first = await openDesktop(oldVersion);
   previous = await waitFor(discovery, 30_000, "the old Host identity");
+  assert.equal(previous.protocolVersion, "0.1", "previous discovery format");
   assert.ok(processIds("serial-workbench-host").includes(previous.pid));
+  const previousAttachment = await desktopAttachment(
+    first.page,
+    previous,
+    oldProtocol,
+  );
   await first.page.evaluate(() => {
     location.hash = "/updates";
   });
+  if (retiredCli) run(retiredCli, ["catalog", "--profile", profile, "--json"]);
   const check = /^(Check for updates|检查更新)$/;
   const installLabel = /^(Download and install|下载安装)$/;
   await first.page
@@ -331,12 +404,6 @@ try {
   assert.equal(fileSha256(executable), candidateDesktop);
   second = await openDesktop(newVersion);
   console.log("replacement desktop native version verified");
-  await second.page.evaluate(() => {
-    location.hash = "/";
-  });
-  await second.page
-    .getByTestId("serial-workbench-shell")
-    .waitFor({ timeout: 20_000 });
   const after = await waitFor(
     () => {
       const value = discovery();
@@ -348,7 +415,20 @@ try {
     "the new Host instance",
   );
   assert.ok(processIds("serial-workbench-host").includes(after.pid));
+  assert.equal(after.protocolVersion, "0.1", "replacement discovery format");
+  const nextAttachment = await desktopAttachment(
+    second.page,
+    after,
+    newProtocol,
+  );
+  const oldClientRejection = retiredCli
+    ? verifyRetiredClient(retiredCli)
+    : undefined;
+  observedOldClientRejection = oldClientRejection;
+  assert.equal(discovery().pid, after.pid);
   console.log("replacement Host instance verified");
+  await showUpgradeWorkbench(second.page);
+  console.log("replacement Workbench visible through navigation");
   const updated = registration();
   assert.equal(updated.DisplayVersion, newVersion);
   for (const key of [
@@ -378,6 +458,13 @@ try {
       {
         oldVersion,
         newVersion,
+        oldCommit,
+        newCommit,
+        oldProtocol: previousAttachment.protocolVersion,
+        newProtocol: nextAttachment.protocolVersion,
+        previousDiscoveryFormat: previous.protocolVersion,
+        replacementDiscoveryFormat: after.protocolVersion,
+        oldClientRejection,
         originalDesktop,
         candidateDesktop,
         oldPid: previousDesktopPid,
@@ -387,6 +474,7 @@ try {
         suiteDigest: signed.release.digest,
         manifestRequests,
         installerRequests,
+        workbenchVisible: true,
         registrationPreserved: true,
         profilePreserved: true,
       },
@@ -419,6 +507,34 @@ try {
       .first()
       .getAttribute("title", { timeout: 1500 })
       .catch(() => null);
+    const replacementView = await second?.page
+      .evaluate(() => {
+        const shell = document.querySelector(
+          '[data-testid="serial-workbench-shell"]',
+        );
+        const ancestors = [];
+        for (
+          let element = shell;
+          element && ancestors.length < 5;
+          element = element.parentElement
+        ) {
+          const rect = element.getBoundingClientRect();
+          ancestors.push({
+            tag: element.tagName,
+            layout: element.getAttribute("data-content-layout"),
+            hidden: element.getAttribute("aria-hidden"),
+            display: getComputedStyle(element).display,
+            width: Math.round(rect.width),
+            height: Math.round(rect.height),
+          });
+        }
+        return {
+          route: location.hash.split("?")[0].slice(0, 120),
+          viewport: { width: innerWidth, height: innerHeight },
+          ancestors,
+        };
+      })
+      .catch(() => null);
     writeFileSync(
       join(evidence, "process-state.json"),
       JSON.stringify(
@@ -431,6 +547,8 @@ try {
           desktopPids: processIds(),
           hostPids: processIds("serial-workbench-host"),
           observedDesktopVersion,
+          observedOldClientRejection,
+          replacementView,
           previousHost: previous && {
             pid: previous.pid,
             instanceEpoch: previous.instanceEpoch,

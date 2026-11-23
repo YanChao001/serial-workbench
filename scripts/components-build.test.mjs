@@ -1,4 +1,4 @@
-﻿import assert from "node:assert/strict";
+import assert from "node:assert/strict";
 import {
   mkdtempSync,
   mkdirSync,
@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import * as components from "./components-build.mjs";
 import { buildApplication } from "./build-lib.mjs";
 
@@ -185,7 +186,7 @@ test("components build first with one target and manifest hashes real bytes", as
   assert.equal(calls.length, 1);
   assert.ok(calls[0][1].includes("--target"));
   assert.equal(calls[0][1][calls[0][1].indexOf("--target") + 1], plan.target);
-  assert.equal(result.manifest.protocol, "0.1");
+  assert.equal(result.manifest.protocol, hostCatalog.protocolVersion);
   assert.equal(result.manifest.components.length, 3);
   assert.equal(
     result.manifest.components[0].sha256,

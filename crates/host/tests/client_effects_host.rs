@@ -32,7 +32,7 @@ fn client_target(h: &Harness) -> Target {
 
 fn query(h: &Harness, action: &str, target: Target, params: serde_json::Value) -> Query {
     Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: h.host_id.clone(),
         instance_epoch: h.store.identity().unwrap().instance_epoch,
         actor_id: h.actor.id().clone(),
@@ -283,7 +283,7 @@ impl ComponentFixture {
         let request_id = next_request_id();
         let wire = serde_json::to_value(action).unwrap();
         let call = Call {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: target.host_id.clone(),
             instance_epoch: self.store.identity().unwrap().instance_epoch,
             actor_id: self.ordinary.actor.id().clone(),
@@ -969,7 +969,7 @@ fn action_call(
 ) -> Call {
     let value = serde_json::to_value(action).unwrap();
     Call {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: target.host_id.clone(),
         instance_epoch: f.store.identity().unwrap().instance_epoch,
         actor_id: f.ordinary.actor.id().clone(),

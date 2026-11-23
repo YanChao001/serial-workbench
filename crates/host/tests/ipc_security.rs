@@ -35,7 +35,7 @@ fn request_id() -> RequestId {
 fn query(client: &HostClient) -> RpcRequest {
     let attach = client.attachment();
     RpcRequest::StateSnapshot(Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: attach.host_id.clone(),
         instance_epoch: attach.instance_epoch,
         actor_id: attach.actor_id.clone(),
@@ -125,7 +125,7 @@ async fn incompatible_protocol_returns_recovery_details_before_admission() {
         request_id: request_id(),
         channel: IpcChannel::Control,
         body: IpcMessage::ClientHello {
-            supported_protocol_versions: vec!["future".into()],
+            supported_protocol_versions: vec!["0.1".into()],
             client_nonce: random_token(),
             expected_host_id: Some(discovery.host_id.clone()),
         },
@@ -177,8 +177,8 @@ async fn incompatible_protocol_returns_recovery_details_before_admission() {
         panic!("An incompatible attach must not issue a request context");
     };
     let expected = serde_json::json!({
-        "supportedProtocolVersions": ["0.1"],
-        "upgradeTarget": "0.1",
+        "supportedProtocolVersions": ["1.0"],
+        "upgradeTarget": "1.0",
     });
     for error in [&handshake_error, &attach_error] {
         assert_eq!(error.code, "PROTOCOL_UNSUPPORTED");
@@ -508,7 +508,7 @@ async fn fake_endpoint_cannot_obtain_client_credential_by_echoing_host_id() {
                 request_id: hello.request_id,
                 channel: IpcChannel::Control,
                 body: IpcMessage::HostHello {
-                    protocol_version: ProtocolVersion::V0_1,
+                    protocol_version: ProtocolVersion::V1_0,
                     host_id: fake_host_id,
                     instance_epoch: epoch,
                     server_nonce: random_token(),

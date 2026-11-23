@@ -99,7 +99,7 @@ const response = await fetch(url, {
     request: {
       method: "host.attach",
       params: {
-        supportedProtocolVersions: ["0.1"],
+        supportedProtocolVersions: ["1.0"],
         clientKind: "cli",
         clientId,
       },

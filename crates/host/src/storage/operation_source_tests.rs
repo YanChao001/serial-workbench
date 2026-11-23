@@ -40,7 +40,7 @@ impl Fixture {
     fn call(&self) -> Call {
         let identity = self.store.identity().unwrap();
         serde_json::from_value(serde_json::json!({
-            "protocolVersion":"0.1", "hostId":identity.host_id, "instanceEpoch":identity.instance_epoch,
+            "protocolVersion":"1.0", "hostId":identity.host_id, "instanceEpoch":identity.instance_epoch,
             "actorId":self.actor.id(), "requestId":uuid::Uuid::new_v4().to_string(),
             "requestContext":self.store.issue_context(&self.actor).unwrap().token,
             "actionId":"capture.recover", "target":self.source("output"), "params":{},

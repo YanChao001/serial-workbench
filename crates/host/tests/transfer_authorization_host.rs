@@ -13,7 +13,7 @@ fn id(value: &str) -> Id {
 fn call(client: &HostClient, target: &Target, action: &str, params: serde_json::Value) -> Call {
     let attached = client.attachment();
     Call {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: attached.host_id.clone(),
         instance_epoch: attached.instance_epoch,
         actor_id: attached.actor_id.clone(),

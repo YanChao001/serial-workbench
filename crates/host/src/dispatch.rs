@@ -833,7 +833,7 @@ impl Host {
         let (identity, stamp) =
             blocking(move || Ok((store.identity()?, auth.capture_grants(&reader)?))).await?;
         let query = Query {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: identity.host_id.clone(),
             instance_epoch: identity.instance_epoch,
             actor_id: actor.id().clone(),
@@ -3478,7 +3478,7 @@ mod tests {
             session_id: None,
             session_epoch: None,
         };
-        let call=Call {protocol_version:ProtocolVersion::V0_1,host_id:identity.host_id,instance_epoch:identity.instance_epoch,actor_id:actor.id().clone(),request_id:RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),request_context:store.issue_context(&actor).unwrap().token,action_id:id("auth.authorize"),target:target.clone(),params:object(serde_json::json!({"clientId":"recipient","permissions":["content.read"],"targets":[target]})).unwrap(),reveal_target:BuiltinAction::Authorize.spec().reveal_target.clone(),expected_revision:None,lease_id:None,execution_mode:None};
+        let call=Call {protocol_version:ProtocolVersion::V1_0,host_id:identity.host_id,instance_epoch:identity.instance_epoch,actor_id:actor.id().clone(),request_id:RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),request_context:store.issue_context(&actor).unwrap().token,action_id:id("auth.authorize"),target:target.clone(),params:object(serde_json::json!({"clientId":"recipient","permissions":["content.read"],"targets":[target]})).unwrap(),reveal_target:BuiltinAction::Authorize.spec().reveal_target.clone(),expected_revision:None,lease_id:None,execution_mode:None};
         let selector = OperationGetParams::ByRequest {
             actor_id: actor.id().clone(),
             request_id: call.request_id.clone(),

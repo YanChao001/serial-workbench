@@ -211,7 +211,7 @@ impl Host {
             let identity = host.inner.store.identity()?;
             let binding = host.inner.registry.runtime.resolve(&params.action_id)?;
             let mut query = Query {
-                protocol_version: ProtocolVersion::V0_1,
+                protocol_version: ProtocolVersion::V1_0,
                 host_id: identity.host_id,
                 instance_epoch: identity.instance_epoch,
                 actor_id: actor.id().clone(),

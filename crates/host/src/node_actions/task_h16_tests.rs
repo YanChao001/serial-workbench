@@ -140,7 +140,7 @@ async fn native_node_h16_parent_cancel_waits_for_actual_tx_and_preserves_unknown
     .await
     .unwrap();
     let third_call: ChildCall = serde_json::from_value(json!({
-        "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+        "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
         "actorId":fixture.h.actor.id(),"taskContext":task_context,
         "parentOperationId":accepted_parent.operation_id,"childKey":"3",
         "actionId":"session.tx","target":second_target,

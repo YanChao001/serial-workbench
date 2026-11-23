@@ -514,9 +514,12 @@ impl ConnectionState {
                 return Err(host_mismatch());
             }
             let server_nonce = random_token();
-            let proof =
-                self.pin
-                    .proof(self.identity.instance_epoch, &client_nonce, &server_nonce)?;
+            let proof = self.pin.proof(
+                protocol_version,
+                self.identity.instance_epoch,
+                &client_nonce,
+                &server_nonce,
+            )?;
             write_frame(
                 stream,
                 &WireFrame {
@@ -1436,7 +1439,7 @@ mod tests {
             .invoke(
                 &f.actor,
                 Call {
-                    protocol_version: ProtocolVersion::V0_1,
+                    protocol_version: ProtocolVersion::V1_0,
                     host_id: identity.host_id.clone(),
                     instance_epoch: identity.instance_epoch,
                     actor_id: f.actor.id().clone(),
@@ -1511,7 +1514,7 @@ mod tests {
                     .query(
                         &f.operator,
                         Query {
-                            protocol_version: ProtocolVersion::V0_1,
+                            protocol_version: ProtocolVersion::V1_0,
                             host_id: identity.host_id.clone(),
                             instance_epoch: identity.instance_epoch,
                             actor_id: f.operator.id().clone(),

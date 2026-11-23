@@ -40,6 +40,7 @@ export {
   validateNodeSourceApproveParams,
 } from "./generated/validators.mjs";
 export {
+  HOST_PROTOCOL_VERSION,
   NODE_PACKAGE_SIGNATURE_PREFIX,
   TX_MAX_BYTES,
 } from "./generated/types.ts";

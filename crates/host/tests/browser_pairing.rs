@@ -431,7 +431,7 @@ async fn browser_takeover_requires_live_local_approval_for_the_named_actor_and_p
         &mut browser,
         IpcChannel::Control,
         request(RpcRequest::Attach(AttachParams {
-            supported_protocol_versions: vec!["0.1".into()],
+            supported_protocol_versions: vec!["1.0".into()],
             client_kind: ClientKind::Browser,
             client_id: entry.client_id.clone(),
             expected_host_id: Some(target.host_id.clone()),
@@ -641,7 +641,7 @@ async fn explicit_browser_pairing_attaches_to_the_live_host_and_owns_its_raw_con
         &mut control,
         IpcChannel::Control,
         request(RpcRequest::Attach(AttachParams {
-            supported_protocol_versions: vec!["future".into()],
+            supported_protocol_versions: vec!["0.1".into()],
             client_kind: ClientKind::Browser,
             client_id: client_id.clone(),
             expected_host_id: Some(host_id.clone()),
@@ -655,8 +655,8 @@ async fn explicit_browser_pairing_attaches_to_the_live_host_and_owns_its_raw_con
     assert_eq!(
         serde_json::to_value(&error.details).unwrap(),
         json!({
-            "supportedProtocolVersions": ["0.1"],
-            "upgradeTarget": "0.1",
+            "supportedProtocolVersions": ["1.0"],
+            "upgradeTarget": "1.0",
         })
     );
     let reply = exchange(
@@ -664,7 +664,7 @@ async fn explicit_browser_pairing_attaches_to_the_live_host_and_owns_its_raw_con
         IpcChannel::Control,
         IpcMessage::Request {
             request: Box::new(RpcRequest::Attach(AttachParams {
-                supported_protocol_versions: vec!["0.1".into()],
+                supported_protocol_versions: vec!["1.0".into()],
                 client_kind: ClientKind::Browser,
                 client_id: client_id.clone(),
                 expected_host_id: Some(host_id.clone()),
@@ -683,7 +683,7 @@ async fn explicit_browser_pairing_attaches_to_the_live_host_and_owns_its_raw_con
     };
     assert_eq!(attached.client_id, client_id);
     assert_eq!(attached.host_id, host_id);
-    assert_eq!(attached.protocol_version, ProtocolVersion::V0_1);
+    assert_eq!(attached.protocol_version, ProtocolVersion::V1_0);
 
     for rejected in [
         pairing_frame(&entry, &random_token()),
@@ -875,7 +875,7 @@ async fn local_user_control_revokes_browser_access_without_closing_the_serial_se
         IpcChannel::Control,
         IpcMessage::Request {
             request: Box::new(RpcRequest::Attach(AttachParams {
-                supported_protocol_versions: vec!["0.1".into()],
+                supported_protocol_versions: vec!["1.0".into()],
                 client_kind: ClientKind::Browser,
                 client_id: entry.client_id,
                 expected_host_id: Some(device.host_id.clone()),

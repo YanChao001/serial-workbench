@@ -1,6 +1,8 @@
 param(
   [Parameter(Mandatory)]
-  [string]$Target
+  [string]$Target,
+  [ValidatePattern('^[0-9a-f]{40}$')]
+  [string]$PreviousCommit
 )
 
 $ErrorActionPreference = 'Stop'
@@ -103,23 +105,74 @@ function Find-NsisPackage([string]$Version) {
     return $bundles[0].FullName
 }
 
+function Set-UpdateFixtureConfig([string]$Path, [string]$PublicKey) {
+    $config = Get-Content -Raw -LiteralPath $Path | ConvertFrom-Json
+    $config.updates.endpoint = 'https://localhost/latest.json'
+    $config.updates.publicKey = $PublicKey
+    [IO.File]::WriteAllText($Path, ($config | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+}
+
+function Read-FixtureProtocol([string]$Root) {
+    $path = Join-Path $Root 'packages/contracts/src/generated/schemas.json'
+    return (Get-Content -Raw -LiteralPath $path | ConvertFrom-Json).protocolVersion
+}
+
+$candidateRoot = (Get-Location).Path
+$candidateCommit = git rev-parse HEAD
+if ($LASTEXITCODE -ne 0 -or $candidateCommit -notmatch '^[0-9a-f]{40}$') {
+    throw 'Cannot identify the candidate source.'
+}
+$oldRoot = $candidateRoot
+if ($PreviousCommit) {
+    git fetch --no-tags --depth=1 origin $PreviousCommit
+    if ($LASTEXITCODE -ne 0) { throw 'Could not fetch the pinned previous source.' }
+    $oldRoot = Join-Path $fixture 'previous-source'
+    git worktree add --quiet --detach $oldRoot $PreviousCommit
+    if ($LASTEXITCODE -ne 0 -or (git -C $oldRoot rev-parse HEAD) -ne $PreviousCommit) {
+        throw 'Could not check out the pinned previous source.'
+    }
+}
 $configPath = (Resolve-Path -LiteralPath 'app.config.json').Path
 $originalConfig = [IO.File]::ReadAllBytes($configPath)
-$originalVersion = (Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json).version
+$candidateVersion = (Get-Content -Raw -LiteralPath 'package.json' | ConvertFrom-Json).version
+$originalVersion = (Get-Content -Raw -LiteralPath (Join-Path $oldRoot 'package.json') | ConvertFrom-Json).version
+$oldVersion = [version](($originalVersion -split '[-+]')[0])
+$newVersion = [version](($candidateVersion -split '[-+]')[0])
 $env:SWB_TEST_UPDATE_OLD_VERSION = $originalVersion
-$version = [version](($originalVersion -split '[-+]')[0])
-$env:SWB_TEST_UPDATE_NEW_VERSION = '{0}.{1}.{2}' -f $version.Major,$version.Minor,($version.Build + 1)
+$env:SWB_TEST_UPDATE_NEW_VERSION = if ($newVersion -gt $oldVersion) {
+    $candidateVersion
+} else {
+    '{0}.{1}.{2}' -f $oldVersion.Major,$oldVersion.Minor,($oldVersion.Build + 1)
+}
+$env:SWB_TEST_UPDATE_OLD_COMMIT = if ($PreviousCommit) { $PreviousCommit } else { $candidateCommit }
+$env:SWB_TEST_UPDATE_NEW_COMMIT = $candidateCommit
+$env:SWB_TEST_UPDATE_OLD_PROTOCOL = Read-FixtureProtocol $oldRoot
+$env:SWB_TEST_UPDATE_NEW_PROTOCOL = Read-FixtureProtocol $candidateRoot
+if ($PreviousCommit -and ($env:SWB_TEST_UPDATE_OLD_PROTOCOL -ne '0.1' -or $env:SWB_TEST_UPDATE_NEW_PROTOCOL -ne '1.0')) {
+    throw 'The cross-source scenario requires the 0.1 to 1.0 wire transition.'
+}
 try {
     Invoke-CheckedPnpm @('exec','tauri','signer','generate','--ci','--write-keys',$env:SWB_TEST_UPDATE_SIGNING_KEY,'--password',$env:SWB_TEST_UPDATE_PASSWORD) | Out-Null
-    $config = Get-Content -Raw -LiteralPath $configPath | ConvertFrom-Json
-    $config.updates.endpoint = 'https://localhost/latest.json'
-    $config.updates.publicKey = [IO.File]::ReadAllText($env:SWB_TEST_UPDATE_SIGNING_KEY + '.pub').Trim()
-    [IO.File]::WriteAllText($configPath, ($config | ConvertTo-Json -Depth 20), [Text.UTF8Encoding]::new($false))
+    $publicKey = [IO.File]::ReadAllText($env:SWB_TEST_UPDATE_SIGNING_KEY + '.pub').Trim()
+    Set-UpdateFixtureConfig $configPath $publicKey
 
     $build = @('app:build','--target',$Target,'--bundles','nsis','--optimize','speed','--ci','--no-sign')
-    Invoke-CheckedPnpm $build
-    $env:SWB_TEST_UPDATE_OLD_INSTALLER = Find-NsisPackage $originalVersion
-    Invoke-CheckedPnpm @('version:set',$env:SWB_TEST_UPDATE_NEW_VERSION)
+    Push-Location -LiteralPath $oldRoot
+    try {
+        if ($PreviousCommit) {
+            Invoke-CheckedPnpm @('install','--frozen-lockfile')
+            Set-UpdateFixtureConfig (Join-Path $oldRoot 'app.config.json') $publicKey
+        }
+        Write-Phase 'building the previous suite'
+        Invoke-CheckedPnpm $build
+        $env:SWB_TEST_UPDATE_OLD_INSTALLER = Find-NsisPackage $originalVersion
+    } finally {
+        Pop-Location
+    }
+    if ($candidateVersion -ne $env:SWB_TEST_UPDATE_NEW_VERSION) {
+        Invoke-CheckedPnpm @('version:set',$env:SWB_TEST_UPDATE_NEW_VERSION)
+    }
+    Write-Phase 'building the candidate suite'
     Invoke-CheckedPnpm $build
     $env:SWB_TEST_UPDATE_NEW_INSTALLER = Find-NsisPackage $env:SWB_TEST_UPDATE_NEW_VERSION
     cargo build --locked -p serial-workbench --release --features bindings --bin verify-updater --target $Target

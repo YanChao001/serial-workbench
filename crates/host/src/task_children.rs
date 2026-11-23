@@ -486,7 +486,7 @@ impl Host {
                                 let actor = caller.delegate(&prepare, None, Arc::default())?;
                                 let host_id = caller.operation.execution_host_id.clone();
                                 let query = Query {
-                                    protocol_version: ProtocolVersion::V0_1,
+                                    protocol_version: ProtocolVersion::V1_0,
                                     host_id: host_id.clone(),
                                     instance_epoch: caller.instance_epoch,
                                     actor_id: actor.id().clone(),

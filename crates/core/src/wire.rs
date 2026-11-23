@@ -5,9 +5,20 @@ use specta::Type;
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "snake_case")]
 pub enum ProtocolVersion {
-    #[serde(rename = "0.1")]
-    V0_1,
+    #[serde(rename = "1.0")]
+    V1_0,
 }
+
+impl ProtocolVersion {
+    pub const CURRENT: Self = Self::V1_0;
+
+    pub const fn as_wire(self) -> &'static str {
+        match self {
+            Self::V1_0 => "1.0",
+        }
+    }
+}
+
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type, Default)]
 #[serde(rename_all = "snake_case")]
 pub enum ExecutionMode {

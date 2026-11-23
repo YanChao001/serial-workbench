@@ -118,7 +118,7 @@ async function rpc(reply, allowPendingGrant = false) {
 
 function attach(entry) {
   return post(entry, "host.attach", {
-    supportedProtocolVersions: ["0.1"],
+    supportedProtocolVersions: ["1.0"],
     clientKind: "cli",
     clientId: entry.clientId,
   });

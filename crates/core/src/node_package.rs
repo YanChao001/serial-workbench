@@ -1,7 +1,7 @@
 //! Node 正式包的公共元数据；执行、来源信任和文件系统责任由 Host 持有。
 use crate::{
-    ActionKind, ActionSpec, Digest, ExecutionLocation, HostError, HostResult, Id, ProtocolVersion,
-    ResourceKind, SchemaObject, SchemaValue, U64,
+    ActionKind, ActionSpec, Digest, ExecutionLocation, HostError, HostResult, Id, ResourceKind,
+    SchemaObject, SchemaValue, U64,
 };
 use schemars::{JsonSchema, Schema, SchemaGenerator};
 use serde::{Deserialize, Deserializer, Serialize, de::DeserializeOwned};
@@ -151,6 +151,13 @@ pub enum NodePackageSchemaVersion {
     V0_1,
 }
 
+/// 清单保留既有 SDK 兼容标记，签名包的格式与外部 IPC 握手分别演进。
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+pub enum NodePackageHostProtocolVersion {
+    #[serde(rename = "0.1")]
+    V0_1,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct NodePackageManifest {
@@ -161,7 +168,7 @@ pub struct NodePackageManifest {
     pub description: String,
     pub license: String,
     pub notices: Vec<NodePackagePath>,
-    pub host_protocol_version: ProtocolVersion,
+    pub host_protocol_version: NodePackageHostProtocolVersion,
     pub runtime_ref: Id,
     pub main: NodePackagePath,
     #[serde(

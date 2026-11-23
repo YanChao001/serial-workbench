@@ -1,5 +1,6 @@
 import {
   ContractValidationError,
+  HOST_PROTOCOL_VERSION,
   parseWireFrame,
   type IpcMessage,
   type Query,
@@ -357,7 +358,7 @@ export async function createBrowserHostConnection(
         clientKind: "browser",
         clientId,
         expectedHostId,
-        supportedProtocolVersions: ["0.1"],
+        supportedProtocolVersions: [HOST_PROTOCOL_VERSION],
       },
     });
     if (!reply.ok) throw new HostRequestError(reply.error);

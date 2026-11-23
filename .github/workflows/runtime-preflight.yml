@@ -48,7 +48,7 @@ jobs:
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
           const suite = process.env.RUNTIME_SUITE;
-          if (!['all', 'host-ipc', 'macos-signature', 'windows-nsis-stage', 'windows-nsis-switch', 'windows-nsis-desktop-update', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (!['all', 'host-ipc', 'macos-signature', 'windows-nsis-stage', 'windows-nsis-switch', 'windows-nsis-desktop-update', 'windows-nsis-wire-v1', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
           if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
           if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
           if (suite.startsWith('windows-nsis-') && requested !== 'x86_64-pc-windows-msvc') throw new Error('The NSIS suite requires Windows x64');
@@ -67,7 +67,7 @@ jobs:
     name: 运行时预检（${{ matrix.target }}）
     needs: plan
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: ${{ (inputs.suite == 'windows-nsis-switch' || inputs.suite == 'windows-nsis-desktop-update') && 75 || (endsWith(inputs.suite, '-offline-installer') || inputs.suite == 'windows-nsis-stage') && 50 || 25 }}
+    timeout-minutes: ${{ (inputs.suite == 'windows-nsis-switch' || inputs.suite == 'windows-nsis-desktop-update' || inputs.suite == 'windows-nsis-wire-v1') && 75 || (endsWith(inputs.suite, '-offline-installer') || inputs.suite == 'windows-nsis-stage') && 50 || 25 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -154,6 +154,10 @@ jobs:
         if: inputs.suite == 'windows-nsis-desktop-update'
         shell: pwsh
         run: ./scripts/ci-windows-desktop-update.ps1 -Target $env:RUNTIME_TARGET
+      - name: 验证 Windows 套件从 0.1 协议升级到 1.0
+        if: inputs.suite == 'windows-nsis-wire-v1'
+        shell: pwsh
+        run: ./scripts/ci-windows-desktop-update.ps1 -Target $env:RUNTIME_TARGET -PreviousCommit ffff1fec81f7762ea20450d075ab1c373bf6f249
       - name: 验证 macOS DMG 实际离线安装与参考包
         if: inputs.suite == 'macos-offline-installer'
         run: bash scripts/ci-macos-offline-installer.sh

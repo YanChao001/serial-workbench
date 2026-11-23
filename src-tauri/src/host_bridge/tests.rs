@@ -540,7 +540,7 @@ async fn internal_generation_request_does_not_attach_or_call_after_window_is_gon
     let profile = directory.path().join("absent");
     let bridge = DesktopHostBridge::new(profile.clone());
     let request = RpcRequest::Attach(AttachParams {
-        supported_protocol_versions: vec!["0.1".into()],
+        supported_protocol_versions: vec!["1.0".into()],
         client_kind: ClientKind::Desktop,
         client_id: Id::try_from("desktop").unwrap(),
         expected_host_id: None,
@@ -1104,7 +1104,7 @@ async fn raw_subscribe_rejects_untrusted_window_before_connecting() {
         session_epoch: None,
     };
     let request = Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: target.host_id.clone(),
         instance_epoch: 1.into(),
         actor_id: Id::try_from("actor").unwrap(),
@@ -1910,7 +1910,7 @@ fn concurrent_host_terminals_use_normal_budget_then_one_emergency_slot() {
         session_epoch: None,
     };
     let query = Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: target.host_id.clone(),
         instance_epoch: 1.into(),
         actor_id: Id::try_from("actor").unwrap(),

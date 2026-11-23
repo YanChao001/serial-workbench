@@ -10,6 +10,6 @@
 | [Node 扩展](./node-extension-v0.md)       | 包与信任基础、后台/Web UI/监督的契约        |
 | [runtime 分发](./runtime-distribution.md) | 既定四目标来源/hash、布局与后续离线验收     |
 
-当前 v0 协议值为 0.1，精确匹配；应用、协议、目录和文件格式版本分别管理。破坏性变化同步协议值、生成物、调用者与向量，M3 参考场景通过后定义 v1 支持窗口和退役策略。数据格式演进保持未来格式拒写、原件和失败证据。
+Host v1 的初始支持窗口为 1.0，所有入口精确协商。0.1 开发线在 v1 启用时退役，旧客户端附着得到受支持协议和升级目标。Rust 的 `ProtocolVersion::CURRENT` 生成类型包的 `HOST_PROTOCOL_VERSION` 和 schema、目录的版本元数据，原生客户端与配对浏览器沿用同一值。应用、协议、目录和文件格式分别版本化。破坏性变化同步协议值、生成物、调用者与向量。后续退役必须在发行说明公布替代版本和整套升级步骤，相关候选通过相邻版本升级、拒绝旧连接和原 profile 数据恢复后才启用。数据格式演进保持未来格式拒写、原件和失败证据。
 
 接客户端时，先从 [Rust DTO](../../crates/core/src/) 或[生成类型](../../packages/contracts/src/generated/types.ts)确定信封，再用[内置目录](../../packages/contracts/src/generated/catalog.json)核对业务 ID、必填参数和领域结果；动态插件贡献及调用者实际可见项要向运行中的 Host 查询。契约还描述未来场景，不是已实现清单或通过记录。插件作者见 [Node SDK](../../packages/plugin-sdk/README.md)。

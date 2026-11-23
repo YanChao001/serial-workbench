@@ -1,4 +1,4 @@
-﻿import { parseWireFrame } from "@serial-workbench/contracts";
+import { parseWireFrame } from "@serial-workbench/contracts";
 import { describe, expect, it, vi } from "vitest";
 import { parseReply } from "@serial-workbench/contracts";
 import * as contracts from "@serial-workbench/contracts";
@@ -18,7 +18,7 @@ import { HostRequestError } from "@serial-workbench/host-client";
 const attachment: AttachResult = {
   hostId: "host",
   instanceEpoch: "7",
-  protocolVersion: "0.1",
+  protocolVersion: "1.0",
   catalogVersion: "1",
   actorId: "actor",
   clientId: "client",
@@ -34,7 +34,7 @@ const attachment: AttachResult = {
   },
 };
 const query: Query = {
-  protocolVersion: "0.1",
+  protocolVersion: "1.0",
   hostId: "host",
   instanceEpoch: "7",
   actorId: "actor",

@@ -164,7 +164,7 @@ fn portable_integer_schemas_preserve_ranges_without_machine_format_annotations()
 }
 
 fn call() -> Value {
-    json!({"protocolVersion":"0.1","hostId":"host","instanceEpoch":"7","actorId":"actor",
+    json!({"protocolVersion":"1.0","hostId":"host","instanceEpoch":"7","actorId":"actor",
         "requestId":"33333333-3333-4333-8333-333333333333","requestContext":"dG9rZW4",
         "actionId":"session.tx","target":{"hostId":"host","kind":"session","id":"session",
         "sessionId":"session","sessionEpoch":"9007199254740993"},"params":{"bytesBase64":"DQo=","writeWaitMs":"1000"},

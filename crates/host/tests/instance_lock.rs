@@ -134,7 +134,7 @@ fn stale_discovery_pid_cannot_steal_a_live_lock() {
     fs::create_dir_all(&runtime).unwrap();
     fs::write(
         runtime.join("discovery.json"),
-        br#"{"hostId":"stale-host","instanceEpoch":"1","endpoint":"stale-endpoint","pid":4294967295,"protocolVersion":"0.1"}"#,
+        br#"{"hostId":"stale-host","instanceEpoch":"1","endpoint":"stale-endpoint","pid":4294967295,"protocolVersion":"1.0"}"#,
     )
     .unwrap();
     let mut children = spawn_contenders(profile.path(), 1);

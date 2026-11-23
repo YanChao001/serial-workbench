@@ -7,7 +7,7 @@ pub mod install_switch;
 mod instance;
 pub mod shutdown;
 pub mod startup_config;
-pub use discovery::DiscoveryRecord;
+pub use discovery::{DiscoveryFormat, DiscoveryRecord};
 pub use instance::{
     INSTANCE_LOCK_NAME, PrivateFileLock, profile_has_host_state, profile_has_running_host,
     reserve_host_instance, try_lock_private_file,

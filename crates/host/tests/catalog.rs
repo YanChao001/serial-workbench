@@ -46,7 +46,7 @@ impl Fixture {
     }
     fn query(&self, action: &str, params: serde_json::Value) -> Query {
         Query {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: self.target.host_id.clone(),
             instance_epoch: self.store.identity().unwrap().instance_epoch,
             actor_id: self.actor.id().clone(),

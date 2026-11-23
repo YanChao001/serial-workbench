@@ -3198,6 +3198,9 @@ export type NodePackageFile = {
   sha256: Digest;
 };
 
+/**  清单保留既有 SDK 兼容标记，签名包的格式与外部 IPC 握手分别演进。 */
+export type NodePackageHostProtocolVersion = "0.1";
+
 export type NodePackageId = string;
 
 export type NodePackageIdentityParams = {
@@ -3290,7 +3293,7 @@ export type NodePackageManifest_Deserialize = {
   description: string;
   license: string;
   notices: NodePackagePath[];
-  hostProtocolVersion: ProtocolVersion;
+  hostProtocolVersion: NodePackageHostProtocolVersion;
   runtimeRef: Id;
   main: NodePackagePath;
   webUi?: NodePackageWebUi;
@@ -3310,7 +3313,7 @@ export type NodePackageManifest_Serialize = {
   description: string;
   license: string;
   notices: NodePackagePath[];
-  hostProtocolVersion: ProtocolVersion;
+  hostProtocolVersion: NodePackageHostProtocolVersion;
   runtimeRef: Id;
   main: NodePackagePath;
   webUi?: NodePackageWebUi;
@@ -4143,7 +4146,7 @@ export type Progress_Serialize = {
   total?: U64;
 };
 
-export type ProtocolVersion = "0.1";
+export type ProtocolVersion = "1.0";
 
 export type PurgeDirection = "rx" | "tx" | "both";
 
@@ -5566,3 +5569,6 @@ export const TX_MAX_BYTES = 131072;
 /** 正式 Node 包的签名域前缀，来源为 Rust 契约。 */
 export const NODE_PACKAGE_SIGNATURE_PREFIX =
   "serial-workbench-node-package-v0\n";
+
+/** 当前 Host 握手协议，来源为 Rust wire 契约。 */
+export const HOST_PROTOCOL_VERSION = "1.0";

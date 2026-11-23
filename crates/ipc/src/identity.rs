@@ -71,13 +71,14 @@ impl IdentityPin {
 
     fn mac(
         &self,
+        protocol: ProtocolVersion,
         epoch: U64,
         client: &ContextToken,
         server: &ContextToken,
     ) -> HostResult<HmacSha256> {
         self.transcript_mac(&(
             "serial-workbench/host-proof",
-            ProtocolVersion::V0_1,
+            protocol,
             &self.host_id,
             &self.profile_binding,
             epoch,
@@ -91,18 +92,24 @@ impl IdentityPin {
     }
     pub fn proof(
         &self,
+        protocol: ProtocolVersion,
         epoch: U64,
         client: &ContextToken,
         server: &ContextToken,
     ) -> HostResult<ContextToken> {
         ContextToken::try_from(
             URL_SAFE_NO_PAD
-                .encode(self.mac(epoch, client, server)?.finalize().into_bytes())
+                .encode(
+                    self.mac(protocol, epoch, client, server)?
+                        .finalize()
+                        .into_bytes(),
+                )
                 .as_str(),
         )
     }
     pub fn verify(
         &self,
+        protocol: ProtocolVersion,
         epoch: U64,
         client: &ContextToken,
         server: &ContextToken,
@@ -111,7 +118,7 @@ impl IdentityPin {
         let bytes = URL_SAFE_NO_PAD
             .decode(proof.as_str())
             .map_err(|_| invalid())?;
-        self.mac(epoch, client, server)?
+        self.mac(protocol, epoch, client, server)?
             .verify_slice(&bytes)
             .map_err(|_| invalid())
     }
@@ -150,13 +157,28 @@ mod tests {
         let client = ContextToken::try_from("client-nonce").unwrap();
         let server = ContextToken::try_from("server-nonce").unwrap();
         let other = ContextToken::try_from("different-nonce").unwrap();
-        let proof = pin.proof(1.into(), &client, &server).unwrap();
-        pin.verify(1.into(), &client, &server, &proof).unwrap();
-        assert!(pin.verify(2.into(), &client, &server, &proof).is_err());
-        assert!(pin.verify(1.into(), &other, &server, &proof).is_err());
-        assert!(pin.verify(1.into(), &client, &other, &proof).is_err());
+        let protocol = ProtocolVersion::V1_0;
+        let proof = pin.proof(protocol, 1.into(), &client, &server).unwrap();
+        pin.verify(protocol, 1.into(), &client, &server, &proof)
+            .unwrap();
+        assert!(
+            pin.verify(protocol, 2.into(), &client, &server, &proof)
+                .is_err()
+        );
+        assert!(
+            pin.verify(protocol, 1.into(), &other, &server, &proof)
+                .is_err()
+        );
+        assert!(
+            pin.verify(protocol, 1.into(), &client, &other, &proof)
+                .is_err()
+        );
         let mut copied = pin.clone();
         copied.host_id = Id::try_from("host-b").unwrap();
-        assert!(copied.verify(1.into(), &client, &server, &proof).is_err());
+        assert!(
+            copied
+                .verify(protocol, 1.into(), &client, &server, &proof)
+                .is_err()
+        );
     }
 }
