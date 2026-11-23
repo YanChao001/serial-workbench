@@ -115,6 +115,9 @@ jobs:
           $installer = @(Get-ChildItem -LiteralPath "$archive/nsis" -Filter '*-setup.exe' -File)
           if ($installer.Count -ne 1) { throw 'Expected exactly one candidate NSIS installer' }
           $env:SWB_TEST_NSIS_STAGE_INSTALLER = $installer[0].FullName
+          cargo build --locked -p serial-workbench --release --features bindings --bin verify-updater --target $env:RUNTIME_TARGET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:SWB_TEST_NSIS_STAGE_VERIFIER = (Resolve-Path -LiteralPath "src-tauri/target/$env:RUNTIME_TARGET/release/verify-updater.exe").Path
           New-Item -ItemType Directory -Path artifacts/windows-nsis-stage | Out-Null
           pnpm test:installer --interactive 2>&1 | Tee-Object -FilePath artifacts/windows-nsis-stage/installer-layout.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }

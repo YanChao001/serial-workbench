@@ -290,7 +290,7 @@ Windows T14 同卷套件切换的软件专项用 `cargo test --locked -p serial-
 
 安装协调进程先验证两套产物的完整摘要并记录操作 ID 和安装路径，经本机 Rust 接口 `InstallSwitch::open` 持有实例锁并核对旧 Host 退出，再调用 `replace`。重启后用同一操作 ID 和安装路径调用 `recover`。调用方负责在换入前排除其他程序写入安装目录，并在启动任何产品进程前完成恢复。当前用户版 NSIS 的暂存入口只接受同一条 `/S /SWB-STAGE` 参数组合，套件写入安装器自身的 `.swb-stage-<operation>` 目录。启动前该目录仅含协调进程已验签的安装器。实际接入须等待安装器退出，收回该份安装器副本并验证剩余目录摘要，再执行套件切换，覆盖注册表与快捷方式的提交和回滚。用两个真实安装包验证进程监督、锁交接和终态。
 
-NSIS 暂存预检在[手动 CI](../.github/workflows/ci.yml)选择 `runtime_preflight=true`、`runtime_preflight_target=x86_64-pc-windows-msvc` 和 `runtime_preflight_suite=windows-nsis-stage`。隔离 runner 编译本候选的未签名 NSIS，用相同工具链运行 `pnpm test:installer --interactive`。暂存夹具调用生产初始化函数，检查空操作目录写入、已有文件保护和错误目录名拒绝。实际安装器另在独立操作目录运行，核对退出码、Host/CLI/MCP 与 Node 的固定摘要，以及安装相关注册表项的前后状态。`installer-layout.log` 保留安装器、桌面程序、卸载器和各组件的摘要。持锁换入、回滚与两个版本的实际升级各自验证。
+NSIS 暂存预检在[手动 CI](../.github/workflows/ci.yml)选择 `runtime_preflight=true`、`runtime_preflight_target=x86_64-pc-windows-msvc` 和 `runtime_preflight_suite=windows-nsis-stage`。隔离 runner 编译候选 NSIS，用相同工具链运行 `pnpm test:installer --interactive`。暂存夹具调用生产初始化函数，检查空操作目录写入、已有文件保护和错误目录名拒绝。实际安装器用一次性密钥签名，验证工具在调用暂存入口前拒绝常规签名、版本不符与内容篡改。成功后核对签名安装器副本已收回、Host/CLI/MCP 与 Node 的固定摘要，以及安装相关注册表项的前后状态。`installer-layout.log` 保留全套件、安装器、桌面程序、卸载器和各组件的摘要。正式签名、持锁换入、回滚与两个版本的实际升级各自验证。
 
 候选 `efce804` 的隔离 Windows 收据覆盖 8.3 短名展开、重定向目录拒绝和真实安装器的组件摘要。 [Windows NSIS 暂存收据](https://github.com/YanChao001/serial-workbench/actions/runs/45162109634/artifacts/14812661628)
 

@@ -493,7 +493,7 @@ SectionEnd
   }
 });
 
-test("the candidate NSIS stages pinned components without registering an installation", (t) => {
+test("the verified NSIS stages pinned components without registering an installation", (t) => {
   const input = process.env.SWB_TEST_NSIS_STAGE_INSTALLER;
   if (!input) {
     t.skip("The isolated NSIS stage suite supplies this build's installer");
@@ -501,6 +501,8 @@ test("the candidate NSIS stages pinned components without registering an install
   }
   const context = nsisFixture(t);
   if (!context) return;
+  const verifier = process.env.SWB_TEST_NSIS_STAGE_VERIFIER;
+  assert.ok(verifier, "The isolated NSIS stage suite supplies its verifier");
   const packagePath = realpathSync(input);
   const manifest = JSON.parse(
     readFileSync(join(dirname(packagePath), "../components.json"), "utf8"),
@@ -543,23 +545,108 @@ test("the candidate NSIS stages pinned components without registering an install
       }),
     );
   const before = registry();
-  const stage = join(context.fixture, `.swb-stage-${randomUUID()}`);
-  mkdirSync(stage);
-  const installer = join(stage, "installer.exe");
-  copyFileSync(packagePath, installer);
+  const fixture = context.fixture;
+  const version = JSON.parse(
+    readFileSync(join(root, "package.json"), "utf8"),
+  ).version;
+  const key = join(fixture, "fixture-updater.key");
+  const password = "temporary-stage-fixture";
+  const sign = (...args) => {
+    const result = spawnSync(
+      process.execPath,
+      [join(root, "node_modules/@tauri-apps/cli/tauri.js"), "signer", ...args],
+      { cwd: root, encoding: "utf8", windowsHide: true, timeout: 60_000 },
+    );
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  };
+  sign("generate", "--ci", "--write-keys", key, "--password", password);
+  const publicKey = readFileSync(`${key}.pub`, "utf8");
+  const signedCopy = (name) => {
+    const copy = join(fixture, name);
+    copyFileSync(packagePath, copy);
+    sign(
+      "sign",
+      "--private-key-path",
+      key,
+      "--password",
+      password,
+      "--app-version",
+      version,
+      copy,
+    );
+    return `${copy}.sig`;
+  };
+  const legacySignature = signedCopy("installer.exe");
+  const stageSignature = signedCopy("serial-workbench-nsis-stage-v1.exe");
+  const inputFile = join(fixture, "stage.json");
+  const request = {
+    activeInstall: join(fixture, "Serial Workbench"),
+    artifact: packagePath,
+    publicKey,
+    version,
+    signature: stageSignature,
+  };
+  mkdirSync(request.activeInstall);
+  const installed = join(request.activeInstall, "existing-component");
+  writeFileSync(installed, "original installation");
+  const stageUpdate = (overrides = {}) => {
+    writeFileSync(inputFile, JSON.stringify({ ...request, ...overrides }));
+    return spawnSync(verifier, ["--stage-windows-nsis", inputFile], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 150_000,
+    });
+  };
+  const legacy = stageUpdate({ signature: legacySignature });
+  assert.equal(legacy.status, 1, legacy.error?.message ?? legacy.stderr);
+  assert.match(
+    legacy.stderr,
+    /does not declare the current-user NSIS stage protocol/,
+  );
+  const wrongVersion = stageUpdate({ version: "0.0.0" });
+  assert.equal(
+    wrongVersion.status,
+    1,
+    wrongVersion.error?.message ?? wrongVersion.stderr,
+  );
+  assert.match(wrongVersion.stderr, /signature version does not match/);
+  const tampered = join(fixture, "tampered.exe");
+  writeFileSync(tampered, "different artifact bytes");
+  const mismatched = stageUpdate({ artifact: tampered });
+  assert.equal(
+    mismatched.status,
+    1,
+    mismatched.error?.message ?? mismatched.stderr,
+  );
+  assert.deepEqual(
+    readdirSync(fixture).filter((name) => name.startsWith(".swb-stage-")),
+    [],
+  );
+
+  const result = stageUpdate();
   const installerSha256 = fileSha256(packagePath);
-  const result = spawnSync(installer, ["/S", "/SWB-STAGE"], {
-    encoding: "utf8",
-    windowsHide: true,
-    timeout: 120_000,
-  });
   assert.deepEqual(
     registry(),
     before,
     "Staging changed installation registry keys",
   );
   assert.equal(result.status, 0, result.error?.message ?? result.stderr);
-  assert.equal(fileSha256(installer), installerSha256);
+  const {
+    staged: stage,
+    digest,
+    operation,
+    version: stagedVersion,
+  } = JSON.parse(result.stdout);
+  assert.match(
+    operation,
+    /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/,
+  );
+  assert.equal(realpathSync(stage), join(fixture, `.swb-stage-${operation}`));
+  assert.match(digest, /^[\da-f]{64}$/);
+  assert.equal(stagedVersion, version);
+  assert.ok(!existsSync(join(stage, "serial-workbench-nsis-stage-v1.exe")));
+  assert.deepEqual(readdirSync(request.activeInstall), ["existing-component"]);
+  assert.equal(readFileSync(installed, "utf8"), "original installation");
   const components = Object.fromEntries(
     manifest.components.map(({ path, sha256 }) => {
       assert.match(path, /^serial-workbench-(?:host|cli|mcp)\.exe$/);
@@ -575,6 +662,12 @@ test("the candidate NSIS stages pinned components without registering an install
   t.diagnostic(
     JSON.stringify({
       installerSha256,
+      operation,
+      suiteDigest: digest,
+      stageVersion: stagedVersion,
+      legacySignatureRejected: true,
+      wrongVersionRejected: true,
+      tamperedArtifactRejected: true,
       components,
       nodeSha256,
       desktopSha256,

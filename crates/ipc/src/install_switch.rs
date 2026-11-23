@@ -32,6 +32,11 @@ pub struct InstallPaths {
 }
 
 impl InstallPaths {
+    pub fn fresh(active: &Path) -> HostResult<Self> {
+        let id = uuid::Uuid::new_v4().to_string();
+        Self::new(active, RequestId::try_from(id.as_str())?)
+    }
+
     pub fn new(active: &Path, operation: RequestId) -> HostResult<Self> {
         let parent = active.parent().ok_or_else(integrity)?;
         let name = active.file_name().ok_or_else(integrity)?;
@@ -57,6 +62,10 @@ impl InstallPaths {
 
     pub fn staged(&self) -> &Path {
         &self.staged
+    }
+
+    pub fn operation(&self) -> &RequestId {
+        &self.operation
     }
 
     pub fn backup(&self) -> &Path {

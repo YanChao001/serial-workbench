@@ -273,6 +273,8 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   assert.match(nsisStage, /if: inputs\.suite == 'windows-nsis-stage'/);
   assert.match(nsisStage, /pnpm app:build .*--bundles nsis/);
   assert.match(nsisStage, /SWB_TEST_NSIS_STAGE_INSTALLER/);
+  assert.match(nsisStage, /--features bindings --bin verify-updater/);
+  assert.match(nsisStage, /SWB_TEST_NSIS_STAGE_VERIFIER/);
   assert.match(nsisStage, /pnpm test:installer --interactive/);
   assert.ok(
     runtime.includes("artifacts/windows-nsis-stage/installer-layout.log"),
