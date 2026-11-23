@@ -46,6 +46,86 @@ function packets(
   });
 }
 
+test("HEX numeric inspector interprets selected raw bytes with explicit width and byte order", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const source = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (source?.kind !== "source") throw new Error("Missing RX fixture");
+  const start = 9_007_199_254_741_039n;
+  await page.evaluate((item) => window.workbenchFixture.emitRaw([item]), {
+    kind: "source",
+    event: {
+      ...source.event,
+      payload: {
+        byteStart: start.toString(),
+        byteEnd: (start + 8n).toString(),
+        bytesBase64: Buffer.from("80000000ffffffff", "hex").toString("base64"),
+      },
+    },
+  });
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const inspect = terminal.getByRole("button", { name: "Inspect number" });
+  await expect(inspect).toHaveCount(0);
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  const panel = page.getByRole("dialog", { name: "Inspect number" });
+  await inspect.click();
+  await expect(panel).toContainText("Select 1–8 contiguous bytes");
+  await page.keyboard.press("Escape");
+  await expect(inspect).toBeFocused();
+
+  await terminal.getByRole("button", { name: "Display options" }).click();
+  const ascii = page.getByRole("switch", { name: "Show ASCII column" });
+  await ascii.click();
+  await ascii.press("Escape");
+  const hex = terminal.getByRole("log").locator("[data-hex-source]");
+  await expect(hex).toContainText("80 00 00 00 FF FF FF FF");
+  await hex.evaluate((entry) => {
+    const node = entry.firstChild;
+    if (!node || !node.textContent?.endsWith("........"))
+      throw new Error("Missing ASCII column");
+    const end = node.textContent.length;
+    document.getSelection()?.setBaseAndExtent(node, end - 8, node, end);
+  });
+  await inspect.click();
+  const value = (name: string) =>
+    panel
+      .locator("dt")
+      .filter({ hasText: new RegExp("^" + name + "$") })
+      .locator("xpath=following-sibling::dd[1]");
+  await expect(value("Source bytes")).toHaveText("80 00 00 00 FF FF FF FF");
+  await expect(panel).toContainText("Byte offset " + start.toString());
+  await expect(value("HEX")).toHaveText("80000000FFFFFFFF");
+
+  await choose(page, "Width (bits)", "32");
+  await expect(value("Source bytes")).toHaveText("80 00 00 00");
+  await expect(value("Signed DEC")).toHaveText("-2147483648");
+  await expect(value("Unsigned DEC")).toHaveText("2147483648");
+  await expect(value("Float 32")).toHaveText("-0");
+  await expect(value("BIN")).toHaveText("1" + "0".repeat(31));
+  await expect(value("OCT")).toHaveText("20000000000");
+  await choose(page, "Byte order", "Low byte first");
+  await expect(value("HEX")).toHaveText("00000080");
+  await expect(value("Signed DEC")).toHaveText("128");
+  await expect(value("Source bytes")).toHaveText("80 00 00 00");
+  await page.keyboard.press("Escape");
+  await expect(inspect).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("HEX formatting restores a cross-line byte selection across case, grouping and ASCII changes", async ({
   page,
 }) => {

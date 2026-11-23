@@ -481,6 +481,20 @@
   overflow-y: auto;
   overscroll-behavior: contain;
 }
+.workbench-number-values {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  gap: 0.25rem 0.75rem;
+  font-size: var(--text-xs);
+}
+.workbench-number-values dt {
+  color: var(--muted-foreground);
+}
+.workbench-number-values dd {
+  margin: 0;
+  font-family: var(--font-mono);
+  overflow-wrap: anywhere;
+}
 .workbench-history-options {
   display: grid;
   gap: 0.625rem;

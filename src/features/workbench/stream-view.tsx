@@ -13,6 +13,7 @@ import {
 import {
   ArrowDown,
   ArrowUp,
+  Binary,
   Circle,
   Download,
   Eraser,
@@ -94,6 +95,8 @@ import {
   restoreStreamHexSelection,
   type StreamHexSelection,
 } from "./stream-hex-selection";
+import { StreamNumberInspector } from "./stream-number-inspector";
+import { streamNumberSample, type StreamNumberSample } from "./stream-number";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { formatByteSize } from "./metric-format";
 import { requestStreamSearch } from "./stream-search-client";
@@ -176,6 +179,10 @@ export function StreamView({
   const [wrapReceiveText, setWrapReceiveText] = useState(true);
   const [showTransmitEcho, setShowTransmitEcho] = useState(true);
   const [hexFormat, setHexFormat] = useState(defaultHexFormat);
+  const pendingNumberSelection = useRef<StreamHexSelection | undefined>(
+    undefined,
+  );
+  const [numberSample, setNumberSample] = useState<StreamNumberSample>();
   const previousHexSelection = useRef<StreamHexSelection | undefined>(
     undefined,
   );
@@ -375,6 +382,14 @@ export function StreamView({
           text: decoder.decode(bytes, { stream: true }),
           hex: mode === "text" ? undefined : formatHex(bytes),
           hexSource: JSON.stringify([source, event.eventSeq]),
+          hexLane:
+            mode === "text"
+              ? undefined
+              : JSON.stringify([
+                  source,
+                  event.kind,
+                  event.configurationRevision,
+                ]),
           offset: event.payload.byteStart,
           byteEnd: event.payload.byteEnd,
           source: JSON.stringify([
@@ -402,6 +417,14 @@ export function StreamView({
           text: txDecoder.decode(bytes, { stream: true }),
           hex: mode === "text" ? undefined : formatHex(bytes),
           hexSource: JSON.stringify([source, event.eventSeq]),
+          hexLane:
+            mode === "text"
+              ? undefined
+              : JSON.stringify([
+                  source,
+                  event.kind,
+                  event.configurationRevision,
+                ]),
           offset: event.payload.byteStart,
           byteEnd: event.payload.byteEnd,
           receipt: event.kind === "tx" ? event.payload : undefined,
@@ -865,6 +888,51 @@ export function StreamView({
           <WorkbenchIconButton label={labels.activity} onClick={onOpenActivity}>
             <FileText aria-hidden="true" />
           </WorkbenchIconButton>
+        )}
+        {!showAnsi && mode !== "text" && (
+          <Popover
+            onOpenChange={(open) => {
+              if (!open) {
+                setNumberSample(undefined);
+                return;
+              }
+              const selected =
+                readStreamHexSelection(viewport.current, hexFormat) ??
+                pendingNumberSelection.current;
+              pendingNumberSelection.current = undefined;
+              setNumberSample(
+                selected ? streamNumberSample(rows, selected) : undefined,
+              );
+            }}
+          >
+            <PopoverTrigger asChild>
+              <WorkbenchIconButton
+                label={labels.inspectNumber}
+                onPointerDownCapture={() => {
+                  pendingNumberSelection.current = readStreamHexSelection(
+                    viewport.current,
+                    hexFormat,
+                  );
+                }}
+              >
+                <Binary aria-hidden="true" />
+              </WorkbenchIconButton>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="workbench-display-options w-80"
+              aria-label={labels.inspectNumber}
+            >
+              <PopoverTitle>{labels.inspectNumber}</PopoverTitle>
+              {numberSample ? (
+                <StreamNumberInspector sample={numberSample} labels={labels} />
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  {labels.numberSelection}
+                </p>
+              )}
+            </PopoverContent>
+          </Popover>
         )}
         <Popover
           onOpenChange={(open) => {
