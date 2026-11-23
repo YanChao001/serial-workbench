@@ -300,7 +300,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 从桌面命令库导出 `.swb-commands.jsonl`，再导入另一个工作区，核对分组、顺序、正文、备注、编码和行尾。目标已有相同 ID 时，确认原命令仍能读取，导入副本位于自己的分组。取消文件选择后复查命令库 revision。用截断文件、已存在的导出路径和过期 revision 核对失败。用满盘夹具复查导入事务回滚，原有记录和 revision 仍可读取。
 
-运行 `cargo test --locked -p serial-workbench-host --test shared_documents_host command_archives` 核对真实 IPC 和落盘。存储用例 `cargo test --locked -p serial-workbench-host --lib command_archive` 对照跨页顺序和失败回滚。`pnpm test:ui e2e/browser/command-library.spec.ts` 使用无头浏览器核对选择、取消和终态刷新。系统文件对话框随同一原生候选验收。
+运行 `cargo test --locked -p serial-workbench-host --test shared_documents_host command_archives` 核对真实 IPC 和落盘。存储用例 `cargo test --locked -p serial-workbench-host --lib command_archive` 对照跨页顺序和失败回滚。`pnpm test:ui e2e/browser/command-library.spec.ts` 使用无头浏览器核对选择、取消和终态刷新。Windows 原生桌面门禁使用同一应用窗口的打开与保存对话框，核对导入后列表、导出归档的正文、备注、编码和行尾。该作业保留 `command-archive-roundtrip.json`，记录对话框归属、焦点归还、归档 revision、文件字节数和摘要。
 
 ### 发送草稿转义（IO-03）
 

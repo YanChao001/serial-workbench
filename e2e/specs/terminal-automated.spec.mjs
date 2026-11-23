@@ -542,4 +542,104 @@ describe("Signed terminal on the real desktop", () => {
     const { handle } = await currentWindowsZoom("main");
     await verifyNativeDiagnosticsExport(Number(handle));
   });
+
+  it("imports and exports commands through the owned Windows file dialogs", async function () {
+    if (!useWindowsPickers) return this.skip();
+    this.timeout(90000);
+    await ready();
+    await language("en");
+    await expectCommittedLanguage("en");
+    const { handle } = await currentWindowsZoom("main");
+    await navigate("/");
+    await click($("button[aria-label='Command library']"));
+
+    const input = file("input.swb-commands.jsonl");
+    const output = file("output.swb-commands.jsonl");
+    const header = {
+      kind: "header",
+      format: "serial-workbench-command-library",
+      version: 1,
+      libraryRevision: "17",
+    };
+    const group = { id: "native-picker-group", name: "Native archive group" };
+    const command = {
+      summary: {
+        id: "native-picker-command",
+        groupId: group.id,
+        name: "Read register",
+        note: "设备地址",
+      },
+      body: "41 00 FF",
+      mode: "hex",
+      encoding: "utf-8",
+      lineEnding: { kind: "custom", bytesBase64: "AP8=" },
+    };
+    const end = { kind: "end", groups: "1", commands: "1" };
+    const records = [
+      { kind: "group", group },
+      { kind: "command", command },
+      end,
+    ];
+    writeFileSync(
+      input,
+      [header, ...records]
+        .map((record) => JSON.stringify(record) + "\n")
+        .join(""),
+      { flag: "wx" },
+    );
+
+    const opened = await selectWindowsFile(
+      dialogButton("Import commands…"),
+      "Open",
+      input,
+    );
+    assert.equal(opened.owner, Number(handle));
+    await byText(
+      "*[@role='status']",
+      "Command library imported",
+    ).waitForDisplayed();
+    await click(dialogButton(group.name));
+    await dialogButton(command.summary.name).waitForDisplayed();
+
+    const saved = await selectWindowsFile(
+      dialogButton("Export commands…"),
+      "Save",
+      output,
+      "command-library.swb-commands.jsonl",
+    );
+    assert.equal(saved.owner, Number(handle));
+    await byText(
+      "*[@role='status']",
+      "Command library exported",
+    ).waitForDisplayed();
+    const bytes = readFileSync(output);
+    const jsonl = bytes.toString("utf8");
+    assert.ok(
+      jsonl.endsWith("\n"),
+      "The archive has no final record delimiter",
+    );
+    const [exportedHeader, ...exportedRecords] = jsonl
+      .slice(0, -1)
+      .split("\n")
+      .map((line) => JSON.parse(line));
+    assert.match(exportedHeader.libraryRevision, /^[1-9]\d*$/);
+    assert.deepEqual(exportedHeader, {
+      ...header,
+      libraryRevision: exportedHeader.libraryRevision,
+    });
+    assert.deepEqual(exportedRecords, records);
+    writeFileSync(
+      file("command-archive-roundtrip.json"),
+      JSON.stringify({
+        opened,
+        saved,
+        revision: exportedHeader.libraryRevision,
+        groups: exportedRecords.at(-1).groups,
+        commands: exportedRecords.at(-1).commands,
+        bytes: bytes.length,
+        sha256: createHash("sha256").update(bytes).digest("hex"),
+      }),
+      { flag: "wx" },
+    );
+  });
 });
