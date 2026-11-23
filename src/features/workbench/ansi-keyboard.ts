@@ -4,6 +4,8 @@ import type { AnsiPasteTarget } from "./ansi-paste";
 
 const MAX_PENDING_KEYS = 4 * 1024;
 const COALESCE_MS = 12;
+const WINDOW_SIZE_SETTLE_MS = 150;
+const MAX_WINDOW_DIMENSION = 65_535;
 const ESC = "\x1b";
 const protocolEncoder = new TextEncoder();
 
@@ -50,12 +52,25 @@ export function createAnsiKeyboardWriter(
   let length = 0;
   let inFlight = false;
   let timer: ReturnType<typeof setTimeout> | undefined;
+  let resizeTimer: ReturnType<typeof setTimeout> | undefined;
+  let wantedSize: string | undefined;
+  let pendingSize: string | undefined;
+  let submittedSize: string | undefined;
+
+  function clearWindowSize() {
+    clearTimeout(resizeTimer);
+    resizeTimer = undefined;
+    wantedSize = undefined;
+    pendingSize = undefined;
+    submittedSize = undefined;
+  }
 
   function cancel() {
     controller.abort();
     clearTimeout(timer);
     timer = undefined;
     length = 0;
+    clearWindowSize();
   }
 
   function stop(reason: "overflow" | "operation") {
@@ -68,7 +83,7 @@ export function createAnsiKeyboardWriter(
       controller.signal.aborted ||
       inFlight ||
       timer !== undefined ||
-      length === 0
+      (length === 0 && !pendingSize)
     )
       return;
     timer = setTimeout(() => {
@@ -78,7 +93,17 @@ export function createAnsiKeyboardWriter(
   }
 
   async function flush() {
-    const bytes = queued.slice(0, length);
+    if (length === 0 && !pendingSize) return;
+    const resizeBytes = pendingSize
+      ? protocolEncoder.encode(pendingSize)
+      : undefined;
+    const bytes = new Uint8Array(length + (resizeBytes?.length ?? 0));
+    bytes.set(queued.subarray(0, length));
+    if (resizeBytes) {
+      bytes.set(resizeBytes, length);
+      submittedSize = pendingSize;
+      pendingSize = undefined;
+    }
     length = 0;
     inFlight = true;
     try {
@@ -100,6 +125,29 @@ export function createAnsiKeyboardWriter(
 
   return {
     cancel,
+    clearWindowSize,
+    reportWindowSize(rows: number, cols: number) {
+      if (
+        controller.signal.aborted ||
+        ![rows, cols].every(
+          (size) =>
+            Number.isInteger(size) && size > 0 && size <= MAX_WINDOW_DIMENSION,
+        )
+      )
+        return;
+      const size = `${ESC}[8;${rows};${cols}t`;
+      if (wantedSize === size) return;
+      wantedSize = size;
+      clearTimeout(resizeTimer);
+      resizeTimer = undefined;
+      pendingSize = undefined;
+      if (submittedSize === size) return;
+      resizeTimer = setTimeout(() => {
+        resizeTimer = undefined;
+        pendingSize = size;
+        schedule();
+      }, WINDOW_SIZE_SETTLE_MS);
+    },
     enqueue(bytes: Uint8Array) {
       if (controller.signal.aborted) return;
       if (length + bytes.length > queued.length) {

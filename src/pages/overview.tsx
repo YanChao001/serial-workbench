@@ -503,6 +503,8 @@ export default function Overview({
       ansiKeyboard: t("workbench.ansiKeyboard"),
       ansiKeyboardExit: t("workbench.ansiKeyboardExit"),
       ansiMouse: t("workbench.ansiMouse"),
+      ansiSizeReport: t("workbench.ansiSizeReport"),
+      ansiSizeReportHint: t("workbench.ansiSizeReportHint"),
       ansiLinks: t("workbench.ansiLinks"),
       ansiScrollback: t("workbench.ansiScrollback"),
       ansiScrollbackLimit: t("workbench.ansiScrollbackLimit"),

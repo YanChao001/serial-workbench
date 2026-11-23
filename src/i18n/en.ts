@@ -568,6 +568,9 @@ export const en = {
   "workbench.ansiKeyboard": "Send keyboard input",
   "workbench.ansiKeyboardExit": "Shift+Tab moves focus out of the terminal",
   "workbench.ansiMouse": "Send mouse reports",
+  "workbench.ansiSizeReport": "Send CSI window size",
+  "workbench.ansiSizeReportHint":
+    "Enable for a peer that expects CSI row and column reports.",
   "workbench.ansiLinks": "Terminal links",
   "workbench.ansiScrollback": "ANSI history",
   "workbench.ansiScrollbackLimit": "Scrollback limit",

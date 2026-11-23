@@ -212,6 +212,8 @@ export type WorkbenchLabels = Record<
   | "ansiKeyboard"
   | "ansiKeyboardExit"
   | "ansiMouse"
+  | "ansiSizeReport"
+  | "ansiSizeReportHint"
   | "ansiLinks"
   | "ansiScrollback"
   | "ansiScrollbackLimit"

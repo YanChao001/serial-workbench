@@ -1,6 +1,7 @@
 /// <reference lib="dom" />
 import { expect, test, type Page } from "@playwright/test";
 import { readFileSync } from "node:fs";
+import { setTimeout as delay } from "node:timers/promises";
 import type {
   SharedSettings,
   TerminalTypography,
@@ -99,6 +100,59 @@ async function openAnsi(
     },
   };
 }
+
+test("ANSI reports local window sizes only after explicit session consent", async ({
+  page,
+}) => {
+  const ansi = await openAnsi(page);
+  const keyboard = ansi.viewer.getByRole("switch", {
+    name: "Send keyboard input",
+  });
+  const report = ansi.viewer.getByRole("switch", {
+    name: "Send CSI window size",
+  });
+  const renderedRows = () => ansi.rows.locator(":scope > div").count();
+  const sent = async () => {
+    const chunks = await page.evaluate(() => window.workbenchFixture.sentBytes);
+    return Buffer.concat(
+      chunks.map((chunk) => Buffer.from(chunk, "base64")),
+    ).toString();
+  };
+  const reports = async () => (await sent()).split("\x1b[8;").slice(1);
+  await expect(report).toHaveCount(0);
+  await keyboard.click();
+  await expect(report).not.toBeChecked();
+  const originalRows = await renderedRows();
+  await page.setViewportSize({ width: 950, height: 650 });
+  await expect.poll(renderedRows).not.toBe(originalRows);
+  await delay(200);
+  expect(await sent()).toBe("");
+
+  await report.click();
+  await expect.poll(reports).toHaveLength(1);
+  const [initial] = await reports();
+  expect(initial).toMatch(/^\d+;\d+t$/);
+  expect(Number(initial!.split(";")[0])).toBe(await renderedRows());
+
+  await page.setViewportSize({ width: 1160, height: 760 });
+  await expect.poll(reports).toHaveLength(2);
+  const changed = (await reports())[1]!;
+  expect(changed).toMatch(/^\d+;\d+t$/);
+  expect(Number(changed.split(";")[0])).toBe(await renderedRows());
+  expect(changed.split(";")[1]).not.toBe(initial!.split(";")[1]);
+
+  await ansi.feed("\x1b[8;99;199tDEVICE");
+  await expect(ansi.rows).toContainText("DEVICE");
+  expect(await renderedRows()).not.toBe(99);
+  const receive = page.getByRole("region", { name: "Receive", exact: true });
+  await receive.getByRole("button", { name: "Freeze", exact: true }).click();
+  await page.setViewportSize({ width: 1030, height: 705 });
+  await expect(report).toHaveCount(0);
+  await delay(200);
+  expect(await reports()).toHaveLength(2);
+  await receive.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(keyboard).not.toBeChecked();
+});
 
 test("ANSI only forwards negotiated mouse reports from a focused and enabled terminal", async ({
   page,

@@ -88,6 +88,7 @@ function project(
     screenReaderMode: true,
     convertEol,
     scrollback,
+    windowOptions: { setWinSizeChars: false },
     cursorInactiveStyle: "none",
     theme: palette,
   });
@@ -225,6 +226,7 @@ export default function AnsiScreen({
   );
   const [armed, setArmed] = useState<string | null>(null);
   const [mouseArmed, setMouseArmed] = useState<string | null>(null);
+  const [sizeArmed, setSizeArmed] = useState<string | null>(null);
   const [failure, setFailure] = useState<
     "encoding" | "overflow" | "operation" | null
   >(null);
@@ -236,6 +238,8 @@ export default function AnsiScreen({
   if (armed !== null && !enabled) setArmed(null);
   const mouseEnabled = enabled && mouseArmed === keyboardScope;
   if (mouseArmed !== null && !mouseEnabled) setMouseArmed(null);
+  const sizeReportEnabled = enabled && sizeArmed === keyboardScope;
+  if (sizeArmed !== null && !sizeReportEnabled) setSizeArmed(null);
   const paste = useAnsiPaste(
     enabled && keyboard?.paste ? keyboardScope : null,
     keyboard?.paste,
@@ -315,6 +319,16 @@ export default function AnsiScreen({
   const receiveMouse = useEffectEvent((bytes: Uint8Array) => {
     writer.current?.enqueue(bytes);
   });
+  const reportWindowSize = useEffectEvent(
+    (terminal: Terminal, { rows, cols }: { rows: number; cols: number }) => {
+      if (
+        sizeReportEnabled &&
+        !pasteBlocksKeys &&
+        active.current?.terminal === terminal
+      )
+        writer.current?.reportWindowSize(rows, cols);
+    },
+  );
   const activateLink = useEffectEvent(
     (terminal: Terminal, event: MouseEvent, uri: string) => {
       if (
@@ -367,6 +381,7 @@ export default function AnsiScreen({
     if (hasPastePreview) pasteConfirmation.current?.focus();
   }, [hasPastePreview]);
   useLayoutEffect(() => {
+    if (!sizeReportEnabled) writer.current?.clearWindowSize();
     if (status !== "ready" || !element.current) {
       dispose(active.current);
       active.current = null;
@@ -415,6 +430,7 @@ export default function AnsiScreen({
         acceptsKey(terminal, event),
       );
       terminal.onKey(({ key, domEvent }) => receiveKey(key, domEvent));
+      terminal.onResize((size) => reportWindowSize(terminal, size));
       screen.disposeMouse = bindAnsiMouse(
         terminal,
         () => acceptsMouse(),
@@ -451,6 +467,7 @@ export default function AnsiScreen({
     );
     screen.wanted = packets;
     drain(screen);
+    reportWindowSize(screen.terminal, screen.terminal);
   }, [
     encoding,
     convertEol,
@@ -461,6 +478,7 @@ export default function AnsiScreen({
     palette,
     pasteBlocksKeys,
     scrollback,
+    sizeReportEnabled,
     status,
     typography,
   ]);
@@ -498,6 +516,21 @@ export default function AnsiScreen({
                 }}
               />
               {labels.ansiMouse}
+            </label>
+          )}
+          {enabled && (
+            <label
+              className="flex items-center gap-2"
+              title={labels.ansiSizeReportHint}
+            >
+              <Switch
+                checked={sizeReportEnabled}
+                disabled={pasteBlocksKeys}
+                onCheckedChange={(next) =>
+                  setSizeArmed(next ? keyboardScope : null)
+                }
+              />
+              {labels.ansiSizeReport}
             </label>
           )}
           {enabled && <span>{labels.ansiKeyboardExit}</span>}

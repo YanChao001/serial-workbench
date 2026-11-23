@@ -238,6 +238,9 @@ export const labels: WorkbenchLabels = {
   ansiKeyboard: "Send keyboard input",
   ansiKeyboardExit: "Shift+Tab moves focus out of the terminal",
   ansiMouse: "Send mouse reports",
+  ansiSizeReport: "Send CSI window size",
+  ansiSizeReportHint:
+    "Enable for a peer that expects CSI row and column reports.",
   ansiLinks: "Terminal links",
   ansiScrollback: "ANSI history",
   ansiScrollbackLimit: "Scrollback limit",

@@ -520,6 +520,8 @@ export const zhCN = {
   "workbench.ansiKeyboard": "发送键盘输入",
   "workbench.ansiKeyboardExit": "按 Shift+Tab 移出终端焦点",
   "workbench.ansiMouse": "发送鼠标报告",
+  "workbench.ansiSizeReport": "发送 CSI 窗口尺寸",
+  "workbench.ansiSizeReportHint": "对端约定接收 CSI 行列报告时启用。",
   "workbench.ansiLinks": "终端链接",
   "workbench.ansiScrollback": "ANSI 历史",
   "workbench.ansiScrollbackLimit": "回滚行数上限",
