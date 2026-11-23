@@ -1,4 +1,4 @@
-﻿// Host errors preserve Core codes independently of the desktop system error enum.
+// Host errors preserve Core codes independently of the desktop system error enum.
 import {
   ContractValidationError,
   parseReply,
@@ -168,6 +168,26 @@ export async function hostDecideBrowserTakeover(
   await callHost((commands) =>
     commands.hostDecideBrowserTakeover(generation, takeoverId, approve),
   );
+}
+
+export async function hostOpenCommandLibrary(
+  generation: string,
+  workspaceId: string,
+) {
+  const value = await callHost((commands) =>
+    commands.hostOpenCommandLibrary(generation, workspaceId),
+  );
+  const reply = parseReply({
+    ok: true,
+    result: { kind: "command_library", value },
+  });
+  if (
+    !reply.ok ||
+    !("kind" in reply.result) ||
+    reply.result.kind !== "command_library"
+  )
+    throw new ContractValidationError();
+  return reply.result.value;
 }
 
 export async function hostApplyDocumentIntent(

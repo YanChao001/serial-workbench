@@ -32,6 +32,8 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   USER_CANCELLED: "nativeError.userCancelled",
   WORKBENCH_BUSY: "nativeError.busy",
   INPUT_TOO_LONG: "errors.INPUT_TOO_LONG",
+  STORAGE_FULL: "commandLibrary.storageFull",
+  GROUP_NOT_EMPTY: "commandLibrary.groupNotEmpty",
   STORAGE_IO: "errors.IO",
   STORAGE_CORRUPT: "errors.IO",
   PLATFORM_UNAVAILABLE: "errors.UNSUPPORTED",

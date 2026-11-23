@@ -119,6 +119,10 @@ export const commands = {
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_document_intent", { generation, intent }),
     ),
+  hostOpenCommandLibrary: (generation: U64, workspaceId: Id) =>
+    typedError<CommandLibraryReadResult_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_open_command_library", { generation, workspaceId }),
+    ),
   hostApplyNodeIntent: (generation: U64, intent: LocalNodeIntent_Deserialize) =>
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_node_intent", { generation, intent }),
@@ -1415,6 +1419,69 @@ export type CommandGroup = {
   id: Id;
   name: string;
 };
+
+export type CommandLibraryChange =
+  CommandLibraryChange_Serialize | CommandLibraryChange_Deserialize;
+
+export type CommandLibraryChange_Deserialize =
+  | ({ kind: "saveGroup"; group: CommandGroup } & {
+      before?: never;
+      command?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "deleteGroup"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    })
+  | ({ kind: "saveCommand"; command: CommandDraft_Deserialize } & {
+      before?: never;
+      group?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "moveCommand"; id: Id; groupId: Id; before?: Id | null } & {
+      command?: never;
+      group?: never;
+    })
+  | ({ kind: "deleteCommand"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    });
+
+export type CommandLibraryChange_Serialize =
+  | ({ kind: "saveGroup"; group: CommandGroup } & {
+      before?: never;
+      command?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "deleteGroup"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    })
+  | ({ kind: "saveCommand"; command: CommandDraft_Serialize } & {
+      before?: never;
+      group?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "moveCommand"; id: Id; groupId: Id; before?: Id | null } & {
+      command?: never;
+      group?: never;
+    })
+  | ({ kind: "deleteCommand"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    });
 
 export type CommandLibraryReadResult =
   CommandLibraryReadResult_Serialize | CommandLibraryReadResult_Deserialize;
@@ -3198,6 +3265,12 @@ export type LocalDocumentIntent_Deserialize =
       params: WorkspaceSaveParams_Deserialize;
     }
   | {
+      kind: "commandLibraryChange";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryChange_Deserialize;
+    }
+  | {
       kind: "favoritesSave";
       workspaceId: Id;
       expectedRevision: U64;
@@ -3221,6 +3294,12 @@ export type LocalDocumentIntent_Serialize =
       workspaceId: Id;
       expectedRevision: U64;
       params: WorkspaceSaveParams_Serialize;
+    }
+  | {
+      kind: "commandLibraryChange";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryChange_Serialize;
     }
   | {
       kind: "favoritesSave";

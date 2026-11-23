@@ -19,6 +19,11 @@ pub(crate) enum LocalDocumentIntent {
         expected_revision: U64,
         params: WorkspaceSaveParams,
     },
+    CommandLibraryChange {
+        workspace_id: Id,
+        expected_revision: U64,
+        params: CommandLibraryChange,
+    },
     FavoritesSave {
         workspace_id: Id,
         expected_revision: U64,
@@ -57,6 +62,18 @@ impl DesktopHostBridge {
                 params,
             } => (
                 "workspace.save",
+                "workspace",
+                workspace_id,
+                "workspace.modify",
+                expected_revision,
+                document_params(params)?,
+            ),
+            LocalDocumentIntent::CommandLibraryChange {
+                workspace_id,
+                expected_revision,
+                params,
+            } => (
+                "workspace.commands.change",
                 "workspace",
                 workspace_id,
                 "workspace.modify",
@@ -124,6 +141,97 @@ impl DesktopHostBridge {
             .await
     }
 
+    pub(crate) async fn open_command_library(
+        &self,
+        window: &str,
+        generation: U64,
+        workspace_id: Id,
+    ) -> HostResult<CommandLibraryReadResult> {
+        let business = self.attachment_at_generation(window, generation).await?;
+        let target = Target {
+            host_id: business.host_id.clone(),
+            kind: ResourceKind::try_from("workspace")?,
+            id: workspace_id,
+            session_id: None,
+            session_epoch: None,
+        };
+        let mut query = Query {
+            protocol_version: business.protocol_version,
+            host_id: business.host_id,
+            instance_epoch: business.instance_epoch,
+            actor_id: business.actor_id,
+            request_id: document_request_id()?,
+            action_id: Id::try_from("workspace.commands.read")?,
+            target: target.clone(),
+            params: document_params(CommandLibraryReadParams {
+                selection: CommandLibraryView::Groups { after: None },
+                revision: None,
+            })?,
+            reveal_target: RevealTarget {
+                page_id: Id::try_from("workbench")?,
+                workspace_id: Some(target.id.clone()),
+                session_id: None,
+                panel_id: None,
+                result_ref: None,
+            },
+        };
+        let mut reply = self
+            .request_at_generation(window, generation, RpcRequest::Query(query.clone()))
+            .await?;
+        if matches!(&reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED") {
+            self.authorize_document_target(
+                window,
+                generation,
+                business.client_id,
+                "content.read",
+                target,
+            )
+            .await?;
+            query.request_id = document_request_id()?;
+            reply = self
+                .request_at_generation(window, generation, RpcRequest::Query(query))
+                .await?;
+        }
+        match reply {
+            RpcReply::Success { result, .. } => match *result {
+                RpcResult::Query(QueryResult::CommandLibrary(result)) => Ok(result),
+                _ => Err(HostError::new(
+                    "INTERNAL",
+                    "Invalid command library response",
+                )),
+            },
+            RpcReply::Failure { error, .. } => Err(error),
+        }
+    }
+
+    async fn authorize_document_target(
+        &self,
+        window: &str,
+        generation: U64,
+        client_id: Id,
+        permission: &str,
+        target: Target,
+    ) -> HostResult<()> {
+        let grant = crate::file_resource_commands::invoke_control(
+            self,
+            window,
+            generation,
+            "auth.authorize",
+            serde_json::to_value(AuthorizeParams {
+                client_id,
+                permissions: vec![permission.into()],
+                targets: vec![target],
+                expires_at: None,
+            })
+            .map_err(|_| invalid_document_intent())?,
+        )
+        .await?;
+        if !matches!(grant, ActionResult::AuthorizationChanged(_)) {
+            return Err(HostError::new("INTERNAL", "Invalid authorization response"));
+        }
+        Ok(())
+    }
+
     // 仅由原生的封闭用户意图调用。重复授权会退休旧订阅，先只读检查现有权限。
     pub(super) async fn invoke_local_business(
         &self,
@@ -163,23 +271,14 @@ impl DesktopHostBridge {
             RpcReply::Failure { error, .. } => return Err(error),
         };
         if !authorized {
-            let grant = crate::file_resource_commands::invoke_control(
-                self,
+            self.authorize_document_target(
                 window,
                 generation,
-                "auth.authorize",
-                serde_json::to_value(AuthorizeParams {
-                    client_id,
-                    permissions: vec![permission.into()],
-                    targets: vec![call.target.clone()],
-                    expires_at: None,
-                })
-                .map_err(|_| invalid_document_intent())?,
+                client_id,
+                permission,
+                call.target.clone(),
             )
             .await?;
-            if !matches!(grant, ActionResult::AuthorizationChanged(_)) {
-                return Err(HostError::new("INTERNAL", "Invalid authorization response"));
-            }
         }
         match self
             .request_at_generation(window, generation, RpcRequest::Invoke(call))
@@ -234,6 +333,20 @@ pub(crate) async fn host_apply_document_intent(
     state.bind_window(&window)?;
     state
         .apply_document_intent(window.label(), generation, intent)
+        .await
+}
+
+#[tauri::command]
+#[specta::specta]
+pub(crate) async fn host_open_command_library(
+    window: tauri::WebviewWindow,
+    generation: U64,
+    workspace_id: Id,
+    state: tauri::State<'_, DesktopHostBridge>,
+) -> HostResult<CommandLibraryReadResult> {
+    state.bind_window(&window)?;
+    state
+        .open_command_library(window.label(), generation, workspace_id)
         .await
 }
 
@@ -787,6 +900,76 @@ mod tests {
                 .await
                 .unwrap_err()
                 .code,
+            "PERMISSION_DENIED"
+        );
+        fixture.shutdown().await;
+    }
+
+    #[tokio::test]
+    async fn command_library_open_and_save_grant_only_the_selected_workspace() {
+        let fixture = Fixture::start().await;
+        let target = fixture.target("workspace", "commands-a");
+        let other = fixture.target("workspace", "commands-b");
+        let read = |target| {
+            RpcRequest::Query(query(
+                &fixture.attached.attachment,
+                "workspace.commands.read",
+                target,
+                serde_json::json!({"selection":{"view":"groups"}}),
+            ))
+        };
+        for scope in [&target, &other] {
+            assert_eq!(
+                fixture.request(read(scope.clone())).await.unwrap_err().code,
+                "PERMISSION_DENIED"
+            );
+        }
+        let page = fixture
+            .bridge
+            .open_command_library("main", fixture.attached.generation, target.id.clone())
+            .await
+            .unwrap();
+        assert_eq!(page.revision, 0.into());
+        let params = CommandLibraryChange::SaveGroup {
+            group: CommandGroup {
+                id: Id::try_from("test-commands").unwrap(),
+                name: "Test commands".into(),
+            },
+        };
+        let direct = fixture
+            .invoke(
+                "workspace.commands.change",
+                target.clone(),
+                0.into(),
+                params.clone(),
+            )
+            .await
+            .unwrap_err();
+        assert_eq!(direct.code, "PERMISSION_DENIED");
+        let operation = fixture
+            .intent(LocalDocumentIntent::CommandLibraryChange {
+                workspace_id: target.id.clone(),
+                expected_revision: 0.into(),
+                params,
+            })
+            .await;
+        succeeded(&operation, "workspace.commands.change", &target);
+        assert!(matches!(
+            operation.result,
+            Some(ActionResult::CommandLibraryRevision(CommandLibraryRevision { revision }))
+                if revision == 1.into()
+        ));
+        let RpcResult::Query(QueryResult::CommandLibrary(page)) =
+            fixture.request(read(target)).await.unwrap()
+        else {
+            panic!("Expected workspace command page");
+        };
+        assert!(
+            matches!(page.records, CommandLibraryRecords::Groups { groups, .. }
+            if groups.len() == 1 && groups[0].name == "Test commands")
+        );
+        assert_eq!(
+            fixture.request(read(other)).await.unwrap_err().code,
             "PERMISSION_DENIED"
         );
         fixture.shutdown().await;

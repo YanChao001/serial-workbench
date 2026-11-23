@@ -8,6 +8,8 @@ import {
 import type {
   ActionSpec,
   ActivitySummary,
+  CommandLibraryChange,
+  CommandLibraryReadParams,
   StateScopeRef,
   FavoritesSaveParams,
   RebindParams,
@@ -40,11 +42,13 @@ import {
   hostConnectDevice,
   chooseFileResource,
   hostApplyDocumentIntent,
+  hostOpenCommandLibrary,
   hostTakeoverSession,
   hostDecideBrowserTakeover,
 } from "@/lib/tauri";
 import type { FileResourceRole } from "@/lib/tauri";
 import type {
+  CommandLibraryAccess,
   HostContextValue,
   HostInvocation,
   HostState,
@@ -84,6 +88,7 @@ type HostUserActions = {
   connectDevice: typeof hostConnectDevice;
   chooseFile: typeof chooseFileResource;
   applyDocumentIntent: typeof hostApplyDocumentIntent;
+  openCommandLibrary?: typeof hostOpenCommandLibrary;
   takeoverSession?: typeof hostTakeoverSession;
   decideBrowserTakeover?: typeof hostDecideBrowserTakeover;
 };
@@ -107,6 +112,7 @@ export function createHostWorkspace(
     connectDevice: hostConnectDevice,
     chooseFile: chooseFileResource,
     applyDocumentIntent: hostApplyDocumentIntent,
+    openCommandLibrary: hostOpenCommandLibrary,
     takeoverSession: hostTakeoverSession,
     decideBrowserTakeover: hostDecideBrowserTakeover,
   },
@@ -165,7 +171,11 @@ export function createHostWorkspace(
   ) => {
     if (lifetime.signal.aborted) return;
     state = { ...state, ...patch };
-    snapshot = { ...actions, state, connection };
+    const commandLibrary =
+      patch.catalog === undefined && patch.status === undefined
+        ? snapshot.commandLibrary
+        : commandLibraryForState();
+    snapshot = { ...actions, state, connection, commandLibrary };
     // 原始快照和 ACK 即时推进；小读块只合并界面通知，避免每块重渲染整个工作台。
     if (deferStreamNotification) {
       streamNotification ??= setTimeout(notify, 16);
@@ -810,6 +820,112 @@ export function createHostWorkspace(
       id: workspaceId,
     };
   }
+  async function readCommandLibrary(
+    workspaceId: string,
+    params: CommandLibraryReadParams,
+    signal: AbortSignal,
+  ) {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    const result = await connection.client.query(
+      connection.buildQuery(
+        "workspace.commands.read",
+        workspaceTarget(workspaceId),
+        rpcJsonObject(params),
+      ),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (
+      result.kind !== "command_library" ||
+      result.value.records.view !== params.selection.view ||
+      (params.revision != null && result.value.revision !== params.revision)
+    )
+      throw new ContractValidationError();
+    const records = result.value.records;
+    const selection = params.selection;
+    if (
+      (selection.view === "entry" &&
+        records.view === "entry" &&
+        records.command.summary.id !== selection.id) ||
+      (selection.view === "commands" &&
+        records.view === "commands" &&
+        records.commands.some(
+          (command) => command.groupId !== selection.groupId,
+        )) ||
+      ("nextCursor" in records &&
+        records.nextCursor != null &&
+        "after" in selection &&
+        records.nextCursor === selection.after)
+    )
+      throw new ContractValidationError();
+    return result.value;
+  }
+
+  async function openCommandLibrary(workspaceId: string, signal: AbortSignal) {
+    if (!userActions?.openCommandLibrary)
+      return readCommandLibrary(
+        workspaceId,
+        { selection: { view: "groups" } },
+        signal,
+      );
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    const page = await waitForHost(
+      userActions.openCommandLibrary(connection.generation, workspaceId),
+      waiting,
+    );
+    if (page.records.view !== "groups") throw new ContractValidationError();
+    return page;
+  }
+
+  async function changeCommandLibrary(
+    workspaceId: string,
+    revision: string,
+    params: CommandLibraryChange,
+    signal: AbortSignal,
+  ) {
+    const actionId = "workspace.commands.change";
+    const target = workspaceTarget(workspaceId);
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    waiting.throwIfAborted();
+    const accepted = userActions
+      ? userActions.applyDocumentIntent(connection.generation, {
+          kind: "commandLibraryChange",
+          workspaceId,
+          expectedRevision: revision,
+          params,
+        })
+      : connection.client.invoke(
+          connection.buildCall(actionId, target, rpcJsonObject(params), {
+            expectedRevision: revision,
+            executionMode: "interactive",
+          }),
+          waiting,
+        );
+    void accepted
+      .finally(() => {
+        if (!lifetime.signal.aborted) invalidateActions();
+      })
+      .catch(() => {});
+    const initial = await waitForHost(accepted, waiting);
+    if (
+      initial.actionId !== actionId ||
+      initial.executionHostId !== target.hostId ||
+      !sameTarget(initial.target, target)
+    )
+      throw new ContractValidationError();
+    updateOperation(initial);
+    const operation = await waitForOperation(initial, waiting);
+    const receipt = operation.result;
+    if (
+      receipt?.kind !== "command_library_revision" ||
+      BigInt(receipt.value.revision) <= BigInt(revision)
+    )
+      throw new ContractValidationError();
+    return receipt.value.revision;
+  }
+
   async function exportWorkspace(workspaceId: string, signal?: AbortSignal) {
     const result = await connection.client.query(
       connection.buildQuery("workspace.export", workspaceTarget(workspaceId)),
@@ -1533,6 +1649,34 @@ export function createHostWorkspace(
   }
   function watchSession(sessionId: string, listener: () => void): () => void {
     return readers.watch(sessionById(sessionId), listener);
+  }
+  const readableCommandLibrary: CommandLibraryAccess = {
+    owner: JSON.stringify([
+      connection.attachment.hostId,
+      connection.attachment.instanceEpoch,
+      connection.generation,
+    ]),
+    open: openCommandLibrary,
+    read: readCommandLibrary,
+  };
+  const writableCommandLibrary: CommandLibraryAccess = {
+    ...readableCommandLibrary,
+    change: changeCommandLibrary,
+  };
+  function commandLibraryForState() {
+    if (state.status !== "ready") return undefined;
+    if (userActions?.openCommandLibrary) return writableCommandLibrary;
+    if (
+      !state.catalog.some(
+        ({ actionId }) => actionId === "workspace.commands.read",
+      )
+    )
+      return undefined;
+    return state.catalog.some(
+      ({ actionId }) => actionId === "workspace.commands.change",
+    )
+      ? writableCommandLibrary
+      : readableCommandLibrary;
   }
   const actions = {
     refresh,

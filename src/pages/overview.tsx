@@ -710,6 +710,15 @@ export default function Overview({
         savedWorkspace={workspaceBase?.document.value}
         preserveWorkspacePresets={workspaceDraft !== undefined}
         workspaceKey={workspaceScope}
+        commandLibrary={
+          workspaceBase && host.commandLibrary
+            ? {
+                access: host.commandLibrary,
+                workspaceId: workspaceBase.scope.target.id,
+                scope: JSON.stringify([identityKey, host.commandLibrary.owner]),
+              }
+            : undefined
+        }
         draftScopeKey={
           workspaceBase ? stateScopeKey(workspaceBase.scope) : undefined
         }

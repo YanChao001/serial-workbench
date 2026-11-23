@@ -9,6 +9,9 @@ import type {
   ActionSpec,
   ActivitySummary,
   BrowserTakeoverRequest,
+  CommandLibraryChange,
+  CommandLibraryReadParams,
+  CommandLibraryReadResult,
   CaptureRecord,
   CaptureStatusResult,
   CaptureTailResult,
@@ -76,7 +79,27 @@ export type HostState = {
   streams: ReadonlyMap<string, HostStreamView>;
   workspace?: WorkspaceDocumentResult;
 };
+export type CommandLibraryAccess = {
+  owner: string;
+  open(
+    workspaceId: string,
+    signal: AbortSignal,
+  ): Promise<CommandLibraryReadResult>;
+  read(
+    workspaceId: string,
+    params: CommandLibraryReadParams,
+    signal: AbortSignal,
+  ): Promise<CommandLibraryReadResult>;
+  change?(
+    workspaceId: string,
+    revision: string,
+    change: CommandLibraryChange,
+    signal: AbortSignal,
+  ): Promise<string>;
+};
+
 export type HostContextValue = {
+  commandLibrary?: CommandLibraryAccess;
   state: HostState;
   connection?: HostConnection;
   refresh(options?: { enumerateDevices?: boolean }): Promise<void>;
