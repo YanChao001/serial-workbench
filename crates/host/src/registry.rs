@@ -215,9 +215,16 @@ impl Registry {
                             "file"
                         },
                     )?]
+                } else if action == Some(BuiltinAction::TransferReceiptsRead)
+                    && permission == "content.read"
+                {
+                    ["file", "session"]
+                        .into_iter()
+                        .map(ResourceKind::try_from)
+                        .collect::<HostResult<Vec<_>>>()?
                 } else if matches!(
                     spec.action_id.as_str(),
-                    "transfer.file" | "transfer.receiptsRead" | "node.packages.install"
+                    "transfer.file" | "node.packages.install"
                 ) && permission == "content.read"
                 {
                     vec![ResourceKind::try_from("file")?]

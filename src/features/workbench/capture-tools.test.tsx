@@ -331,7 +331,7 @@ it("uses an explicitly picked destination for text export and sends selected rea
   expect(exportText).not.toHaveBeenCalled();
   expect(replay).not.toHaveBeenCalled();
   fireEvent.click(
-    screen.getByRole("button", { name: "Select capture target" }),
+    screen.getByRole("button", { name: "Select JSONL destination" }),
   );
   await waitFor(() =>
     expect(
@@ -350,6 +350,87 @@ it("uses an explicitly picked destination for text export and sends selected rea
   await waitFor(() =>
     expect(replay).toHaveBeenCalledWith(
       { captureRef: selectedFile.reference, mode: "fastest" },
+      expect.any(AbortSignal),
+    ),
+  );
+});
+it("uses a separately picked CSV destination and keeps the JSONL destination", async () => {
+  const jsonl = {
+    ...selectedFile,
+    name: "capture.jsonl",
+    reference: { ...selectedFile.reference, id: "jsonl-target" },
+  };
+  const csv = {
+    ...selectedFile,
+    name: "capture.csv",
+    reference: { ...selectedFile.reference, id: "csv-target" },
+  };
+  const pick = vi
+    .fn()
+    .mockResolvedValueOnce(selectedFile)
+    .mockResolvedValueOnce(jsonl)
+    .mockResolvedValueOnce(csv);
+  const onExport = vi.fn().mockResolvedValue(operation());
+  const watchActions = vi.fn(allowControlActions);
+  render(
+    <CaptureTools
+      watchActions={watchActions}
+      contextKey="host:1"
+      labels={toolLabels}
+      sessionRefs={[]}
+      pickFile={pick}
+      onExport={onExport}
+    />,
+  );
+  await userEvent.setup().click(screen.getByRole("tab", { name: "Playback" }));
+  fireEvent.click(
+    screen.getByRole("button", { name: "Select capture source" }),
+  );
+  await screen.findByText(selectedFile.name);
+  fireEvent.click(
+    screen.getByRole("button", { name: "Select JSONL destination" }),
+  );
+  await screen.findByText(jsonl.name);
+  expect(pick).toHaveBeenLastCalledWith(
+    "exportJsonlTarget",
+    expect.any(AbortSignal),
+  );
+  const exportButton = screen.getByRole("button", { name: "Export text as" });
+  await waitFor(() => expect(exportButton).toBeEnabled());
+
+  await selectOption("Export format", "CSV");
+  expect(exportButton).toBeDisabled();
+  fireEvent.click(
+    screen.getByRole("button", { name: "Select CSV destination" }),
+  );
+  await screen.findByText(csv.name);
+  expect(pick).toHaveBeenLastCalledWith(
+    "exportCsvTarget",
+    expect.any(AbortSignal),
+  );
+  const params = {
+    captureRef: selectedFile.reference,
+    targetRef: csv.reference,
+    format: "csv",
+  };
+  await waitFor(() => expect(exportButton).toBeEnabled());
+  expect(watchActions).toHaveBeenLastCalledWith(
+    expect.arrayContaining([
+      expect.objectContaining({ actionId: "capture.export", params }),
+    ]),
+    expect.any(Function),
+  );
+  fireEvent.click(exportButton);
+  await waitFor(() =>
+    expect(onExport).toHaveBeenCalledWith(params, expect.any(AbortSignal)),
+  );
+
+  await selectOption("Export format", "JSONL");
+  await waitFor(() => expect(exportButton).toBeEnabled());
+  fireEvent.click(exportButton);
+  await waitFor(() =>
+    expect(onExport).toHaveBeenLastCalledWith(
+      { captureRef: selectedFile.reference, targetRef: jsonl.reference },
       expect.any(AbortSignal),
     ),
   );

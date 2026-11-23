@@ -439,7 +439,8 @@ fn recovery_status(value: recovery::RecoveryStatus) -> ClientRecoveryStatus {
     }
 }
 fn diagnostics(value: DiagnosticsReport) -> ClientDiagnosticsReport {
-    let mut recent_logs = crate::redaction::redact(&value.recent_logs);
+    let mut recent_logs =
+        crate::redaction::redact(value.recent_logs.as_deref().unwrap_or_default());
     if recent_logs.len() > CLIENT_DIAGNOSTICS_MAX_LOG_BYTES {
         // 脱敏可能扩展文本；保留最新日志并沿 UTF-8 边界去掉最早部分。
         let mut start = recent_logs.len() - CLIENT_DIAGNOSTICS_MAX_LOG_BYTES;
@@ -621,12 +622,15 @@ mod tests {
     #[test]
     fn diagnostics_redacts_and_truncates_on_utf8_boundary() {
         let result = diagnostics(DiagnosticsReport {
+            format_version: "0.1".into(),
+            collected_at: "2026-11-23T00:00:00.000Z".into(),
             app_version: "1.0.0".into(),
             tauri_version: "2".into(),
             platform: "windows".into(),
             architecture: "x86_64".into(),
             window_label: "main".into(),
             settings_revision: Some(3.into()),
+            configuration: None,
             desktop: DesktopStatus {
                 tray_available: true,
                 secondary_open: false,
@@ -635,10 +639,10 @@ mod tests {
             },
             autostart_enabled: Some(false),
             updater_configured: true,
-            recent_logs: format!(
+            recent_logs: Some(format!(
                 "https://user:secret@example.com/?token=private\n{}",
                 "汉".repeat(CLIENT_DIAGNOSTICS_MAX_LOG_BYTES)
-            ),
+            )),
         });
         assert!(result.recent_logs.len() <= CLIENT_DIAGNOSTICS_MAX_LOG_BYTES);
         assert!(!result.recent_logs.contains("secret"));

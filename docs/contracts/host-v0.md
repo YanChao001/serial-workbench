@@ -76,7 +76,9 @@ CLI `host stop` 在连接前先核验受保护的 OS 实例锁。已释放时返
 
 `Query={protocolVersion,hostId,instanceEpoch,actorId,requestId,actionId,target,params,revealTarget}`；`Call` 在 Query 上增加必填 `requestContext: string` 以及可选 `expectedRevision: U64,leaseId: Id,executionMode: interactive|independent`。actionId 为目录稳定 ID；params 为该动作输入 schema 的对象。外部副作用使用 Call，已接纳任务的子动作使用下述 ChildCall；查询的 requestId 只关联活动，不建立副作用去重。`expectedRevision` 属于 Call 信封，不是业务 `params` 的字段。`session.configure`、`session.setReadOnly` 以及设置、工作区保存要求它；普通 `session.tx` 不以 revision 为必填条件，仍须通过授权与会话代次检查。
 
-未提供 executionMode 时规范化为 interactive；`capture.start` 和 `transfer.file`须显式传 independent，handler 拒绝不支持的模式为 INVALID_ARGUMENT。target.hostId 必须等于执行 hostId；target.kind=session 时 id 必须等于 sessionId，不能利用两个不同字段选择不同资源。
+未提供 executionMode 时规范化为 interactive。`capture.start`、`transfer.file` 和 `transfer.paste` 须显式传 independent，handler 对不支持的模式返回 INVALID_ARGUMENT。target.hostId 必须等于执行 hostId；target.kind=session 时 id 必须等于 sessionId，不能利用两个不同字段选择不同资源。
+
+`transfer.paste` 使用当前会话的设备修改授权，参数由目录的 `PasteTransferParams` 定义。`bytesBase64` 含 1 到 `TX_MAX_BYTES` 字节，`chunkBytes` 默认为 4096。`bytesPerSecond`、`interChunkMs`、`writeWaitMs` 约束 Host 的切片发送。Host 自行持有独占租约并按顺序结算，调用方不传 `leaseId`。结果沿用 `file_transfer` 及 `transfer.receiptsRead`，依请求中字节偏移和回执序号核对。读取粘贴输入和回执检查原会话的内容授权。停止等待后可以按原操作查询结果，显式停止发送使用 `operation.cancel`。
 
 hostId/instanceEpoch 指执行 Host，不是入口转发 Host。执行端校验真实认证 actorId 后再校验信封；不一致返回 `ACTOR_MISMATCH`。若请求曾接纳，允许在当前实例以原 actor/request 查询旧结果；旧 epoch 的 action.invoke 始终拒绝，不能利用去重绕过代次校验。断线后的正确流程是 attach、operation.get，然后决定是否提出新的明确操作。
 

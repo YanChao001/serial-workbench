@@ -370,12 +370,21 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
                 session_epoch: opened.session_epoch,
                 max_records: 10.into(),
                 max_bytes: 65536.into(),
+                single_step: None,
+                inspect_playback: None,
+                report_playback: None,
             },
             &h.actor,
         )
         .await
         .unwrap();
     assert_eq!(records.records.len(), 2);
+    assert!(
+        serde_json::to_value(&records)
+            .unwrap()
+            .get("playback")
+            .is_none()
+    );
     let replay_target = Target {
         host_id: h.host_id.clone(),
         kind: ResourceKind::try_from("session").unwrap(),
@@ -393,6 +402,7 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
                 session_epoch: opened.session_epoch,
                 paused: true,
                 seek_record: Some(1.into()),
+                playback: None,
             },
             &h.actor,
         )
@@ -404,6 +414,9 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
         session_epoch: opened.session_epoch,
         max_records: 10.into(),
         max_bytes: 65536.into(),
+        single_step: None,
+        inspect_playback: None,
+        report_playback: None,
     };
     assert!(
         replay
@@ -428,6 +441,7 @@ async fn service_records_real_tx_stream_and_finishes_after_stop() {
                 session_epoch: opened.session_epoch,
                 paused: false,
                 seek_record: None,
+                playback: None,
             },
             &h.actor,
         )

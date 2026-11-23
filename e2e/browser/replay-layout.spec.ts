@@ -244,3 +244,240 @@ test("attached replay keeps fixed receive and send rectangles through large-reco
     ),
   );
 });
+
+test("attached read-only replay steps, changes speed and stops before its breakpoint", async ({
+  page,
+}) => {
+  const hostId = "workbench-gui-host";
+  const replaySession = {
+    ...session("fixture-playback"),
+    sessionEpoch: "7",
+    readOnly: true,
+  };
+  const scope = {
+    sessionId: replaySession.sessionId,
+    sessionEpoch: replaySession.sessionEpoch,
+  };
+  const target = { hostId, kind: "session", id: scope.sessionId, ...scope };
+  let byteEnd = 0;
+  const records: ReplayRecord[] = [
+    "FIRST-STEP",
+    "BEFORE-BREAK",
+    "AT-BREAK",
+    "AFTER-BREAK",
+  ].map((text, index) => {
+    const body = Buffer.from(text + "\r\n");
+    const ordinal = String(index + 1);
+    const byteStart = byteEnd;
+    byteEnd += body.length;
+    return {
+      kind: "inline",
+      record: {
+        recordOrdinal: ordinal,
+        entry: {
+          kind: "event",
+          value: {
+            hostId,
+            ...scope,
+            instanceEpoch: "1",
+            eventSeq: ordinal,
+            configurationRevision: "1",
+            time: {
+              clockId: "fixture-playback-clock",
+              sourceMonoNs: String(index * 1000),
+              receivedWallTime: "2026-11-10T10:00:00Z",
+              precision: {
+                source: "host_read",
+                resolutionNs: "1",
+                syncMethod: "none",
+              },
+            },
+            kind: "rx",
+            payload: {
+              bytesBase64: body.toString("base64"),
+              byteStart: String(byteStart),
+              byteEnd: String(byteEnd),
+            },
+          },
+        },
+      },
+    };
+  });
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    hostStart: "pending",
+    replay: {
+      session: replaySession,
+      files: {},
+      page: {
+        records,
+        readerGeneration: "1",
+        nextRecord: "5",
+        atEnd: true,
+        playback: {
+          rate: { kind: "timed", speedPercent: 100 },
+          paused: false,
+          breakpointHit: false,
+        },
+      },
+    },
+  });
+  await page.goto("./#/");
+  await expect(page.locator(".workbench")).toBeVisible();
+  await page.evaluate(() => window.workbenchFixture.releaseHost());
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Activity", exact: true })
+    .getByRole("button", {
+      name: "Locate fixture-attached-replay",
+      exact: true,
+    })
+    .click();
+
+  const panel = page.getByRole("region", { name: "Replay", exact: true });
+  const status = panel.getByRole("status");
+  const receive = panel.getByRole("log", { name: "Receive", exact: true });
+  const options = panel.getByRole("button", { name: "Playback options" });
+  const resume = panel.getByRole("button", { name: "Resume replay" });
+  const read = panel.getByRole("button", { name: "Read replay", exact: true });
+  await panel.getByRole("button", { name: "Step one record" }).click();
+  await expect(status).toHaveText("Paused");
+  await expect(receive).toContainText("FIRST-STEP");
+  await expect(receive).not.toContainText("BEFORE-BREAK");
+
+  await options.click();
+  const speed = page.getByRole("combobox", { name: "Replay speed" });
+  await expect(speed).toHaveText("100%");
+  await speed.click();
+  await page.getByRole("option", { name: "200%", exact: true }).click();
+  await expect(speed).toHaveText("200%");
+  const breakpoint = page.getByRole("textbox", { name: "Breakpoint record" });
+  const clear = page.getByRole("button", { name: "Clear breakpoint" });
+  await breakpoint.fill("3");
+  await page.getByRole("button", { name: "Set breakpoint" }).click();
+  await expect(clear).toBeEnabled();
+  await page.keyboard.press("Escape");
+
+  await resume.click();
+  await expect(status).toHaveText("Next record 2");
+  await read.click();
+  await expect(status).toHaveText("Breakpoint reached 3");
+  await expect(receive).toContainText("BEFORE-BREAK");
+  await expect(receive).not.toContainText("AT-BREAK");
+
+  await options.click();
+  await expect(breakpoint).toHaveValue("3");
+  await clear.click();
+  await expect(breakpoint).toHaveValue("");
+  await expect(clear).toBeDisabled();
+  await expect(status).toHaveText("Paused");
+  await page.keyboard.press("Escape");
+
+  await resume.click();
+  await expect(status).toHaveText("Next record 3");
+  await read.click();
+  await expect(status).toHaveText("End reached");
+  await expect(receive).toContainText("AT-BREAK");
+  await expect(receive).toContainText("AFTER-BREAK");
+
+  const evidence = await page.evaluate(() => {
+    const fixture = window.workbenchFixture;
+    return {
+      queries: fixture.queryInputs.filter(
+        (query) =>
+          query.actionId === "replay.read" ||
+          (query.actionId === "operation.get" &&
+            typeof query.params.operationId === "string" &&
+            query.params.operationId.startsWith("fixture-replay-control-")),
+      ),
+      operations: fixture.invocations,
+      unexpectedCommands: fixture.unexpectedCommands,
+      rawSubscriptions: fixture.rawSubscriptions,
+      connectCalls: fixture.connectCalls,
+      sentBytes: fixture.sentBytes,
+    };
+  });
+  const readParams = { ...scope, maxBytes: "65536" };
+  const inspection = {
+    target,
+    params: { ...readParams, maxRecords: "1", inspectPlayback: true },
+  };
+  const readPage = {
+    target,
+    params: { ...readParams, maxRecords: "100", reportPlayback: true },
+  };
+  const terminal = (index: number) => ({
+    operationId: `fixture-replay-control-${index}`,
+  });
+  expect(
+    evidence.queries.map((query) =>
+      query.actionId === "operation.get"
+        ? { operationId: query.params.operationId }
+        : { target: query.target, params: query.params },
+    ),
+  ).toEqual([
+    {
+      target,
+      params: {
+        ...readParams,
+        maxRecords: "1",
+        singleStep: true,
+        reportPlayback: true,
+      },
+    },
+    terminal(1),
+    inspection,
+    terminal(2),
+    inspection,
+    terminal(3),
+    inspection,
+    readPage,
+    terminal(4),
+    inspection,
+    terminal(5),
+    inspection,
+    readPage,
+  ]);
+  expect(
+    evidence.operations
+      .filter((operation) => operation.actionId === "replay.control")
+      .map(({ target, params, executionMode }) => ({
+        target,
+        params,
+        executionMode,
+      })),
+  ).toEqual([
+    controlCall({
+      ...scope,
+      paused: true,
+      playback: {
+        kind: "set_rate",
+        rate: { kind: "timed", speedPercent: 200 },
+      },
+    }),
+    controlCall({
+      ...scope,
+      paused: true,
+      playback: { kind: "set_breakpoint", record: "3" },
+    }),
+    controlCall({ ...scope, paused: false }),
+    controlCall({
+      ...scope,
+      paused: true,
+      playback: { kind: "set_breakpoint" },
+    }),
+    controlCall({ ...scope, paused: false }),
+  ]);
+  function controlCall(params: object) {
+    return { target, params, executionMode: "interactive" };
+  }
+  expect(
+    evidence.operations.some(
+      (operation) => operation.actionId === "session.tx",
+    ),
+  ).toBe(false);
+  expect(evidence.unexpectedCommands).toEqual([]);
+  expect(evidence.rawSubscriptions).toEqual([]);
+  expect(evidence.connectCalls).toEqual([]);
+  expect(evidence.sentBytes).toEqual([]);
+});

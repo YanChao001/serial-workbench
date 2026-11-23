@@ -2394,6 +2394,7 @@ function host(): WorkbenchHost {
     }),
     open: vi.fn().mockResolvedValue(session()),
     send: vi.fn().mockResolvedValue(operation()),
+    waitForOperation: vi.fn(async (value) => value),
     takeover: vi.fn().mockResolvedValue(operation()),
     refresh: vi.fn().mockResolvedValue(undefined),
     watchSession: vi.fn(() => () => {}),
@@ -2835,10 +2836,25 @@ it("uses the replay reader for a real replay.open result without opening a seria
     readRecord: vi.fn(),
     control: vi.fn(),
   };
-  render(<WorkspaceLayout host={adapter} labels={labels} replay={replay} />);
+  const view = render(
+    <WorkspaceLayout host={adapter} labels={labels} replay={replay} />,
+  );
   locateActivity("Locate replay");
   expect(adapter.watchSession).not.toHaveBeenCalled();
   expect(replay.read).not.toHaveBeenCalled();
+
+  const refreshed = {
+    ...adapter,
+    state: {
+      ...adapter.state,
+      operations: [],
+      replaySessionEpochs: new Map([["session", "1"]]),
+    },
+  };
+  view.rerender(
+    <WorkspaceLayout host={refreshed} labels={labels} replay={replay} />,
+  );
+  expect(adapter.watchSession).not.toHaveBeenCalled();
   fireEvent.click(screen.getByRole("button", { name: "Read replay" }));
   await screen.findByText("End reached");
 });

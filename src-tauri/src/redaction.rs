@@ -5,11 +5,23 @@ use std::sync::OnceLock;
 use regex::Regex;
 
 pub fn redact(text: &str) -> String {
+    static PRIVATE_KEY: OnceLock<Regex> = OnceLock::new();
+    let keys = PRIVATE_KEY.get_or_init(|| {
+        Regex::new(r"(?s)-----BEGIN (?:[A-Z0-9]+ )*PRIVATE KEY-----.*?(?:-----END (?:[A-Z0-9]+ )*PRIVATE KEY-----|\z)")
+            .expect("valid private key redaction pattern")
+    });
+    let without_keys = keys.replace_all(text, "[private key omitted]");
+    static ESCAPED_SECRET: OnceLock<Regex> = OnceLock::new();
+    let escaped = ESCAPED_SECRET.get_or_init(|| {
+        Regex::new(r#"(?i)(\\["'](?:token|password|secret|credential|pairing[_ -]?code|api[_-]?key)\\["'][ \t]*:[ \t]*\\["'])[^\r\n]*"#)
+            .expect("valid escaped secret redaction pattern")
+    });
+    let without_escaped = escaped.replace_all(&without_keys, "$1[redacted]");
     static URL_PATTERN: OnceLock<Regex> = OnceLock::new();
     let urls = URL_PATTERN.get_or_init(|| {
         Regex::new(r#"[a-zA-Z][a-zA-Z0-9+.-]*://[^\s<>\"']+"#).expect("valid URL redaction pattern")
     });
-    let sanitized_urls = urls.replace_all(text, |captures: &regex::Captures<'_>| {
+    let sanitized_urls = urls.replace_all(&without_escaped, |captures: &regex::Captures<'_>| {
         if let Ok(mut parsed) = url::Url::parse(&captures[0]) {
             let _ = parsed.set_username("");
             let _ = parsed.set_password(None);
@@ -30,7 +42,7 @@ pub fn redact(text: &str) -> String {
     static SECRET_PATTERN: OnceLock<Regex> = OnceLock::new();
     let pattern = SECRET_PATTERN.get_or_init(|| {
         // 引号中的空格、转义引号与日志截断后的未闭合值都需完整脱敏。
-        Regex::new(r#"(?i)(bearer\s+|(?:token|password|secret|api[_-]?key)["']?(?:\s*[:=]\s*|\s+))(?:"(?:\\[^\r\n]|[^"\\\r\n])*"?|'(?:\\[^\r\n]|[^'\\\r\n])*'?|[^\s&"']+)"#)
+        Regex::new(r#"(?i)(bearer\s+|(?:token|password|secret|credential|pairing[_ -]?code|api[_-]?key)["']?(?:\s*[:=]\s*|\s+))(?:"(?:\\[^\r\n]|[^"\\\r\n])*"?|'(?:\\[^\r\n]|[^'\\\r\n])*'?|[^\s&"']+)"#)
             .expect("valid secret redaction pattern")
     });
     let mut redacted = pattern
@@ -116,5 +128,14 @@ mod tests {
             assert!(!redacted.contains("private"), "{redacted}");
             assert!(redacted.ends_with("\nnext log entry"));
         }
+    }
+
+    #[test]
+    fn removes_private_key_blocks_and_escaped_credentials() {
+        let input = r#"nested {\"credential\":\"fixture-secret\"}"#;
+        assert!(!redact(input).contains("fixture-secret"));
+        let input = "prefix\n-----BEGIN OPENSSH PRIVATE KEY-----\nfixture-key\n-----END OPENSSH PRIVATE KEY-----\nsuffix";
+        assert_eq!(redact(input), "prefix\n[private key omitted]\nsuffix");
+        assert!(!redact("-----BEGIN PRIVATE KEY-----\nclipped-key").contains("clipped-key"));
     }
 }

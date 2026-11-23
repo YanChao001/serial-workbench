@@ -916,7 +916,10 @@ impl Database {
         for operation in expired {
             super::child_operations::retain_child_summary(&transaction, &operation)?;
             super::plugin_operations::prune(&transaction, &operation.operation_id)?;
-            if operation.action_id.as_str() == "transfer.file" {
+            if matches!(
+                operation.action_id.as_str(),
+                "transfer.file" | "transfer.paste"
+            ) {
                 prune_transfer_receipts(&transaction, &operation.operation_id)?;
             }
             transaction

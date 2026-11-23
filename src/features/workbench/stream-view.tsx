@@ -1,4 +1,6 @@
 import {
+  lazy,
+  Suspense,
   useEffect,
   useLayoutEffect,
   useId,
@@ -34,6 +36,7 @@ import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
 import { NotificationDetails } from "@/components/notification-content";
 import { TextEncodingSelect } from "./text-encoding-select";
+import type { AnsiKeyboardTarget } from "./ansi-keyboard";
 import {
   createTextDecoder,
   ENCODING_NAMES,
@@ -46,6 +49,14 @@ import { WorkbenchNotice } from "./workbench-notice";
 import { useStreamNotices } from "./stream-notices";
 import { nativeErrorCode } from "@/lib/native-error";
 import { Input } from "@/components/ui/input";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+import { Switch } from "@/components/ui/switch";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Popover,
@@ -61,6 +72,7 @@ import {
   type StreamMatch,
 } from "./stream-model";
 import {
+  presentHexLines,
   presentStreamTimes,
   terminalTypographyStyle,
   compactStreamTime,
@@ -82,7 +94,11 @@ function atStreamEnd(element: HTMLElement) {
   return element.scrollHeight - element.scrollTop - element.clientHeight <= 1;
 }
 
+const AnsiScreen = lazy(() => import("./ansi-screen"));
+const HEX_COLUMNS = ["0", "8", "16", "32", "64"] as const;
+
 export type StreamViewProps = {
+  keyboard?: AnsiKeyboardTarget;
   historyLimits?: Readonly<ReceiveHistory>;
   onHistoryLimitsChange?: (value: ReceiveHistory) => void;
   encoding?: TextEncoding | null;
@@ -108,6 +124,7 @@ export type StreamViewProps = {
   };
 };
 export function StreamView({
+  keyboard,
   historyLimits,
   onHistoryLimitsChange,
   items,
@@ -138,6 +155,12 @@ export function StreamView({
   );
   const [localMode, setMode] = useState<TerminalMode | null>(null);
   const [split, setSplit] = useState(false);
+  const [showAnsi, setShowAnsi] = useState(false);
+  const [ansiConvertEol, setAnsiConvertEol] = useState(true);
+  const [wrapReceiveText, setWrapReceiveText] = useState(true);
+  const [showTransmitEcho, setShowTransmitEcho] = useState(true);
+  const [hexColumns, setHexColumns] =
+    useState<(typeof HEX_COLUMNS)[number]>("0");
   const mode = split
     ? "split"
     : (controlledMode ??
@@ -438,10 +461,10 @@ export function StreamView({
   }, []);
   useLayoutEffect(() => {
     followingActive.current = following;
-    if (following) followToEnd();
-  }, [displayed, following, followToEnd]);
+    if (following && !showAnsi) followToEnd();
+  }, [displayed, following, followToEnd, showAnsi]);
   useEffect(() => {
-    if (!following || !viewport.current || !content.current) return;
+    if (showAnsi || !following || !viewport.current || !content.current) return;
     let frame: number | undefined;
     const observer = new ResizeObserver(() => {
       frame ??= requestAnimationFrame(() => {
@@ -455,7 +478,7 @@ export function StreamView({
       observer.disconnect();
       if (frame !== undefined) cancelAnimationFrame(frame);
     };
-  }, [following, followToEnd]);
+  }, [following, followToEnd, showAnsi]);
   useEffect(() => {
     if (match) {
       const row = rowRefs.current.get(match.itemIndex);
@@ -617,7 +640,7 @@ export function StreamView({
             )}
             {row.kind === "rx" || row.kind === "tx" ? (
               <span className="sr-only">
-                {row.kind === "rx" ? labels.terminal : labels.send}
+                {row.kind === "rx" ? labels.terminal : labels.transmitSource}
               </span>
             ) : row.kind === "gap" ? (
               <>
@@ -667,16 +690,33 @@ export function StreamView({
             className="workbench-stream-content"
             data-mode={mode}
             style={terminalTypographyStyle(terminalSettings?.typography)}
+            hidden={row.kind === "tx" && !showTransmitEcho}
           >
             {row.kind === "rx" || row.kind === "tx" ? (
               <>
                 <span
                   className={mode === "hex" ? "sr-only" : "workbench-payload"}
+                  data-unwrapped={
+                    mode !== "hex" && row.kind === "rx" && !wrapReceiveText
+                      ? true
+                      : undefined
+                  }
+                  tabIndex={
+                    mode !== "hex" && row.kind === "rx" && !wrapReceiveText
+                      ? 0
+                      : undefined
+                  }
                 >
                   {row.text}
                 </span>
                 {mode !== "text" && (
-                  <span className="workbench-payload">{row.hex}</span>
+                  <span
+                    className="workbench-payload"
+                    data-hex-grouped={hexColumns !== "0" || undefined}
+                    tabIndex={hexColumns !== "0" ? 0 : undefined}
+                  >
+                    {presentHexLines(row.hex ?? "", Number(hexColumns))}
+                  </span>
                 )}
               </>
             ) : (
@@ -694,6 +734,9 @@ export function StreamView({
       timeMode,
       mode,
       terminalSettings,
+      wrapReceiveText,
+      showTransmitEcho,
+      hexColumns,
     ],
   );
   return (
@@ -712,10 +755,11 @@ export function StreamView({
           size="sm"
           variant="outline"
           spacing={0}
-          value={mode}
+          value={showAnsi ? "" : mode}
           aria-label={labels.terminal}
           onValueChange={(value) => {
             if (value !== "text" && value !== "hex") return;
+            setShowAnsi(false);
             setSplit(false);
             setMode(value);
             onReceiveModeChange?.(value);
@@ -748,7 +792,10 @@ export function StreamView({
           label={labels.search}
           aria-expanded={searchOpen}
           aria-controls={`${id}-search`}
-          onClick={() => setSearchOpen(!searchOpen)}
+          onClick={() => {
+            setShowAnsi(false);
+            setSearchOpen(!searchOpen);
+          }}
         >
           <Search aria-hidden="true" />
         </WorkbenchIconButton>
@@ -797,11 +844,75 @@ export function StreamView({
             <Button
               size="sm"
               variant="outline"
-              aria-pressed={split}
-              onClick={() => setSplit(!split)}
+              aria-pressed={!showAnsi && split}
+              onClick={() => {
+                setShowAnsi(false);
+                setSplit(showAnsi || !split);
+              }}
             >
               {labels.split}
             </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              aria-pressed={showAnsi}
+              onClick={() => {
+                setShowAnsi(!showAnsi);
+                if (!showAnsi) {
+                  setSearchOpen(false);
+                  searching.current?.abort();
+                  setMatch(null);
+                }
+              }}
+            >
+              {labels.ansiScreen}
+            </Button>
+            {showAnsi && (
+              <label className="flex items-center justify-between gap-3 text-sm">
+                {labels.ansiConvertLf}
+                <Switch
+                  checked={ansiConvertEol}
+                  onCheckedChange={setAnsiConvertEol}
+                />
+              </label>
+            )}
+            <label className="flex items-center justify-between gap-3 text-sm">
+              {labels.wrapReceiveText}
+              <Switch
+                checked={wrapReceiveText}
+                onCheckedChange={setWrapReceiveText}
+              />
+            </label>
+            <label className="flex items-center justify-between gap-3 text-sm">
+              {labels.showTransmitEcho}
+              <Switch
+                checked={showTransmitEcho}
+                onCheckedChange={setShowTransmitEcho}
+              />
+            </label>
+            <label className="flex flex-wrap items-center justify-between gap-2 text-sm">
+              {labels.hexColumns}
+              <Select
+                value={hexColumns}
+                onValueChange={(value) => {
+                  const columns = HEX_COLUMNS.find(
+                    (option) => option === value,
+                  );
+                  if (columns) setHexColumns(columns);
+                }}
+              >
+                <SelectTrigger size="sm" aria-label={labels.hexColumns}>
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {HEX_COLUMNS.map((columns) => (
+                    <SelectItem key={columns} value={columns}>
+                      {columns === "0" ? labels.automaticColumns : columns}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </label>
             {presentationLabels && (
               <fieldset className="workbench-choice">
                 <legend className="sr-only">
@@ -977,7 +1088,27 @@ export function StreamView({
         </form>
       )}
       <div className="workbench-receive-frame app-reading-surface">
+        {showAnsi && (
+          <Suspense
+            fallback={
+              <p role="status" className="workbench-ansi-view">
+                {labels.ansiScreenLoading}
+              </p>
+            }
+          >
+            <AnsiScreen
+              items={displayed}
+              encoding={receiveCodec}
+              sendEncoding={sendCodec}
+              keyboard={frozen ? undefined : keyboard}
+              convertEol={ansiConvertEol}
+              typography={terminalSettings?.typography}
+              labels={labels}
+            />
+          </Suspense>
+        )}
         <div
+          hidden={showAnsi}
           role="log"
           aria-label={labels.terminal}
           aria-live="off"

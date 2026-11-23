@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { connectDerivedView } from "@serial-workbench/plugin-sdk/web";
+import type { ViewLocale } from "@serial-workbench/plugin-sdk/web";
 
 const status = document.querySelector<HTMLElement>("#status");
 const values = document.querySelector<HTMLTableSectionElement>("#values");
@@ -11,6 +12,7 @@ if (!status || !values || !plot || !paint)
 const samples: { position: string; voltage: number }[] = [];
 let lost = false;
 let zh = false;
+let state: "waiting" | "reading" | "stopped" = "waiting";
 let number = new Intl.NumberFormat("en", { maximumFractionDigits: 5 });
 
 function draw(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
@@ -83,6 +85,46 @@ function draw(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
 }
 
 const render = () => draw(plot, paint);
+function renderStatus() {
+  if (!status) return;
+  if (state === "stopped") {
+    status.textContent = zh ? "图表读取已停止" : "Chart reading stopped";
+  } else if (state === "waiting") {
+    status.textContent = zh ? "正在等待样本…" : "Waiting for samples…";
+  } else {
+    status.textContent = zh
+      ? `${samples.length} 个样本${lost ? " · 早期数据已过期" : ""}`
+      : `${samples.length} samples${lost ? " · Earlier data expired" : ""}`;
+  }
+}
+
+function renderLocale(locale: ViewLocale) {
+  zh = locale === "zh-CN";
+  number = new Intl.NumberFormat(locale, { maximumFractionDigits: 5 });
+  document.documentElement.lang = locale;
+  document.title = zh ? "电压曲线" : "Voltage trace";
+  const labels = {
+    heading: document.title,
+    samples: zh ? "样本值" : "Sample values",
+    position: zh ? "序号" : "Position",
+    voltage: zh ? "电压（V）" : "Voltage (V)",
+  };
+  for (const [id, label] of Object.entries(labels)) {
+    const element = document.getElementById(id);
+    if (element) element.textContent = label;
+  }
+  plot?.setAttribute(
+    "aria-label",
+    zh ? "按序号显示电压" : "Voltage by sample position",
+  );
+  samples.forEach((sample, index) => {
+    const cell = values?.rows[index]?.cells[1];
+    if (cell) cell.textContent = number.format(sample.voltage);
+  });
+  renderStatus();
+  render();
+}
+
 const observer = new ResizeObserver(render);
 observer.observe(plot);
 window.addEventListener("pagehide", () => observer.disconnect(), {
@@ -90,6 +132,7 @@ window.addEventListener("pagehide", () => observer.disconnect(), {
 });
 const view = connectDerivedView({
   onSession() {},
+  onLocale: renderLocale,
   onPage(page, gap) {
     lost ||= gap !== undefined;
     for (const sample of page.samples) {
@@ -108,31 +151,14 @@ const view = connectDerivedView({
       values.deleteRow(0);
       samples.shift();
     }
-    status.textContent = zh
-      ? `${samples.length} 个样本${lost ? " · 早期数据已过期" : ""}`
-      : `${samples.length} samples${lost ? " · Earlier data expired" : ""}`;
+    state = "reading";
+    renderStatus();
     render();
   },
   onError() {
-    status.textContent = zh ? "图表读取已停止" : "Chart reading stopped";
+    state = "stopped";
+    renderStatus();
   },
 });
-zh = view.locale === "zh-CN";
-number = new Intl.NumberFormat(view.locale, { maximumFractionDigits: 5 });
-document.documentElement.lang = view.locale;
 document.documentElement.dataset.theme = view.dark ? "dark" : "light";
-if (zh) {
-  document.title = "电压曲线";
-  const labels = {
-    heading: "电压曲线",
-    samples: "样本值",
-    position: "序号",
-    voltage: "电压（V）",
-  };
-  for (const [id, label] of Object.entries(labels)) {
-    const element = document.getElementById(id);
-    if (element) element.textContent = label;
-  }
-  status.textContent = "正在等待样本…";
-  plot.setAttribute("aria-label", "按序号显示电压");
-}
+renderLocale(view.locale);

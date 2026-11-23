@@ -1,5 +1,17 @@
 import { describe, expect, it } from "vitest";
-import { formatHex, parseHex } from "./hex";
+import { formatHex, HexInputError, parseHex } from "./hex";
+
+it.each([
+  ["AA\n 1", 4, 5],
+  [" C9 😃 20", 4, 6],
+  ["77 Z0", 3, 4],
+  [" F\t", 1, 2],
+])("reports exact input offsets for %s", (input, start, end) => {
+  expect(() => parseHex(input)).toThrow(
+    expect.objectContaining({ start, end }),
+  );
+  expect(() => parseHex(input)).toThrow(HexInputError);
+});
 
 describe("HEX codec", () => {
   it("displays every byte as uppercase pairs separated by one space", () => {

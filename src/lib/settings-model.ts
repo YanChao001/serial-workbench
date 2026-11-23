@@ -68,6 +68,9 @@ export function clientPreferences(value: AppSettings): ClientPreferences {
     sidebarCollapsed: value.sidebarCollapsed,
     sidebarWidth: value.sidebarWidth,
     receiveHistory: value.receiveHistory ?? { ...DEFAULT_RECEIVE_HISTORY },
+    ...(value.shortcutOverrides === undefined
+      ? {}
+      : { shortcutOverrides: value.shortcutOverrides }),
   };
 }
 export function sharedSettings(value: AppSettings): SharedSettings {
@@ -77,6 +80,7 @@ export function sharedSettings(value: AppSettings): SharedSettings {
     sidebarCollapsed: _sidebarCollapsed,
     sidebarWidth: _sidebarWidth,
     receiveHistory: _receiveHistory,
+    shortcutOverrides: _shortcutOverrides,
     nodeTheme,
     ...shared
   } = value;

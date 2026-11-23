@@ -39,6 +39,7 @@ export function WorkspaceSendPanel({
     <SendPanel
       {...props}
       draft={draft}
+      checksumDraftKey={draftKey}
       onDraftChange={onDraftChange}
       onPreviewChange={preview}
     />

@@ -119,3 +119,61 @@ test("keyboard opens the command palette and restores trigger focus", async ({
   await expect(dialog).toBeHidden();
   await expect(trigger).toBeFocused();
 });
+
+test("shortcut edits reject conflicts and survive a reload", async ({
+  page,
+}) => {
+  await page.goto("./#/settings");
+  await expect(page.getByRole("main")).toBeVisible();
+  await expect(page.getByRole("main")).toBeVisible();
+  await page.keyboard.press("F1");
+  const help = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  const change = help.getByRole("button", {
+    name: "Change shortcut for Quick actions",
+  });
+  await change.click();
+  const capture = help.getByRole("textbox", {
+    name: "Change shortcut for Quick actions",
+  });
+  await expect(capture).toBeFocused();
+  const save = help.getByRole("button", { name: "Save", exact: true });
+  await capture.press("Control+b");
+  await expect(help.getByRole("status")).toContainText("Already used by");
+  await expect(save).toBeDisabled();
+  await capture.press("Control+Shift+y");
+  await expect(capture).toHaveValue("Ctrl+Shift+Y");
+  await save.click();
+  await expect(change).toBeFocused();
+  await page.keyboard.press("Escape");
+  await page.keyboard.press("Control+Shift+y");
+  const palette = page.getByRole("dialog", { name: "Quick actions" });
+  await expect(palette.getByRole("combobox")).toBeFocused();
+  await page.reload();
+  await expect(page.getByRole("main")).toBeVisible();
+  await page.keyboard.press("Control+Shift+y");
+  await expect(palette.getByRole("combobox")).toBeFocused();
+});
+
+test("F1 opens keyboard shortcut help from a focused control", async ({
+  page,
+}) => {
+  await page.goto("./#/settings");
+  const trigger = page
+    .locator(".app-title-bar")
+    .getByRole("button", { name: "Quick actions", exact: true });
+  await trigger.focus();
+  await page.keyboard.press("F1");
+  const dialog = page.getByRole("dialog", { name: "Keyboard shortcuts" });
+  const search = dialog.getByRole("searchbox", {
+    name: "Search keyboard shortcuts",
+  });
+  await expect(search).toBeFocused();
+  await search.fill("enter hex");
+  await expect(dialog.getByText("Send draft")).toBeVisible();
+  await expect(
+    dialog.getByText("Send editor in Text or HEX mode"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(trigger).toBeFocused();
+});

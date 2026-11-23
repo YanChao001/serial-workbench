@@ -925,24 +925,27 @@ impl FileService {
             }
         }
     }
-    pub(crate) fn publish_file(
-        &self,
+    pub(crate) fn prepare_file_publication<'a>(
+        &'a self,
         location: &ObjectRef,
-        path: &Path,
+        temporary: &'a PathGuard,
+        destination: &'a PathGuard,
         actor: &AuthenticatedActor,
-    ) -> HostResult<ObjectRef> {
+    ) -> HostResult<impl FnOnce() -> HostResult<ObjectRef> + 'a> {
         let parent = self.document(location, actor, "workspace.modify")?;
+        let path = destination.checked_path();
         if parent.purpose != FilePurpose::CaptureTarget || path != parent.path {
             return Err(denied());
         }
-        let mut file = open_regular(path)?;
+        let mut file = temporary.open_file()?;
+        let stamp = change_stamp(&file)?;
         let document = FileDocument {
             format_version: "0.1".into(),
             path: path.to_path_buf(),
             purpose: FilePurpose::ReadFile,
             fingerprint: hash_reader(&mut file, &self.read_bytes)?.0,
             identity: file_identity(&file)?,
-            parent_identity: directory_identity(path.parent().ok_or_else(invalid)?)?,
+            parent_identity: destination.parent_identity()?,
             length: file.metadata().map_err(io_error)?.len().into(),
             content_revision: 1.into(),
             live: false,
@@ -954,12 +957,28 @@ impl FileService {
             }],
         };
         let id = Id::try_from(format!("file-{}", uuid::Uuid::new_v4()).as_str())?;
-        self.save(&id, 0.into(), &document)?;
-        Ok(ObjectRef {
+        let reference = ObjectRef {
             host_id: self.identity.host_id.clone(),
             kind: ResourceKind::try_from("file")?,
             id,
             revision: Some(1.into()),
+        };
+        Ok(move || {
+            // Hash outside the authorization lock and recheck the prepared file at commit.
+            let current = temporary.open_file()?;
+            if file_identity(&current)? != document.identity || change_stamp(&current)? != stamp {
+                return Err(changed());
+            }
+            drop(current);
+            temporary.rename_to(destination, false)?;
+            let result = destination
+                .sync_parent()
+                .and_then(|()| self.save(&reference.id, 0.into(), &document));
+            if result.is_err() {
+                destination.discard_created_file(&document.identity);
+                let _ = destination.sync_parent();
+            }
+            result.map(|()| reference)
         })
     }
 }
@@ -1600,6 +1619,25 @@ impl PathGuard {
         #[cfg(windows)]
         {
             open_regular(&self.path)
+        }
+    }
+    pub(crate) fn discard_created_file(&self, expected_identity: &str) {
+        let Ok(file) = self.open_file() else { return };
+        if !file_identity(&file).is_ok_and(|identity| identity == expected_identity) {
+            return;
+        }
+        drop(file);
+        #[cfg(unix)]
+        {
+            use std::os::fd::AsRawFd;
+            if let Ok(name) = guard_name(&self.path) {
+                // 相对于已持有的父目录清理，不追踪原路径后来指向的父目录。
+                unsafe { libc::unlinkat(self.parent.as_raw_fd(), name.as_ptr(), 0) };
+            }
+        }
+        #[cfg(windows)]
+        {
+            let _ = fs::remove_file(&self.path);
         }
     }
     pub(crate) fn rename_to(&self, target: &Self, replace: bool) -> HostResult<()> {

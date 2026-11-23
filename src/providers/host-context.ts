@@ -65,6 +65,7 @@ export type HostState = {
   devicesStale: boolean;
   catalog: readonly ActionSpec[];
   sessions: SessionSnapshot[];
+  replaySessionEpochs?: ReadonlyMap<string, string>;
   operations: Operation[];
   operationSummaries: OperationSummary[];
   operationSummariesReady: boolean;

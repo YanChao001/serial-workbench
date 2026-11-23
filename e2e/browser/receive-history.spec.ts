@@ -46,6 +46,77 @@ function packets(
   });
 }
 
+test("receive text and HEX line layout preserve the raw bytes and their offset", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 600 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const source = "packet-0001\n".padEnd(243, "0");
+  const transmit = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "tx",
+  );
+  if (!transmit) throw new Error("Missing TX fixture");
+  await page.evaluate(
+    (items: unknown[]) => window.workbenchFixture.emitRaw(items),
+    [transmit, ...packets(1, 1, 243)],
+  );
+
+  const terminal = page.getByRole("region", {
+    name: en["workbench.terminal"],
+    exact: true,
+  });
+  const log = terminal.getByRole("log");
+  const row = log.locator('[data-direction="rx"][data-offset="0"]');
+  const body = row.locator(".workbench-payload");
+  await expect(body).toHaveCSS("white-space", "pre-wrap");
+  const options = terminal.getByRole("button", {
+    name: "Display options",
+    exact: true,
+  });
+  await options.click();
+  const wrap = page.getByRole("switch", { name: "Wrap received text" });
+  await expect(wrap).toBeChecked();
+  await wrap.click();
+  await expect(wrap).not.toBeChecked();
+  await wrap.press("Escape");
+  await expect(options).toBeFocused();
+  await expect(body).toHaveCSS("white-space", "pre");
+  expect(await body.textContent()).toBe(source);
+  expect(
+    await body.evaluate((element) => element.scrollWidth - element.clientWidth),
+  ).toBeGreaterThan(0);
+
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  await options.click();
+  await choose(page, "HEX bytes per line", "8");
+  const hex = row.locator('[data-hex-grouped="true"]');
+  await expect(hex).toHaveCSS("white-space", "pre");
+  const lines = (await hex.textContent())?.split("\n") ?? [];
+  expect(lines.map((line) => line.split(" ").length)).toEqual([
+    ...Array<number>(30).fill(8),
+    3,
+  ]);
+  expect(lines.join(" ").replaceAll(" ", "").toLowerCase()).toBe(
+    Buffer.from(source).toString("hex"),
+  );
+  const tx = log.locator('[data-direction="tx"]');
+  const txBody = tx.locator('[data-hex-grouped="true"]');
+  await expect(txBody).toBeVisible();
+  await page.getByRole("switch", { name: "Show outgoing bytes" }).click();
+  await expect(txBody).toBeHidden();
+  await expect(hex).toBeVisible();
+  await expect(
+    tx.getByRole("button", { name: en["workbench.receipt"] }),
+  ).toBeVisible();
+});
+
 test("small upward scrolling keeps the latest button available throughout history review", async ({
   page,
 }) => {

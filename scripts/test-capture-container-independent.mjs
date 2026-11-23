@@ -6,7 +6,10 @@ import { isAbsolute, join, resolve, sep } from "node:path";
 import { isDeepStrictEqual } from "node:util";
 import { fileURLToPath } from "node:url";
 
-const MAGIC = Buffer.from("SWBR01\n");
+const MAGIC = new Map([
+  ["0.1", Buffer.from("SWBR01\n")],
+  ["0.2", Buffer.from("SWBR02\n")],
+]);
 const MAX_RECORD = 1024 * 1024;
 const hash = (bytes) => createHash("sha256").update(bytes).digest("hex");
 function requireThat(condition, message) {
@@ -90,8 +93,10 @@ export function readFixtureContainer(fixtureDirectory) {
   );
   const manifest = json(regular(join(capture, "manifest.json")), "manifest");
   const index = json(regular(join(capture, "index.json")), "index");
+  const magic = MAGIC.get(manifest.formatVersion);
+  const timed = manifest.formatVersion === "0.2";
   requireThat(
-    manifest.formatVersion === "0.1" && index.formatVersion === "0.1",
+    magic && index.formatVersion === manifest.formatVersion,
     "Future/unsupported capture format",
   );
   requireThat(
@@ -114,6 +119,8 @@ export function readFixtureContainer(fixtureDirectory) {
     recordJsonSha256 = [],
     volumes = [];
   let previous = "0".repeat(64);
+  const recordedMonoNs = [];
+  let lastRecorded;
   const names = [];
   for (let position = 0; position < manifest.volumes.length; position++) {
     const meta = manifest.volumes[position];
@@ -135,7 +142,8 @@ export function readFixtureContainer(fixtureDirectory) {
     names.push(name);
     const bytes = regular(join(capture, name));
     requireThat(
-      bytes.length >= 7 && bytes.subarray(0, 7).equals(MAGIC),
+      bytes.length >= magic.length &&
+        bytes.subarray(0, magic.length).equals(magic),
       `Invalid volume magic: ${name}`,
     );
     let offset = 7;
@@ -149,25 +157,36 @@ export function readFixtureContainer(fixtureDirectory) {
         length > 0 && length <= MAX_RECORD,
         `Record JSON length exceeds 1 MiB limit in ${name}`,
       );
-      const end = offset + 4 + length + 32;
+      const bodyStart = offset + 4 + (timed ? 8 : 0);
+      const bodyEnd = bodyStart + length;
+      const end = bodyEnd + 32;
       requireThat(
         end <= bytes.length,
         `Truncated record digest/body in ${name}`,
       );
-      const body = bytes.subarray(offset + 4, offset + 4 + length);
-      const digest = hash(body);
+      const body = bytes.subarray(bodyStart, bodyEnd);
       requireThat(
-        bytes.subarray(offset + 4 + length, end).toString("hex") === digest,
-        `Record JSON digest mismatch at ordinal ${records.length + 1}`,
+        bytes.subarray(bodyEnd, end).toString("hex") ===
+          hash(bytes.subarray(offset + 4, bodyEnd)),
+        `Record digest mismatch at ordinal ${records.length + 1}`,
       );
       const record = json(body, `record ${records.length + 1}`);
+      if (timed) {
+        const elapsed = bytes.readBigUInt64LE(offset + 4);
+        requireThat(
+          lastRecorded === undefined ? elapsed === 0n : elapsed >= lastRecorded,
+          "Recorder timeline is not nondecreasing from zero",
+        );
+        lastRecorded = elapsed;
+        recordedMonoNs.push(String(elapsed));
+      }
       requireThat(
         u64(record.recordOrdinal, "record ordinal") ===
           BigInt(records.length + 1),
         "Record ordinal is not a continuous prefix",
       );
       records.push(record);
-      recordJsonSha256.push(digest);
+      recordJsonSha256.push(hash(body));
       locations.push({
         recordOrdinal: record.recordOrdinal,
         volume: meta.ordinal,
@@ -216,6 +235,11 @@ export function readFixtureContainer(fixtureDirectory) {
     isDeepStrictEqual(recordJsonSha256, expected.recordJsonSha256),
     "Raw record JSON hashes differ from expected input oracle",
   );
+  if (timed)
+    requireThat(
+      isDeepStrictEqual(recordedMonoNs, expected.recordedMonoNs),
+      "Recorder timeline differs from expected input oracle",
+    );
   for (const name of ["written", "flushed", "synced", "verified"])
     requireThat(
       u64(manifest.watermarks[name], `watermark ${name}`) ===
@@ -336,6 +360,7 @@ export function readFixtureContainer(fixtureDirectory) {
     recordCount: records.length,
     volumes,
     recordJsonSha256,
+    ...(timed ? { recordedMonoNs } : {}),
     rawPayloads,
     finalReceipts,
   };

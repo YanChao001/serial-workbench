@@ -124,12 +124,19 @@ async function seedUpdateFixture(
     runInBackground: false,
   };
   const diagnostics: DiagnosticsReport = {
+    formatVersion: "0.1",
+    collectedAt: "2026-10-28T00:00:00Z",
     appVersion: status.currentVersion,
     tauriVersion: "2.0.0",
     platform: "browser-fixture",
     architecture: "test",
     windowLabel: "main",
     settingsRevision: "1",
+    configuration: {
+      language: "en",
+      networkMode: "system",
+      runInBackground: false,
+    },
     desktop: desktopStatus,
     autostartEnabled: false,
     updaterConfigured: status.configured,

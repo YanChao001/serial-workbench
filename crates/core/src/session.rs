@@ -356,7 +356,9 @@ pub struct TxParams {
     #[specta(type=Vec<TransformReference>, optional)]
     pub transforms: Option<Vec<TransformReference>>,
 }
-fn tx_bytes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Bytes, D::Error> {
+pub(crate) fn tx_bytes<'de, D: serde::Deserializer<'de>>(
+    deserializer: D,
+) -> Result<Bytes, D::Error> {
     let value = Bytes::deserialize(deserializer)?;
     let text = value.as_str();
     let decoded = text.len() / 4 * 3 - text.bytes().rev().take_while(|byte| *byte == b'=').count();
@@ -367,7 +369,7 @@ fn tx_bytes<'de, D: serde::Deserializer<'de>>(deserializer: D) -> Result<Bytes, 
     }
     Ok(value)
 }
-fn tx_bytes_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
+pub(crate) fn tx_bytes_schema(generator: &mut schemars::SchemaGenerator) -> schemars::Schema {
     let complete = TX_MAX_BYTES / 3 * 4;
     let maximum = TX_MAX_BYTES.div_ceil(3) * 4;
     // 相同的 Base64 字符数可表示不同字节数；尾部 padding 也必须满足上限。

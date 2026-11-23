@@ -10,7 +10,10 @@ use serial_workbench_core::{HostError, HostResult, Id, U64};
 use std::{
     cell::RefCell,
     collections::BTreeMap,
-    sync::{Arc, LazyLock, atomic::AtomicBool},
+    sync::{
+        Arc, LazyLock,
+        atomic::{AtomicBool, Ordering},
+    },
 };
 use tauri::{Manager, WebviewWindow};
 use tokio::sync::{Mutex, Semaphore, watch};
@@ -21,10 +24,12 @@ thread_local! {
 }
 
 struct NativeView {
-    _renderer: wry::WebView,
+    renderer: wry::WebView,
     window: tauri::Window,
     context: Arc<ViewContext>,
     owner: ViewOwner,
+    ready: Arc<AtomicBool>,
+    locale: &'static str,
 }
 
 struct PendingView {
@@ -85,7 +90,7 @@ struct ViewContext {
     shell_token: String,
     frame_id: String,
     display_name: String,
-    locale: String,
+    locale: &'static str,
     dark: bool,
 }
 
@@ -117,11 +122,11 @@ fn trace_terminal_view(
 }
 
 impl ViewContext {
-    fn title(&self) -> &str {
+    fn title(&self, locale: &str) -> &str {
         let display_name = self.display_name.trim();
         if !display_name.is_empty() {
             display_name
-        } else if self.locale == "zh-CN" {
+        } else if locale == "zh-CN" {
             "插件视图"
         } else {
             "Plugin view"
@@ -194,8 +199,7 @@ pub(crate) async fn host_open_node_view(
             "zh-CN"
         } else {
             "en"
-        }
-        .into(),
+        },
         dark: presentation.dark,
     });
     let label = Id::try_from(format!("node-view-{}", context.frame_id).as_str())?;
@@ -277,6 +281,50 @@ fn close_view(label: &str, owner: &ViewOwner) {
     }
 }
 
+pub(crate) fn refresh_locales(app: &tauri::AppHandle) -> tauri::Result<()> {
+    let handle = app.clone();
+    app.run_on_main_thread(move || {
+        let settings = handle.state::<crate::platform_settings::PlatformSettings>();
+        let Ok(Some(settings)) = settings.snapshot() else {
+            return;
+        };
+        let locale = match settings.value.language {
+            serial_workbench_core::Language::Zh => "zh-CN",
+            serial_workbench_core::Language::En => "en",
+        };
+        VIEWS.with_borrow_mut(|views| {
+            for view in views
+                .values_mut()
+                .filter(|view| view.ready.load(Ordering::Acquire) && view.locale != locale)
+            {
+                if let Err(error) = update_shell_locale(view, locale) {
+                    log::warn!("Cannot refresh plugin view language: {error}");
+                    continue;
+                }
+                view.locale = locale;
+                let _ = view.window.set_title(view.context.title(locale));
+            }
+        });
+    })
+}
+
+fn update_shell_locale(view: &NativeView, locale: &'static str) -> wry::Result<()> {
+    let script = format!("globalThis.swbViewSetLocale('{locale}');");
+    #[cfg(feature = "e2e")]
+    if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("terminal-automated") {
+        let label = view.window.label().to_owned();
+        return view.renderer.evaluate_script_with_callback(
+            &format!("{script} document.documentElement.lang;"),
+            move |result| {
+                if serde_json::from_str::<String>(&result).as_deref().ok() == Some(locale) {
+                    log::info!("e2e_node_view_locale view={label} locale={locale}");
+                }
+            },
+        );
+    }
+    view.renderer.evaluate_script(&script)
+}
+
 fn prepare_view(
     app: &tauri::AppHandle,
     id: &Id,
@@ -286,7 +334,7 @@ fn prepare_view(
 ) -> HostResult<PendingView> {
     let window = tauri::window::WindowBuilder::new(app, id.as_str())
         .visible(false)
-        .title(context.title())
+        .title(context.title(context.locale))
         .inner_size(780.0, 440.0)
         .build()
         .map_err(|error| {
@@ -296,6 +344,10 @@ fn prepare_view(
     let url = context.shell_url().to_string();
     let shell = context.clone();
     let package = context.clone();
+    let ready = Arc::new(AtomicBool::new(false));
+    let shell_ready = ready.clone();
+    let shell_url = url.clone();
+    let shell_app = app.clone();
     let renderer = wry::WebViewBuilder::new()
         .with_incognito(true)
         .with_url(url.clone())
@@ -304,6 +356,14 @@ fn prepare_view(
         })
         .with_asynchronous_custom_protocol(protocol::ASSET.into(), move |_, request, responder| {
             package.clone().respond_asset(request, responder)
+        })
+        .with_on_page_load_handler(move |event, destination| {
+            if matches!(event, wry::PageLoadEvent::Finished) && destination == shell_url {
+                shell_ready.store(true, Ordering::Release);
+                if let Err(error) = refresh_locales(&shell_app) {
+                    log::warn!("Cannot schedule plugin view language refresh: {error}");
+                }
+            }
         })
         .with_navigation_handler(move |destination| {
             destination == url || (!cfg!(windows) && protocol::is_asset_url(&destination))
@@ -349,11 +409,11 @@ fn prepare_view(
         crate::e2e_zoom::observe(&window, renderer.controller());
     }
     let label = id.as_str().to_owned();
-    let app = app.clone();
+    let retired_app = app.clone();
     let retired_label = label.clone();
     let watch_connection = tauri::async_runtime::spawn(async move {
         let _ = retired.changed().await;
-        let _ = app.run_on_main_thread(move || {
+        let _ = retired_app.run_on_main_thread(move || {
             let window = VIEWS.with_borrow(|views| {
                 views.get(&retired_label).map(|view| {
                     view.context.stop();
@@ -379,13 +439,18 @@ fn prepare_view(
         views.insert(
             id.as_str().into(),
             NativeView {
-                _renderer: renderer,
+                renderer,
                 window: window.clone(),
+                locale: context.locale,
+                ready,
                 context,
                 owner: owner.clone(),
             },
         )
     });
+    if let Err(error) = refresh_locales(app) {
+        log::warn!("Cannot schedule plugin view language refresh: {error}");
+    }
     Ok(PendingView {
         window: Some(window),
     })

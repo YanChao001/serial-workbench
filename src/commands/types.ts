@@ -16,6 +16,8 @@ export type AppCommand = {
   keywords?: readonly string[];
   keywordKeys?: readonly DictKey[];
   shortcuts?: readonly Shortcut[];
+  rebindable?: boolean;
+  defaultShortcut?: Shortcut;
   available?: () => boolean;
   run: () => void | Promise<unknown>;
 };

@@ -309,6 +309,7 @@ export function SettingsProvider({
         sidebarCollapsed,
         sidebarWidth,
         receiveHistory,
+        shortcutOverrides,
         ...shared
       } = normalized;
       if (
@@ -316,7 +317,8 @@ export function SettingsProvider({
         windowPosition !== undefined ||
         sidebarCollapsed !== undefined ||
         sidebarWidth !== undefined ||
-        receiveHistory !== undefined
+        receiveHistory !== undefined ||
+        shortcutOverrides !== undefined
       ) {
         const patch = {
           ...(menuBar !== undefined ? { menuBar } : {}),
@@ -324,6 +326,7 @@ export function SettingsProvider({
           ...(sidebarCollapsed !== undefined ? { sidebarCollapsed } : {}),
           ...(sidebarWidth !== undefined ? { sidebarWidth } : {}),
           ...(receiveHistory !== undefined ? { receiveHistory } : {}),
+          ...(shortcutOverrides !== undefined ? { shortcutOverrides } : {}),
         };
         if (clientSync.current) clientSync.current.update(patch);
         else {

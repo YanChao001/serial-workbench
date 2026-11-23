@@ -15,6 +15,20 @@ pub enum FileResourceRole {
     Media,
     CaptureTarget,
     CaptureSource,
+    ExportCsvTarget,
+    ExportJsonlTarget,
+}
+
+impl FileResourceRole {
+    fn purpose(self) -> FilePurpose {
+        match self {
+            Self::CaptureTarget | Self::ExportCsvTarget | Self::ExportJsonlTarget => {
+                FilePurpose::CaptureTarget
+            }
+            Self::CaptureSource => FilePurpose::CaptureSource,
+            Self::Source | Self::Media => FilePurpose::ReadFile,
+        }
+    }
 }
 
 /// 仅供系统选择器展示，不代表设备、路径或文件访问权限。
@@ -304,14 +318,9 @@ async fn register(
     path: &Path,
     role: FileResourceRole,
 ) -> HostResult<FileMetadata> {
-    let purpose = match role {
-        FileResourceRole::CaptureTarget => FilePurpose::CaptureTarget,
-        FileResourceRole::CaptureSource => FilePurpose::CaptureSource,
-        FileResourceRole::Source | FileResourceRole::Media => FilePurpose::ReadFile,
-    };
     let params = RegisterFileParams {
         path: path.to_str().ok_or_else(invalid)?.into(),
-        purpose,
+        purpose: role.purpose(),
     };
     match invoke_control(
         bridge,
@@ -461,7 +470,7 @@ where
     // The successful native picker is the explicit user-control gesture. Grant only
     // its newly registered Ref to this generation's authenticated business client.
     let business = bridge.attachment_at_generation(window, generation).await?;
-    let permission = if matches!(role, FileResourceRole::CaptureTarget) {
+    let permission = if role.purpose() == FilePurpose::CaptureTarget {
         "workspace.modify"
     } else {
         "content.read"
@@ -537,6 +546,14 @@ pub async fn choose_file_resource(
                             CAPTURE_NAME_SEQUENCE
                                 .fetch_add(1, std::sync::atomic::Ordering::Relaxed),
                         ))
+                        .blocking_save_file(),
+                    FileResourceRole::ExportCsvTarget => dialog
+                        .add_filter("CSV", &["csv"])
+                        .set_file_name("capture.csv")
+                        .blocking_save_file(),
+                    FileResourceRole::ExportJsonlTarget => dialog
+                        .add_filter("JSONL", &["jsonl"])
+                        .set_file_name("capture.jsonl")
                         .blocking_save_file(),
                     FileResourceRole::CaptureSource => dialog.blocking_pick_folder(),
                 };
@@ -975,11 +992,14 @@ mod tests {
             FileResourceRole::Source,
             FileResourceRole::Media,
             FileResourceRole::CaptureTarget,
+            FileResourceRole::ExportCsvTarget,
+            FileResourceRole::ExportJsonlTarget,
         ] {
-            let chosen_path = if matches!(role, FileResourceRole::CaptureTarget) {
-                directory.path().join("capture.swb")
-            } else {
-                path.clone()
+            let chosen_path = match role {
+                FileResourceRole::CaptureTarget => directory.path().join("capture.swb"),
+                FileResourceRole::ExportCsvTarget => directory.path().join("capture.csv"),
+                FileResourceRole::ExportJsonlTarget => directory.path().join("capture.jsonl"),
+                _ => path.clone(),
             };
             let selected =
                 choose_with_picker(&bridge, "main", attachment.generation, role, || async {
@@ -1048,7 +1068,13 @@ mod tests {
         assert!(unchanged_without_selection);
         assert_eq!(
             selected_permissions,
-            vec![(true, false), (true, false), (false, true)]
+            vec![
+                (true, false),
+                (true, false),
+                (false, true),
+                (false, true),
+                (false, true)
+            ]
         );
         assert!(
             original_read.is_ok(),

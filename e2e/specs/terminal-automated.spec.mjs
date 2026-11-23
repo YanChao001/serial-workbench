@@ -1,13 +1,13 @@
 import assert from "node:assert/strict";
 import { execFile } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, unlinkSync, writeFileSync } from "node:fs";
 import { join, normalize } from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { promisify } from "node:util";
 import { browser, $ } from "@wdio/globals";
 import { Key } from "webdriverio";
-import { language, navigate, ready } from "../helpers.mjs";
+import { language, navigate, openDeepLink, ready } from "../helpers.mjs";
 import { hostQuery, nativeValue } from "../settings.mjs";
 import { openVirtual } from "./workbench.mjs";
 import {
@@ -47,6 +47,72 @@ async function selectFile(element, action, path) {
     JSON.stringify(evidence, null, 2),
     { flag: "wx" },
   );
+}
+
+async function verifyNativeDiagnosticsExport(owner) {
+  await openDeepLink("/diagnostics");
+  await expectCommittedLanguage("zh");
+  const save = $("[data-testid=diagnostics-save]");
+  await save.waitForEnabled();
+  const preview = await browser.execute(() => ({
+    text:
+      document.querySelector('main details pre code[data-language="json"]')
+        ?.textContent ?? null,
+    route: location.hash,
+    disclosures: document.querySelectorAll("main details").length,
+    blocks: document.querySelectorAll("main pre code").length,
+  }));
+  assert.ok(
+    preview.text,
+    `Missing diagnostics report in ${JSON.stringify(preview)}`,
+  );
+  const { text } = preview;
+  const report = JSON.parse(text);
+  assert.equal(report.formatVersion, "0.1");
+  assert.equal(report.platform, "windows");
+  assert.equal(report.configuration.language, "zh");
+  assert.match(report.recentLogs, /Application started v/);
+
+  const output = file("diagnostics.json");
+  const picker = await selectWindowsFile(
+    save,
+    "Save",
+    output,
+    "serial-workbench-diagnostics.json",
+    async () => {
+      const activation = await browser.execute(() => {
+        const button = document.querySelector(
+          'main [data-testid="diagnostics-save"]',
+        );
+        if (!(button instanceof HTMLButtonElement)) return "absent";
+        if (button.disabled) return "disabled";
+        button.click();
+        return "activated";
+      });
+      assert.equal(
+        activation,
+        "activated",
+        "The diagnostics report must expose its enabled save control",
+      );
+    },
+  );
+  assert.equal(picker.owner, owner);
+  await browser.waitUntil(() => existsSync(output), {
+    timeoutMsg: "The diagnostics export did not publish its JSON file",
+  });
+  const exported = readFileSync(output);
+  assert.deepEqual(exported, Buffer.from(text, "utf8"));
+  writeFileSync(
+    file("diagnostics-export.json"),
+    JSON.stringify({
+      picker,
+      formatVersion: report.formatVersion,
+      bytes: exported.length,
+      sha256: createHash("sha256").update(exported).digest("hex"),
+    }),
+    { flag: "wx" },
+  );
+  unlinkSync(output);
 }
 
 function windowEvents() {
@@ -137,6 +203,25 @@ async function waitEvent(predicate, timeoutMsg) {
     { timeoutMsg },
   );
   return match;
+}
+
+async function expectNativeLocale(view, locale) {
+  await browser.waitUntil(
+    () =>
+      readFileSync(file("terminal-automated/native.log"), "utf8").includes(
+        `e2e_node_view_locale view=${view} locale=${locale}`,
+      ),
+    { timeoutMsg: `The current Wry shell did not apply ${locale}` },
+  );
+}
+
+async function expectCommittedLanguage(language) {
+  await browser.waitUntil(
+    async () =>
+      (await nativeValue("get_diagnostics_report")).configuration?.language ===
+      language,
+    { timeoutMsg: `Desktop settings did not commit ${language}` },
+  );
 }
 
 async function openPlugin(label = "Open plugin") {
@@ -354,6 +439,12 @@ describe("Signed terminal on the real desktop", () => {
     const second = await openPlugin();
     await expectAcknowledgedRx(second, beforeClose, whileClosed);
     await verifyWindowsZoom(second, true);
+    await language("zh");
+    await expectCommittedLanguage("zh");
+    await expectNativeLocale(second, "zh-CN");
+    await language("en");
+    await expectCommittedLanguage("en");
+    await expectNativeLocale(second, "en");
     await send(afterReopen);
     await expectAcknowledgedRx(second, beforeClose, whileClosed, afterReopen);
 
@@ -439,5 +530,16 @@ describe("Signed terminal on the real desktop", () => {
       { flag: "wx" },
     );
     await closePlugin(restored);
+  });
+
+  it("saves the displayed diagnostics through the owned Windows dialog", async function () {
+    if (!useWindowsPickers) return this.skip();
+    this.timeout(90000);
+    await ready();
+    await language("en");
+    await expectCommittedLanguage("en");
+    await language("zh");
+    const { handle } = await currentWindowsZoom("main");
+    await verifyNativeDiagnosticsExport(Number(handle));
   });
 });

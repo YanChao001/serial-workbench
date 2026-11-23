@@ -3,6 +3,55 @@ import { expect, test } from "@playwright/test";
 import { writeFile } from "node:fs/promises";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
+test("the checksum setup verifies the range and submits the displayed Modbus bytes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 640, height: 600 });
+  await seedWorkbenchFixture(page, {
+    language: "zh",
+    theme: "light",
+    sidebarCollapsed: true,
+  });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "打开 Virtual serial" }).click();
+  await expect(page.getByRole("button", { name: "关闭会话" })).toBeEnabled();
+  const sender = page.getByRole("region", { name: "发送", exact: true });
+  await sender.getByRole("radio", { name: "HEX", exact: true }).click();
+  await sender.locator("textarea.workbench-draft").fill("02 07");
+  const checksum = sender.getByRole("button", {
+    name: "发送校验",
+    exact: true,
+  });
+  await checksum.click();
+  const setup = page.getByRole("dialog", { name: "发送校验", exact: true });
+  await setup.getByRole("combobox", { name: "算法", exact: true }).click();
+  await page
+    .getByRole("option", { name: "CRC-16/Modbus", exact: true })
+    .click();
+  await expect(setup.getByRole("combobox", { name: "字节序" })).toHaveText(
+    "低位字节在前",
+  );
+  await expect(setup.getByLabel("追加字节")).toHaveText("41 12");
+  const end = setup.getByRole("textbox", { name: "结束字节（不包含）" });
+  const send = sender.getByRole("button", { name: "发送", exact: true });
+  await end.fill("3");
+  await expect(send).toBeDisabled();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  await end.fill("2");
+  await expect(setup.getByLabel("追加字节")).toHaveText("41 12");
+  await end.press("Escape");
+  await expect(checksum).toBeFocused();
+  await expect(sender.getByRole("note", { name: "发送字节数" })).toHaveText(
+    "4 B",
+  );
+  await send.click();
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.sentBytes))
+    .toEqual([Buffer.from([0x02, 0x07, 0x41, 0x12]).toString("base64")]);
+});
+
 for (const language of ["en", "zh"] as const) {
   test(`send conversion preserves BOM, NUL, UTF-8 and one configured ending (${language})`, async ({
     page,

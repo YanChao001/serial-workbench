@@ -124,6 +124,7 @@ pub enum OperationInput {
     Open(OpenParams),
     Tx(TxParams),
     FileTransfer(FileTransferParams),
+    PasteTransfer(PasteTransferParams),
     CaptureStart(CaptureStartParams),
     Configure(ConfigureParams),
     Control(ControlParams),

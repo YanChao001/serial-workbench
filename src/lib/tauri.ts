@@ -458,6 +458,10 @@ export function getDiagnosticsReport(): Promise<DiagnosticsReport> {
   return callNative((commands) => commands.getDiagnosticsReport());
 }
 
+export function saveDiagnosticsJson(content: string): Promise<boolean> {
+  return callNative((commands) => commands.saveDiagnosticsJson(content));
+}
+
 export function checkForUpdate(): Promise<UpdateStatus> {
   return callNative((commands) => commands.checkForUpdate());
 }

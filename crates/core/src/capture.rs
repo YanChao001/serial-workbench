@@ -205,6 +205,56 @@ pub enum ReplayMode {
     #[default]
     Fastest,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ReplayRate {
+    Fastest,
+    #[serde(rename_all = "camelCase")]
+    Timed {
+        #[schemars(range(min = 25, max = 400))]
+        speed_percent: u16,
+    },
+}
+impl From<ReplayMode> for ReplayRate {
+    fn from(mode: ReplayMode) -> Self {
+        match mode {
+            ReplayMode::Fastest => Self::Fastest,
+            ReplayMode::OriginalTiming => Self::Timed { speed_percent: 100 },
+        }
+    }
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
+pub enum ReplayPlaybackControl {
+    SetRate {
+        rate: ReplayRate,
+    },
+    SetBreakpoint {
+        #[serde(
+            default,
+            skip_serializing_if = "Option::is_none",
+            deserialize_with = "crate::identity::non_null_option"
+        )]
+        #[schemars(with = "U64")]
+        #[specta(type=U64,optional)]
+        record: Option<U64>,
+    },
+}
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ReplayPlaybackState {
+    pub rate: ReplayRate,
+    pub paused: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "U64")]
+    #[specta(type=U64,optional)]
+    pub breakpoint_record: Option<U64>,
+    pub breakpoint_hit: bool,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ReplayOpenParams {
@@ -226,6 +276,14 @@ pub struct ReplayControlParams {
     #[schemars(with = "U64")]
     #[specta(type=U64,optional)]
     pub seek_record: Option<U64>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "ReplayPlaybackControl")]
+    #[specta(type=ReplayPlaybackControl,optional)]
+    pub playback: Option<ReplayPlaybackControl>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -234,6 +292,30 @@ pub struct ReplayReadParams {
     pub session_epoch: U64,
     pub max_records: U64,
     pub max_bytes: U64,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "bool")]
+    #[specta(type=bool,optional)]
+    pub single_step: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "bool")]
+    #[specta(type=bool,optional)]
+    pub inspect_playback: Option<bool>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "bool")]
+    #[specta(type=bool,optional)]
+    pub report_playback: Option<bool>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -242,6 +324,14 @@ pub struct ReplayReadResult {
     pub reader_generation: U64,
     pub next_record: U64,
     pub at_end: bool,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "ReplayPlaybackState")]
+    #[specta(type=ReplayPlaybackState,optional)]
+    pub playback: Option<ReplayPlaybackState>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
@@ -280,4 +370,20 @@ pub struct FileReadResult {
 pub struct TextExportParams {
     pub capture_ref: ObjectRef,
     pub target_ref: ObjectRef,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "TextExportFormat")]
+    #[specta(type = TextExportFormat, optional)]
+    pub format: Option<TextExportFormat>,
+}
+
+#[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "snake_case")]
+pub enum TextExportFormat {
+    #[default]
+    Jsonl,
+    Csv,
 }

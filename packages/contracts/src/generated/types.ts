@@ -3747,6 +3747,7 @@ export type OperationInput_Deserialize =
   | { kind: "open"; value: OpenParams_Deserialize }
   | { kind: "tx"; value: TxParams_Deserialize }
   | { kind: "file_transfer"; value: FileTransferParams_Deserialize }
+  | { kind: "paste_transfer"; value: PasteTransferParams_Deserialize }
   | { kind: "capture_start"; value: CaptureStartParams_Deserialize }
   | { kind: "configure"; value: ConfigureParams }
   | { kind: "control"; value: ControlParams }
@@ -3765,6 +3766,7 @@ export type OperationInput_Serialize =
   | { kind: "open"; value: OpenParams_Serialize }
   | { kind: "tx"; value: TxParams_Serialize }
   | { kind: "file_transfer"; value: FileTransferParams_Serialize }
+  | { kind: "paste_transfer"; value: PasteTransferParams_Serialize }
   | { kind: "capture_start"; value: CaptureStartParams_Serialize }
   | { kind: "configure"; value: ConfigureParams }
   | { kind: "control"; value: ControlParams }
@@ -3921,6 +3923,25 @@ export type Owner_Serialize = {
 };
 
 export type Parity = "none" | "even" | "odd" | "mark" | "space";
+
+export type PasteTransferParams =
+  PasteTransferParams_Serialize | PasteTransferParams_Deserialize;
+
+export type PasteTransferParams_Deserialize = {
+  bytesBase64: Bytes;
+  chunkBytes?: U64;
+  bytesPerSecond: U64;
+  interChunkMs: U64;
+  writeWaitMs: DurationMs;
+};
+
+export type PasteTransferParams_Serialize = {
+  bytesBase64: Bytes;
+  chunkBytes: U64;
+  bytesPerSecond: U64;
+  interChunkMs: U64;
+  writeWaitMs: DurationMs;
+};
 
 export type PositiveU64 = U64;
 
@@ -4271,6 +4292,7 @@ export type ReplayControlParams_Deserialize = {
   sessionEpoch: U64;
   paused: boolean;
   seekRecord?: U64;
+  playback?: ReplayPlaybackControl_Deserialize;
 };
 
 export type ReplayControlParams_Serialize = {
@@ -4278,6 +4300,7 @@ export type ReplayControlParams_Serialize = {
   sessionEpoch: U64;
   paused: boolean;
   seekRecord?: U64;
+  playback?: ReplayPlaybackControl_Serialize;
 };
 
 export type ReplayMode = "original_timing" | "fastest";
@@ -4295,11 +4318,58 @@ export type ReplayOpenParams_Serialize = {
   mode: ReplayMode;
 };
 
-export type ReplayReadParams = {
+export type ReplayPlaybackControl =
+  ReplayPlaybackControl_Serialize | ReplayPlaybackControl_Deserialize;
+
+export type ReplayPlaybackControl_Deserialize =
+  | ({ kind: "set_rate"; rate: ReplayRate } & { record?: never })
+  | ({ kind: "set_breakpoint"; record?: U64 } & { rate?: never });
+
+export type ReplayPlaybackControl_Serialize =
+  | ({ kind: "set_rate"; rate: ReplayRate } & { record?: never })
+  | ({ kind: "set_breakpoint"; record?: U64 } & { rate?: never });
+
+export type ReplayPlaybackState =
+  ReplayPlaybackState_Serialize | ReplayPlaybackState_Deserialize;
+
+export type ReplayPlaybackState_Deserialize = {
+  rate: ReplayRate;
+  paused: boolean;
+  breakpointRecord?: U64;
+  breakpointHit: boolean;
+};
+
+export type ReplayPlaybackState_Serialize = {
+  rate: ReplayRate;
+  paused: boolean;
+  breakpointRecord?: U64;
+  breakpointHit: boolean;
+};
+
+export type ReplayRate =
+  { kind: "fastest" } | { kind: "timed"; speedPercent: number };
+
+export type ReplayReadParams =
+  ReplayReadParams_Serialize | ReplayReadParams_Deserialize;
+
+export type ReplayReadParams_Deserialize = {
   sessionId: Id;
   sessionEpoch: U64;
   maxRecords: U64;
   maxBytes: U64;
+  singleStep?: boolean;
+  inspectPlayback?: boolean;
+  reportPlayback?: boolean;
+};
+
+export type ReplayReadParams_Serialize = {
+  sessionId: Id;
+  sessionEpoch: U64;
+  maxRecords: U64;
+  maxBytes: U64;
+  singleStep?: boolean;
+  inspectPlayback?: boolean;
+  reportPlayback?: boolean;
 };
 
 export type ReplayReadResult =
@@ -4310,6 +4380,7 @@ export type ReplayReadResult_Deserialize = {
   readerGeneration: U64;
   nextRecord: U64;
   atEnd: boolean;
+  playback?: ReplayPlaybackState_Deserialize;
 };
 
 export type ReplayReadResult_Serialize = {
@@ -4317,6 +4388,7 @@ export type ReplayReadResult_Serialize = {
   readerGeneration: U64;
   nextRecord: U64;
   atEnd: boolean;
+  playback?: ReplayPlaybackState_Serialize;
 };
 
 export type ReplayRecord = ReplayRecord_Serialize | ReplayRecord_Deserialize;
@@ -4971,17 +5043,21 @@ export type TextEncoding =
   | "utf-16le"
   | "utf-16be";
 
+export type TextExportFormat = "jsonl" | "csv";
+
 export type TextExportParams =
   TextExportParams_Serialize | TextExportParams_Deserialize;
 
 export type TextExportParams_Deserialize = {
   captureRef: ObjectRef_Deserialize;
   targetRef: ObjectRef_Deserialize;
+  format?: TextExportFormat;
 };
 
 export type TextExportParams_Serialize = {
   captureRef: ObjectRef_Serialize;
   targetRef: ObjectRef_Serialize;
+  format?: TextExportFormat;
 };
 
 export type Theme = "light" | "dark" | "system";

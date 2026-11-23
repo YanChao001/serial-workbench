@@ -263,6 +263,7 @@ impl BuiltinAction {
             Self::FileRead => typed!(FileReadParams),
             Self::TransferReceiptsRead => typed!(FileTransferReceiptsParams),
             Self::TransferFile => typed!(FileTransferParams),
+            Self::TransferPaste => typed!(PasteTransferParams),
             Self::SettingsSave => typed!(SettingsSaveParams),
             Self::WorkspaceSave => typed!(WorkspaceSaveParams),
             Self::SettingsImport | Self::WorkspaceImport | Self::WorkspaceImportPreview => {

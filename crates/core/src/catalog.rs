@@ -186,6 +186,7 @@ pub enum BuiltinAction {
     TransferReceiptsRead,
     StreamCursor,
     TransferFile,
+    TransferPaste,
     StateScopes,
     SettingsRead,
     SettingsSave,
@@ -232,7 +233,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 105] = [
+    pub const ALL: [Self; 106] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
@@ -294,6 +295,7 @@ impl BuiltinAction {
         Self::TransferReceiptsRead,
         Self::StreamCursor,
         Self::TransferFile,
+        Self::TransferPaste,
         Self::StateScopes,
         Self::SettingsRead,
         Self::SettingsSave,
@@ -379,6 +381,7 @@ impl BuiltinAction {
             Self::TransferReceiptsRead => "transfer.receiptsRead",
             Self::StreamCursor => "stream.cursor",
             Self::TransferFile => "transfer.file",
+            Self::TransferPaste => "transfer.paste",
             Self::StateScopes => "state.scopes",
             Self::SettingsRead => "settings.read",
             Self::SettingsSave => "settings.save",
@@ -440,6 +443,7 @@ impl BuiltinAction {
             self,
             Self::DeviceOpen
                 | Self::TransferFile
+                | Self::TransferPaste
                 | Self::SessionClose
                 | Self::ToolHandoff
                 | Self::SessionTx
@@ -582,6 +586,7 @@ impl BuiltinAction {
             | Self::SessionMetrics
             | Self::SessionInputs
             | Self::TransferFile
+            | Self::TransferPaste
             | Self::StreamCursor
             | Self::SessionClose
             | Self::ToolHandoff
@@ -626,7 +631,9 @@ impl BuiltinAction {
             | Self::SessionSetReadOnly
             | Self::SessionPurge
             | Self::TxDrain => Some("controls"),
-            Self::TransferFile | Self::TransferReceiptsRead => Some("transfer"),
+            Self::TransferFile | Self::TransferPaste | Self::TransferReceiptsRead => {
+                Some("transfer")
+            }
             Self::OperationGet
             | Self::OperationInput
             | Self::OperationCancel
@@ -937,6 +944,10 @@ impl BuiltinAction {
             Self::TransferFile => {
                 ActionSpec::of_with_dialect::<FileTransferParams, FileTransferResult>(meta, dialect)
             }
+            Self::TransferPaste => ActionSpec::of_with_dialect::<
+                PasteTransferParams,
+                FileTransferResult,
+            >(meta, dialect),
             Self::StateScopes => {
                 ActionSpec::of_with_dialect::<EmptyParams, StateScopesResult>(meta, dialect)
             }

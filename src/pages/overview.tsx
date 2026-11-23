@@ -7,7 +7,9 @@ import {
   useState,
 } from "react";
 import {
+  ContractValidationError,
   defaults,
+  type ActionSpec,
   type WorkspaceDocumentResult,
   type WorkspaceDocument,
   type ReplayControlParams,
@@ -26,12 +28,28 @@ import { Button } from "@/components/ui/button";
 import type { ClientDraftStore } from "@/features/workbench/client-drafts";
 import { useClientDraftStore } from "@/providers/client-drafts-context";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
+import { rpcJsonObject } from "@/lib/rpc-json";
 import { stateScopeKey } from "@/lib/host-scope";
 import { createWorkbenchFileActions } from "@/features/workbench/file-actions";
 import { connectionKey } from "@/lib/client-connection-defaults";
 import { HostConnectionNotice } from "@/features/workbench/host-connection-notice";
 import { WorkbenchNotice } from "@/features/workbench/workbench-notice";
 import { settingsLocation } from "@/routes";
+import { HostRequestError } from "@serial-workbench/host-client";
+
+function advertisesReplayParam(
+  catalog: readonly ActionSpec[],
+  actionId: string,
+  param: string,
+) {
+  const fields = catalog.find((entry) => entry.actionId === actionId)
+    ?.inputSchema.properties;
+  return (
+    fields !== null &&
+    typeof fields === "object" &&
+    Object.hasOwn(fields, param)
+  );
+}
 
 export default function Overview({
   draftStore: suppliedDraftStore,
@@ -148,32 +166,48 @@ export default function Overview({
       ),
     [],
   );
+  const replayConnection = host.connection;
+  const replayPlaybackSupported =
+    advertisesReplayParam(host.state.catalog, "replay.read", "singleStep") &&
+    advertisesReplayParam(
+      host.state.catalog,
+      "replay.read",
+      "inspectPlayback",
+    ) &&
+    advertisesReplayParam(host.state.catalog, "replay.control", "playback");
   const replayControl = useCallback(
-    (params: ReplayControlParams, signal?: AbortSignal) => {
-      const source = host.state.operations.find(
-        (operation) =>
-          operation.actionId === "replay.open" &&
-          operation.result?.kind === "opened" &&
-          operation.result.value.sessionId === params.sessionId,
-      );
-      if (!source) return Promise.reject(new Error("SESSION_NOT_FOUND"));
-      return host.invoke(
+    async (params: ReplayControlParams, signal?: AbortSignal) => {
+      const owner = currentHost.current;
+      if (!replayConnection || owner.connection !== replayConnection)
+        throw new HostRequestError({
+          code: "NOT_FOUND",
+          message: "Replay session is unavailable",
+          retryable: false,
+        });
+      const accepted = await owner.invoke(
         {
           actionId: "replay.control",
           target: {
-            hostId: source.executionHostId,
+            hostId: replayConnection.attachment.hostId,
             kind: "session",
             id: params.sessionId,
             sessionId: params.sessionId,
             sessionEpoch: params.sessionEpoch,
           },
-          params,
+          params: rpcJsonObject(params),
           executionMode: "interactive",
         },
         signal,
       );
+      const completed = await owner.waitForOperation(accepted, signal);
+      signal?.throwIfAborted();
+      if (currentHost.current.connection !== replayConnection)
+        throw new DOMException("Replay connection changed", "AbortError");
+      if (completed.result?.kind !== "replay_position")
+        throw new ContractValidationError("Replay control result changed");
+      return completed.result.value;
     },
-    [host],
+    [replayConnection],
   );
   const [draftLoad, setDraftLoad] = useState<{
     drafts?: Record<string, string>;
@@ -300,6 +334,16 @@ export default function Overview({
       resumeReplay: t("workbench.resumeReplay"),
       readReplay: t("workbench.readReplay"),
       seekRecord: t("workbench.seekRecord"),
+      stepReplay: t("workbench.stepReplay"),
+      replayPlayback: t("workbench.replayPlayback"),
+      replayRate: t("workbench.replayRate"),
+      replayFastest: t("workbench.replayFastest"),
+      replayBreakpoint: t("workbench.replayBreakpoint"),
+      setReplayBreakpoint: t("workbench.setReplayBreakpoint"),
+      clearReplayBreakpoint: t("workbench.clearReplayBreakpoint"),
+      replayBreakpointHit: t("workbench.replayBreakpointHit"),
+      replayPaused: t("workbench.replayPaused"),
+      replayNextRecord: t("workbench.replayNextRecord"),
       atEnd: t("workbench.atEnd"),
       sessionMetrics: t("workbench.sessionMetrics"),
       connectionDuration: t("workbench.connectionDuration"),
@@ -392,10 +436,32 @@ export default function Overview({
       draft: t("workbench.draft"),
       unconnectedDraft: t("workbench.unconnectedDraft"),
       sendMode: t("workbench.sendMode"),
+      expandSendEscapes: t("workbench.expandSendEscapes"),
+      mixedSendInput: t("workbench.mixedSendInput"),
+      mixedSendSyntax: t("workbench.mixedSendSyntax"),
+      mixedSendPreview: t("workbench.mixedSendPreview"),
+      mixedSendInvalidAt: t("workbench.mixedSendInvalidAt"),
+      mixedSendUseHex: t("workbench.mixedSendUseHex"),
+      mixedSendDraftChanged: t("workbench.mixedSendDraftChanged"),
+      invalidSendEscape: t("workbench.invalidSendEscape"),
+      escapedDraftTooLong: t("workbench.escapedDraftTooLong"),
       lineEnding: t("workbench.lineEnding"),
+      sendChecksum: t("workbench.sendChecksum"),
+      checksumAlgorithm: t("workbench.checksumAlgorithm"),
+      checksumOrder: t("workbench.checksumOrder"),
+      checksumLittleEndian: t("workbench.checksumLittleEndian"),
+      checksumBigEndian: t("workbench.checksumBigEndian"),
+      checksumStart: t("workbench.checksumStart"),
+      checksumEnd: t("workbench.checksumEnd"),
+      checksumIncludeEnding: t("workbench.checksumIncludeEnding"),
+      checksumRangeHint: t("workbench.checksumRangeHint"),
+      checksumInvalidRange: t("workbench.checksumInvalidRange"),
+      checksumBytes: t("workbench.checksumBytes"),
       none: t("workbench.none"),
       draftByteCount: t("workbench.draftByteCount"),
       invalidHex: t("workbench.invalidHex"),
+      invalidHexDraftAt: t("workbench.invalidHexDraftAt"),
+      invalidHexEndingAt: t("workbench.invalidHexEndingAt"),
       invalidUtf8: t("workbench.invalidUtf8"),
       sending: t("workbench.sending"),
       receipt: t("workbench.receipt"),
@@ -419,6 +485,32 @@ export default function Overview({
       saveDrafts: t("workbench.saveDrafts"),
       disconnected: t("workbench.disconnected"),
       encodingHelp: t("workbench.encodingHelp"),
+      wrapReceiveText: t("workbench.wrapReceiveText"),
+      showTransmitEcho: t("workbench.showTransmitEcho"),
+      transmitSource: t("workbench.transmitSource"),
+      hexColumns: t("workbench.hexColumns"),
+      automaticColumns: t("workbench.automaticColumns"),
+      ansiScreen: t("workbench.ansiScreen"),
+      ansiScreenLoading: t("workbench.ansiScreenLoading"),
+      ansiScreenBusy: t("workbench.ansiScreenBusy"),
+      ansiConvertLf: t("workbench.ansiConvertLf"),
+      ansiKeyboard: t("workbench.ansiKeyboard"),
+      ansiKeyboardExit: t("workbench.ansiKeyboardExit"),
+      ansiKeyboardError: t("workbench.ansiKeyboardError"),
+      ansiKeyboardOverflow: t("workbench.ansiKeyboardOverflow"),
+      ansiPaste: t("workbench.ansiPaste"),
+      ansiPasteBracketed: t("workbench.ansiPasteBracketed"),
+      ansiPasteBytes: t("workbench.ansiPasteBytes"),
+      ansiPasteTooLarge: t("workbench.ansiPasteTooLarge"),
+      ansiPasteInvalidBracket: t("workbench.ansiPasteInvalidBracket"),
+      ansiPasteSending: t("workbench.ansiPasteSending"),
+      ansiPasteCancelling: t("workbench.ansiPasteCancelling"),
+      ansiPasteSent: t("workbench.ansiPasteSent"),
+      ansiPasteCancelled: t("workbench.ansiPasteCancelled"),
+      ansiPasteFailed: t("workbench.ansiPasteFailed"),
+      ansiPasteUnconfirmed: t("workbench.ansiPasteUnconfirmed"),
+      ansiPasteCancelFailed: t("workbench.ansiPasteCancelFailed"),
+      ansiPasteAccepted: t("workbench.ansiPasteAccepted"),
       gapHelp: t("workbench.gapHelp"),
       historyRetention: t("workbench.historyRetention"),
       historyRecords: t("workbench.historyRecords"),
@@ -648,6 +740,7 @@ export default function Overview({
           read: host.readReplay,
           readRecord: host.readReplayRecord,
           control: replayControl,
+          playbackSupported: replayPlaybackSupported,
         }}
         onStopCapture={async (captureRef, signal) => {
           signal?.throwIfAborted();

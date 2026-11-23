@@ -209,7 +209,8 @@ export function PluginViewLauncher({
       };
       if (connection.browser) {
         setBrowserView({
-          ...presentation,
+          title: presentation.title,
+          dark: presentation.dark,
           operationId,
           viewId: view.id,
           packageId,

@@ -62,6 +62,7 @@ function host(): WorkbenchHost {
     open: vi.fn().mockResolvedValue(session()),
     trustedConnect: vi.fn().mockResolvedValue(session()),
     send: vi.fn().mockResolvedValue(operation()),
+    waitForOperation: vi.fn(async (value) => value),
     takeover: vi.fn().mockResolvedValue(operation()),
     refresh: vi.fn().mockResolvedValue(undefined),
     watchSession: vi.fn(() => () => {}),

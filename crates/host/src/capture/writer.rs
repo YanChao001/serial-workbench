@@ -47,6 +47,8 @@ impl Default for CaptureLimits {
 }
 pub struct CaptureWriter {
     path: PathBuf,
+    format: CaptureFormat,
+    timeline: RecorderTimeline,
     manifest: Manifest,
     index: CaptureIndex,
     limits: CaptureLimits,
@@ -65,6 +67,24 @@ pub struct CaptureWriter {
     checkpoint_ns: u64,
     _guard: Option<crate::files::references::PathGuard>,
 }
+
+#[derive(Default)]
+struct RecorderTimeline {
+    offset_ns: u64,
+    segment: Option<(u64, u64)>,
+}
+
+impl RecorderTimeline {
+    fn at(&mut self, observed: Option<u64>) -> u64 {
+        if let Some(observed) = observed {
+            let (origin, base) = *self.segment.get_or_insert((observed, self.offset_ns));
+            let elapsed = observed.saturating_sub(origin);
+            self.offset_ns = self.offset_ns.max(base.saturating_add(elapsed));
+        }
+        self.offset_ns
+    }
+}
+
 impl CaptureWriter {
     pub fn create(
         path: &Path,
@@ -87,15 +107,30 @@ impl CaptureWriter {
         )
     }
     pub(crate) fn create_at(
-        mut guard: crate::files::references::PathGuard,
+        guard: crate::files::references::PathGuard,
         sources: Vec<CaptureSource>,
         limits: CaptureLimits,
         opener: VolumeOpener,
     ) -> HostResult<Self> {
+        let format = if sources.len() > 1 {
+            CaptureFormat::RecorderClock
+        } else {
+            CaptureFormat::Legacy
+        };
+        Self::create_at_format(guard, sources, limits, opener, format)
+    }
+
+    pub(crate) fn create_at_format(
+        mut guard: crate::files::references::PathGuard,
+        sources: Vec<CaptureSource>,
+        limits: CaptureLimits,
+        opener: VolumeOpener,
+        format: CaptureFormat,
+    ) -> HostResult<Self> {
         guard.create_directory()?;
         let path = guard.checked_path();
         let manifest = Manifest {
-            format_version: "0.1".into(),
+            format_version: format.version().into(),
             capture_id: Id::try_from(format!("capture-{}", uuid::Uuid::new_v4()).as_str())?,
             mode: CaptureMode::Raw,
             streams: sources,
@@ -108,9 +143,11 @@ impl CaptureWriter {
         };
         let mut writer = Self {
             path: path.to_path_buf(),
+            format,
+            timeline: RecorderTimeline::default(),
             manifest,
             index: CaptureIndex {
-                format_version: "0.1".into(),
+                format_version: format.version().into(),
                 records: vec![],
             },
             limits,
@@ -230,6 +267,11 @@ impl CaptureWriter {
             .len() as u64;
         let mut writer = Self {
             path: path.to_path_buf(),
+            format: scan.format,
+            timeline: RecorderTimeline {
+                offset_ns: scan.last_recorded_ns.unwrap_or_default(),
+                segment: None,
+            },
             manifest,
             index: scan.index,
             limits,
@@ -250,7 +292,7 @@ impl CaptureWriter {
         };
         writer.new_volume()?;
         for gap in gaps {
-            writer.push(gap, 0)?;
+            writer.push_observed(gap, 0, None)?;
         }
         writer.checkpoint()?;
         Ok(writer)
@@ -306,11 +348,12 @@ impl CaptureWriter {
             .ok_or_else(corrupt)?
             .child(&volume_name(number))?;
         let mut file = (self.opener)(path.create_file()?)?;
-        file.write_all(MAGIC).map_err(io_error)?;
+        let magic = self.format.magic();
+        file.write_all(magic).map_err(io_error)?;
         self.volume_hash = Sha256::new();
-        self.volume_hash.update(MAGIC);
-        self.volume_size = MAGIC.len() as u64;
-        self.total += MAGIC.len() as u64;
+        self.volume_hash.update(magic);
+        self.volume_size = magic.len() as u64;
+        self.total += magic.len() as u64;
         self.volume_start = self.manifest.watermarks.written.get() + 1;
         self.volume_clock = None;
         let previous = self
@@ -324,14 +367,23 @@ impl CaptureWriter {
             record_start: self.volume_start.into(),
             record_end: self.volume_start.into(),
             length: self.volume_size.into(),
-            digest: digest(MAGIC),
+            digest: digest(magic),
             previous_digest: previous,
         });
         self.file = Some(file);
         Ok(())
     }
     pub fn push(&mut self, entry: CaptureEntry, now: u64) -> HostResult<()> {
-        let result = self.push_inner(entry, now);
+        self.push_observed(entry, now, Some(now))
+    }
+
+    pub(crate) fn push_observed(
+        &mut self,
+        entry: CaptureEntry,
+        now: u64,
+        observed: Option<u64>,
+    ) -> HostResult<()> {
+        let result = self.push_inner(entry, now, observed);
         if let Err(error) = &result {
             self.manifest.state = CaptureState::Failed;
             let _ = self.checkpoint();
@@ -339,7 +391,12 @@ impl CaptureWriter {
         }
         result
     }
-    fn push_inner(&mut self, entry: CaptureEntry, now: u64) -> HostResult<()> {
+    fn push_inner(
+        &mut self,
+        entry: CaptureEntry,
+        now: u64,
+        observed: Option<u64>,
+    ) -> HostResult<()> {
         if self.manifest.state != CaptureState::Recording {
             return Err(HostError::new(
                 "CAPTURE_INCOMPLETE",
@@ -360,14 +417,18 @@ impl CaptureWriter {
             entry,
         };
         let json = serde_json::to_vec(&record).map_err(|_| corrupt())?;
+        let recorded =
+            (self.format == CaptureFormat::RecorderClock).then(|| self.timeline.at(observed));
+        let time = recorded.map(u64::to_le_bytes);
+        let time_bytes = time.as_ref().map_or(&[][..], |value| value.as_slice());
         if json.len() > MAX_RECORD {
             return Err(HostError::new(
                 "LIMIT_EXCEEDED",
                 "Capture record exceeds one MiB",
             ));
         }
-        let size = json.len() as u64 + 36;
-        if size + MAGIC.len() as u64 > self.limits.volume_bytes {
+        let size = (json.len() + time_bytes.len()) as u64 + 36;
+        if size + self.format.magic().len() as u64 > self.limits.volume_bytes {
             return Err(HostError::new(
                 "LIMIT_EXCEEDED",
                 "Record does not fit in a capture volume",
@@ -392,7 +453,7 @@ impl CaptureWriter {
                 "Capture capacity or disk reserve reached",
             ));
         }
-        let rotate = self.volume_size > MAGIC.len() as u64
+        let rotate = self.volume_size > self.format.magic().len() as u64
             && (self.volume_size + size > self.limits.volume_bytes
                 || self.volume_clock.is_some_and(|start| {
                     now.saturating_sub(start) >= self.limits.volume_duration_ns
@@ -407,11 +468,14 @@ impl CaptureWriter {
         let file = self.file.as_mut().ok_or_else(corrupt)?;
         file.write_all(&(json.len() as u32).to_le_bytes())
             .map_err(io_error)?;
+        file.write_all(time_bytes).map_err(io_error)?;
         file.write_all(&json).map_err(io_error)?;
-        file.write_all(&ShaBytes::of(&json)).map_err(io_error)?;
+        let checksum = record_digest(recorded, &json);
+        file.write_all(&checksum).map_err(io_error)?;
         self.volume_hash.update((json.len() as u32).to_le_bytes());
+        self.volume_hash.update(time_bytes);
         self.volume_hash.update(&json);
-        self.volume_hash.update(ShaBytes::of(&json));
+        self.volume_hash.update(checksum);
         self.volume_size += size;
         self.total += size;
         let location = IndexEntry {
@@ -608,12 +672,5 @@ impl CaptureWriter {
         }
         self.last_verified = Some(final_scan.report.source_fingerprint);
         Ok(self.summary())
-    }
-}
-struct ShaBytes;
-impl ShaBytes {
-    fn of(bytes: &[u8]) -> [u8; 32] {
-        use sha2::{Digest, Sha256};
-        Sha256::digest(bytes).into()
     }
 }

@@ -1,6 +1,7 @@
 import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import { afterEach, describe, expect, it } from "vitest";
 import { CodeBlock, tokenizeJson } from "./code-block";
+import "./typescript-code";
 
 describe("safe JSON code display", () => {
   afterEach(cleanup);
@@ -87,8 +88,7 @@ describe("safe JSON code display", () => {
   });
 
   it("TypeScript 高亮保留原文，不执行看似 HTML 的源码", async () => {
-    // 加载状态另有回归；此处等待真实语法模块就绪后验证安全渲染。
-    await import("./typescript-code");
+    // 加载状态另有回归，这里使用预载的真实语法模块检查安全渲染。
     const code =
       'export const markup: string = "</code><img src=x onerror=run()>";';
     const { container } = render(

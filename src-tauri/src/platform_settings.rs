@@ -48,10 +48,10 @@ impl PlatformSettings {
             })
             .map_err(|_| NativeError::new(ErrorCode::Internal, "Platform settings unavailable"))
     }
-    pub fn revision(&self) -> NativeResult<Option<U64>> {
+    pub(crate) fn snapshot(&self) -> NativeResult<Option<SettingsSnapshot>> {
         self.current
             .lock()
-            .map(|current| current.as_ref().map(|(_, _, document)| document.revision))
+            .map(|current| current.as_ref().map(|(_, _, document)| document.clone()))
             .map_err(|_| NativeError::new(ErrorCode::Internal, "Platform settings unavailable"))
     }
     pub fn run_in_background(&self) -> bool {

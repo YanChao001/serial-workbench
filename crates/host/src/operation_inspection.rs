@@ -177,7 +177,7 @@ fn authorize_inspection(
         _ if replay => {}
         _ => {
             auth.require(actor, "metadata.read", &operation.target)?;
-            if matches!(action, "session.tx" | "transfer.file")
+            if matches!(action, "session.tx" | "transfer.file" | "transfer.paste")
                 || matches!(
                     operation.result,
                     Some(ActionResult::Tx(_) | ActionResult::Reference(_))
@@ -237,6 +237,7 @@ fn typed_input(operation: &Operation, params: Option<&JsonObject>) -> OperationI
         "device.open" => decode(params).map(OperationInput::Open),
         "session.tx" => decode(params).map(OperationInput::Tx),
         "transfer.file" => decode(params).map(OperationInput::FileTransfer),
+        "transfer.paste" => decode(params).map(OperationInput::PasteTransfer),
         "capture.start" => decode(params).map(OperationInput::CaptureStart),
         "session.configure" => decode(params).map(OperationInput::Configure),
         "session.control" => decode(params).map(OperationInput::Control),

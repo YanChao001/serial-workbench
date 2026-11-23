@@ -253,6 +253,28 @@
   line-height: 1.65;
   font-variant-ligatures: none;
 }
+.workbench-ansi-view {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr);
+  min-height: 0;
+  min-width: 0;
+  overflow: hidden;
+  padding: 0.5rem 0.75rem;
+}
+.workbench-ansi-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.5rem 0.75rem;
+  margin-block-end: 0.5rem;
+  color: var(--muted-foreground);
+  font: var(--text-xs)/1.4 var(--font-sans);
+}
+.workbench-ansi-screen {
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
 .workbench-stream-log[data-following="false"] {
   overflow-anchor: auto;
 }
@@ -374,6 +396,13 @@
   white-space: pre-wrap;
   overflow-wrap: anywhere;
   min-width: 0;
+}
+.workbench-payload[data-unwrapped="true"],
+.workbench-payload[data-hex-grouped="true"] {
+  display: block;
+  overflow-x: auto;
+  white-space: pre;
+  overflow-wrap: normal;
 }
 .workbench-stream-row:focus {
   outline: 1px solid var(--ring);

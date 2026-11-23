@@ -10,12 +10,13 @@ import {
 import { afterEach, expect, it, vi } from "vitest";
 import type {
   CaptureRecord,
+  ReplayControlParams,
   ReplayReadParams,
   ReplayReadResult,
 } from "@serial-workbench/contracts";
 import { ReplayPanel } from "./replay-panel";
 import { compactStreamTime } from "./stream-presentation";
-import { labels, operation, session } from "./test-fixtures";
+import { labels, session } from "./test-fixtures";
 import { Toaster, toast } from "sonner";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
 afterEach(() => {
@@ -245,7 +246,12 @@ it("reads only on request, renders checked referenced records, and seeks with th
       return page;
     }),
     readRecord = vi.fn().mockResolvedValue(record),
-    control = vi.fn().mockResolvedValue(operation());
+    control = vi.fn().mockResolvedValue({
+      records: [],
+      readerGeneration: "2",
+      nextRecord: "9007199254740999",
+      atEnd: false,
+    } satisfies ReplayReadResult);
   const view = render(
     <ReplayPanel
       session={session()}
@@ -345,4 +351,198 @@ it("reads only on request, renders checked referenced records, and seeks with th
     />,
   );
   expect(screen.getByRole("button", { name: "Pause replay" })).toBeDisabled();
+});
+
+it("requests an atomic one-record step while preserving the explicit replay read budget", async () => {
+  const result: ReplayReadResult = {
+    records: [],
+    readerGeneration: "1",
+    nextRecord: "43",
+    atEnd: false,
+    playback: {
+      rate: { kind: "timed", speedPercent: 100 },
+      paused: true,
+      breakpointRecord: "43",
+      breakpointHit: false,
+    },
+  };
+  const { playback, ...position } = result;
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce(result)
+    .mockResolvedValueOnce({
+      ...position,
+      playback: { ...playback, paused: false },
+    })
+    .mockResolvedValueOnce({
+      ...position,
+      playback: { ...playback, breakpointHit: true },
+    });
+  const control = vi.fn().mockResolvedValue(position);
+  render(
+    <ReplayPanel
+      session={session()}
+      read={read}
+      readRecord={vi.fn()}
+      control={control}
+      playbackSupported
+      disabled={false}
+      labels={labels}
+    />,
+  );
+  expect(read).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Step one record" }));
+  await screen.findByText("Paused");
+  const raw = {
+    sessionId: "session",
+    sessionEpoch: "1",
+    maxBytes: "65536",
+  };
+  expect(read).toHaveBeenNthCalledWith(
+    1,
+    { ...raw, maxRecords: "1", reportPlayback: true, singleStep: true },
+    expect.any(AbortSignal),
+  );
+  expect(control).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Resume replay" }));
+  await screen.findByText("Next record 43");
+  expect(control).toHaveBeenCalledWith(
+    { sessionId: "session", sessionEpoch: "1", paused: false },
+    expect.any(AbortSignal),
+  );
+  expect(read).toHaveBeenNthCalledWith(
+    2,
+    { ...raw, maxRecords: "1", inspectPlayback: true },
+    expect.any(AbortSignal),
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Read replay" }));
+  await screen.findByText("Breakpoint reached 43");
+  expect(read).toHaveBeenNthCalledWith(
+    3,
+    { ...raw, maxRecords: "100", reportPlayback: true },
+    expect.any(AbortSignal),
+  );
+});
+
+it("sets and clears an exact breakpoint using snapshots requested after the control terminal", async () => {
+  const record = "9007199254740999";
+  const playback = {
+    rate: { kind: "fastest" },
+    paused: false,
+    breakpointHit: false,
+  } as const;
+  const result: ReplayReadResult = {
+    records: [],
+    readerGeneration: "1",
+    nextRecord: "1",
+    atEnd: false,
+  };
+  let complete!: (reply: ReplayReadResult) => void;
+  const control = vi
+    .fn<
+      (
+        _params: ReplayControlParams,
+        _signal?: AbortSignal,
+      ) => Promise<ReplayReadResult>
+    >()
+    .mockImplementationOnce(
+      () =>
+        new Promise((resolve) => {
+          complete = resolve;
+        }),
+    )
+    .mockResolvedValueOnce(result);
+  const read = vi
+    .fn()
+    .mockResolvedValueOnce({
+      ...result,
+      playback: { ...playback, breakpointRecord: record },
+    })
+    .mockResolvedValueOnce({ ...result, playback });
+  render(
+    <ReplayPanel
+      session={session()}
+      read={read}
+      readRecord={vi.fn()}
+      control={control}
+      playbackSupported
+      disabled={false}
+      labels={labels}
+    />,
+  );
+  fireEvent.click(screen.getByRole("button", { name: "Playback options" }));
+  const input = screen.getByRole("textbox", { name: "Breakpoint record" });
+  const set = screen.getByRole("button", { name: "Set breakpoint" });
+  const clear = screen.getByRole("button", { name: "Clear breakpoint" });
+  expect(set).toBeDisabled();
+  expect(clear).toBeDisabled();
+  fireEvent.change(input, { target: { value: "0" } });
+  expect(set).toBeDisabled();
+  fireEvent.change(input, { target: { value: record } });
+  fireEvent.click(set);
+  const base = {
+    sessionId: "session",
+    sessionEpoch: "1",
+    paused: false,
+  };
+  expect(control).toHaveBeenNthCalledWith(
+    1,
+    { ...base, playback: { kind: "set_breakpoint", record } },
+    expect.any(AbortSignal),
+  );
+  expect(clear).toBeDisabled();
+  expect(read).not.toHaveBeenCalled();
+  await act(async () => complete(result));
+  expect(clear).toBeEnabled();
+  fireEvent.click(clear);
+  await waitFor(() => expect(input).toHaveValue(""));
+  expect(control).toHaveBeenNthCalledWith(
+    2,
+    { ...base, playback: { kind: "set_breakpoint" } },
+    expect.any(AbortSignal),
+  );
+  expect(read).toHaveBeenCalledTimes(2);
+  for (const call of [1, 2]) {
+    expect(read).toHaveBeenNthCalledWith(
+      call,
+      {
+        sessionId: "session",
+        sessionEpoch: "1",
+        maxRecords: "1",
+        maxBytes: "65536",
+        inspectPlayback: true,
+      },
+      expect.any(AbortSignal),
+    );
+  }
+});
+
+it("preserves the confirmed control position when inspecting playback fails", async () => {
+  const control = vi.fn().mockResolvedValue({
+    records: [],
+    readerGeneration: "2",
+    nextRecord: "5",
+    atEnd: false,
+  } satisfies ReplayReadResult);
+  const read = vi
+    .fn()
+    .mockRejectedValue(new Error("Playback inspection failed"));
+  render(
+    <ReplayPanel
+      session={session()}
+      read={read}
+      readRecord={vi.fn()}
+      control={control}
+      playbackSupported
+      disabled={false}
+      labels={labels}
+    />,
+  );
+  fireEvent.change(screen.getByRole("textbox", { name: "Seek to record" }), {
+    target: { value: "5" },
+  });
+  fireEvent.click(screen.getByRole("button", { name: "Seek to record" }));
+  await screen.findByText("Next record 5");
+  expect(control).toHaveBeenCalledOnce();
+  expect(read).toHaveBeenCalledOnce();
 });

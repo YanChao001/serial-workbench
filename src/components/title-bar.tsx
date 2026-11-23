@@ -218,6 +218,7 @@ export function TitleBar() {
                 </button>
               </DropdownMenuTrigger>
               <DropdownMenuContent align="start" className="w-48">
+                <CommandMenuItem id="keyboard-shortcuts" />
                 <CommandMenuItem id="open-docs" />
                 <CommandMenuItem id="open-repo" />
                 <DropdownMenuSeparator />

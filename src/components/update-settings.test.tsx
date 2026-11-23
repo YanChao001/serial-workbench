@@ -8,20 +8,14 @@ import {
   within,
 } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
-import {
-  afterEach,
-  beforeAll,
-  beforeEach,
-  describe,
-  expect,
-  it,
-  vi,
-} from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import type { UpdateStatus, UpdateProgress } from "@/lib/tauri";
 import { openExternal, relaunchApp } from "@/lib/tauri";
 import { checkUpdates, installUpdate } from "@/lib/updates-store";
 import { UpdateSettings } from "./update-settings";
+// 交互使用预载的真实 Markdown，浏览器回归覆盖产物的冷加载。
+import "./safe-markdown";
 const ui = vi.hoisted(() => ({
   phase: "idle" as
     | "idle"
@@ -97,10 +91,6 @@ const available: UpdateStatus = {
   date: null,
 };
 describe("updater controls", () => {
-  beforeAll(async () => {
-    // 交互断言使用真实 Markdown；产物冷加载另由浏览器回归覆盖。
-    await import("@/components/safe-markdown");
-  });
   beforeEach(() => {
     vi.clearAllMocks();
     Object.assign(ui, {

@@ -21,6 +21,20 @@ fn default_chunk_bytes() -> U64 {
 
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct PasteTransferParams {
+    #[serde(deserialize_with = "crate::session::tx_bytes")]
+    #[schemars(schema_with = "crate::session::tx_bytes_schema")]
+    #[specta(type=Bytes)]
+    pub bytes_base64: Bytes,
+    #[serde(default = "default_chunk_bytes")]
+    pub chunk_bytes: U64,
+    pub bytes_per_second: U64,
+    pub inter_chunk_ms: U64,
+    pub write_wait_ms: DurationMs,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct FileTransferResult {
     pub requested: U64,
     pub accepted: U64,

@@ -52,7 +52,9 @@
       "../resources/third-party/tauri.LICENSE": "third-party/tauri.LICENSE",
       "../resources/third-party/webview2-com.LICENSE": "third-party/webview2-com.LICENSE",
       "../resources/third-party/windows-core.LICENSE": "third-party/windows-core.LICENSE",
-      "../resources/third-party/tauri-desktop-starter.LICENSE": "third-party/tauri-desktop-starter.LICENSE"
+      "../resources/third-party/tauri-desktop-starter.LICENSE": "third-party/tauri-desktop-starter.LICENSE",
+      "../resources/third-party/xterm.LICENSE": "third-party/xterm.LICENSE",
+      "../resources/third-party/xterm-addon-fit.LICENSE": "third-party/xterm-addon-fit.LICENSE"
     },
     "active": true,
     "targets": "all",

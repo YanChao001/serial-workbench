@@ -5,10 +5,14 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { chromium, expect } from "@playwright/test";
 
-const [outputPath, scenario = "terminal", ...extra] = process.argv.slice(2);
+const [outputPath, scenario = "terminal", mode = "locale", ...extra] =
+  process.argv.slice(2);
 assert.ok(
-  outputPath && extra.length === 0 && ["terminal", "chart"].includes(scenario),
-  "Usage: paired-browser-terminal.mjs <evidence directory> [terminal|chart]",
+  outputPath &&
+    extra.length === 0 &&
+    ["terminal", "chart"].includes(scenario) &&
+    ["locale", "legacy"].includes(mode),
+  "Usage: paired-browser-terminal.mjs <evidence directory> [terminal|chart] [locale|legacy]",
 );
 const chart = scenario === "chart";
 const packageName = chart ? "Serial Workbench Chart" : "Serial Monitor";
@@ -36,6 +40,7 @@ const derivedReads = [];
 const derivedRequests = [];
 let socketNumber = 0;
 const terminal = {
+  mode,
   archiveSha256: fixture.archiveSha256,
   target: fixture.target,
   instanceEpoch: fixture.instanceEpoch,
@@ -91,9 +96,11 @@ function observeWire(socket) {
   const samples = new Set();
   const derived = new Map();
   const subscribing = new Set();
+  const credits = new Map();
   const closing = new Map();
   const ended = new Set();
   const closeAcks = new Set();
+  observed.creditPositions = new Map();
   observed.ended = ended;
   observed.closeAcks = closeAcks;
   socket.on("close", () => {
@@ -143,6 +150,11 @@ function observeWire(socket) {
       details.add(requestId);
     } else if (channel === "raw" && request.method === "stream.subscribe") {
       subscribing.add(requestId);
+    } else if (
+      channel === "raw" &&
+      request.params?.actionId === "stream.credit"
+    ) {
+      credits.set(requestId, request.params.params);
     } else if (channel === "raw" && request.method === "subscription.close") {
       closing.set(requestId, request.params.params.subscriptionId);
     }
@@ -196,6 +208,16 @@ function observeWire(socket) {
           : undefined);
       if (subscriptionId) subscriptions.set(subscriptionId, observed);
     }
+    const credit = credits.get(requestId);
+    if (credit && body.reply) {
+      credits.delete(requestId);
+      const reply = body.reply.result;
+      if (body.reply.ok && reply.kind === "stream_credit") {
+        const position = reply.value.ackCursor.position;
+        assert.equal(position, credit.ackCursor.position);
+        observed.creditPositions.set(credit.subscriptionId, position);
+      }
+    }
     const closingId = closing.get(requestId);
     if (closingId && body.reply) {
       closing.delete(requestId);
@@ -220,6 +242,7 @@ function observeWire(socket) {
       batches.set(subscriptionId, {
         socket: observed,
         bytes: rx.subarray(Math.max(0, rx.length - 4096)),
+        position: body.batch.cursor.position,
       });
     }
   });
@@ -372,7 +395,8 @@ try {
         name: /^(Voltage by sample position|按序号显示电压)$/,
       }),
     ).toBeVisible(wait);
-    await frame.locator("summary#samples").click();
+    if (!(await frame.locator("details").evaluate((details) => details.open)))
+      await frame.locator("summary#samples").click();
     const rows = frame.locator("#values tr");
     await expect(rows).toHaveCount(values.length, wait);
     for (const [index, value] of values.entries()) {
@@ -464,8 +488,71 @@ try {
   assert.ok(firstReader, "No dedicated scoped Raw reader delivered the input");
   if (chart) {
     await observeChartAck(firstReader, "1");
-    terminal.liveSamples = firstReader.samples;
   } else terminal.subscriptions.push(firstReader.id);
+  terminal.phase = "change-open-view-language";
+  const originalUrl = await iframe.getAttribute("src");
+  const frameRequestCount = policies.length;
+  const language = dialog.getByRole("combobox", { name: /^(Language|语言)$/ });
+  const initialLocale = await frame.locator("html").getAttribute("lang");
+  for (const locale of initialLocale === "zh-CN"
+    ? ["en", "zh-CN"]
+    : ["zh-CN", "en"]) {
+    const zh = locale === "zh-CN";
+    await language.click();
+    await page
+      .getByRole("option", { name: zh ? "简体中文" : "English", exact: true })
+      .click();
+    await expect(page.locator("html")).toHaveAttribute("lang", locale, wait);
+    const viewLocale = mode === "legacy" ? initialLocale : locale;
+    await expect(frame.locator("html")).toHaveAttribute(
+      "lang",
+      viewLocale,
+      wait,
+    );
+    await expect(iframe).toHaveAttribute("src", originalUrl, wait);
+    if (chart) {
+      await expect(
+        frame.getByRole("heading", {
+          name: viewLocale === "zh-CN" ? "电压曲线" : "Voltage trace",
+        }),
+      ).toBeVisible(wait);
+      await expect(
+        frame.locator("#values tr").first().getByRole("cell"),
+      ).toHaveText(["1", "1.25"], wait);
+    } else {
+      await expect(
+        frame.getByLabel(viewLocale === "zh-CN" ? "串口数据" : "Serial data"),
+      ).toContainText(fixture.first.trim(), wait);
+    }
+    (terminal.localeChanges ??= []).push(viewLocale);
+  }
+  assert.equal(policies.length, frameRequestCount);
+  assert.equal(firstReader.socket.closed, false);
+  announce("LOCALE_CHANGED");
+  await expectCommand("POST_LOCALE_DATA_WRITTEN");
+  if (chart) {
+    await checkChart([1.25, -2]);
+    await observeChartAck(firstReader, "2");
+    terminal.liveSamples = chartReader(0, [1.25, -2], workbenchSocket).samples;
+  } else {
+    await checkDisplay(fixture.afterLocale);
+    const batch = batches.get(firstReader.id);
+    assert.ok(
+      batch?.socket === firstReader.socket &&
+        batch.bytes.includes(fixture.afterLocale),
+    );
+    await expect
+      .poll(() => {
+        const confirmed = firstReader.socket.creditPositions.get(
+          firstReader.id,
+        );
+        return (
+          confirmed !== undefined && BigInt(confirmed) >= BigInt(batch.position)
+        );
+      }, wait)
+      .toBe(true);
+    terminal.postLocalePosition = batch.position;
+  }
   terminal.phase = "close-first-view";
   await dialog.getByRole("button", { name: /^(Close|关闭)$/ }).click();
   await expect(dialog).toHaveCount(0, wait);

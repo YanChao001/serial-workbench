@@ -22,6 +22,48 @@ pub use unix::*;
 #[cfg(windows)]
 pub use windows::*;
 
+#[cfg(all(test, any(unix, windows)))]
+mod diagnostic_log_tests {
+    use super::open_local_log;
+    use std::{fs, io::Read};
+
+    #[test]
+    fn diagnostic_source_reads_only_unaliased_regular_files() {
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let path = root.path().join("app.log");
+        assert!(open_local_log(&path).unwrap().is_none());
+        fs::write(&path, "fixture log").unwrap();
+        let mut text = String::new();
+        open_local_log(&path)
+            .unwrap()
+            .unwrap()
+            .read_to_string(&mut text)
+            .unwrap();
+        assert_eq!(text, "fixture log");
+        let alias = root.path().join("other.log");
+        fs::hard_link(&path, &alias).unwrap();
+        assert!(open_local_log(&path).is_err());
+        assert!(open_local_log(&alias).is_err());
+        assert!(open_local_log(root.path()).is_err());
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn diagnostic_source_rejects_symlinked_ancestors_and_leaf() {
+        use std::os::unix::fs::symlink;
+        let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
+        let actual = root.path().join("actual");
+        fs::create_dir(&actual).unwrap();
+        fs::write(actual.join("app.log"), "fixture only").unwrap();
+        let linked = root.path().join("linked");
+        symlink(&actual, &linked).unwrap();
+        assert!(open_local_log(&linked.join("app.log")).is_err());
+        let leaf = root.path().join("app.log");
+        symlink(actual.join("app.log"), &leaf).unwrap();
+        assert!(open_local_log(&leaf).is_err());
+    }
+}
+
 /// 与桌面存档分开的 host-v0 namespace 由 Host 在此 profile 下创建。
 pub fn default_profile() -> serial_workbench_core::HostResult<std::path::PathBuf> {
     use serial_workbench_core::HostError;

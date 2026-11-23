@@ -13,6 +13,7 @@ import { copyText } from "@/lib/clipboard";
 import {
   getDiagnosticsReport,
   recoveryStatus,
+  saveDiagnosticsJson,
   type DiagnosticsReport,
 } from "@/lib/tauri";
 import Diagnostics from "./diagnostics";
@@ -23,6 +24,7 @@ vi.mock("@/lib/tauri", () => ({
   isTauri: () => true,
   getDiagnosticsReport: vi.fn(),
   recoveryStatus: vi.fn(),
+  saveDiagnosticsJson: vi.fn(),
 }));
 vi.mock("@/lib/clipboard", () => ({ copyText: vi.fn() }));
 vi.mock("sonner", () => ({ toast: { success: vi.fn(), error: vi.fn() } }));
@@ -38,12 +40,19 @@ vi.mock("@/providers/i18n", async () => {
   };
 });
 const report: DiagnosticsReport = {
+  formatVersion: "0.1",
+  collectedAt: "2026-11-23T00:00:00.000Z",
   appVersion: "1.0.0",
   tauriVersion: "2",
   architecture: "x86_64",
   platform: "windows",
   windowLabel: "main",
   settingsRevision: "4",
+  configuration: {
+    language: "en",
+    networkMode: "system",
+    runInBackground: false,
+  },
   desktop: {
     trayAvailable: true,
     secondaryOpen: false,
@@ -84,6 +93,32 @@ describe("diagnostics actions", () => {
     });
   });
   afterEach(cleanup);
+  it("saves the displayed sanitized report and treats cancellation as idle", async () => {
+    const save = deferred<boolean>();
+    vi.mocked(saveDiagnosticsJson).mockReturnValueOnce(save.promise);
+    view();
+    const button = screen.getByRole("button", {
+      name: "Save diagnostics JSON",
+    });
+    await waitFor(() => expect(button).toBeEnabled());
+    act(() => {
+      fireEvent.click(button);
+      fireEvent.click(button);
+    });
+    expect(saveDiagnosticsJson).toHaveBeenCalledExactlyOnceWith(
+      JSON.stringify(report, null, 2),
+    );
+    expect(button).toBeDisabled();
+    expect(
+      screen.getByRole("button", { name: "Refresh diagnostics" }),
+    ).toBeDisabled();
+    await act(async () => save.resolve(false));
+    expect(button).toBeEnabled();
+    expect(toast.success).not.toHaveBeenCalled();
+    vi.mocked(saveDiagnosticsJson).mockResolvedValueOnce(true);
+    await act(async () => fireEvent.click(button));
+    expect(toast.success).toHaveBeenCalledWith("Diagnostics saved");
+  });
   it("keeps the loaded report, recovery status and expanded details when navigating to the current page again", async () => {
     render(
       <MemoryRouter initialEntries={["/diagnostics"]}>

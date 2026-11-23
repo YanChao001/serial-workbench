@@ -1,9 +1,9 @@
-// 可信壳与插件之间只有单向流数据和当前批的确认序号。
+// 可信壳交付只读数据与订阅的语言变更，插件仅确认当前批。
 const frame = document
   .querySelector("template")
   .content.querySelector("iframe");
 const status = document.querySelector("[role=status]");
-const zh = document.documentElement.lang === "zh-CN";
+let locale = document.documentElement.lang;
 const frameId = document.body.dataset.frame;
 let port;
 let awaiting;
@@ -11,11 +11,32 @@ let script;
 let timer;
 let watchdog;
 let retired = false;
+let retirementCode;
 let initialLoad = true;
+let localeUpdates = false;
+let snapshotSent = false;
+
+globalThis.swbViewSetLocale = (value) => {
+  if (value !== "en" && value !== "zh-CN") return;
+  locale = value;
+  document.documentElement.lang = locale;
+  if (retirementCode !== undefined) {
+    status.textContent =
+      locale === "zh-CN"
+        ? `视图已停止（${retirementCode}）`
+        : `View stopped (${retirementCode})`;
+  } else if (!port && !retired) {
+    status.textContent =
+      locale === "zh-CN" ? "正在打开插件视图…" : "Opening plugin view…";
+  }
+  if (localeUpdates && snapshotSent && !retired)
+    port.postMessage({ kind: "viewLocale", locale });
+};
 
 function retire(code) {
   if (retired) return;
   retired = true;
+  retirementCode = code;
   clearTimeout(timer);
   clearTimeout(watchdog);
   script?.remove();
@@ -25,7 +46,7 @@ function retire(code) {
   stop.src = `stop.js?${encodeURIComponent(code)}`;
   document.head.append(stop);
   status.hidden = false;
-  status.textContent = zh ? `视图已停止（${code}）` : `View stopped (${code})`;
+  globalThis.swbViewSetLocale(locale);
 }
 function pull() {
   if (retired || !port || script || awaiting !== undefined || document.hidden)
@@ -52,6 +73,8 @@ globalThis.swbViewReceive = (message) => {
       ok: true,
       result: { kind: "session", value: message.snapshot },
     });
+    snapshotSent = true;
+    if (localeUpdates) port.postMessage({ kind: "viewLocale", locale });
     pull();
     return;
   }
@@ -75,16 +98,19 @@ globalThis.swbViewReceive = (message) => {
   }
 };
 window.addEventListener("message", (event) => {
+  const wantsLocale =
+    event.data?.frameId === frameId && event.data.localeUpdates === true;
   if (
     retired ||
     port ||
     event.source !== frame.contentWindow ||
     event.origin !== "null" ||
-    event.data !== frameId ||
+    (event.data !== frameId && !wantsLocale) ||
     event.ports.length !== 1
   )
     return;
   port = event.ports[0];
+  localeUpdates = wantsLocale;
   clearTimeout(watchdog);
   port.onmessage = ({ data }) => {
     if (awaiting === undefined || data !== awaiting) return;
@@ -111,6 +137,10 @@ window.addEventListener(
   },
   { once: true },
 );
-frame.src = frame.dataset.src;
+globalThis.swbViewSetLocale(locale);
+const source = new URL(frame.dataset.src);
+const [identifier, , scheme, capability] = source.hash.slice(1).split(".");
+source.hash = [identifier, locale, scheme, capability].join(".");
+frame.src = source.href;
 document.body.append(frame);
 watchdog = setTimeout(() => retire("FRAME_UNAVAILABLE"), 10000);

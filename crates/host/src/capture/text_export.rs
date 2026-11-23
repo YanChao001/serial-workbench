@@ -1,40 +1,51 @@
 use super::{format::*, verify::verify_directory};
+use crate::files::references::{PathGuard, file_identity};
 use base64::Engine as _;
 use serial_workbench_core::*;
-use std::{io::Write, path::Path};
+use std::{fs::File, io::Write, path::Path};
 
 #[cfg(test)]
 #[path = "text_export_tests.rs"]
 mod final_fix_tests;
 /// 文本按独立源与方向增量解码；sourceSpans 保留跨记录字符的原始定位。
 pub fn export_text(source: &Path, target: &Path) -> HostResult<()> {
-    export_text_observed(source, target, |_| {})
+    export_text_observed(source, target, TextExportFormat::Jsonl, |_| {})
 }
 /// Trusted Host test seam; not available through request parameters.
 fn export_text_observed(
     source: &Path,
     target: &Path,
+    format: TextExportFormat,
     observe: impl FnMut(super::verify::CopyPhase),
 ) -> HostResult<()> {
     export_bound(
         source,
-        &crate::files::references::PathGuard::new(target)?,
+        &PathGuard::new(target)?,
+        format,
         observe,
+        |temporary, destination| {
+            temporary.rename_to(destination, false)?;
+            destination.sync_parent()
+        },
     )
 }
-pub(crate) fn export_at(
+pub(crate) fn export_at<T>(
     source: &Path,
-    target: &crate::files::references::PathGuard,
-) -> HostResult<()> {
-    export_bound(source, target, |_| {})
+    target: &PathGuard,
+    format: TextExportFormat,
+    publish: impl FnOnce(&PathGuard, &PathGuard) -> HostResult<T>,
+) -> HostResult<T> {
+    export_bound(source, target, format, |_| {}, publish)
 }
-fn export_bound(
+fn export_bound<T>(
     source: &Path,
-    destination: &crate::files::references::PathGuard,
+    destination: &PathGuard,
+    format: TextExportFormat,
     mut observe: impl FnMut(super::verify::CopyPhase),
-) -> HostResult<()> {
+    publish: impl FnOnce(&PathGuard, &PathGuard) -> HostResult<T>,
+) -> HostResult<T> {
     let target = destination.checked_path();
-    let _source_guard = crate::files::references::PathGuard::new(source)?;
+    let source_guard = PathGuard::new(source)?;
     if target.exists() {
         return Err(HostError::new(
             "TARGET_EXISTS",
@@ -48,12 +59,31 @@ fn export_bound(
             "Recover the verified prefix before exporting",
         ));
     }
+    if source_guard.directory_identity()? == destination.parent_identity()? {
+        return Err(HostError::new(
+            "INVALID_ARGUMENT",
+            "Text export target must be outside the source capture directory",
+        ));
+    }
     scan.bind_files(source)?;
     let temporary = destination.sibling(std::ffi::OsStr::new(&format!(
         ".text-pending-{}",
         uuid::Uuid::new_v4()
     )))?;
-    let mut output = temporary.create_file()?;
+    let mut pending = PendingExport::new(temporary)?;
+    let output = pending
+        .output
+        .as_mut()
+        .expect("new pending export owns file");
+    if format == TextExportFormat::Csv {
+        let mut header = CSV_COLUMNS
+            .iter()
+            .map(|(heading, _, _)| *heading)
+            .collect::<Vec<_>>()
+            .join(",");
+        header.push_str("\r\n");
+        output.write_all(header.as_bytes()).map_err(io_error)?;
+    }
     let mut decoders: Vec<(SourceIdentity, Direction, TextDecoder)> = Vec::new();
     for position in 0..scan.index.records.len() {
         observe(super::verify::CopyPhase::BeforeRecord);
@@ -79,7 +109,7 @@ fn export_bound(
                     && direction.is_none_or(|direction| direction == *stream_direction)
                     && let Some(tail) = decoder.flush()
                 {
-                    write_row(&mut output, &tail)?;
+                    write_row(output, format, &tail)?;
                 }
             }
         }
@@ -126,7 +156,7 @@ fn export_bound(
                     if decoder.byte_end.is_some_and(|previous| previous != start)
                         && let Some(tail) = decoder.flush()
                     {
-                        write_row(&mut output, &tail)?;
+                        write_row(output, format, &tail)?;
                     }
                     let span = TextSpan {
                         record_ordinal: record.record_ordinal,
@@ -144,25 +174,109 @@ fn export_bound(
             }
             _ => row["entry"] = serde_json::to_value(&record.entry).map_err(|_| corrupt())?,
         };
-        write_row(&mut output, &row)?;
+        write_row(output, format, &row)?;
     }
     for (_, _, decoder) in &mut decoders {
         if let Some(tail) = decoder.flush() {
-            write_row(&mut output, &tail)?;
+            write_row(output, format, &tail)?;
         }
     }
     output.sync_all().map_err(io_error)?;
-    drop(output);
+    drop(pending.output.take());
     if fingerprint(source)? != scan.report.source_fingerprint {
         return Err(changed());
     }
-    temporary.rename_to(destination, false)?;
-    destination.sync_parent()
+    let result = publish(&pending.path, destination)?;
+    pending.published = true;
+    Ok(result)
 }
 
-fn write_row(output: &mut impl Write, row: &serde_json::Value) -> HostResult<()> {
-    serde_json::to_writer(&mut *output, row).map_err(|_| corrupt())?;
-    output.write_all(b"\n").map_err(io_error)
+struct PendingExport {
+    path: PathGuard,
+    output: Option<File>,
+    identity: String,
+    published: bool,
+}
+
+impl PendingExport {
+    fn new(path: PathGuard) -> HostResult<Self> {
+        let output = path.create_file()?;
+        let identity = file_identity(&output)?;
+        Ok(Self {
+            path,
+            output: Some(output),
+            identity,
+            published: false,
+        })
+    }
+}
+
+impl Drop for PendingExport {
+    fn drop(&mut self) {
+        drop(self.output.take());
+        if !self.published {
+            self.path.discard_created_file(&self.identity);
+        }
+    }
+}
+
+// 结构字段与外部来源文字使用 JSON，避免表格将设备内容解释为公式。
+const CSV_COLUMNS: &[(&str, &str, bool)] = &[
+    ("recordOrdinal", "recordOrdinal", false),
+    ("volume", "volume", false),
+    ("recordOffset", "recordOffset", false),
+    ("recordLength", "recordLength", false),
+    ("timestamp", "timestamp", false),
+    ("hostIdJson", "hostId", true),
+    ("instanceEpoch", "instanceEpoch", false),
+    ("sessionIdJson", "sessionId", true),
+    ("sessionEpoch", "sessionEpoch", false),
+    ("direction", "direction", false),
+    ("byteStart", "byteStart", false),
+    ("byteEnd", "byteEnd", false),
+    ("textJson", "text", true),
+    ("hadReplacement", "hadReplacement", false),
+    ("sourceSpansJson", "sourceSpans", true),
+    ("entryJson", "entry", true),
+];
+
+fn write_row(
+    output: &mut impl Write,
+    format: TextExportFormat,
+    row: &serde_json::Value,
+) -> HostResult<()> {
+    match format {
+        TextExportFormat::Jsonl => {
+            serde_json::to_writer(&mut *output, row).map_err(|_| corrupt())?;
+            output.write_all(b"\n").map_err(io_error)
+        }
+        TextExportFormat::Csv => {
+            let mut line = String::new();
+            for (index, (_, key, as_json)) in CSV_COLUMNS.iter().enumerate() {
+                if index != 0 {
+                    line.push(',');
+                }
+                if let Some(value) = row.get(*key) {
+                    let cell = match value {
+                        serde_json::Value::String(text) if !*as_json => {
+                            std::borrow::Cow::Borrowed(text.as_str())
+                        }
+                        _ => std::borrow::Cow::Owned(value.to_string()),
+                    };
+                    line.push('"');
+                    for (part, content) in cell.split('"').enumerate() {
+                        if part != 0 {
+                            line.push_str("\"\"");
+                        }
+                        line.push_str(content);
+                    }
+                    line.push('"');
+                }
+            }
+            line.push_str("\r\n");
+            output.write_all(line.as_bytes()).map_err(io_error)
+        }
+    }
 }
 #[derive(Clone, serde::Serialize)]
 #[serde(rename_all = "camelCase")]
@@ -331,13 +445,15 @@ mod tests {
                 std::fs::write(&volume, &original).unwrap();
             }
         };
-        let result = export_text_observed(&source, &target, observe);
-        std::fs::write(&volume, &original).unwrap();
-        assert_eq!(
-            fingerprint(&source).unwrap(),
-            scan.report.source_fingerprint
-        );
-        assert_eq!(result.unwrap_err().code, "SOURCE_CHANGED");
-        assert!(!target.exists(), "unverified bytes must never be published");
+        for format in [TextExportFormat::Jsonl, TextExportFormat::Csv] {
+            let result = export_text_observed(&source, &target, format, observe);
+            std::fs::write(&volume, &original).unwrap();
+            assert_eq!(
+                fingerprint(&source).unwrap(),
+                scan.report.source_fingerprint
+            );
+            assert_eq!(result.unwrap_err().code, "SOURCE_CHANGED");
+            assert!(!target.exists(), "unverified bytes must never be published");
+        }
     }
 }

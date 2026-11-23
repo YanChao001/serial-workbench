@@ -48,12 +48,62 @@ impl Fixtures {
         Ok(())
     }
 }
+fn replay_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
+    f.add::<ReplayReadParams>(
+        "replay-legacy-read",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"100","maxBytes":"65536"}),
+        true,
+    )?;
+    f.add::<ReplayReadParams>(
+        "replay-step-with-playback-state",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"1","maxBytes":"65536","singleStep":true,"reportPlayback":true}),
+        true,
+    )?;
+    f.add::<ReplayReadParams>(
+        "replay-inspect-without-consuming",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"1","maxBytes":"65536","inspectPlayback":true}),
+        true,
+    )?;
+    f.add::<ReplayReadParams>(
+        "replay-null-step",
+        json!({"sessionId":"replay","sessionEpoch":"1","maxRecords":"1","maxBytes":"65536","singleStep":null}),
+        false,
+    )?;
+    f.add::<ReplayControlParams>(
+        "replay-set-timed-rate",
+        json!({"sessionId":"replay","sessionEpoch":"1","paused":false,"playback":{"kind":"set_rate","rate":{"kind":"timed","speedPercent":200}}}),
+        true,
+    )?;
+    f.add::<ReplayControlParams>(
+        "replay-control-rejects-query-only-state",
+        json!({"sessionId":"replay","sessionEpoch":"1","paused":false,"reportPlayback":true}),
+        false,
+    )?;
+    f.add::<ReplayControlParams>(
+        "replay-clear-breakpoint",
+        json!({"sessionId":"replay","sessionEpoch":"1","paused":false,"playback":{"kind":"set_breakpoint"}}),
+        true,
+    )?;
+    f.add::<ReplayControlParams>(
+        "replay-null-breakpoint",
+        json!({"sessionId":"replay","sessionEpoch":"1","paused":false,"playback":{"kind":"set_breakpoint","record":null}}),
+        false,
+    )?;
+    f.add::<ReplayReadResult>(
+        "replay-breakpoint-before-record",
+        json!({"records":[],"readerGeneration":"3","nextRecord":"42","atEnd":false,"playback":{"rate":{"kind":"fastest"},"paused":true,"breakpointRecord":"42","breakpointHit":true}}),
+        true,
+    )?;
+    Ok(())
+}
+
 fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
     let mut f = Fixtures {
         schema_version: 1,
         ..Fixtures::default()
     };
     node_package_fixtures(&mut f)?;
+    replay_fixtures(&mut f)?;
     f.add::<RpcRequest>(
         "local-lan-enable",
         json!({"method":"lan.access","params":{"kind":"enable","address":"[::1]:9240"}}),
@@ -1611,6 +1661,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         DocumentJsonResult,
         StreamCursorResult,
         FileTransferParams,
+        PasteTransferParams,
         FileTransferResult,
         FileTransferReceipt,
         FileTransferReceiptsParams,

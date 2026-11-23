@@ -1,8 +1,9 @@
 //! 当前用户 Unix socket、私有文件及继承管道；实例锁和 endpoint 清理由 Host 持有。
 
+use std::ffi::CString;
 use std::fs::{self, DirBuilder, File, Metadata, OpenOptions};
 use std::io::{self, Read, Write};
-use std::os::fd::AsRawFd;
+use std::os::fd::{AsRawFd, FromRawFd};
 use std::os::unix::ffi::OsStrExt;
 use std::os::unix::fs::{DirBuilderExt, FileTypeExt, MetadataExt, OpenOptionsExt, PermissionsExt};
 use std::path::{Component, Path, PathBuf};
@@ -264,6 +265,54 @@ fn open_file_parent(path: &Path) -> HostResult<File> {
         return Err(invalid_path());
     }
     open_private_directory(path.parent().ok_or_else(invalid_path)?)
+}
+
+/// 打开应用提供的日志路径，只接受当前用户的单链接普通文件。
+pub fn open_local_log(path: &Path) -> HostResult<Option<File>> {
+    validate_local_path(path)?;
+    let name = path.file_name().ok_or_else(invalid_path)?;
+    let parent = path.parent().ok_or_else(invalid_path)?;
+    let mut directory = File::open("/").map_err(io_error)?;
+    for component in parent.components().skip(1) {
+        let Some(next) = open_log_relative(&directory, component.as_os_str(), libc::O_DIRECTORY)?
+        else {
+            return Ok(None);
+        };
+        directory = next;
+    }
+    let Some(file) = open_log_relative(&directory, name, libc::O_NONBLOCK)? else {
+        return Ok(None);
+    };
+    let metadata = file.metadata().map_err(io_error)?;
+    if !metadata.is_file() || metadata.nlink() != 1 || metadata.uid() != effective_uid() {
+        return Err(permission_error());
+    }
+    Ok(Some(file))
+}
+
+fn open_log_relative(
+    directory: &File,
+    name: &std::ffi::OsStr,
+    flags: i32,
+) -> HostResult<Option<File>> {
+    let name = CString::new(name.as_bytes()).map_err(|_| invalid_path())?;
+    // 每一级都从已绑定的父目录打开，拒绝中途替换成的链接或 FIFO。
+    let fd = unsafe {
+        libc::openat(
+            directory.as_raw_fd(),
+            name.as_ptr(),
+            libc::O_RDONLY | libc::O_NOFOLLOW | libc::O_CLOEXEC | flags,
+        )
+    };
+    if fd < 0 {
+        let error = io::Error::last_os_error();
+        return if error.kind() == io::ErrorKind::NotFound {
+            Ok(None)
+        } else {
+            Err(io_error(error))
+        };
+    }
+    Ok(Some(unsafe { File::from_raw_fd(fd) }))
 }
 
 fn open_private_directory(path: &Path) -> HostResult<File> {

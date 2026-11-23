@@ -1,4 +1,4 @@
-//! 裸文件发送持有同一 Transmission owner，逐块持久保留意图和真实回执。
+//! 分片发送持有同一 Transmission owner，逐块持久保留意图和真实回执。
 use super::*;
 use crate::files::{FileService, FixedFile};
 use crate::storage::Store;
@@ -35,16 +35,33 @@ pub fn validate_params(params: &FileTransferParams) -> HostResult<()> {
             .get()
             .checked_add(params.length.get())
             .is_none()
-        || params.chunk_bytes.get() == 0
-        || params.bytes_per_second.get() == 0
     {
         return Err(invalid());
     }
-    if params.chunk_bytes.get() > MAX_CHUNK
-        || params.bytes_per_second.get() > MAX_RATE
-        || params.inter_chunk_ms.get() > 2147483647
+    validate_pacing(
+        params.chunk_bytes,
+        params.bytes_per_second,
+        params.inter_chunk_ms,
+    )
+}
+
+pub(super) fn validate_paste_params(params: &PasteTransferParams) -> HostResult<()> {
+    validate_pacing(
+        params.chunk_bytes,
+        params.bytes_per_second,
+        params.inter_chunk_ms,
+    )
+}
+
+fn validate_pacing(chunk_bytes: U64, bytes_per_second: U64, inter_chunk_ms: U64) -> HostResult<()> {
+    if chunk_bytes.get() == 0 || bytes_per_second.get() == 0 {
+        return Err(invalid());
+    }
+    if chunk_bytes.get() > MAX_CHUNK
+        || bytes_per_second.get() > MAX_RATE
+        || inter_chunk_ms.get() > 2147483647
     {
-        let mut error = HostError::new("LIMIT_EXCEEDED", "File transfer exceeds Host limits");
+        let mut error = HostError::new("LIMIT_EXCEEDED", "Transfer exceeds Host limits");
         error.details = Some(Box::new(
             [
                 (
@@ -63,15 +80,104 @@ pub fn validate_params(params: &FileTransferParams) -> HostResult<()> {
     Ok(())
 }
 
+struct TransferPlan {
+    offset: u64,
+    length: u64,
+    chunk_bytes: u64,
+    bytes_per_second: u64,
+    inter_chunk_ms: u64,
+    write_wait_ms: DurationMs,
+}
+
+pub(super) struct PreparedPaste {
+    bytes: Arc<[u8]>,
+    plan: TransferPlan,
+}
+
+impl PreparedPaste {
+    pub(super) fn new(params: PasteTransferParams) -> HostResult<Self> {
+        validate_paste_params(&params)?;
+        let bytes: Arc<[u8]> = STANDARD
+            .decode(params.bytes_base64.as_str())
+            .map_err(|_| invalid())?
+            .into();
+        let plan = TransferPlan {
+            offset: 0,
+            length: bytes.len() as u64,
+            chunk_bytes: params.chunk_bytes.get(),
+            bytes_per_second: params.bytes_per_second.get(),
+            inter_chunk_ms: params.inter_chunk_ms.get(),
+            write_wait_ms: params.write_wait_ms,
+        };
+        Ok(Self { bytes, plan })
+    }
+
+    pub(super) fn len(&self) -> usize {
+        self.bytes.len()
+    }
+}
+
+enum TransferSource {
+    File(Box<FixedFile>),
+    Paste(Arc<[u8]>),
+}
+
+impl TransferSource {
+    async fn read_chunk(self, offset: u64, length: usize) -> HostResult<(Self, Arc<[u8]>)> {
+        match self {
+            Self::File(mut file) => {
+                blocking(move || {
+                    let bytes = file.read_chunk(offset, length)?;
+                    Ok((Self::File(file), bytes.into()))
+                })
+                .await
+            }
+            Self::Paste(paste) => {
+                let start = usize::try_from(offset).map_err(|_| invalid())?;
+                let end = start.checked_add(length).ok_or_else(invalid)?;
+                let bytes = paste.get(start..end).ok_or_else(invalid)?.into();
+                Ok((Self::Paste(paste), bytes))
+            }
+        }
+    }
+
+    async fn verify_chunk(
+        self,
+        offset: u64,
+        length: usize,
+        sent: &[u8],
+    ) -> HostResult<(Self, HostResult<()>)> {
+        let Self::File(mut file) = self else {
+            return Ok((self, Ok(())));
+        };
+        let (file, checked) = blocking(move || {
+            let checked = file.read_chunk(offset, length);
+            Ok((file, checked))
+        })
+        .await?;
+        let verified = checked.and_then(|checked| {
+            if checked == sent {
+                Ok(())
+            } else {
+                Err(HostError::new(
+                    "SOURCE_CHANGED",
+                    "File changed before chunk dispatch",
+                ))
+            }
+        });
+        Ok((Self::File(file), verified))
+    }
+}
+
+struct TransferInput {
+    source: TransferSource,
+    reference: ObjectRef,
+    authority: Target,
+    plan: TransferPlan,
+}
+
 impl TransmissionService {
-    pub(super) async fn transfer_file(
-        &self,
-        accepted: &AcceptedCall,
-        token: &ControlToken,
-        session: &Arc<Session>,
-        runtime: &Arc<Runtime>,
-        guard: &mut Option<FileTransferGuard>,
-    ) -> HostResult<Completion> {
+    async fn open_file_transfer(&self, accepted: &AcceptedCall) -> HostResult<TransferInput> {
         let params: FileTransferParams = decode(&accepted.call.params)?;
         validate_params(&params)?;
         let files = FileService::new(
@@ -95,13 +201,51 @@ impl TransmissionService {
             Ok((fixed, authority))
         })
         .await?;
+        Ok(TransferInput {
+            source: TransferSource::File(Box::new(fixed)),
+            reference: params.source_ref,
+            authority,
+            plan: TransferPlan {
+                offset: params.offset.get(),
+                length: params.length.get(),
+                chunk_bytes: params.chunk_bytes.get(),
+                bytes_per_second: params.bytes_per_second.get(),
+                inter_chunk_ms: params.inter_chunk_ms.get(),
+                write_wait_ms: params.write_wait_ms,
+            },
+        })
+    }
+
+    pub(super) async fn transfer(
+        &self,
+        accepted: &AcceptedCall,
+        token: &ControlToken,
+        session: &Arc<Session>,
+        runtime: &Arc<Runtime>,
+        guard: &mut Option<FileTransferGuard>,
+        paste: Option<PreparedPaste>,
+    ) -> HostResult<Completion> {
+        let input = match paste {
+            Some(paste) => TransferInput {
+                source: TransferSource::Paste(paste.bytes),
+                reference: ObjectRef {
+                    host_id: accepted.call.target.host_id.clone(),
+                    kind: ResourceKind::try_from("operation")?,
+                    id: accepted.operation.operation_id.clone(),
+                    revision: None,
+                },
+                authority: accepted.call.target.clone(),
+                plan: paste.plan,
+            },
+            None => self.open_file_transfer(accepted).await?,
+        };
         let turn = self
             .acquire(
                 accepted,
                 token,
                 session,
                 runtime,
-                params.chunk_bytes.get() as usize,
+                input.plan.chunk_bytes as usize,
                 None,
             )
             .await?;
@@ -145,9 +289,9 @@ impl TransmissionService {
             token,
             session: session.clone(),
             runtime: runtime.clone(),
-            params,
+            plan: input.plan,
         };
-        let work = run.run(fixed, authority);
+        let work = run.run(input.source, input.reference, input.authority);
         tokio::pin!(work);
         let mut maintain = true;
         let mut renew_at = self.now().saturating_add(RENEW_NS);
@@ -231,7 +375,7 @@ struct FileRun<'a> {
     token: &'a ControlToken,
     session: Arc<Session>,
     runtime: Arc<Runtime>,
-    params: FileTransferParams,
+    plan: TransferPlan,
 }
 impl FileRun<'_> {
     async fn gate(&self) -> HostResult<()> {
@@ -252,16 +396,21 @@ impl FileRun<'_> {
         blocking(move || store.record_result_evidence(&id, &evidence)).await?;
         Ok(())
     }
-    async fn run(&self, mut fixed: FixedFile, authority: Target) -> HostResult<Completion> {
+    async fn run(
+        &self,
+        mut source: TransferSource,
+        reference: ObjectRef,
+        authority: Target,
+    ) -> HostResult<Completion> {
         let mut journal = ReceiptJournal::create(
             self.service.devices.inner.store.clone(),
             &self.accepted.operation,
-            self.params.source_ref.clone(),
+            reference,
             authority,
         )
         .await?;
         let mut result = FileTransferResult {
-            requested: self.params.length,
+            requested: self.plan.length.into(),
             accepted: 0.into(),
             unknown: 0.into(),
             receipts_ref: journal.reference.clone(),
@@ -270,15 +419,14 @@ impl FileRun<'_> {
         self.evidence(&result).await?;
         let mut pacer = ChunkPacer::new(
             self.service.now(),
-            self.params.chunk_bytes.get(),
-            self.params.bytes_per_second.get(),
-            self.params.inter_chunk_ms.get(),
+            self.plan.chunk_bytes,
+            self.plan.bytes_per_second,
+            self.plan.inter_chunk_ms,
         );
         let mut consumed = 0;
         let mut failure = None;
-        while consumed < self.params.length.get() {
-            let length =
-                (self.params.length.get() - consumed).min(self.params.chunk_bytes.get()) as usize;
+        while consumed < self.plan.length {
+            let length = (self.plan.length - consumed).min(self.plan.chunk_bytes) as usize;
             let attempt = async {
                 self.gate().await?;
                 let ready = pacer.ready_at(self.service.now(), length as u64);
@@ -288,18 +436,18 @@ impl FileRun<'_> {
                 }
                 self.gate().await?;
                 pacer.consume(self.service.now(), length as u64);
-                self.chunk(fixed, self.params.offset.get() + consumed, length, &mut journal, &mut result).await
+                self.chunk(source, self.plan.offset + consumed, length, &mut journal, &mut result).await
             }.await;
             match attempt {
                 Ok((next, receipt)) => {
-                    fixed = next;
+                    source = next;
                     consumed += length as u64;
                     pacer.finished(self.service.now());
                     if receipt.outcome != TxOutcome::Accepted || receipt.backend_error.is_some() {
                         failure = Some(receipt.backend_error.unwrap_or_else(|| {
                             HostError::new(
                                 "PARTIAL_WRITE",
-                                "File transfer stopped after an incomplete chunk",
+                                "Transfer stopped after an incomplete chunk",
                             )
                         }));
                         break;
@@ -320,7 +468,7 @@ impl FileRun<'_> {
         self.evidence(&result).await?;
         let state = if result.unknown.get() > 0 {
             OperationState::Unknown
-        } else if consumed == self.params.length.get() && failure.is_none() {
+        } else if consumed == self.plan.length && failure.is_none() {
             OperationState::Succeeded
         } else if self.token.cancelled.load(Ordering::SeqCst) {
             OperationState::Cancelled
@@ -336,21 +484,15 @@ impl FileRun<'_> {
 
     async fn chunk(
         &self,
-        mut fixed: FixedFile,
+        source: TransferSource,
         offset: u64,
         length: usize,
         journal: &mut ReceiptJournal,
         aggregate: &mut FileTransferResult,
-    ) -> HostResult<(FixedFile, TxReceipt)> {
+    ) -> HostResult<(TransferSource, TxReceipt)> {
         // 每次只读取一个有界块；固定源自己核对当前授权、文件身份和块摘要。
-        let (next, bytes) = blocking(move || {
-            let bytes = fixed.read_chunk(offset, length)?;
-            Ok((fixed, bytes))
-        })
-        .await?;
-        fixed = next;
+        let (source, bytes) = source.read_chunk(offset, length).await?;
         self.gate().await?;
-        let bytes: Arc<[u8]> = bytes.into();
         let prepared = self
             .session
             .source
@@ -389,27 +531,10 @@ impl FileRun<'_> {
         // 与取消协商共享dispatch guard，但不让RX或capture等待文件读或native完成。
         let dispatch = self.token.dispatch.lock().await;
         let ready = self.gate().await;
-        let (fixed, ready) = if ready.is_ok() {
-            let next = blocking(move || {
-                let checked = fixed.read_chunk(offset, length);
-                Ok((fixed, checked))
-            })
-            .await?;
-            (
-                next.0,
-                next.1.and_then(|checked| {
-                    if checked.as_slice() == bytes.as_ref() {
-                        Ok(())
-                    } else {
-                        Err(HostError::new(
-                            "SOURCE_CHANGED",
-                            "File changed before chunk dispatch",
-                        ))
-                    }
-                }),
-            )
+        let (source, ready) = if ready.is_ok() {
+            source.verify_chunk(offset, length, &bytes).await?
         } else {
-            (fixed, ready)
+            (source, ready)
         };
         let ready = match ready {
             Ok(()) => self.gate().await,
@@ -423,7 +548,7 @@ impl FileRun<'_> {
                     self.session
                         .write(
                             intent.write_payload(),
-                            Duration::from_millis(self.params.write_wait_ms.get()),
+                            Duration::from_millis(self.plan.write_wait_ms.get()),
                             self.service.backend_admission(
                                 &self.accepted,
                                 self.token,
@@ -468,7 +593,7 @@ impl FileRun<'_> {
             .await
             .map_err(journal_error)?;
         published?;
-        Ok((fixed, receipt))
+        Ok((source, receipt))
     }
 
     fn reject_intent(

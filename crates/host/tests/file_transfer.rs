@@ -45,6 +45,106 @@ fn receipts(h: &Harness, reference: &ObjectRef) -> FileTransferReceiptsResult {
         .unwrap()
 }
 
+fn paste(h: &Harness, target: &Target) -> Call {
+    let mut call = h.call(
+        target,
+        "transfer.paste",
+        serde_json::json!({
+            "bytesBase64":"AQIDBAU=", "chunkBytes":"2", "bytesPerSecond":"4",
+            "interChunkMs":"700", "writeWaitMs":"1000"
+        }),
+    );
+    call.execution_mode = Some(ExecutionMode::Independent);
+    call
+}
+
+#[tokio::test]
+async fn paste_holds_the_session_through_pacing_and_records_ordered_chunks() {
+    let h = Harness::new().await;
+    let target = h.open("paste-paced").await;
+    let operation = h.invoke(paste(&h, &target)).await;
+    support::until(|| h.write_count() == 1).await;
+    let ordinary = h
+        .invoke(h.call(
+            &target,
+            "session.tx",
+            serde_json::json!({"bytesBase64":"CQ==","writeWaitMs":"1000"}),
+        ))
+        .await;
+    assert_eq!(h.write_count(), 1);
+    assert_eq!(h.clock.mono_ns(), 0);
+
+    for expected in [2, 4] {
+        tokio::time::timeout(std::time::Duration::from_secs(5), async {
+            while h.write_count() < expected {
+                h.clock.advance_ms(10);
+                tokio::time::sleep(std::time::Duration::from_millis(2)).await;
+            }
+        })
+        .await
+        .unwrap();
+    }
+    assert!(h.clock.mono_ns() >= 1_400_000_000);
+    let done = h.wait(&operation.operation_id).await;
+    assert_eq!(done.state, OperationState::Succeeded);
+    assert_eq!(
+        h.wait(&ordinary.operation_id).await.state,
+        OperationState::Succeeded
+    );
+    let Some(ActionResult::FileTransfer(result)) = done.result else {
+        panic!("paste result");
+    };
+    assert_eq!(result.accepted, 5.into());
+    assert_eq!(result.unknown, 0.into());
+    let page = receipts(&h, &result.receipts_ref);
+    assert!(page.sealed);
+    assert_eq!(page.count, 3.into());
+    assert_eq!(
+        page.receipts
+            .iter()
+            .map(|chunk| (
+                chunk.source_offset.get(),
+                chunk.receipt.operation_id.clone()
+            ))
+            .collect::<Vec<_>>(),
+        [0, 2, 4].map(|offset| (offset, operation.operation_id.clone())),
+    );
+    assert_eq!(
+        h.probe
+            .writes
+            .lock()
+            .unwrap()
+            .iter()
+            .map(|write| write.1.clone())
+            .collect::<Vec<_>>(),
+        vec![vec![1, 2], vec![3, 4], vec![5], vec![9]],
+    );
+    h.host.shutdown().await.unwrap();
+}
+
+#[tokio::test]
+async fn paste_cancellation_ends_pacing_without_sending_the_tail() {
+    let h = Harness::new().await;
+    let target = h.open("paste-cancel").await;
+    let operation = h.invoke(paste(&h, &target)).await;
+    support::until(|| h.write_count() == 1).await;
+    h.cancel(&operation).await;
+    let done = h.wait(&operation.operation_id).await;
+    assert_eq!(done.state, OperationState::Cancelled);
+    let Some(ActionResult::FileTransfer(result)) = done.result else {
+        panic!("paste result");
+    };
+    assert_eq!(result.requested, 5.into());
+    assert_eq!(result.accepted, 2.into());
+    assert_eq!(result.unknown, 0.into());
+    let page = receipts(&h, &result.receipts_ref);
+    assert!(page.sealed);
+    assert_eq!(page.count, 1.into());
+    assert_eq!(h.clock.mono_ns(), 0);
+    h.host.shutdown().await.unwrap();
+    assert_eq!(h.write_count(), 1);
+}
+
 #[tokio::test]
 async fn file_transfer_preserves_partial_and_cancel() {
     let mut h = Harness::new().await;
