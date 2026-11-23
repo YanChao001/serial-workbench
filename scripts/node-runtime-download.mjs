@@ -61,8 +61,23 @@ function verifyCached(root, file, source) {
   return file;
 }
 
+class RuntimeConnectionError extends Error {
+  constructor(cause) {
+    super(`Runtime connection failed (${cause.cause.code})`, { cause });
+  }
+}
+
 /** 有界获取锁定的字节；错误原件保留，已有缓存从不覆盖，不跟随 HTTP 重定向。 */
-export async function cachePinnedRuntimeFile({
+export async function cachePinnedRuntimeFile(options) {
+  try {
+    return await downloadPinnedRuntimeFile(options);
+  } catch (error) {
+    if (!(error.cause instanceof RuntimeConnectionError)) throw error;
+    return downloadPinnedRuntimeFile(options);
+  }
+}
+
+async function downloadPinnedRuntimeFile({
   root,
   cacheDirectory,
   source,
@@ -98,6 +113,19 @@ export async function cachePinnedRuntimeFile({
       redirect: "manual",
       signal: abort,
       headers: { "Accept-Encoding": "identity" },
+    }).catch((error) => {
+      if (
+        !abort.aborted &&
+        error instanceof TypeError &&
+        [
+          "UND_ERR_CONNECT_TIMEOUT",
+          "UND_ERR_SOCKET",
+          "ECONNRESET",
+          "EAI_AGAIN",
+        ].includes(error.cause?.code)
+      )
+        throw new RuntimeConnectionError(error);
+      throw error;
     });
     if (response.status !== 200 || !response.body)
       throw new Error(`Runtime download HTTP status ${response.status}`);
@@ -212,6 +240,10 @@ export async function fetchNodeRuntimeSources({
   });
   for (const artifact of library?.artifacts ?? [])
     await cachePinnedRuntimeFile({
+      // 固定的 GCC 完整源码比运行时归档大。继续使用同一长度、摘要和来源校验。
+      ...(artifact.filename.endsWith(".orig.tar.gz")
+        ? { timeoutMs: 300_000 }
+        : {}),
       ...options,
       root,
       cacheDirectory: artifactDirectory,

@@ -19,7 +19,7 @@ pnpm runtime:fetch --target x86_64-pc-windows-msvc
 pnpm runtime:prepare --target x86_64-pc-windows-msvc --archives .cache/node-runtime/sources/node-26.13.0
 ```
 
-下载器先离线验证固定签名链，仅请求机器清单中的官方 HTTPS 地址，不跟随重定向。完整大小与摘要匹配后排他发布缓存；缺失缓存可下载，坏缓存与失败的部分文件保留并停止。`runtime:fetch --offline` 仅核对已有缓存；单文件默认下载预算 120 秒，超时/取消关闭响应和文件后返回。
+下载器先离线验证固定签名链，仅请求机器清单中的官方 HTTPS 地址，不跟随重定向。完整大小与摘要匹配后排他发布缓存，坏缓存与失败的部分文件均保留。暂时性连接故障在收到响应前允许重试一次，两次尝试分别存证。`runtime:fetch --offline` 仅核对已有缓存。单次默认下载预算 120 秒，固定的 GCC 完整源码归档为 300 秒。超时或取消关闭响应和文件后返回。
 
 Linux 另提供 `--artifacts .cache/node-runtime/sources/libatomic1-jammy-12.3.0-22.04.3`，必须含两个 deb 和三份对应源码。准备器在唯一目录下生成 `resources/`，来源材料位于其 `runtime/materials/node-26.13.0/`；核对文件/架构并运行 ABI 自检，Linux 检查私有 libatomic 实际加载。`--no-self-test` 仅用于跨目标静态准备，收据明确记录未执行，不能计为运行验收。
 

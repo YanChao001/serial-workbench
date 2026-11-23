@@ -54,7 +54,7 @@ AI 活动按目录声明的页面、面板和 Host 解析出的会话代次定�
 
 ### 本机 HTTP 控制
 
-外部程序可用本机 HTTP 连接同一 Rust Host。Host 仅在启动器显式请求时监听 IPv4 loopback，并通过受保护的继承管道交付地址和本轮 Bearer 凭据。每个 profile 为这条入口分配普通身份，具体数据读取和设备操作继续由本地用户按目标授权。HTTP、配对 WebSocket、LAN TCP 各自验证凭据和连接来源。
+外部程序可用本机 HTTP 连接同一 Rust Host。Host 仅在启动器显式请求时监听 IPv4 loopback，并通过受保护的继承管道交付地址和本轮 Bearer 凭据。凭据传递入口在初始化 profile 或监听前验证管道，实际写入前再次验证。每个 profile 为 HTTP 分配普通身份，具体数据读取和设备操作继续由本地用户按目标授权。HTTP、配对 WebSocket、LAN TCP 各自验证凭据和连接来源。
 
 HTTP 把有界的单次请求交给现有 Host 校验和业务服务，复用目录、接纳限额以及发送答复前的授权复核。客户端按页读取原始数据并独立查询操作终态。断开 HTTP 请求停止等待，已持久接纳的操作由 Host 继续结算。关停时 Host 停止接纳并回收 HTTP 连接，随后释放实例锁。验收比较 HTTP 与本机 IPC 的目录权限、操作回执、游标和原始事件来源，并覆盖撤权后的读取和写入。 [HTTP 契约](./contracts/host-v0.md#本机-http-控制)
 

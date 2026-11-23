@@ -195,6 +195,11 @@ pub fn write_bootstrap_capability(bytes: &[u8]) -> HostResult<()> {
     write_bootstrap_to(&mut io::stdout().lock(), bytes)
 }
 
+/// 校验启动调用者已经提供接收凭据的管道。
+pub fn require_bootstrap_pipe() -> HostResult<()> {
+    validate_bootstrap_pipe(&io::stdout())
+}
+
 fn write_bootstrap_to<W: Write + AsRawFd>(writer: &mut W, bytes: &[u8]) -> HostResult<()> {
     if bytes.is_empty() || bytes.len() > 2048 {
         return Err(HostError::new(
@@ -202,20 +207,25 @@ fn write_bootstrap_to<W: Write + AsRawFd>(writer: &mut W, bytes: &[u8]) -> HostR
             "Invalid bootstrap capability length",
         ));
     }
+    validate_bootstrap_pipe(writer)?;
+    writer
+        .write_all(&(bytes.len() as u32).to_be_bytes())
+        .map_err(io_error)?;
+    writer.write_all(bytes).map_err(io_error)?;
+    writer.flush().map_err(io_error)
+}
+
+fn validate_bootstrap_pipe(pipe: &impl AsRawFd) -> HostResult<()> {
     let mut metadata = std::mem::MaybeUninit::<libc::stat>::uninit();
     // fstat 成功才读取输出；借用的描述符在同步写入和 flush 完成前始终存活。
-    if unsafe { libc::fstat(writer.as_raw_fd(), metadata.as_mut_ptr()) } != 0 {
+    if unsafe { libc::fstat(pipe.as_raw_fd(), metadata.as_mut_ptr()) } != 0 {
         return Err(io_error(io::Error::last_os_error()));
     }
     let metadata = unsafe { metadata.assume_init() };
     if metadata.st_mode & libc::S_IFMT != libc::S_IFIFO {
         return Err(permission_error());
     }
-    writer
-        .write_all(&(bytes.len() as u32).to_be_bytes())
-        .map_err(io_error)?;
-    writer.write_all(bytes).map_err(io_error)?;
-    writer.flush().map_err(io_error)
+    Ok(())
 }
 
 fn validate_socket_path(path: &Path) -> HostResult<()> {

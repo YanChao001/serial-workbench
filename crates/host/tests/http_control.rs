@@ -658,6 +658,10 @@ async fn production_host_transfers_http_entry_only_through_an_inherited_pipe() {
         .expect("Host accepted HTTP credential transfer without an inherited pipe")
         .unwrap();
     assert!(!failed.success());
+    assert!(
+        !profile.exists(),
+        "A rejected credential sink must not initialize the Host profile"
+    );
 
     let mut child = command.stdout(Stdio::piped()).spawn().unwrap();
     let mut pipe = child.stdout.take().unwrap();
