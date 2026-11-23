@@ -256,6 +256,8 @@ export const labels: WorkbenchLabels = {
   ansiSearchPending: "Searching the screen…",
   ansiSearchChanged: "Screen changed. Search again or freeze the view.",
   ansiSearchFailed: "Screen search failed.",
+  ansiExportColors: "Export ANSI screen with colors",
+  ansiExportColorsFailed: "Could not save the ANSI color snapshot.",
   ansiPaste: "Send paste",
   ansiPasteBracketed: "Use bracketed paste for this send",
   ansiPasteBytes: "Bytes to send",

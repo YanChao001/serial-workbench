@@ -3,8 +3,12 @@ import { expect, test, type Page } from "@playwright/test";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
 
-async function openAnsi(page: Page) {
-  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+async function openAnsi(page: Page, theme?: "light" | "dark") {
+  await seedWorkbenchFixture(page, {
+    sidebarCollapsed: true,
+    language: "en",
+    theme,
+  });
   await page.goto("./#/");
   await page.getByRole("button", { name: "Open Virtual serial" }).click();
   await expect
@@ -312,3 +316,47 @@ test("ANSI screen search highlights rendered results and leaves overwritten byte
     receive.getByRole("status").filter({ hasText: "1/1" }),
   ).toBeVisible();
 });
+
+for (const theme of ["light", "dark"] as const) {
+  test(`ANSI ${theme} screen and export agree on basic, indexed and RGB colors`, async ({
+    page,
+  }) => {
+    const ansi = await openAnsi(page, theme);
+    await ansi.feed(
+      "\x1b[31mBASIC\x1b[0m \x1b[38;5;196;48;5;21mINDEX\x1b[0m " +
+        "\x1b[38;2;18;52;86;48;2;28;66;100mTRUE\x1b[0m " +
+        "\x1b]8;;https://example.invalid/private\x07LINK\x1b]8;;\x07",
+    );
+    await expect(ansi.rows).toContainText("LINK");
+    const basic = theme === "light" ? [159, 32, 43] : [250, 120, 124];
+    const background = theme === "light" ? [255, 255, 255] : [23, 30, 44];
+    await expect(ansi.rows.getByText("BASIC", { exact: true })).toHaveCSS(
+      "color",
+      `rgb(${basic.join(", ")})`,
+    );
+    const indexed = ansi.rows.getByText("INDEX", { exact: true });
+    await expect(indexed).toHaveCSS("color", "rgb(255, 0, 0)");
+    await expect(indexed).toHaveCSS("background-color", "rgb(0, 0, 255)");
+    const trueColor = ansi.rows.getByText("TRUE", { exact: true });
+    await expect(trueColor).toHaveCSS("color", "rgb(18, 52, 86)");
+    await expect(trueColor).toHaveCSS("background-color", "rgb(28, 66, 100)");
+
+    await ansi.viewer
+      .getByRole("button", { name: "Export ANSI screen with colors" })
+      .click();
+    const saved = () =>
+      page.evaluate(() => window.workbenchFixture.savedTextExports.at(-1));
+    await expect
+      .poll(async () => (await saved())?.name)
+      .toBe("serial-workbench-ansi-screen.txt");
+    const content = (await saved())?.content ?? "";
+    expect(content).toContain(
+      `\x1b[0;38;2;${basic.join(";")};48;2;${background.join(";")}mBASIC`,
+    );
+    expect(content).toContain("\x1b[0;38;2;255;0;0;48;2;0;0;255mINDEX");
+    expect(content).toContain("\x1b[0;38;2;18;52;86;48;2;28;66;100mTRUE");
+    expect(content).toContain("LINK");
+    expect(content).not.toContain("https://example.invalid/private");
+    expect(content.endsWith("\x1b[0m")).toBe(true);
+  });
+}

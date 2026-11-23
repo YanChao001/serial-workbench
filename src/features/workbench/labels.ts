@@ -229,6 +229,8 @@ export type WorkbenchLabels = Record<
   | "ansiSearchPending"
   | "ansiSearchChanged"
   | "ansiSearchFailed"
+  | "ansiExportColors"
+  | "ansiExportColorsFailed"
   | "ansiKeyboardError"
   | "ansiKeyboardOverflow"
   | "ansiPaste"

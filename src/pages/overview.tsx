@@ -520,6 +520,8 @@ export default function Overview({
       ansiSearchPending: t("workbench.ansiSearchPending"),
       ansiSearchChanged: t("workbench.ansiSearchChanged"),
       ansiSearchFailed: t("workbench.ansiSearchFailed"),
+      ansiExportColors: t("workbench.ansiExportColors"),
+      ansiExportColorsFailed: t("workbench.ansiExportColorsFailed"),
       ansiKeyboardError: t("workbench.ansiKeyboardError"),
       ansiKeyboardOverflow: t("workbench.ansiKeyboardOverflow"),
       ansiPaste: t("workbench.ansiPaste"),

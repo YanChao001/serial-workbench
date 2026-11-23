@@ -587,6 +587,8 @@ export const en = {
   "workbench.ansiSearchChanged":
     "Screen changed. Search again or freeze the view.",
   "workbench.ansiSearchFailed": "Screen search failed.",
+  "workbench.ansiExportColors": "Export ANSI screen with colors",
+  "workbench.ansiExportColorsFailed": "Could not save the ANSI color snapshot.",
   "workbench.ansiPaste": "Send paste",
   "workbench.ansiPasteBracketed": "Use bracketed paste for this send",
   "workbench.ansiPasteBytes": "Bytes to send",

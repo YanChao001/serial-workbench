@@ -26,10 +26,12 @@ import { Switch } from "@/components/ui/switch";
 import { useOpenExternal } from "@/hooks/use-external-links";
 import { useTextEncoding } from "@/hooks/use-text-encoding";
 import { isMacOS } from "@/lib/platform";
+import { saveTextExport } from "@/lib/tauri";
 import { createTextDecoder } from "@/lib/text-encoding";
 import { CommandsContext } from "@/providers/commands-context";
 import type { WorkbenchLabels } from "./labels";
 import { ansiReceiveTail, type AnsiReceive } from "./ansi-receive";
+import { ANSI_PALETTES, ansiColorSnapshot } from "./ansi-colors";
 import {
   createAnsiKeyboardWriter,
   encodeAnsiKey,
@@ -44,10 +46,6 @@ import { decodeBytes } from "./stream-model";
 import { terminalTypographyStyle } from "./stream-presentation";
 import { useAnsiPaste } from "./use-ansi-paste";
 
-const PALETTES = {
-  light: { foreground: "#172034", background: "#ffffff" },
-  dark: { foreground: "#e5ebf4", background: "#171e2c" },
-} satisfies Record<string, ITheme>;
 const WRITE_BATCH_BYTES = 64 * 1024;
 
 type Projection = {
@@ -170,6 +168,10 @@ export default function AnsiScreen({
   const keyboardSwitch = useRef<HTMLButtonElement>(null);
   const pasteConfirmation = useRef<HTMLDivElement>(null);
   const active = useRef<Projection | null>(null);
+  const savingSnapshot = useRef(false);
+  const [snapshotStatus, setSnapshotStatus] = useState<
+    { kind: "saving" } | { kind: "error"; projection: Projection } | undefined
+  >();
   const status = useTextEncoding(encoding);
   const sendStatus = useTextEncoding(sendEncoding);
   const commands = useContext(CommandsContext);
@@ -186,6 +188,28 @@ export default function AnsiScreen({
     if (line === "latest") terminal.scrollToBottom();
     else if (line >= 1 && line <= terminal.buffer.active.length)
       terminal.scrollToLine(line - 1);
+  }
+  async function exportSnapshot() {
+    const projection = active.current;
+    const root = element.current;
+    if (!projection || !root || savingSnapshot.current) return;
+    savingSnapshot.current = true;
+    setSnapshotStatus({ kind: "saving" });
+    try {
+      const content = ansiColorSnapshot(root);
+      if (content === undefined)
+        throw new Error("ANSI viewport is unavailable");
+      await saveTextExport("serial-workbench-ansi-screen.txt", content);
+      setSnapshotStatus(undefined);
+    } catch {
+      setSnapshotStatus(
+        active.current === projection
+          ? { kind: "error", projection }
+          : undefined,
+      );
+    } finally {
+      savingSnapshot.current = false;
+    }
   }
   const writer = useRef<ReturnType<typeof createAnsiKeyboardWriter> | null>(
     null,
@@ -211,7 +235,8 @@ export default function AnsiScreen({
   const hasPastePreview = !!paste.preview;
   const pasteBlocksKeys = hasPastePreview || paste.busy;
   const { resolvedTheme } = useTheme();
-  const palette = resolvedTheme === "dark" ? PALETTES.dark : PALETTES.light;
+  const palette =
+    resolvedTheme === "dark" ? ANSI_PALETTES.dark : ANSI_PALETTES.light;
   const packets = useMemo(() => ansiReceiveTail(items), [items]);
 
   const sendBatch = useEffectEvent(
@@ -467,6 +492,23 @@ export default function AnsiScreen({
               }
             </span>
           )}
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={
+              status !== "ready" ||
+              !history ||
+              snapshotStatus?.kind === "saving"
+            }
+            onClick={() => void exportSnapshot()}
+          >
+            {labels.ansiExportColors}
+          </Button>
+          {snapshotStatus?.kind === "error" &&
+            snapshotStatus.projection.terminal === history?.terminal && (
+              <span role="status">{labels.ansiExportColorsFailed}</span>
+            )}
         </div>
         <AnsiHistoryControls
           labels={labels}

@@ -95,6 +95,7 @@ export type WorkbenchFixture = {
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
+  savedTextExports: { name: string; content: string }[];
   openedExternalLinks: string[];
   connectCalls: string[];
   connectRequests: { deviceId: string; params: unknown }[];
@@ -779,6 +780,7 @@ export async function seedWorkbenchFixture(
       invocations: [],
       clientStateReads: 0,
       sentBytes: [],
+      savedTextExports: [],
       openedExternalLinks: [],
       connectCalls: [],
       connectRequests: [],
@@ -918,6 +920,17 @@ export async function seedWorkbenchFixture(
             case "complete_frontend_startup":
             case "save_workspace_route":
               return null;
+            case "save_text_export":
+              if (
+                typeof args.name !== "string" ||
+                typeof args.content !== "string"
+              )
+                throw new Error("Invalid text export arguments");
+              fixture.savedTextExports.push({
+                name: args.name,
+                content: args.content,
+              });
+              return args.name;
             case "set_window_work_state":
               fixture.windowWorkNames = Array.isArray(args.names)
                 ? args.names.filter(

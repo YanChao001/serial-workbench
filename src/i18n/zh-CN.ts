@@ -552,6 +552,8 @@ export const zhCN = {
   "workbench.ansiSearchPending": "正在搜索屏幕…",
   "workbench.ansiSearchChanged": "屏幕已改变。请重新搜索或冻结视图。",
   "workbench.ansiSearchFailed": "屏幕搜索失败。",
+  "workbench.ansiExportColors": "导出 ANSI 彩色屏幕",
+  "workbench.ansiExportColorsFailed": "无法保存 ANSI 彩色屏幕。",
   "workbench.ansiKeyboardError": "键盘发送已停止，可在活动中查看发送结果。",
   "workbench.ansiKeyboardOverflow": "等待发送的按键过多，已丢弃未提交的输入。",
   "workbench.gapHelp": "检查读取或录制队列限制",
