@@ -262,6 +262,7 @@ try {
   console.log("previous desktop started");
   first = await openDesktop(oldVersion);
   previous = await waitFor(discovery, 30_000, "the old Host identity");
+  assert.ok(processIds("serial-workbench-host").includes(previous.pid));
   await first.page.evaluate(() => {
     location.hash = "/updates";
   });
@@ -436,7 +437,7 @@ try {
       const entries = readFileSync(appLog, "utf8")
         .split(/\r?\n/)
         .filter((line) =>
-          /Startup phase=|Startup configuration profileSource=|Application started v|Native Host (?:attachment phase=|state pump stopped)/.test(
+          /Startup phase=|Startup configuration profileSource=|Application started v|Native Host (?:attachment phase=|state pump stopped)|Windows Host launch stage=/.test(
             line,
           ),
         )
