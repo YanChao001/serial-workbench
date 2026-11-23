@@ -581,6 +581,12 @@ export const en = {
   "workbench.ansiScrollbackApply": "Apply limit",
   "workbench.ansiScrollbackHelp":
     "The limit counts rendered scrollback lines. Use recordings for separately saved history.",
+  "workbench.ansiSearch": "Search ANSI screen",
+  "workbench.ansiSearchNext": "Next match",
+  "workbench.ansiSearchPending": "Searching the screen…",
+  "workbench.ansiSearchChanged":
+    "Screen changed. Search again or freeze the view.",
+  "workbench.ansiSearchFailed": "Screen search failed.",
   "workbench.ansiPaste": "Send paste",
   "workbench.ansiPasteBracketed": "Use bracketed paste for this send",
   "workbench.ansiPasteBytes": "Bytes to send",

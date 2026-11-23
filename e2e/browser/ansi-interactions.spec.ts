@@ -254,3 +254,61 @@ test("ANSI history jumps across retained lines and keeps receiving while frozen"
   );
   await expect(ansi.rows).toContainText("DURING-FREEZE");
 });
+
+test("ANSI screen search highlights rendered results and leaves overwritten bytes searchable", async ({
+  page,
+}) => {
+  const ansi = await openAnsi(page);
+  await ansi.feed(
+    `ERASE-ME\x1b[2K\r宽X42\r\nSecond X43\r\n${"a".repeat(260)}尾\r\n`,
+  );
+  await expect(ansi.rows).toContainText("尾");
+  const search = ansi.viewer.locator(".workbench-ansi-search");
+  await search.locator("summary").click();
+  const input = search.getByRole("textbox", { name: "Search ANSI screen" });
+  const submit = search.getByRole("button", { name: "Search ANSI screen" });
+  const status = search.locator('[aria-live="polite"]');
+  await input.fill("ERASE-ME");
+  await submit.click();
+  await expect(status).toContainText("No matches");
+
+  await search.getByRole("switch", { name: "Regular expression" }).click();
+  await input.fill("X42Second");
+  await submit.click();
+  await expect(status).toContainText("No matches");
+  await input.fill("[");
+  await submit.click();
+  await expect(status).toContainText("Invalid expression");
+  await input.fill("X[0-9]{2}");
+  await input.press("Enter");
+  await expect(status).toHaveText("1/2");
+  const highlights = ansi.terminal.locator(".xterm-selection > div");
+  await expect(highlights.first()).toBeVisible();
+  await search.getByRole("button", { name: "Next match" }).click();
+  await expect(status).toHaveText("2/2");
+  await search.getByRole("button", { name: "Previous match" }).click();
+  await expect(status).toHaveText("1/2");
+
+  await input.fill("a{260}尾");
+  await submit.click();
+  await expect(status).toHaveText("1/1");
+  await expect(highlights.first()).toBeVisible();
+  await expect.poll(() => highlights.count()).toBeGreaterThan(1);
+  await ansi.feed("\x1b[?1049hALTERNATE");
+  await expect(status).toContainText("Screen changed");
+  await expect(highlights).toHaveCount(0);
+  await submit.click();
+  await expect(status).toContainText("No matches");
+
+  await search.locator("summary").click();
+  const receive = page.getByRole("region", { name: "Receive", exact: true });
+  await receive
+    .getByRole("button", { name: "Search bytes", exact: true })
+    .click();
+  const rawQuery = receive.getByRole("textbox", { name: "Search bytes" });
+  await rawQuery.fill("ERASE-ME");
+  await rawQuery.press("Enter");
+  await expect(
+    receive.getByRole("status").filter({ hasText: "1/1" }),
+  ).toBeVisible();
+});

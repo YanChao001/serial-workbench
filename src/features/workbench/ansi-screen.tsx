@@ -39,6 +39,7 @@ import { ansiLinkUrl, createAnsiLinkIndex } from "./ansi-links";
 import { bindAnsiMouse, selectsAnsiText } from "./ansi-mouse";
 import { observeAnsiHistory, type AnsiHistorySnapshot } from "./ansi-history";
 import { AnsiHistoryControls } from "./ansi-history-controls";
+import { AnsiSearchControls } from "./ansi-search-controls";
 import { decodeBytes } from "./stream-model";
 import { terminalTypographyStyle } from "./stream-presentation";
 import { useAnsiPaste } from "./use-ansi-paste";
@@ -175,7 +176,10 @@ export default function AnsiScreen({
   const openExternal = useOpenExternal();
   const [linkIndex] = useState(createAnsiLinkIndex);
   const links = useSyncExternalStore(linkIndex.subscribe, linkIndex.snapshot);
-  const [history, setHistory] = useState<AnsiHistorySnapshot>();
+  const [history, setHistory] = useState<{
+    terminal: Terminal;
+    snapshot: AnsiHistorySnapshot;
+  }>();
   function jumpToLine(line: number | "latest") {
     const terminal = active.current?.terminal;
     if (!terminal) return;
@@ -362,7 +366,8 @@ export default function AnsiScreen({
       active.current = screen;
       const terminal = screen.terminal;
       screen.disposeHistory = observeAnsiHistory(terminal, (snapshot) => {
-        if (active.current?.terminal === terminal) setHistory(snapshot);
+        if (active.current?.terminal === terminal)
+          setHistory({ terminal, snapshot });
       });
       terminal.options.linkHandler = {
         activate: (event, uri) => activateLink(terminal, event, uri),
@@ -467,9 +472,14 @@ export default function AnsiScreen({
           labels={labels}
           limit={scrollback}
           onLimitChange={onScrollbackChange}
-          snapshot={status === "ready" ? history : undefined}
+          snapshot={status === "ready" ? history?.snapshot : undefined}
           rawTrimmed={rawTrimmed}
           onJump={jumpToLine}
+        />
+        <AnsiSearchControls
+          terminal={status === "ready" ? history?.terminal : undefined}
+          isCurrent={(terminal) => active.current?.terminal === terminal}
+          labels={labels}
         />
         {links.length > 0 && (
           <details className="workbench-ansi-links">

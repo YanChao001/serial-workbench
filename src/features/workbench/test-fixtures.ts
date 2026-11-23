@@ -251,6 +251,11 @@ export const labels: WorkbenchLabels = {
   ansiScrollbackApply: "Apply limit",
   ansiScrollbackHelp:
     "The limit counts rendered scrollback lines. Use recordings for separately saved history.",
+  ansiSearch: "Search ANSI screen",
+  ansiSearchNext: "Next match",
+  ansiSearchPending: "Searching the screen…",
+  ansiSearchChanged: "Screen changed. Search again or freeze the view.",
+  ansiSearchFailed: "Screen search failed.",
   ansiPaste: "Send paste",
   ansiPasteBracketed: "Use bracketed paste for this send",
   ansiPasteBytes: "Bytes to send",

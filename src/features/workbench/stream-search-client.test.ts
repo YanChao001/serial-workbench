@@ -1,5 +1,5 @@
 import { afterEach, expect, it, vi } from "vitest";
-import { requestStreamSearch } from "./stream-search-client";
+import { requestAnsiSearch, requestStreamSearch } from "./stream-search-client";
 import type { StreamSearchResult } from "./stream-search";
 import type { StreamItem } from "@serial-workbench/contracts";
 import { txItem } from "./test-fixtures";
@@ -93,4 +93,27 @@ it("cancels obsolete searches and clears the timer after a successful response",
   expect(await current).toEqual({ matches: [] });
   await vi.advanceTimersByTimeAsync(1000);
   expect(worker.terminate).toHaveBeenCalledOnce();
+});
+
+it("terminates an obsolete ANSI screen search and detaches its result handler", async () => {
+  vi.stubGlobal("Worker", SearchWorker);
+  const controller = new AbortController();
+  const request = {
+    mode: "ansi",
+    lines: ["screen only"],
+    query: "screen",
+    regex: false,
+    caseSensitive: false,
+  } as const;
+  const pending = requestAnsiSearch(request, controller.signal);
+  const worker = SearchWorker.instances[0]!;
+  expect(worker.postMessage).toHaveBeenCalledWith(request);
+  const cancelled = expect(pending).rejects.toMatchObject({
+    name: "AbortError",
+  });
+  controller.abort();
+  await cancelled;
+  expect(worker.terminate).toHaveBeenCalledOnce();
+  expect(worker.onmessage).toBeNull();
+  expect(worker.onerror).toBeNull();
 });

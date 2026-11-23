@@ -1,6 +1,11 @@
 import type { StreamItem } from "@serial-workbench/contracts";
 import { prepareTextEncoding } from "@/lib/text-encoding";
 import {
+  findAnsiMatches,
+  type AnsiSearchRequest,
+  type AnsiSearchResult,
+} from "./ansi-search";
+import {
   searchStream,
   withinSearchBudget,
   type StreamSearchOptions,
@@ -47,6 +52,33 @@ export function requestStreamSearch(
       signal.throwIfAborted();
       return originalPositions(searchStream(source, query, mode, options));
     });
+  return runSearchWorker<StreamSearchResult>(
+    { items: source, query, mode, options },
+    signal,
+  ).then(originalPositions);
+}
+
+export function requestAnsiSearch(
+  request: AnsiSearchRequest,
+  signal: AbortSignal,
+): Promise<AnsiSearchResult> {
+  signal.throwIfAborted();
+  if (import.meta.env.MODE === "test" && typeof Worker === "undefined")
+    return Promise.resolve(findAnsiMatches(request));
+  return runSearchWorker<AnsiSearchResult>(request, signal);
+}
+
+function runSearchWorker<Result>(
+  request:
+    | AnsiSearchRequest
+    | {
+        items: readonly StreamItem[];
+        query: string;
+        mode: "text" | "hex";
+        options: StreamSearchOptions;
+      },
+  signal: AbortSignal,
+): Promise<Result> {
   return new Promise((resolve, reject) => {
     const worker = new Worker(
       new URL("./stream-search.worker.ts", import.meta.url),
@@ -54,6 +86,8 @@ export function requestStreamSearch(
     );
     const finish = () => {
       clearTimeout(timeout);
+      worker.onmessage = null;
+      worker.onerror = null;
       worker.terminate();
       signal.removeEventListener("abort", abort);
     };
@@ -66,16 +100,16 @@ export function requestStreamSearch(
       reject(new Error("SEARCH_TIMEOUT"));
     }, 500);
     signal.addEventListener("abort", abort, { once: true });
-    worker.onmessage = (event: MessageEvent<StreamSearchResult>) => {
+    worker.onmessage = (event: MessageEvent<Result>) => {
       finish();
-      resolve(originalPositions(event.data));
+      resolve(event.data);
     };
     worker.onerror = () => {
       finish();
       reject(new Error("SEARCH_FAILED"));
     };
     try {
-      worker.postMessage({ items: source, query, mode, options });
+      worker.postMessage(request);
     } catch (error) {
       finish();
       reject(error);
