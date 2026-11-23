@@ -12,6 +12,10 @@ use std::{
 mod windows_stage;
 #[cfg(all(windows, feature = "bindings"))]
 pub use windows_stage::stage_windows_release;
+#[cfg(all(windows, feature = "bindings"))]
+mod windows_switch;
+#[cfg(all(windows, feature = "bindings"))]
+pub use windows_switch::switch_windows_release;
 
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]

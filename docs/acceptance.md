@@ -294,6 +294,8 @@ NSIS 暂存预检在[手动 CI](../.github/workflows/ci.yml)选择 `runtime_pref
 
 候选 `efce804` 的隔离 Windows 收据覆盖 8.3 短名展开、重定向目录拒绝和真实安装器的组件摘要。 [Windows NSIS 暂存收据](https://github.com/YanChao001/serial-workbench/actions/runs/45162109634/artifacts/14812661628)
 
+在同一预检入口选 `windows-nsis-switch` 可额外构建两个版本的实际 NSIS，以一次性密钥分别验签并暂存。独立验证进程先核对旧安装和新套件摘要，摘要不符时旧 Host 必须继续运行。正确摘要进入真实关停和持锁换入，按原操作 ID 核对已提交终态，并重新运行新套件的 Host。检查原 Host ID、递增实例代次、profile 数据、旧套件摘要及注册表前后状态，保存 `installer-layout.log`。此验收覆盖同源版本号递增的套件和独立 Host，发行密钥、桌面自动重启、安装注册切换及旧版升级仍按实装场景验收。
+
 隔离 Windows 环境中，准备 Tauri 的 NSIS 编译器缓存后运行 `pnpm test:installer --interactive`。暂存夹具嵌入生产入口，在新目录执行并核对套件文件。已含其他文件和命名不符的目录都必须拒绝，保留原文件和安装器副本。此场景不写入已安装程序和注册信息。
 
 M6 用发行候选在预先未安装 WebView2 Runtime 的独立 Windows x64 环境验证 NSIS。将本轮发行候选的安装包和同源验收材料转移到环境中，记录 WebView2 的系统和当前用户注册信息、网络状态及安装前后的版本。断网状态下实际安装并首次启动，使用已安装的程序运行三个签名参考场景。记录系统版本、安装退出码、组件摘要、首次打开窗口及用例结果。M2 和 M3 验证 Windows 安装包内置的离线 Runtime、固定 Node 安装布局和软件参考场景。最低系统和正式发行签名按 M6 矩阵验收。 [Microsoft 离线部署](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)

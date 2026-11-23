@@ -84,7 +84,7 @@ pub fn stage_windows_release(input: &Path) -> Result<(), Box<dyn Error>> {
     Ok(())
 }
 
-fn read_text(path: &Path, limit: u64) -> Result<String, Box<dyn Error>> {
+pub(super) fn read_text(path: &Path, limit: u64) -> Result<String, Box<dyn Error>> {
     let mut text = String::new();
     File::open(path)?
         .take(limit + 1)

@@ -43,6 +43,7 @@ on:
           - host-ipc
           - macos-signature
           - windows-nsis-stage
+          - windows-nsis-switch
           - linux-offline-installer
           - macos-offline-installer
         required: true

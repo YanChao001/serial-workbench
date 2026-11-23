@@ -17,6 +17,13 @@ use url::Url;
 #[path = "updater/host.rs"]
 mod host;
 
+#[cfg(all(windows, feature = "bindings"))]
+pub(crate) fn prepare_windows_suite_switch(
+    profile: &std::path::Path,
+) -> serial_workbench_core::HostResult<serial_workbench_ipc::PrivateFileLock> {
+    tauri::async_runtime::block_on(host::stop_and_reserve(profile))
+}
+
 use crate::{
     blocking,
     error::{ErrorCode, NativeError, NativeResult, bounded_text},

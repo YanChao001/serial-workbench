@@ -275,6 +275,8 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   assert.match(nsisStage, /SWB_TEST_NSIS_STAGE_INSTALLER/);
   assert.match(nsisStage, /--features bindings --bin verify-updater/);
   assert.match(nsisStage, /SWB_TEST_NSIS_STAGE_VERIFIER/);
+  assert.match(nsisStage, /windows-nsis-switch/);
+  assert.match(nsisStage, /pnpm version:set \$nextVersion/);
   assert.match(nsisStage, /pnpm test:installer --interactive/);
   assert.ok(
     runtime.includes("artifacts/windows-nsis-stage/installer-layout.log"),
@@ -444,6 +446,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     ["aarch64-apple-darwin", "host-ipc", "macos-15"],
     ["x86_64-apple-darwin", "macos-signature", "macos-15-intel"],
     ["x86_64-pc-windows-msvc", "windows-nsis-stage", "windows-2022"],
+    ["x86_64-pc-windows-msvc", "windows-nsis-switch", "windows-2022"],
     ["x86_64-unknown-linux-gnu", "linux-offline-installer", "ubuntu-22.04"],
     ["aarch64-apple-darwin", "macos-offline-installer", "macos-15"],
   ]) {
@@ -464,6 +467,12 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
       "x86_64-unknown-linux-gnu",
       "false",
       "windows-nsis-stage",
+      /requires Windows x64/,
+    ],
+    [
+      "aarch64-apple-darwin",
+      "false",
+      "windows-nsis-switch",
       /requires Windows x64/,
     ],
     [
