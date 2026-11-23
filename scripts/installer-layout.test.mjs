@@ -641,7 +641,10 @@ test("the verified NSIS stages pinned components without registering an installa
     operation,
     /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/,
   );
-  assert.equal(realpathSync(stage), join(fixture, `.swb-stage-${operation}`));
+  assert.equal(
+    realpathSync.native(stage),
+    realpathSync.native(join(fixture, `.swb-stage-${operation}`)),
+  );
   assert.match(digest, /^[\da-f]{64}$/);
   assert.equal(stagedVersion, version);
   assert.ok(!existsSync(join(stage, "serial-workbench-nsis-stage-v1.exe")));
