@@ -133,6 +133,7 @@ pub enum QueryResult {
     Settings(SettingsDocumentResult),
     Workspace(WorkspaceDocumentResult),
     Workspaces(WorkspaceListResult),
+    CommandLibrary(CommandLibraryReadResult),
     DocumentJson(DocumentJsonResult),
     StreamRead(StreamReadResult),
     StreamDerivedRead(DerivedReadResult),
@@ -227,6 +228,8 @@ impl BuiltinAction {
         }
         match self {
             Self::WorkspaceList => typed!(WorkspaceListParams),
+            Self::CommandLibraryRead => typed!(CommandLibraryReadParams),
+            Self::CommandLibraryChange => typed!(CommandLibraryChange),
             Self::ActionCheck => typed!(ActionCheckParams),
             Self::Client(capability) => {
                 ClientEffectAction::from_params(capability, &query.params)?;

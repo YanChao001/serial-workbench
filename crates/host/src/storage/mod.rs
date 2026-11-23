@@ -1,5 +1,6 @@
 //! 串行持久提交边界。调用者等待回执，设备 RX 不持有或等待本模块的数据库锁。
 mod child_operations;
+mod command_library;
 mod db;
 mod documents;
 mod operations;

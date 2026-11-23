@@ -58,6 +58,10 @@ import type {
   ClientUpdatePreparation,
   ClientWindowSizeParams,
   ClosedResult,
+  CommandLibraryChange,
+  CommandLibraryReadParams,
+  CommandLibraryReadResult,
+  CommandLibraryRevision,
   ConfigField,
   ConfigReceipt,
   ConfigurationBoundary,
@@ -464,6 +468,18 @@ export declare function validateClientWindowSizeParams(
 export declare function validateClosedResult(
   value: unknown,
 ): value is ClosedResult;
+export declare function validateCommandLibraryChange(
+  value: unknown,
+): value is CommandLibraryChange;
+export declare function validateCommandLibraryReadParams(
+  value: unknown,
+): value is CommandLibraryReadParams;
+export declare function validateCommandLibraryReadResult(
+  value: unknown,
+): value is CommandLibraryReadResult;
+export declare function validateCommandLibraryRevision(
+  value: unknown,
+): value is CommandLibraryRevision;
 export declare function validateConfigField(
   value: unknown,
 ): value is ConfigField;

@@ -553,6 +553,7 @@ impl Host {
                             | BuiltinAction::WorkspaceRead
                             | BuiltinAction::WorkspaceExport
                             | BuiltinAction::WorkspaceImportPreview
+                            | BuiltinAction::CommandLibraryRead
                     ) =>
             {
                 crate::documents::DocumentService::reference(&query.target)?;
@@ -1196,7 +1197,8 @@ impl Host {
             | BuiltinAction::SettingsExport
             | BuiltinAction::WorkspaceList
             | BuiltinAction::WorkspaceRead
-            | BuiltinAction::WorkspaceExport => {
+            | BuiltinAction::WorkspaceExport
+            | BuiltinAction::CommandLibraryRead => {
                 let documents = self.inner.documents.clone();
                 let actor = actor.clone();
                 blocking(move || documents.query(&actor, &query, action)).await
@@ -2190,10 +2192,17 @@ impl Host {
                         );
                     }
                 };
-                let outcome =
-                    documents.execute(&accepted.actor, &accepted.call, action, descriptor);
-                // 文档已保存的回执先独立持久化，终态写入失败时恢复仍保留实际结果。
-                if let Some(result) = &outcome.result {
+                let outcome = documents.execute(
+                    &accepted.actor,
+                    &accepted.call,
+                    action,
+                    descriptor,
+                    &operation_id,
+                );
+                // 命令库将结果证据和数据写入同一事务；其余文档沿用独立回执。
+                if action != BuiltinAction::CommandLibraryChange
+                    && let Some(result) = &outcome.result
+                {
                     store.record_result_evidence(&operation_id, result)?;
                 }
                 return store.settle(&operation_id, outcome);

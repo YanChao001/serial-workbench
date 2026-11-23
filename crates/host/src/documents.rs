@@ -241,6 +241,26 @@ impl DocumentService {
             }
             return Ok(result);
         }
+        if action == BuiltinAction::CommandLibraryRead {
+            Self::reference(&query.target)?;
+            let params: CommandLibraryReadParams = decode(&query.params)?;
+            let stamp = {
+                let authorization = self.auth.snapshot(actor)?;
+                authorization.require("content.read", &query.target)?;
+                authorization.capture_grants()
+            };
+            let result = QueryResult::CommandLibrary(
+                self.store
+                    .command_library_page(query.target.id.clone(), params)?,
+            );
+            wire_budget(&result)?;
+            let authorization = self.auth.snapshot(actor)?;
+            if let Some(stamp) = stamp {
+                authorization.validate_grants(&stamp)?;
+            }
+            authorization.require("content.read", &query.target)?;
+            return Ok(result);
+        }
         let _: EmptyParams = decode(&query.params)?;
         let reference = Self::reference(&query.target)?;
         let lock = self.document_lock(&reference)?;
@@ -275,8 +295,15 @@ impl DocumentService {
         call: &Call,
         action: BuiltinAction,
         descriptor: Option<DeviceDescriptor>,
+        operation_id: &Id,
     ) -> Settlement {
-        match self.save(actor, call, action, descriptor) {
+        let outcome = if action == BuiltinAction::CommandLibraryChange {
+            self.save_command_library(actor, call, operation_id)
+                .map(|revision| (ActionResult::CommandLibraryRevision(revision), None))
+        } else {
+            self.save(actor, call, action, descriptor)
+        };
+        match outcome {
             Ok((result, error)) => Settlement {
                 state: if error.is_some() {
                     OperationState::Failed
@@ -292,6 +319,32 @@ impl DocumentService {
                 error: Some(error),
             },
         }
+    }
+    fn save_command_library(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        operation_id: &Id,
+    ) -> HostResult<CommandLibraryRevision> {
+        let reference = Self::reference(&call.target)?;
+        let lock = self.document_lock(&reference)?;
+        let _document = lock.lock().map_err(|_| unavailable())?;
+        WorkspaceService::new(self.store.clone(), call.target.id.clone()).ensure_editable()?;
+        let expected = call.expected_revision.ok_or_else(invalid)?;
+        let change: CommandLibraryChange = decode(&call.params)?;
+        let spec = BuiltinAction::CommandLibraryChange.spec();
+        self.auth
+            .commit_authorized(actor, &spec.permissions, &call.target, || {
+                if self.store.identity()?.instance_epoch != call.instance_epoch {
+                    return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
+                }
+                self.store.change_command_library(
+                    call.target.id.clone(),
+                    expected,
+                    change,
+                    operation_id.clone(),
+                )
+            })
     }
     fn save(
         &self,
@@ -422,6 +475,11 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
     DocumentService::reference(&call.target)?;
     call.expected_revision.ok_or_else(invalid)?;
     match action {
+        BuiltinAction::CommandLibraryChange => {
+            let change: CommandLibraryChange = decode(&call.params)?;
+            change.validate()?;
+            object(&change)
+        }
         BuiltinAction::DeviceRebind => object(&decode::<RebindParams>(&call.params)?),
         BuiltinAction::FavoritesSave => object(&decode::<FavoritesSaveParams>(&call.params)?),
         BuiltinAction::SettingsSave => object(&decode::<SettingsSaveParams>(&call.params)?),

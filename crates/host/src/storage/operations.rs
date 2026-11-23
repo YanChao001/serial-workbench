@@ -579,28 +579,7 @@ impl Database {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| unavailable())?;
-        let mut operation = load(&transaction, id)?;
-        if !matches!(
-            operation.state,
-            OperationState::Running | OperationState::CancelRequested
-        ) {
-            return Err(not_running());
-        }
-        operation.revision = operation.revision.checked_next()?;
-        if let ActionResult::FileTransfer(transfer) = &result {
-            operation.progress = Some(Progress {
-                completed: transfer.accepted,
-                unit: "bytes".into(),
-                total: Some(transfer.requested),
-            });
-        }
-        operation.result = Some(result);
-        transaction
-            .execute(
-                "UPDATE operations SET operation_json=?1 WHERE operation_id=?2",
-                params![encode(&operation)?, id.as_str()],
-            )
-            .map_err(|_| unavailable())?;
+        let operation = record_result_evidence_in(&transaction, id, result)?;
         transaction.commit().map_err(|_| unavailable())?;
         Ok(operation)
     }
@@ -1166,4 +1145,34 @@ fn not_running() -> HostError {
 }
 fn exhausted() -> HostError {
     HostError::new("COUNTER_EXHAUSTED", "Retention clock exhausted")
+}
+
+pub(super) fn record_result_evidence_in(
+    connection: &rusqlite::Connection,
+    id: &Id,
+    result: ActionResult,
+) -> HostResult<Operation> {
+    let mut operation = load(connection, id)?;
+    if !matches!(
+        operation.state,
+        OperationState::Running | OperationState::CancelRequested
+    ) {
+        return Err(not_running());
+    }
+    operation.revision = operation.revision.checked_next()?;
+    if let ActionResult::FileTransfer(transfer) = &result {
+        operation.progress = Some(Progress {
+            completed: transfer.accepted,
+            unit: "bytes".into(),
+            total: Some(transfer.requested),
+        });
+    }
+    operation.result = Some(result);
+    connection
+        .execute(
+            "UPDATE operations SET operation_json=?1 WHERE operation_id=?2",
+            params![encode(&operation)?, id.as_str()],
+        )
+        .map_err(|_| unavailable())?;
+    Ok(operation)
 }

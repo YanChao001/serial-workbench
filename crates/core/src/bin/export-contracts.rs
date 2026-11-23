@@ -813,6 +813,27 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         workspace_document.clone(),
         &[],
     )?;
+    f.object::<CommandLibraryReadParams>(
+        "command-library-group-page",
+        json!({"selection":{"view":"groups"}}),
+        &[],
+    )?;
+    f.object::<CommandLibraryReadResult>(
+        "command-library-empty-page",
+        json!({"revision":"0","records":{"view":"groups","groups":[]}}),
+        &[],
+    )?;
+    f.object::<CommandLibraryRevision>("command-library-revision", json!({"revision":"1"}), &[])?;
+    f.object::<CommandLibraryChange>(
+        "command-library-save-group",
+        json!({"kind":"saveGroup","group":{"id":"bench","name":"Bench"}}),
+        &[],
+    )?;
+    f.add::<CommandLibraryChange>(
+        "command-library-move-invalid-group",
+        json!({"kind":"moveCommand","id":"cmd","groupId":""}),
+        false,
+    )?;
     f.object::<WorkspaceListParams>("workspace-list-params", json!({}), &[])?;
     f.object::<WorkspaceSummary>(
         "workspace-summary",
@@ -1657,6 +1678,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         WorkspaceSummary,
         WorkspaceListParams,
         WorkspaceListResult,
+        CommandLibraryReadParams,
+        CommandLibraryReadResult,
+        CommandLibraryChange,
+        CommandLibraryRevision,
         DocumentImportParams,
         DocumentJsonResult,
         StreamCursorResult,

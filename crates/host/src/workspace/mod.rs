@@ -31,17 +31,21 @@ impl WorkspaceService {
         }
         Ok(WorkspaceSnapshot { revision, value })
     }
-    pub fn save(
-        &self,
-        expected_revision: U64,
-        value: WorkspaceDocument,
-    ) -> HostResult<WorkspaceSnapshot> {
+    pub(crate) fn ensure_editable(&self) -> HostResult<()> {
         if self.read()?.value.archived {
             return Err(serial_workbench_core::HostError::new(
                 "WORKSPACE_DELETED",
                 "Workspace was removed",
             ));
         }
+        Ok(())
+    }
+    pub fn save(
+        &self,
+        expected_revision: U64,
+        value: WorkspaceDocument,
+    ) -> HostResult<WorkspaceSnapshot> {
+        self.ensure_editable()?;
         if value.archived && self.workspace_id.as_str() == "default" {
             return Err(serial_workbench_core::HostError::new(
                 "INVALID_ARGUMENT",

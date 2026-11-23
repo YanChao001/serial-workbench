@@ -135,6 +135,10 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 
 `workspace.list` 是以执行 Host 为目标的只读目录查询。`params={after?: Id}`，结果为 `WorkspaceListResult={workspaces: WorkspaceSummary[],nextCursor?: Id}`，摘要包含 `scope/name/revision`；`action.query` 的判别包装为 `kind: workspaces`。每页最多扫描 64 个已保存工作区，只返回调用者具有 `metadata.read` 权限的条目，空页仍可能带继续游标。游标是不透明的存储顺序标记，不携带被过滤工作区的标识；客户端不得据其构造资源 Target。目录跨 Host 实例保留，不依赖文档投影是否已注册，列举不隐式打开文档或连接设备。
 
+命令库以 `workspace` 为目标。`workspace.commands.read` 要求 `content.read`，返回命令库 `revision` 和 `groups`、`commands` 或 `entry` 三种视图。分组和命令目录每页最多 32 条，续页携带上一页的 revision 和游标。命令目录包含标识、名称和备注，正文、编码及单命令行尾覆盖通过条目详情读取。列表的命令顺序由 Host 保存。
+
+`workspace.commands.change` 要求 `workspace.modify` 和 Call 的 `expectedRevision`。组保存和命令保存由调用方提供稳定 ID。移动命令用目标组和可选的 `before` 命令 ID，缺省移动到组末尾。非空组返回 `GROUP_NOT_EMPTY`。工作区归档后仍保留已有命令，修改返回 `WORKSPACE_DELETED`。成功回执只包含新 revision，结果证据和数据同事务提交。写满返回 `STORAGE_FULL`，保留此前版本和条目。
+
 工作区 `archived` 缺省为 `false`。通过 CAS 设为 `true` 时保留原件并原子移出目录；后续覆盖返回 `WORKSPACE_DELETED`，默认工作区禁止删除。导入、导出与另存副本不传播此标记。
 
 新建与另存为复用 `workspace.save`，对独立新标识提交 `expectedRevision: 0`，保存冲突不能覆盖已有文档。持久目录身份与文档 CAS 在同一次事务提交，名称与版本从相应文档读取，失败不得生成空目录项。复制视图和设备绑定时生成独立身份并重映射内部引用，实际会话、发送草稿和授权不随模板复制。

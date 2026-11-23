@@ -332,6 +332,7 @@ export type ActionResult_Deserialize =
   | { kind: "file_transfer"; value: FileTransferResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
+  | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Deserialize }
   | { kind: "tool_handoff"; value: ToolHandoffResult_Deserialize }
@@ -362,6 +363,7 @@ export type ActionResult_Serialize =
   | { kind: "file_transfer"; value: FileTransferResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
+  | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Serialize }
   | { kind: "tool_handoff"; value: ToolHandoffResult_Serialize }
@@ -1389,6 +1391,88 @@ export type ClientWindowState_Serialize = {
 
 export type ClosedResult = {
   closed: true;
+};
+
+export type CommandDraft = CommandDraft_Serialize | CommandDraft_Deserialize;
+
+export type CommandDraft_Deserialize = {
+  summary: CommandSummary;
+  body: string;
+  mode: TerminalMode;
+  encoding: TextEncoding;
+  lineEnding?: LineEnding | null;
+};
+
+export type CommandDraft_Serialize = {
+  summary: CommandSummary;
+  body: string;
+  mode: TerminalMode;
+  encoding: TextEncoding;
+  lineEnding?: LineEnding | null;
+};
+
+export type CommandGroup = {
+  id: Id;
+  name: string;
+};
+
+export type CommandLibraryReadResult =
+  CommandLibraryReadResult_Serialize | CommandLibraryReadResult_Deserialize;
+
+export type CommandLibraryReadResult_Deserialize = {
+  revision: U64;
+  records: CommandLibraryRecords_Deserialize;
+};
+
+export type CommandLibraryReadResult_Serialize = {
+  revision: U64;
+  records: CommandLibraryRecords_Serialize;
+};
+
+export type CommandLibraryRecords =
+  CommandLibraryRecords_Serialize | CommandLibraryRecords_Deserialize;
+
+export type CommandLibraryRecords_Deserialize =
+  | ({ view: "groups"; groups: CommandGroup[]; nextCursor?: Id | null } & {
+      command?: never;
+      commands?: never;
+    })
+  | ({
+      view: "commands";
+      commands: CommandSummary[];
+      nextCursor?: Id | null;
+    } & { command?: never; groups?: never })
+  | ({ view: "entry"; command: CommandDraft_Deserialize } & {
+      commands?: never;
+      groups?: never;
+      nextCursor?: never;
+    });
+
+export type CommandLibraryRecords_Serialize =
+  | ({ view: "groups"; groups: CommandGroup[]; nextCursor?: Id | null } & {
+      command?: never;
+      commands?: never;
+    })
+  | ({
+      view: "commands";
+      commands: CommandSummary[];
+      nextCursor?: Id | null;
+    } & { command?: never; groups?: never })
+  | ({ view: "entry"; command: CommandDraft_Serialize } & {
+      commands?: never;
+      groups?: never;
+      nextCursor?: never;
+    });
+
+export type CommandLibraryRevision = {
+  revision: U64;
+};
+
+export type CommandSummary = {
+  id: Id;
+  groupId: Id;
+  name: string;
+  note: string;
 };
 
 export type ConfigField = ConfigField_Serialize | ConfigField_Deserialize;
@@ -3912,6 +3996,7 @@ export type QueryResult_Deserialize =
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
   | { kind: "workspaces"; value: WorkspaceListResult_Deserialize }
+  | { kind: "command_library"; value: CommandLibraryReadResult_Deserialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Deserialize }
   | { kind: "stream_derived_read"; value: DerivedReadResult_Deserialize }
@@ -3958,6 +4043,7 @@ export type QueryResult_Serialize =
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
   | { kind: "workspaces"; value: WorkspaceListResult_Serialize }
+  | { kind: "command_library"; value: CommandLibraryReadResult_Serialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Serialize }
   | { kind: "stream_derived_read"; value: DerivedReadResult_Serialize }
