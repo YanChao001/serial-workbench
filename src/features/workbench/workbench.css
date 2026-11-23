@@ -467,7 +467,20 @@
   align-items: center;
   gap: 0.5rem;
   flex-shrink: 0;
-  flex-wrap: nowrap;
+  flex-wrap: wrap;
+}
+.workbench-search-filters {
+  display: flex;
+  flex: 1 0 100%;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem 0.75rem;
+}
+.workbench-search-filters label {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-xs);
 }
 .workbench-search {
   flex: 1;
@@ -1482,7 +1495,7 @@
   min-width: 4.5rem;
   font-variant-numeric: tabular-nums;
   font-size: 0.75rem;
-  white-space: nowrap;
+  white-space: normal;
 }
 .workbench-stream-search [data-search-option] {
   min-width: 1.9rem;

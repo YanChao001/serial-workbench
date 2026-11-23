@@ -3,7 +3,13 @@ import { encodeSend } from "@serial-workbench/host-client";
 import { streamSourceKey } from "@/lib/stream-source";
 export { streamSourceKey } from "@/lib/stream-source";
 
-export type StreamMatch = { offset: string; end: string; itemIndex: number };
+export type StreamDirection = "rx" | "tx";
+export type StreamMatch = {
+  offset: string;
+  end: string;
+  itemIndex: number;
+  span?: { lastItemIndex: number; direction: StreamDirection };
+};
 
 export function decodeBytes(bytesBase64: string): Uint8Array {
   return Uint8Array.from(atob(bytesBase64), (byte) => byte.charCodeAt(0));
@@ -58,7 +64,10 @@ export function findNextStreamMatch(
 }
 
 /** 统一接收连续性边界，文本、HEX 与正则搜索共用。 */
-export function* streamSearchChunks(items: readonly StreamItem[]) {
+export function* streamSearchChunks(
+  items: readonly StreamItem[],
+  direction: StreamDirection = "rx",
+) {
   let previousEnd: bigint | undefined;
   let previousSource = "";
   for (const [itemIndex, item] of items.entries()) {
@@ -71,11 +80,18 @@ export function* streamSearchChunks(items: readonly StreamItem[]) {
       previousEnd = undefined;
       continue;
     }
-    if (item.event.kind !== "rx") continue;
     const event = item.event;
+    if (
+      event.kind !== "rx" &&
+      event.kind !== "tx" &&
+      event.kind !== "tx_intent"
+    )
+      continue;
+    if ((event.kind === "rx" ? "rx" : "tx") !== direction) continue;
     const source = JSON.stringify([
       streamSourceKey(event),
       event.configurationRevision,
+      event.kind,
     ]);
     const start = BigInt(event.payload.byteStart);
     yield {
@@ -93,6 +109,8 @@ export function* streamSearchChunks(items: readonly StreamItem[]) {
 export function* streamLiteralMatches(
   items: readonly StreamItem[],
   needle: Uint8Array,
+  direction: StreamDirection = "rx",
+  includeSpan = false,
 ): Generator<StreamMatch> {
   if (!needle.length) return;
   // KMP 保留已匹配前缀；重复字节的长查询也只线性扫描接收数据。
@@ -114,6 +132,7 @@ export function* streamLiteralMatches(
   };
   for (const { itemIndex, start, bytes, continuous } of streamSearchChunks(
     items,
+    direction,
   )) {
     if (!continuous) reset();
     for (let index = 0; index < bytes.length; index++) {
@@ -130,6 +149,9 @@ export function* streamLiteralMatches(
           offset: offset.toString(),
           end: end.toString(),
           itemIndex: origins[ringPosition]!,
+          ...(includeSpan
+            ? { span: { lastItemIndex: itemIndex, direction } }
+            : {}),
         };
         matched = prefixes[matched - 1]!;
       }

@@ -102,6 +102,13 @@ import { streamNumberSample, type StreamNumberSample } from "./stream-number";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { formatByteSize } from "./metric-format";
 import { requestStreamSearch } from "./stream-search-client";
+import {
+  filterStreamRows,
+  streamMatchRanges,
+  type MatchVisibility,
+  type SearchDirection,
+} from "./stream-filter";
+import { StreamFilterControls } from "./stream-filter-controls";
 import { ReceiveHistoryControls } from "./receive-history-controls";
 import {
   DEFAULT_RECEIVE_HISTORY,
@@ -213,6 +220,16 @@ export function StreamView({
   const [reviewed, setReviewed] = useState<ReadonlySet<string> | null>(null);
   const [query, setQuery] = useState("");
   const [queryMode, setQueryMode] = useState<"text" | "hex">("text");
+  const [searchDirection, setSearchDirection] =
+    useState<SearchDirection>("all");
+  const [matchVisibility, setMatchVisibility] =
+    useState<MatchVisibility>("all");
+  const [searchRows, setSearchRows] = useState<{
+    key: string;
+    source: readonly StreamItem[];
+    ranges?: ReturnType<typeof streamMatchRanges>;
+    partial?: true;
+  }>();
   const [match, setMatch] = useState<StreamMatch | null>(null);
   const [searched, setSearched] = useState(false);
   const [invalid, setInvalid] = useState(false);
@@ -297,6 +314,12 @@ export function StreamView({
   };
   const resume = () => {
     scrollIntent.current = null;
+    searching.current?.abort();
+    found.current = undefined;
+    setSearchRows(undefined);
+    setMatch(null);
+    setSearched(false);
+    setMatchVisibility("all");
     setFrozen(null);
     setReviewed(null);
   };
@@ -312,6 +335,20 @@ export function StreamView({
   );
   const receiveCodec = encoding ?? detection?.encoding ?? "utf-8";
   const sendCodec = sendEncoding ?? terminalSettings?.sendEncoding ?? "utf-8";
+  const searchKey = JSON.stringify([
+    query,
+    queryMode,
+    caseSensitive,
+    wholeWord,
+    regex,
+    receiveCodec,
+    sendCodec,
+    searchDirection,
+  ]);
+  const currentSearch =
+    searchRows?.key === searchKey && searchRows.source === displayed
+      ? searchRows
+      : undefined;
   const times = useMemo(
     () =>
       presentStreamTimes(
@@ -544,14 +581,7 @@ export function StreamView({
   const find = useCallback(
     async (direction = 1) => {
       setSearched(true);
-      const key = JSON.stringify([
-        query,
-        queryMode,
-        caseSensitive,
-        wholeWord,
-        regex,
-        receiveCodec,
-      ]);
+      const key = searchKey;
       const cached = found.current;
       if (
         cached?.key === key &&
@@ -571,12 +601,20 @@ export function StreamView({
       setFrozen((current) => current ?? displayed);
       setInvalid(false);
       setSearchError(undefined);
+      setSearchRows(undefined);
       try {
         const result = await requestStreamSearch(
           displayed,
           query,
           queryMode,
-          { caseSensitive, wholeWord, regex, encoding: receiveCodec },
+          {
+            caseSensitive,
+            wholeWord,
+            regex,
+            encoding: receiveCodec,
+            transmitEncoding: sendCodec,
+            direction: searchDirection,
+          },
           controller.signal,
         );
         if (controller.signal.aborted) return;
@@ -593,6 +631,15 @@ export function StreamView({
         setMatch(result.matches[index] ?? null);
         setInvalid(Boolean(result.error));
         setSearchError(result.error);
+        setSearchRows({
+          key,
+          source: displayed,
+          ranges:
+            result.error || result.partial
+              ? undefined
+              : streamMatchRanges(result.matches),
+          partial: result.partial,
+        });
       } catch (error) {
         if (!controller.signal.aborted) {
           setInvalid(true);
@@ -614,6 +661,9 @@ export function StreamView({
       wholeWord,
       regex,
       receiveCodec,
+      sendCodec,
+      searchDirection,
+      searchKey,
     ],
   );
   const latestFind = useRef(find);
@@ -623,27 +673,38 @@ export function StreamView({
     found.current = undefined;
     setMatch(null);
     setSearchCount(0);
+    setSearchRows(undefined);
+    setSearched(false);
     if (!searchOpen || !query) return;
     const timer = setTimeout(() => void latestFind.current(), 120);
     return () => {
       clearTimeout(timer);
       searching.current?.abort();
     };
-  }, [
-    query,
-    queryMode,
-    caseSensitive,
-    wholeWord,
-    regex,
-    searchOpen,
-    receiveCodec,
-  ]);
+  }, [searchKey, searchOpen, query]);
   useEffect(() => () => searching.current?.abort(), []);
+  const visibleRows = useMemo(
+    () =>
+      searchOpen
+        ? filterStreamRows(
+            rows,
+            searchDirection,
+            matchVisibility,
+            currentSearch?.ranges,
+          )
+        : rows,
+    [rows, searchOpen, searchDirection, matchVisibility, currentSearch?.ranges],
+  );
   const totals = useMemo(() => {
     let rx = 0n,
       tx = 0n;
-    for (const { item } of projected) {
-      if (item.kind !== "source") continue;
+    const visible =
+      visibleRows === rows
+        ? undefined
+        : new Set(visibleRows.flatMap((row) => row.itemIndexes));
+    for (const { item, itemIndex } of projected) {
+      if (item.kind !== "source" || (visible && !visible.has(itemIndex)))
+        continue;
       const { event } = item;
       if (event.kind === "rx")
         rx += BigInt(event.payload.byteEnd) - BigInt(event.payload.byteStart);
@@ -652,11 +713,11 @@ export function StreamView({
           tx += BigInt(range.end) - BigInt(range.start);
     }
     return { rx: rx.toString(), tx: tx.toString() };
-  }, [projected]);
+  }, [projected, rows, visibleRows]);
   // 输入和权限续检不重建接收列表；只有源数据或显示偏好改变才重新呈现。
   const renderedRows = useMemo(
     () =>
-      rows.map((row) => (
+      visibleRows.map((row) => (
         <div
           key={row.itemIndex}
           ref={(element) => {
@@ -786,7 +847,7 @@ export function StreamView({
         </div>
       )),
     [
-      rows,
+      visibleRows,
       labels,
       replay,
       presentationLabels,
@@ -897,7 +958,7 @@ export function StreamView({
               readStreamHexSelection(viewport.current, hexFormat)
             }
             readSample={(selection) =>
-              readStreamCopySample(rows, projected, selection)
+              readStreamCopySample(visibleRows, projected, selection)
             }
             receiveEncoding={receiveCodec}
             sendEncoding={sendCodec}
@@ -916,7 +977,9 @@ export function StreamView({
                 pendingNumberSelection.current;
               pendingNumberSelection.current = undefined;
               setNumberSample(
-                selected ? streamNumberSample(rows, selected) : undefined,
+                selected
+                  ? streamNumberSample(visibleRows, selected)
+                  : undefined,
               );
             }}
           >
@@ -1244,17 +1307,19 @@ export function StreamView({
           {searched && (
             <span role="status">
               {invalid ? (
-                queryMode === "hex" ? (
-                  labels.invalidHex
-                ) : searchError === "timeout" ? (
+                searchError === "timeout" ? (
                   labels.searchTimeout
                 ) : searchError === "encoding" ? (
                   labels.searchEncoding
                 ) : searchError === "limit" ? (
                   labels.searchLimit
+                ) : queryMode === "hex" ? (
+                  labels.invalidHex
                 ) : (
                   labels.searchInvalid
                 )
+              ) : currentSearch?.partial ? (
+                labels.searchPartial
               ) : match ? (
                 <>
                   {searchIndex + 1}/{searchCount}
@@ -1267,14 +1332,14 @@ export function StreamView({
           )}
           <WorkbenchIconButton
             label={labels.searchPrevious}
-            disabled={!query}
+            disabled={!query || matchVisibility === "hide"}
             onClick={() => void find(-1)}
           >
             <ArrowUp aria-hidden="true" />
           </WorkbenchIconButton>
           <WorkbenchIconButton
             label={labels.find}
-            disabled={!query}
+            disabled={!query || matchVisibility === "hide"}
             onClick={() => void find(1)}
           >
             <ArrowDown aria-hidden="true" />
@@ -1288,6 +1353,14 @@ export function StreamView({
           >
             <X aria-hidden="true" />
           </WorkbenchIconButton>
+          <StreamFilterControls
+            labels={labels}
+            direction={searchDirection}
+            visibility={matchVisibility}
+            hasQuery={!!query}
+            onDirection={setSearchDirection}
+            onVisibility={setMatchVisibility}
+          />
         </form>
       )}
       <div className="workbench-receive-frame app-reading-surface">

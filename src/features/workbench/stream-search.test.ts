@@ -116,3 +116,112 @@ it("handles zero-width patterns, invalid patterns and non-UTF-8 HEX search", () 
   ]);
   expect(searchStream(items, "A", "text", options).error).toBe("encoding");
 });
+
+it("tracks the full cross-record match span independently for receive and send", () => {
+  const template = txItem("tx");
+  if (template.kind !== "source" || template.event.kind !== "tx")
+    throw new Error("Missing TX fixture");
+  const outgoing: StreamItem = {
+    kind: "source",
+    event: {
+      ...template.event,
+      payload: {
+        ...template.event.payload,
+        bytesBase64: "QUJD",
+        byteStart: "0",
+        byteEnd: "3",
+      },
+    },
+  };
+  const items = [text("AB"), outgoing, text("C", "2"), text("other", "3")];
+  expect(
+    searchStream(items, "A.C", "text", {
+      ...options,
+      direction: "all",
+      regex: true,
+    }).matches,
+  ).toEqual([
+    {
+      offset: "0",
+      end: "3",
+      itemIndex: 0,
+      span: { lastItemIndex: 2, direction: "rx" },
+    },
+    {
+      offset: "0",
+      end: "3",
+      itemIndex: 1,
+      span: { lastItemIndex: 1, direction: "tx" },
+    },
+  ]);
+  expect(
+    searchStream(items, "41 42 43", "hex", { ...options, direction: "rx" })
+      .matches,
+  ).toEqual([
+    {
+      offset: "0",
+      end: "3",
+      itemIndex: 0,
+      span: { lastItemIndex: 2, direction: "rx" },
+    },
+  ]);
+  expect(
+    searchStream(items, "ABC", "text", { ...options, direction: "tx" }).matches,
+  ).toHaveLength(1);
+});
+
+it("signals that coverage is incomplete when decoding or result limits omit records", () => {
+  const bad = rx(Uint8Array.of(255), "99");
+  const result = searchStream([text("A"), bad], "A", "text", {
+    ...options,
+    direction: "all",
+  });
+  expect(result.matches).toHaveLength(1);
+  expect(result.partial).toBe(true);
+  const capped = searchStream([text("A".repeat(10001))], "A", "text", {
+    ...options,
+    direction: "rx",
+  });
+  expect(capped.matches).toHaveLength(10000);
+  expect(capped.partial).toBe(true);
+});
+
+it("interprets transmit text using the transmit encoding", () => {
+  const template = txItem("tx");
+  if (template.kind !== "source" || template.event.kind !== "tx")
+    throw new Error("Missing TX fixture");
+  const bytes = encodeText("中文", "utf-16le");
+  const outgoing: StreamItem = {
+    kind: "source",
+    event: {
+      ...template.event,
+      payload: {
+        ...template.event.payload,
+        bytesBase64: btoa(String.fromCharCode(...bytes)),
+        byteStart: "1",
+        byteEnd: "5",
+      },
+    },
+  };
+  expect(
+    searchStream([text("中文"), outgoing], "中文", "text", {
+      ...options,
+      direction: "all",
+      encoding: "utf-8",
+      transmitEncoding: "utf-16le",
+    }).matches,
+  ).toEqual([
+    {
+      offset: "0",
+      end: "6",
+      itemIndex: 0,
+      span: { lastItemIndex: 0, direction: "rx" },
+    },
+    {
+      offset: "1",
+      end: "5",
+      itemIndex: 1,
+      span: { lastItemIndex: 1, direction: "tx" },
+    },
+  ]);
+});

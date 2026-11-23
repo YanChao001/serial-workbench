@@ -1,9 +1,8 @@
 /// <reference lib="webworker" />
-import { searchStream } from "./stream-search";
+import { prepareStreamSearchEncoding, searchStream } from "./stream-search";
 import { findAnsiMatches, type AnsiSearchRequest } from "./ansi-search";
 import type { StreamItem } from "@serial-workbench/contracts";
 import type { StreamSearchOptions } from "./stream-search";
-import { prepareTextEncoding } from "@/lib/text-encoding";
 const scope = self as unknown as DedicatedWorkerGlobalScope;
 scope.onmessage = async (
   event: MessageEvent<
@@ -21,6 +20,6 @@ scope.onmessage = async (
     return;
   }
   const { items, query, mode, options } = event.data;
-  if (mode === "text") await prepareTextEncoding(options.encoding ?? "utf-8");
+  if (mode === "text") await prepareStreamSearchEncoding(options);
   scope.postMessage(searchStream(items, query, mode, options));
 };

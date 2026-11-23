@@ -46,6 +46,128 @@ function packets(
   });
 }
 
+test("filters regex matches across receive records and isolates transmit search and view", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 550 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const fixtures = workbenchStreamItems();
+  const rx = fixtures.find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  const tx = fixtures.find(
+    (item) => item.kind === "source" && item.event.kind === "tx",
+  );
+  if (rx?.kind !== "source" || tx?.kind !== "source" || tx.event.kind !== "tx")
+    throw new Error("Missing direction fixtures");
+  const rows = [
+    { input: "prefix HIT-", byteStart: 0, kind: "rx" },
+    { input: "HIT-TX", byteStart: 0, kind: "tx" },
+    { input: "END", byteStart: 11, kind: "rx" },
+    { input: "quiet-rx", byteStart: 14, kind: "rx" },
+    { input: "quiet-tx", byteStart: 6, kind: "tx" },
+  ].map(({ input, kind, byteStart }, index) => {
+    const event = kind === "rx" ? rx.event : tx.event;
+    const start = String(byteStart);
+    const end = String(byteStart + Buffer.byteLength(input));
+    return {
+      kind: "source",
+      event: {
+        ...event,
+        eventSeq: String(30 + index),
+        time: {
+          ...event.time,
+          sourceMonoNs: String((index + 1) * 1_000_000_000),
+        },
+        payload: {
+          ...(kind === "tx" ? tx.event.payload : {}),
+          bytesBase64: Buffer.from(input).toString("base64"),
+          byteStart: start,
+          byteEnd: end,
+          ...(kind === "tx" ? { acceptedRanges: [{ start, end }] } : {}),
+        },
+      },
+    };
+  });
+  await page.evaluate((items) => window.workbenchFixture.emitRaw(items), rows);
+
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  const input = terminal.getByRole("textbox", { name: "Search bytes" });
+  const search = terminal.getByRole("button", { name: "Search bytes" });
+  const result = terminal
+    .locator(".workbench-stream-search")
+    .getByRole("status");
+  const span = (direction: string, offset: number) =>
+    log.locator(
+      '[data-direction="' + direction + '"][data-offset="' + offset + '"]',
+    );
+  await expect(span("rx", 0)).toContainText("prefix HIT-");
+  await expect(span("rx", 11)).toContainText("END");
+  await expect(span("tx", 0)).toContainText("HIT-TX");
+  await search.click();
+  await choose(page, "Direction", "TX");
+  await expect(span("rx", 0)).toHaveCount(0);
+  await expect(span("tx", 6)).toContainText("quiet-tx");
+  await expect(
+    terminal.getByRole("group", { name: en["workbench.displayedRxBytes"] }),
+  ).toContainText("0 B");
+  await choose(page, "Direction", "Both directions");
+
+  await terminal
+    .getByRole("button", { name: en["workbench.searchRegex"] })
+    .click();
+  await input.fill("HIT-(END|TX)");
+  await expect(result).toContainText("1/2");
+  await choose(page, "Match visibility", "Matching records only");
+  await expect(span("rx", 0)).toContainText("prefix HIT-");
+  await expect(span("rx", 11)).toContainText("END");
+  await expect(span("tx", 0)).toContainText("HIT-TX");
+  await expect(span("rx", 14)).toHaveCount(0);
+  await expect(span("tx", 6)).toHaveCount(0);
+  await expect(
+    terminal.getByRole("group", { name: en["workbench.displayedRxBytes"] }),
+  ).toContainText("14 B");
+  await expect(
+    terminal.getByRole("group", { name: en["workbench.displayedTxBytes"] }),
+  ).toContainText("6 B");
+
+  await choose(page, "Direction", "TX");
+  await expect(result).toContainText("1/1");
+  await expect(span("tx", 0)).toContainText("HIT-TX");
+  await expect(span("rx", 11)).toHaveCount(0);
+  await choose(page, "Match visibility", "Hide matching records");
+  await expect(span("tx", 0)).toHaveCount(0);
+  await expect(span("tx", 6)).toContainText("quiet-tx");
+
+  await choose(page, "Direction", "Both directions");
+  await expect(result).toContainText("1/2");
+  await expect(span("rx", 0)).toHaveCount(0);
+  await expect(span("rx", 11)).toHaveCount(0);
+  await expect(span("rx", 14)).toContainText("quiet-rx");
+  await input.fill("[");
+  await expect(result).toHaveText(en["workbench.searchInvalid"]);
+  await expect(span("rx", 0)).toContainText("prefix HIT-");
+  await expect(span("tx", 0)).toContainText("HIT-TX");
+  await input.press("Escape");
+  await expect(search).toBeFocused();
+  await expect(
+    log.locator('[data-direction="rx"], [data-direction="tx"]'),
+  ).toHaveCount(5);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("copies six formats from one HEX selection with explicit decoding and timestamp source", async ({
   page,
 }) => {

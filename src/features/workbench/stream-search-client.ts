@@ -1,12 +1,14 @@
 import type { StreamItem } from "@serial-workbench/contracts";
-import { prepareTextEncoding } from "@/lib/text-encoding";
+import { projectStreamItems } from "./stream-model";
 import {
   findAnsiMatches,
   type AnsiSearchRequest,
   type AnsiSearchResult,
 } from "./ansi-search";
 import {
+  prepareStreamSearchEncoding,
   searchStream,
+  sourceInSearchDirection,
   withinSearchBudget,
   type StreamSearchOptions,
   type StreamSearchResult,
@@ -22,16 +24,10 @@ export function requestStreamSearch(
   signal.throwIfAborted();
   const source: StreamItem[] = [];
   const indices: number[] = [];
-  for (const [index, item] of items.entries()) {
-    if (
-      item.kind !== "reader_gap" &&
-      !["rx", "gap", "configuration_boundary", "lifecycle"].includes(
-        item.event.kind,
-      )
-    )
-      continue;
+  for (const { item, itemIndex } of projectStreamItems(items)) {
+    if (!sourceInSearchDirection(item, options.direction)) continue;
     source.push(item);
-    indices.push(index);
+    indices.push(itemIndex);
   }
   const originalPositions = (
     result: StreamSearchResult,
@@ -40,14 +36,22 @@ export function requestStreamSearch(
     matches: result.matches.map((match) => ({
       ...match,
       itemIndex: indices[match.itemIndex]!,
+      ...(match.span
+        ? {
+            span: {
+              ...match.span,
+              lastItemIndex: indices[match.span.lastItemIndex]!,
+            },
+          }
+        : {}),
     })),
   });
   // 在结构化克隆前限制字节量；正则和解码工作留在可终止的 Worker。
-  if (!withinSearchBudget(source))
+  if (!withinSearchBudget(source, options.direction))
     return Promise.resolve({ matches: [], error: "limit" });
   if (import.meta.env.MODE === "test" && typeof Worker === "undefined")
-    return prepareTextEncoding(
-      mode === "text" ? (options.encoding ?? "utf-8") : "utf-8",
+    return (
+      mode === "text" ? prepareStreamSearchEncoding(options) : Promise.resolve()
     ).then(() => {
       signal.throwIfAborted();
       return originalPositions(searchStream(source, query, mode, options));

@@ -462,6 +462,14 @@ export const en = {
   "workbench.encodingLoadFailed":
     "Encoding could not load. Change the encoding and retry.",
   "workbench.searchLimit": "Narrow the search range.",
+  "workbench.searchDirection": "Direction",
+  "workbench.searchAllDirections": "Both directions",
+  "workbench.searchMatchVisibility": "Match visibility",
+  "workbench.searchShowAll": "Show all records",
+  "workbench.searchOnlyMatches": "Matching records only",
+  "workbench.searchHideMatches": "Hide matching records",
+  "workbench.searchPartial":
+    "Results are incomplete. Match filtering is unavailable.",
   "workbench.searchMode": "Search mode",
   "workbench.find": "Find next",
   "workbench.noMatches": "No matches",
