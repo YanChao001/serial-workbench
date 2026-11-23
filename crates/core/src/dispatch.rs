@@ -230,6 +230,9 @@ impl BuiltinAction {
             Self::WorkspaceList => typed!(WorkspaceListParams),
             Self::CommandLibraryRead => typed!(CommandLibraryReadParams),
             Self::CommandLibraryChange => typed!(CommandLibraryChange),
+            Self::CommandLibraryImport | Self::CommandLibraryExport => {
+                typed!(CommandLibraryFileParams)
+            }
             Self::ActionCheck => typed!(ActionCheckParams),
             Self::Client(capability) => {
                 ClientEffectAction::from_params(capability, &query.params)?;

@@ -12,6 +12,7 @@ mod queue_test_support;
 
 use crate::auth::{AuthenticatedActor, HostIdentity, RequestContext};
 use crate::clock::SystemClock;
+pub(crate) use command_library::StagedCommandArchive;
 use db::Database;
 pub use documents::StoredDocument;
 pub use operations::{Acceptance, Settlement, canonical_digest};

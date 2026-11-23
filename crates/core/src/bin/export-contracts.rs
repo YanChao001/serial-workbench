@@ -824,6 +824,11 @@ fn m1_fixtures(f: &mut Fixtures, operation: &Value) -> Result<(), Box<dyn Error>
         &[],
     )?;
     f.object::<CommandLibraryRevision>("command-library-revision", json!({"revision":"1"}), &[])?;
+    f.object::<CommandLibraryFileParams>(
+        "command-library-file-params",
+        json!({"fileRef":{"hostId":"host","kind":"file","id":"command-archive","revision":"1"}}),
+        &[],
+    )?;
     f.object::<CommandLibraryChange>(
         "command-library-save-group",
         json!({"kind":"saveGroup","group":{"id":"bench","name":"Bench"}}),
@@ -1681,6 +1686,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         CommandLibraryReadParams,
         CommandLibraryReadResult,
         CommandLibraryChange,
+        CommandLibraryFileParams,
         CommandLibraryRevision,
         DocumentImportParams,
         DocumentJsonResult,

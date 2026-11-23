@@ -4125,6 +4125,24 @@
       "value": {}
     },
     {
+      "name": "command-library-file-params-unknown-field",
+      "schema": "CommandLibraryFileParams",
+      "value": {
+        "fileRef": {
+          "hostId": "host",
+          "id": "command-archive",
+          "kind": "file",
+          "revision": "1"
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "command-library-file-params-missing-fileRef",
+      "schema": "CommandLibraryFileParams",
+      "value": {}
+    },
+    {
       "name": "command-library-save-group-unknown-field",
       "schema": "CommandLibraryChange",
       "value": {
@@ -13209,6 +13227,18 @@
       "schema": "CommandLibraryRevision",
       "value": {
         "revision": "1"
+      }
+    },
+    {
+      "name": "command-library-file-params",
+      "schema": "CommandLibraryFileParams",
+      "value": {
+        "fileRef": {
+          "hostId": "host",
+          "id": "command-archive",
+          "kind": "file",
+          "revision": "1"
+        }
       }
     },
     {

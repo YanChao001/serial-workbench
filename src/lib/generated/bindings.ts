@@ -1483,6 +1483,17 @@ export type CommandLibraryChange_Serialize =
       groupId?: never;
     });
 
+export type CommandLibraryFileParams =
+  CommandLibraryFileParams_Serialize | CommandLibraryFileParams_Deserialize;
+
+export type CommandLibraryFileParams_Deserialize = {
+  fileRef: ObjectRef_Deserialize;
+};
+
+export type CommandLibraryFileParams_Serialize = {
+  fileRef: ObjectRef_Serialize;
+};
+
 export type CommandLibraryReadResult =
   CommandLibraryReadResult_Serialize | CommandLibraryReadResult_Deserialize;
 
@@ -1997,7 +2008,9 @@ export type FileResourceRole =
   | "captureTarget"
   | "captureSource"
   | "exportCsvTarget"
-  | "exportJsonlTarget";
+  | "exportJsonlTarget"
+  | "commandArchiveSource"
+  | "commandArchiveTarget";
 
 export type FileTransferParams =
   FileTransferParams_Serialize | FileTransferParams_Deserialize;
@@ -3271,6 +3284,12 @@ export type LocalDocumentIntent_Deserialize =
       params: CommandLibraryChange_Deserialize;
     }
   | {
+      kind: "commandLibraryImport";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryFileParams_Deserialize;
+    }
+  | {
       kind: "favoritesSave";
       workspaceId: Id;
       expectedRevision: U64;
@@ -3300,6 +3319,12 @@ export type LocalDocumentIntent_Serialize =
       workspaceId: Id;
       expectedRevision: U64;
       params: CommandLibraryChange_Serialize;
+    }
+  | {
+      kind: "commandLibraryImport";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryFileParams_Serialize;
     }
   | {
       kind: "favoritesSave";

@@ -59,6 +59,7 @@ import type {
   ClientWindowSizeParams,
   ClosedResult,
   CommandLibraryChange,
+  CommandLibraryFileParams,
   CommandLibraryReadParams,
   CommandLibraryReadResult,
   CommandLibraryRevision,
@@ -471,6 +472,9 @@ export declare function validateClosedResult(
 export declare function validateCommandLibraryChange(
   value: unknown,
 ): value is CommandLibraryChange;
+export declare function validateCommandLibraryFileParams(
+  value: unknown,
+): value is CommandLibraryFileParams;
 export declare function validateCommandLibraryReadParams(
   value: unknown,
 ): value is CommandLibraryReadParams;

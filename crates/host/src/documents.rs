@@ -1,6 +1,9 @@
 //! 共享文档协调；Store 领域服务仍是唯一解码与 CAS 写入入口。
+#[path = "command_archive_api.rs"]
+mod command_archive_api;
 use crate::{
     auth::{AuthService, AuthenticatedActor},
+    files::FileService,
     settings::{SettingsService, export_document, import_document},
     state::ProjectionStore,
     storage::{Settlement, Store},
@@ -291,17 +294,29 @@ impl DocumentService {
     }
     pub(crate) fn execute(
         &self,
+        files: &FileService,
         actor: &AuthenticatedActor,
         call: &Call,
         action: BuiltinAction,
         descriptor: Option<DeviceDescriptor>,
         operation_id: &Id,
     ) -> Settlement {
-        let outcome = if action == BuiltinAction::CommandLibraryChange {
-            self.save_command_library(actor, call, operation_id)
-                .map(|revision| (ActionResult::CommandLibraryRevision(revision), None))
-        } else {
-            self.save(actor, call, action, descriptor)
+        let outcome = match action {
+            BuiltinAction::CommandLibraryChange => self
+                .save_command_library(actor, call, operation_id)
+                .map(|revision| (ActionResult::CommandLibraryRevision(revision), None)),
+            BuiltinAction::CommandLibraryImport => self
+                .import_command_archive(files, actor, call, operation_id)
+                .map(|revision| (ActionResult::CommandLibraryRevision(revision), None)),
+            BuiltinAction::CommandLibraryExport => self
+                .export_command_archive(files, actor, call)
+                .map(|result_ref| {
+                    (
+                        ActionResult::Reference(ResultReference { result_ref }),
+                        None,
+                    )
+                }),
+            _ => self.save(actor, call, action, descriptor),
         };
         match outcome {
             Ok((result, error)) => Settlement {
@@ -479,6 +494,15 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
             let change: CommandLibraryChange = decode(&call.params)?;
             change.validate()?;
             object(&change)
+        }
+        BuiltinAction::CommandLibraryImport | BuiltinAction::CommandLibraryExport => {
+            let params: CommandLibraryFileParams = decode(&call.params)?;
+            if params.file_ref.host_id != call.target.host_id
+                || params.file_ref.kind.as_str() != "file"
+            {
+                return Err(invalid());
+            }
+            object(&params)
         }
         BuiltinAction::DeviceRebind => object(&decode::<RebindParams>(&call.params)?),
         BuiltinAction::FavoritesSave => object(&decode::<FavoritesSaveParams>(&call.params)?),

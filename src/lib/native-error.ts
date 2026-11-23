@@ -34,6 +34,8 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   INPUT_TOO_LONG: "errors.INPUT_TOO_LONG",
   STORAGE_FULL: "commandLibrary.storageFull",
   GROUP_NOT_EMPTY: "commandLibrary.groupNotEmpty",
+  INVALID_COMMAND_ARCHIVE: "commandLibrary.invalidArchive",
+  TARGET_EXISTS: "nativeError.targetExists",
   STORAGE_IO: "errors.IO",
   STORAGE_CORRUPT: "errors.IO",
   PLATFORM_UNAVAILABLE: "errors.UNSUPPORTED",

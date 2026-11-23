@@ -195,6 +195,8 @@ pub enum BuiltinAction {
     WorkspaceList,
     CommandLibraryRead,
     CommandLibraryChange,
+    CommandLibraryImport,
+    CommandLibraryExport,
     WorkspaceRead,
     WorkspaceSave,
     WorkspaceExport,
@@ -235,7 +237,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 108] = [
+    pub const ALL: [Self; 110] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
@@ -306,6 +308,8 @@ impl BuiltinAction {
         Self::WorkspaceList,
         Self::CommandLibraryRead,
         Self::CommandLibraryChange,
+        Self::CommandLibraryImport,
+        Self::CommandLibraryExport,
         Self::WorkspaceRead,
         Self::WorkspaceSave,
         Self::WorkspaceExport,
@@ -396,6 +400,8 @@ impl BuiltinAction {
             Self::WorkspaceList => "workspace.list",
             Self::CommandLibraryRead => "workspace.commands.read",
             Self::CommandLibraryChange => "workspace.commands.change",
+            Self::CommandLibraryImport => "workspace.commands.import",
+            Self::CommandLibraryExport => "workspace.commands.export",
             Self::WorkspaceRead => "workspace.read",
             Self::WorkspaceSave => "workspace.save",
             Self::WorkspaceExport => "workspace.export",
@@ -504,6 +510,8 @@ impl BuiltinAction {
                 | Self::DeviceRebind
                 | Self::FavoritesSave
                 | Self::CommandLibraryChange
+                | Self::CommandLibraryImport
+                | Self::CommandLibraryExport
         )
     }
     pub fn spec(self) -> &'static ActionSpec {
@@ -589,7 +597,9 @@ impl BuiltinAction {
             | Self::WorkspaceExport
             | Self::WorkspaceImport
             | Self::CommandLibraryRead
-            | Self::CommandLibraryChange => &["workspace"],
+            | Self::CommandLibraryChange
+            | Self::CommandLibraryImport
+            | Self::CommandLibraryExport => &["workspace"],
             Self::DeviceOpen => &["device"],
             Self::SessionGet
             | Self::SessionMetrics
@@ -635,7 +645,9 @@ impl BuiltinAction {
             | Self::WorkspaceExport
             | Self::WorkspaceImport
             | Self::CommandLibraryRead
-            | Self::CommandLibraryChange => Some("workspace"),
+            | Self::CommandLibraryChange
+            | Self::CommandLibraryImport
+            | Self::CommandLibraryExport => Some("workspace"),
             Self::SessionConfigure => Some("parameters"),
             Self::SessionControl
             | Self::SessionBreak
@@ -683,6 +695,7 @@ impl BuiltinAction {
                         | Self::DeviceRebind
                         | Self::FavoritesSave
                         | Self::CommandLibraryChange
+                        | Self::CommandLibraryImport
                 ) {
                     "workspace.modify"
                 } else if auth || self == Self::SessionTakeover {
@@ -699,6 +712,7 @@ impl BuiltinAction {
                         | Self::StreamSubscribe
                         | Self::StreamCredit
                         | Self::CommandLibraryRead
+                        | Self::CommandLibraryExport
                 ) {
                     "content.read"
                 } else {
@@ -989,6 +1003,14 @@ impl BuiltinAction {
             Self::CommandLibraryChange => ActionSpec::of_with_dialect::<
                 CommandLibraryChange,
                 CommandLibraryRevision,
+            >(meta, dialect),
+            Self::CommandLibraryImport => ActionSpec::of_with_dialect::<
+                CommandLibraryFileParams,
+                CommandLibraryRevision,
+            >(meta, dialect),
+            Self::CommandLibraryExport => ActionSpec::of_with_dialect::<
+                CommandLibraryFileParams,
+                ResultReference,
             >(meta, dialect),
             Self::WorkspaceList => ActionSpec::of_with_dialect::<
                 WorkspaceListParams,

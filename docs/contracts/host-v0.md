@@ -139,6 +139,10 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 
 `workspace.commands.change` 要求 `workspace.modify` 和 Call 的 `expectedRevision`。组保存和命令保存由调用方提供稳定 ID。移动命令用目标组和可选的 `before` 命令 ID，缺省移动到组末尾。非空组返回 `GROUP_NOT_EMPTY`。工作区归档后仍保留已有命令，修改返回 `WORKSPACE_DELETED`。成功回执只包含新 revision，结果证据和数据同事务提交。写满返回 `STORAGE_FULL`，保留此前版本和条目。
 
+`workspace.commands.export` 和 `workspace.commands.import` 使用 `{fileRef}` 和命令库 `expectedRevision`。导出要求工作区 `content.read` 及指定目标文件的 `workspace.modify`，返回已发布的固定文件引用。导入要求来源文件 `content.read` 和目标工作区 `workspace.modify`，成功返回命令库新 revision。目标文件必须是新文件。来源和目标用现有文件资源登记，沿用其文件大小与身份校验。
+
+归档为 UTF-8 JSONL，首条为 `header`，含 `format: "serial-workbench-command-library"`、数字 `version: 1` 和十进制字符串 `libraryRevision`。每条 `group` 和 `command` 复用对应 Host DTO，父分组先于该组命令。末条 `end` 给出十进制字符串 `groups` 和 `commands`，每条以换行结尾。导入校验尾部、ID 唯一性及分组关系，追加归档分组及其命令，目标中相同 ID 保留并为导入副本分配新 ID。已有命令保持原顺序。
+
 工作区 `archived` 缺省为 `false`。通过 CAS 设为 `true` 时保留原件并原子移出目录；后续覆盖返回 `WORKSPACE_DELETED`，默认工作区禁止删除。导入、导出与另存副本不传播此标记。
 
 新建与另存为复用 `workspace.save`，对独立新标识提交 `expectedRevision: 0`，保存冲突不能覆盖已有文档。持久目录身份与文档 CAS 在同一次事务提交，名称与版本从相应文档读取，失败不得生成空目录项。复制视图和设备绑定时生成独立身份并重映射内部引用，实际会话、发送草稿和授权不随模板复制。

@@ -1293,7 +1293,15 @@ export const en = {
   "workbench.tools.destinationFile": "Save to",
   "workbench.tools.recoveryDestinationFile": "Recovery destination",
   "workbench.tools.advanced": "Advanced",
+  "nativeError.targetExists":
+    "A file or folder already exists at that location. Choose a new location.",
   "commandLibrary.title": "Command library",
+  "commandLibrary.importArchive": "Import commands…",
+  "commandLibrary.exportArchive": "Export commands…",
+  "commandLibrary.imported": "Command library imported",
+  "commandLibrary.exported": "Command library exported",
+  "commandLibrary.invalidArchive":
+    "The command library archive is invalid or incomplete.",
   "commandLibrary.applyDraft": "Use as send draft",
   "commandLibrary.variable": "Variable {name}",
   "commandLibrary.emptyVariable": "Set variable {name} to an empty value",

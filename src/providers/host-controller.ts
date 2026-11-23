@@ -903,6 +903,21 @@ export function createHostWorkspace(
           }),
           waiting,
         );
+    const operation = await settleCommandAction(
+      accepted,
+      actionId,
+      target,
+      waiting,
+    );
+    return commandWriteRevision(operation, revision);
+  }
+
+  async function settleCommandAction(
+    accepted: Promise<Operation>,
+    actionId: string,
+    target: Target,
+    waiting: AbortSignal,
+  ) {
     void accepted
       .finally(() => {
         if (!lifetime.signal.aborted) invalidateActions();
@@ -916,7 +931,10 @@ export function createHostWorkspace(
     )
       throw new ContractValidationError();
     updateOperation(initial);
-    const operation = await waitForOperation(initial, waiting);
+    return waitForOperation(initial, waiting);
+  }
+
+  function commandWriteRevision(operation: Operation, revision: string) {
     const receipt = operation.result;
     if (
       receipt?.kind !== "command_library_revision" ||
@@ -924,6 +942,74 @@ export function createHostWorkspace(
     )
       throw new ContractValidationError();
     return receipt.value.revision;
+  }
+
+  async function importCommandArchive(
+    workspaceId: string,
+    revision: string,
+    signal: AbortSignal,
+  ) {
+    if (!userActions)
+      throw failure(
+        "UNSUPPORTED_CAPABILITY",
+        "Host file picker is unavailable",
+      );
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    const file = await pickFile("commandArchiveSource", waiting);
+    waiting.throwIfAborted();
+    if (!file) return false;
+    const operation = await settleCommandAction(
+      userActions.applyDocumentIntent(connection.generation, {
+        kind: "commandLibraryImport",
+        workspaceId,
+        expectedRevision: revision,
+        params: { fileRef: file.reference },
+      }),
+      "workspace.commands.import",
+      workspaceTarget(workspaceId),
+      waiting,
+    );
+    commandWriteRevision(operation, revision);
+    return true;
+  }
+
+  async function exportCommandArchive(
+    workspaceId: string,
+    revision: string,
+    signal: AbortSignal,
+  ) {
+    const waiting = AbortSignal.any([signal, lifetime.signal]);
+    const file = await pickFile("commandArchiveTarget", waiting);
+    waiting.throwIfAborted();
+    if (!file) return false;
+    const target = workspaceTarget(workspaceId);
+    const actionId = "workspace.commands.export";
+    const operation = await settleCommandAction(
+      connection.client.invoke(
+        connection.buildCall(
+          actionId,
+          target,
+          rpcJsonObject({ fileRef: file.reference }),
+          {
+            expectedRevision: revision,
+            executionMode: "interactive",
+          },
+        ),
+        waiting,
+      ),
+      actionId,
+      target,
+      waiting,
+    );
+    const result = operation.result;
+    if (
+      result?.kind !== "reference" ||
+      result.value.resultRef.hostId !== target.hostId ||
+      result.value.resultRef.kind !== "file" ||
+      result.value.resultRef.revision == null
+    )
+      throw new ContractValidationError();
+    return true;
   }
 
   async function exportWorkspace(workspaceId: string, signal?: AbortSignal) {
@@ -1663,9 +1749,16 @@ export function createHostWorkspace(
     ...readableCommandLibrary,
     change: changeCommandLibrary,
   };
+  const desktopCommandLibrary: CommandLibraryAccess = {
+    ...writableCommandLibrary,
+    files: {
+      importArchive: importCommandArchive,
+      exportArchive: exportCommandArchive,
+    },
+  };
   function commandLibraryForState() {
     if (state.status !== "ready") return undefined;
-    if (userActions?.openCommandLibrary) return writableCommandLibrary;
+    if (userActions?.openCommandLibrary) return desktopCommandLibrary;
     if (
       !state.catalog.some(
         ({ actionId }) => actionId === "workspace.commands.read",

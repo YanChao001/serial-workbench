@@ -2193,6 +2193,7 @@ impl Host {
                     }
                 };
                 let outcome = documents.execute(
+                    &files,
                     &accepted.actor,
                     &accepted.call,
                     action,
@@ -2200,8 +2201,10 @@ impl Host {
                     &operation_id,
                 );
                 // 命令库将结果证据和数据写入同一事务；其余文档沿用独立回执。
-                if action != BuiltinAction::CommandLibraryChange
-                    && let Some(result) = &outcome.result
+                if !matches!(
+                    action,
+                    BuiltinAction::CommandLibraryChange | BuiltinAction::CommandLibraryImport
+                ) && let Some(result) = &outcome.result
                 {
                     store.record_result_evidence(&operation_id, result)?;
                 }

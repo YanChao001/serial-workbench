@@ -8,6 +8,10 @@ use super::{
     unavailable,
 };
 
+#[path = "command_archive.rs"]
+mod archive;
+pub(crate) use archive::StagedCommandArchive;
+
 const PAGE_SIZE: usize = 32;
 
 pub(super) const CREATE_COMMAND_LIBRARY: &str = "
@@ -128,16 +132,7 @@ impl Database {
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(store_error)?;
-        if revision(&tx, workspace)? != expected {
-            return Err(changed());
-        }
-        let revision = expected.checked_next()?;
-        tx.execute(
-            "INSERT INTO command_library_versions(workspace,revision) VALUES(?1,?2)
-             ON CONFLICT(workspace) DO UPDATE SET revision=excluded.revision",
-            params![workspace.as_str(), revision.to_string()],
-        )
-        .map_err(store_error)?;
+        let revision = next_library_revision(&tx, workspace, expected)?;
 
         match change {
             CommandLibraryChange::SaveGroup { group } => {
@@ -189,17 +184,39 @@ impl Database {
             }
         }
 
-        let result = CommandLibraryRevision { revision };
-        if let Some(id) = operation_id {
-            super::operations::record_result_evidence_in(
-                &tx,
-                id,
-                ActionResult::CommandLibraryRevision(result.clone()),
-            )?;
-        }
-        tx.commit().map_err(store_error)?;
-        Ok(result)
+        record_library_commit(tx, revision, operation_id)
     }
+}
+
+fn next_library_revision(conn: &Connection, workspace: &Id, expected: U64) -> HostResult<U64> {
+    if revision(conn, workspace)? != expected {
+        return Err(changed());
+    }
+    let next = expected.checked_next()?;
+    conn.execute(
+        "INSERT INTO command_library_versions(workspace,revision) VALUES(?1,?2)
+         ON CONFLICT(workspace) DO UPDATE SET revision=excluded.revision",
+        params![workspace.as_str(), next.to_string()],
+    )
+    .map_err(store_error)?;
+    Ok(next)
+}
+
+fn record_library_commit(
+    tx: rusqlite::Transaction<'_>,
+    revision: U64,
+    operation_id: Option<&Id>,
+) -> HostResult<CommandLibraryRevision> {
+    let result = CommandLibraryRevision { revision };
+    if let Some(id) = operation_id {
+        super::operations::record_result_evidence_in(
+            &tx,
+            id,
+            ActionResult::CommandLibraryRevision(result.clone()),
+        )?;
+    }
+    tx.commit().map_err(store_error)?;
+    Ok(result)
 }
 
 fn revision(conn: &Connection, workspace: &Id) -> HostResult<U64> {

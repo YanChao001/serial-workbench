@@ -81,6 +81,18 @@ export type HostState = {
 };
 export type CommandLibraryAccess = {
   owner: string;
+  files?: {
+    importArchive(
+      workspaceId: string,
+      revision: string,
+      signal: AbortSignal,
+    ): Promise<boolean>;
+    exportArchive(
+      workspaceId: string,
+      revision: string,
+      signal: AbortSignal,
+    ): Promise<boolean>;
+  };
   open(
     workspaceId: string,
     signal: AbortSignal,

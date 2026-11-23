@@ -1,5 +1,5 @@
 //! 按工作区归属的命令正文和有界目录读取契约。
-use crate::{HostError, HostResult, Id, LineEnding, TerminalMode, TextEncoding, U64};
+use crate::{HostError, HostResult, Id, LineEnding, ObjectRef, TerminalMode, TextEncoding, U64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -122,22 +122,32 @@ pub enum CommandLibraryChange {
 impl CommandLibraryChange {
     pub fn validate(&self) -> HostResult<()> {
         match self {
-            Self::SaveGroup { group } => validate_name(&group.name),
-            Self::SaveCommand { command } => {
-                validate_name(&command.summary.name)?;
-                if command.summary.note.len() > 1024
-                    || command.body.len() > 65_536
-                    || matches!(&command.line_ending, Some(LineEnding::Custom { bytes_base64 }) if bytes_base64.as_str().len() > 1024)
-                {
-                    return Err(HostError::new(
-                        "INVALID_ARGUMENT",
-                        "Command field exceeds its byte limit",
-                    ));
-                }
-                Ok(())
-            }
+            Self::SaveGroup { group } => group.validate(),
+            Self::SaveCommand { command } => command.validate(),
             _ => Ok(()),
         }
+    }
+}
+
+impl CommandGroup {
+    pub fn validate(&self) -> HostResult<()> {
+        validate_name(&self.name)
+    }
+}
+
+impl CommandDraft {
+    pub fn validate(&self) -> HostResult<()> {
+        validate_name(&self.summary.name)?;
+        if self.summary.note.len() > 1024
+            || self.body.len() > 65_536
+            || matches!(&self.line_ending, Some(LineEnding::Custom { bytes_base64 }) if bytes_base64.as_str().len() > 1024)
+        {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Command field exceeds its byte limit",
+            ));
+        }
+        Ok(())
     }
 }
 
@@ -155,4 +165,10 @@ fn validate_name(name: &str) -> HostResult<()> {
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CommandLibraryRevision {
     pub revision: U64,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct CommandLibraryFileParams {
+    pub file_ref: ObjectRef,
 }

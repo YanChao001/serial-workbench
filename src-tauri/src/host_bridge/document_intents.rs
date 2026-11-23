@@ -24,6 +24,11 @@ pub(crate) enum LocalDocumentIntent {
         expected_revision: U64,
         params: CommandLibraryChange,
     },
+    CommandLibraryImport {
+        workspace_id: Id,
+        expected_revision: U64,
+        params: CommandLibraryFileParams,
+    },
     FavoritesSave {
         workspace_id: Id,
         expected_revision: U64,
@@ -74,6 +79,18 @@ impl DesktopHostBridge {
                 params,
             } => (
                 "workspace.commands.change",
+                "workspace",
+                workspace_id,
+                "workspace.modify",
+                expected_revision,
+                document_params(params)?,
+            ),
+            LocalDocumentIntent::CommandLibraryImport {
+                workspace_id,
+                expected_revision,
+                params,
+            } => (
+                "workspace.commands.import",
                 "workspace",
                 workspace_id,
                 "workspace.modify",

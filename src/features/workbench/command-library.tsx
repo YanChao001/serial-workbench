@@ -199,7 +199,9 @@ function CommandLibraryPanel({
   const [dirty, setDirty] = useState(false);
   const [busy, setBusy] = useState(true);
   const [problem, setProblem] = useState<{ error: unknown }>();
-  const [saved, setSaved] = useState(false);
+  const [completed, setCompleted] = useState<
+    "saved" | "imported" | "exported"
+  >();
   const [picked, setPicked] = useState<CommandSummary>();
   const dragging = useRef<CommandSummary | undefined>(undefined);
   const working = useRef(true);
@@ -236,7 +238,7 @@ function CommandLibraryPanel({
     if (working.current || signal.aborted) return false;
     working.current = true;
     setBusy(true);
-    setSaved(false);
+    setCompleted(undefined);
     setProblem(undefined);
     try {
       await task(signal);
@@ -364,11 +366,33 @@ function CommandLibraryPanel({
       setRevision(undefined);
       setGroups(undefined);
       setCommands(undefined);
-      setSaved(true);
+      setCompleted("saved");
       // 保存与随后的页面读取独立结算，刷新失败不撤销已提交的写入。
       await reload(signal, change.kind === "saveGroup" ? change.group : group);
     }, additional);
     return accepted;
+  }
+
+  function transferArchive(direction: "import" | "export") {
+    const files = access.files;
+    if (revision === undefined || !files || editor) return;
+    void run(async (signal) => {
+      const transfer =
+        direction === "import" ? files.importArchive : files.exportArchive;
+      const done = await transfer(workspaceId, revision, signal);
+      signal.throwIfAborted();
+      if (!done) return;
+      if (direction === "export") {
+        setCompleted("exported");
+        return;
+      }
+      setCompleted("imported");
+      setRevision(undefined);
+      setPicked(undefined);
+      setGroups(undefined);
+      setCommands(undefined);
+      await reload(signal, group);
+    });
   }
 
   function saveEditor(additional?: AbortSignal) {
@@ -441,7 +465,9 @@ function CommandLibraryPanel({
     <div className="grid gap-3" aria-busy={busy}>
       <div className="flex min-h-8 flex-wrap items-center gap-2">
         {busy && <span role="status">{t("common.loading")}</span>}
-        {saved && <span role="status">{t("commandLibrary.saved")}</span>}
+        {completed && (
+          <span role="status">{t(`commandLibrary.${completed}`)}</span>
+        )}
         {problem && (
           <span role="alert" className="text-destructive">
             {nativeErrorText(problem.error, t)}
@@ -459,6 +485,28 @@ function CommandLibraryPanel({
           </Button>
         )}
       </div>
+      {!editor && access.files && (
+        <div className="flex flex-wrap gap-2">
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy || !canBrowse}
+            onClick={() => transferArchive("import")}
+          >
+            {t("commandLibrary.importArchive")}
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            disabled={busy || !canBrowse}
+            onClick={() => transferArchive("export")}
+          >
+            {t("commandLibrary.exportArchive")}
+          </Button>
+        </div>
+      )}
       {!editor && (
         <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
           <section

@@ -5,7 +5,6 @@ import type {
   CommandGroup,
   CommandLibraryChange,
   CommandLibraryReadParams,
-  Query,
 } from "@serial-workbench/contracts";
 import { operation } from "../../src/features/workbench/test-fixtures";
 import { defaults } from "./json-fixtures";
@@ -90,9 +89,16 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
       let revision = 0;
       let allowedToSettle = false;
       let pending:
-        | { id: string; change: CommandLibraryChange; workspace: string }
+        | { id: string; change?: CommandLibraryChange; workspace: string }
         | undefined;
       let hold = holdFirstOpen;
+      let cancelFirstSourcePick = true;
+      const fileRef = (id: string) => ({
+        hostId: base.executionHostId,
+        kind: "file",
+        id,
+        revision: "1",
+      });
       window.addEventListener("allow-library-save", () => {
         allowedToSettle = true;
       });
@@ -137,7 +143,9 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           operationId: id,
           requestId: id,
           rootOperationId: id,
-          actionId: "workspace.commands.change",
+          actionId: change
+            ? "workspace.commands.change"
+            : "workspace.commands.import",
           target: {
             kind: "workspace",
             id: workspace,
@@ -146,7 +154,11 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           revealTarget: { pageId: "workbench", workspaceId: workspace },
         };
         if (!allowedToSettle) return { ...receipt, state: "queued" };
-        if (change.kind === "saveGroup")
+        if (!change)
+          groups
+            .get(workspace)
+            ?.push({ id: "imported", name: "Imported archive" });
+        else if (change.kind === "saveGroup")
           groups.get(workspace)?.push(change.group);
         else if (change.kind === "moveCommand") {
           const source = commands.findIndex(
@@ -192,19 +204,56 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           }
           return read(workspace, { selection: { view: "groups" } });
         }
+        if (
+          command === "choose_file_resource" &&
+          (args.role === "commandArchiveSource" ||
+            args.role === "commandArchiveTarget")
+        ) {
+          const role = args.role;
+          window.workbenchFixture.filePickerCalls.push({
+            role,
+            generation: String(args.generation),
+            captureNameHint: null,
+          });
+          if (role === "commandArchiveSource" && cancelFirstSourcePick) {
+            cancelFirstSourcePick = false;
+            return null;
+          }
+          return {
+            reference: fileRef(
+              role === "commandArchiveSource"
+                ? "archive-source"
+                : "archive-target",
+            ),
+            name: "commands.swb-commands.jsonl",
+            mime: "application/jsonl",
+            length: "24",
+          };
+        }
         if (command === "host_apply_document_intent") {
           const intent = args.intent as {
             kind: string;
             workspaceId: string;
             expectedRevision: string;
-            params: CommandLibraryChange;
+            params: CommandLibraryChange & { fileRef?: { id: string } };
           };
-          if (intent.kind === "commandLibraryChange") {
+          if (
+            intent.kind === "commandLibraryChange" ||
+            intent.kind === "commandLibraryImport"
+          ) {
+            if (
+              intent.kind === "commandLibraryImport" &&
+              intent.params.fileRef?.id !== "archive-source"
+            )
+              throw new Error("Import lost the chosen archive reference");
             if (String(revision) !== intent.expectedRevision)
               throw { code: "REVISION_CONFLICT" };
             pending = {
               id: crypto.randomUUID(),
-              change: intent.params,
+              change:
+                intent.kind === "commandLibraryChange"
+                  ? intent.params
+                  : undefined,
               workspace: intent.workspaceId,
             };
             allowedToSettle = false;
@@ -212,7 +261,40 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           }
         }
         if (command === "host_request") {
-          const query = (args.request as { params?: Query }).params;
+          const request = args.request as {
+            method: string;
+            params?: import("@serial-workbench/contracts").Call;
+          };
+          const query = request.params;
+          if (
+            request.method === "action.invoke" &&
+            query?.actionId === "workspace.commands.export"
+          ) {
+            const file = query.params.fileRef as { id: string };
+            if (
+              file?.id !== "archive-target" ||
+              query.expectedRevision !== String(revision) ||
+              query.target.id !== "default"
+            )
+              throw new Error(
+                "Export lost the workspace revision or selected file",
+              );
+            window.workbenchFixture.invocations.push(query);
+            return {
+              ok: true,
+              result: {
+                operation: {
+                  ...base,
+                  actionId: "workspace.commands.export",
+                  target: query.target,
+                  result: {
+                    kind: "reference",
+                    value: { resultRef: fileRef("published-archive") },
+                  },
+                },
+              },
+            };
+          }
           if (query?.actionId === "workspace.commands.read") {
             window.workbenchFixture.queryInputs.push(query);
             const result = read(
@@ -516,4 +598,45 @@ test("predefined commands expand variables before send and preserve the selected
   await expect
     .poll(() => page.evaluate(() => window.workbenchFixture.sentBytes))
     .toEqual([expected.toString("base64"), custom.toString("base64")]);
+});
+
+test("command archive picker cancellation is inert and import refreshes only after the Host receipt", async ({
+  page,
+}) => {
+  const { entry, dialog } = await mockLibrary(page);
+  await entry.click();
+  const importButton = dialog.getByRole("button", { name: "Import commands…" });
+  const exportButton = dialog.getByRole("button", { name: "Export commands…" });
+  await importButton.click();
+  await expect(importButton).toBeEnabled();
+  expect(
+    await page.evaluate(() =>
+      window.workbenchFixture.queryInputs.filter(
+        ({ actionId }) => actionId === "operation.get",
+      ),
+    ),
+  ).toEqual([]);
+  await importButton.click();
+  await expect(
+    dialog.getByRole("button", { name: "Imported archive" }),
+  ).toHaveCount(0);
+  await letSaveFinish(page, 1);
+  await expect(
+    dialog.getByText("Command library imported", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByRole("button", { name: "Imported archive" }),
+  ).toBeVisible();
+  await exportButton.click();
+  await expect(
+    dialog.getByText("Command library exported", { exact: true }),
+  ).toBeVisible();
+  const picks = await page.evaluate(() =>
+    window.workbenchFixture.filePickerCalls.map(({ role }) => role),
+  );
+  expect(picks).toEqual([
+    "commandArchiveSource",
+    "commandArchiveSource",
+    "commandArchiveTarget",
+  ]);
 });

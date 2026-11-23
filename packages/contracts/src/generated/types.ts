@@ -1276,6 +1276,17 @@ export type CommandLibraryChange_Serialize =
       groupId?: never;
     });
 
+export type CommandLibraryFileParams =
+  CommandLibraryFileParams_Serialize | CommandLibraryFileParams_Deserialize;
+
+export type CommandLibraryFileParams_Deserialize = {
+  fileRef: ObjectRef_Deserialize;
+};
+
+export type CommandLibraryFileParams_Serialize = {
+  fileRef: ObjectRef_Serialize;
+};
+
 export type CommandLibraryReadParams =
   CommandLibraryReadParams_Serialize | CommandLibraryReadParams_Deserialize;
 
