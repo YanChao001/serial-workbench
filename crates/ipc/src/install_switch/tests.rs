@@ -71,6 +71,14 @@ impl Fixture {
         .unwrap()
     }
 
+    fn pending(&self, active: &Path) -> HostResult<Option<InstallSwitch>> {
+        InstallSwitch::find_pending(
+            &self.profile,
+            active,
+            reserve_host_instance(&self.profile.join("host-v0"))?,
+        )
+    }
+
     fn verify_original(&self, files: &(Vec<u8>, Vec<u8>, Vec<u8>)) {
         assert_eq!(self.profile_files(), *files);
         assert_eq!(suite_digest(&self.paths.active).unwrap(), self.old);
@@ -335,6 +343,41 @@ fn failures_after_each_move_restore_old_suite_and_preserve_candidate() {
         assert_eq!(suite_digest(fixture.paths.staged()).unwrap(), fixture.new);
         fixture.verify_original(&before);
     }
+}
+
+#[test]
+fn recovers_the_unfinished_switch_without_retaining_its_operation_id() {
+    let fixture = Fixture::new();
+    let original = fixture.profile_files();
+    fixture.interrupted(Checkpoint::Publish);
+    assert!(!fixture.paths.active.exists());
+    let another_install = fixture.paths.active.with_file_name("Another Installation");
+    assert!(fixture.pending(&another_install).unwrap().is_none());
+    {
+        let mut recovered = fixture.pending(&fixture.paths.active).unwrap().unwrap();
+        assert_eq!(recovered.paths.operation(), fixture.paths.operation());
+        assert_eq!(
+            recovered.recover().unwrap(),
+            Some(InstallOutcome::RolledBack)
+        );
+    }
+    fixture.verify_original(&original);
+    assert!(fixture.pending(&fixture.paths.active).unwrap().is_none());
+}
+
+#[test]
+fn discovered_recovery_rejects_a_journal_renamed_to_another_operation() {
+    let fixture = Fixture::new();
+    fixture.interrupted(Checkpoint::Publish);
+    let namespace = fixture.profile.join("host-v0");
+    fs::rename(
+        namespace.join(format!("install-switch-{}.json", fixture.paths.operation())),
+        namespace.join(format!("install-switch-{}.json", uuid::Uuid::new_v4())),
+    )
+    .unwrap();
+    assert!(fixture.pending(&fixture.paths.active).is_err());
+    assert!(!fixture.paths.active.exists());
+    assert_eq!(suite_digest(fixture.paths.backup()).unwrap(), fixture.old);
 }
 
 #[test]
