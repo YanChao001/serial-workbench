@@ -4,7 +4,7 @@
 
 ## 当前执行与下一步
 
-**M3 契约收尾与 M4 功能并行。** `main@7c24c50` 已合入签名参考场景、有序 SDK 会话钩子、配对图表、设备参数和 Windows 套件恢复。产品自动升级专项与 M3 契约冻结继续验收。 [PR #57](https://github.com/YanChao001/serial-workbench/pull/57) · [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [四目标 CI 的 13 项必跑作业](https://github.com/YanChao001/serial-workbench/actions/runs/45191611700/attempts/2)
+**M3 契约收尾与 M4 功能并行。** `main@85f1190` 已合入签名参考场景、有序 SDK 会话钩子、配对图表、设备参数、Windows 套件恢复及 M4 工作台基础。产品自动升级已通过隔离 Windows 两版本流程，基于当前主线的完整候选继续验收。 [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [PR #59](https://github.com/YanChao001/serial-workbench/pull/59) · [PR #60](https://github.com/YanChao001/serial-workbench/pull/60)
 
 两轮已合入候选均通过本机综合验收、208 项无头 UI 和完整四目标 CI 的 13 项必跑作业。Windows 真实图表保存与两轮 Intel macOS 首轮失败、同源复验均可从各自 CI 追溯。 [PR #55 四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44893314699) · [PR #56 四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44904815981)
 
@@ -21,7 +21,7 @@
 ### 当前候选与 M4 工作树
 
 - PR #58 的 `cf4b4fc` 在隔离 Windows 完成真实 NSIS 0.1.0 到 0.1.1 的换入、Host 代次 1 到 2、同一身份与 profile 恢复，以及摘要拒绝和注册写入中断恢复。这里的注册恢复由隔离验证程序执行。独立产品升级场景首轮完成两版构建后达到任务时限，新的复验分别记录证书准备和真实桌面升级阶段。 [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [两版安装收据](https://github.com/YanChao001/serial-workbench/actions/runs/45194202380/artifacts/14828417740) · [桌面更新复验](https://github.com/YanChao001/serial-workbench/actions/runs/45204372209)
-- `feature/m4-workbench-basics` 集成了混合发送输入、HEX 校验定位、转义与追加校验、带原始偏移的录制导出、多源只读回放、诊断导出、窗口快捷键、插件视图实时切换语言以及 ANSI 终端。浏览器夹具核对跨包控制序列、显式启用后的键盘字节、应用快捷键优先和设备询问边界。`transfer.paste` 复用 Host 独占分片调度，模拟串口验证普通发送顺序、编号回执和取消后的已写入前缀。相关软件项目仍在验收，真实桌面终端交互和物理串口继续实测。
+- M4 工作台基础已随 #59 合入。集成范围包括混合发送、HEX 校验定位、转义与追加校验、带原始偏移的录制导出、多源只读回放、脱敏诊断、快捷键、插件视图语言和 ANSI 终端。精确候选 `bf1563b` 通过四个 Rust 目标、四个平台真实桌面及最终门禁，合入提交 `85f1190` 的文件树与候选一致。模拟串口验证 `transfer.paste` 的独占顺序、编号回执与取消前缀，物理串口和发行包继续按对应专项验收。 [PR #59](https://github.com/YanChao001/serial-workbench/pull/59) · [四目标综合 CI](https://github.com/YanChao001/serial-workbench/actions/runs/45218765368)
 - ANSI 鼠标和链接（TERM-11）在独立工作树接续。无头 Chromium 核对 SGR 和经典鼠标原始字节、选区优先、真实焦点、合成事件拒绝，以及 OSC 8 的原生外链调用夹具、键盘和中键激活与接收缺口清理。待合入候选复验真实桌面外链和设备端交互。
 - 同一独立工作树补齐编码识别依据（TERM-07）。编码单元测试核对 BOM、UTF-8、GB18030 和证据不足。无头 Chromium 以跨包 GBK 数据对照样本数、字节分布得分、手动误选与候选重解码，并复查自动设置和 UTF-16 发送。
 - ANSI 回滚历史（TERM-15）加入窗口偏好、保留范围、淘汰提示与行号跳转。无头 Chromium 以 12,000 行连续 RX 核对首次启用和保存行数上限、首尾与中段跳转、冻结时接收与恢复、缩小缓冲后的淘汰、以及应用切到备用屏幕和返回。真实桌面与物理串口仍待同一候选验收。
