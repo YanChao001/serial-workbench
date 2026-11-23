@@ -35,6 +35,7 @@ const verifier = fixtureValue("VERIFIER");
 const profile = join(fixture, "profile");
 const install = join(fixture, "installed-suite");
 const executable = join(install, "serial-workbench.exe");
+const previousPidFile = join(fixture, "previous-desktop.pid");
 const webview = join(fixture, "webview-data");
 const config = JSON.parse(readFileSync("app.config.json", "utf8"));
 const ignoredSecrets = /^SWB_TEST_UPDATE_/;
@@ -222,6 +223,7 @@ const base = `https://localhost:${server.address().port}`;
 console.log("loopback update server ready");
 
 let owner;
+let previousDesktopPid;
 let first;
 let second;
 let previous;
@@ -247,18 +249,40 @@ try {
   const sentinel = join(profile, "acceptance-sentinel.txt");
   writeFileSync(sentinel, "profile retained", { flag: "wx" });
 
-  owner = spawnOwned(executable, [], {
-    cwd: install,
-    logPath: join(evidence, "old-desktop.log"),
-    env: {
-      ...testEnv,
-      SWB_PROFILE: profile,
-      SWB_LOG_LEVEL: "debug",
-      NO_PROXY: "localhost,127.0.0.1",
-      WEBVIEW2_USER_DATA_FOLDER: webview,
-      WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=0",
+  // A native launcher gives both desktop versions the same inherited Job policy.
+  owner = spawnOwned(
+    "pwsh.exe",
+    [
+      "-NoProfile",
+      "-NonInteractive",
+      "-File",
+      resolve("scripts/ci-windows-update-launch.ps1"),
+      "-Executable",
+      executable,
+      "-PidFile",
+      previousPidFile,
+    ],
+    {
+      cwd: install,
+      logPath: join(evidence, "old-desktop.log"),
+      env: {
+        ...testEnv,
+        SWB_PROFILE: profile,
+        SWB_LOG_LEVEL: "debug",
+        NO_PROXY: "localhost,127.0.0.1",
+        WEBVIEW2_USER_DATA_FOLDER: webview,
+        WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=0",
+      },
     },
-  });
+  );
+  previousDesktopPid = await waitFor(
+    () => {
+      const pid = Number(readFileSync(previousPidFile, "utf8"));
+      return processIds().includes(pid) ? pid : null;
+    },
+    30_000,
+    "the previous desktop from the native launcher",
+  );
   console.log("previous desktop started");
   first = await openDesktop(oldVersion);
   previous = await waitFor(discovery, 30_000, "the old Host identity");
@@ -290,7 +314,7 @@ try {
     "the previous desktop process to exit",
   );
   assert.deepEqual(oldExit, { exitCode: 0, signalCode: null });
-  assert.ok(!processIds().includes(owner.child.pid));
+  assert.ok(!processIds().includes(previousDesktopPid));
   console.log("previous desktop process exited");
   // WebView descendants can retain stdout/stderr handles after the owned process exits.
   await first.browser.close().catch(() => undefined);
@@ -299,7 +323,7 @@ try {
   owner.child.stderr?.destroy();
 
   const newPid = await waitFor(
-    () => processIds().find((pid) => pid !== owner.child.pid),
+    () => processIds().find((pid) => pid !== previousDesktopPid),
     35_000,
     "the automatically relaunched desktop",
   );
@@ -356,7 +380,7 @@ try {
         newVersion,
         originalDesktop,
         candidateDesktop,
-        oldPid: owner.child.pid,
+        oldPid: previousDesktopPid,
         newPid,
         oldHostEpoch: previous.instanceEpoch,
         newHostEpoch: after.instanceEpoch,
@@ -399,7 +423,8 @@ try {
       join(evidence, "process-state.json"),
       JSON.stringify(
         {
-          oldPid: owner?.child.pid,
+          launcherPid: owner?.child.pid,
+          oldPid: previousDesktopPid,
           oldExitCode: owner?.child.exitCode,
           oldSignal: owner?.child.signalCode,
           oldLogClosed: owner?.state.done,
