@@ -266,7 +266,7 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
     /workflow_dispatch:|pnpm test:e2e|contents: write/,
   );
   const nsisStage = runtime.match(
-    /- name: 编译未签名的 NSIS 并在隔离 runner 验证暂存夹具\n[\s\S]*?(?=      - name:)/,
+    /- name: 编译未签名的 NSIS 并在隔离 runner 验证暂存夹具\n[\s\S]*?(?= {6}- name:)/,
   )?.[0];
   assert.ok(nsisStage);
   assert.doesNotMatch(runtime.replace(nsisStage, ""), /pnpm app:build/);
