@@ -1492,11 +1492,6 @@ async fn command_archives_round_trip_through_ipc_and_keep_existing_commands_on_f
 
     let path = f._dir.path().join("library.swb-commands.jsonl");
     let location = register(&path, FilePurpose::CaptureTarget, "workspace.modify");
-    f.grant(
-        "document-a",
-        "content.read",
-        &f.target("file", location.id.as_str()),
-    );
     let export = call(
         &f.first,
         &source,
@@ -1514,6 +1509,10 @@ async fn command_archives_round_trip_through_ipc_and_keep_existing_commands_on_f
         panic!("Expected published archive reference: {archived:?}");
     };
     assert_eq!(archived.state, OperationState::Succeeded);
+    assert!(matches!(
+        f.host.files().open_fixed(&file.result_ref, &control),
+        Err(error) if error.code == "PERMISSION_DENIED"
+    ));
     let content = std::fs::read_to_string(&path).unwrap();
     let records = content
         .lines()
@@ -1547,6 +1546,11 @@ async fn command_archives_round_trip_through_ipc_and_keep_existing_commands_on_f
     assert_eq!(existing_file.error.unwrap().code, "TARGET_EXISTS");
     assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
 
+    f.grant(
+        "document-a",
+        "content.read",
+        &f.target("file", location.id.as_str()),
+    );
     let import = call(
         &f.first,
         &destination,

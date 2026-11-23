@@ -166,6 +166,19 @@ fn authorize_inspection(
             file_read(&input.capture_ref)?;
         }
         "replay.control" | "replay.close" => {} // Current rights on the persisted source were checked above.
+        "workspace.commands.export" => {
+            auth.require(actor, "metadata.read", &operation.target)?;
+            auth.require(actor, "content.read", &operation.target)?;
+            if let Some(ActionResult::Reference(value)) = &operation.result
+                && file_read(&value.result_ref).is_ok()
+            {
+                return Ok(());
+            }
+            // 保存授权可观察自己选择的目的地回执，读取归档仍需独立权限。
+            let input: CommandLibraryFileParams = decode(stored()?)?;
+            files.require_reference(&input.file_ref, actor, "workspace.modify")?;
+            return Ok(());
+        }
         "file.register" => {
             if let Some(ActionResult::FileMetadata(metadata)) = &operation.result {
                 files.require_inspection_reference(&metadata.file_ref, actor, "metadata.read")?;
