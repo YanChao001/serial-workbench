@@ -35,6 +35,8 @@ import type {
   TextEncoding,
 } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
+import { toast } from "sonner";
+import { copyText } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
 import { DEFAULT_ANSI_SCROLLBACK_LINES } from "@/lib/client-settings";
 import { SettingsContext } from "@/providers/settings-context";
@@ -109,6 +111,15 @@ import {
   type SearchDirection,
 } from "./stream-filter";
 import { StreamFilterControls } from "./stream-filter-controls";
+import {
+  StreamLocationPopover,
+  StreamRecordNumbers,
+} from "./stream-location-controls";
+import {
+  findStreamLocation,
+  numberStreamRows,
+  type StreamLocationKind,
+} from "./stream-location";
 import { ReceiveHistoryControls } from "./receive-history-controls";
 import {
   DEFAULT_RECEIVE_HISTORY,
@@ -182,6 +193,12 @@ export function StreamView({
     terminalSettings?.receiveEncoding,
   );
   const [localMode, setMode] = useState<TerminalMode | null>(null);
+  const [showRecordNumbers, setShowRecordNumbers] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [locationTarget, setLocationTarget] = useState<{
+    source: readonly StreamItem[];
+    itemIndex: number;
+  }>();
   const [split, setSplit] = useState(false);
   const [showAnsi, setShowAnsi] = useState(false);
   const [ansiConvertEol, setAnsiConvertEol] = useState(true);
@@ -320,6 +337,7 @@ export function StreamView({
     setMatch(null);
     setSearched(false);
     setMatchVisibility("all");
+    setLocationTarget(undefined);
     setFrozen(null);
     setReviewed(null);
   };
@@ -528,6 +546,61 @@ export function StreamView({
       })
       .filter((row) => replay || row.kind !== "configuration_boundary");
   }, [projected, displayed, mode, receiveCodec, sendCodec, labels, replay]);
+  const locations = useMemo(
+    () =>
+      showRecordNumbers || locationOpen
+        ? numberStreamRows(rows, projected, displayed)
+        : undefined,
+    [showRecordNumbers, locationOpen, rows, projected, displayed],
+  );
+  const locatedItem =
+    locationTarget?.source === displayed ? locationTarget.itemIndex : undefined;
+  function locateRecord(
+    kind: StreamLocationKind,
+    input: string,
+  ): ReturnType<typeof findStreamLocation> {
+    if (!locations) return { kind: "unavailable" };
+    const result = findStreamLocation(locations, kind, input);
+    if (result.kind === "found") {
+      // Clear the display filter so a retained target can be reached.
+      setSearchOpen(false);
+      setFrozen((current) => current ?? displayed);
+      setLocationTarget({ source: displayed, itemIndex: result.row.itemIndex });
+    }
+    return result;
+  }
+  const copyLocation = useCallback(
+    (reference: string) => {
+      void copyText(reference).then(
+        () => toast.success(labels.copyDone),
+        () => toast.error(labels.copyFailed),
+      );
+    },
+    [labels.copyDone, labels.copyFailed],
+  );
+  useLayoutEffect(() => {
+    if (locatedItem === undefined || showAnsi) return;
+    let frame: number;
+    let attempts = 0;
+    let previouslyVisible = false;
+    const center = () => {
+      const row = rowRefs.current.get(locatedItem);
+      const log = viewport.current;
+      if (!row || !log) return;
+      const bounds = row.getBoundingClientRect();
+      const viewportBounds = log.getBoundingClientRect();
+      const visible =
+        bounds.top < viewportBounds.bottom &&
+        bounds.bottom > viewportBounds.top;
+      if (!attempts || !visible) row.scrollIntoView({ block: "center" });
+      else if (previouslyVisible) return;
+      previouslyVisible = visible && attempts > 0;
+      // Reinserted rows using content-visibility can change the height above the target after painting.
+      if (++attempts < 8) frame = requestAnimationFrame(center);
+    };
+    frame = requestAnimationFrame(center);
+    return () => cancelAnimationFrame(frame);
+  }, [locatedItem, locationTarget, searchOpen, showAnsi]);
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
@@ -728,6 +801,7 @@ export function StreamView({
           }}
           tabIndex={-1}
           data-offset={row.offset}
+          data-location-target={row.itemIndex === locatedItem || undefined}
           data-direction={row.kind}
           data-outcome={row.kind === "tx" ? row.receipt?.outcome : undefined}
           data-continuation={row.continuation || undefined}
@@ -803,6 +877,13 @@ export function StreamView({
                 )}
             </div>
           )}
+          {showRecordNumbers && (
+            <StreamRecordNumbers
+              row={locations?.get(row.itemIndex)}
+              labels={labels}
+              onCopy={copyLocation}
+            />
+          )}
           <div
             className="workbench-stream-content"
             data-mode={mode}
@@ -848,6 +929,10 @@ export function StreamView({
       )),
     [
       visibleRows,
+      showRecordNumbers,
+      locations,
+      locatedItem,
+      copyLocation,
       labels,
       replay,
       presentationLabels,
@@ -910,6 +995,17 @@ export function StreamView({
           }}
         />
         <span className="workbench-toolbar-spacer" />
+        <StreamLocationPopover
+          labels={labels}
+          showNumbers={showRecordNumbers}
+          onShowNumbers={setShowRecordNumbers}
+          onOpenChange={(open) => {
+            setLocationOpen(open);
+            if (open) setShowAnsi(false);
+          }}
+          onLocate={locateRecord}
+          onCopy={copyLocation}
+        />
         <WorkbenchIconButton
           ref={searchTrigger}
           label={labels.search}
@@ -1404,6 +1500,7 @@ export function StreamView({
           className="workbench-stream-log app-scroll-region"
           data-surface="transparent"
           data-following={following}
+          data-locating={locatedItem !== undefined || undefined}
           onWheel={(event) => {
             if (event.ctrlKey || event.deltaY === 0) return;
             const element = event.currentTarget;

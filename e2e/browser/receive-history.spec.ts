@@ -46,6 +46,113 @@ function packets(
   });
 }
 
+test("numbers display records and restores an exact copied event through filtering and eviction", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 530 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const source = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (source?.kind !== "source") throw new Error("Missing RX fixture");
+  const gap = {
+    kind: "reader_gap",
+    gap: {
+      hostId: source.event.hostId,
+      instanceEpoch: source.event.instanceEpoch,
+      sessionId: source.event.sessionId,
+      sessionEpoch: source.event.sessionEpoch,
+      reason: "reader_overflow",
+      missingEventRange: { start: "1", end: "10" },
+    },
+  };
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    [gap, ...packets(1, 36)],
+  );
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  await expect(log.locator('[data-direction="rx"]')).toHaveCount(36);
+  const trigger = terminal.getByRole("button", { name: "Record location" });
+  const panel = page.getByRole("dialog", { name: "Record location" });
+  const target = log.locator('[data-location-target="true"]');
+  await expect(log.locator(".workbench-stream-location")).toHaveCount(0);
+  await trigger.click();
+  await panel.getByRole("switch", { name: "Show record numbers" }).click();
+  const jump = async (mode: string, value: string) => {
+    await choose(page, "Locate by", mode);
+    await panel.getByRole("textbox", { name: mode, exact: true }).fill(value);
+    await panel.getByRole("button", { name: "Jump", exact: true }).click();
+  };
+
+  await jump("Packet", "1");
+  await expect(target).toHaveAttribute("data-offset", "0");
+  await expect(target.locator(".workbench-stream-location")).toContainText(
+    "Packet 1",
+  );
+  await expect(target.locator(".workbench-stream-location")).toContainText(
+    "Event 11",
+  );
+  await expect(panel.getByRole("status")).toContainText("Located line 2");
+  await expect(target).toBeInViewport();
+
+  await jump("Event", "32");
+  await expect(target).toHaveAttribute("data-offset", "252");
+  await expect(target).toBeInViewport();
+  await panel.getByRole("button", { name: "Copy event location" }).click();
+  const copied = () =>
+    page.evaluate(() => window.workbenchFixture.copiedLanInfo.at(-1));
+  const expected =
+    "SWB1 " +
+    JSON.stringify([
+      source.event.hostId,
+      source.event.instanceEpoch,
+      source.event.sessionId,
+      source.event.sessionEpoch,
+      "32",
+      "252",
+    ]);
+  await expect.poll(copied).toBe(expected);
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+
+  await terminal.getByRole("button", { name: "Search bytes" }).click();
+  await choose(page, "Direction", "TX");
+  await expect(log.locator('[data-direction="rx"]')).toHaveCount(0);
+  await trigger.click();
+  await jump("Copied location", expected);
+  await expect(target).toHaveAttribute("data-offset", "252");
+  await expect(target).toBeInViewport();
+  await expect(panel.getByRole("status")).toContainText("Event 32");
+  await jump("Line", "2");
+  await expect(target).toHaveAttribute("data-offset", "0");
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+
+  await terminal
+    .getByRole("button", { name: en["workbench.tools.clearView"], exact: true })
+    .click();
+  await expect(log.locator('[data-direction="rx"]')).toHaveCount(0);
+  await trigger.click();
+  await jump("Copied location", expected);
+  await expect(panel.getByRole("status")).toHaveText(
+    "This record is unavailable in the current history.",
+  );
+  await expect(target).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("filters regex matches across receive records and isolates transmit search and view", async ({
   page,
 }) => {
