@@ -1414,10 +1414,13 @@ describe("Serial Workbench 首页", () => {
       </I18nContext>
     );
     const view = render(content(offline));
-    fireEvent.change(
-      await screen.findByRole("textbox", { name: "Send draft" }),
-      { target: { value: "EDITED BEFORE CONNECT" } },
-    );
+    const editor = await screen.findByRole("textbox", { name: "Send draft" });
+    await waitFor(() => {
+      expect(editor).not.toHaveAttribute("readonly");
+      expect(editor).toHaveValue("ORIGINAL");
+    });
+    fireEvent.change(editor, { target: { value: "EDITED BEFORE CONNECT" } });
+    expect(editor).toHaveValue("EDITED BEFORE CONNECT");
     online.state.workspace = {
       ...workspace("default", "Restored bench"),
       document: { revision: "1", value: document },
