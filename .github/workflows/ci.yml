@@ -137,7 +137,8 @@ jobs:
           if-no-files-found: ignore
 
   rust:
-    if: ${{ !inputs.native_preflight && !inputs.runtime_preflight }}
+    needs: linux-node-backend
+    if: ${{ !cancelled() && !inputs.native_preflight && !inputs.runtime_preflight }}
     name: Rust 校验（${{ matrix.platform }}）
     runs-on: ${{ matrix.platform }}
     timeout-minutes: 60
@@ -239,16 +240,23 @@ jobs:
           if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
           gpgv --version
 
-      - name: 恢复已完整下载的 Ubuntu 固定源码
+      - name: 核对本次 Ubuntu 固定源码产物的 ID
         if: runner.os == 'Linux'
-        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        shell: bash
+        env:
+          SOURCE_ARTIFACT_ID: ${{ needs.linux-node-backend.outputs.source-artifact-id }}
+        run: |
+          if [[ ! "$SOURCE_ARTIFACT_ID" =~ ^[0-9]+$ ]]; then
+            echo "The signed Linux runtime job did not publish a source archive artifact" >&2
+            exit 1
+          fi
+
+      - name: 下载本次验签的 Ubuntu 固定源码
+        if: runner.os == 'Linux'
+        uses: actions/download-artifact@70fc10c6e5e1ce46ad2ea6f2b72d43f7d47b13c3 # v8.0.0
         with:
-          path: |
-            .cache/node-runtime/sources/*/*.tar.xz
-            .cache/node-runtime/sources/*/*.tar.gz
-            .cache/node-runtime/sources/*/*.dsc
-            .cache/node-runtime/sources/*/*.deb
-          key: swb-linux-runtime-sources-${{ hashFiles('resources/runtime/node-release.json', 'resources/runtime/libatomic-jammy.json', 'resources/runtime/SHASUMS256.txt.asc', 'resources/runtime/ubuntu-jammy-InRelease.asc') }}
+          artifact-ids: ${{ needs.linux-node-backend.outputs.source-artifact-id }}
+          path: .cache/node-runtime/sources
 
       - name: 构建未签名原生程序（不打包、不发布）
         run: pnpm app:build --no-bundle --target ${{ matrix.target }} --optimize speed
@@ -384,6 +392,8 @@ jobs:
     name: Linux x64 签名插件后台
     runs-on: ubuntu-22.04
     timeout-minutes: 60
+    outputs:
+      source-artifact-id: ${{ steps.linux-source-artifact.outputs.artifact-id }}
     env:
       CARGO_PROFILE_DEV_DEBUG: "0"
       CARGO_PROFILE_TEST_DEBUG: "0"
@@ -412,6 +422,20 @@ jobs:
           key: swb-linux-runtime-sources-${{ hashFiles('resources/runtime/node-release.json', 'resources/runtime/libatomic-jammy.json', 'resources/runtime/SHASUMS256.txt.asc', 'resources/runtime/ubuntu-jammy-InRelease.asc') }}
       - name: 验签并准备固定原生运行时
         run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 交付本次验签的 Ubuntu 固定源码
+        id: linux-source-artifact
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
+        with:
+          name: linux-runtime-sources-${{ github.run_attempt }}
+          path: |
+            .cache/node-runtime/sources/*/*.tar.xz
+            .cache/node-runtime/sources/*/*.tar.gz
+            .cache/node-runtime/sources/*/*.dsc
+            .cache/node-runtime/sources/*/*.deb
+          compression-level: 0
+          include-hidden-files: true
+          if-no-files-found: error
+          retention-days: 7
       - name: 保存验签通过的 Ubuntu 固定源码
         if: steps.linux-runtime-sources.outputs.cache-hit != 'true'
         uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
