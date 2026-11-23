@@ -75,13 +75,25 @@ import {
   type StreamMatch,
 } from "./stream-model";
 import {
-  presentHexLines,
   presentStreamTimes,
   terminalTypographyStyle,
   compactStreamTime,
   workbenchStatus,
   type StreamPresentationLabels,
 } from "./stream-presentation";
+import {
+  defaultHexFormat,
+  formatStreamHex,
+  hexByteCount,
+  HEX_COLUMNS,
+  HEX_GROUPS,
+  type HexFormat,
+} from "./stream-hex";
+import {
+  readStreamHexSelection,
+  restoreStreamHexSelection,
+  type StreamHexSelection,
+} from "./stream-hex-selection";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { formatByteSize } from "./metric-format";
 import { requestStreamSearch } from "./stream-search-client";
@@ -98,7 +110,6 @@ function atStreamEnd(element: HTMLElement) {
 }
 
 const AnsiScreen = lazy(() => import("./ansi-screen"));
-const HEX_COLUMNS = ["0", "8", "16", "32", "64"] as const;
 
 export type StreamViewProps = {
   keyboard?: AnsiKeyboardTarget;
@@ -164,8 +175,20 @@ export function StreamView({
   const [ansiConvertEol, setAnsiConvertEol] = useState(true);
   const [wrapReceiveText, setWrapReceiveText] = useState(true);
   const [showTransmitEcho, setShowTransmitEcho] = useState(true);
-  const [hexColumns, setHexColumns] =
-    useState<(typeof HEX_COLUMNS)[number]>("0");
+  const [hexFormat, setHexFormat] = useState(defaultHexFormat);
+  const previousHexSelection = useRef<StreamHexSelection | undefined>(
+    undefined,
+  );
+  const changedHexFormat = useRef(false);
+  function updateHexFormat(patch: Partial<HexFormat>) {
+    changedHexFormat.current = true;
+    setHexFormat((current) => {
+      const next = { ...current, ...patch };
+      if ((next.offsets || next.ascii) && next.columns === "0")
+        next.columns = "16";
+      return next;
+    });
+  }
   const mode = split
     ? "split"
     : (controlledMode ??
@@ -351,6 +374,7 @@ export function StreamView({
           kind: "rx",
           text: decoder.decode(bytes, { stream: true }),
           hex: mode === "text" ? undefined : formatHex(bytes),
+          hexSource: JSON.stringify([source, event.eventSeq]),
           offset: event.payload.byteStart,
           byteEnd: event.payload.byteEnd,
           source: JSON.stringify([
@@ -377,6 +401,7 @@ export function StreamView({
           kind: "tx",
           text: txDecoder.decode(bytes, { stream: true }),
           hex: mode === "text" ? undefined : formatHex(bytes),
+          hexSource: JSON.stringify([source, event.eventSeq]),
           offset: event.payload.byteStart,
           byteEnd: event.payload.byteEnd,
           receipt: event.kind === "tx" ? event.payload : undefined,
@@ -718,10 +743,14 @@ export function StreamView({
                 {mode !== "text" && (
                   <span
                     className="workbench-payload"
-                    data-hex-grouped={hexColumns !== "0" || undefined}
-                    tabIndex={hexColumns !== "0" ? 0 : undefined}
+                    dir="ltr"
+                    data-hex-source={row.hexSource}
+                    data-hex-byte-start={row.offset}
+                    data-hex-byte-count={hexByteCount(row.hex ?? "")}
+                    data-hex-grouped={hexFormat.columns !== "0" || undefined}
+                    tabIndex={hexFormat.columns !== "0" ? 0 : undefined}
                   >
-                    {presentHexLines(row.hex ?? "", Number(hexColumns))}
+                    {formatStreamHex(row.hex ?? "", row.offset!, hexFormat)}
                   </span>
                 )}
               </>
@@ -742,7 +771,7 @@ export function StreamView({
       terminalSettings,
       wrapReceiveText,
       showTransmitEcho,
-      hexColumns,
+      hexFormat,
     ],
   );
   return (
@@ -837,15 +866,41 @@ export function StreamView({
             <FileText aria-hidden="true" />
           </WorkbenchIconButton>
         )}
-        <Popover>
+        <Popover
+          onOpenChange={(open) => {
+            if (!open) return;
+            changedHexFormat.current = false;
+            previousHexSelection.current =
+              readStreamHexSelection(viewport.current, hexFormat) ??
+              previousHexSelection.current;
+          }}
+        >
           <PopoverTrigger asChild>
             <WorkbenchIconButton
               label={displayLabels?.displayOptions ?? labels.encodingHelp}
+              onPointerDownCapture={() => {
+                previousHexSelection.current = readStreamHexSelection(
+                  viewport.current,
+                  hexFormat,
+                );
+              }}
             >
               <Settings2 aria-hidden="true" />
             </WorkbenchIconButton>
           </PopoverTrigger>
-          <PopoverContent align="end" className="workbench-display-options">
+          <PopoverContent
+            align="end"
+            className="workbench-display-options"
+            aria-label={displayLabels?.displayOptions ?? labels.encodingHelp}
+            onCloseAutoFocus={() => {
+              const saved = previousHexSelection.current;
+              previousHexSelection.current = undefined;
+              if (saved && changedHexFormat.current)
+                queueMicrotask(() =>
+                  restoreStreamHexSelection(viewport.current, saved, hexFormat),
+                );
+            }}
+          >
             <PopoverTitle>
               {displayLabels?.displayOptions ?? labels.encodingHelp}
             </PopoverTitle>
@@ -901,12 +956,12 @@ export function StreamView({
             <label className="flex flex-wrap items-center justify-between gap-2 text-sm">
               {labels.hexColumns}
               <Select
-                value={hexColumns}
+                value={hexFormat.columns}
                 onValueChange={(value) => {
                   const columns = HEX_COLUMNS.find(
                     (option) => option === value,
                   );
-                  if (columns) setHexColumns(columns);
+                  if (columns) updateHexFormat({ columns });
                 }}
               >
                 <SelectTrigger size="sm" aria-label={labels.hexColumns}>
@@ -914,13 +969,70 @@ export function StreamView({
                 </SelectTrigger>
                 <SelectContent>
                   {HEX_COLUMNS.map((columns) => (
-                    <SelectItem key={columns} value={columns}>
+                    <SelectItem
+                      key={columns}
+                      value={columns}
+                      disabled={
+                        columns === "0" &&
+                        (hexFormat.offsets || hexFormat.ascii)
+                      }
+                    >
                       {columns === "0" ? labels.automaticColumns : columns}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </label>
+            {mode !== "text" && (
+              <>
+                <label className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  {labels.hexGroup}
+                  <Select
+                    value={hexFormat.group}
+                    onValueChange={(value) => {
+                      const group = HEX_GROUPS.find(
+                        (option) => option === value,
+                      );
+                      if (group) updateHexFormat({ group });
+                    }}
+                  >
+                    <SelectTrigger size="sm" aria-label={labels.hexGroup}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HEX_GROUPS.map((group) => (
+                        <SelectItem key={group} value={group}>
+                          {group}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {labels.hexLowerCase}
+                  <Switch
+                    checked={hexFormat.lowerCase}
+                    onCheckedChange={(lowerCase) =>
+                      updateHexFormat({ lowerCase })
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {labels.hexAddresses}
+                  <Switch
+                    checked={hexFormat.offsets}
+                    onCheckedChange={(offsets) => updateHexFormat({ offsets })}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {labels.hexAscii}
+                  <Switch
+                    checked={hexFormat.ascii}
+                    onCheckedChange={(ascii) => updateHexFormat({ ascii })}
+                  />
+                </label>
+              </>
+            )}
             {presentationLabels && (
               <fieldset className="workbench-choice">
                 <legend className="sr-only">

@@ -446,6 +446,9 @@
   white-space: pre;
   overflow-wrap: normal;
 }
+.workbench-payload[data-hex-source] {
+  font-variant-ligatures: none;
+}
 .workbench-stream-row:focus {
   outline: 1px solid var(--ring);
   outline-offset: -1px;
@@ -473,6 +476,10 @@
 .workbench-display-options {
   display: grid;
   gap: 0.75rem;
+  max-block-size: var(--radix-popover-content-available-height);
+  max-inline-size: var(--radix-popover-content-available-width);
+  overflow-y: auto;
+  overscroll-behavior: contain;
 }
 .workbench-history-options {
   display: grid;

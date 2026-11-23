@@ -46,6 +46,115 @@ function packets(
   });
 }
 
+test("HEX formatting restores a cross-line byte selection across case, grouping and ASCII changes", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 720, height: 460 });
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+
+  const source = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (source?.kind !== "source") throw new Error("Missing RX fixture");
+  const offset = "9007199254741018";
+  const bytes = Buffer.from("415a207e00ff0a6132427f21", "hex");
+  await page.evaluate((item) => window.workbenchFixture.emitRaw([item]), {
+    kind: "source",
+    event: {
+      ...source.event,
+      payload: {
+        byteStart: offset,
+        byteEnd: (BigInt(offset) + BigInt(bytes.length)).toString(),
+        bytesBase64: bytes.toString("base64"),
+      },
+    },
+  });
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  const payload = terminal
+    .getByRole("log")
+    .locator('[data-offset="' + offset + '"] [data-hex-source]');
+  await expect(payload).toHaveText("41 5A 20 7E 00 FF 0A 61 32 42 7F 21");
+  const select = async (start: number, end: number) =>
+    payload.evaluate(
+      (element, range) => {
+        if (!element.firstChild) throw new Error("Missing HEX text node");
+        element.ownerDocument
+          .getSelection()
+          ?.setBaseAndExtent(
+            element.firstChild,
+            range.start,
+            element.firstChild,
+            range.end,
+          );
+      },
+      { start, end },
+    );
+  const selection = () =>
+    page.evaluate(() => window.getSelection()?.toString());
+
+  await select(18, 26);
+  await expect.poll(selection).toBe("0A 61 32");
+  const options = terminal.getByRole("button", { name: "Display options" });
+  await options.click();
+  const menu = page.getByRole("dialog", { name: "Display options" });
+  await expect(menu).toBeVisible();
+  await expect
+    .poll(() =>
+      menu.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        return (
+          bounds.top >= 0 &&
+          bounds.bottom <= innerHeight &&
+          element.scrollHeight > element.clientHeight
+        );
+      }),
+    )
+    .toBe(true);
+  await choose(page, "HEX bytes per line", "8");
+  await choose(page, "HEX bytes per group", "4");
+  await page.getByRole("switch", { name: "Lowercase HEX" }).click();
+  await page.getByRole("switch", { name: "Show HEX addresses" }).click();
+  const ascii = page.getByRole("switch", { name: "Show ASCII column" });
+  await ascii.click();
+  await ascii.press("Escape");
+  await expect(options).toBeFocused();
+  const displayed =
+    "002000000000001a  415a207e 00ff0a61  AZ ~...a\n0020000000000022  32427f21" +
+    " ".repeat(11) +
+    "2B.!";
+  await expect.poll(() => payload.textContent()).toBe(displayed);
+  await expect.poll(selection).toBe("0a61  AZ ~...a\n0020000000000022  32");
+
+  await select(displayed.lastIndexOf("2B.!") + 1, displayed.indexOf("AZ") + 6);
+  await options.click();
+  await ascii.click();
+  await ascii.press("Escape");
+  await expect.poll(selection).toBe("0a61\n0020000000000022  32");
+  await expect
+    .poll(() =>
+      page.evaluate(() => {
+        const selected = window.getSelection();
+        return Boolean(
+          selected && selected.anchorOffset > selected.focusOffset,
+        );
+      }),
+    )
+    .toBe(true);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("receive text and HEX line layout preserve the raw bytes and their offset", async ({
   page,
 }) => {

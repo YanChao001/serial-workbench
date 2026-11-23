@@ -86,16 +86,6 @@ export function terminalTypographyStyle(
   };
 }
 
-/** HEX payloads are pairs separated by a single space before display. */
-export function presentHexLines(value: string, columns: number): string {
-  if (!columns || value.length < columns * 3) return value;
-  const width = columns * 3;
-  const lines: string[] = [];
-  for (let start = 0; start < value.length; start += width)
-    lines.push(value.slice(start, start + width - 1));
-  return lines.join("\n");
-}
-
 export type StreamTimePresentation = {
   absolute: string | null;
   absoluteSource: "source" | "received" | null;
