@@ -239,6 +239,17 @@ jobs:
           if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
           gpgv --version
 
+      - name: 恢复已完整下载的 Ubuntu 固定源码
+        if: runner.os == 'Linux'
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/node-runtime/sources/*/*.tar.xz
+            .cache/node-runtime/sources/*/*.tar.gz
+            .cache/node-runtime/sources/*/*.dsc
+            .cache/node-runtime/sources/*/*.deb
+          key: swb-linux-runtime-sources-${{ hashFiles('resources/runtime/node-release.json', 'resources/runtime/libatomic-jammy.json', 'resources/runtime/SHASUMS256.txt.asc', 'resources/runtime/ubuntu-jammy-InRelease.asc') }}
+
       - name: 构建未签名原生程序（不打包、不发布）
         run: pnpm app:build --no-bundle --target ${{ matrix.target }} --optimize speed
 
@@ -389,8 +400,28 @@ jobs:
           workspaces: . -> src-tauri/target
           key: node-backend-${{ env.RUNTIME_TARGET }}
           cache-on-failure: true
+      - name: 恢复已完整下载的 Ubuntu 固定源码
+        id: linux-runtime-sources
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/node-runtime/sources/*/*.tar.xz
+            .cache/node-runtime/sources/*/*.tar.gz
+            .cache/node-runtime/sources/*/*.dsc
+            .cache/node-runtime/sources/*/*.deb
+          key: swb-linux-runtime-sources-${{ hashFiles('resources/runtime/node-release.json', 'resources/runtime/libatomic-jammy.json', 'resources/runtime/SHASUMS256.txt.asc', 'resources/runtime/ubuntu-jammy-InRelease.asc') }}
       - name: 验签并准备固定原生运行时
         run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 保存验签通过的 Ubuntu 固定源码
+        if: steps.linux-runtime-sources.outputs.cache-hit != 'true'
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            .cache/node-runtime/sources/*/*.tar.xz
+            .cache/node-runtime/sources/*/*.tar.gz
+            .cache/node-runtime/sources/*/*.dsc
+            .cache/node-runtime/sources/*/*.deb
+          key: ${{ steps.linux-runtime-sources.outputs.cache-primary-key }}
       - name: 验证签名插件后台
         shell: bash
         run: |
