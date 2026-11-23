@@ -88,3 +88,33 @@ it("keeps both draft snapshots when an identity transform fails before publicati
   store.discard();
   expect(store.snapshot()).toEqual({ legacy: "OLD" });
 });
+
+it("claims a prepared command with its options and drops stale options when the draft is replaced", () => {
+  const store = createDraftStore({ unrelated: "keep" });
+  const views: Array<{ body: string; ending?: string }> = [];
+  store.subscribe(() =>
+    views.push({
+      body: store.get("scope:live"),
+      ending: store.getCommand("scope:live")?.lineEnding?.kind,
+    }),
+  );
+  store.useCommand("unconnected", {
+    summary: { id: "cmd", groupId: "group", name: "Run", note: "" },
+    body: "41",
+    mode: "hex",
+    encoding: "utf-8",
+    lineEnding: { kind: "crlf" },
+  });
+  store.claimUnconnected("scope:live");
+  expect(views).toEqual([
+    { body: "", ending: undefined },
+    { body: "41", ending: "crlf" },
+  ]);
+  expect(store.getCommand("unconnected")).toBeUndefined();
+  expect(store.getCommand("unrelated")).toBeUndefined();
+  store.change("scope:live", "42");
+  expect(store.getCommand("scope:live")?.mode).toBe("hex");
+  store.update({ unrelated: "keep", "scope:live": "43" });
+  expect(store.getCommand("scope:live")).toBeUndefined();
+  expect(store.get("scope:live")).toBe("43");
+});

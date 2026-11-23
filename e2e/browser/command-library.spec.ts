@@ -16,6 +16,13 @@ const title = "Command library";
 async function mockLibrary(page: Page, holdFirstOpen = false) {
   await seedWorkbenchFixture(page, {
     language: "en",
+    sharedSettings: {
+      terminal: {
+        receiveMode: "text",
+        sendMode: "text",
+        lineEnding: { kind: "lf" },
+      },
+    },
     captureTails: {
       results: {},
       workspaces: { other: { ...defaults.workspace, name: "Bench B" } },
@@ -25,8 +32,21 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
   const entry = page.getByRole("button", { name: title, exact: true });
   await expect(entry).toBeVisible();
   await page.evaluate(
-    ({ base, holdFirstOpen }) => {
-      const native = window.__TAURI_INTERNALS__;
+    ({ receiptJson, holdFirstOpen }) => {
+      const base = JSON.parse(
+        receiptJson,
+      ) as import("@serial-workbench/contracts").Operation;
+      const native = (
+        window as typeof window & {
+          __TAURI_INTERNALS__?: {
+            invoke(
+              command: string,
+              args?: Record<string, unknown>,
+            ): Promise<unknown>;
+          };
+        }
+      ).__TAURI_INTERNALS__;
+      if (!native) throw new Error("Missing native fixture");
       const previous = native.invoke.bind(native);
       const groups = new Map<string, CommandGroup[]>([
         [
@@ -47,15 +67,31 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
             name: "Command " + index,
             note: "",
           },
-          body: "AT",
-          mode: "text",
-          encoding: "utf-8",
+          body:
+            index === 0
+              ? "S=${slot}/$${raw}/${slot}/${optional}"
+              : index === 1
+                ? "41 ${byte}"
+                : index === 2
+                  ? "41 42"
+                  : "AT",
+          mode: index === 1 || index === 2 ? "hex" : "text",
+          encoding: index === 0 ? "utf-16le" : "utf-8",
+          lineEnding:
+            index === 0
+              ? { kind: "crlf" }
+              : index === 1
+                ? { kind: "none" }
+                : index === 2
+                  ? { kind: "custom", bytesBase64: "AP8=" }
+                  : undefined,
         }),
       );
       let revision = 0;
       let allowedToSettle = false;
       let pending:
-        { change: CommandLibraryChange; workspace: string } | undefined;
+        | { id: string; change: CommandLibraryChange; workspace: string }
+        | undefined;
       let hold = holdFirstOpen;
       window.addEventListener("allow-library-save", () => {
         allowedToSettle = true;
@@ -95,9 +131,12 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
       }
       function acknowledge() {
         if (!pending) throw new Error("Unexpected operation poll");
-        const { change, workspace } = pending;
+        const { id, change, workspace } = pending;
         const receipt = {
           ...base,
+          operationId: id,
+          requestId: id,
+          rootOperationId: id,
           actionId: "workspace.commands.change",
           target: {
             kind: "workspace",
@@ -113,7 +152,9 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           const source = commands.findIndex(
             ({ summary }) => summary.id === change.id,
           );
-          const [item] = commands.splice(source, 1);
+          const item = commands[source];
+          if (!item) throw new Error("Missing command to move");
+          commands.splice(source, 1);
           const destination = commands.findIndex(
             ({ summary }) => summary.id === change.before,
           );
@@ -161,7 +202,11 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           if (intent.kind === "commandLibraryChange") {
             if (String(revision) !== intent.expectedRevision)
               throw { code: "REVISION_CONFLICT" };
-            pending = { change: intent.params, workspace: intent.workspaceId };
+            pending = {
+              id: crypto.randomUUID(),
+              change: intent.params,
+              workspace: intent.workspaceId,
+            };
             allowedToSettle = false;
             return acknowledge();
           }
@@ -172,7 +217,7 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
             window.workbenchFixture.queryInputs.push(query);
             const result = read(
               query.target.id,
-              query.params as CommandLibraryReadParams,
+              query.params as unknown as CommandLibraryReadParams,
             );
             return {
               ok: true,
@@ -181,8 +226,10 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
           }
           if (
             query?.actionId === "operation.get" &&
-            query.params.operationId === base.operationId
-          )
+            pending &&
+            query.params.operationId === pending.id
+          ) {
+            window.workbenchFixture.queryInputs.push(query);
             return {
               ok: true,
               result: {
@@ -190,17 +237,18 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
                 value: { operation: acknowledge() },
               },
             };
+          }
         }
         return previous(command, args);
       }) as typeof native.invoke;
     },
     {
-      base: {
+      receiptJson: JSON.stringify({
         ...operation(crypto.randomUUID()),
         executionHostId: "workbench-gui-host",
         actorId: "workbench-gui-actor",
         owner: { kind: "host", id: "workbench-gui-host" },
-      },
+      }),
       holdFirstOpen,
     },
   );
@@ -208,7 +256,19 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
   return { entry, dialog };
 }
 
-async function letSaveFinish(page: Page) {
+async function letSaveFinish(page: Page, operations: number) {
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          new Set(
+            window.workbenchFixture.queryInputs
+              .filter(({ actionId }) => actionId === "operation.get")
+              .map(({ params }) => params.operationId),
+          ).size,
+      ),
+    )
+    .toBe(operations);
   await page.evaluate(() =>
     window.dispatchEvent(new Event("allow-library-save")),
   );
@@ -246,7 +306,7 @@ test("command library reads one page at a time, moves across pages and waits for
   await expect(
     dialog.getByRole("status").filter({ hasText: "Loading" }),
   ).toBeVisible();
-  await letSaveFinish(page);
+  await letSaveFinish(page, 1);
   await expect(
     dialog.getByText("Command library saved", { exact: true }),
   ).toBeVisible();
@@ -275,7 +335,7 @@ test("command library reads one page at a time, moves across pages and waits for
   await expect(
     dialog.getByRole("textbox", { name: "Name", exact: true }),
   ).toHaveValue("Recovery");
-  await letSaveFinish(page);
+  await letSaveFinish(page, 2);
   await expect(
     dialog.getByRole("button", { name: "Recovery", exact: true }),
   ).toBeVisible();
@@ -313,4 +373,147 @@ test("a late opening result cannot populate the command library in another works
   await expect(
     dialog.getByRole("button", { name: "Modem", exact: true }),
   ).toHaveCount(0);
+});
+
+test("predefined commands expand variables before send and preserve the selected ending through connection", async ({
+  page,
+}) => {
+  const { entry, dialog } = await mockLibrary(page);
+  const sender = page.getByRole("region", { name: "Send", exact: true });
+  const draft = sender.getByRole("textbox", {
+    name: "Send draft",
+    exact: true,
+  });
+  const tx = sender.getByRole("button", { name: "Send", exact: true });
+  const count = sender.getByRole("note", { name: "Bytes to send" });
+  await draft.fill("previous draft");
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 0", exact: true }).click();
+  const use = dialog.getByRole("button", {
+    name: "Use as send draft",
+    exact: true,
+  });
+  await expect(use).toBeDisabled();
+  await dialog
+    .getByRole("textbox", { name: "Variable slot", exact: true })
+    .fill("中");
+  await expect(use).toBeDisabled();
+  await dialog
+    .getByRole("button", { name: "Set variable optional to an empty value" })
+    .click();
+  await use.click();
+  await expect(dialog).toBeHidden();
+  const expanded = "S=中/${raw}/中/";
+  await expect(draft).toHaveValue(expanded);
+  await expect(
+    sender.getByText("Command line ending CRLF", { exact: true }),
+  ).toBeVisible();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await expect(
+    page.getByRole("button", { name: "Close session", exact: true }),
+  ).toBeEnabled();
+  await expect(draft).toHaveValue(expanded);
+  const restore = sender.getByRole("button", {
+    name: "Restore send line ending (LF)",
+    exact: true,
+  });
+  await expect(restore).toBeVisible();
+
+  await sender
+    .getByRole("button", { name: "Send checksum", exact: true })
+    .click();
+  const setup = page.getByRole("dialog", {
+    name: "Send checksum",
+    exact: true,
+  });
+  await setup.getByRole("combobox", { name: "Algorithm", exact: true }).click();
+  await page.getByRole("option", { name: "Sum-8", exact: true }).click();
+  await setup
+    .getByRole("checkbox", { name: "Include line ending in calculation" })
+    .check();
+  const encoded = Buffer.from(expanded + "\r\n", "utf16le");
+  const sum = encoded.reduce((value, byte) => (value + byte) % 256, 0);
+  await expect(setup.getByLabel("Bytes to append", { exact: true })).toHaveText(
+    sum.toString(16).padStart(2, "0").toUpperCase(),
+  );
+  await setup
+    .getByRole("checkbox", { name: "Include line ending in calculation" })
+    .press("Escape");
+  await expect(setup).toBeHidden();
+  const expected = Buffer.concat([encoded, Buffer.from([sum])]);
+  await expect(count).toHaveText(expected.length + " B");
+  await tx.click();
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.sentBytes))
+    .toEqual([expected.toString("base64")]);
+
+  await restore.click();
+  await expect(
+    sender.getByText("Command line ending CRLF", { exact: true }),
+  ).toHaveCount(0);
+  await expect(
+    sender.getByRole("combobox", { name: "Line ending", exact: true }),
+  ).toHaveText("LF");
+  await expect(count).toHaveText(expected.length - 2 + " B");
+
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 1", exact: true }).click();
+  await dialog
+    .getByRole("textbox", { name: "Variable byte", exact: true })
+    .fill("G0");
+  await use.click();
+  await expect(draft).toHaveValue("41 G0");
+  await expect(
+    sender.getByText("Command line ending No suffix", { exact: true }),
+  ).toBeVisible();
+  await expect(tx).toBeDisabled();
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    expected.toString("base64"),
+  ]);
+
+  const endings = sender.getByRole("combobox", {
+    name: "Line ending",
+    exact: true,
+  });
+  const configureEnding = sender.getByRole("button", {
+    name: "Custom line ending",
+    exact: true,
+  });
+  const endingDialog = page.getByRole("dialog", {
+    name: "Custom line ending",
+    exact: true,
+  });
+  const suffix = endingDialog.getByRole("textbox", {
+    name: "Custom line ending (HEX)",
+    exact: true,
+  });
+  await endings.click();
+  await page
+    .getByRole("option", { name: "Custom line ending", exact: true })
+    .click();
+  await configureEnding.click();
+  await suffix.fill("21");
+  await suffix.press("Escape");
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  await use.click();
+  await expect(draft).toHaveValue("41 42");
+  await configureEnding.click();
+  await expect(suffix).toHaveValue("00 FF");
+  await suffix.press("Escape");
+  await expect(count).toHaveText("5 B");
+  await tx.click();
+  const custom = Buffer.from([0x41, 0x42, 0x00, 0xff, 0x82]);
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.sentBytes))
+    .toEqual([expected.toString("base64"), custom.toString("base64")]);
 });

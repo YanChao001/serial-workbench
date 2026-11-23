@@ -1,4 +1,18 @@
+import type {
+  CommandDraft,
+  LineEnding,
+  TerminalMode,
+  TextEncoding,
+} from "@serial-workbench/contracts";
+
 type Drafts = Readonly<Record<string, string>>;
+
+type DraftCommand = {
+  application: symbol;
+  mode: TerminalMode;
+  encoding: TextEncoding;
+  lineEnding?: LineEnding;
+};
 type DraftUpdate = Drafts | ((current: Drafts) => Drafts);
 
 function sameDrafts(left: Drafts, right: Drafts) {
@@ -14,15 +28,23 @@ export function createDraftStore(initial: Drafts) {
   let current: Drafts = { ...initial };
   let saved: Drafts = current;
   let dirty = false;
+  const commands = new Map<string, DraftCommand>();
   const listeners = new Set<() => void>();
   const publish = () => {
     dirty = !sameDrafts(current, saved);
     for (const listener of listeners) listener();
   };
+  const replace = (next: Drafts) => {
+    for (const key of commands.keys()) {
+      if (!Object.hasOwn(next, key) || next[key] !== current[key])
+        commands.delete(key);
+    }
+    current = { ...next };
+  };
   const update = (value: DraftUpdate) => {
     const next = typeof value === "function" ? value(current) : value;
     if (sameDrafts(current, next)) return;
-    current = { ...next };
+    replace(next);
     publish();
   };
   const reidentify = (transform: (drafts: Drafts) => Drafts) => {
@@ -32,7 +54,7 @@ export function createDraftStore(initial: Drafts) {
     const currentChanged = !sameDrafts(current, nextCurrent);
     const savedChanged = !sameDrafts(saved, nextSaved);
     if (!currentChanged && !savedChanged) return;
-    if (currentChanged) current = { ...nextCurrent };
+    if (currentChanged) replace(nextCurrent);
     if (savedChanged) saved = { ...nextSaved };
     publish();
   };
@@ -47,14 +69,53 @@ export function createDraftStore(initial: Drafts) {
       };
     },
     restoreSaved: (drafts: Drafts) => {
+      commands.clear();
       current = { ...drafts };
       saved = current;
       publish();
     },
     update,
     reidentify,
-    change: (key: string, value: string) =>
-      update({ ...current, [key]: value }),
+    change: (key: string, value: string) => {
+      if (Object.hasOwn(current, key) && current[key] === value) return;
+      current = { ...current, [key]: value };
+      publish();
+    },
+    getCommand: (key: string) => commands.get(key),
+    useCommand: (key: string, command: CommandDraft) => {
+      commands.set(key, {
+        application: Symbol(),
+        mode: command.mode,
+        encoding: command.encoding,
+        lineEnding: command.lineEnding ?? undefined,
+      });
+      current = { ...current, [key]: command.body };
+      publish();
+    },
+    editCommandOptions: (
+      key: string,
+      patch: Partial<Pick<DraftCommand, "mode" | "encoding" | "lineEnding">>,
+    ) => {
+      const command = commands.get(key);
+      if (!command) return;
+      commands.set(key, { ...command, ...patch });
+      publish();
+    },
+    clear: (key: string) => {
+      commands.delete(key);
+      current = { ...current, [key]: "" };
+      publish();
+    },
+    claimUnconnected: (key: string) => {
+      if (Object.hasOwn(current, key) || !Object.hasOwn(current, "unconnected"))
+        return;
+      const { unconnected, ...rest } = current;
+      const command = commands.get("unconnected");
+      commands.delete("unconnected");
+      if (command) commands.set(key, command);
+      current = { ...rest, [key]: unconnected! };
+      publish();
+    },
     setSaved: (value: DraftUpdate) => {
       const next = typeof value === "function" ? value(saved) : value;
       if (sameDrafts(saved, next)) return;

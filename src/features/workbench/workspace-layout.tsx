@@ -50,10 +50,7 @@ import { WorkbenchConnection } from "./workbench-connection";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
-import {
-  CommandLibraryButton,
-  type CommandLibrarySource,
-} from "./command-library";
+import type { CommandLibrarySource } from "./command-library";
 import { WorkbenchCommands } from "./workbench-commands";
 import { CaptureTailPanel, type CaptureTailReader } from "./capture-tail-panel";
 import { captureTab, workspaceTabs } from "./capture-tabs";
@@ -1054,15 +1051,7 @@ export function WorkspaceLayout({
           },
         }));
       }
-      setDrafts((current) => {
-        if (
-          current[draftKey] !== undefined ||
-          current.unconnected === undefined
-        )
-          return current;
-        const { unconnected, ...rest } = current;
-        return { ...rest, [draftKey]: unconnected };
-      });
+      draftStore.claimUnconnected(draftKey);
       setViews((current) => {
         if (
           current.tabs.some(
@@ -1100,7 +1089,6 @@ export function WorkspaceLayout({
       state.devices,
       state.sessions,
       tabs,
-      setDrafts,
       draftStore,
       draftScopeKey,
     ],
@@ -2237,14 +2225,9 @@ export function WorkspaceLayout({
         }
         key={draftKey}
         draftCaption={isCapture ? labels.unconnectedDraft : undefined}
+        commandLibrary={commandLibrary}
         draftActions={
           <>
-            {commandLibrary && (
-              <CommandLibraryButton
-                key={commandLibrary.scope}
-                {...commandLibrary}
-              />
-            )}
             {isCapture && (
               <>
                 {(hasUnboundDraft ||

@@ -1,4 +1,11 @@
-import { useEffect, useId, useLayoutEffect, useRef, useState } from "react";
+import {
+  useEffect,
+  useId,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import { ListTreeIcon } from "lucide-react";
 import { ContractValidationError } from "@serial-workbench/contracts";
 import type {
@@ -25,6 +32,11 @@ import type { CommandLibraryAccess } from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import { WorkbenchDialog } from "./workbench-dialog";
 import { WorkbenchIconButton } from "./workbench-icon-button";
+import { CLIENT_DRAFT_MAX_BYTES } from "@/lib/client-settings";
+import {
+  expandCommandTemplate,
+  parseCommandTemplate,
+} from "./command-template";
 
 export type CommandLibrarySource = {
   access: CommandLibraryAccess;
@@ -51,7 +63,8 @@ export function CommandLibraryButton({
   access,
   workspaceId,
   scope,
-}: CommandLibrarySource) {
+  onUse,
+}: CommandLibrarySource & { onUse?: (command: CommandDraft) => void }) {
   const { t } = useI18n();
   const [session, setSession] = useState<LibrarySession>();
   const pending = useRef<AbortController | undefined>(undefined);
@@ -92,6 +105,15 @@ export function CommandLibraryButton({
             access={access}
             workspaceId={workspaceId}
             session={session}
+            onUse={
+              onUse
+                ? (command) => {
+                    if (session.controller.signal.aborted) return;
+                    onUse(command);
+                    close();
+                  }
+                : undefined
+            }
           />
         )}
       </WorkbenchDialog>
@@ -160,10 +182,12 @@ function CommandLibraryPanel({
   access,
   workspaceId,
   session,
+  onUse,
 }: {
   access: CommandLibraryAccess;
   workspaceId: string;
   session: LibrarySession;
+  onUse?: (command: CommandDraft) => void;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -770,7 +794,92 @@ function CommandLibraryPanel({
           </div>
         </form>
       )}
+      {editor?.kind === "command" && !editor.isNew && !dirty && onUse && (
+        <CommandTemplateApplication
+          key={editor.value.summary.id}
+          command={editor.value}
+          disabled={busy}
+          onUse={onUse}
+        />
+      )}
     </div>
+  );
+}
+
+function CommandTemplateApplication({
+  command,
+  disabled,
+  onUse,
+}: {
+  command: CommandDraft;
+  disabled: boolean;
+  onUse: (command: CommandDraft) => void;
+}) {
+  const { t } = useI18n();
+  const template = useMemo(
+    () => parseCommandTemplate(command.body),
+    [command.body],
+  );
+  const [values, setValues] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const expanded = useMemo(
+    () => expandCommandTemplate(template.parts, values),
+    [template, values],
+  );
+  function changeValue(name: string, value: string) {
+    setValues((current) => new Map(current).set(name, value));
+  }
+
+  return (
+    <form
+      className="grid gap-2 border-t pt-3"
+      onSubmit={(event) => {
+        event.preventDefault();
+        if (!disabled && expanded.kind === "ready")
+          onUse({ ...command, body: expanded.body });
+      }}
+    >
+      {template.variables.map((name) => (
+        <div key={name} className="flex flex-wrap items-end gap-2">
+          <label className="grid min-w-36 flex-1 gap-1 text-sm">
+            <span className="break-all">
+              {t("commandLibrary.variable", { name })}
+            </span>
+            <Input
+              disabled={disabled}
+              value={values.get(name) ?? ""}
+              maxLength={CLIENT_DRAFT_MAX_BYTES}
+              onChange={(event) => changeValue(name, event.target.value)}
+            />
+          </label>
+          <Button
+            type="button"
+            size="sm"
+            variant="outline"
+            aria-label={t("commandLibrary.emptyVariable", { name })}
+            disabled={disabled || values.get(name) === ""}
+            onClick={() => changeValue(name, "")}
+          >
+            {t("commandLibrary.emptyValue")}
+          </Button>
+        </div>
+      ))}
+      {expanded.kind === "limit" && (
+        <p role="alert" className="text-sm text-destructive">
+          {t("commandLibrary.expandedLimit")}
+        </p>
+      )}
+      <div>
+        <Button
+          type="submit"
+          size="sm"
+          disabled={disabled || expanded.kind !== "ready"}
+        >
+          {t("commandLibrary.applyDraft")}
+        </Button>
+      </div>
+    </form>
   );
 }
 
@@ -837,6 +946,9 @@ function CommandFields({
             onChange({ ...command, body: event.target.value })
           }
         />
+        <span className="text-xs text-muted-foreground">
+          {t("commandLibrary.templateSyntax")}
+        </span>
       </label>
       <div className="grid gap-2 sm:grid-cols-3">
         <label className="grid gap-1 text-sm">

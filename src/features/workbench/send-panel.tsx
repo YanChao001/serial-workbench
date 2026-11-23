@@ -45,6 +45,9 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
+import { Button } from "@/components/ui/button";
+import { useI18n } from "@/providers/i18n";
+import type { DraftStore } from "./draft-store";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
@@ -102,6 +105,9 @@ export type SendPanelProps = {
   draftReadOnly?: boolean;
   draftCaption?: string;
   draftActions?: ReactNode;
+  command?: ReturnType<DraftStore["getCommand"]>;
+  onClearCommandEnding?: () => void;
+  onClearDraft?: () => void;
   onSaveDrafts?: () => void;
   draftsDirty?: boolean;
   mode?: TerminalMode;
@@ -133,11 +139,50 @@ export type SendPanelProps = {
   deviceName?: string;
   disconnectedReason?: string;
 };
+function CommandEndingNotice({
+  ending,
+  inherited,
+  disabled,
+  onRestore,
+}: {
+  ending: LineEnding;
+  inherited: LineEnding;
+  disabled?: boolean;
+  onRestore: () => void;
+}) {
+  const { t } = useI18n();
+  function label(value: LineEnding) {
+    if (value.kind === "none") return t("commandLibrary.noEnding");
+    if (value.kind === "custom") return t("commandLibrary.customEnding");
+    return value.kind.toUpperCase();
+  }
+  return (
+    <div className="flex min-w-0 flex-wrap items-center gap-1 pb-1 text-xs">
+      <span role="status">
+        {t("commandLibrary.activeEnding", { ending: label(ending) })}
+      </span>
+      <Button
+        type="button"
+        size="sm"
+        variant="ghost"
+        className="h-6 px-2 text-xs"
+        disabled={disabled}
+        onClick={onRestore}
+      >
+        {t("commandLibrary.restoreEnding", { ending: label(inherited) })}
+      </Button>
+    </div>
+  );
+}
+
 export function SendPanel({
   readOnly = false,
   draftReadOnly = false,
   draftCaption,
   draftActions,
+  command,
+  onClearCommandEnding,
+  onClearDraft,
   onSaveDrafts,
   draftsDirty = false,
   session,
@@ -185,11 +230,20 @@ export function SendPanel({
     "utf-8";
   const encodingStatus = useTextEncoding(encoding);
   const [localEnding, setEnding] = useState<LineEnding | null>(null);
-  const ending = localEnding ?? terminalSettings?.lineEnding ?? NO_LINE_ENDING;
+  const inheritedEnding =
+    localEnding ?? terminalSettings?.lineEnding ?? NO_LINE_ENDING;
+  const commandEnding = command?.lineEnding;
+  const ending = commandEnding ?? inheritedEnding;
   const [customHex, setCustomHex] = useState<string | null>(null);
   const suffixHex =
-    customHex ??
+    (commandEnding ? null : customHex) ??
     (ending.kind === "custom" ? formatHex(encodeSend("", "text", ending)) : "");
+  const commandApplication = command?.application;
+  useEffect(() => {
+    if (commandApplication === undefined) return;
+    setConversionError(undefined);
+    setEscapeError(undefined);
+  }, [commandApplication]);
   const sessionScope = session
     ? JSON.stringify([session.sessionId, session.sessionEpoch])
     : null;
@@ -552,6 +606,7 @@ export function SendPanel({
           disabled={draftReadOnly}
           value={ending.kind}
           onValueChange={(kind) => {
+            if (commandEnding) onClearCommandEnding?.();
             if (
               kind === "none" ||
               kind === "cr" ||
@@ -600,7 +655,13 @@ export function SendPanel({
                 <Input
                   disabled={draftReadOnly}
                   value={suffixHex}
-                  onChange={(event) => setCustomHex(event.target.value)}
+                  onChange={(event) => {
+                    if (commandEnding) {
+                      onClearCommandEnding?.();
+                      setEnding({ kind: "custom", bytesBase64: "" });
+                    }
+                    setCustomHex(event.target.value);
+                  }}
                   aria-invalid={hexIssue?.field === "ending"}
                   aria-describedby={
                     hexIssue?.field === "ending" ? `${id}-invalid` : undefined
@@ -705,7 +766,8 @@ export function SendPanel({
           onClick={() => {
             setConversionError(undefined);
             setEscapeError(undefined);
-            onDraftChange("");
+            if (onClearDraft) onClearDraft();
+            else onDraftChange("");
             draftInput.current?.focus();
           }}
         >
@@ -722,6 +784,9 @@ export function SendPanel({
       onSendModeChange,
       onEncodingChange,
       ending.kind,
+      commandEnding,
+      onClearCommandEnding,
+      onClearDraft,
       suffixHex,
       presentationLabels,
       hexIssue,
@@ -755,6 +820,14 @@ export function SendPanel({
       data-panel-id="send"
     >
       {toolbar}
+      {commandEnding && onClearCommandEnding && (
+        <CommandEndingNotice
+          ending={commandEnding}
+          inherited={inheritedEnding}
+          disabled={draftReadOnly}
+          onRestore={onClearCommandEnding}
+        />
+      )}
       <span role="status" className="sr-only">
         {receipt
           ? `${labels.receipt}: ${workbenchStatus(receipt.state, labels)}`

@@ -1294,6 +1294,16 @@ export const en = {
   "workbench.tools.recoveryDestinationFile": "Recovery destination",
   "workbench.tools.advanced": "Advanced",
   "commandLibrary.title": "Command library",
+  "commandLibrary.applyDraft": "Use as send draft",
+  "commandLibrary.variable": "Variable {name}",
+  "commandLibrary.emptyVariable": "Set variable {name} to an empty value",
+  "commandLibrary.emptyValue": "Use empty value",
+  "commandLibrary.expandedLimit":
+    "The expanded command exceeds the send draft size limit.",
+  "commandLibrary.templateSyntax":
+    "Use ${name} for a variable and $${name} for literal text.",
+  "commandLibrary.activeEnding": "Command line ending {ending}",
+  "commandLibrary.restoreEnding": "Restore send line ending ({ending})",
   "commandLibrary.groups": "Groups",
   "commandLibrary.commands": "Commands",
   "commandLibrary.addGroup": "New group",
