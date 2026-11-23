@@ -519,6 +519,8 @@ export const zhCN = {
   "workbench.ansiConvertLf": "收到 LF 时回到首列",
   "workbench.ansiKeyboard": "发送键盘输入",
   "workbench.ansiKeyboardExit": "按 Shift+Tab 移出终端焦点",
+  "workbench.ansiLocalEcho": "本地键入回显",
+  "workbench.ansiLocalEchoHint": "本机输入。发送结果见活动。",
   "workbench.ansiMouse": "发送鼠标报告",
   "workbench.ansiSizeReport": "发送 CSI 窗口尺寸",
   "workbench.ansiSizeReportHint": "对端约定接收 CSI 行列报告时启用。",

@@ -154,6 +154,72 @@ test("ANSI reports local window sizes only after explicit session consent", asyn
   await expect(keyboard).not.toBeChecked();
 });
 
+test("ANSI local echo keeps typed input separate from the device and screen export", async ({
+  page,
+}) => {
+  const ansi = await openAnsi(page);
+  const keyboard = ansi.viewer.getByRole("switch", {
+    name: "Send keyboard input",
+  });
+  const localEcho = ansi.viewer.getByRole("switch", {
+    name: "Local keyboard echo",
+  });
+  const transcript = ansi.viewer
+    .getByRole("region", { name: "Local keyboard echo" })
+    .locator("pre");
+  const sent = async () => {
+    const chunks = await page.evaluate(() => window.workbenchFixture.sentBytes);
+    return Buffer.concat(
+      chunks.map((chunk) => Buffer.from(chunk, "base64")),
+    ).toString();
+  };
+  await ansi.feed("READY>");
+  await expect(ansi.rows).toContainText("READY>");
+  await expect(localEcho).toHaveCount(0);
+  await keyboard.click();
+  await ansi.input.press("q");
+  await expect(transcript).toHaveCount(0);
+
+  await localEcho.click();
+  await expect(ansi.input).toBeFocused();
+  await page.keyboard.type("local-echo-X");
+  await ansi.input.press("Backspace");
+  await page.keyboard.type("9");
+  await ansi.input.press("Enter");
+  await page.keyboard.type("private-tail");
+  await expect
+    .poll(() => transcript.textContent())
+    .toBe("local-echo-9\nprivate-tail");
+  await expect.poll(sent).toBe("qlocal-echo-X\x7f9\rprivate-tail");
+  await expect(ansi.rows).not.toContainText("local-echo-9");
+
+  await ansi.feed("\r\nDEVICE: local-echo-9");
+  await expect(ansi.rows).toContainText("DEVICE: local-echo-9");
+  await expect(transcript).not.toContainText("DEVICE");
+  await ansi.viewer
+    .getByRole("button", { name: "Export ANSI screen with colors" })
+    .click();
+  const saved = () =>
+    page.evaluate(
+      () => window.workbenchFixture.savedTextExports.at(-1)?.content,
+    );
+  await expect.poll(saved).toContain("DEVICE: local-echo-9");
+  expect(await saved()).not.toContain("private-tail");
+
+  await localEcho.click();
+  await expect(transcript).toHaveCount(0);
+  await localEcho.click();
+  await expect(transcript).toBeEmpty();
+  await page.keyboard.type("cleared-on-freeze");
+  await expect(transcript).toHaveText("cleared-on-freeze");
+  await page
+    .getByRole("region", { name: "Receive", exact: true })
+    .getByRole("button", { name: "Freeze", exact: true })
+    .click();
+  await expect(transcript).toHaveCount(0);
+  await expect(localEcho).toHaveCount(0);
+});
+
 test("ANSI inserts session shell settings and leaves execution to the terminal Enter key", async ({
   page,
 }) => {

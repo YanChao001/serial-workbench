@@ -296,6 +296,22 @@
   text-decoration: underline;
   overflow-wrap: anywhere;
 }
+.workbench-ansi-local-echo {
+  margin-block-end: 0.5rem;
+  padding-inline-start: 0.5rem;
+  border-inline-start: 2px solid var(--border);
+}
+.workbench-ansi-local-echo p {
+  color: var(--muted-foreground);
+  font: var(--text-xs)/1.4 var(--font-sans);
+}
+.workbench-ansi-local-echo pre {
+  block-size: 3lh;
+  overflow: auto;
+  font: inherit;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
 .workbench-ansi-screen {
   width: 100%;
   height: 100%;

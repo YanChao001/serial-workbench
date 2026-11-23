@@ -236,6 +236,8 @@ export const labels: WorkbenchLabels = {
   ansiScreenBusy: "More terminal output is available in the display",
   ansiConvertLf: "Return to column one on LF",
   ansiKeyboard: "Send keyboard input",
+  ansiLocalEcho: "Local keyboard echo",
+  ansiLocalEchoHint: "Local input. Check Activity for delivery.",
   ansiKeyboardExit: "Shift+Tab moves focus out of the terminal",
   ansiMouse: "Send mouse reports",
   ansiSizeReport: "Send CSI window size",

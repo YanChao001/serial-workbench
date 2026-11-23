@@ -567,6 +567,8 @@ export const en = {
   "workbench.ansiConvertLf": "Return to column one on LF",
   "workbench.ansiKeyboard": "Send keyboard input",
   "workbench.ansiKeyboardExit": "Shift+Tab moves focus out of the terminal",
+  "workbench.ansiLocalEcho": "Local keyboard echo",
+  "workbench.ansiLocalEchoHint": "Local input. Check Activity for delivery.",
   "workbench.ansiMouse": "Send mouse reports",
   "workbench.ansiSizeReport": "Send CSI window size",
   "workbench.ansiSizeReportHint":

@@ -211,6 +211,8 @@ export type WorkbenchLabels = Record<
   | "ansiConvertLf"
   | "ansiKeyboard"
   | "ansiKeyboardExit"
+  | "ansiLocalEcho"
+  | "ansiLocalEchoHint"
   | "ansiMouse"
   | "ansiSizeReport"
   | "ansiSizeReportHint"

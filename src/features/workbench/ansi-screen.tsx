@@ -43,6 +43,7 @@ import { observeAnsiHistory, type AnsiHistorySnapshot } from "./ansi-history";
 import { AnsiHistoryControls } from "./ansi-history-controls";
 import { AnsiSearchControls } from "./ansi-search-controls";
 import { AnsiShellControls } from "./ansi-shell-controls";
+import { appendAnsiLocalEcho } from "./ansi-local-echo";
 import { decodeBytes } from "./stream-model";
 import { terminalTypographyStyle } from "./stream-presentation";
 import { useAnsiPaste } from "./use-ansi-paste";
@@ -177,6 +178,7 @@ export default function AnsiScreen({
 }) {
   const element = useRef<HTMLDivElement>(null);
   const keyboardSwitch = useRef<HTMLButtonElement>(null);
+  const localEchoText = useRef<HTMLPreElement>(null);
   const pasteConfirmation = useRef<HTMLDivElement>(null);
   const active = useRef<Projection | null>(null);
   const savingSnapshot = useRef(false);
@@ -228,6 +230,7 @@ export default function AnsiScreen({
   const [armed, setArmed] = useState<string | null>(null);
   const [mouseArmed, setMouseArmed] = useState<string | null>(null);
   const [sizeArmed, setSizeArmed] = useState<string | null>(null);
+  const [localEcho, setLocalEcho] = useState<string | null>(null);
   const [failure, setFailure] = useState<
     "encoding" | "overflow" | "operation" | null
   >(null);
@@ -237,6 +240,7 @@ export default function AnsiScreen({
       : null;
   const enabled = armed !== null && armed === keyboardScope;
   if (armed !== null && !enabled) setArmed(null);
+  if (!enabled && localEcho !== null) setLocalEcho(null);
   const mouseEnabled = enabled && mouseArmed === keyboardScope;
   if (mouseArmed !== null && !mouseEnabled) setMouseArmed(null);
   const sizeReportEnabled = enabled && sizeArmed === keyboardScope;
@@ -309,7 +313,10 @@ export default function AnsiScreen({
   const receiveKey = useEffectEvent((value: string, event: KeyboardEvent) => {
     if (!writer.current || !event.isTrusted) return;
     try {
-      writer.current.enqueue(encodeAnsiKey(value, event, sendEncoding));
+      if (writer.current.enqueue(encodeAnsiKey(value, event, sendEncoding)))
+        setLocalEcho((text) =>
+          text === null ? null : appendAnsiLocalEcho(text, value),
+        );
     } catch {
       setFailure("encoding");
     }
@@ -381,6 +388,10 @@ export default function AnsiScreen({
   useLayoutEffect(() => {
     if (hasPastePreview) pasteConfirmation.current?.focus();
   }, [hasPastePreview]);
+  useLayoutEffect(() => {
+    const echo = localEchoText.current;
+    if (echo) echo.scrollTop = echo.scrollHeight;
+  }, [localEcho]);
   useLayoutEffect(() => {
     if (!sizeReportEnabled) writer.current?.clearWindowSize();
     if (status !== "ready" || !element.current) {
@@ -534,6 +545,18 @@ export default function AnsiScreen({
               {labels.ansiSizeReport}
             </label>
           )}
+          {enabled && (
+            <label className="flex items-center gap-2">
+              <Switch
+                checked={localEcho !== null}
+                onCheckedChange={(next) => {
+                  setLocalEcho(next ? "" : null);
+                  if (next) active.current?.terminal.focus();
+                }}
+              />
+              {labels.ansiLocalEcho}
+            </label>
+          )}
           {enabled && <span>{labels.ansiKeyboardExit}</span>}
           {failure && (
             <span role="status">
@@ -564,6 +587,15 @@ export default function AnsiScreen({
               <span role="status">{labels.ansiExportColorsFailed}</span>
             )}
         </div>
+        {enabled && localEcho !== null && (
+          <section
+            aria-label={labels.ansiLocalEcho}
+            className="workbench-ansi-local-echo"
+          >
+            <p>{labels.ansiLocalEchoHint}</p>
+            <pre ref={localEchoText}>{localEcho}</pre>
+          </section>
+        )}
         <AnsiHistoryControls
           labels={labels}
           limit={scrollback}
@@ -591,6 +623,9 @@ export default function AnsiScreen({
                 !writer.current?.enqueue(new TextEncoder().encode(command))
               )
                 return false;
+              setLocalEcho((text) =>
+                text === null ? null : appendAnsiLocalEcho(text, command),
+              );
               terminal.focus();
               return true;
             }}

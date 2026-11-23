@@ -502,6 +502,8 @@ export default function Overview({
       ansiConvertLf: t("workbench.ansiConvertLf"),
       ansiKeyboard: t("workbench.ansiKeyboard"),
       ansiKeyboardExit: t("workbench.ansiKeyboardExit"),
+      ansiLocalEcho: t("workbench.ansiLocalEcho"),
+      ansiLocalEchoHint: t("workbench.ansiLocalEchoHint"),
       ansiMouse: t("workbench.ansiMouse"),
       ansiSizeReport: t("workbench.ansiSizeReport"),
       ansiSizeReportHint: t("workbench.ansiSizeReportHint"),
