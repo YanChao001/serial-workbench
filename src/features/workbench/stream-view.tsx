@@ -95,6 +95,8 @@ import {
   restoreStreamHexSelection,
   type StreamHexSelection,
 } from "./stream-hex-selection";
+import { StreamCopyPopover } from "./stream-copy-popover";
+import { readStreamCopySample } from "./stream-copy";
 import { StreamNumberInspector } from "./stream-number-inspector";
 import { streamNumberSample, type StreamNumberSample } from "./stream-number";
 import { TxReceiptFacts } from "./tx-receipt-facts";
@@ -888,6 +890,19 @@ export function StreamView({
           <WorkbenchIconButton label={labels.activity} onClick={onOpenActivity}>
             <FileText aria-hidden="true" />
           </WorkbenchIconButton>
+        )}
+        {!showAnsi && mode !== "text" && (
+          <StreamCopyPopover
+            readSelection={() =>
+              readStreamHexSelection(viewport.current, hexFormat)
+            }
+            readSample={(selection) =>
+              readStreamCopySample(rows, projected, selection)
+            }
+            receiveEncoding={receiveCodec}
+            sendEncoding={sendCodec}
+            labels={labels}
+          />
         )}
         {!showAnsi && mode !== "text" && (
           <Popover

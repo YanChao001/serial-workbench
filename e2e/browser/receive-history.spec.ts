@@ -46,6 +46,125 @@ function packets(
   });
 }
 
+test("copies six formats from one HEX selection with explicit decoding and timestamp source", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const source = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (source?.kind !== "source") throw new Error("Missing RX fixture");
+  const offset = 9_007_199_254_741_021n;
+  const events = [
+    {
+      bytes: "ff41e4",
+      byteStart: offset,
+      byteEnd: offset + 3n,
+      mono: "1000000000",
+      sourceTime: "2026-11-24T01:00:01.001Z",
+      received: "2026-11-24T01:00:02.002Z",
+    },
+    {
+      bytes: "b8ad4200",
+      byteStart: offset + 3n,
+      byteEnd: offset + 7n,
+      mono: "3000000000",
+      sourceTime: undefined,
+      received: "2026-11-24T01:00:03.003Z",
+    },
+  ].map(({ bytes, byteStart, byteEnd, mono, sourceTime, received }, index) => ({
+    kind: "source",
+    event: {
+      ...source.event,
+      eventSeq: String(Number(source.event.eventSeq) + index),
+      time: {
+        ...source.event.time,
+        sourceMonoNs: mono,
+        sourceWallTime: sourceTime,
+        receivedWallTime: received,
+      },
+      payload: {
+        byteStart: byteStart.toString(),
+        byteEnd: byteEnd.toString(),
+        bytesBase64: Buffer.from(bytes, "hex").toString("base64"),
+      },
+    },
+  }));
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    events,
+  );
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  const trigger = terminal.getByRole("button", { name: "Copy byte selection" });
+  const panel = page.getByRole("dialog", { name: "Copy byte selection" });
+  await trigger.click();
+  await expect(panel).toContainText("Up to 64 KiB");
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+
+  const hex = terminal.getByRole("log").locator("[data-hex-source]");
+  await expect(hex).toHaveCount(2);
+  await hex.evaluateAll(([first, last]) => {
+    const start = first?.firstChild;
+    const end = last?.firstChild;
+    if (!start || !end) throw new Error("Missing HEX payload");
+    document.getSelection()?.setBaseAndExtent(start, 3, end, 8);
+  });
+  await trigger.click();
+  await expect(panel).toContainText("RX · 5 B");
+  const copy = async (expected: string) => {
+    await panel.getByRole("button", { name: "Copy", exact: true }).click();
+    await expect(panel.getByRole("status")).toHaveText("Copied to clipboard");
+    await expect
+      .poll(() =>
+        page.evaluate(() => window.workbenchFixture.copiedLanInfo.at(-1)),
+      )
+      .toBe(expected);
+  };
+  await choose(page, "Decoding", "UTF-8");
+  await copy("A中B");
+  await choose(page, "Decoding", "Latin-1");
+  await copy("A\u00E4\u00B8\u00ADB");
+  await choose(page, "Decoding", "UTF-8");
+  await choose(page, "Copy format", "HEX");
+  await copy("41 E4 B8 AD 42");
+  await choose(page, "Copy format", "Base64");
+  await copy("QeS4rUI=");
+  await choose(page, "Copy format", "Python bytes");
+  await copy('b"\\x41\\xE4\\xB8\\xAD\\x42"');
+  await choose(page, "Copy format", "C array");
+  await copy(
+    "const unsigned char data[] = {\n  0x41, 0xE4, 0xB8, 0xAD, 0x42,\n};",
+  );
+
+  await choose(page, "Copy format", "Text with timestamps");
+  const rest =
+    "\tRX\t" +
+    (offset + 1n).toString() +
+    '\t"A"\n' +
+    "2026-11-24T01:00:03.003Z\tRX\t" +
+    (offset + 3n).toString() +
+    '\t"中B"';
+  await copy("2026-11-24T01:00:01.001Z" + rest);
+  await choose(page, "Timestamp", "Received time");
+  await copy("2026-11-24T01:00:02.002Z" + rest);
+  await page.keyboard.press("Escape");
+  await expect(trigger).toBeFocused();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("HEX numeric inspector interprets selected raw bytes with explicit width and byte order", async ({
   page,
 }) => {
