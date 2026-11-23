@@ -1632,6 +1632,8 @@ impl DesktopHostBridge {
         if let Some(attachment) = reuse {
             return Ok(attachment);
         }
+        let pid = std::process::id();
+        log::debug!("Native Host attachment phase=connect pid={pid} lan={is_lan}");
         let connect = async {
             if let Some(route) = &route
                 && authorize_desktop
@@ -1659,13 +1661,16 @@ impl DesktopHostBridge {
             } else {
                 None
             };
+            log::debug!("Native Host attachment phase=credential pid={pid} fresh={fresh}");
             let credential = serial_workbench_client::read_user_control_credential(&self.profile)?;
             let mut control_options = options.clone();
             control_options.user_control_credential = Some(credential);
+            log::debug!("Native Host attachment phase=control pid={pid}");
             let control = std::sync::Arc::new(
                 serial_workbench_client::HostClient::connect_or_start(control_options).await?,
             );
             options.lan_route.clone_from(&route);
+            log::debug!("Native Host attachment phase=client pid={pid}");
             let client = match (prestarted, &route) {
                 (Some(client), None) => client,
                 _ => std::sync::Arc::new(
@@ -1691,9 +1696,19 @@ impl DesktopHostBridge {
             Ok::<_, HostError>((client, control))
         };
         let (client, control) = tokio::select! {
-            result = connect => result?,
+            result = connect => result.inspect_err(|error| {
+                let code = match error.code.as_str() {
+                    "ACTOR_MISMATCH" | "EPOCH_MISMATCH" | "HOST_BUSY" | "HOST_ID_MISMATCH"
+                    | "HOST_START_FAILED" | "INVALID_ARGUMENT" | "PERMISSION_DENIED"
+                    | "STORAGE_UNAVAILABLE" | "UNAUTHENTICATED" | "VERSION_MISMATCH" => &error.code,
+                    _ => "OTHER",
+                };
+                log::debug!("Native Host attachment phase=failed pid={pid} code={code}");
+            })?,
             _ = closed.changed() => return Err(HostError::new("EPOCH_MISMATCH", "Window instance closed")),
         };
+        let epoch = client.attachment().instance_epoch.get();
+        log::debug!("Native Host attachment phase=authenticated pid={pid} epoch={epoch}");
         let (attachment, retired) = {
             let mut state = self.inner.lock().await;
             let mut instances = self.instances.lock().expect("window instances");

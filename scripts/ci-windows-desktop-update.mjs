@@ -253,6 +253,7 @@ try {
     env: {
       ...testEnv,
       SWB_PROFILE: profile,
+      SWB_LOG_LEVEL: "debug",
       NO_PROXY: "localhost,127.0.0.1",
       WEBVIEW2_USER_DATA_FOLDER: webview,
       WEBVIEW2_ADDITIONAL_BROWSER_ARGUMENTS: "--remote-debugging-port=0",
@@ -435,7 +436,7 @@ try {
       const entries = readFileSync(appLog, "utf8")
         .split(/\r?\n/)
         .filter((line) =>
-          /Startup phase=|Application started v|Native Host state pump stopped/.test(
+          /Startup phase=|Startup configuration profileSource=|Application started v|Native Host (?:attachment phase=|state pump stopped)/.test(
             line,
           ),
         )

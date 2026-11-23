@@ -342,6 +342,8 @@ NSIS 暂存预检在[手动 CI](../.github/workflows/ci.yml)选择 `runtime_pref
 
 产品路径选择 `windows-nsis-desktop-update` 与 Windows x64 运行时预检。隔离 runner 构建两个实际 NSIS 版本，用一次性签名密钥和回环 HTTPS 发布候选。正常注册旧版安装后，通过旧桌面「应用更新」页检查、下载并确认安装。核对原进程正常退出、新进程自动启动、目标版本实际呈现、安装文件摘要、Host 身份与代次以及注册项稳定字段。收据放在 `artifacts/windows-desktop-update`。此夹具覆盖正常完成路径，中断恢复和正式发行凭据另行验收。
 
+Host 未换代时，收据记录新旧桌面的进程号及 Host 发现代次。按新桌面进程号查看 `desktop-startup.log` 中的接入阶段和固定错误码。启动配置只记录来源类别，接入日志仅含状态和代次等字段。
+
 隔离 Windows 环境中，准备 Tauri 的 NSIS 编译器缓存后运行 `pnpm test:installer --interactive`。暂存夹具嵌入生产入口，在新目录执行并核对套件文件。已含其他文件和命名不符的目录都必须拒绝，保留原文件和安装器副本。此场景不写入已安装程序和注册信息。
 
 M6 用发行候选在预先未安装 WebView2 Runtime 的独立 Windows x64 环境验证 NSIS。将本轮发行候选的安装包和同源验收材料转移到环境中，记录 WebView2 的系统和当前用户注册信息、网络状态及安装前后的版本。断网状态下实际安装并首次启动，使用已安装的程序运行三个签名参考场景。记录系统版本、安装退出码、组件摘要、首次打开窗口及用例结果。M2 和 M3 验证 Windows 安装包内置的离线 Runtime、固定 Node 安装布局和软件参考场景。最低系统和正式发行签名按 M6 矩阵验收。 [Microsoft 离线部署](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)

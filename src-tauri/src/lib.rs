@@ -169,6 +169,7 @@ pub fn run() {
                 redaction::redact(&error.to_string())
             );
         }
+        serial_workbench_ipc::startup_config::log_startup_configuration(&startup.snapshot());
         let initialized = recovery::initialize(&paths)?;
         let system = system_commands::SystemState::open(paths.config.join("workspace.json"));
         app.manage(media_protocol::MediaTickets::default());
