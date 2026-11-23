@@ -810,14 +810,29 @@ pub fn write_bootstrap_capability(bytes: &[u8]) -> HostResult<()> {
         return Err(invalid());
     }
     let stdout = io::stdout();
-    if unsafe { GetFileType(stdout.as_raw_handle()) } != FILE_TYPE_PIPE {
+    validate_bootstrap_pipe(&stdout)?;
+    let mut writer = stdout.lock();
+    writer
+        .write_all(&(bytes.len() as u32).to_be_bytes())
+        .and_then(|()| writer.write_all(bytes))
+        .and_then(|()| writer.flush())
+        .map_err(|_| storage_error())
+}
+
+/// 校验启动调用者已经提供接收凭据的管道。
+pub fn require_bootstrap_pipe() -> HostResult<()> {
+    validate_bootstrap_pipe(&io::stdout())
+}
+
+fn validate_bootstrap_pipe(pipe: &impl AsRawHandle) -> HostResult<()> {
+    if unsafe { GetFileType(pipe.as_raw_handle()) } != FILE_TYPE_PIPE {
         return Err(denied());
     }
     // FILE_TYPE_PIPE 也包括 socket；必须由 pipe 专用查询确认后才能写首字节。
     // 写端查询需要 GENERIC_WRITE 和 FILE_READ_ATTRIBUTES，缺少查询权也拒绝。
     if unsafe {
         GetNamedPipeInfo(
-            stdout.as_raw_handle(),
+            pipe.as_raw_handle(),
             null_mut(),
             null_mut(),
             null_mut(),
@@ -827,12 +842,7 @@ pub fn write_bootstrap_capability(bytes: &[u8]) -> HostResult<()> {
     {
         return Err(denied());
     }
-    let mut writer = stdout.lock();
-    writer
-        .write_all(&(bytes.len() as u32).to_be_bytes())
-        .and_then(|()| writer.write_all(bytes))
-        .and_then(|()| writer.flush())
-        .map_err(|_| storage_error())
+    Ok(())
 }
 
 #[cfg(test)]

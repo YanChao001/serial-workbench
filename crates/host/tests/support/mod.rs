@@ -197,19 +197,7 @@ impl Harness {
         )
         .unwrap();
         let probe = Arc::new(Probe::default());
-        let p = probe.clone();
-        let c = clock.clone();
-        let opener: TransportOpener = Arc::new(move |device, config| {
-            p.opens.fetch_add(1, Ordering::SeqCst);
-            Ok(Box::new(ScriptedTransport {
-                device: device.as_str().into(),
-                probe: p.clone(),
-                clock: c.clone(),
-                configuration: config.clone(),
-                configured: false,
-                closed: false,
-            }))
-        });
+        let opener = scripted_opener(probe.clone(), clock.clone());
         let host = match node {
             Some(node) => {
                 Host::with_verified_node_runtime(
@@ -251,6 +239,7 @@ impl Harness {
             .open(
                 &self.device(name),
                 OpenParams {
+                    transport_params: None,
                     binding: None,
                     configuration: SerialConfiguration::default(),
                 },
@@ -425,6 +414,20 @@ impl Harness {
             .unwrap();
         actor
     }
+}
+
+pub fn scripted_opener(probe: Arc<Probe>, clock: Arc<ManualClock>) -> TransportOpener {
+    Arc::new(move |device, config| {
+        probe.opens.fetch_add(1, Ordering::SeqCst);
+        Ok(Box::new(ScriptedTransport {
+            device: device.as_str().into(),
+            probe: probe.clone(),
+            clock: clock.clone(),
+            configuration: config.clone(),
+            configured: false,
+            closed: false,
+        }))
+    })
 }
 pub fn terminal(state: OperationState) -> bool {
     !matches!(

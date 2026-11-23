@@ -737,18 +737,21 @@ it("gates capture start by exact target, write mode and source session epoch", a
   await screen.findByText("payload.bin");
   const button = () => screen.getByRole("button", { name: "Start capture" });
   expect(button()).toBeDisabled();
-  const first = observer.subscriptions.at(-1)!;
-  expect(first.inputs).toContainEqual({
-    actionId: "capture.start",
-    target: { hostId: "host", kind: "file", id: "source" },
-    params: {
-      targetRef: selectedFile.reference,
-      sessionRefs: [firstSession],
-      mode: "raw",
-      overflowPolicy: "stop",
-      writeMode: "create_new",
-      storageLimits: defaults.captureStorageLimits,
-    },
+  const first = await waitFor(() => {
+    const subscription = observer.subscriptions.at(-1);
+    expect(subscription?.inputs).toContainEqual({
+      actionId: "capture.start",
+      target: { hostId: "host", kind: "file", id: "source" },
+      params: {
+        targetRef: selectedFile.reference,
+        sessionRefs: [firstSession],
+        mode: "raw",
+        overflowPolicy: "stop",
+        writeMode: "create_new",
+        storageLimits: defaults.captureStorageLimits,
+      },
+    });
+    return subscription!;
   });
   act(() => observer.publish(first, () => false));
   expect(button()).toBeDisabled();
@@ -760,7 +763,11 @@ it("gates capture start by exact target, write mode and source session epoch", a
   expect(button()).toBeDisabled();
   act(() => observer.publish(first, () => true));
   expect(button()).toBeDisabled();
-  const append = observer.subscriptions.at(-1)!;
+  const append = await waitFor(() => {
+    const subscription = observer.subscriptions.at(-1)!;
+    expect(subscription).not.toBe(first);
+    return subscription;
+  });
   act(() => observer.publish(append, () => true));
   expect(button()).toBeEnabled();
   view.rerender(
@@ -772,18 +779,20 @@ it("gates capture start by exact target, write mode and source session epoch", a
   expect(button()).toBeDisabled();
   act(() => observer.publish(append, () => true));
   expect(button()).toBeDisabled();
-  expect(observer.subscriptions.at(-1)?.inputs).toContainEqual({
-    actionId: "capture.start",
-    target: { hostId: "host", kind: "file", id: "source" },
-    params: {
-      targetRef: selectedFile.reference,
-      sessionRefs: [{ ...firstSession, sessionEpoch: "2" }],
-      mode: "raw",
-      overflowPolicy: "stop",
-      writeMode: "append",
-      storageLimits: defaults.captureStorageLimits,
-    },
-  });
+  await waitFor(() =>
+    expect(observer.subscriptions.at(-1)?.inputs).toContainEqual({
+      actionId: "capture.start",
+      target: { hostId: "host", kind: "file", id: "source" },
+      params: {
+        targetRef: selectedFile.reference,
+        sessionRefs: [{ ...firstSession, sessionEpoch: "2" }],
+        mode: "raw",
+        overflowPolicy: "stop",
+        writeMode: "append",
+        storageLimits: defaults.captureStorageLimits,
+      },
+    }),
+  );
 });
 
 it("clears replacement evidence and confirmation when selection is cancelled or metadata fails", async () => {

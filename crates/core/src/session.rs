@@ -259,6 +259,14 @@ pub struct OpenParams {
     #[schemars(with = "DeviceBindingReference")]
     #[specta(type=DeviceBindingReference, optional)]
     pub binding: Option<DeviceBindingReference>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "JsonObject")]
+    #[specta(type = JsonObject, optional)]
+    pub transport_params: Option<JsonObject>,
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
@@ -276,6 +284,38 @@ pub struct OpenResult {
     #[specta(type=HostError, optional)]
     pub recent_error: Option<HostError>,
 }
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolHandoffParams {
+    pub package_id: NodePackageId,
+    pub expected_install_revision: U64,
+    pub archive_sha256: Digest,
+    pub tool_id: Id,
+    pub timeout_ms: DurationMs,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ToolHandoffResult {
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "u32")]
+    #[specta(type=u32, optional)]
+    pub exit_code: Option<u32>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "OpenResult")]
+    #[specta(type=OpenResult, optional)]
+    pub reopened: Option<OpenResult>,
+    pub ownership_unconfirmed: bool,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TransformReference {

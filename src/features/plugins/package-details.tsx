@@ -82,7 +82,10 @@ export function PackageDetails({
       throw new ContractValidationError();
     return { installation, runtime: runtime.value };
   }, [connection, id, archiveSha256, revision]);
-  const { data, error, loading, reload } = useNativeResource(load);
+  const { data, error, loading, reload } = useNativeResource(
+    load,
+    connection.browser ? true : undefined,
+  );
   const manifest = data?.installation.manifest;
   const name =
     manifest?.displayName ?? summary.displayName ?? t("plugins.unnamed");
@@ -171,6 +174,7 @@ export function PackageDetails({
       !blocked &&
       enabled &&
       executionApproved &&
+      (!connection.browser || verified) &&
       phase === "active" ? (
         <PluginViewLauncher
           key={JSON.stringify([archiveSha256, runtime.generation])}
@@ -182,93 +186,98 @@ export function PackageDetails({
         />
       ) : null}
 
-      <div className="flex flex-wrap items-center gap-2">
-        {!executionApproved ? (
-          <Button
-            size="sm"
-            disabled={!canConfirmTrust}
-            onClick={() => {
-              if (!canConfirmTrust) return;
-              confirm({
-                label: "plugins.confirmExecution",
-                description: "plugins.confirmExecutionDescription",
-                identity,
-                source: sourceLabel,
-                permissions: permissionLabels(manifest.permissions),
-                intent: {
-                  kind: "confirmExecutionTrust",
-                  expectedRevision: revision,
-                  params,
-                },
-              });
-            }}
-          >
-            {t("plugins.confirmExecution")}
-          </Button>
-        ) : !enabled || phase === "failed" ? (
-          <Button
-            size="sm"
-            disabled={blocked || transitional}
-            onClick={() => setEnabled(true)}
-          >
-            {t(enabled ? "plugins.retryActivation" : "plugins.enable")}
-          </Button>
-        ) : null}
-        <DropdownMenu>
-          <DropdownMenuTrigger asChild>
-            <Button size="sm" variant="outline" disabled={blocked}>
-              <EllipsisIcon aria-hidden="true" />
-              {t("plugins.moreActions")}
+      {!connection.browser ? (
+        <div className="flex flex-wrap items-center gap-2">
+          {!executionApproved ? (
+            <Button
+              size="sm"
+              disabled={!canConfirmTrust}
+              onClick={() => {
+                if (!canConfirmTrust) return;
+                confirm({
+                  label: "plugins.confirmExecution",
+                  description: "plugins.confirmExecutionDescription",
+                  identity,
+                  source: sourceLabel,
+                  permissions: permissionLabels(manifest.permissions),
+                  intent: {
+                    kind: "confirmExecutionTrust",
+                    expectedRevision: revision,
+                    params,
+                  },
+                });
+              }}
+            >
+              {t("plugins.confirmExecution")}
             </Button>
-          </DropdownMenuTrigger>
-          <DropdownMenuContent align="start">
-            {enabled ? (
-              <DropdownMenuItem onSelect={() => setEnabled(false)}>
-                {t("plugins.disable")}
-              </DropdownMenuItem>
-            ) : null}
-            {executionApproved ? (
+          ) : !enabled || phase === "failed" ? (
+            <Button
+              size="sm"
+              disabled={blocked || transitional}
+              onClick={() => setEnabled(true)}
+            >
+              {t(enabled ? "plugins.retryActivation" : "plugins.enable")}
+            </Button>
+          ) : null}
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <Button size="sm" variant="outline" disabled={blocked}>
+                <EllipsisIcon aria-hidden="true" />
+                {t("plugins.moreActions")}
+              </Button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="start">
+              {enabled ? (
+                <DropdownMenuItem onSelect={() => setEnabled(false)}>
+                  {t("plugins.disable")}
+                </DropdownMenuItem>
+              ) : null}
+              {executionApproved ? (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    confirm({
+                      label: "plugins.revokeExecution",
+                      description: "plugins.revokeExecutionDescription",
+                      identity,
+                      intent: {
+                        kind: "revokeExecutionTrust",
+                        expectedRevision: revision,
+                        params,
+                      },
+                    })
+                  }
+                >
+                  {t("plugins.revokeExecution")}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
+                disabled={loading}
+                onSelect={() => void reload()}
+              >
+                {t("plugins.refreshDetails")}
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                variant="destructive"
                 onSelect={() =>
                   confirm({
-                    label: "plugins.revokeExecution",
-                    description: "plugins.revokeExecutionDescription",
+                    label: "plugins.uninstall",
+                    description: "plugins.uninstallDescription",
                     identity,
                     intent: {
-                      kind: "revokeExecutionTrust",
+                      kind: "uninstall",
                       expectedRevision: revision,
                       params,
                     },
                   })
                 }
               >
-                {t("plugins.revokeExecution")}
+                {t("plugins.uninstall")}
               </DropdownMenuItem>
-            ) : null}
-            <DropdownMenuItem disabled={loading} onSelect={() => void reload()}>
-              {t("plugins.refreshDetails")}
-            </DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem
-              variant="destructive"
-              onSelect={() =>
-                confirm({
-                  label: "plugins.uninstall",
-                  description: "plugins.uninstallDescription",
-                  identity,
-                  intent: {
-                    kind: "uninstall",
-                    expectedRevision: revision,
-                    params,
-                  },
-                })
-              }
-            >
-              {t("plugins.uninstall")}
-            </DropdownMenuItem>
-          </DropdownMenuContent>
-        </DropdownMenu>
-      </div>
+            </DropdownMenuContent>
+          </DropdownMenu>
+        </div>
+      ) : null}
     </div>
   );
 }

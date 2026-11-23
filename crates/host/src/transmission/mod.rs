@@ -6,6 +6,11 @@ mod leases;
 mod scheduler;
 #[cfg(test)]
 mod tests;
+mod tool_handoff;
+#[cfg(all(test, windows))]
+mod tool_handoff_sim_tests;
+#[cfg(all(test, windows))]
+mod tool_handoff_test_package;
 use crate::{
     auth::AuthenticatedActor,
     device::{
@@ -73,6 +78,7 @@ struct ControlToken {
     session_id: Option<Id>,
     session_epoch: Option<U64>,
     is_close: bool,
+    holds_tool_gate: AtomicBool,
     grant_stamp: Option<crate::auth::GrantStamp>,
     lease_id: Option<Id>,
     accepted_mono_ns: u64,
@@ -197,7 +203,31 @@ impl TransmissionService {
                 "Host transmission admission is closed",
             ));
         }
+        self.require_handoff_admission(call, allow_stop)?;
         Ok(guard)
+    }
+    fn require_handoff_admission(&self, call: Option<&Call>, allow_stop: bool) -> HostResult<()> {
+        let Some(call) = call.filter(|call| !allow_stop && call.target.kind.as_str() == "session")
+        else {
+            return Ok(());
+        };
+        let active = self
+            .tokens
+            .lock()
+            .map_err(|_| invalid())?
+            .values()
+            .any(|token| {
+                token.holds_tool_gate.load(Ordering::SeqCst)
+                    && token.session_id.as_ref() == Some(&call.target.id)
+                    && token.session_epoch == call.target.session_epoch
+            });
+        if active {
+            return Err(HostError::new(
+                "DEVICE_BUSY",
+                "The session is reserved for an external tool",
+            ));
+        }
+        Ok(())
     }
     fn admission_scope(target: &Target, actor: &Id) -> Option<AdmissionScope> {
         Some((
@@ -282,11 +312,23 @@ impl TransmissionService {
         let result = (|| {
             let session_id =
                 (operation.target.kind.as_str() == "session").then(|| operation.target.id.clone());
-            let is_close = operation.action_id.as_str() == "session.close";
+            let is_tool_handoff = operation.action_id.as_str() == "session.toolHandoff";
+            let is_close = operation.action_id.as_str() == "session.close" || is_tool_handoff;
+            let runtime = session_id
+                .as_ref()
+                .map(|_| self.runtime(&operation.target))
+                .transpose()?;
+            let mut pending = self.pending_cancels.lock().map_err(|_| invalid())?;
+            let mut tokens = self.tokens.lock().map_err(|_| invalid())?;
+            if tokens.len() >= 256 {
+                return Err(HostError::new(
+                    "HOST_BUSY",
+                    "Operation owner capacity exhausted",
+                ));
+            }
             let mut should_cancel = self.devices.inner.closing.load(Ordering::SeqCst);
-            if session_id.is_some() {
-                let runtime = self.runtime(&operation.target)?;
-                if is_close && self.devices.session(&operation.target).is_ok() {
+            if let Some(runtime) = runtime {
+                if is_close && !is_tool_handoff && self.devices.session(&operation.target).is_ok() {
                     if runtime.closing.swap(true, Ordering::SeqCst) {
                         return Err(HostError::new("HOST_BUSY", "Session is already closing"));
                     }
@@ -294,17 +336,9 @@ impl TransmissionService {
                     should_cancel |= runtime.closing.load(Ordering::SeqCst);
                 }
             }
-            let mut pending = self.pending_cancels.lock().map_err(|_| invalid())?;
-            let mut tokens = self.tokens.lock().map_err(|_| invalid())?;
             let is_stop = crate::limits::is_stop(operation.action_id.as_str());
             should_cancel |= self.quiesce_cancel.load(Ordering::SeqCst) && !is_stop;
             should_cancel |= pending.remove(&operation.operation_id);
-            if tokens.len() >= 256 {
-                return Err(HostError::new(
-                    "HOST_BUSY",
-                    "Operation owner capacity exhausted",
-                ));
-            }
             tokens.insert(
                 operation.operation_id.clone(),
                 Arc::new(ControlToken {
@@ -318,6 +352,7 @@ impl TransmissionService {
                     session_id,
                     session_epoch: operation.target.session_epoch,
                     is_close,
+                    holds_tool_gate: AtomicBool::new(false),
                     grant_stamp,
                     lease_id: if operation.action_id.as_str().starts_with("lease.") {
                         None
@@ -509,6 +544,7 @@ impl TransmissionService {
         let session = preparation.session.as_ref().ok_or_else(invalid)?;
         let runtime = self.runtime(&accepted.call.target)?;
         match accepted.call.action_id.as_str() {
+            "session.toolHandoff" => self.tool_handoff(accepted, token, session, &runtime).await,
             "transfer.file" => {
                 self.transfer_file(
                     accepted,
@@ -580,7 +616,10 @@ impl TransmissionService {
         let target = accepted.call.target.clone();
         let store = self.devices.inner.store.clone();
         let epoch = accepted.call.instance_epoch;
-        let permission = if accepted.call.action_id.as_str() == "session.takeover" {
+        let permission = if matches!(
+            accepted.call.action_id.as_str(),
+            "session.takeover" | "session.toolHandoff"
+        ) {
             "auth.manage"
         } else {
             "device.modify"
@@ -1073,6 +1112,15 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
             object(&params)
         }
         BuiltinAction::DeviceOpen => norm::<OpenParams>(&call.params),
+        BuiltinAction::ToolHandoff => {
+            if call.execution_mode != Some(ExecutionMode::Independent)
+                || call.lease_id.is_some()
+                || call.expected_revision.is_some()
+            {
+                return Err(invalid());
+            }
+            norm::<ToolHandoffParams>(&call.params)
+        }
         BuiltinAction::SessionTx => norm::<TxParams>(&call.params),
         BuiltinAction::SessionConfigure => {
             if call.expected_revision.is_none() {

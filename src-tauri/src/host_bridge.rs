@@ -1,6 +1,7 @@
 //! Window-scoped accounting for WebView deliveries. The bridge module is registered by root.
 pub(crate) mod browser_access;
 mod client_effects;
+pub(crate) use client_effects::UpdatePreparation;
 mod connect_device;
 pub(crate) mod document_intents;
 pub(crate) use document_intents::document_request_id as local_request_id;
@@ -506,17 +507,40 @@ impl DesktopHostBridge {
                     break;
                 }
                 let Some(request) = inbox.pop() else { continue };
-                let outcome =
-                    match executor
-                        .execute(request.action.clone())
-                        .await
-                        .and_then(|result| {
-                            result.validate_for(request.action.capability())?;
-                            Ok(result)
-                        }) {
-                        Ok(result) => ClientEffectOutcome::Succeeded { result },
-                        Err(error) => ClientEffectOutcome::Failed { error },
-                    };
+                let preparation = matches!(
+                    request.action,
+                    ClientEffectAction::UpdaterInstallPrepared {}
+                )
+                .then(|| {
+                    let instances = instances.clone();
+                    let label = label.clone();
+                    UpdatePreparation {
+                        control: control.clone(),
+                        delivery: ClientUpdatePreparation {
+                            host_id: request.host_id.clone(),
+                            instance_epoch: request.instance_epoch,
+                            client_target_id: request.client_target_id.clone(),
+                            generation: request.generation,
+                            delivery_id: request.delivery_id.clone(),
+                        },
+                        window_is_current: Box::new(move || {
+                            instances
+                                .lock()
+                                .expect("window instances")
+                                .current(&label, instance)
+                        }),
+                    }
+                });
+                let outcome = match executor
+                    .execute(request.action.clone(), preparation)
+                    .await
+                    .and_then(|result| {
+                        result.validate_for(request.action.capability())?;
+                        Ok(result)
+                    }) {
+                    Ok(result) => ClientEffectOutcome::Succeeded { result },
+                    Err(error) => ClientEffectOutcome::Failed { error },
+                };
                 if !instances
                     .lock()
                     .expect("window instances")

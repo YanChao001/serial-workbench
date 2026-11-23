@@ -102,6 +102,7 @@ pub enum ActionResult {
     Workspace(WorkspaceDocumentResult),
     ShutdownRequested(ShutdownRequested),
     Opened(OpenResult),
+    ToolHandoff(ToolHandoffResult),
     Session(SessionSnapshot),
     Control(ControlReceipt),
     Lease(Lease),

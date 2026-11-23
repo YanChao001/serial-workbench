@@ -120,28 +120,22 @@ impl NodePackageManager {
         deadline: Instant,
     ) -> HostResult<(Arc<ContributionActivation>, Option<GrantStamp>, Vec<String>)> {
         let snapshot = NodePackageInstaller::read_snapshot(&self.store)?;
-        let package = snapshot
+        let (package, spec) = snapshot
             .packages
             .iter()
-            .find(|package| {
-                package.manifest.activation.contains(&query.action_id)
-                    && package
-                        .manifest
-                        .contributes
-                        .actions
-                        .iter()
-                        .chain(&package.manifest.contributes.queries)
-                        .any(|spec| spec.action_id == query.action_id)
+            .filter(|package| package.manifest.activation.contains(&query.action_id))
+            .find_map(|package| {
+                let contributes = &package.manifest.contributes;
+                contributes
+                    .actions
+                    .iter()
+                    .chain(&contributes.queries)
+                    .chain(&contributes.parsers)
+                    .chain(&contributes.configuration)
+                    .find(|spec| spec.action_id == query.action_id)
+                    .map(|spec| (package, spec))
             })
             .ok_or_else(|| failure("UNSUPPORTED_CAPABILITY", "contributionNotRegistered"))?;
-        let spec = package
-            .manifest
-            .contributes
-            .actions
-            .iter()
-            .chain(&package.manifest.contributes.queries)
-            .find(|spec| spec.action_id == query.action_id)
-            .expect("selected contribution");
         if spec.kind != kind || !spec.target_kinds.contains(&query.target.kind) {
             return Err(super::super::invalid("contributionTarget"));
         }

@@ -1,4 +1,4 @@
-use crate::{Bytes, U64};
+use crate::{Bytes, NodeThemeReference, U64};
 use schemars::JsonSchema;
 use serde::{Deserialize, Serialize};
 use specta::Type;
@@ -202,6 +202,14 @@ pub struct SharedSettings {
     #[schemars(regex(pattern = "^#[0-9A-Fa-f]{6}$"))]
     #[specta(type = String)]
     pub custom_accent: String,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "NodeThemeReference")]
+    #[specta(type = NodeThemeReference, optional)]
+    pub node_theme: Option<Box<NodeThemeReference>>,
     pub radius: Radius,
     pub font: Font,
     pub font_size: FontSize,
@@ -216,7 +224,7 @@ pub struct SharedSettings {
     pub run_in_background: bool,
     pub terminal: TerminalSettings,
 }
-fn accent_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
+pub(crate) fn accent_color<'de, D: serde::Deserializer<'de>>(d: D) -> Result<String, D::Error> {
     let value = String::deserialize(d)?;
     if value.len() == 7
         && value.starts_with('#')
@@ -242,6 +250,7 @@ impl Default for SharedSettings {
             theme: Theme::Dark,
             accent: Accent::Lime,
             custom_accent: "#7C3AED".into(),
+            node_theme: None,
             radius: Radius::Soft,
             font: Font::Geist,
             font_size: FontSize::Md,

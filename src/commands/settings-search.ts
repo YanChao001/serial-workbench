@@ -46,6 +46,7 @@ export const SETTINGS_SEARCH_ENTRIES: readonly SettingsSearchEntry[] = [
       "settings.customAccent",
       "settings.customAccentHex",
       "settings.customAccentPicker",
+      "settings.nodeTheme",
     ],
     keywords: [
       "accent",

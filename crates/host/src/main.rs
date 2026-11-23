@@ -48,6 +48,9 @@ async fn run() -> HostResult<()> {
             _ => return Err(invalid_args()),
         }
     }
+    if !matches!(transfer, StartupTransfer::None) {
+        serial_workbench_ipc::require_bootstrap_pipe()?;
+    }
     let startup = startup_config::resolve(profile)?;
     startup_config::init_stderr_logging(startup.log_filter())?;
     startup_config::log_startup_configuration(&startup.snapshot());

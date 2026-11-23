@@ -2738,7 +2738,8 @@
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/51",
           "https://github.com/YanChao001/serial-workbench/pull/52",
-          "https://github.com/YanChao001/serial-workbench/pull/56"
+          "https://github.com/YanChao001/serial-workbench/pull/56",
+          "https://github.com/YanChao001/serial-workbench/pull/57"
         ]
       },
       "hardware": {
@@ -2760,7 +2761,8 @@
           "https://github.com/YanChao001/serial-workbench/pull/48",
           "https://github.com/YanChao001/serial-workbench/pull/49",
           "https://github.com/YanChao001/serial-workbench/pull/50",
-          "https://github.com/YanChao001/serial-workbench/pull/53"
+          "https://github.com/YanChao001/serial-workbench/pull/53",
+          "https://github.com/YanChao001/serial-workbench/pull/57"
         ]
       },
       "hardware": {
@@ -3665,7 +3667,10 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/55"]
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/55",
+          "https://github.com/YanChao001/serial-workbench/pull/57"
+        ]
       },
       "hardware": {
         "status": "not-started",
@@ -3951,7 +3956,7 @@
       "scopeNote": "本轮浏览器作为独立 Host 的共享 GUI 客户端；零安装 Web Serial 为后续专项。见[范围边界](./requirements.md#范围边界)。",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/57"]
       },
       "hardware": {
         "status": "not-started",
@@ -4204,8 +4209,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
-        "evidence": []
+        "status": "in-progress",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/57"]
       },
       "hardware": {
         "status": "not-started",
@@ -4512,7 +4517,10 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/52"]
+        "evidence": [
+          "https://github.com/YanChao001/serial-workbench/pull/52",
+          "https://github.com/YanChao001/serial-workbench/pull/57"
+        ]
       },
       "hardware": {
         "status": "not-started",

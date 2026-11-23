@@ -44,7 +44,10 @@ export default function PluginsPage() {
   const { t } = useI18n();
   const { state, connection, refresh } = useHost();
   return (
-    <NativePage title={t("nav.plugins")}>
+    <NativePage
+      title={t("nav.plugins")}
+      pairedBrowser={Boolean(connection?.browser)}
+    >
       {state.status === "ready" && connection ? (
         <PluginManager key={connection.generation} connection={connection} />
       ) : state.status === "error" ? (
@@ -102,7 +105,10 @@ function PluginManager({ connection }: { connection: HostConnection }) {
     const sources = await loadPluginSources(connection, signal);
     return { installed, sources };
   }, [connection]);
-  const { data, error, loading, reload } = useNativeResource(load);
+  const { data, error, loading, reload } = useNativeResource(
+    load,
+    connection.browser ? true : undefined,
+  );
   const installed = data?.installed;
   const sources = data?.sources;
   const approved = sources?.keys.filter(({ approved }) => approved) ?? [];
@@ -206,7 +212,7 @@ function PluginManager({ connection }: { connection: HostConnection }) {
           <h3 id="installed-plugin-heading" className="text-base font-semibold">
             {t("plugins.installed")}
           </h3>
-          {installed && sources ? (
+          {!connection.browser && installed && sources ? (
             <Dialog open={installOpen} onOpenChange={setInstallOpen}>
               <DialogTrigger asChild>
                 <Button disabled={blocked}>
@@ -378,7 +384,7 @@ function PluginManager({ connection }: { connection: HostConnection }) {
           ))}
       </section>
 
-      {sources ? (
+      {!connection.browser && sources ? (
         <div>
           <Button
             variant="ghost"

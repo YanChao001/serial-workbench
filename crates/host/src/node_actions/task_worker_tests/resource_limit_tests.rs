@@ -1,6 +1,14 @@
 //! 真实V8超额后以八个同时存活的worker核对包容量归还，不把非零退出冒充OOM。
 use super::*;
 
+struct ReleaseWorkersOnDrop<'a>(&'a std::path::Path);
+
+impl Drop for ReleaseWorkersOnDrop<'_> {
+    fn drop(&mut self) {
+        let _ = std::fs::File::create_new(self.0);
+    }
+}
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT pointing to a prepared native distribution"]
 async fn native_node_task_worker_v8_limit_releases_capacity_after_actual_exit() {
@@ -125,9 +133,12 @@ export function register(context){{
         "example.terminal.compute",
         json!({"value":2}),
     );
+    let _release_workers = ReleaseWorkersOnDrop(&release);
     let capacity = fixture.invoke(&fixture.client, capacity_call.clone()).await;
     wait_worker_event(&events, "overflow:rejected", 1).await;
     wait_worker_event(&events, "entered:capacity:", 8).await;
+    // Node emits the parent worker event on a separate next tick.
+    wait_worker_event(&events, "limits:", 9).await;
     let held = read_events(&events);
     // 同时持有全部八席才能发现超额worker退出后仍泄漏一个名额的情况。
     assert_eq!(held.matches("entered:capacity:").count(), 8);

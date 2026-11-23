@@ -72,7 +72,6 @@ test("both native matrices cover all four targets without scope or tree reuse", 
   for (const name of [
     "frontend",
     "browser-smoke",
-    "rust",
     "linux-node-backend",
     "bindings",
   ]) {
@@ -207,6 +206,33 @@ test("Linux verified backend checks are required and use an independent fixed ru
   assert.match(backend, /timeout-minutes: 60/);
   assert.match(backend, /RUNTIME_TARGET: x86_64-unknown-linux-gnu/);
   assert.match(backend, /node scripts\/ci-prepare-node-runtime\.mjs/);
+  assert.match(backend, /actions\/cache\/restore@[a-f0-9]{40}/);
+  assert.match(backend, /key: swb-linux-runtime-sources-\$\{\{ hashFiles\(/);
+  assert.doesNotMatch(backend, /restore-keys:|sources\/\*\*|payload\.partial/);
+  assert.match(
+    backend,
+    /run: node scripts\/ci-prepare-node-runtime\.mjs\n\s+- name: 交付本次验签的 Ubuntu 固定源码\n[\s\S]*?actions\/upload-artifact@[a-f0-9]{40}/,
+  );
+  assert.match(
+    backend,
+    /source-artifact-id: \$\{\{ steps\.linux-source-artifact\.outputs\.artifact-id \}\}/,
+  );
+  const rust = job("rust");
+  assert.match(
+    rust,
+    /needs: linux-node-backend\n {4}if: \$\{\{ !cancelled\(\) && !inputs\.native_preflight && !inputs\.runtime_preflight \}\}/,
+  );
+  assert.match(rust, /actions\/download-artifact@[a-f0-9]{40}/);
+  assert.match(
+    rust,
+    /artifact-ids: \$\{\{ needs\.linux-node-backend\.outputs\.source-artifact-id \}\}\n\s+path: \.cache\/node-runtime\/sources/,
+  );
+  assert.match(rust, /\^\[0-9\]\+\$/);
+  assert.doesNotMatch(rust, /actions\/cache\/restore@/);
+  assert.match(
+    backend,
+    /- name: 保存验签通过的 Ubuntu 固定源码\n[\s\S]*?actions\/cache\/save@[a-f0-9]{40}/,
+  );
   const suite =
     "cargo test --locked -p serial-workbench-host --test node_packages verified_backend_ -- --ignored --test-threads=1 --nocapture";
   assert.ok(backend.includes(suite));
@@ -323,6 +349,11 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
       "automation",
       "native_automation_uses_exact_responses_and_keeps_capture_running",
       "native-response",
+    ],
+    [
+      "automation",
+      "native_automation_long_script_survives_caller_disconnect_and_settles_workers",
+      "native-long-script",
     ],
   ]) {
     assert.ok(

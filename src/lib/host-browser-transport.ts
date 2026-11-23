@@ -9,7 +9,11 @@ import {
   type WireFrame,
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
-import { bindHostConnection, type WorkbenchHostTransport } from "./host-client";
+import {
+  bindHostConnection,
+  type HostConnection,
+  type WorkbenchHostTransport,
+} from "./host-client";
 import { abortError, waitForHost } from "./host-native-transport";
 import { browserHostClientId } from "./browser-host-page";
 
@@ -321,7 +325,9 @@ export async function createBrowserHostConnection(
     expectedHostId,
     pairingCode,
   }: { expectedHostId?: string; pairingCode?: string } = {},
-) {
+): Promise<
+  HostConnection & { browser: NonNullable<HostConnection["browser"]> }
+> {
   const clientId = browserHostClientId();
   if (!clientId) throw connectionClosed();
   const endpoint = new URL("/api/ws", location.href);
@@ -485,7 +491,37 @@ export async function createBrowserHostConnection(
         };
       },
     );
-    return { ...connection, browser: { closed: control.closed } };
+    async function openViewConnection(signal: AbortSignal) {
+      const lifetime = AbortSignal.any([signal, control.closed]);
+      lifetime.throwIfAborted();
+      // Host 为每条 Control 连接保留一条 Raw 附着。视图用同一浏览器身份单独附着。
+      const pending = createBrowserHostConnection(credential, {
+        expectedHostId: connection.attachment.hostId,
+      });
+      void pending.then(
+        (view) => {
+          if (lifetime.aborted) view.dispose();
+        },
+        () => {},
+      );
+      const view = await waitForHost(pending, lifetime);
+      if (
+        view.attachment.instanceEpoch !== connection.attachment.instanceEpoch ||
+        view.attachment.actorId !== connection.attachment.actorId ||
+        view.attachment.clientId !== connection.attachment.clientId
+      ) {
+        view.dispose();
+        throw new ContractValidationError(
+          "Browser view Host attachment changed",
+        );
+      }
+      lifetime.addEventListener("abort", view.dispose, { once: true });
+      return view;
+    }
+    return {
+      ...connection,
+      browser: { closed: control.closed, openViewConnection },
+    };
   } catch (error) {
     control.close();
     throw error;

@@ -8,6 +8,7 @@ impl platform_effects::PlatformEffectExecutor for TestEffectExecutor {
     fn execute<'a>(
         &'a self,
         action: serial_workbench_core::ClientEffectAction,
+        _preparation: Option<UpdatePreparation>,
     ) -> std::pin::Pin<
         Box<
             dyn std::future::Future<Output = HostResult<serial_workbench_core::ClientEffectResult>>
@@ -1314,6 +1315,7 @@ async fn raw_subscription_uses_real_host_cursor_and_closes_its_reader() {
         .open(
             &device,
             OpenParams {
+                transport_params: None,
                 configuration: SerialConfiguration::default(),
                 binding: None,
             },
@@ -2074,6 +2076,7 @@ async fn explicit_device_connect_grants_only_selected_device_and_real_session() 
             attached.generation,
             Id::try_from("virtual:echo").unwrap(),
             OpenParams {
+                transport_params: None,
                 configuration: SerialConfiguration::default(),
                 binding: None,
             },

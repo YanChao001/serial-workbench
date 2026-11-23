@@ -9,11 +9,13 @@ export function NativePage({
   title,
   description,
   compact = false,
+  pairedBrowser = false,
   children,
 }: {
   title: string;
   description?: string;
   compact?: boolean;
+  pairedBrowser?: boolean;
   children: ReactNode;
 }) {
   const { t } = useI18n();
@@ -28,7 +30,7 @@ export function NativePage({
           {description ? <p>{description}</p> : null}
         </div>
       ) : null}
-      {isTauri() ? (
+      {isTauri() || pairedBrowser ? (
         children
       ) : (
         <section className="studio-panel p-5">

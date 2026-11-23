@@ -1241,6 +1241,18 @@
       }
     },
     {
+      "name": "tool-handoff-local-path",
+      "schema": "ToolHandoffParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "executablePath": "unsigned.exe",
+        "expectedInstallRevision": "1",
+        "packageId": "example.serial-tool",
+        "timeoutMs": "2000",
+        "toolId": "probe"
+      }
+    },
+    {
       "name": "call-missing-requestContext",
       "schema": "Call",
       "value": {
@@ -3570,6 +3582,59 @@
           }
         },
         "theme": "dark"
+      }
+    },
+    {
+      "name": "shared-settings-null-node-theme",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "nodeTheme": null,
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveEncoding": "utf-8",
+          "receiveMode": "text",
+          "sendEncoding": "utf-8",
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "node-theme-css",
+      "schema": "NodeThemeTokens",
+      "value": {
+        "accent": "url(https://example.invalid/style.css)"
+      }
+    },
+    {
+      "name": "node-theme-unknown-token",
+      "schema": "NodeThemeTokens",
+      "value": {
+        "accent": "#1A6A73",
+        "script": "alert(1)"
       }
     },
     {
@@ -5934,6 +5999,52 @@
           "stopBits": "one",
           "writeWaitMs": "1000"
         }
+      }
+    },
+    {
+      "name": "plugin-open-params-unknown-field",
+      "schema": "OpenParams",
+      "value": {
+        "configuration": {
+          "baudRate": "9600",
+          "dataBits": "8",
+          "flowControl": "none",
+          "parity": "none",
+          "readWaitMs": "1",
+          "reconnectBackoffMs": "2147483647",
+          "stopBits": "one",
+          "writeWaitMs": "1000"
+        },
+        "transportParams": {
+          "port": 43210
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "plugin-open-params-missing-configuration",
+      "schema": "OpenParams",
+      "value": {
+        "transportParams": {
+          "port": 43210
+        }
+      }
+    },
+    {
+      "name": "plugin-open-params-null-transportParams",
+      "schema": "OpenParams",
+      "value": {
+        "configuration": {
+          "baudRate": "9600",
+          "dataBits": "8",
+          "flowControl": "none",
+          "parity": "none",
+          "readWaitMs": "1",
+          "reconnectBackoffMs": "2147483647",
+          "stopBits": "one",
+          "writeWaitMs": "1000"
+        },
+        "transportParams": null
       }
     },
     {
@@ -11718,6 +11829,28 @@
       }
     },
     {
+      "name": "tool-handoff",
+      "schema": "ToolHandoffParams",
+      "value": {
+        "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "expectedInstallRevision": "1",
+        "packageId": "example.serial-tool",
+        "timeoutMs": "2000",
+        "toolId": "probe"
+      }
+    },
+    {
+      "name": "tool-handoff-receipt",
+      "schema": "ActionResult",
+      "value": {
+        "kind": "tool_handoff",
+        "value": {
+          "exitCode": 0,
+          "ownershipUnconfirmed": false
+        }
+      }
+    },
+    {
       "name": "child-call",
       "schema": "ChildCall",
       "value": {
@@ -12610,6 +12743,55 @@
       }
     },
     {
+      "name": "shared-settings-node-theme",
+      "schema": "SharedSettings",
+      "value": {
+        "accent": "lime",
+        "autoCheckUpdates": true,
+        "background": {
+          "kind": "preset",
+          "value": "plain"
+        },
+        "backgroundIntensity": 50,
+        "customAccent": "#7C3AED",
+        "font": "geist",
+        "fontSize": "md",
+        "language": "zh",
+        "motion": "full",
+        "networkMode": "system",
+        "nodeTheme": {
+          "archiveSha256": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+          "packageId": "swb.reference.theme",
+          "themeId": "swb.reference.theme.bench-teal"
+        },
+        "radius": "soft",
+        "runInBackground": false,
+        "terminal": {
+          "lineEnding": {
+            "kind": "none"
+          },
+          "receiveEncoding": "utf-8",
+          "receiveMode": "text",
+          "sendEncoding": "utf-8",
+          "sendMode": "text",
+          "typography": {
+            "fontFamily": "ui-monospace",
+            "fontSize": 14,
+            "ligatures": false,
+            "lineHeightPercent": 150
+          }
+        },
+        "theme": "dark"
+      }
+    },
+    {
+      "name": "node-theme-color",
+      "schema": "NodeThemeTokens",
+      "value": {
+        "accent": "#1A6A73"
+      }
+    },
+    {
       "name": "workspace-document-default",
       "schema": "WorkspaceDocument",
       "value": {
@@ -13465,6 +13647,25 @@
           "reconnectBackoffMs": "2147483647",
           "stopBits": "one",
           "writeWaitMs": "1000"
+        }
+      }
+    },
+    {
+      "name": "plugin-open-params",
+      "schema": "OpenParams",
+      "value": {
+        "configuration": {
+          "baudRate": "9600",
+          "dataBits": "8",
+          "flowControl": "none",
+          "parity": "none",
+          "readWaitMs": "1",
+          "reconnectBackoffMs": "2147483647",
+          "stopBits": "one",
+          "writeWaitMs": "1000"
+        },
+        "transportParams": {
+          "port": 43210
         }
       }
     },

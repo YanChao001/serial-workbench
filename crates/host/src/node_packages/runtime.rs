@@ -318,6 +318,21 @@ impl PackageRuntime {
         }
         self.catalog.status(id)
     }
+    pub(super) fn registered_transports(
+        &self,
+    ) -> HostResult<Vec<crate::node_backend::RegisteredTransport>> {
+        if self.stopping.load(Ordering::Acquire) {
+            return Ok(Vec::new());
+        }
+        let owner = self
+            .owner
+            .try_lock()
+            .map_err(|_| failure("HOST_BUSY", "nodeOwner"))?;
+        owner
+            .backend
+            .as_ref()
+            .map_or(Ok(Vec::new()), NodeBackend::registered_transports)
+    }
     pub(super) fn has_active_owner(&self, id: &NodePackageId) -> HostResult<bool> {
         let mut owner = self
             .owner

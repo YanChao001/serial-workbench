@@ -216,6 +216,7 @@ struct PendingDelivery {
     dispatched: bool,
     bound: bool,
     committing: Option<Digest>,
+    update_prepared: bool,
     completion: Option<oneshot::Sender<HostResult<ClientEffectOutcome>>>,
 }
 impl PendingDelivery {
@@ -273,7 +274,11 @@ impl ClientEffects {
             delivery_id: new_id(),
             request_id,
             operation_id: None,
-            action,
+            action: if capability == ClientCapability::UpdaterInstall {
+                ClientEffectAction::UpdaterInstallPrepared {}
+            } else {
+                action
+            },
         };
         let mut budget_request = request.clone();
         if !capability.is_query() {
@@ -297,6 +302,7 @@ impl ClientEffects {
                 dispatched: false,
                 bound: false,
                 committing: None,
+                update_prepared: false,
                 completion: Some(send),
             },
         );
@@ -490,14 +496,7 @@ impl ClientEffects {
         {
             return Err(epoch());
         }
-        let authorization = self.authorize_action(
-            &dispatch.authority.actor,
-            &dispatch.authority.target,
-            &dispatch.request.action,
-        )?;
-        if let Some(stamp) = &dispatch.authority.stamp {
-            authorization.validate_grants(stamp)?;
-        }
+        self.require_dispatch_grants(dispatch)?;
         let state = self.inner.lock().map_err(|_| busy())?;
         if state.closing && !is_excluded(&state, dispatch.request.operation_id.as_ref()) {
             return Err(busy());
@@ -592,6 +591,7 @@ impl ClientEffects {
                 return Ok(ClientEffectAcknowledged { accepted: True });
             }
             ClientReceiptSubmission::Effect(receipt) => *receipt,
+            ClientReceiptSubmission::UpdatePreparation(_) => return Err(invalid()),
         };
         if receipt.host_id != identity.host_id || receipt.instance_epoch != identity.instance_epoch
         {
@@ -666,6 +666,9 @@ impl ClientEffects {
             }
             if let ClientEffectOutcome::Succeeded { result } = &receipt.outcome {
                 result.validate_for(pending.request.action.capability())?;
+                if matches!(result, ClientEffectResult::Installed {}) && !pending.update_prepared {
+                    return Err(invalid());
+                }
             }
             if let Some(committing) = &pending.committing {
                 return if committing == &digest {
@@ -792,54 +795,153 @@ impl ClientEffects {
         }
         Ok(pending)
     }
-    /// Internal installation barrier. The public shutdown path never accepts an
-    /// exclusion. The accepted update must already have a durable Running intent.
+    /// 准备请求只能指向原本机控制连接的在途安装投递。
+    pub(crate) fn update_dispatch(
+        &self,
+        context: &ConnectionContext,
+        preparation: ClientUpdatePreparation,
+    ) -> HostResult<ClientEffectDispatch> {
+        let identity = self.require_operator(context)?;
+        if preparation.host_id != identity.host_id
+            || preparation.instance_epoch != identity.instance_epoch
+        {
+            return Err(epoch());
+        }
+        let state = self.inner.lock().map_err(|_| busy())?;
+        let entry = state
+            .targets
+            .get(&preparation.client_target_id)
+            .ok_or_else(denied)?;
+        require_registration(entry, context, preparation.generation)?;
+        let pending = entry
+            .pending
+            .get(&preparation.delivery_id)
+            .ok_or_else(denied)?;
+        if !entry.live
+            || !pending.bound
+            || !pending.dispatched
+            || pending.committing.is_some()
+            || pending.request.operation_id.is_none()
+            || !matches!(
+                pending.request.action,
+                ClientEffectAction::UpdaterInstallPrepared {}
+            )
+        {
+            return Err(denied());
+        }
+        Ok(ClientEffectDispatch {
+            request: pending.request.clone(),
+            destination: entry.context.clone(),
+            authority: pending.authority.clone(),
+            owner: self.clone(),
+        })
+    }
+
+    /// 只有当前代次已持久化的安装动作可以在关停屏障中保留其投递。
     pub(crate) fn quiesce_for_update(
         &self,
-        accepted: &crate::dispatch::AcceptedCall,
+        dispatch: &ClientEffectDispatch,
     ) -> HostResult<Vec<PendingClientEffect>> {
         let identity = self.store.identity()?;
-        let operation = self
-            .store
-            .get(&accepted.actor, &accepted.operation.operation_id)?;
-        if operation.execution_host_id != identity.host_id
-            || operation.action_id.as_str() != "client.updater.install"
+        let operation_id = dispatch.request.operation_id.as_ref().ok_or_else(denied)?;
+        let operation = self.store.get(&dispatch.authority.actor, operation_id)?;
+        if dispatch.request.host_id != identity.host_id
+            || dispatch.request.instance_epoch != identity.instance_epoch
+            || operation.execution_host_id != identity.host_id
+            || operation.action_id.as_str() != ClientCapability::UpdaterInstall.action_id()
             || operation.state != OperationState::Running
-            || operation.actor_id != *accepted.actor.id()
-            || operation.target != accepted.call.target
+            || operation.actor_id != *dispatch.authority.actor.id()
+            || operation.target != dispatch.authority.target
+            || operation.request_id != dispatch.request.request_id
         {
             return Err(denied());
         }
         let mut state = self.inner.lock().map_err(|_| busy())?;
-        let exists = state.targets.values().any(|entry| {
-            entry.live
-                && entry.pending.values().any(|pending| {
-                    pending.request.operation_id.as_ref() == Some(&operation.operation_id)
-                        && pending.request.action.capability() == ClientCapability::UpdaterInstall
-                })
-        });
-        if !exists {
-            return Err(invalid());
-        }
-        if state.closing && state.excluded_update.as_ref() != Some(&operation.operation_id) {
+        if state.closing && !is_excluded(&state, Some(operation_id)) {
             return Err(busy());
         }
+        let entry = require_live(
+            &state,
+            &dispatch.authority.target,
+            ClientCapability::UpdaterInstall,
+        )?;
+        require_registration(entry, &dispatch.destination, dispatch.request.generation)?;
+        let pending = entry
+            .pending
+            .get(&dispatch.request.delivery_id)
+            .ok_or_else(denied)?;
+        if !pending.bound
+            || !pending.dispatched
+            || pending.committing.is_some()
+            || pending.request != dispatch.request
+        {
+            return Err(denied());
+        }
+        self.require_dispatch_grants(dispatch)?;
+        // 桌面按顺序处理投递，同一接收端的后续动作不能在等待本回执时结算。
+        if entry.pending.values().any(|pending| {
+            pending.dispatched
+                && pending
+                    .request
+                    .operation_id
+                    .as_ref()
+                    .is_some_and(|id| id != operation_id)
+        }) {
+            let mut error = HostError::new(
+                "HOST_BUSY",
+                "The update window has another in-flight effect",
+            );
+            error.retryable = true;
+            return Err(error);
+        }
         state.closing = true;
-        state.excluded_update = Some(operation.operation_id.clone());
+        state.excluded_update = Some(operation_id.clone());
         let pending = state
             .targets
             .values()
             .flat_map(|entry| entry.pending.values())
-            .filter(|pending| {
-                pending.request.operation_id.as_ref() != Some(&operation.operation_id)
-            })
+            .filter(|pending| pending.request.operation_id.as_ref() != Some(operation_id))
             .map(PendingDelivery::snapshot)
             .collect();
         for entry in state.targets.values_mut() {
-            retire_except(entry, disconnected(), Some(&operation.operation_id));
+            retire_except(entry, disconnected(), Some(operation_id));
         }
         Ok(pending)
     }
+
+    pub(crate) fn mark_update_prepared(&self, dispatch: &ClientEffectDispatch) -> HostResult<()> {
+        let mut state = self.inner.lock().map_err(|_| busy())?;
+        if !is_excluded(&state, dispatch.request.operation_id.as_ref()) {
+            return Err(denied());
+        }
+        let entry = state
+            .targets
+            .get_mut(&dispatch.request.client_target_id)
+            .filter(|entry| entry.live && !entry.context.is_closed())
+            .ok_or_else(denied)?;
+        require_registration(entry, &dispatch.destination, dispatch.request.generation)?;
+        let pending = entry
+            .pending
+            .get_mut(&dispatch.request.delivery_id)
+            .filter(|pending| pending.request == dispatch.request && pending.committing.is_none())
+            .ok_or_else(denied)?;
+        self.require_dispatch_grants(dispatch)?;
+        pending.update_prepared = true;
+        Ok(())
+    }
+
+    fn require_dispatch_grants(&self, dispatch: &ClientEffectDispatch) -> HostResult<()> {
+        let authorization = self.authorize_action(
+            &dispatch.authority.actor,
+            &dispatch.authority.target,
+            &dispatch.request.action,
+        )?;
+        if let Some(stamp) = &dispatch.authority.stamp {
+            authorization.validate_grants(stamp)?;
+        }
+        Ok(())
+    }
+
     fn require_operator(
         &self,
         context: &ConnectionContext,

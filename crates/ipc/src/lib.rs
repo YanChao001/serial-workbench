@@ -2,6 +2,8 @@
 mod discovery;
 pub mod frame;
 pub mod identity;
+#[cfg(windows)]
+pub mod install_switch;
 mod instance;
 pub mod shutdown;
 pub mod startup_config;

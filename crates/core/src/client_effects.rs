@@ -206,6 +206,9 @@ pub enum ClientEffectAction {
     UpdaterRead {},
     #[serde(rename = "client.updater.install")]
     UpdaterInstall {},
+    // 只由 Host 投递。旧桌面无法解析该阶段，因此不会跳过准备直接安装。
+    #[serde(rename = "client.updater.install.prepare")]
+    UpdaterInstallPrepared {},
     #[serde(rename = "client.app.restart")]
     AppRestart {},
     #[serde(rename = "client.app.quit")]
@@ -236,7 +239,9 @@ impl ClientEffectAction {
             Self::SettingsApplyEffects {} => ClientCapability::SettingsApplyEffects,
             Self::UpdaterCheck {} => ClientCapability::UpdaterCheck,
             Self::UpdaterRead {} => ClientCapability::UpdaterRead,
-            Self::UpdaterInstall {} => ClientCapability::UpdaterInstall,
+            Self::UpdaterInstall {} | Self::UpdaterInstallPrepared {} => {
+                ClientCapability::UpdaterInstall
+            }
             Self::AppRestart {} => ClientCapability::AppRestart,
             Self::AppQuit {} => ClientCapability::AppQuit,
             Self::DiagnosticsRead {} => ClientCapability::DiagnosticsRead,
@@ -342,6 +347,17 @@ pub struct ClientEffectReceipt {
     pub delivery_id: Id,
     pub outcome: ClientEffectOutcome,
 }
+/// 桌面校验下载并获准后，请求当前 Host 完成安装前结算。
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ClientUpdatePreparation {
+    pub host_id: Id,
+    pub instance_epoch: U64,
+    pub client_target_id: Id,
+    pub generation: U64,
+    pub delivery_id: Id,
+}
+
 /// A delivery receipt can settle only its matching pending operation. A settings
 /// observation updates one live target's latest applied revision, never an operation.
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
@@ -353,6 +369,7 @@ pub struct ClientEffectReceipt {
 )]
 pub enum ClientReceiptSubmission {
     Effect(Box<ClientEffectReceipt>),
+    UpdatePreparation(ClientUpdatePreparation),
     SettingsObserved(ClientSettingsObservation),
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]

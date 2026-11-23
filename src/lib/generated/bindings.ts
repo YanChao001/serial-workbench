@@ -330,6 +330,7 @@ export type ActionResult_Deserialize =
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Deserialize }
+  | { kind: "tool_handoff"; value: ToolHandoffResult_Deserialize }
   | { kind: "session"; value: SessionSnapshot_Deserialize }
   | { kind: "control"; value: ControlReceipt_Deserialize }
   | { kind: "lease"; value: Lease }
@@ -359,6 +360,7 @@ export type ActionResult_Serialize =
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Serialize }
+  | { kind: "tool_handoff"; value: ToolHandoffResult_Serialize }
   | { kind: "session"; value: SessionSnapshot_Serialize }
   | { kind: "control"; value: ControlReceipt_Serialize }
   | { kind: "lease"; value: Lease }
@@ -922,6 +924,7 @@ export type ClientEffectAction =
   | { actionId: "client.updater.check" }
   | { actionId: "client.updater.read" }
   | { actionId: "client.updater.install" }
+  | { actionId: "client.updater.install.prepare" }
   | { actionId: "client.app.restart" }
   | { actionId: "client.app.quit" }
   | { actionId: "client.diagnostics.read" }
@@ -1142,6 +1145,7 @@ export type ClientReceiptSubmission =
  */
 export type ClientReceiptSubmission_Deserialize =
   | { kind: "effect"; value: ClientEffectReceipt_Deserialize }
+  | { kind: "update_preparation"; value: ClientUpdatePreparation }
   | { kind: "settings_observed"; value: ClientSettingsObservation };
 
 /**
@@ -1150,6 +1154,7 @@ export type ClientReceiptSubmission_Deserialize =
  */
 export type ClientReceiptSubmission_Serialize =
   | { kind: "effect"; value: ClientEffectReceipt_Serialize }
+  | { kind: "update_preparation"; value: ClientUpdatePreparation }
   | { kind: "settings_observed"; value: ClientSettingsObservation };
 
 export type ClientRecoveryStatus =
@@ -1240,6 +1245,15 @@ export type ClientSystemStatus_Serialize = {
 export type ClientUnregisterParams = {
   clientTargetId: Id;
   generation: U64;
+};
+
+/**  桌面校验下载并获准后，请求当前 Host 完成安装前结算。 */
+export type ClientUpdatePreparation = {
+  hostId: Id;
+  instanceEpoch: U64;
+  clientTargetId: Id;
+  generation: U64;
+  deliveryId: Id;
 };
 
 export type ClientUpdateProgress =
@@ -1669,7 +1683,8 @@ export type DeviceList_Serialize = {
   stale: boolean;
 };
 
-export type DeviceTransportKind = "serial" | "pty" | "virtual" | "replay";
+export type DeviceTransportKind =
+  "serial" | "pty" | "virtual" | "plugin" | "replay";
 
 export type DiagnosticsReport = {
   appVersion: string;
@@ -3486,6 +3501,42 @@ export type NodeSourceRevokeParams = {
   publicKeySha256: Digest;
 };
 
+export type NodeThemeEntry =
+  NodeThemeEntry_Serialize | NodeThemeEntry_Deserialize;
+
+export type NodeThemeEntry_Deserialize = {
+  packageId: NodePackageId;
+  themeId: Id;
+  archiveSha256: Digest;
+  displayName: string;
+  accent: string;
+};
+
+export type NodeThemeEntry_Serialize = {
+  packageId: NodePackageId;
+  themeId: Id;
+  archiveSha256: Digest;
+  displayName: string;
+  accent: string;
+};
+
+export type NodeThemeReference = {
+  packageId: NodePackageId;
+  themeId: Id;
+  archiveSha256: Digest;
+};
+
+export type NodeThemesResult =
+  NodeThemesResult_Serialize | NodeThemesResult_Deserialize;
+
+export type NodeThemesResult_Deserialize = {
+  themes: NodeThemeEntry_Deserialize[];
+};
+
+export type NodeThemesResult_Serialize = {
+  themes: NodeThemeEntry_Serialize[];
+};
+
 export type NodeViewAssetReadResult =
   NodeViewAssetReadResult_Serialize | NodeViewAssetReadResult_Deserialize;
 
@@ -3563,11 +3614,13 @@ export type OpenParams = OpenParams_Serialize | OpenParams_Deserialize;
 export type OpenParams_Deserialize = {
   configuration: SerialConfiguration;
   binding?: DeviceBindingReference;
+  transportParams?: { [key in string]: JsonValue };
 };
 
 export type OpenParams_Serialize = {
   configuration: SerialConfiguration;
   binding?: DeviceBindingReference;
+  transportParams?: { [key in string]: JsonValue };
 };
 
 export type OpenResult = OpenResult_Serialize | OpenResult_Deserialize;
@@ -3788,6 +3841,7 @@ export type QueryResult_Deserialize =
       value: NodePackageRuntimeStatus_Deserialize;
     }
   | { kind: "node_view_asset"; value: NodeViewAssetReadResult_Deserialize }
+  | { kind: "node_themes"; value: NodeThemesResult_Deserialize }
   | { kind: "node_package_sources"; value: NodeSourceListResult_Deserialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Deserialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Deserialize }
@@ -3833,6 +3887,7 @@ export type QueryResult_Serialize =
   | { kind: "node_package_details"; value: NodePackageDetailsReadResult }
   | { kind: "node_package_runtime"; value: NodePackageRuntimeStatus_Serialize }
   | { kind: "node_view_asset"; value: NodeViewAssetReadResult_Serialize }
+  | { kind: "node_themes"; value: NodeThemesResult_Serialize }
   | { kind: "node_package_sources"; value: NodeSourceListResult_Serialize }
   | { kind: "capture_status"; value: CaptureStatusResult_Serialize }
   | { kind: "capture_tail"; value: CaptureTailResult_Serialize }
@@ -4406,6 +4461,7 @@ export type SharedSettings_Deserialize = {
   theme: Theme;
   accent: Accent;
   customAccent: string;
+  nodeTheme?: NodeThemeReference;
   radius: Radius;
   font: Font;
   fontSize: FontSize;
@@ -4423,6 +4479,7 @@ export type SharedSettings_Serialize = {
   theme: Theme;
   accent: Accent;
   customAccent: string;
+  nodeTheme?: NodeThemeReference;
   radius: Radius;
   font: Font;
   fontSize: FontSize;
@@ -4687,6 +4744,21 @@ export type TimeSource =
   "host_read" | "device" | "line_capture" | "sample_clock";
 
 export type Timestamp = string;
+
+export type ToolHandoffResult =
+  ToolHandoffResult_Serialize | ToolHandoffResult_Deserialize;
+
+export type ToolHandoffResult_Deserialize = {
+  exitCode?: number;
+  reopened?: OpenResult_Deserialize;
+  ownershipUnconfirmed: boolean;
+};
+
+export type ToolHandoffResult_Serialize = {
+  exitCode?: number;
+  reopened?: OpenResult_Serialize;
+  ownershipUnconfirmed: boolean;
+};
 
 export type TransformReference = {
   id: Id;

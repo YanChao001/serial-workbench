@@ -14,6 +14,7 @@ import {
   SelectValue,
 } from "@/components/ui/select";
 import { PluginError } from "./plugin-error";
+import { BrowserPluginView, type BrowserViewOpen } from "./browser-plugin-view";
 import {
   hostCloseNodeView,
   hostOpenNodeView,
@@ -49,6 +50,7 @@ export function PluginViewLauncher({
   const id = useId();
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
+  const [browserView, setBrowserView] = useState<BrowserViewOpen | null>(null);
   const [error, setError] = useState<{
     reason: unknown;
     exporting: boolean;
@@ -57,18 +59,21 @@ export function PluginViewLauncher({
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
 
-  const available = views.filter((view) =>
-    state.catalog.some(
-      (action) =>
-        action.actionId === view.actionId &&
-        action.targetKinds.includes("session"),
-    ),
+  const available = views.filter(
+    (view) =>
+      (!connection.browser || view.feed !== "derived") &&
+      state.catalog.some(
+        (action) =>
+          action.actionId === view.actionId &&
+          action.targetKinds.includes("session"),
+      ),
   );
   const sessions = state.sessions.filter((session) => session.state === "open");
   const session =
     sessions.find((session) => sessionKey(session) === selected) ??
     (selected === "" && sessions.length === 1 ? sessions[0] : undefined);
   const canExport =
+    !connection.browser &&
     packageId === "swb.reference.chart" &&
     state.catalog.some(
       (action) =>
@@ -78,7 +83,7 @@ export function PluginViewLauncher({
     );
   if (!available.length && !canExport) return null;
 
-  async function run(view?: NodePackageView) {
+  async function run(view?: NodePackageView, opener?: HTMLElement) {
     if (!session || pending.current) return;
     const owner = new AbortController();
     pending.current = owner;
@@ -92,18 +97,19 @@ export function PluginViewLauncher({
     const remembered = feedKey && derivedFeeds.get(connection)?.get(packageId);
     let operationId =
       remembered && remembered.key === feedKey ? remembered.operationId : null;
+    const target = {
+      kind: "session",
+      hostId: connection.hostTarget.hostId,
+      id: session.sessionId,
+      sessionId: session.sessionId,
+      sessionEpoch: session.sessionEpoch,
+    };
     try {
       if (!operationId) {
         const accepted = await invoke(
           {
             actionId: view?.actionId ?? chartExportAction,
-            target: {
-              kind: "session",
-              hostId: connection.hostTarget.hostId,
-              id: session.sessionId,
-              sessionId: session.sessionId,
-              sessionEpoch: session.sessionEpoch,
-            },
+            target,
             params: {},
             executionMode: feedKey || !view ? "independent" : "interactive",
           },
@@ -139,15 +145,28 @@ export function PluginViewLauncher({
         if (!owner.signal.aborted) setSaved(written);
         return;
       }
+      const presentation = {
+        title: displayName,
+        locale: language,
+        dark: document.documentElement.classList.contains("dark"),
+      };
+      if (connection.browser) {
+        setBrowserView({
+          ...presentation,
+          operationId,
+          viewId: view.id,
+          packageId,
+          archiveSha256,
+          target,
+          opener,
+        });
+        return;
+      }
       const opened = await hostOpenNodeView(
         connection.generation,
         operationId,
         view.id,
-        {
-          title: displayName,
-          locale: language,
-          dark: document.documentElement.classList.contains("dark"),
-        },
+        presentation,
       );
       if (owner.signal.aborted) await hostCloseNodeView(opened);
     } catch (reason) {
@@ -213,7 +232,7 @@ export function PluginViewLauncher({
             key={view.id}
             size="sm"
             disabled={!session || busy}
-            onClick={() => void run(view)}
+            onClick={(event) => void run(view, event.currentTarget)}
           >
             {available.length === 1
               ? t("plugins.openView")
@@ -231,6 +250,13 @@ export function PluginViewLauncher({
           </Button>
         ) : null}
       </div>
+      {browserView ? (
+        <BrowserPluginView
+          connection={connection}
+          view={browserView}
+          onClose={() => setBrowserView(null)}
+        />
+      ) : null}
       {saved ? (
         <p role="status" className="text-sm text-muted-foreground">
           {t("plugins.chartSaved")}

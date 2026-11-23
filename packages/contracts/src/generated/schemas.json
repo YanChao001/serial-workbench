@@ -1237,7 +1237,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -1728,6 +1728,22 @@
             }
           },
           "required": ["revision", "key"],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
           "type": "object"
         },
         "ObjectRef": {
@@ -2368,6 +2384,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -2650,6 +2669,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransportCapabilities": {
           "additionalProperties": false,
@@ -3178,6 +3215,20 @@
             },
             "value": {
               "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "tool_handoff",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/ToolHandoffResult"
             }
           },
           "required": ["kind", "value"],
@@ -7504,6 +7555,21 @@
           "additionalProperties": false,
           "properties": {
             "actionId": {
+              "const": "client.updater.install.prepare",
+              "type": "string"
+            },
+            "params": {
+              "additionalProperties": false,
+              "type": "object"
+            }
+          },
+          "required": ["actionId", "params"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "actionId": {
               "const": "client.app.restart",
               "type": "string"
             },
@@ -9344,6 +9410,21 @@
               "additionalProperties": false,
               "properties": {
                 "actionId": {
+                  "const": "client.updater.install.prepare",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
                   "const": "client.app.restart",
                   "type": "string"
                 },
@@ -11033,6 +11114,35 @@
           "required": ["desktop"],
           "type": "object"
         },
+        "ClientUpdatePreparation": {
+          "additionalProperties": false,
+          "description": "桌面校验下载并获准后，请求当前 Host 完成安装前结算。",
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deliveryId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "clientTargetId",
+            "generation",
+            "deliveryId"
+          ],
+          "type": "object"
+        },
         "ClientUpdateProgress": {
           "additionalProperties": false,
           "properties": {
@@ -11317,6 +11427,20 @@
           "additionalProperties": false,
           "properties": {
             "kind": {
+              "const": "update_preparation",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/ClientUpdatePreparation"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
               "const": "settings_observed",
               "type": "string"
             },
@@ -11588,6 +11712,47 @@
       },
       "required": ["clientTargetId", "generation"],
       "title": "ClientUnregisterParams",
+      "type": "object"
+    },
+    "ClientUpdatePreparation": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "description": "桌面校验下载并获准后，请求当前 Host 完成安装前结算。",
+      "properties": {
+        "clientTargetId": {
+          "$ref": "#/definitions/Id"
+        },
+        "deliveryId": {
+          "$ref": "#/definitions/Id"
+        },
+        "generation": {
+          "$ref": "#/definitions/U64"
+        },
+        "hostId": {
+          "$ref": "#/definitions/Id"
+        },
+        "instanceEpoch": {
+          "$ref": "#/definitions/U64"
+        }
+      },
+      "required": [
+        "hostId",
+        "instanceEpoch",
+        "clientTargetId",
+        "generation",
+        "deliveryId"
+      ],
+      "title": "ClientUpdatePreparation",
       "type": "object"
     },
     "ClientWindowSizeParams": {
@@ -13088,7 +13253,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Id": {
@@ -13255,7 +13420,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Id": {
@@ -15478,6 +15643,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "update_preparation",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientUpdatePreparation"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "settings_observed",
                   "type": "string"
                 },
@@ -15594,6 +15773,35 @@
             }
           },
           "required": ["clientTargetId", "generation"],
+          "type": "object"
+        },
+        "ClientUpdatePreparation": {
+          "additionalProperties": false,
+          "description": "桌面校验下载并获准后，请求当前 Host 完成安装前结算。",
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deliveryId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "clientTargetId",
+            "generation",
+            "deliveryId"
+          ],
           "type": "object"
         },
         "ClientUpdateProgress": {
@@ -16628,6 +16836,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/OpenResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
                 }
               },
               "required": ["kind", "value"],
@@ -18111,6 +18333,21 @@
               "additionalProperties": false,
               "properties": {
                 "actionId": {
+                  "const": "client.updater.install.prepare",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
                   "const": "client.app.restart",
                   "type": "string"
                 },
@@ -18626,6 +18863,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "update_preparation",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientUpdatePreparation"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "settings_observed",
                   "type": "string"
                 },
@@ -18761,6 +19012,35 @@
             }
           },
           "required": ["clientTargetId", "generation"],
+          "type": "object"
+        },
+        "ClientUpdatePreparation": {
+          "additionalProperties": false,
+          "description": "桌面校验下载并获准后，请求当前 Host 完成安装前结算。",
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deliveryId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "clientTargetId",
+            "generation",
+            "deliveryId"
+          ],
           "type": "object"
         },
         "ClientUpdateProgress": {
@@ -19370,7 +19650,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -20459,6 +20739,64 @@
           "required": ["revision", "keys"],
           "type": "object"
         },
+        "NodeThemeEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "type": "string"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "packageId",
+            "themeId",
+            "archiveSha256",
+            "displayName",
+            "accent"
+          ],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
+        "NodeThemesResult": {
+          "additionalProperties": false,
+          "properties": {
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/NodeThemeEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["themes"],
+          "type": "object"
+        },
         "NodeViewAssetReadResult": {
           "additionalProperties": false,
           "properties": {
@@ -20561,6 +20899,12 @@
             },
             "configuration": {
               "$ref": "#/definitions/SerialConfiguration"
+            },
+            "transportParams": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
             }
           },
           "required": ["configuration"],
@@ -21186,6 +21530,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/NodeViewAssetReadResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "node_themes",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/NodeThemesResult"
                 }
               },
               "required": ["kind", "value"],
@@ -22749,6 +23107,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -23256,6 +23617,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransformReference": {
           "additionalProperties": false,
@@ -27707,6 +28086,157 @@
       "title": "NodeSourceRevokeParams",
       "type": "object"
     },
+    "NodeThemeEntry": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "accent": {
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "type": "string"
+        },
+        "archiveSha256": {
+          "$ref": "#/definitions/Digest"
+        },
+        "displayName": {
+          "type": "string"
+        },
+        "packageId": {
+          "$ref": "#/definitions/NodePackageId"
+        },
+        "themeId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "packageId",
+        "themeId",
+        "archiveSha256",
+        "displayName",
+        "accent"
+      ],
+      "title": "NodeThemeEntry",
+      "type": "object"
+    },
+    "NodeThemeReference": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "archiveSha256": {
+          "$ref": "#/definitions/Digest"
+        },
+        "packageId": {
+          "$ref": "#/definitions/NodePackageId"
+        },
+        "themeId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": ["packageId", "themeId", "archiveSha256"],
+      "title": "NodeThemeReference",
+      "type": "object"
+    },
+    "NodeThemeTokens": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "properties": {
+        "accent": {
+          "pattern": "^#[0-9A-Fa-f]{6}$",
+          "type": "string"
+        }
+      },
+      "required": ["accent"],
+      "title": "NodeThemeTokens",
+      "type": "object"
+    },
+    "NodeThemesResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodeThemeEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "type": "string"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "packageId",
+            "themeId",
+            "archiveSha256",
+            "displayName",
+            "accent"
+          ],
+          "type": "object"
+        }
+      },
+      "properties": {
+        "themes": {
+          "items": {
+            "$ref": "#/definitions/NodeThemeEntry"
+          },
+          "type": "array"
+        }
+      },
+      "required": ["themes"],
+      "title": "NodeThemesResult",
+      "type": "object"
+    },
     "NodeViewAssetReadParams": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -28008,6 +28538,34 @@
           "pattern": "^[A-Za-z0-9._:-]{1,128}$",
           "type": "string"
         },
+        "JsonValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/SafeInteger"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            }
+          ]
+        },
         "Parity": {
           "enum": ["none", "even", "odd", "mark", "space"],
           "type": "string"
@@ -28018,6 +28576,11 @@
           },
           "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
           "type": "string"
+        },
+        "SafeInteger": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
         },
         "SerialConfiguration": {
           "additionalProperties": false,
@@ -28070,6 +28633,12 @@
         },
         "configuration": {
           "$ref": "#/definitions/SerialConfiguration"
+        },
+        "transportParams": {
+          "additionalProperties": {
+            "$ref": "#/definitions/JsonValue"
+          },
+          "type": "object"
         }
       },
       "required": ["configuration"],
@@ -28432,6 +29001,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/OpenResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
                 }
               },
               "required": ["kind", "value"],
@@ -29794,7 +30377,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -30285,6 +30868,22 @@
             }
           },
           "required": ["revision", "key"],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
           "type": "object"
         },
         "ObjectRef": {
@@ -30965,6 +31564,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -31247,6 +31849,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransportCapabilities": {
           "additionalProperties": false,
@@ -32265,6 +32885,21 @@
               "additionalProperties": false,
               "properties": {
                 "actionId": {
+                  "const": "client.updater.install.prepare",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
                   "const": "client.app.restart",
                   "type": "string"
                 },
@@ -32447,7 +33082,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -32520,6 +33155,34 @@
         "IdentityEvidence": {
           "enum": ["serialNumber", "topology", "unreliable"],
           "type": "string"
+        },
+        "JsonValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/SafeInteger"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            }
+          ]
         },
         "Language": {
           "enum": ["zh", "en"],
@@ -32612,6 +33275,27 @@
           "enum": ["system", "direct"],
           "type": "string"
         },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
         "ObjectRef": {
           "additionalProperties": false,
           "properties": {
@@ -32639,6 +33323,12 @@
             },
             "configuration": {
               "$ref": "#/definitions/SerialConfiguration"
+            },
+            "transportParams": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
             }
           },
           "required": ["configuration"],
@@ -32691,6 +33381,11 @@
         "ResourceKind": {
           "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
           "type": "string"
+        },
+        "SafeInteger": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
         },
         "SerialConfiguration": {
           "additionalProperties": false,
@@ -32777,6 +33472,9 @@
             },
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
+            },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
             },
             "radius": {
               "$ref": "#/definitions/Radius"
@@ -33553,6 +34251,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/OpenResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
                 }
               },
               "required": ["kind", "value"],
@@ -34915,7 +35627,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -35406,6 +36118,22 @@
             }
           },
           "required": ["revision", "key"],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
           "type": "object"
         },
         "ObjectRef": {
@@ -36184,6 +36912,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -36466,6 +37197,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransportCapabilities": {
           "additionalProperties": false,
@@ -37926,6 +38675,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "session",
                   "type": "string"
                 },
@@ -39029,6 +39792,21 @@
               "properties": {
                 "actionId": {
                   "const": "client.updater.install",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
+                  "const": "client.updater.install.prepare",
                   "type": "string"
                 },
                 "params": {
@@ -40162,7 +40940,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -41038,6 +41816,64 @@
           "required": ["revision", "keys"],
           "type": "object"
         },
+        "NodeThemeEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "type": "string"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "packageId",
+            "themeId",
+            "archiveSha256",
+            "displayName",
+            "accent"
+          ],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
+        "NodeThemesResult": {
+          "additionalProperties": false,
+          "properties": {
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/NodeThemeEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["themes"],
+          "type": "object"
+        },
         "NodeViewAssetReadResult": {
           "additionalProperties": false,
           "properties": {
@@ -41121,6 +41957,12 @@
             },
             "configuration": {
               "$ref": "#/definitions/SerialConfiguration"
+            },
+            "transportParams": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
             }
           },
           "required": ["configuration"],
@@ -42304,6 +43146,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -42779,6 +43624,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransformReference": {
           "additionalProperties": false,
@@ -43413,6 +44276,20 @@
             },
             "value": {
               "$ref": "#/definitions/NodeViewAssetReadResult"
+            }
+          },
+          "required": ["kind", "value"],
+          "type": "object"
+        },
+        {
+          "additionalProperties": false,
+          "properties": {
+            "kind": {
+              "const": "node_themes",
+              "type": "string"
+            },
+            "value": {
+              "$ref": "#/definitions/NodeThemesResult"
             }
           },
           "required": ["kind", "value"],
@@ -45666,7 +46543,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "DurationMs": {
@@ -48037,6 +48914,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "session",
                   "type": "string"
                 },
@@ -49287,6 +50178,21 @@
               "additionalProperties": false,
               "properties": {
                 "actionId": {
+                  "const": "client.updater.install.prepare",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
                   "const": "client.app.restart",
                   "type": "string"
                 },
@@ -50410,7 +51316,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -51412,6 +52318,64 @@
           "required": ["revision", "keys"],
           "type": "object"
         },
+        "NodeThemeEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "type": "string"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "packageId",
+            "themeId",
+            "archiveSha256",
+            "displayName",
+            "accent"
+          ],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
+        "NodeThemesResult": {
+          "additionalProperties": false,
+          "properties": {
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/NodeThemeEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["themes"],
+          "type": "object"
+        },
         "NodeViewAssetReadResult": {
           "additionalProperties": false,
           "properties": {
@@ -51514,6 +52478,12 @@
             },
             "configuration": {
               "$ref": "#/definitions/SerialConfiguration"
+            },
+            "transportParams": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
             }
           },
           "required": ["configuration"],
@@ -52092,6 +53062,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/NodeViewAssetReadResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "node_themes",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/NodeThemesResult"
                 }
               },
               "required": ["kind", "value"],
@@ -53318,6 +54302,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -53793,6 +54780,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransformReference": {
           "additionalProperties": false,
@@ -54984,6 +55989,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "update_preparation",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientUpdatePreparation"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "settings_observed",
                   "type": "string"
                 },
@@ -55100,6 +56119,35 @@
             }
           },
           "required": ["clientTargetId", "generation"],
+          "type": "object"
+        },
+        "ClientUpdatePreparation": {
+          "additionalProperties": false,
+          "description": "桌面校验下载并获准后，请求当前 Host 完成安装前结算。",
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deliveryId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "clientTargetId",
+            "generation",
+            "deliveryId"
+          ],
           "type": "object"
         },
         "ClientUpdateProgress": {
@@ -56154,6 +57202,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/OpenResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
                 }
               },
               "required": ["kind", "value"],
@@ -57413,6 +58475,21 @@
               "additionalProperties": false,
               "properties": {
                 "actionId": {
+                  "const": "client.updater.install.prepare",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
                   "const": "client.app.restart",
                   "type": "string"
                 },
@@ -58536,7 +59613,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -59538,6 +60615,64 @@
           "required": ["revision", "keys"],
           "type": "object"
         },
+        "NodeThemeEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "type": "string"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "packageId",
+            "themeId",
+            "archiveSha256",
+            "displayName",
+            "accent"
+          ],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
+        "NodeThemesResult": {
+          "additionalProperties": false,
+          "properties": {
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/NodeThemeEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["themes"],
+          "type": "object"
+        },
         "NodeViewAssetReadResult": {
           "additionalProperties": false,
           "properties": {
@@ -59640,6 +60775,12 @@
             },
             "configuration": {
               "$ref": "#/definitions/SerialConfiguration"
+            },
+            "transportParams": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
             }
           },
           "required": ["configuration"],
@@ -60218,6 +61359,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/NodeViewAssetReadResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "node_themes",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/NodeThemesResult"
                 }
               },
               "required": ["kind", "value"],
@@ -61398,6 +62553,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -61873,6 +63031,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransformReference": {
           "additionalProperties": false,
@@ -63159,6 +64335,10 @@
           "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
           "type": "string"
         },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "Font": {
           "enum": ["geist", "system", "serif", "mono"],
           "type": "string"
@@ -63245,6 +64425,27 @@
           "enum": ["system", "direct"],
           "type": "string"
         },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
         "ObjectRef": {
           "additionalProperties": false,
           "properties": {
@@ -63320,6 +64521,9 @@
             },
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
+            },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
             },
             "radius": {
               "$ref": "#/definitions/Radius"
@@ -63625,6 +64829,10 @@
           "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
           "type": "string"
         },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "Font": {
           "enum": ["geist", "system", "serif", "mono"],
           "type": "string"
@@ -63711,6 +64919,27 @@
           "enum": ["system", "direct"],
           "type": "string"
         },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
         "ObjectRef": {
           "additionalProperties": false,
           "properties": {
@@ -63773,6 +65002,9 @@
             },
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
+            },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
             },
             "radius": {
               "$ref": "#/definitions/Radius"
@@ -64015,6 +65247,10 @@
           "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
           "type": "string"
         },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "Font": {
           "enum": ["geist", "system", "serif", "mono"],
           "type": "string"
@@ -64101,6 +65337,27 @@
           "enum": ["system", "direct"],
           "type": "string"
         },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
         "ObjectRef": {
           "additionalProperties": false,
           "properties": {
@@ -64163,6 +65420,9 @@
             },
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
+            },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
             },
             "radius": {
               "$ref": "#/definitions/Radius"
@@ -64408,6 +65668,10 @@
           "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
           "type": "string"
         },
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
         "Font": {
           "enum": ["geist", "system", "serif", "mono"],
           "type": "string"
@@ -64493,6 +65757,27 @@
         "NetworkMode": {
           "enum": ["system", "direct"],
           "type": "string"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
         },
         "ObjectRef": {
           "additionalProperties": false,
@@ -64661,6 +65946,9 @@
         },
         "networkMode": {
           "$ref": "#/definitions/NetworkMode"
+        },
+        "nodeTheme": {
+          "$ref": "#/definitions/NodeThemeReference"
         },
         "radius": {
           "$ref": "#/definitions/Radius"
@@ -67380,6 +68668,220 @@
       "title": "Timestamp",
       "type": "string"
     },
+    "ToolHandoffParams": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "Digest": {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        "DurationMs": {
+          "not": {
+            "pattern": "^(?:0|0)$"
+          },
+          "pattern": "^(?:2147483647|[1-1][0-9]{9}|2[0-0][0-9]{8}|21[0-3][0-9]{7}|214[0-6][0-9]{6}|2147[0-3][0-9]{5}|21474[0-7][0-9]{4}|214748[0-2][0-9]{3}|2147483[0-5][0-9]{2}|21474836[0-3][0-9]{1}|214748364[0-6][0-9]{0}|[1-9][0-9]{0,8}|0)$",
+          "type": "string"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "NodePackageId": {
+          "maxLength": 128,
+          "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
+          "type": "string"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "archiveSha256": {
+          "$ref": "#/definitions/Digest"
+        },
+        "expectedInstallRevision": {
+          "$ref": "#/definitions/U64"
+        },
+        "packageId": {
+          "$ref": "#/definitions/NodePackageId"
+        },
+        "timeoutMs": {
+          "$ref": "#/definitions/DurationMs"
+        },
+        "toolId": {
+          "$ref": "#/definitions/Id"
+        }
+      },
+      "required": [
+        "packageId",
+        "expectedInstallRevision",
+        "archiveSha256",
+        "toolId",
+        "timeoutMs"
+      ],
+      "title": "ToolHandoffParams",
+      "type": "object"
+    },
+    "ToolHandoffResult": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "additionalProperties": false,
+      "definitions": {
+        "HostError": {
+          "additionalProperties": false,
+          "properties": {
+            "code": {
+              "type": "string"
+            },
+            "details": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            },
+            "message": {
+              "type": "string"
+            },
+            "operationId": {
+              "$ref": "#/definitions/Id"
+            },
+            "retryable": {
+              "type": "boolean"
+            },
+            "revealTarget": {
+              "$ref": "#/definitions/RevealTarget"
+            }
+          },
+          "required": ["code", "message", "retryable"],
+          "type": "object"
+        },
+        "Id": {
+          "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+          "type": "string"
+        },
+        "JsonValue": {
+          "anyOf": [
+            {
+              "type": "null"
+            },
+            {
+              "type": "boolean"
+            },
+            {
+              "$ref": "#/definitions/SafeInteger"
+            },
+            {
+              "type": "string"
+            },
+            {
+              "items": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "array"
+            },
+            {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
+            }
+          ]
+        },
+        "ObjectRef": {
+          "additionalProperties": false,
+          "properties": {
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "id": {
+              "$ref": "#/definitions/Id"
+            },
+            "kind": {
+              "$ref": "#/definitions/ResourceKind"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": ["hostId", "kind", "id"],
+          "type": "object"
+        },
+        "OpenResult": {
+          "additionalProperties": false,
+          "properties": {
+            "recentError": {
+              "$ref": "#/definitions/HostError"
+            },
+            "reused": {
+              "type": "boolean"
+            },
+            "revision": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionEpoch": {
+              "$ref": "#/definitions/U64"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["sessionId", "sessionEpoch", "revision", "reused"],
+          "type": "object"
+        },
+        "ResourceKind": {
+          "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+          "type": "string"
+        },
+        "RevealTarget": {
+          "additionalProperties": false,
+          "properties": {
+            "pageId": {
+              "$ref": "#/definitions/Id"
+            },
+            "panelId": {
+              "$ref": "#/definitions/Id"
+            },
+            "resultRef": {
+              "$ref": "#/definitions/ObjectRef"
+            },
+            "sessionId": {
+              "$ref": "#/definitions/Id"
+            },
+            "workspaceId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["pageId"],
+          "type": "object"
+        },
+        "SafeInteger": {
+          "maximum": 9007199254740991,
+          "minimum": -9007199254740991,
+          "type": "integer"
+        },
+        "U64": {
+          "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+          "type": "string"
+        }
+      },
+      "properties": {
+        "exitCode": {
+          "maximum": 4294967295,
+          "minimum": 0,
+          "type": "integer"
+        },
+        "ownershipUnconfirmed": {
+          "type": "boolean"
+        },
+        "reopened": {
+          "$ref": "#/definitions/OpenResult"
+        }
+      },
+      "required": ["ownershipUnconfirmed"],
+      "title": "ToolHandoffResult",
+      "type": "object"
+    },
     "TransformReference": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "additionalProperties": false,
@@ -68227,6 +69729,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/OpenResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "tool_handoff",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ToolHandoffResult"
                 }
               },
               "required": ["kind", "value"],
@@ -69710,6 +71226,21 @@
               "additionalProperties": false,
               "properties": {
                 "actionId": {
+                  "const": "client.updater.install.prepare",
+                  "type": "string"
+                },
+                "params": {
+                  "additionalProperties": false,
+                  "type": "object"
+                }
+              },
+              "required": ["actionId", "params"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "actionId": {
                   "const": "client.app.restart",
                   "type": "string"
                 },
@@ -70225,6 +71756,20 @@
               "additionalProperties": false,
               "properties": {
                 "kind": {
+                  "const": "update_preparation",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/ClientUpdatePreparation"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
                   "const": "settings_observed",
                   "type": "string"
                 },
@@ -70360,6 +71905,35 @@
             }
           },
           "required": ["clientTargetId", "generation"],
+          "type": "object"
+        },
+        "ClientUpdatePreparation": {
+          "additionalProperties": false,
+          "description": "桌面校验下载并获准后，请求当前 Host 完成安装前结算。",
+          "properties": {
+            "clientTargetId": {
+              "$ref": "#/definitions/Id"
+            },
+            "deliveryId": {
+              "$ref": "#/definitions/Id"
+            },
+            "generation": {
+              "$ref": "#/definitions/U64"
+            },
+            "hostId": {
+              "$ref": "#/definitions/Id"
+            },
+            "instanceEpoch": {
+              "$ref": "#/definitions/U64"
+            }
+          },
+          "required": [
+            "hostId",
+            "instanceEpoch",
+            "clientTargetId",
+            "generation",
+            "deliveryId"
+          ],
           "type": "object"
         },
         "ClientUpdateProgress": {
@@ -70969,7 +72543,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "Digest": {
@@ -72387,6 +73961,64 @@
           "required": ["revision", "keys"],
           "type": "object"
         },
+        "NodeThemeEntry": {
+          "additionalProperties": false,
+          "properties": {
+            "accent": {
+              "pattern": "^#[0-9A-Fa-f]{6}$",
+              "type": "string"
+            },
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "displayName": {
+              "type": "string"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": [
+            "packageId",
+            "themeId",
+            "archiveSha256",
+            "displayName",
+            "accent"
+          ],
+          "type": "object"
+        },
+        "NodeThemeReference": {
+          "additionalProperties": false,
+          "properties": {
+            "archiveSha256": {
+              "$ref": "#/definitions/Digest"
+            },
+            "packageId": {
+              "$ref": "#/definitions/NodePackageId"
+            },
+            "themeId": {
+              "$ref": "#/definitions/Id"
+            }
+          },
+          "required": ["packageId", "themeId", "archiveSha256"],
+          "type": "object"
+        },
+        "NodeThemesResult": {
+          "additionalProperties": false,
+          "properties": {
+            "themes": {
+              "items": {
+                "$ref": "#/definitions/NodeThemeEntry"
+              },
+              "type": "array"
+            }
+          },
+          "required": ["themes"],
+          "type": "object"
+        },
         "NodeViewAssetReadResult": {
           "additionalProperties": false,
           "properties": {
@@ -72489,6 +74121,12 @@
             },
             "configuration": {
               "$ref": "#/definitions/SerialConfiguration"
+            },
+            "transportParams": {
+              "additionalProperties": {
+                "$ref": "#/definitions/JsonValue"
+              },
+              "type": "object"
             }
           },
           "required": ["configuration"],
@@ -73114,6 +74752,20 @@
                 },
                 "value": {
                   "$ref": "#/definitions/NodeViewAssetReadResult"
+                }
+              },
+              "required": ["kind", "value"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "kind": {
+                  "const": "node_themes",
+                  "type": "string"
+                },
+                "value": {
+                  "$ref": "#/definitions/NodeThemesResult"
                 }
               },
               "required": ["kind", "value"],
@@ -74677,6 +76329,9 @@
             "networkMode": {
               "$ref": "#/definitions/NetworkMode"
             },
+            "nodeTheme": {
+              "$ref": "#/definitions/NodeThemeReference"
+            },
             "radius": {
               "$ref": "#/definitions/Radius"
             },
@@ -75184,6 +76839,24 @@
         "Timestamp": {
           "pattern": "^(?:(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-(?:0[1-9]|[12][0-9]|3[01])|(?:04|06|09|11)-(?:0[1-9]|[12][0-9]|30)|02-(?:0[1-9]|1[0-9]|2[0-8]))|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29)[Tt](?:[01][0-9]|2[0-3]):[0-5][0-9]:[0-5][0-9]|(?:[0-9]{4}-(?:(?:01|03|05|07|08|10|12)-31|(?:04|06|09|11)-30)|(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00)-02-29|(?!(?:(?:[0-9]{2}(?:0[48]|[2468][048]|[13579][26])|(?:[02468][048]|[13579][26])00))-)[0-9]{4}-02-28)[Tt]23:59:60)(?:\\.[0-9]+)?(?:[Zz]|\\+00:00)$",
           "type": "string"
+        },
+        "ToolHandoffResult": {
+          "additionalProperties": false,
+          "properties": {
+            "exitCode": {
+              "maximum": 4294967295,
+              "minimum": 0,
+              "type": "integer"
+            },
+            "ownershipUnconfirmed": {
+              "type": "boolean"
+            },
+            "reopened": {
+              "$ref": "#/definitions/OpenResult"
+            }
+          },
+          "required": ["ownershipUnconfirmed"],
+          "type": "object"
         },
         "TransformReference": {
           "additionalProperties": false,
@@ -75841,7 +77514,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "DurationMs": {
@@ -76175,7 +77848,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "DurationMs": {
@@ -76734,7 +78407,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "DurationMs": {
@@ -77078,7 +78751,7 @@
           "type": "object"
         },
         "DeviceTransportKind": {
-          "enum": ["serial", "pty", "virtual", "replay"],
+          "enum": ["serial", "pty", "virtual", "plugin", "replay"],
           "type": "string"
         },
         "DurationMs": {

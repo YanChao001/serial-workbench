@@ -231,16 +231,21 @@ pub(super) fn open(
     device: &DeviceDescriptor,
     config: &SerialConfiguration,
     claim: super::SerialClaim,
+    interface: Option<Vec<u16>>,
 ) -> BackendResult<Box<dyn super::NativePort>> {
-    let number = device
-        .system_name
-        .strip_prefix("COM")
-        .filter(|number| !number.is_empty() && number.bytes().all(|v| v.is_ascii_digit()))
-        .ok_or_else(|| super::unsupported("The discovered COM locator is invalid"))?;
-    let path: Vec<u16> = format!("\\\\.\\COM{number}")
-        .encode_utf16()
-        .chain(Some(0))
-        .collect();
+    let path = if let Some(interface) = interface {
+        interface
+    } else {
+        let number = device
+            .system_name
+            .strip_prefix("COM")
+            .filter(|number| !number.is_empty() && number.bytes().all(|v| v.is_ascii_digit()))
+            .ok_or_else(|| super::unsupported("The discovered COM locator is invalid"))?;
+        format!("\\\\.\\COM{number}")
+            .encode_utf16()
+            .chain(Some(0))
+            .collect()
+    };
     // 独占、不可继承；每项 OVERLAPPED 的存储由原生线程持有到完成。
     let handle = unsafe {
         CreateFileW(
@@ -564,6 +569,88 @@ fn last_error() -> BackendError {
 }
 
 pub(super) fn enumerate(host_id: &Id) -> HostResult<Vec<DeviceDescriptor>> {
+    enumerate_ports(host_id, false)
+        .map(|ports| ports.into_iter().map(|(device, _)| device).collect())
+}
+
+pub(super) fn resolve_handoff_port(
+    expected: &DeviceDescriptor,
+) -> HostResult<(DeviceDescriptor, Vec<u16>)> {
+    let (devices, instances): (Vec<_>, Vec<_>) = enumerate_ports(&expected.host_id, true)?
+        .into_iter()
+        .unzip();
+    let selected = super::find_handoff_identity(expected, &devices)?;
+    let instance = devices
+        .iter()
+        .zip(instances)
+        .find(|(device, _)| device.device_id == selected.device_id)
+        .and_then(|(_, instance)| instance)
+        .ok_or_else(handoff_interface_unavailable)?;
+    let path = handoff_interface(&instance)?;
+    let mut device = selected.clone();
+    device.device_id.clone_from(&expected.device_id);
+    Ok((device, path))
+}
+
+fn handoff_interface(instance: &str) -> HostResult<Vec<u16>> {
+    use windows_sys::Win32::Devices::DeviceAndDriverInstallation::*;
+    // 来自 ntddser.h 的 GUID_DEVINTERFACE_COMPORT。只解析同一设备实例的已启用接口。
+    const COM_PORT: windows_sys::core::GUID =
+        windows_sys::core::GUID::from_u128(0x86e0d1e0_8089_11d0_9ce4_08003e301f73);
+    let instance: Vec<u16> = instance.encode_utf16().chain(Some(0)).collect();
+    for _ in 0..3 {
+        let mut length = 0;
+        if unsafe {
+            CM_Get_Device_Interface_List_SizeW(
+                &mut length,
+                &COM_PORT,
+                instance.as_ptr(),
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT,
+            )
+        } != CR_SUCCESS
+            || !(3..=8192).contains(&length)
+        {
+            break;
+        }
+        let mut links = vec![0u16; length as usize];
+        match unsafe {
+            CM_Get_Device_Interface_ListW(
+                &COM_PORT,
+                instance.as_ptr(),
+                links.as_mut_ptr(),
+                length,
+                CM_GET_DEVICE_INTERFACE_LIST_PRESENT,
+            )
+        } {
+            CR_BUFFER_SMALL => continue,
+            CR_SUCCESS => {
+                if let Some(end) = links.iter().position(|unit| *unit == 0)
+                    && end > 0
+                    && links.get(end + 1) == Some(&0)
+                    && links[end + 1..].iter().all(|unit| *unit == 0)
+                {
+                    links.truncate(end + 1);
+                    return Ok(links);
+                }
+                break;
+            }
+            _ => break,
+        }
+    }
+    Err(handoff_interface_unavailable())
+}
+
+fn handoff_interface_unavailable() -> HostError {
+    HostError::new(
+        "REQUIRES_REBIND",
+        "The returning device has no unique active COM interface",
+    )
+}
+
+fn enumerate_ports(
+    host_id: &Id,
+    include_instance: bool,
+) -> HostResult<Vec<(DeviceDescriptor, Option<String>)>> {
     use windows_sys::Win32::Devices::{DeviceAndDriverInstallation::*, Properties::*};
     use windows_sys::Win32::System::Registry::*;
     struct DeviceSet(HDEVINFO);
@@ -672,23 +759,31 @@ pub(super) fn enumerate(host_id: &Id) -> HostResult<Vec<DeviceDescriptor>> {
         } else {
             IdentityEvidence::Unreliable
         };
-        devices.push(DeviceDescriptor {
-            device_id: Id::try_from(uuid::Uuid::new_v4().to_string().as_str())?,
-            host_id: host_id.clone(),
-            system_name,
-            description,
-            manufacturer,
-            driver,
-            fingerprint: DeviceFingerprint {
-                transport: DeviceTransportKind::Serial,
-                vid,
-                pid,
-                serial_number,
-                topology_path,
-                evidence,
+        let instance = if include_instance {
+            device_property(set.0, &info, &DEVPKEY_Device_InstanceId)
+        } else {
+            None
+        };
+        devices.push((
+            DeviceDescriptor {
+                device_id: Id::try_from(uuid::Uuid::new_v4().to_string().as_str())?,
+                host_id: host_id.clone(),
+                system_name,
+                description,
+                manufacturer,
+                driver,
+                fingerprint: DeviceFingerprint {
+                    transport: DeviceTransportKind::Serial,
+                    vid,
+                    pid,
+                    serial_number,
+                    topology_path,
+                    evidence,
+                },
+                capabilities: super::serial_capabilities(),
             },
-            capabilities: super::serial_capabilities(),
-        });
+            instance,
+        ));
     }
     Err(HostError::new(
         "LIMIT_EXCEEDED",
@@ -1030,13 +1125,15 @@ mod tests {
             assert_eq!(timeouts.ReadTotalTimeoutConstant, actual);
         }
     }
-    type TestClaims = Arc<std::sync::Mutex<std::collections::HashMap<Id, Vec<String>>>>;
+    type TestClaims = super::super::SerialClaims;
 
     fn isolated_event_port() -> (WindowsPort, TestClaims) {
         let id = Id::try_from("isolated-event-port").unwrap();
         let claims = Arc::new(std::sync::Mutex::new(std::collections::HashMap::from([(
-            id.clone(),
-            vec!["locator:test-event".to_owned()],
+            super::super::SerialOwner::Native(id.clone()),
+            vec![super::super::SerialAddress::Locator(
+                "test-event".to_owned(),
+            )],
         )])));
         let handle = unsafe { CreateEventW(std::ptr::null(), 1, 0, std::ptr::null()) };
         assert!(!handle.is_null());

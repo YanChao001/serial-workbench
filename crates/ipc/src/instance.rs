@@ -26,6 +26,19 @@ pub fn profile_has_host_state(profile: &Path) -> HostResult<bool> {
 /// 持有当前调用取得的协调锁；释放时显式解锁，不等待派生进程关闭继承句柄。
 pub struct PrivateFileLock {
     file: File,
+    #[cfg(windows)]
+    host_namespace: Option<std::path::PathBuf>,
+}
+
+#[cfg(windows)]
+impl PrivateFileLock {
+    pub(crate) fn require_host_namespace(&self, namespace: &Path) -> HostResult<()> {
+        let path = fs::canonicalize(namespace).map_err(|_| unavailable())?;
+        if self.host_namespace.as_ref() != Some(&path) {
+            return Err(unavailable());
+        }
+        Ok(())
+    }
 }
 
 impl Drop for PrivateFileLock {
@@ -67,15 +80,26 @@ pub fn reserve_host_instance(namespace: &Path) -> HostResult<PrivateFileLock> {
         Err(error) if error.kind() != std::io::ErrorKind::NotFound => return Err(unavailable()),
         _ => {}
     }
-    try_lock_private_file(&path)?
-        .ok_or_else(|| HostError::new("HOST_BUSY", "This profile already has a running Host"))
+    let guard = try_lock_private_file(&path)?
+        .ok_or_else(|| HostError::new("HOST_BUSY", "This profile already has a running Host"))?;
+    #[cfg(windows)]
+    let guard = {
+        let mut guard = guard;
+        guard.host_namespace = Some(fs::canonicalize(namespace).map_err(|_| unavailable())?);
+        guard
+    };
+    Ok(guard)
 }
 
 /// A private, persistent coordination file. Dropping the returned guard releases its OS lock.
 pub fn try_lock_private_file(path: &Path) -> HostResult<Option<PrivateFileLock>> {
     let file = crate::open_private_lock_file(path)?;
     match file.try_lock() {
-        Ok(()) => Ok(Some(PrivateFileLock { file })),
+        Ok(()) => Ok(Some(PrivateFileLock {
+            file,
+            #[cfg(windows)]
+            host_namespace: None,
+        })),
         Err(TryLockError::WouldBlock) => Ok(None),
         Err(TryLockError::Error(_)) => Err(unavailable()),
     }
@@ -118,7 +142,11 @@ mod tests {
         let file = crate::open_private_lock_file(&path).unwrap();
         assert!(!profile_has_running_host(root.path()).unwrap());
         file.try_lock().unwrap();
-        let guard = PrivateFileLock { file };
+        let guard = PrivateFileLock {
+            file,
+            #[cfg(windows)]
+            host_namespace: None,
+        };
         assert!(profile_has_running_host(root.path()).unwrap());
         drop(guard);
         assert!(!profile_has_running_host(root.path()).unwrap());

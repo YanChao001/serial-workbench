@@ -17,13 +17,24 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
 
         let opened = bridge.connect_device_intent(
             "main", desktop.generation, Id::try_from("virtual:echo").unwrap(),
-            OpenParams { configuration: SerialConfiguration::default(), binding: None },
+            OpenParams { transport_params: None, configuration: SerialConfiguration::default(), binding: None },
         ).await.unwrap();
         let session = Target {
             host_id: business.host_id.clone(), kind: ResourceKind::try_from("session").unwrap(),
             id: opened.session_id.clone(), session_id: Some(opened.session_id),
             session_epoch: Some(opened.session_epoch),
         };
+        let parser_client = HostClient::connect(ConnectOptions::new(
+            profile.to_path_buf(), Id::try_from("reference-parser-client").unwrap(), ClientKind::Cli,
+        )).await.unwrap();
+        let ungranted_version = parser_catalog_version(&parser_client, false).await;
+        assert_error(parser_request(&parser_client, &session).await, "PERMISSION_DENIED");
+        invoke_control(&bridge, "main", desktop.generation, "auth.authorize",
+            json!({"clientId":parser_client.attachment().client_id,"permissions":["content.read"],"targets":[session]}),
+        ).await.unwrap();
+        let active_version = parser_catalog_version(&parser_client, true).await;
+        assert_eq!(active_version, ungranted_version);
+
         let sampling = invoke(&bridge, business, &session, SAMPLE,
             json!({"startEventSeq":"1","sampleCount":3}), ExecutionMode::Independent).await;
         use crate::node_view::test_support::TestDerivedView;
@@ -90,7 +101,7 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             assert_eq!(serde_json::to_value(&sample.value).unwrap(), value);
             assert_eq!(sample.position.get(), index as u64 + 1);
             assert_eq!(sample.provenance.parser_id.as_str(), SAMPLE);
-            assert_eq!(sample.provenance.parser_version, "0.1.1");
+            assert_eq!(sample.provenance.parser_version, "0.1.2");
             assert_eq!(sample.provenance.unit.as_deref(), Some("V"));
             assert_eq!(sample.provenance.quality, [DerivedQuality::Complete, DerivedQuality::Transformed]);
             let [source] = &sample.provenance.sources[..] else { panic!("One exact RX source range"); };
@@ -112,6 +123,24 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
         assert_eq!(derived(success(cli.query_reply("stream.derivedRead", &session, &first_params).await)), first);
         verify_mcp_pages(profile, &session, [(first_params, &first), (last_params, &last)]).await;
         verify_svg_export(profile, &bridge, business, desktop.generation, &session).await;
+        let RpcResult::Operation(owned) = success(parser_request(&parser_client, &session).await) else {
+            panic!("missing authorized parser operation");
+        };
+        assert_eq!(owned.operation.actor_id, parser_client.attachment().actor_id);
+        let scoped = tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let mut request = host_query(parser_client.attachment(), "operation.get",
+                    json!({"operationId":owned.operation.operation_id}));
+                request.target.kind = ResourceKind::try_from("operation").unwrap();
+                request.target.id = owned.operation.operation_id.clone();
+                let RpcResult::Operation(snapshot) = success(parser_client.request(RpcRequest::OperationGet(request)).await.unwrap()) else {
+                    panic!("missing scoped parser operation");
+                };
+                if snapshot.operation.state.is_terminal() { break snapshot.operation; }
+                tokio::time::sleep(Duration::from_millis(25)).await;
+            }
+        }).await.unwrap();
+        assert_eq!(scoped.state, OperationState::Succeeded, "{scoped:?}");
 
         let end = wait_reference_rx_end(&bridge, business, &session, 13).await;
         let overflow = invoke(&bridge, business, &session, SAMPLE,
@@ -135,8 +164,76 @@ async fn native_chart_samples_exact_rx_from_the_signed_reference_package() {
             params: NodePackageIdentityParams { id: package.id.clone(), archive_sha256: package.archive_sha256.clone() },
         }).await;
         assert!(matches!(reopened.next().await, Err(error) if error.code == "UNSUPPORTED_CAPABILITY"));
-        eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] samples_while_running=2 same_view_after_completion=true two_pages=true cli_match=true official_mcp_pages=2 scoped_view_reopened=true viewer_revoked=true overlong_rejected=true raw_bytes=78");
+        let withdrawn_version = parser_catalog_version(&parser_client, false).await;
+        assert!(withdrawn_version > active_version);
+        assert_error(parser_request(&parser_client, &session).await, "UNSUPPORTED_CAPABILITY");
+        parser_client.close().await.unwrap();
+        eprintln!("reference_chart values=[1.25,-2,3.5] byte_ranges=[[0,6],[6,9],[9,13]] samples_while_running=2 same_view_after_completion=true two_pages=true cli_match=true official_mcp_pages=2 scoped_view_reopened=true viewer_revoked=true unauthorized_parser_denied=true exact_session_grant_succeeded=true withdrawn_parser_denied=true overlong_rejected=true raw_bytes=78");
     }).await;
+}
+
+async fn parser_catalog_version(client: &HostClient, expected_visible: bool) -> U64 {
+    let mut input = CatalogListParams {
+        page_size: 100.into(),
+        page_token: None,
+        catalog_version: None,
+    };
+    let mut visible = false;
+    loop {
+        let request = host_query(
+            client.attachment(),
+            "catalog.list",
+            serde_json::to_value(&input).unwrap(),
+        );
+        let RpcResult::Catalog(page) = success(
+            client
+                .request(RpcRequest::CatalogList(request))
+                .await
+                .unwrap(),
+        ) else {
+            panic!("missing parser catalog page");
+        };
+        visible |= page
+            .items
+            .iter()
+            .any(|item| item.action_id.as_str() == SAMPLE);
+        let Some(next) = page.next_page_token else {
+            assert_eq!(
+                visible, expected_visible,
+                "parser visibility in the catalog"
+            );
+            return page.catalog_version;
+        };
+        input.page_token = Some(next);
+        input.catalog_version = Some(page.catalog_version);
+    }
+}
+
+async fn parser_request(client: &HostClient, session: &Target) -> RpcReply {
+    let attachment = client.attachment();
+    let q = host_query(
+        attachment,
+        SAMPLE,
+        json!({"startEventSeq":"1","sampleCount":1}),
+    );
+    client
+        .request(RpcRequest::Invoke(Call {
+            protocol_version: q.protocol_version,
+            host_id: q.host_id,
+            instance_epoch: q.instance_epoch,
+            actor_id: q.actor_id,
+            request_id: q.request_id,
+            request_context: attachment.request_context.clone(),
+            action_id: q.action_id,
+            target: session.clone(),
+            params: q.params,
+            reveal_target: q.reveal_target,
+            expected_revision: None,
+            lease_id: None,
+            execution_mode: Some(ExecutionMode::Independent),
+        }))
+        .await
+        .unwrap()
 }
 
 async fn verify_svg_export(

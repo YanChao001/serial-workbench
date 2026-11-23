@@ -32,7 +32,9 @@ export const register: NodeRegister = (context) => {
 };
 ```
 
-worker 入口是包内普通 Node 模块。`finished` 等待实际退出，`terminate()` 无参数并返回同样的 `{ exitCode }`；动作内启动的 worker 随所属任务取消，注册和查询中的 worker 按包管理。`context.onDispose(cleanup)` 可追加清理函数，执行时按登记逆序等待。`actions.register` 和 `queries.register` 已选择该处理器，不能再通过 `contributions.register` 重复选择同一 ID；后者接收完整生成的 `NodeContributionSelection`。
+worker 入口是包内普通 Node 模块。`finished` 等待实际退出，`terminate()` 无参数并返回同样的 `{ exitCode }`；动作内启动的 worker 随所属任务取消，注册和查询中的 worker 按包管理。`context.onDispose(cleanup)` 可追加清理函数，执行时按登记逆序等待。`actions.register`、`queries.register` 与 `parsers.register` 会同步选择其处理器 ID。`contributions.register` 接收完整生成的 `NodeContributionSelection`，其余贡献可在对应数组中选择。
+
+协议解析器在签名清单的 `contributes.parsers` 中声明为会话动作，并通过 `context.parsers.register(id, handler)` 注册。处理器沿用 `NodeActionHandler` 与 `task.streams`，客户端从常规目录选择它，并按 Operation 和来源会话读取派生页。 [协议解析器契约](../../docs/contracts/node-extension-v0.md#协议解析器)
 
 动作可通过当前任务提交子动作，SDK 持有递增子键并处理接纳回执；不要自行构造根请求或更换未知结果的身份。例如，已声明并获授权的处理器可调用另一个包的动作：
 
@@ -75,10 +77,16 @@ const page = await task.streams.read({
 
 声明 `feed: "derived"` 的桌面视图使用 `connectDerivedView({ onSession, onPage, onError })`。`onPage` 收到打开动作所发布的留存样本，第二个参数在游标跨越缺口时提供 `previousPosition` 和 `skippedThrough`。SDK 在回调完成后确认读页。浏览器入口和运行中的主题、语言、缩放联动由后续场景验收。生命周期、授权和预算见 [Node 扩展合同](../../docs/contracts/node-extension-v0.md)。
 
+连接扩展在 manifest 的 `contributes.transports` 声明设备目标及权限。后台使用 `context.transports.register(actionId, open)` 登记，`open({ params, signal })` 返回实际连接。Host 为连接管理会话代次、收发及 Raw 游标。处理器按 `maxBytes` 与 `waitMs` 拉取输入，空数组表示本次等待没有数据，`null` 表示输入结束。写入返回已确认接纳的连续前缀字节数。关闭函数应可重复调用，并等待底层资源实际关闭。[TCP 参考包](./examples/reference-transport/)通过调用方提供的端口连接本机 IPv4 回环对端。
+
 [串口监听参考包](./examples/reference-terminal/) 提供带精确会话代次的只读视图，显示已连接串口的收发数据。编译、签名与原生管理验证见[终端参考包验收](../../docs/acceptance.md#终端参考包验收)。
 
-[图表参考包](./examples/reference-chart/) 从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/acceptance.md#图表参考包后台采样)。
+[图表参考包](./examples/reference-chart/) 的签名解析器从调用方选定的事件游标读取 LF 或 CRLF 结尾的 ASCII 电压值，要求游标从完整样本边界开始。默认从事件 1 采集 3 个样本。每条记录最多 64 字节，每个任务最多 128 个样本。发布使用实际 RX 事件区间和半开字节范围，带单位 `V`。遇到缺口、超长帧或无效值时停止任务，已发表的样本仍可按生产 Operation 读取。桌面视图绘制成功任务的留存样本。签名与验收见[图表参考包后台采样](../../docs/acceptance.md#图表参考包后台采样)。
 
-[自动化参考包](./examples/reference-automation/) 在精确的会话代次依次发送最多八步。每步等待实际发送回执，再对照相应发送意图之后的 RX 字节。成功结果保留发送子动作和匹配的来源区间。应答不符、超时、来源变化、发送未确认或取消都会停止后续步骤。签名与验收见[自动化参考包后台应答](../../docs/acceptance.md#自动化参考包后台应答)。
+[自动化参考包](./examples/reference-automation/) 在精确的会话代次依次发送最多八步。每步等待实际发送回执，再对照相应发送意图之后的 RX 字节。成功结果保留发送子动作和匹配的来源区间。应答不符、超时、来源变化、发送未确认或取消都会停止后续步骤。
+
+可用 `rounds` 将同一序列执行一至八轮，默认一轮。两轮之间由当前任务的 worker 等待三秒，端口事务租约已释放。进度按全程完成的步骤计数。以 `executionMode: "independent"` 接纳后，发起客户端可以离开并重新附着查结果。显式取消会停止当前 worker 及剩余步骤。签名与验收见[自动化参考包后台应答](../../docs/acceptance.md#自动化参考包后台应答)。
+
+[签名主题示例](./examples/reference-theme/)通过 `context.configuration.registerQuery` 登记 manifest 声明的配置查询，再选择主题 ID。资源 JSON 只提供 `accent` 的六位十六进制颜色。选择、保存、深浅配色和缺失时回退由工作台处理。验证签名、真实查询及撤权见[专项验收](../../docs/acceptance.md#签名主题)。
 
 从仓库根运行 `pnpm plugin-sdk:fixture`，检查作者类型和误用约束，编译[验收示例](./examples/native-parity.ts)。它不是可直接安装的包：[原生夹具](../../crates/host/tests/client_parity/node_plugins.rs)将占位 ID 替换为 manifest 中的 ID，选取动作或查询入口导出为 `register`，再签名、安装并经 CLI/MCP 调用。只通过编译不证明权限、重放或结果读取正确；实际运行见[测试指南](../../docs/testing.md#rust-与生成)。

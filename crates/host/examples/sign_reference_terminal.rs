@@ -10,5 +10,6 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             include_bytes!("../../../packages/plugin-sdk/examples/reference-terminal/index.html"),
             include_bytes!("../../../packages/plugin-sdk/examples/reference-terminal/view.css"),
         )),
+        &[],
     )
 }

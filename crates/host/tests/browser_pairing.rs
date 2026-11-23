@@ -1,3 +1,6 @@
+#[path = "browser_pairing/signed_terminal.rs"]
+mod signed_terminal;
+
 use futures_util::{SinkExt, StreamExt};
 use serde_json::{Value, json};
 use serial_workbench_client::{ConnectOptions, HostClient, read_user_control_credential};

@@ -173,6 +173,7 @@ fn authorize_inspection(
                 auth.require(actor, "metadata.read", &operation.target)?;
             }
         }
+        "session.toolHandoff" => auth.require_control(actor)?,
         _ if replay => {}
         _ => {
             auth.require(actor, "metadata.read", &operation.target)?;

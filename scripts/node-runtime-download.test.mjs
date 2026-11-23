@@ -113,6 +113,37 @@ test("offline misses, unsafe destinations and nonofficial URLs never start a req
   assert.equal(calls, 0);
 });
 
+test("retries a transient connection failure once and retains each failed attempt", async () => {
+  for (const recover of [true, false]) {
+    const cacheDirectory = fixture();
+    let calls = 0;
+    const download = cachePinnedRuntimeFile({
+      root,
+      cacheDirectory,
+      source,
+      fetch: async (url) => {
+        assert.equal(url, source.url);
+        calls++;
+        if (recover && calls === 2) return new Response(bytes);
+        throw new TypeError("fetch failed", {
+          cause: Object.assign(new Error("connection timed out"), {
+            code: "UND_ERR_CONNECT_TIMEOUT",
+          }),
+        });
+      },
+    });
+    if (recover) assert.deepEqual(readFileSync(await download), bytes);
+    else await assert.rejects(download, /UND_ERR_CONNECT_TIMEOUT/);
+    assert.equal(calls, 2);
+    const attempts = join(cacheDirectory, "attempts");
+    const outcomes = readdirSync(attempts).map((name) =>
+      readdirSync(join(attempts, name)).includes("failure.json"),
+    );
+    assert.equal(outcomes.length, 2);
+    assert.equal(outcomes.filter(Boolean).length, recover ? 1 : 2);
+  }
+});
+
 test("cancellation stops the stream before returning and retains the attempted download", async () => {
   const cacheDirectory = fixture(),
     controller = new AbortController();

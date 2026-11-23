@@ -8,6 +8,7 @@ mod process_scope;
 mod raw;
 mod registrations;
 mod telemetry;
+mod transport;
 use crate::{node_packages::VerifiedNodeInstallation, node_runtime::VerifiedNodeRuntime};
 pub(crate) use derived::{SLOTS as DERIVED_SLOTS, TaskDerivedFuture};
 pub(crate) use raw::{SLOTS as RAW_READ_SLOTS, TaskRawFuture, TaskRawPage};
@@ -22,6 +23,7 @@ use std::{
     time::Duration,
 };
 pub(crate) use telemetry::NodeMetricsCache;
+pub(crate) use transport::RegisteredTransport;
 
 const TICK: Duration = Duration::from_millis(5);
 const QUEUE: usize = 8;
@@ -142,6 +144,14 @@ enum Request {
         definition: Arc<definitions::Definition>,
         authorize: Authority,
         reply: SyncSender<HostResult<serde_json::Value>>,
+    },
+    OpenTransport {
+        package: NodePackageId,
+        definition: Arc<definitions::Definition>,
+        endpoint: transport::TransportEndpoint,
+        params: serial_workbench_core::JsonObject,
+        authorize: Authority,
+        reply: SyncSender<HostResult<()>>,
     },
     Invoke {
         package: NodePackageId,
@@ -382,6 +392,7 @@ impl NodeBackend {
             .registrations
             .definitions(package)?
             .into_iter()
+            .filter(|entry| !entry.definition.is_transport())
             .map(|entry| self.bound_handler(entry))
             .collect())
     }
@@ -418,7 +429,22 @@ impl NodeBackend {
             })
     }
 }
+pub(crate) fn validate_theme_resource(
+    schema: &serial_workbench_core::SchemaObject,
+    value: &serde_json::Value,
+) -> HostResult<()> {
+    definitions::validate_theme_resource(schema, value)
+}
+
 impl RegisteredHandler {
+    pub(crate) fn themes(&self) -> impl Iterator<Item = &serial_workbench_core::NodeThemeEntry> {
+        self.execution
+            .themes
+            .iter()
+            .filter(|(configuration, _)| configuration == &self.spec().action_id)
+            .map(|(_, theme)| theme)
+    }
+
     pub(crate) fn normalize_parameters(
         &self,
         params: &serial_workbench_core::JsonObject,
