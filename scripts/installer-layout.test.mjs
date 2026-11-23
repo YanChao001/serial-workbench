@@ -532,13 +532,13 @@ async function verifyInstalledSuiteSwitch(
   assert.notEqual(previous.digest, candidate.digest);
   assert.notEqual(originalDesktop, nextDesktop);
   const requestPath = join(fixture, "switch.json");
-  const switchSuite = (suites) => {
+  const switchSuite = (suites, operation = candidate.operation) => {
     writeFileSync(
       requestPath,
       JSON.stringify({
         profile,
         activeInstall: installation,
-        operation: candidate.operation,
+        operation,
         suites,
       }),
     );
@@ -580,6 +580,12 @@ async function verifyInstalledSuiteSwitch(
     );
     await waitOwned(old, AbortSignal.timeout(10_000));
     expectCommitted(switchSuite());
+    const pending = switchSuite(undefined, null);
+    assert.equal(pending.status, 0, pending.error?.message ?? pending.stderr);
+    assert.deepEqual(JSON.parse(pending.stdout), {
+      operation: null,
+      state: "not_started",
+    });
     const backup = join(
       dirname(installation),
       `.swb-old-${candidate.operation}`,
