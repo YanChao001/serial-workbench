@@ -15,6 +15,8 @@ import { isTauri } from "@/lib/tauri";
 import {
   DEFAULT_CLIENT_PREFERENCES,
   parseClientPreferences,
+  parseAnsiScrollbackLines,
+  DEFAULT_ANSI_SCROLLBACK_LINES,
   readInitialClientPreferences,
   type ClientPreferences,
 } from "./client-settings";
@@ -68,6 +70,8 @@ export function clientPreferences(value: AppSettings): ClientPreferences {
     sidebarCollapsed: value.sidebarCollapsed,
     sidebarWidth: value.sidebarWidth,
     receiveHistory: value.receiveHistory ?? { ...DEFAULT_RECEIVE_HISTORY },
+    ansiScrollbackLines:
+      value.ansiScrollbackLines ?? DEFAULT_ANSI_SCROLLBACK_LINES,
     ...(value.shortcutOverrides === undefined
       ? {}
       : { shortcutOverrides: value.shortcutOverrides }),
@@ -80,6 +84,7 @@ export function sharedSettings(value: AppSettings): SharedSettings {
     sidebarCollapsed: _sidebarCollapsed,
     sidebarWidth: _sidebarWidth,
     receiveHistory: _receiveHistory,
+    ansiScrollbackLines: _ansiScrollbackLines,
     shortcutOverrides: _shortcutOverrides,
     nodeTheme,
     ...shared
@@ -97,6 +102,10 @@ export function normalizeSettingsPatch(
   const selected = { ...patch };
   if (selected.receiveHistory !== undefined)
     selected.receiveHistory = parseReceiveHistory(selected.receiveHistory);
+  if (selected.ansiScrollbackLines !== undefined)
+    selected.ansiScrollbackLines = parseAnsiScrollbackLines(
+      selected.ansiScrollbackLines,
+    );
   if (selected.customAccent !== undefined)
     selected.customAccent =
       normalizeAccentColor(selected.customAccent) ?? invalid();

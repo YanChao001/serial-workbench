@@ -184,3 +184,73 @@ test("OSC 8 uses the host opener for explicit mouse and keyboard activation", as
     ansi.viewer.getByText("Terminal links", { exact: true }),
   ).toHaveCount(0);
 });
+
+test("ANSI history jumps across retained lines and keeps receiving while frozen", async ({
+  page,
+}) => {
+  test.setTimeout(60_000);
+  const ansi = await openAnsi(page);
+  const history = ansi.viewer.locator(".workbench-ansi-history");
+  const summary = history.locator("summary");
+  await expect(summary).toContainText("Scrollback limit 3,000");
+  await summary.click();
+  const limit = history.getByRole("spinbutton", { name: "Scrollback limit" });
+  const apply = history.getByRole("button", { name: "Apply limit" });
+  await limit.fill("50001");
+  await expect(apply).toBeDisabled();
+  await limit.fill("12500");
+  await apply.click();
+  await expect(summary).toContainText("Scrollback limit 12,500");
+  await expect
+    .poll(() =>
+      page.evaluate(
+        () =>
+          window.workbenchFixture.clientStateWrites.at(-1)?.preferences
+            .ansiScrollbackLines,
+      ),
+    )
+    .toBe(12_500);
+
+  for (let start = 1; start <= 12_000; start += 1_000) {
+    const text = Array.from(
+      { length: 1_000 },
+      (_, index) => `L${String(start + index).padStart(5, "0")}\r\n`,
+    ).join("");
+    await ansi.feed(text);
+  }
+  await expect(ansi.rows).toContainText("L12000");
+  const line = history.getByRole("spinbutton", { name: "Retained line" });
+  await line.fill("6001");
+  await history.getByRole("button", { name: "Jump", exact: true }).click();
+  await expect(ansi.rows).toContainText("L06001");
+  await expect(history.getByText(/^Showing lines/)).toContainText("6,001");
+  await history.getByRole("button", { name: "First retained line" }).click();
+  await expect(ansi.rows).toContainText("L00001");
+  await history.getByRole("button", { name: "Latest retained lines" }).click();
+  await expect(ansi.rows).toContainText("L12000");
+
+  const receive = page.getByRole("region", { name: "Receive", exact: true });
+  await receive.getByRole("button", { name: "Freeze", exact: true }).click();
+  await ansi.feed("DURING-FREEZE\r\n");
+  await expect(ansi.rows).toContainText("L12000");
+  await expect(ansi.rows).not.toContainText("DURING-FREEZE");
+  await receive.getByRole("button", { name: "Resume", exact: true }).click();
+  await expect(ansi.rows).toContainText("DURING-FREEZE");
+
+  await limit.fill("10");
+  await apply.click();
+  await expect(summary).toContainText("Earlier lines unavailable");
+  await history.getByRole("button", { name: "First retained line" }).click();
+  await expect(ansi.rows).not.toContainText("L00001");
+  await history.getByRole("button", { name: "Latest retained lines" }).click();
+  await ansi.feed("\x1b[?1049hALTERNATE");
+  await expect(ansi.rows).toContainText("ALTERNATE");
+  await expect(history.getByText(/^Showing lines/)).toContainText(
+    "Alternate screen",
+  );
+  await ansi.feed("\x1b[?1049l");
+  await expect(history.getByText(/^Showing lines/)).not.toContainText(
+    "Alternate screen",
+  );
+  await expect(ansi.rows).toContainText("DURING-FREEZE");
+});

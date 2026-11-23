@@ -1137,6 +1137,7 @@ export type ClientPreferences_Deserialize = {
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   receiveHistory?: ReceiveHistory;
+  ansiScrollbackLines?: number;
   shortcutOverrides?: { [key in string]: ShortcutBinding };
 };
 
@@ -1146,6 +1147,7 @@ export type ClientPreferences_Serialize = {
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   receiveHistory?: ReceiveHistory;
+  ansiScrollbackLines?: number;
   shortcutOverrides?: { [key in string]: ShortcutBinding };
 };
 

@@ -37,6 +37,8 @@ import {
 } from "./ansi-keyboard";
 import { ansiLinkUrl, createAnsiLinkIndex } from "./ansi-links";
 import { bindAnsiMouse, selectsAnsiText } from "./ansi-mouse";
+import { observeAnsiHistory, type AnsiHistorySnapshot } from "./ansi-history";
+import { AnsiHistoryControls } from "./ansi-history-controls";
 import { decodeBytes } from "./stream-model";
 import { terminalTypographyStyle } from "./stream-presentation";
 import { useAnsiPaste } from "./use-ansi-paste";
@@ -58,8 +60,10 @@ type Projection = {
   disposed: boolean;
   encoding: TextEncoding;
   convertEol: boolean;
+  scrollback: number;
   typography?: TerminalTypography;
   disposeMouse?: () => void;
+  disposeHistory?: () => void;
 };
 
 function project(
@@ -67,6 +71,7 @@ function project(
   encoding: TextEncoding,
   convertEol: boolean,
   palette: ITheme,
+  scrollback: number,
 ): Projection {
   const terminal = new Terminal({
     disableStdin: true,
@@ -74,7 +79,7 @@ function project(
     macOptionClickForcesSelection: true,
     screenReaderMode: true,
     convertEol,
-    scrollback: 3_000,
+    scrollback,
     cursorInactiveStyle: "none",
     theme: palette,
   });
@@ -96,6 +101,7 @@ function project(
     disposed: false,
     encoding,
     convertEol,
+    scrollback,
   };
 }
 
@@ -104,6 +110,7 @@ function dispose(projection: Projection | null) {
   projection.disposed = true;
   projection.observer.disconnect();
   projection.disposeMouse?.();
+  projection.disposeHistory?.();
   projection.terminal.dispose();
 }
 
@@ -142,6 +149,9 @@ export default function AnsiScreen({
   sendEncoding,
   keyboard,
   typography = defaults.terminalTypography,
+  scrollback,
+  onScrollbackChange,
+  rawTrimmed,
   labels,
 }: {
   items: readonly StreamItem[];
@@ -150,6 +160,9 @@ export default function AnsiScreen({
   sendEncoding: TextEncoding;
   keyboard?: AnsiKeyboardTarget;
   typography?: TerminalTypography;
+  scrollback: number;
+  onScrollbackChange?: (value: number) => void;
+  rawTrimmed?: boolean;
   labels: WorkbenchLabels;
 }) {
   const element = useRef<HTMLDivElement>(null);
@@ -162,6 +175,14 @@ export default function AnsiScreen({
   const openExternal = useOpenExternal();
   const [linkIndex] = useState(createAnsiLinkIndex);
   const links = useSyncExternalStore(linkIndex.subscribe, linkIndex.snapshot);
+  const [history, setHistory] = useState<AnsiHistorySnapshot>();
+  function jumpToLine(line: number | "latest") {
+    const terminal = active.current?.terminal;
+    if (!terminal) return;
+    if (line === "latest") terminal.scrollToBottom();
+    else if (line >= 1 && line <= terminal.buffer.active.length)
+      terminal.scrollToLine(line - 1);
+  }
   const writer = useRef<ReturnType<typeof createAnsiKeyboardWriter> | null>(
     null,
   );
@@ -321,6 +342,7 @@ export default function AnsiScreen({
       !screen ||
       screen.encoding !== encoding ||
       screen.convertEol !== convertEol ||
+      screen.scrollback !== scrollback ||
       !screen.wanted.every((packet, index) => packet === packets[index])
     ) {
       const previousInput = screen?.terminal.textarea;
@@ -330,9 +352,18 @@ export default function AnsiScreen({
         previousInput.ownerDocument.activeElement === previousInput;
       dispose(screen);
       linkIndex.clear();
-      screen = project(element.current, encoding, convertEol, palette);
+      screen = project(
+        element.current,
+        encoding,
+        convertEol,
+        palette,
+        scrollback,
+      );
       active.current = screen;
       const terminal = screen.terminal;
+      screen.disposeHistory = observeAnsiHistory(terminal, (snapshot) => {
+        if (active.current?.terminal === terminal) setHistory(snapshot);
+      });
       terminal.options.linkHandler = {
         activate: (event, uri) => activateLink(terminal, event, uri),
         allowNonHttpProtocols: false,
@@ -379,6 +410,7 @@ export default function AnsiScreen({
     packets,
     palette,
     pasteBlocksKeys,
+    scrollback,
     status,
     typography,
   ]);
@@ -431,6 +463,14 @@ export default function AnsiScreen({
             </span>
           )}
         </div>
+        <AnsiHistoryControls
+          labels={labels}
+          limit={scrollback}
+          onLimitChange={onScrollbackChange}
+          snapshot={status === "ready" ? history : undefined}
+          rawTrimmed={rawTrimmed}
+          onJump={jumpToLine}
+        />
         {links.length > 0 && (
           <details className="workbench-ansi-links">
             <summary>{labels.ansiLinks}</summary>

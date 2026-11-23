@@ -6,6 +6,8 @@ import type {
 import {
   createBrowserClientStateStore,
   createClientSettingsBackend,
+  DEFAULT_ANSI_SCROLLBACK_LINES,
+  MAX_ANSI_SCROLLBACK_LINES,
   parseClientWindowState,
   parseClientPreferences,
 } from "./client-settings";
@@ -22,6 +24,7 @@ const state: ClientWindowState = {
     sidebarCollapsed: false,
     sidebarWidth: 224,
     receiveHistory: { ...DEFAULT_RECEIVE_HISTORY },
+    ansiScrollbackLines: DEFAULT_ANSI_SCROLLBACK_LINES,
   },
   currentPage: "workbench",
   focusedPanelId: "terminal",
@@ -102,6 +105,30 @@ it("defaults display retention in existing preferences and protects a concurrent
   );
 });
 describe("client preference persistence", () => {
+  it("defaults the ANSI line limit in older state and rejects invalid limits", () => {
+    const { ansiScrollbackLines: _omitted, ...oldPreferences } =
+      state.preferences;
+    expect(parseClientPreferences(oldPreferences).ansiScrollbackLines).toBe(
+      DEFAULT_ANSI_SCROLLBACK_LINES,
+    );
+    for (const limit of [0, MAX_ANSI_SCROLLBACK_LINES]) {
+      expect(
+        parseClientPreferences({
+          ...oldPreferences,
+          ansiScrollbackLines: limit,
+        }).ansiScrollbackLines,
+      ).toBe(limit);
+    }
+    for (const limit of [-1, 1.5, MAX_ANSI_SCROLLBACK_LINES + 1]) {
+      expect(() =>
+        parseClientPreferences({
+          ...oldPreferences,
+          ansiScrollbackLines: limit,
+        }),
+      ).toThrow();
+    }
+  });
+
   it("accepts a client gallery of pinned Host file references without embedding media", () => {
     const gallery = [
       {

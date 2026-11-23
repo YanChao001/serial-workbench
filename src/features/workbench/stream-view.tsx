@@ -8,6 +8,7 @@ import {
   useRef,
   useState,
   useCallback,
+  useContext,
 } from "react";
 import {
   ArrowDown,
@@ -34,6 +35,8 @@ import type {
 } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
+import { DEFAULT_ANSI_SCROLLBACK_LINES } from "@/lib/client-settings";
+import { SettingsContext } from "@/providers/settings-context";
 import { NotificationDetails } from "@/components/notification-content";
 import { TextEncodingSelect } from "./text-encoding-select";
 import type { AnsiKeyboardTarget } from "./ansi-keyboard";
@@ -147,6 +150,7 @@ export function StreamView({
   displayLabels,
 }: StreamViewProps) {
   const id = useId();
+  const settings = useContext(SettingsContext);
   const [localEncoding, setEncoding] = useState<TextEncoding | null>();
   const [encodingMenuOpen, setEncodingMenuOpen] = useState(false);
   const encoding = receiveEncodingFor(
@@ -1107,6 +1111,17 @@ export function StreamView({
               keyboard={frozen ? undefined : keyboard}
               convertEol={ansiConvertEol}
               typography={terminalSettings?.typography}
+              scrollback={
+                settings?.settings.ansiScrollbackLines ??
+                DEFAULT_ANSI_SCROLLBACK_LINES
+              }
+              onScrollbackChange={
+                settings
+                  ? (ansiScrollbackLines) =>
+                      settings.update({ ansiScrollbackLines })
+                  : undefined
+              }
+              rawTrimmed={trimmed}
               labels={labels}
             />
           </Suspense>

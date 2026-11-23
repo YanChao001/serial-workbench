@@ -29,10 +29,24 @@ export type {
   ClientWindowState_Deserialize as ClientWindowStateInput,
   ClientStateSnapshot_Serialize as ClientStateSnapshot,
 } from "./generated/bindings";
+export const DEFAULT_ANSI_SCROLLBACK_LINES =
+  generatedClientDefaults.preferences.ansiScrollbackLines;
+export const MAX_ANSI_SCROLLBACK_LINES = 50_000;
 export const DEFAULT_CLIENT_STATE = parseClientWindowState(
   generatedClientDefaults,
 );
 export const DEFAULT_CLIENT_PREFERENCES = DEFAULT_CLIENT_STATE.preferences;
+
+export function parseAnsiScrollbackLines(value: unknown): number {
+  if (
+    typeof value !== "number" ||
+    !Number.isInteger(value) ||
+    value < 0 ||
+    value > MAX_ANSI_SCROLLBACK_LINES
+  )
+    invalidClient();
+  return value;
+}
 export const BROWSER_CLIENT_STATE_KEY = `${APP_CONFIG.browserStorageNamespace}:client-state-v0`;
 export const CLIENT_DRAFT_MAX_BYTES = 65_536;
 
@@ -185,7 +199,7 @@ export function parseClientPreferences(value: unknown): ClientPreferences {
     !exactKeys(
       value,
       ["menuBar", "windowPosition", "sidebarCollapsed", "sidebarWidth"],
-      ["receiveHistory", "shortcutOverrides"],
+      ["receiveHistory", "ansiScrollbackLines", "shortcutOverrides"],
     ) ||
     typeof value.menuBar !== "boolean" ||
     typeof value.sidebarCollapsed !== "boolean" ||
@@ -206,6 +220,10 @@ export function parseClientPreferences(value: unknown): ClientPreferences {
       value.receiveHistory === undefined
         ? { ...DEFAULT_RECEIVE_HISTORY }
         : parseReceiveHistory(value.receiveHistory),
+    ansiScrollbackLines:
+      value.ansiScrollbackLines === undefined
+        ? DEFAULT_ANSI_SCROLLBACK_LINES
+        : parseAnsiScrollbackLines(value.ansiScrollbackLines),
     ...(value.shortcutOverrides === undefined
       ? {}
       : {
