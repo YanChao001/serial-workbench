@@ -1,7 +1,6 @@
 import {
   useEffect,
   useId,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -46,7 +45,6 @@ import {
   PopoverTrigger,
 } from "@/components/ui/popover";
 import { Input } from "@/components/ui/input";
-import { Textarea } from "@/components/ui/textarea";
 import { ToggleGroup, ToggleGroupItem } from "@/components/ui/toggle-group";
 import {
   Select,
@@ -75,6 +73,7 @@ import { SendChecksumSettings } from "./send-checksum-settings";
 import { convertSendDraft } from "./send-draft-conversion";
 import { expandSendEscapes, SendEscapeError } from "./send-escapes";
 import { MixedSendInput } from "./mixed-send-input";
+import { SendDraftEditor } from "./send-draft-editor";
 import { TextEncodingSelect } from "./text-encoding-select";
 import {
   createTextSendPreview,
@@ -167,16 +166,8 @@ export function SendPanel({
 }: SendPanelProps) {
   const composer = useComposerToastOffset();
   const draftInput = useRef<HTMLTextAreaElement>(null);
-  const displayedDraft = useRef<string | undefined>(undefined);
   const currentDraft = useRef(draft);
   currentDraft.current = draft;
-  useLayoutEffect(() => {
-    const input = draftInput.current;
-    // 输入事件已记录原生正文，渲染后无需再次读取整个长草稿。
-    if (!input || displayedDraft.current === draft) return;
-    if (input.value !== draft) input.value = draft;
-    displayedDraft.current = draft;
-  }, [draft]);
   const id = useId();
   const [receiptOpen, setReceiptOpen] = useState(false);
   const [conversionError, setConversionError] = useState<
@@ -783,16 +774,16 @@ export function SendPanel({
           data-surface="reading"
           data-invalid={preview.invalid || undefined}
         >
-          <Textarea
+          <SendDraftEditor
+            grammar={mode === "hex" ? "hex" : "text"}
+            value={draft}
             readOnly={draftReadOnly}
             ref={draftInput}
             id={`${id}-draft`}
             spellCheck={false}
             data-surface="transparent"
-            onChange={(event) => {
+            onValueChange={(value) => {
               if (draftReadOnly) return;
-              const value = event.currentTarget.value;
-              displayedDraft.current = value;
               setConversionError(undefined);
               setEscapeError(undefined);
               onDraftChange(value);

@@ -639,6 +639,92 @@
   line-height: 1.65;
   font-variant-ligatures: none;
 }
+.workbench-source-editor {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  height: 100%;
+  min-height: 0;
+  min-width: 0;
+  font-family: var(--font-mono);
+  font-size: 0.8125rem;
+  line-height: 1.65;
+  font-variant-ligatures: none;
+}
+.workbench-source-gutter,
+.workbench-source-canvas,
+.workbench-source-backdrop {
+  overflow: hidden;
+  min-height: 0;
+}
+.workbench-source-gutter {
+  pointer-events: none;
+  user-select: none;
+  color: var(--muted-foreground);
+  text-align: end;
+}
+.workbench-source-lines,
+.workbench-source-ink {
+  margin: 0;
+  padding: 0.375rem 0.625rem 0;
+  font: inherit;
+  letter-spacing: inherit;
+  font-variant-ligatures: inherit;
+  white-space: pre;
+  tab-size: 4;
+}
+.workbench-source-lines {
+  min-width: 2.7ch;
+}
+.workbench-source-canvas {
+  position: relative;
+}
+.workbench-source-editor .workbench-draft {
+  position: relative;
+  display: block;
+  white-space: pre;
+  overflow: auto;
+  tab-size: 4;
+}
+.workbench-source-backdrop {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  user-select: none;
+}
+.workbench-source-editor[data-syntax] .workbench-draft {
+  color: transparent;
+  caret-color: var(--foreground);
+}
+.workbench-source-editor .workbench-draft::selection {
+  color: var(--accent-foreground);
+  background: var(--accent);
+}
+.workbench-source-ink [data-source-token="hex"] {
+  color: var(--primary);
+}
+.workbench-source-ink [data-source-token="comment"] {
+  color: var(--muted-foreground);
+}
+.workbench-source-ink [data-source-token="string"] {
+  color: var(--chart-2, var(--foreground));
+}
+.workbench-source-ink [data-source-token="escape"] {
+  color: var(--chart-4, var(--foreground));
+}
+.workbench-mixed-source {
+  height: 8rem;
+  overflow: hidden;
+  border: 1px solid var(--surface-control-border, var(--input, var(--border)));
+  border-radius: var(--radius);
+}
+@media (forced-colors: active) {
+  .workbench-source-backdrop {
+    display: none;
+  }
+  .workbench-source-editor[data-syntax] .workbench-draft {
+    color: CanvasText;
+  }
+}
 .workbench-draft-bytes {
   align-self: center;
   justify-self: end;

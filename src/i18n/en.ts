@@ -486,8 +486,13 @@ export const en = {
   "workbench.sendMode": "Send mode",
   "workbench.expandSendEscapes": "Expand escapes to HEX",
   "workbench.mixedSendInput": "Mixed input",
+  "workbench.draftIndent": "Indent",
+  "workbench.draftOutdent": "Outdent",
+  "workbench.draftBlockComment": "Toggle block comment",
+  "workbench.draftCommentRange":
+    "Select whole tokens without a block comment closing marker.",
   "workbench.mixedSendSyntax":
-    'Use pairs of hex digits, double-quoted text in the send encoding, and byte escapes. Example: 41 42 "AB" \\r\\n.',
+    'Use pairs of hex digits, double-quoted text in the send encoding, and byte escapes. Text between /* and */ is skipped. Example: 41 42 "AB" \\r\\n.',
   "workbench.mixedSendPreview": "Body bytes before line ending and checksum",
   "workbench.mixedSendInvalidAt": "Invalid mixed input at character {position}",
   "workbench.mixedSendUseHex": "Use as HEX draft",

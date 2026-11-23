@@ -444,8 +444,13 @@ export const zhCN = {
   "workbench.sendMode": "发送模式",
   "workbench.expandSendEscapes": "将转义转为 HEX",
   "workbench.mixedSendInput": "混合输入",
+  "workbench.draftIndent": "缩进",
+  "workbench.draftOutdent": "减少缩进",
+  "workbench.draftBlockComment": "切换区块注释",
+  "workbench.draftCommentRange":
+    "请选择完整的语法单元，且选区内不含区块注释结束符。",
   "workbench.mixedSendSyntax":
-    '可混写两位 HEX、按发送编码转换的双引号文本和字节转义。示例：41 42 "AB" \\r\\n。',
+    '可混写两位 HEX、按发送编码转换的双引号文本和字节转义。/* 和 */ 之间的内容为注释。示例：41 42 "AB" \\r\\n。',
   "workbench.mixedSendPreview": "追加行尾和校验前的正文字节",
   "workbench.mixedSendInvalidAt": "混合输入在第 {position} 个字符处无效",
   "workbench.mixedSendUseHex": "用作 HEX 草稿",

@@ -165,7 +165,12 @@ export const labels: WorkbenchLabels = {
   sendMode: "Send mode",
   expandSendEscapes: "Expand escapes to HEX",
   mixedSendInput: "Mixed input",
-  mixedSendSyntax: "Mix hex bytes, quoted text, and escapes.",
+  draftIndent: "Indent",
+  draftOutdent: "Outdent",
+  draftBlockComment: "Toggle block comment",
+  draftCommentRange:
+    "Select whole tokens without a block comment closing marker.",
+  mixedSendSyntax: "Mix hex bytes, quoted text, escapes, and block comments.",
   mixedSendPreview: "Body bytes before line ending and checksum",
   mixedSendInvalidAt: "Invalid mixed input at character {position}",
   mixedSendUseHex: "Use as HEX draft",
