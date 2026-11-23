@@ -423,10 +423,15 @@ fn authenticated_intent(path: &Path, pin: &IdentityPin) -> HostResult<Option<Int
 
 /// 指纹覆盖每个文件的相对路径与 SHA-256，以及目录路径（包括空目录）。
 pub fn suite_digest(path: &Path) -> HostResult<Digest> {
+    suite_digest_and_size(path).map(|(digest, _)| digest)
+}
+
+pub fn suite_digest_and_size(path: &Path) -> HostResult<(Digest, u64)> {
     directory(path)?;
     let mut tree = Sha256::new();
     tree.update(b"serial-workbench/install-tree/1");
     let mut has_file = false;
+    let mut total_bytes = 0_u64;
     let mut pending = vec![path.to_path_buf()];
     while let Some(parent) = pending.pop() {
         let mut entries = fs::read_dir(&parent)
@@ -460,7 +465,8 @@ pub fn suite_digest(path: &Path) -> HostResult<Digest> {
                     return Err(integrity());
                 }
                 let mut contents = Sha256::new();
-                io::copy(&mut file, &mut contents).map_err(|_| storage())?;
+                let bytes = io::copy(&mut file, &mut contents).map_err(|_| storage())?;
+                total_bytes = total_bytes.checked_add(bytes).ok_or_else(integrity)?;
                 tree.update(contents.finalize());
                 has_file = true;
             } else {
@@ -471,7 +477,10 @@ pub fn suite_digest(path: &Path) -> HostResult<Digest> {
     if !has_file {
         return Err(integrity());
     }
-    Digest::try_from(format!("{:x}", tree.finalize()).as_str())
+    Ok((
+        Digest::try_from(format!("{:x}", tree.finalize()).as_str())?,
+        total_bytes,
+    ))
 }
 
 fn digest_if_present(path: &Path) -> HostResult<Option<Digest>> {

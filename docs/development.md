@@ -194,6 +194,7 @@ Windows portable 包含程序、组件和许可证，需要 WebView2，数据写
 - PFX 使用 `WINDOWS_CERTIFICATE` / `WINDOWS_CERTIFICATE_PASSWORD`；macOS 的证书、身份与公证 Secrets 读取 [release 模板](../.github/workflows-disabled/release.yml)。正式 macOS 分发完成 Developer ID 签名、公证与 stapling；Linux 当前提供哈希，未配置独立包签名。凭据通过受控渠道提供。
 - 更新在 app.config 配置匹配端点、公钥，发布端配置 `TAURI_SIGNING_PRIVATE_KEY`，加密私钥另设 password Secret。公钥固定在安装包内，deployment 仅可覆盖 HTTPS 镜像或以空端点禁用，不能替换公钥。
 - 启用后发布模板核验四目标、最终资产、签名版本和唯一 latest.json。无公钥的旧客户端需手动安装可信版本，换钥使用过渡版本或手动安装。
+- Windows 当前用户版 NSIS 在隔离目录测量最终安装包的输出，用发布密钥绑定套件摘要和版本，再重新暂存核对。草稿的 Windows 更新签名资产与 `latest.json` 使用这次复验的同一份签名。
 - 发布准备保留正式源、tag、构建环境、许可、组件收据、签名及最终哈希；验收升级时采用两个不同版本，覆盖发现、下载、验签、未保存协商、安装和重启。
 
 ### 交付检查

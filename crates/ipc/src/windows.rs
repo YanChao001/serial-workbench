@@ -1,10 +1,10 @@
 use serial_workbench_core::{HostError, HostResult};
 use std::{
-    ffi::{OsStr, c_void},
+    ffi::{OsStr, OsString, c_void},
     fs::{self, File},
     io::{self, Read, Write},
     os::windows::{
-        ffi::OsStrExt,
+        ffi::{OsStrExt, OsStringExt},
         fs::MetadataExt,
         io::{AsRawHandle, FromRawHandle, OwnedHandle},
     },
@@ -49,7 +49,8 @@ use windows_sys::Win32::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeInfo, GetNamedPipeServerProcessId},
         Threading::{
             GetCurrentProcess, GetExitCodeProcess, GetProcessTimes, OpenProcess, OpenProcessToken,
-            PROCESS_QUERY_LIMITED_INFORMATION, SYNCHRONIZATION_SYNCHRONIZE, WaitForSingleObject,
+            PROCESS_QUERY_LIMITED_INFORMATION, QueryFullProcessImageNameW,
+            SYNCHRONIZATION_SYNCHRONIZE, WaitForSingleObject,
         },
     },
 };
@@ -664,7 +665,7 @@ fn process_creation_time(process: HANDLE) -> HostResult<u64> {
     Ok((u64::from(created.dwHighDateTime) << 32) | u64::from(created.dwLowDateTime))
 }
 
-pub(crate) fn current_process_creation_time() -> HostResult<u64> {
+pub fn current_process_creation_time() -> HostResult<u64> {
     process_creation_time(unsafe { GetCurrentProcess() })
 }
 
@@ -729,23 +730,87 @@ impl LocalHostProcess {
     }
 
     pub(crate) fn wait_for_exit(&self, timeout: Duration) -> HostResult<u32> {
-        let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX - 1)) as u32;
-        let process = self.handle.as_raw_handle();
-        match unsafe { WaitForSingleObject(process, timeout_ms) } {
-            WAIT_OBJECT_0 => {
-                let mut code = 0;
-                if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
-                    return Err(unobserved_shutdown());
-                }
-                Ok(code)
+        process_exit(self.handle.as_raw_handle(), timeout)
+            .map_err(|_| unobserved_shutdown())?
+            .ok_or_else(|| {
+                HostError::new("HOST_STOP_TIMEOUT", "The old Host process is still running")
+            })
+    }
+}
+
+fn process_exit(process: HANDLE, timeout: Duration) -> io::Result<Option<u32>> {
+    let timeout_ms = timeout.as_millis().min(u128::from(u32::MAX - 1)) as u32;
+    match unsafe { WaitForSingleObject(process, timeout_ms) } {
+        WAIT_OBJECT_0 => {
+            let mut code = 0;
+            if unsafe { GetExitCodeProcess(process, &mut code) } == 0 {
+                return Err(io::Error::last_os_error());
             }
-            WAIT_TIMEOUT => Err(HostError::new(
-                "HOST_STOP_TIMEOUT",
-                "The old Host process is still running",
+            Ok(Some(code))
+        }
+        WAIT_TIMEOUT => Ok(None),
+        _ => Err(io::Error::last_os_error()),
+    }
+}
+
+/// 安装换入前取得实际旧前台进程的句柄，进程退出后仍可核对终态。
+pub struct InstalledProcess {
+    handle: OwnedHandle,
+}
+
+impl InstalledProcess {
+    pub fn observe(pid: u32, created: u64, image: &Path) -> HostResult<Self> {
+        let process = LocalHostProcess::reopen(pid, created)
+            .map_err(|_| unobserved_install_process())?
+            .ok_or_else(unobserved_install_process)?;
+        let handle = process.handle.as_raw_handle();
+        let owner = UserSid::for_process(handle)?;
+        let current = UserSid::current()?;
+        if unsafe { EqualSid(owner.as_ptr(), current.as_ptr()) } == 0 {
+            return Err(denied());
+        }
+        let mut name = vec![0_u16; 32_768];
+        let mut length = name.len() as u32;
+        if unsafe { QueryFullProcessImageNameW(handle, 0, name.as_mut_ptr(), &mut length) } == 0 {
+            return Err(unobserved_install_process());
+        }
+        let actual = OsString::from_wide(&name[..length as usize]);
+        let actual = fs::canonicalize(actual).map_err(|_| unobserved_install_process())?;
+        let expected = fs::canonicalize(image).map_err(|_| unobserved_install_process())?;
+        if actual != expected
+            || process_exit(handle, Duration::ZERO)
+                .map_err(|_| unobserved_install_process())?
+                .is_some()
+        {
+            return Err(unobserved_install_process());
+        }
+        Ok(Self {
+            handle: process.handle,
+        })
+    }
+
+    pub fn wait_for_clean_exit(&self, timeout: Duration) -> HostResult<()> {
+        match process_exit(self.handle.as_raw_handle(), timeout)
+            .map_err(|_| unobserved_install_process())?
+        {
+            Some(0) => Ok(()),
+            Some(code) => Err(HostError::new(
+                "INSTALL_PROCESS_EXIT",
+                format!("The old desktop exited with status {code}"),
             )),
-            _ => Err(unobserved_shutdown()),
+            None => Err(HostError::new(
+                "INSTALL_PROCESS_TIMEOUT",
+                "The old desktop process is still running",
+            )),
         }
     }
+}
+
+fn unobserved_install_process() -> HostError {
+    HostError::new(
+        "INSTALL_PROCESS_UNVERIFIED",
+        "Cannot verify the live process and image of the old desktop",
+    )
 }
 pub fn prepare_private_directory(path: &Path) -> HostResult<()> {
     validate_path(path)?;

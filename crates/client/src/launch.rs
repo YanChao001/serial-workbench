@@ -212,7 +212,7 @@ fn start_host(options: &ConnectOptions) -> HostResult<StartedHost> {
         )
     };
     if raw_null == INVALID_HANDLE_VALUE {
-        return Err(spawn_error(std::io::Error::last_os_error()));
+        return Err(windows_spawn_error("standard-stream"));
     }
     let null_file = unsafe { OwnedHandle::from_raw_handle(raw_null) };
     let inherited = [null_file.as_raw_handle()];
@@ -221,12 +221,12 @@ fn start_host(options: &ConnectOptions) -> HostResult<StartedHost> {
         InitializeProcThreadAttributeList(null_mut(), 1, 0, &mut size);
     }
     if size == 0 {
-        return Err(spawn_error(std::io::Error::last_os_error()));
+        return Err(windows_spawn_error("handle-list-size"));
     }
     let mut storage = vec![0usize; size.div_ceil(std::mem::size_of::<usize>())];
     let list: LPPROC_THREAD_ATTRIBUTE_LIST = storage.as_mut_ptr().cast();
     if unsafe { InitializeProcThreadAttributeList(list, 1, 0, &mut size) } == 0 {
-        return Err(spawn_error(std::io::Error::last_os_error()));
+        return Err(windows_spawn_error("handle-list-init"));
     }
     struct Attributes(LPPROC_THREAD_ATTRIBUTE_LIST);
     impl Drop for Attributes {
@@ -250,7 +250,7 @@ fn start_host(options: &ConnectOptions) -> HostResult<StartedHost> {
         )
     } == 0
     {
-        return Err(spawn_error(std::io::Error::last_os_error()));
+        return Err(windows_spawn_error("handle-list-set"));
     }
     let mut startup = STARTUPINFOEXW::default();
     startup.StartupInfo.cb = std::mem::size_of::<STARTUPINFOEXW>() as u32;
@@ -275,7 +275,7 @@ fn start_host(options: &ConnectOptions) -> HostResult<StartedHost> {
         )
     } == 0
     {
-        return Err(spawn_error(std::io::Error::last_os_error()));
+        return Err(windows_spawn_error("create-process"));
     }
     // These handles are created only on success. Dropping the process handle never terminates Host.
     let _thread = unsafe { OwnedHandle::from_raw_handle(process.hThread) };
@@ -344,6 +344,10 @@ fn windows_creation_flags() -> HostResult<u32> {
     // All pointers reference initialized stack storage; the current-process pseudo handle is borrowed.
     unsafe {
         if IsProcessInJob(GetCurrentProcess(), std::ptr::null_mut(), &mut in_job) == 0 {
+            log::debug!(
+                "Windows Host launch stage=job-membership code={:?}",
+                std::io::Error::last_os_error().raw_os_error()
+            );
             return Err(failure());
         }
         if in_job != 0 {
@@ -356,9 +360,14 @@ fn windows_creation_flags() -> HostResult<u32> {
                 std::ptr::null_mut(),
             ) == 0
             {
+                log::debug!(
+                    "Windows Host launch stage=job-limits code={:?}",
+                    std::io::Error::last_os_error().raw_os_error()
+                );
                 return Err(failure());
             }
             let limits = limits.BasicLimitInformation.LimitFlags;
+            log::debug!("Windows Host launch stage=job-policy limit_flags={limits:#x}");
             if limits & JOB_OBJECT_LIMIT_SILENT_BREAKAWAY_OK != 0 {
                 // The OS applies the Job's configured silent breakaway policy.
             } else if limits & JOB_OBJECT_LIMIT_BREAKAWAY_OK != 0 {
@@ -368,7 +377,18 @@ fn windows_creation_flags() -> HostResult<u32> {
             }
         }
     }
+    log::debug!("Windows Host launch stage=prepared in_job={in_job} process_flags={flags:#x}");
     Ok(flags)
+}
+
+#[cfg(windows)]
+fn windows_spawn_error(stage: &'static str) -> HostError {
+    let error = std::io::Error::last_os_error();
+    log::debug!(
+        "Windows Host launch stage={stage} code={:?}",
+        error.raw_os_error()
+    );
+    spawn_error(error)
 }
 
 fn spawn_error(error: std::io::Error) -> HostError {

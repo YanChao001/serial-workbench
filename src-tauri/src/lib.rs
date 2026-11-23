@@ -67,6 +67,8 @@ fn logging_plugin(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    updater::windows_install::run_if_requested();
     #[allow(unused_mut)]
     let mut context = tauri::generate_context!();
     #[cfg(feature = "e2e")]
@@ -167,6 +169,7 @@ pub fn run() {
                 redaction::redact(&error.to_string())
             );
         }
+        serial_workbench_ipc::startup_config::log_startup_configuration(&startup.snapshot());
         let initialized = recovery::initialize(&paths)?;
         let system = system_commands::SystemState::open(paths.config.join("workspace.json"));
         app.manage(media_protocol::MediaTickets::default());

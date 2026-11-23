@@ -9,6 +9,7 @@ import {
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { test } from "node:test";
+import { bindWindowsUpdaterSignature } from "./hosting/windows-updater-signature.mjs";
 import {
   collectUpdaterMetadata as collectMetadata,
   ensureDraftRelease as ensureDraft,
@@ -40,6 +41,102 @@ const uploadReleaseAsset = (file, release, repository, request) =>
 
 const repository = "owner/serial-workbench";
 const version = "1.2.3";
+
+test("binds the same Windows installer and version to the verified suite digest", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "swb-signature-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const artifact = join(directory, "app.exe");
+  writeFileSync(artifact, "installer bytes");
+  const digest = "1af0".repeat(16);
+  const activeInstall = join(directory, "Serial Workbench");
+  const calls = [];
+  const result = bindWindowsUpdaterSignature({
+    artifact,
+    version,
+    publicKey: "test public key",
+    activeInstall,
+    directory,
+    sign: (path, signatureVersion) => {
+      assert.equal(readFileSync(path, "utf8"), "installer bytes");
+      assert.equal(signatureVersion, version);
+      writeFileSync(`${path}.sig`, "fixture signature");
+    },
+    runStage: (mode, input) => {
+      calls.push([mode, input.signature]);
+      assert.equal(input.activeInstall, activeInstall);
+      assert.equal(input.artifact, artifact);
+      assert.equal(input.version, version);
+      assert.equal(input.publicKey, "test public key");
+      return {
+        version,
+        digest,
+        suiteVerified: mode === "--stage-windows-nsis",
+      };
+    },
+  });
+  assert.deepEqual(calls, [
+    [
+      "--measure-windows-nsis",
+      join(directory, "serial-workbench-nsis-stage-v1.exe.sig"),
+    ],
+    [
+      "--stage-windows-nsis",
+      join(directory, `serial-workbench-nsis-stage-v2-${digest}.exe.sig`),
+    ],
+  ]);
+  assert.equal(result.signature, calls[1][1]);
+  assert.deepEqual(result.release, { version, digest, suiteVerified: true });
+});
+
+test("Windows signature generation rejects an independently different stage", (t) => {
+  const directory = mkdtempSync(join(tmpdir(), "swb-signature-"));
+  t.after(() => rmSync(directory, { recursive: true, force: true }));
+  const artifact = join(directory, "app.exe");
+  writeFileSync(artifact, "installer bytes");
+  assert.throws(
+    () =>
+      bindWindowsUpdaterSignature({
+        artifact,
+        version,
+        publicKey: "test public key",
+        activeInstall: join(directory, "Serial Workbench"),
+        directory,
+        sign: () => {},
+        runStage: (mode) =>
+          mode === "--measure-windows-nsis"
+            ? { version, digest: "a".repeat(64), suiteVerified: false }
+            : { version, digest: "b".repeat(64), suiteVerified: true },
+      }),
+    /did not verify the signed suite/,
+  );
+});
+
+test("retries Windows signature upload by its unmodified asset label", () => {
+  const calls = [];
+  const label = "Serial Workbench_1.2.3_x64-setup.exe.sig";
+  const file = join("bundle", "nsis", label);
+  const release = {
+    id: 42,
+    assets: [{ id: 81, name: label.replaceAll(" ", "."), label }],
+  };
+  uploadAsset(
+    file,
+    release,
+    repository,
+    (args) => calls.push(args),
+    githubConfig,
+    label,
+  );
+  assert.deepEqual(calls[0], [
+    `repos/${repository}/releases/assets/81`,
+    "--method",
+    "DELETE",
+  ]);
+  const endpoint = new URL(calls[1][0]);
+  assert.equal(endpoint.searchParams.get("name"), label);
+  assert.equal(endpoint.searchParams.get("label"), label);
+  assert.equal(calls[1].at(-1), file);
+});
 const brand = {
   updates: {
     endpoint: `https://github.com/${repository}/releases/latest/download/latest.json`,
