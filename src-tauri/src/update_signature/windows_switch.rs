@@ -2,7 +2,9 @@ use super::windows_stage::read_text;
 use serde::Deserialize;
 use serial_workbench_core::{Digest, RequestId};
 use serial_workbench_ipc::{
-    install_switch::{InstallOutcome, InstallPaths, InstallSwitch, suite_digest},
+    install_switch::{
+        InstallOutcome, InstallPaths, InstallRegistration, InstallSwitch, suite_digest,
+    },
     profile_has_host_state, reserve_host_instance,
 };
 use std::{
@@ -25,6 +27,16 @@ struct SwitchRequest {
 struct SuiteDigests {
     previous: Digest,
     candidate: Digest,
+    registration: Option<RegisteredRelease>,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct RegisteredRelease {
+    product: String,
+    previous_version: String,
+    candidate_version: String,
+    candidate_kib: u32,
 }
 
 pub fn switch_windows_release(input: &Path) -> Result<(), Box<dyn Error>> {
@@ -33,15 +45,34 @@ pub fn switch_windows_release(input: &Path) -> Result<(), Box<dyn Error>> {
     if !request.profile.is_absolute() || !profile_has_host_state(&request.profile)? {
         return Err("Windows suite switching requires the existing Host profile".into());
     }
-    let reservation = if let Some(suites) = &request.suites {
+    let (reservation, registration) = if let Some(suites) = &request.suites {
         if suite_digest(&request.active_install)? != suites.previous
             || suite_digest(paths.staged())? != suites.candidate
         {
             return Err("Windows install suite digests differ from this request".into());
         }
-        crate::updater::prepare_windows_suite_switch(&request.profile)?
+        let registration = suites
+            .registration
+            .as_ref()
+            .map(|release| {
+                InstallRegistration::capture(
+                    &request.active_install,
+                    &release.product,
+                    &release.previous_version,
+                    &release.candidate_version,
+                    release.candidate_kib,
+                )
+            })
+            .transpose()?;
+        (
+            crate::updater::prepare_windows_suite_switch(&request.profile)?,
+            registration,
+        )
     } else {
-        reserve_host_instance(&request.profile.join("host-v0"))?
+        (
+            reserve_host_instance(&request.profile.join("host-v0"))?,
+            None,
+        )
     };
     let mut switch = InstallSwitch::open(
         &request.profile,
@@ -50,7 +81,13 @@ pub fn switch_windows_release(input: &Path) -> Result<(), Box<dyn Error>> {
         Duration::from_secs(15),
     )?;
     let outcome = if let Some(suites) = request.suites {
-        if let Err(error) = switch.replace(&suites.previous, &suites.candidate) {
+        let result = match registration {
+            Some(registration) => {
+                switch.replace_registered(&suites.previous, &suites.candidate, registration)
+            }
+            None => switch.replace(&suites.previous, &suites.candidate),
+        };
+        if let Err(error) = result {
             switch.recover().map_err(|recovery| {
                 format!("Windows suite switch failed ({error}) and recovery failed ({recovery})")
             })?;

@@ -137,6 +137,14 @@ jobs:
           New-Item -ItemType Directory -Path artifacts/windows-nsis-stage | Out-Null
           pnpm test:installer --interactive 2>&1 | Tee-Object -FilePath artifacts/windows-nsis-stage/installer-layout.log
           if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 验证存档与 Windows 注册写入中断后的恢复
+        if: inputs.suite == 'windows-nsis-switch'
+        shell: pwsh
+        env:
+          SWB_TEST_WINDOWS_INSTALL_REGISTRATION: "1"
+        run: |
+          cargo test --locked -p serial-workbench-ipc --lib isolated_registered_switch_recovers_files_and_current_user_values -- --ignored --test-threads=1 --nocapture 2>&1 | Tee-Object -FilePath artifacts/windows-nsis-stage/registry-recovery.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 验证 Debian 实际离线安装与参考包
         if: inputs.suite == 'linux-offline-installer'
         run: |
@@ -209,6 +217,7 @@ jobs:
             artifacts/offline-installer/components.json
             artifacts/offline-installer/reference-*/signed-*.json
             artifacts/windows-nsis-stage/installer-layout.log
+            artifacts/windows-nsis-stage/registry-recovery.log
             .cache/node-runtime/layouts/**/runtime-preparation.json
             .cache/node-runtime/layouts/**/node-resigning.json
             .cache/node-runtime/layouts/**/node-sign*.stdout

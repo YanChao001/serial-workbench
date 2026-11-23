@@ -288,6 +288,8 @@ Windows 更新准备的原生测试用 `cargo test --locked -p serial-workbench 
 
 Windows T14 同卷套件切换的软件专项用 `cargo test --locked -p serial-workbench-ipc --lib install_switch::tests -- --nocapture`。夹具使用独立 profile 和模拟的桌面、Host、CLI、MCP、Node 文件。核对写入意图受阻、归档旧套件后中断、新套件换入后提交前中断、处于 Windows 占用状态的目录无法移动、重新取得锁后可以恢复，以及摘要篡改。收据记录原身份、代次、profile 字节核对结果、两个套件的完整摘要及恢复结果。
 
+`windows-nsis-switch` 运行时预检另在隔离 Windows runner 创建本轮专用卸载项，核对版本、安装容量和稳定注册字段。中断点位于新字段已落盘、套件意图尚未提交时，随后用同一操作收据恢复目录和注册表。`registry-recovery.log` 留存成功与回滚终态。旧版及发行候选的真实注册入口按发行范围核对。
+
 安装协调进程先验证两套产物的完整摘要并记录操作 ID 和安装路径，经本机 Rust 接口 `InstallSwitch::open` 持有实例锁并核对旧 Host 退出，再调用 `replace`。重启后用同一操作 ID 和安装路径调用 `recover`。调用方负责在换入前排除其他程序写入安装目录，并在启动任何产品进程前完成恢复。当前用户版 NSIS 的暂存入口只接受同一条 `/S /SWB-STAGE` 参数组合，套件写入安装器自身的 `.swb-stage-<operation>` 目录。启动前该目录仅含协调进程已验签的安装器。实际接入须等待安装器退出，收回该份安装器副本并验证剩余目录摘要，再执行套件切换，覆盖注册表与快捷方式的提交和回滚。用两个真实安装包验证进程监督、锁交接和终态。
 
 NSIS 暂存预检在[手动 CI](../.github/workflows/ci.yml)选择 `runtime_preflight=true`、`runtime_preflight_target=x86_64-pc-windows-msvc` 和 `runtime_preflight_suite=windows-nsis-stage`。隔离 runner 编译候选 NSIS，用相同工具链运行 `pnpm test:installer --interactive`。暂存夹具调用生产初始化函数，检查空操作目录写入、已有文件保护和错误目录名拒绝。实际安装器用一次性密钥签名，验证工具在调用暂存入口前拒绝常规签名、版本不符与内容篡改。成功后核对签名安装器副本已收回、Host/CLI/MCP 与 Node 的固定摘要，以及安装相关注册表项的前后状态。`installer-layout.log` 保留全套件、安装器、桌面程序、卸载器和各组件的摘要。正式签名、持锁换入、回滚与两个版本的实际升级各自验证。

@@ -20,6 +20,9 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_REPARSE_POINT, GetFileInformationByHandle, MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
 
+mod registration;
+pub use registration::InstallRegistration;
+
 const DOMAIN: &str = "serial-workbench/install-switch/1";
 
 /// 每轮替换使用独立的同卷暂存和归档目录。调用方须保留操作 ID 供重启恢复。
@@ -95,6 +98,8 @@ struct Intent {
     previous: Digest,
     candidate: Digest,
     phase: Phase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    registration: Option<InstallRegistration>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -167,13 +172,23 @@ impl InstallSwitch {
 
     /// 写入意图，再换入已验证的新套件。返回错误时保留收据供 recover 使用。
     pub fn replace(&mut self, previous: &Digest, candidate: &Digest) -> HostResult<()> {
-        self.replace_with(previous, candidate, |_| Ok(()))
+        self.replace_with(previous, candidate, None, |_| Ok(()))
+    }
+
+    pub fn replace_registered(
+        &mut self,
+        previous: &Digest,
+        candidate: &Digest,
+        registration: InstallRegistration,
+    ) -> HostResult<()> {
+        self.replace_with(previous, candidate, Some(registration), |_| Ok(()))
     }
 
     fn replace_with(
         &mut self,
         previous: &Digest,
         candidate: &Digest,
+        registration: Option<InstallRegistration>,
         mut checkpoint: impl FnMut(Checkpoint) -> HostResult<()>,
     ) -> HostResult<()> {
         if self.read_intent()?.is_some()
@@ -184,6 +199,9 @@ impl InstallSwitch {
         {
             return Err(integrity());
         }
+        if let Some(registration) = &registration {
+            registration.verify(&self.paths.active, false)?;
+        }
         let mut intent = Intent {
             operation: self.paths.operation.clone(),
             active: self.paths.active.clone(),
@@ -191,6 +209,7 @@ impl InstallSwitch {
             previous: previous.clone(),
             candidate: candidate.clone(),
             phase: Phase::Prepared,
+            registration,
         };
         checkpoint(Checkpoint::Intent)?;
         self.save_intent(&intent)?;
@@ -198,6 +217,9 @@ impl InstallSwitch {
         checkpoint(Checkpoint::Publish)?;
         move_directory(&self.paths.staged, &self.paths.active)?;
         self.verify_committed(&intent)?;
+        if let Some(registration) = &intent.registration {
+            registration.settle(&self.paths.active, true)?;
+        }
         checkpoint(Checkpoint::Commit)?;
         intent.phase = Phase::Committed;
         self.save_intent(&intent)
@@ -211,10 +233,16 @@ impl InstallSwitch {
         match intent.phase {
             Phase::Committed => {
                 self.verify_committed(&intent)?;
+                if let Some(registration) = &intent.registration {
+                    registration.verify(&self.paths.active, true)?;
+                }
                 Ok(Some(InstallOutcome::Committed))
             }
             Phase::RolledBack => {
                 self.verify_rolled_back(&intent)?;
+                if let Some(registration) = &intent.registration {
+                    registration.verify(&self.paths.active, false)?;
+                }
                 Ok(Some(InstallOutcome::RolledBack))
             }
             Phase::Prepared => {
@@ -230,6 +258,9 @@ impl InstallSwitch {
                     move_directory(&self.paths.backup, &self.paths.active)?;
                 }
                 self.verify_rolled_back(&intent)?;
+                if let Some(registration) = &intent.registration {
+                    registration.settle(&self.paths.active, false)?;
+                }
                 intent.phase = Phase::RolledBack;
                 self.save_intent(&intent)?;
                 Ok(Some(InstallOutcome::RolledBack))

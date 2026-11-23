@@ -90,7 +90,7 @@ impl Fixture {
         let mut guard = self.open();
         assert!(
             guard
-                .replace_with(&self.old, &self.new, |current| {
+                .replace_with(&self.old, &self.new, None, |current| {
                     if current == fail_at {
                         Err(storage())
                     } else {
@@ -105,6 +105,7 @@ impl Fixture {
 fn put_suite(path: &Path, version: &str) {
     for entry in [
         "desktop.exe",
+        "uninstall.exe",
         "serial-workbench-host.exe",
         "serial-workbench-cli.exe",
         "serial-workbench-mcp.exe",
@@ -116,6 +117,83 @@ fn put_suite(path: &Path, version: &str) {
         fs::write(target, format!("{version}:{entry}")).unwrap();
     }
     fs::create_dir(path.join("empty")).unwrap();
+}
+
+#[test]
+#[ignore = "requires an isolated Windows runner with a disposable user registry"]
+fn isolated_registered_switch_recovers_files_and_current_user_values() {
+    assert_eq!(
+        std::env::var("SWB_TEST_WINDOWS_INSTALL_REGISTRATION").as_deref(),
+        Ok("1")
+    );
+    use windows_registry::CURRENT_USER;
+    for interrupted in [false, true] {
+        let fixture = Fixture::new();
+        let product = format!("Serial Workbench Upgrade Test {}", uuid::Uuid::new_v4());
+        let path = format!(r"Software\Microsoft\Windows\CurrentVersion\Uninstall\{product}");
+        struct TestKey(String);
+        impl Drop for TestKey {
+            fn drop(&mut self) {
+                let _ = CURRENT_USER.remove_tree(&self.0);
+            }
+        }
+        let key_guard = TestKey(path);
+        let key = CURRENT_USER.create(&key_guard.0).unwrap();
+        let quoted = |path: &Path| format!("\"{}\"", path.display());
+        key.set_string("DisplayName", &product).unwrap();
+        key.set_string("MainBinaryName", "serial-workbench.exe")
+            .unwrap();
+        key.set_string("InstallLocation", quoted(&fixture.paths.active))
+            .unwrap();
+        key.set_string(
+            "UninstallString",
+            quoted(&fixture.paths.active.join("uninstall.exe")),
+        )
+        .unwrap();
+        key.set_string("DisplayVersion", "0.1.0").unwrap();
+        key.set_u32("EstimatedSize", 100).unwrap();
+        key.set_string("Publisher", "Registry Fixture").unwrap();
+        let registration =
+            InstallRegistration::capture(&fixture.paths.active, &product, "0.1.0", "0.1.1", 200)
+                .unwrap();
+        {
+            let mut switch = fixture.open();
+            let result =
+                switch.replace_with(&fixture.old, &fixture.new, Some(registration), |phase| {
+                    if interrupted && phase == Checkpoint::Commit {
+                        return Err(storage());
+                    }
+                    Ok(())
+                });
+            assert_eq!(result.is_err(), interrupted);
+            assert_eq!(key.get_string("DisplayVersion").unwrap(), "0.1.1");
+            assert_eq!(key.get_u32("EstimatedSize").unwrap(), 200);
+        }
+        let mut reopened = fixture.open();
+        let outcome = if interrupted {
+            InstallOutcome::RolledBack
+        } else {
+            InstallOutcome::Committed
+        };
+        assert_eq!(reopened.recover().unwrap(), Some(outcome));
+        assert_eq!(reopened.recover().unwrap(), Some(outcome));
+        let (digest, version, kib) = if interrupted {
+            (fixture.old, "0.1.0", 100)
+        } else {
+            (fixture.new, "0.1.1", 200)
+        };
+        assert_eq!(suite_digest(&fixture.paths.active).unwrap(), digest);
+        assert_eq!(key.get_string("DisplayVersion").unwrap(), version);
+        assert_eq!(key.get_u32("EstimatedSize").unwrap(), kib);
+        assert_eq!(
+            key.get_string("UninstallString").unwrap(),
+            quoted(&fixture.paths.active.join("uninstall.exe"))
+        );
+        assert_eq!(key.get_string("Publisher").unwrap(), "Registry Fixture");
+        println!(
+            "outcome={outcome:?} version={version} kib={kib} stableRegistrationPreserved=true"
+        );
+    }
 }
 
 fn hold_without_delete_share(path: &Path) -> File {
@@ -171,7 +249,7 @@ fn intent_path_write_failure_stops_before_replacement() {
     let blocked = guard.journal.clone();
     assert!(
         guard
-            .replace_with(&fixture.old, &fixture.new, |checkpoint| {
+            .replace_with(&fixture.old, &fixture.new, None, |checkpoint| {
                 if checkpoint == Checkpoint::Intent {
                     fs::create_dir(&blocked).unwrap();
                 }
@@ -295,7 +373,7 @@ fn changed_candidate_or_receipt_cannot_replace_or_restore_unknown_suite() {
     fs::write(candidate, b"new:serial-workbench-cli.exe").unwrap();
     assert!(
         guard
-            .replace_with(&fixture.old, &fixture.new, |current| {
+            .replace_with(&fixture.old, &fixture.new, None, |current| {
                 if current == Checkpoint::Commit {
                     Err(storage())
                 } else {
