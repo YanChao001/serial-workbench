@@ -1,5 +1,6 @@
 #!/usr/bin/env node
 import {
+  copyFileSync,
   existsSync,
   mkdirSync,
   mkdtempSync,
@@ -30,6 +31,7 @@ import {
 } from "../repository-lib.mjs";
 import { tagFromEnvironment, writeOutput } from "./github-env.mjs";
 import { githubRequest } from "./github-api.mjs";
+import { bindWindowsUpdaterSignature } from "./windows-updater-signature.mjs";
 
 const TARGETS = {
   "x86_64-pc-windows-msvc": { platform: "windows-x86_64", config: "windows" },
@@ -102,17 +104,24 @@ export function uploadReleaseAsset(
   repository,
   request,
   config = repositoryConfig,
+  label,
 ) {
   const name = basename(file);
-  const existing = release.assets.find((asset) => asset.name === name);
+  const matching = release.assets.filter(
+    (asset) => asset.name === name || (label && asset.label === label),
+  );
+  if (matching.length > 1)
+    throw new Error(`Release 草稿有多个同名资产：${name}`);
+  const existing = matching[0];
   if (existing)
     request([
       `repos/${repository}/releases/assets/${existing.id}`,
       "--method",
       "DELETE",
     ]);
+  const endpoint = `${config.hosting.uploadBaseUrl.replace(/\/$/, "")}/repos/${repository}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`;
   return request([
-    `${config.hosting.uploadBaseUrl.replace(/\/$/, "")}/repos/${repository}/releases/${release.id}/assets?name=${encodeURIComponent(name)}`,
+    label ? `${endpoint}&label=${encodeURIComponent(label)}` : endpoint,
     "--method",
     "POST",
     "--header",
@@ -391,6 +400,75 @@ function command(binary, args, root, options = {}) {
   return result.stdout;
 }
 
+function runUpdaterVerifier(root, args, options) {
+  const env = buildEnvironment();
+  for (const key of Object.keys(env)) {
+    if (/^(?:TAURI_SIGNING_|GH_TOKEN$|GITHUB_TOKEN$)/i.test(key))
+      delete env[key];
+  }
+  return command(
+    "cargo",
+    [
+      "run",
+      "--quiet",
+      ...desktopCargoArgs(root),
+      "--locked",
+      "--features",
+      "bindings",
+      "--bin",
+      "verify-updater",
+      "--",
+      ...args,
+    ],
+    root,
+    { env, ...options },
+  );
+}
+
+function bindPublishedWindowsSuite({
+  root,
+  temporary,
+  version,
+  publicKey,
+  artifact,
+}) {
+  const input = join(temporary, "windows-stage.json");
+  return bindWindowsUpdaterSignature({
+    artifact,
+    version,
+    publicKey,
+    activeInstall: join(temporary, "Serial Workbench"),
+    directory: temporary,
+    sign: (path, appVersion) =>
+      command(
+        process.execPath,
+        [
+          join(root, "node_modules", "@tauri-apps", "cli", "tauri.js"),
+          "signer",
+          "sign",
+          "--app-version",
+          appVersion,
+          path,
+        ],
+        root,
+        {
+          stdio: ["ignore", "pipe", "inherit"],
+          windowsHide: true,
+          timeout: 60_000,
+        },
+      ),
+    runStage: (mode, request) => {
+      writeFileSync(input, JSON.stringify(request));
+      return JSON.parse(
+        runUpdaterVerifier(root, [mode, input], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "inherit"],
+        }),
+      );
+    },
+  });
+}
+
 function output(name, value) {
   writeOutput(name, value);
 }
@@ -484,6 +562,28 @@ export function runRelease() {
       join(tmpdir(), "starter-update-verification-"),
     );
     try {
+      const windows = info.config === "windows";
+      if (windows) {
+        const nsis = verification.find(
+          ({ path }) => artifactKind(path, info.platform) === "nsis",
+        );
+        if (nsis) {
+          if (config.bundle?.windows?.nsis?.installMode !== "currentUser")
+            throw new Error("NSIS 套件更新需要当前用户版安装器");
+          const bound = bindPublishedWindowsSuite({
+            root,
+            temporary,
+            version,
+            publicKey: brand.updates.publicKey,
+            artifact: nsis.path,
+          });
+          copyFileSync(bound.signature, nsis.signature);
+          metadata.platforms[`${info.platform}-nsis`].signature = readFileSync(
+            nsis.signature,
+            "utf8",
+          ).trim();
+        }
+      }
       const input = join(temporary, "input.json");
       writeFileSync(
         input,
@@ -493,21 +593,27 @@ export function runRelease() {
           files: verification,
         }),
       );
-      command(
-        "cargo",
-        [
-          "run",
-          ...desktopCargoArgs(root),
-          "--locked",
-          "--features",
-          "bindings",
-          "--bin",
-          "verify-updater",
-          "--",
-          input,
-        ],
-        root,
-      );
+      runUpdaterVerifier(root, [input]);
+      if (windows) {
+        const release = readDraftRelease(
+          { repository, version, releaseId: process.env.RELEASE_ID },
+          request,
+        );
+        for (const { signature } of verification) {
+          uploadReleaseAsset(
+            signature,
+            release,
+            repository,
+            request,
+            repositoryConfig,
+            releaseAssetName(signature, {
+              productName: config.productName,
+              version,
+              target,
+            }),
+          );
+        }
+      }
     } finally {
       rmSync(temporary, { recursive: true, force: true });
     }

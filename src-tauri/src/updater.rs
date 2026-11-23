@@ -16,8 +16,10 @@ use url::Url;
 
 #[path = "updater/host.rs"]
 mod host;
+#[cfg(windows)]
+pub(crate) mod windows_install;
 
-#[cfg(all(windows, feature = "bindings"))]
+#[cfg(windows)]
 pub(crate) fn prepare_windows_suite_switch(
     profile: &std::path::Path,
 ) -> serial_workbench_core::HostResult<serial_workbench_ipc::PrivateFileLock> {
@@ -37,6 +39,12 @@ pub const UPDATE_EVENT: &str = "app://update-progress";
 pub(crate) enum InstallOrigin {
     DesktopSettings,
     HostEffect(crate::host_bridge::UpdatePreparation),
+}
+
+enum InstallCompletion {
+    Installed,
+    #[cfg(windows)]
+    Coordinator,
 }
 
 #[derive(Debug, Clone, Deserialize, PartialEq, Eq)]
@@ -295,7 +303,11 @@ impl UpdateManager {
         self.event(app, operation_id, UpdateStage::Downloading, None, None);
         let result = self.install_inner(app, operation_id, origin).await;
         match &result {
-            Ok(()) => self.event(app, operation_id, UpdateStage::Installed, None, None),
+            Ok(InstallCompletion::Installed) => {
+                self.event(app, operation_id, UpdateStage::Installed, None, None)
+            }
+            #[cfg(windows)]
+            Ok(InstallCompletion::Coordinator) => {}
             Err(error) if error.code == ErrorCode::UserCancelled => {
                 self.event(app, operation_id, UpdateStage::Cancelled, None, None)
             }
@@ -307,7 +319,7 @@ impl UpdateManager {
                 None,
             ),
         }
-        result
+        result.map(|_| ())
     }
 
     async fn install_inner(
@@ -315,7 +327,7 @@ impl UpdateManager {
         app: &tauri::AppHandle,
         operation_id: i32,
         origin: InstallOrigin,
-    ) -> NativeResult<()> {
+    ) -> NativeResult<InstallCompletion> {
         let (policy, mut update) = self
             .pending
             .lock()
@@ -384,6 +396,66 @@ impl UpdateManager {
         let expected_policy = policy.clone();
         blocking::run(move || require_unchanged_policy(load_policy(&paths)?, &expected_policy))
             .await?;
+        #[cfg(windows)]
+        if matches!(
+            tauri::utils::platform::bundle_type(),
+            Some(tauri::utils::config::BundleType::Nsis)
+        ) {
+            let profile = app
+                .state::<crate::host_bridge::DesktopHostBridge>()
+                .local_profile()
+                .to_path_buf();
+            let product = app.config().product_name.clone().ok_or_else(|| {
+                NativeError::new(
+                    ErrorCode::UpdateInstallFailed,
+                    "Missing installed product name",
+                )
+            })?;
+            self.event(app, operation_id, UpdateStage::Installing, None, None);
+            let stage_policy = policy.clone();
+            let prepared = blocking::run(move || {
+                windows_install::prepare(profile, product, &stage_policy, &update, &bytes).map_err(
+                    |error| {
+                        NativeError::operation(
+                            ErrorCode::UpdateInstallFailed,
+                            "Cannot stage the verified Windows update",
+                            error,
+                        )
+                    },
+                )
+            })
+            .await?;
+            if let InstallOrigin::HostEffect(preparation) = origin {
+                preparation.quiesce().await.map_err(|error| {
+                    NativeError::operation(
+                        ErrorCode::UpdateInstallFailed,
+                        "Cannot confirm Host preparation before installing the update",
+                        error,
+                    )
+                })?;
+            }
+            let handle = app.clone();
+            let paths = app.state::<DataPaths>().inner().clone();
+            blocking::run(move || {
+                let _authorization = authorization;
+                require_unchanged_policy(load_policy(&paths)?, &policy)?;
+                prepared.start().map_err(|error| {
+                    NativeError::operation(
+                        ErrorCode::UpdateInstallFailed,
+                        "Cannot prepare the Windows update coordinator",
+                        error,
+                    )
+                })?;
+                handle
+                    .state::<crate::lifecycle::LifecycleState>()
+                    .approved_exit
+                    .store(true, Ordering::Release);
+                handle.exit(0);
+                Ok(())
+            })
+            .await?;
+            return Ok(InstallCompletion::Coordinator);
+        }
         let host_reservation = match origin {
             InstallOrigin::DesktopSettings => {
                 let bridge = app.state::<crate::host_bridge::DesktopHostBridge>();
@@ -420,7 +492,7 @@ impl UpdateManager {
             })
         })
         .await?;
-        Ok(())
+        Ok(InstallCompletion::Installed)
     }
 }
 

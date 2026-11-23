@@ -11,7 +11,14 @@ const exec = promisify(execFile);
 export function spawnOwned(
   command,
   args,
-  { cwd, env, logPath, windowsJobReceipt, privateStdout = false } = {},
+  {
+    cwd,
+    env,
+    logPath,
+    windowsJobReceipt,
+    privateStdout = false,
+    pipeStdin = false,
+  } = {},
 ) {
   const detached = process.platform !== "win32";
   let log;
@@ -39,11 +46,15 @@ export function spawnOwned(
     detached,
     windowsHide: true,
     stdio:
-      log || privateStdout
-        ? ["ignore", "pipe", log ? "pipe" : "inherit"]
+      log || privateStdout || pipeStdin
+        ? [
+            pipeStdin ? "pipe" : "ignore",
+            log || privateStdout ? "pipe" : "inherit",
+            log ? "pipe" : "inherit",
+          ]
         : "inherit",
   });
-  if (!privateStdout) child.stdout?.pipe(log, { end: false });
+  if (log && !privateStdout) child.stdout?.pipe(log, { end: false });
   child.stderr?.pipe(log, { end: false });
   const exited = new Promise((done) => {
     child.once("error", (error) => {

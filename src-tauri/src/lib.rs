@@ -67,6 +67,8 @@ fn logging_plugin(
 
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    #[cfg(windows)]
+    updater::windows_install::run_if_requested();
     #[allow(unused_mut)]
     let mut context = tauri::generate_context!();
     #[cfg(feature = "e2e")]

@@ -21,6 +21,7 @@ import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
 import { spawnOwned, stopOwned, waitOwned } from "../e2e/process.mjs";
 import { fileSha256 } from "./artifact-lib.mjs";
+import { bindWindowsUpdaterSignature } from "./hosting/windows-updater-signature.mjs";
 import { loadNodeRuntimeRelease } from "./node-runtime-source.mjs";
 
 const args = process.argv.slice(2);
@@ -517,6 +518,7 @@ async function verifyInstalledSuiteSwitch(
   previous,
   candidate,
   installation,
+  nodeImage,
 ) {
   const profile = join(fixture, "switch-profile");
   mkdirSync(profile);
@@ -532,7 +534,7 @@ async function verifyInstalledSuiteSwitch(
   assert.notEqual(previous.digest, candidate.digest);
   assert.notEqual(originalDesktop, nextDesktop);
   const requestPath = join(fixture, "switch.json");
-  const switchSuite = (suites, operation = candidate.operation) => {
+  const writeRequest = (suites, operation = candidate.operation) => {
     writeFileSync(
       requestPath,
       JSON.stringify({
@@ -542,6 +544,9 @@ async function verifyInstalledSuiteSwitch(
         suites,
       }),
     );
+  };
+  const switchSuite = (suites, operation) => {
+    writeRequest(suites, operation);
     return spawnSync(verifier, ["--switch-windows-nsis", requestPath], {
       encoding: "utf8",
       windowsHide: true,
@@ -559,9 +564,24 @@ async function verifyInstalledSuiteSwitch(
   const old = spawnOwned(host(), ["--profile", profile], {
     logPath: join(fixture, "old-host.log"),
   });
+  let desktop;
+  let switcher;
   let replacement;
   try {
     const before = await waitForInstalledHost(old, profile);
+    const probeFolder = join(fixture, "copied-desktop-probe");
+    mkdirSync(probeFolder);
+    const probeExe = join(probeFolder, "serial-workbench.exe");
+    copyFileSync(join(installation, "serial-workbench.exe"), probeExe);
+    const probe = spawnSync(probeExe, ["--swb-coordinate-windows-update"], {
+      input: "{",
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 15_000,
+    });
+    assert.equal(probe.status, 1, probe.error?.message ?? probe.stderr);
+    assert.ok(process.kill(before.pid, 0));
+    assert.deepEqual(readdirSync(probeFolder), ["serial-workbench.exe"]);
     const invalid = switchSuite({
       previous: previous.digest,
       candidate: "0".repeat(64),
@@ -575,9 +595,79 @@ async function verifyInstalledSuiteSwitch(
       originalDesktop,
     );
 
-    expectCommitted(
-      switchSuite({ previous: previous.digest, candidate: candidate.digest }),
+    // 使用旧套件内的真实进程，自己控制何时退出，不启动图形窗口。
+    desktop = spawnOwned(
+      join(installation, nodeImage),
+      ["-e", "process.stdin.resume()"],
+      { pipeStdin: true, logPath: join(fixture, "old-desktop-fixture.log") },
     );
+    assert.ok(Number.isInteger(desktop.child.pid));
+    const stamp = spawnSync(
+      "powershell.exe",
+      [
+        "-NoProfile",
+        "-NonInteractive",
+        "-Command",
+        `(Get-Process -Id ${desktop.child.pid}).StartTime.ToFileTimeUtc()`,
+      ],
+      { encoding: "utf8", windowsHide: true, timeout: 10_000 },
+    );
+    assert.equal(stamp.status, 0, stamp.error?.message ?? stamp.stderr);
+    const created = stamp.stdout.trim();
+    assert.match(created, /^[0-9]+$/);
+    const suites = {
+      previous: previous.digest,
+      candidate: candidate.digest,
+      desktop: { pid: desktop.child.pid, created, image: nodeImage },
+    };
+    for (const claimed of [
+      { ...suites.desktop, created: "1" },
+      { ...suites.desktop, image: "serial-workbench.exe" },
+    ]) {
+      const result = switchSuite({ ...suites, desktop: claimed });
+      assert.equal(result.status, 1, result.error?.message ?? result.stderr);
+      assert.match(result.stderr, /Cannot verify the live process and image/);
+      assert.ok(process.kill(before.pid, 0));
+    }
+    writeRequest(suites);
+    const switchLog = join(fixture, "desktop-exit-coordinator.log");
+    switcher = spawnOwned(verifier, ["--switch-windows-nsis", requestPath], {
+      logPath: switchLog,
+      privateStdout: true,
+    });
+    let receipt = "";
+    switcher.child.stdout.setEncoding("utf8");
+    switcher.child.stdout.on("data", (data) => (receipt += data));
+    const held =
+      "Windows update holds the Host reservation and waits for the old desktop";
+    const deadline = Date.now() + 25_000;
+    let observedHold = false;
+    while (!switcher.state.done && Date.now() < deadline) {
+      if (
+        existsSync(switchLog) &&
+        readFileSync(switchLog, "utf8").includes(held)
+      ) {
+        observedHold = true;
+        break;
+      }
+      await delay(25);
+    }
+    assert.ok(
+      observedHold,
+      `Expected the Host reservation before desktop exit. Coordinator log: ${
+        existsSync(switchLog) ? readFileSync(switchLog, "utf8") : "(empty)"
+      }`,
+    );
+    assert.equal(desktop.state.done, false);
+    assert.equal(switcher.state.done, false);
+    assert.equal(
+      fileSha256(join(installation, "serial-workbench.exe")),
+      originalDesktop,
+    );
+    desktop.child.stdin.end();
+    await waitOwned(desktop, AbortSignal.timeout(10_000));
+    await waitOwned(switcher, AbortSignal.timeout(20_000));
+    expectCommitted({ status: 0, stdout: receipt });
     await waitOwned(old, AbortSignal.timeout(10_000));
     expectCommitted(switchSuite());
     const pending = switchSuite(undefined, null);
@@ -625,9 +715,14 @@ async function verifyInstalledSuiteSwitch(
       identityPreserved: true,
       profileDataPreserved: true,
       badDigestLeftHostRunning: true,
+      wrongDesktopIdentityLeftHostRunning: true,
+      waitedForInstalledProcess: true,
+      copiedDesktopRejectsInvalidCoordinatorInput: true,
     };
   } finally {
     await stopOwned(replacement);
+    await stopOwned(switcher);
+    await stopOwned(desktop);
     await stopOwned(old);
   }
 }
@@ -700,9 +795,7 @@ test("the verified NSIS stages pinned components without registering an installa
   };
   sign("generate", "--ci", "--write-keys", key, "--password", password);
   const publicKey = readFileSync(`${key}.pub`, "utf8");
-  const signedCopy = (name, input = packagePath, releaseVersion = version) => {
-    const copy = join(fixture, name);
-    copyFileSync(input, copy);
+  const signArtifact = (path, releaseVersion) =>
     sign(
       "sign",
       "--private-key-path",
@@ -711,8 +804,12 @@ test("the verified NSIS stages pinned components without registering an installa
       password,
       "--app-version",
       releaseVersion,
-      copy,
+      path,
     );
+  const signedCopy = (name) => {
+    const copy = join(fixture, name);
+    copyFileSync(packagePath, copy);
+    signArtifact(copy, version);
     return `${copy}.sig`;
   };
   const legacySignature = signedCopy("installer.exe");
@@ -728,9 +825,9 @@ test("the verified NSIS stages pinned components without registering an installa
   mkdirSync(request.activeInstall);
   const installed = join(request.activeInstall, "existing-component");
   writeFileSync(installed, "original installation");
-  const stageUpdate = (overrides = {}) => {
+  const stageUpdate = (overrides = {}, mode = "--stage-windows-nsis") => {
     writeFileSync(inputFile, JSON.stringify({ ...request, ...overrides }));
-    return spawnSync(verifier, ["--stage-windows-nsis", inputFile], {
+    return spawnSync(verifier, [mode, inputFile], {
       encoding: "utf8",
       windowsHide: true,
       timeout: 150_000,
@@ -742,6 +839,9 @@ test("the verified NSIS stages pinned components without registering an installa
     legacy.stderr,
     /does not declare the current-user NSIS stage protocol/,
   );
+  const unbound = stageUpdate();
+  assert.equal(unbound.status, 1, unbound.error?.message ?? unbound.stderr);
+  assert.match(unbound.stderr, /with a suite digest/);
   const wrongVersion = stageUpdate({ version: "0.0.0" });
   assert.equal(
     wrongVersion.status,
@@ -762,20 +862,50 @@ test("the verified NSIS stages pinned components without registering an installa
     [],
   );
 
-  const result = stageUpdate();
+  const signSuite = (name, settings) => {
+    const directory = join(fixture, name);
+    mkdirSync(directory);
+    return bindWindowsUpdaterSignature({
+      ...request,
+      ...settings,
+      directory,
+      sign: signArtifact,
+      runStage: (mode, data) => {
+        const result = stageUpdate(data, mode);
+        assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+        return JSON.parse(result.stdout);
+      },
+    }).release;
+  };
+  const signedRelease = signSuite("signed-release");
+  const unrelatedDigest = "0".repeat(64);
+  assert.notEqual(signedRelease.digest, unrelatedDigest);
+  const wrongDigest = stageUpdate({
+    signature: signedCopy(
+      `serial-workbench-nsis-stage-v2-${unrelatedDigest}.exe`,
+    ),
+  });
+  assert.equal(
+    wrongDigest.status,
+    1,
+    wrongDigest.error?.message ?? wrongDigest.stderr,
+  );
+  assert.match(wrongDigest.stderr, /differs from the signed release digest/);
+  assert.equal(wrongDigest.stdout, "");
+
   const installerSha256 = fileSha256(packagePath);
   assert.deepEqual(
     registry(),
     before,
     "Staging changed installation registry keys",
   );
-  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
   const {
     staged: stage,
     digest,
     operation,
     version: stagedVersion,
-  } = JSON.parse(result.stdout);
+    suiteVerified,
+  } = signedRelease;
   assert.match(
     operation,
     /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/,
@@ -784,7 +914,7 @@ test("the verified NSIS stages pinned components without registering an installa
     realpathSync.native(stage),
     realpathSync.native(join(fixture, `.swb-stage-${operation}`)),
   );
-  assert.match(digest, /^[\da-f]{64}$/);
+  assert.equal(suiteVerified, true);
   assert.equal(stagedVersion, version);
   assert.ok(!existsSync(join(stage, "serial-workbench-nsis-stage-v1.exe")));
   assert.deepEqual(readdirSync(request.activeInstall), ["existing-component"]);
@@ -808,6 +938,8 @@ test("the verified NSIS stages pinned components without registering an installa
       suiteDigest: digest,
       stageVersion: stagedVersion,
       legacySignatureRejected: true,
+      unboundSignatureRejected: true,
+      wrongSignedSuiteRejected: true,
       wrongVersionRejected: true,
       tamperedArtifactRejected: true,
       components,
@@ -823,32 +955,21 @@ test("the verified NSIS stages pinned components without registering an installa
     assert.ok(nextVersion && nextVersion !== version);
     const installation = join(fixture, "Installed Suite");
     renameSync(stage, installation);
-    const nextDir = join(fixture, "next");
-    mkdirSync(nextDir);
-    const nextSignature = signedCopy(
-      join("next", "serial-workbench-nsis-stage-v1.exe"),
-      next,
-      nextVersion,
-    );
-    const nextResult = stageUpdate({
+    const nextRelease = signSuite("next", {
       activeInstall: installation,
       artifact: next,
       version: nextVersion,
-      signature: nextSignature,
     });
-    assert.equal(
-      nextResult.status,
-      0,
-      nextResult.error?.message ?? nextResult.stderr,
-    );
+    assert.equal(nextRelease.suiteVerified, true);
     t.diagnostic(
       JSON.stringify(
         await verifyInstalledSuiteSwitch(
           fixture,
           verifier,
           { staged: stage, digest, operation, version },
-          JSON.parse(nextResult.stdout),
+          nextRelease,
           installation,
+          node.executable.resourcePath,
         ),
       ),
     );

@@ -249,7 +249,7 @@ test("Linux verified backend checks are required and use an independent fixed ru
   assert.match(backend, /if: always\(\)/);
 });
 
-test("runtime diagnostics cannot replace the full milestone gate or launch desktop jobs", () => {
+test("runtime diagnostics stay separate from the milestone gate and isolate desktop update", () => {
   const runtime = read(".github/workflows/runtime-preflight.yml");
   assert.match(job("runtime-preflight"), /if: inputs\.runtime_preflight/);
   assert.match(
@@ -281,6 +281,11 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   assert.ok(
     runtime.includes("artifacts/windows-nsis-stage/installer-layout.log"),
   );
+  assert.match(
+    runtime,
+    /if: inputs\.suite == 'windows-nsis-desktop-update'\s+shell: pwsh\s+run: \.\/scripts\/ci-windows-desktop-update\.ps1 -Target \$env:RUNTIME_TARGET/,
+  );
+  assert.ok(runtime.includes("artifacts/windows-desktop-update/receipt.json"));
   assert.match(
     runtime,
     /cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp\s+--example node_runtime_probe --bin serial-workbench-cli --bin serial-workbench-mcp/,
@@ -447,6 +452,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     ["x86_64-apple-darwin", "macos-signature", "macos-15-intel"],
     ["x86_64-pc-windows-msvc", "windows-nsis-stage", "windows-2022"],
     ["x86_64-pc-windows-msvc", "windows-nsis-switch", "windows-2022"],
+    ["x86_64-pc-windows-msvc", "windows-nsis-desktop-update", "windows-2022"],
     ["x86_64-unknown-linux-gnu", "linux-offline-installer", "ubuntu-22.04"],
     ["aarch64-apple-darwin", "macos-offline-installer", "macos-15"],
   ]) {
@@ -473,6 +479,12 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
       "aarch64-apple-darwin",
       "false",
       "windows-nsis-switch",
+      /requires Windows x64/,
+    ],
+    [
+      "aarch64-apple-darwin",
+      "false",
+      "windows-nsis-desktop-update",
       /requires Windows x64/,
     ],
     [

@@ -4,7 +4,10 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
         .next()
         .ok_or("Usage: verify-updater <verification-input.json>")?;
     #[cfg(windows)]
-    if path == "--stage-windows-nsis" || path == "--switch-windows-nsis" {
+    if path == "--measure-windows-nsis"
+        || path == "--stage-windows-nsis"
+        || path == "--switch-windows-nsis"
+    {
         let request = args
             .next()
             .ok_or("Expected the Windows request JSON path")?;
@@ -12,7 +15,9 @@ fn main() -> Result<(), Box<dyn std::error::Error>> {
             return Err("Unexpected Windows installer argument".into());
         }
         let request = std::path::Path::new(&request);
-        return if path == "--stage-windows-nsis" {
+        return if path == "--measure-windows-nsis" {
+            serial_workbench_lib::update_signature::measure_windows_release(request)
+        } else if path == "--stage-windows-nsis" {
             serial_workbench_lib::update_signature::stage_windows_release(request)
         } else {
             serial_workbench_lib::update_signature::switch_windows_release(request)

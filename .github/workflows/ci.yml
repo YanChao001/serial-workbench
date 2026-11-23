@@ -44,6 +44,7 @@ on:
           - macos-signature
           - windows-nsis-stage
           - windows-nsis-switch
+          - windows-nsis-desktop-update
           - linux-offline-installer
           - macos-offline-installer
         required: true
@@ -67,7 +68,7 @@ permissions:
   contents: read
 
 concurrency:
-  group: ci-${{ github.ref }}-${{ inputs.runtime_preflight && format('runtime-{0}', inputs.runtime_preflight_target || 'all') || inputs.native_preflight && format('preflight-{0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || 'full' }}
+  group: ci-${{ github.ref }}-${{ inputs.runtime_preflight && format('runtime-{0}-{1}', inputs.runtime_preflight_target || 'all', inputs.runtime_preflight_suite || 'all') || inputs.native_preflight && format('preflight-{0}', inputs.native_preflight_target || 'x86_64-unknown-linux-gnu') || 'full' }}
   cancel-in-progress: false
 
 jobs:

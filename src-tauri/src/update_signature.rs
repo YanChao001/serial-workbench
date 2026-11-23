@@ -8,12 +8,12 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(windows)]
+pub(crate) mod windows_stage;
 #[cfg(all(windows, feature = "bindings"))]
-mod windows_stage;
-#[cfg(all(windows, feature = "bindings"))]
-pub use windows_stage::stage_windows_release;
-#[cfg(all(windows, feature = "bindings"))]
-mod windows_switch;
+pub use windows_stage::{measure_windows_release, stage_windows_release};
+#[cfg(windows)]
+pub(crate) mod windows_switch;
 #[cfg(all(windows, feature = "bindings"))]
 pub use windows_switch::switch_windows_release;
 

@@ -224,7 +224,8 @@ jobs:
           releaseId: ${{ needs.validate.outputs.release-id }}
           # 各平台先验证自己的签名，最后由单一 job 汇总，避免矩阵并发覆盖 latest.json。
           uploadUpdaterJson: false
-          uploadUpdaterSignatures: ${{ steps.updater.outputs.enabled == 'true' }}
+          # Windows 的签名由收集步骤在实际暂存与复验后上传。
+          uploadUpdaterSignatures: ${{ steps.updater.outputs.enabled == 'true' && matrix.target != 'x86_64-pc-windows-msvc' }}
           args: ${{ matrix.args }} ${{ env.SIGNING_ARGS }} ${{ steps.updater.outputs.args }} -- --package ${{ steps.version.outputs.package }}
 
       - name: 清理后续步骤的 Apple 签名环境
@@ -261,12 +262,16 @@ jobs:
             Write-Host "签名有效：$($file.Name) <- $($sig.SignerCertificate.Subject)"
           }
 
-      - name: 验证更新包签名、公钥与签名版本
+      - name: 验证更新签名并签署 Windows 暂存套件摘要
         id: updater-metadata
         if: steps.updater.outputs.enabled == 'true'
         env:
           TAURI_ARTIFACT_PATHS: ${{ steps.tauri.outputs.artifactPaths }}
           ARTIFACT_TARGET: ${{ matrix.target }}
+          RELEASE_ID: ${{ needs.validate.outputs.release-id }}
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ matrix.target == 'x86_64-pc-windows-msvc' && secrets.TAURI_SIGNING_PRIVATE_KEY || '' }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ${{ matrix.target == 'x86_64-pc-windows-msvc' && secrets.TAURI_SIGNING_PRIVATE_KEY_PASSWORD || '' }}
         run: node scripts/release-lib.mjs collect
 
       - name: 保存本次平台的已验证更新元数据

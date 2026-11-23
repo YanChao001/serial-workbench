@@ -48,7 +48,7 @@ jobs:
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
           const suite = process.env.RUNTIME_SUITE;
-          if (!['all', 'host-ipc', 'macos-signature', 'windows-nsis-stage', 'windows-nsis-switch', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (!['all', 'host-ipc', 'macos-signature', 'windows-nsis-stage', 'windows-nsis-switch', 'windows-nsis-desktop-update', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
           if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
           if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
           if (suite.startsWith('windows-nsis-') && requested !== 'x86_64-pc-windows-msvc') throw new Error('The NSIS suite requires Windows x64');
@@ -67,7 +67,7 @@ jobs:
     name: 运行时预检（${{ matrix.target }}）
     needs: plan
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: ${{ inputs.suite == 'windows-nsis-switch' && 75 || (endsWith(inputs.suite, '-offline-installer') || inputs.suite == 'windows-nsis-stage') && 50 || 25 }}
+    timeout-minutes: ${{ (inputs.suite == 'windows-nsis-switch' || inputs.suite == 'windows-nsis-desktop-update') && 75 || (endsWith(inputs.suite, '-offline-installer') || inputs.suite == 'windows-nsis-stage') && 50 || 25 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -150,6 +150,10 @@ jobs:
         run: |
           bash scripts/ci-linux-deps.sh rust
           bash scripts/ci-linux-offline-installer.sh
+      - name: 验证 Windows 已注册桌面的签名更新与自动重启
+        if: inputs.suite == 'windows-nsis-desktop-update'
+        shell: pwsh
+        run: ./scripts/ci-windows-desktop-update.ps1 -Target $env:RUNTIME_TARGET
       - name: 验证 macOS DMG 实际离线安装与参考包
         if: inputs.suite == 'macos-offline-installer'
         run: bash scripts/ci-macos-offline-installer.sh
@@ -218,6 +222,13 @@ jobs:
             artifacts/offline-installer/reference-*/signed-*.json
             artifacts/windows-nsis-stage/installer-layout.log
             artifacts/windows-nsis-stage/registry-recovery.log
+            artifacts/windows-desktop-update/receipt.json
+            artifacts/windows-desktop-update/old-desktop.log
+            artifacts/windows-desktop-update/phases.log
+            artifacts/windows-desktop-update/scenario.log
+            artifacts/windows-desktop-update/scenario-error.log
+            artifacts/windows-desktop-update/process-state.json
+            artifacts/windows-desktop-update/desktop-startup.log
             .cache/node-runtime/layouts/**/runtime-preparation.json
             .cache/node-runtime/layouts/**/node-resigning.json
             .cache/node-runtime/layouts/**/node-sign*.stdout
