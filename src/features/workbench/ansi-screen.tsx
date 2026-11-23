@@ -5,6 +5,8 @@ import {
   useMemo,
   useRef,
   useState,
+  useSyncExternalStore,
+  type MouseEvent as ReactMouseEvent,
 } from "react";
 import { useTheme } from "next-themes";
 import { FitAddon } from "@xterm/addon-fit";
@@ -19,7 +21,9 @@ import { defaults } from "@serial-workbench/contracts";
 import { matchesShortcut } from "@/commands/shortcuts";
 import { commandAvailable } from "@/commands/types";
 import { Button } from "@/components/ui/button";
+import { ExternalLink } from "@/components/external-link";
 import { Switch } from "@/components/ui/switch";
+import { useOpenExternal } from "@/hooks/use-external-links";
 import { useTextEncoding } from "@/hooks/use-text-encoding";
 import { isMacOS } from "@/lib/platform";
 import { createTextDecoder } from "@/lib/text-encoding";
@@ -31,6 +35,8 @@ import {
   encodeAnsiKey,
   type AnsiKeyboardTarget,
 } from "./ansi-keyboard";
+import { ansiLinkUrl, createAnsiLinkIndex } from "./ansi-links";
+import { bindAnsiMouse, selectsAnsiText } from "./ansi-mouse";
 import { decodeBytes } from "./stream-model";
 import { terminalTypographyStyle } from "./stream-presentation";
 import { useAnsiPaste } from "./use-ansi-paste";
@@ -53,6 +59,7 @@ type Projection = {
   encoding: TextEncoding;
   convertEol: boolean;
   typography?: TerminalTypography;
+  disposeMouse?: () => void;
 };
 
 function project(
@@ -64,14 +71,14 @@ function project(
   const terminal = new Terminal({
     disableStdin: true,
     macOptionIsMeta: true,
+    macOptionClickForcesSelection: true,
     screenReaderMode: true,
     convertEol,
     scrollback: 3_000,
     cursorInactiveStyle: "none",
     theme: palette,
   });
-  // Serial output can describe the screen but cannot open a link or access the clipboard.
-  terminal.parser.registerOscHandler(8, () => true);
+  // Device-originated OSC 52 cannot access the system clipboard.
   terminal.parser.registerOscHandler(52, () => true);
   const fit = new FitAddon();
   terminal.loadAddon(fit);
@@ -96,6 +103,7 @@ function dispose(projection: Projection | null) {
   if (!projection) return;
   projection.disposed = true;
   projection.observer.disconnect();
+  projection.disposeMouse?.();
   projection.terminal.dispose();
 }
 
@@ -151,10 +159,14 @@ export default function AnsiScreen({
   const status = useTextEncoding(encoding);
   const sendStatus = useTextEncoding(sendEncoding);
   const commands = useContext(CommandsContext);
+  const openExternal = useOpenExternal();
+  const [linkIndex] = useState(createAnsiLinkIndex);
+  const links = useSyncExternalStore(linkIndex.subscribe, linkIndex.snapshot);
   const writer = useRef<ReturnType<typeof createAnsiKeyboardWriter> | null>(
     null,
   );
   const [armed, setArmed] = useState<string | null>(null);
+  const [mouseArmed, setMouseArmed] = useState<string | null>(null);
   const [failure, setFailure] = useState<
     "encoding" | "overflow" | "operation" | null
   >(null);
@@ -164,6 +176,8 @@ export default function AnsiScreen({
       : null;
   const enabled = armed !== null && armed === keyboardScope;
   if (armed !== null && !enabled) setArmed(null);
+  const mouseEnabled = enabled && mouseArmed === keyboardScope;
+  if (mouseArmed !== null && !mouseEnabled) setMouseArmed(null);
   const paste = useAnsiPaste(
     enabled && keyboard?.paste ? keyboardScope : null,
     keyboard?.paste,
@@ -236,6 +250,36 @@ export default function AnsiScreen({
       setFailure("encoding");
     }
   });
+  const acceptsMouse = useEffectEvent(
+    () => mouseEnabled && !pasteBlocksKeys && writer.current !== null,
+  );
+  const receiveMouse = useEffectEvent((bytes: Uint8Array) => {
+    writer.current?.enqueue(bytes);
+  });
+  const activateLink = useEffectEvent(
+    (terminal: Terminal, event: MouseEvent, uri: string) => {
+      if (
+        active.current?.terminal !== terminal ||
+        !event.isTrusted ||
+        (event.button !== 0 && event.button !== 1) ||
+        selectsAnsiText(event) ||
+        (mouseEnabled && terminal.modes.mouseTrackingMode !== "none")
+      )
+        return;
+      const href = ansiLinkUrl(uri);
+      if (href) {
+        event.preventDefault();
+        openExternal(href);
+      }
+    },
+  );
+  function guardLinkActivation(event: ReactMouseEvent<HTMLAnchorElement>) {
+    if (
+      !event.nativeEvent.isTrusted ||
+      !linkIndex.snapshot().includes(event.currentTarget.href)
+    )
+      event.preventDefault();
+  }
 
   useLayoutEffect(() => {
     if (!enabled || !keyboardScope || pasteBlocksKeys) return;
@@ -267,6 +311,7 @@ export default function AnsiScreen({
     if (status !== "ready" || !element.current) {
       dispose(active.current);
       active.current = null;
+      linkIndex.clear();
       return;
     }
     Terminal.strings.promptLabel = labels.ansiScreen;
@@ -284,14 +329,27 @@ export default function AnsiScreen({
         !!previousInput &&
         previousInput.ownerDocument.activeElement === previousInput;
       dispose(screen);
+      linkIndex.clear();
       screen = project(element.current, encoding, convertEol, palette);
       active.current = screen;
       const terminal = screen.terminal;
+      terminal.options.linkHandler = {
+        activate: (event, uri) => activateLink(terminal, event, uri),
+        allowNonHttpProtocols: false,
+      };
+      terminal.parser.registerOscHandler(8, (data) => {
+        if (active.current?.terminal === terminal) linkIndex.addOsc(data);
+        return false;
+      });
       terminal.attachCustomKeyEventHandler((event) =>
         acceptsKey(terminal, event),
       );
-      // onData also carries device-induced terminal replies and pasted strings.
       terminal.onKey(({ key, domEvent }) => receiveKey(key, domEvent));
+      screen.disposeMouse = bindAnsiMouse(
+        terminal,
+        () => acceptsMouse(),
+        (bytes) => receiveMouse(bytes),
+      );
       if (restoreFocus) terminal.focus();
     }
     if (screen.typography !== typography) {
@@ -317,6 +375,7 @@ export default function AnsiScreen({
     convertEol,
     enabled,
     labels,
+    linkIndex,
     packets,
     palette,
     pasteBlocksKeys,
@@ -346,6 +405,19 @@ export default function AnsiScreen({
             />
             {labels.ansiKeyboard}
           </label>
+          {enabled && (
+            <label className="flex items-center gap-2">
+              <Switch
+                checked={mouseEnabled}
+                disabled={pasteBlocksKeys}
+                onCheckedChange={(next) => {
+                  setMouseArmed(next ? keyboardScope : null);
+                  if (next) active.current?.terminal.focus();
+                }}
+              />
+              {labels.ansiMouse}
+            </label>
+          )}
           {enabled && <span>{labels.ansiKeyboardExit}</span>}
           {failure && (
             <span role="status">
@@ -359,6 +431,24 @@ export default function AnsiScreen({
             </span>
           )}
         </div>
+        {links.length > 0 && (
+          <details className="workbench-ansi-links">
+            <summary>{labels.ansiLinks}</summary>
+            <ul>
+              {links.map((href) => (
+                <li key={href}>
+                  <ExternalLink
+                    href={href}
+                    onClick={guardLinkActivation}
+                    onAuxClick={guardLinkActivation}
+                  >
+                    {href}
+                  </ExternalLink>
+                </li>
+              ))}
+            </ul>
+          </details>
+        )}
         {paste.preview && paste.payload && (
           <div
             ref={pasteConfirmation}

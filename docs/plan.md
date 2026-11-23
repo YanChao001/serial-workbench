@@ -22,6 +22,7 @@
 
 - PR #58 的 `cf4b4fc` 在隔离 Windows 完成真实 NSIS 0.1.0 到 0.1.1 的换入、Host 代次 1 到 2、同一身份与 profile 恢复，以及摘要拒绝和注册写入中断恢复。这里的注册恢复由隔离验证程序执行。独立产品升级场景首轮完成两版构建后达到任务时限，新的复验分别记录证书准备和真实桌面升级阶段。 [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [两版安装收据](https://github.com/YanChao001/serial-workbench/actions/runs/45194202380/artifacts/14828417740) · [桌面更新复验](https://github.com/YanChao001/serial-workbench/actions/runs/45204372209)
 - `feature/m4-workbench-basics` 集成了混合发送输入、HEX 校验定位、转义与追加校验、带原始偏移的录制导出、多源只读回放、诊断导出、窗口快捷键、插件视图实时切换语言以及 ANSI 终端。浏览器夹具核对跨包控制序列、显式启用后的键盘字节、应用快捷键优先和设备询问边界。`transfer.paste` 复用 Host 独占分片调度，模拟串口验证普通发送顺序、编号回执和取消后的已写入前缀。相关软件项目仍在验收，真实桌面终端交互和物理串口继续实测。
+- ANSI 鼠标和链接（TERM-11）在独立工作树接续。无头 Chromium 核对 SGR 和经典鼠标原始字节、选区优先、真实焦点、合成事件拒绝，以及 OSC 8 的原生外链调用夹具、键盘和中键激活与接收缺口清理。待合入候选复验真实桌面外链和设备端交互。
 
 ## 验证基线
 

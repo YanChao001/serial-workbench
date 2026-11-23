@@ -95,6 +95,7 @@ export type WorkbenchFixture = {
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
+  openedExternalLinks: string[];
   connectCalls: string[];
   connectRequests: { deviceId: string; params: unknown }[];
   windowWorkNames: string[];
@@ -778,6 +779,7 @@ export async function seedWorkbenchFixture(
       invocations: [],
       clientStateReads: 0,
       sentBytes: [],
+      openedExternalLinks: [],
       connectCalls: [],
       connectRequests: [],
       windowWorkNames: [],
@@ -1003,6 +1005,9 @@ export async function seedWorkbenchFixture(
             }
             case "plugin:clipboard-manager|write_text":
               fixture.copiedLanInfo.push(String(args.text));
+              return null;
+            case "plugin:opener|open_url":
+              fixture.openedExternalLinks.push(String(args.url));
               return null;
             case "host_lan_access": {
               if (args.generation !== hostAttachment.generation)

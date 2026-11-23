@@ -496,6 +496,8 @@ export default function Overview({
       ansiConvertLf: t("workbench.ansiConvertLf"),
       ansiKeyboard: t("workbench.ansiKeyboard"),
       ansiKeyboardExit: t("workbench.ansiKeyboardExit"),
+      ansiMouse: t("workbench.ansiMouse"),
+      ansiLinks: t("workbench.ansiLinks"),
       ansiKeyboardError: t("workbench.ansiKeyboardError"),
       ansiKeyboardOverflow: t("workbench.ansiKeyboardOverflow"),
       ansiPaste: t("workbench.ansiPaste"),

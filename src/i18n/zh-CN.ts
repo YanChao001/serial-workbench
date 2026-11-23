@@ -513,6 +513,8 @@ export const zhCN = {
   "workbench.ansiConvertLf": "收到 LF 时回到首列",
   "workbench.ansiKeyboard": "发送键盘输入",
   "workbench.ansiKeyboardExit": "按 Shift+Tab 移出终端焦点",
+  "workbench.ansiMouse": "发送鼠标报告",
+  "workbench.ansiLinks": "终端链接",
   "workbench.ansiPaste": "发送粘贴内容",
   "workbench.ansiPasteBracketed": "本次使用括号粘贴",
   "workbench.ansiPasteBytes": "待发送字节",

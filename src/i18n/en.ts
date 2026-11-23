@@ -561,6 +561,8 @@ export const en = {
   "workbench.ansiConvertLf": "Return to column one on LF",
   "workbench.ansiKeyboard": "Send keyboard input",
   "workbench.ansiKeyboardExit": "Shift+Tab moves focus out of the terminal",
+  "workbench.ansiMouse": "Send mouse reports",
+  "workbench.ansiLinks": "Terminal links",
   "workbench.ansiPaste": "Send paste",
   "workbench.ansiPasteBracketed": "Use bracketed paste for this send",
   "workbench.ansiPasteBytes": "Bytes to send",

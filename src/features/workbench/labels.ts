@@ -205,6 +205,8 @@ export type WorkbenchLabels = Record<
   | "ansiConvertLf"
   | "ansiKeyboard"
   | "ansiKeyboardExit"
+  | "ansiMouse"
+  | "ansiLinks"
   | "ansiKeyboardError"
   | "ansiKeyboardOverflow"
   | "ansiPaste"

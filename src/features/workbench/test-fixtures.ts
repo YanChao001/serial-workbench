@@ -231,6 +231,8 @@ export const labels: WorkbenchLabels = {
   ansiConvertLf: "Return to column one on LF",
   ansiKeyboard: "Send keyboard input",
   ansiKeyboardExit: "Shift+Tab moves focus out of the terminal",
+  ansiMouse: "Send mouse reports",
+  ansiLinks: "Terminal links",
   ansiPaste: "Send paste",
   ansiPasteBracketed: "Use bracketed paste for this send",
   ansiPasteBytes: "Bytes to send",

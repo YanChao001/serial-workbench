@@ -270,6 +270,21 @@
   color: var(--muted-foreground);
   font: var(--text-xs)/1.4 var(--font-sans);
 }
+.workbench-ansi-links {
+  margin-block-end: 0.5rem;
+  color: var(--muted-foreground);
+  font: var(--text-xs)/1.4 var(--font-sans);
+}
+.workbench-ansi-links ul {
+  max-height: 6rem;
+  overflow: auto;
+  padding-inline-start: 1rem;
+}
+.workbench-ansi-links a {
+  color: var(--foreground);
+  text-decoration: underline;
+  overflow-wrap: anywhere;
+}
 .workbench-ansi-screen {
   width: 100%;
   height: 100%;
