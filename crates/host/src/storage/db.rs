@@ -107,6 +107,16 @@ impl Database {
                 .map_err(|_| unavailable())?;
             transaction.commit().map_err(|_| unavailable())?;
         }
+        // 独立的增量表不改变旧表解释，允许签名套件回滚到能读取原库的版本。
+        {
+            let transaction = connection
+                .transaction_with_behavior(TransactionBehavior::Immediate)
+                .map_err(|_| unavailable())?;
+            transaction
+                .execute_batch(super::command_library::CREATE_COMMAND_LIBRARY)
+                .map_err(|_| unavailable())?;
+            transaction.commit().map_err(|_| unavailable())?;
+        }
         connection.execute_batch("CREATE INDEX IF NOT EXISTS operation_active ON operations(operation_id) WHERE terminal=0;").map_err(|_| unavailable())?;
         connection.execute_batch("CREATE UNIQUE INDEX IF NOT EXISTS operation_child_identity ON operations(json_extract(operation_json,'$.admission.parentOperationId'),json_extract(operation_json,'$.admission.childKey')) WHERE json_extract(operation_json,'$.admission.kind')='child';").map_err(|_| unavailable())?;
         connection.execute_batch("CREATE TABLE IF NOT EXISTS workspace_directory (workspace_id TEXT PRIMARY KEY, document_id TEXT NOT NULL UNIQUE REFERENCES documents(id));").map_err(|_| unavailable())?;

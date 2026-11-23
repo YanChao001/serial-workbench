@@ -1,6 +1,9 @@
 //! 共享文档协调；Store 领域服务仍是唯一解码与 CAS 写入入口。
+#[path = "command_archive_api.rs"]
+mod command_archive_api;
 use crate::{
     auth::{AuthService, AuthenticatedActor},
+    files::FileService,
     settings::{SettingsService, export_document, import_document},
     state::ProjectionStore,
     storage::{Settlement, Store},
@@ -241,6 +244,26 @@ impl DocumentService {
             }
             return Ok(result);
         }
+        if action == BuiltinAction::CommandLibraryRead {
+            Self::reference(&query.target)?;
+            let params: CommandLibraryReadParams = decode(&query.params)?;
+            let stamp = {
+                let authorization = self.auth.snapshot(actor)?;
+                authorization.require("content.read", &query.target)?;
+                authorization.capture_grants()
+            };
+            let result = QueryResult::CommandLibrary(
+                self.store
+                    .command_library_page(query.target.id.clone(), params)?,
+            );
+            wire_budget(&result)?;
+            let authorization = self.auth.snapshot(actor)?;
+            if let Some(stamp) = stamp {
+                authorization.validate_grants(&stamp)?;
+            }
+            authorization.require("content.read", &query.target)?;
+            return Ok(result);
+        }
         let _: EmptyParams = decode(&query.params)?;
         let reference = Self::reference(&query.target)?;
         let lock = self.document_lock(&reference)?;
@@ -271,12 +294,31 @@ impl DocumentService {
     }
     pub(crate) fn execute(
         &self,
+        files: &FileService,
         actor: &AuthenticatedActor,
         call: &Call,
         action: BuiltinAction,
         descriptor: Option<DeviceDescriptor>,
+        operation_id: &Id,
     ) -> Settlement {
-        match self.save(actor, call, action, descriptor) {
+        let outcome = match action {
+            BuiltinAction::CommandLibraryChange => self
+                .save_command_library(actor, call, operation_id)
+                .map(|revision| (ActionResult::CommandLibraryRevision(revision), None)),
+            BuiltinAction::CommandLibraryImport => self
+                .import_command_archive(files, actor, call, operation_id)
+                .map(|revision| (ActionResult::CommandLibraryRevision(revision), None)),
+            BuiltinAction::CommandLibraryExport => self
+                .export_command_archive(files, actor, call)
+                .map(|result_ref| {
+                    (
+                        ActionResult::Reference(ResultReference { result_ref }),
+                        None,
+                    )
+                }),
+            _ => self.save(actor, call, action, descriptor),
+        };
+        match outcome {
             Ok((result, error)) => Settlement {
                 state: if error.is_some() {
                     OperationState::Failed
@@ -292,6 +334,32 @@ impl DocumentService {
                 error: Some(error),
             },
         }
+    }
+    fn save_command_library(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        operation_id: &Id,
+    ) -> HostResult<CommandLibraryRevision> {
+        let reference = Self::reference(&call.target)?;
+        let lock = self.document_lock(&reference)?;
+        let _document = lock.lock().map_err(|_| unavailable())?;
+        WorkspaceService::new(self.store.clone(), call.target.id.clone()).ensure_editable()?;
+        let expected = call.expected_revision.ok_or_else(invalid)?;
+        let change: CommandLibraryChange = decode(&call.params)?;
+        let spec = BuiltinAction::CommandLibraryChange.spec();
+        self.auth
+            .commit_authorized(actor, &spec.permissions, &call.target, || {
+                if self.store.identity()?.instance_epoch != call.instance_epoch {
+                    return Err(HostError::new("EPOCH_MISMATCH", "Host instance changed"));
+                }
+                self.store.change_command_library(
+                    call.target.id.clone(),
+                    expected,
+                    change,
+                    operation_id.clone(),
+                )
+            })
     }
     fn save(
         &self,
@@ -422,6 +490,20 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
     DocumentService::reference(&call.target)?;
     call.expected_revision.ok_or_else(invalid)?;
     match action {
+        BuiltinAction::CommandLibraryChange => {
+            let change: CommandLibraryChange = decode(&call.params)?;
+            change.validate()?;
+            object(&change)
+        }
+        BuiltinAction::CommandLibraryImport | BuiltinAction::CommandLibraryExport => {
+            let params: CommandLibraryFileParams = decode(&call.params)?;
+            if params.file_ref.host_id != call.target.host_id
+                || params.file_ref.kind.as_str() != "file"
+            {
+                return Err(invalid());
+            }
+            object(&params)
+        }
         BuiltinAction::DeviceRebind => object(&decode::<RebindParams>(&call.params)?),
         BuiltinAction::FavoritesSave => object(&decode::<FavoritesSaveParams>(&call.params)?),
         BuiltinAction::SettingsSave => object(&decode::<SettingsSaveParams>(&call.params)?),

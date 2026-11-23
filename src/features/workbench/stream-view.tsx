@@ -8,10 +8,12 @@ import {
   useRef,
   useState,
   useCallback,
+  useContext,
 } from "react";
 import {
   ArrowDown,
   ArrowUp,
+  Binary,
   Circle,
   Download,
   Eraser,
@@ -33,7 +35,11 @@ import type {
   TextEncoding,
 } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
+import { toast } from "sonner";
+import { copyText } from "@/lib/clipboard";
 import { Button } from "@/components/ui/button";
+import { DEFAULT_ANSI_SCROLLBACK_LINES } from "@/lib/client-settings";
+import { SettingsContext } from "@/providers/settings-context";
 import { NotificationDetails } from "@/components/notification-content";
 import { TextEncodingSelect } from "./text-encoding-select";
 import type { AnsiKeyboardTarget } from "./ansi-keyboard";
@@ -72,21 +78,65 @@ import {
   type StreamMatch,
 } from "./stream-model";
 import {
-  presentHexLines,
   presentStreamTimes,
+  receivePacketTiming,
   terminalTypographyStyle,
   compactStreamTime,
   workbenchStatus,
   type StreamPresentationLabels,
 } from "./stream-presentation";
+import {
+  defaultHexFormat,
+  formatStreamHex,
+  hexByteCount,
+  HEX_COLUMNS,
+  HEX_GROUPS,
+  type HexFormat,
+} from "./stream-hex";
+import {
+  readStreamHexSelection,
+  restoreStreamHexSelection,
+  type StreamHexSelection,
+} from "./stream-hex-selection";
+import { StreamCopyPopover } from "./stream-copy-popover";
+import {
+  collectLongStreamRecords,
+  visibleLongRecordPages,
+} from "./stream-long-record";
+import { LongStreamRecordView } from "./stream-long-record-view";
+import { readStreamCopySample } from "./stream-copy";
+import { StreamNumberInspector } from "./stream-number-inspector";
+import { streamNumberSample, type StreamNumberSample } from "./stream-number";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import { formatByteSize } from "./metric-format";
 import { requestStreamSearch } from "./stream-search-client";
+import type { StreamHighlightRule } from "./stream-highlight";
+import { StreamHighlightEditor } from "./stream-highlight-editor";
+import { renderStreamHighlights } from "./stream-highlight-text";
+import { useStreamHighlights } from "./use-stream-highlights";
+import {
+  filterStreamRows,
+  streamMatchRanges,
+  type MatchVisibility,
+  type SearchDirection,
+} from "./stream-filter";
+import { StreamFilterControls } from "./stream-filter-controls";
+import {
+  StreamLocationPopover,
+  StreamRecordNumbers,
+} from "./stream-location-controls";
+import {
+  findStreamLocation,
+  numberStreamRows,
+  type StreamLocationKind,
+} from "./stream-location";
 import { ReceiveHistoryControls } from "./receive-history-controls";
 import {
   DEFAULT_RECEIVE_HISTORY,
+  RECEIVE_IDLE_MS,
   ReceiveHistoryBuffer,
   type ReceiveHistory,
+  type ReceiveIdleMs,
   type HistoryStreamItem,
 } from "@/lib/receive-history";
 
@@ -95,12 +145,15 @@ function atStreamEnd(element: HTMLElement) {
 }
 
 const AnsiScreen = lazy(() => import("./ansi-screen"));
-const HEX_COLUMNS = ["0", "8", "16", "32", "64"] as const;
 
 export type StreamViewProps = {
   keyboard?: AnsiKeyboardTarget;
   historyLimits?: Readonly<ReceiveHistory>;
   onHistoryLimitsChange?: (value: ReceiveHistory) => void;
+  receiveIdleMs?: ReceiveIdleMs;
+  onReceiveIdleMsChange?: (value: ReceiveIdleMs) => void;
+  highlightRules?: readonly StreamHighlightRule[];
+  onHighlightRulesChange?: (rules: StreamHighlightRule[]) => void;
   encoding?: TextEncoding | null;
   sendEncoding?: TextEncoding;
   onEncodingChange?: (encoding: TextEncoding | null) => void;
@@ -127,6 +180,10 @@ export function StreamView({
   keyboard,
   historyLimits,
   onHistoryLimitsChange,
+  receiveIdleMs,
+  onReceiveIdleMsChange,
+  highlightRules: sharedHighlightRules,
+  onHighlightRulesChange,
   items,
   labels,
   error,
@@ -147,20 +204,65 @@ export function StreamView({
   displayLabels,
 }: StreamViewProps) {
   const id = useId();
+  const settings = useContext(SettingsContext);
   const [localEncoding, setEncoding] = useState<TextEncoding | null>();
+  const [encodingMenuOpen, setEncodingMenuOpen] = useState(false);
   const encoding = receiveEncodingFor(
     controlledEncoding,
     localEncoding,
     terminalSettings?.receiveEncoding,
   );
   const [localMode, setMode] = useState<TerminalMode | null>(null);
+  const [showRecordNumbers, setShowRecordNumbers] = useState(false);
+  const [locationOpen, setLocationOpen] = useState(false);
+  const [locationTarget, setLocationTarget] = useState<{
+    source: readonly StreamItem[];
+    itemIndex: number;
+  }>();
   const [split, setSplit] = useState(false);
   const [showAnsi, setShowAnsi] = useState(false);
+  const [displayOpen, setDisplayOpen] = useState(false);
+  const displayTrigger = useRef<HTMLButtonElement>(null);
+  const openingHighlights = useRef(false);
+  const [highlightEditorOpen, setHighlightEditorOpen] = useState(false);
+  const [localHighlightRules, setLocalHighlightRules] = useState<
+    StreamHighlightRule[]
+  >([]);
+  const highlightRules = sharedHighlightRules ?? localHighlightRules;
+  const setHighlightRules = onHighlightRulesChange ?? setLocalHighlightRules;
+  const [longTexts, setLongTexts] = useState<ReadonlyMap<string, string>>(
+    () => new Map(),
+  );
+  const trackLongText = useCallback((key: string, text?: string) => {
+    setLongTexts((previous) => {
+      if (previous.get(key) === text) return previous;
+      const next = new Map(previous);
+      if (text === undefined) next.delete(key);
+      else next.set(key, text);
+      return next;
+    });
+  }, []);
   const [ansiConvertEol, setAnsiConvertEol] = useState(true);
   const [wrapReceiveText, setWrapReceiveText] = useState(true);
   const [showTransmitEcho, setShowTransmitEcho] = useState(true);
-  const [hexColumns, setHexColumns] =
-    useState<(typeof HEX_COLUMNS)[number]>("0");
+  const [hexFormat, setHexFormat] = useState(defaultHexFormat);
+  const pendingNumberSelection = useRef<StreamHexSelection | undefined>(
+    undefined,
+  );
+  const [numberSample, setNumberSample] = useState<StreamNumberSample>();
+  const previousHexSelection = useRef<StreamHexSelection | undefined>(
+    undefined,
+  );
+  const changedHexFormat = useRef(false);
+  function updateHexFormat(patch: Partial<HexFormat>) {
+    changedHexFormat.current = true;
+    setHexFormat((current) => {
+      const next = { ...current, ...patch };
+      if ((next.offsets || next.ascii) && next.columns === "0")
+        next.columns = "16";
+      return next;
+    });
+  }
   const mode = split
     ? "split"
     : (controlledMode ??
@@ -176,6 +278,16 @@ export function StreamView({
   const [reviewed, setReviewed] = useState<ReadonlySet<string> | null>(null);
   const [query, setQuery] = useState("");
   const [queryMode, setQueryMode] = useState<"text" | "hex">("text");
+  const [searchDirection, setSearchDirection] =
+    useState<SearchDirection>("all");
+  const [matchVisibility, setMatchVisibility] =
+    useState<MatchVisibility>("all");
+  const [searchRows, setSearchRows] = useState<{
+    key: string;
+    source: readonly StreamItem[];
+    ranges?: ReturnType<typeof streamMatchRanges>;
+    partial?: true;
+  }>();
   const [match, setMatch] = useState<StreamMatch | null>(null);
   const [searched, setSearched] = useState(false);
   const [invalid, setInvalid] = useState(false);
@@ -260,20 +372,42 @@ export function StreamView({
   };
   const resume = () => {
     scrollIntent.current = null;
+    searching.current?.abort();
+    found.current = undefined;
+    setSearchRows(undefined);
+    setMatch(null);
+    setSearched(false);
+    setMatchVisibility("all");
+    setLocationTarget(undefined);
     setFrozen(null);
     setReviewed(null);
   };
   const projected = useMemo(() => projectStreamItems(displayed), [displayed]);
+  const detectEncoding = encoding === null || encodingMenuOpen;
   const encodingSample = useMemo(
-    () => (encoding === null ? receiveEncodingSample(displayed) : ""),
-    [encoding, displayed],
+    () => (detectEncoding ? receiveEncodingSample(displayed) : ""),
+    [detectEncoding, displayed],
   );
   const detection = useMemo(
-    () => (encoding === null ? detectTextEncoding(encodingSample) : undefined),
-    [encoding, encodingSample],
+    () => (detectEncoding ? detectTextEncoding(encodingSample) : undefined),
+    [detectEncoding, encodingSample],
   );
   const receiveCodec = encoding ?? detection?.encoding ?? "utf-8";
   const sendCodec = sendEncoding ?? terminalSettings?.sendEncoding ?? "utf-8";
+  const searchKey = JSON.stringify([
+    query,
+    queryMode,
+    caseSensitive,
+    wholeWord,
+    regex,
+    receiveCodec,
+    sendCodec,
+    searchDirection,
+  ]);
+  const currentSearch =
+    searchRows?.key === searchKey && searchRows.source === displayed
+      ? searchRows
+      : undefined;
   const times = useMemo(
     () =>
       presentStreamTimes(
@@ -285,6 +419,10 @@ export function StreamView({
         }),
       ),
     [displayed, projected],
+  );
+  const longRecords = useMemo(
+    () => collectLongStreamRecords(projected, displayed),
+    [projected, displayed],
   );
   const rows = useMemo(() => {
     let decoder = createTextDecoder(receiveCodec);
@@ -339,12 +477,24 @@ export function StreamView({
         previousEnd = event.payload.byteEnd;
         previousSource = source;
         const bytes = decodeBytes(event.payload.bytesBase64);
+        const longRecord = longRecords.get(itemIndex);
+        const text = decoder.decode(bytes, { stream: true });
         return {
           itemIndex,
           displayIndex,
           kind: "rx",
-          text: decoder.decode(bytes, { stream: true }),
-          hex: mode === "text" ? undefined : formatHex(bytes),
+          longRecord,
+          text: longRecord ? "" : text,
+          hex: longRecord || mode === "text" ? undefined : formatHex(bytes),
+          hexSource: JSON.stringify([source, event.eventSeq]),
+          hexLane:
+            mode === "text"
+              ? undefined
+              : JSON.stringify([
+                  source,
+                  event.kind,
+                  event.configurationRevision,
+                ]),
           offset: event.payload.byteStart,
           byteEnd: event.payload.byteEnd,
           source: JSON.stringify([
@@ -365,12 +515,24 @@ export function StreamView({
         previousTxEnd = event.payload.byteEnd;
         previousTxSource = source;
         const bytes = decodeBytes(event.payload.bytesBase64);
+        const longRecord = longRecords.get(itemIndex);
+        const text = txDecoder.decode(bytes, { stream: true });
         return {
           itemIndex,
           displayIndex,
           kind: "tx",
-          text: txDecoder.decode(bytes, { stream: true }),
-          hex: mode === "text" ? undefined : formatHex(bytes),
+          longRecord,
+          text: longRecord ? "" : text,
+          hex: longRecord || mode === "text" ? undefined : formatHex(bytes),
+          hexSource: JSON.stringify([source, event.eventSeq]),
+          hexLane:
+            mode === "text"
+              ? undefined
+              : JSON.stringify([
+                  source,
+                  event.kind,
+                  event.configurationRevision,
+                ]),
           offset: event.payload.byteStart,
           byteEnd: event.payload.byteEnd,
           receipt: event.kind === "tx" ? event.payload : undefined,
@@ -407,15 +569,19 @@ export function StreamView({
     for (const row of decoded) {
       const previous = joined.at(-1);
       // 连续段共享记录边界，单个渲染块仍有界。
-      if (
+      const sameLongRecord =
+        row.longRecord && row.longRecord === previous?.longRecord;
+      const joinInline =
+        !row.longRecord &&
+        !previous?.longRecord &&
         (mode === "text" || !!row.recordId) &&
         row.kind === "rx" &&
         previous?.kind === "rx" &&
         row.source === previous.source &&
         row.offset === previous.byteEnd &&
         row.recordId === previous.recordId &&
-        BigInt(row.byteEnd!) - BigInt(previous.offset!) <= 131072n
-      ) {
+        BigInt(row.byteEnd!) - BigInt(previous.offset!) <= 131072n;
+      if (previous && (sameLongRecord || joinInline)) {
         previous.text += row.text;
         if (row.hex) previous.hex = `${previous.hex} ${row.hex}`;
         previous.byteEnd = row.byteEnd;
@@ -434,7 +600,71 @@ export function StreamView({
         return { ...row, continuation, continues, recordStart };
       })
       .filter((row) => replay || row.kind !== "configuration_boundary");
-  }, [projected, displayed, mode, receiveCodec, sendCodec, labels, replay]);
+  }, [
+    projected,
+    displayed,
+    mode,
+    receiveCodec,
+    sendCodec,
+    labels,
+    replay,
+    longRecords,
+  ]);
+  const locations = useMemo(
+    () =>
+      showRecordNumbers || locationOpen
+        ? numberStreamRows(rows, projected, displayed)
+        : undefined,
+    [showRecordNumbers, locationOpen, rows, projected, displayed],
+  );
+  const locatedItem =
+    locationTarget?.source === displayed ? locationTarget.itemIndex : undefined;
+  function locateRecord(
+    kind: StreamLocationKind,
+    input: string,
+  ): ReturnType<typeof findStreamLocation> {
+    if (!locations) return { kind: "unavailable" };
+    const result = findStreamLocation(locations, kind, input);
+    if (result.kind === "found") {
+      // Clear the display filter so a retained target can be reached.
+      setSearchOpen(false);
+      setFrozen((current) => current ?? displayed);
+      setLocationTarget({ source: displayed, itemIndex: result.row.itemIndex });
+    }
+    return result;
+  }
+  const copyLocation = useCallback(
+    (reference: string) => {
+      void copyText(reference).then(
+        () => toast.success(labels.copyDone),
+        () => toast.error(labels.copyFailed),
+      );
+    },
+    [labels.copyDone, labels.copyFailed],
+  );
+  useLayoutEffect(() => {
+    if (locatedItem === undefined || showAnsi) return;
+    let frame: number;
+    let attempts = 0;
+    let previouslyVisible = false;
+    const center = () => {
+      const row = rowRefs.current.get(locatedItem);
+      const log = viewport.current;
+      if (!row || !log) return;
+      const bounds = row.getBoundingClientRect();
+      const viewportBounds = log.getBoundingClientRect();
+      const visible =
+        bounds.top < viewportBounds.bottom &&
+        bounds.bottom > viewportBounds.top;
+      if (!attempts || !visible) row.scrollIntoView({ block: "center" });
+      else if (previouslyVisible) return;
+      previouslyVisible = visible && attempts > 0;
+      // Reinserted rows using content-visibility can change the height above the target after painting.
+      if (++attempts < 8) frame = requestAnimationFrame(center);
+    };
+    frame = requestAnimationFrame(center);
+    return () => cancelAnimationFrame(frame);
+  }, [locatedItem, locationTarget, searchOpen, showAnsi]);
   useEffect(() => {
     if (searchOpen) searchInput.current?.focus();
   }, [searchOpen]);
@@ -488,14 +718,7 @@ export function StreamView({
   const find = useCallback(
     async (direction = 1) => {
       setSearched(true);
-      const key = JSON.stringify([
-        query,
-        queryMode,
-        caseSensitive,
-        wholeWord,
-        regex,
-        receiveCodec,
-      ]);
+      const key = searchKey;
       const cached = found.current;
       if (
         cached?.key === key &&
@@ -515,12 +738,20 @@ export function StreamView({
       setFrozen((current) => current ?? displayed);
       setInvalid(false);
       setSearchError(undefined);
+      setSearchRows(undefined);
       try {
         const result = await requestStreamSearch(
           displayed,
           query,
           queryMode,
-          { caseSensitive, wholeWord, regex, encoding: receiveCodec },
+          {
+            caseSensitive,
+            wholeWord,
+            regex,
+            encoding: receiveCodec,
+            transmitEncoding: sendCodec,
+            direction: searchDirection,
+          },
           controller.signal,
         );
         if (controller.signal.aborted) return;
@@ -537,6 +768,15 @@ export function StreamView({
         setMatch(result.matches[index] ?? null);
         setInvalid(Boolean(result.error));
         setSearchError(result.error);
+        setSearchRows({
+          key,
+          source: displayed,
+          ranges:
+            result.error || result.partial
+              ? undefined
+              : streamMatchRanges(result.matches),
+          partial: result.partial,
+        });
       } catch (error) {
         if (!controller.signal.aborted) {
           setInvalid(true);
@@ -558,6 +798,9 @@ export function StreamView({
       wholeWord,
       regex,
       receiveCodec,
+      sendCodec,
+      searchDirection,
+      searchKey,
     ],
   );
   const latestFind = useRef(find);
@@ -567,27 +810,82 @@ export function StreamView({
     found.current = undefined;
     setMatch(null);
     setSearchCount(0);
+    setSearchRows(undefined);
+    setSearched(false);
     if (!searchOpen || !query) return;
     const timer = setTimeout(() => void latestFind.current(), 120);
     return () => {
       clearTimeout(timer);
       searching.current?.abort();
     };
-  }, [
-    query,
-    queryMode,
-    caseSensitive,
-    wholeWord,
-    regex,
-    searchOpen,
-    receiveCodec,
-  ]);
+  }, [searchKey, searchOpen, query]);
   useEffect(() => () => searching.current?.abort(), []);
+  const visibleRows = useMemo(
+    () =>
+      searchOpen
+        ? filterStreamRows(
+            rows,
+            searchDirection,
+            matchVisibility,
+            currentSearch?.ranges,
+          )
+        : rows,
+    [rows, searchOpen, searchDirection, matchVisibility, currentSearch?.ranges],
+  );
+  const highlightEnabled =
+    !showAnsi &&
+    mode !== "hex" &&
+    highlightRules.some((rule) => rule.enabled && rule.pattern);
+  const highlightTexts = useMemo(
+    () =>
+      highlightEnabled
+        ? [
+            ...longTexts.values(),
+            ...[...visibleRows]
+              .reverse()
+              .flatMap((row) =>
+                !row.longRecord &&
+                (row.kind === "rx" || (row.kind === "tx" && showTransmitEcho))
+                  ? [row.text]
+                  : [],
+              ),
+          ]
+        : [],
+    [highlightEnabled, longTexts, visibleRows, showTransmitEcho],
+  );
+  const highlights = useStreamHighlights(
+    highlightRules,
+    highlightTexts,
+    highlightEnabled,
+  );
+  const highlightText = useCallback(
+    (text: string) =>
+      renderStreamHighlights(
+        text,
+        highlights?.ranges.get(text),
+        highlightRules,
+      ),
+    [highlightRules, highlights],
+  );
+  const highlightNotice =
+    highlights?.failed === "timeout"
+      ? labels.highlightTimeout
+      : highlights?.failed
+        ? labels.highlightFailed
+        : highlights?.limited
+          ? labels.highlightLimit
+          : undefined;
+
   const totals = useMemo(() => {
     let rx = 0n,
       tx = 0n;
-    for (const { item } of projected) {
-      if (item.kind !== "source") continue;
+    const visible =
+      visibleRows === rows
+        ? undefined
+        : new Set(visibleRows.flatMap((row) => row.itemIndexes));
+    for (const { item, itemIndex } of projected) {
+      if (item.kind !== "source" || (visible && !visible.has(itemIndex)))
+        continue;
       const { event } = item;
       if (event.kind === "rx")
         rx += BigInt(event.payload.byteEnd) - BigInt(event.payload.byteStart);
@@ -596,11 +894,11 @@ export function StreamView({
           tx += BigInt(range.end) - BigInt(range.start);
     }
     return { rx: rx.toString(), tx: tx.toString() };
-  }, [projected]);
+  }, [projected, rows, visibleRows]);
   // 输入和权限续检不重建接收列表；只有源数据或显示偏好改变才重新呈现。
   const renderedRows = useMemo(
     () =>
-      rows.map((row) => (
+      visibleRows.map((row) => (
         <div
           key={row.itemIndex}
           ref={(element) => {
@@ -611,6 +909,7 @@ export function StreamView({
           }}
           tabIndex={-1}
           data-offset={row.offset}
+          data-location-target={row.itemIndex === locatedItem || undefined}
           data-direction={row.kind}
           data-outcome={row.kind === "tx" ? row.receipt?.outcome : undefined}
           data-continuation={row.continuation || undefined}
@@ -656,6 +955,10 @@ export function StreamView({
               <time
                 className="workbench-stream-time"
                 dateTime={times[row.displayIndex]!.absolute ?? undefined}
+                title={receivePacketTiming(
+                  displayed[projected[row.displayIndex]!.itemIndex]!,
+                  labels,
+                )}
               >
                 {timeMode === "absolute"
                   ? times[row.displayIndex]!.absolute
@@ -686,13 +989,36 @@ export function StreamView({
                 )}
             </div>
           )}
+          {showRecordNumbers && (
+            <StreamRecordNumbers
+              row={locations?.get(row.itemIndex)}
+              labels={labels}
+              onCopy={copyLocation}
+            />
+          )}
           <div
             className="workbench-stream-content"
             data-mode={mode}
             style={terminalTypographyStyle(terminalSettings?.typography)}
             hidden={row.kind === "tx" && !showTransmitEcho}
           >
-            {row.kind === "rx" || row.kind === "tx" ? (
+            {row.longRecord ? (
+              <LongStreamRecordView
+                key={row.longRecord.key}
+                record={row.longRecord}
+                labels={labels}
+                mode={mode}
+                encoding={row.kind === "tx" ? sendCodec : receiveCodec}
+                hexFormat={hexFormat}
+                hexSource={row.hexSource}
+                highlight={
+                  highlightEnabled
+                    ? { track: trackLongText, render: highlightText }
+                    : undefined
+                }
+                receipt={row.kind === "tx" ? row.receipt : undefined}
+              />
+            ) : row.kind === "rx" || row.kind === "tx" ? (
               <>
                 <span
                   className={mode === "hex" ? "sr-only" : "workbench-payload"}
@@ -707,15 +1033,19 @@ export function StreamView({
                       : undefined
                   }
                 >
-                  {row.text}
+                  {mode === "hex" ? row.text : highlightText(row.text)}
                 </span>
                 {mode !== "text" && (
                   <span
                     className="workbench-payload"
-                    data-hex-grouped={hexColumns !== "0" || undefined}
-                    tabIndex={hexColumns !== "0" ? 0 : undefined}
+                    dir="ltr"
+                    data-hex-source={row.hexSource}
+                    data-hex-byte-start={row.offset}
+                    data-hex-byte-count={hexByteCount(row.hex ?? "")}
+                    data-hex-grouped={hexFormat.columns !== "0" || undefined}
+                    tabIndex={hexFormat.columns !== "0" ? 0 : undefined}
                   >
-                    {presentHexLines(row.hex ?? "", Number(hexColumns))}
+                    {formatStreamHex(row.hex ?? "", row.offset!, hexFormat)}
                   </span>
                 )}
               </>
@@ -726,17 +1056,28 @@ export function StreamView({
         </div>
       )),
     [
-      rows,
+      visibleRows,
+      showRecordNumbers,
+      locations,
+      locatedItem,
+      copyLocation,
       labels,
       replay,
       presentationLabels,
       times,
+      displayed,
+      projected,
       timeMode,
       mode,
       terminalSettings,
       wrapReceiveText,
       showTransmitEcho,
-      hexColumns,
+      hexFormat,
+      receiveCodec,
+      sendCodec,
+      highlightEnabled,
+      highlightText,
+      trackLongText,
     ],
   );
   return (
@@ -781,12 +1122,25 @@ export function StreamView({
               : `${labels.encodingAutoShort} · ${ENCODING_NAMES[receiveCodec]}`
           }
           hint={encoding === null ? labels.encodingGuessHelp : undefined}
+          evidence={detection && { detection, labels }}
+          onOpenChange={setEncodingMenuOpen}
           onChange={(value) => {
             setEncoding(value);
             onEncodingChange?.(value);
           }}
         />
         <span className="workbench-toolbar-spacer" />
+        <StreamLocationPopover
+          labels={labels}
+          showNumbers={showRecordNumbers}
+          onShowNumbers={setShowRecordNumbers}
+          onOpenChange={(open) => {
+            setLocationOpen(open);
+            if (open) setShowAnsi(false);
+          }}
+          onLocate={locateRecord}
+          onCopy={copyLocation}
+        />
         <WorkbenchIconButton
           ref={searchTrigger}
           label={labels.search}
@@ -829,18 +1183,129 @@ export function StreamView({
             <FileText aria-hidden="true" />
           </WorkbenchIconButton>
         )}
-        <Popover>
+        {!showAnsi && mode !== "text" && (
+          <StreamCopyPopover
+            readSelection={() =>
+              readStreamHexSelection(viewport.current, hexFormat)
+            }
+            readSample={(selection) =>
+              readStreamCopySample(
+                visibleLongRecordPages(visibleRows, viewport.current),
+                projected,
+                selection,
+              )
+            }
+            receiveEncoding={receiveCodec}
+            sendEncoding={sendCodec}
+            labels={labels}
+          />
+        )}
+        {!showAnsi && mode !== "text" && (
+          <Popover
+            onOpenChange={(open) => {
+              if (!open) {
+                setNumberSample(undefined);
+                return;
+              }
+              const selected =
+                readStreamHexSelection(viewport.current, hexFormat) ??
+                pendingNumberSelection.current;
+              pendingNumberSelection.current = undefined;
+              setNumberSample(
+                selected
+                  ? streamNumberSample(
+                      visibleLongRecordPages(visibleRows, viewport.current),
+                      selected,
+                    )
+                  : undefined,
+              );
+            }}
+          >
+            <PopoverTrigger asChild>
+              <WorkbenchIconButton
+                label={labels.inspectNumber}
+                onPointerDownCapture={() => {
+                  pendingNumberSelection.current = readStreamHexSelection(
+                    viewport.current,
+                    hexFormat,
+                  );
+                }}
+              >
+                <Binary aria-hidden="true" />
+              </WorkbenchIconButton>
+            </PopoverTrigger>
+            <PopoverContent
+              align="end"
+              className="workbench-display-options w-80"
+              aria-label={labels.inspectNumber}
+            >
+              <PopoverTitle>{labels.inspectNumber}</PopoverTitle>
+              {numberSample ? (
+                <StreamNumberInspector sample={numberSample} labels={labels} />
+              ) : (
+                <p className="text-muted-foreground text-xs">
+                  {labels.numberSelection}
+                </p>
+              )}
+            </PopoverContent>
+          </Popover>
+        )}
+        <Popover
+          open={displayOpen}
+          onOpenChange={(open) => {
+            setDisplayOpen(open);
+            if (!open) return;
+            changedHexFormat.current = false;
+            previousHexSelection.current =
+              readStreamHexSelection(viewport.current, hexFormat) ??
+              previousHexSelection.current;
+          }}
+        >
           <PopoverTrigger asChild>
             <WorkbenchIconButton
+              ref={displayTrigger}
               label={displayLabels?.displayOptions ?? labels.encodingHelp}
+              onPointerDownCapture={() => {
+                previousHexSelection.current = readStreamHexSelection(
+                  viewport.current,
+                  hexFormat,
+                );
+              }}
             >
               <Settings2 aria-hidden="true" />
             </WorkbenchIconButton>
           </PopoverTrigger>
-          <PopoverContent align="end" className="workbench-display-options">
+          <PopoverContent
+            align="end"
+            className="workbench-display-options"
+            aria-label={displayLabels?.displayOptions ?? labels.encodingHelp}
+            onCloseAutoFocus={(event) => {
+              if (openingHighlights.current) {
+                event.preventDefault();
+                openingHighlights.current = false;
+              }
+              const saved = previousHexSelection.current;
+              previousHexSelection.current = undefined;
+              if (saved && changedHexFormat.current)
+                queueMicrotask(() =>
+                  restoreStreamHexSelection(viewport.current, saved, hexFormat),
+                );
+            }}
+          >
             <PopoverTitle>
               {displayLabels?.displayOptions ?? labels.encodingHelp}
             </PopoverTitle>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={() => {
+                openingHighlights.current = true;
+                setDisplayOpen(false);
+                setHighlightEditorOpen(true);
+              }}
+            >
+              {labels.highlightRules}
+            </Button>
             <Button
               size="sm"
               variant="outline"
@@ -867,6 +1332,46 @@ export function StreamView({
             >
               {labels.ansiScreen}
             </Button>
+            {receiveIdleMs !== undefined && onReceiveIdleMsChange && (
+              <div className="grid gap-1.5">
+                <div className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  <label htmlFor={id + "-receive-idle"}>
+                    {labels.receiveIdleGap}
+                  </label>
+                  <Select
+                    value={String(receiveIdleMs)}
+                    onValueChange={(value) => {
+                      const threshold = RECEIVE_IDLE_MS.find(
+                        (option) => String(option) === value,
+                      );
+                      if (threshold !== undefined)
+                        onReceiveIdleMsChange(threshold);
+                    }}
+                  >
+                    <SelectTrigger
+                      size="sm"
+                      id={id + "-receive-idle"}
+                      aria-describedby={id + "-receive-idle-help"}
+                    >
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {RECEIVE_IDLE_MS.map((threshold) => (
+                        <SelectItem key={threshold} value={String(threshold)}>
+                          {threshold} ms
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+                <p
+                  id={id + "-receive-idle-help"}
+                  className="text-xs text-muted-foreground"
+                >
+                  {labels.receiveIdleHelp}
+                </p>
+              </div>
+            )}
             {showAnsi && (
               <label className="flex items-center justify-between gap-3 text-sm">
                 {labels.ansiConvertLf}
@@ -893,12 +1398,12 @@ export function StreamView({
             <label className="flex flex-wrap items-center justify-between gap-2 text-sm">
               {labels.hexColumns}
               <Select
-                value={hexColumns}
+                value={hexFormat.columns}
                 onValueChange={(value) => {
                   const columns = HEX_COLUMNS.find(
                     (option) => option === value,
                   );
-                  if (columns) setHexColumns(columns);
+                  if (columns) updateHexFormat({ columns });
                 }}
               >
                 <SelectTrigger size="sm" aria-label={labels.hexColumns}>
@@ -906,13 +1411,70 @@ export function StreamView({
                 </SelectTrigger>
                 <SelectContent>
                   {HEX_COLUMNS.map((columns) => (
-                    <SelectItem key={columns} value={columns}>
+                    <SelectItem
+                      key={columns}
+                      value={columns}
+                      disabled={
+                        columns === "0" &&
+                        (hexFormat.offsets || hexFormat.ascii)
+                      }
+                    >
                       {columns === "0" ? labels.automaticColumns : columns}
                     </SelectItem>
                   ))}
                 </SelectContent>
               </Select>
             </label>
+            {mode !== "text" && (
+              <>
+                <label className="flex flex-wrap items-center justify-between gap-2 text-sm">
+                  {labels.hexGroup}
+                  <Select
+                    value={hexFormat.group}
+                    onValueChange={(value) => {
+                      const group = HEX_GROUPS.find(
+                        (option) => option === value,
+                      );
+                      if (group) updateHexFormat({ group });
+                    }}
+                  >
+                    <SelectTrigger size="sm" aria-label={labels.hexGroup}>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {HEX_GROUPS.map((group) => (
+                        <SelectItem key={group} value={group}>
+                          {group}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {labels.hexLowerCase}
+                  <Switch
+                    checked={hexFormat.lowerCase}
+                    onCheckedChange={(lowerCase) =>
+                      updateHexFormat({ lowerCase })
+                    }
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {labels.hexAddresses}
+                  <Switch
+                    checked={hexFormat.offsets}
+                    onCheckedChange={(offsets) => updateHexFormat({ offsets })}
+                  />
+                </label>
+                <label className="flex items-center justify-between gap-3 text-sm">
+                  {labels.hexAscii}
+                  <Switch
+                    checked={hexFormat.ascii}
+                    onCheckedChange={(ascii) => updateHexFormat({ ascii })}
+                  />
+                </label>
+              </>
+            )}
             {presentationLabels && (
               <fieldset className="workbench-choice">
                 <legend className="sr-only">
@@ -945,6 +1507,16 @@ export function StreamView({
             )}
           </PopoverContent>
         </Popover>
+        <StreamHighlightEditor
+          open={highlightEditorOpen}
+          onOpenChange={setHighlightEditorOpen}
+          restoreFocus={() => displayTrigger.current?.focus()}
+          rules={highlightRules}
+          onRulesChange={setHighlightRules}
+          invalid={highlights?.invalid}
+          notice={highlightNotice}
+          labels={labels}
+        />
         {onClearView && (
           <WorkbenchIconButton
             label={displayLabels?.clearView ?? labels.terminal}
@@ -967,7 +1539,12 @@ export function StreamView({
           className="workbench-toolbar workbench-stream-search"
           data-surface="popover"
           onKeyDown={(event) => {
-            if (event.key === "Escape" && !event.nativeEvent.isComposing) {
+            if (
+              event.key === "Escape" &&
+              !event.nativeEvent.isComposing &&
+              event.target instanceof Node &&
+              event.currentTarget.contains(event.target)
+            ) {
               event.preventDefault();
               setSearchOpen(false);
               searchTrigger.current?.focus();
@@ -1041,17 +1618,19 @@ export function StreamView({
           {searched && (
             <span role="status">
               {invalid ? (
-                queryMode === "hex" ? (
-                  labels.invalidHex
-                ) : searchError === "timeout" ? (
+                searchError === "timeout" ? (
                   labels.searchTimeout
                 ) : searchError === "encoding" ? (
                   labels.searchEncoding
                 ) : searchError === "limit" ? (
                   labels.searchLimit
+                ) : queryMode === "hex" ? (
+                  labels.invalidHex
                 ) : (
                   labels.searchInvalid
                 )
+              ) : currentSearch?.partial ? (
+                labels.searchPartial
               ) : match ? (
                 <>
                   {searchIndex + 1}/{searchCount}
@@ -1064,14 +1643,14 @@ export function StreamView({
           )}
           <WorkbenchIconButton
             label={labels.searchPrevious}
-            disabled={!query}
+            disabled={!query || matchVisibility === "hide"}
             onClick={() => void find(-1)}
           >
             <ArrowUp aria-hidden="true" />
           </WorkbenchIconButton>
           <WorkbenchIconButton
             label={labels.find}
-            disabled={!query}
+            disabled={!query || matchVisibility === "hide"}
             onClick={() => void find(1)}
           >
             <ArrowDown aria-hidden="true" />
@@ -1085,6 +1664,14 @@ export function StreamView({
           >
             <X aria-hidden="true" />
           </WorkbenchIconButton>
+          <StreamFilterControls
+            labels={labels}
+            direction={searchDirection}
+            visibility={matchVisibility}
+            hasQuery={!!query}
+            onDirection={setSearchDirection}
+            onVisibility={setMatchVisibility}
+          />
         </form>
       )}
       <div className="workbench-receive-frame app-reading-surface">
@@ -1103,6 +1690,17 @@ export function StreamView({
               keyboard={frozen ? undefined : keyboard}
               convertEol={ansiConvertEol}
               typography={terminalSettings?.typography}
+              scrollback={
+                settings?.settings.ansiScrollbackLines ??
+                DEFAULT_ANSI_SCROLLBACK_LINES
+              }
+              onScrollbackChange={
+                settings
+                  ? (ansiScrollbackLines) =>
+                      settings.update({ ansiScrollbackLines })
+                  : undefined
+              }
+              rawTrimmed={trimmed}
               labels={labels}
             />
           </Suspense>
@@ -1117,6 +1715,7 @@ export function StreamView({
           className="workbench-stream-log app-scroll-region"
           data-surface="transparent"
           data-following={following}
+          data-locating={locatedItem !== undefined || undefined}
           onWheel={(event) => {
             if (event.ctrlKey || event.deltaY === 0) return;
             const element = event.currentTarget;

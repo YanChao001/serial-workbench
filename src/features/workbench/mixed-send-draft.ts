@@ -1,3 +1,4 @@
+import { mixedCommentEnd } from "./send-draft-editor-model";
 import type { TextEncoding } from "@serial-workbench/contracts";
 import { encodeText } from "@/lib/text-encoding";
 import {
@@ -50,6 +51,13 @@ export function convertMixedSendDraft(
   }
 
   while (position < draft.length) {
+    if (draft.startsWith("/*", position)) {
+      const end = mixedCommentEnd(draft, position);
+      if (end === undefined)
+        throw new SendEscapeError("syntax", position, draft.length);
+      position = end;
+      continue;
+    }
     tokens.lastIndex = position;
     const token = tokens.exec(draft)?.[0];
     if (!token) {

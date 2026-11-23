@@ -78,3 +78,51 @@ it("stops after a partial result and never resubmits the accumulated keys", asyn
   expect(stop).toHaveBeenCalledWith("operation");
   expect(send).toHaveBeenCalledOnce();
 });
+
+it("replaces a pending window size while an earlier send is awaiting its receipt", async () => {
+  vi.useFakeTimers();
+  const first = deferredOperation();
+  const send = vi.fn(() => Promise.resolve(receipt("accepted")));
+  send.mockReturnValueOnce(first.promise);
+  const writer = createAnsiKeyboardWriter(send, vi.fn());
+  writer.enqueue(Uint8Array.of(0x41));
+  await vi.runAllTimersAsync();
+  writer.reportWindowSize(24, 80);
+  await vi.runAllTimersAsync();
+  writer.reportWindowSize(30, 110);
+  await vi.runAllTimersAsync();
+  expect(send).toHaveBeenCalledOnce();
+  first.resolve(receipt("accepted"));
+  await vi.runAllTimersAsync();
+  expect(send).toHaveBeenNthCalledWith(
+    2,
+    new TextEncoder().encode("\x1b[8;30;110t"),
+    expect.any(AbortSignal),
+  );
+  writer.reportWindowSize(30, 110);
+  await vi.runAllTimersAsync();
+  expect(send).toHaveBeenCalledTimes(2);
+});
+
+it("clears unsubmitted window size reports while the keyboard remains usable", async () => {
+  vi.useFakeTimers();
+  const send = vi.fn(async () => receipt("accepted"));
+  const writer = createAnsiKeyboardWriter(send, vi.fn());
+  writer.reportWindowSize(0, 80);
+  writer.reportWindowSize(24, Number.POSITIVE_INFINITY);
+  writer.reportWindowSize(24, 65_536);
+  await vi.runAllTimersAsync();
+  expect(send).not.toHaveBeenCalled();
+  writer.reportWindowSize(24, 80);
+  await vi.advanceTimersByTimeAsync(100);
+  writer.reportWindowSize(25, 82);
+  await vi.advanceTimersByTimeAsync(100);
+  expect(send).not.toHaveBeenCalled();
+  writer.clearWindowSize();
+  writer.enqueue(Uint8Array.of(0x41));
+  await vi.runAllTimersAsync();
+  expect(send).toHaveBeenCalledExactlyOnceWith(
+    Uint8Array.of(0x41),
+    expect.any(AbortSignal),
+  );
+});

@@ -30,3 +30,12 @@ it.each([
     expect.objectContaining({ kind: "syntax", start, end }),
   );
 });
+
+it("omits block comments only outside quoted text and locates an unfinished block", () => {
+  expect(convertMixedSendDraft('41/* notes\n42 */"/*x*/"43', "utf-8")).toBe(
+    "41 2F 2A 78 2A 2F 43",
+  );
+  expect(() => convertMixedSendDraft("41 /* open", "utf-8")).toThrow(
+    expect.objectContaining({ kind: "syntax", start: 3, end: 10 }),
+  );
+});

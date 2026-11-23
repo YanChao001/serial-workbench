@@ -309,6 +309,7 @@ export function SettingsProvider({
         sidebarCollapsed,
         sidebarWidth,
         receiveHistory,
+        ansiScrollbackLines,
         shortcutOverrides,
         ...shared
       } = normalized;
@@ -318,6 +319,7 @@ export function SettingsProvider({
         sidebarCollapsed !== undefined ||
         sidebarWidth !== undefined ||
         receiveHistory !== undefined ||
+        ansiScrollbackLines !== undefined ||
         shortcutOverrides !== undefined
       ) {
         const patch = {
@@ -326,6 +328,7 @@ export function SettingsProvider({
           ...(sidebarCollapsed !== undefined ? { sidebarCollapsed } : {}),
           ...(sidebarWidth !== undefined ? { sidebarWidth } : {}),
           ...(receiveHistory !== undefined ? { receiveHistory } : {}),
+          ...(ansiScrollbackLines !== undefined ? { ansiScrollbackLines } : {}),
           ...(shortcutOverrides !== undefined ? { shortcutOverrides } : {}),
         };
         if (clientSync.current) clientSync.current.update(patch);

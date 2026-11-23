@@ -182,7 +182,8 @@ test("keeps controls and rapid editing responsive with a dense receive history",
       event: {
         ...rx,
         eventSeq: String(index + 1),
-        time: { ...rx.time, sourceMonoNs: String(index + 1) },
+        // Represent independent receive records even when the idle gap is enabled.
+        time: { ...rx.time, sourceMonoNs: String((index + 1) * 200_000_000) },
         payload: {
           bytesBase64: Buffer.from(value).toString("base64"),
           byteStart: String(start),

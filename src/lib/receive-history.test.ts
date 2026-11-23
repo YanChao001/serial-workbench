@@ -60,6 +60,46 @@ it("keeps a continuous hardware burst below the configured data limit even when 
   expect(history.trimmed).toBe(false);
 });
 
+it("applies idle threshold changes prospectively and retains the clock precision of each packet", () => {
+  const chunk = (
+    sequence: number,
+    milliseconds: number,
+    extraNs = 0,
+    resolutionNs = "1000",
+  ): StreamItem => {
+    const item = record(sequence);
+    if (item.kind !== "source" || item.event.kind !== "rx")
+      throw new Error("Missing RX");
+    return {
+      ...item,
+      event: {
+        ...item.event,
+        time: {
+          ...item.event.time,
+          sourceMonoNs: String(
+            BigInt(milliseconds) * 1_000_000n + BigInt(extraNs),
+          ),
+          precision: { ...item.event.time.precision, resolutionNs },
+        },
+      },
+    };
+  };
+  const history = new ReceiveHistoryBuffer();
+  history.append([chunk(1, 0), chunk(2, 50)]);
+  expect(history.setReceiveIdleMs(10)).toBe(true);
+  history.append([chunk(3, 51), chunk(4, 61)]);
+  expect(history.setReceiveIdleMs(10)).toBe(false);
+  history.append([chunk(5, 61, 1), chunk(6, 71, 2), chunk(7, 72, 0, "2000")]);
+  expect(sequences(history.items())).toEqual(["2", "5", "6", "7"]);
+  expect(history.items().map((item) => item.receiveIdleMs)).toEqual([
+    100, 10, 10, 10,
+  ]);
+
+  const reconstructed = new ReceiveHistoryBuffer();
+  reconstructed.append(history.items());
+  expect(reconstructed.items()).toEqual(history.items());
+});
+
 it("retains the newest complete records and applies lower limits without new traffic", () => {
   const history = new ReceiveHistoryBuffer({
     ...DEFAULT_RECEIVE_HISTORY,

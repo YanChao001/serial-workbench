@@ -1261,3 +1261,388 @@ async fn workspace_import_preview_rejects_future_or_invalid_references() {
     assert!(matches!(reply, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"));
     f.finish().await;
 }
+
+#[tokio::test]
+async fn command_library_scope_permissions_cas_and_repeat_receipt_are_real_ipc() {
+    let f = Fixture::new(0).await;
+    let bench = f.target("workspace", "bench");
+    f.grant("document-a", "workspace.modify", &bench);
+    f.auth
+        .revoke(
+            &f.operator,
+            RevokeParams {
+                actor_id: f.second.attachment().actor_id.clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![bench.clone()],
+            },
+        )
+        .unwrap();
+    let read_groups = json!({"selection":{"view":"groups"}});
+    let denied = f
+        .second
+        .request(RpcRequest::Query(query(
+            &f.second,
+            &bench,
+            "workspace.commands.read",
+            read_groups.clone(),
+        )))
+        .await
+        .unwrap();
+    assert!(matches!(denied, RpcReply::Failure { error, .. } if error.code == "PERMISSION_DENIED"));
+
+    let invocation = call(
+        &f.first,
+        &bench,
+        "workspace.commands.change",
+        Some(0.into()),
+        json!({"kind":"saveGroup","group":{"id":"bench-group","name":"Bench commands"}}),
+    );
+    let admitted = invoke(&f.first, invocation.clone()).await;
+    let finished = settled(&f.first, &f.host_target(), admitted).await;
+    assert_eq!(finished.state, OperationState::Succeeded);
+    assert_eq!(
+        finished.result,
+        Some(ActionResult::CommandLibraryRevision(
+            CommandLibraryRevision { revision: 1.into() },
+        ))
+    );
+    let replayed = invoke(&f.first, invocation).await;
+    assert_eq!(replayed.operation_id, finished.operation_id);
+    assert_eq!(replayed.result, finished.result);
+
+    let write = call(
+        &f.first,
+        &bench,
+        "workspace.commands.change",
+        Some(1.into()),
+        json!({
+            "kind":"saveCommand",
+            "command":{
+                "summary":{"id":"calibrate","groupId":"bench-group","name":"Calibrate","note":"Staged bytes"},
+                "body":"CAL ${gain}",
+                "mode":"text", "encoding":"utf-8", "lineEnding":{"kind":"crlf"},
+            }
+        }),
+    );
+    let admitted = invoke(&f.first, write).await;
+    assert_eq!(
+        settled(&f.first, &f.host_target(), admitted).await.state,
+        OperationState::Succeeded
+    );
+
+    let stale = call(
+        &f.first,
+        &bench,
+        "workspace.commands.change",
+        Some(1.into()),
+        json!({
+            "kind":"deleteCommand", "id":"calibrate",
+        }),
+    );
+    let admitted = invoke(&f.first, stale).await;
+    let failure = settled(&f.first, &f.host_target(), admitted).await;
+    assert_eq!(failure.state, OperationState::Failed);
+    assert_eq!(failure.error.unwrap().code, "REVISION_CONFLICT");
+
+    f.grant("document-b", "content.read", &bench);
+    let groups = read(&f.second, &bench, "workspace.commands.read", read_groups).await;
+    assert_eq!(groups["revision"], "2");
+    assert_eq!(groups["records"]["groups"][0]["name"], "Bench commands");
+    let result = read(
+        &f.second,
+        &bench,
+        "workspace.commands.read",
+        json!({
+            "selection":{"view":"commands","groupId":"bench-group"},"revision":"2",
+        }),
+    )
+    .await;
+    assert_eq!(result["records"]["commands"][0]["id"], "calibrate");
+    assert!(result["records"]["commands"][0].get("body").is_none());
+    let entry = read(
+        &f.second,
+        &bench,
+        "workspace.commands.read",
+        json!({
+            "selection":{"view":"entry","id":"calibrate"},"revision":"2",
+        }),
+    )
+    .await;
+    assert_eq!(entry["records"]["command"]["body"], "CAL ${gain}");
+    assert_eq!(entry["records"]["command"]["lineEnding"]["kind"], "crlf");
+    let workspace = read(&f.second, &bench, "workspace.read", json!({})).await;
+    assert_eq!(workspace["document"]["revision"], "0");
+
+    let mut removed = workspace["document"]["value"].clone();
+    removed["archived"] = json!(true);
+    let archive = invoke(
+        &f.first,
+        call(
+            &f.first,
+            &bench,
+            "workspace.save",
+            Some(0.into()),
+            json!({"value":removed}),
+        ),
+    )
+    .await;
+    assert_eq!(
+        settled(&f.first, &f.host_target(), archive).await.state,
+        OperationState::Succeeded
+    );
+    let after_archive = invoke(
+        &f.first,
+        call(
+            &f.first,
+            &bench,
+            "workspace.commands.change",
+            Some(2.into()),
+            json!({
+                "kind":"deleteCommand","id":"calibrate",
+            }),
+        ),
+    )
+    .await;
+    let failed = settled(&f.first, &f.host_target(), after_archive).await;
+    assert_eq!(failed.error.unwrap().code, "WORKSPACE_DELETED");
+    assert_eq!(
+        read(
+            &f.second,
+            &bench,
+            "workspace.commands.read",
+            json!({"selection":{"view":"groups"}})
+        )
+        .await["revision"],
+        "2"
+    );
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn command_archives_round_trip_through_ipc_and_keep_existing_commands_on_failure() {
+    let f = Fixture::new(0).await;
+    let source = f.target("workspace", "archive-source");
+    let destination = f.target("workspace", "archive-destination");
+    for workspace in [&source, &destination] {
+        f.grant("document-a", "workspace.modify", workspace);
+        f.grant("document-a", "content.read", workspace);
+    }
+    let credential =
+        serial_workbench_ipc::read_secret(&f._dir.path().join("host-v0/user-control.secret"))
+            .unwrap()
+            .unwrap();
+    let control = f
+        .auth
+        .authenticate_user_control(
+            &id("document-a"),
+            &ContextToken::try_from(std::str::from_utf8(&credential).unwrap()).unwrap(),
+        )
+        .unwrap();
+    let register = |path: &std::path::Path, purpose: FilePurpose, permission: &str| {
+        let reference = f
+            .host
+            .files()
+            .register(
+                RegisterFileParams {
+                    path: path.to_str().unwrap().into(),
+                    purpose,
+                },
+                &control,
+            )
+            .unwrap();
+        f.grant(
+            "document-a",
+            permission,
+            &f.target("file", reference.id.as_str()),
+        );
+        reference
+    };
+
+    for (workspace, name, command_body) in [
+        (&source, "Imported group", "CAL ${gain}"),
+        (&destination, "Existing group", "untouched"),
+    ] {
+        let group = invoke(
+            &f.first,
+            call(
+                &f.first,
+                workspace,
+                "workspace.commands.change",
+                Some(0.into()),
+                json!({"kind":"saveGroup","group":{"id":"shared-group","name":name}}),
+            ),
+        )
+        .await;
+        assert_eq!(
+            settled(&f.first, &f.host_target(), group).await.state,
+            OperationState::Succeeded
+        );
+        let entry = invoke(&f.first, call(&f.first, workspace, "workspace.commands.change", Some(1.into()),
+            json!({"kind":"saveCommand","command":{
+                "summary":{"id":"shared-command","groupId":"shared-group","name":"Calibrate","note":"gain before calibration"},
+                "body":command_body,"mode":"text","encoding":"utf-16le",
+                "lineEnding":{"kind":"custom","bytesBase64":"AP8="}
+            }}),
+        )).await;
+        assert_eq!(
+            settled(&f.first, &f.host_target(), entry).await.state,
+            OperationState::Succeeded
+        );
+    }
+
+    let path = f._dir.path().join("library.swb-commands.jsonl");
+    let location = register(&path, FilePurpose::CaptureTarget, "workspace.modify");
+    let export = call(
+        &f.first,
+        &source,
+        "workspace.commands.export",
+        Some(2.into()),
+        json!({"fileRef":location}),
+    );
+    let archived = settled(
+        &f.first,
+        &f.host_target(),
+        invoke(&f.first, export.clone()).await,
+    )
+    .await;
+    let Some(ActionResult::Reference(file)) = archived.result.clone() else {
+        panic!("Expected published archive reference: {archived:?}");
+    };
+    assert_eq!(archived.state, OperationState::Succeeded);
+    assert!(matches!(
+        f.host.files().open_fixed(&file.result_ref, &control),
+        Err(error) if error.code == "PERMISSION_DENIED"
+    ));
+    let content = std::fs::read_to_string(&path).unwrap();
+    let records = content
+        .lines()
+        .map(|line| serde_json::from_str::<Value>(line).unwrap())
+        .collect::<Vec<_>>();
+    assert_eq!(records.len(), 4);
+    assert_eq!(records[0]["version"], 1);
+    assert_eq!(records[0]["libraryRevision"], "2");
+    assert_eq!(records[2]["command"]["body"], "CAL ${gain}");
+    assert_eq!(
+        records[3],
+        json!({"kind":"end","groups":"1","commands":"1"})
+    );
+
+    let existing_file = settled(
+        &f.first,
+        &f.host_target(),
+        invoke(
+            &f.first,
+            call(
+                &f.first,
+                &source,
+                "workspace.commands.export",
+                Some(2.into()),
+                json!({"fileRef":location}),
+            ),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(existing_file.error.unwrap().code, "TARGET_EXISTS");
+    assert_eq!(std::fs::read_to_string(&path).unwrap(), content);
+
+    f.grant(
+        "document-a",
+        "content.read",
+        &f.target("file", location.id.as_str()),
+    );
+    let import = call(
+        &f.first,
+        &destination,
+        "workspace.commands.import",
+        Some(2.into()),
+        json!({"fileRef":file.result_ref}),
+    );
+    let added = settled(
+        &f.first,
+        &f.host_target(),
+        invoke(&f.first, import.clone()).await,
+    )
+    .await;
+    assert_eq!(
+        added.result,
+        Some(ActionResult::CommandLibraryRevision(
+            CommandLibraryRevision { revision: 3.into() }
+        ))
+    );
+    let repeated = invoke(&f.first, import).await;
+    assert_eq!(repeated.operation_id, added.operation_id);
+    assert_eq!(repeated.result, added.result);
+
+    let groups = read(
+        &f.first,
+        &destination,
+        "workspace.commands.read",
+        json!({"selection":{"view":"groups"}}),
+    )
+    .await;
+    let groups = groups["records"]["groups"].as_array().unwrap();
+    assert_eq!(groups.len(), 2);
+    assert_eq!(
+        groups[0],
+        json!({"id":"shared-group","name":"Existing group"})
+    );
+    let imported = &groups[1]["id"];
+    assert_ne!(imported, "shared-group");
+    let commands = read(
+        &f.first,
+        &destination,
+        "workspace.commands.read",
+        json!({"selection":{"view":"commands","groupId":imported},"revision":"3"}),
+    )
+    .await;
+    let key = &commands["records"]["commands"][0]["id"];
+    assert_ne!(key, "shared-command");
+    let command = read(
+        &f.first,
+        &destination,
+        "workspace.commands.read",
+        json!({"selection":{"view":"entry","id":key},"revision":"3"}),
+    )
+    .await;
+    let command = &command["records"]["command"];
+    assert_eq!(command["summary"]["note"], "gain before calibration");
+    assert_eq!(command["body"], "CAL ${gain}");
+    assert_eq!(command["encoding"], "utf-16le");
+    assert_eq!(
+        command["lineEnding"],
+        json!({"kind":"custom","bytesBase64":"AP8="})
+    );
+
+    let bad_path = f._dir.path().join("truncated.swb-commands.jsonl");
+    let mut truncated = content.lines().take(3).collect::<Vec<_>>().join("\n");
+    truncated.push('\n');
+    std::fs::write(&bad_path, truncated).unwrap();
+    let bad_file = register(&bad_path, FilePurpose::ReadFile, "content.read");
+    let failed = settled(
+        &f.first,
+        &f.host_target(),
+        invoke(
+            &f.first,
+            call(
+                &f.first,
+                &destination,
+                "workspace.commands.import",
+                Some(3.into()),
+                json!({"fileRef":bad_file}),
+            ),
+        )
+        .await,
+    )
+    .await;
+    assert_eq!(failed.error.unwrap().code, "INVALID_COMMAND_ARCHIVE");
+    let existing = read(
+        &f.first,
+        &destination,
+        "workspace.commands.read",
+        json!({"selection":{"view":"entry","id":"shared-command"},"revision":"3"}),
+    )
+    .await;
+    assert_eq!(existing["records"]["command"]["body"], "untouched");
+    f.finish().await;
+}

@@ -25,6 +25,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             host_bridge::session_takeover::host_takeover_session,
             host_bridge::session_takeover::host_decide_browser_takeover,
             host_bridge::document_intents::host_apply_document_intent,
+            host_bridge::document_intents::host_open_command_library,
             host_bridge::node_intents::host_apply_node_intent,
             crate::node_view::host_open_node_view,
             crate::node_view::host_close_node_view,

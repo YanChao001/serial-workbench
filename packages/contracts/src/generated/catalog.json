@@ -26854,6 +26854,810 @@
       "targetKinds": ["host"]
     },
     {
+      "actionId": "workspace.commands.read",
+      "cancellation": "none",
+      "eventTypes": ["activity.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "CommandLibraryView": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "view": {
+                    "const": "groups",
+                    "type": "string"
+                  }
+                },
+                "required": ["view"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "after": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "groupId": {
+                    "$ref": "#/definitions/Id"
+                  },
+                  "view": {
+                    "const": "commands",
+                    "type": "string"
+                  }
+                },
+                "required": ["view", "groupId"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "id": {
+                    "$ref": "#/definitions/Id"
+                  },
+                  "view": {
+                    "const": "entry",
+                    "type": "string"
+                  }
+                },
+                "required": ["view", "id"],
+                "type": "object"
+              }
+            ]
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "revision": {
+            "anyOf": [
+              {
+                "$ref": "#/definitions/U64"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "selection": {
+            "$ref": "#/definitions/CommandLibraryView"
+          }
+        },
+        "required": ["selection"],
+        "title": "CommandLibraryReadParams",
+        "type": "object"
+      },
+      "kind": "query",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "CommandDraft": {
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "encoding": {
+                "$ref": "#/definitions/TextEncoding"
+              },
+              "lineEnding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/LineEnding"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mode": {
+                "$ref": "#/definitions/TerminalMode"
+              },
+              "summary": {
+                "$ref": "#/definitions/CommandSummary"
+              }
+            },
+            "required": ["summary", "body", "mode", "encoding"],
+            "type": "object"
+          },
+          "CommandGroup": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name"],
+            "type": "object"
+          },
+          "CommandLibraryRecords": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "groups": {
+                    "items": {
+                      "$ref": "#/definitions/CommandGroup"
+                    },
+                    "type": "array"
+                  },
+                  "nextCursor": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "view": {
+                    "const": "groups",
+                    "type": "string"
+                  }
+                },
+                "required": ["view", "groups"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "commands": {
+                    "items": {
+                      "$ref": "#/definitions/CommandSummary"
+                    },
+                    "type": "array"
+                  },
+                  "nextCursor": {
+                    "anyOf": [
+                      {
+                        "$ref": "#/definitions/Id"
+                      },
+                      {
+                        "type": "null"
+                      }
+                    ]
+                  },
+                  "view": {
+                    "const": "commands",
+                    "type": "string"
+                  }
+                },
+                "required": ["view", "commands"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "command": {
+                    "$ref": "#/definitions/CommandDraft"
+                  },
+                  "view": {
+                    "const": "entry",
+                    "type": "string"
+                  }
+                },
+                "required": ["view", "command"],
+                "type": "object"
+              }
+            ]
+          },
+          "CommandSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "groupId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "name": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "groupId", "name", "note"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "LineEnding": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "cr",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lf",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "crlf",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesBase64": {
+                    "$ref": "#/definitions/Bytes"
+                  },
+                  "kind": {
+                    "const": "custom",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "bytesBase64"],
+                "type": "object"
+              }
+            ]
+          },
+          "TerminalMode": {
+            "enum": ["text", "hex"],
+            "type": "string"
+          },
+          "TextEncoding": {
+            "enum": [
+              "utf-8",
+              "gbk",
+              "gb18030",
+              "big5",
+              "shift-jis",
+              "latin1",
+              "ascii",
+              "utf-16le",
+              "utf-16be"
+            ],
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "records": {
+            "$ref": "#/definitions/CommandLibraryRecords"
+          },
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision", "records"],
+        "title": "CommandLibraryReadResult",
+        "type": "object"
+      },
+      "permissions": ["content.read"],
+      "revealTarget": {
+        "pageId": "workbench",
+        "panelId": "workspace"
+      },
+      "stateScopes": ["host.activity"],
+      "targetKinds": ["workspace"]
+    },
+    {
+      "actionId": "workspace.commands.change",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "definitions": {
+          "Bytes": {
+            "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/][AQgw]==|[A-Za-z0-9+/]{2}[AEIMQUYcgkosw048]=)?$",
+            "type": "string"
+          },
+          "CommandDraft": {
+            "additionalProperties": false,
+            "properties": {
+              "body": {
+                "type": "string"
+              },
+              "encoding": {
+                "$ref": "#/definitions/TextEncoding"
+              },
+              "lineEnding": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/LineEnding"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "mode": {
+                "$ref": "#/definitions/TerminalMode"
+              },
+              "summary": {
+                "$ref": "#/definitions/CommandSummary"
+              }
+            },
+            "required": ["summary", "body", "mode", "encoding"],
+            "type": "object"
+          },
+          "CommandGroup": {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "name": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "name"],
+            "type": "object"
+          },
+          "CommandSummary": {
+            "additionalProperties": false,
+            "properties": {
+              "groupId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "name": {
+                "type": "string"
+              },
+              "note": {
+                "type": "string"
+              }
+            },
+            "required": ["id", "groupId", "name", "note"],
+            "type": "object"
+          },
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "LineEnding": {
+            "oneOf": [
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "none",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "cr",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "lf",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
+                    "const": "crlf",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "bytesBase64": {
+                    "$ref": "#/definitions/Bytes"
+                  },
+                  "kind": {
+                    "const": "custom",
+                    "type": "string"
+                  }
+                },
+                "required": ["kind", "bytesBase64"],
+                "type": "object"
+              }
+            ]
+          },
+          "TerminalMode": {
+            "enum": ["text", "hex"],
+            "type": "string"
+          },
+          "TextEncoding": {
+            "enum": [
+              "utf-8",
+              "gbk",
+              "gb18030",
+              "big5",
+              "shift-jis",
+              "latin1",
+              "ascii",
+              "utf-16le",
+              "utf-16be"
+            ],
+            "type": "string"
+          }
+        },
+        "oneOf": [
+          {
+            "additionalProperties": false,
+            "properties": {
+              "group": {
+                "$ref": "#/definitions/CommandGroup"
+              },
+              "kind": {
+                "const": "saveGroup",
+                "type": "string"
+              }
+            },
+            "required": ["kind", "group"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "const": "deleteGroup",
+                "type": "string"
+              }
+            },
+            "required": ["kind", "id"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "command": {
+                "$ref": "#/definitions/CommandDraft"
+              },
+              "kind": {
+                "const": "saveCommand",
+                "type": "string"
+              }
+            },
+            "required": ["kind", "command"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "before": {
+                "anyOf": [
+                  {
+                    "$ref": "#/definitions/Id"
+                  },
+                  {
+                    "type": "null"
+                  }
+                ]
+              },
+              "groupId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "const": "moveCommand",
+                "type": "string"
+              }
+            },
+            "required": ["kind", "id", "groupId"],
+            "type": "object"
+          },
+          {
+            "additionalProperties": false,
+            "properties": {
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "const": "deleteCommand",
+                "type": "string"
+              }
+            },
+            "required": ["kind", "id"],
+            "type": "object"
+          }
+        ],
+        "title": "CommandLibraryChange"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision"],
+        "title": "CommandLibraryRevision",
+        "type": "object"
+      },
+      "permissions": ["workspace.modify"],
+      "revealTarget": {
+        "pageId": "workbench",
+        "panelId": "workspace"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["workspace"]
+    },
+    {
+      "actionId": "workspace.commands.import",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "fileRef": {
+            "$ref": "#/definitions/ObjectRef"
+          }
+        },
+        "required": ["fileRef"],
+        "title": "CommandLibraryFileParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "revision": {
+            "$ref": "#/definitions/U64"
+          }
+        },
+        "required": ["revision"],
+        "title": "CommandLibraryRevision",
+        "type": "object"
+      },
+      "permissions": ["workspace.modify"],
+      "revealTarget": {
+        "pageId": "workbench",
+        "panelId": "workspace"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["workspace"]
+    },
+    {
+      "actionId": "workspace.commands.export",
+      "cancellation": "none",
+      "eventTypes": ["operations.changed"],
+      "executionLocation": "resource_host",
+      "inputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "fileRef": {
+            "$ref": "#/definitions/ObjectRef"
+          }
+        },
+        "required": ["fileRef"],
+        "title": "CommandLibraryFileParams",
+        "type": "object"
+      },
+      "kind": "action",
+      "outputSchema": {
+        "$schema": "http://json-schema.org/draft-07/schema#",
+        "additionalProperties": false,
+        "definitions": {
+          "Id": {
+            "pattern": "^[A-Za-z0-9._:-]{1,128}$",
+            "type": "string"
+          },
+          "ObjectRef": {
+            "additionalProperties": false,
+            "properties": {
+              "hostId": {
+                "$ref": "#/definitions/Id"
+              },
+              "id": {
+                "$ref": "#/definitions/Id"
+              },
+              "kind": {
+                "$ref": "#/definitions/ResourceKind"
+              },
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["hostId", "kind", "id"],
+            "type": "object"
+          },
+          "ResourceKind": {
+            "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
+            "type": "string"
+          },
+          "U64": {
+            "pattern": "^(?:18446744073709551615|1[0-7][0-9]{18}|18[0-3][0-9]{17}|184[0-3][0-9]{16}|1844[0-5][0-9]{15}|18446[0-6][0-9]{14}|184467[0-3][0-9]{13}|1844674[0-3][0-9]{12}|184467440[0-6][0-9]{10}|1844674407[0-2][0-9]{9}|18446744073[0-6][0-9]{8}|1844674407370[0-8][0-9]{6}|18446744073709[0-4][0-9]{5}|184467440737095[0-4][0-9]{4}|1844674407370955[0-0][0-9]{3}|18446744073709551[0-5][0-9]{2}|184467440737095516[0-0][0-9]{1}|1844674407370955161[0-4][0-9]{0}|[1-9][0-9]{0,18}|0)$",
+            "type": "string"
+          }
+        },
+        "properties": {
+          "resultRef": {
+            "$ref": "#/definitions/ObjectRef"
+          }
+        },
+        "required": ["resultRef"],
+        "title": "ResultReference",
+        "type": "object"
+      },
+      "permissions": ["content.read"],
+      "revealTarget": {
+        "pageId": "workbench",
+        "panelId": "workspace"
+      },
+      "stateScopes": ["host.operations"],
+      "targetKinds": ["workspace"]
+    },
+    {
       "actionId": "workspace.read",
       "cancellation": "none",
       "eventTypes": ["activity.changed"],
@@ -29044,6 +29848,20 @@
                 "additionalProperties": false,
                 "properties": {
                   "kind": {
+                    "const": "command_library_revision",
+                    "type": "string"
+                  },
+                  "value": {
+                    "$ref": "#/definitions/CommandLibraryRevision"
+                  }
+                },
+                "required": ["kind", "value"],
+                "type": "object"
+              },
+              {
+                "additionalProperties": false,
+                "properties": {
+                  "kind": {
                     "const": "shutdown_requested",
                     "type": "string"
                   },
@@ -30226,6 +31044,16 @@
               }
             },
             "required": ["geometry", "maximized", "fullscreen"],
+            "type": "object"
+          },
+          "CommandLibraryRevision": {
+            "additionalProperties": false,
+            "properties": {
+              "revision": {
+                "$ref": "#/definitions/U64"
+              }
+            },
+            "required": ["revision"],
             "type": "object"
           },
           "ConfigField": {

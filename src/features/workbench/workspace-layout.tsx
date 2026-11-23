@@ -1,3 +1,4 @@
+import type { StreamHighlightRule } from "./stream-highlight";
 import {
   useCallback,
   useContext,
@@ -49,6 +50,7 @@ import { WorkbenchConnection } from "./workbench-connection";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
+import type { CommandLibrarySource } from "./command-library";
 import { WorkbenchCommands } from "./workbench-commands";
 import { CaptureTailPanel, type CaptureTailReader } from "./capture-tail-panel";
 import { captureTab, workspaceTabs } from "./capture-tabs";
@@ -127,6 +129,7 @@ export type WorkbenchHost = Pick<
   | "waitForOperation"
   | "takeover"
   | "watchSession"
+  | "setReceiveIdleMs"
   | "watchActions"
   | "checkAction"
   | "connection"
@@ -223,6 +226,7 @@ export type WorkspaceLayoutProps = {
   formatError?: (error: { code?: string }) => string;
   unboundDraftMessage?: string;
   workspaceKey?: string;
+  commandLibrary?: CommandLibrarySource;
   /** 持久草稿归属，不包含连接代次。 */
   draftScopeKey?: string;
   workspaceRevision?: string;
@@ -336,6 +340,7 @@ export function WorkspaceLayout({
   renderTool,
   toolLabels,
   workspaceKey,
+  commandLibrary,
   draftScopeKey: receivedDraftScope,
   workspaceRevision,
   workspaceSelection,
@@ -353,6 +358,9 @@ export function WorkspaceLayout({
   unboundDraftMessage,
 }: WorkspaceLayoutProps) {
   const { state, watchSession, watchActions } = host;
+  const [highlightRules, setHighlightRules] = useState<StreamHighlightRule[]>(
+    [],
+  );
   const revealActivityPage = useContext(ActivityNavigationContext);
   // Host 暂时离线会保留标签和本地编辑，草稿归属也必须随这些标签保留。
   const retainedDraftScope = useRef(receivedDraftScope);
@@ -1043,15 +1051,7 @@ export function WorkspaceLayout({
           },
         }));
       }
-      setDrafts((current) => {
-        if (
-          current[draftKey] !== undefined ||
-          current.unconnected === undefined
-        )
-          return current;
-        const { unconnected, ...rest } = current;
-        return { ...rest, [draftKey]: unconnected };
-      });
+      draftStore.claimUnconnected(draftKey);
       setViews((current) => {
         if (
           current.tabs.some(
@@ -1089,7 +1089,6 @@ export function WorkspaceLayout({
       state.devices,
       state.sessions,
       tabs,
-      setDrafts,
       draftStore,
       draftScopeKey,
     ],
@@ -2107,6 +2106,8 @@ export function WorkspaceLayout({
           <ReplayPanel
             key={`${session.sessionId}:${session.sessionEpoch}`}
             {...replay}
+            highlightRules={highlightRules}
+            onHighlightRulesChange={setHighlightRules}
             terminalSettings={terminalSettings}
             presentationLabels={presentationLabels}
             session={session}
@@ -2162,6 +2163,19 @@ export function WorkspaceLayout({
             }
             historyLimits={receiveHistory}
             onHistoryLimitsChange={onReceiveHistoryChange}
+            receiveIdleMs={stream?.receiveIdleMs}
+            highlightRules={highlightRules}
+            onHighlightRulesChange={setHighlightRules}
+            onReceiveIdleMsChange={
+              session?.state === "open" && host.setReceiveIdleMs
+                ? (value) =>
+                    host.setReceiveIdleMs?.(
+                      session.sessionId,
+                      session.sessionEpoch,
+                      value,
+                    )
+                : undefined
+            }
             onOpenCapture={(trigger) => showDialog("capture", trigger)}
             onOpenActivity={() => showDialog("activity")}
             onClearView={() =>
@@ -2211,57 +2225,60 @@ export function WorkspaceLayout({
         }
         key={draftKey}
         draftCaption={isCapture ? labels.unconnectedDraft : undefined}
+        commandLibrary={commandLibrary}
         draftActions={
-          isCapture ? (
-            <>
-              {(hasUnboundDraft ||
-                !state.devices.length ||
-                state.devicesStale) && (
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <WorkbenchIconButton
-                      label={
-                        hasUnboundDraft
-                          ? `${labels.unconnectedDraft} · ${toolLabels?.saveCurrentLayout ?? labels.saveDrafts} · ${labels.expand}`
-                          : `${labels.unconnectedDraft} · ${labels.expand}`
-                      }
-                      tooltip={
-                        hasUnboundDraft
-                          ? (unboundDraftMessage ?? labels.bindingUnavailable)
-                          : undefined
-                      }
+          <>
+            {isCapture && (
+              <>
+                {(hasUnboundDraft ||
+                  !state.devices.length ||
+                  state.devicesStale) && (
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <WorkbenchIconButton
+                        label={
+                          hasUnboundDraft
+                            ? `${labels.unconnectedDraft} · ${toolLabels?.saveCurrentLayout ?? labels.saveDrafts} · ${labels.expand}`
+                            : `${labels.unconnectedDraft} · ${labels.expand}`
+                        }
+                        tooltip={
+                          hasUnboundDraft
+                            ? (unboundDraftMessage ?? labels.bindingUnavailable)
+                            : undefined
+                        }
+                      >
+                        {hasUnboundDraft ? (
+                          <LockKeyholeIcon aria-hidden="true" />
+                        ) : (
+                          <InfoIcon aria-hidden="true" />
+                        )}
+                      </WorkbenchIconButton>
+                    </PopoverTrigger>
+                    <PopoverContent
+                      align="end"
+                      aria-label={labels.unconnectedDraft}
+                      className="max-h-[min(24rem,var(--radix-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-auto"
                     >
-                      {hasUnboundDraft ? (
-                        <LockKeyholeIcon aria-hidden="true" />
-                      ) : (
-                        <InfoIcon aria-hidden="true" />
+                      <PopoverTitle>{labels.unconnectedDraft}</PopoverTitle>
+                      {hasUnboundDraft && (
+                        <p role="status">
+                          {unboundDraftMessage ?? labels.bindingUnavailable}
+                        </p>
                       )}
-                    </WorkbenchIconButton>
-                  </PopoverTrigger>
-                  <PopoverContent
-                    align="end"
-                    aria-label={labels.unconnectedDraft}
-                    className="max-h-[min(24rem,var(--radix-popover-content-available-height))] w-96 max-w-[calc(100vw-2rem)] overflow-auto"
-                  >
-                    <PopoverTitle>{labels.unconnectedDraft}</PopoverTitle>
-                    {hasUnboundDraft && (
-                      <p role="status">
-                        {unboundDraftMessage ?? labels.bindingUnavailable}
-                      </p>
-                    )}
-                    {!state.devices.length && (
-                      <p role="status">{labels.noDevices}</p>
-                    )}
-                    {state.devicesStale && (
-                      <p role="status">
-                        {toolLabels?.deviceListStale ?? labels.unavailable}
-                      </p>
-                    )}
-                  </PopoverContent>
-                </Popover>
-              )}
-            </>
-          ) : undefined
+                      {!state.devices.length && (
+                        <p role="status">{labels.noDevices}</p>
+                      )}
+                      {state.devicesStale && (
+                        <p role="status">
+                          {toolLabels?.deviceListStale ?? labels.unavailable}
+                        </p>
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                )}
+              </>
+            )}
+          </>
         }
         initialMode={selectedTab?.view?.sendMode}
         mode={

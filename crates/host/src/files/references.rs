@@ -1008,7 +1008,7 @@ impl FixedFile {
     pub fn is_empty(&self) -> bool {
         self.length == 0
     }
-    fn check(&self) -> HostResult<()> {
+    pub(crate) fn check(&self) -> HostResult<()> {
         self.service
             .document(&self.reference, &self.actor, "content.read")?;
         if self.file.metadata().map_err(io_error)?.len() != self.length
@@ -1389,6 +1389,62 @@ pub(crate) fn file_identity(file: &File) -> HostResult<String> {
         ))
     }
 }
+/// 仅在完成同步写入后发布同目录临时文件。失败清理只处理原来创建的文件身份。
+pub(crate) struct PendingFile {
+    path: PathGuard,
+    output: Option<File>,
+    identity: String,
+    published: bool,
+}
+
+impl PendingFile {
+    pub(crate) fn new(destination: &PathGuard, prefix: &str) -> HostResult<Self> {
+        if destination.checked_path().exists() {
+            return Err(HostError::new(
+                "TARGET_EXISTS",
+                "Export target already exists",
+            ));
+        }
+        let path = destination.sibling(std::ffi::OsStr::new(&format!(
+            ".{prefix}-pending-{}",
+            uuid::Uuid::new_v4()
+        )))?;
+        let output = path.create_file()?;
+        let identity = file_identity(&output)?;
+        Ok(Self {
+            path,
+            output: Some(output),
+            identity,
+            published: false,
+        })
+    }
+
+    pub(crate) fn file(&mut self) -> &mut File {
+        self.output.as_mut().expect("pending export owns file")
+    }
+
+    pub(crate) fn publish<T>(
+        mut self,
+        destination: &PathGuard,
+        publish: impl FnOnce(&PathGuard, &PathGuard) -> HostResult<T>,
+    ) -> HostResult<T> {
+        self.file().sync_all().map_err(io_error)?;
+        drop(self.output.take());
+        let result = publish(&self.path, destination)?;
+        self.published = true;
+        Ok(result)
+    }
+}
+
+impl Drop for PendingFile {
+    fn drop(&mut self) {
+        drop(self.output.take());
+        if !self.published {
+            self.path.discard_created_file(&self.identity);
+        }
+    }
+}
+
 /// Windows 持有祖先目录的非 delete-share 句柄，阻止登记到提交期间父目录替换。
 pub(crate) struct PathGuard {
     path: PathBuf,

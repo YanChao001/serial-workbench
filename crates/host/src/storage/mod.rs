@@ -1,5 +1,6 @@
 //! 串行持久提交边界。调用者等待回执，设备 RX 不持有或等待本模块的数据库锁。
 mod child_operations;
+mod command_library;
 mod db;
 mod documents;
 mod operations;
@@ -11,6 +12,7 @@ mod queue_test_support;
 
 use crate::auth::{AuthenticatedActor, HostIdentity, RequestContext};
 use crate::clock::SystemClock;
+pub(crate) use command_library::StagedCommandArchive;
 use db::Database;
 pub use documents::StoredDocument;
 pub use operations::{Acceptance, Settlement, canonical_digest};

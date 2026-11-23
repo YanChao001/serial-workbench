@@ -6,6 +6,11 @@ use std::{collections::BTreeMap, path::PathBuf};
 
 pub const CLIENT_STATE_FILE: &str = "client-state-v0.json";
 pub const MAX_CLIENT_STATE_FILE_SIZE: usize = 512 * 1024;
+const MAX_ANSI_SCROLLBACK_LINES: u32 = 50_000;
+
+fn default_ansi_scrollback_lines() -> u32 {
+    3_000
+}
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "lowercase")]
 pub enum WindowPosition {
@@ -63,6 +68,9 @@ pub struct ClientPreferences {
     #[serde(default)]
     #[specta(optional)]
     pub receive_history: ReceiveHistory,
+    #[serde(default = "default_ansi_scrollback_lines")]
+    #[specta(optional)]
+    pub ansi_scrollback_lines: u32,
     #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
     #[specta(optional)]
     pub shortcut_overrides: BTreeMap<String, ShortcutBinding>,
@@ -75,6 +83,7 @@ impl Default for ClientPreferences {
             sidebar_collapsed: true,
             sidebar_width: 224,
             receive_history: ReceiveHistory::default(),
+            ansi_scrollback_lines: default_ansi_scrollback_lines(),
             shortcut_overrides: BTreeMap::new(),
         }
     }
@@ -184,6 +193,7 @@ fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
     if !(180..=360).contains(&state.preferences.sidebar_width)
         || !(1..=20_000).contains(&state.preferences.receive_history.max_records)
         || !(1024 * 1024..=16 * 1024 * 1024).contains(&state.preferences.receive_history.max_bytes)
+        || state.preferences.ansi_scrollback_lines > MAX_ANSI_SCROLLBACK_LINES
         || shortcuts.len() > 64
         || shortcuts.iter().any(|(id, shortcut)| {
             id.is_empty()
@@ -493,6 +503,18 @@ mod tests {
                 max_records: records,
                 max_bytes: bytes,
             };
+            assert_eq!(validate_state(&state).is_ok(), valid);
+        }
+    }
+    #[test]
+    fn ansi_scrollback_restores_missing_preferences_and_validates_bounds() {
+        let mut value = serde_json::to_value(ClientPreferences::default()).unwrap();
+        value.as_object_mut().unwrap().remove("ansiScrollbackLines");
+        let restored: ClientPreferences = serde_json::from_value(value).unwrap();
+        assert_eq!(restored.ansi_scrollback_lines, 3_000);
+        let mut state = ClientWindowState::default();
+        for (lines, valid) in [(0, true), (50_000, true), (50_001, false)] {
+            state.preferences.ansi_scrollback_lines = lines;
             assert_eq!(validate_state(&state).is_ok(), valid);
         }
     }

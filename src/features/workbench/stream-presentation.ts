@@ -9,7 +9,28 @@ import {
   type TxGate,
   type TxOutcome,
 } from "@serial-workbench/contracts";
+import type { HistoryStreamItem } from "@/lib/receive-history";
 import type { WorkbenchLabels } from "./labels";
+
+export function receivePacketTiming(
+  item: HistoryStreamItem,
+  labels: WorkbenchLabels,
+): string | undefined {
+  if (
+    item.kind !== "source" ||
+    item.event.kind !== "rx" ||
+    item.receiveIdleMs === undefined
+  )
+    return;
+  const { source, resolutionNs } = item.event.time.precision;
+  const sourceLabel = {
+    host_read: labels.receiveTimeHostRead,
+    device: labels.receiveTimeDevice,
+    line_capture: labels.receiveTimeLineCapture,
+    sample_clock: labels.receiveTimeSampleClock,
+  }[source];
+  return `${labels.receiveIdleGap} ${item.receiveIdleMs} ms · ${sourceLabel} · ${resolutionNs} ns`;
+}
 
 export function workbenchStatus(
   status: SessionState | OperationState | TxGate | TxOutcome,
@@ -84,16 +105,6 @@ export function terminalTypographyStyle(
     lineHeight: typography.lineHeightPercent / 100,
     fontVariantLigatures: typography.ligatures ? "normal" : "none",
   };
-}
-
-/** HEX payloads are pairs separated by a single space before display. */
-export function presentHexLines(value: string, columns: number): string {
-  if (!columns || value.length < columns * 3) return value;
-  const width = columns * 3;
-  const lines: string[] = [];
-  for (let start = 0; start < value.length; start += width)
-    lines.push(value.slice(start, start + width - 1));
-  return lines.join("\n");
 }
 
 export type StreamTimePresentation = {

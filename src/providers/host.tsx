@@ -1,4 +1,4 @@
-﻿import { useEffect, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactNode } from "react";
 import { getHostClient } from "@/lib/host-client";
 import { createHostWorkspace } from "./host-controller";
@@ -72,6 +72,7 @@ function withLocalWorkspace(
   return {
     ...remote,
     state: { ...remote.state, workspace: local.state.workspace },
+    commandLibrary: local.commandLibrary,
     loadWorkspace: local.loadWorkspace,
     listWorkspaces: local.listWorkspaces,
     saveWorkspace: local.saveWorkspace,

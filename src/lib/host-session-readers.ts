@@ -17,10 +17,12 @@ import { reportClientError } from "./report-error";
 import { waitForHost } from "./host-native-transport";
 import { parseU64 } from "./u64";
 import {
+  DEFAULT_RECEIVE_IDLE_MS,
   ReceiveHistoryBuffer,
   receiveHistoryLimits,
   subscribeReceiveHistoryLimits,
   type ReceiveHistory,
+  type ReceiveIdleMs,
 } from "./receive-history";
 function failure(code: string, message: string) {
   return new HostRequestError({ code, message, retryable: false });
@@ -63,6 +65,7 @@ export function createSessionReaders(
       observeRevision: (revision: SessionSnapshot["revision"]) => void;
       retire: () => void;
       resize: (limits: Readonly<ReceiveHistory>) => void;
+      setReceiveIdleMs: (value: ReceiveIdleMs) => void;
     }
   >();
   function sessionTarget(session: SessionSnapshot): Target {
@@ -136,6 +139,11 @@ export function createSessionReaders(
         };
         publish();
       },
+      setReceiveIdleMs: (value: ReceiveIdleMs) => {
+        if (!current() || !history.setReceiveIdleMs(value)) return;
+        view = { ...view, receiveIdleMs: value };
+        publish();
+      },
       snapshot: (): ReaderResume => ({
         view: { ...view, error: null },
         history,
@@ -151,6 +159,7 @@ export function createSessionReaders(
       items: [],
       error: null,
       trimmed: false,
+      receiveIdleMs: DEFAULT_RECEIVE_IDLE_MS,
     };
     let resumeCursor = resume?.cursor;
     let recoveries = resume?.recoveries ?? 0;
@@ -509,6 +518,14 @@ export function createSessionReaders(
   });
   return {
     watch,
+    setReceiveIdleMs(
+      sessionId: string,
+      sessionEpoch: string,
+      value: ReceiveIdleMs,
+    ) {
+      const reader = readers.get(sessionId);
+      if (reader?.epoch === sessionEpoch) reader.setReceiveIdleMs(value);
+    },
     /** 只在用户显式授权成功后恢复已停止的同代 reader，不重放任何写入。 */
     retryAuthorized(session: SessionSnapshot) {
       const reader = readers.get(session.sessionId);

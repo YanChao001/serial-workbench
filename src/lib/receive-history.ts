@@ -57,6 +57,7 @@ export function subscribeReceiveHistoryLimits(listener: () => void) {
 /** 仅用于显示投影。Host 的原始事件、游标和录制内容保持独立。 */
 export type HistoryStreamItem = StreamItem & {
   displayRecord?: string;
+  receiveIdleMs?: ReceiveIdleMs;
   displayTime?: EventTime;
 };
 export type HistoryPosition = {
@@ -72,10 +73,18 @@ type Segment = {
   cached?: HistoryStreamItem;
 };
 type Entry =
-  | { kind: "rx"; id: string; segments: Segment[]; size: number }
+  | {
+      kind: "rx";
+      id: string;
+      segments: Segment[];
+      size: number;
+      receiveIdleMs?: ReceiveIdleMs;
+    }
   | { kind: "record"; item: HistoryStreamItem; size: number; txKey?: string };
 const SEGMENT_BYTES = 65536;
-const RECEIVE_IDLE_NS = 100_000_000n;
+export const RECEIVE_IDLE_MS = [1, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
+export type ReceiveIdleMs = (typeof RECEIVE_IDLE_MS)[number];
+export const DEFAULT_RECEIVE_IDLE_MS: ReceiveIdleMs = 100;
 const initialPosition = (): HistoryPosition => ({
   eventSeq: "0",
   rxEnd: "0",
@@ -200,6 +209,7 @@ export class ReceiveHistoryBuffer {
   private entries: Entry[] = [];
   private transmissions = new Map<string, Extract<Entry, { kind: "record" }>>();
   private retainedBytes = 0;
+  private receiveIdleMs = DEFAULT_RECEIVE_IDLE_MS;
   private activeReceive?: Extract<Entry, { kind: "rx" }>;
   readonly removed = initialPosition();
   trimmed = false;
@@ -210,7 +220,7 @@ export class ReceiveHistoryBuffer {
   append(items: readonly HistoryStreamItem[]) {
     for (const item of items) {
       if (item.kind === "source" && item.event.kind === "rx") {
-        this.appendReceive(item.event, item.displayRecord);
+        this.appendReceive(item.event, item.displayRecord, item.receiveIdleMs);
         continue;
       }
       const key = txKey(item);
@@ -245,6 +255,13 @@ export class ReceiveHistoryBuffer {
     this.limits = value;
     return this.trim();
   }
+  setReceiveIdleMs(value: ReceiveIdleMs): boolean {
+    if (this.receiveIdleMs === value) return false;
+    this.receiveIdleMs = value;
+    this.activeReceive = undefined;
+    return true;
+  }
+
   items(): readonly HistoryStreamItem[] {
     return this.entries.flatMap((entry): HistoryStreamItem[] => {
       if (entry.kind === "record") return [entry.item];
@@ -255,6 +272,7 @@ export class ReceiveHistoryBuffer {
           segment.cached = {
             kind: "source",
             displayRecord: entry.id,
+            receiveIdleMs: entry.receiveIdleMs,
             event: {
               ...segment.event,
               payload: { ...segment.event.payload, bytesBase64: btoa(binary) },
@@ -265,7 +283,11 @@ export class ReceiveHistoryBuffer {
       });
     });
   }
-  private appendReceive(event: RxEvent, recordId?: string) {
+  private appendReceive(
+    event: RxEvent,
+    recordId?: string,
+    recordedIdleMs?: ReceiveIdleMs,
+  ) {
     let entry = this.activeReceive;
     const last = entry?.segments.at(-1)?.event;
     const elapsed = last
@@ -288,11 +310,13 @@ export class ReceiveHistoryBuffer {
       streamSourceKey(last) !== streamSourceKey(event) ||
       last.configurationRevision !== event.configurationRevision ||
       last.time.clockId !== event.time.clockId ||
+      last.time.precision.source !== event.time.precision.source ||
+      last.time.precision.resolutionNs !== event.time.precision.resolutionNs ||
       last.payload.byteEnd !== event.payload.byteStart ||
       messageChanged ||
       (recordId
         ? recordId !== entry?.id
-        : elapsed < 0n || elapsed > RECEIVE_IDLE_NS)
+        : elapsed < 0n || elapsed > BigInt(this.receiveIdleMs) * 1_000_000n)
     ) {
       entry = {
         kind: "rx",
@@ -305,6 +329,11 @@ export class ReceiveHistoryBuffer {
           ]),
         segments: [],
         size: 0,
+        receiveIdleMs: recordId
+          ? recordedIdleMs
+          : message
+            ? undefined
+            : this.receiveIdleMs,
       };
       this.entries.push(entry);
       this.activeReceive = entry;

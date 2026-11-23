@@ -1,8 +1,8 @@
 use super::{format::*, verify::verify_directory};
-use crate::files::references::{PathGuard, file_identity};
+use crate::files::references::{PathGuard, PendingFile};
 use base64::Engine as _;
 use serial_workbench_core::*;
-use std::{fs::File, io::Write, path::Path};
+use std::{io::Write, path::Path};
 
 #[cfg(test)]
 #[path = "text_export_tests.rs"]
@@ -66,15 +66,8 @@ fn export_bound<T>(
         ));
     }
     scan.bind_files(source)?;
-    let temporary = destination.sibling(std::ffi::OsStr::new(&format!(
-        ".text-pending-{}",
-        uuid::Uuid::new_v4()
-    )))?;
-    let mut pending = PendingExport::new(temporary)?;
-    let output = pending
-        .output
-        .as_mut()
-        .expect("new pending export owns file");
+    let mut pending = PendingFile::new(destination, "text")?;
+    let output = pending.file();
     if format == TextExportFormat::Csv {
         let mut header = CSV_COLUMNS
             .iter()
@@ -181,43 +174,12 @@ fn export_bound<T>(
             write_row(output, format, &tail)?;
         }
     }
-    output.sync_all().map_err(io_error)?;
-    drop(pending.output.take());
-    if fingerprint(source)? != scan.report.source_fingerprint {
-        return Err(changed());
-    }
-    let result = publish(&pending.path, destination)?;
-    pending.published = true;
-    Ok(result)
-}
-
-struct PendingExport {
-    path: PathGuard,
-    output: Option<File>,
-    identity: String,
-    published: bool,
-}
-
-impl PendingExport {
-    fn new(path: PathGuard) -> HostResult<Self> {
-        let output = path.create_file()?;
-        let identity = file_identity(&output)?;
-        Ok(Self {
-            path,
-            output: Some(output),
-            identity,
-            published: false,
-        })
-    }
-}
-
-impl Drop for PendingExport {
-    fn drop(&mut self) {
-        drop(self.output.take());
-        if !self.published {
-            self.path.discard_created_file(&self.identity);
+    pending.publish(destination, |temporary, destination| {
+        if fingerprint(source)? != scan.report.source_fingerprint {
+            return Err(changed());
         }
-    }
+        publish(temporary, destination)
+    })
 }
 
 // 结构字段与外部来源文字使用 JSON，避免表格将设备内容解释为公式。

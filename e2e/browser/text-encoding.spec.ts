@@ -171,6 +171,14 @@ test("auto receive detection handles split GBK data and UTF-16 sends include an 
   await expect(
     page.getByRole("combobox", { name: en["workbench.receiveEncoding"] }),
   ).toHaveText(en["workbench.encodingPending"]);
+  const receiveEncoding = page.getByRole("combobox", {
+    name: en["workbench.receiveEncoding"],
+  });
+  await receiveEncoding.click();
+  await expect(
+    page.getByText("Sample bytes 0 · Insufficient evidence"),
+  ).toBeVisible();
+  await page.keyboard.press("Escape");
   await expect
     .poll(() =>
       page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
@@ -180,9 +188,10 @@ test("auto receive detection handles split GBK data and UTF-16 sends include an 
     "这是串口工作台的中文编码识别测试，我们正在发送接收数据并检查设备连接状态。".repeat(
       5,
     );
+  const bytes = iconv.encode(text, "gbk");
   await page.evaluate(
     (items: unknown[]) => window.workbenchFixture.emitRaw(items),
-    receive(iconv.encode(text, "gbk")),
+    receive(bytes),
   );
   await expect(
     page.getByRole("combobox", { name: en["workbench.receiveEncoding"] }),
@@ -190,6 +199,36 @@ test("auto receive detection handles split GBK data and UTF-16 sends include an 
   await expect(
     page.locator('[data-direction="rx"] .workbench-stream-content'),
   ).toHaveText(text);
+  const subscriptions = await page.evaluate(
+    () => window.workbenchFixture.rawSubscriptions.length,
+  );
+  await choose(page, en["workbench.receiveEncoding"], "Latin-1");
+  await expect(
+    page.locator('[data-direction="rx"] .workbench-stream-content'),
+  ).not.toHaveText(text);
+  await receiveEncoding.click();
+  await expect(
+    page.getByText("Detected candidates", { exact: false }),
+  ).toBeVisible();
+  await expect(
+    page.getByText(`Sample bytes ${bytes.length}`, { exact: true }),
+  ).toBeVisible();
+  const gb18030 = page.getByRole("option", { name: "GB18030", exact: true });
+  await expect(gb18030).toHaveAccessibleDescription(
+    /^Byte distribution \d+\/100$/,
+  );
+  await gb18030.click();
+  await expect(
+    page.locator('[data-direction="rx"] .workbench-stream-content'),
+  ).toHaveText(text);
+  expect(
+    await page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+  ).toBe(subscriptions);
+  await choose(
+    page,
+    en["workbench.receiveEncoding"],
+    en["workbench.encodingAuto"],
+  );
   await page
     .getByRole("button", {
       name: en["workbench.tools.saveCurrentLayout"],

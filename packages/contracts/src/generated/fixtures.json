@@ -4068,6 +4068,119 @@
       }
     },
     {
+      "name": "command-library-group-page-unknown-field",
+      "schema": "CommandLibraryReadParams",
+      "value": {
+        "selection": {
+          "view": "groups"
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "command-library-group-page-missing-selection",
+      "schema": "CommandLibraryReadParams",
+      "value": {}
+    },
+    {
+      "name": "command-library-empty-page-unknown-field",
+      "schema": "CommandLibraryReadResult",
+      "value": {
+        "records": {
+          "groups": [],
+          "view": "groups"
+        },
+        "revision": "0",
+        "unknown": true
+      }
+    },
+    {
+      "name": "command-library-empty-page-missing-records",
+      "schema": "CommandLibraryReadResult",
+      "value": {
+        "revision": "0"
+      }
+    },
+    {
+      "name": "command-library-empty-page-missing-revision",
+      "schema": "CommandLibraryReadResult",
+      "value": {
+        "records": {
+          "groups": [],
+          "view": "groups"
+        }
+      }
+    },
+    {
+      "name": "command-library-revision-unknown-field",
+      "schema": "CommandLibraryRevision",
+      "value": {
+        "revision": "1",
+        "unknown": true
+      }
+    },
+    {
+      "name": "command-library-revision-missing-revision",
+      "schema": "CommandLibraryRevision",
+      "value": {}
+    },
+    {
+      "name": "command-library-file-params-unknown-field",
+      "schema": "CommandLibraryFileParams",
+      "value": {
+        "fileRef": {
+          "hostId": "host",
+          "id": "command-archive",
+          "kind": "file",
+          "revision": "1"
+        },
+        "unknown": true
+      }
+    },
+    {
+      "name": "command-library-file-params-missing-fileRef",
+      "schema": "CommandLibraryFileParams",
+      "value": {}
+    },
+    {
+      "name": "command-library-save-group-unknown-field",
+      "schema": "CommandLibraryChange",
+      "value": {
+        "group": {
+          "id": "bench",
+          "name": "Bench"
+        },
+        "kind": "saveGroup",
+        "unknown": true
+      }
+    },
+    {
+      "name": "command-library-save-group-missing-group",
+      "schema": "CommandLibraryChange",
+      "value": {
+        "kind": "saveGroup"
+      }
+    },
+    {
+      "name": "command-library-save-group-missing-kind",
+      "schema": "CommandLibraryChange",
+      "value": {
+        "group": {
+          "id": "bench",
+          "name": "Bench"
+        }
+      }
+    },
+    {
+      "name": "command-library-move-invalid-group",
+      "schema": "CommandLibraryChange",
+      "value": {
+        "groupId": "",
+        "id": "cmd",
+        "kind": "moveCommand"
+      }
+    },
+    {
       "name": "workspace-list-params-unknown-field",
       "schema": "WorkspaceListParams",
       "value": {
@@ -13087,6 +13200,56 @@
             "kind": "workspace"
           }
         }
+      }
+    },
+    {
+      "name": "command-library-group-page",
+      "schema": "CommandLibraryReadParams",
+      "value": {
+        "selection": {
+          "view": "groups"
+        }
+      }
+    },
+    {
+      "name": "command-library-empty-page",
+      "schema": "CommandLibraryReadResult",
+      "value": {
+        "records": {
+          "groups": [],
+          "view": "groups"
+        },
+        "revision": "0"
+      }
+    },
+    {
+      "name": "command-library-revision",
+      "schema": "CommandLibraryRevision",
+      "value": {
+        "revision": "1"
+      }
+    },
+    {
+      "name": "command-library-file-params",
+      "schema": "CommandLibraryFileParams",
+      "value": {
+        "fileRef": {
+          "hostId": "host",
+          "id": "command-archive",
+          "kind": "file",
+          "revision": "1"
+        }
+      }
+    },
+    {
+      "name": "command-library-save-group",
+      "schema": "CommandLibraryChange",
+      "value": {
+        "group": {
+          "id": "bench",
+          "name": "Bench"
+        },
+        "kind": "saveGroup"
       }
     },
     {

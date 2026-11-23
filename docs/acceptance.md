@@ -290,6 +290,18 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 按[签名运行时](#签名运行时与-sdk)准备资源后，运行 `cargo test --locked -p serial-workbench-host --lib native_node_task_session_hooks_ -- --ignored --nocapture`。签名任务通过 Virtual Echo 核对原代次的打开、实际 RX、最终 TX 回执与关闭，并在回调失败时验证 reader 名额释放。运行 `cargo test --locked -p serial-workbench-host --test session_lifecycle --test stream_budget` 覆盖底层故障、未结算 TX、撤权重授与旧代次的收尾。 `node --test scripts/node-backend-cancellation.test.mjs` 复验迟到页、租约释放及缺口续读。
 
+### 命令库变量与行尾（IO-05、IO-07）
+
+在工作区命令库打开已保存的命令。`${name}` 代入指定值，`$${name}` 保留字面量。变量名区分大小写，以 ASCII 字母或下划线开头，后续可包含 ASCII 字母、数字、下划线、点和连字符。重复变量使用同一个值，替换值中的占位符保持原样。确认有显式空值选项，未赋值和超出草稿字节上限时无法载入草稿。
+
+载入命令后核对发送格式、编码、覆盖行尾及恢复发送行尾的操作。由未绑定草稿连接设备时，确认正文和命令参数一起转入该会话。核对正文先按发送格式编码，接着追加行尾，最后追加校验。按校验设置分别核对计算范围是否包括行尾。对照最终预览与实际 TX，验证载入草稿时 TX 计数保持原值，替换后含非法 HEX 时发送不可用。软件回归使用 `pnpm test:ui e2e/browser/command-library.spec.ts`。实体串口与发行候选按各自阶段验收。
+
+### 命令库归档（IO-07）
+
+从桌面命令库导出 `.swb-commands.jsonl`，再导入另一个工作区，核对分组、顺序、正文、备注、编码和行尾。目标已有相同 ID 时，确认原命令仍能读取，导入副本位于自己的分组。取消文件选择后复查命令库 revision。用截断文件、已存在的导出路径和过期 revision 核对失败。用满盘夹具复查导入事务回滚，原有记录和 revision 仍可读取。
+
+运行 `cargo test --locked -p serial-workbench-host --test shared_documents_host command_archives` 核对真实 IPC 和落盘。存储用例 `cargo test --locked -p serial-workbench-host --lib command_archive` 对照跨页顺序和失败回滚。`pnpm test:ui e2e/browser/command-library.spec.ts` 使用无头浏览器核对选择、取消和终态刷新。Windows 原生桌面门禁使用同一应用窗口的打开与保存对话框，核对导入后列表、导出归档的正文、备注、编码和行尾。保存路径的写入授权可读取导出终态，读取归档正文仍需独立文件授权。该作业保留 `command-archive-roundtrip.json`，记录对话框归属、焦点归还、归档 revision、文件字节数和摘要。
+
 ### 发送草稿转义（IO-03）
 
 在文本草稿使用“将转义转为 HEX”展开 `\r`、`\n`、`\t`、`\0`、`\xNN`、独立的 `0xNN`、`\h(4F 4B)` 和 `<CR>`、`<LF>`。普通正文沿用选定发送编码，转义生成的字节直接保留，正文空白和另选行尾分别处理。核对草稿保留与选区、保存大小边界、转换后的预览和随后独立发送的字节。转换沿用现有草稿登记。

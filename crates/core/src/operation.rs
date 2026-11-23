@@ -100,6 +100,7 @@ pub enum ActionResult {
     FileTransfer(FileTransferResult),
     Settings(SettingsDocumentResult),
     Workspace(WorkspaceDocumentResult),
+    CommandLibraryRevision(CommandLibraryRevision),
     ShutdownRequested(ShutdownRequested),
     Opened(OpenResult),
     ToolHandoff(ToolHandoffResult),

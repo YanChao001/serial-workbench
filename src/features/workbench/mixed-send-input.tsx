@@ -12,7 +12,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import { Textarea } from "@/components/ui/textarea";
+import { SendDraftEditor } from "./send-draft-editor";
 import { CLIENT_DRAFT_MAX_BYTES } from "@/lib/client-settings";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import type { WorkbenchLabels } from "./labels";
@@ -91,15 +91,22 @@ export function MixedSendInput({
           <DialogTitle>{labels.mixedSendInput}</DialogTitle>
           <DialogDescription>{labels.mixedSendSyntax}</DialogDescription>
         </DialogHeader>
-        <Textarea
+        <SendDraftEditor
           ref={input}
+          grammar="mixed"
+          editLabels={{
+            indent: labels.draftIndent,
+            outdent: labels.draftOutdent,
+            comment: labels.draftBlockComment,
+            invalidComment: labels.draftCommentRange,
+          }}
           aria-label={labels.mixedSendInput}
           aria-invalid={!!preview.message}
           aria-describedby={preview.message ? `${id}-error` : undefined}
           maxLength={CLIENT_DRAFT_MAX_BYTES}
           value={source}
           spellCheck={false}
-          onChange={(event) => setSource(event.currentTarget.value)}
+          onValueChange={setSource}
         />
         <div>
           <p className="text-sm">{labels.mixedSendPreview}</p>

@@ -17,16 +17,19 @@ pub enum FileResourceRole {
     CaptureSource,
     ExportCsvTarget,
     ExportJsonlTarget,
+    CommandArchiveSource,
+    CommandArchiveTarget,
 }
 
 impl FileResourceRole {
     fn purpose(self) -> FilePurpose {
         match self {
-            Self::CaptureTarget | Self::ExportCsvTarget | Self::ExportJsonlTarget => {
-                FilePurpose::CaptureTarget
-            }
+            Self::CaptureTarget
+            | Self::ExportCsvTarget
+            | Self::ExportJsonlTarget
+            | Self::CommandArchiveTarget => FilePurpose::CaptureTarget,
             Self::CaptureSource => FilePurpose::CaptureSource,
-            Self::Source | Self::Media => FilePurpose::ReadFile,
+            Self::Source | Self::Media | Self::CommandArchiveSource => FilePurpose::ReadFile,
         }
     }
 }
@@ -555,6 +558,13 @@ pub async fn choose_file_resource(
                         .add_filter("JSONL", &["jsonl"])
                         .set_file_name("capture.jsonl")
                         .blocking_save_file(),
+                    FileResourceRole::CommandArchiveSource => dialog
+                        .add_filter("Command library archive", &["jsonl"])
+                        .blocking_pick_file(),
+                    FileResourceRole::CommandArchiveTarget => dialog
+                        .add_filter("Command library archive", &["jsonl"])
+                        .set_file_name("command-library.swb-commands.jsonl")
+                        .blocking_save_file(),
                     FileResourceRole::CaptureSource => dialog.blocking_pick_folder(),
                 };
                 selected
@@ -994,11 +1004,16 @@ mod tests {
             FileResourceRole::CaptureTarget,
             FileResourceRole::ExportCsvTarget,
             FileResourceRole::ExportJsonlTarget,
+            FileResourceRole::CommandArchiveSource,
+            FileResourceRole::CommandArchiveTarget,
         ] {
             let chosen_path = match role {
                 FileResourceRole::CaptureTarget => directory.path().join("capture.swb"),
                 FileResourceRole::ExportCsvTarget => directory.path().join("capture.csv"),
                 FileResourceRole::ExportJsonlTarget => directory.path().join("capture.jsonl"),
+                FileResourceRole::CommandArchiveTarget => {
+                    directory.path().join("commands.swb-commands.jsonl")
+                }
                 _ => path.clone(),
             };
             let selected =
@@ -1073,6 +1088,8 @@ mod tests {
                 (true, false),
                 (false, true),
                 (false, true),
+                (false, true),
+                (true, false),
                 (false, true)
             ]
         );

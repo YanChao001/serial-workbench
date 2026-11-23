@@ -95,6 +95,8 @@ export type WorkbenchFixture = {
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
+  savedTextExports: { name: string; content: string }[];
+  openedExternalLinks: string[];
   connectCalls: string[];
   connectRequests: { deviceId: string; params: unknown }[];
   windowWorkNames: string[];
@@ -778,6 +780,8 @@ export async function seedWorkbenchFixture(
       invocations: [],
       clientStateReads: 0,
       sentBytes: [],
+      savedTextExports: [],
+      openedExternalLinks: [],
       connectCalls: [],
       connectRequests: [],
       windowWorkNames: [],
@@ -916,6 +920,17 @@ export async function seedWorkbenchFixture(
             case "complete_frontend_startup":
             case "save_workspace_route":
               return null;
+            case "save_text_export":
+              if (
+                typeof args.name !== "string" ||
+                typeof args.content !== "string"
+              )
+                throw new Error("Invalid text export arguments");
+              fixture.savedTextExports.push({
+                name: args.name,
+                content: args.content,
+              });
+              return args.name;
             case "set_window_work_state":
               fixture.windowWorkNames = Array.isArray(args.names)
                 ? args.names.filter(
@@ -1003,6 +1018,9 @@ export async function seedWorkbenchFixture(
             }
             case "plugin:clipboard-manager|write_text":
               fixture.copiedLanInfo.push(String(args.text));
+              return null;
+            case "plugin:opener|open_url":
+              fixture.openedExternalLinks.push(String(args.url));
               return null;
             case "host_lan_access": {
               if (args.generation !== hostAttachment.generation)

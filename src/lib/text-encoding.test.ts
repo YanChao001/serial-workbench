@@ -142,19 +142,44 @@ it("keeps Latin-1 C1 bytes distinct from Windows-1252 and rejects high bytes in 
   expect(receiveEncodingFor(undefined)).toBe("utf-8");
 });
 it("detects BOM, valid UTF-8, Chinese GB18030, and reports ASCII as still ambiguous", () => {
-  expect(detectTextEncoding("\u00FF\u00FEA\0").encoding).toBe("utf-16le");
-  expect(detectTextEncoding("AT\r\n").reason).toBe("pending");
+  expect(detectTextEncoding("\u00FF\u00FEA\0")).toMatchObject({
+    encoding: "utf-16le",
+    sampleBytes: 4,
+    candidates: [{ encoding: "utf-16le", reason: "bom" }],
+  });
+  expect(detectTextEncoding("AT\r\n")).toMatchObject({
+    reason: "pending",
+    sampleBytes: 4,
+    candidates: [],
+  });
   const utf8 = new TextEncoder().encode("中文测试");
-  expect(detectTextEncoding(String.fromCharCode(...utf8)).encoding).toBe(
-    "utf-8",
-  );
+  const utf8Detection = detectTextEncoding(String.fromCharCode(...utf8));
+  expect(utf8Detection).toMatchObject({
+    encoding: "utf-8",
+    sampleBytes: utf8.length,
+  });
+  expect(utf8Detection.candidates[0]).toMatchObject({
+    encoding: "utf-8",
+    reason: "utf8",
+  });
   const chinese = encodeText(
     "这是串口工作台的中文编码识别测试，我们正在发送接收数据并检查设备连接状态。".repeat(
       5,
     ),
     "gbk",
   );
-  expect(detectTextEncoding(String.fromCharCode(...chinese)).encoding).toBe(
-    "gb18030",
-  );
+  const detected = detectTextEncoding(String.fromCharCode(...chinese));
+  expect(detected).toMatchObject({
+    encoding: "gb18030",
+    reason: "guess",
+    sampleBytes: chinese.length,
+  });
+  expect(detected.candidates[0]).toMatchObject({
+    encoding: "gb18030",
+    reason: "guess",
+  });
+  expect(
+    new Set(detected.candidates.map((candidate) => candidate.encoding)).size,
+  ).toBe(detected.candidates.length);
+  expect(detected.candidates.length).toBeLessThanOrEqual(4);
 });

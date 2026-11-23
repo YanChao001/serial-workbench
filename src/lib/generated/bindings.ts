@@ -119,6 +119,10 @@ export const commands = {
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_document_intent", { generation, intent }),
     ),
+  hostOpenCommandLibrary: (generation: U64, workspaceId: Id) =>
+    typedError<CommandLibraryReadResult_Serialize, HostError_Serialize>(
+      __TAURI_INVOKE("host_open_command_library", { generation, workspaceId }),
+    ),
   hostApplyNodeIntent: (generation: U64, intent: LocalNodeIntent_Deserialize) =>
     typedError<Operation_Serialize, HostError_Serialize>(
       __TAURI_INVOKE("host_apply_node_intent", { generation, intent }),
@@ -332,6 +336,7 @@ export type ActionResult_Deserialize =
   | { kind: "file_transfer"; value: FileTransferResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
+  | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Deserialize }
   | { kind: "tool_handoff"; value: ToolHandoffResult_Deserialize }
@@ -362,6 +367,7 @@ export type ActionResult_Serialize =
   | { kind: "file_transfer"; value: FileTransferResult_Serialize }
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
+  | { kind: "command_library_revision"; value: CommandLibraryRevision }
   | { kind: "shutdown_requested"; value: ShutdownRequested }
   | { kind: "opened"; value: OpenResult_Serialize }
   | { kind: "tool_handoff"; value: ToolHandoffResult_Serialize }
@@ -1137,6 +1143,7 @@ export type ClientPreferences_Deserialize = {
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   receiveHistory?: ReceiveHistory;
+  ansiScrollbackLines?: number;
   shortcutOverrides?: { [key in string]: ShortcutBinding };
 };
 
@@ -1146,6 +1153,7 @@ export type ClientPreferences_Serialize = {
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   receiveHistory?: ReceiveHistory;
+  ansiScrollbackLines?: number;
   shortcutOverrides?: { [key in string]: ShortcutBinding };
 };
 
@@ -1387,6 +1395,162 @@ export type ClientWindowState_Serialize = {
 
 export type ClosedResult = {
   closed: true;
+};
+
+export type CommandDraft = CommandDraft_Serialize | CommandDraft_Deserialize;
+
+export type CommandDraft_Deserialize = {
+  summary: CommandSummary;
+  body: string;
+  mode: TerminalMode;
+  encoding: TextEncoding;
+  lineEnding?: LineEnding | null;
+};
+
+export type CommandDraft_Serialize = {
+  summary: CommandSummary;
+  body: string;
+  mode: TerminalMode;
+  encoding: TextEncoding;
+  lineEnding?: LineEnding | null;
+};
+
+export type CommandGroup = {
+  id: Id;
+  name: string;
+};
+
+export type CommandLibraryChange =
+  CommandLibraryChange_Serialize | CommandLibraryChange_Deserialize;
+
+export type CommandLibraryChange_Deserialize =
+  | ({ kind: "saveGroup"; group: CommandGroup } & {
+      before?: never;
+      command?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "deleteGroup"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    })
+  | ({ kind: "saveCommand"; command: CommandDraft_Deserialize } & {
+      before?: never;
+      group?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "moveCommand"; id: Id; groupId: Id; before?: Id | null } & {
+      command?: never;
+      group?: never;
+    })
+  | ({ kind: "deleteCommand"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    });
+
+export type CommandLibraryChange_Serialize =
+  | ({ kind: "saveGroup"; group: CommandGroup } & {
+      before?: never;
+      command?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "deleteGroup"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    })
+  | ({ kind: "saveCommand"; command: CommandDraft_Serialize } & {
+      before?: never;
+      group?: never;
+      groupId?: never;
+      id?: never;
+    })
+  | ({ kind: "moveCommand"; id: Id; groupId: Id; before?: Id | null } & {
+      command?: never;
+      group?: never;
+    })
+  | ({ kind: "deleteCommand"; id: Id } & {
+      before?: never;
+      command?: never;
+      group?: never;
+      groupId?: never;
+    });
+
+export type CommandLibraryFileParams =
+  CommandLibraryFileParams_Serialize | CommandLibraryFileParams_Deserialize;
+
+export type CommandLibraryFileParams_Deserialize = {
+  fileRef: ObjectRef_Deserialize;
+};
+
+export type CommandLibraryFileParams_Serialize = {
+  fileRef: ObjectRef_Serialize;
+};
+
+export type CommandLibraryReadResult =
+  CommandLibraryReadResult_Serialize | CommandLibraryReadResult_Deserialize;
+
+export type CommandLibraryReadResult_Deserialize = {
+  revision: U64;
+  records: CommandLibraryRecords_Deserialize;
+};
+
+export type CommandLibraryReadResult_Serialize = {
+  revision: U64;
+  records: CommandLibraryRecords_Serialize;
+};
+
+export type CommandLibraryRecords =
+  CommandLibraryRecords_Serialize | CommandLibraryRecords_Deserialize;
+
+export type CommandLibraryRecords_Deserialize =
+  | ({ view: "groups"; groups: CommandGroup[]; nextCursor?: Id | null } & {
+      command?: never;
+      commands?: never;
+    })
+  | ({
+      view: "commands";
+      commands: CommandSummary[];
+      nextCursor?: Id | null;
+    } & { command?: never; groups?: never })
+  | ({ view: "entry"; command: CommandDraft_Deserialize } & {
+      commands?: never;
+      groups?: never;
+      nextCursor?: never;
+    });
+
+export type CommandLibraryRecords_Serialize =
+  | ({ view: "groups"; groups: CommandGroup[]; nextCursor?: Id | null } & {
+      command?: never;
+      commands?: never;
+    })
+  | ({
+      view: "commands";
+      commands: CommandSummary[];
+      nextCursor?: Id | null;
+    } & { command?: never; groups?: never })
+  | ({ view: "entry"; command: CommandDraft_Serialize } & {
+      commands?: never;
+      groups?: never;
+      nextCursor?: never;
+    });
+
+export type CommandLibraryRevision = {
+  revision: U64;
+};
+
+export type CommandSummary = {
+  id: Id;
+  groupId: Id;
+  name: string;
+  note: string;
 };
 
 export type ConfigField = ConfigField_Serialize | ConfigField_Deserialize;
@@ -1844,7 +2008,9 @@ export type FileResourceRole =
   | "captureTarget"
   | "captureSource"
   | "exportCsvTarget"
-  | "exportJsonlTarget";
+  | "exportJsonlTarget"
+  | "commandArchiveSource"
+  | "commandArchiveTarget";
 
 export type FileTransferParams =
   FileTransferParams_Serialize | FileTransferParams_Deserialize;
@@ -3112,6 +3278,18 @@ export type LocalDocumentIntent_Deserialize =
       params: WorkspaceSaveParams_Deserialize;
     }
   | {
+      kind: "commandLibraryChange";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryChange_Deserialize;
+    }
+  | {
+      kind: "commandLibraryImport";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryFileParams_Deserialize;
+    }
+  | {
       kind: "favoritesSave";
       workspaceId: Id;
       expectedRevision: U64;
@@ -3135,6 +3313,18 @@ export type LocalDocumentIntent_Serialize =
       workspaceId: Id;
       expectedRevision: U64;
       params: WorkspaceSaveParams_Serialize;
+    }
+  | {
+      kind: "commandLibraryChange";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryChange_Serialize;
+    }
+  | {
+      kind: "commandLibraryImport";
+      workspaceId: Id;
+      expectedRevision: U64;
+      params: CommandLibraryFileParams_Serialize;
     }
   | {
       kind: "favoritesSave";
@@ -3910,6 +4100,7 @@ export type QueryResult_Deserialize =
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Deserialize }
   | { kind: "workspaces"; value: WorkspaceListResult_Deserialize }
+  | { kind: "command_library"; value: CommandLibraryReadResult_Deserialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Deserialize }
   | { kind: "stream_derived_read"; value: DerivedReadResult_Deserialize }
@@ -3956,6 +4147,7 @@ export type QueryResult_Serialize =
   | { kind: "settings"; value: SettingsDocumentResult_Serialize }
   | { kind: "workspace"; value: WorkspaceDocumentResult_Serialize }
   | { kind: "workspaces"; value: WorkspaceListResult_Serialize }
+  | { kind: "command_library"; value: CommandLibraryReadResult_Serialize }
   | { kind: "document_json"; value: DocumentJsonResult }
   | { kind: "stream_read"; value: StreamReadResult_Serialize }
   | { kind: "stream_derived_read"; value: DerivedReadResult_Serialize }

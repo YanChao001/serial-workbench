@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { HostConnection } from "@/lib/host-client";
+import type { ReceiveIdleMs } from "@/lib/receive-history";
 import type { FileResourceRole, SelectedFileResource } from "@/lib/tauri";
 import type {
   Call,
@@ -8,6 +9,9 @@ import type {
   ActionSpec,
   ActivitySummary,
   BrowserTakeoverRequest,
+  CommandLibraryChange,
+  CommandLibraryReadParams,
+  CommandLibraryReadResult,
   CaptureRecord,
   CaptureStatusResult,
   CaptureTailResult,
@@ -50,6 +54,7 @@ export type HostStreamView = {
   items: readonly import("@/lib/receive-history").HistoryStreamItem[];
   error: Error | null;
   trimmed: boolean;
+  receiveIdleMs?: ReceiveIdleMs;
   removed?: import("@/lib/receive-history").HistoryPosition;
 };
 export type HostActionCheckInput = ActionCheckParams & { target: Target };
@@ -74,7 +79,39 @@ export type HostState = {
   streams: ReadonlyMap<string, HostStreamView>;
   workspace?: WorkspaceDocumentResult;
 };
+export type CommandLibraryAccess = {
+  owner: string;
+  files?: {
+    importArchive(
+      workspaceId: string,
+      revision: string,
+      signal: AbortSignal,
+    ): Promise<boolean>;
+    exportArchive(
+      workspaceId: string,
+      revision: string,
+      signal: AbortSignal,
+    ): Promise<boolean>;
+  };
+  open(
+    workspaceId: string,
+    signal: AbortSignal,
+  ): Promise<CommandLibraryReadResult>;
+  read(
+    workspaceId: string,
+    params: CommandLibraryReadParams,
+    signal: AbortSignal,
+  ): Promise<CommandLibraryReadResult>;
+  change?(
+    workspaceId: string,
+    revision: string,
+    change: CommandLibraryChange,
+    signal: AbortSignal,
+  ): Promise<string>;
+};
+
 export type HostContextValue = {
+  commandLibrary?: CommandLibraryAccess;
   state: HostState;
   connection?: HostConnection;
   refresh(options?: { enumerateDevices?: boolean }): Promise<void>;
@@ -193,6 +230,11 @@ export type HostContextValue = {
   decideBrowserTakeover?(id: string, approve: boolean): Promise<void>;
   invoke(input: HostInvocation, signal?: AbortSignal): Promise<Operation>;
   watchSession(sessionId: string, listener: () => void): () => void;
+  setReceiveIdleMs?(
+    sessionId: string,
+    sessionEpoch: string,
+    value: ReceiveIdleMs,
+  ): void;
 };
 export const HostContext = createContext<HostContextValue | null>(null);
 export function useHost(): HostContextValue {

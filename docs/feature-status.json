@@ -636,7 +636,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -669,7 +669,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -744,7 +744,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -812,7 +812,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -829,7 +829,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -846,7 +846,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -884,7 +884,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -901,7 +901,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -918,7 +918,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -935,8 +935,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -952,8 +952,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -969,8 +969,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -1024,7 +1024,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1130,8 +1130,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -1253,7 +1253,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1270,7 +1270,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1328,8 +1328,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
-        "evidence": []
+        "status": "in-progress",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -1345,7 +1345,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1379,7 +1379,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1456,7 +1456,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1473,7 +1473,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1562,7 +1562,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1639,7 +1639,7 @@
       "scopeNote": "",
       "software": {
         "status": "in-progress",
-        "evidence": []
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",
@@ -1737,7 +1737,8 @@
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/38",
           "https://github.com/YanChao001/serial-workbench/pull/40",
-          "https://github.com/YanChao001/serial-workbench/pull/42"
+          "https://github.com/YanChao001/serial-workbench/pull/42",
+          "https://github.com/YanChao001/serial-workbench/pull/59"
         ]
       },
       "hardware": {
@@ -3412,7 +3413,8 @@
           "https://github.com/YanChao001/serial-workbench/pull/42",
           "https://github.com/YanChao001/serial-workbench/pull/47",
           "https://github.com/YanChao001/serial-workbench/pull/49",
-          "https://github.com/YanChao001/serial-workbench/pull/50"
+          "https://github.com/YanChao001/serial-workbench/pull/50",
+          "https://github.com/YanChao001/serial-workbench/pull/59"
         ]
       },
       "hardware": {
@@ -3797,10 +3799,11 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
+        "status": "passed",
         "evidence": [
           "https://github.com/YanChao001/serial-workbench/pull/38",
-          "https://github.com/YanChao001/serial-workbench/pull/40"
+          "https://github.com/YanChao001/serial-workbench/pull/40",
+          "https://github.com/YanChao001/serial-workbench/pull/59"
         ]
       },
       "hardware": {
@@ -3817,8 +3820,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/59"]
       },
       "hardware": {
         "status": "not-started",

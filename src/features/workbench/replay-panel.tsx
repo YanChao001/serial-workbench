@@ -1,3 +1,4 @@
+import type { StreamHighlightRule } from "./stream-highlight";
 import type {
   CaptureRecord,
   ReplayControlParams,
@@ -66,6 +67,8 @@ export type ReplayPanelProps = {
   labels: WorkbenchLabels;
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
+  highlightRules?: readonly StreamHighlightRule[];
+  onHighlightRulesChange?: (rules: StreamHighlightRule[]) => void;
 };
 export function ReplayPanel({
   session,
@@ -77,6 +80,8 @@ export function ReplayPanel({
   labels,
   terminalSettings,
   presentationLabels,
+  highlightRules,
+  onHighlightRulesChange,
 }: ReplayPanelProps) {
   const [page, setPage] = useState<ReplayReadResult>();
   const [expanded, setExpanded] = useState<Record<string, CaptureRecord>>({});
@@ -504,6 +509,8 @@ export function ReplayPanel({
         labels={labels}
         terminalSettings={terminalSettings}
         presentationLabels={presentationLabels}
+        highlightRules={highlightRules}
+        onHighlightRulesChange={onHighlightRulesChange}
       />
     </section>
   );
