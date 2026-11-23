@@ -46,6 +46,120 @@ function packets(
   });
 }
 
+test("folds long receive messages until requested and shows only one bounded page", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
+  await page.goto("./#/");
+  await page.getByRole("button", { name: "Open Virtual serial" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+  const fixture = workbenchStreamItems().find(
+    (item) => item.kind === "source" && item.event.kind === "rx",
+  );
+  if (fixture?.kind !== "source") throw new Error("Missing RX fixture");
+  const offset = 9_007_199_254_741_067n;
+  const first = Buffer.alloc(65536, 65);
+  first[first.length - 1] = 0xe4;
+  const tail = Buffer.concat([
+    Buffer.from([0xb8, 0xad]),
+    Buffer.from("LONG-TAIL"),
+  ]);
+  const total = first.length + tail.length;
+  const events = [first, tail].map((bytes, index) => {
+    const start = index === 0 ? 0 : first.length;
+    return {
+      kind: "source",
+      event: {
+        ...fixture.event,
+        eventSeq: String(Number(fixture.event.eventSeq) + index),
+        time: {
+          ...fixture.event.time,
+          sourceMonoNs: String(index * 200_000_000 + 1),
+        },
+        payload: {
+          bytesBase64: bytes.toString("base64"),
+          byteStart: String(offset + BigInt(start)),
+          byteEnd: String(offset + BigInt(start + bytes.length)),
+          message: {
+            messageId: "long-capture-record",
+            messageType: "fixture",
+            fragmentOffset: String(start),
+            messageLength: String(total + 5),
+          },
+        },
+      },
+    };
+  });
+  await page.evaluate(
+    (items) => window.workbenchFixture.emitRaw(items),
+    events,
+  );
+  const terminal = page.getByRole("region", { name: "Receive", exact: true });
+  const log = terminal.getByRole("log");
+  const detail = log.locator(".workbench-long-record");
+  await expect(detail).toHaveCount(1);
+  const summary = detail.locator("summary");
+  await expect(summary).toContainText(total + "/" + (total + 5) + " B");
+  await expect(summary).toContainText("fixture");
+  await expect(summary).toContainText("Partial data");
+  await expect(detail.locator("pre")).toHaveCount(0);
+
+  await summary.press("Enter");
+  await expect(detail.getByRole("status")).toContainText("1/2");
+  expect((await detail.locator("pre").textContent())?.length).toBe(65535);
+  await detail.getByRole("button", { name: "Next record page" }).click();
+  await expect(detail.getByRole("status")).toContainText(
+    String(offset + 65536n),
+  );
+  await expect(detail.getByRole("status")).toContainText("2/2");
+  await expect(detail.locator("pre")).toHaveText("中LONG-TAIL");
+  await expect(
+    detail.getByRole("button", { name: "Next record page" }),
+  ).toBeDisabled();
+
+  await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
+  const hex = detail.locator("pre");
+  await expect(hex).toContainText("B8 AD 4C 4F 4E 47");
+  const selectStarter = () =>
+    hex.evaluate((entry) => {
+      const node = entry.firstChild;
+      if (!node) throw new Error("Missing long record HEX page");
+      document.getSelection()?.setBaseAndExtent(node, 0, node, 5);
+    });
+  await selectStarter();
+  await terminal.getByRole("button", { name: "Inspect number" }).click();
+  const inspector = page.getByRole("dialog", { name: "Inspect number" });
+  await expect(inspector).toContainText("B8AD");
+  await expect(inspector).toContainText(
+    "Byte offset " + String(offset + 65536n),
+  );
+  await page.keyboard.press("Escape");
+
+  await selectStarter();
+  await terminal.getByRole("button", { name: "Copy byte selection" }).click();
+  const copy = page.getByRole("dialog", { name: "Copy byte selection" });
+  await choose(page, "Copy format", "HEX");
+  await copy.getByRole("button", { name: "Copy", exact: true }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.copiedLanInfo.at(-1)),
+    )
+    .toBe("B8 AD");
+  await page.keyboard.press("Escape");
+
+  await summary.click();
+  await expect(detail.locator("pre")).toHaveCount(0);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.rawSubscriptions.length),
+    )
+    .toBe(1);
+});
+
 test("numbers display records and restores an exact copied event through filtering and eviction", async ({
   page,
 }) => {
@@ -998,16 +1112,19 @@ test("a fragmented continuous burst stays complete below the data budget and cle
       Array.from({ length: 100 }, (_, offset) => fragment(index + offset)),
     );
   const log = page.getByRole("log");
-  await expect
-    .poll(() =>
-      log.evaluate(
-        (element) =>
-          Array.from(element.querySelectorAll(".workbench-payload"))
-            .map((item) => item.textContent)
-            .join("") === "0123456789abcdef".repeat(5000),
-      ),
-    )
-    .toBe(true);
+  const detail = log.locator(".workbench-long-record");
+  await expect(detail.locator("summary")).toContainText("80000 B");
+  await expect(detail.locator("pre")).toHaveCount(0);
+  await detail.locator("summary").click();
+  await expect(detail.getByRole("status")).toContainText("1/2");
+  const firstPage = await detail.locator("pre").textContent();
+  expect(firstPage).toHaveLength(65536);
+  await detail.getByRole("button", { name: "Next record page" }).click();
+  await expect(detail.getByRole("status")).toContainText("2/2");
+  const secondPage = await detail.locator("pre").textContent();
+  expect((firstPage ?? "") + (secondPage ?? "")).toBe(
+    "0123456789abcdef".repeat(5000),
+  );
   await expect(log.locator('[data-direction="rx"]')).toHaveCount(1);
   await expect(
     page.getByText(en["workbench.historyTrimmed"], { exact: true }),

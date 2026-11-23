@@ -959,3 +959,37 @@ it.each([false, true])(
     ).toBe(!released);
   },
 );
+
+it("keeps a long TX count and backend error visible before payload expansion", () => {
+  const source = txItem("tx");
+  if (source.kind !== "source" || source.event.kind !== "tx")
+    throw new Error("Missing TX fixture");
+  const item: StreamItem = {
+    kind: "source",
+    event: {
+      ...source.event,
+      payload: {
+        ...source.event.payload,
+        bytesBase64: btoa("A".repeat(65_537)),
+        byteEnd: "65537",
+        outcome: "partial",
+        acceptedRanges: [{ start: "0", end: "123" }],
+        backendError: {
+          code: "IO_ERROR",
+          message: "Fixture write failed",
+          retryable: false,
+        },
+      },
+    },
+  };
+  render(<StreamView items={[item]} labels={labels} />);
+  const summary = screen
+    .getByRole("log")
+    .querySelector(".workbench-long-record summary");
+  expect(summary).toHaveTextContent("65537 B");
+  expect(summary).toHaveTextContent(labels.partial);
+  expect(summary).toHaveTextContent("IO_ERROR");
+  expect(
+    screen.getByRole("log").querySelector(".workbench-long-record-page"),
+  ).toBeNull();
+});

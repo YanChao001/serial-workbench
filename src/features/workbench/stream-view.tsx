@@ -98,6 +98,11 @@ import {
   type StreamHexSelection,
 } from "./stream-hex-selection";
 import { StreamCopyPopover } from "./stream-copy-popover";
+import {
+  collectLongStreamRecords,
+  visibleLongRecordPages,
+} from "./stream-long-record";
+import { LongStreamRecordView } from "./stream-long-record-view";
 import { readStreamCopySample } from "./stream-copy";
 import { StreamNumberInspector } from "./stream-number-inspector";
 import { streamNumberSample, type StreamNumberSample } from "./stream-number";
@@ -379,6 +384,10 @@ export function StreamView({
       ),
     [displayed, projected],
   );
+  const longRecords = useMemo(
+    () => collectLongStreamRecords(projected, displayed),
+    [projected, displayed],
+  );
   const rows = useMemo(() => {
     let decoder = createTextDecoder(receiveCodec);
     let txDecoder = createTextDecoder(sendCodec);
@@ -432,12 +441,15 @@ export function StreamView({
         previousEnd = event.payload.byteEnd;
         previousSource = source;
         const bytes = decodeBytes(event.payload.bytesBase64);
+        const longRecord = longRecords.get(itemIndex);
+        const text = decoder.decode(bytes, { stream: true });
         return {
           itemIndex,
           displayIndex,
           kind: "rx",
-          text: decoder.decode(bytes, { stream: true }),
-          hex: mode === "text" ? undefined : formatHex(bytes),
+          longRecord,
+          text: longRecord ? "" : text,
+          hex: longRecord || mode === "text" ? undefined : formatHex(bytes),
           hexSource: JSON.stringify([source, event.eventSeq]),
           hexLane:
             mode === "text"
@@ -467,12 +479,15 @@ export function StreamView({
         previousTxEnd = event.payload.byteEnd;
         previousTxSource = source;
         const bytes = decodeBytes(event.payload.bytesBase64);
+        const longRecord = longRecords.get(itemIndex);
+        const text = txDecoder.decode(bytes, { stream: true });
         return {
           itemIndex,
           displayIndex,
           kind: "tx",
-          text: txDecoder.decode(bytes, { stream: true }),
-          hex: mode === "text" ? undefined : formatHex(bytes),
+          longRecord,
+          text: longRecord ? "" : text,
+          hex: longRecord || mode === "text" ? undefined : formatHex(bytes),
           hexSource: JSON.stringify([source, event.eventSeq]),
           hexLane:
             mode === "text"
@@ -518,15 +533,19 @@ export function StreamView({
     for (const row of decoded) {
       const previous = joined.at(-1);
       // 连续段共享记录边界，单个渲染块仍有界。
-      if (
+      const sameLongRecord =
+        row.longRecord && row.longRecord === previous?.longRecord;
+      const joinInline =
+        !row.longRecord &&
+        !previous?.longRecord &&
         (mode === "text" || !!row.recordId) &&
         row.kind === "rx" &&
         previous?.kind === "rx" &&
         row.source === previous.source &&
         row.offset === previous.byteEnd &&
         row.recordId === previous.recordId &&
-        BigInt(row.byteEnd!) - BigInt(previous.offset!) <= 131072n
-      ) {
+        BigInt(row.byteEnd!) - BigInt(previous.offset!) <= 131072n;
+      if (previous && (sameLongRecord || joinInline)) {
         previous.text += row.text;
         if (row.hex) previous.hex = `${previous.hex} ${row.hex}`;
         previous.byteEnd = row.byteEnd;
@@ -545,7 +564,16 @@ export function StreamView({
         return { ...row, continuation, continues, recordStart };
       })
       .filter((row) => replay || row.kind !== "configuration_boundary");
-  }, [projected, displayed, mode, receiveCodec, sendCodec, labels, replay]);
+  }, [
+    projected,
+    displayed,
+    mode,
+    receiveCodec,
+    sendCodec,
+    labels,
+    replay,
+    longRecords,
+  ]);
   const locations = useMemo(
     () =>
       showRecordNumbers || locationOpen
@@ -890,7 +918,18 @@ export function StreamView({
             style={terminalTypographyStyle(terminalSettings?.typography)}
             hidden={row.kind === "tx" && !showTransmitEcho}
           >
-            {row.kind === "rx" || row.kind === "tx" ? (
+            {row.longRecord ? (
+              <LongStreamRecordView
+                key={row.longRecord.key}
+                record={row.longRecord}
+                labels={labels}
+                mode={mode}
+                encoding={row.kind === "tx" ? sendCodec : receiveCodec}
+                hexFormat={hexFormat}
+                hexSource={row.hexSource}
+                receipt={row.kind === "tx" ? row.receipt : undefined}
+              />
+            ) : row.kind === "rx" || row.kind === "tx" ? (
               <>
                 <span
                   className={mode === "hex" ? "sr-only" : "workbench-payload"}
@@ -943,6 +982,8 @@ export function StreamView({
       wrapReceiveText,
       showTransmitEcho,
       hexFormat,
+      receiveCodec,
+      sendCodec,
     ],
   );
   return (
@@ -1054,7 +1095,11 @@ export function StreamView({
               readStreamHexSelection(viewport.current, hexFormat)
             }
             readSample={(selection) =>
-              readStreamCopySample(visibleRows, projected, selection)
+              readStreamCopySample(
+                visibleLongRecordPages(visibleRows, viewport.current),
+                projected,
+                selection,
+              )
             }
             receiveEncoding={receiveCodec}
             sendEncoding={sendCodec}
@@ -1074,7 +1119,10 @@ export function StreamView({
               pendingNumberSelection.current = undefined;
               setNumberSample(
                 selected
-                  ? streamNumberSample(visibleRows, selected)
+                  ? streamNumberSample(
+                      visibleLongRecordPages(visibleRows, viewport.current),
+                      selected,
+                    )
                   : undefined,
               );
             }}

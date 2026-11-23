@@ -452,6 +452,31 @@
 .workbench-payload[data-hex-source] {
   font-variant-ligatures: none;
 }
+.workbench-long-record summary {
+  font-size: var(--text-xs);
+  color: var(--muted-foreground);
+}
+.workbench-long-record-page {
+  margin-block-start: 0.25rem;
+  display: grid;
+  min-width: 0;
+  gap: 0.5rem;
+}
+.workbench-long-record-navigation {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  font-size: var(--text-xs);
+}
+.workbench-long-record-page pre {
+  margin: 0;
+  font: inherit;
+  max-block-size: 16rem;
+  min-width: 0;
+  overflow: auto;
+  font-variant-ligatures: none;
+}
 .workbench-stream-location {
   grid-column: 2;
   grid-row: 3;

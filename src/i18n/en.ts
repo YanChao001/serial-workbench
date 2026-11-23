@@ -602,6 +602,10 @@ export const en = {
   "workbench.locationEvent": "Event",
   "workbench.locationCopy": "Copy event location",
   "workbench.locationJump": "Jump",
+  "workbench.longRecord": "Long record",
+  "workbench.longRecordPartial": "Partial data",
+  "workbench.longRecordPrevious": "Previous record page",
+  "workbench.longRecordNext": "Next record page",
   "workbench.locationFound": "Located line",
   "workbench.locationInvalid": "Invalid record location",
   "workbench.locationUnavailable":

@@ -198,11 +198,17 @@ test("attached replay keeps fixed receive and send rectangles through large-reco
   await details
     .getByRole("button", { name: "Read replay 0", exact: true })
     .click();
-  await expect(
-    panel.getByRole("log", { name: "Receive", exact: true }),
-  ).toContainText("REPLAY-LAYOUT-CONTENT");
+  const record = panel
+    .getByRole("log", { name: "Receive", exact: true })
+    .locator(".workbench-long-record");
+  await expect(record.locator("summary")).toContainText(
+    String(body.length) + " B",
+  );
+  await expect(record.locator("pre")).toHaveCount(0);
   await page.keyboard.press("Escape");
   await expect(details).toBeHidden();
+  await record.locator("summary").click();
+  await expect(record.locator("pre")).toContainText("REPLAY-LAYOUT-CONTENT");
   expect(await rectangles(page)).toEqual(baseline);
   await expect(panel).not.toContainText(/private-replay-operation|accepted/);
   await page.screenshot({
