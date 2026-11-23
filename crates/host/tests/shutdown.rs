@@ -11,7 +11,10 @@ use serial_workbench_host::{
     ipc::{HostServer, InstanceGuard},
     storage::Store,
 };
-use std::{sync::atomic::Ordering, time::Duration};
+use std::{
+    sync::{Arc, atomic::Ordering},
+    time::Duration,
+};
 use tokio::sync::oneshot;
 
 fn operator(h: &support::Harness) -> AuthenticatedActor {
@@ -418,18 +421,27 @@ struct ClientShutdownFixture {
 
 impl ClientShutdownFixture {
     async fn new(capability: ClientCapability) -> Self {
+        let clock = Arc::new(support::ManualClock(0.into()));
+        Self::with_opener(
+            capability,
+            clock,
+            serial_workbench_host::device::DeviceService::virtual_opener(),
+        )
+        .await
+    }
+
+    async fn with_opener(
+        capability: ClientCapability,
+        clock: Arc<support::ManualClock>,
+        opener: TransportOpener,
+    ) -> Self {
         let profile = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(profile.path()).await.unwrap();
         let store = server.store();
         let auth = server.auth();
-        let host = Host::with_runtime(
-            store.clone(),
-            auth.clone(),
-            std::sync::Arc::new(support::ManualClock(std::sync::atomic::AtomicU64::new(0))),
-            serial_workbench_host::device::DeviceService::virtual_opener(),
-        )
-        .await
-        .unwrap();
+        let host = Host::with_runtime(store.clone(), auth.clone(), clock, opener)
+            .await
+            .unwrap();
         let running_host = host.clone();
         let (stop, done) = oneshot::channel();
         let running = tokio::spawn(async move {
@@ -933,6 +945,145 @@ async fn update_preparation_preserves_capture_until_the_bound_desktop_consents()
     assert_effect_acknowledged(completed);
     let result = f.wait_for_terminal(&second.operation_id).await;
     assert_eq!(result.state, OperationState::Succeeded, "{result:?}");
+    f.finish().await;
+}
+
+#[tokio::test]
+async fn update_preparation_rechecks_grant_after_pending_native_work_settles() {
+    let probe = Arc::new(support::Probe::default());
+    let clock = Arc::new(support::ManualClock(0.into()));
+    let f = ClientShutdownFixture::with_opener(
+        ClientCapability::UpdaterInstall,
+        clock.clone(),
+        support::scripted_opener(probe.clone(), clock),
+    )
+    .await;
+    let device = Target {
+        host_id: f.target.host_id.clone(),
+        kind: ResourceKind::try_from("device").unwrap(),
+        id: support::id("virtual:echo"),
+        session_id: None,
+        session_epoch: None,
+    };
+    let opened = f
+        .host
+        .devices()
+        .open(
+            &device,
+            OpenParams {
+                binding: None,
+                transport_params: None,
+                configuration: SerialConfiguration::default(),
+            },
+        )
+        .await
+        .unwrap();
+    let session = Target {
+        kind: ResourceKind::try_from("session").unwrap(),
+        id: opened.session_id.clone(),
+        session_id: Some(opened.session_id),
+        session_epoch: Some(opened.session_epoch),
+        ..device
+    };
+    let writer_id = support::id("shutdown-writer");
+    let writer = f.auth.authenticate(&writer_id, None).unwrap().actor;
+    f.auth
+        .authorize(
+            &f.control_actor,
+            AuthorizeParams {
+                client_id: writer_id,
+                permissions: vec!["device.modify".into()],
+                targets: vec![session.clone()],
+                expires_at: None,
+            },
+        )
+        .unwrap();
+    let gate = Arc::new(support::Gate::default());
+    probe.steps.lock().unwrap().push_back(support::WriteStep {
+        accepted: 3,
+        unknown: false,
+        gate: Some(gate.clone()),
+        advance_ms: 0,
+    });
+    let mut tx = f.query(
+        ClientCapability::UpdaterInstall,
+        json!({
+            "bytesBase64":"AQID","writeWaitMs":"1000"
+        }),
+    );
+    tx.actor_id = writer.id().clone();
+    tx.action_id = support::id("session.tx");
+    tx.target = session;
+    let write = f
+        .host
+        .invoke(
+            &writer,
+            operation_call(tx, f.store.issue_context(&writer).unwrap().token, None),
+        )
+        .await
+        .unwrap();
+    gate.entered().await;
+
+    let update = invoke_client_operation(
+        &f.caller,
+        f.query(ClientCapability::UpdaterInstall, json!({})),
+        None,
+    )
+    .await;
+    let delivery = f.delivery().await;
+    let preparing = f
+        .executor
+        .request(update_preparation(&delivery, delivery.generation));
+    let revoke = async {
+        support::until(|| {
+            probe
+                .write_cancelled
+                .lock()
+                .unwrap()
+                .as_ref()
+                .is_some_and(|cancelled| cancelled.load(Ordering::SeqCst))
+        })
+        .await;
+        let revoked = f.auth.revoke(
+            &f.control_actor,
+            RevokeParams {
+                actor_id: f.caller.attachment().actor_id.clone(),
+                permissions: ClientCapability::UpdaterInstall
+                    .permissions()
+                    .iter()
+                    .map(|p| (*p).into())
+                    .collect(),
+                targets: vec![f.target.clone()],
+            },
+        );
+        gate.release();
+        revoked.unwrap();
+    };
+    let (prepared, ()) = tokio::join!(preparing, revoke);
+    let prepared = prepared.unwrap();
+    let RpcReply::Failure { error, .. } = prepared else {
+        panic!("revoked update was prepared: {prepared:?}");
+    };
+    assert_eq!(error.code, "PERMISSION_DENIED");
+    assert!(
+        f.wait_for_terminal(&write.operation_id)
+            .await
+            .state
+            .is_terminal()
+    );
+    assert_effect_acknowledged(
+        f.executor
+            .request(effect_receipt(
+                &delivery,
+                ClientEffectOutcome::Failed { error },
+            ))
+            .await
+            .unwrap(),
+    );
+    assert_eq!(
+        f.wait_for_terminal(&update.operation_id).await.state,
+        OperationState::Failed
+    );
     f.finish().await;
 }
 

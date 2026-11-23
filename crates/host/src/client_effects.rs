@@ -496,14 +496,7 @@ impl ClientEffects {
         {
             return Err(epoch());
         }
-        let authorization = self.authorize_action(
-            &dispatch.authority.actor,
-            &dispatch.authority.target,
-            &dispatch.request.action,
-        )?;
-        if let Some(stamp) = &dispatch.authority.stamp {
-            authorization.validate_grants(stamp)?;
-        }
+        self.require_dispatch_grants(dispatch)?;
         let state = self.inner.lock().map_err(|_| busy())?;
         if state.closing && !is_excluded(&state, dispatch.request.operation_id.as_ref()) {
             return Err(busy());
@@ -884,14 +877,7 @@ impl ClientEffects {
         {
             return Err(denied());
         }
-        let authorization = self.authorize_action(
-            &dispatch.authority.actor,
-            &dispatch.authority.target,
-            &dispatch.request.action,
-        )?;
-        if let Some(stamp) = &dispatch.authority.stamp {
-            authorization.validate_grants(stamp)?;
-        }
+        self.require_dispatch_grants(dispatch)?;
         // 桌面按顺序处理投递，同一接收端的后续动作不能在等待本回执时结算。
         if entry.pending.values().any(|pending| {
             pending.dispatched
@@ -939,9 +925,23 @@ impl ClientEffects {
             .get_mut(&dispatch.request.delivery_id)
             .filter(|pending| pending.request == dispatch.request && pending.committing.is_none())
             .ok_or_else(denied)?;
+        self.require_dispatch_grants(dispatch)?;
         pending.update_prepared = true;
         Ok(())
     }
+
+    fn require_dispatch_grants(&self, dispatch: &ClientEffectDispatch) -> HostResult<()> {
+        let authorization = self.authorize_action(
+            &dispatch.authority.actor,
+            &dispatch.authority.target,
+            &dispatch.request.action,
+        )?;
+        if let Some(stamp) = &dispatch.authority.stamp {
+            authorization.validate_grants(stamp)?;
+        }
+        Ok(())
+    }
+
     fn require_operator(
         &self,
         context: &ConnectionContext,

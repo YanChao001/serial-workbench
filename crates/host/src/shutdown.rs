@@ -96,7 +96,8 @@ impl Host {
                 "Host has unsettled work before update installation",
             ));
         }
-        self.inner.client_effects.mark_update_prepared(&dispatch)?;
+        let clients = self.inner.client_effects.clone();
+        super::blocking(move || clients.mark_update_prepared(&dispatch)).await?;
         Ok(ClientEffectAcknowledged { accepted: True })
     }
 

@@ -112,9 +112,44 @@ fn reconnect_state(snapshot: &SessionSnapshot, state: ReconnectState) -> bool {
         .is_some_and(|status| status.state == state)
 }
 
+async fn cancel_handoff(
+    host: &Host,
+    store: &Store,
+    operator: &AuthenticatedActor,
+    handoff: &Operation,
+) {
+    let target = Target {
+        host_id: handoff.target.host_id.clone(),
+        kind: ResourceKind::try_from("operation").unwrap(),
+        id: handoff.operation_id.clone(),
+        session_id: None,
+        session_epoch: None,
+    };
+    let stopping = host
+        .invoke(
+            operator,
+            request(
+                store,
+                operator,
+                &target,
+                "operation.cancel",
+                json!({"reason":"user"}),
+            ),
+        )
+        .await
+        .unwrap();
+    let stopped = settled(store, operator, &stopping).await;
+    assert_eq!(stopped.state, OperationState::Succeeded, "{stopped:?}");
+}
+
 #[tokio::test]
 async fn simulated_signed_tool_handoff_restores_only_current_reconnect_responsibility() {
-    for (cancel, revoke_reconnect) in [(false, false), (true, false), (false, true)] {
+    for (cancel, revoke_reconnect, cancel_before_launch) in [
+        (false, false, false),
+        (true, false, false),
+        (false, true, false),
+        (true, false, true),
+    ] {
         let profile = Profile::isolated("tool-handoff-simulation-");
         let clock = Arc::new(ManualClock(0.into()));
         let store = Store::open_with_clock(profile.path(), clock.clone()).unwrap();
@@ -279,6 +314,29 @@ async fn simulated_signed_tool_handoff_restores_only_current_reconnect_responsib
         }
         let opens_before_tool = provider.open_count();
         let closes_before_tool = provider.close_count();
+        let held_tx = if cancel_before_launch {
+            let (entered, release) = host.hold_next_session_dispatch();
+            let tx = host
+                .invoke(
+                    &actor,
+                    request(
+                        &store,
+                        &actor,
+                        &session,
+                        "session.tx",
+                        json!({"bytesBase64":"AQID","writeWaitMs":"1000"}),
+                    ),
+                )
+                .await
+                .unwrap();
+            tokio::time::timeout(Duration::from_secs(5), entered)
+                .await
+                .unwrap()
+                .unwrap();
+            Some((tx, release))
+        } else {
+            None
+        };
         let handoff = host
             .invoke(
                 &operator,
@@ -292,6 +350,42 @@ async fn simulated_signed_tool_handoff_restores_only_current_reconnect_responsib
             )
             .await
             .unwrap();
+        if let Some((tx, release)) = held_tx {
+            wait_snapshot(&host, &session, |state| {
+                state.state == SessionState::Closing
+            })
+            .await;
+            assert!(provider.handle_is_open());
+            assert!(!fixture.tool_entered());
+            cancel_handoff(&host, &store, &operator, &handoff).await;
+            release.send(()).unwrap();
+            assert_eq!(
+                settled(&store, &actor, &tx).await.state,
+                OperationState::Cancelled
+            );
+            let completed = settled(&store, &operator, &handoff).await;
+            assert_eq!(completed.state, OperationState::Cancelled, "{completed:?}");
+            let Some(ActionResult::ToolHandoff(receipt)) = completed.result else {
+                panic!("tool handoff receipt missing: {completed:?}");
+            };
+            assert!(!receipt.ownership_unconfirmed);
+            assert_eq!(receipt.exit_code, None);
+            let returned = receipt
+                .reopened
+                .expect("pre-launch cancellation must return the device");
+            let returned_target = next_session_epoch(&session);
+            assert_eq!(returned.session_id, original.session_id);
+            assert_eq!(Some(returned.session_epoch), returned_target.session_epoch);
+            assert_eq!(provider.open_count(), opens_before_tool + 1);
+            assert_eq!(provider.close_count(), closes_before_tool + 1);
+            assert!(!fixture.tool_entered());
+            let snapshot = host.devices().snapshot(&returned_target).await.unwrap();
+            assert_eq!(snapshot.state, SessionState::Open);
+            assert!(reconnect_state(&snapshot, ReconnectState::Idle));
+            host.shutdown().await.unwrap();
+            assert!(!provider.handle_is_open());
+            continue;
+        }
         tokio::time::timeout(Duration::from_secs(10), async {
             while !fixture.tool_entered() {
                 let current = store.get(&operator, &handoff.operation_id).unwrap();
@@ -333,28 +427,7 @@ async fn simulated_signed_tool_handoff_restores_only_current_reconnect_responsib
             .unwrap();
         }
         if cancel {
-            let target = Target {
-                host_id: device.host_id.clone(),
-                kind: ResourceKind::try_from("operation").unwrap(),
-                id: handoff.operation_id.clone(),
-                session_id: None,
-                session_epoch: None,
-            };
-            let stopping = host
-                .invoke(
-                    &operator,
-                    request(
-                        &store,
-                        &operator,
-                        &target,
-                        "operation.cancel",
-                        json!({"reason":"user"}),
-                    ),
-                )
-                .await
-                .unwrap();
-            let stopped = settled(&store, &operator, &stopping).await;
-            assert_eq!(stopped.state, OperationState::Succeeded, "{stopped:?}");
+            cancel_handoff(&host, &store, &operator, &handoff).await;
         } else {
             fixture.allow_tool_exit();
         }

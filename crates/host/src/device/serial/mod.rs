@@ -364,7 +364,7 @@ impl SerialHandoff {
     }
 
     fn return_device<'a>(&self, devices: &'a DeviceList) -> HostResult<&'a DeviceDescriptor> {
-        if self.phase != HandoffPhase::ToolExited {
+        if self.phase == HandoffPhase::ToolMayOwnDevice {
             return Err(device_busy());
         }
         self.find_same_device(devices)

@@ -188,7 +188,9 @@ impl TransmissionService {
             None
         };
         if let Some(error) = stop {
-            return Ok(tool_completion(None, None, false, Some(error)));
+            return Ok(self
+                .finish_tool_handoff(accepted, &prepared.handoff, None, Some(error))
+                .await);
         }
         let locator = match self
             .devices
@@ -252,7 +254,7 @@ impl TransmissionService {
             Ok(outcome) => outcome,
             Err(error) => return Ok(tool_completion(None, None, true, Some(error))),
         };
-        let (code, mut error) = match outcome {
+        let (code, error) = match outcome {
             Ok(0) => (Some(0), None),
             Ok(code) => (
                 Some(code),
@@ -269,6 +271,18 @@ impl TransmissionService {
             }
             Err(error) => (None, Some(error)),
         };
+        Ok(self
+            .finish_tool_handoff(accepted, &handoff, code, error)
+            .await)
+    }
+
+    async fn finish_tool_handoff(
+        &self,
+        accepted: &AcceptedCall,
+        handoff: &ReservedToolPort,
+        code: Option<u32>,
+        mut error: Option<HostError>,
+    ) -> Completion {
         let reopened = if self.quiescing.load(Ordering::SeqCst) {
             Err(HostError::new(
                 "HOST_CLOSING",
@@ -280,7 +294,7 @@ impl TransmissionService {
                 .return_native_tool(
                     &accepted.actor,
                     &accepted.call.target,
-                    &handoff,
+                    handoff,
                     self.quiescing.clone(),
                 )
                 .await
@@ -292,7 +306,7 @@ impl TransmissionService {
                 None
             }
         };
-        Ok(tool_completion(code, reopened, false, error))
+        tool_completion(code, reopened, false, error)
     }
 }
 
