@@ -32,6 +32,14 @@ export default defineConfig(({ mode, command, isPreview }) => {
               "third-party/tauri-desktop-starter.LICENSE",
               "resources/third-party/tauri-desktop-starter.LICENSE",
             ],
+            [
+              "third-party/xterm.LICENSE",
+              "resources/third-party/xterm.LICENSE",
+            ],
+            [
+              "third-party/xterm-addon-fit.LICENSE",
+              "resources/third-party/xterm-addon-fit.LICENSE",
+            ],
           ] as const) {
             this.emitFile({
               type: "asset",

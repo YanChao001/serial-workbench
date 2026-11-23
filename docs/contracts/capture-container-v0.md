@@ -1,10 +1,12 @@
-# Capture 容器 0.1
+# Capture 容器 0.1 与 0.2
 
 本文定义原始录制和只读回放的容器、验证与恢复格式；任务语义见[流与操作](./stream-and-operations-v0.md#录制验证与回放)，独立 reader 验证入口见[测试](../acceptance.md#独立录制格式)。
 
 ## 目录与记录
 
-容器是一个目录，包含 `manifest.json`、`index.json` 和从 `volume-000001.swbr` 开始的连续卷。每卷以七字节 ASCII `SWBR01\n` 起始。随后重复小端 u32 JSON 长度、该长度的 UTF-8 `CaptureRecord` JSON、32 字节 JSON 内容的 SHA-256。单条 JSON 最大 1 MiB，记录完整写在同一卷内。默认卷大小 64 MiB，卷最长 60 分钟，先达到者触发下一条记录换卷。
+容器是一个目录，包含 `manifest.json`、`index.json` 和从 `volume-000001.swbr` 开始的连续卷。清单与索引版本相同。0.1 卷以七字节 ASCII `SWBR01\n` 起始。随后每条记录依次为小端 u32 JSON 长度、该长度的 UTF-8 `CaptureRecord` JSON、32 字节 JSON 内容的 SHA-256。0.2 卷以 `SWBR02\n` 起始，每条记录在长度和同一份 JSON 之间加入 8 字节小端 u64 录制时间，记录摘要覆盖录制时间字段及 JSON。两种格式的单条 JSON 上限为 1 MiB。记录完整写在同一卷内。默认卷大小 64 MiB，卷最长 60 分钟，先达到者触发下一条记录换卷。
+
+新建单源录制使用 0.1，新建多源录制使用 0.2。录制时间是从首批获准入队起计算的非递减纳秒数。同一入队批次可以共享时间。追加保留原格式，0.2 从上一段的末尾继续计时，跳过两次录制之间未采集的时间，并记录对应源事件缺口。恢复保留已校验记录的原格式和录制间隔。
 
 每条记录有从 1 开始的 `recordOrdinal` 和 `entry`。事件保留源 host/session/epoch、事件序号、配置、时钟与字节范围。TX 结算以 owner operationId、真实源 hostId/instanceEpoch/sessionId/sessionEpoch 和 byteStart/byteEnd 唯一关联一块 TX 意图；文件发送的多个块可属于同一 owner，同源同块的重复结算仍被拒绝。独立 `TxSettlement` 使用 `CaptureTxSettlement { hostId, instanceEpoch, receipt }`，来源须与 manifest.streams 中声明的 hostId、instanceEpoch、sessionId、sessionEpoch 一致，不从 sessionId 猜测 Host。accepted 与 unknown 区间原样保存，未结算块在报告中按 operationId 去重聚合。ReaderGap 独立于源事件序号。
 
@@ -24,9 +26,13 @@ verify 在首个缺失/损坏记录停止，不跨越坏卷。恢复校验 verif
 
 文件登记仅接受可信用户选择或 CLI 显式登记，保存客户端登记与写入归属；读取按原授权 Target 当前的 metadata.read 或 content.read 权限判断，同作用域已授权的其他客户端可以读取，不自动获得 grant。业务动作使用 ObjectRef，固定文件必须携带 revision，正在录制的资源可省略 revision。metadata 不返回真实路径或文件正文。
 
-回放读取独立文件 reader，不创建设备 Transport。支持最快和原时序；暂停不发送，seek 推进 readerGeneration 并重置时序基点。文本导出按源、方向和 epoch 增量解码 UTF-8；缺口与流结束处结算未完成字符，非法字节明确标记替换。JSONL 保留源 timestamp、方向、原始 byte offset、卷及记录偏移；跨记录文本通过 sourceSpans 逐段记录原始字节范围与记录位置。
+回放读取独立文件 reader，不创建设备 Transport。原时序可在 25% 至 400% 间调整，默认 100%。可比的事件使用源时钟，0.2 的多时钟事件使用录制入队间隔。0.1 的多时钟录制仍支持最快和单步，原时序返回 `REPLAY_CLOCK_UNAVAILABLE`。切换倍率保留当前播放进度，暂停时冻结进度。跳转增加 readerGeneration 并重置时序基点，保留速率和断点设置。
 
-回放回复中的 `records` 使用 `inline` 或 `reference` 项。普通记录在 `inline.record` 中原样提供；无法放入当前有界回复的记录返回 `reference`，包含 `recordRef`、`recordOrdinal`、`jsonBytes` 与原始 JSON 的 `jsonSha256`。引用类型为 `capture_record`，固定 revision 为 1，并继承原源的读取授权，不自动增加 grant。
+文本导出按源、方向和 epoch 增量解码 UTF-8。缺口与流结束处结算未完成字符，非法字节明确标记替换。JSONL 保留源 timestamp、方向、原始 byte offset、卷及记录偏移。跨记录文本通过 sourceSpans 逐段记录原始字节范围与记录位置。
+
+`capture.export` 省略 `format` 时生成 JSONL，显式格式接受 `jsonl` 或 `csv`。CSV 使用 UTF-8、固定列头、逗号分隔与 CRLF 换行，缺失字段留空。时间、方向和定位沿用 JSONL 的字段语义。`hostIdJson`、`sessionIdJson`、`textJson`、`sourceSpansJson`、`entryJson` 中的非空字段在读取 CSV 后再按 JSON 解码。外部来源的字符串通过 JSON 保留控制字符和前导符号，表格可按文本列导入。将记录号、代次、字节边界与偏移按文本导入可保留完整十进制精度。两种格式在源快照与输出摘要复核后提交，并在发布前重新核对本次操作取得的源读取与目标写入授权。撤权或目标冲突返回错误并清理未发布的临时输出。登记文件引用失败时按文件身份撤回本次输出，可在同一目标重试。目标父目录不能是源录制目录。
+
+回放回复中的 `records` 使用 `inline` 或 `reference` 项。普通记录在 `inline.record` 中原样提供；无法放入当前有界回复的记录返回 `reference`，包含 `recordRef`、`recordOrdinal`、`jsonBytes` 与公开记录 JSON 的 `jsonSha256`。0.2 的引用正文取卷中对应的 `CaptureRecord`，卷内计时字段由 reader 消费。引用类型为 `capture_record`，固定 revision 为 1，并继承原源的读取授权，不自动增加 grant。
 
 统一 `file.read` 按 offset 分块读取引用，每次最多返回 64 KiB 解码后的字节，正文经 raw 连接发送。客户端按 offset 拼接后核对原 JSON 长度与 SHA-256，再解析为同一个 `CaptureRecord`；源 host/session/epoch、时钟、序号和最终 TX 区间保持不变。容器的 1 MiB 记录上限不会扩大 IPC 的 1 MiB 帧上限，也不会通过截断记录满足帧限制。每次分块读取都重新检查当前原源授权。
 

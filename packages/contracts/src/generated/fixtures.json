@@ -918,6 +918,40 @@
       }
     },
     {
+      "name": "replay-null-step",
+      "schema": "ReplayReadParams",
+      "value": {
+        "maxBytes": "65536",
+        "maxRecords": "1",
+        "sessionEpoch": "1",
+        "sessionId": "replay",
+        "singleStep": null
+      }
+    },
+    {
+      "name": "replay-control-rejects-query-only-state",
+      "schema": "ReplayControlParams",
+      "value": {
+        "paused": false,
+        "reportPlayback": true,
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-null-breakpoint",
+      "schema": "ReplayControlParams",
+      "value": {
+        "paused": false,
+        "playback": {
+          "kind": "set_breakpoint",
+          "record": null
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
       "name": "local-lan-unknown-control-field",
       "schema": "RpcRequest",
       "value": {
@@ -11533,6 +11567,85 @@
         "keyId": "key",
         "publicKeySha256": "72cd6e8422c407fb6d098690f1130b7ded7ec2f7f5e1d30bd9d521f015363793",
         "source": "source"
+      }
+    },
+    {
+      "name": "replay-legacy-read",
+      "schema": "ReplayReadParams",
+      "value": {
+        "maxBytes": "65536",
+        "maxRecords": "100",
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-step-with-playback-state",
+      "schema": "ReplayReadParams",
+      "value": {
+        "maxBytes": "65536",
+        "maxRecords": "1",
+        "reportPlayback": true,
+        "sessionEpoch": "1",
+        "sessionId": "replay",
+        "singleStep": true
+      }
+    },
+    {
+      "name": "replay-inspect-without-consuming",
+      "schema": "ReplayReadParams",
+      "value": {
+        "inspectPlayback": true,
+        "maxBytes": "65536",
+        "maxRecords": "1",
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-set-timed-rate",
+      "schema": "ReplayControlParams",
+      "value": {
+        "paused": false,
+        "playback": {
+          "kind": "set_rate",
+          "rate": {
+            "kind": "timed",
+            "speedPercent": 200
+          }
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-clear-breakpoint",
+      "schema": "ReplayControlParams",
+      "value": {
+        "paused": false,
+        "playback": {
+          "kind": "set_breakpoint"
+        },
+        "sessionEpoch": "1",
+        "sessionId": "replay"
+      }
+    },
+    {
+      "name": "replay-breakpoint-before-record",
+      "schema": "ReplayReadResult",
+      "value": {
+        "atEnd": false,
+        "nextRecord": "42",
+        "playback": {
+          "breakpointHit": true,
+          "breakpointRecord": "42",
+          "paused": true,
+          "rate": {
+            "kind": "fastest"
+          }
+        },
+        "readerGeneration": "3",
+        "records": []
       }
     },
     {

@@ -1,5 +1,5 @@
 export { IncrementalUtf8 } from "./utf8";
-export { formatHex, parseHex } from "./hex";
+export { formatHex, HexInputError, parseHex } from "./hex";
 export { encodeSend } from "./transforms";
 export {
   createHostClient,

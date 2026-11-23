@@ -10,17 +10,25 @@ import type {
   SessionSnapshot,
 } from "@serial-workbench/contracts";
 
+export type ViewLocale = "en" | "zh-CN";
+
 export interface ReadOnlyView {
-  readonly locale: "en" | "zh-CN";
+  readonly locale: ViewLocale;
   readonly dark: boolean;
   close(): void;
 }
 
-export function connectReadOnlyView(handlers: {
+type ViewHandlers = {
   onSession(snapshot: SessionSnapshot): void;
-  onBatch(batch: RawBatch): void | Promise<void>;
+  onLocale?(locale: ViewLocale): void;
   onError(error: Error): void;
-}): ReadOnlyView {
+};
+
+export function connectReadOnlyView(
+  handlers: ViewHandlers & {
+    onBatch(batch: RawBatch): void | Promise<void>;
+  },
+): ReadOnlyView {
   let last: RawBatch["cursor"] | undefined;
   return connectView(handlers, async (data, session) => {
     const { channel, body } = parseWireFrame(data);
@@ -51,14 +59,14 @@ export function connectReadOnlyView(handlers: {
   });
 }
 
-export function connectDerivedView(handlers: {
-  onSession(snapshot: SessionSnapshot): void;
-  onPage(
-    page: DerivedReadResult,
-    afterGap?: { previousPosition: string; skippedThrough: string },
-  ): void | Promise<void>;
-  onError(error: Error): void;
-}): ReadOnlyView {
+export function connectDerivedView(
+  handlers: ViewHandlers & {
+    onPage(
+      page: DerivedReadResult,
+      afterGap?: { previousPosition: string; skippedThrough: string },
+    ): void | Promise<void>;
+  },
+): ReadOnlyView {
   let next = "0";
   let stream:
     Pick<DerivedReadResult, "operationId" | "instanceEpoch"> | undefined;
@@ -122,17 +130,18 @@ export function connectDerivedView(handlers: {
 }
 
 function connectView(
-  handlers: {
-    onSession(snapshot: SessionSnapshot): void;
-    onError(error: Error): void;
-  },
+  handlers: ViewHandlers,
   onPage: (data: unknown, session: SessionSnapshot) => Promise<string>,
 ): ReadOnlyView {
-  const [frameId, language, scheme] = window.location.hash.slice(1).split(".");
+  const [frameId, language, scheme, capability] = window.location.hash
+    .slice(1)
+    .split(".");
   if (window.parent === window || !/^[A-Za-z0-9_-]{43}$/.test(frameId ?? ""))
     throw new ContractValidationError("Missing plugin page identity");
   const channel = new MessageChannel();
   const local = channel.port1;
+  const onLocale = capability === "locale" ? handlers.onLocale : undefined;
+  let locale: ViewLocale = language === "zh-CN" ? "zh-CN" : "en";
   let session: SessionSnapshot | undefined;
   let handling = false;
   let closed = false;
@@ -175,14 +184,45 @@ function connectView(
 
   local.onmessage = (event) => {
     const data: unknown = event.data;
+    if (closed) return;
+    if (
+      onLocale &&
+      data &&
+      typeof data === "object" &&
+      "kind" in data &&
+      data.kind === "viewLocale"
+    ) {
+      if (
+        !("locale" in data) ||
+        (data.locale !== "en" && data.locale !== "zh-CN")
+      ) {
+        fail(new ContractValidationError("Invalid plugin view locale"));
+        return;
+      }
+      if (locale !== data.locale) {
+        locale = data.locale;
+        try {
+          onLocale(locale);
+        } catch (error) {
+          fail(error);
+        }
+      }
+      return;
+    }
     void receive(data).catch(fail);
   };
   local.onmessageerror = () => fail(new ContractValidationError());
   window.addEventListener("pagehide", close, { once: true });
   // READY 只转移空端口。可信壳核对实际 frame 与本次标识后才交付数据。
-  window.parent.postMessage(frameId, "*", [channel.port2]);
+  window.parent.postMessage(
+    onLocale ? { frameId, localeUpdates: true } : frameId,
+    "*",
+    [channel.port2],
+  );
   return {
-    locale: language === "zh-CN" ? "zh-CN" : "en",
+    get locale() {
+      return locale;
+    },
     dark: scheme === "dark",
     close,
   };

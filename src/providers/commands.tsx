@@ -17,6 +17,7 @@ import {
   DownloadIcon,
   ExpandIcon,
   InfoIcon,
+  KeyboardIcon,
   LogOutIcon,
   Maximize2Icon,
   MinimizeIcon,
@@ -33,7 +34,8 @@ import {
 import { toast } from "sonner";
 import { APP_CONFIG } from "@/config/app";
 import { commandAvailable, type AppCommand } from "@/commands/types";
-import { matchesShortcut } from "@/commands/shortcuts";
+import { matchesShortcut, sameShortcut } from "@/commands/shortcuts";
+import type { ShortcutBinding } from "@/lib/generated/bindings";
 import { SETTINGS_SEARCH_ENTRIES } from "@/commands/settings-search";
 import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { useLatestTranslator } from "@/hooks/use-latest-translator";
@@ -64,7 +66,10 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
   }, [toggle]);
   const t = useLatestTranslator();
   const { fullscreen, change: changeFullscreen } = useFullscreen();
-  const [paletteOpen, setPaletteOpen] = useState(false);
+  const [overlay, setOverlay] = useState<"actions" | "shortcuts" | null>(null);
+  const setPaletteOpen = useCallback((open: boolean) => {
+    setOverlay(open ? "actions" : null);
+  }, []);
   const [aboutOpen, setAboutOpen] = useState(false);
   const [registrations, setRegistrations] = useState<
     Map<symbol, readonly AppCommand[]>
@@ -100,7 +105,9 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         group: "navigation",
         icon: CommandIcon,
         shortcuts: [{ key: "k", primary: true, allowInEditable: true }],
-        run: () => setPaletteOpen((open) => !open),
+        rebindable: true,
+        run: () =>
+          setOverlay((mode) => (mode === "actions" ? null : "actions")),
       },
       ...SETTINGS_SEARCH_ENTRIES.map((entry) => ({
         id: `settings:${entry.id}`,
@@ -118,6 +125,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         group: "navigation",
         icon: SettingsIcon,
         shortcuts: [{ key: ",", primary: true }],
+        rebindable: true,
         run: () =>
           navigate("/settings?focus=search", {
             replace: pathname === "/settings",
@@ -129,6 +137,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         group: "appearance",
         icon: PanelLeftIcon,
         shortcuts: [{ key: "b", primary: true }],
+        rebindable: true,
         run: () => update({ sidebarCollapsed: !settings.sidebarCollapsed }),
       },
       {
@@ -144,6 +153,7 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         group: "window",
         icon: fullscreen ? MinimizeIcon : ExpandIcon,
         shortcuts: [{ key: "F11", allowInEditable: true }],
+        rebindable: true,
         available: () => isTauri() || !!document.fullscreenEnabled,
         run: () => changeFullscreen(),
       },
@@ -208,6 +218,15 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
         run: quitApp,
       },
       {
+        id: "keyboard-shortcuts",
+        labelKey: "commands.shortcuts",
+        group: "help",
+        icon: KeyboardIcon,
+        shortcuts: [{ key: "F1", allowInEditable: true }],
+        run: () =>
+          setOverlay((mode) => (mode === "shortcuts" ? null : "shortcuts")),
+      },
+      {
         id: "open-docs",
         labelKey: "title.docs",
         group: "help",
@@ -269,8 +288,34 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
     const result = new Map(builtins.map((command) => [command.id, command]));
     for (const registration of registrations.values())
       for (const command of registration) result.set(command.id, command);
-    return [...result.values()];
-  }, [builtins, registrations]);
+    return [...result.values()].map((command) => {
+      const defaultShortcut = command.shortcuts?.[0];
+      if (!command.rebindable || !defaultShortcut) return command;
+      const binding = settings.shortcutOverrides?.[command.id];
+      return {
+        ...command,
+        defaultShortcut,
+        shortcuts: binding
+          ? [{ ...binding, allowInEditable: defaultShortcut.allowInEditable }]
+          : command.shortcuts,
+      };
+    });
+  }, [builtins, registrations, settings.shortcutOverrides]);
+
+  const changeShortcut = useCallback(
+    (id: string, binding: ShortcutBinding) => {
+      const selected = commands.find((command) => command.id === id);
+      if (!selected?.defaultShortcut || !commandAvailable(selected)) return;
+      const shortcutOverrides: Record<string, ShortcutBinding> = {
+        ...settings.shortcutOverrides,
+      };
+      if (sameShortcut(selected.defaultShortcut, binding))
+        delete shortcutOverrides[id];
+      else shortcutOverrides[id] = binding;
+      update({ shortcutOverrides });
+    },
+    [commands, settings.shortcutOverrides, update],
+  );
 
   const register = useCallback((items: readonly AppCommand[]) => {
     const token = Symbol("commands");
@@ -306,14 +351,14 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
-      const command = commands.find(
+      const [first, second] = commands.filter(
         (item) =>
           commandAvailable(item) &&
           item.shortcuts?.some((shortcut) => matchesShortcut(event, shortcut)),
       );
-      if (!command) return;
+      if (!first) return;
       event.preventDefault();
-      void execute(command.id);
+      if (!second) void execute(first.id);
     };
     document.addEventListener("keydown", onKeyDown);
     return () => document.removeEventListener("keydown", onKeyDown);
@@ -324,13 +369,24 @@ export function CommandsProvider({ children }: { children: ReactNode }) {
       commands,
       execute,
       register,
-      paletteOpen,
+      paletteOpen: overlay !== null,
+      shortcutHelp: overlay === "shortcuts",
+      changeShortcut,
       setPaletteOpen,
       aboutOpen,
       setAboutOpen,
       fullscreen,
     }),
-    [commands, execute, register, paletteOpen, aboutOpen, fullscreen],
+    [
+      commands,
+      execute,
+      register,
+      overlay,
+      changeShortcut,
+      setPaletteOpen,
+      aboutOpen,
+      fullscreen,
+    ],
   );
   return (
     <CommandsContext.Provider value={value}>

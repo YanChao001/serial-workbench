@@ -52,6 +52,11 @@ for (const mode of ["production", "web-preview"]) {
         "third-party/tauri-desktop-starter.LICENSE",
         "resources/third-party/tauri-desktop-starter.LICENSE",
       ],
+      ["third-party/xterm.LICENSE", "resources/third-party/xterm.LICENSE"],
+      [
+        "third-party/xterm-addon-fit.LICENSE",
+        "resources/third-party/xterm-addon-fit.LICENSE",
+      ],
     ]) {
       assert.ok(existsSync(join(output, fileName)), `Vite omitted ${fileName}`);
       assert.deepEqual(

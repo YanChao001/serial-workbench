@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.terminal",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "displayName": "Serial Monitor",
   "description": "Watch the data sent and received on a connected serial port.",
   "license": "Apache-2.0",

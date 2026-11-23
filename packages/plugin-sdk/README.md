@@ -75,9 +75,9 @@ const page = await task.streams.read({
 
 从原始数据生成的值可用 `task.streams.publishDerived({ sources, quality, unit, value })` 发布。`sources` 记录同一会话代次的实际事件区间，可附方向和字节区间。Host 核对区间并填入本次执行的处理器版本和配置摘要。发布最多四个在途请求，独立于 Raw 读取。回执的 `operationId` 和 `position` 可用于定位已留存样本。客户端通过 `stream.derivedRead` 按自己的游标接续，仍需来源会话的 `content.read`。
 
-包内 Web UI 可以从 `@serial-workbench/plugin-sdk/web` 调用 `connectReadOnlyView({ onSession, onBatch, onError })`。桌面交付本次打开操作所绑定的会话快照，以及带生成类型的 `RawBatch`。SDK 在 `onBatch` 完成后确认批次。页面卸载时释放消息端口，也可用返回值的 `close()` 主动释放。返回值提供打开时的 `locale` 和 `dark`。设备数据应使用文本节点或相应的安全绘制接口。
+包内 Web UI 可以从 `@serial-workbench/plugin-sdk/web` 调用 `connectReadOnlyView({ onSession, onBatch, onLocale, onError })`。壳交付本次打开操作所绑定的会话快照，以及带生成类型的 `RawBatch`。SDK 在 `onBatch` 完成后确认批次。页面卸载时释放消息端口，也可用返回值的 `close()` 主动释放。返回值提供当前 `locale` 和打开时的 `dark`。可选的 `onLocale` 接收 `en` 或 `zh-CN`，用于重绘已打开视图的标签。旧壳或省略回调时，`locale` 使用打开时的值。语言变化与批次确认独立，设备数据应使用文本节点或相应的安全绘制接口。
 
-声明 `feed: "derived"` 的桌面视图使用 `connectDerivedView({ onSession, onPage, onError })`。`onPage` 收到打开动作所发布的留存样本，第二个参数在游标跨越缺口时提供 `previousPosition` 和 `skippedThrough`。SDK 在回调完成后确认读页。浏览器入口和运行中的主题、语言、缩放联动由后续场景验收。生命周期、授权和预算见 [Node 扩展合同](../../docs/contracts/node-extension-v0.md)。
+声明 `feed: "derived"` 的视图使用 `connectDerivedView({ onSession, onPage, onLocale, onError })`。`onPage` 收到打开动作所发布的留存样本，第二个参数在游标跨越缺口时提供 `previousPosition` 和 `skippedThrough`。SDK 在回调完成后确认读页，订阅语言的方式与 Raw 视图相同。生命周期、授权和预算见 [Node 扩展合同](../../docs/contracts/node-extension-v0.md)。
 
 连接扩展在 manifest 的 `contributes.transports` 声明设备目标及权限。后台使用 `context.transports.register(actionId, open)` 登记，`open({ params, signal })` 返回实际连接。Host 为连接管理会话代次、收发及 Raw 游标。处理器按 `maxBytes` 与 `waitMs` 拉取输入，空数组表示本次等待没有数据，`null` 表示输入结束。写入返回已确认接纳的连续前缀字节数。关闭函数应可重复调用，并等待底层资源实际关闭。[TCP 参考包](./examples/reference-transport/)通过调用方提供的端口连接本机 IPv4 回环对端。
 

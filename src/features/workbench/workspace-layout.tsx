@@ -65,6 +65,7 @@ import {
 } from "./workspace-model";
 import { CONFIG_FIELDS } from "./serial-configuration";
 import { StreamView, type StreamViewProps } from "./stream-view";
+import { ansiPasteParams } from "./ansi-paste";
 import { receiveEncodingFor } from "@/lib/text-encoding";
 import { streamSourceKey } from "@/lib/stream-source";
 import {
@@ -123,12 +124,16 @@ export type WorkbenchHost = Pick<
   | "refresh"
   | "open"
   | "send"
+  | "waitForOperation"
   | "takeover"
   | "watchSession"
   | "watchActions"
   | "checkAction"
   | "connection"
-> & { trustedConnect?: HostContextValue["open"] };
+> & {
+  trustedConnect?: HostContextValue["open"];
+  invoke?: HostContextValue["invoke"];
+};
 export type WorkbenchTool =
   | "workspace"
   | "parameters"
@@ -251,7 +256,10 @@ export type WorkspaceLayoutProps = {
   readSessionMetrics?: HostContextValue["sessionMetrics"];
   readCaptureStatus?: CaptureStatusReader;
   readOperationInput?: OperationInputReader;
-  replay?: Pick<ReplayPanelProps, "read" | "readRecord" | "control">;
+  replay?: Pick<
+    ReplayPanelProps,
+    "read" | "readRecord" | "control" | "playbackSupported"
+  >;
   initialWorkspace?: WorkspaceDocument;
   savedWorkspace?: WorkspaceDocument;
   preserveWorkspacePresets?: boolean;
@@ -941,6 +949,12 @@ export function WorkspaceLayout({
         : [],
     ),
   );
+  for (const active of state.sessions) {
+    if (
+      state.replaySessionEpochs?.get(active.sessionId) === active.sessionEpoch
+    )
+      replayIds.add(active.sessionId);
+  }
   const isReplay = !!sessionId && replayIds.has(sessionId);
   const uniqueSessionIds = [
     ...new Set(
@@ -1596,7 +1610,10 @@ export function WorkspaceLayout({
     const input =
       checkedInput ?? inputs.find((value) => value.actionId === actionId);
     const actionTarget =
-      input?.target ?? (actionId === "session.tx" ? target : undefined);
+      input?.target ??
+      (actionId === "session.tx" || actionId === "transfer.paste"
+        ? target
+        : undefined);
     if (
       disabled ||
       !actionTarget ||
@@ -1635,6 +1652,44 @@ export function WorkspaceLayout({
               nativeErrorCode(value.error) === "PERMISSION_DENIED"),
         )));
   const sendAllowed = !isReplay && !!target && mayAttempt("session.tx");
+  const invoke = host.invoke;
+  const cancelOperation = onCancelOperation;
+  const paste =
+    sendAllowed &&
+    session &&
+    target &&
+    invoke &&
+    cancelOperation &&
+    mayAttempt("transfer.paste")
+      ? {
+          start: (bytes: Uint8Array) =>
+            invoke({
+              actionId: "transfer.paste",
+              target,
+              params: ansiPasteParams(
+                bytes,
+                session.configuration,
+                writeWaitMode,
+              ),
+              executionMode: "independent",
+              expectedRevision: session.revision,
+            }),
+          wait: host.waitForOperation,
+          cancel: async (operation: Operation) => {
+            await cancelOperation(operation);
+          },
+        }
+      : undefined;
+  async function submitBytes(bytes: Uint8Array, signal?: AbortSignal) {
+    if (isCapture || !session || !target) throw new Error(labels.unavailable);
+    const writeWaitMs = sendWaitMs(
+      session.configuration,
+      bytes.length,
+      writeWaitMode,
+    );
+    // Host admission remains authoritative for the session epoch selected here.
+    return host.send(target, bytes, signal, writeWaitMs);
+  }
   const cleared = clearThrough.get(selected ?? "");
   const firstItem = stream?.items[0];
   const streamIdentity =
@@ -2071,6 +2126,27 @@ export function WorkspaceLayout({
             }
             encoding={receiveEncoding}
             sendEncoding={sendEncoding}
+            keyboard={
+              sendAllowed &&
+              host.connection &&
+              session?.state === "open" &&
+              session.txGate === "ready" &&
+              !session.readOnly
+                ? {
+                    scope: JSON.stringify([
+                      captureOwnerScope,
+                      target,
+                      session.configurationRevision,
+                      writeWaitMode,
+                    ]),
+                    send: async (bytes, signal) => {
+                      const admitted = await submitBytes(bytes, signal);
+                      return host.waitForOperation(admitted, signal);
+                    },
+                    paste,
+                  }
+                : undefined
+            }
             onEncodingChange={(value) =>
               changeViewFormat({ receiveEncoding: value })
             }
@@ -2221,17 +2297,7 @@ export function WorkspaceLayout({
         draftKey={draftKey}
         labels={labels}
         operations={state.operations}
-        onSend={async (bytes, signal) => {
-          if (isCapture || !session || !target)
-            throw new Error(labels.unavailable);
-          const writeWaitMs = sendWaitMs(
-            session.configuration,
-            bytes.length,
-            writeWaitMode,
-          );
-          // 预览只服务界面提示；实际 invoke 仍由 Host 验权，且绑定点击时的会话代次。
-          return host.send(target, bytes, signal, writeWaitMs);
-        }}
+        onSend={submitBytes}
         onSendFile={
           onSendFile &&
           !disabled &&

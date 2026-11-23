@@ -7,20 +7,89 @@ use std::path::{Path, PathBuf};
 /// 纯文件读者；类型不持有设备、TX 仲裁器或 Transport。
 pub struct ReplayReader {
     path: PathBuf,
+    format: CaptureFormat,
     index: CaptureIndex,
     record_digests: Vec<[u8; 32]>,
     directory_identity: String,
     capture_id: Id,
     configuration: SerialConfiguration,
-    position: usize,
     generation: U64,
-    mode: ReplayMode,
-    paused: bool,
-    anchor: Option<(u64, u64)>,
-    last_now: u64,
-    pause_start: Option<u64>,
+    mixed_source_clocks: bool,
+    playback: Playback,
     _guard: crate::files::references::PathGuard,
 }
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+enum ReplayReadMode {
+    Batch,
+    Step,
+    Inspect,
+}
+
+#[derive(Clone, Copy)]
+struct Playback {
+    position: usize,
+    rate: ReplayRate,
+    paused: bool,
+    anchor: Option<PlaybackAnchor>,
+    last_now: u64,
+    breakpoint_record: Option<U64>,
+    breakpoint_hit: bool,
+}
+
+#[derive(Clone, Copy)]
+struct PlaybackAnchor {
+    // 以百分之一纳秒保留切换速率时的进度。
+    source: u128,
+    host_ns: u64,
+}
+impl PlaybackAnchor {
+    fn new(source_ns: u64, host_ns: u64) -> Self {
+        Self {
+            source: u128::from(source_ns) * 100,
+            host_ns,
+        }
+    }
+
+    fn source_at(self, now: u64, speed_percent: u16) -> u128 {
+        self.source + u128::from(now.saturating_sub(self.host_ns)) * u128::from(speed_percent)
+    }
+}
+impl Playback {
+    fn rebase(&mut self, now: u64) {
+        if let Some(anchor) = &mut self.anchor {
+            if !self.paused
+                && let ReplayRate::Timed { speed_percent } = self.rate
+            {
+                anchor.source = anchor.source_at(now, speed_percent);
+            }
+            anchor.host_ns = now;
+        }
+        self.last_now = now;
+    }
+
+    fn pause_at(&mut self, paused: bool, now: u64) {
+        self.rebase(now);
+        self.paused = paused;
+    }
+
+    fn pause_on_record(&mut self, source_time: Option<u64>, now: u64) {
+        self.pause_at(true, now);
+        if let Some(source_ns) = source_time {
+            self.anchor = Some(PlaybackAnchor::new(source_ns, now));
+        }
+    }
+
+    fn state(self) -> ReplayPlaybackState {
+        ReplayPlaybackState {
+            rate: self.rate,
+            paused: self.paused,
+            breakpoint_record: self.breakpoint_record,
+            breakpoint_hit: self.paused && self.breakpoint_hit,
+        }
+    }
+}
+
 impl ReplayReader {
     pub fn open(path: &Path, mode: ReplayMode) -> HostResult<Self> {
         let guard = crate::files::references::PathGuard::new(path)?;
@@ -35,8 +104,15 @@ impl ReplayReader {
                 "Recover the verified prefix before replay",
             ));
         }
+        if mode == ReplayMode::OriginalTiming
+            && scan.format == CaptureFormat::Legacy
+            && scan.mixed_source_clocks
+        {
+            return Err(replay_clock_unavailable());
+        }
         Ok(Self {
             path: path.to_path_buf(),
+            format: scan.format,
             index: scan.index,
             record_digests: scan.record_digests,
             directory_identity: crate::files::references::directory_identity(path)?,
@@ -47,13 +123,17 @@ impl ReplayReader {
                 .first()
                 .map(|s| s.configuration.clone())
                 .unwrap_or_default(),
-            position: 0,
             generation: 1.into(),
-            mode,
-            paused: false,
-            anchor: None,
-            last_now: 0,
-            pause_start: None,
+            mixed_source_clocks: scan.mixed_source_clocks,
+            playback: Playback {
+                position: 0,
+                rate: mode.into(),
+                paused: false,
+                anchor: None,
+                last_now: 0,
+                breakpoint_record: None,
+                breakpoint_hit: false,
+            },
             _guard: guard,
         })
     }
@@ -66,18 +146,48 @@ impl ReplayReader {
         max_bytes: usize,
         now: u64,
     ) -> HostResult<ReplayReadResult> {
-        self.read_with_references(max, max_bytes, now, |_, _| {
-            Err(HostError::new(
-                "LIMIT_EXCEEDED",
-                "Replay record requires a file reference",
-            ))
-        })
+        self.read_with_references(
+            max,
+            max_bytes,
+            now,
+            ReplayReadMode::Batch,
+            false,
+            file_reference_required,
+        )
+    }
+
+    pub fn step(&mut self, now: u64) -> HostResult<ReplayReadResult> {
+        self.read_with_references(
+            1,
+            256 * 1024,
+            now,
+            ReplayReadMode::Step,
+            true,
+            file_reference_required,
+        )
+    }
+
+    fn reply(
+        &self,
+        playback: Playback,
+        records: Vec<ReplayRecord>,
+        report_playback: bool,
+    ) -> ReplayReadResult {
+        ReplayReadResult {
+            records,
+            reader_generation: self.generation,
+            next_record: (playback.position as u64 + 1).into(),
+            at_end: playback.position == self.index.records.len(),
+            playback: report_playback.then(|| playback.state()),
+        }
     }
     fn read_with_references(
         &mut self,
         max: usize,
         max_bytes: usize,
         now: u64,
+        mode: ReplayReadMode,
+        report_playback: bool,
         mut publish: impl FnMut(U64, &[u8]) -> HostResult<ReplayRecord>,
     ) -> HostResult<ReplayReadResult> {
         if max == 0 || max > 100 || max_bytes == 0 || max_bytes > 1024 * 1024 {
@@ -86,34 +196,70 @@ impl ReplayReader {
                 "Invalid replay read budget",
             ));
         }
-        self.last_now = now;
         if crate::files::references::directory_identity(&self.path)? != self.directory_identity {
             return Err(changed());
         }
+        let mut playback = self.playback;
+        if mode != ReplayReadMode::Inspect {
+            playback.last_now = now;
+        }
+        let limit = match mode {
+            ReplayReadMode::Batch => max,
+            ReplayReadMode::Step => 1,
+            ReplayReadMode::Inspect => 0,
+        };
+        let single_step = mode == ReplayReadMode::Step;
         let mut records = Vec::new();
         let mut used = 0usize;
-        while !self.paused && records.len() < max && self.position < self.index.records.len() {
-            let (record, json) = read_record_bytes(&self.path, &self.index.records[self.position])?;
-            if self.record_digests.get(self.position) != Some(&super::verify::json_digest(&json)) {
+        while (single_step || !playback.paused)
+            && records.len() < limit
+            && playback.position < self.index.records.len()
+        {
+            let (record, observed, json) = read_record_bytes(
+                &self.path,
+                &self.index.records[playback.position],
+                self.format,
+            )?;
+            if self.record_digests.get(playback.position) != Some(&record_digest(observed, &json)) {
                 return Err(changed());
             }
-            if self.mode == ReplayMode::OriginalTiming
-                && let Some(source) = record_time(&record)
+            let source_time = if self.mixed_source_clocks {
+                observed
+            } else {
+                record_time(&record)
+            };
+            if !single_step
+                && let (ReplayRate::Timed { speed_percent }, Some(source_ns)) =
+                    (playback.rate, source_time)
             {
-                let (start, origin) = *self.anchor.get_or_insert((source, now));
-                if source.saturating_sub(start) > now.saturating_sub(origin) {
+                let anchor = playback
+                    .anchor
+                    .get_or_insert_with(|| PlaybackAnchor::new(source_ns, now));
+                if u128::from(source_ns) * 100 > anchor.source_at(now, speed_percent) {
                     break;
                 }
             }
+
             let ordinal = record.record_ordinal;
+            if !single_step
+                && playback.breakpoint_record == Some(ordinal)
+                && !playback.breakpoint_hit
+            {
+                playback.pause_on_record(source_time, now);
+                playback.breakpoint_hit = true;
+                break;
+            }
+
+            let mut advanced = playback;
+            advanced.position += 1;
+            advanced.breakpoint_hit = false;
+            if single_step {
+                advanced.pause_on_record(source_time, now);
+            }
+
             let mut record = ReplayRecord::Inline { record };
             let mut size = serde_json::to_vec(&record).map_err(|_| corrupt())?.len();
-            let envelope = ReplayReadResult {
-                records: vec![],
-                reader_generation: self.generation,
-                next_record: (self.position as u64 + 2).into(),
-                at_end: self.position + 1 == self.index.records.len(),
-            };
+            let envelope = self.reply(advanced, vec![], report_playback);
             let overhead = serde_json::to_vec(&envelope).map_err(|_| corrupt())?.len();
             if used + size + records.len() + overhead > max_bytes {
                 if records.is_empty() {
@@ -131,25 +277,29 @@ impl ReplayReader {
             }
             used += size;
             records.push(record);
-            self.position += 1;
+            playback = advanced;
         }
         if crate::files::references::directory_identity(&self.path)? != self.directory_identity {
             return Err(changed());
         }
-        let result = ReplayReadResult {
+        if single_step && records.is_empty() {
+            playback.pause_at(true, now);
+        }
+        let result = self.reply(
+            playback,
             records,
-            reader_generation: self.generation,
-            next_record: (self.position as u64 + 1).into(),
-            at_end: self.position == self.index.records.len(),
-        };
+            report_playback || mode == ReplayReadMode::Inspect,
+        );
         if serde_json::to_vec(&result).map_err(|_| corrupt())?.len() > max_bytes {
             return Err(HostError::new(
                 "LIMIT_EXCEEDED",
                 "Replay reply exceeds requested batch budget",
             ));
         }
+        self.playback = playback;
         Ok(result)
     }
+
     pub fn seek(&mut self, ordinal: U64, now: u64) -> HostResult<()> {
         if ordinal.get() == 0 || ordinal.get() > self.index.records.len() as u64 + 1 {
             return Err(HostError::new(
@@ -157,27 +307,138 @@ impl ReplayReader {
                 "Replay seek is outside the capture",
             ));
         }
-        self.position = ordinal.get() as usize - 1;
         self.generation = self.generation.checked_next()?;
-        self.anchor = None;
-        self.last_now = now;
-        self.pause_start = self.paused.then_some(now);
+        self.playback.position = ordinal.get() as usize - 1;
+        self.playback.anchor = None;
+        self.playback.last_now = now;
+        self.playback.breakpoint_hit = false;
         Ok(())
     }
+
     pub fn pause(&mut self, paused: bool) {
-        self.pause_at(paused, self.last_now)
+        self.pause_at(paused, self.playback.last_now)
     }
+
     pub fn pause_at(&mut self, paused: bool, now: u64) {
-        if paused && !self.paused {
-            self.pause_start = Some(now)
-        } else if !paused
-            && self.paused
-            && let (Some((_, origin)), Some(start)) = (&mut self.anchor, self.pause_start.take())
+        self.playback.pause_at(paused, now);
+    }
+
+    pub fn set_rate(&mut self, rate: ReplayRate, now: u64) -> HostResult<()> {
+        if matches!(rate, ReplayRate::Timed { .. })
+            && self.format == CaptureFormat::Legacy
+            && self.mixed_source_clocks
         {
-            *origin = origin.saturating_add(now.saturating_sub(start));
+            return Err(replay_clock_unavailable());
         }
-        self.paused = paused;
-        self.last_now = now;
+        if let ReplayRate::Timed { speed_percent } = rate
+            && !(25..=400).contains(&speed_percent)
+        {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Replay speed must be between 25% and 400%",
+            ));
+        }
+        self.playback.rebase(now);
+        if self.playback.rate == ReplayRate::Fastest || rate == ReplayRate::Fastest {
+            self.playback.anchor = None;
+        }
+        self.playback.rate = rate;
+        Ok(())
+    }
+
+    pub fn set_breakpoint(&mut self, record: Option<U64>) -> HostResult<()> {
+        if let Some(ordinal) = record
+            && (ordinal.get() == 0 || ordinal.get() > self.index.records.len() as u64)
+        {
+            return Err(HostError::new(
+                "INVALID_ARGUMENT",
+                "Replay breakpoint is outside the capture",
+            ));
+        }
+        if record != self.playback.breakpoint_record {
+            self.playback.breakpoint_record = record;
+            self.playback.breakpoint_hit = false;
+        }
+        Ok(())
+    }
+}
+
+fn replay_clock_unavailable() -> HostError {
+    HostError::new(
+        "REPLAY_CLOCK_UNAVAILABLE",
+        "The recording has no common source clock. Use fastest playback or single-step.",
+    )
+}
+
+fn file_reference_required(_: U64, _: &[u8]) -> HostResult<ReplayRecord> {
+    Err(HostError::new(
+        "LIMIT_EXCEEDED",
+        "Replay record requires a file reference",
+    ))
+}
+
+#[cfg(test)]
+mod format_tests {
+    use super::*;
+    use crate::capture::writer::{CaptureLimits, CaptureWriter, native_volume_opener};
+
+    #[test]
+    fn legacy_mixed_clocks_keep_exact_order_without_a_recorder_timeline() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().canonicalize().unwrap().join("capture");
+        let hosts = ["first", "second"];
+        let sources = hosts
+            .iter()
+            .map(|&host| CaptureSource {
+                host_id: Id::try_from(host).unwrap(),
+                instance_epoch: 1.into(),
+                session_id: Id::try_from("legacy").unwrap(),
+                session_epoch: 1.into(),
+                configuration_digest: zero_digest(),
+                configuration: SerialConfiguration::default(),
+                time_precision: TimePrecision {
+                    source: TimeSource::HostRead,
+                    resolution_ns: 1.into(),
+                    sync_method: "none".into(),
+                    offset_estimate_ns: None,
+                    offset_error_ns: None,
+                    rtt_ns: None,
+                },
+            })
+            .collect();
+        let mut writer = CaptureWriter::create_at_format(
+            crate::files::references::PathGuard::new(&path).unwrap(),
+            sources,
+            CaptureLimits::default(),
+            native_volume_opener(),
+            CaptureFormat::Legacy,
+        )
+        .unwrap();
+        for host in hosts {
+            let event = serde_json::json!({
+                "hostId": host, "instanceEpoch": "1", "sessionId": "legacy", "sessionEpoch": "1",
+                "eventSeq": "1", "configurationRevision": "1",
+                "time": {
+                    "clockId": host, "sourceMonoNs": "1", "receivedWallTime": "2026-11-21T00:00:00Z",
+                    "precision": {"source": "host_read", "resolutionNs": "1", "syncMethod": "none"}
+                },
+                "kind": "lifecycle", "payload": {"note": "legacy"}
+            });
+            writer
+                .push(
+                    CaptureEntry::Event(serde_json::from_value(event).unwrap()),
+                    0,
+                )
+                .unwrap();
+        }
+        writer.finish().unwrap();
+        let unavailable = ReplayReader::open(&path, ReplayMode::OriginalTiming)
+            .err()
+            .unwrap();
+        assert_eq!(unavailable.code, "REPLAY_CLOCK_UNAVAILABLE");
+        let mut reader = ReplayReader::open(&path, ReplayMode::Fastest).unwrap();
+        assert_eq!(reader.step(0).unwrap().next_record, U64::from(2));
+        assert!(reader.step(0).unwrap().at_end);
     }
 }
 
@@ -362,10 +623,26 @@ impl ReplayService {
             service.authorize(&session, &target, &actor, "content.read")?;
             let source = session.source.clone();
             let reader = session.reader.as_mut().ok_or_else(replay_closed)?;
+            let mode = match (
+                params.single_step.unwrap_or_default(),
+                params.inspect_playback.unwrap_or_default(),
+            ) {
+                (false, false) => ReplayReadMode::Batch,
+                (true, false) => ReplayReadMode::Step,
+                (false, true) => ReplayReadMode::Inspect,
+                (true, true) => {
+                    return Err(HostError::new(
+                        "INVALID_ARGUMENT",
+                        "Replay inspection cannot be combined with a step",
+                    ));
+                }
+            };
             reader.read_with_references(
                 usize::try_from(params.max_records.get()).map_err(|_| super::invalid())?,
                 usize::try_from(params.max_bytes.get()).map_err(|_| super::invalid())?,
                 service.clock.mono_ns(),
+                mode,
+                params.report_playback.unwrap_or_default(),
                 |ordinal, json| service.files.publish_record(&source, &actor, ordinal, json),
             )
         })
@@ -383,19 +660,31 @@ impl ReplayService {
             let session = service.find(&target)?;
             let mut session = session.lock().map_err(|_| replay_busy())?;
             service.authorize(&session, &target, &actor, "content.read")?;
+            let revision = session.snapshot.revision.checked_next()?;
             let reader = session.reader.as_mut().ok_or_else(replay_closed)?;
             let now = service.clock.mono_ns();
-            if let Some(ordinal) = params.seek_record {
-                reader.seek(ordinal, now)?;
+            if let Some(playback) = params.playback {
+                if params.seek_record.is_some() {
+                    return Err(HostError::new(
+                        "INVALID_ARGUMENT",
+                        "Replay playback controls cannot be combined with a seek",
+                    ));
+                }
+                match playback {
+                    ReplayPlaybackControl::SetRate { rate } => reader.set_rate(rate, now)?,
+                    ReplayPlaybackControl::SetBreakpoint { record } => {
+                        reader.set_breakpoint(record)?
+                    }
+                }
+            } else {
+                if let Some(ordinal) = params.seek_record {
+                    reader.seek(ordinal, now)?;
+                }
+                reader.pause_at(params.paused, now);
             }
-            reader.pause_at(params.paused, now);
-            let position = ReplayReadResult {
-                records: vec![],
-                reader_generation: reader.generation,
-                next_record: (reader.position as u64 + 1).into(),
-                at_end: reader.position == reader.index.records.len(),
-            };
-            session.snapshot.revision = session.snapshot.revision.checked_next()?;
+            // 旧客户端可能通过 operation.get 读取这条持久回执。
+            let position = reader.reply(reader.playback, vec![], false);
+            session.snapshot.revision = revision;
             Ok(position)
         })
         .await

@@ -6,7 +6,13 @@ import { navigate } from "../helpers.mjs";
 
 const execute = promisify(execFile);
 
-export async function selectWindowsFile(element, action, path, suggestedName) {
+export async function selectWindowsFile(
+  element,
+  action,
+  path,
+  suggestedName,
+  activate = click,
+) {
   const pid = Number(process.env.STARTER_E2E_APP_PID);
   assert.ok(
     Number.isSafeInteger(pid) && pid > 0,
@@ -24,7 +30,7 @@ export async function selectWindowsFile(element, action, path, suggestedName) {
         { cause: error },
       );
     }),
-    click(element),
+    activate(element),
   ]);
   const evidence = JSON.parse(stdout);
   assert.equal(evidence.action, action);

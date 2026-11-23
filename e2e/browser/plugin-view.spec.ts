@@ -143,19 +143,19 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
     const path = new URL(route.request().url()).pathname;
     if (path === "/index.html") {
       return route.fulfill({
-        contentType: "text/html",
+        contentType: "text/html; charset=utf-8",
         headers: {
           "content-security-policy": `default-src 'none'; script-src ${shellOrigin}; frame-src ${assetOrigin}; form-action 'none'`,
         },
-        body: `<!doctype html><html lang="en"><script defer src="shell.js"></script>
+        body: `<!doctype html><html lang="zh-CN"><script defer src="shell.js"></script>
           <body data-frame="${identity}"><p role="status">Opening plugin view…</p>
           <template><iframe sandbox="allow-scripts" title="Plugin view" referrerpolicy="no-referrer"
-            data-src="${assetOrigin}/index.html#${identity}.zh-CN.dark"></iframe></template></body></html>`,
+            data-src="${assetOrigin}/index.html#${identity}.zh-CN.dark.locale"></iframe></template></body></html>`,
       });
     }
     if (path === "/shell.js")
       return route.fulfill({
-        contentType: "application/javascript",
+        contentType: "application/javascript; charset=utf-8",
         body: shell,
       });
     if (path === "/next.js") {
@@ -206,9 +206,21 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   expect(unexpected).toEqual([]);
   await expect.poll(() => pulls).toBeGreaterThanOrEqual(5);
 
+  const changeShellLanguage = (locale: "en" | "zh-CN") =>
+    page.evaluate((language) => {
+      const shell = globalThis as typeof globalThis & {
+        swbViewSetLocale: (value: typeof language) => void;
+      };
+      shell.swbViewSetLocale(language);
+    }, locale);
+  await changeShellLanguage("en");
+  await expect(view.locator("html")).toHaveAttribute("lang", "en");
+  await changeShellLanguage("zh-CN");
+  await expect(view.locator("html")).toHaveAttribute("lang", "zh-CN");
+
   await view.locator("html").evaluate(() => location.reload());
   await expect(page.getByRole("status")).toHaveText(
-    "View stopped (FRAME_CHANGED)",
+    "视图已停止（FRAME_CHANGED）",
   );
   await expect(page.locator("iframe")).toHaveCount(0);
   await expect.poll(() => stops).toBe(1);

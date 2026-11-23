@@ -193,6 +193,7 @@ import type {
   Owner,
   OwnerKind,
   Parity,
+  PasteTransferParams,
   PositiveU64,
   Progress,
   ProtocolVersion,
@@ -808,6 +809,9 @@ export declare function validateOverflowPolicy(
 export declare function validateOwner(value: unknown): value is Owner;
 export declare function validateOwnerKind(value: unknown): value is OwnerKind;
 export declare function validateParity(value: unknown): value is Parity;
+export declare function validatePasteTransferParams(
+  value: unknown,
+): value is PasteTransferParams;
 export declare function validatePositiveU64(
   value: unknown,
 ): value is PositiveU64;

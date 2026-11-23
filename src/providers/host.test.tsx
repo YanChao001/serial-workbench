@@ -1800,7 +1800,7 @@ it("still resolves a missing replay session after a same-revision operation is r
     parsed.result.kind !== "session"
   )
     throw new Error("session fixture");
-  const session = parsed.result.value;
+  const session = { ...parsed.result.value, readOnly: true };
   const replay = {
     ...operation,
     actionId: "replay.open",
@@ -2022,6 +2022,9 @@ it("loads the authoritative replay session from a successful replay.open operati
       }),
     }),
     expect.any(AbortSignal),
+  );
+  expect(workspace.getSnapshot().state.replaySessionEpochs).toEqual(
+    new Map([[session.sessionId, session.sessionEpoch]]),
   );
   expect(raw).not.toHaveBeenCalled();
   workspace.dispose();

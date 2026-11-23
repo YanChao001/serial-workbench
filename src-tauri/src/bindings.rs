@@ -45,6 +45,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             commands::set_autostart_enabled,
             commands::record_frontend_error,
             commands::get_diagnostics_report,
+            crate::diagnostics::save_diagnostics_json,
             commands::check_for_update,
             commands::get_update_snapshot,
             commands::download_and_install_update,

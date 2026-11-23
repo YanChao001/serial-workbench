@@ -1,5 +1,6 @@
 /// <reference lib="dom" />
 import { connectReadOnlyView } from "@serial-workbench/plugin-sdk/web";
+import type { ViewLocale } from "@serial-workbench/plugin-sdk/web";
 
 const status = document.querySelector<HTMLElement>("#connection");
 const receive = document.querySelector<HTMLPreElement>("#receive");
@@ -9,6 +10,8 @@ const displayLimit = 256 * 1024;
 let displayed = 0;
 let lineStart = true;
 let zh = false;
+let state: "connecting" | "waiting" | "receiving" | "disconnected" =
+  "connecting";
 let rx = new TextDecoder();
 let rxEndsWithCarriageReturn = false;
 const deviceText = (value: string) =>
@@ -61,10 +64,37 @@ function addDisplayLine(parts: string[], text: string) {
   lineStart = true;
 }
 
+function renderStatus() {
+  if (!status) return;
+  status.textContent = zh
+    ? {
+        connecting: "正在连接…",
+        waiting: "等待串口数据…",
+        receiving: "",
+        disconnected: "监听已断开",
+      }[state]
+    : {
+        connecting: "Connecting…",
+        waiting: "Waiting for serial data…",
+        receiving: "",
+        disconnected: "Monitor disconnected",
+      }[state];
+}
+
+function renderLocale(locale: ViewLocale) {
+  zh = locale === "zh-CN";
+  document.documentElement.lang = locale;
+  document.title = zh ? "串口监听" : "Serial Monitor";
+  receive?.setAttribute("aria-label", zh ? "串口数据" : "Serial data");
+  renderStatus();
+}
+
 const view = connectReadOnlyView({
   onSession() {
-    status.textContent = zh ? "等待串口数据…" : "Waiting for serial data…";
+    state = "waiting";
+    renderStatus();
   },
+  onLocale: renderLocale,
   onBatch(batch) {
     const terms: string[] = [];
     for (const item of batch.items) {
@@ -87,18 +117,16 @@ const view = connectReadOnlyView({
       }
     }
     const text = terms.join("");
-    if (text && displayed === 0) status.textContent = "";
+    if (text && state === "waiting") {
+      state = "receiving";
+      renderStatus();
+    }
     append(text);
   },
   onError() {
-    status.textContent = zh ? "监听已断开" : "Monitor disconnected";
+    state = "disconnected";
+    renderStatus();
   },
 });
-zh = view.locale === "zh-CN";
-document.documentElement.lang = view.locale;
 document.documentElement.dataset.theme = view.dark ? "dark" : "light";
-if (zh) {
-  document.title = "串口监听";
-  status.textContent = "正在连接…";
-  receive.setAttribute("aria-label", "串口数据");
-}
+renderLocale(view.locale);

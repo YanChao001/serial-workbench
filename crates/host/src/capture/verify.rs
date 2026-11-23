@@ -10,10 +10,13 @@ pub struct VerifiedCapture {
     pub report: VerificationReport,
     pub summary: CaptureSummary,
     pub(crate) manifest: Manifest,
+    pub(crate) format: CaptureFormat,
     pub(crate) index: CaptureIndex,
     pub(crate) settlements: HashSet<SettlementKey>,
     pub(crate) source_sequences: HashMap<SourceIdentity, u64>,
     pub(crate) record_digests: Vec<[u8; 32]>,
+    pub(crate) mixed_source_clocks: bool,
+    pub(crate) last_recorded_ns: Option<u64>,
     volume_identities: HashMap<u64, (String, u64)>,
     volume_files: HashMap<u64, File>,
 }
@@ -41,23 +44,31 @@ impl VerifiedCapture {
         Ok(())
     }
     pub(crate) fn read_verified_record(&mut self, position: usize) -> HostResult<CaptureRecord> {
-        self.read_verified_record_bytes(position)
-            .map(|(record, _)| record)
+        self.read_verified_stored(position)
+            .map(|(record, _, _)| record)
     }
     pub(crate) fn read_verified_record_bytes(
         &mut self,
         position: usize,
     ) -> HostResult<(CaptureRecord, Vec<u8>)> {
+        self.read_verified_stored(position)
+            .map(|(record, _, json)| (record, json))
+    }
+
+    pub(crate) fn read_verified_stored(
+        &mut self,
+        position: usize,
+    ) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
         let location = self.index.records.get(position).ok_or_else(changed)?;
         let file = self
             .volume_files
             .get_mut(&location.volume.get())
             .ok_or_else(changed)?;
-        let (record, json) = read_record_from(file, location)?;
-        if self.record_digests.get(position) != Some(&json_digest(&json)) {
+        let (record, observed, json) = read_record_from(file, location, self.format)?;
+        if self.record_digests.get(position) != Some(&record_digest(observed, &json)) {
             return Err(changed());
         }
-        Ok((record, json))
+        Ok((record, observed, json))
     }
 }
 /// Trusted synchronous observation points for deterministic copy fault injection.
@@ -68,19 +79,14 @@ pub(crate) enum CopyPhase {
 pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
     let before = fingerprint(path)?;
     let value: serde_json::Value = read_json(&path.join("manifest.json"))?;
-    if value.get("formatVersion").and_then(|v| v.as_str()) != Some("0.1") {
-        return Err(HostError::new(
-            "FUTURE_FORMAT",
-            "Capture format is unsupported",
-        ));
-    }
+    let format = CaptureFormat::from_version(value.get("formatVersion").and_then(|v| v.as_str()))?;
     let manifest: Manifest = serde_json::from_value(value).map_err(|_| corrupt())?;
     let index = read_json::<CaptureIndex>(&path.join("index.json"))
         .ok()
-        .filter(|i| i.format_version == "0.1" && i.records.len() <= 100_000);
+        .filter(|i| i.format_version == format.version() && i.records.len() <= 100_000);
     let has_index = index.is_some();
     let index = index.unwrap_or(CaptureIndex {
-        format_version: "0.1".into(),
+        format_version: format.version().into(),
         records: vec![],
     });
     let mut prefix = 0u64;
@@ -92,6 +98,9 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
     let mut pending = HashSet::new();
     let mut sequences: HashMap<SourceIdentity, u64> = HashMap::new();
     let mut record_digests = Vec::new();
+    let mut first_clock = None;
+    let mut mixed_source_clocks = false;
+    let mut last_recorded_ns = None;
     let mut volume_identities = HashMap::new();
     for (position, volume) in manifest.volumes.iter().enumerate() {
         if !all {
@@ -131,20 +140,23 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
                 file.metadata().map_err(io_error)?.len(),
             ),
         );
-        if file.read_exact(&mut magic).is_err() || &magic != MAGIC {
+        if file.read_exact(&mut magic).is_err() || &magic != format.magic() {
             all = false;
         }
         let mut offset = 7u64;
         while all && prefix + 1 < volume.record_end.get() {
             let record_start = offset;
-            let (record, length, json) = match decode_record(&mut file) {
+            let (record, observed, length, json) = match decode_record(&mut file, format) {
                 Ok(r) => r,
                 Err(_) => {
                     all = false;
                     break;
                 }
             };
-            if record.record_ordinal.get() != prefix + 1 {
+            if record.record_ordinal.get() != prefix + 1
+                || observed
+                    .is_some_and(|value| last_recorded_ns.map_or(value != 0, |last| value < last))
+            {
                 all = false;
                 break;
             }
@@ -167,6 +179,16 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
             };
             match &record.entry {
                 CaptureEntry::Event(event) => {
+                    let (host, epoch, clock) = first_clock.get_or_insert_with(|| {
+                        (
+                            event.host_id.clone(),
+                            event.instance_epoch,
+                            event.time.clock_id.clone(),
+                        )
+                    });
+                    mixed_source_clocks |= *host != event.host_id
+                        || *epoch != event.instance_epoch
+                        || *clock != event.time.clock_id;
                     let key = source.clone();
                     if let Some(last) = sequences.insert(key, event.event_seq.get())
                         && event.event_seq.get() != last + 1
@@ -204,7 +226,8 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
                     sequences.insert(source, gap.missing_event_range.end.get().saturating_sub(1));
                 }
             }
-            record_digests.push(json_digest(&json));
+            last_recorded_ns = observed;
+            record_digests.push(record_digest(observed, &json));
             prefix += 1;
             offset += length;
         }
@@ -276,53 +299,63 @@ pub fn verify_directory(path: &Path) -> HostResult<VerifiedCapture> {
         report,
         summary,
         manifest,
+        format,
         index,
         settlements: settled,
         source_sequences: sequences,
         record_digests,
+        mixed_source_clocks,
+        last_recorded_ns,
         volume_identities,
         volume_files: HashMap::new(),
     })
 }
-pub(crate) fn json_digest(json: &[u8]) -> [u8; 32] {
-    use sha2::{Digest as _, Sha256};
-    Sha256::digest(json).into()
-}
-fn decode_record(file: &mut File) -> HostResult<(CaptureRecord, u64, Vec<u8>)> {
+fn decode_record(
+    file: &mut File,
+    format: CaptureFormat,
+) -> HostResult<(CaptureRecord, Option<u64>, u64, Vec<u8>)> {
     let mut size = [0; 4];
     file.read_exact(&mut size).map_err(|_| corrupt())?;
     let len = u32::from_le_bytes(size) as usize;
     if len == 0 || len > MAX_RECORD {
         return Err(corrupt());
     }
+    let observed = if format == CaptureFormat::RecorderClock {
+        let mut time = [0; 8];
+        file.read_exact(&mut time).map_err(|_| corrupt())?;
+        Some(u64::from_le_bytes(time))
+    } else {
+        None
+    };
     let mut bytes = vec![0; len];
     file.read_exact(&mut bytes).map_err(|_| corrupt())?;
     let mut hash = [0; 32];
     file.read_exact(&mut hash).map_err(|_| corrupt())?;
-    use sha2::{Digest as _, Sha256};
-    let actual: [u8; 32] = Sha256::digest(&bytes).into();
-    if hash != actual {
+    if hash != record_digest(observed, &bytes) {
         return Err(corrupt());
     }
     let record = serde_json::from_slice(&bytes).map_err(|_| corrupt())?;
-    Ok((record, len as u64 + 36, bytes))
+    let time_length = if observed.is_some() { 8 } else { 0 };
+    Ok((record, observed, len as u64 + 36 + time_length, bytes))
 }
 pub(crate) fn read_record_bytes(
     path: &Path,
     location: &IndexEntry,
-) -> HostResult<(CaptureRecord, Vec<u8>)> {
+    format: CaptureFormat,
+) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
     let mut file = open_read(&path.join(volume_name(location.volume.get())))?;
-    read_record_from(&mut file, location)
+    read_record_from(&mut file, location, format)
 }
 fn read_record_from(
     file: &mut File,
     location: &IndexEntry,
-) -> HostResult<(CaptureRecord, Vec<u8>)> {
+    format: CaptureFormat,
+) -> HostResult<(CaptureRecord, Option<u64>, Vec<u8>)> {
     file.seek(SeekFrom::Start(location.offset.get()))
         .map_err(io_error)?;
-    let (record, len, json) = decode_record(file)?;
+    let (record, observed, len, json) = decode_record(file, format)?;
     if record.record_ordinal != location.record_ordinal || len != location.length.get() {
         return Err(corrupt());
     }
-    Ok((record, json))
+    Ok((record, observed, json))
 }

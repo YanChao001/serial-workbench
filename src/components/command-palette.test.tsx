@@ -37,15 +37,22 @@ const commands: AppCommand[] = [
     run: () => {},
   },
 ];
-function Palette() {
+function Palette({
+  shortcutHelp = false,
+  registered = commands,
+}: {
+  shortcutHelp?: boolean;
+  registered?: AppCommand[];
+} = {}) {
   const [paletteOpen, setPaletteOpen] = useState(true);
   return (
     <MemoryRouter>
       <CommandsContext.Provider
         value={{
-          commands,
+          commands: registered,
           register: () => () => {},
           paletteOpen,
+          shortcutHelp,
           setPaletteOpen,
           execute,
           aboutOpen: false,
@@ -86,4 +93,29 @@ it("shows an empty state for unmatched commands", () => {
     target: { value: "unmatched" },
   });
   expect(screen.getByText("No matching actions")).toBeVisible();
+});
+
+it("finds editor keys and marks collisions between available registered commands", () => {
+  render(
+    <Palette
+      shortcutHelp
+      registered={commands.map((command) => ({
+        ...command,
+        shortcuts: [{ key: "F8" }],
+      }))}
+    />,
+  );
+  const search = screen.getByRole("searchbox", {
+    name: "Search keyboard shortcuts",
+  });
+  fireEvent.change(search, { target: { value: "F8" } });
+  expect(
+    screen.getAllByText("Shortcut is shared by multiple actions"),
+  ).toHaveLength(2);
+  expect(screen.queryByText("Unavailable action")).not.toBeInTheDocument();
+  fireEvent.change(search, { target: { value: "enter hex" } });
+  expect(screen.getByText("Send draft")).toBeVisible();
+  expect(screen.getByText("Send editor in Text or HEX mode")).toBeVisible();
+  expect(screen.queryByText("Registered action")).not.toBeInTheDocument();
+  expect(execute).not.toHaveBeenCalled();
 });

@@ -115,6 +115,18 @@ function DialogContent({
           onCloseAutoFocus?.(event)
           // 非模态弹窗保留 Radix 对外部点击的焦点处理；显式恢复回调始终优先。
           if (event.defaultPrevented || (!modal && interactedOutside.current)) return
+          const current = document.activeElement
+          if (
+            event.target instanceof HTMLElement &&
+            current instanceof HTMLElement &&
+            !event.target.contains(current) &&
+            !current.hasAttribute("data-radix-focus-guard") &&
+            focusDialogTarget(current)
+          ) {
+            event.preventDefault()
+            returnFocus.current = []
+            return
+          }
           for (const target of returnFocus.current) {
             if (focusDialogTarget(target)) {
               event.preventDefault()

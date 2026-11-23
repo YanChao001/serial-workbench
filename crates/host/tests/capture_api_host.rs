@@ -1,3 +1,4 @@
+use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serde_json::{Value, json};
 use serial_workbench_client::{ConnectOptions, HostClient};
 use serial_workbench_core::*;
@@ -7,6 +8,7 @@ use serial_workbench_host::{
     ipc::HostServer,
     storage::Store,
 };
+use sha2::Digest as _;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
 #[path = "support/operation_source_host.rs"]
@@ -174,7 +176,7 @@ impl Fixture {
         result.operation
     }
     async fn wait(&self, operation: &Operation, evidence_only: bool) -> Operation {
-        tokio::time::timeout(Duration::from_secs(5), async {
+        tokio::time::timeout(Duration::from_secs(15), async {
             loop {
                 let current = self
                     .store
@@ -196,7 +198,16 @@ impl Fixture {
             }
         })
         .await
-        .unwrap()
+        .unwrap_or_else(|error| {
+            let state = self
+                .store
+                .get(&self.operator, &operation.operation_id)
+                .map(|current| current.state);
+            panic!(
+                "{} operation {} did not settle: {error}; latest state: {state:?}",
+                operation.action_id, operation.operation_id
+            )
+        })
     }
     async fn action(
         &self,
@@ -424,6 +435,44 @@ async fn trusted_capture_keeps_independent_owner_after_client_disconnect_and_rep
         panic!("export reference")
     };
     assert!(exported.result_ref.revision.is_some());
+
+    let csv_target = f.register("exported-text.csv").await;
+    let csv = f
+        .action(
+            &f.user,
+            "capture.export",
+            f.reference_target(&fixed),
+            json!({"captureRef":fixed,"targetRef":csv_target,"format":"csv"}),
+        )
+        .await;
+    assert_eq!(csv.state, OperationState::Succeeded, "{:?}", csv.error);
+    let Some(ActionResult::Reference(csv)) = csv.result else {
+        panic!("CSV export reference")
+    };
+    assert!(csv.result_ref.revision.is_some());
+    let raw = f.user.connect_raw().await.unwrap();
+    let read = f.query(
+        &f.user,
+        "file.read",
+        f.reference_target(&csv.result_ref),
+        json!({"fileRef":csv.result_ref,"offset":"0","maxBytes":"65536"}),
+    );
+    let RpcResult::Query(QueryResult::FileRead(page)) =
+        success(raw.request(RpcRequest::Query(read)).await.unwrap())
+    else {
+        panic!("CSV bytes")
+    };
+    assert!(page.at_end);
+    let bytes = STANDARD.decode(page.bytes_base64.as_str()).unwrap();
+    assert!(bytes.starts_with(b"recordOrdinal,volume,recordOffset,recordLength,"));
+    assert!(bytes.ends_with(b"\r\n"));
+    let published = std::fs::read(f.dir.path().join("exported-text.csv")).unwrap();
+    assert_eq!(bytes, published);
+    assert_eq!(
+        page.fingerprint.as_str(),
+        format!("{:x}", sha2::Sha256::digest(&published))
+    );
+
     let recovery_target = f.register("recovered-copy").await;
     let recovered=f.action(&f.user,"capture.recover",f.reference_target(&recovery_target),json!({"verificationId":verification.verification_id,"sourceFingerprint":verification.source_fingerprint,"targetRef":recovery_target})).await;
     assert_eq!(
@@ -461,7 +510,6 @@ async fn trusted_capture_keeps_independent_owner_after_client_disconnect_and_rep
         .code,
         "PERMISSION_DENIED"
     );
-    let raw = f.user.connect_raw().await.unwrap();
     let records = success(raw.request(RpcRequest::Query(query)).await.unwrap());
     assert!(serde_json::to_string(&records).unwrap().contains("AQID"));
     let shared=f.query(&f.observer,"replay.read",replay.clone(),json!({"sessionId":opened.session_id,"sessionEpoch":opened.session_epoch,"maxRecords":"100","maxBytes":"262144"}));

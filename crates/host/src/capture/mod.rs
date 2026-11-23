@@ -83,6 +83,7 @@ struct PumpBudget {
 }
 struct CapturedBatch {
     entries: Vec<CaptureEntry>,
+    observed_ns: u64,
     _capture: OwnedSemaphorePermit,
     _host: OwnedSemaphorePermit,
 }
@@ -466,7 +467,9 @@ impl CaptureService {
                         }
                     };
                     for entry in batch.entries {
-                        if let Err(error) = writer.push(entry, clock.mono_ns()) {
+                        if let Err(error) =
+                            writer.push_observed(entry, clock.mono_ns(), Some(batch.observed_ns))
+                        {
                             failure = Some(error);
                             stopped.send_replace(true);
                             break;
@@ -839,14 +842,44 @@ impl CaptureService {
         params: TextExportParams,
         actor: &AuthenticatedActor,
     ) -> HostResult<ObjectRef> {
+        self.export_text_before_commit(params, actor, || {}).await
+    }
+
+    async fn export_text_before_commit(
+        &self,
+        params: TextExportParams,
+        actor: &AuthenticatedActor,
+        before_commit: impl FnOnce() + Send + 'static,
+    ) -> HostResult<ObjectRef> {
         let files = self.runtime.files.clone();
+        let auth = self.runtime.auth.clone();
         let a = actor.clone();
         let target = params.target_ref.clone();
         blocking(move || {
             let source = files.resolve(&params.capture_ref, &a, false)?;
             let destination = files.resolve(&target, &a, true)?;
-            text_export::export_at(source.checked_path(), &destination)?;
-            files.publish_file(&target, destination.checked_path(), &a)
+            let source_authority =
+                files.authorization_target(&params.capture_ref, &a, "content.read")?;
+            let target_authority = files.authorization_target(&target, &a, "workspace.modify")?;
+            let grants = auth.snapshot(&a)?.capture_bound_grants(&[
+                ("content.read", &source_authority),
+                ("workspace.modify", &target_authority),
+            ])?;
+            text_export::export_at(
+                source.checked_path(),
+                &destination,
+                params.format.unwrap_or_default(),
+                |temporary, destination| {
+                    let publish =
+                        files.prepare_file_publication(&target, temporary, destination, &a)?;
+                    before_commit();
+                    auth.commit_grant_stamp(&grants, || {
+                        files.require_reference(&params.capture_ref, &a, "content.read")?;
+                        files.require_reference(&target, &a, "workspace.modify")?;
+                        publish()
+                    })
+                },
+            )
         })
         .await
     }
@@ -938,6 +971,7 @@ async fn pump(
                 matches!(item, StreamItem::Source { event } if matches!(event.payload, RawPayload::Rx(_)))
             })
             .then(|| budget.before_queue.clone());
+        let clock = runtime.clock.clone();
         blocking(move || {
             files.resolve(&r, &a, true)?;
             #[cfg(test)]
@@ -950,6 +984,7 @@ async fn pump(
                 sender
                     .try_send(CapturedBatch {
                         entries: items,
+                        observed_ns: clock.mono_ns(),
                         _capture: local,
                         _host: global,
                     })
@@ -1027,6 +1062,7 @@ mod tail_tests {
         path: std::path::PathBuf,
         service: CaptureService,
         actor: AuthenticatedActor,
+        operator: AuthenticatedActor,
         reference: ObjectRef,
     }
     impl Fixture {
@@ -1109,6 +1145,7 @@ mod tail_tests {
                 path,
                 service,
                 actor,
+                operator,
                 reference,
             }
         }
@@ -1134,6 +1171,126 @@ mod tail_tests {
                 Some(&JsonValue::Array(vec![]))
             );
         }
+    }
+    #[tokio::test]
+    async fn capture_text_export_revocation_before_publish_keeps_source_and_removes_output() {
+        for (format, permission) in [
+            (TextExportFormat::Csv, "content.read"),
+            (TextExportFormat::Jsonl, "workspace.modify"),
+        ] {
+            let f = Fixture::new();
+            let root = f.path.parent().unwrap();
+            let destination = root.join("export.txt");
+            let files = &f.service.runtime.files;
+            let target = files
+                .register(
+                    RegisterFileParams {
+                        path: destination.to_str().unwrap().into(),
+                        purpose: FilePurpose::CaptureTarget,
+                    },
+                    &f.operator,
+                )
+                .unwrap();
+            let affected = if permission == "content.read" {
+                &f.reference
+            } else {
+                &target
+            };
+            let scope = files
+                .authorization_target(affected, &f.actor, permission)
+                .unwrap();
+            let before = format::fingerprint(&f.path).unwrap();
+            let auth = f.service.runtime.auth.clone();
+            let actor_id = f.actor.id().clone();
+            let operator = f.operator.clone();
+            let revoked = Arc::new(std::sync::atomic::AtomicBool::new(false));
+            let commit_witness = revoked.clone();
+            let result = f
+                .service
+                .export_text_before_commit(
+                    TextExportParams {
+                        capture_ref: f.reference.clone(),
+                        target_ref: target,
+                        format: Some(format),
+                    },
+                    &f.actor,
+                    move || {
+                        auth.revoke(
+                            &operator,
+                            RevokeParams {
+                                actor_id,
+                                permissions: vec![permission.into()],
+                                targets: vec![scope],
+                            },
+                        )
+                        .unwrap();
+                        commit_witness.store(true, Ordering::SeqCst);
+                    },
+                )
+                .await;
+            assert!(revoked.load(Ordering::SeqCst));
+            assert_eq!(result.unwrap_err().code, "PERMISSION_DENIED");
+            assert!(!destination.exists());
+            assert!(std::fs::read_dir(root).unwrap().all(|entry| {
+                !entry
+                    .unwrap()
+                    .file_name()
+                    .to_string_lossy()
+                    .starts_with(".text-pending-")
+            }));
+            assert_eq!(format::fingerprint(&f.path).unwrap(), before);
+        }
+    }
+    #[tokio::test]
+    async fn capture_export_registration_failure_allows_retry_at_same_destination() {
+        let f = Fixture::new();
+        let root = f.path.parent().unwrap();
+        let destination = root.join("export.csv");
+        let target = f
+            .service
+            .runtime
+            .files
+            .register(
+                RegisterFileParams {
+                    path: destination.to_str().unwrap().into(),
+                    purpose: FilePurpose::CaptureTarget,
+                },
+                &f.operator,
+            )
+            .unwrap();
+        let database = rusqlite::Connection::open(root.join("host-v0/state.sqlite3")).unwrap();
+        database
+            .execute_batch(
+                "CREATE TRIGGER reject_export BEFORE INSERT ON documents \
+             BEGIN SELECT RAISE(ABORT, 'injected export registration failure'); END;",
+            )
+            .unwrap();
+        let params = TextExportParams {
+            capture_ref: f.reference.clone(),
+            target_ref: target,
+            format: Some(TextExportFormat::Csv),
+        };
+        let original = format::fingerprint(&f.path).unwrap();
+        assert_eq!(
+            f.service
+                .export_text(params.clone(), &f.actor)
+                .await
+                .unwrap_err()
+                .code,
+            "STORAGE_UNAVAILABLE",
+        );
+        assert!(!destination.exists());
+        database
+            .execute_batch("DROP TRIGGER reject_export;")
+            .unwrap();
+        let published = f.service.export_text(params, &f.actor).await.unwrap();
+        assert_eq!(published.revision, Some(1.into()));
+        assert!(
+            std::fs::read_to_string(destination)
+                .unwrap()
+                .contains("recordOrdinal,volume,")
+        );
+        assert_eq!(format::fingerprint(&f.path).unwrap(), original);
     }
     #[tokio::test]
     async fn abandoned_live_capture_tail_uses_local_snapshot_and_releases_all_handles() {

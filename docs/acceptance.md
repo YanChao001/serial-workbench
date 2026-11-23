@@ -193,6 +193,10 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 完整四目标 CI 的原生 runtime 验收步骤使用每个目标实际安装布局，构建、签名并运行终端、图表和自动化三个参考包的无窗口用例。产物分别保留在 `artifacts/reference-terminal`、`artifacts/reference-chart` 与 `artifacts/reference-automation`。各平台的原生窗口和实际离线安装遵循阶段出口另行验收。
 
+### 已打开视图的语言切换（UX-13）
+
+用签名终端与签名图表的配对浏览器场景，在同一个已打开视图中中英文往返。核对 `lang`、图表标题或终端的无障碍名称、原输入仍在、iframe 地址保持，以及同一读端口确认切换后写入的新数据。收据的 `localeChanges` 记录视图实际使用的语言。使用已签发的 0.1.2 包复跑时设置 `SWB_TEST_BROWSER_LEGACY_VIEW=1`，同时核对应用已切换、旧视图继续使用打开时的语言与原读流。隔离桌面终端场景检查主窗口保存语言后，已打开的 Wry 壳应用新语言，并在同一视图确认后续字节。子窗口加载期间的语言切换仍需另外覆盖。
+
 ## 签名主题
 
 按[签名运行时](#签名运行时与-sdk)准备固定 Node，并在独立环境运行 Host 和无头界面检查。
@@ -246,6 +250,12 @@ node scripts/test-host-scenarios.mjs --harness <harness绝对路径> --output <�
 
 Ubuntu 手动 CI 在联网安装/构建后运行 `scripts/test-host-offline.mjs`，以独立 network namespace、原 runner UID/GID 执行同一六场景。前后核对命名空间、仅未启用 lo、无 IP/双栈路由及父环境不变，并从外部上传原始证据。失败不回退联网；本地单元测试只验证接线。
 
+### 只读回放控制
+
+用 `cargo test --locked -p serial-workbench-host --test replay_readonly --test capture_integrity` 复验 LOG-08。用可控时钟核对播放中切换倍率、暂停期间调整及跳转后的精确到期点。打开同一录制的两个 reader，检查断点只影响对应游标。核对单步保持暂停、未跨过下一条记录、大记录可按引用读回原始 JSON 和摘要，以及预算不足时游标保留。控制终态沿用原回执格式，单独查询状态不会推进游标。
+
+用 `pnpm exec vitest run src/features/workbench/replay-panel.test.tsx` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts --workers=1` 复验界面。通过工作台的录制入口打开只读回放，检查原时序、最快、暂停和跳转。调整倍率，设置记录断点，读取至断点，再单步读取保留原始来源的下一条记录。恢复、清除断点和读取失败均检查当前 reader 的展示和精确会话代次。
+
 ### 独立录制格式
 
 ```sh
@@ -254,6 +264,8 @@ node scripts/test-capture-container-independent.mjs --fixture <该目录> --resu
 ```
 
 Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引、水位、摘要和 partial/unknown。两个输出位置尚不存在，结果文件在 fixture 外。格式见 [Capture](./contracts/capture-container-v0.md)。
+
+录制的结构化文本导出复用 `capture.export`。运行 `cargo test --locked -p serial-workbench-host --lib capture::text_export` 和 `cargo test --locked -p serial-workbench-host --test capture_api_host`，核对源字节定位、跨记录编码、CSV 往返、冲突与源变更时的原件。桌面为 CSV 和 JSONL 分别选择文件，恢复目标单独登记。参数与操作可用性通过 `pnpm exec vitest run src/features/workbench/capture-tools.test.tsx` 复验。格式见[录制容器契约](./contracts/capture-container-v0.md)。
 
 ## M3 契约冻结
 
@@ -277,6 +289,30 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 ### 有序会话钩子
 
 按[签名运行时](#签名运行时与-sdk)准备资源后，运行 `cargo test --locked -p serial-workbench-host --lib native_node_task_session_hooks_ -- --ignored --nocapture`。签名任务通过 Virtual Echo 核对原代次的打开、实际 RX、最终 TX 回执与关闭，并在回调失败时验证 reader 名额释放。运行 `cargo test --locked -p serial-workbench-host --test session_lifecycle --test stream_budget` 覆盖底层故障、未结算 TX、撤权重授与旧代次的收尾。 `node --test scripts/node-backend-cancellation.test.mjs` 复验迟到页、租约释放及缺口续读。
+
+### 发送草稿转义（IO-03）
+
+在文本草稿使用“将转义转为 HEX”展开 `\r`、`\n`、`\t`、`\0`、`\xNN`、独立的 `0xNN`、`\h(4F 4B)` 和 `<CR>`、`<LF>`。普通正文沿用选定发送编码，转义生成的字节直接保留，正文空白和另选行尾分别处理。核对草稿保留与选区、保存大小边界、转换后的预览和随后独立发送的字节。转换沿用现有草稿登记。
+
+HEX 草稿或自定义行尾输入奇数个数字、非法字母及补充平面字符时，核对对应字段显示的字符位置。在该字段按发送快捷键，核对错误范围被选中和 TX 接纳数保持为零。补全字节后重新核对预览。
+
+### 发送校验（IO-13）
+
+在发送栏打开「发送校验」，选择 Sum-8、XOR-8、CRC-16/Modbus、CRC-16/CCITT-FALSE 或 CRC-32/ISO-HDLC。CRC 支持两种字节序，Modbus 默认低位字节在前。范围使用从零开始的编码字节偏移，包含起点、排除终点。起点和终点分别留空时使用开头和末尾。默认只计算正文，可将已配置的行尾纳入。校验值总是追加在正文和行尾之后。切换草稿或会话代次后需要重新选择校验。 [Modbus 串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf)
+
+运行 `pnpm exec vitest run src/features/workbench/send-checksum.test.ts src/features/workbench/send-panel.test.tsx` 核对标准向量、两种字节序、UTF-16LE、行尾、非法偏移和会话隔离。用 `pnpm test:ui e2e/browser/send-conversion.spec.ts` 在中文窄窗口核对 `02 07 41 12`、范围错误阻止提交和关闭面板后的焦点。
+
+### 快捷键速查（DIAG-05）
+
+按 F1、从帮助菜单选择“键盘快捷键”，或在快捷操作中选择同名命令。用 `pnpm test:ui e2e/browser/smoke.spec.ts` 核对搜索焦点、按键与文本联合过滤、收发工作台的文本和 HEX 发送模式，以及 Escape 后的焦点恢复。注册命令共享按键时，速查显示冲突提示。发送快捷键仅在发送编辑区生效。
+
+在速查中修改快速操作、设置、侧栏或全屏的绑定。核对冲突提示、应用新绑定、重新加载、取消与恢复默认键位。F1、Escape 和会话发送键沿用固定作用域。
+
+### 桌面诊断包（DIAG-06）
+
+在诊断页展开报告，核对 JSON 包的 `formatVersion`、采集时间、系统名称和架构、应用与 Tauri 版本、已提交配置修订和日志尾部。保存并逐字节比对预览。用独立 profile 的应用日志核对记录首行的配对码与凭据脱敏，以及截断半行和续行的排除。取消系统保存后可以重试，保存使用本次预览，源日志保持原样。真实对话框按桌面边界安排。
+
+Windows 签名终端原生专项在独立 runner 的同一桌面应用中使用真实对话框保存诊断包。候选 `358265d` 已核对当前语言、格式版本、对话框归属、操作后焦点和预览字节。`diagnostics-export.json` 收据记录选择路径、长度和摘要。 [Windows 专项收据](https://github.com/YanChao001/serial-workbench/actions/runs/45180993433/artifacts/14822645595)
 
 ## 安装与发行验收
 

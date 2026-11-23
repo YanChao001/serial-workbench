@@ -4,14 +4,29 @@ export function formatHex(bytes: Uint8Array): string {
   ).join(" ");
 }
 
+/** UTF-16 offsets suitable for selecting the invalid text in a browser input. */
+export class HexInputError extends Error {
+  constructor(
+    public readonly start: number,
+    public readonly end: number,
+  ) {
+    super("HEX input must contain complete bytes and ASCII whitespace only");
+  }
+}
+
 export function parseHex(input: string): Uint8Array {
   const bytes: number[] = [];
-  for (const token of input.split(/[\t\n\v\f\r ]+/)) {
-    if (token.length === 0) continue;
-    if (token.length % 2 !== 0 || !/^[0-9a-f]+$/i.test(token)) {
-      throw new Error(
-        "HEX input must contain complete bytes and ASCII whitespace only",
-      );
+  for (const match of input.matchAll(/[^\t\n\v\f\r ]+/g)) {
+    const token = match[0];
+    const invalid = token.search(/[^0-9a-f]/i);
+    if (invalid !== -1) {
+      const start = match.index + invalid;
+      const width = (input.codePointAt(start) ?? 0) > 0xffff ? 2 : 1;
+      throw new HexInputError(start, start + width);
+    }
+    if (token.length % 2 !== 0) {
+      const end = match.index + token.length;
+      throw new HexInputError(end - 1, end);
     }
     for (let offset = 0; offset < token.length; offset += 2) {
       bytes.push(Number.parseInt(token.slice(offset, offset + 2), 16));

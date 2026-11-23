@@ -35,13 +35,15 @@ use windows_sys::Win32::{
         },
         DACL_SECURITY_INFORMATION, EqualSid, GetAce, GetLengthSid, GetSecurityDescriptorControl,
         GetTokenInformation, INHERITED_ACE, IsValidSid, OWNER_SECURITY_INFORMATION, PSID,
-        SE_DACL_PROTECTED, SECURITY_ATTRIBUTES, TOKEN_QUERY, TOKEN_USER, TokenUser,
+        SE_DACL_PROTECTED, SECURITY_ATTRIBUTES, TOKEN_INFORMATION_CLASS, TOKEN_OWNER, TOKEN_QUERY,
+        TOKEN_USER, TokenOwner, TokenUser,
     },
     Storage::FileSystem::{
-        CREATE_NEW, CreateDirectoryW, CreateFileW, FILE_ALL_ACCESS, FILE_ATTRIBUTE_REPARSE_POINT,
-        FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT, FILE_SHARE_READ,
-        FILE_SHARE_WRITE, FILE_TYPE_PIPE, GetFileType, MOVEFILE_REPLACE_EXISTING,
-        MOVEFILE_WRITE_THROUGH, MoveFileExW, OPEN_EXISTING, READ_CONTROL, SECURITY_IDENTIFICATION,
+        BY_HANDLE_FILE_INFORMATION, CREATE_NEW, CreateDirectoryW, CreateFileW, FILE_ALL_ACCESS,
+        FILE_ATTRIBUTE_REPARSE_POINT, FILE_FLAG_BACKUP_SEMANTICS, FILE_FLAG_OPEN_REPARSE_POINT,
+        FILE_SHARE_DELETE, FILE_SHARE_READ, FILE_SHARE_WRITE, FILE_TYPE_DISK, FILE_TYPE_PIPE,
+        GetFileInformationByHandle, GetFileType, MOVEFILE_REPLACE_EXISTING, MOVEFILE_WRITE_THROUGH,
+        MoveFileExW, OPEN_EXISTING, READ_CONTROL, SECURITY_IDENTIFICATION,
     },
     System::{
         Pipes::{GetNamedPipeClientProcessId, GetNamedPipeInfo, GetNamedPipeServerProcessId},
@@ -99,6 +101,9 @@ impl UserSid {
         self.0.as_ptr().cast_mut().cast()
     }
     fn for_process(process: HANDLE) -> HostResult<Self> {
+        Self::from_process_token(process, TokenUser)
+    }
+    fn from_process_token(process: HANDLE, class: TOKEN_INFORMATION_CLASS) -> HostResult<Self> {
         unsafe {
             let mut token = null_mut();
             if OpenProcessToken(process, TOKEN_QUERY, &mut token) == 0 {
@@ -106,15 +111,22 @@ impl UserSid {
             }
             let token = OwnedHandle::from_raw_handle(token);
             let mut length = 0;
-            GetTokenInformation(token.as_raw_handle(), TokenUser, null_mut(), 0, &mut length);
-            if length < size_of::<TOKEN_USER>() as u32 || length > 65536 {
+            GetTokenInformation(token.as_raw_handle(), class, null_mut(), 0, &mut length);
+            let minimum = if class == TokenUser {
+                size_of::<TOKEN_USER>()
+            } else if class == TokenOwner {
+                size_of::<TOKEN_OWNER>()
+            } else {
+                return Err(denied());
+            };
+            if (length as usize) < minimum || length > 65536 {
                 return Err(denied());
             }
             // Vec<u8> 不保证 TOKEN_USER 内指针对齐；使用指针宽度的存储。
             let mut buffer = vec![0usize; (length as usize).div_ceil(size_of::<usize>())];
             if GetTokenInformation(
                 token.as_raw_handle(),
-                TokenUser,
+                class,
                 buffer.as_mut_ptr().cast(),
                 length,
                 &mut length,
@@ -122,16 +134,20 @@ impl UserSid {
             {
                 return Err(denied());
             }
-            let user = &*buffer.as_ptr().cast::<TOKEN_USER>();
-            if IsValidSid(user.User.Sid) == 0 {
+            let token_sid = if class == TokenUser {
+                (*buffer.as_ptr().cast::<TOKEN_USER>()).User.Sid
+            } else {
+                (*buffer.as_ptr().cast::<TOKEN_OWNER>()).Owner
+            };
+            if token_sid.is_null() || IsValidSid(token_sid) == 0 {
                 return Err(denied());
             }
-            let size = GetLengthSid(user.User.Sid);
+            let size = GetLengthSid(token_sid);
             if size == 0 || size > 68 {
                 return Err(denied());
             }
             let mut sid = Self(vec![0; (size as usize).div_ceil(size_of::<u32>())]);
-            if CopySid(size, sid.0.as_mut_ptr().cast(), user.User.Sid) == 0 {
+            if CopySid(size, sid.0.as_mut_ptr().cast(), token_sid) == 0 {
                 return Err(denied());
             }
             Ok(sid)
@@ -139,6 +155,9 @@ impl UserSid {
     }
     fn current() -> HostResult<Self> {
         Self::for_process(unsafe { GetCurrentProcess() })
+    }
+    fn current_default_owner() -> HostResult<Self> {
+        Self::from_process_token(unsafe { GetCurrentProcess() }, TokenOwner)
     }
     fn text(&self) -> HostResult<String> {
         unsafe {
@@ -324,6 +343,58 @@ fn open_existing(path: &Path, directory: bool) -> io::Result<File> {
     } else {
         Ok(unsafe { File::from_raw_handle(handle) })
     }
+}
+
+/// 保留各级目录句柄直至打开同卷普通日志，拒绝重解析点和硬链接。
+pub fn open_local_log(path: &Path) -> HostResult<Option<File>> {
+    use std::os::windows::fs::OpenOptionsExt;
+    validate_path(path)?;
+    if path.file_name().is_none() {
+        return Err(invalid());
+    }
+    let ancestors: Vec<_> = path.ancestors().skip(1).collect();
+    let mut directories = Vec::with_capacity(ancestors.len());
+    for ancestor in ancestors.into_iter().rev() {
+        let directory = match open_existing(ancestor, true) {
+            Ok(file) => file,
+            Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+            Err(_) => return Err(storage_error()),
+        };
+        let metadata = directory.metadata().map_err(|_| storage_error())?;
+        if !metadata.is_dir() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+            return Err(denied());
+        }
+        directories.push(directory);
+    }
+    let file = match fs::OpenOptions::new()
+        .read(true)
+        .share_mode(FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE)
+        .custom_flags(FILE_FLAG_OPEN_REPARSE_POINT)
+        .open(path)
+    {
+        Ok(file) => file,
+        Err(error) if error.kind() == io::ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(storage_error()),
+    };
+    let mut info = BY_HANDLE_FILE_INFORMATION::default();
+    let handle = file.as_raw_handle();
+    if unsafe { GetFileType(handle) } != FILE_TYPE_DISK
+        || unsafe { GetFileInformationByHandle(handle, &mut info) } == 0
+        || info.nNumberOfLinks != 1
+    {
+        return Err(denied());
+    }
+    let metadata = file.metadata().map_err(|_| storage_error())?;
+    if !metadata.is_file() || metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
+        return Err(denied());
+    }
+    let user = UserSid::current()?;
+    // Windows 可为提升后的进程指定不同的默认文件所有者。日志由现有 logger 创建，
+    // 接受该 token 的默认所有者，实例锁和密钥继续要求实际用户 SID。
+    if validate_instance_lock_owner(handle, &user).is_err() {
+        validate_instance_lock_owner(handle, &UserSid::current_default_owner()?)?;
+    }
+    Ok(Some(file))
 }
 fn validate_file(file: &File, directory: bool) -> HostResult<()> {
     let meta = file.metadata().map_err(|_| storage_error())?;
@@ -1081,6 +1152,7 @@ mod tests {
         );
         assert!(prepare_private_directory(&link).is_err());
         assert!(read_secret(&link.join("credential")).is_err());
+        assert!(open_local_log(&link.join("inherited-secret")).is_err());
         assert!(write_atomic(&link.join("credential"), b"replacement").is_err());
         assert_eq!(read_secret(&secret).unwrap().unwrap(), b"secret");
         fs::remove_dir(&link).unwrap();

@@ -38,6 +38,7 @@ export function operationText(
       "auth.authorize": t("workbench.operation.authorize"),
       "auth.authenticate": t("workbench.operation.authorize"),
       "transfer.file": t("workbench.tools.sendFile"),
+      "transfer.paste": t("workbench.ansiPaste"),
       "capture.start": t("workbench.tools.startCapture"),
       "capture.stop": t("workbench.stopCapture"),
       "capture.verify": t("workbench.tools.verify"),
@@ -88,6 +89,7 @@ export function operationProgress(
 export function isBusinessTask(actionId: string): boolean {
   return (
     actionId === "transfer.file" ||
+    actionId === "transfer.paste" ||
     actionId.startsWith("capture.") ||
     actionId === "replay.open"
   );

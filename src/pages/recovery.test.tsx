@@ -55,12 +55,15 @@ function Destination() {
   );
 }
 const report: Awaited<ReturnType<typeof native.getDiagnosticsReport>> = {
+  formatVersion: "0.1",
+  collectedAt: "2026-11-23T00:00:00.000Z",
   appVersion: "1.0.0",
   tauriVersion: "2",
   architecture: "x86_64",
   platform: "windows",
   windowLabel: "main",
   settingsRevision: "4",
+  configuration: null,
   desktop: {
     trayAvailable: true,
     secondaryOpen: false,

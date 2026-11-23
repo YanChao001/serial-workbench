@@ -5,6 +5,7 @@ import type {
   ClientWindowState_Deserialize as ClientWindowStateInput,
   GalleryEntry,
   ConnectionDefault,
+  ShortcutBinding,
 } from "./generated/bindings";
 import {
   parseObjectRef,
@@ -19,6 +20,7 @@ import {
   parseReceiveHistory,
 } from "./receive-history";
 import { APP_CONFIG } from "@/config/app";
+import { validShortcutBinding } from "@/commands/shortcuts";
 import { isTauri, readClientState, saveClientState } from "./tauri";
 
 export type {
@@ -32,6 +34,7 @@ export const DEFAULT_CLIENT_STATE = parseClientWindowState(
 );
 export const DEFAULT_CLIENT_PREFERENCES = DEFAULT_CLIENT_STATE.preferences;
 export const BROWSER_CLIENT_STATE_KEY = `${APP_CONFIG.browserStorageNamespace}:client-state-v0`;
+export const CLIENT_DRAFT_MAX_BYTES = 65_536;
 
 export function browserClientStateStore() {
   return createBrowserClientStateStore(
@@ -182,7 +185,7 @@ export function parseClientPreferences(value: unknown): ClientPreferences {
     !exactKeys(
       value,
       ["menuBar", "windowPosition", "sidebarCollapsed", "sidebarWidth"],
-      ["receiveHistory"],
+      ["receiveHistory", "shortcutOverrides"],
     ) ||
     typeof value.menuBar !== "boolean" ||
     typeof value.sidebarCollapsed !== "boolean" ||
@@ -203,7 +206,44 @@ export function parseClientPreferences(value: unknown): ClientPreferences {
       value.receiveHistory === undefined
         ? { ...DEFAULT_RECEIVE_HISTORY }
         : parseReceiveHistory(value.receiveHistory),
+    ...(value.shortcutOverrides === undefined
+      ? {}
+      : {
+          shortcutOverrides: parseShortcutOverrides(value.shortcutOverrides),
+        }),
   };
+}
+
+function parseShortcutOverrides(
+  value: unknown,
+): Record<string, ShortcutBinding> {
+  if (!record(value)) invalidClient();
+  const entries = Object.entries(value);
+  if (entries.length > 64) invalidClient();
+  return Object.fromEntries(
+    entries.map(([id, entry]) => {
+      if (
+        !id ||
+        id.length > 64 ||
+        /[^a-z0-9-]/.test(id) ||
+        !record(entry) ||
+        !exactKeys(entry, ["key", "primary", "alt", "shift"]) ||
+        typeof entry.key !== "string" ||
+        typeof entry.primary !== "boolean" ||
+        typeof entry.alt !== "boolean" ||
+        typeof entry.shift !== "boolean"
+      )
+        invalidClient();
+      const binding = {
+        key: entry.key,
+        primary: entry.primary,
+        alt: entry.alt,
+        shift: entry.shift,
+      };
+      if (!validShortcutBinding(binding)) invalidClient();
+      return [id, binding];
+    }),
+  );
 }
 function parseClientGallery(value: unknown): GalleryEntry[] {
   if (!Array.isArray(value) || value.length > 24) invalidClient();
@@ -289,7 +329,7 @@ export function parseClientWindowState(value: unknown): ClientWindowState {
       new TextEncoder().encode(key).length > 1024 ||
       typeof draft !== "string" ||
       draft.includes("\0") ||
-      new TextEncoder().encode(draft).length > 65536
+      new TextEncoder().encode(draft).length > CLIENT_DRAFT_MAX_BYTES
     )
       invalidClient();
     Object.defineProperty(drafts, key, {

@@ -8,6 +8,7 @@ import {
   type ReactNode,
 } from "react";
 import {
+  Code2,
   Eraser,
   FileUp,
   Send,
@@ -24,7 +25,12 @@ import type {
   TextEncoding,
 } from "@serial-workbench/contracts";
 import { TX_MAX_BYTES } from "@serial-workbench/contracts";
-import { encodeSend, formatHex, parseHex } from "@serial-workbench/host-client";
+import {
+  encodeSend,
+  formatHex,
+  HexInputError,
+  parseHex,
+} from "@serial-workbench/host-client";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { useComposerToastOffset } from "./use-composer-toast-offset";
 import {
@@ -52,7 +58,7 @@ import {
 import {
   formatShortcut,
   matchesShortcut,
-  type Shortcut,
+  SEND_EDITOR_SHORTCUT,
 } from "@/commands/shortcuts";
 import type { WorkbenchLabels } from "./labels";
 import {
@@ -60,19 +66,23 @@ import {
   workbenchStatus,
 } from "./stream-presentation";
 import { TxReceiptFacts } from "./tx-receipt-facts";
+import {
+  appendSendChecksum,
+  DEFAULT_SEND_CHECKSUM,
+  type SendChecksum,
+} from "./send-checksum";
+import { SendChecksumSettings } from "./send-checksum-settings";
 import { convertSendDraft } from "./send-draft-conversion";
+import { expandSendEscapes, SendEscapeError } from "./send-escapes";
+import { MixedSendInput } from "./mixed-send-input";
 import { TextEncodingSelect } from "./text-encoding-select";
 import {
   createTextSendPreview,
+  encodeTextSend,
   TextEncodingError,
   type TextSendPreview,
 } from "@/lib/text-encoding";
 import { useTextEncoding } from "@/hooks/use-text-encoding";
-const SEND_SHORTCUT: Shortcut = {
-  key: "Enter",
-  primary: true,
-  allowInEditable: true,
-};
 const NO_LINE_ENDING: LineEnding = { kind: "none" };
 function sameReceiptIdentity(value: Operation, admitted: Operation): boolean {
   return (
@@ -108,10 +118,11 @@ export type SendPanelProps = {
   initialMode?: "text" | "hex";
   session?: SessionSnapshot;
   draft: string;
+  checksumDraftKey?: string;
   onDraftChange: (value: string) => void;
   labels: WorkbenchLabels;
   onSend: (bytes: Uint8Array, signal?: AbortSignal) => Promise<Operation>;
-  /** 最终编码与行尾的不可变快照，按需读取字节副本；非法输入和卸载时为 null。 */
+  /** 最终发送字节的不可变快照，非法输入和卸载时为 null。 */
   onPreviewChange?: (preview: TextSendPreview | null) => void;
   permissionAllowed?: boolean;
   onSendFile?: () => void;
@@ -132,6 +143,7 @@ export function SendPanel({
   draftsDirty = false,
   session,
   draft,
+  checksumDraftKey,
   onDraftChange,
   labels,
   onSend,
@@ -170,6 +182,7 @@ export function SendPanel({
   const [conversionError, setConversionError] = useState<
     "INVALID_HEX" | "INVALID_UTF8" | "INVALID_ENCODING" | "UNREPRESENTABLE"
   >();
+  const [escapeError, setEscapeError] = useState<SendEscapeError>();
   const [localMode, setMode] = useState<TerminalMode | null>(null);
   const mode =
     controlledMode ?? localMode ?? terminalSettings?.sendMode ?? initialMode;
@@ -189,6 +202,17 @@ export function SendPanel({
   const sessionScope = session
     ? JSON.stringify([session.sessionId, session.sessionEpoch])
     : null;
+  const checksumOwner = JSON.stringify([checksumDraftKey, sessionScope]);
+  const [checksumState, setChecksumState] = useState({
+    owner: checksumOwner,
+    value: DEFAULT_SEND_CHECKSUM,
+  });
+  const checksum =
+    checksumState.owner === checksumOwner
+      ? checksumState.value
+      : DEFAULT_SEND_CHECKSUM;
+  if (checksumState.owner !== checksumOwner)
+    setChecksumState({ owner: checksumOwner, value: DEFAULT_SEND_CHECKSUM });
   const [sendState, setSendState] = useState<{
     scope: string | null;
     busy: boolean;
@@ -244,6 +268,7 @@ export function SendPanel({
   useEffect(() => {
     setReceiptOpen(false);
     setConversionError(undefined);
+    setEscapeError(undefined);
     setSendState((current) =>
       current.scope === sessionScope
         ? current
@@ -260,8 +285,11 @@ export function SendPanel({
   const preview = useMemo<{
     prepared?: TextSendPreview;
     invalid: boolean;
-    reason?: "unrepresentable" | "loading" | "hex" | "limit";
+    reason?: "unrepresentable" | "loading" | "hex" | "limit" | "checksum";
+    checksumHex?: string;
+    hexIssue?: { field: "draft" | "ending"; start: number; end: number };
   }>(() => {
+    let field: "draft" | "ending" = "ending";
     try {
       if (mode !== "hex" && encodingStatus !== "ready")
         return { invalid: true, reason: "loading" };
@@ -276,9 +304,26 @@ export function SendPanel({
               ),
             }
           : { kind: endingKind };
-      const prepared = createTextSendPreview(draft, mode, suffix, encoding);
+      field = "draft";
+      let prepared = createTextSendPreview(draft, mode, suffix, encoding);
+      let checksumHex: string | undefined;
+      if (checksum.algorithm !== "none") {
+        const bytes = prepared.readBytes();
+        const endingLength = encodeTextSend("", mode, suffix, encoding).length;
+        const checked = appendSendChecksum(bytes, bytes.length - endingLength, {
+          ...checksum,
+          algorithm: checksum.algorithm,
+        });
+        if (!checked) return { invalid: true, reason: "checksum" };
+        checksumHex = formatHex(checked.checksum);
+        prepared = Object.freeze({
+          byteLength: checked.bytes.length,
+          readBytes: () => checked.bytes.slice(),
+        });
+      }
       return {
         prepared,
+        checksumHex,
         invalid: prepared.byteLength > TX_MAX_BYTES,
         reason: prepared.byteLength > TX_MAX_BYTES ? "limit" : undefined,
       };
@@ -286,22 +331,50 @@ export function SendPanel({
       return {
         invalid: true,
         reason: error instanceof TextEncodingError ? error.code : "hex",
+        hexIssue:
+          error instanceof HexInputError
+            ? { field, start: error.start, end: error.end }
+            : undefined,
       };
     }
-  }, [draft, mode, endingKind, customSuffixHex, encoding, encodingStatus]);
+  }, [
+    draft,
+    mode,
+    endingKind,
+    customSuffixHex,
+    encoding,
+    encodingStatus,
+    checksum,
+  ]);
+  const hexIssue = preview.hexIssue;
+  const hexPosition = hexIssue
+    ? Array.from(
+        (hexIssue.field === "draft" ? draft : customSuffixHex).slice(
+          0,
+          hexIssue.start,
+        ),
+      ).length + 1
+    : undefined;
   const previewError =
     preview.reason === "limit"
       ? labels.sendLimit.replace(
           "{limit}",
           formatByteSize(String(TX_MAX_BYTES)),
         )
-      : preview.reason === "loading"
-        ? encodingStatus === "error"
-          ? labels.encodingLoadFailed
-          : labels.encodingLoading
-        : preview.reason === "unrepresentable"
-          ? labels.unrepresentableEncoding
-          : labels.invalidHex;
+      : preview.reason === "checksum"
+        ? labels.checksumInvalidRange
+        : preview.reason === "loading"
+          ? encodingStatus === "error"
+            ? labels.encodingLoadFailed
+            : labels.encodingLoading
+          : preview.reason === "unrepresentable"
+            ? labels.unrepresentableEncoding
+            : hexPosition === undefined
+              ? labels.invalidHex
+              : (hexIssue?.field === "ending"
+                  ? labels.invalidHexEndingAt
+                  : labels.invalidHexDraftAt
+                ).replace("{position}", String(hexPosition));
   const conversionMessage =
     conversionError === "INVALID_HEX"
       ? labels.invalidHex
@@ -350,7 +423,7 @@ export function SendPanel({
         ? labels.sending
         : !preview.prepared?.byteLength
           ? labels.emptyDraft
-          : `${formatShortcut(SEND_SHORTCUT)} ${labels.send}`);
+          : `${formatShortcut(SEND_EDITOR_SHORTCUT)} ${labels.send}`);
   async function send() {
     const prepared = preview.prepared;
     if (disabled || preview.invalid || busy || !prepared?.byteLength) return;
@@ -379,6 +452,7 @@ export function SendPanel({
     }
   }
   const emptyDraft = draft.length === 0;
+  const invalidChecksum = preview.reason === "checksum";
   const toolbar = useMemo(
     () => (
       <div
@@ -408,6 +482,7 @@ export function SendPanel({
               return;
             }
             setConversionError(undefined);
+            setEscapeError(undefined);
             onDraftChange(converted.draft);
             setMode(value);
             onSendModeChange?.(value);
@@ -433,7 +508,53 @@ export function SendPanel({
             if (!value) return;
             setEncoding(value);
             setConversionError(undefined);
+            setEscapeError(undefined);
             onEncodingChange?.(value);
+          }}
+        />
+        {mode === "text" && (
+          <WorkbenchIconButton
+            label={labels.expandSendEscapes}
+            disabled={draftReadOnly || emptyDraft || encodingStatus !== "ready"}
+            onClick={() => {
+              setEscapeError(undefined);
+              setConversionError(undefined);
+              const original = currentDraft.current;
+              try {
+                const hex = expandSendEscapes(original, encoding);
+                onDraftChange(hex);
+                setMode("hex");
+                onSendModeChange?.("hex");
+                draftInput.current?.focus();
+              } catch (error) {
+                if (!(error instanceof SendEscapeError)) {
+                  setConversionError("UNREPRESENTABLE");
+                  return;
+                }
+                setEscapeError(error);
+                const input = draftInput.current;
+                if (input) {
+                  input.focus();
+                  input.setSelectionRange(error.start, error.end);
+                }
+              }
+            }}
+          >
+            <Code2 aria-hidden="true" />
+          </WorkbenchIconButton>
+        )}
+        <MixedSendInput
+          key={`mixed-${checksumDraftKey ?? ""}`}
+          readDraft={() => currentDraft.current}
+          encoding={encoding}
+          disabled={draftReadOnly === true || encodingStatus !== "ready"}
+          labels={labels}
+          onApply={(hex) => {
+            setConversionError(undefined);
+            setEscapeError(undefined);
+            onDraftChange(hex);
+            setMode("hex");
+            onSendModeChange?.("hex");
           }}
         />
         <Select
@@ -489,15 +610,38 @@ export function SendPanel({
                   disabled={draftReadOnly}
                   value={suffixHex}
                   onChange={(event) => setCustomHex(event.target.value)}
-                  aria-invalid={preview.invalid}
+                  aria-invalid={hexIssue?.field === "ending"}
                   aria-describedby={
-                    preview.invalid ? `${id}-invalid` : undefined
+                    hexIssue?.field === "ending" ? `${id}-invalid` : undefined
                   }
+                  onKeyDown={(event) => {
+                    if (
+                      hexIssue?.field === "ending" &&
+                      matchesShortcut(event.nativeEvent, SEND_EDITOR_SHORTCUT)
+                    ) {
+                      event.preventDefault();
+                      event.currentTarget.setSelectionRange(
+                        hexIssue.start,
+                        hexIssue.end,
+                      );
+                    }
+                  }}
                 />
               </label>
             </PopoverContent>
           </Popover>
         )}
+        <SendChecksumSettings
+          key={checksumOwner}
+          value={checksum}
+          disabled={draftReadOnly}
+          checksumHex={preview.checksumHex}
+          invalid={invalidChecksum}
+          labels={labels}
+          onChange={(value: SendChecksum) =>
+            setChecksumState({ owner: checksumOwner, value })
+          }
+        />
         <span className="workbench-toolbar-spacer" />
         {draftActions}
         {onSaveDrafts && (
@@ -569,6 +713,7 @@ export function SendPanel({
           disabled={draftReadOnly || emptyDraft}
           onClick={() => {
             setConversionError(undefined);
+            setEscapeError(undefined);
             onDraftChange("");
             draftInput.current?.focus();
           }}
@@ -588,7 +733,7 @@ export function SendPanel({
       ending.kind,
       suffixHex,
       presentationLabels,
-      preview.invalid,
+      hexIssue,
       draftActions,
       onSaveDrafts,
       draftsDirty,
@@ -604,6 +749,11 @@ export function SendPanel({
       fileBusy,
       onSendFile,
       emptyDraft,
+      checksumDraftKey,
+      checksumOwner,
+      checksum,
+      preview.checksumHex,
+      invalidChecksum,
     ],
   );
   return (
@@ -644,13 +794,24 @@ export function SendPanel({
               const value = event.currentTarget.value;
               displayedDraft.current = value;
               setConversionError(undefined);
+              setEscapeError(undefined);
               onDraftChange(value);
             }}
-            aria-invalid={preview.invalid}
+            aria-invalid={
+              (preview.invalid &&
+                !invalidChecksum &&
+                hexIssue?.field !== "ending") ||
+              !!escapeError
+            }
             aria-describedby={
               [
                 draftCaption ? `${id}-draft-owner` : undefined,
-                preview.invalid ? `${id}-invalid` : undefined,
+                preview.invalid &&
+                !invalidChecksum &&
+                hexIssue?.field !== "ending"
+                  ? `${id}-invalid`
+                  : undefined,
+                escapeError ? `${id}-escape` : undefined,
               ]
                 .filter(Boolean)
                 .join(" ") || undefined
@@ -659,8 +820,15 @@ export function SendPanel({
             style={terminalTypographyStyle(terminalSettings?.typography)}
             rows={3}
             onKeyDown={(event) => {
-              if (matchesShortcut(event.nativeEvent, SEND_SHORTCUT)) {
+              if (matchesShortcut(event.nativeEvent, SEND_EDITOR_SHORTCUT)) {
                 event.preventDefault();
+                if (hexIssue?.field === "draft") {
+                  event.currentTarget.setSelectionRange(
+                    hexIssue.start,
+                    hexIssue.end,
+                  );
+                  return;
+                }
                 void send();
               }
             }}
@@ -688,23 +856,38 @@ export function SendPanel({
         >
           <Send aria-hidden="true" />
         </WorkbenchIconButton>
-        {preview.invalid && (
-          <span id={`${id}-invalid`} className="sr-only">
-            {previewError}
-          </span>
-        )}
       </div>
+      {preview.invalid && (
+        <p
+          id={`${id}-invalid`}
+          className={hexIssue ? "text-xs text-destructive" : "sr-only"}
+        >
+          {previewError}
+        </p>
+      )}
       <div className="sr-only">
         <span id={`${id}-send-reason`}>{sendHint}</span>
       </div>
       <WorkbenchNotice
         noticeKey={`draft-validation:${encoding}:${preview.reason ?? "none"}:${encodingStatus}`}
       >
-        {preview.reason === "limit" ||
+        {invalidChecksum ||
+        preview.reason === "limit" ||
         preview.reason === "unrepresentable" ||
         (preview.reason === "loading" && encodingStatus === "error") ? (
           <p role="alert">{previewError}</p>
         ) : null}
+      </WorkbenchNotice>
+      <WorkbenchNotice
+        noticeKey={`draft-escape:${escapeError?.kind ?? "none"}:${escapeError?.start ?? ""}`}
+      >
+        {escapeError && (
+          <p id={`${id}-escape`} role="alert">
+            {escapeError.kind === "limit"
+              ? labels.escapedDraftTooLong
+              : labels.invalidSendEscape}
+          </p>
+        )}
       </WorkbenchNotice>
       <WorkbenchNotice
         noticeKey={`draft-conversion:${conversionError ?? "none"}`}

@@ -1,7 +1,9 @@
 use serial_workbench_core::*;
 use serial_workbench_host::capture::{
     format::CaptureSource,
+    recovery::recover_directory,
     replay::ReplayReader,
+    verify::verify_directory,
     writer::{CaptureLimits, CaptureWriter},
 };
 #[test]
@@ -89,34 +91,115 @@ fn replay_detects_changed_content_instead_of_returning_new_bytes() {
 }
 
 #[test]
-fn original_timing_pause_and_seek_use_a_fresh_playback_anchor() {
+fn mixed_clocks_use_the_recorded_timeline_across_append_and_recovery() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("mixed-clocks");
+    let sources = vec![source("h", 1, "s", 1), source("peer", 1, "s", 1)];
+    let mut writer =
+        CaptureWriter::create(&path, sources.clone(), CaptureLimits::default()).unwrap();
+    writer.push(timed_rx("h", 0, 999_000), 4000).unwrap();
+    writer.push(timed_rx("peer", 0, 1), 4100).unwrap();
+    writer.finish().unwrap();
+
+    let mut writer = CaptureWriter::append(&path, sources, CaptureLimits::default()).unwrap();
+    writer.push(timed_rx("h", 1, 999_100), 7).unwrap();
+    writer.push(timed_rx("peer", 1, 2), 157).unwrap();
+    writer.finish().unwrap();
+
+    let recovered = path.with_file_name("recovered");
+    recover_directory(&path, &recovered, &verify_directory(&path).unwrap().report).unwrap();
+    for source in [&path, &recovered] {
+        let mut reader = ReplayReader::open(source, ReplayMode::OriginalTiming).unwrap();
+        let first = reader.read(10, 9000).unwrap();
+        let [ReplayRecord::Inline { record }] = first.records.as_slice() else {
+            panic!("exactly one initial record");
+        };
+        assert_eq!(record.entry, timed_rx("h", 0, 999_000));
+        assert!(reader.read(10, 9099).unwrap().records.is_empty());
+        assert_eq!(reader.read(10, 9100).unwrap().records.len(), 2);
+        assert!(reader.read(10, 9249).unwrap().records.is_empty());
+        let end = reader.read(10, 9250).unwrap();
+        assert_eq!(end.records.len(), 1);
+        assert!(end.at_end);
+    }
+}
+
+#[test]
+fn replay_rate_changes_rebase_while_running_and_paused() {
     let d = tempfile::tempdir().unwrap();
     let path = d.path().canonicalize().unwrap().join("timing");
-    let mut writer = CaptureWriter::create(
-        &path,
-        vec![source("h", 1, "s", 1)],
-        CaptureLimits::default(),
-    )
-    .unwrap();
-    for (sequence, source_ns) in [(1, 100), (2, 200)] {
-        let event: RawEvent = serde_json::from_value(serde_json::json!({"hostId":"h","instanceEpoch":"1","sessionId":"s","sessionEpoch":"1","eventSeq":sequence.to_string(),"configurationRevision":"1","time":{"clockId":"c","sourceMonoNs":source_ns.to_string(),"receivedWallTime":"2026-11-07T00:00:00Z","precision":{"source":"host_read","resolutionNs":"1","syncMethod":"none"}},"kind":"rx","payload":{"bytesBase64":"AQ==","byteStart":(sequence-1).to_string(),"byteEnd":sequence.to_string()}})).unwrap();
-        writer
-            .push(CaptureEntry::Event(Box::new(event)), source_ns)
-            .unwrap();
-    }
-    writer.finish().unwrap();
+    write_timed_capture(&path, &[100, 200]);
+
     let mut reader = ReplayReader::open(&path, ReplayMode::OriginalTiming).unwrap();
-    assert_eq!(reader.read(10, 1000).unwrap().records.len(), 1);
-    reader.pause_at(true, 1050);
+    let first = reader.read(10, 1000).unwrap();
+    assert_eq!(first.records.len(), 1);
+    assert!(first.playback.is_none());
+    reader
+        .set_rate(ReplayRate::Timed { speed_percent: 200 }, 1020)
+        .unwrap();
+    reader.pause_at(true, 1030);
+    reader
+        .set_rate(ReplayRate::Timed { speed_percent: 400 }, 9000)
+        .unwrap();
     assert!(reader.read(10, 9000).unwrap().records.is_empty());
     reader.pause_at(false, 9050);
-    assert!(reader.read(10, 9099).unwrap().records.is_empty());
-    assert_eq!(reader.read(10, 9100).unwrap().records.len(), 1);
+    assert!(reader.read(10, 9064).unwrap().records.is_empty());
+    assert_eq!(reader.read(10, 9065).unwrap().records.len(), 1);
+
     reader.seek(1.into(), 10000).unwrap();
     let restarted = reader.read(10, 10000).unwrap();
     assert_eq!(restarted.reader_generation, U64::from(2));
-    assert_eq!(restarted.records.len(), 1);
-    assert_eq!(reader.read(10, 10100).unwrap().records.len(), 1);
+    assert_eq!(restarted.records, first.records);
+    assert!(reader.read(10, 10024).unwrap().records.is_empty());
+    assert_eq!(reader.read(10, 10025).unwrap().records.len(), 1);
+}
+
+#[test]
+fn replay_breakpoint_is_reader_local_and_rearms_after_seek() {
+    let dir = tempfile::tempdir().unwrap();
+    let path = dir.path().canonicalize().unwrap().join("breakpoint");
+    write_timed_capture(&path, &[100, 200, 300]);
+
+    let mut stopped = ReplayReader::open(&path, ReplayMode::OriginalTiming).unwrap();
+    let mut independent = ReplayReader::open(&path, ReplayMode::OriginalTiming).unwrap();
+    stopped.set_breakpoint(Some(2.into())).unwrap();
+    assert_eq!(stopped.read(10, 1000).unwrap().records.len(), 1);
+    assert_eq!(independent.read(10, 1000).unwrap().records.len(), 1);
+    assert!(stopped.read(10, 1099).unwrap().records.is_empty());
+
+    let hit = stopped.read(10, 1100).unwrap();
+    assert!(hit.records.is_empty());
+    assert_eq!(hit.next_record, U64::from(2));
+    let unaffected = independent.read(10, 1100).unwrap();
+    assert_eq!(unaffected.records.len(), 1);
+    assert_eq!(unaffected.next_record, U64::from(3));
+
+    let stepped = stopped.step(5000).unwrap();
+    assert_eq!(stepped.records, unaffected.records);
+    assert_eq!(stepped.next_record, U64::from(3));
+    let playback = stepped.playback.expect("step reports playback");
+    assert!(playback.paused);
+    assert_eq!(playback.breakpoint_record, Some(U64::from(2)));
+    assert!(stopped.read(10, 6000).unwrap().records.is_empty());
+
+    stopped.seek(2.into(), 10000).unwrap();
+    stopped.pause_at(false, 10000);
+    let hit_again = stopped.read(10, 10000).unwrap();
+    assert_eq!(hit_again.reader_generation, U64::from(2));
+    assert!(hit_again.records.is_empty());
+    assert_eq!(hit_again.next_record, U64::from(2));
+    stopped.pause_at(false, 11000);
+    let resumed = stopped.read(10, 11000).unwrap();
+    assert_eq!(resumed.records, unaffected.records);
+    assert_eq!(resumed.next_record, U64::from(3));
+
+    stopped.seek(1.into(), 12000).unwrap();
+    assert_eq!(stopped.read(10, 12000).unwrap().records.len(), 1);
+    assert!(stopped.read(10, 20000).unwrap().records.is_empty());
+    stopped.pause_at(false, 30000);
+    assert_eq!(stopped.read(10, 30000).unwrap().records, unaffected.records);
+    assert!(stopped.read(10, 30099).unwrap().records.is_empty());
+    assert!(stopped.read(10, 30100).unwrap().at_end);
 }
 
 mod support;
@@ -141,7 +224,10 @@ async fn maximum_record_replays_through_bounded_refs_without_changing_original_j
     let hash = format!("{:x}", Sha256::digest(&original_json));
     let mut writer = CaptureWriter::create(
         &path,
-        vec![source("original-host", 7, "original-session", 9)],
+        vec![
+            source("original-host", 7, "original-session", 9),
+            source("peer-host", 1, "other-session", 1),
+        ],
         CaptureLimits::default(),
     )
     .unwrap();
@@ -176,19 +262,99 @@ async fn maximum_record_replays_through_bounded_refs_without_changing_original_j
         )
         .await
         .unwrap();
-    let batch = replay
-        .read(
-            ReplayReadParams {
-                session_id: opened.session_id,
+    replay
+        .control(
+            ReplayControlParams {
+                session_id: opened.session_id.clone(),
                 session_epoch: opened.session_epoch,
-                max_records: 1.into(),
-                max_bytes: (256 * 1024).into(),
+                paused: true,
+                seek_record: None,
+                playback: None,
             },
             &h.actor,
         )
         .await
         .unwrap();
+    let control = replay
+        .control(
+            ReplayControlParams {
+                session_id: opened.session_id.clone(),
+                session_epoch: opened.session_epoch,
+                paused: false,
+                seek_record: None,
+                playback: Some(ReplayPlaybackControl::SetRate {
+                    rate: ReplayRate::Timed { speed_percent: 200 },
+                }),
+            },
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert_eq!(
+        serde_json::to_value(ActionResult::ReplayPosition(control.clone())).unwrap(),
+        serde_json::json!({
+            "kind": "replay_position",
+            "value": {
+                "records": [],
+                "readerGeneration": "1",
+                "nextRecord": "1",
+                "atEnd": false
+            }
+        })
+    );
+    let step = ReplayReadParams {
+        session_id: opened.session_id,
+        session_epoch: opened.session_epoch,
+        max_records: 10.into(),
+        max_bytes: (256 * 1024).into(),
+        single_step: Some(true),
+        inspect_playback: None,
+        report_playback: Some(true),
+    };
+    let conflicting_modes = ReplayReadParams {
+        inspect_playback: Some(true),
+        ..step.clone()
+    };
+    assert_eq!(
+        replay
+            .read(conflicting_modes, &h.actor)
+            .await
+            .unwrap_err()
+            .code,
+        "INVALID_ARGUMENT"
+    );
+    let inspected = replay
+        .read(
+            ReplayReadParams {
+                single_step: None,
+                inspect_playback: Some(true),
+                report_playback: None,
+                ..step.clone()
+            },
+            &h.actor,
+        )
+        .await
+        .unwrap();
+    assert!(inspected.records.is_empty());
+    assert_eq!(inspected.next_record, control.next_record);
+    assert_eq!(inspected.reader_generation, control.reader_generation);
+    assert!(!inspected.at_end);
+    let playback = inspected.playback.unwrap();
+    assert!(playback.paused);
+    assert_eq!(playback.rate, ReplayRate::Timed { speed_percent: 200 });
+    let tiny = ReplayReadParams {
+        max_bytes: 1.into(),
+        ..step.clone()
+    };
+    assert_eq!(
+        replay.read(tiny, &h.actor).await.unwrap_err().code,
+        "LIMIT_EXCEEDED"
+    );
+    let batch = replay.read(step, &h.actor).await.unwrap();
     assert!(serde_json::to_vec(&batch).unwrap().len() <= 256 * 1024);
+    assert_eq!(batch.records.len(), 1);
+    assert!(batch.at_end);
+    assert!(batch.playback.as_ref().is_some_and(|state| state.paused));
     let ReplayRecord::Reference {
         record_ref,
         record_ordinal,
@@ -263,6 +429,47 @@ async fn maximum_record_replays_through_bounded_refs_without_changing_original_j
         .unwrap();
     assert!(files.read(read, &other).is_ok());
     assert_eq!(h.write_count(), 0);
+}
+
+fn write_timed_capture(path: &std::path::Path, times: &[u64]) {
+    let mut writer =
+        CaptureWriter::create(path, vec![source("h", 1, "s", 1)], CaptureLimits::default())
+            .unwrap();
+    for (offset, source_ns) in times.iter().copied().enumerate() {
+        writer
+            .push(timed_rx("h", offset, source_ns), source_ns)
+            .unwrap();
+    }
+    writer.finish().unwrap();
+}
+
+fn timed_rx(host: &str, offset: usize, source_ns: u64) -> CaptureEntry {
+    let event: RawEvent = serde_json::from_value(serde_json::json!({
+        "hostId": host,
+        "instanceEpoch": "1",
+        "sessionId": "s",
+        "sessionEpoch": "1",
+        "eventSeq": (offset + 1).to_string(),
+        "configurationRevision": "1",
+        "time": {
+            "clockId": "c",
+            "sourceMonoNs": source_ns.to_string(),
+            "receivedWallTime": "2026-11-07T00:00:00Z",
+            "precision": {
+                "source": "host_read",
+                "resolutionNs": "1",
+                "syncMethod": "none"
+            }
+        },
+        "kind": "rx",
+        "payload": {
+            "bytesBase64": "AQ==",
+            "byteStart": offset.to_string(),
+            "byteEnd": (offset + 1).to_string()
+        }
+    }))
+    .unwrap();
+    CaptureEntry::Event(Box::new(event))
 }
 
 fn source(host: &str, instance: u64, session: &str, epoch: u64) -> CaptureSource {

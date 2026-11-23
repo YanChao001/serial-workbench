@@ -227,6 +227,10 @@ export const commands = {
     typedError<DiagnosticsReport, NativeError>(
       __TAURI_INVOKE("get_diagnostics_report"),
     ),
+  saveDiagnosticsJson: (content: string) =>
+    typedError<boolean, NativeError>(
+      __TAURI_INVOKE("save_diagnostics_json", { content }),
+    ),
   checkForUpdate: () =>
     typedError<UpdateStatus, NativeError>(__TAURI_INVOKE("check_for_update")),
   getUpdateSnapshot: () =>
@@ -1124,12 +1128,25 @@ export type ClientPlatformEffects = {
   runInBackground: boolean;
 };
 
-export type ClientPreferences = {
+export type ClientPreferences =
+  ClientPreferences_Serialize | ClientPreferences_Deserialize;
+
+export type ClientPreferences_Deserialize = {
   menuBar: boolean;
   windowPosition: WindowPosition;
   sidebarCollapsed: boolean;
   sidebarWidth: number;
   receiveHistory?: ReceiveHistory;
+  shortcutOverrides?: { [key in string]: ShortcutBinding };
+};
+
+export type ClientPreferences_Serialize = {
+  menuBar: boolean;
+  windowPosition: WindowPosition;
+  sidebarCollapsed: boolean;
+  sidebarWidth: number;
+  receiveHistory?: ReceiveHistory;
+  shortcutOverrides?: { [key in string]: ShortcutBinding };
 };
 
 /**
@@ -1345,7 +1362,7 @@ export type ClientWindowState =
   ClientWindowState_Serialize | ClientWindowState_Deserialize;
 
 export type ClientWindowState_Deserialize = {
-  preferences: ClientPreferences;
+  preferences: ClientPreferences_Deserialize;
   currentPage: string;
   focusedPanelId: string | null;
   scrollOffset: number;
@@ -1357,7 +1374,7 @@ export type ClientWindowState_Deserialize = {
 };
 
 export type ClientWindowState_Serialize = {
-  preferences: ClientPreferences;
+  preferences: ClientPreferences_Serialize;
   currentPage: string;
   focusedPanelId: string | null;
   scrollOffset: number;
@@ -1686,17 +1703,26 @@ export type DeviceList_Serialize = {
 export type DeviceTransportKind =
   "serial" | "pty" | "virtual" | "plugin" | "replay";
 
+export type DiagnosticsConfiguration = {
+  language: Language;
+  networkMode: NetworkMode;
+  runInBackground: boolean;
+};
+
 export type DiagnosticsReport = {
+  formatVersion: string;
+  collectedAt: string;
   appVersion: string;
   tauriVersion: string;
   platform: string;
   architecture: string;
   windowLabel: string;
   settingsRevision: U64 | null;
+  configuration: DiagnosticsConfiguration | null;
   desktop: DesktopStatus;
   autostartEnabled: boolean | null;
   updaterConfigured: boolean;
-  recentLogs: string;
+  recentLogs: string | null;
 };
 
 export type Digest = string;
@@ -1813,7 +1839,12 @@ export type FileReadResult_Serialize = {
 };
 
 export type FileResourceRole =
-  "source" | "media" | "captureTarget" | "captureSource";
+  | "source"
+  | "media"
+  | "captureTarget"
+  | "captureSource"
+  | "exportCsvTarget"
+  | "exportJsonlTarget";
 
 export type FileTransferParams =
   FileTransferParams_Serialize | FileTransferParams_Deserialize;
@@ -3656,6 +3687,7 @@ export type OperationInput_Deserialize =
   | { kind: "open"; value: OpenParams_Deserialize }
   | { kind: "tx"; value: TxParams_Deserialize }
   | { kind: "file_transfer"; value: FileTransferParams_Deserialize }
+  | { kind: "paste_transfer"; value: PasteTransferParams_Deserialize }
   | { kind: "capture_start"; value: CaptureStartParams_Deserialize }
   | { kind: "configure"; value: ConfigureParams }
   | { kind: "control"; value: ControlParams }
@@ -3674,6 +3706,7 @@ export type OperationInput_Serialize =
   | { kind: "open"; value: OpenParams_Serialize }
   | { kind: "tx"; value: TxParams_Serialize }
   | { kind: "file_transfer"; value: FileTransferParams_Serialize }
+  | { kind: "paste_transfer"; value: PasteTransferParams_Serialize }
   | { kind: "capture_start"; value: CaptureStartParams_Serialize }
   | { kind: "configure"; value: ConfigureParams }
   | { kind: "control"; value: ControlParams }
@@ -3782,6 +3815,25 @@ export type Owner_Serialize = {
 };
 
 export type Parity = "none" | "even" | "odd" | "mark" | "space";
+
+export type PasteTransferParams =
+  PasteTransferParams_Serialize | PasteTransferParams_Deserialize;
+
+export type PasteTransferParams_Deserialize = {
+  bytesBase64: Bytes;
+  chunkBytes?: U64;
+  bytesPerSecond: U64;
+  interChunkMs: U64;
+  writeWaitMs: DurationMs;
+};
+
+export type PasteTransferParams_Serialize = {
+  bytesBase64: Bytes;
+  chunkBytes: U64;
+  bytesPerSecond: U64;
+  interChunkMs: U64;
+  writeWaitMs: DurationMs;
+};
 
 export type PlatformEffects = {
   trayLanguage: boolean;
@@ -4117,6 +4169,26 @@ export type RecoveryStatus = {
   archiveId: string | null;
 };
 
+export type ReplayPlaybackState =
+  ReplayPlaybackState_Serialize | ReplayPlaybackState_Deserialize;
+
+export type ReplayPlaybackState_Deserialize = {
+  rate: ReplayRate;
+  paused: boolean;
+  breakpointRecord?: U64;
+  breakpointHit: boolean;
+};
+
+export type ReplayPlaybackState_Serialize = {
+  rate: ReplayRate;
+  paused: boolean;
+  breakpointRecord?: U64;
+  breakpointHit: boolean;
+};
+
+export type ReplayRate =
+  { kind: "fastest" } | { kind: "timed"; speedPercent: number };
+
 export type ReplayReadResult =
   ReplayReadResult_Serialize | ReplayReadResult_Deserialize;
 
@@ -4125,6 +4197,7 @@ export type ReplayReadResult_Deserialize = {
   readerGeneration: U64;
   nextRecord: U64;
   atEnd: boolean;
+  playback?: ReplayPlaybackState_Deserialize;
 };
 
 export type ReplayReadResult_Serialize = {
@@ -4132,6 +4205,7 @@ export type ReplayReadResult_Serialize = {
   readerGeneration: U64;
   nextRecord: U64;
   atEnd: boolean;
+  playback?: ReplayPlaybackState_Serialize;
 };
 
 export type ReplayRecord = ReplayRecord_Serialize | ReplayRecord_Deserialize;
@@ -4490,6 +4564,13 @@ export type SharedSettings_Serialize = {
   networkMode: NetworkMode;
   runInBackground: boolean;
   terminal: TerminalSettings_Serialize;
+};
+
+export type ShortcutBinding = {
+  key: string;
+  primary: boolean;
+  alt: boolean;
+  shift: boolean;
 };
 
 export type ShutdownRequested = {

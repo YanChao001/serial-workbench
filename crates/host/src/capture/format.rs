@@ -1,4 +1,4 @@
-//! SWBR01 编码与同步元数据；未知版本只读拒绝。
+//! 录制卷编码与同步元数据。未知版本只读拒绝。
 use serde::{Deserialize, Serialize};
 use serial_workbench_core::*;
 use sha2::{Digest as _, Sha256};
@@ -8,8 +8,51 @@ use std::{
     path::Path,
 };
 pub const MAGIC: &[u8; 7] = b"SWBR01\n";
+pub const TIMED_MAGIC: &[u8; 7] = b"SWBR02\n";
 pub const MAX_RECORD: usize = 1024 * 1024;
 pub const MAX_METADATA: u64 = 64 * 1024 * 1024;
+
+#[derive(Clone, Copy, PartialEq, Eq)]
+pub(crate) enum CaptureFormat {
+    Legacy,
+    RecorderClock,
+}
+
+impl CaptureFormat {
+    pub(crate) fn from_version(version: Option<&str>) -> HostResult<Self> {
+        match version {
+            Some("0.1") => Ok(Self::Legacy),
+            Some("0.2") => Ok(Self::RecorderClock),
+            _ => Err(HostError::new(
+                "FUTURE_FORMAT",
+                "Capture format is unsupported",
+            )),
+        }
+    }
+
+    pub(crate) fn version(self) -> &'static str {
+        match self {
+            Self::Legacy => "0.1",
+            Self::RecorderClock => "0.2",
+        }
+    }
+
+    pub(crate) fn magic(self) -> &'static [u8; 7] {
+        match self {
+            Self::Legacy => MAGIC,
+            Self::RecorderClock => TIMED_MAGIC,
+        }
+    }
+}
+
+pub(crate) fn record_digest(observed: Option<u64>, json: &[u8]) -> [u8; 32] {
+    let mut hasher = Sha256::new();
+    if let Some(time) = observed {
+        hasher.update(time.to_le_bytes());
+    }
+    hasher.update(json);
+    hasher.finalize().into()
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct CaptureSource {

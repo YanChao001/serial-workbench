@@ -18,3 +18,8 @@ Copyright (c) 2026 Tauri Desktop Starter contributors
 The full copyright, permission and disclaimer text is included at:
 Source: resources/third-party/tauri-desktop-starter.LICENSE
 Distributions: third-party/tauri-desktop-starter.LICENSE
+
+The ANSI terminal uses xterm.js and its Fit addon from the xterm.js project.
+Both components are distributed under their original MIT licenses.
+Source: resources/third-party/xterm.LICENSE and xterm-addon-fit.LICENSE
+Distributions: third-party/xterm.LICENSE and xterm-addon-fit.LICENSE

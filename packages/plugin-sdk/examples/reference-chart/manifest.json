@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.chart",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "displayName": "Serial Workbench Chart",
   "description": "Publish samples with source byte ranges and export a voltage chart as SVG",
   "license": "Apache-2.0",

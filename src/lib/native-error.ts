@@ -21,6 +21,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   CONTROL_UNKNOWN: "nativeError.controlUnknown",
   DEV_RUNTIME_MISMATCH: "nativeError.devRuntimeMismatch",
   READER_OVERFLOW: "nativeError.readerOverflow",
+  REPLAY_CLOCK_UNAVAILABLE: "nativeError.replayClockUnavailable",
   CONFIGURATION_CONFLICT: "nativeError.configurationConflict",
   UNSUPPORTED_CAPABILITY: "errors.UNSUPPORTED",
   REVISION_CONFLICT: "errors.CONFLICT",

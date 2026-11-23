@@ -20,6 +20,7 @@ use tokio::{
 const TERMINAL: &str = "swb.reference.terminal";
 const CHART: &str = "swb.reference.chart";
 const FIRST: &str = "paired-terminal-before-close\n";
+const AFTER_LOCALE: &str = "paired-terminal-after-locale\n";
 const SECOND: &str = "paired-terminal-while-closed\n";
 const THIRD: &str = "paired-terminal-after-revoke\n";
 
@@ -454,9 +455,10 @@ async fn run_signed_view(reference: &str, package: &str) {
     let mut command = Command::new(node);
     command
         .arg(repository.join("e2e/paired-browser-terminal.mjs"))
-        .arg(&output);
-    if chart {
-        command.arg("chart");
+        .arg(&output)
+        .arg(reference);
+    if std::env::var("SWB_TEST_BROWSER_LEGACY_VIEW").as_deref() == Ok("1") {
+        command.arg("legacy");
     }
     let mut child = command
         .stdin(Stdio::piped())
@@ -473,6 +475,7 @@ async fn run_signed_view(reference: &str, package: &str) {
             "url": entry.url, "pairingCode": entry.pairing_code,
             "target": session, "instanceEpoch": ordinary.attachment().instance_epoch,
             "archiveSha256": signed.archive_sha256, "first": FIRST, "second": SECOND,
+            "afterLocale": AFTER_LOCALE,
         })
         .to_string(),
     )
@@ -489,13 +492,15 @@ async fn run_signed_view(reference: &str, package: &str) {
         );
         let first = echo(&ordinary, &raw, &session, "1.25\r\n").await;
         send(&mut input, "FIRST_SAMPLE_WRITTEN").await;
+        stage(&mut events, "LOCALE_CHANGED").await;
+        let second = echo(&ordinary, &raw, &session, "-2\n").await;
+        send(&mut input, "POST_LOCALE_DATA_WRITTEN").await;
         stage(&mut events, "VIEW_CLOSED").await;
         let active = operation_snapshot(&ordinary, &id).await;
         assert_eq!(active.state, OperationState::Running, "{active:?}");
         assert_eq!(active.action_id.as_str(), "swb.reference.chart.sample");
         assert_eq!(active.execution_mode, ExecutionMode::Independent);
         assert_eq!(active.target, session);
-        let second = echo(&ordinary, &raw, &session, "-2\n").await;
         let third = echo(&ordinary, &raw, &session, "3.5\n").await;
         let completed = wait_operation(&ordinary, &id).await;
         assert_eq!(completed.state, OperationState::Succeeded, "{completed:?}");
@@ -513,11 +518,14 @@ async fn run_signed_view(reference: &str, package: &str) {
         );
         terminal = None;
     } else {
+        stage(&mut events, "LOCALE_CHANGED").await;
+        let after_locale = echo(&ordinary, &raw, &session, AFTER_LOCALE).await;
+        send(&mut input, "POST_LOCALE_DATA_WRITTEN").await;
         stage(&mut events, "VIEW_CLOSED").await;
         let second = echo(&ordinary, &raw, &session, SECOND).await;
         send(&mut input, "SECOND_MARKER_WRITTEN").await;
         stage(&mut events, "VIEW_REOPENED").await;
-        terminal = Some((terminal_first.unwrap(), second));
+        terminal = Some((terminal_first.unwrap(), after_locale, second));
         proof = None;
     }
     let revoked = mutate(
@@ -555,9 +563,10 @@ async fn run_signed_view(reference: &str, package: &str) {
         "after": after,
         "hostExited": true,
     });
-    if let Some((first, second)) = terminal {
+    if let Some((first, after_locale, second)) = terminal {
         receipt["first"] = json!(first);
         receipt["second"] = json!(second);
+        receipt["afterLocale"] = json!(after_locale);
     }
     if let Some(ChartProof {
         operation,
@@ -571,7 +580,7 @@ async fn run_signed_view(reference: &str, package: &str) {
         )
         .unwrap();
         assert_eq!(chromium["operationId"], json!(operation.operation_id));
-        assert_eq!(chromium["liveSamples"], json!(samples[..1]));
+        assert_eq!(chromium["liveSamples"], json!(samples[..2]));
         assert_eq!(chromium["retainedSamples"], json!(samples));
         receipt["operation"] = json!(operation);
         receipt["derivedSamples"] = json!(samples);

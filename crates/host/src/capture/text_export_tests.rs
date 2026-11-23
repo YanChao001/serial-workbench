@@ -160,3 +160,132 @@ fn final_fix_utf8_gap_and_stream_end_flush_only_real_truncated_tails() {
     assert_eq!(tail["sourceSpans"][0]["byteStart"], "4");
     assert_eq!(tail["sourceSpans"][0]["byteEnd"], "6");
 }
+
+#[test]
+fn csv_preserves_jsonl_rows_and_never_replaces_an_existing_export() {
+    let dir = tempfile::tempdir().unwrap();
+    let root = dir.path().canonicalize().unwrap();
+    let capture = root.join("source");
+    let csv = root.join("text.csv");
+    let jsonl = root.join("text.jsonl");
+    let session = "-source";
+    let mut writer =
+        CaptureWriter::create(&capture, vec![source(session, 1)], CaptureLimits::default())
+            .unwrap();
+    let reading = "=SUM(1,2)📟,\"\r\n";
+    let split = "=SUM(1,2)".len() + 2;
+    let gap = CaptureEntry::ReaderGap(Box::new(ReaderGap {
+        host_id: Id::try_from("h").unwrap(),
+        instance_epoch: 1.into(),
+        session_id: Id::try_from(session).unwrap(),
+        session_epoch: 1.into(),
+        reason: ReaderGapReason::ReaderOverflow,
+        missing_event_range: ByteRange {
+            start: 4.into(),
+            end: 5.into(),
+        },
+        missing_byte_ranges: None,
+    }));
+    for entry in [
+        event(session, 1, 1, "rx", 0, &reading.as_bytes()[..split]),
+        event(session, 1, 2, "tx_intent", 0, b"tx\t"),
+        event(session, 1, 3, "rx", split, &reading.as_bytes()[split..]),
+        gap,
+    ] {
+        writer.push(entry, 0).unwrap();
+    }
+    writer.finish().unwrap();
+    let inside = capture.join("export.csv");
+    let source_digest = fingerprint(&capture).unwrap();
+    for format in [TextExportFormat::Jsonl, TextExportFormat::Csv] {
+        let error = export_text_observed(&capture, &inside, format, |_| {}).unwrap_err();
+        assert_eq!(error.code, "INVALID_ARGUMENT");
+        assert!(!inside.exists());
+        assert_eq!(fingerprint(&capture).unwrap(), source_digest);
+    }
+    export_text(&capture, &jsonl).unwrap();
+    export_text_observed(&capture, &csv, TextExportFormat::Csv, |_| {}).unwrap();
+    let output = std::fs::read_to_string(&csv).unwrap();
+    let mut lines = output.split_terminator("\r\n");
+    let columns: Vec<_> = lines.next().unwrap().split(',').collect();
+    assert_eq!(
+        columns,
+        [
+            "recordOrdinal",
+            "volume",
+            "recordOffset",
+            "recordLength",
+            "timestamp",
+            "hostIdJson",
+            "instanceEpoch",
+            "sessionIdJson",
+            "sessionEpoch",
+            "direction",
+            "byteStart",
+            "byteEnd",
+            "textJson",
+            "hadReplacement",
+            "sourceSpansJson",
+            "entryJson"
+        ]
+    );
+    let original = std::fs::read_to_string(&jsonl).unwrap();
+    let mut jsonl_rows = original.lines();
+    let mut saw_formula_as_text = false;
+    let mut saw_spanning_character = false;
+    for line in lines {
+        let cells = read_csv_cells(line);
+        let expected: Value = serde_json::from_str(jsonl_rows.next().unwrap()).unwrap();
+        assert_eq!(cells.len(), columns.len());
+        for (column, cell) in columns.iter().zip(cells) {
+            if let Some(key) = column.strip_suffix("Json") {
+                if let Some(value) = expected.get(key) {
+                    let parsed: Value = serde_json::from_str(&cell).unwrap();
+                    assert_eq!(&parsed, value);
+                    if key == "text" && parsed == "=SUM(1,2)" {
+                        assert!(cell.starts_with("\"="));
+                        saw_formula_as_text = true;
+                    }
+                    if key == "text" && parsed == "📟,\"\r\n" {
+                        assert_eq!(expected["sourceSpans"].as_array().unwrap().len(), 2);
+                        saw_spanning_character = true;
+                    }
+                } else {
+                    assert!(cell.is_empty());
+                }
+            } else if let Some(value) = expected.get(*column) {
+                assert_eq!(
+                    cell,
+                    value
+                        .as_str()
+                        .map_or_else(|| value.to_string(), str::to_owned)
+                );
+            } else {
+                assert!(cell.is_empty());
+            }
+        }
+    }
+    assert!(jsonl_rows.next().is_none());
+    assert!(saw_formula_as_text && saw_spanning_character);
+    let error = export_text_observed(&capture, &csv, TextExportFormat::Csv, |_| {}).unwrap_err();
+    assert_eq!(error.code, "TARGET_EXISTS");
+    assert_eq!(std::fs::read_to_string(&csv).unwrap(), output);
+}
+
+fn read_csv_cells(line: &str) -> Vec<String> {
+    let mut cells = vec![String::new()];
+    let mut quoted = false;
+    let mut input = line.chars().peekable();
+    while let Some(character) = input.next() {
+        match character {
+            '"' if quoted && input.next_if_eq(&'"').is_some() => {
+                cells.last_mut().unwrap().push('"')
+            }
+            '"' => quoted = !quoted,
+            ',' if !quoted => cells.push(String::new()),
+            character => cells.last_mut().unwrap().push(character),
+        }
+    }
+    assert!(!quoted);
+    cells
+}

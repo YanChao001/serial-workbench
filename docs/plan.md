@@ -4,7 +4,7 @@
 
 ## 当前执行与下一步
 
-**当前阶段为 M3。** `main@e0ddb65` 已合入签名长脚本、主题、解析器、动态传输、配对终端与工具交接。接续候选补齐有序 SDK 会话钩子、配对图表、设备参数和 Windows 套件恢复。 [PR #57](https://github.com/YanChao001/serial-workbench/pull/57) · [四目标 CI 的 13 项必跑作业](https://github.com/YanChao001/serial-workbench/actions/runs/45170812435)
+**M3 契约收尾与 M4 功能并行。** `main@7c24c50` 已合入签名参考场景、有序 SDK 会话钩子、配对图表、设备参数和 Windows 套件恢复。产品自动升级专项与 M3 契约冻结继续验收。 [PR #57](https://github.com/YanChao001/serial-workbench/pull/57) · [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [四目标 CI 的 13 项必跑作业](https://github.com/YanChao001/serial-workbench/actions/runs/45191611700/attempts/2)
 
 两轮已合入候选均通过本机综合验收、208 项无头 UI 和完整四目标 CI 的 13 项必跑作业。Windows 真实图表保存与两轮 Intel macOS 首轮失败、同源复验均可从各自 CI 追溯。 [PR #55 四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44893314699) · [PR #56 四目标 CI](https://github.com/YanChao001/serial-workbench/actions/runs/44904815981)
 
@@ -17,6 +17,11 @@
 | 公开 SDK 合约                  | 已有签名事务和实际 Claude Code stdio MCP 证据。当前候选补齐公开会话钩子、配对浏览器签名图表和插件设备参数入口。Windows 定向通过 Virtual Echo 的有序收发与终态、真实配对读页和重新附着。完成同候选矩阵和整套升级，再依 [M3 契约冻结](./acceptance.md#m3-契约冻结) 冻结 v1。                                                                                                                                                                   |
 
 本机证据入口均相对主工作区 `.cache/evidence/`。已合入候选查 `m3-contracts-20261121/resume-20261121-180211/checkpoint.json` 和 `m3-http-20261121/7285426/merge-receipt.json`。待合入切片查 `m3-long-script-20261121/`、`m3-parser-reference-20261121/`、`m3-signed-theme-20261121/`、`m3-transport-20261121/`、`m3-tool-handoff-20261121/`、`m3-update-consent-20261121/`、`m3-install-recovery-20261121/`、`m3-browser-signed-terminal-20261121/` 与 `m3-lan-role-simulation-20261121/`。实际 MCP 产品和 Windows T06 查 `m3-transaction-20261121/`。
+
+### 当前候选与 M4 工作树
+
+- PR #58 的 `cf4b4fc` 在隔离 Windows 完成真实 NSIS 0.1.0 到 0.1.1 的换入、Host 代次 1 到 2、同一身份与 profile 恢复，以及摘要拒绝和注册写入中断恢复。这里的注册恢复由隔离验证程序执行。独立产品升级场景首轮完成两版构建后达到任务时限，新的复验分别记录证书准备和真实桌面升级阶段。 [PR #58](https://github.com/YanChao001/serial-workbench/pull/58) · [两版安装收据](https://github.com/YanChao001/serial-workbench/actions/runs/45194202380/artifacts/14828417740) · [桌面更新复验](https://github.com/YanChao001/serial-workbench/actions/runs/45204372209)
+- `feature/m4-workbench-basics` 集成了混合发送输入、HEX 校验定位、转义与追加校验、带原始偏移的录制导出、多源只读回放、诊断导出、窗口快捷键、插件视图实时切换语言以及 ANSI 终端。浏览器夹具核对跨包控制序列、显式启用后的键盘字节、应用快捷键优先和设备询问边界。`transfer.paste` 复用 Host 独占分片调度，模拟串口验证普通发送顺序、编号回执和取消后的已写入前缀。相关软件项目仍在验收，真实桌面终端交互和物理串口继续实测。
 
 ## 验证基线
 

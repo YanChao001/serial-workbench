@@ -285,6 +285,28 @@ export async function seedWorkbenchFixture(
     scopeId: "workspace.default",
     target: { hostId, kind: "workspace", id: "default" },
   };
+  const workbenchCatalog = replay?.page.playback
+    ? catalogItems
+    : catalogItems.map((item) => {
+        const properties = item.inputSchema.properties;
+        if (
+          (item.actionId !== "replay.read" &&
+            item.actionId !== "replay.control") ||
+          !properties ||
+          typeof properties !== "object" ||
+          Array.isArray(properties)
+        )
+          return item;
+        const legacyProperties = { ...properties };
+        delete legacyProperties.singleStep;
+        delete legacyProperties.reportPlayback;
+        delete legacyProperties.inspectPlayback;
+        delete legacyProperties.playback;
+        return {
+          ...item,
+          inputSchema: { ...item.inputSchema, properties: legacyProperties },
+        };
+      });
   const replayScope = replay
     ? {
         scopeId: "session.replay-layout",
@@ -387,7 +409,7 @@ export async function seedWorkbenchFixture(
     },
     "catalog.list": {
       kind: "catalog",
-      value: { catalogVersion: "1", items: catalogItems },
+      value: { catalogVersion: "1", items: workbenchCatalog },
     },
     "device.list": {
       kind: "devices",
@@ -492,6 +514,41 @@ export async function seedWorkbenchFixture(
       lanOwner,
       nodeThemes,
     } = JSON.parse(raw) as typeof fixturePayload;
+    let replayPlayback = replayProfile?.page.playback;
+    let replayReadIndex = 0;
+    const replayControls = new Map<string, Operation>();
+    const replayOrdinal = (record: ReplayReadResult["records"][number]) =>
+      record.kind === "inline"
+        ? record.record.recordOrdinal
+        : record.recordOrdinal;
+    const replayPosition = (records: ReplayReadResult["records"] = []) => {
+      if (!replayProfile) throw new Error("Missing explicit replay profile");
+      const next = replayProfile.page.records[replayReadIndex];
+      return {
+        records,
+        readerGeneration: replayProfile.page.readerGeneration,
+        nextRecord: next ? replayOrdinal(next) : replayProfile.page.nextRecord,
+        atEnd: next === undefined,
+      };
+    };
+    const playbackPage = (
+      records: ReplayReadResult["records"] = [],
+    ): ReplayReadResult => {
+      if (!replayPlayback) throw new Error("Missing explicit replay playback");
+      return {
+        ...replayPosition(records),
+        playback: {
+          ...replayPlayback,
+          breakpointHit: replayPlayback.paused && replayPlayback.breakpointHit,
+        },
+      };
+    };
+    const validReplayTarget = (target: Query["target"]) =>
+      target.kind === "session" &&
+      target.hostId === replayScope?.target.hostId &&
+      target.id === replayScope?.target.id &&
+      target.sessionId === replayScope?.target.sessionId &&
+      target.sessionEpoch === replayScope?.target.sessionEpoch;
     let remoteAttachment: DesktopAttachment | undefined;
     let remoteGeneration = 1;
     const sharedDevice = {
@@ -1283,6 +1340,97 @@ export async function seedWorkbenchFixture(
               if (request.method === "action.invoke")
                 fixture.invocations.push(request.params);
               if (
+                replayPlayback &&
+                request.method === "action.invoke" &&
+                request.params.actionId === "replay.control"
+              ) {
+                const call = request.params;
+                const params = call.params;
+                if (
+                  command !== "host_request" ||
+                  args.generation !== hostAttachment.generation ||
+                  !validReplayTarget(call.target) ||
+                  params.sessionId !== replayScope?.target.sessionId ||
+                  params.sessionEpoch !== replayScope?.target.sessionEpoch ||
+                  typeof params.paused !== "boolean" ||
+                  params.reportPlayback !== undefined ||
+                  params.seekRecord !== undefined
+                )
+                  throw new Error(
+                    "Invalid explicit replay.control transport or target",
+                  );
+                const update = params.playback;
+                if (update === undefined) {
+                  replayPlayback = { ...replayPlayback, paused: params.paused };
+                } else if (
+                  update &&
+                  typeof update === "object" &&
+                  !Array.isArray(update)
+                ) {
+                  if (update.kind === "set_rate") {
+                    const rate = update.rate;
+                    if (
+                      !rate ||
+                      typeof rate !== "object" ||
+                      Array.isArray(rate)
+                    )
+                      throw new Error("Invalid replay speed");
+                    if (rate.kind === "fastest") {
+                      replayPlayback = {
+                        ...replayPlayback,
+                        rate: { kind: "fastest" },
+                      };
+                    } else if (
+                      rate.kind === "timed" &&
+                      typeof rate.speedPercent === "number"
+                    ) {
+                      replayPlayback = {
+                        ...replayPlayback,
+                        rate: {
+                          kind: "timed",
+                          speedPercent: rate.speedPercent,
+                        },
+                      };
+                    } else {
+                      throw new Error("Invalid replay speed");
+                    }
+                  } else if (update.kind === "set_breakpoint") {
+                    const { breakpointRecord: _oldBreakpoint, ...previous } =
+                      replayPlayback;
+                    replayPlayback = {
+                      ...previous,
+                      ...(typeof update.record === "string"
+                        ? { breakpointRecord: update.record }
+                        : {}),
+                      breakpointHit: false,
+                    };
+                  } else {
+                    throw new Error("Invalid replay playback control");
+                  }
+                } else {
+                  throw new Error("Invalid replay playback control");
+                }
+                const operationId = `fixture-replay-control-${replayControls.size + 1}`;
+                const { result: _sendResult, ...initial } = sentOperation;
+                const queued: Operation = {
+                  ...initial,
+                  operationId,
+                  rootOperationId: operationId,
+                  requestId: call.requestId,
+                  actionId: call.actionId,
+                  target: call.target,
+                  executionMode: call.executionMode ?? "interactive",
+                  state: "queued",
+                };
+                replayControls.set(operationId, {
+                  ...queued,
+                  state: "succeeded",
+                  revision: "2",
+                  result: { kind: "replay_position", value: replayPosition() },
+                });
+                return { ok: true, result: { operation: queued } };
+              }
+              if (
                 request.method === "action.invoke" &&
                 request.params.actionId === "capture.start"
               )
@@ -1324,6 +1472,45 @@ export async function seedWorkbenchFixture(
                     ),
                   },
                 };
+              if (
+                request.method === "action.invoke" &&
+                request.params.actionId === "transfer.paste"
+              ) {
+                const call = request.params;
+                const bytes = call.params.bytesBase64;
+                if (typeof bytes !== "string")
+                  throw new Error("Expected paste bytes");
+                const length = String(atob(bytes).length);
+                const operationId = `ui-paste-${call.requestId}`;
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...sentOperation,
+                      operationId,
+                      actionId: call.actionId,
+                      target: call.target,
+                      requestId: call.requestId,
+                      executionMode: "independent",
+                      result: {
+                        kind: "file_transfer",
+                        value: {
+                          requested: length,
+                          accepted: length,
+                          unknown: "0",
+                          receiptsRef: {
+                            hostId: call.target.hostId,
+                            kind: "transfer_receipts",
+                            id: operationId,
+                            revision: "1",
+                          },
+                          peerAcknowledged: false,
+                        },
+                      },
+                    },
+                  },
+                };
+              }
               if (
                 request.method === "action.invoke" &&
                 request.params.actionId === "session.tx"
@@ -1446,6 +1633,29 @@ export async function seedWorkbenchFixture(
                 };
               }
               if (
+                replayPlayback &&
+                query.actionId === "operation.get" &&
+                typeof query.params.operationId === "string"
+              ) {
+                const operation = replayControls.get(query.params.operationId);
+                if (operation) {
+                  if (
+                    command !== "host_request" ||
+                    args.generation !== hostAttachment.generation ||
+                    query.target.kind !== "host" ||
+                    query.target.id !== hostAttachment.attachment.hostId ||
+                    query.target.hostId !== hostAttachment.attachment.hostId
+                  )
+                    throw new Error(
+                      "Invalid replay operation observation target",
+                    );
+                  return {
+                    ok: true,
+                    result: { kind: "operation", value: { operation } },
+                  };
+                }
+              }
+              if (
                 replayProfile &&
                 query.actionId === "operation.get" &&
                 query.params.operationId === replayOperation?.operationId
@@ -1467,20 +1677,72 @@ export async function seedWorkbenchFixture(
                   result: { kind: "session", value: replayProfile.session },
                 };
               if (replayProfile && query.actionId === "replay.read") {
+                const singleStep = query.params.singleStep === true;
+                const inspect = query.params.inspectPlayback === true;
                 if (
                   command !== "host_raw_request" ||
-                  query.params.maxRecords !== "100" ||
+                  args.generation !== hostAttachment.generation ||
+                  !validReplayTarget(query.target) ||
+                  query.params.maxRecords !==
+                    (singleStep || inspect ? "1" : "100") ||
                   query.params.maxBytes !== "65536" ||
                   query.params.sessionId !== replayProfile.session.sessionId ||
                   query.params.sessionEpoch !==
-                    replayProfile.session.sessionEpoch
+                    replayProfile.session.sessionEpoch ||
+                  (inspect
+                    ? !replayPlayback ||
+                      query.params.reportPlayback !== undefined ||
+                      query.params.singleStep !== undefined
+                    : query.params.inspectPlayback !== undefined ||
+                      (replayPlayback
+                        ? query.params.reportPlayback !== true
+                        : singleStep ||
+                          query.params.reportPlayback !== undefined))
                 )
                   throw new Error(
                     "Invalid explicit replay.read transport, target or budget",
                   );
+                if (!replayPlayback)
+                  return {
+                    ok: true,
+                    result: { kind: "replay_read", value: replayProfile.page },
+                  };
+                if (inspect)
+                  return {
+                    ok: true,
+                    result: { kind: "replay_read", value: playbackPage() },
+                  };
+                if (singleStep)
+                  replayPlayback = { ...replayPlayback, paused: true };
+                const records: ReplayReadResult["records"] = [];
+                while (
+                  replayReadIndex < replayProfile.page.records.length &&
+                  (singleStep || !replayPlayback.paused) &&
+                  records.length < (singleStep ? 1 : 100)
+                ) {
+                  const record = replayProfile.page.records[replayReadIndex]!;
+                  if (
+                    !singleStep &&
+                    !replayPlayback.breakpointHit &&
+                    replayPlayback.breakpointRecord === replayOrdinal(record)
+                  ) {
+                    replayPlayback = {
+                      ...replayPlayback,
+                      paused: true,
+                      breakpointHit: true,
+                    };
+                    break;
+                  }
+                  records.push(record);
+                  replayReadIndex++;
+                  replayPlayback = { ...replayPlayback, breakpointHit: false };
+                }
                 return {
                   ok: true,
-                  result: { kind: "replay_read", value: replayProfile.page },
+                  result: {
+                    kind: "replay_read",
+                    value: playbackPage(records),
+                  },
                 };
               }
               if (replayProfile && query.actionId === "file.read") {
@@ -1919,12 +2181,20 @@ export async function seedWorkbenchFixture(
               };
             case "get_diagnostics_report":
               return {
+                formatVersion: "0.1",
+                collectedAt: "2026-10-28T00:00:00Z",
                 appVersion,
                 tauriVersion: "2.0.0",
                 platform: "headless-fixture",
                 architecture: "x64",
                 windowLabel: "main",
                 settingsRevision: currentSettings.document.revision,
+                configuration: {
+                  language: currentSettings.document.value.language,
+                  networkMode: currentSettings.document.value.networkMode,
+                  runInBackground:
+                    currentSettings.document.value.runInBackground,
+                },
                 desktop,
                 autostartEnabled: false,
                 updaterConfigured: false,

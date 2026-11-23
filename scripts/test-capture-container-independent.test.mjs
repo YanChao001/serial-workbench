@@ -155,7 +155,7 @@ function expectations(records) {
 }
 // This encoder exists only in tests, implements the published byte contract,
 // and never imports the Rust writer or the reader's parsing/hash helpers.
-function saveContainer(directory, records, expected) {
+function saveContainer(directory, records, expected, times) {
   const capture = join(directory, "capture");
   mkdirSync(capture, { recursive: true });
   const locations = [],
@@ -166,16 +166,20 @@ function saveContainer(directory, records, expected) {
     start < records.length;
     start += 4, ordinal++
   ) {
-    const chunks = [Buffer.from("SWBR01\n")];
+    const chunks = [Buffer.from(times ? "SWBR02\n" : "SWBR01\n")];
     let offset = 7;
     for (const record of records.slice(start, start + 4)) {
       const body = Buffer.from(JSON.stringify(record));
+      const time = Buffer.alloc(times ? 8 : 0);
+      if (times)
+        time.writeBigUInt64LE(BigInt(times[Number(record.recordOrdinal) - 1]));
       const length = Buffer.alloc(4);
       length.writeUInt32LE(body.length);
       const encoded = Buffer.concat([
         length,
+        time,
         body,
-        Buffer.from(hash(body), "hex"),
+        Buffer.from(hash(Buffer.concat([time, body])), "hex"),
       ]);
       chunks.push(encoded);
       locations.push({
@@ -206,7 +210,7 @@ function saveContainer(directory, records, expected) {
   writeFileSync(
     join(capture, "manifest.json"),
     JSON.stringify({
-      formatVersion: "0.1",
+      formatVersion: times ? "0.2" : "0.1",
       captureId: "fixture-capture",
       mode: "raw",
       streams: [{ ...source }],
@@ -225,7 +229,10 @@ function saveContainer(directory, records, expected) {
   );
   writeFileSync(
     join(capture, "index.json"),
-    JSON.stringify({ formatVersion: "0.1", records: locations }),
+    JSON.stringify({
+      formatVersion: times ? "0.2" : "0.1",
+      records: locations,
+    }),
   );
   writeFileSync(join(directory, "expected.json"), JSON.stringify(expected));
 }
@@ -361,4 +368,23 @@ test("unknown container format is rejected read-only", () => {
   const before = sourceHashes(directory);
   assert.throws(() => readFixtureContainer(directory), /format|future/i);
   assert.deepEqual(sourceHashes(directory), before);
+});
+
+test("accepts a cross-volume recorder timeline and rejects reversed time despite valid hashes", () => {
+  const directory = mkdtempSync(join(tmpdir(), "swb-independent-timing-"));
+  const records = inputs();
+  const times = records.map((_, index) => String(index * 25));
+  const expected = {
+    ...expectations(records),
+    recordedMonoNs: times,
+  };
+  saveContainer(directory, records, expected, times);
+  assert.deepEqual(readFixtureContainer(directory).recordedMonoNs, times);
+  const reversed = [...times];
+  reversed[4] = "1";
+  saveContainer(directory, records, expected, reversed);
+  assert.throws(
+    () => readFixtureContainer(directory),
+    /timeline is not nondecreasing/,
+  );
 });

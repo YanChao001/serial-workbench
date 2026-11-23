@@ -23,10 +23,118 @@ function readPreview(observe: (bytes: Uint8Array | null) => void) {
   return (preview: TextSendPreview | null) =>
     observe(preview?.readBytes() ?? null);
 }
+
+it("validates mixed input live and sends the applied HEX draft with one line ending", async () => {
+  const user = userEvent.setup();
+  const send = vi.fn().mockResolvedValue(operation());
+  const observed = vi.fn();
+  const current = session();
+  function Editor() {
+    const [draft, setDraft] = useState("41 4");
+    return (
+      <SendPanel
+        draft={draft}
+        onDraftChange={setDraft}
+        labels={labels}
+        session={current}
+        onSend={send}
+        onPreviewChange={readPreview(observed)}
+        terminalSettings={{
+          ...defaults.settings.terminal,
+          lineEnding: { kind: "lf" },
+        }}
+      />
+    );
+  }
+  render(<Editor />);
+
+  await user.click(screen.getByRole("button", { name: labels.mixedSendInput }));
+  const input = screen.getByRole<HTMLTextAreaElement>("textbox", {
+    name: labels.mixedSendInput,
+  });
+  const apply = screen.getByRole("button", { name: labels.mixedSendUseHex });
+  expect(apply).toBeDisabled();
+  await user.click(
+    screen.getByRole("button", { name: "Invalid mixed input at character 4" }),
+  );
+  expect(input.selectionStart).toBe(3);
+  expect(input.selectionEnd).toBe(4);
+  fireEvent.change(input, { target: { value: String.raw`41 "B" \x00` } });
+  expect(screen.getByText("41 42 00")).toBeVisible();
+  await user.click(apply);
+
+  expect(
+    await screen.findByRole("textbox", { name: labels.draft }),
+  ).toHaveValue("41 42 00");
+  expect(send).not.toHaveBeenCalled();
+  const bytes = Uint8Array.of(0x41, 0x42, 0, 10);
+  expect(observed).toHaveBeenLastCalledWith(bytes);
+  await user.click(screen.getByRole("button", { name: labels.send }));
+  expect(send).toHaveBeenCalledWith(bytes, expect.any(AbortSignal));
+});
+
 afterEach(() => {
   cleanup();
   toast.dismiss();
   clearUserLog();
+});
+
+it("previews the checksum of the selected encoded bytes and sends that exact snapshot", async () => {
+  const user = userEvent.setup();
+  const send = vi.fn().mockResolvedValue(operation());
+  const observed = vi.fn();
+  const props = {
+    draft: "ABC",
+    checksumDraftKey: "first-view",
+    encoding: "utf-16le" as const,
+    onDraftChange: vi.fn(),
+    labels,
+    onSend: send,
+    onPreviewChange: readPreview(observed),
+    terminalSettings: {
+      ...defaults.settings.terminal,
+      lineEnding: { kind: "crlf" } as const,
+    },
+  };
+  const current = session();
+  const view = render(<SendPanel {...props} session={current} />);
+  const checksumButton = screen.getByRole("button", {
+    name: labels.sendChecksum,
+  });
+  await user.click(checksumButton);
+  await user.click(
+    screen.getByRole("combobox", { name: labels.checksumAlgorithm }),
+  );
+  await user.click(screen.getByRole("option", { name: "Sum-8" }));
+  const start = screen.getByRole("textbox", { name: labels.checksumStart });
+  const end = screen.getByRole("textbox", { name: labels.checksumEnd });
+  fireEvent.change(start, { target: { value: "2" } });
+  fireEvent.change(end, { target: { value: "4" } });
+  expect(screen.getByLabelText(labels.checksumBytes)).toHaveTextContent("42");
+  const body = Uint8Array.of(0x41, 0, 0x42, 0, 0x43, 0, 0x0d, 0, 0x0a, 0);
+  expect(observed).toHaveBeenLastCalledWith(Uint8Array.of(...body, 0x42));
+
+  fireEvent.change(end, { target: { value: "10" } });
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  expect(observed).toHaveBeenLastCalledWith(null);
+  expect(send).not.toHaveBeenCalled();
+  await user.click(
+    screen.getByRole("checkbox", { name: labels.checksumIncludeEnding }),
+  );
+  expect(screen.getByLabelText(labels.checksumBytes)).toHaveTextContent("9C");
+  expect(observed).toHaveBeenLastCalledWith(Uint8Array.of(...body, 0x9c));
+
+  await user.keyboard("{Escape}");
+  expect(checksumButton).toHaveFocus();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(send).toHaveBeenCalledOnce());
+  expect(send.mock.calls[0]?.[0]).toEqual(Uint8Array.of(...body, 0x9c));
+  view.rerender(
+    <SendPanel {...props} session={{ ...current, sessionEpoch: "2" }} />,
+  );
+  expect(observed).toHaveBeenLastCalledWith(body);
+  view.rerender(<SendPanel {...props} session={current} />);
+  expect(observed).toHaveBeenLastCalledWith(body);
 });
 it("sends a 16.50 KB draft exactly and retains its editable content", async () => {
   const draft = "1234567890".repeat(1650);
@@ -116,6 +224,86 @@ it("keeps an unconnected draft editable without offering a transfer that require
   expect(button).toBeDisabled();
   fireEvent.click(button);
   expect(transfer).not.toHaveBeenCalled();
+});
+
+it("expands escapes without sending and appends the selected suffix once on send", async () => {
+  const send = vi.fn().mockResolvedValue(operation());
+  function Consumer() {
+    const [draft, setDraft] = useState("AT\\r\\xFF");
+    return (
+      <SendPanel
+        session={session()}
+        draft={draft}
+        onDraftChange={setDraft}
+        terminalSettings={{
+          ...defaults.settings.terminal,
+          lineEnding: { kind: "lf" },
+        }}
+        labels={labels}
+        onSend={send}
+      />
+    );
+  }
+  render(<Consumer />);
+  fireEvent.click(
+    screen.getByRole("button", { name: labels.expandSendEscapes }),
+  );
+  expect(screen.getByRole("textbox", { name: "Send input" })).toHaveValue(
+    "41 54 0D FF",
+  );
+  expect(screen.getByRole("radio", { name: "HEX" })).toBeChecked();
+  expect(send).not.toHaveBeenCalled();
+  fireEvent.click(screen.getByRole("button", { name: "Send" }));
+  await waitFor(() => expect(send).toHaveBeenCalledOnce());
+  expect(send.mock.calls[0]![0]).toEqual(
+    Uint8Array.of(0x41, 0x54, 0x0d, 0xff, 0x0a),
+  );
+});
+
+it("keeps the source and selects the full incomplete escape for correction", () => {
+  const change = vi.fn();
+  const original = "中\\xF";
+  render(
+    <SendPanel
+      draft={original}
+      onDraftChange={change}
+      labels={labels}
+      onSend={vi.fn()}
+    />,
+  );
+  fireEvent.click(
+    screen.getByRole("button", { name: labels.expandSendEscapes }),
+  );
+  const input = screen.getByRole("textbox", { name: "Send input" });
+  expect(input).toHaveValue(original);
+  expect(input).toHaveProperty("selectionStart", 1);
+  expect(input).toHaveProperty("selectionEnd", 4);
+  expect(input).toHaveFocus();
+  expect(change).not.toHaveBeenCalled();
+});
+
+it("shows the exact invalid HEX position and selects it without queuing a send", () => {
+  const send = vi.fn();
+  const draft = "AA 😃 80";
+  render(
+    <SendPanel
+      session={session()}
+      draft={draft}
+      onDraftChange={vi.fn()}
+      mode="hex"
+      labels={labels}
+      onSend={send}
+    />,
+  );
+  const input = screen.getByRole("textbox", { name: "Send input" });
+  expect(input).toHaveAccessibleDescription(
+    "Invalid HEX in the draft at character 4.",
+  );
+  expect(screen.getByRole("button", { name: "Send" })).toBeDisabled();
+  fireEvent.keyDown(input, { key: "Enter", ctrlKey: true });
+  expect(input).toHaveProperty("selectionStart", 3);
+  expect(input).toHaveProperty("selectionEnd", 5);
+  expect(send).not.toHaveBeenCalled();
 });
 
 it.each([

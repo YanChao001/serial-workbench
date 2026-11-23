@@ -113,7 +113,10 @@ impl ViewContext {
                 let mut asset = origin(ASSET);
                 asset.set_path(&format!("/{}", self.host.entry.entry.as_str()));
                 let dark = if self.dark { "dark" } else { "light" };
-                asset.set_fragment(Some(&format!("{}.{}.{dark}", self.frame_id, self.locale)));
+                asset.set_fragment(Some(&format!(
+                    "{}.{}.{dark}.locale",
+                    self.frame_id, self.locale
+                )));
                 let escape_html = |value: &str| {
                     value
                         .replace('&', "&amp;")
@@ -122,7 +125,7 @@ impl ViewContext {
                         .replace('>', "&gt;")
                 };
                 let frame_url = escape_html(asset.as_str());
-                let title = escape_html(self.title());
+                let title = escape_html(self.title(self.locale));
                 let opening = if self.locale == "zh-CN" {
                     "正在打开插件视图…"
                 } else {

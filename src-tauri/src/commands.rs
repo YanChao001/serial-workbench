@@ -156,6 +156,8 @@ pub(crate) async fn apply_host_settings_effects_for_generation(
         .await?;
     // 托盘 API 等待主线程；释放 bridge 锁后再读取最新内存策略，
     // 避免窗口销毁清理与菜单刷新相互等待。失败不回滚已应用策略。
+    crate::node_view::refresh_locales(&app)
+        .map_err(|error| HostError::new("PLATFORM_EFFECT_FAILED", error.to_string()))?;
     desktop::refresh_tray(&app)
         .map_err(|error| HostError::new("PLATFORM_EFFECT_FAILED", error.message))?;
     Ok(receipt)

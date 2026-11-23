@@ -208,7 +208,7 @@ export function createHostWorkspace(
     if (!session) throw failure("NOT_FOUND", "Session is not available");
     return session;
   }
-  function updateSession(session: SessionSnapshot) {
+  function updateSession(session: SessionSnapshot, replay = false) {
     const previous = state.sessions.find(
       (value) => value.sessionId === session.sessionId,
     );
@@ -216,7 +216,23 @@ export function createHostWorkspace(
       return;
     if (previous && previous.sessionEpoch !== session.sessionEpoch)
       invalidateActions();
+    let replaySessionEpochs = state.replaySessionEpochs;
+    const replayEpoch = replaySessionEpochs?.get(session.sessionId);
+    if (replay && session.state !== "closed") {
+      replaySessionEpochs = new Map(replaySessionEpochs).set(
+        session.sessionId,
+        session.sessionEpoch,
+      );
+    } else if (
+      replayEpoch !== undefined &&
+      (session.state === "closed" || replayEpoch !== session.sessionEpoch)
+    ) {
+      const sessions = new Map(replaySessionEpochs);
+      sessions.delete(session.sessionId);
+      replaySessionEpochs = sessions;
+    }
     change({
+      replaySessionEpochs,
       sessions: [
         ...state.sessions.filter(
           (value) => value.sessionId !== session.sessionId,
@@ -253,12 +269,15 @@ export function createHostWorkspace(
       operation.result?.kind === "opened"
     ) {
       const opened = operation.result.value;
+      const knownSession = state.sessions.find(
+        (session) =>
+          session.sessionId === opened.sessionId &&
+          session.sessionEpoch === opened.sessionEpoch,
+      );
       if (
-        !state.sessions.some(
-          (session) =>
-            session.sessionId === opened.sessionId &&
-            session.sessionEpoch === opened.sessionEpoch,
-        ) &&
+        knownSession?.state !== "closed" &&
+        state.replaySessionEpochs?.get(opened.sessionId) !==
+          opened.sessionEpoch &&
         !replaySessionsLoading.has(opened.sessionId)
       ) {
         replaySessionsLoading.add(opened.sessionId);
@@ -273,8 +292,14 @@ export function createHostWorkspace(
             }),
             lifetime.signal,
           );
-          if (result.kind !== "session") throw new ContractValidationError();
-          updateSession(result.value);
+          if (
+            result.kind !== "session" ||
+            result.value.sessionId !== opened.sessionId ||
+            result.value.sessionEpoch !== opened.sessionEpoch ||
+            !result.value.readOnly
+          )
+            throw new ContractValidationError();
+          updateSession(result.value, true);
           await syncProjections();
         })()
           .catch(report)

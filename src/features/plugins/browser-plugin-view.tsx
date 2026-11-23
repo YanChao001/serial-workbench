@@ -1,8 +1,10 @@
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { ContractValidationError } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type { HostConnection } from "@/lib/host-client";
+import { LanguageSwitch } from "@/components/language-switch";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { getLocale } from "@/i18n/registry";
 import { useI18n } from "@/providers/i18n";
 import {
   prepareBrowserView,
@@ -14,7 +16,6 @@ import { PluginError } from "./plugin-error";
 
 export type BrowserViewOpen = BrowserViewRequest & {
   title: string;
-  locale: string;
   dark: boolean;
   opener?: HTMLElement;
   forgetFeed?: () => void;
@@ -29,10 +30,18 @@ export function BrowserPluginView({
   view: BrowserViewOpen;
   onClose: () => void;
 }) {
-  const { t } = useI18n();
+  const { language, t } = useI18n();
+  const locale = getLocale(language).documentLang;
+  const latestLocale = useRef(locale);
+  const localePort = useRef<MessagePort | null>(null);
   const [container, setContainer] = useState<HTMLDivElement | null>(null);
   const [reading, setReading] = useState(false);
   const [error, setError] = useState<unknown>(null);
+
+  useEffect(() => {
+    latestLocale.current = locale;
+    localePort.current?.postMessage({ kind: "viewLocale", locale });
+  }, [locale]);
 
   useEffect(() => {
     const browser = connection.browser;
@@ -92,7 +101,12 @@ export function BrowserPluginView({
         .replaceAll("/", "_")
         .replace(/=+$/, "");
       const url = new URL("/browser-plugin-frame", location.origin);
-      url.hash = [frameId, view.locale, view.dark ? "dark" : "light"].join(".");
+      url.hash = [
+        frameId,
+        latestLocale.current,
+        view.dark ? "dark" : "light",
+        "locale",
+      ].join(".");
       let loaded = false;
       let transferred = false;
       function onLoad() {
@@ -123,13 +137,22 @@ export function BrowserPluginView({
         "message",
         (event: MessageEvent<unknown>) => {
           const [opened] = event.ports;
+          const data = event.data;
+          const localeUpdates = Boolean(
+            data &&
+            typeof data === "object" &&
+            "frameId" in data &&
+            data.frameId === frameId &&
+            "localeUpdates" in data &&
+            data.localeUpdates === true,
+          );
           if (
             !opened ||
             port ||
             !transferred ||
             event.source !== frame.contentWindow ||
             event.origin !== "null" ||
-            event.data !== frameId ||
+            (data !== frameId && !localeUpdates) ||
             event.ports.length !== 1
           )
             return;
@@ -141,6 +164,13 @@ export function BrowserPluginView({
             await prepared.authorize();
             signal.throwIfAborted();
             opened.postMessage({ ok: true, result: snapshot });
+            if (localeUpdates) {
+              localePort.current = opened;
+              opened.postMessage({
+                kind: "viewLocale",
+                locale: latestLocale.current,
+              });
+            }
             setReading(true);
             if (prepared.feed === "derived") {
               await readBrowserViewDerived(
@@ -176,6 +206,7 @@ export function BrowserPluginView({
         "abort",
         () => {
           clearTimeout(timer);
+          if (localePort.current === port) localePort.current = null;
           port?.close();
           frame.remove();
         },
@@ -208,7 +239,10 @@ export function BrowserPluginView({
           view.opener.focus();
         }}
       >
-        <DialogTitle>{view.title}</DialogTitle>
+        <div className="flex items-center justify-between gap-3 pr-8">
+          <DialogTitle>{view.title}</DialogTitle>
+          <LanguageSwitch compact />
+        </div>
         <PluginError error={error} message="plugins.viewError" />
         {!reading && !error ? <p role="status">{t("common.loading")}</p> : null}
         <div ref={setContainer} />

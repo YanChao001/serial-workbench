@@ -97,6 +97,7 @@ pub(crate) struct AdmissionGuard {
 }
 pub(crate) struct OperationPreparation {
     file_transfer: Option<file_transfer::FileTransferGuard>,
+    paste: Option<file_transfer::PreparedPaste>,
     configuration_change: Option<ConfigurationChange>,
     _queue: Option<QueueReservation>,
     session: Option<Arc<Session>>,
@@ -260,10 +261,16 @@ impl TransmissionService {
         } else {
             None
         };
+        let paste = if call.action_id.as_str() == "transfer.paste" {
+            Some(file_transfer::PreparedPaste::new(decode(&call.params)?)?)
+        } else {
+            None
+        };
         let queue = if matches!(
             call.action_id.as_str(),
             "session.tx"
                 | "transfer.file"
+                | "transfer.paste"
                 | "session.configure"
                 | "session.control"
                 | "session.break"
@@ -279,6 +286,8 @@ impl TransmissionService {
                             .get(),
                     )
                     .map_err(|_| invalid())?
+                } else if let Some(paste) = &paste {
+                    paste.len()
                 } else {
                     bytes.as_ref().map_or(0, |bytes| bytes.len())
                 },
@@ -297,6 +306,7 @@ impl TransmissionService {
             .transpose()?;
         Ok(OperationPreparation {
             file_transfer: None,
+            paste,
             configuration_change: None,
             session,
             tx,
@@ -344,7 +354,10 @@ impl TransmissionService {
                 Arc::new(ControlToken {
                     is_stop,
                     actor_id: operation.actor_id.clone(),
-                    is_tx: matches!(operation.action_id.as_str(), "session.tx" | "transfer.file"),
+                    is_tx: matches!(
+                        operation.action_id.as_str(),
+                        "session.tx" | "transfer.file" | "transfer.paste"
+                    ),
                     cancelled: Arc::new(AtomicBool::new(should_cancel)),
                     dispatch: tokio::sync::Mutex::new(()),
                     done: Notify::new(),
@@ -545,13 +558,14 @@ impl TransmissionService {
         let runtime = self.runtime(&accepted.call.target)?;
         match accepted.call.action_id.as_str() {
             "session.toolHandoff" => self.tool_handoff(accepted, token, session, &runtime).await,
-            "transfer.file" => {
-                self.transfer_file(
+            "transfer.file" | "transfer.paste" => {
+                self.transfer(
                     accepted,
                     token,
                     session,
                     &runtime,
                     &mut preparation.file_transfer,
+                    preparation.paste.take(),
                 )
                 .await
             }
@@ -659,7 +673,12 @@ impl TransmissionService {
         }
         if matches!(
             action,
-            "session.tx" | "lease.acquire" | "session.control" | "session.break" | "tx.drain"
+            "session.tx"
+                | "transfer.paste"
+                | "lease.acquire"
+                | "session.control"
+                | "session.break"
+                | "tx.drain"
         ) {
             match state.tx_gate {
                 TxGate::Ready => {}
@@ -1103,13 +1122,19 @@ pub(crate) fn normalize(action: BuiltinAction, call: &Call) -> HostResult<JsonOb
         object(&decode::<T>(value)?)
     }
     match action {
-        BuiltinAction::TransferFile => {
+        BuiltinAction::TransferFile | BuiltinAction::TransferPaste => {
             if call.execution_mode != Some(ExecutionMode::Independent) || call.lease_id.is_some() {
                 return Err(invalid());
             }
-            let params: FileTransferParams = decode(&call.params)?;
-            file_transfer::validate_params(&params)?;
-            object(&params)
+            if action == BuiltinAction::TransferPaste {
+                let params: PasteTransferParams = decode(&call.params)?;
+                file_transfer::validate_paste_params(&params)?;
+                object(&params)
+            } else {
+                let params: FileTransferParams = decode(&call.params)?;
+                file_transfer::validate_params(&params)?;
+                object(&params)
+            }
         }
         BuiltinAction::DeviceOpen => norm::<OpenParams>(&call.params),
         BuiltinAction::ToolHandoff => {

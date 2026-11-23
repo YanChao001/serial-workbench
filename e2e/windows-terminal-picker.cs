@@ -200,7 +200,7 @@ internal static class TerminalPickerWindow
 
         if (GetForegroundWindow() != dialog || GetWindow(dialog, OwnerWindow) != owner || !BelongsTo(edit, pid))
             throw new InvalidOperationException("The owned " + action + " dialog lost foreground focus before entering the path.");
-        edit = EnterPath(dialog, edit, pid, path);
+        edit = EnterPath(dialog, owner, edit, pid, path);
         if (!HasFocus(dialog, edit) || GetDlgItem(dialog, ConfirmButtonId) != button || !IsWindowEnabled(button))
             throw new InvalidOperationException("The owned " + action + " dialog lost focus or its confirmation button became unavailable.");
         Console.Error.WriteLine("Verified " + action + " filename");
@@ -343,8 +343,10 @@ internal static class TerminalPickerWindow
             throw new InvalidOperationException("Windows did not accept all file dialog keystrokes.");
     }
 
-    private static IntPtr EnterPath(IntPtr dialog, IntPtr edit, uint applicationPid, string path)
+    private static IntPtr FocusFileName(IntPtr dialog, IntPtr edit, uint applicationPid)
     {
+        IntPtr initialFocus = FocusedControl(dialog);
+        if (IsFileNameEdit(dialog, initialFocus, applicationPid)) return initialFocus;
         if (!HasFocus(dialog, edit))
         {
             if (GetForegroundWindow() != dialog)
@@ -370,7 +372,11 @@ internal static class TerminalPickerWindow
             throw new InvalidOperationException("The filename edit did not receive keyboard focus. Focus class=" +
                 WindowClass(focused) + "; control ID=" + GetDlgCtrlID(focused));
         }
+        return edit;
+    }
 
+    private static IntPtr EnterPath(IntPtr dialog, IntPtr owner, IntPtr edit, uint applicationPid, string path)
+    {
         const ushort control = 0x11;
         var inputs = new List<Input>(4 + path.Length * 2) {
             Key(control, 0, 0), Key('A', 0, 0), Key('A', 0, KeyUp), Key(control, 0, KeyUp),
@@ -380,15 +386,36 @@ internal static class TerminalPickerWindow
             inputs.Add(Key(0, character, Unicode));
             inputs.Add(Key(0, character, Unicode | KeyUp));
         }
-        if (!HasFocus(dialog, edit))
-            throw new InvalidOperationException("The filename edit lost keyboard focus before typing.");
-        SendKeys(inputs.ToArray());
-        var entry = Stopwatch.StartNew();
-        do
+        var keystrokes = inputs.ToArray();
+        for (int attempt = 1; attempt <= 3; attempt++)
         {
-            if (ReadFileName(edit, path.Length + 2) == path) return edit;
-            Thread.Sleep(50);
-        } while (entry.Elapsed.TotalSeconds < 2 && GetForegroundWindow() == dialog);
+            if (GetForegroundWindow() != dialog || GetWindow(dialog, OwnerWindow) != owner)
+                throw new InvalidOperationException("The owned dialog lost foreground focus before typing.");
+            edit = FocusFileName(dialog, edit, applicationPid);
+            if (!BelongsTo(edit, applicationPid) || !IsChild(dialog, edit) || !HasFocus(dialog, edit))
+                throw new InvalidOperationException("The filename edit lost keyboard focus before typing.");
+            SendKeys(keystrokes);
+
+            var entry = Stopwatch.StartNew();
+            int observedLength = 0;
+            while (entry.Elapsed.TotalSeconds < 2 && GetForegroundWindow() == dialog &&
+                GetWindow(dialog, OwnerWindow) == owner)
+            {
+                // Explorer can replace the focused Edit while processing input.
+                IntPtr focused = FocusedControl(dialog);
+                if (IsFileNameEdit(dialog, focused, applicationPid)) edit = focused;
+                if (BelongsTo(edit, applicationPid) && IsChild(dialog, edit) && HasFocus(dialog, edit))
+                {
+                    string actual = ReadFileName(edit, path.Length + 2);
+                    observedLength = actual.Length;
+                    if (actual == path) return edit;
+                }
+                Thread.Sleep(50);
+            }
+            Console.Error.WriteLine("Filename readback mismatch on attempt " + attempt +
+                "; observed length=" + observedLength + "; expected length=" + path.Length +
+                "; focused class=" + WindowClass(FocusedControl(dialog)));
+        }
         throw new InvalidOperationException("The owned dialog did not receive the typed filename.");
     }
 }

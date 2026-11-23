@@ -29,6 +29,32 @@ impl Default for ReceiveHistory {
 }
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct ShortcutBinding {
+    pub key: String,
+    pub primary: bool,
+    pub alt: bool,
+    pub shift: bool,
+}
+
+impl ShortcutBinding {
+    fn is_valid(&self) -> bool {
+        if let Some(number) = self.key.strip_prefix('F') {
+            return matches!(
+                number,
+                "1" | "2" | "3" | "4" | "5" | "6" | "7" | "8" | "9" | "10" | "11" | "12"
+            );
+        }
+        (self.primary || self.alt)
+            && (self.key == "Enter"
+                || matches!(
+                    self.key.as_bytes(),
+                    [b'a'..=b'z' | b'0'..=b'9' | b',' | b'.' | b'/']
+                ))
+    }
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientPreferences {
     pub menu_bar: bool,
     pub window_position: WindowPosition,
@@ -37,6 +63,9 @@ pub struct ClientPreferences {
     #[serde(default)]
     #[specta(optional)]
     pub receive_history: ReceiveHistory,
+    #[serde(default, skip_serializing_if = "BTreeMap::is_empty")]
+    #[specta(optional)]
+    pub shortcut_overrides: BTreeMap<String, ShortcutBinding>,
 }
 impl Default for ClientPreferences {
     fn default() -> Self {
@@ -46,6 +75,7 @@ impl Default for ClientPreferences {
             sidebar_collapsed: true,
             sidebar_width: 224,
             receive_history: ReceiveHistory::default(),
+            shortcut_overrides: BTreeMap::new(),
         }
     }
 }
@@ -150,9 +180,19 @@ fn corrupt(message: &str) -> NativeError {
 }
 fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
     use crate::error::bounded_text;
+    let shortcuts = &state.preferences.shortcut_overrides;
     if !(180..=360).contains(&state.preferences.sidebar_width)
         || !(1..=20_000).contains(&state.preferences.receive_history.max_records)
         || !(1024 * 1024..=16 * 1024 * 1024).contains(&state.preferences.receive_history.max_bytes)
+        || shortcuts.len() > 64
+        || shortcuts.iter().any(|(id, shortcut)| {
+            id.is_empty()
+                || id.len() > 64
+                || !id
+                    .bytes()
+                    .all(|byte| byte.is_ascii_lowercase() || byte.is_ascii_digit() || byte == b'-')
+                || !shortcut.is_valid()
+        })
         || !matches!(
             state.current_page.as_str(),
             "workbench" | "settings" | "diagnostics" | "recovery"
@@ -488,6 +528,44 @@ mod tests {
                 .sidebar_collapsed
         );
     }
+    #[test]
+    fn client_shortcuts_use_the_same_revision_and_window_as_other_preferences() {
+        let directory = tempfile::tempdir().unwrap();
+        let path = directory.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let mut state = store.snapshot("main").unwrap().state;
+        assert!(state.preferences.shortcut_overrides.is_empty());
+        state.preferences.shortcut_overrides.insert(
+            "command-palette".into(),
+            ShortcutBinding {
+                key: "y".into(),
+                primary: true,
+                alt: false,
+                shift: true,
+            },
+        );
+        let saved = store.save("main", state.clone(), 0.into()).unwrap();
+        let reopened = ClientStateStore::open(path).unwrap();
+        assert_eq!(reopened.snapshot("main").unwrap(), saved);
+        assert!(
+            reopened
+                .snapshot("secondary")
+                .unwrap()
+                .state
+                .preferences
+                .shortcut_overrides
+                .is_empty()
+        );
+        state
+            .preferences
+            .shortcut_overrides
+            .get_mut("command-palette")
+            .unwrap()
+            .key = "Escape".into();
+        assert!(reopened.save("main", state, saved.revision).is_err());
+        assert_eq!(reopened.snapshot("main").unwrap(), saved);
+    }
+
     #[test]
     fn drafts_roundtrip_without_reading_or_changing_legacy_shared_settings() {
         let dir = tempfile::tempdir().unwrap();

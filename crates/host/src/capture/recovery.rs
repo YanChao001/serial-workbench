@@ -65,18 +65,19 @@ fn recover_bound(
     scan.bind_files(source)?;
     let name = format!(".recovery-pending-{}", uuid::Uuid::new_v4());
     let temporary = destination.sibling(std::ffi::OsStr::new(&name))?;
-    let mut writer = CaptureWriter::create_at(
+    let mut writer = CaptureWriter::create_at_format(
         destination.sibling(std::ffi::OsStr::new(&name))?,
         scan.manifest.streams.clone(),
         CaptureLimits::default(),
         super::writer::native_volume_opener(),
+        scan.format,
     )?;
     writer.recover_from(report.source_fingerprint.clone());
     for position in 0..report.verified_prefix.get() as usize {
         observe(super::verify::CopyPhase::BeforeRecord);
-        let record = scan.read_verified_record(position)?;
+        let (record, observed, _) = scan.read_verified_stored(position)?;
         observe(super::verify::CopyPhase::AfterRecord);
-        let now = record_time(&record).unwrap_or(0);
+        let now = observed.or_else(|| record_time(&record)).unwrap_or(0);
         writer.push(record.entry, now)?;
     }
     let summary = writer.finish_recovered()?;

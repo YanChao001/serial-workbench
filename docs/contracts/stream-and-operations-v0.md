@@ -164,7 +164,13 @@ Host 内部录制 reader 使用接纳后实际绑定的源会话读取规则和�
 
 volumeResults 项包含 volumeId、`status: verified|missing|corrupt` 和 verifiedPrefix。sourceFingerprint 覆盖被验证源文件的身份、长度及内容摘要；verify 后保存只读源句柄/身份依据，另存前再次核对全部相关源。源变化 SOURCE_CHANGED；目标已有文件 TARGET_EXISTS；两种失败均不覆盖原件/既有目标。恢复仅复制跨卷连续验证前缀，遇缺卷/损坏停止，不跳过拼接；先写独占新临时目标并同步验证，再以不覆盖语义发布。失败保留可诊断临时证据，不把半成品标完整。
 
-当前回放使用 `replay.read`、`replay.control` 和 `replay.close`，参数与结果见[生成目录](../../packages/contracts/src/generated/catalog.json)。
+回放通过 `replay.read`、`replay.control` 和 `replay.close` 操作独立 reader。一次 `replay.open` 分配一个游标，其他已获准读取同一回放会话的客户端沿用该游标。每次读取和控制继续核查当前原源授权。
+
+- `replay.read` 按现有记录数和字节预算显式读取。可选的 `singleStep: true` 读取至多一条验证过的记录并保持暂停。单步跳过时序等待和当前断点，大记录沿用有界文件引用。回复超出预算或源验证失败时保留原游标。
+- `replay.control` 默认按原有 `paused` 和可选 `seekRecord` 控制读者。可选的 `playback` 用 `set_rate` 选择倍率或最快，用 `set_breakpoint` 指定从 1 开始的记录序号。省略 `set_breakpoint.record` 清除断点。设置速率和断点保留暂停状态，且单次请求只能选择播放设置或跳转。
+- 每个 reader 独立保存一个断点。目标记录到达播放时刻后，在交付该记录前暂停。继续或单步可越过这次命中，后续记录按新的时序基点等待。重新跳转后可再次命中。旧读请求与所有持久回执保留原格式。`replay.read` 带 `reportPlayback: true` 时，回复附加当前速率、暂停和断点状态。带 `inspectPlayback: true` 时只返回当前状态和空记录页，游标保持原位。状态查询与单步不能合并。
+
+参数与结果见[生成目录](../../packages/contracts/src/generated/catalog.json)。
 
 **后续设计（未注册）：** `replay.transmit` 拟按源方向和 SourceRange 选择数据，速率包含正十进制字符串和单位；预览固定目标、源 TX 接受区间、最终字节、速率和范围摘要。默认仅可选已确认 accepted 字节；unknown 尾段不可推定重放。用户选择发送其他捕获字节必须作为新的明确发送意图独立预览授权，不修改原始 TX 事实。设备模拟另登记独立任务，查看 capture 不启动模拟。执行前重新校验 previewDigest、源指纹、目标 epoch 与权限。
 

@@ -1,4 +1,5 @@
 import { isMacOS } from "@/lib/platform";
+import type { ShortcutBinding } from "@/lib/generated/bindings";
 
 export type Shortcut = {
   key: string;
@@ -7,6 +8,58 @@ export type Shortcut = {
   shift?: boolean;
   allowInEditable?: boolean;
 };
+
+export const SEND_EDITOR_SHORTCUT: Shortcut = {
+  key: "Enter",
+  primary: true,
+  allowInEditable: true,
+};
+
+const FUNCTION_KEYS = new Set(
+  Array.from({ length: 12 }, (_, index) => `F${index + 1}`),
+);
+
+export function validShortcutBinding({
+  key,
+  primary,
+  alt,
+}: ShortcutBinding): boolean {
+  return (
+    FUNCTION_KEYS.has(key) ||
+    ((primary || alt) &&
+      (key === "Enter" || (key.length === 1 && /[a-z0-9,./]/.test(key))))
+  );
+}
+
+export function shortcutFromEvent(
+  event: KeyboardEvent,
+  mac = isMacOS(),
+): ShortcutBinding | undefined {
+  if (
+    event.isComposing ||
+    event.keyCode === 229 ||
+    event.repeat ||
+    event.getModifierState("AltGraph") ||
+    (mac ? event.ctrlKey : event.metaKey)
+  )
+    return;
+  const binding = {
+    key: event.key.length === 1 ? event.key.toLowerCase() : event.key,
+    primary: mac ? event.metaKey : event.ctrlKey,
+    alt: event.altKey,
+    shift: event.shiftKey,
+  };
+  return validShortcutBinding(binding) ? binding : undefined;
+}
+
+export function sameShortcut(left: Shortcut, right: Shortcut): boolean {
+  return (
+    left.key.toLowerCase() === right.key.toLowerCase() &&
+    !!left.primary === !!right.primary &&
+    !!left.alt === !!right.alt &&
+    !!left.shift === !!right.shift
+  );
+}
 
 export function isEditableTarget(target: EventTarget | null): boolean {
   return (

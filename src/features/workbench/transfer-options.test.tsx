@@ -181,6 +181,21 @@ it("allows Native source selection while transfer rights are unknown and invalid
     writeWaitMs: "1000",
     watchActions: observer.watchActions,
   };
+  const observeTransfer = (sessionEpoch: string, bytesPerSecond?: string) =>
+    waitFor(() => {
+      const subscription = observer.subscriptions.at(-1);
+      if (!subscription || subscription.stopped)
+        throw new Error("The current transfer observation has not started");
+      expect(subscription.inputs[0]).toMatchObject({
+        actionId: "transfer.file",
+        target: { ...target, sessionEpoch },
+        params: {
+          sourceRef: selectedFile.reference,
+          ...(bytesPerSecond ? { bytesPerSecond } : {}),
+        },
+      });
+      return subscription;
+    });
   const view = render(<TransferOptions {...props} target={target} />);
   expect(screen.getByRole("button", { name: "Select source" })).toBeEnabled();
   fireEvent.click(screen.getByRole("button", { name: "Select source" }));
@@ -189,7 +204,7 @@ it("allows Native source selection while transfer rights are unknown and invalid
   expect(button()).toBeDisabled();
   fireEvent.click(button());
   expect(transfer).not.toHaveBeenCalled();
-  const first = observer.subscriptions.at(-1)!;
+  const first = await observeTransfer("1");
   act(() => observer.publish(first, () => false));
   expect(button()).toBeDisabled();
   act(() => observer.publish(first, () => true));
@@ -201,12 +216,7 @@ it("allows Native source selection while transfer rights are unknown and invalid
   expect(button()).toBeDisabled();
   act(() => observer.publish(first, () => true));
   expect(button()).toBeDisabled();
-  const edited = observer.subscriptions.at(-1)!;
-  expect(edited.inputs[0]).toMatchObject({
-    actionId: "transfer.file",
-    target,
-    params: { bytesPerSecond: "2000", sourceRef: selectedFile.reference },
-  });
+  const edited = await observeTransfer("1", "2000");
   act(() => observer.publish(edited, () => true));
   expect(button()).toBeEnabled();
   view.rerender(
@@ -215,6 +225,7 @@ it("allows Native source selection while transfer rights are unknown and invalid
   expect(button()).toBeDisabled();
   act(() => observer.publish(edited, () => true));
   expect(button()).toBeDisabled();
+  const switched = await observeTransfer("2", "2000");
   view.unmount();
-  expect(observer.subscriptions.at(-1)?.stopped).toBe(true);
+  expect(switched.stopped).toBe(true);
 });

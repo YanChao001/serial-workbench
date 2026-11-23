@@ -166,6 +166,45 @@ it("preserves the original TX intent byte range while a receipt is unavailable",
   expect(screen.getByText("Requested bytes: [12, 17)")).toBeVisible();
   expect(screen.queryByText(labels.accepted)).not.toBeInTheDocument();
 });
+it("can hide outgoing bytes while a device echo and the TX receipt remain visible", () => {
+  const tx = txItem("tx");
+  if (tx.kind !== "source" || tx.event.kind !== "tx")
+    throw new Error("Missing TX fixture");
+  const rx: StreamItem = {
+    kind: "source",
+    event: {
+      ...tx.event,
+      kind: "rx",
+      eventSeq: "8",
+      payload: {
+        byteStart: tx.event.payload.byteStart,
+        byteEnd: tx.event.payload.byteEnd,
+        bytesBase64: tx.event.payload.bytesBase64,
+      },
+    },
+  };
+  render(<StreamView items={[tx, rx]} labels={labels} />);
+  const log = screen.getByRole("log");
+  const outgoing = log.querySelector(
+    '[data-direction="tx"] .workbench-payload',
+  );
+  const received = log.querySelector(
+    '[data-direction="rx"] .workbench-payload',
+  );
+  expect(outgoing).toBeVisible();
+  expect(received).toBeVisible();
+  expect(received).toHaveTextContent("Hello");
+  expect(screen.getByText(labels.transmitSource)).toBeInTheDocument();
+
+  fireEvent.click(screen.getByRole("button", { name: labels.encodingHelp }));
+  const echo = screen.getByRole("switch", { name: labels.showTransmitEcho });
+  fireEvent.click(echo);
+  expect(outgoing).not.toBeVisible();
+  expect(received).toBeVisible();
+  expect(screen.getByRole("button", { name: labels.receipt })).toBeVisible();
+  fireEvent.click(echo);
+  expect(outgoing).toBeVisible();
+});
 it("keeps stopped stream bytes and offers recovery before the technical error details", async () => {
   render(
     <StreamView

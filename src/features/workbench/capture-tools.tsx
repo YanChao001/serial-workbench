@@ -13,6 +13,7 @@ import type {
   ReplayMode,
   ReplayOpenParams,
   Target,
+  TextExportFormat,
   TextExportParams,
 } from "@serial-workbench/contracts";
 import type { FileResourceRole, SelectedFileResource } from "@/lib/tauri";
@@ -43,6 +44,8 @@ import { useToolActionAvailability } from "./use-tool-action-availability";
 export type CaptureToolsLabels = Record<
   | "captureTools"
   | "selectTarget"
+  | "selectCsvTarget"
+  | "selectJsonlTarget"
   | "selectCapture"
   | "writeMode"
   | "createNew"
@@ -65,6 +68,7 @@ export type CaptureToolsLabels = Record<
   | "recoveryPreview"
   | "recoverPrefix"
   | "exportText"
+  | "exportFormat"
   | "originalTiming"
   | "fastest"
   | "replayMode"
@@ -88,6 +92,7 @@ export type CaptureToolsLabels = Record<
   targetFile: string;
   sourceFile: string;
   destinationFile: string;
+  recoveryDestinationFile: string;
   operationText: OperationText;
 };
 export type CaptureToolsDraft = {
@@ -142,6 +147,10 @@ function CaptureToolsForm({
 }: CaptureToolsProps) {
   const [page, setPage] = useState("recording");
   const [target, setTarget] = useState<SelectedFileResource>();
+  const [exportTargets, setExportTargets] = useState<
+    Partial<Record<TextExportFormat, SelectedFileResource>>
+  >({});
+  const [exportFormat, setExportFormat] = useState<TextExportFormat>("jsonl");
   const [metadataResult, setMetadataResult] = useState<{
     target: SelectedFileResource;
     read: typeof readMetadata;
@@ -269,12 +278,19 @@ function CaptureToolsForm({
         : undefined,
     [target, report, recoveryUsed],
   );
-  const exportParams = useMemo(
+  const exportTarget = exportTargets[exportFormat];
+  const selectExportTarget =
+    exportFormat === "csv" ? labels.selectCsvTarget : labels.selectJsonlTarget;
+  const exportParams = useMemo<TextExportParams | undefined>(
     () =>
-      source && target
-        ? { captureRef: source.reference, targetRef: target.reference }
+      source && exportTarget
+        ? {
+            captureRef: source.reference,
+            targetRef: exportTarget.reference,
+            ...(exportFormat === "csv" ? { format: exportFormat } : {}),
+          }
         : undefined,
-    [source, target],
+    [source, exportTarget, exportFormat],
   );
   const verifyParams = useMemo(
     () => (source ? { captureRef: source.reference } : undefined),
@@ -458,8 +474,21 @@ function CaptureToolsForm({
                   </WorkbenchIconButton>
                 </div>
               </div>
+              <label>
+                <span>{labels.exportFormat}</span>
+                <OptionsSelect<TextExportFormat>
+                  label={labels.exportFormat}
+                  value={exportFormat}
+                  disabled={locked}
+                  onValueChange={setExportFormat}
+                  options={[
+                    { value: "jsonl", label: "JSONL" },
+                    { value: "csv", label: "CSV" },
+                  ]}
+                />
+              </label>
               <div className="workbench-form-row">
-                <span>{labels.destinationFile}</span>
+                <span>{labels.recoveryDestinationFile}</span>
                 <div className="workbench-file-selection">
                   <output title={target?.name} data-surface="control">
                     {target?.name ?? labels.selectTarget}
@@ -469,6 +498,36 @@ function CaptureToolsForm({
                     variant="outline"
                     disabled={!pickFile}
                     onClick={() => void action.run(chooseTarget)}
+                  >
+                    <FolderOpen aria-hidden="true" />
+                  </WorkbenchIconButton>
+                </div>
+              </div>
+              <div className="workbench-form-row">
+                <span>{labels.destinationFile}</span>
+                <div className="workbench-file-selection">
+                  <output title={exportTarget?.name} data-surface="control">
+                    {exportTarget?.name ?? selectExportTarget}
+                  </output>
+                  <WorkbenchIconButton
+                    label={selectExportTarget}
+                    variant="outline"
+                    disabled={!pickFile}
+                    onClick={() =>
+                      void action.run(async (signal) => {
+                        const selected = await pickFile!(
+                          exportFormat === "csv"
+                            ? "exportCsvTarget"
+                            : "exportJsonlTarget",
+                          signal,
+                        );
+                        if (!signal.aborted && selected)
+                          setExportTargets((targets) => ({
+                            ...targets,
+                            [exportFormat]: selected,
+                          }));
+                      })
+                    }
                   >
                     <FolderOpen aria-hidden="true" />
                   </WorkbenchIconButton>
