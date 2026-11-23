@@ -5,7 +5,7 @@ import type { AnsiPasteTarget } from "./ansi-paste";
 const MAX_PENDING_KEYS = 4 * 1024;
 const COALESCE_MS = 12;
 const WINDOW_SIZE_SETTLE_MS = 150;
-const MAX_WINDOW_DIMENSION = 65_535;
+export const MAX_ANSI_WINDOW_DIMENSION = 65_535;
 const ESC = "\x1b";
 const protocolEncoder = new TextEncoder();
 
@@ -14,6 +14,12 @@ export type AnsiKeyboardTarget = {
   send: (bytes: Uint8Array, signal: AbortSignal) => Promise<Operation>;
   paste?: AnsiPasteTarget;
 };
+
+export function isAnsiWindowDimension(size: number): boolean {
+  return (
+    Number.isInteger(size) && size > 0 && size <= MAX_ANSI_WINDOW_DIMENSION
+  );
+}
 
 export function encodeAnsiKey(
   value: string,
@@ -129,10 +135,7 @@ export function createAnsiKeyboardWriter(
     reportWindowSize(rows: number, cols: number) {
       if (
         controller.signal.aborted ||
-        ![rows, cols].every(
-          (size) =>
-            Number.isInteger(size) && size > 0 && size <= MAX_WINDOW_DIMENSION,
-        )
+        ![rows, cols].every(isAnsiWindowDimension)
       )
         return;
       const size = `${ESC}[8;${rows};${cols}t`;
@@ -149,14 +152,15 @@ export function createAnsiKeyboardWriter(
       }, WINDOW_SIZE_SETTLE_MS);
     },
     enqueue(bytes: Uint8Array) {
-      if (controller.signal.aborted) return;
+      if (controller.signal.aborted) return false;
       if (length + bytes.length > queued.length) {
         stop("overflow");
-        return;
+        return false;
       }
       queued.set(bytes, length);
       length += bytes.length;
       schedule();
+      return true;
     },
   };
 }

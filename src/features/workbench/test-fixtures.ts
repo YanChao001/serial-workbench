@@ -242,6 +242,18 @@ export const labels: WorkbenchLabels = {
   ansiSizeReportHint:
     "Enable for a peer that expects CSI row and column reports.",
   ansiLinks: "Terminal links",
+  ansiShell: "POSIX shell settings",
+  ansiShellHint:
+    "At an empty POSIX shell prompt, insert the command and review it before pressing Enter. Blank dimensions use the current screen size.",
+  ansiShellColor: "Color capability",
+  ansiShellMono: "Monochrome",
+  ansiShellBasic: "Basic ANSI colors",
+  ansiShellIndexed: "256 indexed colors",
+  ansiShellTruecolor: "24-bit true color",
+  ansiShellRows: "Rows",
+  ansiShellColumns: "Columns",
+  ansiShellInsert: "Insert shell settings",
+  ansiShellQueued: "Command queued for the terminal.",
   ansiScrollback: "ANSI history",
   ansiScrollbackLimit: "Scrollback limit",
   ansiScrollbackRange: "Showing lines {first}–{last} of {count}",

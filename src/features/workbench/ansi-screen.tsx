@@ -42,6 +42,7 @@ import { bindAnsiMouse, selectsAnsiText } from "./ansi-mouse";
 import { observeAnsiHistory, type AnsiHistorySnapshot } from "./ansi-history";
 import { AnsiHistoryControls } from "./ansi-history-controls";
 import { AnsiSearchControls } from "./ansi-search-controls";
+import { AnsiShellControls } from "./ansi-shell-controls";
 import { decodeBytes } from "./stream-model";
 import { terminalTypographyStyle } from "./stream-presentation";
 import { useAnsiPaste } from "./use-ansi-paste";
@@ -576,6 +577,25 @@ export default function AnsiScreen({
           isCurrent={(terminal) => active.current?.terminal === terminal}
           labels={labels}
         />
+        {enabled && keyboardScope && (
+          <AnsiShellControls
+            key={keyboardScope}
+            disabled={pasteBlocksKeys || !history}
+            labels={labels}
+            size={() => active.current?.terminal}
+            insert={(command) => {
+              const terminal = active.current?.terminal;
+              if (
+                !terminal ||
+                pasteBlocksKeys ||
+                !writer.current?.enqueue(new TextEncoder().encode(command))
+              )
+                return false;
+              terminal.focus();
+              return true;
+            }}
+          />
+        )}
         {links.length > 0 && (
           <details className="workbench-ansi-links">
             <summary>{labels.ansiLinks}</summary>

@@ -154,6 +154,62 @@ test("ANSI reports local window sizes only after explicit session consent", asyn
   await expect(keyboard).not.toBeChecked();
 });
 
+test("ANSI inserts session shell settings and leaves execution to the terminal Enter key", async ({
+  page,
+}) => {
+  const ansi = await openAnsi(page);
+  const shell = ansi.viewer.locator(".workbench-ansi-shell");
+  const sent = async () => {
+    const chunks = await page.evaluate(() => window.workbenchFixture.sentBytes);
+    return Buffer.concat(
+      chunks.map((chunk) => Buffer.from(chunk, "base64")),
+    ).toString();
+  };
+  await expect(shell).toHaveCount(0);
+  await ansi.viewer
+    .getByRole("switch", { name: "Send keyboard input" })
+    .click();
+  await shell.locator("summary").click();
+  const insert = shell.getByRole("button", { name: "Insert shell settings" });
+  const term = shell.getByRole("textbox", { name: "TERM" });
+  await term.fill("xterm;other");
+  await expect(insert).toBeDisabled();
+  await shell.getByRole("combobox", { name: "Color capability" }).click();
+  await page.getByRole("option", { name: "24-bit true color" }).click();
+  await term.fill("screen-256color");
+  const rows = shell.getByRole("spinbutton", { name: "Rows" });
+  const cols = shell.getByRole("spinbutton", { name: "Columns" });
+  await rows.fill("37");
+  await cols.fill("112");
+  expect(await sent()).toBe("");
+  await insert.click();
+
+  const override =
+    "export TERM=screen-256color COLORTERM=truecolor LINES=37 COLUMNS=112";
+  await expect(shell.getByRole("status")).toContainText(override);
+  await expect(ansi.input).toBeFocused();
+  await expect.poll(sent).toBe(override);
+  await ansi.input.press("Enter");
+  await expect.poll(sent).toBe(override + "\r");
+
+  await shell.getByRole("combobox", { name: "Color capability" }).click();
+  await page.getByRole("option", { name: "Monochrome" }).click();
+  await rows.fill("");
+  await cols.fill("");
+  await insert.click();
+  const actual = (await shell.locator("code").textContent()) ?? "";
+  expect(actual).toContain(
+    `export TERM=vt100 COLORTERM= LINES=${await ansi.rows.locator(":scope > div").count()} COLUMNS=`,
+  );
+  await expect.poll(sent).toBe(override + "\r" + actual);
+
+  await page
+    .getByRole("region", { name: "Receive", exact: true })
+    .getByRole("button", { name: "Freeze", exact: true })
+    .click();
+  await expect(shell).toHaveCount(0);
+});
+
 test("ANSI only forwards negotiated mouse reports from a focused and enabled terminal", async ({
   page,
 }) => {

@@ -572,6 +572,18 @@ export const en = {
   "workbench.ansiSizeReportHint":
     "Enable for a peer that expects CSI row and column reports.",
   "workbench.ansiLinks": "Terminal links",
+  "workbench.ansiShell": "POSIX shell settings",
+  "workbench.ansiShellHint":
+    "At an empty POSIX shell prompt, insert the command and review it before pressing Enter. Blank dimensions use the current screen size.",
+  "workbench.ansiShellColor": "Color capability",
+  "workbench.ansiShellMono": "Monochrome",
+  "workbench.ansiShellBasic": "Basic ANSI colors",
+  "workbench.ansiShellIndexed": "256 indexed colors",
+  "workbench.ansiShellTruecolor": "24-bit true color",
+  "workbench.ansiShellRows": "Rows",
+  "workbench.ansiShellColumns": "Columns",
+  "workbench.ansiShellInsert": "Insert shell settings",
+  "workbench.ansiShellQueued": "Command queued for the terminal.",
   "workbench.ansiScrollback": "ANSI history",
   "workbench.ansiScrollbackLimit": "Scrollback limit",
   "workbench.ansiScrollbackRange": "Showing lines {first}–{last} of {count}",
