@@ -1,6 +1,6 @@
 use super::{Owner, TaskDataRequest};
-use crate::node_backend::{TaskRawPage, error, raw};
-use serial_workbench_core::{HostResult, StreamReadParams, U64};
+use crate::node_backend::{SessionRawRequest, TaskRawPage, TaskRawRequest, error, raw};
+use serial_workbench_core::{HostResult, U64};
 use std::collections::BTreeMap;
 use tokio::{sync::oneshot, task::JoinHandle};
 
@@ -8,6 +8,11 @@ use tokio::{sync::oneshot, task::JoinHandle};
 pub(super) struct Lane {
     sequence: u64,
     pending: BTreeMap<u64, Read>,
+}
+
+enum Accepted {
+    Read(Read),
+    Closed(TaskRawPage),
 }
 
 struct Read {
@@ -71,39 +76,48 @@ impl Owner {
             }
             self.raw.sequence = id;
             match self.start_raw(request) {
-                Ok(work) => {
+                Ok(Accepted::Read(work)) => {
                     self.raw.pending.insert(id, work);
                 }
+                Ok(Accepted::Closed(page)) => self.raw_reply(id.into(), Ok(page))?,
                 Err(error) => self.raw_reply(id.into(), Err(error))?,
             }
         }
         Ok(())
     }
 
-    fn start_raw(&self, request: TaskDataRequest) -> HostResult<Read> {
-        if self.raw.pending.len() >= raw::SLOTS {
-            return Err(error("HOST_BUSY", "backendRawCapacity"));
-        }
+    fn start_raw(&self, request: TaskDataRequest) -> HostResult<Accepted> {
         let task = self.task_context(
             request.parent_request_id,
             &request.parent_operation_id,
             &request.task_context,
         )?;
-        let params: StreamReadParams = serde_json::from_value(request.params)
+        let raw_request = serde_json::from_value(request.params)
             .map_err(|_| error("INVALID_ARGUMENT", "backendRawReadParams"))?;
-        let future = (task.read_raw)(params);
+        let (params, ordered) = match raw_request {
+            TaskRawRequest::Read(params) => (params, false),
+            TaskRawRequest::Session(SessionRawRequest::SessionEvents { params }) => (params, true),
+            TaskRawRequest::Session(SessionRawRequest::CloseSessionEvents) => {
+                // 已退休的读工作可能仍占全部名额。所属任务仍可归还跟随读取器。
+                return (task.close_session_events)().map(Accepted::Closed);
+            }
+        };
+        if self.raw.pending.len() >= raw::SLOTS {
+            return Err(error("HOST_BUSY", "backendRawCapacity"));
+        }
+        let future = (task.read_raw)(params, ordered);
         let (reply, response) = oneshot::channel();
         let owner = std::thread::current();
         let work = task.runtime.spawn(async move {
             let _ = reply.send(future.await);
             owner.unpark();
         });
-        Ok(Read {
+        Ok(Accepted::Read(Read {
             parent: request.parent_request_id,
             response,
             work,
             retired: false,
-        })
+        }))
     }
 
     fn raw_reply(&self, id: U64, result: HostResult<TaskRawPage>) -> HostResult<()> {

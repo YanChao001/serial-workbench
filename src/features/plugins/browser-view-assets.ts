@@ -48,7 +48,6 @@ export async function prepareBrowserView(
       asset.packageId !== request.packageId ||
       asset.archiveSha256 !== request.archiveSha256 ||
       asset.view.id !== request.viewId ||
-      asset.view.feed === "derived" ||
       asset.target.kind !== "session" ||
       asset.target.hostId !== request.target.hostId ||
       asset.target.id !== request.target.id ||
@@ -67,7 +66,8 @@ export async function prepareBrowserView(
       asset.activationId !== entry.activationId ||
       asset.version !== entry.version ||
       asset.entry !== entry.entry ||
-      asset.view.actionId !== entry.view.actionId
+      asset.view.actionId !== entry.view.actionId ||
+      asset.view.feed !== entry.view.feed
     )
       throw invalid();
   }
@@ -152,5 +152,5 @@ export async function prepareBrowserView(
   for (const path of styles)
     payload.styles.push(await bytes(await page(0, path)));
   await authorize();
-  return { authorize, payload };
+  return { authorize, feed: entry.view.feed, payload };
 }

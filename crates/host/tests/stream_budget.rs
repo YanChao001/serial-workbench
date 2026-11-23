@@ -336,6 +336,256 @@ impl Fixture {
             .await
     }
 }
+fn ordered_event_params(start: u64) -> StreamReadParams {
+    StreamReadParams {
+        session_id: id("session"),
+        session_epoch: 1.into(),
+        start_event_seq: start.into(),
+        max_events: 1.into(),
+        max_bytes: (64 * 1024).into(),
+    }
+}
+
+#[tokio::test]
+async fn ordered_session_end_waits_for_reserved_tx_and_stays_on_old_epoch() {
+    let f = Fixture::new(StreamLimits::default());
+    let reader = f
+        .hub
+        .open_session_events(
+            &f.actor,
+            &StreamKey {
+                session_id: f.target.id.clone(),
+                session_epoch: 1.into(),
+            },
+        )
+        .await
+        .unwrap();
+    let legacy = f.subscribe(65536, OverflowPolicy::DropWithGap).await;
+    f.source.append_rx(meta(), Arc::from([1_u8]), None).unwrap();
+    let prepared = f
+        .source
+        .reserve_tx_intent(meta(), Arc::from([2_u8]))
+        .unwrap();
+    f.source.close().unwrap();
+    assert_eq!(
+        legacy.try_next().await.err().unwrap().code,
+        "EPOCH_MISMATCH"
+    );
+
+    let (rx, end) = reader.read_prepared(ordered_event_params(1)).await.unwrap();
+    assert!(matches!(
+        rx.into_parts().0.events[0].payload,
+        RawPayload::Rx(_)
+    ));
+    assert!(end.is_none());
+
+    let next_target = Target {
+        session_epoch: Some(2.into()),
+        ..f.target.clone()
+    };
+    let next = f
+        .hub
+        .register_source(
+            StreamKey {
+                session_id: f.target.id.clone(),
+                session_epoch: 2.into(),
+            },
+            next_target,
+        )
+        .unwrap();
+    next.append_rx(meta(), Arc::from([3_u8]), None).unwrap();
+
+    let intent = f
+        .source
+        .commit_tx_intent(prepared, id("late-admission"))
+        .unwrap();
+    let (pending, end) = reader.read_prepared(ordered_event_params(2)).await.unwrap();
+    assert!(matches!(
+        pending.into_parts().0.events[0].payload,
+        RawPayload::TxIntent(_)
+    ));
+    assert!(end.is_none());
+
+    let settlement = TxSettlement {
+        outcome: TxOutcome::Accepted,
+        accepted_ranges: vec![ByteRange {
+            start: 0.into(),
+            end: 1.into(),
+        }],
+        unknown_ranges: vec![],
+        backend_error: None,
+    };
+    let receipt_seq = f
+        .source
+        .complete_tx(&intent, meta(), settlement.clone())
+        .unwrap();
+    assert_eq!(
+        f.source.complete_tx(&intent, meta(), settlement).unwrap(),
+        receipt_seq
+    );
+    let (earlier, end) = reader.read_prepared(ordered_event_params(2)).await.unwrap();
+    assert!(earlier.into_parts().0.has_more);
+    assert!(end.is_none());
+
+    let (receipt, end) = reader
+        .read_prepared(ordered_event_params(receipt_seq.get()))
+        .await
+        .unwrap();
+    let (receipt, _lease) = receipt.into_parts();
+    assert!(matches!(receipt.events[0].payload, RawPayload::Tx(_)));
+    assert_eq!(receipt.events[0].session_epoch, 1.into());
+    let end = end.unwrap();
+    assert_eq!(end.after, f.source.cursor(receipt_seq.get()));
+    assert_eq!(end.reason, SessionEndReason::Closed);
+    assert!(!end.tx_evidence_gap);
+
+    let legacy_error = f
+        .hub
+        .read_prepared(&f.actor, ordered_event_params(1))
+        .await
+        .err()
+        .unwrap();
+    assert_eq!(legacy_error.code, "EPOCH_MISMATCH");
+}
+
+#[tokio::test]
+async fn ordered_session_end_distinguishes_source_stop_and_abandoned_tx() {
+    let f = Fixture::new(StreamLimits::default());
+    let reader = f
+        .hub
+        .open_session_events(
+            &f.actor,
+            &StreamKey {
+                session_id: f.target.id.clone(),
+                session_epoch: 1.into(),
+            },
+        )
+        .await
+        .unwrap();
+    let legacy = f.subscribe(65536, OverflowPolicy::DropWithGap).await;
+    let pending = f
+        .source
+        .reserve_tx_intent(meta(), Arc::from([1_u8]))
+        .unwrap();
+    let intent = f
+        .source
+        .append_tx_intent(meta(), id("unsettled"), Arc::from([2_u8]))
+        .unwrap();
+
+    f.source
+        .fail(HostError::new("CONTROL_UNKNOWN", "No cleanup receipt yet"))
+        .unwrap();
+    assert_eq!(
+        legacy.try_next().await.err().unwrap().code,
+        "CONTROL_UNKNOWN"
+    );
+    drop(pending);
+    drop(intent);
+    let (raw, end) = reader.read_prepared(ordered_event_params(1)).await.unwrap();
+    assert!(matches!(
+        raw.into_parts().0.events[0].payload,
+        RawPayload::TxIntent(_)
+    ));
+    assert!(end.is_none());
+
+    f.source.close().unwrap();
+    let (next, end) = reader.read_prepared(ordered_event_params(2)).await.unwrap();
+    assert!(next.into_parts().0.events.is_empty());
+    let end = end.unwrap();
+    assert_eq!(end.after, f.source.cursor(1));
+    assert_eq!(end.reason, SessionEndReason::Closed);
+    assert!(end.tx_evidence_gap);
+}
+
+#[tokio::test]
+async fn ordered_session_reader_cannot_release_after_regrant_and_returns_its_budget() {
+    let f = Fixture::new(StreamLimits {
+        max_readers: 1,
+        ..StreamLimits::default()
+    });
+    let key = StreamKey {
+        session_id: f.target.id.clone(),
+        session_epoch: 1.into(),
+    };
+    let ungranted = f
+        .auth
+        .authenticate(&id("other-client"), None)
+        .unwrap()
+        .actor;
+    assert_eq!(
+        f.hub
+            .open_session_events(&ungranted, &key)
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    let legacy = f.subscribe(65536, OverflowPolicy::DropWithGap).await;
+    assert!(f.hub.open_session_events(&f.actor, &key).await.is_err());
+    legacy.close();
+    let reader = f.hub.open_session_events(&f.actor, &key).await.unwrap();
+    assert!(f.hub.open_session_events(&f.actor, &key).await.is_err());
+    let after = f.source.initial_cursor();
+    assert!(
+        f.hub
+            .subscribe(
+                &f.actor,
+                StreamSubscribeParams {
+                    scope_id: after.scope_id.clone(),
+                    after,
+                    queue_bytes: 65536.into(),
+                    initial_credit_bytes: 65536.into(),
+                    overflow_policy: OverflowPolicy::DropWithGap,
+                }
+            )
+            .await
+            .is_err()
+    );
+    f.source.close().unwrap();
+    f.auth
+        .revoke(
+            &f.control,
+            RevokeParams {
+                actor_id: f.actor.id().clone(),
+                permissions: vec!["content.read".into()],
+                targets: vec![f.target.clone()],
+            },
+        )
+        .unwrap();
+    f.auth
+        .authorize(
+            &f.control,
+            AuthorizeParams {
+                client_id: id("stream-client"),
+                permissions: vec!["content.read".into()],
+                targets: vec![f.target.clone()],
+                expires_at: None,
+            },
+        )
+        .unwrap();
+    assert_eq!(
+        reader
+            .read_prepared(ordered_event_params(1))
+            .await
+            .err()
+            .unwrap()
+            .code,
+        "PERMISSION_DENIED"
+    );
+    drop(reader);
+    assert_eq!(f.hub.memory_usage().reader_bytes, 0);
+    let reader = f.hub.open_session_events(&f.actor, &key).await.unwrap();
+    assert!(
+        reader
+            .read_prepared(ordered_event_params(1))
+            .await
+            .unwrap()
+            .1
+            .is_some()
+    );
+}
+
 #[tokio::test]
 async fn oversized_rx_splits_without_losing_tail_or_message_offsets() {
     let f = Fixture::new(StreamLimits::default());

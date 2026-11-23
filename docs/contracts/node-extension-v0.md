@@ -201,6 +201,10 @@ Host动作的`task.progress.report({completed,unit,total?})`复用Operation进�
 
 后台动作可以调用 `task.streams.read(StreamReadParams)`，读取 Host 留存窗口的 `StreamReadResult`。Host 按实际任务身份交集检查会话的 `content.read`，并在实际发送页前复核任务与权限。请求和回复通过 Node 私有管道的独立 Raw 队列，帧头区分通道。控制优先于下一帧 Raw，已经开始写入的帧最多携带 256 KiB 页数据和固定封套余量。Raw 请求最多四个在途，工作随 Host 所属任务登记，页内存租约持续至实际写入或丢弃。取消可以提前结束 Node 等待，工作完成后归还名额并丢弃已退休的正文。页大小、过期和下一页位置沿用 [原始事件与独立 reader](./stream-and-operations-v0.md#原始事件与独立-reader)。
 
+后台动作可以显式调用 `task.streams.followSession(params, hooks)`。它复用 `StreamReadParams`，从指定事件序号读取同一 Host 实例及会话代次。每个任务最多持有一个跟随者，从既有四个 Raw 名额中预留一席，直至结束或释放。SDK 等待上一个异步回调返回才推进对应页，也不会为新的会话代次重新附着。
+
+`onConnect` 对留存范围中的真实打开事件触发一次，`onReceive` 交付 RX 事件，`onSend` 交付带已知和未知范围的最终 TX 回执。已发布的 TX 意图尚无结算时，流不提前通知断开。`onError` 交付源缺口、留存过期、遗失的 TX 结算证据及底层故障。插件收到缺口后先丢弃未完成的解析状态，回调完成后 SDK 才沿获准游标继续。收到真实终态时，故障和结算缺口先于 `onDisconnect`。撤权、取消及回调错误结束跟随并释放读取者。它们不被当作会话断开。
+
 后台动作调用 `task.streams.publishDerived({sources,quality,unit?,value})` 发布 JSON 值，数字允许小数。Host 核对每个来源范围属于同一个精确会话代次及留存原始事件，并生成 `parserId`（实际动作 ID）、`parserVersion`（实际登记包版本）与 `configurationDigest`（应用默认值等规范化后的动作入参 JSON 的 SHA-256，键按序编码）。发布和提交时复核会话 `content.read` 及任务授权。最多八个来源区间，合计最多引用 100 个事件。带字节范围时必须给出方向，`complete` 不能跨越源缺口或与 `gap|partial|unknown` 并用。
 
 派生发布单独使用四个在途名额和 32 KiB 请求帧。控制帧优先，Raw 与派生回复交替获得发送机会。提交成功返回 `{operationId,position}`，运行任务取消时仅未提交的发布失效，已留存的数据可由有权读者继续分页。派生读取见 [原始事件与独立 reader](./stream-and-operations-v0.md#原始事件与独立-reader)。

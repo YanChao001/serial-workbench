@@ -8,6 +8,15 @@ use std::{
     path::{Path, PathBuf},
 };
 
+#[cfg(all(windows, feature = "bindings"))]
+mod windows_stage;
+#[cfg(all(windows, feature = "bindings"))]
+pub use windows_stage::stage_windows_release;
+#[cfg(all(windows, feature = "bindings"))]
+mod windows_switch;
+#[cfg(all(windows, feature = "bindings"))]
+pub use windows_switch::switch_windows_release;
+
 #[derive(Deserialize)]
 #[serde(rename_all = "camelCase")]
 struct VerificationInput {
@@ -33,12 +42,20 @@ fn verify_file(
     signature: &str,
     version: &str,
 ) -> Result<(), Box<dyn std::error::Error>> {
+    verify_reader(key, File::open(artifact)?, signature, version).map(|_| ())
+}
+
+fn verify_reader(
+    key: &PublicKey,
+    mut reader: impl Read,
+    signature: &str,
+    version: &str,
+) -> Result<Signature, Box<dyn std::error::Error>> {
     let signature = Signature::decode(&decode(signature)?)?;
     let mut verifier = key.verify_stream(&signature)?;
-    let mut file = File::open(artifact)?;
     let mut buffer = [0_u8; 64 * 1024];
     loop {
-        let count = file.read(&mut buffer)?;
+        let count = reader.read(&mut buffer)?;
         if count == 0 {
             break;
         }
@@ -46,14 +63,14 @@ fn verify_file(
     }
     verifier.finalize()?;
     // 仅在 minisign 全局签名验证通过后使用可信注释
-    let signed = signature
+    let mut signed = signature
         .trusted_comment()
         .split('\t')
-        .find_map(|value| value.strip_prefix("version:"));
-    if signed != Some(version) {
+        .filter_map(|value| value.strip_prefix("version:"));
+    if signed.next() != Some(version) || signed.next().is_some() {
         return Err("Updater signature version does not match this release".into());
     }
-    Ok(())
+    Ok(signature)
 }
 
 pub fn verify_manifest(path: &Path) -> Result<(), Box<dyn std::error::Error>> {

@@ -7,9 +7,11 @@ import type {
   OperationGetParams,
   DerivedPublishParams,
   DerivedPublishResult,
+  Cursor,
   Progress,
   Query,
   QueryValue,
+  RawEvent,
   StreamReadParams,
   StreamReadResult,
 } from "@serial-workbench/contracts";
@@ -47,9 +49,42 @@ export interface TaskOperations {
   get(selector: OperationGetParams): Promise<Operation>;
 }
 
+type SessionEvent<Kind extends RawEvent["kind"]> = Extract<
+  RawEvent,
+  { kind: Kind }
+>;
+
+export type SessionHookEnd = Readonly<{
+  after: Readonly<Cursor>;
+  reason: Readonly<
+    { kind: "closed" } | { kind: "backend_fault"; code?: string }
+  >;
+  txEvidenceGap: boolean;
+}>;
+
+export type SessionHookError =
+  | { kind: "source_gap"; event: SessionEvent<"gap"> }
+  | { kind: "cursor_expired"; oldestCursor: Cursor }
+  | { kind: "tx_evidence_gap"; end: SessionHookEnd }
+  | { kind: "backend_fault"; end: SessionHookEnd };
+
+type SessionHook<T> = (value: Readonly<T>) => void | PromiseLike<void>;
+
+export interface SessionHooks {
+  onConnect?: SessionHook<SessionEvent<"lifecycle">>;
+  onReceive?: SessionHook<SessionEvent<"rx">>;
+  /** 实际 TX 结算，包含已接纳及无法确认的范围。 */
+  onSend?: SessionHook<SessionEvent<"tx">>;
+  onDisconnect?: SessionHook<SessionHookEnd>;
+  /** 处理缺口时应丢弃未完成的解析状态。 */
+  onError: SessionHook<SessionHookError>;
+}
+
 export interface TaskStreams {
   /** 读留存原始事件。下一页沿用 nextEventSeq，过期会明确报告缺口。 */
   read(params: StreamReadParams): Promise<StreamReadResult>;
+  /** 监听指定会话代次，按顺序等待回调，随任务取消及真实流终态清理。 */
+  followSession(params: StreamReadParams, hooks: SessionHooks): Promise<void>;
   /** 发布带真实源区间的派生值，返回 Host 分配的序号。 */
   publishDerived(params: DerivedPublishParams): Promise<DerivedPublishResult>;
 }

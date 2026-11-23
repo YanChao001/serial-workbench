@@ -14,6 +14,7 @@ import type {
   ActivitySummary,
   SerialConfiguration,
   Operation,
+  OpenParams,
   WorkspaceDocument,
   SessionSnapshot,
   TerminalSettings,
@@ -45,6 +46,7 @@ import { InfoIcon, LockKeyholeIcon } from "lucide-react";
 import type { WorkbenchLabels } from "./labels";
 import { WorkbenchDialog, WorkbenchPanels } from "./workbench-dialog";
 import { WorkbenchConnection } from "./workbench-connection";
+import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import { WorkbenchCommands } from "./workbench-commands";
@@ -538,6 +540,28 @@ export function WorkspaceLayout({
     );
   }, [selected, workspaceKey, state.devices]);
   const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
+  const [transportPrompt, setTransportPrompt] = useState<{
+    deviceId: string;
+    scope: string;
+  }>();
+  const transportScope = JSON.stringify([
+    nativeOwnershipKey,
+    workspaceKey,
+    selected,
+  ]);
+  const promptDevice =
+    transportPrompt?.scope === transportScope &&
+    state.status === "ready" &&
+    !state.devicesStale
+      ? state.devices.find(
+          (entry) =>
+            entry.deviceId === transportPrompt.deviceId &&
+            entry.fingerprint.transport === "plugin",
+        )
+      : undefined;
+  useEffect(() => {
+    if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
+  }, [promptDevice, transportPrompt]);
   const [editing, setEditing] = useState(false);
   const dialogTrigger = useRef<HTMLElement | null>(null);
   const [clearThrough, setClearThrough] = useState<
@@ -1321,7 +1345,10 @@ export function WorkspaceLayout({
         ?.systemName,
     };
   }
-  async function open(deviceId: string) {
+  async function open(
+    deviceId: string,
+    transportParams?: OpenParams["transportParams"],
+  ) {
     if (connectionDefaultsLoading) return;
     focusRevision.current++;
     setFollowing(false);
@@ -1329,6 +1356,19 @@ export function WorkspaceLayout({
       (value) => value.deviceId === deviceId && value.state === "open",
     );
     if (!draftsReady || opening !== null || state.status !== "ready") return;
+    const device = state.devices.find((entry) => entry.deviceId === deviceId);
+    if (
+      device?.fingerprint.transport === "plugin" &&
+      transportParams === undefined
+    ) {
+      if (state.devicesStale) return;
+      const active = document.activeElement;
+      if (dialog === null && active instanceof HTMLElement)
+        dialogTrigger.current = active;
+      setDialog(null);
+      setTransportPrompt({ deviceId, scope: transportScope });
+      return;
+    }
     const revision = focusRevision.current;
     const controller = new AbortController();
     pending.current.add(controller);
@@ -1339,13 +1379,20 @@ export function WorkspaceLayout({
     const configurationEdit =
       configurationEdits.current.get(configurationKey) ?? 0;
     try {
-      const opened = await (host.trustedConnect ?? host.open)(
-        deviceId,
-        controller.signal,
+      const connect = host.trustedConnect ?? host.open;
+      const configuration =
         existing && !existing.readOnly
           ? existing.configuration
-          : requestedConfiguration(deviceId),
-      );
+          : requestedConfiguration(deviceId);
+      const opened =
+        transportParams === undefined
+          ? await connect(deviceId, controller.signal, configuration)
+          : await connect(
+              deviceId,
+              controller.signal,
+              configuration,
+              transportParams,
+            );
       // 只沿用本窗口明确打开且实例/会话代次一致的连接，不为其他会话补授权。
       if (
         controller.signal.aborted ||
@@ -1353,6 +1400,12 @@ export function WorkspaceLayout({
       )
         return;
       openedHere.current.sessions.set(opened.sessionId, opened.sessionEpoch);
+      if (transportParams !== undefined)
+        setTransportPrompt((prompt) =>
+          prompt?.deviceId === deviceId && prompt.scope === transportScope
+            ? undefined
+            : prompt,
+        );
       if (
         !controller.signal.aborted &&
         !opened.readOnly &&
@@ -2193,6 +2246,31 @@ export function WorkspaceLayout({
         onOpenTransfer={renderTool ? () => showDialog("transfer") : undefined}
         transferLabel={toolLabels?.transfer}
       />
+      <WorkbenchDialog
+        open={!!promptDevice}
+        scopeKey={transportScope}
+        title={labels.pluginTransportParameters}
+        closeLabel={labels.closeView}
+        returnFocus={dialogTrigger}
+        onRequestClose={() => setTransportPrompt(undefined)}
+      >
+        {promptDevice && (
+          <PluginTransportParameters
+            key={promptDevice.deviceId}
+            device={promptDevice.systemName}
+            labels={labels}
+            opening={opening === promptDevice.deviceId}
+            error={
+              openError && failure?.deviceId === promptDevice.deviceId
+                ? failure?.message
+                : undefined
+            }
+            onSubmit={(params) => {
+              void open(promptDevice.deviceId, params);
+            }}
+          />
+        )}
+      </WorkbenchDialog>
       <WorkbenchDialog
         open={dialog !== null}
         scopeKey={JSON.stringify([

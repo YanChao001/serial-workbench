@@ -97,6 +97,7 @@ export type WorkbenchFixture = {
   sentBytes: string[];
   connectCalls: string[];
   connectRequests: { deviceId: string; params: unknown }[];
+  windowWorkNames: string[];
   mediaQueue: FixtureMediaResource[];
   mediaResources: Record<string, FixtureMediaResource>;
   selectedMedia: ObjectRef[];
@@ -200,6 +201,7 @@ export async function seedWorkbenchFixture(
     replay,
     connectFailure,
     connectionDefaults,
+    device,
     plugin,
     pendingTakeover,
     lanOwner,
@@ -225,6 +227,7 @@ export async function seedWorkbenchFixture(
     replay?: ReplayLayoutFixture;
     connectFailure?: HostError;
     connectionDefaults?: ClientWindowState["connectionDefaults"];
+    device?: DeviceDescriptor;
     pendingTakeover?: BrowserTakeoverRequest;
     lanOwner?: { hostId: string; address: string };
     nodeThemes?: FixtureNodeThemes;
@@ -388,7 +391,7 @@ export async function seedWorkbenchFixture(
     },
     "device.list": {
       kind: "devices",
-      value: { devices: [fixtureDevice], stale: false },
+      value: { devices: [device ?? fixtureDevice], stale: false },
     },
     "recent.list": {
       kind: "recent",
@@ -720,6 +723,7 @@ export async function seedWorkbenchFixture(
       sentBytes: [],
       connectCalls: [],
       connectRequests: [],
+      windowWorkNames: [],
       mediaQueue: [],
       mediaResources: retained?.resources ?? {},
       selectedMedia: [],
@@ -853,8 +857,14 @@ export async function seedWorkbenchFixture(
             case "plugin:notification|register_listener":
             case "plugin:notification|remove_listener":
             case "complete_frontend_startup":
-            case "set_window_work_state":
             case "save_workspace_route":
+              return null;
+            case "set_window_work_state":
+              fixture.windowWorkNames = Array.isArray(args.names)
+                ? args.names.filter(
+                    (name): name is string => typeof name === "string",
+                  )
+                : [];
               return null;
             case "plugin:window|is_maximized":
             case "plugin:window|is_fullscreen":

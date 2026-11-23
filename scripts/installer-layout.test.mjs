@@ -1,17 +1,27 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
+  renameSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { setTimeout as delay } from "node:timers/promises";
 import test from "node:test";
+import { spawnOwned, stopOwned, waitOwned } from "../e2e/process.mjs";
+import { fileSha256 } from "./artifact-lib.mjs";
+import { loadNodeRuntimeRelease } from "./node-runtime-source.mjs";
 
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== "--interactive"))
@@ -64,7 +74,7 @@ function productionMacro(name) {
   return macro;
 }
 
-function runNsis(compiler, fixture, source) {
+function compileNsis(compiler, fixture, source) {
   const executable = join(fixture, "test.exe");
   const script = join(fixture, "test.nsi");
   writeFileSync(
@@ -82,6 +92,11 @@ function runNsis(compiler, fixture, source) {
     compiled.error?.message ?? `${compiled.stderr}\n${compiled.stdout}`,
   );
   assert.doesNotMatch(compiled.stdout, /warning \d+:/i);
+  return executable;
+}
+
+function runNsis(compiler, fixture, source) {
+  const executable = compileNsis(compiler, fixture, source);
   // 无安装动作或可见页面；windowsHide 仅用于隐藏控制台。
   const ran = spawnSync(executable, ["/S"], {
     encoding: "utf8",
@@ -340,4 +355,503 @@ SectionEnd`,
       owned,
     ]);
   });
+});
+
+test("NSIS stages the adjacent payload without reaching ordinary install effects", () => {
+  const installer = readFileSync(
+    new URL("../src-tauri/installer/installer.nsi", import.meta.url),
+    "utf8",
+  );
+  const init = installer.match(/Function \.onInit\b[\s\S]*?FunctionEnd/)?.[0];
+  const initialCheck = installer.match(
+    /Function SerialWorkbenchStageInit\b[\s\S]*?FunctionEnd/,
+  )?.[0];
+  const webview = installer.match(
+    /^Section WebView2\b[\s\S]*?SectionEnd/m,
+  )?.[0];
+  const install = installer.match(/^Section Install\b[\s\S]*?SectionEnd/m)?.[0];
+  const postInstall = installer.match(
+    /Function \.onInstSuccess\b[\s\S]*?FunctionEnd/,
+  )?.[0];
+  assert.ok(init && initialCheck && webview && install && postInstall);
+
+  assert.match(
+    init,
+    /StrCmpS \$1 "\/S \/SWB-STAGE"[\s\S]*?Call SerialWorkbenchStageInit\s+Return[\s\S]*?MUI_LANGDLL_DISPLAY/,
+  );
+  assert.match(
+    initialCheck,
+    /\$INSTDIR != "\$\{PLACEHOLDER_INSTALL_DIR\}"[\s\S]*?CreateFileW\(w "\$EXEDIR", i 0x81, i 3,[\s\S]*?GetFinalPathNameByHandleW[\s\S]*?StrCpy \$INSTDIR \$3[\s\S]*?FindFirst/,
+  );
+  assert.match(
+    webview,
+    /^Section WebView2\s+\$\{If\} \$StageOnly = 1\s+Goto webview2_section_end[\s\S]*?ReadRegStr[\s\S]*?webview2_section_end:\s+SectionEnd$/,
+  );
+  assert.match(
+    install,
+    /\$\{If\} \$StageOnly <> 1[\s\S]*?NSIS_HOOK_PREINSTALL[\s\S]*?CheckIfAppIsRunning[\s\S]*?\$\{EndIf\}[\s\S]*?File "\$\{MAINBINARYSRCPATH\}"[\s\S]*?\{\{#each binaries\}\}[\s\S]*?\$\{If\} \$StageOnly = 1[\s\S]*?WriteUninstaller[\s\S]*?Goto install_section_end[\s\S]*?!insertmacro APP_ASSOCIATE[\s\S]*?WriteRegStr[\s\S]*?CreateOrUpdateStartMenuShortcut[\s\S]*?install_section_end:\s+SectionEnd$/,
+  );
+  assert.match(
+    postInstall,
+    /^Function \.onInstSuccess\s+\$\{If\} \$StageOnly = 1\s+Return[\s\S]*?RunAsUser/,
+  );
+});
+
+test("NSIS staging accepts a fresh operation directory and refuses populated, misnamed, or redirected directories", (t) => {
+  const context = nsisFixture(t);
+  if (!context) return;
+  const { compiler, fixture } = context;
+  const installer = readFileSync(
+    new URL("../src-tauri/installer/installer.nsi", import.meta.url),
+    "utf8",
+  );
+  const functions = installer.match(
+    /Function SerialWorkbenchRejectStage\b[\s\S]*?Function SerialWorkbenchStageInit\b[\s\S]*?FunctionEnd/,
+  )?.[0];
+  const stageBranch = installer.match(
+    /^Function \.onInit\b[\s\S]*?Call SerialWorkbenchStageInit\s+Return\s+\$\{EndIf\}/m,
+  )?.[0];
+  assert.ok(functions && stageBranch);
+  const rejection = join(fixture, "stage-rejection.txt");
+  const tracedFunctions = functions.replace(
+    "  SetErrorLevel $StageRejectCode",
+    `  FileOpen $5 "${quote(rejection)}" w
+  FileWrite $5 "exedir=$EXEDIR length=$1 drive=$2 actual=$0 requested=$3 win32=$4"
+  FileClose $5
+  SetErrorLevel $StageRejectCode`,
+  );
+  const payload = "signed fixture component\n";
+  const source = join(fixture, "component.txt");
+  writeFileSync(source, payload);
+  const executable = compileNsis(
+    compiler,
+    fixture,
+    `!include LogicLib.nsh
+!include FileFunc.nsh
+!include StrFunc.nsh
+\${StrCase}
+!define INSTALLMODE "currentUser"
+!define PLACEHOLDER_INSTALL_DIR "$TEMP\\swb-stage-placeholder"
+InstallDir "\${PLACEHOLDER_INSTALL_DIR}"
+Var StageOnly
+Var StageDirHandle
+Var StageRejectCode
+${tracedFunctions}
+${stageBranch}
+  StrCpy $StageRejectCode 2
+  Call SerialWorkbenchRejectStage
+FunctionEnd
+Section
+  \${If} $StageOnly <> 1
+    StrCpy $StageRejectCode 2
+    Call SerialWorkbenchRejectStage
+  \${EndIf}
+  SetOutPath "$INSTDIR"
+  File "/oname=component.txt" "${quote(source)}"
+SectionEnd
+`,
+  );
+  const physical = join(fixture, "physical-parent");
+  const aliased = join(fixture, "aliased-parent");
+  mkdirSync(physical);
+  symlinkSync(physical, aliased, "junction");
+  for (const scenario of ["fresh", "populated", "misnamed", "parent-alias"]) {
+    const directory = join(
+      scenario === "parent-alias" ? aliased : fixture,
+      scenario === "misnamed"
+        ? "ordinary-directory"
+        : `.swb-stage-${randomUUID()}`,
+    );
+    mkdirSync(directory);
+    const copy = join(directory, "installer.exe");
+    copyFileSync(executable, copy);
+    if (scenario === "populated")
+      writeFileSync(join(directory, "keep.txt"), "existing");
+    const ran = spawnSync(copy, ["/S", "/SWB-STAGE"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 10_000,
+    });
+    assert.equal(
+      ran.status,
+      { fresh: 0, populated: 8, misnamed: 4, "parent-alias": 10 }[scenario],
+      `${scenario} failed (status ${ran.status}): ${ran.error?.message ?? ran.stderr}${existsSync(rejection) ? readFileSync(rejection, "utf8") : ""}`,
+    );
+    const expected = ["installer.exe"];
+    if (scenario === "fresh") {
+      expected.push("component.txt");
+      assert.equal(
+        readFileSync(join(directory, "component.txt"), "utf8"),
+        payload,
+      );
+    }
+    if (scenario === "populated") {
+      expected.push("keep.txt");
+      assert.equal(
+        readFileSync(join(directory, "keep.txt"), "utf8"),
+        "existing",
+      );
+    }
+    assert.deepEqual(readdirSync(directory).sort(), expected.sort(), scenario);
+  }
+});
+
+async function waitForInstalledHost(owned, profile) {
+  const discovery = join(profile, "host-v0", "discovery.json");
+  const deadline = Date.now() + 20_000;
+  while (!owned.state.done && Date.now() < deadline) {
+    if (existsSync(discovery)) {
+      const current = JSON.parse(readFileSync(discovery, "utf8"));
+      if (current.pid === owned.child.pid) return current;
+    }
+    await delay(50);
+  }
+  throw new Error(
+    "The test Host did not publish discovery for the expected process",
+  );
+}
+
+async function verifyInstalledSuiteSwitch(
+  fixture,
+  verifier,
+  previous,
+  candidate,
+  installation,
+) {
+  const profile = join(fixture, "switch-profile");
+  mkdirSync(profile);
+  const marker = join(profile, "test-user-content.txt");
+  writeFileSync(marker, "preserved profile data");
+  const host = () => join(installation, "serial-workbench-host.exe");
+  const originalDesktop = fileSha256(
+    join(installation, "serial-workbench.exe"),
+  );
+  const nextDesktop = fileSha256(
+    join(candidate.staged, "serial-workbench.exe"),
+  );
+  assert.notEqual(previous.digest, candidate.digest);
+  assert.notEqual(originalDesktop, nextDesktop);
+  const requestPath = join(fixture, "switch.json");
+  const switchSuite = (suites, operation = candidate.operation) => {
+    writeFileSync(
+      requestPath,
+      JSON.stringify({
+        profile,
+        activeInstall: installation,
+        operation,
+        suites,
+      }),
+    );
+    return spawnSync(verifier, ["--switch-windows-nsis", requestPath], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 90_000,
+    });
+  };
+  const expectCommitted = (result) => {
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+    assert.deepEqual(JSON.parse(result.stdout), {
+      operation: candidate.operation,
+      state: "committed",
+    });
+  };
+
+  const old = spawnOwned(host(), ["--profile", profile], {
+    logPath: join(fixture, "old-host.log"),
+  });
+  let replacement;
+  try {
+    const before = await waitForInstalledHost(old, profile);
+    const invalid = switchSuite({
+      previous: previous.digest,
+      candidate: "0".repeat(64),
+    });
+    assert.equal(invalid.status, 1, invalid.error?.message ?? invalid.stderr);
+    assert.match(invalid.stderr, /suite digests differ/);
+    assert.equal(old.child.exitCode, null);
+    assert.ok(process.kill(before.pid, 0));
+    assert.equal(
+      fileSha256(join(installation, "serial-workbench.exe")),
+      originalDesktop,
+    );
+
+    expectCommitted(
+      switchSuite({ previous: previous.digest, candidate: candidate.digest }),
+    );
+    await waitOwned(old, AbortSignal.timeout(10_000));
+    expectCommitted(switchSuite());
+    const pending = switchSuite(undefined, null);
+    assert.equal(pending.status, 0, pending.error?.message ?? pending.stderr);
+    assert.deepEqual(JSON.parse(pending.stdout), {
+      operation: null,
+      state: "not_started",
+    });
+    const backup = join(
+      dirname(installation),
+      `.swb-old-${candidate.operation}`,
+    );
+    assert.equal(
+      fileSha256(join(backup, "serial-workbench.exe")),
+      originalDesktop,
+    );
+    assert.equal(
+      fileSha256(join(installation, "serial-workbench.exe")),
+      nextDesktop,
+    );
+    assert.ok(!existsSync(candidate.staged));
+
+    replacement = spawnOwned(host(), ["--profile", profile], {
+      logPath: join(fixture, "new-host.log"),
+    });
+    const after = await waitForInstalledHost(replacement, profile);
+    assert.equal(after.hostId, before.hostId);
+    assert.ok(BigInt(after.instanceEpoch) > BigInt(before.instanceEpoch));
+    assert.equal(readFileSync(marker, "utf8"), "preserved profile data");
+    const stop = spawnSync(
+      join(installation, "serial-workbench-cli.exe"),
+      ["--profile", profile, "host", "stop", "--json"],
+      { encoding: "utf8", windowsHide: true, timeout: 30_000 },
+    );
+    assert.equal(stop.status, 0, stop.error?.message ?? stop.stderr);
+    await waitOwned(replacement, AbortSignal.timeout(10_000));
+    return {
+      previousVersion: previous.version,
+      candidateVersion: candidate.version,
+      operation: candidate.operation,
+      previousDigest: previous.digest,
+      candidateDigest: candidate.digest,
+      previousEpoch: before.instanceEpoch,
+      candidateEpoch: after.instanceEpoch,
+      identityPreserved: true,
+      profileDataPreserved: true,
+      badDigestLeftHostRunning: true,
+    };
+  } finally {
+    await stopOwned(replacement);
+    await stopOwned(old);
+  }
+}
+
+test("the verified NSIS stages pinned components without registering an installation", async (t) => {
+  const input = process.env.SWB_TEST_NSIS_STAGE_INSTALLER;
+  if (!input) {
+    t.skip("The isolated NSIS stage suite supplies this build's installer");
+    return;
+  }
+  const context = nsisFixture(t);
+  if (!context) return;
+  const verifier = process.env.SWB_TEST_NSIS_STAGE_VERIFIER;
+  assert.ok(verifier, "The isolated NSIS stage suite supplies its verifier");
+  const packagePath = realpathSync(input);
+  const manifest = JSON.parse(
+    readFileSync(join(dirname(packagePath), "../components.json"), "utf8"),
+  );
+  assert.equal(manifest.target, "x86_64-pc-windows-msvc");
+  const config = JSON.parse(
+    readFileSync(
+      new URL("../src-tauri/tauri.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const root = dirname(
+    fileURLToPath(new URL("../package.json", import.meta.url)),
+  );
+  const node = loadNodeRuntimeRelease(root).targets.find(
+    ({ target }) => target === manifest.target,
+  );
+  assert.ok(node);
+
+  const registryKeys = [
+    `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${config.productName}`,
+    `HKCU\\Software\\${config.bundle.publisher}\\${config.productName}`,
+    ...config.plugins["deep-link"].desktop.schemes.map(
+      (scheme) => `HKCU\\Software\\Classes\\${scheme}`,
+    ),
+  ];
+  const registry = () =>
+    registryKeys.flatMap((key) =>
+      ["/reg:32", "/reg:64"].map((view) => {
+        const result = spawnSync("reg.exe", ["query", key, "/s", view], {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 10_000,
+        });
+        assert.ok(
+          result.status === 0 || result.status === 1,
+          "Registry snapshot failed",
+        );
+        return { status: result.status, stdout: result.stdout };
+      }),
+    );
+  const before = registry();
+  const fixture = context.fixture;
+  const version =
+    process.env.SWB_TEST_NSIS_STAGE_VERSION ??
+    JSON.parse(readFileSync(join(root, "package.json"), "utf8")).version;
+  const key = join(fixture, "fixture-updater.key");
+  const password = "temporary-stage-fixture";
+  const sign = (...args) => {
+    const result = spawnSync(
+      process.execPath,
+      [join(root, "node_modules/@tauri-apps/cli/tauri.js"), "signer", ...args],
+      { cwd: root, encoding: "utf8", windowsHide: true, timeout: 60_000 },
+    );
+    assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  };
+  sign("generate", "--ci", "--write-keys", key, "--password", password);
+  const publicKey = readFileSync(`${key}.pub`, "utf8");
+  const signedCopy = (name, input = packagePath, releaseVersion = version) => {
+    const copy = join(fixture, name);
+    copyFileSync(input, copy);
+    sign(
+      "sign",
+      "--private-key-path",
+      key,
+      "--password",
+      password,
+      "--app-version",
+      releaseVersion,
+      copy,
+    );
+    return `${copy}.sig`;
+  };
+  const legacySignature = signedCopy("installer.exe");
+  const stageSignature = signedCopy("serial-workbench-nsis-stage-v1.exe");
+  const inputFile = join(fixture, "stage.json");
+  const request = {
+    activeInstall: join(fixture, "Serial Workbench"),
+    artifact: packagePath,
+    publicKey,
+    version,
+    signature: stageSignature,
+  };
+  mkdirSync(request.activeInstall);
+  const installed = join(request.activeInstall, "existing-component");
+  writeFileSync(installed, "original installation");
+  const stageUpdate = (overrides = {}) => {
+    writeFileSync(inputFile, JSON.stringify({ ...request, ...overrides }));
+    return spawnSync(verifier, ["--stage-windows-nsis", inputFile], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 150_000,
+    });
+  };
+  const legacy = stageUpdate({ signature: legacySignature });
+  assert.equal(legacy.status, 1, legacy.error?.message ?? legacy.stderr);
+  assert.match(
+    legacy.stderr,
+    /does not declare the current-user NSIS stage protocol/,
+  );
+  const wrongVersion = stageUpdate({ version: "0.0.0" });
+  assert.equal(
+    wrongVersion.status,
+    1,
+    wrongVersion.error?.message ?? wrongVersion.stderr,
+  );
+  assert.match(wrongVersion.stderr, /signature version does not match/);
+  const tampered = join(fixture, "tampered.exe");
+  writeFileSync(tampered, "different artifact bytes");
+  const mismatched = stageUpdate({ artifact: tampered });
+  assert.equal(
+    mismatched.status,
+    1,
+    mismatched.error?.message ?? mismatched.stderr,
+  );
+  assert.deepEqual(
+    readdirSync(fixture).filter((name) => name.startsWith(".swb-stage-")),
+    [],
+  );
+
+  const result = stageUpdate();
+  const installerSha256 = fileSha256(packagePath);
+  assert.deepEqual(
+    registry(),
+    before,
+    "Staging changed installation registry keys",
+  );
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  const {
+    staged: stage,
+    digest,
+    operation,
+    version: stagedVersion,
+  } = JSON.parse(result.stdout);
+  assert.match(
+    operation,
+    /^[\da-f]{8}-[\da-f]{4}-[\da-f]{4}-[\da-f]{4}-[\da-f]{12}$/,
+  );
+  assert.equal(
+    realpathSync.native(stage),
+    realpathSync.native(join(fixture, `.swb-stage-${operation}`)),
+  );
+  assert.match(digest, /^[\da-f]{64}$/);
+  assert.equal(stagedVersion, version);
+  assert.ok(!existsSync(join(stage, "serial-workbench-nsis-stage-v1.exe")));
+  assert.deepEqual(readdirSync(request.activeInstall), ["existing-component"]);
+  assert.equal(readFileSync(installed, "utf8"), "original installation");
+  const components = Object.fromEntries(
+    manifest.components.map(({ path, sha256 }) => {
+      assert.match(path, /^serial-workbench-(?:host|cli|mcp)\.exe$/);
+      assert.equal(fileSha256(join(stage, path)), sha256);
+      return [path, sha256];
+    }),
+  );
+  assert.equal(Object.keys(components).length, 3);
+  const nodeSha256 = fileSha256(join(stage, node.executable.resourcePath));
+  assert.equal(nodeSha256, node.executable.sha256);
+  const desktopSha256 = fileSha256(join(stage, "serial-workbench.exe"));
+  const uninstallerSha256 = fileSha256(join(stage, "uninstall.exe"));
+  t.diagnostic(
+    JSON.stringify({
+      installerSha256,
+      operation,
+      suiteDigest: digest,
+      stageVersion: stagedVersion,
+      legacySignatureRejected: true,
+      wrongVersionRejected: true,
+      tamperedArtifactRejected: true,
+      components,
+      nodeSha256,
+      desktopSha256,
+      uninstallerSha256,
+      registryUnchanged: true,
+    }),
+  );
+  const next = process.env.SWB_TEST_NSIS_NEXT_INSTALLER;
+  if (next) {
+    const nextVersion = process.env.SWB_TEST_NSIS_NEXT_VERSION;
+    assert.ok(nextVersion && nextVersion !== version);
+    const installation = join(fixture, "Installed Suite");
+    renameSync(stage, installation);
+    const nextDir = join(fixture, "next");
+    mkdirSync(nextDir);
+    const nextSignature = signedCopy(
+      join("next", "serial-workbench-nsis-stage-v1.exe"),
+      next,
+      nextVersion,
+    );
+    const nextResult = stageUpdate({
+      activeInstall: installation,
+      artifact: next,
+      version: nextVersion,
+      signature: nextSignature,
+    });
+    assert.equal(
+      nextResult.status,
+      0,
+      nextResult.error?.message ?? nextResult.stderr,
+    );
+    t.diagnostic(
+      JSON.stringify(
+        await verifyInstalledSuiteSwitch(
+          fixture,
+          verifier,
+          { staged: stage, digest, operation, version },
+          JSON.parse(nextResult.stdout),
+          installation,
+        ),
+      ),
+    );
+    assert.deepEqual(registry(), before);
+  }
 });

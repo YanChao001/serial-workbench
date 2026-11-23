@@ -1,4 +1,4 @@
-﻿import { createContext, useContext } from "react";
+import { createContext, useContext } from "react";
 import type { HostConnection } from "@/lib/host-client";
 import type { FileResourceRole, SelectedFileResource } from "@/lib/tauri";
 import type {
@@ -21,6 +21,7 @@ import type {
   FileTransferReceiptsResult,
   HostMetrics,
   ObjectRef,
+  OpenParams,
   Operation,
   OperationInput,
   OperationSummary,
@@ -92,6 +93,7 @@ export type HostContextValue = {
     deviceId: string,
     signal?: AbortSignal,
     configuration?: SerialConfiguration,
+    transportParams?: OpenParams["transportParams"],
   ): Promise<SessionSnapshot>;
   readReplayRecord(
     reference: Extract<ReplayRecord, { kind: "reference" }>,
@@ -174,6 +176,7 @@ export type HostContextValue = {
     deviceId: string,
     signal?: AbortSignal,
     configuration?: SerialConfiguration,
+    transportParams?: OpenParams["transportParams"],
   ): Promise<SessionSnapshot>;
   send(
     target: Target,

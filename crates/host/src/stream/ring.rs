@@ -108,6 +108,10 @@ pub(crate) struct SourceState {
     rx: u64,
     tx: u64,
     pub(crate) closed: bool,
+    pub(crate) end: Option<SessionEndReason>,
+    backend_end: Option<SessionEndReason>,
+    pub(crate) pending_tx: usize,
+    pub(crate) tx_evidence_gap: bool,
     pub(crate) readers: Vec<std::sync::Weak<super::reader::ReaderInner>>,
 }
 impl SourceState {
@@ -118,6 +122,10 @@ impl SourceState {
             rx: 0,
             tx: 0,
             closed: false,
+            end: None,
+            backend_end: None,
+            pending_tx: 0,
+            tx_evidence_gap: false,
             readers: vec![],
         }
     }
@@ -176,6 +184,28 @@ impl SourceState {
         self.next += 1;
     }
 }
+pub(crate) enum TxEvidence {
+    Pending(PendingTx),
+    Settled(Arc<SourceEvent>),
+}
+
+pub(crate) struct PendingTx {
+    source: Arc<SourceInner>,
+    committed: bool,
+    settled: bool,
+}
+impl Drop for PendingTx {
+    fn drop(&mut self) {
+        if !self.settled {
+            if let Ok(mut state) = self.source.state.lock() {
+                state.pending_tx -= 1;
+                state.tx_evidence_gap |= self.committed;
+            }
+            self.source.changed.notify_waiters();
+        }
+    }
+}
+
 impl StreamSource {
     pub fn reserve_tx_intent(
         &self,
@@ -197,9 +227,16 @@ impl StreamSource {
         state.ensure_open()?;
         state.tx.checked_add(bytes.len() as u64).ok_or_else(limit)?;
         state.next.checked_add(1).ok_or_else(limit)?;
+        let pending_tx = state.pending_tx.checked_add(1).ok_or_else(limit)?;
         let allocation = state.allocation(&self.0, bytes, cost)?;
+        // 预留横跨持久接纳，关闭不能越过日后仍可提交的旧代意图。
+        state.pending_tx = pending_tx;
         Ok(PreparedTxIntent {
-            source: self.0.clone(),
+            pending: PendingTx {
+                source: self.0.clone(),
+                committed: false,
+                settled: false,
+            },
             meta,
             allocation,
             event_cost,
@@ -207,10 +244,10 @@ impl StreamSource {
     }
     pub fn commit_tx_intent(
         &self,
-        prepared: PreparedTxIntent,
+        mut prepared: PreparedTxIntent,
         operation_id: Id,
     ) -> HostResult<TxIntentRef> {
-        if !Arc::ptr_eq(&self.0, &prepared.source) {
+        if !Arc::ptr_eq(&self.0, &prepared.pending.source) {
             return Err(invalid());
         }
         let mut state = self.0.state.lock().map_err(|_| busy())?;
@@ -234,12 +271,13 @@ impl StreamSource {
         });
         state.tx = end;
         state.publish(event.clone());
+        prepared.pending.committed = true;
         drop(state);
         self.0.changed.notify_waiters();
         Ok(TxIntentRef {
             source: self.0.clone(),
             event,
-            completed: Mutex::new(None),
+            evidence: Mutex::new(TxEvidence::Pending(prepared.pending)),
         })
     }
     pub fn initial_cursor(&self) -> Cursor {
@@ -333,18 +371,21 @@ impl StreamSource {
         if meta_cost(&meta)? > 8192 {
             return Err(limit());
         }
-        let mut completed = intent.completed.lock().map_err(|_| busy())?;
-        if let Some(event) = &*completed {
-            return match &event.payload {
-                SourcePayload::Receipt {
-                    settlement: old, ..
-                } if old == &settlement => Ok(event.seq.into()),
-                _ => Err(HostError::new(
-                    "REQUEST_CONFLICT",
-                    "TX already has a different receipt",
-                )),
-            };
-        }
+        let mut evidence = intent.evidence.lock().map_err(|_| busy())?;
+        let pending = match &mut *evidence {
+            TxEvidence::Pending(pending) => pending,
+            TxEvidence::Settled(event) => {
+                return match &event.payload {
+                    SourcePayload::Receipt {
+                        settlement: old, ..
+                    } if old == &settlement => Ok(event.seq.into()),
+                    _ => Err(HostError::new(
+                        "REQUEST_CONFLICT",
+                        "TX already has a different receipt",
+                    )),
+                };
+            }
+        };
         let SourcePayload::Intent {
             operation,
             start,
@@ -375,7 +416,9 @@ impl StreamSource {
         });
         state.publish(event.clone());
         let seq = event.seq.into();
-        *completed = Some(event);
+        state.pending_tx -= 1;
+        pending.settled = true;
+        *evidence = TxEvidence::Settled(event);
         drop(state);
         self.0.changed.notify_waiters();
         Ok(seq)
@@ -411,38 +454,68 @@ impl StreamSource {
         Ok(seq.into())
     }
     pub fn close(&self) -> HostResult<()> {
-        let mut state = self.0.state.lock().map_err(|_| busy())?;
-        state.closed = true;
-        for reader in state
-            .readers
-            .drain(..)
-            .filter_map(|reader| reader.upgrade())
-        {
-            reader.end(Some(HostError::new(
-                "EPOCH_MISMATCH",
-                "Raw source epoch ended",
-            )));
-        }
-        self.0.changed.notify_waiters();
-        Ok(())
+        self.stop(None, Some(SessionEndReason::Closed))
     }
     pub fn fail(&self, error: HostError) -> HostResult<()> {
-        let mut state = self.0.state.lock().map_err(|_| busy())?;
-        if state.closed {
-            return Ok(());
+        // 源停止供给也可能源于等待超时或内部失败。
+        self.stop(Some(error), None)
+    }
+    pub(crate) fn fail_backend(&self, error: HostError) -> HostResult<()> {
+        let reason = backend_fault(&error);
+        self.stop(Some(error), Some(reason))
+    }
+    pub(crate) fn finish_backend_close(
+        &self,
+        result: &BackendResult<()>,
+        requested_close: bool,
+    ) -> HostResult<()> {
+        let reason = match result {
+            Ok(()) => SessionEndReason::Closed,
+            Err(error) => backend_fault(&error.error),
+        };
+        if requested_close {
+            return self.stop(None, Some(reason));
         }
-        state.closed = true;
-        for reader in state
-            .readers
-            .drain(..)
-            .filter_map(|reader| reader.upgrade())
-        {
-            reader.end(Some(error.clone()));
+        let mut state = self.0.state.lock().map_err(|_| busy())?;
+        if state.end.is_none() {
+            if state.closed {
+                state.end = Some(reason);
+                self.0.changed.notify_waiters();
+            } else {
+                // 配置失败的调用方可能晚于原生 owner 观察到失败。保留先到的关闭结果。
+                state.backend_end.get_or_insert(reason);
+            }
+        }
+        Ok(())
+    }
+    fn stop(&self, error: Option<HostError>, reason: Option<SessionEndReason>) -> HostResult<()> {
+        let mut state = self.0.state.lock().map_err(|_| busy())?;
+        let observed_close = state.backend_end.take();
+        if state.end.is_none() {
+            state.end = reason.or(observed_close);
+        }
+        if !state.closed {
+            state.closed = true;
+            let error =
+                error.unwrap_or_else(|| HostError::new("EPOCH_MISMATCH", "Raw source epoch ended"));
+            for reader in state
+                .readers
+                .drain(..)
+                .filter_map(|reader| reader.upgrade())
+            {
+                reader.end(Some(error.clone()));
+            }
         }
         self.0.changed.notify_waiters();
         Ok(())
     }
 }
+fn backend_fault(error: &HostError) -> SessionEndReason {
+    SessionEndReason::BackendFault {
+        code: Id::try_from(error.code.as_str()).ok(),
+    }
+}
+
 impl TxIntentRef {
     pub fn event_seq(&self) -> U64 {
         self.event.seq.into()

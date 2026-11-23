@@ -48,9 +48,10 @@ jobs:
           const requested = process.env.RUNTIME_TARGET;
           if (requested !== 'all' && !Object.hasOwn(platforms, requested)) throw new Error('Unsupported runtime preflight target');
           const suite = process.env.RUNTIME_SUITE;
-          if (!['all', 'host-ipc', 'macos-signature', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
+          if (!['all', 'host-ipc', 'macos-signature', 'windows-nsis-stage', 'windows-nsis-switch', 'linux-offline-installer', 'macos-offline-installer'].includes(suite)) throw new Error('Unsupported runtime preflight suite');
           if (suite !== 'all' && requested === 'all') throw new Error('A focused runtime preflight needs one target');
           if (suite === 'macos-signature' && !requested.endsWith('-apple-darwin')) throw new Error('The signature suite requires macOS');
+          if (suite.startsWith('windows-nsis-') && requested !== 'x86_64-pc-windows-msvc') throw new Error('The NSIS suite requires Windows x64');
           if (suite === 'linux-offline-installer' && requested !== 'x86_64-unknown-linux-gnu') throw new Error('The offline Debian installer suite requires Linux x64');
           if (suite === 'macos-offline-installer' && !requested.endsWith('-apple-darwin')) throw new Error('The offline disk image suite requires macOS');
           const include = Object.entries(platforms)
@@ -66,7 +67,7 @@ jobs:
     name: 运行时预检（${{ matrix.target }}）
     needs: plan
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: ${{ endsWith(inputs.suite, '-offline-installer') && 50 || 25 }}
+    timeout-minutes: ${{ inputs.suite == 'windows-nsis-switch' && 75 || (endsWith(inputs.suite, '-offline-installer') || inputs.suite == 'windows-nsis-stage') && 50 || 25 }}
     strategy:
       fail-fast: false
       matrix: ${{ fromJSON(needs.plan.outputs.matrix) }}
@@ -101,8 +102,49 @@ jobs:
           if ! command -v gpgv >/dev/null 2>&1; then brew install gnupg; fi
           gpgv --version
       - name: 验签并准备固定原生运行时
-        if: ${{ !endsWith(inputs.suite, '-offline-installer') }}
+        if: ${{ !endsWith(inputs.suite, '-offline-installer') && !startsWith(inputs.suite, 'windows-nsis-') }}
         run: node scripts/ci-prepare-node-runtime.mjs
+      - name: 编译未签名的 NSIS 并在隔离 runner 验证暂存夹具
+        if: inputs.suite == 'windows-nsis-stage' || inputs.suite == 'windows-nsis-switch'
+        shell: pwsh
+        env:
+          NSIS_RUNTIME_SUITE: ${{ inputs.suite }}
+        run: |
+          pnpm app:build --target $env:RUNTIME_TARGET --bundles nsis --optimize speed --ci --no-sign
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $version = (Get-Content package.json -Raw | ConvertFrom-Json).version
+          $archive = "artifacts/$version/$env:RUNTIME_TARGET/installers"
+          $installer = @(Get-ChildItem -LiteralPath "$archive/nsis" -Filter '*-setup.exe' -File)
+          if ($installer.Count -ne 1) { throw 'Expected exactly one candidate NSIS installer' }
+          $env:SWB_TEST_NSIS_STAGE_INSTALLER = $installer[0].FullName
+          $env:SWB_TEST_NSIS_STAGE_VERSION = $version
+          cargo build --locked -p serial-workbench --release --features bindings --bin verify-updater --target $env:RUNTIME_TARGET
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+          $env:SWB_TEST_NSIS_STAGE_VERIFIER = (Resolve-Path -LiteralPath "src-tauri/target/$env:RUNTIME_TARGET/release/verify-updater.exe").Path
+          if ($env:NSIS_RUNTIME_SUITE -eq 'windows-nsis-switch') {
+            $baseVersion = [version](($version -split '[-+]')[0])
+            $nextVersion = '{0}.{1}.{2}' -f $baseVersion.Major,$baseVersion.Minor,($baseVersion.Build + 1)
+            pnpm version:set $nextVersion
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            pnpm app:build --target $env:RUNTIME_TARGET --bundles nsis --optimize speed --ci --no-sign
+            if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+            $nextArchive = "artifacts/$nextVersion/$env:RUNTIME_TARGET/installers"
+            $nextInstaller = @(Get-ChildItem -LiteralPath "$nextArchive/nsis" -Filter '*-setup.exe' -File)
+            if ($nextInstaller.Count -ne 1) { throw 'Expected one second-version NSIS installer' }
+            $env:SWB_TEST_NSIS_NEXT_INSTALLER = $nextInstaller[0].FullName
+            $env:SWB_TEST_NSIS_NEXT_VERSION = $nextVersion
+          }
+          New-Item -ItemType Directory -Path artifacts/windows-nsis-stage | Out-Null
+          pnpm test:installer --interactive 2>&1 | Tee-Object -FilePath artifacts/windows-nsis-stage/installer-layout.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: 验证存档与 Windows 注册写入中断后的恢复
+        if: inputs.suite == 'windows-nsis-switch'
+        shell: pwsh
+        env:
+          SWB_TEST_WINDOWS_INSTALL_REGISTRATION: "1"
+        run: |
+          cargo test --locked -p serial-workbench-ipc --lib isolated_registered_switch_recovers_files_and_current_user_values -- --ignored --test-threads=1 --nocapture 2>&1 | Tee-Object -FilePath artifacts/windows-nsis-stage/registry-recovery.log
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
       - name: 验证 Debian 实际离线安装与参考包
         if: inputs.suite == 'linux-offline-installer'
         run: |
@@ -174,6 +216,8 @@ jobs:
             artifacts/offline-installer/*.sb
             artifacts/offline-installer/components.json
             artifacts/offline-installer/reference-*/signed-*.json
+            artifacts/windows-nsis-stage/installer-layout.log
+            artifacts/windows-nsis-stage/registry-recovery.log
             .cache/node-runtime/layouts/**/runtime-preparation.json
             .cache/node-runtime/layouts/**/node-resigning.json
             .cache/node-runtime/layouts/**/node-sign*.stdout

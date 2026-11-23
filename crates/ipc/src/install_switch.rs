@@ -20,6 +20,9 @@ use windows_sys::Win32::Storage::FileSystem::{
     FILE_ATTRIBUTE_REPARSE_POINT, GetFileInformationByHandle, MOVEFILE_WRITE_THROUGH, MoveFileExW,
 };
 
+mod registration;
+pub use registration::InstallRegistration;
+
 const DOMAIN: &str = "serial-workbench/install-switch/1";
 
 /// 每轮替换使用独立的同卷暂存和归档目录。调用方须保留操作 ID 供重启恢复。
@@ -32,21 +35,14 @@ pub struct InstallPaths {
 }
 
 impl InstallPaths {
+    pub fn fresh(active: &Path) -> HostResult<Self> {
+        let id = uuid::Uuid::new_v4().to_string();
+        Self::new(active, RequestId::try_from(id.as_str())?)
+    }
+
     pub fn new(active: &Path, operation: RequestId) -> HostResult<Self> {
+        let active = canonical_install_path(active)?;
         let parent = active.parent().ok_or_else(integrity)?;
-        let name = active.file_name().ok_or_else(integrity)?;
-        if !active.is_absolute() || name.to_string_lossy().to_lowercase().starts_with(".swb-") {
-            return Err(integrity());
-        }
-        directory(parent)?;
-        let parent = fs::canonicalize(parent).map_err(|_| storage())?;
-        if !matches!(
-            parent.components().next(),
-            Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::VerbatimDisk(_))
-        ) {
-            return Err(integrity());
-        }
-        let active = parent.join(name);
         Ok(Self {
             staged: parent.join(format!(".swb-stage-{operation}")),
             backup: parent.join(format!(".swb-old-{operation}")),
@@ -59,9 +55,28 @@ impl InstallPaths {
         &self.staged
     }
 
+    pub fn operation(&self) -> &RequestId {
+        &self.operation
+    }
+
     pub fn backup(&self) -> &Path {
         &self.backup
     }
+}
+
+fn canonical_install_path(active: &Path) -> HostResult<PathBuf> {
+    let parent = active.parent().ok_or_else(integrity)?;
+    let name = active.file_name().ok_or_else(integrity)?;
+    if !active.is_absolute() || name.to_string_lossy().to_lowercase().starts_with(".swb-") {
+        return Err(integrity());
+    }
+    directory(parent)?;
+    let parent = fs::canonicalize(parent).map_err(|_| storage())?;
+    if !matches!(parent.components().next(), Some(Component::Prefix(prefix)) if matches!(prefix.kind(), Prefix::VerbatimDisk(_)))
+    {
+        return Err(integrity());
+    }
+    Ok(parent.join(name))
 }
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq, Serialize, Deserialize)]
@@ -86,6 +101,8 @@ struct Intent {
     previous: Digest,
     candidate: Digest,
     phase: Phase,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    registration: Option<InstallRegistration>,
 }
 
 #[derive(Serialize, Deserialize)]
@@ -93,6 +110,34 @@ struct Intent {
 struct Receipt<T> {
     intent: T,
     proof: String,
+}
+
+struct InstallationIdentity {
+    namespace: PathBuf,
+    profile: PathBuf,
+    pin: IdentityPin,
+    epoch: U64,
+}
+
+impl InstallationIdentity {
+    fn read(profile: &Path, reservation: &PrivateFileLock) -> HostResult<Self> {
+        let namespace = profile.join("host-v0");
+        reservation.require_host_namespace(&namespace)?;
+        let bytes = read_secret(&namespace.join("identity.secret"))?.ok_or_else(integrity)?;
+        let pin: IdentityPin = serde_json::from_slice(&bytes).map_err(|_| integrity())?;
+        pin.verify_profile(profile)?;
+        let record = DiscoveryRecord::read(&namespace.join("discovery.json"))?;
+        if record.host_id != pin.host_id {
+            return Err(integrity());
+        }
+        let profile = fs::canonicalize(profile).map_err(|_| storage())?;
+        Ok(Self {
+            namespace,
+            profile,
+            pin,
+            epoch: record.instance_epoch,
+        })
+    }
 }
 
 #[derive(Clone, Copy, Eq, PartialEq)]
@@ -125,46 +170,118 @@ impl InstallSwitch {
         Ok(install)
     }
 
+    /// 找到指定物理安装位置上未结算、且属于当前 Host 代次的唯一认证意图。
+    pub fn recover_pending(
+        profile: &Path,
+        active: &Path,
+        reservation: PrivateFileLock,
+        timeout: Duration,
+    ) -> HostResult<Option<(RequestId, InstallOutcome)>> {
+        let Some(mut switch) = Self::find_pending(profile, active, reservation)? else {
+            return Ok(None);
+        };
+        verify_idle_profile_shutdown(profile, timeout)?;
+        let operation = switch.paths.operation.clone();
+        let outcome = switch.recover()?.ok_or_else(integrity)?;
+        Ok(Some((operation, outcome)))
+    }
+
+    fn find_pending(
+        profile: &Path,
+        active: &Path,
+        reservation: PrivateFileLock,
+    ) -> HostResult<Option<Self>> {
+        let active = canonical_install_path(active)?;
+        let identity = InstallationIdentity::read(profile, &reservation)?;
+        let mut pending = None;
+        for entry in fs::read_dir(&identity.namespace).map_err(|_| storage())? {
+            let entry = entry.map_err(|_| storage())?;
+            let name = entry.file_name();
+            let Some(operation) = name
+                .to_str()
+                .and_then(|name| name.strip_prefix("install-switch-"))
+                .and_then(|name| name.strip_suffix(".json"))
+            else {
+                continue;
+            };
+            let Ok(operation) = RequestId::try_from(operation) else {
+                continue;
+            };
+            let intent =
+                authenticated_intent(&entry.path(), &identity.pin)?.ok_or_else(integrity)?;
+            if intent.operation != operation {
+                return Err(integrity());
+            }
+            if intent.active != active || intent.phase != Phase::Prepared {
+                continue;
+            }
+            if intent.epoch != identity.epoch || pending.is_some() {
+                return Err(integrity());
+            }
+            pending = Some(operation);
+        }
+        pending
+            .map(|operation| {
+                Self::bind_installation(
+                    InstallPaths::new(&active, operation)?,
+                    reservation,
+                    identity,
+                )
+            })
+            .transpose()
+    }
+
     fn open_verified_identity(
         profile: &Path,
         paths: InstallPaths,
         reservation: PrivateFileLock,
     ) -> HostResult<Self> {
-        let namespace = profile.join("host-v0");
-        reservation.require_host_namespace(&namespace)?;
-        let profile_path = fs::canonicalize(profile).map_err(|_| storage())?;
+        let identity = InstallationIdentity::read(profile, &reservation)?;
+        Self::bind_installation(paths, reservation, identity)
+    }
+
+    fn bind_installation(
+        paths: InstallPaths,
+        reservation: PrivateFileLock,
+        identity: InstallationIdentity,
+    ) -> HostResult<Self> {
         if [&paths.active, &paths.staged, &paths.backup]
             .iter()
-            .any(|path| paths_overlap(path, &profile_path))
+            .any(|path| paths_overlap(path, &identity.profile))
         {
             return Err(integrity());
         }
-        let bytes = read_secret(&namespace.join("identity.secret"))?.ok_or_else(integrity)?;
-        let pin: IdentityPin = serde_json::from_slice(&bytes).map_err(|_| integrity())?;
-        pin.verify_profile(profile)?;
-        let record = DiscoveryRecord::read(&namespace.join("discovery.json"))?;
-        if record.host_id != pin.host_id {
-            return Err(integrity());
-        }
-        let journal = namespace.join(format!("install-switch-{}.json", paths.operation));
+        let journal = identity
+            .namespace
+            .join(format!("install-switch-{}.json", paths.operation));
         Ok(Self {
             _reservation: reservation,
             paths,
-            pin,
-            epoch: record.instance_epoch,
+            pin: identity.pin,
+            epoch: identity.epoch,
             journal,
         })
     }
 
     /// 写入意图，再换入已验证的新套件。返回错误时保留收据供 recover 使用。
     pub fn replace(&mut self, previous: &Digest, candidate: &Digest) -> HostResult<()> {
-        self.replace_with(previous, candidate, |_| Ok(()))
+        self.replace_with(previous, candidate, None, |_| Ok(()))
+    }
+
+    pub fn replace_registered(
+        &mut self,
+        previous: &Digest,
+        candidate: &Digest,
+        registration: InstallRegistration,
+    ) -> HostResult<()> {
+        self.replace_with(previous, candidate, Some(registration), |_| Ok(()))
     }
 
     fn replace_with(
         &mut self,
         previous: &Digest,
         candidate: &Digest,
+        registration: Option<InstallRegistration>,
         mut checkpoint: impl FnMut(Checkpoint) -> HostResult<()>,
     ) -> HostResult<()> {
         if self.read_intent()?.is_some()
@@ -175,6 +292,9 @@ impl InstallSwitch {
         {
             return Err(integrity());
         }
+        if let Some(registration) = &registration {
+            registration.verify(&self.paths.active, false)?;
+        }
         let mut intent = Intent {
             operation: self.paths.operation.clone(),
             active: self.paths.active.clone(),
@@ -182,6 +302,7 @@ impl InstallSwitch {
             previous: previous.clone(),
             candidate: candidate.clone(),
             phase: Phase::Prepared,
+            registration,
         };
         checkpoint(Checkpoint::Intent)?;
         self.save_intent(&intent)?;
@@ -189,6 +310,9 @@ impl InstallSwitch {
         checkpoint(Checkpoint::Publish)?;
         move_directory(&self.paths.staged, &self.paths.active)?;
         self.verify_committed(&intent)?;
+        if let Some(registration) = &intent.registration {
+            registration.settle(&self.paths.active, true)?;
+        }
         checkpoint(Checkpoint::Commit)?;
         intent.phase = Phase::Committed;
         self.save_intent(&intent)
@@ -202,10 +326,16 @@ impl InstallSwitch {
         match intent.phase {
             Phase::Committed => {
                 self.verify_committed(&intent)?;
+                if let Some(registration) = &intent.registration {
+                    registration.verify(&self.paths.active, true)?;
+                }
                 Ok(Some(InstallOutcome::Committed))
             }
             Phase::RolledBack => {
                 self.verify_rolled_back(&intent)?;
+                if let Some(registration) = &intent.registration {
+                    registration.verify(&self.paths.active, false)?;
+                }
                 Ok(Some(InstallOutcome::RolledBack))
             }
             Phase::Prepared => {
@@ -221,6 +351,9 @@ impl InstallSwitch {
                     move_directory(&self.paths.backup, &self.paths.active)?;
                 }
                 self.verify_rolled_back(&intent)?;
+                if let Some(registration) = &intent.registration {
+                    registration.settle(&self.paths.active, false)?;
+                }
                 intent.phase = Phase::RolledBack;
                 self.save_intent(&intent)?;
                 Ok(Some(InstallOutcome::RolledBack))
@@ -248,21 +381,9 @@ impl InstallSwitch {
     }
 
     fn read_intent(&self) -> HostResult<Option<Intent>> {
-        match fs::symlink_metadata(&self.journal) {
-            Ok(_) => {}
-            Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
-            Err(_) => return Err(storage()),
-        }
-        let bytes = read_bounded_metadata(&self.journal, 262_144).ok_or_else(integrity)?;
-        let receipt: Receipt<Intent> = serde_json::from_slice(&bytes).map_err(|_| integrity())?;
-        let proof = URL_SAFE_NO_PAD
-            .decode(receipt.proof)
-            .map_err(|_| integrity())?;
-        self.pin
-            .transcript_mac(&(DOMAIN, &receipt.intent))?
-            .verify_slice(&proof)
-            .map_err(|_| integrity())?;
-        let intent = receipt.intent;
+        let Some(intent) = authenticated_intent(&self.journal, &self.pin)? else {
+            return Ok(None);
+        };
         if intent.operation != self.paths.operation
             || intent.active != self.paths.active
             || intent.epoch != self.epoch
@@ -281,6 +402,23 @@ impl InstallSwitch {
         .map_err(|_| storage())?;
         write_atomic(&self.journal, &bytes)
     }
+}
+
+fn authenticated_intent(path: &Path, pin: &IdentityPin) -> HostResult<Option<Intent>> {
+    match fs::symlink_metadata(path) {
+        Ok(_) => {}
+        Err(error) if error.kind() == ErrorKind::NotFound => return Ok(None),
+        Err(_) => return Err(storage()),
+    }
+    let bytes = read_bounded_metadata(path, 262_144).ok_or_else(integrity)?;
+    let receipt: Receipt<Intent> = serde_json::from_slice(&bytes).map_err(|_| integrity())?;
+    let proof = URL_SAFE_NO_PAD
+        .decode(receipt.proof)
+        .map_err(|_| integrity())?;
+    pin.transcript_mac(&(DOMAIN, &receipt.intent))?
+        .verify_slice(&proof)
+        .map_err(|_| integrity())?;
+    Ok(Some(receipt.intent))
 }
 
 /// 指纹覆盖每个文件的相对路径与 SHA-256，以及目录路径（包括空目录）。

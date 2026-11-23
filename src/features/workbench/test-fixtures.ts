@@ -43,6 +43,11 @@ export const labels: WorkbenchLabels = {
   },
   title: "Workbench",
   closeView: "Close view",
+  pluginTransportParameters: "Plugin connection parameters",
+  pluginTransportHint:
+    "Enter a JSON object using the plugin’s documented parameters.",
+  pluginTransportInvalid:
+    "Enter a valid JSON object. Numbers must be safe integers.",
   closeOtherViews: "Close other views",
   closeAllViews: "Close all views",
   closeSession: "Close session",

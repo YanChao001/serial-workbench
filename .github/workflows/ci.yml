@@ -42,6 +42,8 @@ on:
           - all
           - host-ipc
           - macos-signature
+          - windows-nsis-stage
+          - windows-nsis-switch
           - linux-offline-installer
           - macos-offline-installer
         required: true
@@ -141,7 +143,8 @@ jobs:
     if: ${{ !cancelled() && !inputs.native_preflight && !inputs.runtime_preflight }}
     name: Rust 校验（${{ matrix.platform }}）
     runs-on: ${{ matrix.platform }}
-    timeout-minutes: 60
+    # Intel macOS 冷缓存编译约 46 分钟，完整 runtime 场景另需约 21 分钟。
+    timeout-minutes: ${{ matrix.platform == 'macos-15-intel' && 90 || 60 }}
     env:
       # 无 GUI 的契约与功能检查不需要调试符号，减小链接与缓存开销。
       # 桌面 E2E 保留其调试信息，失败时仍可读取原生线程栈。
@@ -332,6 +335,9 @@ jobs:
             export SWB_TEST_BROWSER_TERMINAL_OUTPUT="$(node -p 'require("node:path").resolve("artifacts/reference-terminal/paired-browser")')"
             cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_opens_and_retires_a_signed_terminal_view -- --ignored --test-threads=1 --nocapture 2>&1 \
               | tee artifacts/reference-terminal/paired-browser.log
+            export SWB_TEST_BROWSER_CHART_OUTPUT="$(node -p 'require("node:path").resolve("artifacts/reference-chart/paired-browser")')"
+            cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_reads_and_retires_a_signed_chart_view -- --ignored --test-threads=1 --nocapture 2>&1 \
+              | tee artifacts/reference-chart/paired-browser.log
           fi
 
       - name: 保留 runtime 验收收据与原始输出
@@ -362,6 +368,8 @@ jobs:
             artifacts/reference-chart/reference-chart.zip
             artifacts/reference-chart/signed-chart.json
             artifacts/reference-chart/native-samples.log
+            artifacts/reference-chart/paired-browser.log
+            artifacts/reference-chart/paired-browser/**
             artifacts/reference-automation/reference-automation.zip
             artifacts/reference-automation/signed-automation.json
             artifacts/reference-automation/native-response.log

@@ -1,4 +1,5 @@
 use serial_workbench_core::*;
+use serial_workbench_host::stream::{SessionEndReason, StreamKey};
 use std::sync::atomic::Ordering;
 mod support;
 
@@ -61,6 +62,18 @@ async fn raw_source_records_open_and_closed_lifecycle_boundaries() {
 async fn backend_read_failure_publishes_disconnected_and_allows_explicit_new_epoch() {
     let h = support::Harness::new().await;
     let target = h.open("failed-read").await;
+    let reader = h
+        .host
+        .streams()
+        .open_session_events(
+            &h.actor,
+            &StreamKey {
+                session_id: target.id.clone(),
+                session_epoch: target.session_epoch.unwrap(),
+            },
+        )
+        .await
+        .unwrap();
     h.probe.read_fails.store(true, Ordering::SeqCst);
     support::until(|| h.probe.closes.load(Ordering::SeqCst) == 1).await;
     let projection = h
@@ -82,6 +95,26 @@ async fn backend_read_failure_publishes_disconnected_and_allows_explicit_new_epo
             },
         )
         .await;
+    let (page, end) = reader
+        .read_prepared(StreamReadParams {
+            session_id: target.id.clone(),
+            session_epoch: target.session_epoch.unwrap(),
+            start_event_seq: 1.into(),
+            max_events: 10.into(),
+            max_bytes: 100000.into(),
+        })
+        .await
+        .unwrap();
+    let page = page.into_parts().0;
+    let end = end.unwrap();
+    assert_eq!(end.after.position, page.events.last().unwrap().event_seq);
+    assert_eq!(
+        end.reason,
+        SessionEndReason::BackendFault {
+            code: Some(support::id("BACKEND_DISCONNECTED"))
+        }
+    );
+    assert!(!end.tx_evidence_gap);
     let _ = h.host.shutdown().await;
     assert_eq!(
         projection.state.get("state"),

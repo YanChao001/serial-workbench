@@ -685,20 +685,36 @@ pub fn prepare_private_directory(path: &Path) -> HostResult<()> {
             if !parent.exists() {
                 prepare_private_directory(parent)?;
             }
-            let descriptor = descriptor(&UserSid::current()?.text()?, true)?;
-            let attrs = attributes(&descriptor);
-            let name = wide(path.as_os_str())?;
-            if unsafe { CreateDirectoryW(name.as_ptr(), &attrs) } == 0 {
-                let error = io::Error::last_os_error();
-                if error.kind() != io::ErrorKind::AlreadyExists {
-                    return Err(storage_error());
-                }
-            }
+            create_current_user_directory(path)?;
         }
         Err(_) => return Err(storage_error()),
     }
     let directory = open_existing(path, true).map_err(|_| storage_error())?;
     validate_file(&directory, true)
+}
+
+fn create_current_user_directory(path: &Path) -> HostResult<bool> {
+    let descriptor = descriptor(&UserSid::current()?.text()?, true)?;
+    let attrs = attributes(&descriptor);
+    let name = wide(path.as_os_str())?;
+    if unsafe { CreateDirectoryW(name.as_ptr(), &attrs) } != 0 {
+        return Ok(true);
+    }
+    if io::Error::last_os_error().kind() == io::ErrorKind::AlreadyExists {
+        return Ok(false);
+    }
+    Err(storage_error())
+}
+
+/// Create a new current-user directory and pin it until the operation finishes.
+pub fn create_private_directory_new(path: &Path) -> HostResult<File> {
+    validate_path(path)?;
+    if path.file_name().is_none() || !create_current_user_directory(path)? {
+        return Err(denied());
+    }
+    let directory = open_existing(path, true).map_err(|_| storage_error())?;
+    validate_file(&directory, true)?;
+    Ok(directory)
 }
 fn crypt(bytes: &[u8], protect: bool) -> HostResult<Vec<u8>> {
     let input = CRYPT_INTEGER_BLOB {
