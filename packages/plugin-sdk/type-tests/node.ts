@@ -33,6 +33,32 @@ export function authoringConstraints(
   void task.streams.read(read).then((page) => page.nextEventSeq);
   // @ts-expect-error 正文字节上限沿用 Host 契约的U64字符串。
   void task.streams.read({ ...read, maxBytes: 32768 });
+  void task.streams.followSession(read, {
+    onConnect: (event) => {
+      void event.payload.state;
+    },
+    onReceive: async (event) => {
+      await Promise.resolve(event.payload.bytesBase64);
+    },
+    onSend: (event) => {
+      void event.payload.acceptedRanges;
+    },
+    onDisconnect: (end) => {
+      void end.after.instanceEpoch;
+    },
+    onError: (issue) => {
+      if (issue.kind === "cursor_expired") void issue.oldestCursor.position;
+    },
+  });
+  // @ts-expect-error 跟随读取器必须处理缺口或来源故障。
+  void task.streams.followSession(read, {});
+  void task.streams.followSession(read, {
+    onError: () => {},
+    onSend: (event) => {
+      // @ts-expect-error 结算回执不会包含来源事件的丢失范围。
+      void event.payload.missingEventRange;
+    },
+  });
   const publication: DerivedPublishParams = {
     sources: [
       {

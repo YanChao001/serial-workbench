@@ -4,6 +4,7 @@ export type UnsavedWork = {
   id: string;
   label: string;
   dirty: boolean;
+  retainAfterUnmount?: boolean;
   save?: (signal?: AbortSignal) => Promise<void>;
   discard: (signal?: AbortSignal) => void | Promise<void>;
 };

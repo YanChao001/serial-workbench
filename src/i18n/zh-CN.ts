@@ -950,6 +950,10 @@ export const zhCN = {
   "workbench.closeAllViews": "关闭全部视图",
   "workbench.closeSession": "关闭会话",
   "workbench.disconnect": "断开连接",
+  "workbench.pluginTransportParameters": "插件连接参数",
+  "workbench.pluginTransportHint": "按插件文档填写 JSON 对象。",
+  "workbench.pluginTransportInvalid":
+    "请输入有效的 JSON 对象，数字须为安全整数。",
   "nativeError.deviceBusy": "设备正在使用或上次操作尚未结束，请稍后重试。",
   "nativeError.hostBusy": "本机服务忙，请稍后重试。",
   "nativeError.limitExceeded":

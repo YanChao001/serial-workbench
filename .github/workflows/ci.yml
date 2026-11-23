@@ -42,6 +42,7 @@ on:
           - all
           - host-ipc
           - macos-signature
+          - windows-nsis-stage
           - linux-offline-installer
           - macos-offline-installer
         required: true
@@ -332,6 +333,9 @@ jobs:
             export SWB_TEST_BROWSER_TERMINAL_OUTPUT="$(node -p 'require("node:path").resolve("artifacts/reference-terminal/paired-browser")')"
             cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_opens_and_retires_a_signed_terminal_view -- --ignored --test-threads=1 --nocapture 2>&1 \
               | tee artifacts/reference-terminal/paired-browser.log
+            export SWB_TEST_BROWSER_CHART_OUTPUT="$(node -p 'require("node:path").resolve("artifacts/reference-chart/paired-browser")')"
+            cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_reads_and_retires_a_signed_chart_view -- --ignored --test-threads=1 --nocapture 2>&1 \
+              | tee artifacts/reference-chart/paired-browser.log
           fi
 
       - name: 保留 runtime 验收收据与原始输出
@@ -362,6 +366,8 @@ jobs:
             artifacts/reference-chart/reference-chart.zip
             artifacts/reference-chart/signed-chart.json
             artifacts/reference-chart/native-samples.log
+            artifacts/reference-chart/paired-browser.log
+            artifacts/reference-chart/paired-browser/**
             artifacts/reference-automation/reference-automation.zip
             artifacts/reference-automation/signed-automation.json
             artifacts/reference-automation/native-response.log

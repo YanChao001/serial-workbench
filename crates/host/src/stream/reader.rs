@@ -49,6 +49,7 @@ struct ReaderState {
     closed: bool,
     error: Option<HostError>,
     reservation: Option<Arc<ReaderReservation>>,
+    permit: Option<OwnedSemaphorePermit>,
     liveness: tokio::sync::watch::Sender<bool>,
 }
 struct Queued {
@@ -129,6 +130,7 @@ impl ReaderState {
         self.replay.clear();
         self.credit.clear();
         self.reservation = None;
+        self.permit = None;
     }
 }
 impl ReaderInner {
@@ -541,9 +543,7 @@ impl StreamHub {
                     .unwrap_or(false)
             })
         });
-        if readers.len() >= self.inner.limits.max_readers {
-            return Err(limit());
-        }
+        let permit = self.reader_permit()?;
         let global = self.inner.reader_budget.take(queue)?;
         let budget = Budget::new(queue);
         let reservation = Arc::new(ReaderReservation {
@@ -578,6 +578,7 @@ impl StreamHub {
                 closed: false,
                 error: None,
                 reservation: Some(reservation),
+                permit: Some(permit),
                 liveness: tokio::sync::watch::channel(true).0,
             }),
             notify: tokio::sync::Notify::new(),

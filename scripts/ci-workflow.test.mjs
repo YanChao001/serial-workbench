@@ -263,7 +263,19 @@ test("runtime diagnostics cannot replace the full milestone gate or launch deskt
   assert.match(runtime, /workflow_call:/);
   assert.doesNotMatch(
     runtime,
-    /workflow_dispatch:|pnpm app:build|pnpm test:e2e|contents: write/,
+    /workflow_dispatch:|pnpm test:e2e|contents: write/,
+  );
+  const nsisStage = runtime.match(
+    /- name: 编译未签名的 NSIS 并在隔离 runner 验证暂存夹具\n[\s\S]*?(?=      - name:)/,
+  )?.[0];
+  assert.ok(nsisStage);
+  assert.doesNotMatch(runtime.replace(nsisStage, ""), /pnpm app:build/);
+  assert.match(nsisStage, /if: inputs\.suite == 'windows-nsis-stage'/);
+  assert.match(nsisStage, /pnpm app:build .*--bundles nsis/);
+  assert.match(nsisStage, /SWB_TEST_NSIS_STAGE_INSTALLER/);
+  assert.match(nsisStage, /pnpm test:installer --interactive/);
+  assert.ok(
+    runtime.includes("artifacts/windows-nsis-stage/installer-layout.log"),
   );
   assert.match(
     runtime,
@@ -429,6 +441,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
   for (const [target, suite, platform] of [
     ["aarch64-apple-darwin", "host-ipc", "macos-15"],
     ["x86_64-apple-darwin", "macos-signature", "macos-15-intel"],
+    ["x86_64-pc-windows-msvc", "windows-nsis-stage", "windows-2022"],
     ["x86_64-unknown-linux-gnu", "linux-offline-installer", "ubuntu-22.04"],
     ["aarch64-apple-darwin", "macos-offline-installer", "macos-15"],
   ]) {
@@ -445,6 +458,12 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     ["all", "false", "unknown", /Unsupported runtime preflight suite/],
     ["all", "false", "host-ipc", /needs one target/],
     ["x86_64-pc-windows-msvc", "false", "macos-signature", /requires macOS/],
+    [
+      "x86_64-unknown-linux-gnu",
+      "false",
+      "windows-nsis-stage",
+      /requires Windows x64/,
+    ],
     [
       "x86_64-apple-darwin",
       "false",

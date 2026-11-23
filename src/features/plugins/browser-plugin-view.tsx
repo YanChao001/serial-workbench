@@ -1,5 +1,6 @@
 import { useEffect, useState } from "react";
 import { ContractValidationError } from "@serial-workbench/contracts";
+import { HostRequestError } from "@serial-workbench/host-client";
 import type { HostConnection } from "@/lib/host-client";
 import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
 import { useI18n } from "@/providers/i18n";
@@ -7,6 +8,7 @@ import {
   prepareBrowserView,
   type BrowserViewRequest,
 } from "./browser-view-assets";
+import { readBrowserViewDerived } from "./browser-view-derived";
 import { readBrowserViewRaw } from "./browser-view-raw";
 import { PluginError } from "./plugin-error";
 
@@ -15,6 +17,7 @@ export type BrowserViewOpen = BrowserViewRequest & {
   locale: string;
   dark: boolean;
   opener?: HTMLElement;
+  forgetFeed?: () => void;
 };
 
 export function BrowserPluginView({
@@ -40,6 +43,13 @@ export function BrowserPluginView({
     let timer: ReturnType<typeof setTimeout> | undefined;
     const fail = (reason: unknown) => {
       if (signal.aborted) return;
+      if (
+        reason instanceof HostRequestError &&
+        (reason.code === "NOT_FOUND" ||
+          reason.code === "CATALOG_CHANGED" ||
+          reason.code === "UNSUPPORTED_CAPABILITY")
+      )
+        view.forgetFeed?.();
       setError(reason);
       owner.abort();
     };
@@ -47,6 +57,14 @@ export function BrowserPluginView({
     void (async () => {
       const viewConnection = await browser.openViewConnection(signal);
       signal.throwIfAborted();
+      const viewClosed = viewConnection.browser?.closed;
+      if (!viewClosed)
+        throw new ContractValidationError("Plugin view connection changed");
+      viewClosed.throwIfAborted();
+      viewClosed.addEventListener("abort", () => fail(viewClosed.reason), {
+        signal,
+        once: true,
+      });
       const [prepared, snapshot] = await Promise.all([
         prepareBrowserView(connection, view, signal),
         connection.client.query(
@@ -124,14 +142,25 @@ export function BrowserPluginView({
             signal.throwIfAborted();
             opened.postMessage({ ok: true, result: snapshot });
             setReading(true);
-            await readBrowserViewRaw(
-              viewConnection,
-              view.target,
-              opened,
-              prepared.authorize,
-              fail,
-              signal,
-            );
+            if (prepared.feed === "derived") {
+              await readBrowserViewDerived(
+                viewConnection,
+                view,
+                opened,
+                prepared.authorize,
+                fail,
+                signal,
+              );
+            } else {
+              await readBrowserViewRaw(
+                viewConnection,
+                view.target,
+                opened,
+                prepared.authorize,
+                fail,
+                signal,
+              );
+            }
           })().catch(fail);
         },
         { signal },

@@ -114,7 +114,10 @@ export function UnsavedWorkProvider({ children }: { children: ReactNode }) {
       setRevision((v) => v + 1);
   }, []);
   const unregister = useCallback((id: string) => {
-    if (!items.current.get(id)?.work.dirty) items.current.delete(id);
+    const work = items.current.get(id)?.work;
+    if (!work || (work.dirty && work.retainAfterUnmount !== false)) return;
+    items.current.delete(id);
+    if (work.dirty) setRevision((v) => v + 1);
   }, []);
   const finishScoped = useCallback((target: LeaveRequest, allowed: boolean) => {
     if (target.kind !== "scope" || activeRequest.current !== target) return;

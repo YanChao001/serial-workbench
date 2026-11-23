@@ -5,7 +5,7 @@ use crate::{
     auth::TaskAuthority,
     node_backend::{
         DispatchedTask, RegisteredHandler, TaskDerivedFuture, TaskOperationReply, TaskRawFuture,
-        TaskRawPage,
+        TaskRawPage, TaskRawResult,
     },
 };
 
@@ -126,6 +126,9 @@ impl Host {
         let read_scope = scope.clone();
         let raw_reader = self.clone();
         let raw_scope = scope.clone();
+        // 读取器与已派发任务同寿命。不要放进 TaskScope，读取授权本身持有 scope。
+        let session_events = Arc::new(tokio::sync::Mutex::new(None));
+        let session_cleanup = session_events.clone();
         let publisher = self.clone();
         let publish_scope = scope.clone();
         Ok(DispatchedTask {
@@ -136,20 +139,38 @@ impl Host {
             get_operation: Arc::new(move |selector| {
                 reader.get_task_operation(read_scope.clone(), selector)
             }),
-            read_raw: Arc::new(move |params| raw_reader.read_task_raw(raw_scope.clone(), params)),
+            read_raw: Arc::new(move |params, ordered| {
+                raw_reader.read_task_raw(
+                    raw_scope.clone(),
+                    params,
+                    ordered.then(|| session_events.clone()),
+                )
+            }),
+            close_session_events: Arc::new(move || {
+                // 归还读取者不依赖内容授权或新的读取名额。
+                session_cleanup.try_lock().map_err(|_| busy())?.take();
+                Ok(TaskRawPage::closed())
+            }),
             publish_derived: Arc::new(move |params| {
                 publisher.publish_task_derived(publish_scope.clone(), params)
             }),
         })
     }
 
-    fn read_task_raw(&self, scope: Arc<TaskScope>, params: StreamReadParams) -> TaskRawFuture {
+    fn read_task_raw(
+        &self,
+        scope: Arc<TaskScope>,
+        params: StreamReadParams,
+        session_events: Option<Arc<tokio::sync::Mutex<Option<crate::stream::SessionEventReader>>>>,
+    ) -> TaskRawFuture {
         let host = self.clone();
         Box::pin(async move {
             let owner = scope.operation.operation_id.clone();
             let reader = host.clone();
             host.run_task_data_job(&host.inner.node_raw_read_capacity, owner, async move {
-                reader.prepare_task_raw(scope, params).await
+                reader
+                    .prepare_task_raw(scope, params, session_events.as_deref())
+                    .await
             })
             .await
         })
@@ -250,6 +271,7 @@ impl Host {
         &self,
         scope: Arc<TaskScope>,
         params: StreamReadParams,
+        session_events: Option<&tokio::sync::Mutex<Option<crate::stream::SessionEventReader>>>,
     ) -> HostResult<TaskRawPage> {
         let host = self.clone();
         let target = Target {
@@ -269,18 +291,46 @@ impl Host {
             Ok((actor, stamp))
         })
         .await?;
-        let (result, lease) = self
-            .inner
-            .streams
-            .read_prepared(&actor, params)
-            .await?
-            .into_parts();
-        let auth = self.inner.auth.clone();
-        let page = TaskRawPage {
-            result,
-            lease,
-            authorize: Arc::new(move || auth.validate_grants(&stamp)),
+        let streams = &self.inner.streams;
+        let read = if let Some(session_events) = session_events {
+            let mut events = session_events.try_lock().map_err(|_| busy())?;
+            if events.is_none() {
+                *events = Some(
+                    streams
+                        .open_session_events(
+                            &actor,
+                            &crate::stream::StreamKey {
+                                session_id: params.session_id.clone(),
+                                session_epoch: params.session_epoch,
+                            },
+                        )
+                        .await?,
+                );
+            }
+            let reader = events.as_ref().ok_or_else(busy)?;
+            reader.read_prepared(params).await.map(|(page, end)| {
+                let (page, lease) = page.into_parts();
+                (TaskRawResult::SessionEvents { page, end }, lease)
+            })
+        } else {
+            streams.read_prepared(&actor, params).await.map(|page| {
+                let (page, lease) = page.into_parts();
+                (TaskRawResult::StreamRead(page), lease)
+            })
         };
+        let (result, lease) = match read {
+            Ok((page, lease)) => (Ok(page), Some(lease)),
+            // 最早保留游标也是内容权限下的源信息，错误帧同样在写入前复核。
+            Err(error) if error.code == "CURSOR_EXPIRED" => (Err(error), None),
+            Err(error) => return Err(error),
+        };
+        let auth = self.inner.auth.clone();
+        // 绑定权限戳也保留任务授权检查，writer 只需按同一戳复核一次。
+        let page = TaskRawPage::protected(
+            result,
+            Arc::new(move || auth.validate_grants(&stamp)),
+            lease,
+        );
         #[cfg(test)]
         let page = {
             let gate = self.inner.node_test_gates.task_raw_read_ready.clone();

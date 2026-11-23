@@ -29,6 +29,9 @@ mod raw_lane_tests;
 #[path = "task_worker_tests/derived_lane_tests.rs"]
 mod derived_lane_tests;
 
+#[path = "task_worker_tests/session_hook_tests.rs"]
+mod session_hook_tests;
+
 #[tokio::test(flavor = "multi_thread", worker_threads = 2)]
 #[ignore = "Requires SWB_NODE_RUNTIME_TEST_ROOT pointing to a prepared native distribution"]
 async fn native_node_task_worker_cancel_preserves_sibling_and_other_package() {

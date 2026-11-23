@@ -137,6 +137,170 @@ function requestedActions(native: HostNativePort) {
     );
 }
 
+function pluginDevice(deviceId: string): DeviceDescriptor {
+  return {
+    hostId: "host",
+    deviceId,
+    systemName: "reference.transport.tcp",
+    driver: "reference.transport",
+    fingerprint: { transport: "plugin", evidence: "unreliable" },
+    capabilities: session().capabilities,
+  };
+}
+
+it("sends plugin transport parameters only through the existing desktop connect intent", async () => {
+  const opened = { ...session(), deviceId: "plugin:loopback" };
+  const denied = pluginDevice("plugin:denied");
+  const native = port(() => [pluginDevice(opened.deviceId), denied]);
+  const connectDevice = vi
+    .fn()
+    .mockResolvedValueOnce(opened)
+    .mockResolvedValueOnce(session())
+    .mockRejectedValueOnce({ code: "PERMISSION_DENIED" });
+  const workspace = createHostWorkspace(await createHostConnection(native), {
+    connectDevice,
+    chooseFile: vi.fn(),
+    applyDocumentIntent: vi.fn(),
+  });
+  const configuration = opened.configuration;
+  const transportParams = { port: 43210 };
+  try {
+    await workspace.refresh();
+    await expect(
+      workspace.trustedConnect(
+        opened.deviceId,
+        undefined,
+        configuration,
+        transportParams,
+      ),
+    ).resolves.toEqual(opened);
+    expect(connectDevice).toHaveBeenNthCalledWith(1, "8", opened.deviceId, {
+      configuration,
+      transportParams,
+    });
+
+    await workspace.trustedConnect(
+      session().deviceId,
+      undefined,
+      configuration,
+    );
+    expect(connectDevice).toHaveBeenNthCalledWith(2, "8", session().deviceId, {
+      configuration,
+    });
+
+    await expect(
+      workspace.trustedConnect(
+        denied.deviceId,
+        undefined,
+        configuration,
+        transportParams,
+      ),
+    ).rejects.toMatchObject({ code: "PERMISSION_DENIED" });
+    expect(connectDevice).toHaveBeenCalledTimes(3);
+    expect(requestedActions(native)).not.toContain("action.invoke");
+    expect(requestedActions(native)).not.toContain("auth.authorize");
+  } finally {
+    workspace.dispose();
+  }
+});
+
+it("uses one ordinary device.open with plugin parameters per explicit attempt", async () => {
+  const opened = { ...session(), deviceId: "plugin:loopback" };
+  const device = pluginDevice(opened.deviceId);
+  const native = port(() => [device]);
+  const parsed = parseReply({
+    ok: true,
+    result: { operation: fixture("Operation") },
+  });
+  if (!parsed.ok || !("operation" in parsed.result))
+    throw new Error("operation fixture");
+  const operation = parsed.result.operation;
+  const requests = vi.mocked(native.request);
+  const original = requests.getMockImplementation();
+  if (!original) throw new Error("Missing Native request fixture");
+  let allowed = false;
+  requests.mockImplementation(async (request, generation) => {
+    if (request.method === "action.invoke") {
+      const input = request.params;
+      if (input.actionId !== "device.open") throw new Error(input.actionId);
+      if (!allowed)
+        return {
+          ok: false,
+          error: {
+            code: "PERMISSION_DENIED",
+            message: "Transport device denied",
+            retryable: false,
+          },
+        };
+      return {
+        ok: true,
+        result: {
+          operation: {
+            ...operation,
+            actionId: input.actionId,
+            requestId: input.requestId,
+            target: input.target,
+            state: "succeeded",
+            result: {
+              kind: "opened",
+              value: {
+                sessionId: opened.sessionId,
+                sessionEpoch: opened.sessionEpoch,
+                revision: opened.revision,
+                reused: false,
+              },
+            },
+          },
+        },
+      };
+    }
+    if (
+      request.method === "action.query" &&
+      request.params.actionId === "session.get"
+    )
+      return { ok: true, result: { kind: "session", value: opened } };
+    return original(request, generation);
+  });
+  const workspace = createHostWorkspace(
+    await createHostConnection(native),
+    null,
+  );
+  const transportParams = { port: 43210 };
+  const invocation = {
+    actionId: "device.open",
+    target: { hostId: "host", kind: "device", id: device.deviceId },
+    params: { configuration: opened.configuration, transportParams },
+  };
+  const attempt = () =>
+    workspace.trustedConnect(
+      device.deviceId,
+      undefined,
+      opened.configuration,
+      transportParams,
+    );
+  const invokes = () =>
+    requests.mock.calls
+      .map(([request]) => request)
+      .filter((request) => request.method === "action.invoke")
+      .map(({ params }) => params);
+  try {
+    await workspace.refresh();
+    await expect(attempt()).rejects.toMatchObject({
+      code: "PERMISSION_DENIED",
+    });
+    expect(invokes()).toEqual([expect.objectContaining(invocation)]);
+
+    allowed = true;
+    await expect(attempt()).resolves.toEqual(opened);
+    expect(invokes()).toEqual([
+      expect.objectContaining(invocation),
+      expect.objectContaining(invocation),
+    ]);
+  } finally {
+    workspace.dispose();
+  }
+});
+
 it("updates a signed plugin action after reactivation on the same desktop attachment", async () => {
   const viewAction = catalog.actions.find(
     (item) => item.actionId === "session.tx",

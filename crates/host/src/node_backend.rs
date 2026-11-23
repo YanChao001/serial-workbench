@@ -11,7 +11,10 @@ mod telemetry;
 mod transport;
 use crate::{node_packages::VerifiedNodeInstallation, node_runtime::VerifiedNodeRuntime};
 pub(crate) use derived::{SLOTS as DERIVED_SLOTS, TaskDerivedFuture};
-pub(crate) use raw::{SLOTS as RAW_READ_SLOTS, TaskRawFuture, TaskRawPage};
+pub(crate) use raw::{
+    SLOTS as RAW_READ_SLOTS, SessionRawRequest, TaskRawFuture, TaskRawPage, TaskRawRequest,
+    TaskRawResult,
+};
 use serial_workbench_core::{HostError, HostResult, NodePackageId, NodePackageRegistration};
 use std::{
     sync::{
@@ -47,7 +50,8 @@ pub(crate) struct DispatchedTask {
     pub get_operation:
         Arc<dyn Fn(serial_workbench_core::OperationGetParams) -> TaskOperationFuture + Send + Sync>,
     pub read_raw:
-        Arc<dyn Fn(serial_workbench_core::StreamReadParams) -> TaskRawFuture + Send + Sync>,
+        Arc<dyn Fn(serial_workbench_core::StreamReadParams, bool) -> TaskRawFuture + Send + Sync>,
+    pub close_session_events: Arc<dyn Fn() -> HostResult<TaskRawPage> + Send + Sync>,
     pub publish_derived:
         Arc<dyn Fn(serial_workbench_core::DerivedPublishParams) -> TaskDerivedFuture + Send + Sync>,
 }

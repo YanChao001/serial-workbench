@@ -1286,12 +1286,8 @@ impl Session {
             Ok(result) => result,
             Err(_) => {
                 let error = unavailable();
-                disconnected(
-                    &self.snapshot,
-                    &self.projections,
-                    &self.source,
-                    error.clone(),
-                );
+                disconnected(&self.snapshot, &self.projections);
+                let _ = self.source.fail_backend(error.clone());
                 Err(error.into())
             }
         }
@@ -1825,7 +1821,9 @@ fn owner_loop(
                         .lock()
                         .map_err(|_| unavailable())?
                         .disconnected(clock.mono_ns());
-                    disconnected(&snapshot, &projections, &source, error);
+                    disconnected(&snapshot, &projections);
+                    // 设备已交付此块，源无法保留字节时必须报告已知故障。
+                    let _ = source.fail_backend(error);
                     if pending.is_some() || writing.is_some() {
                         closing.store(true, Ordering::SeqCst);
                     } else {
@@ -1839,7 +1837,8 @@ fn owner_loop(
                     metrics.read_error(&error.error);
                     metrics.disconnected(clock.mono_ns());
                 }
-                disconnected(&snapshot, &projections, &source, *error.error);
+                disconnected(&snapshot, &projections);
+                let _ = source.fail_backend(*error.error);
                 if pending.is_some() || writing.is_some() {
                     closing.store(true, Ordering::SeqCst);
                 } else {
@@ -1899,9 +1898,7 @@ fn owner_loop(
             );
         }
     }
-    if requested_close {
-        let _ = source.close();
-    }
+    let _ = source.finish_backend_close(&result, requested_close);
     if let Some(reply) = close_reply {
         let _ = reply.send(result.clone());
     }
@@ -1917,12 +1914,7 @@ fn backend_deadline(clock: &dyn Clock, wait: Duration) -> u64 {
         .saturating_add(wait.as_nanos().min(u128::from(u64::MAX)) as u64)
 }
 
-fn disconnected(
-    snapshot: &Mutex<SessionSnapshot>,
-    projections: &ProjectionStore,
-    source: &StreamSource,
-    error: HostError,
-) {
+fn disconnected(snapshot: &Mutex<SessionSnapshot>, projections: &ProjectionStore) {
     if let Ok(mut state) = snapshot.lock() {
         state.state = SessionState::Disconnected;
         if !matches!(
@@ -1942,7 +1934,6 @@ fn disconnected(
             let _ = projections.commit(&scope, event, value.clone(), value);
         }
     }
-    let _ = source.fail(error);
 }
 pub(crate) fn source_meta(identity: &HostIdentity, clock: &dyn Clock, revision: U64) -> SourceMeta {
     SourceMeta {

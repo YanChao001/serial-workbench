@@ -46,7 +46,9 @@ HTTP 用例以实际 Virtual Echo 核对获准的写入、同一请求重试、�
 
 配对浏览器定向验证先运行 `pnpm build`，用 `cargo build --locked -p serial-workbench-host -p serial-workbench-cli -p serial-workbench-mcp --bins` 准备同源程序，再运行 `node e2e/paired-browser.mjs <Host> <CLI> dist <新证据目录> <MCP>`。脚本经本机继承管道启动独立 Host，显式授权临时浏览器身份。无头 Chromium 验证错码拒绝、虚拟串口回显、保存布局及刷新后的会话代次，CLI 对照工作区与共享设置。传入 MCP 程序时，同一场景用两组命名身份和两个窗口复验跟随范围、查询轮询、暂停及草稿保留。实际设备查询在草稿编辑期间等待，离开输入框后只在绑定窗口打开目录指定面板，查询轮询不重新打开。暂停期间从实际 MCP 发送并经 Virtual Echo 回显。浏览器发起接管后从 CLI 核对等待确认的客户端与串口。关闭请求窗口后核对清理及原写入权。失败时 WebSocket 诊断记录消息类型、动作和结果码。
 
-签名终端使用同源正式工作台资源、签名归档与固定 Node。在无头 Chromium 配对只读身份后，从「插件」页打开实际签名终端。设置 `SWB_TEST_BROWSER_ASSETS` 为 `dist/`、`SWB_TEST_BROWSER_NODE_BIN` 为固定 Node 程序、`SWB_TEST_SIGNED_TERMINAL_RECEIPT` 为签名收据、`SWB_NODE_RUNTIME_TEST_ROOT` 为准备好的 runtime 目录、`SWB_TEST_BROWSER_TERMINAL_OUTPUT` 为新的证据目录。使用绝对路径，运行 `cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_opens_and_retires_a_signed_terminal_view -- --ignored --nocapture`。测试核对包摘要、opaque frame、实际 Virtual Echo 的原始回显、关页后焦点和读取者回收、重开补读、实测撤销执行信任和原会话继续运行。浏览器签名终端支持相对路径的预构建普通脚本和样式，配对浏览器派生图表仍待接线与验收。
+签名终端使用同源正式工作台资源、签名归档与固定 Node。在无头 Chromium 配对只读身份后，从「插件」页打开实际签名终端。设置 `SWB_TEST_BROWSER_ASSETS` 为 `dist/`、`SWB_TEST_BROWSER_NODE_BIN` 为固定 Node 程序、`SWB_TEST_SIGNED_TERMINAL_RECEIPT` 为签名收据、`SWB_NODE_RUNTIME_TEST_ROOT` 为准备好的 runtime 目录、`SWB_TEST_BROWSER_TERMINAL_OUTPUT` 为新的证据目录。使用绝对路径，运行 `cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_opens_and_retires_a_signed_terminal_view -- --ignored --nocapture`。测试核对包摘要、opaque frame、实际 Virtual Echo 的原始回显、关页后焦点和读取者回收、重开补读、实测撤销执行信任和原会话继续运行。浏览器签名终端支持相对路径的预构建普通脚本和样式。
+
+签名图表复用同一配对夹具。按[后台采样](#图表参考包后台采样)准备签名图表与固定 Node，另设 `SWB_TEST_SIGNED_CHART_RECEIPT` 和新的 `SWB_TEST_BROWSER_CHART_OUTPUT` 绝对路径，运行 `cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_reads_and_retires_a_signed_chart_view -- --ignored --nocapture`。用已签名的视图接收 Virtual Echo 派生样本，核对专属 Raw 页面确认、关页后采样继续并重开补读、浏览器与本机 Host 的样本及源字节范围一致。最后撤销执行信任，检查旧视图释放且原工作台连接与串口会话仍可用。
 
 已运行的 Host 用 `cargo test --locked -p serial-workbench-host --test browser_pairing` 验证本机配对、只读授权、撤销和接管。撤销后确认两个浏览器连接关闭，再在同一串口会话核对桌面发送的终态。接管用实际 WebSocket 发起，核对浏览器不能自行批准，拒绝及断开后原写入权保留，批准后只有所选 MCP 失去当前串口写入权。桌面设置的无头用例为 `pnpm test:ui e2e/browser/browser-access.spec.ts --workers=1`，验证配对与停用、窄窗口和焦点，以及明确显示端口和客户端后传递当前确认编号。正式桌面验收从实际设置页生成配对码，用该候选安装资源打开浏览器，再从真实桌面窗口确认浏览器发起的接管。
 
@@ -270,6 +272,12 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 用例安装实际签名参考包，通过标准 Host IPC 对批准的插件设备执行打开、写入和关闭。独立本机 TCP 对端核对实际二进制字节，Raw 核对 Host 实例、会话代次和来源。未经授权的打开不能到达对端，撤销用户读取授权终止其 Raw 交付。显式关闭、重新打开的新会话代次和停用后的实际对端断开分别核对。故障用例单独签名测试包装，实际写入后在返回线路回执前退出所属 Node 进程。TCP 对端核对已到达的字节和关闭，Host 核对派发区间仍为 `unknown`、卸下设备目录条目并拒绝过期操作。四目标 CI 的原生运行时检查包含两条用例。桌面参数输入、跨机适配和发行候选证据沿用各阶段的专项。
 
+桌面参数入口运行 `pnpm test:ui e2e/browser/plugin-transport.spec.ts`，检查显式提交、失败保留输入和成功清理草稿登记。Host 参数校验和实际 TCP 对端继续通过签名传输用例检查。
+
+### 有序会话钩子
+
+按[签名运行时](#签名运行时与-sdk)准备资源后，运行 `cargo test --locked -p serial-workbench-host --lib native_node_task_session_hooks_ -- --ignored --nocapture`。签名任务通过 Virtual Echo 核对原代次的打开、实际 RX、最终 TX 回执与关闭，并在回调失败时验证 reader 名额释放。运行 `cargo test --locked -p serial-workbench-host --test session_lifecycle --test stream_budget` 覆盖底层故障、未结算 TX、撤权重授与旧代次的收尾。 `node --test scripts/node-backend-cancellation.test.mjs` 复验迟到页、租约释放及缺口续读。
+
 ## 安装与发行验收
 
 Windows 更新准备的原生测试用 `cargo test --locked -p serial-workbench --lib updater::host::tests -- --test-threads=1 --nocapture`。用例在独立 profile 启动真实旧进程，观察正常退出、已释放锁时的等待和非零退出。关闭进程句柄后重试，检查原代次的失败仍会拒绝准备。
@@ -280,7 +288,13 @@ Windows 更新准备的原生测试用 `cargo test --locked -p serial-workbench 
 
 Windows T14 同卷套件切换的软件专项用 `cargo test --locked -p serial-workbench-ipc --lib install_switch::tests -- --nocapture`。夹具使用独立 profile 和模拟的桌面、Host、CLI、MCP、Node 文件。核对写入意图受阻、归档旧套件后中断、新套件换入后提交前中断、处于 Windows 占用状态的目录无法移动、重新取得锁后可以恢复，以及摘要篡改。收据记录原身份、代次、profile 字节核对结果、两个套件的完整摘要及恢复结果。
 
-安装协调进程先验证两套产物的完整摘要并记录操作 ID 和安装路径，经本机 Rust 接口 `InstallSwitch::open` 持有实例锁并核对旧 Host 退出，再调用 `replace`。重启后用同一操作 ID 和安装路径调用 `recover`。调用方负责在换入前排除其他程序写入安装目录，并在启动任何产品进程前完成恢复。当前接口尚未接入 NSIS。实际接入须等待安装器进程退出，并覆盖注册表与快捷方式的回滚。用两个真实安装包验证进程监督、锁交接和终态。
+安装协调进程先验证两套产物的完整摘要并记录操作 ID 和安装路径，经本机 Rust 接口 `InstallSwitch::open` 持有实例锁并核对旧 Host 退出，再调用 `replace`。重启后用同一操作 ID 和安装路径调用 `recover`。调用方负责在换入前排除其他程序写入安装目录，并在启动任何产品进程前完成恢复。当前用户版 NSIS 的暂存入口只接受同一条 `/S /SWB-STAGE` 参数组合，套件写入安装器自身的 `.swb-stage-<operation>` 目录。启动前该目录仅含协调进程已验签的安装器。实际接入须等待安装器退出，收回该份安装器副本并验证剩余目录摘要，再执行套件切换，覆盖注册表与快捷方式的提交和回滚。用两个真实安装包验证进程监督、锁交接和终态。
+
+NSIS 暂存预检在[手动 CI](../.github/workflows/ci.yml)选择 `runtime_preflight=true`、`runtime_preflight_target=x86_64-pc-windows-msvc` 和 `runtime_preflight_suite=windows-nsis-stage`。隔离 runner 编译本候选的未签名 NSIS，用相同工具链运行 `pnpm test:installer --interactive`。暂存夹具调用生产初始化函数，检查空操作目录写入、已有文件保护和错误目录名拒绝。实际安装器另在独立操作目录运行，核对退出码、Host/CLI/MCP 与 Node 的固定摘要，以及安装相关注册表项的前后状态。`installer-layout.log` 保留安装器、桌面程序、卸载器和各组件的摘要。持锁换入、回滚与两个版本的实际升级各自验证。
+
+候选 `efce804` 的隔离 Windows 收据覆盖 8.3 短名展开、重定向目录拒绝和真实安装器的组件摘要。 [Windows NSIS 暂存收据](https://github.com/YanChao001/serial-workbench/actions/runs/45162109634/artifacts/14812661628)
+
+隔离 Windows 环境中，准备 Tauri 的 NSIS 编译器缓存后运行 `pnpm test:installer --interactive`。暂存夹具嵌入生产入口，在新目录执行并核对套件文件。已含其他文件和命名不符的目录都必须拒绝，保留原文件和安装器副本。此场景不写入已安装程序和注册信息。
 
 M6 用发行候选在预先未安装 WebView2 Runtime 的独立 Windows x64 环境验证 NSIS。将本轮发行候选的安装包和同源验收材料转移到环境中，记录 WebView2 的系统和当前用户注册信息、网络状态及安装前后的版本。断网状态下实际安装并首次启动，使用已安装的程序运行三个签名参考场景。记录系统版本、安装退出码、组件摘要、首次打开窗口及用例结果。M2 和 M3 验证 Windows 安装包内置的离线 Runtime、固定 Node 安装布局和软件参考场景。最低系统和正式发行签名按 M6 矩阵验收。 [Microsoft 离线部署](https://learn.microsoft.com/en-us/microsoft-edge/webview2/concepts/distribution#offline-deployment)
 

@@ -74,6 +74,9 @@ ${StrLoc}
 Var PassiveMode
 Var UpdateMode
 Var NoShortcutMode
+Var StageOnly
+Var StageDirHandle
+Var StageRejectCode
 Var WixMode
 Var OldMainBinaryName
 Var SerialWorkbenchHeaderBitmap
@@ -726,7 +729,153 @@ FunctionEnd
 !endif
 ; 品牌定制结束
 
+Function SerialWorkbenchRejectStage
+  SetErrorLevel $StageRejectCode
+  Quit
+FunctionEnd
+
+Function SerialWorkbenchStageInit
+  !if "${INSTALLMODE}" == "currentUser"
+    StrCpy $StageRejectCode 3
+    ${IfNot} ${Silent}
+    ${OrIf} $INSTDIR != "${PLACEHOLDER_INSTALL_DIR}"
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+
+    StrCpy $StageRejectCode 4
+    ${GetFileName} "$EXEDIR" $0
+    StrCpy $1 $0 11
+    StrCpy $0 $0 "" 11
+    StrLen $2 $0
+    ${If} $1 != ".swb-stage-"
+    ${OrIf} $2 <> 36
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+
+    ; 操作 ID 须与 Rust RequestId 的小写 UUID 一致。
+    StrCpy $StageRejectCode 5
+    System::Alloc 16
+    Pop $1
+    ${If} $1 = 0
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    System::Call 'ole32::CLSIDFromString(w "{$0}", p r1)i.r2'
+    ${If} $2 <> 0
+      System::Free $1
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    System::Call 'ole32::StringFromGUID2(p r1, w .r2, i ${NSIS_MAX_STRLEN})i.r3'
+    System::Free $1
+    ${If} $3 <> 39
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    StrCpy $2 $2 36 1
+    ${StrCase} $2 $2 "L"
+    StrCmpS $0 $2 stage_open_directory
+    Call SerialWorkbenchRejectStage
+
+    stage_open_directory:
+    StrCpy $StageRejectCode 6
+    ; 枚举权限让句柄参与写入共享判断，排除删除共享直到进程退出。
+    System::Call 'kernel32::CreateFileW(w "$EXEDIR", i 0x81, i 3, p 0, i 3, i 0x02200000, p 0)p.s'
+    Pop $StageDirHandle
+    ${If} $StageDirHandle = -1
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    System::Alloc 8
+    Pop $0
+    ${If} $0 = 0
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    System::Call 'kernel32::GetFileInformationByHandleEx(p $StageDirHandle, i 9, p r0, i 8)i.r1'
+    System::Call '*$0(i .r2, i)'
+    System::Free $0
+    IntOp $2 $2 & 0x410
+    ${If} $1 = 0
+    ${OrIf} $2 <> 0x10
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+
+    ; InstallPaths 可带 Win32 磁盘前缀。DOS 地址仍须对应同一物理目录。
+    StrCpy $StageRejectCode 7
+    StrCpy $3 $EXEDIR
+    StrCpy $2 $3 4
+    ${If} $2 == "\\?\"
+      StrCpy $3 $3 "" 4
+    ${EndIf}
+    ; NSIS 的 $EXEDIR 可能含 8.3 短名。先展开短名，再比较句柄解析的物理路径。
+    System::Call 'kernel32::GetLongPathNameW(w r3, w .r5, i ${NSIS_MAX_STRLEN})i.r6 ?e'
+    Pop $4
+    ${If} $6 = 0
+    ${OrIf} $6 >= ${NSIS_MAX_STRLEN}
+      StrCpy $StageRejectCode 11
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    StrCpy $3 $5
+    System::Call 'kernel32::GetFinalPathNameByHandleW(p $StageDirHandle, w .r0, i ${NSIS_MAX_STRLEN}, i 0)i.r1 ?e'
+    Pop $4
+    StrCpy $2 $3 2 1
+    ${If} $1 = 0
+    ${OrIf} $1 >= ${NSIS_MAX_STRLEN}
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    ${If} $2 != ":\"
+      StrCpy $StageRejectCode 9
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    ${If} $0 != "\\?\$3"
+      StrCpy $StageRejectCode 10
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+
+    StrCpy $StageRejectCode 8
+    StrCpy $INSTDIR $3
+    ClearErrors
+    FindFirst $0 $1 "$INSTDIR\*"
+    ${If} ${Errors}
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    StrCpy $2 0
+    ${While} $1 != ""
+      ${If} $1 == "$EXEFILE"
+        IntOp $2 $2 + 1
+      ${ElseIf} $1 != "."
+      ${AndIf} $1 != ".."
+        FindClose $0
+        Call SerialWorkbenchRejectStage
+      ${EndIf}
+      ClearErrors
+      FindNext $0 $1
+      ${If} ${Errors}
+        ${ExitWhile}
+      ${EndIf}
+    ${EndWhile}
+    FindClose $0
+    ${If} $2 <> 1
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+
+    ; 完成校验后，允许安装节写入暂存套件。
+    StrCpy $StageOnly 1
+  !else
+    Call SerialWorkbenchRejectStage
+  !endif
+FunctionEnd
+
 Function .onInit
+  ${GetFileName} "$EXEDIR" $0
+  StrCpy $0 $0 11
+  ${GetOptions} $CMDLINE "/SWB-STAGE" $1
+  ${If} $0 == ".swb-stage-"
+  ${OrIfNot} ${Errors}
+    StrCpy $StageRejectCode 2
+    ${GetParameters} $1
+    StrCmpS $1 "/S /SWB-STAGE" +2
+    Call SerialWorkbenchRejectStage
+    Call SerialWorkbenchStageInit
+    Return
+  ${EndIf}
+
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
@@ -802,6 +951,15 @@ Function .onInit
 FunctionEnd
 
 Section WebView2
+  ${If} $StageOnly = 1
+    Goto webview2_section_end
+  ${EndIf}
+  ${GetFileName} "$INSTDIR" $0
+  StrCpy $0 $0 11
+  ${If} $0 == ".swb-stage-"
+    Call SerialWorkbenchRejectStage
+  ${EndIf}
+
   ; 已安装 WebView2 时跳过本节
   ${If} ${RunningX64}
     ReadRegStr $4 HKLM "SOFTWARE\WOW6432Node\Microsoft\EdgeUpdate\Clients\${WEBVIEW2APPGUID}" "pv"
@@ -894,16 +1052,21 @@ Section WebView2
       ${EndIf}
     !endif
   ${EndIf}
+webview2_section_end:
 SectionEnd
 
 Section Install
+  ${If} $StageOnly = 1
+    ClearErrors
+  ${EndIf}
   SetOutPath $INSTDIR
 
-  !ifmacrodef NSIS_HOOK_PREINSTALL
-    !insertmacro NSIS_HOOK_PREINSTALL
-  !endif
-
-  !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  ${If} $StageOnly <> 1
+    !ifmacrodef NSIS_HOOK_PREINSTALL
+      !insertmacro NSIS_HOOK_PREINSTALL
+    !endif
+    !insertmacro CheckIfAppIsRunning "$INSTDIR\${MAINBINARYNAME}.exe" "${PRODUCTNAME}"
+  ${EndIf}
 
   ; 复制主可执行文件
   File "${MAINBINARYSRCPATH}"
@@ -920,6 +1083,17 @@ Section Install
   {{#each binaries}}
     File /a "/oname={{this}}" "{{no-escape @key}}"
   {{/each}}
+
+  ${If} $StageOnly = 1
+    ${If} ${Errors}
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    WriteUninstaller "$INSTDIR\uninstall.exe"
+    ${If} ${Errors}
+      Call SerialWorkbenchRejectStage
+    ${EndIf}
+    Goto install_section_end
+  ${EndIf}
 
   ; 创建文件关联
   {{#each file_associations as |association| ~}}
@@ -1002,9 +1176,14 @@ Section Install
   ${If} $PassiveMode = 1
     SetAutoClose true
   ${EndIf}
+install_section_end:
 SectionEnd
 
 Function .onInstSuccess
+  ${If} $StageOnly = 1
+    Return
+  ${EndIf}
+
   ; 仅在静默和被动模式中读取 /R 参数；
   ; 图形安装器通过页面选项控制是否启动应用
   ${If} $PassiveMode = 1

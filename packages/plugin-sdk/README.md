@@ -71,6 +71,8 @@ const page = await task.streams.read({
 
 后续页从 `page.nextEventSeq` 开始。`CURSOR_EXPIRED` 返回最早可读游标，解析状态须在缺口处重置。最多同时等待四个 Raw 请求，额度用完返回 `HOST_BUSY`。任务取消后停止等待，实际读取工作和页内存随 Host 结算释放。
 
+后台动作也可以等待 `task.streams.followSession(params, hooks)`。参数沿用 `StreamReadParams`，同一任务一次只能跟随一个精确会话代次，占用四个 Raw 名额中的一个。SDK 按事件序号逐一等待回调。`onConnect` 只在所读历史中遇到实际打开边界时调用。`onReceive` 接收 RX 事件，`onSend` 接收带已接纳及不确定范围的 TX 结算。来源终态会在最后一批事件之后送达 `onDisconnect`。`onError` 接收来源缺口、留存游标过期、已丢失的 TX 结算证据或后端断连错误。解析器须在缺口时重置，留存过期则在回调完成后从 Host 安全游标接续。任务取消、权限失效或回调异常会停止跟随和释放读取器。跟随只观察事件。
+
 从原始数据生成的值可用 `task.streams.publishDerived({ sources, quality, unit, value })` 发布。`sources` 记录同一会话代次的实际事件区间，可附方向和字节区间。Host 核对区间并填入本次执行的处理器版本和配置摘要。发布最多四个在途请求，独立于 Raw 读取。回执的 `operationId` 和 `position` 可用于定位已留存样本。客户端通过 `stream.derivedRead` 按自己的游标接续，仍需来源会话的 `content.read`。
 
 包内 Web UI 可以从 `@serial-workbench/plugin-sdk/web` 调用 `connectReadOnlyView({ onSession, onBatch, onError })`。桌面交付本次打开操作所绑定的会话快照，以及带生成类型的 `RawBatch`。SDK 在 `onBatch` 完成后确认批次。页面卸载时释放消息端口，也可用返回值的 `close()` 主动释放。返回值提供打开时的 `locale` 和 `dark`。设备数据应使用文本节点或相应的安全绘制接口。

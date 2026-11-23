@@ -5,6 +5,7 @@ import { isAbsolute, relative, resolve, sep } from "node:path";
 import { realpathSync } from "node:fs";
 import { registerHooks } from "node:module";
 import { Worker } from "node:worker_threads";
+import { setTimeout as wait } from "node:timers/promises";
 
 // 控制 stdout 独占；插件常规日志走独立的有界 stderr 读者。
 globalThis.console = new Console({
@@ -113,6 +114,7 @@ const rawLane = {
   maxReply: 256 * 1024 + 4096,
   sequence: 0n,
   replies: new Map(),
+  followers: new Set(),
 };
 const derivedLane = {
   flag: DERIVED_FLAG,
@@ -356,6 +358,7 @@ function beginTaskCleanup(task) {
 
 function stopTask(task, interrupted = false) {
   task.admissionClosed = true;
+  rawLane.followers.delete(task);
   task.workerInterrupted ||= interrupted;
   if (interrupted) beginTaskCleanup(task);
   task.controller.abort();
@@ -415,9 +418,25 @@ function taskOperations(message, task) {
   });
 }
 
-async function exchangeData(message, task, params, lane) {
+function dataSlots(lane) {
+  let occupied = lane.replies.size;
+  if (lane === rawLane) {
+    // A follower keeps one of the existing slots between pages, including for release.
+    occupied += lane.followers.size;
+    for (const pending of lane.replies.values()) {
+      if (pending.rawKind && lane.followers.has(pending.task)) occupied--;
+    }
+  }
+  return occupied;
+}
+
+async function exchangeData(message, task, params, lane, rawKind) {
   checkTask(message, task);
-  if (lane.replies.size >= DATA_SLOTS)
+  const available = () =>
+    rawKind
+      ? rawLane.followers.has(task) && lane.replies.size < DATA_SLOTS
+      : dataSlots(lane) < DATA_SLOTS;
+  if (!available())
     throw progressError("HOST_BUSY", "Task stream request capacity is full");
   let encoded;
   try {
@@ -430,8 +449,11 @@ async function exchangeData(message, task, params, lane) {
   if (Buffer.byteLength(encoded) > lane.maxRequest)
     throw progressError("LIMIT_EXCEEDED", "Task stream frame budget exceeded");
   checkTask(message, task);
-  if (lane.replies.size >= DATA_SLOTS || lane.sequence === MAX_U64)
+  if (!available() || lane.sequence === MAX_U64)
     throw progressError("HOST_BUSY", "Task stream request capacity is full");
+  const parsed = JSON.parse(encoded);
+  if (lane === rawLane && !rawKind && parsed && Object.hasOwn(parsed, "kind"))
+    throw progressError("INVALID_ARGUMENT", "Invalid raw read parameters");
   const requestId = String(++lane.sequence);
   const body = Buffer.from(
     JSON.stringify({
@@ -439,22 +461,216 @@ async function exchangeData(message, task, params, lane) {
       parentRequestId: message.requestId,
       parentOperationId: message.parentOperationId,
       taskContext: message.taskContext,
-      params: JSON.parse(encoded),
+      params:
+        rawKind === "session_events"
+          ? { kind: rawKind, params: parsed }
+          : rawKind === "close_session_events"
+            ? { kind: rawKind }
+            : parsed,
     }),
   );
   if (body.length > lane.maxRequest)
     throw progressError("LIMIT_EXCEEDED", "Task stream frame budget exceeded");
   checkTask(message, task);
   return new Promise((resolve, reject) => {
-    lane.replies.set(requestId, { resolve, reject, task, message });
+    lane.replies.set(requestId, { resolve, reject, task, message, rawKind });
     writeFrame(body, lane.flag);
   });
+}
+
+function sameSessionCursor(cursor, source) {
+  return (
+    cursor &&
+    cursor.hostId === source.hostId &&
+    cursor.instanceEpoch === source.instanceEpoch &&
+    cursor.scopeId === source.scopeId &&
+    progressU64(cursor.position)
+  );
+}
+
+function checkSessionPage(page, source, start) {
+  let next = BigInt(start);
+  for (const event of page.events) {
+    if (
+      !event ||
+      event.hostId !== source.hostId ||
+      event.instanceEpoch !== source.instanceEpoch ||
+      event.sessionId !== source.sessionId ||
+      event.sessionEpoch !== source.sessionEpoch ||
+      event.eventSeq !== String(next) ||
+      (event.kind === "tx" &&
+        (event.payload?.sessionId !== source.sessionId ||
+          event.payload?.sessionEpoch !== source.sessionEpoch))
+    )
+      throw progressError(
+        "PROTOCOL_ERROR",
+        "Session event source or order changed",
+      );
+    next++;
+  }
+  if (
+    page.nextEventSeq !== String(next) ||
+    (page.hasMore && page.events.length === 0)
+  )
+    throw progressError(
+      "PROTOCOL_ERROR",
+      "Session event cursor did not advance",
+    );
+  if (page.end !== undefined) {
+    const { after, reason, txEvidenceGap } = page.end ?? {};
+    if (
+      page.hasMore ||
+      !sameSessionCursor(after, source) ||
+      BigInt(after.position) + 1n !== next ||
+      (reason?.kind !== "closed" && reason?.kind !== "backend_fault") ||
+      (reason.code !== undefined && typeof reason.code !== "string") ||
+      typeof txEvidenceGap !== "boolean"
+    )
+      throw progressError("PROTOCOL_ERROR", "Invalid session stream ending");
+  }
+}
+
+async function followSession(message, task, params, hooks) {
+  checkTask(message, task);
+  if (
+    !params ||
+    typeof params !== "object" ||
+    !hooks ||
+    typeof hooks !== "object"
+  )
+    throw progressError("INVALID_ARGUMENT", "Invalid session hooks");
+  const { sessionId, sessionEpoch, startEventSeq, maxEvents, maxBytes } =
+    params;
+  const { hostId, instanceEpoch } = message.call;
+  if (
+    typeof hostId !== "string" ||
+    !progressU64(instanceEpoch) ||
+    typeof sessionId !== "string" ||
+    sessionId.length === 0 ||
+    !progressU64(sessionEpoch) ||
+    !progressU64(startEventSeq) ||
+    startEventSeq === "0"
+  )
+    throw progressError("INVALID_ARGUMENT", "Invalid session event identity");
+  const { onConnect, onDisconnect, onReceive, onSend, onError } = hooks;
+  if (
+    typeof onError !== "function" ||
+    [onConnect, onDisconnect, onReceive, onSend].some(
+      (callback) => callback !== undefined && typeof callback !== "function",
+    )
+  )
+    throw progressError("INVALID_ARGUMENT", "Invalid session hooks");
+  checkTask(message, task);
+  if (rawLane.followers.has(task) || dataSlots(rawLane) >= DATA_SLOTS)
+    throw progressError("HOST_BUSY", "No available session event reader slot");
+  rawLane.followers.add(task);
+
+  const source = {
+    hostId,
+    instanceEpoch,
+    sessionId,
+    sessionEpoch,
+    scopeId: "raw:" + sessionId + ":" + sessionEpoch,
+  };
+  const deliver = async (callback, value) => {
+    checkTask(message, task);
+    await callback?.(value);
+    checkTask(message, task);
+  };
+  let cursor = startEventSeq;
+  let failure;
+  let connected = false;
+  try {
+    for (;;) {
+      let page;
+      try {
+        page = await exchangeData(
+          message,
+          task,
+          {
+            sessionId,
+            sessionEpoch,
+            startEventSeq: cursor,
+            maxEvents,
+            maxBytes,
+          },
+          rawLane,
+          "session_events",
+        );
+      } catch (error) {
+        checkTask(message, task);
+        if (error?.code !== "CURSOR_EXPIRED") throw error;
+        const oldestCursor = error.details?.oldestCursor;
+        if (
+          !sameSessionCursor(oldestCursor, source) ||
+          BigInt(oldestCursor.position) < BigInt(cursor) ||
+          BigInt(oldestCursor.position) === MAX_U64
+        )
+          throw progressError("PROTOCOL_ERROR", "Invalid session stream gap");
+        const next = String(BigInt(oldestCursor.position) + 1n);
+        await deliver(onError, { kind: "cursor_expired", oldestCursor });
+        cursor = next;
+        continue;
+      }
+      checkTask(message, task);
+      checkSessionPage(page, source, cursor);
+      for (const event of page.events) {
+        switch (event.kind) {
+          case "lifecycle":
+            if (event.payload?.state === "open" && !connected) {
+              connected = true;
+              await deliver(onConnect, event);
+            }
+            break;
+          case "rx":
+            await deliver(onReceive, event);
+            break;
+          case "tx":
+            await deliver(onSend, event);
+            break;
+          case "gap":
+            await deliver(onError, { kind: "source_gap", event });
+            break;
+        }
+      }
+      cursor = page.nextEventSeq;
+      if (page.end !== undefined) {
+        const end = Object.freeze(page.end);
+        Object.freeze(end.after);
+        Object.freeze(end.reason);
+        if (end.txEvidenceGap)
+          await deliver(onError, { kind: "tx_evidence_gap", end });
+        if (end.reason.kind === "backend_fault")
+          await deliver(onError, { kind: "backend_fault", end });
+        await deliver(onDisconnect, end);
+        break;
+      }
+      if (!page.hasMore)
+        await wait(25, undefined, { signal: task.controller.signal });
+    }
+  } catch (error) {
+    failure = { error };
+  }
+  try {
+    if (!task.admissionClosed && !task.controller.signal.aborted)
+      await exchangeData(message, task, null, rawLane, "close_session_events");
+  } catch (error) {
+    failure ??= { error };
+  } finally {
+    rawLane.followers.delete(task);
+  }
+  if (task.controller.signal.aborted)
+    throw progressError("CANCELLED", "Session event reader was cancelled");
+  if (failure) throw failure.error;
 }
 
 function taskStreams(message, task) {
   return Object.freeze({
     read(params) {
       return exchangeData(message, task, params, rawLane);
+    },
+    followSession(params, hooks) {
+      return followSession(message, task, params, hooks);
     },
     publishDerived(params) {
       return exchangeData(message, task, params, derivedLane);
@@ -1005,6 +1221,7 @@ function invoke(message) {
       };
     } finally {
       task.admissionClosed = true;
+      rawLane.followers.delete(task);
       if (response?.kind !== "action_completed" && task.workers.size > 0) {
         beginTaskCleanup(task);
         stopTaskWorkers(task, "cleanup");
@@ -1237,9 +1454,12 @@ function dispatchData(message, lane) {
     if (!result) process.exit(1);
     const validResult =
       lane === rawLane
-        ? Array.isArray(result.events) &&
-          progressU64(result.nextEventSeq) &&
-          typeof result.hasMore === "boolean"
+        ? pending.rawKind === "close_session_events"
+          ? result.kind === "session_events_closed"
+          : (!pending.rawKind || result.kind === pending.rawKind) &&
+            Array.isArray(result.events) &&
+            progressU64(result.nextEventSeq) &&
+            typeof result.hasMore === "boolean"
         : result.operationId === pending.message.parentOperationId &&
           progressU64(result.position) &&
           result.position !== "0";

@@ -1,10 +1,12 @@
 //! 原始源序号与独立 reader 的唯一拥有者；wire 编码只发生消费边界。
-use crate::auth::{AuthService, AuthenticatedActor, HostIdentity};
+use crate::auth::{AuthService, AuthenticatedActor, GrantStamp, HostIdentity};
 use serial_workbench_core::*;
 use std::{
     collections::HashMap,
     sync::{Arc, Mutex},
 };
+use tokio::sync::{OwnedSemaphorePermit, Semaphore};
+
 mod credit;
 mod provenance;
 mod reader;
@@ -25,11 +27,41 @@ struct HubInner {
     source_budget: Arc<Budget>,
     reader_budget: Arc<Budget>,
     readers: Mutex<HashMap<Id, std::sync::Weak<reader::ReaderInner>>>,
+    reader_permits: Arc<Semaphore>,
 }
 #[derive(Clone)]
 pub struct StreamSource(Arc<SourceInner>);
-pub struct PreparedTxIntent {
+/// 显式读取精确会话代次的事件及其已观测终态。
+pub struct SessionEventReader {
+    hub: StreamHub,
     source: Arc<SourceInner>,
+    actor: AuthenticatedActor,
+    stamp: Option<GrantStamp>,
+    _permit: OwnedSemaphorePermit,
+    _lease: RawMemoryLease,
+}
+
+#[derive(Clone, Debug, PartialEq, Eq, serde::Serialize)]
+#[serde(tag = "kind", rename_all = "snake_case")]
+pub enum SessionEndReason {
+    Closed,
+    BackendFault {
+        #[serde(skip_serializing_if = "Option::is_none")]
+        code: Option<Id>,
+    },
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SessionSourceEnd {
+    pub after: Cursor,
+    pub reason: SessionEndReason,
+    /// 已发布的 TX 意图失去结算所有者时保留缺口。
+    pub tx_evidence_gap: bool,
+}
+
+pub struct PreparedTxIntent {
+    pending: ring::PendingTx,
     meta: SourceMeta,
     allocation: Arc<ring::Allocation>,
     event_cost: usize,
@@ -37,7 +69,7 @@ pub struct PreparedTxIntent {
 pub struct TxIntentRef {
     source: Arc<SourceInner>,
     event: Arc<SourceEvent>,
-    completed: Mutex<Option<Arc<SourceEvent>>>,
+    evidence: Mutex<ring::TxEvidence>,
 }
 impl TxIntentRef {
     pub(crate) fn write_payload(&self) -> WritePayload {
@@ -128,6 +160,9 @@ impl StreamHub {
                 source_budget: Budget::new(limits.total_source_bytes),
                 reader_budget: Budget::new(limits.total_reader_bytes),
                 readers: Mutex::new(HashMap::new()),
+                reader_permits: Arc::new(Semaphore::new(
+                    limits.max_readers.min(Semaphore::MAX_PERMITS),
+                )),
             }),
         }
     }
@@ -181,12 +216,75 @@ impl StreamHub {
         sources.insert(scope, source.clone());
         Ok(StreamSource(source))
     }
+    fn source(&self, session_id: &Id, session_epoch: U64) -> HostResult<Arc<SourceInner>> {
+        self.inner
+            .sources
+            .lock()
+            .map_err(|_| busy())?
+            .values()
+            .find(|source| {
+                &source.key.session_id == session_id && source.key.session_epoch == session_epoch
+            })
+            .cloned()
+            .ok_or_else(|| HostError::new("EPOCH_MISMATCH", "Raw session epoch is not available"))
+    }
+
+    async fn authorize_read(
+        &self,
+        actor: &AuthenticatedActor,
+        source: &SourceInner,
+        fixed_stamp: Option<GrantStamp>,
+    ) -> HostResult<Option<GrantStamp>> {
+        let auth = self.inner.auth.clone();
+        let actor = actor.clone();
+        let target = source.target.clone();
+        tokio::task::spawn_blocking(move || {
+            let authorization = auth.snapshot(&actor)?;
+            if let Some(stamp) = &fixed_stamp {
+                authorization.validate_grants(stamp)?;
+            }
+            let stamp = fixed_stamp.or_else(|| authorization.capture_grants());
+            authorization.require("content.read", &target)?;
+            Ok(stamp)
+        })
+        .await
+        .map_err(|_| busy())?
+    }
+
+    fn reader_permit(&self) -> HostResult<OwnedSemaphorePermit> {
+        self.inner
+            .reader_permits
+            .clone()
+            .try_acquire_owned()
+            .map_err(|_| limit())
+    }
+
+    pub async fn open_session_events(
+        &self,
+        actor: &AuthenticatedActor,
+        key: &StreamKey,
+    ) -> HostResult<SessionEventReader> {
+        let permit = self.reader_permit()?;
+        let lease = self.inner.reader_budget.take(4096)?;
+        let source = self.source(&key.session_id, key.session_epoch)?;
+        let stamp = self.authorize_read(actor, &source, None).await?;
+        Ok(SessionEventReader {
+            hub: self.clone(),
+            source,
+            actor: actor.clone(),
+            stamp,
+            _permit: permit,
+            _lease: lease,
+        })
+    }
+
     async fn read(
         &self,
         actor: &AuthenticatedActor,
         params: StreamReadParams,
         output_bytes: usize,
-    ) -> HostResult<StreamReadResult> {
+        reader: Option<&SessionEventReader>,
+    ) -> HostResult<(StreamReadResult, Option<SessionSourceEnd>)> {
         if params.start_event_seq.get() == 0
             || params.max_events.get() == 0
             || params.max_events.get() > 100
@@ -195,31 +293,18 @@ impl StreamHub {
         {
             return Err(invalid());
         }
-        let source = self
-            .inner
-            .sources
-            .lock()
-            .map_err(|_| busy())?
-            .values()
-            .find(|s| {
-                s.key.session_id == params.session_id && s.key.session_epoch == params.session_epoch
-            })
-            .cloned()
-            .ok_or_else(|| {
-                HostError::new("EPOCH_MISMATCH", "Raw session epoch is not available")
-            })?;
-        let auth = self.inner.auth.clone();
-        let actor = actor.clone();
-        let target = source.target.clone();
-        let stamp = tokio::task::spawn_blocking(move || {
-            let authorization = auth.snapshot(&actor)?;
-            let stamp = authorization.capture_grants();
-            authorization.require("content.read", &target)?;
-            Ok::<_, HostError>(stamp)
-        })
-        .await
-        .map_err(|_| busy())??;
-        let (events, source_next) = {
+        let (source, fixed_stamp) = match reader {
+            Some(reader)
+                if reader.source.key.session_id == params.session_id
+                    && reader.source.key.session_epoch == params.session_epoch =>
+            {
+                (reader.source.clone(), reader.stamp.clone())
+            }
+            Some(_) => return Err(invalid()),
+            None => (self.source(&params.session_id, params.session_epoch)?, None),
+        };
+        let stamp = self.authorize_read(actor, &source, fixed_stamp).await?;
+        let (events, source_next, end) = {
             let state = source.state.lock().map_err(|_| busy())?;
             let oldest = state.ring.front().map_or(state.next, |event| event.seq);
             if params.start_event_seq.get() < oldest {
@@ -235,7 +320,21 @@ impl StreamHub {
                 .take(params.max_events.get() as usize)
                 .cloned()
                 .collect::<Vec<_>>();
-            (events, state.next)
+            let end = if reader.is_some() && state.pending_tx == 0 {
+                state.end.clone().map(|reason| SessionSourceEnd {
+                    after: Cursor {
+                        host_id: source.identity.host_id.clone(),
+                        instance_epoch: source.identity.instance_epoch,
+                        scope_id: source.scope.clone(),
+                        position: (state.next - 1).into(),
+                    },
+                    reason,
+                    tx_evidence_gap: state.tx_evidence_gap,
+                })
+            } else {
+                None
+            };
+            (events, state.next, end)
         };
         // 编码和计量不占用接收源锁；候选引用继续持有源环的真实预算。
         let mut result = StreamReadResult {
@@ -296,7 +395,8 @@ impl StreamHub {
                 .await
                 .map_err(|_| busy())??;
         }
-        Ok(result)
+        let end = if result.has_more { None } else { end };
+        Ok((result, end))
     }
     pub fn memory_usage(&self) -> StreamMemory {
         StreamMemory {
@@ -337,12 +437,31 @@ impl PreparedStreamRead {
         (self.result, self.lease)
     }
 }
+impl SessionEventReader {
+    /// 终态与页尾配对，可以按同一游标重读。旧代引用随读取器释放。
+    pub async fn read_prepared(
+        &self,
+        params: StreamReadParams,
+    ) -> HostResult<(PreparedStreamRead, Option<SessionSourceEnd>)> {
+        self.hub.prepare_read(&self.actor, params, Some(self)).await
+    }
+}
 impl StreamHub {
     pub async fn read_prepared(
         &self,
         actor: &AuthenticatedActor,
         params: StreamReadParams,
     ) -> HostResult<PreparedStreamRead> {
+        self.prepare_read(actor, params, None)
+            .await
+            .map(|(read, _)| read)
+    }
+    async fn prepare_read(
+        &self,
+        actor: &AuthenticatedActor,
+        params: StreamReadParams,
+        reader: Option<&SessionEventReader>,
+    ) -> HostResult<(PreparedStreamRead, Option<SessionSourceEnd>)> {
         if params.max_bytes.get() == 0
             || params.max_bytes.get() > self.inner.limits.batch_bytes as u64
         {
@@ -357,8 +476,8 @@ impl StreamHub {
             return Err(limit());
         }
         let lease = RawOutputLease::reserve(&self.inner.reader_budget, bytes)?;
-        let result = self.read(actor, params, bytes).await?;
-        Ok(PreparedStreamRead { result, lease })
+        let (result, end) = self.read(actor, params, bytes, reader).await?;
+        Ok((PreparedStreamRead { result, lease }, end))
     }
 }
 fn expired(source: &SourceInner, oldest: u64) -> HostError {
@@ -388,8 +507,29 @@ fn busy() -> HostError {
 
 #[cfg(test)]
 mod capture_cursor_tests {
+    use super::*;
     use crate::test_support::Harness;
-    use serial_workbench_core::U64;
+
+    #[tokio::test]
+    async fn confirmed_backend_exit_survives_late_source_failure() {
+        let h = Harness::new().await;
+        let target = h.open("close-before-config-failure").await;
+        let source = StreamSource(
+            h.host
+                .streams()
+                .source(&target.id, target.session_epoch.unwrap())
+                .unwrap(),
+        );
+        source.finish_backend_close(&Ok(()), false).unwrap();
+        assert!(source.0.state.lock().unwrap().end.is_none());
+        source
+            .fail(HostError::new("HOST_IO", "Configuration commit failed"))
+            .unwrap();
+        assert_eq!(
+            source.0.state.lock().unwrap().end,
+            Some(SessionEndReason::Closed)
+        );
+    }
     #[tokio::test]
     async fn capture_cursor_tracks_committed_events_and_rejects_old_epoch() {
         let h = Harness::new().await;

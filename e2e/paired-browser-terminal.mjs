@@ -5,11 +5,14 @@ import { join, resolve } from "node:path";
 import { createInterface } from "node:readline";
 import { chromium, expect } from "@playwright/test";
 
-const [outputPath] = process.argv.slice(2);
+const [outputPath, scenario = "terminal", ...extra] = process.argv.slice(2);
 assert.ok(
-  outputPath,
-  "Usage: paired-browser-terminal.mjs <evidence directory>",
+  outputPath && extra.length === 0 && ["terminal", "chart"].includes(scenario),
+  "Usage: paired-browser-terminal.mjs <evidence directory> [terminal|chart]",
 );
+const chart = scenario === "chart";
+const packageName = chart ? "Serial Workbench Chart" : "Serial Monitor";
+const sampleAction = "swb.reference.chart.sample";
 const output = resolve(outputPath);
 const input = createInterface({ input: process.stdin, crlfDelay: Infinity });
 const commands = input[Symbol.asyncIterator]();
@@ -28,6 +31,9 @@ const subscriptions = new Map();
 const batches = new Map();
 const rawOwners = new Map();
 const workbenchReads = [];
+const samplingCalls = [];
+const derivedReads = [];
+const derivedRequests = [];
 let socketNumber = 0;
 const terminal = {
   archiveSha256: fixture.archiveSha256,
@@ -43,6 +49,7 @@ const terminal = {
     assetRequests: 0,
     assetReplies: 0,
     rawBatches: 0,
+    derivedPages: 0,
     rpcErrors: {},
   },
 };
@@ -81,6 +88,8 @@ function observeWire(socket) {
   const observed = { id: ++socketNumber, control: undefined, closed: false };
   const assets = new Set();
   const details = new Set();
+  const samples = new Set();
+  const derived = new Map();
   const subscribing = new Set();
   const closing = new Map();
   const ended = new Set();
@@ -100,7 +109,31 @@ function observeWire(socket) {
     }
     const request = body.request;
     if (!request) return;
-    if (request.params?.actionId === "node.views.assetRead") {
+    if (
+      chart &&
+      channel === "control" &&
+      request.method === "action.invoke" &&
+      request.params.actionId === sampleAction
+    ) {
+      samplingCalls.push({
+        target: request.params.target,
+        executionMode: request.params.executionMode,
+      });
+      samples.add(requestId);
+    } else if (
+      chart &&
+      channel === "raw" &&
+      request.method === "action.query" &&
+      request.params.actionId === "stream.derivedRead"
+    ) {
+      const read = {
+        socket: observed,
+        target: request.params.target,
+        params: request.params.params,
+      };
+      derived.set(requestId, read);
+      derivedRequests.push(read);
+    } else if (request.params?.actionId === "node.views.assetRead") {
       assets.add(requestId);
       terminal.diagnostics.assetRequests++;
     } else if (
@@ -135,7 +168,25 @@ function observeWire(socket) {
         receivedArchives.add(result.value.archiveSha256);
       }
     }
+    if (samples.delete(requestId) && body.reply?.ok) {
+      const operationId = body.reply.result.operation?.operationId;
+      if (operationId && !terminal.operationId) {
+        terminal.operationId = operationId;
+        announce("CHART_STARTED " + operationId);
+      }
+    }
     if (channel !== "raw") return;
+    const read = derived.get(requestId);
+    if (read && body.reply) {
+      derived.delete(requestId);
+      const result = body.reply.result;
+      if (body.reply.ok && result.kind === "stream_derived_read") {
+        terminal.diagnostics.derivedPages++;
+        if (result.value.samples.length > 0) {
+          derivedReads.push({ ...read, socket: observed, page: result.value });
+        }
+      }
+    }
     if (subscribing.delete(requestId) && body.reply?.ok) {
       const result = body.reply.result;
       const subscriptionId =
@@ -203,6 +254,59 @@ async function verifyCleanup(reader) {
   });
 }
 
+function chartReader(firstPage, expected, workbench) {
+  const reads = derivedReads.slice(firstPage);
+  const socket = reads[0]?.socket;
+  assert.ok(socket && socket.control !== undefined);
+  assert.notEqual(socket.control, workbench.id);
+  assert.deepEqual(samplingCalls, [
+    { target: fixture.target, executionMode: "independent" },
+  ]);
+  const samples = [];
+  for (const read of reads) {
+    assert.equal(read.socket, socket, "Chart read moved to another Raw socket");
+    assert.deepEqual(read.target, fixture.target);
+    assert.equal(read.params.operationId, terminal.operationId);
+    assert.equal(read.params.after, String(samples.length));
+    assert.equal(read.page.operationId, terminal.operationId);
+    assert.equal(read.page.instanceEpoch, fixture.instanceEpoch);
+    for (const sample of read.page.samples) {
+      assert.equal(sample.position, String(samples.length + 1));
+      assert.equal(sample.provenance.parserId, sampleAction);
+      assert.equal(sample.provenance.unit, "V");
+      assert.deepEqual(sample.provenance.quality, ["complete", "transformed"]);
+      const [source] = sample.provenance.sources;
+      assert.equal(sample.provenance.sources.length, 1);
+      assert.equal(source.hostId, fixture.target.hostId);
+      assert.equal(source.sessionId, fixture.target.sessionId);
+      assert.equal(source.sessionEpoch, fixture.target.sessionEpoch);
+      assert.equal(source.direction, "rx");
+      samples.push(sample);
+    }
+    assert.equal(read.page.nextPosition, String(samples.length));
+  }
+  assert.deepEqual(
+    samples.map((sample) => sample.value),
+    expected,
+  );
+  return { socket, samples };
+}
+
+async function verifyViewCleanup(reader) {
+  if (!chart) {
+    await verifyCleanup(reader);
+    return;
+  }
+  const { socket } = reader;
+  await expect.poll(() => socket.closed, wait).toBe(true);
+  terminal.cleanups.push({
+    operationId: terminal.operationId,
+    rawSocket: socket.id,
+    controlSocket: socket.control,
+    kind: "raw-socket-closed",
+  });
+}
+
 function announce(stage) {
   terminal.stages.push(stage);
   process.stdout.write(stage + "\n");
@@ -249,18 +353,37 @@ try {
   await expect(
     page.getByRole("button", { name: /^(Install plugin|安装插件)$/ }),
   ).toHaveCount(0, wait);
-  const installedPackage = page.getByRole("button", { name: /Serial Monitor/ });
+  const installedPackage = page.getByRole("button", {
+    name: new RegExp(packageName),
+  });
   await installedPackage.click();
 
   const open = page.getByRole("button", { name: /^(Open plugin|打开插件)$/ });
   const dialog = page.getByRole("dialog", {
-    name: "Serial Monitor",
+    name: packageName,
     exact: true,
   });
-  const iframe = dialog.locator('iframe[title="Serial Monitor"]');
-  const text = dialog
-    .frameLocator("iframe")
-    .getByLabel(/^(Serial data|串口数据)$/);
+  const iframe = dialog.locator('iframe[title="' + packageName + '"]');
+  const frame = dialog.frameLocator("iframe");
+  const text = frame.getByLabel(/^(Serial data|串口数据)$/);
+  const checkChart = async (values) => {
+    await expect(
+      frame.getByRole("img", {
+        name: /^(Voltage by sample position|按序号显示电压)$/,
+      }),
+    ).toBeVisible(wait);
+    await frame.locator("summary#samples").click();
+    const rows = frame.locator("#values tr");
+    await expect(rows).toHaveCount(values.length, wait);
+    for (const [index, value] of values.entries()) {
+      const row = rows.nth(index);
+      await expect(row).toBeVisible(wait);
+      await expect(row.getByRole("cell")).toHaveText(
+        [String(index + 1), String(value)],
+        wait,
+      );
+    }
+  };
   const checkDisplay = async (marker) => {
     await expect(text).toBeVisible(wait);
     await expect
@@ -278,12 +401,33 @@ try {
     "Missing original workbench Control read",
   );
   terminal.phase = "open-first-view";
+  const observeChartAck = async (reader, position) => {
+    await expect
+      .poll(
+        () =>
+          derivedRequests.some(
+            ({ socket, params }) =>
+              socket === reader.socket &&
+              params.operationId === terminal.operationId &&
+              params.after === position,
+          ),
+        wait,
+      )
+      .toBe(true);
+    (terminal.acknowledgedPositions ??= []).push(position);
+  };
+
   const earlier = new Set(subscriptions.keys());
   await open.click();
   await expect(dialog).toBeVisible(wait);
-  await checkDisplay(fixture.first);
+  if (chart) {
+    await expectCommand("FIRST_SAMPLE_WRITTEN");
+    await checkChart([1.25]);
+  } else {
+    await checkDisplay(fixture.first);
+  }
   await expect(iframe).toHaveAttribute("sandbox", "allow-scripts");
-  const isolation = await text.evaluate(() => {
+  const isolation = await frame.locator("html").evaluate(() => {
     let parentDocument = false;
     try {
       parentDocument = Boolean(window.parent.document);
@@ -314,17 +458,23 @@ try {
   }
   assert.deepEqual([...receivedArchives], [fixture.archiveSha256]);
 
-  const firstReader = readerFor(fixture.first, earlier, workbenchSocket);
-  assert.ok(
-    firstReader,
-    "No dedicated scoped Raw reader delivered the first RX",
-  );
-  terminal.subscriptions.push(firstReader.id);
+  const firstReader = chart
+    ? chartReader(0, [1.25], workbenchSocket)
+    : readerFor(fixture.first, earlier, workbenchSocket);
+  assert.ok(firstReader, "No dedicated scoped Raw reader delivered the input");
+  if (chart) {
+    await observeChartAck(firstReader, "1");
+    terminal.liveSamples = firstReader.samples;
+  } else terminal.subscriptions.push(firstReader.id);
   terminal.phase = "close-first-view";
   await dialog.getByRole("button", { name: /^(Close|关闭)$/ }).click();
   await expect(dialog).toHaveCount(0, wait);
   await expect(open).toBeFocused(wait);
-  await verifyCleanup(firstReader);
+  await verifyViewCleanup(firstReader);
+  if (chart) {
+    announce("VIEW_CLOSED");
+    await expectCommand("CHART_COMPLETED");
+  }
   terminal.phase = "read-workbench-after-close";
   const workbenchReadCount = workbenchReads.length;
   await installedPackage.click();
@@ -343,24 +493,40 @@ try {
     actionId: "node.packages.detailsRead",
     controlSocket: workbenchSocket.id,
   };
-  announce("VIEW_CLOSED");
-  await expectCommand("SECOND_MARKER_WRITTEN");
+  if (!chart) {
+    announce("VIEW_CLOSED");
+    await expectCommand("SECOND_MARKER_WRITTEN");
+  }
 
   terminal.phase = "reopen-view";
   const beforeReopen = new Set(subscriptions.keys());
+  const beforeChartReopen = derivedReads.length;
   await open.click();
-  await checkDisplay(fixture.first);
-  await checkDisplay(fixture.second);
-  const secondReader = readerFor(fixture.second, beforeReopen, workbenchSocket);
+  if (chart) {
+    await checkChart([1.25, -2, 3.5]);
+  } else {
+    await checkDisplay(fixture.first);
+    await checkDisplay(fixture.second);
+  }
+  const secondReader = chart
+    ? chartReader(beforeChartReopen, [1.25, -2, 3.5], workbenchSocket)
+    : readerFor(fixture.second, beforeReopen, workbenchSocket);
   assert.ok(secondReader, "Reopen did not use a fresh scoped Raw reader");
   assert.notEqual(secondReader.socket.id, firstReader.socket.id);
   assert.notEqual(secondReader.socket.control, firstReader.socket.control);
-  terminal.subscriptions.push(secondReader.id);
+  if (chart) {
+    await observeChartAck(secondReader, "3");
+    terminal.retainedSamples = secondReader.samples;
+  } else terminal.subscriptions.push(secondReader.id);
   announce("VIEW_REOPENED");
   terminal.phase = "observe-execution-trust-revoke";
   await expectCommand("EXECUTION_TRUST_REVOKED");
   await expect(iframe).toHaveCount(0, wait);
-  await verifyCleanup(secondReader);
+  await verifyViewCleanup(secondReader);
+  if (chart) {
+    await expect(open).toHaveCount(0, wait);
+    assert.equal(workbenchSocket.closed, false);
+  }
   announce("VIEW_RETIRED");
   terminal.phase = "done";
 } catch (error) {
@@ -376,7 +542,9 @@ try {
     terminal.diagnostics.content = sanitized(content).slice(0, 900);
   }
   process.stderr.write(
-    "[paired-browser-terminal] " +
+    "[paired-browser-" +
+      scenario +
+      "] " +
       terminal.phase +
       "\n" +
       terminal.error +
@@ -388,7 +556,7 @@ try {
   process.stdin.pause();
   await browser?.close();
   await writeFile(
-    join(output, "browser-terminal-receipt.json"),
+    join(output, "browser-" + scenario + "-receipt.json"),
     JSON.stringify(
       { ...terminal, archiveReceipts: [...receivedArchives] },
       null,

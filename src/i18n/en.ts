@@ -1016,6 +1016,11 @@ export const en = {
   "workbench.closeAllViews": "Close all views",
   "workbench.closeSession": "Close session",
   "workbench.disconnect": "Disconnect",
+  "workbench.pluginTransportParameters": "Plugin connection parameters",
+  "workbench.pluginTransportHint":
+    "Enter a JSON object using the plugin’s documented parameters.",
+  "workbench.pluginTransportInvalid":
+    "Enter a valid JSON object. Numbers must be safe integers.",
   "nativeError.deviceBusy":
     "The device is in use or a previous operation is still finishing. Try again shortly.",
   "nativeError.hostBusy": "The local service is busy. Try again shortly.",

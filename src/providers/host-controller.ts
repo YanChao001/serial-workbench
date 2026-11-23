@@ -15,6 +15,7 @@ import type {
   FileMetadataParams,
   FileTransferReceiptsParams,
   ObjectRef,
+  OpenParams,
   Operation,
   Query,
   ReplayReadParams,
@@ -1104,17 +1105,26 @@ export function createHostWorkspace(
     deviceId: string,
     signal?: AbortSignal,
     configuration: SerialConfiguration = defaults.serialConfiguration,
+    transportParams?: OpenParams["transportParams"],
   ): Promise<SessionSnapshot> {
-    if (!userActions) return open(deviceId, signal, configuration);
+    if (!userActions)
+      return open(deviceId, signal, configuration, transportParams);
     const waiting = signal
       ? AbortSignal.any([signal, lifetime.signal])
       : lifetime.signal;
     if (waiting.aborted) return Promise.reject(abortError());
     let pending = pendingTrustedConnections.get(deviceId);
+    if (pending && transportParams !== undefined)
+      return Promise.reject(
+        failure("HOST_BUSY", "Device connection is pending"),
+      );
     if (!pending) {
       pending = (async () => {
         const session = await userActions
-          .connectDevice(connection.generation, deviceId, { configuration })
+          .connectDevice(connection.generation, deviceId, {
+            configuration,
+            ...(transportParams === undefined ? {} : { transportParams }),
+          })
           .finally(() => {
             if (!lifetime.signal.aborted) invalidateActions();
           });
@@ -1332,14 +1342,20 @@ export function createHostWorkspace(
     deviceId: string,
     signal?: AbortSignal,
     configuration: SerialConfiguration = defaults.serialConfiguration,
+    transportParams?: OpenParams["transportParams"],
   ): Promise<SessionSnapshot> {
     if (signal?.aborted || lifetime.signal.aborted)
       return Promise.reject(abortError());
     const current = state.sessions.find(
       (session) => session.deviceId === deviceId && session.state === "open",
     );
-    if (current) return Promise.resolve(current);
+    if (current && transportParams === undefined)
+      return Promise.resolve(current);
     let pending = pendingOpens.get(deviceId);
+    if (pending && transportParams !== undefined)
+      return Promise.reject(
+        failure("HOST_BUSY", "Device connection is pending"),
+      );
     if (!pending) {
       pending = (async () => {
         const target: Target = {
@@ -1351,7 +1367,10 @@ export function createHostWorkspace(
           await invoke({
             actionId: "device.open",
             target,
-            params: { configuration: { ...configuration } },
+            params: {
+              configuration: { ...configuration },
+              ...(transportParams === undefined ? {} : { transportParams }),
+            },
             executionMode: "interactive",
           }),
         );

@@ -22,11 +22,26 @@ import {
 } from "@/lib/tauri";
 import { useI18n } from "@/providers/i18n";
 import { useHost } from "@/providers/host-context";
+import { HostRequestError } from "@serial-workbench/host-client";
 import type { HostConnection } from "@/lib/host-client";
+import { nativeErrorCode } from "@/lib/native-error";
 
-type DerivedFeed = { key: string; operationId: string };
+type DerivedFeed = {
+  session: string;
+  archiveSha256: string;
+  operationId: string;
+};
 const derivedFeeds = new WeakMap<HostConnection, Map<string, DerivedFeed>>();
 const chartExportAction = "swb.reference.chart.exportSvg";
+
+function retiredFeed(reason: unknown) {
+  const code = nativeErrorCode(reason);
+  return (
+    code === "CATALOG_CHANGED" ||
+    code === "NOT_FOUND" ||
+    code === "UNSUPPORTED_CAPABILITY"
+  );
+}
 
 function sessionKey(session: SessionSnapshot) {
   return JSON.stringify([session.sessionId, session.sessionEpoch]);
@@ -46,7 +61,7 @@ export function PluginViewLauncher({
   views: readonly NodePackageView[];
 }) {
   const { t, language } = useI18n();
-  const { state, invoke, waitForOperation } = useHost();
+  const { state, invoke, waitForOperation, checkAction } = useHost();
   const id = useId();
   const [selected, setSelected] = useState("");
   const [busy, setBusy] = useState(false);
@@ -59,14 +74,12 @@ export function PluginViewLauncher({
   const pending = useRef<AbortController | null>(null);
   useEffect(() => () => pending.current?.abort(), []);
 
-  const available = views.filter(
-    (view) =>
-      (!connection.browser || view.feed !== "derived") &&
-      state.catalog.some(
-        (action) =>
-          action.actionId === view.actionId &&
-          action.targetKinds.includes("session"),
-      ),
+  const available = views.filter((view) =>
+    state.catalog.some(
+      (action) =>
+        action.actionId === view.actionId &&
+        action.targetKinds.includes("session"),
+    ),
   );
   const sessions = state.sessions.filter((session) => session.state === "open");
   const session =
@@ -90,13 +103,18 @@ export function PluginViewLauncher({
     setBusy(true);
     setError(null);
     setSaved(false);
+    const sessionIdentity = sessionKey(session);
     const feedKey =
       view?.feed === "derived"
-        ? JSON.stringify([archiveSha256, sessionKey(session), view.id])
+        ? JSON.stringify([packageId, view.id, sessionIdentity])
         : null;
-    const remembered = feedKey && derivedFeeds.get(connection)?.get(packageId);
+    const remembered = feedKey
+      ? derivedFeeds.get(connection)?.get(feedKey)
+      : undefined;
     let operationId =
-      remembered && remembered.key === feedKey ? remembered.operationId : null;
+      remembered?.archiveSha256 === archiveSha256
+        ? remembered.operationId
+        : null;
     const target = {
       kind: "session",
       hostId: connection.hostTarget.hostId,
@@ -104,7 +122,38 @@ export function PluginViewLauncher({
       sessionId: session.sessionId,
       sessionEpoch: session.sessionEpoch,
     };
+    function forgetFeed() {
+      const feeds = derivedFeeds.get(connection);
+      if (feedKey && feeds?.get(feedKey)?.operationId === operationId)
+        feeds.delete(feedKey);
+    }
     try {
+      if (operationId && connection.browser && view?.feed === "derived") {
+        try {
+          const access = await checkAction(
+            {
+              actionId: "node.views.assetRead",
+              target: {
+                kind: "operation",
+                hostId: target.hostId,
+                id: operationId,
+              },
+              params: { viewId: view.id, offset: "0" },
+            },
+            owner.signal,
+          );
+          if (!access.allowed)
+            throw new HostRequestError({
+              code: "PERMISSION_DENIED",
+              message: "Plugin view authorization changed",
+              retryable: false,
+            });
+        } catch (reason) {
+          if (!retiredFeed(reason)) throw reason;
+          forgetFeed();
+          operationId = null;
+        }
+      }
       if (!operationId) {
         const accepted = await invoke(
           {
@@ -133,7 +182,15 @@ export function PluginViewLauncher({
         if (feedKey) {
           const feeds =
             derivedFeeds.get(connection) ?? new Map<string, DerivedFeed>();
-          feeds.set(packageId, { key: feedKey, operationId });
+          const openSessions = new Set(sessions.map(sessionKey));
+          for (const [key, feed] of feeds) {
+            if (!openSessions.has(feed.session)) feeds.delete(key);
+          }
+          feeds.set(feedKey, {
+            session: sessionIdentity,
+            archiveSha256,
+            operationId,
+          });
           derivedFeeds.set(connection, feeds);
         }
       }
@@ -159,6 +216,7 @@ export function PluginViewLauncher({
           archiveSha256,
           target,
           opener,
+          forgetFeed: feedKey ? forgetFeed : undefined,
         });
         return;
       }
@@ -170,9 +228,7 @@ export function PluginViewLauncher({
       );
       if (owner.signal.aborted) await hostCloseNodeView(opened);
     } catch (reason) {
-      const feeds = derivedFeeds.get(connection);
-      if (feedKey && feeds?.get(packageId)?.operationId === operationId)
-        feeds.delete(packageId);
+      if (retiredFeed(reason)) forgetFeed();
       if (!owner.signal.aborted) setError({ reason, exporting: !view });
     } finally {
       pending.current = null;

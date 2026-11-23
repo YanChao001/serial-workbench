@@ -201,3 +201,268 @@ async function cancelRawTask(t, group) {
     },
   );
 }
+
+test("session hooks follow one page at a time through source termination", (t) =>
+  runSessionHooks(t));
+
+test("session hooks close the reader before reporting a callback failure", (t) =>
+  runSessionHooks(t, { callbackFails: true }));
+
+test("session hooks resume after a retention gap without creating an open event", (t) =>
+  runSessionHooks(t, { expiredScope: "raw:session:7" }));
+
+test("session hooks close without delivering a retention cursor from another session", (t) =>
+  runSessionHooks(t, { expiredScope: "raw:other:7" }));
+
+test("session hooks drop late replies after an active receive callback is cancelled", (t) =>
+  runSessionHooks(t, { cancelPending: true }));
+
+async function runSessionHooks(
+  t,
+  { callbackFails = false, cancelPending = false, expiredScope } = {},
+) {
+  const id = "example.hooks";
+  const actionId = id + ".follow";
+  const inspectId = id + ".inspect";
+  const source = {
+    hostId: "host",
+    instanceEpoch: "3",
+    sessionId: "session",
+    sessionEpoch: "7",
+  };
+  const params = {
+    sessionId: source.sessionId,
+    sessionEpoch: source.sessionEpoch,
+    startEventSeq: "1",
+    maxEvents: "32",
+    maxBytes: "262144",
+  };
+  const next = { ...params, startEventSeq: "6" };
+  const tx = {
+    operationId: "write",
+    bytesBase64: "Ag==",
+    byteStart: "0",
+    byteEnd: "1",
+  };
+  const events = [
+    { kind: "lifecycle", payload: { state: "open" } },
+    {
+      kind: "rx",
+      payload: { bytesBase64: "AQ==", byteStart: "0", byteEnd: "1" },
+    },
+    { kind: "tx_intent", payload: tx },
+    {
+      kind: "tx",
+      payload: {
+        ...tx,
+        sessionId: source.sessionId,
+        sessionEpoch: source.sessionEpoch,
+        outcome: "accepted",
+        acceptedRanges: [{ start: "0", end: "1" }],
+        unknownRanges: [],
+        peerAcknowledged: false,
+      },
+    },
+    { kind: "gap", payload: { reason: "network_loss", knownExtent: false } },
+  ].map((event, index) => {
+    const eventSeq = String(index + 1);
+    return {
+      ...source,
+      eventSeq,
+      configurationRevision: "1",
+      time: {
+        clockId: "clock",
+        sourceMonoNs: eventSeq,
+        receivedWallTime: "2026-11-22T00:00:00Z",
+        precision: {
+          source: "host_read",
+          resolutionNs: "1",
+          syncMethod: "fixture",
+        },
+      },
+      ...event,
+    };
+  });
+  const end = {
+    after: {
+      hostId: source.hostId,
+      instanceEpoch: source.instanceEpoch,
+      scopeId: "raw:session:7",
+      position: "5",
+    },
+    reason: { kind: "backend_fault", code: "DEVICE_DISCONNECTED" },
+    txEvidenceGap: false,
+  };
+  const exchanges = [];
+  const reading = (params) => ({ kind: "session_events", params });
+  const success = (result) => ({ ok: true, result });
+  const foreignExpiry = expiredScope && expiredScope !== end.after.scopeId;
+  if (expiredScope) {
+    exchanges.push([
+      reading(params),
+      {
+        ok: false,
+        error: {
+          code: "CURSOR_EXPIRED",
+          message: "Raw history has been evicted",
+          details: {
+            oldestCursor: {
+              ...end.after,
+              scopeId: expiredScope,
+              position: "2",
+            },
+          },
+        },
+      },
+    ]);
+  }
+  if (!foreignExpiry) {
+    const retainedStart = expiredScope
+      ? { ...params, startEventSeq: "3" }
+      : params;
+    exchanges.push([
+      reading(retainedStart),
+      success({
+        kind: "session_events",
+        events: expiredScope ? events.slice(2) : events,
+        nextEventSeq: "6",
+        hasMore: true,
+      }),
+    ]);
+    if (!expiredScope)
+      exchanges.push([
+        next,
+        success({
+          kind: "stream_read",
+          events: [],
+          nextEventSeq: "6",
+          hasMore: false,
+        }),
+      ]);
+    if (!callbackFails && !cancelPending)
+      exchanges.push([
+        reading(next),
+        success({
+          kind: "session_events",
+          events: [],
+          nextEventSeq: "6",
+          hasMore: false,
+          end,
+        }),
+      ]);
+  }
+  if (!cancelPending)
+    exchanges.push([
+      { kind: "close_session_events" },
+      success({ kind: "session_events_closed" }),
+    ]);
+  await withBackend(
+    t,
+    `export function register(context) {
+      const seen = [];
+      context.queries.register(${JSON.stringify(inspectId)}, () => seen);
+      context.actions.register(${JSON.stringify(actionId)}, async (_, task) => {
+        try {
+          await task.streams.followSession(${JSON.stringify(params)}, {
+            onConnect(event) { seen.push("connect:" + event.eventSeq); },
+            async onReceive(event) {
+              seen.push("receive:start:" + event.eventSeq);
+              await task.streams.read(${JSON.stringify(next)});
+              seen.push("receive:done:" + event.eventSeq);
+              if (${callbackFails}) throw new Error("callback stopped");
+            },
+            onSend(event) { seen.push("send:" + event.eventSeq + ":" + event.payload.outcome); },
+            onError(issue) {
+              seen.push("error:" + issue.kind + (issue.oldestCursor ? ":" + issue.oldestCursor.position : ""));
+            },
+            onDisconnect(end) { seen.push("disconnect:" + end.after.position); },
+          });
+        } catch (error) {
+          if (${cancelPending}) throw error;
+          seen.push("caught:" + (error.code ?? error.message));
+        }
+        return seen;
+      });
+      return () => {};
+    }`,
+    async ({ root, entry, send, output }) => {
+      for await (const { raw, frame } of output) {
+        if (raw) {
+          const exchange = exchanges.shift();
+          assert.ok(exchange, "unexpected extra Raw exchange");
+          const [expected, reply] = exchange;
+          assert.deepEqual(frame.params, expected);
+          assert.equal(frame.parentRequestId, "2");
+          assert.equal(frame.parentOperationId, "parent");
+          assert.equal(frame.taskContext, "owned");
+          if (cancelPending && expected === next)
+            send({ kind: "cancel_action", requestId: "2" });
+          send({ requestId: frame.requestId, reply }, rawFlag);
+        } else if (frame.kind === "ready") {
+          send({ kind: "activate", requestId: "1", id, root, entry });
+        } else if (frame.requestId === "1") {
+          assert.equal(frame.kind, "registered");
+          send({
+            kind: "invoke",
+            requestId: "2",
+            id,
+            call: {
+              actionId,
+              hostId: source.hostId,
+              instanceEpoch: source.instanceEpoch,
+              target: {
+                hostId: source.hostId,
+                kind: "session",
+                id: source.sessionId,
+                sessionId: source.sessionId,
+                sessionEpoch: source.sessionEpoch,
+              },
+            },
+            taskContext: "owned",
+            parentOperationId: "parent",
+          });
+        } else if (frame.requestId === "2") {
+          assert.equal(
+            exchanges.length,
+            0,
+            "all expected Raw exchanges settled",
+          );
+          if (cancelPending) {
+            assert.equal(frame.kind, "action_cancelled");
+            send({
+              kind: "query",
+              requestId: "3",
+              id,
+              query: { actionId: inspectId },
+            });
+            continue;
+          }
+          assert.equal(frame.kind, "action_completed");
+          if (foreignExpiry) {
+            assert.deepEqual(frame.value, ["caught:PROTOCOL_ERROR"]);
+          } else {
+            const first = expiredScope
+              ? ["error:cursor_expired:2"]
+              : ["connect:1", "receive:start:2", "receive:done:2"];
+            const last = callbackFails
+              ? ["caught:callback stopped"]
+              : [
+                  "send:4:accepted",
+                  "error:source_gap",
+                  "error:backend_fault",
+                  "disconnect:5",
+                ];
+            assert.deepEqual(frame.value, [...first, ...last]);
+          }
+          return;
+        } else if (frame.requestId === "3") {
+          assert.equal(cancelPending, true);
+          assert.equal(frame.kind, "queried");
+          assert.deepEqual(frame.value, ["connect:1", "receive:start:2"]);
+          return;
+        }
+      }
+      assert.fail("Node closed before settling session hooks");
+    },
+  );
+}

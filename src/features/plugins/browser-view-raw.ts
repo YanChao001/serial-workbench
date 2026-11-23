@@ -22,7 +22,7 @@ function invalid() {
   return new ContractValidationError("Plugin view stream changed");
 }
 
-async function rawQuery(
+export async function rawQuery(
   connection: HostConnection,
   action: string,
   target: Target,

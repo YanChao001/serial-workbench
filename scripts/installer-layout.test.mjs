@@ -1,17 +1,24 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
+import { randomUUID } from "node:crypto";
 import {
+  copyFileSync,
   existsSync,
+  mkdirSync,
   mkdtempSync,
   readFileSync,
+  readdirSync,
   realpathSync,
   rmSync,
+  symlinkSync,
   writeFileSync,
 } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
+import { fileSha256 } from "./artifact-lib.mjs";
+import { loadNodeRuntimeRelease } from "./node-runtime-source.mjs";
 
 const args = process.argv.slice(2);
 if (args.some((arg) => arg !== "--interactive"))
@@ -64,7 +71,7 @@ function productionMacro(name) {
   return macro;
 }
 
-function runNsis(compiler, fixture, source) {
+function compileNsis(compiler, fixture, source) {
   const executable = join(fixture, "test.exe");
   const script = join(fixture, "test.nsi");
   writeFileSync(
@@ -82,6 +89,11 @@ function runNsis(compiler, fixture, source) {
     compiled.error?.message ?? `${compiled.stderr}\n${compiled.stdout}`,
   );
   assert.doesNotMatch(compiled.stdout, /warning \d+:/i);
+  return executable;
+}
+
+function runNsis(compiler, fixture, source) {
+  const executable = compileNsis(compiler, fixture, source);
   // 无安装动作或可见页面；windowsHide 仅用于隐藏控制台。
   const ran = spawnSync(executable, ["/S"], {
     encoding: "utf8",
@@ -340,4 +352,234 @@ SectionEnd`,
       owned,
     ]);
   });
+});
+
+test("NSIS stages the adjacent payload without reaching ordinary install effects", () => {
+  const installer = readFileSync(
+    new URL("../src-tauri/installer/installer.nsi", import.meta.url),
+    "utf8",
+  );
+  const init = installer.match(/Function \.onInit\b[\s\S]*?FunctionEnd/)?.[0];
+  const initialCheck = installer.match(
+    /Function SerialWorkbenchStageInit\b[\s\S]*?FunctionEnd/,
+  )?.[0];
+  const webview = installer.match(
+    /^Section WebView2\b[\s\S]*?SectionEnd/m,
+  )?.[0];
+  const install = installer.match(/^Section Install\b[\s\S]*?SectionEnd/m)?.[0];
+  const postInstall = installer.match(
+    /Function \.onInstSuccess\b[\s\S]*?FunctionEnd/,
+  )?.[0];
+  assert.ok(init && initialCheck && webview && install && postInstall);
+
+  assert.match(
+    init,
+    /StrCmpS \$1 "\/S \/SWB-STAGE"[\s\S]*?Call SerialWorkbenchStageInit\s+Return[\s\S]*?MUI_LANGDLL_DISPLAY/,
+  );
+  assert.match(
+    initialCheck,
+    /\$INSTDIR != "\$\{PLACEHOLDER_INSTALL_DIR\}"[\s\S]*?CreateFileW\(w "\$EXEDIR", i 0x81, i 3,[\s\S]*?GetFinalPathNameByHandleW[\s\S]*?StrCpy \$INSTDIR \$3[\s\S]*?FindFirst/,
+  );
+  assert.match(
+    webview,
+    /^Section WebView2\s+\$\{If\} \$StageOnly = 1\s+Goto webview2_section_end[\s\S]*?ReadRegStr[\s\S]*?webview2_section_end:\s+SectionEnd$/,
+  );
+  assert.match(
+    install,
+    /\$\{If\} \$StageOnly <> 1[\s\S]*?NSIS_HOOK_PREINSTALL[\s\S]*?CheckIfAppIsRunning[\s\S]*?\$\{EndIf\}[\s\S]*?File "\$\{MAINBINARYSRCPATH\}"[\s\S]*?\{\{#each binaries\}\}[\s\S]*?\$\{If\} \$StageOnly = 1[\s\S]*?WriteUninstaller[\s\S]*?Goto install_section_end[\s\S]*?!insertmacro APP_ASSOCIATE[\s\S]*?WriteRegStr[\s\S]*?CreateOrUpdateStartMenuShortcut[\s\S]*?install_section_end:\s+SectionEnd$/,
+  );
+  assert.match(
+    postInstall,
+    /^Function \.onInstSuccess\s+\$\{If\} \$StageOnly = 1\s+Return[\s\S]*?RunAsUser/,
+  );
+});
+
+test("NSIS staging accepts a fresh operation directory and refuses populated, misnamed, or redirected directories", (t) => {
+  const context = nsisFixture(t);
+  if (!context) return;
+  const { compiler, fixture } = context;
+  const installer = readFileSync(
+    new URL("../src-tauri/installer/installer.nsi", import.meta.url),
+    "utf8",
+  );
+  const functions = installer.match(
+    /Function SerialWorkbenchRejectStage\b[\s\S]*?Function SerialWorkbenchStageInit\b[\s\S]*?FunctionEnd/,
+  )?.[0];
+  const stageBranch = installer.match(
+    /^Function \.onInit\b[\s\S]*?Call SerialWorkbenchStageInit\s+Return\s+\$\{EndIf\}/m,
+  )?.[0];
+  assert.ok(functions && stageBranch);
+  const rejection = join(fixture, "stage-rejection.txt");
+  const tracedFunctions = functions.replace(
+    "  SetErrorLevel $StageRejectCode",
+    `  FileOpen $5 "${quote(rejection)}" w
+  FileWrite $5 "exedir=$EXEDIR length=$1 drive=$2 actual=$0 requested=$3 win32=$4"
+  FileClose $5
+  SetErrorLevel $StageRejectCode`,
+  );
+  const payload = "signed fixture component\n";
+  const source = join(fixture, "component.txt");
+  writeFileSync(source, payload);
+  const executable = compileNsis(
+    compiler,
+    fixture,
+    `!include LogicLib.nsh
+!include FileFunc.nsh
+!include StrFunc.nsh
+\${StrCase}
+!define INSTALLMODE "currentUser"
+!define PLACEHOLDER_INSTALL_DIR "$TEMP\\swb-stage-placeholder"
+InstallDir "\${PLACEHOLDER_INSTALL_DIR}"
+Var StageOnly
+Var StageDirHandle
+Var StageRejectCode
+${tracedFunctions}
+${stageBranch}
+  StrCpy $StageRejectCode 2
+  Call SerialWorkbenchRejectStage
+FunctionEnd
+Section
+  \${If} $StageOnly <> 1
+    StrCpy $StageRejectCode 2
+    Call SerialWorkbenchRejectStage
+  \${EndIf}
+  SetOutPath "$INSTDIR"
+  File "/oname=component.txt" "${quote(source)}"
+SectionEnd
+`,
+  );
+  const physical = join(fixture, "physical-parent");
+  const aliased = join(fixture, "aliased-parent");
+  mkdirSync(physical);
+  symlinkSync(physical, aliased, "junction");
+  for (const scenario of ["fresh", "populated", "misnamed", "parent-alias"]) {
+    const directory = join(
+      scenario === "parent-alias" ? aliased : fixture,
+      scenario === "misnamed"
+        ? "ordinary-directory"
+        : `.swb-stage-${randomUUID()}`,
+    );
+    mkdirSync(directory);
+    const copy = join(directory, "installer.exe");
+    copyFileSync(executable, copy);
+    if (scenario === "populated")
+      writeFileSync(join(directory, "keep.txt"), "existing");
+    const ran = spawnSync(copy, ["/S", "/SWB-STAGE"], {
+      encoding: "utf8",
+      windowsHide: true,
+      timeout: 10_000,
+    });
+    assert.equal(
+      ran.status,
+      { fresh: 0, populated: 8, misnamed: 4, "parent-alias": 10 }[scenario],
+      `${scenario} failed (status ${ran.status}): ${ran.error?.message ?? ran.stderr}${existsSync(rejection) ? readFileSync(rejection, "utf8") : ""}`,
+    );
+    const expected = ["installer.exe"];
+    if (scenario === "fresh") {
+      expected.push("component.txt");
+      assert.equal(
+        readFileSync(join(directory, "component.txt"), "utf8"),
+        payload,
+      );
+    }
+    if (scenario === "populated") {
+      expected.push("keep.txt");
+      assert.equal(
+        readFileSync(join(directory, "keep.txt"), "utf8"),
+        "existing",
+      );
+    }
+    assert.deepEqual(readdirSync(directory).sort(), expected.sort(), scenario);
+  }
+});
+
+test("the candidate NSIS stages pinned components without registering an installation", (t) => {
+  const input = process.env.SWB_TEST_NSIS_STAGE_INSTALLER;
+  if (!input) {
+    t.skip("The isolated NSIS stage suite supplies this build's installer");
+    return;
+  }
+  const context = nsisFixture(t);
+  if (!context) return;
+  const packagePath = realpathSync(input);
+  const manifest = JSON.parse(
+    readFileSync(join(dirname(packagePath), "../components.json"), "utf8"),
+  );
+  assert.equal(manifest.target, "x86_64-pc-windows-msvc");
+  const config = JSON.parse(
+    readFileSync(
+      new URL("../src-tauri/tauri.conf.json", import.meta.url),
+      "utf8",
+    ),
+  );
+  const root = dirname(
+    fileURLToPath(new URL("../package.json", import.meta.url)),
+  );
+  const node = loadNodeRuntimeRelease(root).targets.find(
+    ({ target }) => target === manifest.target,
+  );
+  assert.ok(node);
+
+  const registryKeys = [
+    `HKCU\\Software\\Microsoft\\Windows\\CurrentVersion\\Uninstall\\${config.productName}`,
+    `HKCU\\Software\\${config.bundle.publisher}\\${config.productName}`,
+    ...config.plugins["deep-link"].desktop.schemes.map(
+      (scheme) => `HKCU\\Software\\Classes\\${scheme}`,
+    ),
+  ];
+  const registry = () =>
+    registryKeys.flatMap((key) =>
+      ["/reg:32", "/reg:64"].map((view) => {
+        const result = spawnSync("reg.exe", ["query", key, "/s", view], {
+          encoding: "utf8",
+          windowsHide: true,
+          timeout: 10_000,
+        });
+        assert.ok(
+          result.status === 0 || result.status === 1,
+          "Registry snapshot failed",
+        );
+        return { status: result.status, stdout: result.stdout };
+      }),
+    );
+  const before = registry();
+  const stage = join(context.fixture, `.swb-stage-${randomUUID()}`);
+  mkdirSync(stage);
+  const installer = join(stage, "installer.exe");
+  copyFileSync(packagePath, installer);
+  const installerSha256 = fileSha256(packagePath);
+  const result = spawnSync(installer, ["/S", "/SWB-STAGE"], {
+    encoding: "utf8",
+    windowsHide: true,
+    timeout: 120_000,
+  });
+  assert.deepEqual(
+    registry(),
+    before,
+    "Staging changed installation registry keys",
+  );
+  assert.equal(result.status, 0, result.error?.message ?? result.stderr);
+  assert.equal(fileSha256(installer), installerSha256);
+  const components = Object.fromEntries(
+    manifest.components.map(({ path, sha256 }) => {
+      assert.match(path, /^serial-workbench-(?:host|cli|mcp)\.exe$/);
+      assert.equal(fileSha256(join(stage, path)), sha256);
+      return [path, sha256];
+    }),
+  );
+  assert.equal(Object.keys(components).length, 3);
+  const nodeSha256 = fileSha256(join(stage, node.executable.resourcePath));
+  assert.equal(nodeSha256, node.executable.sha256);
+  const desktopSha256 = fileSha256(join(stage, "serial-workbench.exe"));
+  const uninstallerSha256 = fileSha256(join(stage, "uninstall.exe"));
+  t.diagnostic(
+    JSON.stringify({
+      installerSha256,
+      components,
+      nodeSha256,
+      desktopSha256,
+      uninstallerSha256,
+      registryUnchanged: true,
+    }),
+  );
 });
