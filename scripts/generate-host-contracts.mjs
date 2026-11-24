@@ -28,11 +28,86 @@ const EXPORTED_FILES = [
 ];
 const GENERATED_HEADER = "// Generated from Rust core DTOs. Do not edit.\n";
 
+const VIEW_SCHEMAS = [
+  "DerivedReadResult",
+  "HostError",
+  "RawBatch",
+  "RequestId",
+  "SessionSnapshot",
+];
+
 function parseArtifact(files, name) {
   const source = files.get(name);
   if (typeof source !== "string")
     throw new Error(`Missing Rust artifact: ${name}`);
   return JSON.parse(source);
+}
+
+function validatorCompiler(schemas) {
+  const ajv = new Ajv({
+    allErrors: true,
+    inlineRefs: false,
+    allowUnionTypes: true,
+    ownProperties: true,
+    code: { source: true, esm: true },
+  });
+  const names = Object.keys(schemas).sort();
+  const pooled = poolContractSchemas(schemas);
+  if (pooled) ajv.addSchema(pooled.schema);
+  for (const name of names) {
+    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
+      throw new Error(`Invalid schema name: ${name}`);
+    if (!pooled) ajv.addSchema(schemas[name], name);
+  }
+  return { ajv, names, entry: (name) => pooled?.entries[name] ?? name };
+}
+
+async function writeValidators(artifacts, basename, { ajv, names, entry }) {
+  const standalone = standaloneCode(
+    ajv,
+    Object.fromEntries(names.map((name) => [`validate${name}`, entry(name)])),
+  );
+  const bundled = await build({
+    stdin: {
+      contents: standalone,
+      resolveDir: ROOT,
+      sourcefile: `host-${basename}.mjs`,
+    },
+    bundle: true,
+    platform: "browser",
+    format: "esm",
+    target: "es2022",
+    write: false,
+    metafile: true,
+    logLevel: "silent",
+  });
+  if (
+    Object.values(bundled.metafile.outputs).some(
+      (output) => output.imports.length > 0,
+    )
+  )
+    throw new Error(
+      "Generated validators must not import runtime dependencies",
+    );
+  artifacts.set(
+    `${basename}.mjs`,
+    await format(GENERATED_HEADER + bundled.outputFiles[0].text, {
+      parser: "babel",
+    }),
+  );
+  const declarations =
+    GENERATED_HEADER +
+    `import type { ${names.join(", ")} } from "./types.ts";\n` +
+    names
+      .map(
+        (name) =>
+          `export declare function validate${name}(value: unknown): value is ${name};`,
+      )
+      .join("\n");
+  artifacts.set(
+    `${basename}.d.mts`,
+    await format(declarations, { parser: "typescript" }),
+  );
 }
 
 /** Rust 导出 schema，Ajv 只在生成时编译；浏览器消费无外部依赖的 ESM。 */
@@ -49,23 +124,9 @@ export async function buildArtifacts(files) {
     fixtures.schemaVersion !== 1
   )
     throw new Error("Unsupported Rust contract artifact version");
-  const ajv = new Ajv({
-    allErrors: true,
-    inlineRefs: false,
-    allowUnionTypes: true,
-    ownProperties: true,
-    code: { source: true, esm: true },
-  });
-  const names = Object.keys(schemas.schemas).sort();
+  const full = validatorCompiler(schemas.schemas);
+  const { ajv, names, entry } = full;
   if (!names.includes("RpcReply")) throw new Error("Missing RpcReply schema");
-  const pooled = poolContractSchemas(schemas.schemas);
-  if (pooled) ajv.addSchema(pooled.schema);
-  const entry = (name) => pooled?.entries[name] ?? name;
-  for (const name of names) {
-    if (!/^[A-Za-z_$][A-Za-z0-9_$]*$/.test(name))
-      throw new Error(`Invalid schema name: ${name}`);
-    if (!pooled) ajv.addSchema(schemas.schemas[name], name);
-  }
   for (const [group, expected] of [
     ["valid", true],
     ["invalid", false],
@@ -81,33 +142,6 @@ export async function buildArtifacts(files) {
       }
     }
   }
-  const standalone = standaloneCode(
-    ajv,
-    Object.fromEntries(names.map((name) => [`validate${name}`, entry(name)])),
-  );
-  const bundled = await build({
-    stdin: {
-      contents: standalone,
-      resolveDir: ROOT,
-      sourcefile: "host-validators.mjs",
-    },
-    bundle: true,
-    platform: "browser",
-    format: "esm",
-    target: "es2022",
-    write: false,
-    metafile: true,
-    logLevel: "silent",
-  });
-  if (
-    Object.values(bundled.metafile.outputs).some(
-      (output) => output.imports.length > 0,
-    )
-  ) {
-    throw new Error(
-      "Generated validators must not import runtime dependencies",
-    );
-  }
   const artifacts = new Map();
   for (const name of EXPORTED_FILES) {
     const source = files.get(name);
@@ -115,24 +149,20 @@ export async function buildArtifacts(files) {
       throw new Error(`Missing Rust artifact: ${name}`);
     artifacts.set(name, await format(source, { filepath: join(ROOT, name) }));
   }
-  artifacts.set(
-    "validators.mjs",
-    await format(GENERATED_HEADER + bundled.outputFiles[0].text, {
-      parser: "babel",
+  await writeValidators(artifacts, "validators", full);
+
+  // 独立编译视图输入，使无关 RPC DTO 不改变签名视图的编译产物。
+  const viewSchemas = Object.fromEntries(
+    VIEW_SCHEMAS.map((name) => {
+      if (!Object.hasOwn(schemas.schemas, name))
+        throw new Error(`Missing view input schema: ${name}`);
+      return [name, schemas.schemas[name]];
     }),
   );
-  const declarations =
-    GENERATED_HEADER +
-    `import type { ${names.join(", ")} } from "./types.ts";\n` +
-    names
-      .map(
-        (name) =>
-          `export declare function validate${name}(value: unknown): value is ${name};`,
-      )
-      .join("\n");
-  artifacts.set(
-    "validators.d.mts",
-    await format(declarations, { parser: "typescript" }),
+  await writeValidators(
+    artifacts,
+    "view-validators",
+    validatorCompiler(viewSchemas),
   );
   return artifacts;
 }

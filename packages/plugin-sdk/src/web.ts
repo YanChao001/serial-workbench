@@ -1,9 +1,10 @@
 /// <reference lib="dom" />
 import {
   ContractValidationError,
-  parseReply,
-  parseWireFrame,
-} from "@serial-workbench/contracts";
+  parseViewDerivedPage,
+  parseViewRawBatch,
+  parseViewSession,
+} from "@serial-workbench/contracts/view";
 import type {
   DerivedReadResult,
   RawBatch,
@@ -31,10 +32,7 @@ export function connectReadOnlyView(
 ): ReadOnlyView {
   let last: RawBatch["cursor"] | undefined;
   return connectView(handlers, async (data, session) => {
-    const { channel, body } = parseWireFrame(data);
-    if (channel !== "raw" || body.type !== "rawBatch")
-      throw new ContractValidationError("Invalid plugin view frame");
-    const { batch } = body;
+    const batch = parseViewRawBatch(data);
     if (
       last &&
       (batch.previousCursor.hostId !== last.hostId ||
@@ -83,14 +81,7 @@ export function connectDerivedView(
       !("reply" in data)
     )
       throw new ContractValidationError("Invalid derived view cursor");
-    const reply = parseReply(data.reply);
-    if (
-      !reply.ok ||
-      !("kind" in reply.result) ||
-      reply.result.kind !== "stream_derived_read"
-    )
-      throw new ContractValidationError("Missing derived viewer page");
-    const page = reply.result.value;
+    const page = parseViewDerivedPage(data.reply);
     if (
       stream &&
       (page.operationId !== stream.operationId ||
@@ -164,14 +155,7 @@ function connectView(
     handling = true;
     try {
       if (!session) {
-        const reply = parseReply(data);
-        if (
-          !reply.ok ||
-          !("kind" in reply.result) ||
-          reply.result.kind !== "session"
-        )
-          throw new ContractValidationError("Missing plugin session snapshot");
-        session = reply.result.value;
+        session = parseViewSession(data);
         handlers.onSession(session);
         return;
       }

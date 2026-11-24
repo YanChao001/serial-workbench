@@ -54,6 +54,8 @@ HTTP 用例以实际 Virtual Echo 核对获准的写入、同一请求重试、�
 
 首方 `swb.builtin.chart` 由 Host 按完整归档摘要登记。隔离 profile 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 用例检查自动激活、无会话授权时拒绝、授权后跨块采样及 SVG 文件，并核对重启后归档摘要与安装 revision 保持。浏览器夹具覆盖共享视图的统计计算。正式离线安装需另从插件页打开「Voltage Chart」，核对随包来源、实际采样、统计和桌面 SVG 保存。
 
+视图契约变更时，运行 `node --test scripts/generate-host-contracts.test.mjs scripts/product-chart.test.mjs`。无关 RPC DTO 的变更应保留视图生成字节，实际接收的 DTO 变更应反映在构建中。视图的 Raw 与派生通道分别用 `pnpm test:ui e2e/browser/plugin-view.spec.ts e2e/browser/chart-view.spec.ts --workers=1` 核对。随包图表 0.1.2 保留 0.1.0 和 0.1.1 的签名前驱，用 `known_predecessor_upgrades_and_preserves_the_profile_decision` 验收启用、停用和卸载后的更新结果。
+
 更新内嵌归档时，从仓库根目录构建同目录的后台和视图，然后按 `sign_builtin_chart <main.js> <32 字节种子文件> <新归档 ZIP> swb.product <版本专用 key ID>` 调用 `cargo run -p serial-workbench-host --example sign_builtin_chart --`。将签名收据的归档摘要和来源审批写入 `crates/host/resources/node-packages/chart.json`，同时记录后台、清单、HTML、CSS、视图脚本的 SHA-256。用 `node --test scripts/product-chart.test.mjs` 核对仓库源码和签名描述。
 
 ```sh

@@ -1,19 +1,19 @@
 {
   "id": "swb.builtin.chart",
-  "version": "0.1.1",
-  "archiveSha256": "4e4c655a945bbeac8fb1dac805ed61ea8128da7c0069e91548cbbdda65c2f84f",
+  "version": "0.1.2",
+  "archiveSha256": "6c3be538aa9fe362acf24bf57b0037d93eed7e458c0014d050bb7d1172dea522",
   "compiledModuleSha256": "b22244ac8dc6e9e9a21a2007eaaf22fdcf76ce3575c2670f3e9960023e5c4d5c",
-  "manifestSha256": "019c122efa351d30ffa53c3172912ace062d8678b3058f471a23fc98bdbfe01a",
+  "manifestSha256": "bf3c9561e63bdbe4f24c60931887bbf2e9ef35fc14498785ac330b21b2635176",
   "viewHtmlSha256": "2fd8c8c040557be18795e6d2a9302e03089bf630cd1357150a15274e5cfb115a",
   "viewCssSha256": "2caa993f0387fa0a0b923db043f59d05c05d0fdb0577bae8442f11b9785b1b8c",
-  "viewScriptSha256": "01e4df44c744d50757a973756e8f945db787bea683d16b0a7572c51e963c1987",
+  "viewScriptSha256": "6afbeaa3cc3d8a52fc1c4292c75a9a016be1ca198b14ca9e3407506a8b34cdb1",
   "sourceApproval": {
-    "keyId": "built-in-chart-0.1.1",
+    "keyId": "built-in-chart-0.1.2",
     "publicKey": [
-      21, 180, 15, 56, 115, 166, 181, 123, 77, 121, 179, 182, 145, 92, 68, 172,
-      134, 91, 177, 179, 4, 247, 23, 18, 109, 50, 60, 97, 235, 134, 105, 110
+      138, 124, 8, 241, 104, 106, 230, 39, 5, 79, 225, 23, 185, 254, 19, 20,
+      151, 57, 255, 46, 6, 213, 205, 46, 109, 77, 170, 36, 154, 24, 181, 78
     ],
-    "publicKeySha256": "557b26c0391851b2f340e397f90149839aceaeccd198c664c134cdc0ed02466e",
+    "publicKeySha256": "c32bad5d9ef5b9c1915b9907a8ecc996e4edade5a5ef33bc7ef592a374dfe6fa",
     "source": "swb.product"
   }
 }
