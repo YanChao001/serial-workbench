@@ -1381,6 +1381,7 @@ export const en = {
   "manualRecording.title": "Record manual sends",
   "manualRecording.description":
     "Records bytes and wait times from the send panel and confirmed receive selections. Avoid sending secrets while recording.",
+  "manualRecording.referenceBytes": "Store sent bytes as input references",
   "manualRecording.start": "Start recording",
   "manualRecording.stop": "Stop recording",
   "manualRecording.review": "Review in command sequence",
@@ -1400,6 +1401,11 @@ export const en = {
   "commandSequence.preview": "Execution preview",
   "commandSequence.previewEmpty":
     "Enter a sequence definition to preview its steps.",
+  "commandSequence.inputs": "Inputs for this run",
+  "commandSequence.inputsHelp":
+    "Enter HEX for each reference. The sequence file keeps only the references.",
+  "commandSequence.inputsInvalid": "Check HEX and sequence limits at {path}.",
+  "commandSequence.previewInput": "Send input {name}",
   "commandSequence.previewSend": "Send",
   "commandSequence.previewWriteWait": "Write deadline {ms} ms",
   "commandSequence.previewDelay": "Wait {ms} ms",

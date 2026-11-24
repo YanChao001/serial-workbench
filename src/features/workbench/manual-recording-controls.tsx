@@ -1,6 +1,7 @@
 import { useRef, useState } from "react";
 import { CircleDotIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
   Popover,
   PopoverContent,
@@ -13,6 +14,7 @@ import type { useManualSendRecording } from "./use-manual-send-recording";
 export type ManualRecordingLabels = {
   title: string;
   description: string;
+  referenceBytes: string;
   start: string;
   stop: string;
   review: string;
@@ -34,6 +36,7 @@ export function ManualRecordingControls({
   onReview: (definition: string, trigger: HTMLElement | null) => void;
 }) {
   const [open, setOpen] = useState(false);
+  const [referenceBytes, setReferenceBytes] = useState(false);
   const trigger = useRef<HTMLButtonElement>(null);
   const { snapshot } = recording;
   const reason = snapshot?.reason;
@@ -60,7 +63,18 @@ export function ManualRecordingControls({
         className="w-80 max-w-[calc(100vw-2rem)]"
       >
         <PopoverTitle>{labels.title}</PopoverTitle>
-        {!snapshot && <p className="text-sm">{labels.description}</p>}
+        {!snapshot && (
+          <div className="grid gap-2 text-sm">
+            <p>{labels.description}</p>
+            <label className="flex items-center gap-2 wrap-anywhere">
+              <Checkbox
+                checked={referenceBytes}
+                onCheckedChange={(value) => setReferenceBytes(value === true)}
+              />
+              {labels.referenceBytes}
+            </label>
+          </div>
+        )}
         {snapshot && (
           <p role="status" className="text-sm">
             {labels.progress(snapshot.confirmed)}
@@ -75,7 +89,7 @@ export function ManualRecordingControls({
               size="sm"
               disabled={!available}
               onClick={() => {
-                recording.start();
+                recording.start(referenceBytes);
                 setOpen(false);
               }}
             >

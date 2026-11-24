@@ -70,9 +70,9 @@ test("command sequence previews configured branches and submits the current curs
   ).toBe(0);
   const edited = await editor.inputValue();
   await dialog.getByRole("button", { name: "Save JSON" }).click();
-  expect(
-    await page.evaluate(() => window.workbenchFixture.savedTextExports),
-  ).toEqual([{ name: "command-sequence.json", content: edited }]);
+  await expect
+    .poll(() => page.evaluate(() => window.workbenchFixture.savedTextExports))
+    .toEqual([{ name: "command-sequence.json", content: edited }]);
   await page.evaluate(() => {
     window.workbenchFixture.automationCursorPosition = "41";
   });
@@ -293,10 +293,10 @@ test("records composer bytes and confirmed receive selections, then replays only
   const log = terminal.getByRole("log");
   await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
   await page.evaluate(
-    (items) => window.workbenchFixture.emitRaw(items),
+    (items: unknown[]) => window.workbenchFixture.emitRaw(items),
     workbenchStreamItems().filter(
       (item) => item.kind === "source" && item.event.kind === "rx",
-    ),
+    ) as unknown[],
   );
   const hex = log.locator("[data-direction=rx] [data-hex-source]");
   await expect(hex).toHaveText("4F 4B 0D 0A");

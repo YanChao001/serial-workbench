@@ -399,6 +399,7 @@ export function workbenchToolLabels(t: Translate) {
     manualRecording: {
       title: t("manualRecording.title"),
       description: t("manualRecording.description"),
+      referenceBytes: t("manualRecording.referenceBytes"),
       start: t("manualRecording.start"),
       stop: t("manualRecording.stop"),
       review: t("manualRecording.review"),

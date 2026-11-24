@@ -1280,6 +1280,7 @@ export const zhCN = {
   "manualRecording.title": "录制手工发送",
   "manualRecording.description":
     "录制发送区和已确认接收选区的实际字节及等待时间。录制期间请勿发送密钥。",
+  "manualRecording.referenceBytes": "将发送字节保存为输入引用",
   "manualRecording.start": "开始录制",
   "manualRecording.stop": "停止录制",
   "manualRecording.review": "在命令序列中查看",
@@ -1295,6 +1296,10 @@ export const zhCN = {
   "commandSequence.unavailable": "请启用提供命令序列的签名自动化包。",
   "commandSequence.preview": "执行预览",
   "commandSequence.previewEmpty": "输入序列定义以预览步骤。",
+  "commandSequence.inputs": "本次运行的输入",
+  "commandSequence.inputsHelp": "为每项引用填入 HEX。序列文件只保留引用。",
+  "commandSequence.inputsInvalid": "请检查 {path} 的 HEX 字节或序列长度。",
+  "commandSequence.previewInput": "发送输入 {name}",
   "commandSequence.previewSend": "发送",
   "commandSequence.previewWriteWait": "写入期限 {ms} ms",
   "commandSequence.previewDelay": "等待 {ms} 毫秒",

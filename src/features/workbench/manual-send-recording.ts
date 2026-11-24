@@ -5,8 +5,8 @@ import {
   commandSequenceFrameBytes,
   commandSequenceMaxWriteWaitMs,
   CommandSequenceError,
-  compileCommandSequence,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
+import { inspectSequenceDraft } from "./command-sequence-inputs";
 import { confirmedSessionWrite, matchesSend } from "./send-history-model";
 
 const maxRecordedSends = 32;
@@ -23,13 +23,17 @@ type Attempt = {
 };
 type StopReason = "user" | "scope" | "unconfirmed" | "gap" | "limit";
 
-function serialize(steps: readonly Step[]) {
-  return JSON.stringify({ version: 1, steps }, null, 2);
+function serialize(steps: readonly Step[], inputs: readonly string[]) {
+  const variables = inputs.length
+    ? Object.fromEntries(inputs.map((name) => [name, null]))
+    : undefined;
+  return JSON.stringify({ version: 1, variables, steps }, null, 2);
 }
 
 export class ManualSendRecording {
   private readonly attempts: Attempt[] = [];
   private readonly steps: Step[] = [];
+  private readonly inputs: string[] = [];
   private confirmed = 0;
   private previous?: Confirmed;
   private reason?: StopReason;
@@ -38,6 +42,7 @@ export class ManualSendRecording {
   constructor(
     readonly scope: string,
     private readonly target: Target,
+    private readonly referenceBytes = false,
   ) {}
 
   add(bytes: Uint8Array, submittedAt: number, writeWaitMs: number) {
@@ -101,7 +106,9 @@ export class ManualSendRecording {
       confirmed: this.confirmed,
       dirty: ready ? this.confirmed > 0 : this.attempts.length > 0,
       definition:
-        ready && this.steps.length ? serialize(this.steps) : undefined,
+        ready && this.steps.length
+          ? serialize(this.steps, this.inputs)
+          : undefined,
     } as const;
   }
 
@@ -122,19 +129,31 @@ export class ManualSendRecording {
         : 0;
       const recorded: Step[] = [];
       if (delay > 0) recorded.push({ kind: "delay", milliseconds: delay });
+      const input = this.referenceBytes
+        ? "recorded_send_" + (this.confirmed + 1)
+        : undefined;
       recorded.push({
         kind: "send",
-        hex: formatHex(attempt.bytes),
+        hex: input ? "$" + "{" + input + "}" : formatHex(attempt.bytes),
         writeWaitMs: attempt.writeWaitMs,
       });
       try {
-        compileCommandSequence(serialize([...this.steps, ...recorded]));
+        inspectSequenceDraft(
+          serialize(
+            [...this.steps, ...recorded],
+            input ? [...this.inputs, input] : this.inputs,
+          ),
+        );
       } catch (error) {
         if (!(error instanceof CommandSequenceError)) throw error;
         this.endPrefix("limit");
         return;
       }
       this.steps.push(...recorded);
+      if (input) {
+        this.inputs.push(input);
+        attempt.bytes.fill(0);
+      }
       this.previous = evidence;
       this.confirmed++;
     }
@@ -143,5 +162,7 @@ export class ManualSendRecording {
   private endPrefix(reason: "unconfirmed" | "gap" | "limit") {
     this.reason = reason;
     this.cut = true;
+    if (this.referenceBytes)
+      for (const attempt of this.attempts) attempt.bytes.fill(0);
   }
 }

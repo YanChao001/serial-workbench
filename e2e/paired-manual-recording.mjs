@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
+import { readFile } from "node:fs/promises";
+import { join } from "node:path";
 import { expect } from "@playwright/test";
 
-export async function checkManualRecording({ page, readRaw, source }) {
+export async function checkManualRecording({ page, readRaw, source, output }) {
   const before = await readRaw("manual-recording-before");
   const receive = page.getByRole("region", { name: /^(Receive|接收)$/ });
   const send = page.getByRole("region", { name: /^(Send|发送)$/ });
@@ -12,6 +14,11 @@ export async function checkManualRecording({ page, readRaw, source }) {
     name: /^(Record manual sends|录制手工发送)$/,
   });
   await recorder.click();
+  await recorded
+    .getByRole("checkbox", {
+      name: /^(Store sent bytes as input references|将发送字节保存为输入引用)$/,
+    })
+    .check();
   await recorded
     .getByRole("button", { name: /^(Start recording|开始录制)$/ })
     .click();
@@ -96,47 +103,100 @@ export async function checkManualRecording({ page, readRaw, source }) {
   const editor = sequence.getByRole("textbox", {
     name: /^(Sequence definition \(JSON\)|序列定义（JSON）)$/,
   });
-  const definition = JSON.parse(await editor.inputValue());
+  const serialized = await editor.inputValue();
+  const definition = JSON.parse(serialized);
+  const inputNames = ["recorded_send_1", "recorded_send_2"];
   assert.equal(definition.version, 1);
+  assert.deepEqual(definition.variables, {
+    recorded_send_1: null,
+    recorded_send_2: null,
+  });
   assert.deepEqual(
     definition.steps.map(({ kind }) => kind),
     ["send", "delay", "send"],
   );
   const steps = definition.steps.filter(({ kind }) => kind === "send");
-  assert.equal(
-    Buffer.from(steps[0].hex.replaceAll(" ", ""), "hex").toString("utf8"),
-    manual,
+  assert.deepEqual(
+    steps.map(({ hex }) => hex),
+    inputNames.map((name) => "$" + "{" + name + "}"),
   );
-  assert.equal(steps[1].hex, "3C 26");
+  assert.ok(
+    !serialized.includes("3C 26") &&
+      !serialized.includes("52 45 43 4F 52 44 2D 4F 4E 45"),
+  );
   const originalWrites = sentBytes(
     await readRaw("manual-recording-review", before.nextEventSeq),
   );
   assert.deepEqual(originalWrites, [manual, "<&"]);
-
-  await sequence
-    .getByRole("button", { name: /^(Run sequence|运行序列)$/ })
+  const run = sequence.getByRole("button", {
+    name: /^(Run sequence|运行序列)$/,
+  });
+  const first = sequence.getByLabel(inputNames[0], { exact: true });
+  const second = sequence.getByLabel(inputNames[1], { exact: true });
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 460, height: 640 });
+  await expect(run).toBeDisabled();
+  await expect(first).toHaveAttribute("type", "password");
+  await expect(
+    sequence.getByText(/^(Send input|发送输入) recorded_send_1$/),
+  ).toBeVisible();
+  await first.fill("52 45 50 4C 41 59");
+  await second.fill("GG");
+  await expect(run).toBeDisabled();
+  await expect(
+    sequence.getByRole("status").filter({ hasText: /Check HEX|检查/ }),
+  ).toBeVisible();
+  await second.fill("3F 2B");
+  await expect(run).toBeEnabled();
+  await expect(sequence.getByText(/52 45 50 4C 41 59|3F 2B/)).toHaveCount(0);
+  await sequence.screenshot({
+    path: join(output, "manual-reference-inputs.png"),
+  });
+  const [download] = await Promise.all([
+    page.waitForEvent("download"),
+    sequence
+      .getByRole("button", { name: /^(Download JSON|下载 JSON)$/ })
+      .click(),
+  ]);
+  const saved = join(output, "manual-reference-sequence.json");
+  await download.saveAs(saved);
+  assert.equal(await readFile(saved, "utf8"), serialized);
+  const unsaved = page.getByRole("dialog", {
+    name: /^(Save unfinished work|保存未完成的工作)$/,
+  });
+  await sequence.locator("input[type=file]").setInputFiles(saved);
+  await unsaved
+    .getByRole("button", { name: /^(Discard and continue|放弃并继续)$/ })
     .click();
+  await expect(editor).toHaveValue(serialized);
+  await expect(first).toHaveValue("");
+  await expect(second).toHaveValue("");
+  await expect(run).toBeDisabled();
+  await first.fill("52 45 50 4C 41 59");
+  await second.fill("3F 2B");
+  await run.click();
   await expect(sequence.getByRole("status")).toContainText(
     /Command sequence completed\.|命令序列已完成。/,
   );
   const replayedWrites = sentBytes(
     await readRaw("manual-recording-replay", before.nextEventSeq),
   );
-  assert.deepEqual(replayedWrites, [manual, "<&", manual, "<&"]);
+  assert.deepEqual(replayedWrites, [manual, "<&", "REPLAY", "?+"]);
+  await expect(first).toHaveValue("");
+  await expect(second).toHaveValue("");
   await sequence
     .getByRole("button", { name: /^(Close view|关闭视图)$/ })
     .click();
-  const unsaved = page.getByRole("dialog", {
-    name: /^(Save unfinished work|保存未完成的工作)$/,
-  });
-  await unsaved
-    .getByRole("button", { name: /^(Discard and continue|放弃并继续)$/ })
-    .click();
   await expect(sequence).toBeHidden();
+  if (viewport) await page.setViewportSize(viewport);
   await receive.getByRole("radio", { name: /^(Text|文本)$/ }).click();
   return {
     sourceEvent: source.eventSeq,
-    sourceHex: steps[1].hex,
+    sourceHex: "3C 26",
+    inputNames,
+    savedContainsOnlyReferences: true,
+    importClearedInputs: true,
+    reboundAsExpected: true,
     writeWaitMs: steps.map(({ writeWaitMs }) => writeWaitMs),
     durationBetweenWrites: definition.steps[1].milliseconds,
     cancelledPreviewTxCount: 0,

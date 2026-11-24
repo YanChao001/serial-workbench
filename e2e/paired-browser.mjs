@@ -548,6 +548,7 @@ try {
     page,
     readRaw,
     source: firstExport,
+    output,
   });
   const settingsPath = join(root, "settings.json");
   await writeFile(

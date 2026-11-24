@@ -307,7 +307,22 @@ UTC 预览 [武装] [停止]                 [次数] [发送字节 / 载入]
 
 打开可写会话，在发送区选择「录制手工发送」，明确开始后手工发送一段普通字节。从接收区选取连续 HEX 字节，先预览并取消，再打开预览并明确确认。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX、写入期限和有证据的等待。单次写入期限超出 5 秒时，录制保留已确认前缀。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
 
-用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/receive-context.spec.ts --workers 1` 核对录制稿、选区取消、精确修订和显式运行。真实配对浏览器沿用本章的 `e2e/paired-browser.mjs`。先用 CLI 核对取消选区预览后仅有原手工 TX，再确认发送两字节并立即关闭预览，观察录制仍保留两项真实回执。复核草稿的发送顺序、写入期限和选区 HEX，显式运行后用独立 Raw 读数核对新增两次 TX。`receipt.json` 的 `manualRecording` 保存证据。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、资源和密钥引用继续按同项验收。
+用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/receive-context.spec.ts --workers 1` 核对录制稿、选区取消、精确修订和显式运行。真实配对浏览器沿用本章的 `e2e/paired-browser.mjs`。先用 CLI 核对取消选区预览后仅有原手工 TX，再确认发送两字节并立即关闭预览，观察录制仍保留两项真实回执。复核草稿的发送顺序、写入期限和选区 HEX，显式运行后用独立 Raw 读数核对新增两次 TX。`receipt.json` 的 `manualRecording` 保存证据。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、系统密钥解析和文件句柄重绑继续按同项验收。
+
+#### 录制字节的输入引用
+
+在原录制弹层用共享复选框选择「将发送字节保存为输入引用」。默认保留原录制方式。引用模式按确认顺序给每段发送分配名称。命令序列工具内沿用已有的定义和预览分栏，临时 HEX 字段置于预览栏。窄窗先显示定义和文件操作，再显示临时输入与预览。输入用共享高度、等宽字体和掩码，长名称可换行。未填或无效时可导出定义，运行保持不可用。
+
+```text
+宽窗                                  窄窗
+[JSON 定义]   [运行所需输入]           [JSON 定义]
+[另存 JSON]   [recorded_send_1]       [另存 JSON]
+              [发送引用、等待]         [运行所需输入]
+[运行]         任务状态                [recorded_send_1]
+                                      [发送引用、等待] [运行]
+```
+
+从原录制切到引用模式，发送两段测试字节后生成草稿。核对 JSON 只含名称、占位符、顺序及时限。保存并重新打开，确认临时值为空。输入不完整的 HEX 时不接纳 Host 操作。输入替换字节后，预览显示引用，显式运行使用本次值。再次另存和重开均只含引用。退出面板或替换定义会清除临时输入。用独立 Raw 读端对照原发送与替换后的实际 TX。引用使用版本 1 的 `variables`，值为 `null`，须用于顶层发送步骤的完整 HEX 模板，原有字面变量继续适用。工作台在运行前绑定为普通版本 1 JSON。`manual-reference-sequence.json` 与收据 `manualRecording` 可从配对专项取用。
 
 ### 测试用例与断言（AUTO-05）
 

@@ -14,6 +14,7 @@ import {
 } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { isTauri, saveTextExport } from "@/lib/tauri";
@@ -21,11 +22,12 @@ import type { HostContextValue } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
+  commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
-  compileCommandSequence,
   type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
+import { inspectSequenceDraft } from "./command-sequence-inputs";
 import {
   readSequenceResult,
   sameSequence,
@@ -89,17 +91,27 @@ function pending(operation: Operation) {
   );
 }
 
-function preview(definition: string) {
+function preview(definition: string): Partial<
+  ReturnType<typeof inspectSequenceDraft>
+> & {
+  error?: CommandSequenceError;
+} {
   if (!definition.trim()) return {};
   try {
-    return { plan: compileCommandSequence(definition) };
+    return inspectSequenceDraft(definition);
   } catch (error) {
     if (error instanceof CommandSequenceError) return { error };
     throw error;
   }
 }
 
-function Plan({ steps }: { steps: readonly CommandSequenceStep[] }) {
+function Plan({
+  steps,
+  inputPaths,
+}: {
+  steps: readonly CommandSequenceStep[];
+  inputPaths?: ReadonlyMap<string, string>;
+}) {
   const { t } = useI18n();
   return (
     <ol className="grid list-decimal gap-2 ps-6 text-sm marker:text-muted-foreground">
@@ -112,8 +124,18 @@ function Plan({ steps }: { steps: readonly CommandSequenceStep[] }) {
           ) : (
             <>
               <div>
-                {t("commandSequence.previewSend")}{" "}
-                <code className="break-all">{formatHex(step.bytes)}</code>
+                {inputPaths?.has(step.path) ? (
+                  <span className="wrap-anywhere">
+                    {t("commandSequence.previewInput", {
+                      name: inputPaths.get(step.path) ?? "",
+                    })}
+                  </span>
+                ) : (
+                  <>
+                    {t("commandSequence.previewSend")}{" "}
+                    <code className="break-all">{formatHex(step.bytes)}</code>
+                  </>
+                )}
               </div>
               {step.writeWaitMs !== undefined && (
                 <p className="text-muted-foreground">
@@ -197,8 +219,14 @@ export function CommandSequenceTool({
   const id = useId();
   const { definition, saved } = draft;
   const native = isTauri();
-  const setDefinition = (value: string) =>
+  const [provided, setProvided] = useState<{
+    definition: string;
+    values: ReadonlyMap<string, string>;
+  }>();
+  const setDefinition = (value: string) => {
+    setProvided(undefined);
     onDraftChange((previous) => ({ ...previous, definition: value }));
+  };
   const [run, setRun] = useState<Run>({ phase: "idle" });
   const [cancelling, setCancelling] = useState<string>();
   const [notice, setNotice] = useState<string>();
@@ -218,7 +246,23 @@ export function CommandSequenceTool({
     };
   }, []);
 
-  const { plan, error } = useMemo(() => preview(definition), [definition]);
+  const { plan, error, inputs } = useMemo(
+    () => preview(definition),
+    [definition],
+  );
+  const values =
+    provided?.definition === definition ? provided.values : undefined;
+  const { runtimeDefinition, bindingError } = useMemo(() => {
+    if (!plan) return {};
+    if (!inputs) return { runtimeDefinition: definition };
+    if (!values) return {};
+    try {
+      return { runtimeDefinition: inputs.bind(values) };
+    } catch (error) {
+      if (error instanceof CommandSequenceError) return { bindingError: error };
+      throw error;
+    }
+  }, [plan, inputs, values, definition]);
   const active = access
     ? operations.reduce<Operation | undefined>(
         (last, operation) =>
@@ -318,7 +362,7 @@ export function CommandSequenceTool({
     if (
       !access ||
       !actionId ||
-      !plan ||
+      !runtimeDefinition ||
       busy ||
       command.current ||
       fileRequest.current
@@ -337,7 +381,7 @@ export function CommandSequenceTool({
         {
           actionId,
           target: access.target,
-          params: { definition, startEventSeq },
+          params: { definition: runtimeDefinition, startEventSeq },
           executionMode: "independent",
         },
         signal,
@@ -351,6 +395,7 @@ export function CommandSequenceTool({
         throw new ContractValidationError(
           "Command sequence belongs to another session",
         );
+      setProvided(undefined);
       setRun({ phase: "accepted", operation: accepted });
     } catch (error) {
       if (!signal.aborted)
@@ -405,8 +450,9 @@ export function CommandSequenceTool({
         await file.arrayBuffer(),
       );
       if (signal.aborted) return;
-      compileCommandSequence(text);
+      inspectSequenceDraft(text);
       if (!(await beforeReplace()) || signal.aborted) return;
+      setProvided(undefined);
       onDraftChange({ definition: text, saved: text });
       setNotice(undefined);
     } catch (error) {
@@ -548,13 +594,59 @@ export function CommandSequenceTool({
           <h3 id={id + "-preview"} className="mb-3 text-sm font-medium">
             {t("commandSequence.preview")}
           </h3>
+          {inputs && (
+            <fieldset
+              className="mb-3 grid min-w-0 gap-2 text-sm"
+              disabled={busy}
+            >
+              <legend className="mb-1 font-medium">
+                {t("commandSequence.inputs")}
+              </legend>
+              <p className="text-muted-foreground">
+                {t("commandSequence.inputsHelp")}
+              </p>
+              <div className="grid max-h-48 gap-2 overflow-auto p-0.5">
+                {inputs.names.map((name) => (
+                  <label key={name} className="grid min-w-0 gap-1">
+                    <span className="font-mono wrap-anywhere">{name}</span>
+                    <Input
+                      type="password"
+                      autoComplete="off"
+                      spellCheck={false}
+                      className="font-mono"
+                      maxLength={commandSequenceFrameBytes * 4}
+                      value={values?.get(name) ?? ""}
+                      onChange={(event) => {
+                        const text = event.currentTarget.value;
+                        setProvided((previous) => ({
+                          definition,
+                          values: new Map(
+                            previous?.definition === definition
+                              ? previous.values
+                              : undefined,
+                          ).set(name, text),
+                        }));
+                      }}
+                    />
+                  </label>
+                ))}
+              </div>
+              {bindingError && (
+                <p role="status" className="text-destructive wrap-anywhere">
+                  {t("commandSequence.inputsInvalid", {
+                    path: bindingError.path,
+                  })}
+                </p>
+              )}
+            </fieldset>
+          )}
           {plan ? (
             <div
               className="max-h-72 overflow-auto focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
               tabIndex={0}
               aria-labelledby={id + "-preview"}
             >
-              <Plan steps={plan} />
+              <Plan steps={plan} inputPaths={inputs?.paths} />
             </div>
           ) : (
             <p className="text-sm text-muted-foreground">
@@ -567,7 +659,7 @@ export function CommandSequenceTool({
         <Button
           type="button"
           size="sm"
-          disabled={!access || !actionId || !plan || busy}
+          disabled={!access || !actionId || !runtimeDefinition || busy}
           onClick={() => void start()}
         >
           {t("commandSequence.start")}
