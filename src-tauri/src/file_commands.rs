@@ -14,19 +14,59 @@ use serial_workbench_core::{
 use std::{future::Future, path::PathBuf};
 use tauri_plugin_dialog::DialogExt;
 
-const MAX_CHART_SVG_BYTES: u64 = 24 * 1024;
+#[derive(Clone, Copy)]
+pub(crate) enum ChartArtifact {
+    Svg,
+    Csv,
+}
+
+impl ChartArtifact {
+    fn extension(self) -> &'static str {
+        match self {
+            Self::Svg => "svg",
+            Self::Csv => "csv",
+        }
+    }
+
+    fn max_bytes(self) -> u64 {
+        match self {
+            Self::Svg => 24 * 1024,
+            Self::Csv => 64 * 1024,
+        }
+    }
+
+    fn valid_contents(self, bytes: &[u8]) -> bool {
+        match self {
+            Self::Svg => bytes.starts_with(b"<svg "),
+            Self::Csv => {
+                bytes.starts_with(b"sample_index,value_v,") && std::str::from_utf8(bytes).is_ok()
+            }
+        }
+    }
+}
+
+fn chart_artifact(action: &str) -> Option<(&str, ChartArtifact)> {
+    let (package, action) = action.rsplit_once('.')?;
+    if !matches!(package, "swb.reference.chart" | "swb.builtin.chart") {
+        return None;
+    }
+    let artifact = match action {
+        "exportSvg" => ChartArtifact::Svg,
+        "exportCsv" => ChartArtifact::Csv,
+        _ => return None,
+    };
+    Some((package, artifact))
+}
 
 fn chart_save_error() -> HostError {
-    HostError::new(
-        "INVALID_ARGUMENT",
-        "The chart SVG result could not be saved",
-    )
+    HostError::new("INVALID_ARGUMENT", "The chart result could not be saved")
 }
 
 fn chart_storage_error(_: NativeError) -> HostError {
     HostError::new("STORAGE_IO", "Could not save the chart file")
 }
 
+// 保持现有 IPC 命令名。输出格式由已结算的签名动作决定。
 #[tauri::command]
 #[specta::specta]
 pub(crate) async fn host_save_chart_svg(
@@ -38,20 +78,23 @@ pub(crate) async fn host_save_chart_svg(
 ) -> HostResult<bool> {
     state.bind_window(&window)?;
     let label = window.label().to_owned();
-    save_chart_svg(&state, &label, generation, operation_id, || {
+    save_chart_artifact(&state, &label, generation, operation_id, |artifact| {
         blocking::run(move || {
+            let extension = artifact.extension();
             #[cfg(feature = "e2e")]
             if std::env::var("STARTER_E2E_PHASE").as_deref() == Ok("chart-automated")
                 && std::env::var("SWB_E2E_WINDOWS_NATIVE_PICKERS").as_deref() != Ok("1")
                 && let Some(directory) = std::env::var_os("STARTER_E2E_CHART_DIR")
             {
-                return Ok(Some(PathBuf::from(directory).join("exported-chart.svg")));
+                return Ok(Some(
+                    PathBuf::from(directory).join(format!("exported-chart.{extension}")),
+                ));
             }
             app.dialog()
                 .file()
                 .set_parent(&window)
-                .add_filter("SVG", &["svg"])
-                .set_file_name("chart.svg")
+                .add_filter(extension.to_ascii_uppercase(), &[extension])
+                .set_file_name(format!("chart.{extension}"))
                 .blocking_save_file()
                 .map(|path| {
                     path.into_path().map_err(|_| {
@@ -64,12 +107,12 @@ pub(crate) async fn host_save_chart_svg(
     .await
 }
 
-pub(crate) async fn save_chart_svg<F>(
+pub(crate) async fn save_chart_artifact<F>(
     bridge: &DesktopHostBridge,
     window: &str,
     generation: U64,
     operation_id: Id,
-    pick: impl FnOnce() -> F,
+    pick: impl FnOnce(ChartArtifact) -> F,
 ) -> HostResult<bool>
 where
     F: Future<Output = NativeResult<Option<PathBuf>>>,
@@ -100,10 +143,8 @@ where
         return Err(chart_save_error());
     };
     let reference = output.result_ref;
-    let package = match operation.action_id.as_str() {
-        "swb.reference.chart.exportSvg" => "swb.reference.chart",
-        "swb.builtin.chart.exportSvg" => "swb.builtin.chart",
-        _ => return Err(chart_save_error()),
+    let Some((package, artifact)) = chart_artifact(operation.action_id.as_str()) else {
+        return Err(chart_save_error());
     };
     if operation.state != OperationState::Succeeded
         || !operation
@@ -113,9 +154,10 @@ where
     {
         return Err(chart_save_error());
     }
-    let Some(path) = pick().await.map_err(chart_storage_error)? else {
+    let Some(path) = pick(artifact).await.map_err(chart_storage_error)? else {
         return Ok(false);
     };
+    let max_bytes = artifact.max_bytes();
     // 对话框返回后，按当前窗口代次与来源授权读取文件。
     let QueryResult::FileRead(page) = query_resource(
         bridge,
@@ -124,7 +166,7 @@ where
         &reference,
         "file.read",
         serde_json::json!({
-            "fileRef": reference, "offset": "0", "maxBytes": MAX_CHART_SVG_BYTES.to_string()
+            "fileRef": reference, "offset": "0", "maxBytes": max_bytes.to_string()
         }),
     )
     .await?
@@ -138,8 +180,8 @@ where
         || !page.at_end
         || page.offset.get() != 0
         || page.total_bytes.get() != bytes.len() as u64
-        || page.total_bytes.get() > MAX_CHART_SVG_BYTES
-        || !bytes.starts_with(b"<svg ")
+        || page.total_bytes.get() > max_bytes
+        || !artifact.valid_contents(&bytes)
     {
         return Err(chart_save_error());
     }

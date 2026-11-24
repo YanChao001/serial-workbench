@@ -6,6 +6,8 @@ import type {
   SourceRange,
 } from "@serial-workbench/plugin-sdk/node";
 
+import { csvCell, spreadsheetText } from "./csv.ts";
+
 const maxFrameBytes = 64;
 const maxIdleMs = 5000;
 const voltage = /^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)\r?$/;
@@ -13,7 +15,11 @@ const voltage = /^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)\r?$/;
 async function readSamples(
   { target, params }: Readonly<Call>,
   task: NodeTaskContext,
-  receive: (value: number, source: SourceRange) => void | Promise<void>,
+  receive: (
+    value: number,
+    source: SourceRange,
+    decimal: string,
+  ) => void | Promise<void>,
 ) {
   const { hostId, sessionId, sessionEpoch } = target;
   const { startEventSeq = "1", sampleCount = 3 } = params;
@@ -99,7 +105,7 @@ async function readSamples(
           byteStart: String(frameStart),
           byteEnd: String(start + BigInt(index) + 1n),
         };
-        await receive(value, source);
+        await receive(value, source, line.trimEnd().replace(/^\+/u, ""));
         length = 0;
         sampled++;
         task.progress.report({
@@ -166,6 +172,7 @@ function renderSvg(samples: number[]) {
 export function chartRegistration(packageId: string): NodeRegister {
   const sample = `${packageId}.sample`;
   const exportSvg = `${packageId}.exportSvg`;
+  const exportCsv = `${packageId}.exportCsv`;
   return (context) => {
     context.parsers.register(sample, async (call, task) => {
       let lastPosition = "0";
@@ -186,6 +193,29 @@ export function chartRegistration(packageId: string): NodeRegister {
         samples.push(value);
       });
       return Buffer.from(renderSvg(samples)).toString("base64");
+    });
+    context.actions.register(exportCsv, async (call, task) => {
+      const rows = [
+        "sample_index,value_v,host_id,session_id,session_epoch,event_start,event_end,byte_start,byte_end",
+      ];
+      await readSamples(call, task, (_value, source, decimal) => {
+        rows.push(
+          [
+            String(rows.length),
+            decimal,
+            spreadsheetText(source.hostId),
+            spreadsheetText(source.sessionId),
+            source.sessionEpoch,
+            source.eventStart,
+            source.eventEnd,
+            source.byteStart,
+            source.byteEnd,
+          ]
+            .map(csvCell)
+            .join(","),
+        );
+      });
+      return Buffer.from(rows.join("\r\n") + "\r\n").toString("base64");
     });
     context.contributions.register({
       actions: [],

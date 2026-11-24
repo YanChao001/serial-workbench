@@ -51,6 +51,7 @@ export const en = {
     "Connect a device in the workbench to open this plugin.",
   "plugins.openView": "Open plugin",
   "plugins.exportChartSvg": "Save SVG…",
+  "plugins.exportChartCsv": "Save CSV…",
   "plugins.chartSaved": "Chart saved.",
   "plugins.chartExportError":
     "Could not save the chart. Check that the session has enough samples and try again.",

@@ -620,7 +620,7 @@ impl NodePackageManifest {
                 if let Some(format) = spec.output_schema.get(NODE_FILE_RESULT_KEY) {
                     let has_schema_value = |key, expected: &str| matches!(spec.output_schema.get(key), Some(SchemaValue::String(value)) if value == expected);
                     if spec.kind != ActionKind::Action
-                        || !matches!(format, SchemaValue::String(value) if value == "image/svg+xml")
+                        || !matches!(format, SchemaValue::String(value) if matches!(value.as_str(), "image/svg+xml" | "text/csv"))
                         || !has_schema_value("type", "string")
                         || !has_schema_value("contentEncoding", "base64")
                     {

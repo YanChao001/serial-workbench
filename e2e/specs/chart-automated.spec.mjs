@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
-import { readFileSync, writeFileSync } from "node:fs";
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { browser } from "@wdio/globals";
 import { language, navigate, ready } from "../helpers.mjs";
@@ -82,41 +82,74 @@ describe("Signed chart on the real desktop", () => {
     await sendHex(Buffer.from("3.5\n").toString("hex"));
 
     await showPluginDetails("Serial Workbench Chart");
-    const save = button("Save SVG…");
-    const exportPath = join(directory, "exported-chart.svg");
-    if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1") {
-      const picker = await selectWindowsFile(
-        save,
-        "Save",
-        exportPath,
-        "chart.svg",
+    const receipts = {};
+    for (const extension of ["svg", "csv"]) {
+      const save = button(`Save ${extension.toUpperCase()}…`);
+      const filename = `exported-chart.${extension}`;
+      const exportPath = join(directory, filename);
+      if (process.env.SWB_E2E_WINDOWS_NATIVE_PICKERS === "1") {
+        const picker = await selectWindowsFile(
+          save,
+          "Save",
+          exportPath,
+          `chart.${extension}`,
+        );
+        writeFileSync(
+          join(
+            directory,
+            extension === "svg"
+              ? "native-chart-save.json"
+              : "native-chart-save-csv.json",
+          ),
+          JSON.stringify(picker, null, 2),
+          { flag: "wx" },
+        );
+      } else {
+        await click(save);
+      }
+      await browser.waitUntil(
+        () =>
+          existsSync(exportPath) &&
+          browser.execute(() =>
+            document.body.textContent.includes("Chart saved."),
+          ),
+        {
+          timeoutMsg: `The desktop did not confirm the ${extension.toUpperCase()} was saved`,
+        },
       );
-      writeFileSync(
-        join(directory, "native-chart-save.json"),
-        JSON.stringify(picker, null, 2),
-        { flag: "wx" },
-      );
-    } else {
-      await click(save);
+      const exported = readFileSync(exportPath);
+      const content = exported.toString("utf8");
+      if (extension === "svg") {
+        assert.ok(content.startsWith("<svg "));
+        assert.match(
+          content,
+          /points="72\.00,154\.25 344\.00,295\.64 616\.00,56\.36"/u,
+        );
+      } else {
+        const [header, ...rows] = content.trimEnd().split("\r\n");
+        assert.equal(
+          header,
+          "sample_index,value_v,host_id,session_id,session_epoch,event_start,event_end,byte_start,byte_end",
+        );
+        assert.deepEqual(
+          rows.map((row) => row.split(",")[1]),
+          ["1.25", "-2", "3.5"],
+        );
+        assert.deepEqual(
+          rows.map((row) => row.split(",").slice(-2)),
+          [
+            ["0", "5"],
+            ["5", "8"],
+            ["8", "12"],
+          ],
+        );
+      }
+      receipts[extension] = {
+        file: filename,
+        bytes: exported.length,
+        sha256: createHash("sha256").update(exported).digest("hex"),
+      };
     }
-    await browser.waitUntil(
-      () =>
-        browser.execute(() =>
-          document.body.textContent.includes("Chart saved."),
-        ),
-      { timeoutMsg: "The desktop did not confirm the chart was saved" },
-    );
-    const exported = readFileSync(exportPath);
-    assert.ok(exported.toString("utf8").startsWith("<svg "));
-    assert.match(
-      exported.toString("utf8"),
-      /points="72\.00,154\.25 344\.00,295\.64 616\.00,56\.36"/,
-    );
-    const exportReceipt = {
-      file: "exported-chart.svg",
-      bytes: exported.length,
-      sha256: createHash("sha256").update(exported).digest("hex"),
-    };
 
     const reopened = await openChart(first);
     const retained = await acceptedSamples(reopened, 3);
@@ -139,7 +172,15 @@ describe("Signed chart on the real desktop", () => {
     writeFileSync(
       join(directory, "chart-window.json"),
       JSON.stringify(
-        { first, reopened, live, retained, restart, exportReceipt },
+        {
+          first,
+          reopened,
+          live,
+          retained,
+          restart,
+          exportReceipt: receipts.svg,
+          csvExportReceipt: receipts.csv,
+        },
         null,
         2,
       ),

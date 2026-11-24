@@ -26,6 +26,11 @@ const MODBUS_SLAVE_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/modbus-slave.json");
 const CHART_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/chart.zip");
 const CHART_DESCRIPTOR: &str = include_str!("../../resources/node-packages/chart.json");
+const PREVIOUS_CHART_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/chart-0.1.0.zip");
+const PREVIOUS_CHART_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/chart-0.1.0.json");
+const CHART_MARKER: &str = "node-packages:bundled-chart";
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -74,9 +79,10 @@ impl ProductPackage {
     }
 
     pub(super) fn replaces(&self, package: &InstalledNodePackage) -> bool {
-        self.marker == FIELD_MARKER
-            && self.descriptor.archive_sha256 != package.archive_sha256
-            && previous_fields().matches_installation(package)
+        self.descriptor.archive_sha256 != package.archive_sha256
+            && previous_packages().iter().any(|previous| {
+                self.marker == previous.marker && previous.matches_installation(package)
+            })
     }
 
     pub(super) fn verify_embedded(
@@ -136,28 +142,31 @@ pub(super) fn packages() -> &'static [ProductPackage] {
                 MODBUS_SLAVE_ARCHIVE,
                 "node-packages:bundled-modbus-slave",
             ),
+            ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
+        ]
+    })
+}
+
+fn previous_packages() -> &'static [ProductPackage] {
+    static PREVIOUS: OnceLock<[ProductPackage; 2]> = OnceLock::new();
+    PREVIOUS.get_or_init(|| {
+        [
             ProductPackage::new(
-                CHART_DESCRIPTOR,
-                CHART_ARCHIVE,
-                "node-packages:bundled-chart",
+                PREVIOUS_FIELD_DESCRIPTOR,
+                PREVIOUS_FIELD_ARCHIVE,
+                FIELD_MARKER,
+            ),
+            ProductPackage::new(
+                PREVIOUS_CHART_DESCRIPTOR,
+                PREVIOUS_CHART_ARCHIVE,
+                CHART_MARKER,
             ),
         ]
     })
 }
 
-fn previous_fields() -> &'static ProductPackage {
-    static PREVIOUS: OnceLock<ProductPackage> = OnceLock::new();
-    PREVIOUS.get_or_init(|| {
-        ProductPackage::new(
-            PREVIOUS_FIELD_DESCRIPTOR,
-            PREVIOUS_FIELD_ARCHIVE,
-            FIELD_MARKER,
-        )
-    })
-}
-
 fn trusted_packages() -> impl Iterator<Item = &'static ProductPackage> {
-    packages().iter().chain(std::iter::once(previous_fields()))
+    packages().iter().chain(previous_packages())
 }
 
 pub(super) fn is_product_source(source: &Id) -> bool {
@@ -203,10 +212,21 @@ mod tests {
 
     #[test]
     fn known_predecessor_upgrades_and_preserves_the_profile_decision() {
+        check_predecessor_upgrade(FIELD_MARKER, "0.2.0");
+        check_predecessor_upgrade(CHART_MARKER, "0.1.1");
+    }
+
+    fn check_predecessor_upgrade(marker: &str, next_version: &str) {
         let limits = NodePackageLimits::default();
         let cancel = AtomicBool::new(false);
-        let old = previous_fields();
-        let latest = &packages()[1];
+        let old = previous_packages()
+            .iter()
+            .find(|item| item.marker == marker)
+            .unwrap();
+        let latest = packages()
+            .iter()
+            .find(|item| item.marker == marker)
+            .unwrap();
         for expected_enabled in [Some(true), Some(false), None] {
             let profile = tempfile::tempdir().unwrap();
             let store = Store::open(profile.path()).unwrap();
@@ -253,7 +273,7 @@ mod tests {
                 expected_enabled
             );
             if let Some(package) = migrated.packages.first() {
-                assert_eq!(package.manifest.version.as_str(), "0.2.0");
+                assert_eq!(package.manifest.version.as_str(), next_version);
                 assert_eq!(package.archive_sha256, latest.descriptor.archive_sha256);
                 assert!(has_product_origin(package));
                 assert_eq!(package.activation_authority, None);

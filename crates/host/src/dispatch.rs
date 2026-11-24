@@ -2830,6 +2830,7 @@ mod tests {
                     (&slave, "swb.reference.modbus.slave.serve"),
                     (&chart, "swb.builtin.chart.sample"),
                     (&chart, "swb.builtin.chart.exportSvg"),
+                    (&chart, "swb.builtin.chart.exportCsv"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3023,6 +3024,10 @@ mod tests {
                 "swb.builtin.chart.exportSvg",
                 serde_json::json!({"sampleCount":2}),
             ),
+            (
+                "swb.builtin.chart.exportCsv",
+                serde_json::json!({"sampleCount":2}),
+            ),
         ] {
             assert_eq!(
                 host.invoke(&actor, call(&session, action, params))
@@ -3089,32 +3094,37 @@ mod tests {
             assert_eq!(source.byte_end.map(U64::get), Some(end));
             start = end;
         }
-        let exporting = host
-            .invoke(
-                &actor,
-                call(&session, "swb.builtin.chart.exportSvg", sample_params),
-            )
-            .await
-            .unwrap();
-        let ActionResult::Reference(svg) = settled(exporting).await else {
-            panic!("Expected the bundled chart SVG file");
-        };
-        let file = host
-            .inner
-            .files
-            .read(
-                FileReadParams {
-                    file_ref: svg.result_ref,
-                    offset: 0.into(),
-                    max_bytes: 4096.into(),
-                },
-                &actor,
-            )
-            .unwrap();
-        assert!(file.at_end);
-        let svg = STANDARD.decode(file.bytes_base64.as_str()).unwrap();
-        assert!(svg.starts_with(b"<svg "));
-        eprintln!("bundled_chart authorized=true samples=2 raw_bytes=8 svg=true");
+        for (action, prefix) in [
+            ("swb.builtin.chart.exportSvg", b"<svg ".as_slice()),
+            (
+                "swb.builtin.chart.exportCsv",
+                b"sample_index,value_v,".as_slice(),
+            ),
+        ] {
+            let exporting = host
+                .invoke(&actor, call(&session, action, sample_params.clone()))
+                .await
+                .unwrap();
+            let ActionResult::Reference(result) = settled(exporting).await else {
+                panic!("Expected the bundled chart file for {action}");
+            };
+            let file = host
+                .inner
+                .files
+                .read(
+                    FileReadParams {
+                        file_ref: result.result_ref,
+                        offset: 0.into(),
+                        max_bytes: 4096.into(),
+                    },
+                    &actor,
+                )
+                .unwrap();
+            assert!(file.at_end);
+            let bytes = STANDARD.decode(file.bytes_base64.as_str()).unwrap();
+            assert!(bytes.starts_with(prefix), "{action}");
+        }
+        eprintln!("bundled_chart authorized=true samples=2 raw_bytes=8 svg=true csv=true");
         let yaml = "version: \"1\"\nbyteLength: 1\nfields:\n  - id: reading\n    kind: integer\n    byteOffset: 0\n    width: 1\n    order: big\n    scale: \"0.5\"\n    bias: \"1\"";
         for (action, params, expected_status) in [
             (

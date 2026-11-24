@@ -1,3 +1,7 @@
+import {
+  csvCell,
+  spreadsheetText,
+} from "../../../packages/plugin-sdk/examples/reference-chart/csv";
 import type { FieldReading } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
 import {
   chartValue,
@@ -37,18 +41,6 @@ const header = [
   ...readingColumns.map((column) => "primary_" + column),
   ...readingColumns.map((column) => "paired_" + column),
 ];
-
-function csvCell(value: string | undefined) {
-  if (value === undefined) return "";
-  return /[,"\r\n]/u.test(value)
-    ? '"' + value.replaceAll('"', '""') + '"'
-    : value;
-}
-
-function csvText(value: string | undefined) {
-  // 工作表打开 CSV 时可能计算用户填写的文本。测量值单独按数值输出。
-  return value && /^(?:[\t\r\n]|\s*[=+@-])/u.test(value) ? "'" + value : value;
-}
 
 function knownMissing(
   previous: FieldChartFrame,
@@ -90,11 +82,13 @@ function readingCells(
   return {
     valid: value !== undefined,
     cells: [
-      csvText(field?.id),
+      spreadsheetText(field?.id),
       value,
-      csvText(field?.unit),
+      spreadsheetText(field?.unit),
       entry.source ? reading?.rawValue : undefined,
-      entry.source ? csvText(reading?.calibration?.revision) : undefined,
+      entry.source
+        ? spreadsheetText(reading?.calibration?.revision)
+        : undefined,
       spans?.length ? JSON.stringify(spans) : undefined,
     ],
   };
@@ -134,12 +128,12 @@ export function fieldChartCsv({
         previous ? (continuous ? "continuous" : "gap") : "start",
         missing,
         String(first.valid && (!paired || second.valid)),
-        csvText(source && target.hostId),
+        spreadsheetText(source && target.hostId),
         source?.instance,
-        csvText(source && target.sessionId),
+        spreadsheetText(source && target.sessionId),
         source && target.sessionEpoch,
         source?.revision,
-        csvText(source?.clock),
+        spreadsheetText(source?.clock),
         source && frame.eventStart,
         source && frame.eventEnd,
         source && frame.byteStart,

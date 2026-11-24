@@ -2,7 +2,7 @@
 use super::node_queries::QueryAuthority;
 use super::*;
 use crate::{node_backend::RegisteredHandler, storage::PluginOperation};
-use serial_workbench_core::NODE_FILE_RESULT_KEY;
+use serial_workbench_core::{NODE_FILE_RESULT_KEY, SchemaValue};
 
 pub(super) struct ActionAuthority {
     host: Host,
@@ -418,18 +418,21 @@ impl Host {
                         .map(|_| ())
                 }),
             )?;
-            if binding
-                .spec()
-                .output_schema
-                .contains_key(NODE_FILE_RESULT_KEY)
-            {
+            if let Some(format) = binding.spec().output_schema.get(NODE_FILE_RESULT_KEY) {
                 use base64::{Engine as _, engine::general_purpose::STANDARD};
                 return value
                     .as_str()
                     .and_then(|encoded| STANDARD.decode(encoded).ok())
                     .filter(|bytes| !bytes.is_empty())
+                    .filter(|bytes| {
+                        !matches!(format, SchemaValue::String(mime) if mime == "text/csv")
+                            || (bytes.len() <= 64 * 1024 && std::str::from_utf8(bytes).is_ok())
+                    })
                     .ok_or_else(|| {
-                        HostError::new("NODE_OUTPUT_INVALID", "Artifact output must be base64")
+                        HostError::new(
+                            "NODE_OUTPUT_INVALID",
+                            "Invalid base64 artifact or file contents",
+                        )
                     });
             }
             serde_json::to_vec(&value)

@@ -91,7 +91,7 @@ export function hostOpenNodeView(
 export async function hostCloseNodeView(id: string): Promise<void> {
   await callHost((commands) => commands.hostCloseNodeView(id));
 }
-export function hostSaveChartSvg(
+export function hostSaveChartArtifact(
   generation: U64,
   operationId: string,
 ): Promise<boolean> {

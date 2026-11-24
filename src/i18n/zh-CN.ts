@@ -44,6 +44,7 @@ export const zhCN = {
   "plugins.noViewSession": "在工作台连接设备后即可打开此插件。",
   "plugins.openView": "打开插件",
   "plugins.exportChartSvg": "另存为 SVG…",
+  "plugins.exportChartCsv": "另存为 CSV…",
   "plugins.chartSaved": "图表已保存。",
   "plugins.chartExportError":
     "无法保存图表。请确认会话中有足够的样本，然后重试。",

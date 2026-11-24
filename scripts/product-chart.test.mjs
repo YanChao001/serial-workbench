@@ -6,6 +6,7 @@ import { fileURLToPath } from "node:url";
 import { buildSync } from "esbuild";
 import { validateNodePackageManifest } from "../packages/contracts/src/generated/validators.mjs";
 import { register } from "../packages/plugin-sdk/examples/reference-chart/builtin.ts";
+import { register as referenceRegister } from "../packages/plugin-sdk/examples/reference-chart/main.ts";
 
 const root = new URL("../", import.meta.url);
 const source = "packages/plugin-sdk/examples/reference-chart/";
@@ -59,4 +60,66 @@ test("the bundled chart locks the shared implementation and a separate package i
     assert.equal(outputFiles.length, 1);
     assert.equal(sha256(outputFiles[0].contents), digest);
   }
+});
+
+test("reference and bundled CSV actions preserve decimal samples and exclusive source ranges", async () => {
+  const origin = 9007199254740993n;
+  const fileRead = (text, start, sequence) => ({
+    kind: "rx",
+    eventSeq: String(sequence),
+    payload: {
+      bytesBase64: Buffer.from(text).toString("base64"),
+      byteStart: String(start),
+      byteEnd: String(start + BigInt(text.length)),
+    },
+  });
+  const first = "+900.00000000";
+  const last = "00000001\r\n-0.5\n";
+  const split = origin + BigInt(first.length);
+  const eventSeq = 11n;
+  const end = split + BigInt(last.length);
+  const progress = [];
+  const task = {
+    signal: AbortSignal.timeout(2000),
+    streams: {
+      read: async ({ startEventSeq }) => {
+        assert.equal(startEventSeq, String(eventSeq));
+        return {
+          events: [
+            fileRead(first, origin, eventSeq),
+            fileRead(last, split, eventSeq + 1n),
+          ],
+        };
+      },
+    },
+    progress: { report: ({ completed }) => progress.push(completed) },
+  };
+  for (const [registerChart, id] of [
+    [register, "swb.builtin.chart"],
+    [referenceRegister, "swb.reference.chart"],
+  ]) {
+    const actions = new Map();
+    registerChart({
+      actions: { register: (name, handler) => actions.set(name, handler) },
+      parsers: { register: () => {} },
+      contributions: { register: () => {} },
+    });
+    const result = await actions.get(id + ".exportCsv")(
+      {
+        target: { hostId: "-data", sessionId: "port", sessionEpoch: "3" },
+        params: { startEventSeq: String(eventSeq), sampleCount: 2 },
+      },
+      task,
+    );
+    assert.equal(
+      Buffer.from(result, "base64").toString("utf8"),
+      [
+        "sample_index,value_v,host_id,session_id,session_epoch,event_start,event_end,byte_start,byte_end",
+        `1,900.0000000000000001,'-data,port,3,11,13,${origin},${end - 5n}`,
+        `2,-0.5,'-data,port,3,12,13,${end - 5n},${end}`,
+        "",
+      ].join("\r\n"),
+    );
+  }
+  assert.deepEqual(progress, ["1", "2", "1", "2"]);
 });
