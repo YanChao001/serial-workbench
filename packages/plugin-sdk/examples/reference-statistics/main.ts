@@ -4,6 +4,7 @@ import { sampleStatistics } from "../reference-chart/sample-statistics.ts";
 import { alignXY } from "./align-xy.ts";
 import { spectrum } from "./spectrum.ts";
 import {
+  decimal,
   maxU64,
   positive,
   record,
@@ -46,13 +47,15 @@ function readSamples(value: unknown, first: bigint, after: bigint) {
         `samples[${index}].position is outside the grid or duplicated`,
       );
     seen.add(position);
-    if (typeof sample.value !== "number" || !Number.isFinite(sample.value))
-      throw new Error(`samples[${index}].value must be finite`);
-    return { position, value: sample.value };
+    const value =
+      typeof sample.value === "number" && Number.isSafeInteger(sample.value)
+        ? sample.value
+        : Number(decimal(sample.value, `samples[${index}].value`));
+    return { position, value };
   });
 }
 
-function summarize(input: unknown, signal: AbortSignal) {
+export function summarize(input: unknown, signal: AbortSignal) {
   const series = record(input, "params");
   const first = positive(series.firstPosition, "firstPosition");
   const slots = series.expectedSlots;

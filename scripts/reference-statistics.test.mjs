@@ -83,7 +83,7 @@ test("time windows use a half-open grid and distinguish lost samples from unsche
     firstPosition: "10",
     expectedSlots: 3,
     samples: [
-      { position: "10", value: 4 },
+      { position: "10", value: "4.25" },
       { position: "12", value: 8 },
     ],
     window: {
@@ -97,6 +97,11 @@ test("time windows use a half-open grid and distinguish lost samples from unsche
   };
   const invoke = handler();
   const report = invoke(params);
+  const { inputSchema, outputSchema } = manifest.contributes.actions[0];
+  const ajv = new Ajv();
+  assert.ok(ajv.validate(inputSchema, params), JSON.stringify(ajv.errors));
+  assert.ok(ajv.validate(outputSchema, report), JSON.stringify(ajv.errors));
+  assert.equal(report.windows[0].metrics.average, 4.25);
   assert.equal(report.clockId, "capture-source");
   assert.equal(report.periodNs, "4");
   assert.deepEqual(
@@ -158,7 +163,7 @@ test("the worker rejects duplicate or out-of-grid data, invalid numbers and unbo
         ...series,
         samples: [{ position: series.firstPosition, value: Infinity }],
       }),
-    /must be finite/,
+    /must be a finite decimal string/,
   );
   assert.throws(
     () => invoke({ ...series, expectedSlots: 258 }),

@@ -82,7 +82,7 @@ async fn native_node_dynamic_statistics_reads_windows_from_signed_package() {
         "expectedSlots":3,
         "unit":"V",
         "samples":[
-            {"position":"9007199254740993","value":4},
+            {"position":"9007199254740993","value":"4.25"},
             {"position":"9007199254740995","value":8}
         ],
         "window":{
@@ -108,7 +108,7 @@ async fn native_node_dynamic_statistics_reads_windows_from_signed_package() {
     let rows = report["windows"].as_array().unwrap();
     assert_eq!(rows.len(), 4);
     assert_eq!(rows[0]["fromPosition"], "9007199254740993");
-    assert_eq!(rows[0]["metrics"]["average"].as_f64(), Some(4.0));
+    assert_eq!(rows[0]["metrics"]["average"].as_f64(), Some(4.25));
     assert_eq!(rows[1]["expectedCount"], 1);
     assert_eq!(rows[1]["missingCount"], 1);
     assert_eq!(rows[1]["missingRate"].as_f64(), Some(1.0));

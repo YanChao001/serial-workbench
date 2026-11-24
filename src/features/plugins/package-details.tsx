@@ -32,9 +32,11 @@ import {
 } from "./node-management";
 
 import { spectrumAction } from "./spectrum-report";
+import { windowsAction } from "./windows-report";
 
 const XyAnalysis = lazy(() => import("./xy-analysis"));
 const SpectrumAnalysis = lazy(() => import("./spectrum-analysis"));
+const WindowStatistics = lazy(() => import("./window-statistics"));
 
 export function PackageDetails({
   connection,
@@ -207,6 +209,21 @@ export function PackageDetails({
       phase === "active" &&
       id === statisticsPackage ? (
         <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+          {manifest.contributes.actions.some(
+            (action) =>
+              action.actionId === windowsAction &&
+              action.targetKinds.includes("host"),
+          ) ? (
+            <WindowStatistics
+              key={JSON.stringify([
+                windowsAction,
+                archiveSha256,
+                runtime.generation,
+              ])}
+              target={connection.hostTarget}
+              archiveSha256={archiveSha256}
+            />
+          ) : null}
           {manifest.contributes.actions.some(
             (action) =>
               action.actionId === alignXyAction &&

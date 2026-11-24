@@ -380,7 +380,7 @@ recorded_send_2                   recorded_send_2
 
 ### 高级统计窗口（VIZ-05）
 
-高级统计扩展的动作是 `swb.reference.statistics.windows`，作用目标为 Host。输入包含 `firstPosition`、`expectedSlots`、`samples` 和 `window`，可附 `unit`。以下输入声明 5、6、7 三个计划槽位，提交其中两个值。
+高级统计扩展的动作是 `swb.reference.statistics.windows`，作用目标为 Host。输入包含 `firstPosition`、`expectedSlots`、`samples` 和 `window`，可附 `unit`。样本值可用安全整数或十进制字符串传输，小数用字符串。以下输入声明 5、6、7 三个计划槽位，提交其中两个值。
 
 ```json
 {
@@ -388,7 +388,7 @@ recorded_send_2                   recorded_send_2
   "expectedSlots": 3,
   "unit": "V",
   "samples": [
-    { "position": "5", "value": 1.25 },
+    { "position": "5", "value": "1.25" },
     { "position": "7", "value": 2 }
   ],
   "window": { "kind": "count", "length": "2", "step": "1" }
@@ -400,6 +400,19 @@ recorded_send_2                   recorded_send_2
 运行 `node --test scripts/reference-statistics.test.mjs`，验证输入和报告 schema、半开边界、高位整数、尾窗、全缺样、无计划采样点及取消。准备验收包时，使用 `pnpm exec esbuild packages/plugin-sdk/examples/reference-statistics/main.ts --bundle --platform=node --format=esm --target=node26 --outfile=.cache/reference-statistics/main.js`，再调用 `sign_reference_statistics` 示例签名。安装后按来源信任流程登记，并通过 Host 动作读回报告文件。
 
 四目标原生检查复用实际 Host 的 `native_node_dynamic_statistics_reads_windows_from_signed_package`。用 `pnpm plugin-sdk:fixture` 编译时纳入同源窗口扩展，测试按真实包清单和临时密钥签名。核对来源验证、显式执行信任、启用、Host 调用和有界结果读取，同时检查高位时间边界及两类空窗。
+
+插件详情在统计包已启用并获得执行信任后显示「高级统计窗口」。样本区接收计划槽位和已有样本的 JSON，时间窗界面再录入时钟标识、原点和采样周期。宽版左侧为样本，右侧为窗口条件。窄版按样本、条件、计算、报告纵排。长度、步长和所有纳秒输入以十进制文本保留完整精度。
+
+```text
+宽窗                                         窄窗
+样本 JSON        │ 窗口类型 [按样本 ▾]         样本 JSON
+[计划槽位与数据] │ 长度      步长               窗口类型 [按样本 ▾]
+                │ 时钟（时间窗时显示）          长度、步长
+[计算] [载入示例]                             [计算] [载入示例]
+报告摘要 / 按窗口比较 / 选择窗口看明细        报告摘要 / 选择窗口看明细
+```
+
+报告摘要显示声明的采样范围、窗口参数及时钟。窗口选择可用键盘完成。用序号选窗，在明细和对比表查看完整纳秒半开边界、有效数和缺值数。全缺样显示缺值率 100%，没有计划采样点时显示缺值率不可用。尾窗保留实际结束边界和裁剪说明。度量项使用相同标签与数字对齐。复验长时钟、64 位纳秒、不同分母、尾窗和两种空窗。修改条件后清理旧报告，执行失败保留输入。运行 `pnpm test:ui e2e/browser/plugins.spec.ts --grep "professional window statistics" --workers=1`，在 400 和 1240 像素核对样本与窗口区布局、对比表键盘滚动、半开时间窗和报告一致性拒绝。签名 Host 用例用十进制字符串输入 4.25 并从实际结果文件读回。
 
 ### 专业频谱、瀑布图与直方图（VIZ-04）
 

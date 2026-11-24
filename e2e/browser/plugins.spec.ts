@@ -5,6 +5,7 @@ import type { NodePackageInstallation, NodePackageSourceKey } from "@serial-work
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { alignXY } from "../../packages/plugin-sdk/examples/reference-statistics/align-xy";
+import { summarize } from "../../packages/plugin-sdk/examples/reference-statistics/main";
 import { spectrum } from "../../packages/plugin-sdk/examples/reference-statistics/spectrum";
 import { getLocale } from "../../src/i18n/registry";
 import { createTranslator } from "../../src/i18n/translate";
@@ -647,3 +648,216 @@ for (const { language, theme } of [
     });
   });
 }
+
+test("professional window statistics distinguishes missing samples from unscheduled time slots", async ({
+  page,
+}, testInfo) => {
+  const t = createTranslator(getLocale("zh").messages);
+  await page.setViewportSize({ width: 400, height: 640 });
+  const plugin = statisticsPlugin();
+  const { manifest, archiveSha256 } = plugin.installation;
+  const action = manifest.contributes.actions.find(
+    ({ actionId }) => actionId === "swb.reference.statistics.windows",
+  );
+  if (!action) throw new Error("Missing statistical windows action");
+  const fileRef = {
+    kind: "plugin_result",
+    id: "windows-result",
+    hostId: "workbench-gui-host",
+  };
+  const file = (value: unknown) => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return {
+      fileRef,
+      offset: "0",
+      nextOffset: String(bytes.length),
+      totalBytes: String(bytes.length),
+      bytesBase64: bytes.toString("base64"),
+      atEnd: true,
+      fingerprint: createHash("sha256").update(bytes).digest("hex"),
+    };
+  };
+  await seedWorkbenchFixture(page, {
+    language: "zh",
+    theme: "dark",
+    sidebarCollapsed: true,
+    plugin,
+    framing: {
+      action,
+      page: file(null),
+      dependencies: [
+        { id: manifest.id, version: manifest.version, digest: archiveSha256 },
+      ],
+    },
+  });
+  await page.goto("./#/plugins");
+  await page
+    .getByRole("button", { name: /Sample Window Statistics and XY Alignment/ })
+    .click();
+  await page.getByText(t("plugins.windows.title"), { exact: true }).click();
+  const panel = page.getByRole("region", { name: t("plugins.windows.title") });
+  const settings = panel.getByRole("group", {
+    name: t("plugins.windows.settings"),
+  });
+  const sampleGrid = panel.getByRole("textbox", {
+    name: t("plugins.windows.input"),
+  });
+  const run = panel.getByRole("button", { name: t("plugins.windows.run") });
+  const result = panel.getByRole("region", {
+    name: t("plugins.windows.result"),
+  });
+  await panel
+    .getByRole("button", { name: t("plugins.windows.example") })
+    .click();
+  const source = await sampleGrid.inputValue();
+  await expectAnalysisLayout(panel, sampleGrid, settings, false);
+  await page.setViewportSize({ width: 1240, height: 840 });
+  const samplesBox = await sampleGrid.boundingBox();
+  const settingsBox = await settings.boundingBox();
+  if (!samplesBox || !settingsBox)
+    throw new Error("Missing window form geometry");
+  expect(settingsBox.x).toBeGreaterThan(samplesBox.x + samplesBox.width);
+  await page.setViewportSize({ width: 400, height: 640 });
+
+  const parsed: unknown = JSON.parse(source);
+  if (!parsed || typeof parsed !== "object" || Array.isArray(parsed))
+    throw new Error("Expected a sample grid object");
+  const input = {
+    ...parsed,
+    window: { kind: "count", length: "2", step: "1" },
+  };
+  const countReport = summarize(input, new AbortController().signal);
+  await page.evaluate(
+    (report) => window.workbenchFixture.setFramingResult(report),
+    file(countReport),
+  );
+  await run.click();
+  await expect(result.getByRole("status")).toContainText("[5, 9)");
+  await expect(result.getByText("1 / 2 · 50%", { exact: true })).toBeVisible();
+  await result.getByText(t("plugins.windows.compare"), { exact: true }).click();
+  const comparison = result.getByRole("table", {
+    name: t("plugins.windows.compare"),
+  });
+  await expect(comparison.getByRole("row")).toHaveCount(5);
+  await expect(
+    comparison
+      .getByRole("row")
+      .nth(1)
+      .getByRole("cell", { name: "1.25", exact: true })
+      .first(),
+  ).toBeVisible();
+  const compareScroll = result.getByRole("region", {
+    name: t("plugins.windows.compare"),
+  });
+  await compareScroll.focus();
+  await compareScroll.press("ArrowRight");
+  await expect
+    .poll(() => compareScroll.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
+  await expect(comparison.getByRole("row").last()).toContainText(
+    t("plugins.windows.tail"),
+  );
+
+  const mode = settings.getByRole("combobox", {
+    name: t("plugins.windows.kind"),
+  });
+  await mode.click();
+  await page
+    .getByRole("option", { name: t("plugins.windows.time"), exact: true })
+    .click();
+  await expect(result).toHaveCount(0);
+  const origin = 18000000000000000000n;
+  const time = {
+    kind: "time",
+    length: "4",
+    step: "3",
+    clockId: "recorder-" + "0123456789".repeat(5),
+    originMonoNs: String(origin),
+    periodNs: "10",
+  };
+  for (const field of [
+    "length",
+    "step",
+    "clockId",
+    "originMonoNs",
+    "periodNs",
+  ] as const) {
+    await settings
+      .getByRole("textbox", { name: t(`plugins.windows.${field}`) })
+      .fill(time[field]);
+  }
+  const timedInput = { ...input, window: time };
+  const timeReport = summarize(timedInput, new AbortController().signal);
+  await page.evaluate(
+    (report) => window.workbenchFixture.setFramingResult(report),
+    file(timeReport),
+  );
+  await run.click();
+  await expect(result.getByRole("status")).toContainText(time.clockId);
+  const selected = result.getByRole("region", {
+    name: t("plugins.windows.selected"),
+  });
+  await expect(
+    selected.getByText("1.25", { exact: true }).first(),
+  ).toBeVisible();
+  const chooser = result.getByRole("combobox", {
+    name: t("plugins.windows.selected"),
+  });
+
+  async function selectWindow(number: number, from: bigint, to: bigint) {
+    await chooser.press("Enter");
+    await page
+      .getByRole("option", {
+        name: t("plugins.windows.windowNumber", { number }),
+        exact: true,
+      })
+      .click();
+    await expect(
+      selected.getByText(`[${origin + from}, ${origin + to}) ns`, {
+        exact: true,
+      }),
+    ).toBeVisible();
+  }
+
+  await selectWindow(2, 3n, 7n);
+  await expect(result.getByText(t("plugins.windows.noSlots"))).toBeVisible();
+  await expect(result.getByText("0 / 0 · —", { exact: true })).toBeVisible();
+  await selectWindow(4, 9n, 13n);
+  await expect(result.getByText(t("plugins.windows.noSamples"))).toBeVisible();
+  await expect(result.getByText("1 / 1 · 100%", { exact: true })).toBeVisible();
+  await selectWindow(14, 39n, 40n);
+  await expect(
+    result
+      .getByRole("region", { name: t("plugins.windows.selected") })
+      .getByText(t("plugins.windows.tail"), { exact: true }),
+  ).toBeVisible();
+  await selected.screenshot({
+    path: testInfo.outputPath("statistics-window-narrow.png"),
+  });
+
+  const corrupt = {
+    ...timeReport,
+    windows: timeReport.windows.map((entry, index) =>
+      index === 1 ? { ...entry, missingRate: 1 } : entry,
+    ),
+  };
+  await page.evaluate(
+    (report) => window.workbenchFixture.setFramingResult(report),
+    file(corrupt),
+  );
+  await run.click();
+  await expect(panel.getByRole("alert")).toHaveText(
+    t("plugins.windows.failed"),
+  );
+  await expect(result).toHaveCount(0);
+  const calls = await page.evaluate(() =>
+    window.workbenchFixture.invocations.filter(
+      ({ actionId }) => actionId === "swb.reference.statistics.windows",
+    ),
+  );
+  expect(calls).toHaveLength(3);
+  expect(calls[1]).toMatchObject({
+    target: { kind: "host", id: fileRef.hostId },
+    params: timedInput,
+  });
+});
