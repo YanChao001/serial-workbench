@@ -2196,6 +2196,22 @@ export const en = {
   "rfc2217Connection.managedRts": "RTS is managed by hardware flow control.",
   "rfc2217Connection.invalidStopBits":
     "Choose 5 data bits to use 1.5 stop bits.",
+  "rfc2217Connection.options": "connection options",
+  "rfc2217Connection.binary": "two-way binary transfer",
+  "rfc2217Connection.comPort": "serial control",
+  "rfc2217Connection.dtr": "DTR",
+  "rfc2217Connection.rts": "RTS",
+  "rfc2217Connection.baudReading": "{value}\u00a0bit/s",
+  "rfc2217Connection.refused":
+    "The remote endpoint refused {field}. Check that the server supports RFC 2217.",
+  "rfc2217Connection.timeout":
+    "Timed out waiting for the remote endpoint to confirm {field}.",
+  "rfc2217Connection.disconnected":
+    "The remote endpoint disconnected while confirming {field}.",
+  "rfc2217Connection.invalidReply":
+    "The remote endpoint returned an invalid response for {field} while confirming {requested}.",
+  "rfc2217Connection.differentValue":
+    "{field} mismatch. Requested {requested}, but the remote endpoint reported {reported}.",
   "rfc2217Connection.negotiating": "Negotiating…",
   "workbench.pluginTransportParameters": "Plugin connection parameters",
   "workbench.pluginTransportHint":

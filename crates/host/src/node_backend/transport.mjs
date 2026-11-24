@@ -17,6 +17,40 @@ function pluginTransportShape(frame, fields) {
   );
 }
 
+function rfc2217OpenFailure(error) {
+  try {
+    if (!(error instanceof Error)) return undefined;
+    const ownValue = (key) =>
+      Object.getOwnPropertyDescriptor(error, key)?.value;
+    if (ownValue("name") !== "Rfc2217NegotiationError") return undefined;
+    const reason = ownValue("reason");
+    const field = ownValue("field");
+    if (
+      !["refused", "different_value", "timeout", "disconnected"].includes(
+        reason,
+      ) ||
+      typeof field !== "string" ||
+      !/^[A-Za-z]{1,12}$/.test(field)
+    )
+      return undefined;
+    const hex = (key) => {
+      const value = ownValue(key);
+      return typeof value === "string" && /^(?:[0-9a-f]{2}){1,4}$/.test(value)
+        ? value
+        : undefined;
+    };
+    return {
+      reason,
+      field,
+      requestedHex: hex("requestedHex"),
+      replyHex: hex("replyHex"),
+    };
+  } catch {
+    // 插件抛出的非标准对象不会影响统一的失败与清理流程。
+    return undefined;
+  }
+}
+
 function pluginTransportInteger(value, minimum, maximum) {
   return Number.isSafeInteger(value) && value >= minimum && value <= maximum;
 }
@@ -262,6 +296,7 @@ export function createPluginTransportLane({
     let opening = false;
     let closeRequested = false;
     let openingFailed = false;
+    let negotiation;
     let providerReturned = false;
     let cleanupFailed;
     const openDeadline = setTimeout(disconnect, PLUGIN_TRANSPORT_OPEN_MS);
@@ -317,10 +352,11 @@ export function createPluginTransportLane({
         }
         dispatch(frame);
       }
-    } catch {
+    } catch (error) {
       openingFailed =
         opening && !activated && !lifetime.signal.aborted && !socket.destroyed;
-      if (!openingFailed) disconnect();
+      if (openingFailed) negotiation = rfc2217OpenFailure(error);
+      else disconnect();
     } finally {
       clearTimeout(openDeadline);
       lifetime.abort();
@@ -348,9 +384,10 @@ export function createPluginTransportLane({
               disconnect,
             );
           } else if (openingFailed && !socket.destroyed) {
-            await sendPluginTransportFrame(socket, { kind: "error" }).catch(
-              disconnect,
-            );
+            await sendPluginTransportFrame(socket, {
+              kind: "error",
+              negotiation,
+            }).catch(disconnect);
           }
           await finishSocket((graceful || openingFailed) && !socket.destroyed);
         }

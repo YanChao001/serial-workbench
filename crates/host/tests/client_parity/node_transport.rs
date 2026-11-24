@@ -289,29 +289,38 @@ async fn signed_transport(scenario: TransportScenario) {
 
         grant(&auth, &operator, &client, &device, &["device.modify"]);
         if rfc2217 {
-            let refusal = async {
-                let attempt = client
-                    .request(RpcRequest::Invoke(call(
-                        &client,
-                        "device.open",
-                        &device,
-                        open_params.clone(),
-                    )))
-                    .await
-                    .unwrap();
-                let terminal = wait_for_terminal(&client, &host_target, success(attempt)).await;
-                assert_ne!(terminal.state, OperationState::Succeeded, "{terminal:?}");
-                assert!(terminal.result.is_none(), "{terminal:?}");
-                eprintln!(
-                    "rfc2217_mismatched_baud requested=115200 acknowledged=9600 host_error={}",
-                    terminal.error.unwrap().code
-                );
-            };
+            let listener = listener.as_ref().unwrap();
+            let open_failure =
+                |params| rfc2217_open_failure(&client, &host_target, &device, params);
             let peer = async {
-                let mut peer = accept_rfc2217(listener.as_ref().unwrap(), true).await;
+                let mut peer = accept_rfc2217(listener, true).await;
                 peer_eof(&mut peer).await;
             };
-            tokio::join!(refusal, peer);
+            let (mismatch, ()) = tokio::join!(open_failure(open_params.clone()), peer);
+            assert!(!mismatch.retryable);
+            assert_eq!(
+                serde_json::to_value(mismatch.details.unwrap()).unwrap(),
+                json!({"protocol":"rfc2217","reason":"different_value","field":"baudRate","requestedValue":115200,"reportedValue":9600})
+            );
+            eprintln!("rfc2217_mismatched_baud requested=115200 reported=9600 closed=true");
+
+            let silent_peer = async {
+                let mut peer = timeout(WAIT, listener.accept()).await.unwrap().unwrap().0;
+                let mut options = [0; 9];
+                timeout(WAIT, peer.read_exact(&mut options))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(options, [255, 251, 0, 255, 253, 0, 255, 251, 44]);
+                peer_eof(&mut peer).await;
+            };
+            let (expired, ()) = tokio::join!(open_failure(open_params.clone()), silent_peer);
+            assert!(expired.retryable);
+            assert_eq!(
+                serde_json::to_value(expired.details.unwrap()).unwrap(),
+                json!({"protocol":"rfc2217","reason":"timeout","field":"options"})
+            );
+            eprintln!("rfc2217_silent_peer reason=timeout field=options closed=true");
         }
         let opening = open_session(&client, &host_target, &device, open_params.clone());
         let (first, configured_peer) = if rfc2217 {
@@ -760,6 +769,31 @@ async fn connect_peer(listener: Option<&TcpListener>, endpoint: std::net::Socket
             .unwrap()
             .unwrap()
     }
+}
+
+async fn rfc2217_open_failure(
+    client: &HostClient,
+    host_target: &Target,
+    device: &Target,
+    open_params: Value,
+) -> HostError {
+    let request = call(client, "device.open", device, open_params);
+    let attempt = client
+        .request(RpcRequest::Invoke(request.clone()))
+        .await
+        .unwrap();
+    let terminal = wait_for_terminal(client, host_target, success(attempt)).await;
+    assert_eq!(terminal.state, OperationState::Failed, "{terminal:?}");
+    assert!(terminal.result.is_none(), "{terminal:?}");
+    let repeated = client.request(RpcRequest::Invoke(request)).await.unwrap();
+    let RpcResult::Operation(repeated) = success(repeated) else {
+        panic!("Expected the replayed operation");
+    };
+    assert_eq!(repeated.operation.operation_id, terminal.operation_id);
+    assert_eq!(repeated.operation.error, terminal.error);
+    let error = terminal.error.unwrap();
+    assert_eq!(error.code, "PLUGIN_TRANSPORT_OPEN_FAILED");
+    error
 }
 
 async fn accept_rfc2217(listener: &TcpListener, different_baud: bool) -> TcpStream {

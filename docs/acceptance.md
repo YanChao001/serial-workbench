@@ -492,7 +492,11 @@ node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs script
 pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 ```
 
-生成首方归档时以 esbuild 针对 Node 26 打包 `reference-rfc2217/builtin.ts`。使用 `sign_builtin_rfc2217 <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`，登记并核对归档、入口、清单摘要和来源公钥。原生首启重启用例以实际归档摘要核对来源、激活状态和设备登记。Host 参数级拒绝详情、打开后的控制线操作、第三方 RFC 2217 设备和发行继续验收。
+生成首方归档时以 esbuild 针对 Node 26 打包 `reference-rfc2217/builtin.ts`。使用 `sign_builtin_rfc2217 <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`，登记并核对归档、入口、清单摘要和来源公钥。原生首启重启用例以实际归档摘要核对来源、激活状态和设备登记。
+
+打开失败继续报告 `PLUGIN_TRANSPORT_OPEN_FAILED`。当前请求的终态可附带 `details.protocol = rfc2217`、`reason` 和具体 `field`。参数不符时提供 `requestedValue` 与 `reportedValue`。无效应答只保留可核验的请求值。工作台按字段显示可读值，例如波特率用 bit/s，流控和控制线复用已有名称。未识别的故障继续显示通用提示。
+
+再次使用签名参考包场景。独立对端回报不同波特率和完全静默时，分别核对 `different_value` 与 `timeout` 终态、确切值和实际断连，再建立新会话核对 Raw。窄窗复验错误全文、重复提示、重试和还原焦点。打开后的控制线操作、第三方 RFC 2217 设备和发行继续验收。
 
 ### 有序会话钩子
 

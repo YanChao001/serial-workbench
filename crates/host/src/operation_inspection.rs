@@ -106,7 +106,15 @@ impl Host {
 pub(super) fn redact_error_details(operation: &mut Operation) {
     // 查询和同键重放保持同一公开投影，持久证据中的私有诊断仍保留。
     if let Some(error) = operation.error.as_mut() {
-        error.details = None;
+        let public_open_detail = operation.action_id.as_str() == "device.open"
+            && error.code == "PLUGIN_TRANSPORT_OPEN_FAILED"
+            && error
+                .details
+                .as_deref()
+                .is_some_and(crate::device::plugin_transport::is_public_rfc2217_open_detail);
+        if !public_open_detail {
+            error.details = None;
+        }
     }
 }
 

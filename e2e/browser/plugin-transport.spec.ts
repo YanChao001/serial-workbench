@@ -377,7 +377,14 @@ test("the short Chinese RFC 2217 form keeps one retry message and the connection
     connectFailure: {
       code: "PLUGIN_TRANSPORT_OPEN_FAILED",
       message: "Fixture serial gateway did not confirm a parameter",
-      retryable: true,
+      retryable: false,
+      details: {
+        protocol: "rfc2217",
+        reason: "different_value",
+        field: "baudRate",
+        requestedValue: 57600,
+        reportedValue: 9600,
+      },
     },
   });
   await page.goto("./#/");
@@ -409,7 +416,7 @@ test("the short Chinese RFC 2217 form keeps one retry message and the connection
   expect(portBox!.y).toBeGreaterThanOrEqual(addressBox!.y + addressBox!.height);
   expect(baudBox!.y).toBeGreaterThanOrEqual(portBox!.y + portBox!.height);
   await baud.press("Enter");
-  const message = "插件连接失败。请检查地址、端口和连接参数后重试。";
+  const message = "波特率不一致。请求 57600 bit/s，对端回报 9600 bit/s。";
   const alert = dialog.getByRole("alert");
   await expect(alert).toHaveText(message);
   await expect(page.getByText(message, { exact: true })).toHaveCount(1);

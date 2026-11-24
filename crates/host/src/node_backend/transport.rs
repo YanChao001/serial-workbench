@@ -102,7 +102,15 @@ impl RegisteredTransport {
     ) -> BackendResult<Box<dyn Transport>> {
         self.current()?;
         authorize()?;
-        let waiting = PendingPluginTransport::listen()?;
+        let rfc2217 = matches!(
+            (
+                self.handler.package().as_str(),
+                self.spec().action_id.as_str()
+            ),
+            ("swb.builtin.rfc2217", "swb.builtin.rfc2217.transport")
+                | ("reference.rfc2217", "reference.rfc2217.transport")
+        );
+        let waiting = PendingPluginTransport::listen()?.with_rfc2217_diagnostics(rfc2217);
         let endpoint = TransportEndpoint {
             address: waiting.address().to_string(),
             credential: waiting.credential().clone(),
@@ -144,12 +152,12 @@ impl RegisteredTransport {
                     "backendTransportStartUnconfirmed",
                 )
             })??;
-        waiting
-            .with_cleanup(cleanup)
-            .accept(Duration::from_secs(2), || {
-                self.current()?;
-                authorize()
-            })
+        // RFC 2217 先完成自己的三秒有界协商与断连，再回报终态。
+        let open_wait = Duration::from_secs(if rfc2217 { 4 } else { 2 });
+        waiting.with_cleanup(cleanup).accept(open_wait, || {
+            self.current()?;
+            authorize()
+        })
     }
 }
 

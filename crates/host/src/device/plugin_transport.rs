@@ -32,6 +32,7 @@ pub(crate) struct PendingPluginTransport {
     listener: TcpListener,
     address: SocketAddr,
     credential: ContextToken,
+    report_rfc2217: bool,
     cleanup: Option<Arc<dyn BackendCleanup>>,
 }
 
@@ -44,6 +45,7 @@ impl PendingPluginTransport {
             listener,
             address,
             credential: random_token(),
+            report_rfc2217: false,
             cleanup: None,
         })
     }
@@ -54,6 +56,11 @@ impl PendingPluginTransport {
 
     pub(crate) fn credential(&self) -> &ContextToken {
         &self.credential
+    }
+
+    pub(crate) fn with_rfc2217_diagnostics(mut self, enabled: bool) -> Self {
+        self.report_rfc2217 = enabled;
+        self
     }
 
     pub(crate) fn with_cleanup(mut self, cleanup: Arc<dyn BackendCleanup>) -> Self {
@@ -104,11 +111,17 @@ impl PendingPluginTransport {
                 cleanup: self.cleanup,
             })),
             // Provider 明确返回失败，连接未交给 Host。
-            Ok(Response::Error { id: None }) if wire.output.is_empty() => Err(HostError::new(
-                "PLUGIN_TRANSPORT_OPEN_FAILED",
-                "Plugin transport could not open the connection",
-            )
-            .into()),
+            Ok(Response::Error {
+                id: None,
+                negotiation,
+            }) if wire.output.is_empty() => {
+                let negotiation = if self.report_rfc2217 {
+                    negotiation
+                } else {
+                    None
+                };
+                Err(plugin_open_failure(negotiation).into())
+            }
             outcome => {
                 let error = match outcome {
                     Ok(_) => protocol_error(),
@@ -161,11 +174,23 @@ enum Request<'a> {
 #[derive(Deserialize)]
 #[serde(tag = "kind", rename_all = "snake_case", deny_unknown_fields)]
 enum Response {
-    Hello { credential: ContextToken },
+    Hello {
+        credential: ContextToken,
+    },
     Opened,
-    Read { id: u64, bytes: String, eof: bool },
-    Written { id: u64, accepted: usize },
-    Error { id: Option<u64> },
+    Read {
+        id: u64,
+        bytes: String,
+        eof: bool,
+    },
+    Written {
+        id: u64,
+        accepted: usize,
+    },
+    Error {
+        id: Option<u64>,
+        negotiation: Option<serde_json::Value>,
+    },
     Closed,
 }
 
@@ -448,7 +473,10 @@ impl Lane {
         let operation_id = match &response {
             Response::Read { id, .. }
             | Response::Written { id, .. }
-            | Response::Error { id: Some(id) } => Some(*id),
+            | Response::Error {
+                id: Some(id),
+                negotiation: None,
+            } => Some(*id),
             _ => None,
         };
         if operation_id.is_some_and(|id| !self.wire.is_dispatched(id)) {
@@ -491,7 +519,10 @@ impl Lane {
                     }),
                 });
             }
-            Response::Error { id: Some(id) } => {
+            Response::Error {
+                id: Some(id),
+                negotiation: None,
+            } => {
                 if let Some(read) = self
                     .reading
                     .as_mut()
@@ -796,6 +827,161 @@ fn disconnected() -> HostError {
     HostError::new("BACKEND_DISCONNECTED", "Plugin transport connection ended")
 }
 
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "camelCase")]
+enum Rfc2217Field {
+    Options,
+    Binary,
+    ComPort,
+    BaudRate,
+    DataBits,
+    Parity,
+    StopBits,
+    FlowControl,
+    Dtr,
+    Rts,
+}
+
+impl Rfc2217Field {
+    fn value(self, hex: Option<&str>) -> Option<u32> {
+        let width = match self {
+            Self::Options => return None,
+            Self::Binary | Self::ComPort => 4,
+            Self::BaudRate => 8,
+            _ => 2,
+        };
+        let hex = hex.filter(|value| value.len() == width)?;
+        if !hex.bytes().all(|byte| byte.is_ascii_hexdigit()) {
+            return None;
+        }
+        u32::from_str_radix(hex, 16).ok()
+    }
+
+    fn accepts_request(self, value: u32) -> bool {
+        match self {
+            Self::BaudRate => value > 0,
+            Self::DataBits => (5..=8).contains(&value),
+            Self::Parity => (1..=5).contains(&value),
+            Self::StopBits | Self::FlowControl => (1..=3).contains(&value),
+            Self::Dtr => matches!(value, 8 | 9),
+            Self::Rts => matches!(value, 11 | 12),
+            Self::Options | Self::Binary | Self::ComPort => false,
+        }
+    }
+}
+
+#[derive(Clone, Copy, Deserialize, Serialize)]
+#[serde(rename_all = "snake_case")]
+enum Rfc2217Reason {
+    Refused,
+    DifferentValue,
+    InvalidReply,
+    Timeout,
+    Disconnected,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Rfc2217OpenFailure {
+    reason: Rfc2217Reason,
+    field: Rfc2217Field,
+    requested_hex: Option<String>,
+    reply_hex: Option<String>,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "lowercase")]
+enum Rfc2217Protocol {
+    Rfc2217,
+}
+
+#[derive(Deserialize, Serialize)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+struct Rfc2217OpenDetail {
+    protocol: Rfc2217Protocol,
+    reason: Rfc2217Reason,
+    field: Rfc2217Field,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    requested_value: Option<u32>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    reported_value: Option<u32>,
+}
+
+impl Rfc2217OpenDetail {
+    fn valid(&self) -> bool {
+        let requested = self.requested_value;
+        let reported = self.reported_value;
+        let field = self.field;
+        if !requested.is_none_or(|value| field.accepts_request(value)) {
+            return false;
+        }
+        match self.reason {
+            Rfc2217Reason::Refused => {
+                requested.is_none()
+                    && matches!(
+                        (field, reported),
+                        (Rfc2217Field::Binary, Some(0xfc00 | 0xfe00))
+                            | (Rfc2217Field::ComPort, Some(0xfe2c))
+                    )
+            }
+            Rfc2217Reason::Timeout | Rfc2217Reason::Disconnected => reported.is_none(),
+            Rfc2217Reason::InvalidReply => requested.is_some() && reported.is_none(),
+            Rfc2217Reason::DifferentValue => {
+                requested.is_some()
+                    && reported.is_some_and(|value| {
+                        Some(value) != requested
+                            && (matches!(field, Rfc2217Field::BaudRate)
+                                || value <= u32::from(u8::MAX))
+                    })
+            }
+        }
+    }
+}
+
+// 公开操作回执继续裁剪私有诊断，只保留这个固定形状的可操作线路证据。
+pub(crate) fn is_public_rfc2217_open_detail(details: &JsonObject) -> bool {
+    serde_json::to_value(details)
+        .and_then(serde_json::from_value::<Rfc2217OpenDetail>)
+        .is_ok_and(|details| details.valid())
+}
+
+fn plugin_open_failure(negotiation: Option<serde_json::Value>) -> HostError {
+    let mut error = HostError::new(
+        "PLUGIN_TRANSPORT_OPEN_FAILED",
+        "Plugin transport could not open the connection",
+    );
+    let Some(failure) =
+        negotiation.and_then(|value| serde_json::from_value::<Rfc2217OpenFailure>(value).ok())
+    else {
+        return error;
+    };
+    let field = failure.field;
+    let requested = field.value(failure.requested_hex.as_deref());
+    let reported = field.value(failure.reply_hex.as_deref());
+    let reply = Rfc2217OpenDetail {
+        protocol: Rfc2217Protocol::Rfc2217,
+        reason: match failure.reason {
+            Rfc2217Reason::DifferentValue if reported.is_none() => Rfc2217Reason::InvalidReply,
+            Rfc2217Reason::InvalidReply => return error,
+            reason => reason,
+        },
+        field,
+        requested_value: requested,
+        reported_value: reported,
+    };
+    if reply.valid() {
+        error.retryable = matches!(
+            reply.reason,
+            Rfc2217Reason::Timeout | Rfc2217Reason::Disconnected
+        );
+        error.details = serde_json::to_value(reply)
+            .and_then(serde_json::from_value)
+            .ok()
+            .map(Box::new);
+    }
+    error
+}
+
 fn open_timeout() -> HostError {
     HostError::new("BACKEND_DISCONNECTED", "Plugin transport open wait expired")
 }
@@ -828,6 +1014,55 @@ mod tests {
     use serde_json::{Value, json};
 
     const TEST_WAIT: Duration = Duration::from_secs(5);
+
+    #[test]
+    fn rfc2217_open_failure_keeps_only_verified_field_and_bounded_values() {
+        let mismatch = plugin_open_failure(Some(json!({
+            "reason": "different_value", "field": "baudRate",
+            "requestedHex": "0001c200", "replyHex": "00002580",
+        })));
+        assert_eq!(mismatch.code, "PLUGIN_TRANSPORT_OPEN_FAILED");
+        let known = mismatch.details.as_deref().unwrap();
+        assert!(is_public_rfc2217_open_detail(known));
+        let mut with_private = known.clone();
+        with_private.insert(
+            "privateDiagnostic".into(),
+            JsonValue::String("secret".into()),
+        );
+        assert!(!is_public_rfc2217_open_detail(&with_private));
+        assert_eq!(
+            serde_json::to_value(mismatch.details).unwrap(),
+            json!({"protocol":"rfc2217","reason":"different_value","field":"baudRate","requestedValue":115200,"reportedValue":9600})
+        );
+
+        let malformed = plugin_open_failure(Some(json!({
+            "reason": "different_value", "field": "stopBits",
+            "requestedHex": "01", "replyHex": "0001020304",
+        })));
+        assert_eq!(
+            serde_json::to_value(malformed.details).unwrap(),
+            json!({"protocol":"rfc2217","reason":"invalid_reply","field":"stopBits","requestedValue":1})
+        );
+
+        let refused = plugin_open_failure(Some(json!({
+            "reason": "refused", "field": "binary", "replyHex": "fe00",
+        })));
+        assert_eq!(
+            serde_json::to_value(refused.details).unwrap(),
+            json!({"protocol":"rfc2217","reason":"refused","field":"binary","reportedValue":0xfe00})
+        );
+
+        for payload in [
+            json!({"reason":"different_value","field":"host","requestedHex":"01","replyHex":"02"}),
+            json!({"reason":"different_value","field":"parity","requestedHex":"01","replyHex":"01"}),
+            json!({"reason":"refused","field":"comPort","replyHex":"fd2c"}),
+            json!({"reason":"timeout","field":"options","message":"private endpoint"}),
+        ] {
+            let generic = plugin_open_failure(Some(payload));
+            assert_eq!(generic.code, "PLUGIN_TRANSPORT_OPEN_FAILED");
+            assert!(generic.details.is_none());
+        }
+    }
 
     fn peer(address: SocketAddr) -> TcpStream {
         let peer = TcpStream::connect(address).unwrap();

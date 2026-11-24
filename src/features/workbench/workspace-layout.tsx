@@ -59,6 +59,11 @@ import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { TcpConnectionParameters } from "./tcp-connection-parameters";
 import {
+  rfc2217OpenDiagnostic,
+  rfc2217OpenDiagnosticText,
+  type Rfc2217OpenDiagnostic,
+} from "./rfc2217-open-diagnostic";
+import {
   Rfc2217ConnectionParameters,
   type Rfc2217SerialConfiguration,
 } from "./rfc2217-connection-parameters";
@@ -272,6 +277,10 @@ export type WorkbenchToolContext = {
   chartSelection?: ChartSourceSelection;
   onRevealChartSource?: (source: ChartSourceSelection) => void;
 };
+type WorkbenchActionFailure = Omit<WorkbenchFailure, "message"> & {
+  rfc2217?: Rfc2217OpenDiagnostic;
+};
+
 export type WorkspaceLayoutProps = {
   receiveHistory?: StreamViewProps["historyLimits"];
   onReceiveHistoryChange?: StreamViewProps["onHistoryLimitsChange"];
@@ -594,7 +603,7 @@ export function WorkspaceLayout({
   const [opening, setOpening] = useState<string | null>(null);
   const [choosing, setChoosing] = useState(false);
   const choosingResource = useRef(false);
-  const [error, setError] = useState<Omit<WorkbenchFailure, "message">>();
+  const [error, setError] = useState<WorkbenchActionFailure>();
   const lastFailure = useRef(0);
   const failure = error
     ? {
@@ -1479,9 +1488,11 @@ export function WorkspaceLayout({
     reason: unknown,
     module: UserLogModule,
     failedDeviceId?: string,
-  ): Omit<WorkbenchFailure, "message"> {
+  ): WorkbenchActionFailure {
     return {
       code: nativeErrorCode(reason),
+      rfc2217:
+        module === "connection" ? rfc2217OpenDiagnostic(reason) : undefined,
       occurrence: ++lastFailure.current,
       module,
       eventKey: operationFailureEventKey(reason),
@@ -2652,7 +2663,11 @@ export function WorkspaceLayout({
             device={promptDevice.systemName}
             labels={labels}
             opening={opening === promptDevice.deviceId}
-            error={promptFailure?.message}
+            error={
+              rfc2217Prompt && promptFailure?.rfc2217
+                ? rfc2217OpenDiagnosticText(promptFailure.rfc2217, t)
+                : promptFailure?.message
+            }
             onSubmit={(
               params: NonNullable<OpenParams["transportParams"]>,
               lineConfiguration?: Rfc2217SerialConfiguration,
