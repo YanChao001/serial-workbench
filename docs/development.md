@@ -12,7 +12,7 @@
 
 React Provider 的组件模块只导出组件，Context、工厂和 Hook 放在相邻模块，避免实现编辑时触发 Fast Refresh 不兼容并使整个页面重载。草稿 Provider 的回归使用当前安装的 Vite React runtime 检查实际导出兼容性，见 [react-refresh.test.mjs](../scripts/react-refresh.test.mjs)。
 
-`pnpm app:dev` 构建同源 Host/CLI 并从 `.cache/dev-runtime/` 的不可变副本启动，避免 Windows 锁住 Cargo 输出。关闭窗口不会退出 Host。`DEV_RUNTIME_MISMATCH` 表示旧实例与当前副本不符，使用相同 profile 运行 `pnpm host:stop` 后再启动；它会断开会话，不强杀进程、不启动缺席的 Host，未能核验实例锁仍报错。Vite 热更新不更新后台程序。
+`pnpm app:dev` 在 `dist/index.html` 缺失时先构建配对浏览器资源，再构建同源 Host/CLI 并从 `.cache/dev-runtime/` 的不可变副本启动，避免 Windows 锁住 Cargo 输出。关闭窗口不会退出 Host。`DEV_RUNTIME_MISMATCH` 表示旧实例与当前副本不符，使用相同 profile 运行 `pnpm host:stop` 后再启动；它会断开会话，不强杀进程、不启动缺席的 Host，未能核验实例锁仍报错。Vite 热更新不更新后台程序。
 
 准备阶段和桌面均使用 `src-tauri` 工作目录，相对 `SWB_PROFILE` 从此解析。target、release、target-dir、profile 和 config 参数同步给准备构建；命令行自定义 runner 被拒绝。Cargo env 注入、配置内 runner 或自定义 cwd 组合尚未验证。IDE 的 Windows Job 禁止独立启动时，可在允许独立运行的终端启动 Host，再连接同一绝对 profile。
 
@@ -58,7 +58,7 @@ CLI 管理用同一 profile 的本机用户控制身份。`lan status` 查看身
 
 ### 浏览器访问
 
-桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发模式连接真实 Host 前可用 `pnpm build` 准备 `dist/`。
+桌面在「设置」中打开「浏览器访问」，选择仅查看或查看与操作，生成配对码，再用「在浏览器打开」进入本机工作台。停用浏览器访问会收回配对权限，桌面串口会话继续运行。浏览器依赖与桌面同一次构建的工作台资源，安装版与 Windows 便携版放在 `browser-workbench/`。开发启动复用已有 `dist/`，需要刷新配对浏览器页面时执行 `pnpm build`。
 
 ### 本机 HTTP 控制
 

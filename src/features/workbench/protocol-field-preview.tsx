@@ -19,6 +19,8 @@ import {
   type FieldReading,
 } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
 import type { FramingFrame } from "./framing-model";
+import type { FramingInspection } from "./framing-anomalies-model";
+import { FramingAnomaliesTool } from "./framing-anomalies-tool";
 import {
   DefinitionFileError,
   readProtocolDefinitionFile,
@@ -66,9 +68,11 @@ function frameId(frame: FramingFrame) {
 export default function ProtocolFieldPreview({
   frames,
   fileAccess,
+  inspection,
 }: {
   frames: readonly FramingFrame[];
   fileAccess?: ProtocolDefinitionFileAccess;
+  inspection?: FramingInspection;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -566,10 +570,22 @@ export default function ProtocolFieldPreview({
                     {reading.id}
                   </th>
                   <td className="p-1 wrap-anywhere">
-                    <span>
-                      {reading.value}
-                      {reading.unit ? " " + reading.unit : ""}
-                    </span>
+                    {reading.calibration?.status === "unmapped" ? (
+                      <span>{t("workbench.fields.calibrationUnmapped")}</span>
+                    ) : (
+                      <span>
+                        {reading.value}
+                        {reading.unit ? " " + reading.unit : ""}
+                      </span>
+                    )}
+                    {reading.calibration && reading.rawValue !== undefined ? (
+                      <div className="text-muted-foreground">
+                        {t("workbench.fields.calibrationOrigin", {
+                          revision: reading.calibration.revision,
+                          raw: reading.rawValue,
+                        })}
+                      </div>
+                    ) : null}
                     {reading.label ? <div>{reading.label}</div> : null}
                     {reading.checksum ? (
                       <div>
@@ -596,6 +612,13 @@ export default function ProtocolFieldPreview({
             </tbody>
           </table>
         </div>
+      ) : null}
+      {inspection && (inspection.frames.length || inspection.previous) ? (
+        <FramingAnomaliesTool
+          inspection={inspection}
+          definition={definition}
+          format={format}
+        />
       ) : null}
     </section>
   );

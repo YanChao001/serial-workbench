@@ -672,6 +672,44 @@ export default function Overview({
     }),
     [t],
   );
+  async function cancelWorkbenchOperation(
+    operation: Operation,
+    signal?: AbortSignal,
+  ) {
+    const input = {
+      actionId: "operation.cancel",
+      target: {
+        hostId: operation.executionHostId,
+        kind: "operation",
+        id: operation.operationId,
+      },
+      params: { reason: "user" },
+    };
+    const check = await host.checkAction(input, signal);
+    signal?.throwIfAborted();
+    if (!check.allowed) throw { code: "PERMISSION_DENIED" };
+    const accepted = await host.invoke(
+      { ...input, executionMode: "independent" },
+      signal,
+    );
+    const receipt = await host.waitForOperation(accepted, signal);
+    signal?.throwIfAborted();
+    if (
+      receipt.actionId !== input.actionId ||
+      receipt.executionHostId !== operation.executionHostId ||
+      receipt.target.hostId !== input.target.hostId ||
+      receipt.target.kind !== input.target.kind ||
+      receipt.target.id !== operation.operationId
+    )
+      throw { code: "CONTRACT_MISMATCH" };
+    if (receipt.state !== "succeeded")
+      throw { code: receipt.error?.code ?? "OPERATION_FAILED" };
+    if (
+      receipt.result?.kind !== "cancellation_requested" ||
+      receipt.result.value.operationId !== operation.operationId
+    )
+      throw { code: "CONTRACT_MISMATCH" };
+  }
   return (
     <section
       className="studio-page workbench-page"
@@ -767,6 +805,7 @@ export default function Overview({
             base={workspaceBase}
             draft={workspaceDraft ?? workspaceBase?.document.value}
             onChange={setWorkspaceDraft}
+            onCancelOperation={cancelWorkbenchOperation}
             onAcknowledged={(result) => {
               if (acknowledge(result))
                 setWorkspaceDrafts((current) => {
@@ -820,41 +859,7 @@ export default function Overview({
             signal,
           );
         }}
-        onCancelOperation={async (operation, signal) => {
-          const input = {
-            actionId: "operation.cancel",
-            target: {
-              hostId: operation.executionHostId,
-              kind: "operation",
-              id: operation.operationId,
-            },
-            params: { reason: "user" },
-          };
-          const check = await host.checkAction(input, signal);
-          signal?.throwIfAborted();
-          if (!check.allowed) throw { code: "PERMISSION_DENIED" };
-          const accepted = await host.invoke(
-            { ...input, executionMode: "independent" },
-            signal,
-          );
-          const receipt = await host.waitForOperation(accepted, signal);
-          signal?.throwIfAborted();
-          if (
-            receipt.actionId !== input.actionId ||
-            receipt.executionHostId !== operation.executionHostId ||
-            receipt.target.hostId !== input.target.hostId ||
-            receipt.target.kind !== input.target.kind ||
-            receipt.target.id !== operation.operationId
-          )
-            throw { code: "CONTRACT_MISMATCH" };
-          if (receipt.state !== "succeeded")
-            throw { code: receipt.error?.code ?? "OPERATION_FAILED" };
-          if (
-            receipt.result?.kind !== "cancellation_requested" ||
-            receipt.result.value.operationId !== operation.operationId
-          )
-            throw { code: "CONTRACT_MISMATCH" };
-        }}
+        onCancelOperation={cancelWorkbenchOperation}
         initialDrafts={draftLoad.drafts}
         onSaveDrafts={draftStore.save}
         readMetrics={host.metrics}

@@ -2,9 +2,408 @@ import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
+import {
+  decodeModbusFrame,
+  encodeModbusFrame,
+} from "../../packages/plugin-sdk/examples/reference-protocol-fields/modbus-frame";
 import { en } from "../../src/i18n/en";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 import { workbenchStreamItems } from "./workbench-stream.fixture";
+
+test("Modbus registers watch confirmed values and write the selected register words", async ({
+  page,
+}) => {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-modbus/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid master manifest fixture");
+  const action = manifest.contributes.actions.find(
+    (item) => item.actionId === "swb.reference.modbus.transaction",
+  );
+  if (!action) throw new Error("Missing Modbus catalog action");
+  function fixtureResult(id: string, pdu: object, exceptionCode?: number) {
+    const wire = encodeModbusFrame("rtu", "response", { unitId: 1, pdu });
+    const fileRef = {
+      hostId: "workbench-gui-host",
+      kind: "plugin_result",
+      id,
+      revision: "1",
+    };
+    const point = (eventSeq: string, monoNs: string) => ({
+      eventSeq,
+      monoNs,
+      clockId: "register-clock",
+      source: "host_read",
+      resolutionNs: "1000000",
+    });
+    const response = {
+      bytesBase64: Buffer.from(wire).toString("base64"),
+      source: {
+        hostId: fileRef.hostId,
+        sessionId: "session",
+        sessionEpoch: "1",
+        direction: "rx",
+        eventStart: "7",
+        eventEnd: "8",
+        byteStart: "12",
+        byteEnd: String(12 + wire.length),
+      },
+      timing: {
+        clockId: "register-clock",
+        txMonoNs: "100000000",
+        rxMonoNs: "105000000",
+        elapsedNs: "5000000",
+      },
+      ...(exceptionCode !== undefined && { exceptionCode }),
+    };
+    const outcome =
+      exceptionCode === undefined ? "matched" : "device_exception";
+    const attempt = {
+      operationId: `${id}-tx`,
+      outcome,
+      ignoredFrames: 0,
+      response,
+      trace: {
+        tx: point("6", "100000000"),
+        rxFirst: point("7", "105000000"),
+        rxLast: point("7", "105000000"),
+      },
+    };
+    const body = Buffer.from(
+      JSON.stringify({ ...attempt, attempts: [attempt] }),
+    );
+    return {
+      fileRef,
+      offset: "0",
+      nextOffset: String(body.length),
+      totalBytes: String(body.length),
+      atEnd: true,
+      bytesBase64: body.toString("base64"),
+      fingerprint: createHash("sha256").update(body).digest("hex"),
+    };
+  }
+  await page.setViewportSize({ width: 720, height: 650 });
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    framing: {
+      action,
+      page: fixtureResult("register-read", {
+        functionCode: 3,
+        values: [0x5678, 0x1234, 1, 0],
+      }),
+    },
+  });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await page.getByRole("button", { name: en["workbench.tools.more"] }).click();
+  await page
+    .getByRole("menuitem", { name: en["workbench.tools.framing"] })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: en["workbench.tools.framing"],
+  });
+  const heading = dialog.getByText(en["workbench.registers.title"], {
+    exact: true,
+  });
+  await heading.click();
+  const view = heading.locator("..");
+  await view
+    .getByRole("combobox", { name: en["workbench.registers.base"] })
+    .click();
+  await page
+    .getByRole("option", { name: en["workbench.registers.one"], exact: true })
+    .click();
+  await view
+    .getByRole("spinbutton", {
+      name: en["workbench.registers.address"],
+      exact: true,
+    })
+    .fill("101");
+  await view
+    .getByRole("combobox", { name: en["workbench.registers.format"] })
+    .click();
+  await page
+    .getByRole("option", {
+      name: en["workbench.registers.format.u32"],
+      exact: true,
+    })
+    .click();
+  await view
+    .getByRole("combobox", { name: en["workbench.registers.order"] })
+    .click();
+  await page.getByRole("option", { name: "CDAB", exact: true }).click();
+  await view
+    .getByRole("spinbutton", { name: en["workbench.registers.count"] })
+    .fill("2");
+  await view
+    .getByRole("spinbutton", { name: en["workbench.registers.interval"] })
+    .fill("250");
+  await expect(
+    view.getByText("PDU start 100 · 4 register words", { exact: true }),
+  ).toBeVisible();
+  const watch = view.getByRole("button", {
+    name: en["workbench.registers.watch"],
+  });
+  const transactions = () =>
+    page.evaluate(() =>
+      window.workbenchFixture.invocations.filter(
+        (item) => item.actionId === "swb.reference.modbus.transaction",
+      ),
+    );
+  await watch.click();
+  const data = view.getByRole("table", {
+    name: en["workbench.registers.lastRead"],
+  });
+  await expect(
+    data.getByRole("row", { name: "101 5678 1234 305419896" }),
+  ).toBeVisible();
+  await expect
+    .poll(async () => (await transactions()).length)
+    .toBeGreaterThanOrEqual(2);
+  await view
+    .getByRole("button", { name: en["workbench.registers.stop"] })
+    .click();
+  await expect(watch).toBeEnabled();
+  const settledCount = (await transactions()).length;
+  await page.waitForTimeout(400);
+  expect((await transactions()).length).toBe(settledCount);
+  const first = (await transactions())[0]!;
+  expect(first.params).toMatchObject({
+    transport: "rtu",
+    retryLimit: 0,
+    includeTrace: true,
+  });
+  expect(
+    decodeModbusFrame(
+      "rtu",
+      "request",
+      Buffer.from(String(first.params.requestBase64), "base64"),
+    ).packet.pdu,
+  ).toEqual({ functionCode: 3, address: 100, quantity: 4 });
+
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    fixtureResult("register-write", {
+      functionCode: 16,
+      address: 102,
+      quantity: 2,
+    }),
+  );
+  await view
+    .getByRole("spinbutton", { name: en["workbench.registers.writeAddress"] })
+    .fill("103");
+  await view
+    .getByRole("textbox", { name: en["workbench.registers.writeValue"] })
+    .fill("305419896");
+  await expect(
+    view.getByText("PDU address 102 · wire words (HEX)", { exact: false }),
+  ).toBeVisible();
+  await view.getByRole("button", { name: "Write value · FC16" }).click();
+  await expect(
+    view.getByText(en["workbench.registers.writeConfirmed"], { exact: false }),
+  ).toBeVisible();
+  await expect(data).toHaveCount(0);
+  const written = (await transactions()).at(-1)!;
+  expect(written.params.retryLimit).toBe(0);
+  expect(
+    decodeModbusFrame(
+      "rtu",
+      "request",
+      Buffer.from(String(written.params.requestBase64), "base64"),
+    ).packet.pdu,
+  ).toEqual({ functionCode: 16, address: 102, values: [0x5678, 0x1234] });
+
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    fixtureResult(
+      "register-exception",
+      { functionCode: 4, exceptionCode: 2 },
+      2,
+    ),
+  );
+  await view
+    .getByRole("combobox", { name: en["workbench.registers.table"] })
+    .click();
+  await page
+    .getByRole("option", { name: en["workbench.registers.input"], exact: true })
+    .click();
+  await expect(
+    view.getByRole("button", { name: "Write value · FC16" }),
+  ).toHaveCount(0);
+  await view.getByRole("button", { name: "Read once · FC04" }).click();
+  await expect(view.getByRole("status")).toContainText(/Device exception.*2/);
+  await expect(data).toHaveCount(0);
+});
+
+test("the live Modbus slave uses its Host session and commits the settled model", async ({
+  page,
+}) => {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-modbus-slave/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid slave manifest fixture");
+  const [action] = manifest.contributes.actions;
+  if (!action) throw new Error("Missing live slave action");
+  const fileRef = {
+    hostId: "workbench-gui-host",
+    kind: "plugin_result",
+    id: "slave-fixture",
+    revision: "1",
+  };
+  const encoded = Buffer.from(
+    JSON.stringify({
+      reason: "request_limit",
+      receivedBytes: 12,
+      pendingFrame: false,
+      model: {
+        unitId: 1,
+        tables: { holdingRegisters: [{ start: 0, values: [12, 258] }] },
+        faults: [],
+      },
+      processed: [
+        {
+          status: "replied",
+          requestBase64: "ABUAAAAGAQYAAQEC",
+          responseBase64: "ABUAAAAGAQYAAQEC",
+          tx: { operationId: "slave-reply", confirmed: true },
+          time: {
+            clockId: "fixture",
+            sourceMonoNs: "4000000",
+            precision: {
+              source: "host_read",
+              resolutionNs: "1000000",
+              syncMethod: "fixture",
+            },
+          },
+          source: {
+            hostId: fileRef.hostId,
+            sessionId: "session",
+            sessionEpoch: "1",
+            direction: "rx",
+            eventStart: "4",
+            eventEnd: "6",
+            byteStart: "10",
+            byteEnd: "22",
+          },
+        },
+      ],
+    }),
+  );
+  await page.setViewportSize({ width: 720, height: 650 });
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    framing: {
+      action,
+      page: {
+        fileRef,
+        offset: "0",
+        nextOffset: String(encoded.length),
+        totalBytes: String(encoded.length),
+        bytesBase64: encoded.toString("base64"),
+        fingerprint: createHash("sha256").update(encoded).digest("hex"),
+        atEnd: true,
+      },
+    },
+  });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", { name: "Open Virtual serial", exact: true })
+    .click();
+  await page.getByRole("button", { name: en["workbench.tools.more"] }).click();
+  await page
+    .getByRole("menuitem", { name: en["workbench.tools.framing"] })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: en["workbench.tools.framing"],
+  });
+  const heading = dialog.getByText(en["workbench.modbusServer.title"], {
+    exact: true,
+  });
+  await heading.click();
+  const slave = heading.locator("..");
+  const live = slave.getByRole("region", {
+    name: en["workbench.modbusServer.live.title"],
+  });
+  const start = live.getByRole("button", {
+    name: en["workbench.modbusServer.live.start"],
+  });
+  await expect(start).toBeDisabled();
+  await slave
+    .getByRole("combobox", { name: en["workbench.modbus.transport"] })
+    .click();
+  await page.getByRole("option", { name: "TCP", exact: true }).click();
+  await slave
+    .getByRole("button", { name: en["workbench.modbusServer.example"] })
+    .click();
+  await live
+    .getByRole("spinbutton", { name: en["workbench.modbusServer.live.limit"] })
+    .fill("1");
+  await start.click();
+  await expect(live.getByRole("status")).toContainText(
+    en["workbench.modbusServer.live.reason.request_limit"],
+  );
+  await expect(live.getByRole("listitem")).toContainText("[10, 22)");
+  await expect(live.getByRole("listitem")).toContainText(
+    en["workbench.modbusServer.live.txConfirmed"],
+  );
+  await slave
+    .getByText(en["workbench.modbusServer.current"], { exact: true })
+    .click();
+  await expect(slave.locator("pre")).toContainText("258");
+  const invocation = await page.evaluate(() =>
+    window.workbenchFixture.invocations.find(
+      (item) => item.actionId === "swb.reference.modbus.slave.serve",
+    ),
+  );
+  expect(invocation).toMatchObject({
+    target: {
+      hostId: fileRef.hostId,
+      kind: "session",
+      sessionId: "session",
+      sessionEpoch: "1",
+    },
+    params: {
+      transport: "tcp",
+      requestLimit: 1,
+      durationMs: 15000,
+      replyDelayMs: 0,
+    },
+  });
+
+  await page.evaluate(() => window.workbenchFixture.holdNextFraming());
+  await start.click();
+  await live
+    .getByRole("button", { name: en["workbench.modbusServer.live.stop"] })
+    .click();
+  await expect(live.getByRole("status")).toHaveText(
+    en["workbench.modbusServer.live.stopping"],
+  );
+  await expect(start).toBeDisabled();
+  await page.evaluate(() =>
+    window.workbenchFixture.settleFramingCancellation(),
+  );
+  await expect(live.getByRole("status")).toHaveText(
+    en["workbench.modbusServer.live.cancelled"],
+  );
+  await expect(start).toBeEnabled();
+  await expect(slave.locator("pre")).toContainText("258");
+});
 
 test("the Modbus master timeline uses the selected Host session and shows split receive evidence", async ({
   page,
@@ -335,6 +734,43 @@ test("the packet editor constructs and reads back numeric fields without a sessi
   await dialog.getByRole("textbox", { name: "value", exact: true }).fill("FF");
   await preview.click();
   await expect(generated).toHaveText("FF");
+
+  await definition.fill(
+    [
+      'version: "1"',
+      "byteLength: 1",
+      "fields:",
+      "  - id: sensor",
+      "    kind: integer",
+      "    byteOffset: 0",
+      "    width: 1",
+      "    order: big",
+      "    unit: V",
+      "    calibration:",
+      "      kind: table",
+      "      revision: sensor-2",
+      "      interpolation: linear",
+      "      points:",
+      '        - raw: "3"',
+      '          value: "1"',
+      '        - raw: "9"',
+      '          value: "4"',
+    ].join("\n"),
+  );
+  await dialog
+    .getByRole("button", { name: en["workbench.fields.edit"] })
+    .click();
+  const physical = dialog.getByRole("textbox", {
+    name: "sensor (V)",
+    exact: true,
+  });
+  await expect(physical).toHaveValue("");
+  await physical.fill("2.5");
+  await preview.click();
+  await expect(generated).toHaveText("06");
+  const calibrated = dialog.getByRole("row", { name: /sensor/ });
+  await expect(calibrated).toContainText("2.5 V");
+  await expect(calibrated).toContainText("Raw 6 · calibration sensor-2");
 });
 
 test("CRC recognition asks for independent samples and validates the wire byte order", async ({
@@ -1102,4 +1538,37 @@ test("the workbench scans only visible receive data through the Host action and 
   expect(checked.query?.target).toEqual(checked.call?.target);
   expect(checked.observed).toBe(true);
   expect(checked.read).toBe(true);
+
+  await definition.fill(
+    JSON.stringify({
+      version: "1",
+      byteLength: 2,
+      fields: [
+        {
+          id: "crc",
+          kind: "checksum",
+          algorithm: "sum",
+          order: "big",
+          byteOffset: 1,
+          coverageStart: 0,
+          coverageEnd: 1,
+        },
+      ],
+    }),
+  );
+  const anomalies = dialog.getByText(en["workbench.anomalies.title"], {
+    exact: true,
+  });
+  await anomalies.click();
+  const review = anomalies.locator("..");
+  await review
+    .getByRole("button", { name: en["workbench.anomalies.inspect"] })
+    .click();
+  await expect(review.getByRole("status")).toHaveText(
+    "1 frames checked · 1 findings",
+  );
+  await expect(review.getByRole("listitem")).toContainText(
+    "Checksum crc · received 0A · expected 41",
+  );
+  await expect(review.getByRole("listitem")).toContainText("Bytes 7 to 9");
 });

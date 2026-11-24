@@ -8,6 +8,7 @@ import {
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
 import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
+import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.json" with { type: "json" };
 import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
 import protocolFields from "../crates/host/resources/node-packages/protocol-fields.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
@@ -105,7 +106,7 @@ export function inspectComponents(plan, outputDir) {
       protocol: hostCatalog.protocolVersion,
       target: plan.target,
       architecture: plan.target.split("-")[0],
-      bundledNodePackages: [framing, protocolFields, modbus].map(
+      bundledNodePackages: [framing, protocolFields, modbus, modbusSlave].map(
         ({ id, version, archiveSha256 }) => ({
           id,
           version,

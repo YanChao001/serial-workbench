@@ -17,6 +17,7 @@ import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
   framingAction,
   framingParams,
+  framingSourceItems,
   initialFramingDraft,
   parseFramingPage,
   receivedFramingRange,
@@ -26,8 +27,10 @@ import {
 } from "./framing-model";
 import { useToolAction } from "./transfer-capture-actions";
 import type { ProtocolDefinitionFileAccess } from "./protocol-definition-file";
-import type { ModbusTimelineAccess } from "./modbus-timeline-tool";
+import type { ModbusTransactionAccess } from "./modbus-transaction";
+import type { ModbusSlaveAccess } from "./modbus-server-tool";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
+import type { FramingInspection } from "./framing-anomalies-model";
 import { WorkbenchNotice } from "./workbench-notice";
 
 const modes: readonly [FramingMode, MessageKey][] = [
@@ -47,6 +50,7 @@ export function FramingTool({
   waitForOperation,
   definitionFileAccess,
   modbusTimeline,
+  modbusSlave,
 }: {
   items: readonly StreamItem[];
   target: Target;
@@ -55,7 +59,8 @@ export function FramingTool({
   readFile: HostContextValue["readFile"];
   waitForOperation: HostContextValue["waitForOperation"];
   definitionFileAccess?: ProtocolDefinitionFileAccess;
-  modbusTimeline?: ModbusTimelineAccess;
+  modbusTimeline?: ModbusTransactionAccess;
+  modbusSlave?: ModbusSlaveAccess;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -66,6 +71,7 @@ export function FramingTool({
   const [result, setResult] = useState<{
     params: Call["params"];
     page: FramingPage;
+    inspection: FramingInspection;
   }>();
   const action = useToolAction((reason) => nativeErrorText(reason, t));
   const params = framingParams(draft);
@@ -131,7 +137,22 @@ export function FramingTool({
       const page = parseFramingPage(content, target, query);
       signal.throwIfAborted();
       setApplied(snapshot);
-      setResult({ params: query, page });
+      setResult((previous) => ({
+        params: query,
+        page,
+        inspection: {
+          target,
+          items: framingSourceItems(items, target, snapshot),
+          frames: page.frames,
+          previous: clear
+            ? undefined
+            : (previous?.page.frames.at(-1) ?? previous?.inspection.previous),
+          endEventSeq:
+            !page.nextCursor && typeof query.endEventSeq === "string"
+              ? query.endEventSeq
+              : undefined,
+        },
+      }));
     });
   }
 
@@ -331,8 +352,10 @@ export function FramingTool({
       ) : null}
       <ProtocolFieldsTool
         frames={result?.page.frames ?? []}
+        inspection={result?.inspection}
         fileAccess={definitionFileAccess}
         modbusTimeline={modbusTimeline}
+        modbusSlave={modbusSlave}
       />
     </div>
   );

@@ -86,6 +86,8 @@ impl TransmissionService {
                 drop(turn);
                 runtime.changed.notify_waiters();
                 let mut grants = self.devices.inner.auth.subscribe_changes();
+                let task_owned = accepted.actor.task().is_some();
+                let mut task_states = self.devices.inner.store.subscribe_operation_state_changes();
                 let mut authorization_valid = self.require_token(accepted, token).await.is_ok();
                 loop {
                     let changed = runtime.changed.notified();
@@ -125,6 +127,8 @@ impl TransmissionService {
                         _=crate::clock::wait_until(self.devices.inner.clock.as_ref(),current.expires_at_mono_ns.get())=>{},
                         _=self.devices.inner.auth.wait_grant_expiry(token.grant_stamp.as_ref())=>{authorization_valid=false;},
                         result=grants.changed()=>{authorization_valid=result.is_ok() && self.require_token(accepted,token).await.is_ok();}
+                        // 父任务停止后撤回它的租约，避免父任务等到租约自然到期才能结算。
+                        result=task_states.changed(), if task_owned=>{authorization_valid=result.is_ok() && self.require_token(accepted,token).await.is_ok();}
                     }
                 }
             }

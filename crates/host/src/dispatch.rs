@@ -2685,18 +2685,78 @@ async fn blocking<T: Send + 'static>(
 mod tests {
     use super::*;
     use crate::ipc::{HostServer, InstanceGuard};
+    use std::sync::atomic::{AtomicBool, Ordering};
+
+    #[derive(Default)]
+    struct BundledSlavePeer {
+        serving: AtomicBool,
+        incoming: Mutex<VecDeque<Vec<u8>>>,
+        replies: Mutex<Vec<Vec<u8>>>,
+    }
+
+    struct BundledPeerTransport {
+        inner: Box<dyn Transport>,
+        peer: Arc<BundledSlavePeer>,
+    }
+
+    impl Transport for BundledPeerTransport {
+        fn capabilities(&self) -> TransportCapabilities {
+            self.inner.capabilities()
+        }
+        fn read(&mut self, limit: usize, wait: std::time::Duration) -> BackendResult<ReadBlock> {
+            let echo = self.inner.read(limit, wait)?;
+            if !self.peer.serving.load(Ordering::Acquire) {
+                return Ok(echo);
+            }
+            let mut queue = self.peer.incoming.lock().unwrap();
+            let mut bytes = queue.pop_front().unwrap_or_default();
+            if bytes.len() > limit {
+                queue.push_front(bytes.split_off(limit));
+            }
+            Ok(ReadBlock {
+                bytes: Arc::from(bytes),
+                message: None,
+            })
+        }
+        fn begin_write(
+            &mut self,
+            bytes: WritePayload,
+            wait: std::time::Duration,
+            cancelled: Arc<AtomicBool>,
+            closing: Arc<AtomicBool>,
+        ) -> BackendResult<Box<dyn PendingWrite>> {
+            if self.peer.serving.load(Ordering::Acquire) {
+                self.peer.replies.lock().unwrap().push(bytes.to_vec());
+            }
+            self.inner.begin_write(bytes, wait, cancelled, closing)
+        }
+        fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication> {
+            self.inner.configure(config)
+        }
+        fn control(&mut self, command: ControlCommand) -> BackendResult<ControlResult> {
+            self.inner.control(command)
+        }
+        fn begin_drain(&mut self, request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+            self.inner.begin_drain(request)
+        }
+        fn close(&mut self) -> BackendResult<()> {
+            self.inner.close()
+        }
+    }
 
     #[tokio::test]
     #[ignore = "Needs a verified native Node distribution in SWB_NODE_RUNTIME_TEST_ROOT"]
     async fn native_node_bundled_protocol_registers_on_first_start_and_restart() {
         use crate::node_runtime::{NodeRuntimeLimits, verify_node_runtime};
-        use std::{path::PathBuf, sync::atomic::AtomicBool, time::Duration};
+        use std::{path::PathBuf, time::Duration};
 
         let root = PathBuf::from(std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap());
         let profile = crate::test_support::Profile::isolated("host-bundled-framing-");
         let framing = NodePackageId::try_from("swb.reference.framing").unwrap();
         let fields = NodePackageId::try_from("swb.reference.fields").unwrap();
         let modbus = NodePackageId::try_from("swb.reference.modbus").unwrap();
+        let slave = NodePackageId::try_from("swb.reference.modbus.slave").unwrap();
+        let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         for epoch in [1_u64, 2] {
             let server = HostServer::bind(profile.path()).await.unwrap();
@@ -2711,7 +2771,16 @@ mod tests {
                 store.clone(),
                 server.auth(),
                 Arc::new(crate::clock::SystemClock::new().unwrap()),
-                DeviceSource::Opener(crate::device::DeviceService::virtual_opener()),
+                DeviceSource::Opener({
+                    let peer = peer.clone();
+                    let open = crate::device::DeviceService::virtual_opener();
+                    Arc::new(move |id, config| {
+                        Ok(Box::new(BundledPeerTransport {
+                            inner: open(id, config)?,
+                            peer: peer.clone(),
+                        }))
+                    })
+                }),
                 Some(StartupConfigSnapshot {
                     profile_reference: StartupProfileReference::HostProfile,
                     profile_source: StartupConfigSource::Argument,
@@ -2730,6 +2799,7 @@ mod tests {
                         catalog.status(&framing).unwrap(),
                         catalog.status(&fields).unwrap(),
                         catalog.status(&modbus).unwrap(),
+                        catalog.status(&slave).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2755,6 +2825,7 @@ mod tests {
                     (&fields, "swb.reference.fields.nmea"),
                     (&fields, "swb.reference.fields.at"),
                     (&modbus, "swb.reference.modbus.transaction"),
+                    (&slave, "swb.reference.modbus.slave.serve"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -2768,6 +2839,7 @@ mod tests {
                     tokio::spawn(check_bundled_field_actions(
                         host.clone(),
                         profile.path().to_path_buf(),
+                        peer.clone(),
                     ))
                     .await,
                 )
@@ -2809,7 +2881,11 @@ mod tests {
         }
     }
 
-    async fn check_bundled_field_actions(host: Host, profile: std::path::PathBuf) {
+    async fn check_bundled_field_actions(
+        host: Host,
+        profile: std::path::PathBuf,
+        peer: Arc<BundledSlavePeer>,
+    ) {
         use base64::{Engine, engine::general_purpose::STANDARD};
         use std::time::Duration;
 
@@ -2896,7 +2972,7 @@ mod tests {
             session_epoch: Some(open.session_epoch),
             ..device
         };
-        let definition = r#"{"version":"1","byteLength":1,"fields":[{"id":"reading","kind":"integer","byteOffset":0,"width":1,"order":"big","scale":"0.5","bias":"1"}]}"#;
+        let definition = r#"{"version":"1","byteLength":1,"fields":[{"id":"reading","kind":"integer","byteOffset":0,"width":1,"order":"big","calibration":{"kind":"table","revision":"probe-2","interpolation":"linear","points":[{"raw":"64","value":"33"},{"raw":"66","value":"34"}]}}]}"#;
         let decode_params = serde_json::json!({"definition":definition,"bytesBase64":"QQ=="});
         let crc_params = serde_json::json!({
             "width":16,
@@ -2983,6 +3059,7 @@ mod tests {
             ("swb.reference.fields.nmea", nmea, "parsed"),
             ("swb.reference.fields.at", at_response, "parsed"),
         ] {
+            let calibrated = params["definition"] == definition;
             let accepted = host
                 .invoke(&actor, call(&session, action, params))
                 .await
@@ -3070,6 +3147,13 @@ mod tests {
                 assert_eq!(report["status"], "decoded");
                 assert_eq!(report["readings"][0]["value"], "33.5");
                 assert_eq!(report["readings"][0]["rawHex"], "41");
+                assert_eq!(report["readings"][0]["rawValue"], "65");
+                if calibrated {
+                    assert_eq!(
+                        report["readings"][0]["calibration"],
+                        serde_json::json!({"kind":"table","revision":"probe-2","status":"applied"})
+                    );
+                }
                 assert_eq!(
                     report["readings"][0]["bytes"],
                     serde_json::json!({"start":0,"end":1})
@@ -3077,6 +3161,11 @@ mod tests {
             }
         }
         let modbus = "swb.reference.modbus.transaction";
+        let slave = "swb.reference.modbus.slave.serve";
+        let slave_params = serde_json::json!({
+            "transport": "tcp", "durationMs": 15_000, "requestLimit": 2,
+            "model": {"unitId":1,"tables":{"holdingRegisters":[{"start":0,"values":[12,0]}]}},
+        });
         let request = [0, 17, 0, 0, 0, 6, 1, 3, 0, 0, 0, 1];
         let params = serde_json::json!({
             "transport": "tcp",
@@ -3090,6 +3179,11 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(denied.code, "PERMISSION_DENIED");
+        let denied_slave = host
+            .invoke(&actor, call(&session, slave, slave_params.clone()))
+            .await
+            .unwrap_err();
+        assert_eq!(denied_slave.code, "PERMISSION_DENIED");
         grant("device.modify", &session);
         let accepted = host
             .invoke(&actor, call(&session, modbus, params))
@@ -3121,6 +3215,126 @@ mod tests {
         assert_eq!(trace["ignoredFrames"], 1, "Virtual Echo is not a reply");
         eprintln!(
             "bundled_modbus denied_without_device_modify=true accepted_tx=true invalid_echo_ignored=true"
+        );
+        let wait_armed = |operation_id: Id| {
+            let actor = actor.clone();
+            async move {
+                tokio::time::timeout(Duration::from_secs(8), async {
+                    loop {
+                        let state = store.get(&actor, &operation_id).unwrap();
+                        if state.progress.as_ref().is_some_and(|p| p.unit == "frames") {
+                            break;
+                        }
+                        assert!(!state.state.is_terminal(), "{state:?}");
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                    }
+                })
+                .await
+                .expect("Slave took its lease and raw cursor");
+            }
+        };
+        peer.serving.store(true, Ordering::Release);
+        let started = host
+            .invoke(&actor, call(&session, slave, slave_params.clone()))
+            .await
+            .unwrap();
+        wait_armed(started.operation_id.clone()).await;
+        assert!(peer.replies.lock().unwrap().is_empty());
+        let write = [0, 21, 0, 0, 0, 6, 1, 6, 0, 1, 1, 2];
+        let query = [0, 22, 0, 0, 0, 6, 1, 3, 0, 1, 0, 1];
+        let reply = [0, 22, 0, 0, 0, 5, 1, 3, 2, 1, 2];
+        peer.incoming
+            .lock()
+            .unwrap()
+            .extend([write[..3].to_vec(), [&write[3..], &query].concat()]);
+        let ActionResult::Reference(output) = settled(started).await else {
+            panic!("Expected the live slave result file");
+        };
+        let result = host
+            .inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: output.result_ref,
+                    offset: 0.into(),
+                    max_bytes: 4096.into(),
+                },
+                &actor,
+            )
+            .unwrap();
+        assert!(result.at_end);
+        let live: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(result.bytes_base64.as_str()).unwrap())
+                .unwrap();
+        assert_eq!(live["reason"], "request_limit");
+        assert_eq!(live["receivedBytes"], 24);
+        assert_eq!(
+            live["model"]["tables"]["holdingRegisters"][0]["values"],
+            serde_json::json!([12, 258])
+        );
+        assert_eq!(live["processed"][0]["tx"]["confirmed"], true);
+        assert_eq!(live["processed"][1]["tx"]["confirmed"], true);
+        assert_eq!(
+            live["processed"][0]["source"]["byteEnd"],
+            live["processed"][1]["source"]["byteStart"]
+        );
+        assert_eq!(
+            *peer.replies.lock().unwrap(),
+            vec![write.to_vec(), reply.to_vec()]
+        );
+
+        let idle = host
+            .invoke(&actor, call(&session, slave, slave_params.clone()))
+            .await
+            .unwrap();
+        wait_armed(idle.operation_id.clone()).await;
+        let cancellation = Target {
+            host_id: identity.host_id.clone(),
+            kind: ResourceKind::try_from("operation").unwrap(),
+            id: idle.operation_id.clone(),
+            session_id: None,
+            session_epoch: None,
+        };
+        let cancel_op = host
+            .invoke(
+                &actor,
+                call(
+                    &cancellation,
+                    "operation.cancel",
+                    serde_json::json!({"reason":"user"}),
+                ),
+            )
+            .await
+            .unwrap();
+        assert!(matches!(
+            settled(cancel_op).await,
+            ActionResult::CancellationRequested(_)
+        ));
+        tokio::time::timeout(Duration::from_secs(8), async {
+            loop {
+                let state = store.get(&actor, &idle.operation_id).unwrap();
+                if state.state.is_terminal() {
+                    assert_eq!(state.state, OperationState::Cancelled, "{state:?}");
+                    break;
+                }
+                tokio::time::sleep(Duration::from_millis(20)).await;
+            }
+        })
+        .await
+        .expect("Slave cancellation reached its terminal state");
+        let mut brief = slave_params;
+        brief["durationMs"] = serde_json::json!(100);
+        let restarted = host
+            .invoke(&actor, call(&session, slave, brief))
+            .await
+            .unwrap();
+        assert!(matches!(
+            settled(restarted).await,
+            ActionResult::Reference(_)
+        ));
+        assert_eq!(peer.replies.lock().unwrap().len(), 2);
+        eprintln!(
+            "bundled_modbus_slave authorized=true split_write_read=true accepted_replies=2 cancelled=true lease_reusable=true"
         );
     }
 

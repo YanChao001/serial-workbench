@@ -1847,8 +1847,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/64"]
       },
       "hardware": {
         "status": "not-started",
@@ -1864,8 +1864,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/64"]
       },
       "hardware": {
         "status": "not-started",
@@ -1898,8 +1898,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/64"]
       },
       "hardware": {
         "status": "not-started",
@@ -1932,8 +1932,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/64"]
       },
       "hardware": {
         "status": "not-started",
@@ -1949,7 +1949,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -1983,7 +1983,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -2085,7 +2085,7 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "not-started",
+        "status": "in-progress",
         "evidence": []
       },
       "hardware": {
@@ -4125,8 +4125,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/64"]
       },
       "hardware": {
         "status": "not-started",

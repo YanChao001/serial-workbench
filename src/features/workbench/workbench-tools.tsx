@@ -12,6 +12,7 @@ import {
   type SerialConfiguration,
 } from "@serial-workbench/contracts";
 import type {
+  Operation,
   RecentList,
   WorkspaceDocument,
   WorkspaceDocumentResult,
@@ -53,6 +54,7 @@ import {
 } from "./modbus-timeline-model";
 import { workbenchToolLabels } from "./tool-labels";
 import { WorkbenchNotice } from "./workbench-notice";
+import { modbusSlaveAction } from "./modbus-slave-model";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 /** Owns no Host projection: tool components keep their drafts and Host owns receipts. */
@@ -65,6 +67,7 @@ export function WorkbenchTools({
   onChange,
   onAcknowledged,
   onLoaded,
+  onCancelOperation,
 }: {
   tool: WorkbenchTool;
   context: WorkbenchToolContext;
@@ -74,6 +77,10 @@ export function WorkbenchTools({
   onChange: (value: WorkspaceDocument) => void;
   onAcknowledged: (result: WorkspaceDocumentResult) => void;
   onLoaded: (result: WorkspaceDocumentResult) => void;
+  onCancelOperation?: (
+    operation: Operation,
+    signal?: AbortSignal,
+  ) => Promise<void>;
 }) {
   const { t } = useI18n();
   const labels = useMemo(() => workbenchToolLabels(t), [t]);
@@ -487,25 +494,37 @@ export function WorkbenchTools({
       target.sessionEpoch,
       generation,
     ]);
-    const modbusTimeline =
+    const sessionAccess =
       target.sessionEpoch &&
       context.session?.state === "open" &&
       !context.session.readOnly
         ? {
             target,
             startEventSeq: modbusStartEventSeq(context.items, target),
-            available: catalog.some(
-              (spec) =>
-                spec.actionId === modbusTimelineAction &&
-                spec.targetKinds.includes("session") &&
-                isRecord(spec.inputSchema.properties) &&
-                "includeTrace" in spec.inputSchema.properties,
-            ),
             invoke,
             waitForOperation: host.waitForOperation,
             readFile: host.readFile,
           }
         : undefined;
+    const modbusTimeline = sessionAccess && {
+      ...sessionAccess,
+      available: catalog.some(
+        (spec) =>
+          spec.actionId === modbusTimelineAction &&
+          spec.targetKinds.includes("session") &&
+          isRecord(spec.inputSchema.properties) &&
+          "includeTrace" in spec.inputSchema.properties,
+      ),
+    };
+    const modbusSlave = sessionAccess && {
+      ...sessionAccess,
+      available: catalog.some(
+        (spec) =>
+          spec.actionId === modbusSlaveAction &&
+          spec.targetKinds.includes("session"),
+      ),
+      cancel: onCancelOperation,
+    };
     if (
       !catalog.some(
         (spec) =>
@@ -524,6 +543,7 @@ export function WorkbenchTools({
             frames={[]}
             fileAccess={definitionFileAccess}
             modbusTimeline={modbusTimeline}
+            modbusSlave={modbusSlave}
           />
         </div>
       );
@@ -544,6 +564,7 @@ export function WorkbenchTools({
         readFile={host.readFile}
         definitionFileAccess={definitionFileAccess}
         modbusTimeline={modbusTimeline}
+        modbusSlave={modbusSlave}
       />
     );
   }

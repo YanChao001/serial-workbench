@@ -125,6 +125,7 @@ pub(super) struct InstallLifecycle<A, B> {
     pub authorize: A,
     pub before_commit: B,
     pub product_marker: Option<Id>,
+    pub product_upgrade: Option<Digest>,
 }
 impl NodePackageInstaller {
     pub fn new(store: Store, profile: &Path) -> HostResult<Self> {
@@ -345,6 +346,7 @@ impl NodePackageInstaller {
                 authorize: || Ok(()),
                 before_commit: || Ok(()),
                 product_marker: None,
+                product_upgrade: None,
             },
             |_, _| Ok(()),
         )
@@ -358,17 +360,20 @@ impl NodePackageInstaller {
         cancel: &AtomicBool,
     ) -> HostResult<()> {
         let marker = Id::try_from(bundle.marker)?;
-        if self.store.read_document(&marker)?.is_some() {
-            return Ok(());
-        }
         let control = Control::new(cancel, limits.timeout)?;
         control.check()?;
         let snapshot = self.snapshot()?;
-        if snapshot
+        let installed = snapshot
             .packages
             .iter()
-            .any(|package| &package.manifest.id == bundle.id())
-        {
+            .find(|package| &package.manifest.id == bundle.id());
+        let provisioned = self.store.read_document(&marker)?.is_some();
+        let upgrade = if provisioned {
+            let Some(previous) = installed.filter(|package| bundle.replaces(package)) else {
+                return Ok(());
+            };
+            Some(previous.archive_sha256.clone())
+        } else if installed.is_some() {
             // 旧 profile 的同 ID 安装仍归用户，以后移除也不会意外换回随包版本。
             control.check()?;
             self.store.compare_and_swap_document(
@@ -378,7 +383,9 @@ impl NodePackageInstaller {
                     .map_err(|_| storage())?,
             )?;
             return Ok(());
-        }
+        } else {
+            None
+        };
         self.install_authorized(
             bundle.verify_embedded(limits, cancel)?,
             snapshot.revision,
@@ -387,7 +394,8 @@ impl NodePackageInstaller {
             InstallLifecycle {
                 authorize: || Ok(()),
                 before_commit: || Ok(()),
-                product_marker: Some(marker),
+                product_marker: (!provisioned).then_some(marker),
+                product_upgrade: upgrade,
             },
             |_, _| Ok(()),
         )?;
@@ -415,7 +423,15 @@ impl NodePackageInstaller {
         if revision != expected_revision {
             return Err(conflict());
         }
-        if let Some(previous) = document.packages.get(package.manifest().id.as_str())
+        let previous = document.packages.get(package.manifest().id.as_str());
+        if let Some(digest) = &lifecycle.product_upgrade
+            && !previous.is_some_and(|installed| {
+                &installed.archive_sha256 == digest && product::has_product_origin(installed)
+            })
+        {
+            return Err(conflict());
+        }
+        if let Some(previous) = previous
             && (lifecycle.product_marker.is_some()
                 || !package
                     .manifest()
@@ -457,7 +473,12 @@ impl NodePackageInstaller {
             }
             let previous = document.packages.get(package.manifest().id.as_str());
             let product_initial = lifecycle.product_marker.is_some();
-            let execution_trust = if product_initial {
+            let retained_product_trust = lifecycle.product_upgrade.is_some()
+                && previous.is_some_and(|installed| {
+                    installed.execution_trust.is_some()
+                        && installed.manifest.permissions == package.manifest().permissions
+                });
+            let execution_trust = if product_initial || retained_product_trust {
                 Some(NodeExecutionTrust {
                     archive_sha256: package.archive_sha256().clone(),
                     permissions: package.manifest().permissions.clone(),

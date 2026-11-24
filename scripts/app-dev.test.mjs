@@ -1,4 +1,7 @@
 ﻿import assert from "node:assert/strict";
+import { existsSync } from "node:fs";
+import { mkdir, mkdtemp, rm, writeFile } from "node:fs/promises";
+import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import test from "node:test";
 import { runDev } from "./app-dev.mjs";
@@ -50,6 +53,7 @@ function runner({ lines = artifacts, buildCode = 0, cliCode = 0 } = {}) {
   const calls = [];
   return {
     calls,
+    frontendReady: async () => true,
     stageRuntime: (_root, sources) => {
       assert.deepEqual(sources, [host, cli]);
       return [join(runtimeDirectory, "serial-workbench-host.exe"), runtimeCli];
@@ -65,6 +69,54 @@ function runner({ lines = artifacts, buildCode = 0, cliCode = 0 } = {}) {
     },
   };
 }
+
+test("dev prepares missing browser resources before Tauri and reuses the built assets", async (t) => {
+  const checkout = await mkdtemp(join(tmpdir(), "swb-app-dev-dist-"));
+  t.after(() => rm(checkout, { recursive: true, force: true }));
+  const dist = join(checkout, "dist");
+  const entry = join(dist, "index.html");
+  const fixture = runner();
+  const dependencies = {
+    ...fixture,
+    frontendReady: undefined,
+    async run(cmd, args, options) {
+      if (cmd === process.execPath && args[1] === "build") {
+        assert.equal(options.cwd, checkout);
+        await mkdir(dist);
+        await writeFile(entry, "<!doctype html>");
+      }
+      if (cmd === process.execPath && args[1] === "dev" && !existsSync(entry))
+        throw new Error("resource path `..\\dist` doesn't exist");
+      return fixture.run(cmd, args, options);
+    },
+  };
+  assert.equal(await runDev(checkout, [], dependencies), 0);
+  assert.equal(fixture.calls[0].cmd, process.execPath);
+  assert.deepEqual(
+    fixture.calls.slice(1).map((call) => call.cmd),
+    ["cargo", runtimeCli, process.execPath],
+  );
+  assert.equal(await runDev(checkout, [], dependencies), 0);
+  assert.equal(
+    fixture.calls.filter(
+      (call) => call.cmd === process.execPath && call.args[1] === "build",
+    ).length,
+    1,
+  );
+});
+
+test("dev reports a failed frontend build before starting Cargo or Tauri", async () => {
+  const calls = [];
+  const status = await runDev(root, [], {
+    frontendReady: async () => false,
+    async run(cmd, args) {
+      calls.push([cmd, args[1]]);
+      return 17;
+    },
+  });
+  assert.equal(status, 17);
+  assert.deepEqual(calls, [[process.execPath, "build"]]);
+});
 
 test("dev builds Host and CLI, authenticates the immutable runtime CLI, then starts Tauri", async () => {
   const fixture = runner();
@@ -170,10 +222,7 @@ test("dev propagates preparation spawn errors before Tauri", async () => {
     if (args[0] === runtimeCli) throw failure;
     return fixture.run(...args);
   };
-  await assert.rejects(
-    runDev(root, [], { run, stageRuntime: fixture.stageRuntime }),
-    failure,
-  );
+  await assert.rejects(runDev(root, [], { ...fixture, run }), failure);
   assert.equal(fixture.calls.length, 1);
 });
 

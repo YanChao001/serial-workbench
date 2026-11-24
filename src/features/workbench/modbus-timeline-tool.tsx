@@ -1,19 +1,13 @@
 import { useId, useRef, useState, type FormEvent } from "react";
 import { Link } from "react-router-dom";
-import {
-  ContractValidationError,
-  type Target,
-} from "@serial-workbench/contracts";
 import { formatHex, parseHex } from "@serial-workbench/host-client";
 import { OptionsSelect } from "@/components/options-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { bytesToBase64 } from "@/lib/base64";
-import { readVerifiedFile } from "@/lib/host-reader";
 import { nativeErrorText } from "@/lib/native-error";
 import { useI18n } from "@/providers/i18n";
-import type { HostContextValue } from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
   decodeModbusFrame,
@@ -21,18 +15,16 @@ import {
   type ModbusTransport,
 } from "../../../packages/plugin-sdk/examples/reference-protocol-fields/modbus-frame";
 import {
-  modbusTimelineAction,
   parseModbusTimeline,
   timelineAxis,
   timingMilliseconds,
   type TimelineAttempt,
 } from "./modbus-timeline-model";
+import {
+  runModbusTransaction,
+  type ModbusTransactionAccess,
+} from "./modbus-transaction";
 import { useToolAction } from "./transfer-capture-actions";
-
-export type ModbusTimelineAccess = Pick<
-  HostContextValue,
-  "invoke" | "waitForOperation" | "readFile"
-> & { target: Target; startEventSeq: string; available: boolean };
 
 const transports = [
   { value: "rtu", label: "RTU" },
@@ -171,7 +163,7 @@ function AttemptTiming({
 export default function ModbusTimelineTool({
   access,
 }: {
-  access: ModbusTimelineAccess;
+  access: ModbusTransactionAccess;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -230,53 +222,20 @@ export default function ModbusTimelineTool({
     setIssue(false);
     const timeoutMs = Number(timeout);
     const lateMs = Number(late);
-    const { target } = access;
     void action.run(async (signal) => {
       setReport(undefined);
-      const accepted = await access.invoke(
+      const timeline = await runModbusTransaction(
+        access,
         {
-          actionId: modbusTimelineAction,
-          target,
-          params: {
-            transport,
-            requestBase64,
-            ...(transport === "tcp" && { unitRouting: routing }),
-            responseTimeoutMs: timeoutMs,
-            lateResponseWaitMs: lateMs,
-            retryLimit: Number(retry),
-            includeTrace: true,
-            startEventSeq: access.startEventSeq,
-          },
-          executionMode: "independent",
+          transport,
+          requestBase64,
+          ...(transport === "tcp" && { unitRouting: routing }),
+          responseTimeoutMs: timeoutMs,
+          lateResponseWaitMs: lateMs,
+          retryLimit: Number(retry),
         },
         signal,
       );
-      const operation = await access.waitForOperation(accepted, signal);
-      const ref =
-        operation.result?.kind === "reference"
-          ? operation.result.value.resultRef
-          : undefined;
-      if (
-        operation.actionId !== modbusTimelineAction ||
-        operation.operationId !== accepted.operationId ||
-        operation.target.hostId !== target.hostId ||
-        operation.target.kind !== "session" ||
-        operation.target.id !== target.id ||
-        operation.target.sessionId !== target.sessionId ||
-        operation.target.sessionEpoch !== target.sessionEpoch ||
-        ref?.hostId !== target.hostId ||
-        ref.kind !== "plugin_result" ||
-        ref.id !== operation.operationId
-      )
-        throw new ContractValidationError(
-          "Modbus result belongs to another operation",
-        );
-      const bytes = await readVerifiedFile(ref, access.readFile, signal);
-      const content: unknown = JSON.parse(
-        new TextDecoder("utf-8", { fatal: true }).decode(bytes),
-      );
-      const timeline = parseModbusTimeline(content, target);
-      signal.throwIfAborted();
       const first = timeline.attempts[0];
       let jitter: bigint | undefined;
       let samples = 0;

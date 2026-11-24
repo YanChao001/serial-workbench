@@ -1561,6 +1561,7 @@ export function createHostWorkspace(
       throw Object.assign(error, {
         executionHostId: operation.executionHostId,
         operationId: operation.operationId,
+        operationState: operation.state,
       });
     }
     return operation;

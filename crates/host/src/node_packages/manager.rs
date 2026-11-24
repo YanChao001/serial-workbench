@@ -899,6 +899,7 @@ impl NodePackageManager {
                 authorize: || self.commit_guard(authority, control),
                 before_commit: || self.settle_before_upgrade(authority, control, &package_id),
                 product_marker: None,
+                product_upgrade: None,
             },
             |completed, total| {
                 let progress = Progress {
