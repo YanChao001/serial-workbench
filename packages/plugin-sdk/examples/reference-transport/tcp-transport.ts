@@ -249,3 +249,5 @@ export function registerTcpTransport(transportId: string): NodeRegister {
     };
   };
 }
+
+export { connect as connectTcp };

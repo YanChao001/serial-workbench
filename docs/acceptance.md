@@ -471,6 +471,19 @@ pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 
 重建包时以 esbuild 针对 Node 26 打包 `reference-transport/builtin.ts`，使用 `sign_builtin_tcp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。收到验签结果后登记归档、入口、清单摘要与来源公钥。正式发行与跨设备收发继续按 T11 和 T14 验收。
 
+#### RFC 2217（NET-06）
+
+参考包 `reference.rfc2217` 使用独立设备贡献 `reference.rfc2217.transport`。通过已有插件参数入口指定 `host`、`port` 与整数 `baudRate`。默认 8N1、无流控，可显式提交 `dataBits`、`parity`、`stopBits`、`flowControl`、`dtr`、`rts`。停止位取字符串 `1`、`1.5`、`2`，1.5 适用于 5 数据位。选用硬件流控时由流控管理 RTS。 [RFC 2217](https://www.rfc-editor.org/rfc/rfc2217)
+
+```sh
+pnpm plugin-sdk:fixture
+node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs
+cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_transport_ -- --ignored --test-threads=1 --nocapture
+cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- .cache/plugin-sdk/examples/reference-rfc2217/main.js <32字节种子文件> <新归档> <可信来源ID> <keyID>
+```
+
+用独立本机对端验证七项串口设置、确认值不同、拒绝选项、取消、超时、Telnet 分段、控制通知隔离和流控暂停。签名 Host 场景请求 115200 波特率并由对端应答 9600，核对打开失败及实际断连。重新协商成功后核对线路上的八个 Telnet 字节和 Host Raw 中的七个原始字节，末尾验收撤权、重开和停用。专用表单、Host 拒绝详情、打开后的控制线操作、实际 RFC 2217 设备和发行继续登记。
+
 ### 有序会话钩子
 
 按[签名运行时](#签名运行时与-sdk)准备资源后，运行 `cargo test --locked -p serial-workbench-host --lib native_node_task_session_hooks_ -- --ignored --nocapture`。签名任务通过 Virtual Echo 核对原代次的打开、实际 RX、最终 TX 回执与关闭，并在回调失败时验证 reader 名额释放。运行 `cargo test --locked -p serial-workbench-host --test session_lifecycle --test stream_budget` 覆盖底层故障、未结算 TX、撤权重授与旧代次的收尾。 `node --test scripts/node-backend-cancellation.test.mjs` 复验迟到页、租约释放及缺口续读。
