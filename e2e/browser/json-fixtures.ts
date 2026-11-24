@@ -15,3 +15,11 @@ export const clientDefaults = requireFixture(
 export const catalog = requireFixture(
   "../../packages/contracts/src/generated/catalog.json",
 ) as typeof import("../../packages/contracts/src/generated/catalog.json");
+
+export const builtinAutomation = requireFixture(
+  "../../packages/plugin-sdk/examples/reference-automation/builtin-manifest.json",
+) as typeof import("../../packages/plugin-sdk/examples/reference-automation/builtin-manifest.json");
+
+export const referenceAutomation = requireFixture(
+  "../../packages/plugin-sdk/examples/reference-automation/manifest.json",
+) as typeof import("../../packages/plugin-sdk/examples/reference-automation/manifest.json");

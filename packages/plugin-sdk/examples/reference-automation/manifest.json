@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.automation",
-  "version": "0.1.5",
+  "version": "0.1.6",
   "displayName": "Serial Workbench Automation",
-  "description": "Run one or more paced rounds and verify each serial response",
+  "description": "Run serial schedules, response checks and Modbus transactions",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE"],
   "hostProtocolVersion": "0.1",
@@ -156,6 +156,152 @@
         "eventTypes": [],
         "cancellation": "cooperative",
         "revealTarget": { "pageId": "workbench", "panelId": "activity" }
+      },
+      {
+        "actionId": "swb.reference.automation.repeat",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "sendBase64": {
+              "$ref": "#/$defs/frame"
+            },
+            "periodMs": {
+              "type": "integer",
+              "minimum": 10,
+              "maximum": 60000
+            },
+            "count": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64
+            },
+            "jitterMs": {
+              "description": "Symmetric offset smaller than half the period",
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 29999,
+              "default": 0
+            },
+            "startDelayMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 60000,
+              "default": 0
+            },
+            "startOnBase64": {
+              "$ref": "#/$defs/frame"
+            },
+            "startTimeoutMs": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 60000,
+              "default": 5000
+            },
+            "stopOnBase64": {
+              "$ref": "#/$defs/frame"
+            },
+            "expectBase64": {
+              "$ref": "#/$defs/frame"
+            },
+            "responseTimeoutMs": {
+              "type": "integer",
+              "minimum": 50,
+              "maximum": 5000,
+              "default": 1000
+            },
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "default": "1"
+            }
+          },
+          "required": ["sendBase64", "periodMs", "count"],
+          "additionalProperties": false,
+          "$defs": {
+            "frame": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 344,
+              "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+            }
+          }
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "enum": [
+                "completed",
+                "start_timeout",
+                "stop_condition",
+                "unexpected_response",
+                "response_timeout",
+                "source_changed",
+                "transmit_unconfirmed"
+              ]
+            },
+            "completed": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64
+            },
+            "skippedSlots": {
+              "type": "integer",
+              "minimum": 0
+            },
+            "attempted": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "operationId": {
+                    "type": "string"
+                  },
+                  "outcome": {
+                    "enum": [
+                      "written",
+                      "matched",
+                      "stop_condition",
+                      "unexpected_response",
+                      "response_timeout",
+                      "source_changed",
+                      "transmit_unconfirmed"
+                    ]
+                  },
+                  "scheduledMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  },
+                  "startedMs": {
+                    "type": "integer",
+                    "minimum": 0
+                  }
+                },
+                "required": [
+                  "operationId",
+                  "outcome",
+                  "scheduledMs",
+                  "startedMs"
+                ],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["outcome", "completed", "skippedSlots", "attempted"],
+          "additionalProperties": false
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench",
+          "panelId": "activity"
+        }
       },
       {
         "actionId": "swb.reference.automation.modbus",

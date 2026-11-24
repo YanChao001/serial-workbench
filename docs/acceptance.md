@@ -204,6 +204,12 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 完整四目标 CI 的原生 runtime 验收步骤使用每个目标实际安装布局，构建、签名并运行终端、图表和自动化三个参考包的无窗口用例。产物分别保留在 `artifacts/reference-terminal`、`artifacts/reference-chart` 与 `artifacts/reference-automation`。各平台的原生窗口和实际离线安装遵循阶段出口另行验收。
 
+### 定时与循环发送（IO-09）
+
+签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。
+
+用 `node --test scripts/reference-repeat-send.test.mjs scripts/reference-automation.test.mjs` 核对单调调度、错过时隙、拆段触发、旧数据隔离、应答与取消。上面的签名后台用例还以 Virtual Echo 检查三次确切完整 TX、每轮应答及终止条件停止后续写入。在工作台菜单打开「定时发送」，核对当前端口、会话代次和每轮预览。用 `pnpm test:ui e2e/browser/repeat-send.spec.ts --workers 1` 核对使用现有发送草稿、独立任务、禁止按回车误发、权限拒绝、重开后继续停止及真实终态。默认 Host 嵌入 `swb.builtin.automation`，工作台优先选择 `swb.builtin.automation.repeat`。独立安装的自动化参考包仍能提供同一调度契约。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对首方编译、归档摘要和发行描述。随包签名更新使用 `sign_builtin_automation`，参数顺序与 `sign_builtin_chart` 相同。原生首次启动与重启测试 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对首方动作登记、拒权和 Virtual Echo 应答。实际串口验收用独立对端记录完整字节和各轮接收时刻。分别检查固定周期、抖动范围、错过时隙后的发送间隔，以及拆分起止标记、逐轮应答和取消后停止。把对端原始记录与 Host TX 回执关联。正式发行安装用同一发行候选核对离线首次启动和重启的动作登记，再运行上述收发场景。
+
 ### 已打开视图的语言切换（UX-13）
 
 用签名终端与签名图表的配对浏览器场景，在同一个已打开视图中中英文往返。核对 `lang`、图表标题或终端的无障碍名称、原输入仍在、iframe 地址保持，以及同一读端口确认切换后写入的新数据。收据的 `localeChanges` 记录视图实际使用的语言。使用已签发的 0.1.2 包复跑时设置 `SWB_TEST_BROWSER_LEGACY_VIEW=1`，同时核对应用已切换、旧视图继续使用打开时的语言与原读流。隔离桌面终端场景检查主窗口保存语言后，已打开的 Wry 壳应用新语言，并在同一视图确认后续字节。子窗口加载期间的语言切换仍需另外覆盖。

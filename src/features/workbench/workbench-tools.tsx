@@ -46,6 +46,8 @@ import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
 import { DiagnosticPanel } from "./diagnostic-panel";
 import { FramingTool } from "./framing-tool";
+import { RepeatSendTool } from "./repeat-send-tool";
+import { builtinRepeatSendAction, repeatSendAction } from "./repeat-send-model";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
 import { framingAction } from "./framing-model";
 import {
@@ -478,6 +480,54 @@ export function WorkbenchTools({
         }
       />
     );
+  if (tool === "repeatSend") {
+    const target = context.target;
+    const session = context.session;
+    const access =
+      ready &&
+      target?.sessionId &&
+      target.sessionEpoch &&
+      !context.isReplay &&
+      session?.state === "open" &&
+      !session.readOnly
+        ? {
+            target,
+            port:
+              host.state.devices.find(
+                (device) => device.deviceId === session.deviceId,
+              )?.systemName ?? session.deviceId,
+            startEventSeq: modbusStartEventSeq(
+              context.sourceItems ?? context.items,
+              target,
+            ),
+            invoke,
+            waitForOperation: host.waitForOperation,
+            readFile: host.readFile,
+            cancel: onCancelOperation,
+          }
+        : undefined;
+    return (
+      <RepeatSendTool
+        key={JSON.stringify([
+          generation,
+          target?.hostId,
+          target?.id,
+          target?.sessionEpoch,
+        ])}
+        access={access}
+        actionId={([builtinRepeatSendAction, repeatSendAction] as const).find(
+          (actionId) =>
+            catalog.some(
+              (spec) =>
+                spec.actionId === actionId &&
+                spec.targetKinds.includes("session"),
+            ),
+        )}
+        operations={host.state.operations}
+        draftBytes={context.draftBytes}
+      />
+    );
+  }
   if (tool === "framing") {
     const target = context.target;
     const definitionFileAccess = ready && isTauri() ? host : undefined;

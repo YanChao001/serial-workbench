@@ -35,6 +35,8 @@ const PREVIOUS_CHART_ARCHIVE: &[u8] =
 const PREVIOUS_CHART_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/chart-0.1.0.json");
 const CHART_MARKER: &str = "node-packages:bundled-chart";
+const AUTOMATION_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/automation.zip");
+const AUTOMATION_DESCRIPTOR: &str = include_str!("../../resources/node-packages/automation.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -127,7 +129,7 @@ impl ProductPackage {
 }
 
 pub(super) fn packages() -> &'static [ProductPackage] {
-    static PACKAGES: OnceLock<[ProductPackage; 5]> = OnceLock::new();
+    static PACKAGES: OnceLock<[ProductPackage; 6]> = OnceLock::new();
     PACKAGES.get_or_init(|| {
         [
             ProductPackage::new(
@@ -147,6 +149,11 @@ pub(super) fn packages() -> &'static [ProductPackage] {
                 "node-packages:bundled-modbus-slave",
             ),
             ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
+            ProductPackage::new(
+                AUTOMATION_DESCRIPTOR,
+                AUTOMATION_ARCHIVE,
+                "node-packages:bundled-automation",
+            ),
         ]
     })
 }

@@ -119,6 +119,7 @@ export type WorkbenchFixture = {
     generation: string;
     captureNameHint: CaptureNameHint | null;
   }[];
+  finishRepeatCancellation: () => void;
   releaseDefinitionRead: () => void;
   holdNextFraming: () => void;
   setFramingResult: (page: FileReadResult) => void;
@@ -226,6 +227,7 @@ export async function seedWorkbenchFixture(
     framing,
     definitionFiles,
     sendHistory = false,
+    repeatSend,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -255,6 +257,7 @@ export async function seedWorkbenchFixture(
     nodeThemes?: FixtureNodeThemes;
     framing?: { action: ActionSpec; page: FileReadResult };
     definitionFiles?: DefinitionFileFixture[];
+    repeatSend?: { action: ActionSpec; state: "ready" | "held" | "denied" };
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -485,9 +488,11 @@ export async function seedWorkbenchFixture(
       kind: "catalog",
       value: {
         catalogVersion: "1",
-        items: framing
-          ? [...workbenchCatalog, framing.action]
-          : workbenchCatalog,
+        items: [
+          ...workbenchCatalog,
+          ...(framing ? [framing.action] : []),
+          ...(repeatSend ? [repeatSend.action] : []),
+        ],
       },
     },
     "device.list": {
@@ -568,6 +573,7 @@ export async function seedWorkbenchFixture(
     nodeThemes,
     framing,
     definitionFiles,
+    repeatSend,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -606,7 +612,10 @@ export async function seedWorkbenchFixture(
       nodeThemes,
       framing,
       definitionFiles,
+      repeatSend,
     } = JSON.parse(raw) as typeof fixturePayload;
+    let repeatOperation: Operation | undefined;
+    let repeatFile = "";
     let framingOperation: Operation | undefined;
     let holdFraming = false;
     let nextFramingResult = framing?.page;
@@ -914,6 +923,20 @@ export async function seedWorkbenchFixture(
       clientStateWrites: [],
       workspaceWrites: [],
       filePickerCalls: [],
+      finishRepeatCancellation() {
+        if (repeatOperation?.state !== "cancel_requested")
+          throw new Error("Expected accepted repeat cancellation");
+        repeatOperation = {
+          ...repeatOperation,
+          revision: "3",
+          state: "cancelled",
+          error: {
+            code: "CANCELLED",
+            message: "The task was cancelled",
+            retryable: false,
+          },
+        };
+      },
       releaseDefinitionRead() {
         releaseDefinitionRead?.();
         releaseDefinitionRead = undefined;
@@ -1557,6 +1580,100 @@ export async function seedWorkbenchFixture(
                 };
               }
               if (
+                repeatSend &&
+                request.method === "action.invoke" &&
+                request.params.actionId === repeatSend.action.actionId
+              ) {
+                const call = request.params;
+                const count = call.params.count;
+                if (typeof count !== "number")
+                  throw new Error("Expected repeat count");
+                const id = "fixture-repeat";
+                const resultRef = {
+                  hostId: call.target.hostId,
+                  kind: "plugin_result",
+                  id,
+                  revision: "1",
+                };
+                repeatOperation = {
+                  ...sentOperation,
+                  operationId: id,
+                  rootOperationId: id,
+                  actionId: call.actionId,
+                  target: call.target,
+                  requestId: call.requestId,
+                  executionMode: call.executionMode ?? "independent",
+                  state: repeatSend.state === "held" ? "running" : "succeeded",
+                  progress: {
+                    completed: "1",
+                    total: String(count),
+                    unit: "rounds",
+                  },
+                  result:
+                    repeatSend.state === "held"
+                      ? undefined
+                      : { kind: "reference", value: { resultRef } },
+                };
+                repeatFile = JSON.stringify({
+                  outcome: "completed",
+                  completed: count,
+                  skippedSlots: 0,
+                  attempted: Array.from({ length: count }, (_, index) => ({
+                    operationId: "repeat-tx-" + (index + 1),
+                    outcome: "matched",
+                    scheduledMs: index * 250,
+                    startedMs: index * 250,
+                  })),
+                });
+                return {
+                  ok: true,
+                  result: {
+                    operation:
+                      repeatSend.state === "held"
+                        ? repeatOperation
+                        : {
+                            ...repeatOperation,
+                            state: "queued",
+                            result: undefined,
+                          },
+                  },
+                };
+              }
+              if (
+                repeatOperation?.state === "running" &&
+                request.method === "action.invoke" &&
+                request.params.actionId === "operation.cancel" &&
+                request.params.target.id === repeatOperation.operationId
+              ) {
+                repeatOperation = {
+                  ...repeatOperation,
+                  revision: "2",
+                  state: "cancel_requested",
+                };
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...sentOperation,
+                      operationId: "repeat-cancel",
+                      rootOperationId: "repeat-cancel",
+                      actionId: request.params.actionId,
+                      target: request.params.target,
+                      requestId: request.params.requestId,
+                      executionMode:
+                        request.params.executionMode ?? "independent",
+                      result: {
+                        kind: "cancellation_requested",
+                        value: {
+                          operationId: repeatOperation.operationId,
+                          state: "cancel_requested",
+                        },
+                      },
+                    },
+                  },
+                };
+              }
+              if (
                 framingOperation?.state === "running" &&
                 request.method === "action.invoke" &&
                 request.params.actionId === "operation.cancel" &&
@@ -1829,6 +1946,46 @@ export async function seedWorkbenchFixture(
                       value: { operation: sentOperation },
                     },
                   };
+              }
+              if (
+                repeatOperation &&
+                query.actionId === "operation.get" &&
+                query.params.operationId === repeatOperation.operationId
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "operation",
+                    value: { operation: repeatOperation },
+                  },
+                };
+              if (
+                repeatOperation?.result?.kind === "reference" &&
+                query.actionId === "file.read" &&
+                query.target.id === repeatOperation.operationId
+              ) {
+                const bytes = new TextEncoder().encode(repeatFile);
+                const digest = new Uint8Array(
+                  await crypto.subtle.digest("SHA-256", bytes),
+                );
+                const fingerprint = Array.from(digest, (byte) =>
+                  byte.toString(16).padStart(2, "0"),
+                ).join("");
+                return {
+                  ok: true,
+                  result: {
+                    kind: "file_read",
+                    value: {
+                      fileRef: repeatOperation.result.value.resultRef,
+                      offset: "0",
+                      nextOffset: String(bytes.length),
+                      totalBytes: String(bytes.length),
+                      fingerprint,
+                      atEnd: true,
+                      bytesBase64: btoa(repeatFile),
+                    },
+                  },
+                };
               }
               if (
                 framingOperation &&
@@ -2325,6 +2482,21 @@ export async function seedWorkbenchFixture(
                         actionId: "replay.read",
                         target: query.target,
                         allowed: false,
+                      },
+                    },
+                  };
+                if (
+                  repeatSend &&
+                  query.params.actionId === repeatSend.action.actionId
+                )
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "action_check",
+                      value: {
+                        actionId: repeatSend.action.actionId,
+                        target: query.target,
+                        allowed: repeatSend.state !== "denied",
                       },
                     },
                   };

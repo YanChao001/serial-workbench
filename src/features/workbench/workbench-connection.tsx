@@ -20,6 +20,7 @@ import {
   Stethoscope,
   ListTodo,
   History,
+  Timer,
   Gauge,
   RotateCw,
   ScrollText,
@@ -391,6 +392,14 @@ export function WorkbenchConnection({
                   {toolLabels.framing}
                 </DropdownMenuItem>
               ) : null}
+              {toolLabels?.repeatSend && (
+                <DropdownMenuItem
+                  onSelect={() => onTool("repeatSend", menuTrigger.current)}
+                >
+                  <Timer aria-hidden="true" />
+                  {toolLabels.repeatSend}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onSelect={() => onTool("sendHistory", menuTrigger.current)}
               >

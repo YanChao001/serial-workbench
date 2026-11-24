@@ -153,6 +153,7 @@ export type WorkbenchTool =
   | "transfer"
   | "captureTools"
   | "framing"
+  | "repeatSend"
   | "diagnostics";
 type WorkbenchPanel =
   | WorkbenchTool
@@ -180,6 +181,7 @@ function activityPanel(
     case "transfer":
     case "captureTools":
     case "framing":
+    case "repeatSend":
     case "diagnostics":
     case "capture":
     case "activity":
@@ -207,6 +209,7 @@ export type WorkbenchToolContext = {
   configurationDisabled?: boolean;
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
+  draftBytes?: Uint8Array;
   onWriteWaitModeChange: (value: WriteWaitMode) => void;
   onInspectMetrics: () => void;
   onReconnect?: () => void;
@@ -261,7 +264,7 @@ export type WorkspaceLayoutProps = {
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
   toolLabels?: Record<
-    | Exclude<WorkbenchTool, "framing">
+    | Exclude<WorkbenchTool, "framing" | "repeatSend">
     | "more"
     | "chooseDevice"
     | "displayOptions"
@@ -271,7 +274,7 @@ export type WorkspaceLayoutProps = {
     | "saveCurrentLayout"
     | "deviceListStale",
     string
-  > & { saveCurrentLayoutHint?: string; framing?: string };
+  > & { saveCurrentLayoutHint?: string; framing?: string; repeatSend?: string };
   renderTool?: (
     tool: WorkbenchTool,
     context: WorkbenchToolContext,
@@ -2652,6 +2655,10 @@ export function WorkspaceLayout({
                 onConfigurationChange: (value) =>
                   rememberConfiguration(deviceId, value),
                 writeWaitMode: waitModeFor(deviceId),
+                draftBytes:
+                  dialog === "repeatSend"
+                    ? (checkBytes ?? undefined)
+                    : undefined,
                 onWriteWaitModeChange: (mode) =>
                   rememberWaitMode(deviceId, mode),
                 onInspectMetrics: () => showDialog("metrics"),
