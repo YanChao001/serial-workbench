@@ -1,8 +1,10 @@
+import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { NodePackageSourceKey } from "@serial-workbench/contracts";
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
+import { alignXY } from "../../packages/plugin-sdk/examples/reference-statistics/align-xy";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const manifestDocument: unknown = JSON.parse(
@@ -246,4 +248,135 @@ test("a narrow Chinese installation shows an actionable error without native dia
   await expect(
     page.getByRole("button", { name: "安装插件", exact: true }),
   ).toBeEnabled();
+});
+
+test("professional XY displays the verified result and inspects calibrated sample origins", async ({
+  page,
+}, testInfo) => {
+  const stats: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-statistics/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(stats))
+    throw new Error("Invalid statistics manifest");
+  const action = stats.contributes.actions.find(
+    ({ actionId }) => actionId === "swb.reference.statistics.alignXY",
+  );
+  if (!action) throw new Error("Missing professional XY action");
+  const verifiedSource = {
+    source: source.source,
+    keyId: source.keyId,
+    publicKeySha256,
+  };
+  const fileRef = {
+    kind: "plugin_result",
+    id: "aligned-xy-report",
+    hostId: "workbench-gui-host",
+  };
+  const reportFile = (value: unknown) => {
+    const bytes = Buffer.from(JSON.stringify(value));
+    return {
+      fileRef,
+      offset: "0",
+      nextOffset: String(bytes.length),
+      totalBytes: String(bytes.length),
+      bytesBase64: bytes.toString("base64"),
+      atEnd: true,
+      fingerprint: createHash("sha256").update(bytes).digest("hex"),
+    };
+  };
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    theme: "light",
+    plugin: {
+      ...terminalPlugin(),
+      initiallyInstalled: true,
+      installation: {
+        manifest: stats,
+        archiveSha256,
+        enabled: true,
+        verifiedSource,
+        executionTrust: {
+          archiveSha256,
+          permissions: stats.permissions,
+          verifiedSource,
+        },
+      },
+    },
+    framing: {
+      action,
+      page: reportFile(null),
+      dependencies: [
+        { id: stats.id, version: stats.version, digest: archiveSha256 },
+      ],
+    },
+  });
+  await page.goto("./#/plugins");
+  await page
+    .getByRole("button", {
+      name: /Sample Window Statistics and XY Alignment.*Enabled/,
+    })
+    .click();
+  const panel = page.getByRole("region", { name: "Cross-source XY" });
+  const input = panel.getByRole("textbox", { name: "Analysis input (JSON)" });
+  await panel.getByRole("button", { name: "Load Lissajous example" }).click();
+  const example: unknown = JSON.parse(await input.inputValue());
+  const report = alignXY(example, new AbortController().signal);
+  await page.evaluate(
+    (result) => window.workbenchFixture.setFramingResult(result),
+    reportFile(report),
+  );
+  await panel.getByRole("button", { name: "Align channels" }).click();
+  const result = panel.getByRole("region", { name: "Alignment result" });
+  await expect(
+    result.getByText("33 paired points out of 33 X samples"),
+  ).toBeVisible();
+  await expect(result.getByText("32000 / 32032")).toBeVisible();
+  const sample = result.getByRole("spinbutton", { name: "X sample number" });
+  await sample.focus();
+  await sample.press("ArrowUp");
+  await expect(result.getByText("Interpolated", { exact: true })).toBeVisible();
+  await expect(result.getByText(/X #2.*51000 ns/)).toBeVisible();
+  await expect(result.getByText(/Y #1.*20000 ns/)).toBeVisible();
+  await expect(result.getByText(/Y #2.*22002 ns/)).toBeVisible();
+  await expect(result.getByText(/32032000\/64064000/)).toBeVisible();
+  const trace = result.locator("[data-xy-trace]");
+  await expect(trace).toHaveCount(1);
+  await result.getByRole("button", { name: "Scatter", exact: true }).click();
+  await expect(trace).toHaveCount(0);
+  await result.getByRole("button", { name: "Connected", exact: true }).click();
+  await expect(trace).toHaveCount(1);
+  await result.screenshot({ path: testInfo.outputPath("professional-xy.png") });
+
+  const corrupt = { ...reportFile(report), fingerprint: "0".repeat(64) };
+  await page.evaluate(
+    (value) => window.workbenchFixture.setFramingResult(value),
+    corrupt,
+  );
+  await panel.getByRole("button", { name: "Align channels" }).click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "Couldn’t read a verified report",
+  );
+  await expect(result).toHaveCount(0);
+  await input.fill("[]");
+  await panel.getByRole("button", { name: "Align channels" }).click();
+  await expect(panel.getByRole("alert")).toContainText(
+    "Enter a valid JSON object",
+  );
+  await expect(input).toBeFocused();
+  const calls = await page.evaluate(() =>
+    window.workbenchFixture.invocations.filter(
+      ({ actionId }) => actionId === "swb.reference.statistics.alignXY",
+    ),
+  );
+  expect(calls).toHaveLength(2);
+  expect(calls[0]).toMatchObject({
+    target: { kind: "host", id: fileRef.hostId },
+    params: example,
+  });
 });

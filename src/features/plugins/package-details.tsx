@@ -3,7 +3,7 @@ import {
   ShieldCheckIcon,
   ShieldQuestionMarkIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef } from "react";
+import { lazy, Suspense, useCallback, useEffect, useRef } from "react";
 import { ContractValidationError } from "@serial-workbench/contracts";
 import type {
   NodePackageSourceKey,
@@ -23,12 +23,15 @@ import type { HostConnection } from "@/lib/host-client";
 import type { LocalNodeIntent } from "@/lib/tauri";
 import { PluginError } from "./plugin-error";
 import { PluginViewLauncher } from "./plugin-view-launcher";
+import { alignXyAction, statisticsPackage } from "./xy-analysis-model";
 import {
   permissionLabels,
   queryNode,
   readNodeInstallation,
   type Confirmation,
 } from "./node-management";
+
+const XyAnalysis = lazy(() => import("./xy-analysis"));
 
 export function PackageDetails({
   connection,
@@ -190,6 +193,28 @@ export function PackageDetails({
           archiveSha256={archiveSha256}
           views={manifest.contributes.views}
         />
+      ) : null}
+
+      {manifest &&
+      runtime &&
+      !blocked &&
+      enabled &&
+      executionApproved &&
+      (!connection.browser || verified) &&
+      phase === "active" &&
+      id === statisticsPackage &&
+      manifest.contributes.actions.some(
+        (action) =>
+          action.actionId === alignXyAction &&
+          action.targetKinds.includes("host"),
+      ) ? (
+        <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+          <XyAnalysis
+            key={JSON.stringify([archiveSha256, runtime.generation])}
+            target={connection.hostTarget}
+            archiveSha256={archiveSha256}
+          />
+        </Suspense>
       ) : null}
 
       {!connection.browser ? (
