@@ -1284,6 +1284,80 @@
   min-height: var(--workbench-control-size);
   height: var(--workbench-control-size);
 }
+.workbench-workspace-actions:has(.workbench-experiment-entry),
+.workbench-experiment .workbench-workspace-actions {
+  flex-wrap: wrap;
+}
+.workbench-experiment .workbench-workspace-actions:first-child {
+  justify-content: flex-start;
+  padding: 0;
+  border: 0;
+}
+.workbench-experiment .workbench-workspace-content {
+  overflow-wrap: anywhere;
+}
+.workbench-experiment-context {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 0.5rem;
+  margin-block-end: 0.75rem;
+  color: var(--muted-foreground);
+}
+.workbench-experiment-columns {
+  display: grid;
+  gap: 0.75rem;
+}
+@container workspace-editor (min-width: 34rem) {
+  .workbench-experiment-columns {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+.workbench-experiment-columns > section,
+.workbench-experiment-import,
+.workbench-experiment-firmware {
+  display: grid;
+  min-width: 0;
+  align-content: start;
+  gap: 0.5rem;
+}
+.workbench-dialog .workbench-experiment-columns > section + section {
+  margin-block-start: 0;
+}
+.workbench-experiment-columns h3,
+.workbench-experiment-picks legend {
+  font-weight: 500;
+}
+.workbench-experiment-columns ul {
+  display: grid;
+  gap: 0.5rem;
+}
+.workbench-experiment .ui-input {
+  height: var(--workbench-control-size);
+}
+.workbench-experiment-picks {
+  display: grid;
+  min-width: 0;
+  gap: 0.25rem;
+}
+.workbench-experiment-option {
+  display: grid;
+  grid-template-columns: max-content minmax(0, 1fr);
+  min-height: var(--workbench-control-size);
+  align-items: center;
+  gap: 0.5rem;
+}
+.workbench-experiment-picks > .ui-button,
+.workbench-experiment-file > .ui-button {
+  min-height: var(--workbench-control-size);
+  justify-self: start;
+}
+.workbench-experiment-file {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) var(--workbench-control-size);
+  align-items: center;
+  gap: 0.5rem;
+}
 .workbench-workspace-import-action {
   margin-inline-start: 0;
 }

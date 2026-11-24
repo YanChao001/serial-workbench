@@ -31,6 +31,7 @@ import type {
   WorkspaceDocumentResult,
   SessionSnapshot,
   ReplayReadResult,
+  ExperimentInspection,
 } from "@serial-workbench/contracts";
 import type {
   ClientStateSnapshot,
@@ -257,10 +258,12 @@ export async function seedWorkbenchFixture(
     manualSendReceipts = false,
     automation,
     diagnosticLogs,
+    experiment,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
     diagnosticLogs?: string;
+    experiment?: ExperimentInspection;
     motion?: "full" | "reduced";
     currentPage?: "workbench" | "settings";
     language?: "en" | "zh";
@@ -568,6 +571,32 @@ export async function seedWorkbenchFixture(
     },
     "settings.read": { kind: "settings", value: settingsDocument },
     "workspace.read": { kind: "workspace", value: workspaceDocument },
+    ...(experiment
+      ? {
+          "workspace.experiment.export": {
+            kind: "experiment_package",
+            value: experiment.experiment,
+          },
+          "workspace.experiment.inspect": {
+            kind: "experiment_inspection",
+            value: experiment,
+          },
+          "node.packages.list": {
+            kind: "node_packages",
+            value: {
+              revision: "1",
+              packages: experiment.experiment.parsers.map((item) => ({
+                id: item.id,
+                version: item.version,
+                archiveSha256: item.archiveSha256,
+                enabled: true,
+                sourceVerified: true,
+                executionApproved: true,
+              })),
+            },
+          },
+        }
+      : {}),
   } satisfies Record<string, QueryResult>;
   const clientState = {
     formatVersion: "0.1",

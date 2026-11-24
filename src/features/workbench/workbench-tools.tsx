@@ -80,6 +80,9 @@ import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 const SessionTemplateTool = lazy(() => import("./session-template-tool"));
 const BroadcastSendTool = lazy(() => import("./broadcast-send-tool"));
+const ExperimentPackageTool = lazy(async () => ({
+  default: (await import("./experiment-package-tool")).ExperimentPackageTool,
+}));
 
 /** Owns no Host projection: tool components keep their drafts and Host owns receipts. */
 export function WorkbenchTools({
@@ -161,6 +164,15 @@ export function WorkbenchTools({
     host.connection?.generation,
   ]);
   const documentKey = JSON.stringify([generation, stateScopeKey(base?.scope)]);
+  const [experimentKey, setExperimentKey] = useState<string>();
+  const experimentButton = useRef<HTMLButtonElement>(null);
+  const returnFromExperiment = useRef(false);
+  useEffect(() => {
+    if (experimentKey === undefined && returnFromExperiment.current) {
+      returnFromExperiment.current = false;
+      experimentButton.current?.focus();
+    }
+  }, [experimentKey]);
   const materialized = useRef<string | undefined>(undefined);
   const workingSnapshot = useRef<
     { key: string; value: WorkspaceDocument } | undefined
@@ -421,7 +433,46 @@ export function WorkbenchTools({
         />
       </>
     );
-  if (tool === "workspace")
+  if (tool === "workspace") {
+    const available =
+      catalog.some(
+        (entry) => entry.actionId === "workspace.experiment.export",
+      ) &&
+      catalog.some(
+        (entry) => entry.actionId === "workspace.experiment.inspect",
+      );
+    if (base && host.connection && available && experimentKey === documentKey)
+      return (
+        <div className="workbench-workspace-tool">
+          <Suspense fallback={null}>
+            <ExperimentPackageTool
+              key={documentKey}
+              base={base}
+              connection={host.connection}
+              summaries={host.state.operationSummaries}
+              sessions={host.state.sessions}
+              disabled={!ready}
+              canSave={catalog.some(
+                (entry) => entry.actionId === "workspace.save",
+              )}
+              onSave={host.saveWorkspace}
+              onAcknowledged={onAcknowledged}
+              pickRecording={
+                isTauri()
+                  ? (signal) => host.pickFile("captureSource", signal)
+                  : undefined
+              }
+              onBack={() => {
+                void context.beforeReplace().then((allowed) => {
+                  if (!allowed) return;
+                  returnFromExperiment.current = true;
+                  setExperimentKey(undefined);
+                });
+              }}
+            />
+          </Suspense>
+        </div>
+      );
     return (
       <div className="workbench-workspace-tool">
         <WorkspacePicker
@@ -512,6 +563,19 @@ export function WorkbenchTools({
             maxImportBytes={host.connection?.attachment.limits.maxRequestBytes}
             onChange={onChange}
             onAcknowledged={onAcknowledged}
+            experimentEntry={
+              available && host.connection
+                ? {
+                    label: t("workbench.experiment.title"),
+                    ref: experimentButton,
+                    open: () => {
+                      void context.beforeReplace().then((allowed) => {
+                        if (allowed) setExperimentKey(documentKey);
+                      });
+                    },
+                  }
+                : undefined
+            }
             onSave={(current, value, signal) =>
               host.saveWorkspace(
                 current,
@@ -551,6 +615,7 @@ export function WorkbenchTools({
         )}
       </div>
     );
+  }
   if (tool === "transfer")
     return (
       <TransferOptions
