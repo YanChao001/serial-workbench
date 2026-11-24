@@ -1,16 +1,16 @@
 {
   "id": "swb.builtin.rfc2217",
-  "version": "0.1.0",
-  "archiveSha256": "03c74b1c78819dfae45baa1c7a559fe35e42901aeb7573e8192f91728af57d6b",
-  "compiledModuleSha256": "5b69398e6c1cc49e07103d762e6770c6189cb4b5d4e0ca99d23e1fe82df1e76d",
-  "manifestSha256": "3215ab0d0a151da355d1ab9e7f964f87a9cd4e75a72e6ec4bd570e4b21531594",
+  "version": "0.1.1",
+  "archiveSha256": "362ba1f1ade3ca61adf03a5d382c1c79e1428120217ec985ce08c95b3920ba97",
+  "compiledModuleSha256": "35f5ec8be15651989795a291b7e4711a26758087009ef657f52df4e25e4432cf",
+  "manifestSha256": "bb0b26e1901508b7d26d4eeba44a57ab64585375edbd314f78aaf8152e37db2d",
   "sourceApproval": {
-    "keyId": "built-in-rfc2217-0.1.0",
+    "keyId": "built-in-rfc2217-0.1.1",
     "publicKey": [
-      221, 3, 86, 250, 146, 78, 224, 31, 103, 47, 156, 219, 68, 84, 247, 163,
-      150, 69, 83, 83, 228, 188, 84, 138, 89, 179, 176, 49, 192, 176, 212, 221
+      11, 34, 11, 23, 253, 79, 190, 209, 56, 185, 53, 140, 173, 110, 144, 98,
+      156, 253, 62, 226, 88, 200, 244, 196, 240, 222, 87, 66, 212, 101, 206, 53
     ],
-    "publicKeySha256": "62414b1f4b709865e6a6dc005dc5c99218c061db5f86ffd5dfd49f662cf04712",
+    "publicKeySha256": "e401572a4684e4c5490844a52730fc30377fe906d9584aec2835915c1508e4fd",
     "source": "swb.product"
   }
 }

@@ -66,6 +66,11 @@ const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
 const RFC2217_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/rfc2217.zip");
 const RFC2217_DESCRIPTOR: &str = include_str!("../../resources/node-packages/rfc2217.json");
+const RFC2217_MARKER: &str = "node-packages:bundled-rfc2217";
+const PREVIOUS_RFC2217_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/rfc2217-0.1.0.zip");
+const PREVIOUS_RFC2217_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/rfc2217-0.1.0.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -180,17 +185,13 @@ pub(super) fn packages() -> &'static [ProductPackage] {
             ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
             ProductPackage::new(AUTOMATION_DESCRIPTOR, AUTOMATION_ARCHIVE, AUTOMATION_MARKER),
             ProductPackage::new(TCP_DESCRIPTOR, TCP_ARCHIVE, "node-packages:bundled-tcp"),
-            ProductPackage::new(
-                RFC2217_DESCRIPTOR,
-                RFC2217_ARCHIVE,
-                "node-packages:bundled-rfc2217",
-            ),
+            ProductPackage::new(RFC2217_DESCRIPTOR, RFC2217_ARCHIVE, RFC2217_MARKER),
         ]
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 9] {
-    static PREVIOUS: OnceLock<[ProductPackage; 9]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 10] {
+    static PREVIOUS: OnceLock<[ProductPackage; 10]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -229,6 +230,11 @@ fn previous_packages() -> &'static [ProductPackage; 9] {
                 AUTOMATION_0_1_4_DESCRIPTOR,
                 AUTOMATION_0_1_4_ARCHIVE,
                 AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
+                PREVIOUS_RFC2217_DESCRIPTOR,
+                PREVIOUS_RFC2217_ARCHIVE,
+                RFC2217_MARKER,
             ),
         ]
     })
@@ -291,6 +297,7 @@ mod tests {
             recording_automation,
             assertion_automation,
             rule_automation,
+            old_rfc2217,
         ] = previous_packages();
         check_predecessor_upgrade(old_fields, "0.1.0", "0.3.0");
         check_predecessor_upgrade(recent_fields, "0.2.0", "0.3.0");
@@ -301,6 +308,7 @@ mod tests {
         check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.5");
         check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.5");
         check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.5");
+        check_predecessor_upgrade(old_rfc2217, "0.1.0", "0.1.1");
     }
 
     fn check_predecessor_upgrade(old: &ProductPackage, old_version: &str, next_version: &str) {

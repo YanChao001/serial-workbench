@@ -204,11 +204,12 @@ export function createPluginTransportLane({
     });
   });
   const frames = pluginTransportFrames(socket);
-  const active = { read: null, write: null };
+  const active = { read: null, write: null, set_line: null };
   let lastId = 0;
   let activated = false;
   let requestedStop = false;
   let connection;
+  let lineControls;
 
   function disconnect() {
     lifetime.abort();
@@ -217,22 +218,34 @@ export function createPluginTransportLane({
 
   function dispatch(frame) {
     const reading = frame?.kind === "read";
+    const control = frame?.kind === "set_line";
     const fields = reading
       ? ["kind", "id", "waitMs", "maxBytes"]
-      : ["kind", "id", "waitMs", "bytes"];
+      : control
+        ? ["kind", "id", "waitMs", "line", "value"]
+        : ["kind", "id", "waitMs", "bytes"];
     if (
-      (!reading && frame?.kind !== "write") ||
+      (!reading && !control && frame?.kind !== "write") ||
       !pluginTransportShape(frame, fields) ||
       !pluginTransportInteger(frame.id, lastId + 1, Number.MAX_SAFE_INTEGER) ||
       !pluginTransportInteger(frame.waitMs, 0, PLUGIN_TRANSPORT_MAX_WAIT) ||
       active[frame.kind] !== null ||
       (reading &&
-        !pluginTransportInteger(frame.maxBytes, 1, PLUGIN_TRANSPORT_MAX_READ))
+        !pluginTransportInteger(
+          frame.maxBytes,
+          1,
+          PLUGIN_TRANSPORT_MAX_READ,
+        )) ||
+      (control &&
+        ((frame.line !== "dtr" && frame.line !== "rts") ||
+          typeof frame.value !== "boolean" ||
+          lineControls?.[frame.line] !== true))
     ) {
       throw new Error("Invalid plugin transport request");
     }
 
-    const bytes = reading ? null : decodePluginTransportWrite(frame.bytes);
+    const bytes =
+      reading || control ? null : decodePluginTransportWrite(frame.bytes);
     const controller = new AbortController();
     const signal = AbortSignal.any([controller.signal, lifetime.signal]);
     const { id, kind, maxBytes, waitMs } = frame;
@@ -259,6 +272,28 @@ export function createPluginTransportLane({
                 value === null ? "" : Buffer.from(value).toString("base64"),
               eof: value === null,
             };
+          } else if (control) {
+            const { line, value } = frame;
+            const result = await lineControls.set({
+              line,
+              value,
+              waitMs,
+              signal,
+            });
+            if (
+              pluginTransportShape(result, ["kind", "actual"]) &&
+              result.kind === "confirmed" &&
+              typeof result.actual === "boolean"
+            ) {
+              reply = { kind: "line", id, actual: result.actual };
+            } else if (
+              pluginTransportShape(result, ["kind"]) &&
+              result.kind === "not_applied"
+            ) {
+              reply = { kind: "line", id };
+            } else {
+              throw new Error("Invalid plugin line response");
+            }
           } else {
             const accepted = await connection.write({ bytes, waitMs, signal });
             if (!pluginTransportInteger(accepted, 0, bytes.length)) {
@@ -324,7 +359,29 @@ export function createPluginTransportLane({
         throw new Error("Invalid plugin transport connection");
       }
       lifetime.signal.throwIfAborted();
-      const opened = sendPluginTransportFrame(socket, { kind: "opened" });
+      const offeredLines = connection.lineControls;
+      if (offeredLines !== undefined) {
+        if (
+          !offeredLines ||
+          typeof offeredLines.dtr !== "boolean" ||
+          typeof offeredLines.rts !== "boolean" ||
+          typeof offeredLines.set !== "function"
+        ) {
+          throw new Error("Invalid plugin transport line capabilities");
+        }
+        lineControls = {
+          dtr: offeredLines.dtr,
+          rts: offeredLines.rts,
+          set: offeredLines.set.bind(offeredLines),
+        };
+      }
+      const opened = sendPluginTransportFrame(socket, {
+        kind: "opened",
+        lineControls: lineControls && {
+          dtr: lineControls.dtr,
+          rts: lineControls.rts,
+        },
+      });
       activated = true;
       await opened;
       opening = false;

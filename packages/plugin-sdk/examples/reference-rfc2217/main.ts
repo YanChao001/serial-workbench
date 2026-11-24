@@ -1,10 +1,16 @@
 import type {
   NodeRegister,
   TransportConnection,
+  TransportLineControls,
+  TransportLineResult,
   TransportOpenOptions,
 } from "@serial-workbench/plugin-sdk/node";
 import { connectTcp } from "../reference-transport/tcp-transport.ts";
-import { rfc2217Settings, type SettingRequest } from "./settings.ts";
+import {
+  rfc2217LineCodes,
+  rfc2217Settings,
+  type SettingRequest,
+} from "./settings.ts";
 import {
   encodeSub,
   encodeTelnetData,
@@ -17,6 +23,8 @@ export const rfc2217TransportId = "reference.rfc2217.transport";
 const openWaitMs = 3000;
 const maxBufferedBytes = 64 * 1024;
 const wireReadBytes = 4096;
+
+type LiveControl = { on: number; off: number; sent: boolean; actual?: boolean };
 
 type FailureKind = "refused" | "different_value" | "timeout" | "disconnected";
 export class Rfc2217NegotiationError extends Error {
@@ -45,7 +53,7 @@ export async function openRfc2217({
   params,
   signal,
 }: TransportOpenOptions): Promise<TransportConnection> {
-  const { host, port, requests } = rfc2217Settings(params);
+  const { host, port, requests, hardwareFlow } = rfc2217Settings(params);
   const timer = AbortSignal.timeout(openWaitMs);
   const until = performance.now() + openWaitMs;
   const remaining = (deadline: number) =>
@@ -59,6 +67,7 @@ export async function openRfc2217({
   let request: SettingRequest | undefined;
   let confirmed = false;
   let suspended = false;
+  let liveControl: LiveControl | undefined;
   let wire: TransportConnection | undefined;
 
   function negotiationFailure(
@@ -145,6 +154,14 @@ export async function openRfc2217({
           const [replyCode, ...values] = item.bytes;
           if (values.length === 0 && (replyCode === 108 || replyCode === 109))
             suspended = replyCode === 108;
+          if (replyCode === 105 && liveControl?.sent) {
+            if (values.length !== 1)
+              throw new Error("Invalid RFC 2217 control reply");
+            const value = values[0];
+            if (value === liveControl.on || value === liveControl.off) {
+              liveControl.actual ??= value === liveControl.on;
+            }
+          }
           if (request && replyCode === request.command + 100) {
             const reply = Uint8Array.from(values);
             if (!Buffer.from(reply).equals(request.value))
@@ -207,27 +224,113 @@ export async function openRfc2217({
     request = undefined;
     opening.throwIfAborted();
 
+    const closing = new AbortController();
+    const connected = AbortSignal.any([signal, closing.signal]);
+    let readTurn: Promise<boolean> | undefined;
+
+    function pollWire(deadline: number): Promise<boolean> {
+      // 同一个 TCP 字节流始终由一个读轮次解码。控制等待和 Raw 读取共享它。
+      readTurn ??= readWire(
+        Math.min(deadline, performance.now() + 25),
+        connected,
+      ).finally(() => {
+        readTurn = undefined;
+      });
+      return readTurn;
+    }
+
+    async function close() {
+      closing.abort();
+      await connection.close();
+    }
+
+    async function setLine({
+      line,
+      value,
+      waitMs,
+      signal,
+    }: Parameters<
+      TransportLineControls["set"]
+    >[0]): Promise<TransportLineResult> {
+      if (
+        signal.aborted ||
+        connected.aborted ||
+        waitMs === 0 ||
+        liveControl ||
+        (line === "rts" && hardwareFlow)
+      )
+        return { kind: "not_applied" };
+      const deadline = performance.now() + waitMs;
+      const codes = rfc2217LineCodes[line];
+      const control: LiveControl = { ...codes, sent: false };
+      liveControl = control;
+      try {
+        // 先处理已到达的暂停或断开，等待恢复期间不会提交命令。
+        if (!(await pollWire(performance.now())))
+          return { kind: "not_applied" };
+        while (suspended && remaining(deadline) > 0 && !signal.aborted) {
+          if (!(await pollWire(deadline))) return { kind: "not_applied" };
+        }
+        if (
+          signal.aborted ||
+          connected.aborted ||
+          suspended ||
+          remaining(deadline) === 0
+        )
+          return { kind: "not_applied" };
+
+        control.sent = true;
+        await command(
+          encodeSub(
+            telnet.comPort,
+            Uint8Array.of(5, value ? codes.on : codes.off),
+          ),
+          remaining(deadline),
+          AbortSignal.any([connected, signal]),
+        );
+        while (
+          control.actual === undefined &&
+          remaining(deadline) > 0 &&
+          !signal.aborted &&
+          !connected.aborted
+        ) {
+          if (!(await pollWire(deadline))) break;
+        }
+        if (control.actual === undefined)
+          throw new Error("RFC 2217 line result is unknown");
+        return { kind: "confirmed", actual: control.actual };
+      } catch (error) {
+        if (!control.sent) return { kind: "not_applied" };
+        await close();
+        throw error;
+      } finally {
+        liveControl = undefined;
+      }
+    }
+
     return {
+      lineControls: { dtr: true, rts: !hardwareFlow, set: setLine },
       async read({ maxBytes, waitMs, signal }) {
         signal.throwIfAborted();
         const deadline = performance.now() + waitMs;
         try {
           if (buffered.length === 0) {
             do {
-              if (!(await readWire(deadline, signal))) return null;
+              if (!(await pollWire(deadline))) return null;
+              signal.throwIfAborted();
             } while (buffered.length === 0 && remaining(deadline) > 0);
           }
           const bytes = buffered.subarray(0, maxBytes);
           buffered = buffered.subarray(bytes.length);
           return bytes;
         } catch (error) {
-          if (!signal.aborted) await connection.close();
+          if (!signal.aborted) await close();
           throw error;
         }
       },
       async write({ bytes, waitMs, signal }) {
         signal.throwIfAborted();
-        if (suspended) return 0;
+        if (suspended || connected.aborted) return 0;
         const encoded = encodeTelnetData(bytes);
         const count = await connection.write({
           bytes: encoded,
@@ -236,14 +339,14 @@ export async function openRfc2217({
         });
         if (count === 0) return 0;
         if (count !== encoded.length) {
-          await connection.close();
+          await close();
           throw new Error(
             "RFC 2217 write did not confirm the complete Telnet frame",
           );
         }
         return bytes.length;
       },
-      close: () => connection.close(),
+      close,
     };
   } catch (error) {
     await wire?.close();

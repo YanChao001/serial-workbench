@@ -33,6 +33,8 @@ export function workbenchToolLabels(t: Translate) {
     rtsOn: t("workbench.tools.rtsOn"),
     rtsOff: t("workbench.tools.rtsOff"),
     flowOwnsLine: t("workbench.tools.flowOwnsLine"),
+    waitingLine: (action: string) =>
+      t("workbench.tools.waitingLine", { action }),
     breakDuration: t("workbench.tools.breakDuration"),
     finiteBreak: t("workbench.tools.finiteBreak"),
     purgeDirection: t("workbench.tools.purgeDirection"),

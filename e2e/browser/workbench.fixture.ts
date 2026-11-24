@@ -245,6 +245,7 @@ export async function seedWorkbenchFixture(
     replayPeer,
     connectFailure,
     openedConfiguration,
+    openedCapabilities,
     connectionDefaults,
     device,
     secondDevice,
@@ -286,6 +287,7 @@ export async function seedWorkbenchFixture(
     replayPeer?: ReplayLayoutFixture;
     connectFailure?: HostError;
     openedConfiguration?: SessionSnapshot["configuration"];
+    openedCapabilities?: SessionSnapshot["capabilities"];
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     device?: DeviceDescriptor;
     secondDevice?: DeviceDescriptor;
@@ -633,6 +635,7 @@ export async function seedWorkbenchFixture(
       ...fixtureSession,
       readOnly,
       configuration: openedConfiguration ?? fixtureSession.configuration,
+      capabilities: openedCapabilities ?? fixtureSession.capabilities,
     },
     secondSession: secondDevice
       ? {

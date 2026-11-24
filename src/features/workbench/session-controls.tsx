@@ -107,6 +107,7 @@ export type SessionControlsLabels = Record<
   readWaitHint?: string;
   writeWaitHint?: string;
   reconnectHint?: string;
+  waitingLine(action: string): string;
   operationText: OperationText;
   gates: Record<SessionSnapshot["txGate"], string>;
   failure(code: string | undefined): string;
@@ -176,6 +177,7 @@ function ControlsForm({
   const [direction, setDirection] = useState<PurgeParams["direction"]>("both");
   const [scope, setScope] = useState<PurgeParams["scope"]>("both");
   const [locallyBusy, setBusy] = useState(false);
+  const [pendingLine, setPendingLine] = useState<ControlParams>();
   const [error, setError] = useState<{
     code: string;
     eventKey?: string;
@@ -304,6 +306,16 @@ function ControlsForm({
     };
   }, [inputs, watchActions]);
   function canAct(action: ControlAction) {
+    if (action.actionId === "session.control") {
+      const { line } = action.params;
+      const { flowControl } = session.configuration;
+      if (
+        !session.capabilities[line] ||
+        (line === "rts" && flowControl === "rtsCts") ||
+        (line === "dtr" && flowControl === "dsrDtr")
+      )
+        return false;
+    }
     if (
       blocked ||
       busy ||
@@ -364,6 +376,10 @@ function ControlsForm({
         !value.error,
     );
   }
+  function lineLabel({ line, value }: ControlParams) {
+    return labels[`${line}${value ? "On" : "Off"}`];
+  }
+
   async function act(action: ControlAction, signal?: AbortSignal) {
     if (!mounted.current || pending.current || !canAct(action) || !actionTarget)
       throw { code: "ACTION_UNAVAILABLE" };
@@ -373,6 +389,7 @@ function ControlsForm({
       ? AbortSignal.any([signal, controller.signal])
       : controller.signal;
     setBusy(true);
+    if (action.actionId === "session.control") setPendingLine(action.params);
     setError(undefined);
     try {
       const operation = await invoke(
@@ -461,6 +478,7 @@ function ControlsForm({
     } finally {
       if (pending.current === controller) pending.current = null;
       if (mounted.current && !controller.signal.aborted) setBusy(false);
+      setPendingLine(undefined);
     }
   }
   async function apply(signal?: AbortSignal) {
@@ -556,43 +574,46 @@ function ControlsForm({
               <>
                 <fieldset disabled={disabled || session.readOnly || busy}>
                   <legend>{labels.controlLines}</legend>
-                  <div className="flex flex-wrap gap-2">
-                    {(["dtr", "rts"] as const).map((line) =>
-                      ([true, false] as const).map((value) => (
-                        <Button
-                          key={`${line}-${value}`}
-                          size="sm"
-                          variant="outline"
-                          disabled={
-                            !canAct({
-                              actionId: "session.control",
-                              params: { line, value },
-                            })
-                          }
-                          onClick={() =>
-                            run(() =>
-                              act({
+                  <div className="grid min-w-0 gap-2 @sm/workbench-tool:grid-cols-2">
+                    {(["dtr", "rts"] as const).map((line) => (
+                      <div
+                        key={line}
+                        className="grid min-w-0 grid-cols-2 gap-2"
+                      >
+                        {([true, false] as const).map((value) => (
+                          <Button
+                            key={String(value)}
+                            size="sm"
+                            variant="outline"
+                            disabled={
+                              !canAct({
                                 actionId: "session.control",
                                 params: { line, value },
-                              }),
-                            )
-                          }
-                        >
-                          {
-                            labels[
-                              line === "dtr"
-                                ? value
-                                  ? "dtrOn"
-                                  : "dtrOff"
-                                : value
-                                  ? "rtsOn"
-                                  : "rtsOff"
-                            ]
-                          }
-                        </Button>
-                      )),
-                    )}
+                              })
+                            }
+                            onClick={() =>
+                              run(() =>
+                                act({
+                                  actionId: "session.control",
+                                  params: { line, value },
+                                }),
+                              )
+                            }
+                          >
+                            {lineLabel({ line, value })}
+                          </Button>
+                        ))}
+                      </div>
+                    ))}
                   </div>
+                  {pendingLine && (
+                    <p
+                      role="status"
+                      className="mt-2 text-sm text-muted-foreground"
+                    >
+                      {labels.waitingLine(lineLabel(pendingLine))}
+                    </p>
+                  )}
                   {(session.configuration.flowControl === "rtsCts" ||
                     session.configuration.flowControl === "dsrDtr") && (
                     <p className="text-xs text-muted-foreground">

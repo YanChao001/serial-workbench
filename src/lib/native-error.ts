@@ -20,6 +20,7 @@ const ERROR_KEYS: Record<string, MessageKey> = {
   WORKSPACE_DELETED: "nativeError.workspaceDeleted",
   WRITE_TIMEOUT: "nativeError.writeTimeout",
   CONTROL_UNKNOWN: "nativeError.controlUnknown",
+  CONTROL_NOT_APPLIED: "nativeError.controlNotApplied",
   DEV_RUNTIME_MISMATCH: "nativeError.devRuntimeMismatch",
   READER_OVERFLOW: "nativeError.readerOverflow",
   REPLAY_CLOCK_UNAVAILABLE: "nativeError.replayClockUnavailable",

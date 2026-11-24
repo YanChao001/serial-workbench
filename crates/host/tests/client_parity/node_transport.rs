@@ -494,6 +494,117 @@ async fn signed_transport(scenario: TransportScenario) {
                 |event| matches!(&event.payload, RawPayload::Tx(tx) if tx.as_ref() == &receipt)
             )
         );
+        if rfc2217 {
+            let dtr = |actor: &HostClient| {
+                call(
+                    actor,
+                    "session.control",
+                    &first,
+                    json!({"line":"dtr","value":true}),
+                )
+            };
+            denied(
+                manager
+                    .request(RpcRequest::Invoke(dtr(&manager)))
+                    .await
+                    .unwrap(),
+            );
+            let admitted = success(
+                client
+                    .request(RpcRequest::Invoke(dtr(&client)))
+                    .await
+                    .unwrap(),
+            );
+            let settle = wait_for_terminal(&client, &host_target, admitted);
+            let observe = async {
+                let mut command = [0; 7];
+                timeout(WAIT, peer.read_exact(&mut command))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(command, [255, 250, 44, 5, 8, 255, 240]);
+                peer.write_all(&[b'L', 255, 255, 10]).await.unwrap();
+                timeout(Duration::from_millis(900), async {
+                    loop {
+                        let RpcResult::Query(QueryResult::StreamRead(page)) = success(
+                            raw.request(RpcRequest::Query(query(
+                                &client,
+                                "stream.read",
+                                &first,
+                                read_params.clone(),
+                            )))
+                            .await
+                            .unwrap(),
+                        ) else {
+                            panic!("Expected an active Raw page")
+                        };
+                        if rx_bytes(&page.events).ends_with(&[b'L', 255, 10]) {
+                            break;
+                        }
+                        tokio::time::sleep(Duration::from_millis(10)).await;
+                    }
+                })
+                .await
+                .expect("Raw reception must keep advancing before the line reply");
+                peer.write_all(&[255, 250, 44, 105, 9, 255, 240])
+                    .await
+                    .unwrap();
+            };
+            let (result, ()) = tokio::join!(settle, observe);
+            assert_eq!(result.state, OperationState::Succeeded, "{result:?}");
+            assert!(
+                matches!(
+                    result.result,
+                    Some(ActionResult::Control(ControlReceipt {
+                        line: ControlLine::Dtr,
+                        requested: true,
+                        status: ControlStatus::Confirmed,
+                        actual: Some(false)
+                    }))
+                ),
+                "{result:?}"
+            );
+            let confirmed_rts = async {
+                completed(
+                    &client,
+                    &host_target,
+                    call(
+                        &client,
+                        "session.control",
+                        &first,
+                        json!({"line":"rts","value":true}),
+                    ),
+                )
+                .await
+            };
+            let observe_rts = async {
+                let mut command = [0; 7];
+                timeout(WAIT, peer.read_exact(&mut command))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(command, [255, 250, 44, 5, 11, 255, 240]);
+                peer.write_all(&[255, 250, 44, 105, 11, 255, 240])
+                    .await
+                    .unwrap();
+            };
+            let (result, ()) = tokio::join!(confirmed_rts, observe_rts);
+            assert!(
+                matches!(
+                    result.result,
+                    Some(ActionResult::Control(ControlReceipt {
+                        line: ControlLine::Rts,
+                        requested: true,
+                        status: ControlStatus::Confirmed,
+                        actual: Some(true)
+                    }))
+                ),
+                "{result:?}"
+            );
+            eprintln!(
+                "rfc2217_live_controls denial_before_wire=true dtr_requested=true dtr_actual=false rts_actual=true raw_before_ack=true"
+            );
+        }
         completed(
             &client,
             &host_target,
@@ -502,7 +613,7 @@ async fn signed_transport(scenario: TransportScenario) {
         .await;
         peer_eof(&mut peer).await;
 
-        let reopening = open_session(&client, &host_target, &device, open_params);
+        let reopening = open_session(&client, &host_target, &device, open_params.clone());
         let (second, mut peer) = if rfc2217 {
             tokio::join!(reopening, accept_rfc2217(listener.as_ref().unwrap(), false))
         } else {
@@ -592,6 +703,49 @@ async fn signed_transport(scenario: TransportScenario) {
             .unwrap()
             .unwrap();
         assert_eq!(payload, [0x5a]);
+        if rfc2217 {
+            let control = async {
+                let request = call(
+                    &manager,
+                    "session.control",
+                    &second,
+                    json!({"line":"dtr","value":false}),
+                );
+                let admitted = success(manager.request(RpcRequest::Invoke(request)).await.unwrap());
+                wait_for_terminal(&manager, &host_target, admitted).await
+            };
+            let silent = async {
+                let mut command = [0; 7];
+                timeout(WAIT, peer.read_exact(&mut command))
+                    .await
+                    .unwrap()
+                    .unwrap();
+                assert_eq!(command, [255, 250, 44, 5, 9, 255, 240]);
+                peer_eof(&mut peer).await;
+            };
+            let (result, ()) = tokio::join!(control, silent);
+            assert_eq!(result.state, OperationState::Unknown, "{result:?}");
+            assert!(
+                matches!(
+                    result.result,
+                    Some(ActionResult::Control(ControlReceipt {
+                        line: ControlLine::Dtr,
+                        requested: false,
+                        status: ControlStatus::Unknown,
+                        actual: None
+                    }))
+                ),
+                "{result:?}"
+            );
+            grant(&auth, &operator, &manager, &device, &["device.modify"]);
+            let (third, new_peer) = tokio::join!(
+                open_session(&manager, &host_target, &device, open_params),
+                accept_rfc2217(listener.as_ref().unwrap(), false),
+            );
+            assert!(third.session_epoch > second.session_epoch);
+            peer = new_peer;
+            eprintln!("rfc2217_live_control_unknown closed=true new_session_epoch=true");
+        }
         let disabled = package_change(
             &manager,
             &host_target,

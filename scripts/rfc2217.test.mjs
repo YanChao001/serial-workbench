@@ -296,6 +296,143 @@ test(
   },
 );
 
+async function configuredPeer(t, flowControl = "none") {
+  const { peer, pending } = await fixture(t, { flowControl });
+  assert.deepEqual(
+    await readWire(peer, openingOptions.length),
+    Buffer.from(openingOptions),
+  );
+  await writeWire(peer, Buffer.from(acceptedOptions));
+  const settings = [
+    [1, 0, 1, 194, 0],
+    [2, 8],
+    [3, 1],
+    [4, 1],
+    [5, flowControl === "hardware" ? 3 : 1],
+  ];
+  for (const [code, ...value] of settings) {
+    const request = sub([code, ...value]);
+    assert.deepEqual(await readWire(peer, request.length), request);
+    await writeWire(peer, sub([code + 100, ...value]));
+  }
+  return { peer, connection: await pending };
+}
+
+test("live line control returns the actual line value and shares the stream with Raw", async (t) => {
+  const { peer, connection } = await configuredPeer(t);
+  t.after(() => connection.close());
+  assert.equal(connection.lineControls.dtr, true);
+  assert.equal(connection.lineControls.rts, true);
+  const request = sub([5, 8]);
+  let settled = false;
+  const control = connection.lineControls.set({
+    line: "dtr",
+    value: true,
+    waitMs: 1200,
+    signal,
+  });
+  void control.then(
+    () => {
+      settled = true;
+    },
+    () => {},
+  );
+  assert.deepEqual(await readWire(peer, request.length), request);
+  assert.deepEqual(
+    await connection.lineControls.set({
+      line: "rts",
+      value: true,
+      waitMs: 1200,
+      signal,
+    }),
+    { kind: "not_applied" },
+  );
+  const raw = connection.read({ maxBytes: 3, waitMs: 700, signal });
+  await writeWire(
+    peer,
+    Buffer.concat([sub([105, 12]), Buffer.from([0, 255, 255, 13])]),
+  );
+  assert.deepEqual(Buffer.from(await raw), Buffer.from([0, 255, 13]));
+  assert.equal(settled, false);
+  assert.equal(
+    await connection.write({ bytes: Buffer.of(0, 255), waitMs: 500, signal }),
+    2,
+  );
+  assert.deepEqual(await readWire(peer, 3), Buffer.of(0, 255, 255));
+  const reply = sub([105, 9]);
+  await writeWire(peer, reply.subarray(0, 4));
+  await writeWire(peer, reply.subarray(4));
+  assert.deepEqual(await control, { kind: "confirmed", actual: false });
+  const second = connection.lineControls.set({
+    line: "rts",
+    value: true,
+    waitMs: 800,
+    signal,
+  });
+  assert.deepEqual(await readWire(peer, request.length), sub([5, 11]));
+  await writeWire(peer, sub([105, 11]));
+  assert.deepEqual(await second, { kind: "confirmed", actual: true });
+});
+
+test("hardware flow owns RTS and a suspended control can end before submission", async (t) => {
+  const { peer, connection } = await configuredPeer(t, "hardware");
+  t.after(() => connection.close());
+  assert.equal(connection.lineControls.rts, false);
+  assert.deepEqual(
+    await connection.lineControls.set({
+      line: "rts",
+      value: true,
+      waitMs: 400,
+      signal,
+    }),
+    { kind: "not_applied" },
+  );
+  await writeWire(peer, sub([108]));
+  const waiting = connection.lineControls.set({
+    line: "dtr",
+    value: true,
+    waitMs: 80,
+    signal,
+  });
+  await assert.rejects(readWire(peer, 7, 40), { name: "AbortError" });
+  assert.deepEqual(await waiting, { kind: "not_applied" });
+  await writeWire(peer, sub([109]));
+  const resumed = connection.lineControls.set({
+    line: "dtr",
+    value: false,
+    waitMs: 650,
+    signal,
+  });
+  assert.deepEqual(await readWire(peer, 7), sub([5, 9]));
+  await writeWire(peer, sub([105, 9]));
+  assert.deepEqual(await resumed, { kind: "confirmed", actual: false });
+});
+
+test("a late acknowledgement after submission cannot become a later control result", async (t) => {
+  const { peer, connection } = await configuredPeer(t);
+  t.after(() => connection.close());
+  const control = connection.lineControls.set({
+    line: "dtr",
+    value: true,
+    waitMs: 160,
+    signal,
+  });
+  const failed = assert.rejects(control, /line result is unknown/);
+  assert.deepEqual(await readWire(peer, 7), sub([5, 8]));
+  await assertPeerClosed(peer, async () => {
+    await failed;
+  });
+  assert.deepEqual(
+    await connection.lineControls.set({
+      line: "dtr",
+      value: false,
+      waitMs: 500,
+      signal,
+    }),
+    { kind: "not_applied" },
+  );
+});
+
 test("the bundled RFC 2217 transport matches its signed archive and reference contract", () => {
   const root = new URL("../", import.meta.url);
   const folder = "packages/plugin-sdk/examples/reference-rfc2217/";

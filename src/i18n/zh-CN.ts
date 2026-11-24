@@ -931,6 +931,7 @@ export const zhCN = {
   "workbench.tools.dtrOff": "复位 DTR",
   "workbench.tools.rtsOn": "置位 RTS",
   "workbench.tools.rtsOff": "复位 RTS",
+  "workbench.tools.waitingLine": "正在等待设备确认{action}。",
   "workbench.tools.flowOwnsLine": "该控制线由流控管理",
   "workbench.tools.breakDuration": "BREAK 时长（毫秒）",
   "workbench.tools.finiteBreak": "发送定时 BREAK",
@@ -2044,6 +2045,7 @@ export const zhCN = {
   "nativeError.limitExceeded":
     "资源容量已达上限，请检查运行状态并释放不再使用的资源后重试。",
   "nativeError.writeTimeout": "发送等待超时，请查看发送详情后决定是否重试。",
+  "nativeError.controlNotApplied": "控制线命令尚未发送，请等连接就绪后重试。",
   "nativeError.controlUnknown": "串口操作结果未确认，请重新连接后重试。",
   "nativeError.devRuntimeMismatch":
     "开发后端版本已更新，请停止旧服务后重新启动。",

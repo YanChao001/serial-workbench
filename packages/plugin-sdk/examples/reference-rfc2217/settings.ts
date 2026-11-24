@@ -8,6 +8,11 @@ const parityCodes = { none: 1, odd: 2, even: 3, mark: 4, space: 5 };
 const stopCodes = { "1": 1, "2": 2, "1.5": 3 };
 const flowCodes = { none: 1, software: 2, hardware: 3 };
 
+export const rfc2217LineCodes = {
+  dtr: { on: 8, off: 9 },
+  rts: { on: 11, off: 12 },
+} as const;
+
 export type SettingRequest = {
   command: number;
   field: string;
@@ -78,13 +83,17 @@ export function rfc2217Settings(params: TransportOpenOptions["params"]) {
     requests.push({
       command: 5,
       field: "dtr",
-      value: Uint8Array.of(dtr ? 8 : 9),
+      value: Uint8Array.of(
+        dtr ? rfc2217LineCodes.dtr.on : rfc2217LineCodes.dtr.off,
+      ),
     });
   if (rts !== undefined)
     requests.push({
       command: 5,
       field: "rts",
-      value: Uint8Array.of(rts ? 11 : 12),
+      value: Uint8Array.of(
+        rts ? rfc2217LineCodes.rts.on : rfc2217LineCodes.rts.off,
+      ),
     });
-  return { host, port, requests };
+  return { host, port, requests, hardwareFlow: flowControl === "hardware" };
 }

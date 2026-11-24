@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.rfc2217",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "displayName": "RFC 2217 Serial Client",
   "description": "Connect to a remote serial server and verify requested line settings.",
   "license": "Apache-2.0",

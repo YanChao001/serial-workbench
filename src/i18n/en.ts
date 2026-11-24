@@ -1006,6 +1006,7 @@ export const en = {
   "workbench.tools.dtrOff": "DTR off",
   "workbench.tools.rtsOn": "RTS on",
   "workbench.tools.rtsOff": "RTS off",
+  "workbench.tools.waitingLine": "Waiting for the device to confirm {action}.",
   "workbench.tools.flowOwnsLine": "Flow control owns this line",
   "workbench.tools.breakDuration": "BREAK duration (ms)",
   "workbench.tools.finiteBreak": "Send finite BREAK",
@@ -2225,6 +2226,8 @@ export const en = {
     "Resource capacity is full. Check runtime status and release unused resources, then retry.",
   "nativeError.writeTimeout":
     "The send wait timed out. Check the send details before retrying.",
+  "nativeError.controlNotApplied":
+    "The line command was not sent. Try again when the connection is ready.",
   "nativeError.controlUnknown":
     "The serial operation outcome is unconfirmed. Reconnect before trying again.",
   "nativeError.devRuntimeMismatch":

@@ -1501,6 +1501,12 @@ struct PendingWriteReply {
     wait: BackendWait,
     length: usize,
 }
+struct PendingLineControlReply {
+    job: Box<dyn PendingLineControl>,
+    line: ControlLine,
+    reply: oneshot::Sender<BackendResult<ControlResult>>,
+}
+
 struct PendingDrainReply {
     job: Box<dyn PendingDrain>,
     reply: oneshot::Sender<BackendResult<ControlResult>>,
@@ -1555,6 +1561,7 @@ fn owner_loop(
     } = context;
     let mut writing: Option<PendingWriteReply> = None;
     let mut pending: Option<PendingDrainReply> = None;
+    let mut line_control: Option<PendingLineControlReply> = None;
     let mut close_reply = None;
     let mut receive_ready = false;
     loop {
@@ -1665,7 +1672,28 @@ fn owner_loop(
                 )),
             }));
         }
-        if closing.load(Ordering::SeqCst) && pending.is_none() && writing.is_none() {
+        if let Some(control) = line_control.as_mut()
+            && let Some(result) = control.job.poll()
+        {
+            if let Ok(ControlResult::LineUnknown { error, .. }) = &result {
+                disconnected(&snapshot, &projections);
+                if let Ok(mut state) = snapshot.lock() {
+                    state.tx_gate = TxGate::ControlUnknown;
+                }
+                let _ = source.fail_backend(error.clone());
+                closing.store(true, Ordering::SeqCst);
+            }
+            let _ = line_control
+                .take()
+                .expect("pending line control")
+                .reply
+                .send(result);
+        }
+        if closing.load(Ordering::SeqCst)
+            && pending.is_none()
+            && writing.is_none()
+            && line_control.is_none()
+        {
             // 已接纳只读查询仍可结算；副作用命令在 admission 中因 Closing 拒绝。
             for _ in 0..8 {
                 let Ok(command) = receiver.try_recv() else {
@@ -1718,7 +1746,7 @@ fn owner_loop(
                 let cancelled = request.cancelled.clone();
                 let native_cancelled = Arc::new(AtomicBool::new(false));
                 request.cancelled = native_cancelled.clone();
-                let started = if pending.is_some() || writing.is_some() {
+                let started = if pending.is_some() || writing.is_some() || line_control.is_some() {
                     Err(HostError::new("HOST_BUSY", "Drain is already pending").into())
                 } else {
                     admission
@@ -1749,7 +1777,7 @@ fn owner_loop(
                 let cancelled = admission.cancelled.clone();
                 let native_cancelled = Arc::new(AtomicBool::new(false));
                 let deadline = backend_deadline(clock.as_ref(), wait);
-                let admitted = if pending.is_some() || writing.is_some() {
+                let admitted = if pending.is_some() || writing.is_some() || line_control.is_some() {
                     Err(HostError::new("HOST_BUSY", "Drain owns the TX boundary"))
                 } else {
                     admission.begin(&snapshot, clock.as_ref(), false)
@@ -1790,7 +1818,7 @@ fn owner_loop(
                 }
             }
             Ok(BackendCommand::Configure(config, admission, send, resumed)) => {
-                let result = if pending.is_some() || writing.is_some() {
+                let result = if pending.is_some() || writing.is_some() || line_control.is_some() {
                     Err(HostError::new("HOST_BUSY", "Drain owns the configuration boundary").into())
                 } else {
                     admission
@@ -1812,14 +1840,18 @@ fn owner_loop(
                 }
             }
             Ok(BackendCommand::Control(command, admission, send)) => {
-                let check = if (pending.is_some() || writing.is_some())
+                let cancelled = admission
+                    .as_ref()
+                    .map(|admission| admission.cancelled.clone())
+                    .unwrap_or_default();
+                let check = if (pending.is_some() || writing.is_some() || line_control.is_some())
                     && !matches!(
                         command,
                         ControlCommand::QueueStatus | ControlCommand::ModemStatus
                     ) {
                     Err(HostError::new(
                         "HOST_BUSY",
-                        "Drain owns the control boundary",
+                        "Pending I/O owns the control boundary",
                     ))
                 } else {
                     admission.map_or(Ok(()), |admission| {
@@ -1830,11 +1862,27 @@ fn owner_loop(
                         )
                     })
                 };
-                let _ = send.send(
-                    check
-                        .map_err(BackendError::from)
-                        .and_then(|()| backend.control(command)),
-                );
+                if let Err(error) = check {
+                    let _ = send.send(Err(error.into()));
+                } else if let ControlCommand::SetLine { line, value } = command
+                    && let Some(started) =
+                        backend.begin_line_control(line, value, cancelled, closing.clone())
+                {
+                    match started {
+                        Ok(job) => {
+                            line_control = Some(PendingLineControlReply {
+                                job,
+                                line,
+                                reply: send,
+                            })
+                        }
+                        Err(error) => {
+                            let _ = send.send(Err(error));
+                        }
+                    }
+                } else {
+                    let _ = send.send(backend.control(command));
+                }
             }
             Ok(BackendCommand::Close(send)) => {
                 closing.store(true, Ordering::SeqCst);
@@ -1875,7 +1923,7 @@ fn owner_loop(
                     disconnected(&snapshot, &projections);
                     // 设备已交付此块，源无法保留字节时必须报告已知故障。
                     let _ = source.fail_backend(error);
-                    if pending.is_some() || writing.is_some() {
+                    if pending.is_some() || writing.is_some() || line_control.is_some() {
                         closing.store(true, Ordering::SeqCst);
                     } else {
                         break;
@@ -1890,7 +1938,7 @@ fn owner_loop(
                 }
                 disconnected(&snapshot, &projections);
                 let _ = source.fail_backend(*error.error);
-                if pending.is_some() || writing.is_some() {
+                if pending.is_some() || writing.is_some() || line_control.is_some() {
                     closing.store(true, Ordering::SeqCst);
                 } else {
                     break;
@@ -1922,6 +1970,15 @@ fn owner_loop(
         }));
     }
     let result = backend.close();
+    if let Some(control) = line_control.take() {
+        let _ = control.reply.send(Ok(ControlResult::LineUnknown {
+            line: control.line,
+            error: HostError::new(
+                "CONTROL_UNKNOWN",
+                "Session owner ended before line acknowledgement",
+            ),
+        }));
+    }
     observability
         .lock()
         .map_err(|_| unavailable())?

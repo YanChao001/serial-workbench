@@ -26,7 +26,8 @@ const HELLO_WAIT: Duration = Duration::from_millis(500);
 const READ_REPLY_GRACE: Duration = Duration::from_secs(2);
 const CLOSE_WAIT: Duration = Duration::from_secs(2);
 const POLL_INTERVAL: Duration = Duration::from_millis(1);
-const QUEUE_CAPACITY: usize = 4;
+const QUEUE_CAPACITY: usize = 6;
+const LINE_WAIT_MS: u64 = 1_500;
 
 pub(crate) struct PendingPluginTransport {
     listener: TcpListener,
@@ -106,10 +107,13 @@ impl PendingPluginTransport {
         }
         wire.queue(&Request::Start)?;
         match wire.receive_until(deadline, MAX_HELLO_BYTES) {
-            Ok(Response::Opened) if wire.output.is_empty() => Ok(Box::new(PluginTransport {
-                lane: Arc::new(Mutex::new(Lane::new(wire))),
-                cleanup: self.cleanup,
-            })),
+            Ok(Response::Opened { line_controls }) if wire.output.is_empty() => {
+                Ok(Box::new(PluginTransport {
+                    lane: Arc::new(Mutex::new(Lane::new(wire))),
+                    cleanup: self.cleanup,
+                    output_lines: line_controls.unwrap_or_default(),
+                }))
+            }
             // Provider 明确返回失败，连接未交给 Host。
             Ok(Response::Error {
                 id: None,
@@ -165,6 +169,12 @@ enum Request<'a> {
         bytes: &'a str,
         wait_ms: u64,
     },
+    SetLine {
+        id: u64,
+        line: ControlLine,
+        value: bool,
+        wait_ms: u64,
+    },
     Cancel {
         id: u64,
     },
@@ -177,7 +187,14 @@ enum Response {
     Hello {
         credential: ContextToken,
     },
-    Opened,
+    Opened {
+        #[serde(rename = "lineControls")]
+        line_controls: Option<OutputLines>,
+    },
+    Line {
+        id: u64,
+        actual: Option<bool>,
+    },
     Read {
         id: u64,
         bytes: String,
@@ -264,7 +281,9 @@ impl Wire {
         bytes.extend_from_slice(&(body.len() as u32).to_be_bytes());
         bytes.extend_from_slice(&body);
         let operation_id = match request {
-            Request::Read { id, .. } | Request::Write { id, .. } => Some(*id),
+            Request::Read { id, .. } | Request::Write { id, .. } | Request::SetLine { id, .. } => {
+                Some(*id)
+            }
             _ => None,
         };
         self.output.push_back(Outbound {
@@ -339,12 +358,20 @@ struct WriteRequest {
     cancel_sent: bool,
 }
 
+struct LineRequest {
+    id: u64,
+    line: ControlLine,
+    result: Option<HostResult<ControlResult>>,
+    cancel_sent: bool,
+}
+
 struct Lane {
     wire: Wire,
     state: LaneState,
     next_id: u64,
     reading: Option<ReadRequest>,
     writing: Option<WriteRequest>,
+    controlling: Option<LineRequest>,
 }
 
 impl Lane {
@@ -355,6 +382,7 @@ impl Lane {
             next_id: 1,
             reading: None,
             writing: None,
+            controlling: None,
         }
     }
 
@@ -441,8 +469,8 @@ impl Lane {
 
     fn poll_responses(&mut self) -> HostResult<()> {
         self.wire.flush()?;
-        // 一轮最多有读、写和关闭三个回执。无响应时立即归还 owner 的控制轮次。
-        for _ in 0..3 {
+        // 一轮最多收取读、写、线路控制和关闭回执。
+        for _ in 0..4 {
             let Some(response) = self
                 .wire
                 .reader
@@ -473,6 +501,7 @@ impl Lane {
         let operation_id = match &response {
             Response::Read { id, .. }
             | Response::Written { id, .. }
+            | Response::Line { id, .. }
             | Response::Error {
                 id: Some(id),
                 negotiation: None,
@@ -519,6 +548,17 @@ impl Lane {
                     }),
                 });
             }
+            Response::Line { id, actual } => {
+                let pending = self.pending_line(id).ok_or_else(protocol_error)?;
+                pending.result = Some(
+                    actual
+                        .map(|value| ControlResult::Line {
+                            line: pending.line,
+                            value,
+                        })
+                        .ok_or_else(line_not_applied),
+                );
+            }
             Response::Error {
                 id: Some(id),
                 negotiation: None,
@@ -538,6 +578,11 @@ impl Lane {
                     .filter(|write| write.id == id && write.result.is_none())
                 {
                     write.result = Some(unknown_write(write.bytes.len(), close_unknown()));
+                } else if let Some(control) = self.pending_line(id) {
+                    control.result = Some(Ok(ControlResult::LineUnknown {
+                        line: control.line,
+                        error: close_unknown(),
+                    }));
                 } else {
                     return Err(protocol_error());
                 }
@@ -550,6 +595,12 @@ impl Lane {
             _ => return Err(protocol_error()),
         }
         Ok(())
+    }
+
+    fn pending_line(&mut self, id: u64) -> Option<&mut LineRequest> {
+        self.controlling
+            .as_mut()
+            .filter(|pending| pending.id == id && pending.result.is_none())
     }
 
     fn take_read(&mut self, limit: usize) -> Option<HostResult<ReadBlock>> {
@@ -597,14 +648,35 @@ impl Lane {
     }
 }
 
+#[derive(Clone, Copy, Default, Deserialize)]
+#[serde(deny_unknown_fields)]
+struct OutputLines {
+    dtr: bool,
+    rts: bool,
+}
+
+impl OutputLines {
+    fn supports(self, line: ControlLine) -> bool {
+        match line {
+            ControlLine::Dtr => self.dtr,
+            ControlLine::Rts => self.rts,
+        }
+    }
+}
+
 struct PluginTransport {
     lane: Arc<Mutex<Lane>>,
     cleanup: Option<Arc<dyn BackendCleanup>>,
+    output_lines: OutputLines,
 }
 
 impl Transport for PluginTransport {
     fn capabilities(&self) -> TransportCapabilities {
-        capabilities()
+        TransportCapabilities {
+            dtr: self.output_lines.dtr,
+            rts: self.output_lines.rts,
+            ..capabilities()
+        }
     }
 
     fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock> {
@@ -669,6 +741,58 @@ impl Transport for PluginTransport {
 
     fn control(&mut self, _: ControlCommand) -> BackendResult<ControlResult> {
         Err(unsupported().into())
+    }
+
+    fn begin_line_control(
+        &mut self,
+        line: ControlLine,
+        value: bool,
+        cancelled: Arc<AtomicBool>,
+        closing: Arc<AtomicBool>,
+    ) -> Option<BackendResult<Box<dyn PendingLineControl>>> {
+        Some((|| {
+            if !self.output_lines.supports(line) {
+                return Err(HostError::new(
+                    "UNSUPPORTED_CAPABILITY",
+                    "Plugin transport cannot set this output line",
+                )
+                .into());
+            }
+            if cancelled.load(Ordering::SeqCst) || closing.load(Ordering::SeqCst) {
+                return Err(line_not_applied().into());
+            }
+            let mut lane = self.lane.lock().map_err(|_| disconnected())?;
+            lane.drive();
+            lane.require_open()?;
+            if lane.controlling.is_some() {
+                return Err(
+                    HostError::new("HOST_BUSY", "Plugin transport output line is pending").into(),
+                );
+            }
+            let id = lane.next_id()?;
+            lane.wire.queue(&Request::SetLine {
+                id,
+                line,
+                value,
+                wait_ms: LINE_WAIT_MS,
+            })?;
+            lane.controlling = Some(LineRequest {
+                id,
+                line,
+                result: None,
+                cancel_sent: false,
+            });
+            lane.drive();
+            let pending: Box<dyn PendingLineControl> = Box::new(PluginLineControl {
+                id,
+                line,
+                lane: self.lane.clone(),
+                deadline: Instant::now() + Duration::from_millis(LINE_WAIT_MS) + READ_REPLY_GRACE,
+                cancelled,
+                closing,
+            });
+            Ok(pending)
+        })())
     }
 
     fn begin_drain(&mut self, _: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
@@ -821,6 +945,68 @@ fn uncertain(error: HostError, cleanup: Option<Arc<dyn BackendCleanup>>) -> Back
         unknown_ranges: vec![],
         cleanup,
     }
+}
+
+struct PluginLineControl {
+    id: u64,
+    line: ControlLine,
+    lane: Arc<Mutex<Lane>>,
+    deadline: Instant,
+    cancelled: Arc<AtomicBool>,
+    closing: Arc<AtomicBool>,
+}
+
+impl PendingLineControl for PluginLineControl {
+    fn poll(&mut self) -> Option<BackendResult<ControlResult>> {
+        let unknown = || ControlResult::LineUnknown {
+            line: self.line,
+            error: close_unknown(),
+        };
+        let Ok(mut lane) = self.lane.lock() else {
+            return Some(Ok(unknown()));
+        };
+        lane.drive();
+        let ended = matches!(lane.state, LaneState::Closed | LaneState::Broken(_));
+        let Some(pending) = lane
+            .controlling
+            .as_mut()
+            .filter(|pending| pending.id == self.id)
+        else {
+            return Some(Ok(unknown()));
+        };
+        if let Some(result) = pending.result.take() {
+            lane.controlling = None;
+            return Some(result.map_err(BackendError::from));
+        }
+        if ended {
+            lane.controlling = None;
+            return Some(Ok(unknown()));
+        }
+        if Instant::now() >= self.deadline {
+            lane.break_lane(close_unknown());
+            lane.controlling = None;
+            return Some(Ok(unknown()));
+        }
+        if !pending.cancel_sent
+            && (self.cancelled.load(Ordering::SeqCst) || self.closing.load(Ordering::SeqCst))
+        {
+            pending.cancel_sent = true;
+            if let Err(error) = lane.wire.queue(&Request::Cancel { id: self.id }) {
+                lane.break_lane(error);
+                lane.controlling = None;
+                return Some(Ok(unknown()));
+            }
+            lane.drive();
+        }
+        None
+    }
+}
+
+fn line_not_applied() -> HostError {
+    HostError::new(
+        "CONTROL_NOT_APPLIED",
+        "Plugin transport did not submit the line command",
+    )
 }
 
 fn disconnected() -> HostError {

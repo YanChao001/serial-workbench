@@ -484,7 +484,7 @@ cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- 
 
 用独立本机对端验证七项串口设置、确认值不同、拒绝选项、取消、超时、Telnet 分段、控制通知隔离和流控暂停。签名 Host 场景请求 115200 波特率并由对端应答 9600，核对打开失败及实际断连。重新协商成功后核对线路上的八个 Telnet 字节和 Host Raw 中的七个原始字节，末尾验收撤权、重开和停用。
 
-首方 `swb.builtin.rfc2217` 0.1.0 随 Host 登记。工作台从设备下拉选择「RFC 2217 远程串口」，输入远端地址、端口与波特率。展开线路设置以修改串口格式、流控和控制线。使用 [宽窄草稿](./ui-design.md#rfc-2217-连接草稿) 核对输入高度、字段对齐、短窗滚动、错误全文和焦点。选用硬件流控时，RTS 由对端流控接管，表单保留切换前的手动选项。同次的已协商配置用于新建会话的线路参数。主按钮显示协商等待，失败保留草稿供重试。
+首方 `swb.builtin.rfc2217` 0.1.1 随 Host 登记。工作台从设备下拉选择「RFC 2217 远程串口」，输入远端地址、端口与波特率。展开线路设置以修改串口格式、流控和控制线。使用 [宽窄草稿](./ui-design.md#rfc-2217-连接草稿) 核对输入高度、字段对齐、短窗滚动、错误全文和焦点。选用硬件流控时，RTS 由对端流控接管，表单保留切换前的手动选项。同次的已协商配置用于新建会话的线路参数。主按钮显示协商等待，失败保留草稿供重试。
 
 ```sh
 cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
@@ -496,7 +496,13 @@ pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
 
 打开失败继续报告 `PLUGIN_TRANSPORT_OPEN_FAILED`。当前请求的终态可附带 `details.protocol = rfc2217`、`reason` 和具体 `field`。参数不符时提供 `requestedValue` 与 `reportedValue`。无效应答只保留可核验的请求值。工作台按字段显示可读值，例如波特率用 bit/s，流控和控制线复用已有名称。未识别的故障继续显示通用提示。
 
-再次使用签名参考包场景。独立对端回报不同波特率和完全静默时，分别核对 `different_value` 与 `timeout` 终态、确切值和实际断连，再建立新会话核对 Raw。窄窗复验错误全文、重复提示、重试和还原焦点。打开后的控制线操作、第三方 RFC 2217 设备和发行继续验收。
+再次使用签名参考包场景。独立对端回报不同波特率和完全静默时，分别核对 `different_value` 与 `timeout` 终态、确切值和实际断连，再建立新会话核对 Raw。窄窗复验错误全文、重复提示、重试和还原焦点。
+
+进入已打开连接的「控制线与回执」。在宽窗核对两组等高按钮同行，在窄窗核对 DTR 和 RTS 各自同排。等待时显示当前操作。若线路由硬件流控接管，保持该组禁用并显示原因。回执保留请求值、实际值和确认状态。 [会话控制草稿](./ui-design.md#rfc-2217-会话控制草稿)
+
+独立对端复验 DTR 请求置位但回报复位，以及 RTS 确认置位。发送 Raw 字节后再回复 DTR，检查 Host 的回执前 Raw 已推进。无权限的命令不得上网，流控暂停期间超时的待提交命令可明确结算未发送。发出后静默则观察未知终态、实际断连和新一代会话。用 `cargo test --locked -p serial-workbench-host --lib known_predecessor_upgrades_and_preserves_the_profile_decision` 复验 0.1.0 的启用、停用和卸载意图能正确迁移。
+
+第三方 RFC 2217 设备和发行继续验收。
 
 ### 有序会话钩子
 

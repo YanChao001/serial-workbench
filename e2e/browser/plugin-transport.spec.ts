@@ -265,7 +265,27 @@ test("the wide RFC 2217 form keeps the negotiated line settings in the session r
   page,
 }, info) => {
   await page.setViewportSize({ width: 1240, height: 760 });
-  await seedWorkbenchFixture(page, { device: builtinRfc2217 });
+  await seedWorkbenchFixture(page, {
+    device: builtinRfc2217,
+    openedCapabilities: {
+      semantics: "stream",
+      configuration: false,
+      dtr: true,
+      rts: false,
+      finiteBreak: false,
+      queueStatus: false,
+      drain: false,
+      purgeRx: false,
+      purgeTx: false,
+    },
+    openedConfiguration: {
+      ...session().configuration,
+      baudRate: "230400",
+      dataBits: "5",
+      stopBits: "onePointFive",
+      flowControl: "rtsCts",
+    },
+  });
   await page.goto("./#/");
   await page
     .getByRole("button", {
@@ -363,6 +383,68 @@ test("the wide RFC 2217 form keeps the negotiated line settings in the session r
       }),
     },
   ]);
+  const controls = page.getByRole("button", {
+    name: "Control lines and receipts",
+    exact: true,
+  });
+  await controls.click();
+  await page.mouse.move(0, 0);
+  const controlDialog = page.getByRole("dialog", {
+    name: "Control lines and receipts",
+  });
+  const dtrOn = controlDialog.getByRole("button", {
+    name: "DTR on",
+    exact: true,
+  });
+  const dtrOff = controlDialog.getByRole("button", {
+    name: "DTR off",
+    exact: true,
+  });
+  const rtsOn = controlDialog.getByRole("button", {
+    name: "RTS on",
+    exact: true,
+  });
+  const rtsOff = controlDialog.getByRole("button", {
+    name: "RTS off",
+    exact: true,
+  });
+  const layout = async () => {
+    const [dtr, dtrReset, rts, rtsReset] = await Promise.all(
+      [dtrOn, dtrOff, rtsOn, rtsOff].map((button) => button.boundingBox()),
+    );
+    return {
+      sameRow: dtr!.y === rts!.y,
+      dtrTogether: dtr!.y === dtrReset!.y,
+      rtsTogether: rts!.y === rtsReset!.y,
+      sameSize:
+        new Set([dtr!.height, dtrReset!.height, rts!.height, rtsReset!.height])
+          .size === 1,
+    };
+  };
+  await expect(dtrOn).toBeEnabled();
+  await expect(rtsOn).toBeDisabled();
+  await expect(
+    controlDialog.getByText("Flow control owns this line", { exact: true }),
+  ).toBeVisible();
+  await expect.poll(layout).toEqual({
+    sameRow: true,
+    dtrTogether: true,
+    rtsTogether: true,
+    sameSize: true,
+  });
+  await controlDialog.screenshot({
+    path: info.outputPath("rfc2217-live-wide.png"),
+  });
+  await page.setViewportSize({ width: 420, height: 460 });
+  await expect.poll(layout).toEqual({
+    sameRow: false,
+    dtrTogether: true,
+    rtsTogether: true,
+    sameSize: true,
+  });
+  await controlDialog.screenshot({
+    path: info.outputPath("rfc2217-live-narrow.png"),
+  });
 });
 
 test("the short Chinese RFC 2217 form keeps one retry message and the connection draft", async ({
