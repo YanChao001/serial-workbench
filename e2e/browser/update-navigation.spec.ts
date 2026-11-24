@@ -14,7 +14,8 @@ test("the upgrade harness shows the cached Workbench from Updates", async ({
   await page.evaluate(() => {
     location.hash = "/updates";
   });
-  await expect(page).toHaveURL(/#\/updates$/);
+  await expect(page).toHaveURL(/#\/settings\?section=updates$/);
+  await expect(page.locator("#settings-updates")).toBeVisible();
   await expect(shell).toBeAttached();
   await expect(shell).toBeHidden();
 

@@ -60,11 +60,16 @@ export function ResourceError({
       data-surface="solid"
       className="flex flex-wrap items-center justify-between gap-3 rounded-lg border border-destructive/30 p-3 text-sm"
     >
-      <span className="flex items-center gap-2">
-        <AlertCircleIcon className="size-4 shrink-0 text-destructive" />
-        {nativeErrorText(error, t)}
+      <span className="flex min-w-0 flex-1 basis-48 items-start gap-2">
+        <AlertCircleIcon
+          aria-hidden="true"
+          className="mt-0.5 size-4 shrink-0 text-destructive"
+        />
+        <span className="min-w-0 wrap-anywhere">
+          {nativeErrorText(error, t)}
+        </span>
       </span>
-      <Button size="sm" variant="outline" onClick={retry}>
+      <Button className="shrink-0" size="sm" variant="outline" onClick={retry}>
         {t("common.retry")}
       </Button>
     </div>

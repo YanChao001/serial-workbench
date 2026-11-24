@@ -14,9 +14,11 @@ const identity = "a".repeat(43);
 
 test("signed monitor renderer accepts scoped read-only batches in an opaque iframe", async ({
   page,
-}) => {
-  const [shell, html, css, bundle, fixturesJson] = await Promise.all([
+}, info) => {
+  await page.setViewportSize({ width: 360, height: 240 });
+  const [shell, shellCss, html, css, bundle, fixturesJson] = await Promise.all([
     readFile("src-tauri/src/node_view/shell.js", "utf8"),
+    readFile("src-tauri/src/node_view/shell.css", "utf8"),
     readFile(`${example}/index.html`, "utf8"),
     readFile(`${example}/view.css`, "utf8"),
     build({
@@ -145,9 +147,9 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
       return route.fulfill({
         contentType: "text/html; charset=utf-8",
         headers: {
-          "content-security-policy": `default-src 'none'; script-src ${shellOrigin}; frame-src ${assetOrigin}; form-action 'none'`,
+          "content-security-policy": `default-src 'none'; script-src ${shellOrigin}; style-src ${shellOrigin}; frame-src ${assetOrigin}; form-action 'none'`,
         },
-        body: `<!doctype html><html lang="zh-CN"><script defer src="shell.js"></script>
+        body: `<!doctype html><html lang="zh-CN"><head><meta name="color-scheme" content="dark"><link rel="stylesheet" href="shell.css"><script defer src="shell.js"></script></head>
           <body data-frame="${identity}"><p role="status">Opening plugin view…</p>
           <template><iframe sandbox="allow-scripts" title="Plugin view" referrerpolicy="no-referrer"
             data-src="${assetOrigin}/index.html#${identity}.zh-CN.dark.locale"></iframe></template></body></html>`,
@@ -157,6 +159,11 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
       return route.fulfill({
         contentType: "application/javascript; charset=utf-8",
         body: shell,
+      });
+    if (path === "/shell.css")
+      return route.fulfill({
+        contentType: "text/css; charset=utf-8",
+        body: shellCss,
       });
     if (path === "/next.js") {
       const payload = (pulls === 0 || dataReady
@@ -191,6 +198,9 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   await page.goto(`${shellOrigin}/index.html`);
   const view = page.frameLocator('iframe[title="Plugin view"]');
   await expect(view.getByRole("status")).toHaveText("等待串口数据…");
+  await expect(page.getByRole("status")).toBeHidden();
+  const frameBox = await page.locator("iframe").boundingBox();
+  expect(frameBox).toEqual({ x: 0, y: 0, width: 360, height: 240 });
   dataReady = true;
   await expect(view.locator("html")).toHaveAttribute("data-theme", "dark");
   await expect(view.locator("#receive")).toHaveJSProperty(
@@ -219,9 +229,28 @@ test("signed monitor renderer accepts scoped read-only batches in an opaque ifra
   await expect(view.locator("html")).toHaveAttribute("lang", "zh-CN");
 
   await view.locator("html").evaluate(() => location.reload());
-  await expect(page.getByRole("status")).toHaveText(
-    "视图已停止（FRAME_CHANGED）",
-  );
+  const stopped = page.getByRole("status");
+  await expect(stopped).toContainText("视图已停止（FRAME_CHANGED）");
+  await expect(stopped).toContainText("请关闭此窗口，再从工作台重新打开视图。");
   await expect(page.locator("iframe")).toHaveCount(0);
+  const narrow = await stopped.boundingBox();
+  if (!narrow) throw new Error("Missing plugin view status geometry");
+  expect(narrow.x).toBeGreaterThanOrEqual(16);
+  expect(narrow.x + narrow.width).toBeLessThanOrEqual(344);
+  expect(narrow.y + narrow.height / 2).toBeCloseTo(120, 0);
+  await page.screenshot({
+    path: info.outputPath("plugin-window-stopped-360.png"),
+  });
+
+  await page.setViewportSize({ width: 1000, height: 600 });
+  await changeShellLanguage("en");
+  await expect(stopped).toContainText("View stopped (FRAME_CHANGED)");
+  await expect(stopped).toContainText(
+    "Close this window and reopen the view from the workbench.",
+  );
+  const wide = await stopped.boundingBox();
+  if (!wide) throw new Error("Missing plugin view status at wide width");
+  expect(wide.width).toBeLessThanOrEqual(480);
+  expect(wide.x + wide.width / 2).toBeCloseTo(500, 0);
   await expect.poll(() => stops).toBe(1);
 });

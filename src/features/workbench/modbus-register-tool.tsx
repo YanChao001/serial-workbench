@@ -194,10 +194,7 @@ export default function ModbusRegisterTool({
         <p className="mt-2 text-sm">{t("workbench.registers.unavailable")}</p>
       ) : (
         <div className="mt-3 space-y-3 text-sm">
-          <fieldset
-            disabled={action.busy}
-            className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-          >
+          <fieldset disabled={action.busy} className="workbench-form-grid">
             <label className="grid gap-1">
               {t("workbench.modbus.transport")}
               <OptionsSelect

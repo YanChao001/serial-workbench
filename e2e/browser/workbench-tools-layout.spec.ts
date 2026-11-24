@@ -1053,7 +1053,7 @@ for (const sample of [
           const pickers = Array.from(
             body.querySelectorAll(".workbench-file-selection"),
             (picker) => {
-              const file = picker.querySelector("output");
+              const file = picker.querySelector("input[readonly], output");
               const button = picker.querySelector("button");
               if (!file || !button) throw new Error("File picker incomplete");
               const a = file.getBoundingClientRect();

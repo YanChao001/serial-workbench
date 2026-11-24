@@ -1,5 +1,5 @@
 /// <reference lib="dom" />
-import { expect, test, type Page } from "@playwright/test";
+import { expect, test, type Locator, type Page } from "@playwright/test";
 import type {
   CommandDraft,
   CommandGroup,
@@ -480,11 +480,16 @@ test("command drafts undo and redo across fields without writing or sending", as
     await expect(redo).toBeDisabled();
   }
 
+  async function chooseOption(control: Locator, name: string) {
+    await control.click();
+    await page.getByRole("option", { name, exact: true }).click();
+  }
+
   await openCommand();
   await expect(body).toHaveValue("41 42");
   await expect(suffix).toHaveValue("00 FF");
-  await ending.selectOption("lf");
-  await ending.selectOption("custom");
+  await chooseOption(ending, "LF");
+  await chooseOption(ending, "Custom line ending (HEX)");
   await suffix.press("ControlOrMeta+z");
   await expect(suffix).toHaveCount(0);
   await expect(ending).toBeFocused();
@@ -492,7 +497,7 @@ test("command drafts undo and redo across fields without writing or sending", as
   await expect(suffix).toHaveValue("00 FF");
   await expect(undo).toBeDisabled();
   await body.fill("41 42 43");
-  await encoding.selectOption("utf-16le");
+  await chooseOption(encoding, "UTF-16 LE");
   await suffix.fill("0");
   await expect(suffix).toHaveAttribute("aria-invalid", "true");
   await expect(save).toBeDisabled();
@@ -506,10 +511,10 @@ test("command drafts undo and redo across fields without writing or sending", as
   );
 
   await suffix.press("ControlOrMeta+z");
-  await expect(encoding).toHaveValue("utf-8");
+  await expect(encoding).toHaveText("UTF-8");
   await expect(body).toHaveValue("41 42 43");
   await suffix.press("ControlOrMeta+Shift+z");
-  await expect(encoding).toHaveValue("utf-16le");
+  await expect(encoding).toHaveText("UTF-16 LE");
 
   const history = dialog.getByRole("group", { name: "Edit history" });
   const wideHistory = await history.boundingBox();
@@ -542,7 +547,7 @@ test("command drafts undo and redo across fields without writing or sending", as
   await undo.click();
   await expect(undo).toBeDisabled();
   await expect(body).toHaveValue("41 42");
-  await expect(encoding).toHaveValue("utf-8");
+  await expect(encoding).toHaveText("UTF-8");
   await expect(note).toHaveValue("");
   expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
     [],
@@ -607,6 +612,117 @@ test("command group history groups typing and clears when another group is opene
   expect(
     await page.evaluate(() => window.commandLibraryFixture.acceptedWrites),
   ).toBe(0);
+});
+
+test("command editor uses the shared keyboard dropdowns before saving in a narrow dialog", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 480, height: 720 });
+  const { entry, dialog } = await mockLibrary(page);
+  await entry.click();
+  const groups = dialog.getByRole("region", { name: "Groups", exact: true });
+  const modem = dialog.getByRole("button", { name: "Modem", exact: true });
+  await modem.click();
+  const commands = dialog.getByRole("region", { name: "Modem", exact: true });
+  const groupBox = await groups.boundingBox();
+  const commandBox = await commands.boundingBox();
+  expect(commandBox!.y).toBeGreaterThanOrEqual(groupBox!.y + groupBox!.height);
+  await dialog
+    .getByRole("button", { name: "New command", exact: true })
+    .click();
+  await dialog
+    .getByRole("textbox", { name: "Name", exact: true })
+    .fill("Layout probe");
+  await dialog.getByRole("textbox", { name: /Command body/ }).fill("41 42");
+  const mode = dialog.getByRole("combobox", { name: "Send format" });
+  const encoding = dialog.getByRole("combobox", { name: "Send encoding" });
+  const ending = dialog.getByRole("combobox", { name: "Command line ending" });
+  await mode.press("Enter");
+  const textOption = page.getByRole("option", { name: "Text", exact: true });
+  const hexOption = page.getByRole("option", { name: "HEX", exact: true });
+  await expect(textOption).toBeFocused();
+  await page.keyboard.press("ArrowDown");
+  await expect(hexOption).toBeFocused();
+  await page.keyboard.press("Enter");
+  await expect(mode).toHaveText("HEX");
+  await expect(mode).toBeFocused();
+  await encoding.click();
+  await page.getByRole("option", { name: "UTF-16 LE", exact: true }).click();
+  await ending.click();
+  await page
+    .getByRole("option", { name: "Custom line ending (HEX)", exact: true })
+    .click();
+  const suffix = dialog.getByRole("textbox", {
+    name: "Custom line ending (HEX)",
+  });
+  await suffix.fill("00 FF");
+  const narrow = await Promise.all(
+    [mode, encoding, ending].map((control) => control.boundingBox()),
+  );
+  expect(narrow.map((box) => box?.height)).toEqual([32, 32, 32]);
+  expect(narrow[2]!.y).toBeGreaterThan(narrow[0]!.y);
+  expect(narrow[2]!.x).toBe(narrow[0]!.x);
+  expect(narrow[2]!.x + narrow[2]!.width).toBeCloseTo(
+    narrow[1]!.x + narrow[1]!.width,
+    0,
+  );
+  const selectedEnding = ending.getByText("Custom line ending (HEX)", {
+    exact: true,
+  });
+  await expect(selectedEnding).toBeVisible();
+  expect(
+    await selectedEnding.evaluate(
+      (label) => label.scrollWidth - label.clientWidth,
+    ),
+  ).toBeLessThanOrEqual(1);
+  const footer = dialog.locator(
+    ".workbench-command-editor > .workbench-tool-footer",
+  );
+  const narrowSuffix = await suffix.boundingBox();
+  const narrowFooter = await footer.boundingBox();
+  expect(narrowSuffix!.y + narrowSuffix!.height).toBeLessThanOrEqual(
+    narrowFooter!.y,
+  );
+  const save = dialog.getByRole("button", { name: "Save", exact: true });
+  const narrowDialog = await dialog.boundingBox();
+  const narrowSave = await save.boundingBox();
+  expect(narrowSave!.y).toBeGreaterThanOrEqual(narrowDialog!.y);
+  expect(narrowSave!.y + narrowSave!.height).toBeLessThanOrEqual(
+    narrowDialog!.y + narrowDialog!.height,
+  );
+  await dialog.screenshot({
+    path: info.outputPath("command-editor-480px.png"),
+  });
+
+  await page.setViewportSize({ width: 1240, height: 800 });
+  const wide = await Promise.all(
+    [mode, encoding, ending].map((control) => control.boundingBox()),
+  );
+  expect(wide.map((box) => box?.y)).toEqual([
+    wide[0]?.y,
+    wide[0]?.y,
+    wide[0]?.y,
+  ]);
+  await dialog.screenshot({
+    path: info.outputPath("command-editor-1240px.png"),
+  });
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await letSaveFinish(page, 1);
+  await expect(
+    dialog.getByText("Command library saved", { exact: true }),
+  ).toBeVisible();
+  await dialog
+    .getByRole("navigation", { name: "Commands", exact: true })
+    .getByRole("button", { name: "Next page", exact: true })
+    .click();
+  await dialog
+    .getByRole("button", { name: "Layout probe", exact: true })
+    .click();
+  await expect(mode).toHaveText("HEX");
+  await expect(encoding).toHaveText("UTF-16 LE");
+  await expect(
+    dialog.getByRole("textbox", { name: "Custom line ending (HEX)" }),
+  ).toHaveValue("00 FF");
 });
 
 test("a late opening result cannot populate the command library in another workspace", async ({

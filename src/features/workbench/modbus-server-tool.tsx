@@ -372,10 +372,7 @@ export default function ModbusServerTool({
         >
           {access.available ? (
             <>
-              <fieldset
-                className="grid grid-cols-2 gap-2 sm:grid-cols-3"
-                disabled={live.busy}
-              >
+              <fieldset className="workbench-form-grid" disabled={live.busy}>
                 <label className="grid gap-1 text-sm">
                   {t("workbench.modbusServer.live.duration")}
                   <Input

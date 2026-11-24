@@ -23,8 +23,8 @@ globalThis.swbViewSetLocale = (value) => {
   if (retirementCode !== undefined) {
     status.textContent =
       locale === "zh-CN"
-        ? `视图已停止（${retirementCode}）`
-        : `View stopped (${retirementCode})`;
+        ? `视图已停止（${retirementCode}）\n请关闭此窗口，再从工作台重新打开视图。`
+        : `View stopped (${retirementCode})\nClose this window and reopen the view from the workbench.`;
   } else if (!port && !retired) {
     status.textContent =
       locale === "zh-CN" ? "正在打开插件视图…" : "Opening plugin view…";

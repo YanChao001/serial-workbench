@@ -256,9 +256,11 @@ export async function seedWorkbenchFixture(
     sendHistory = false,
     manualSendReceipts = false,
     automation,
+    diagnosticLogs,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
+    diagnosticLogs?: string;
     motion?: "full" | "reduced";
     currentPage?: "workbench" | "settings";
     language?: "en" | "zh";
@@ -638,6 +640,7 @@ export async function seedWorkbenchFixture(
     framing,
     definitionFiles,
     automation,
+    diagnosticLogs,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -680,6 +683,7 @@ export async function seedWorkbenchFixture(
       framing,
       definitionFiles,
       automation,
+      diagnosticLogs,
     } = JSON.parse(raw) as typeof fixturePayload;
     let automationOperation: Operation | undefined;
     let operationPosition = 0;
@@ -3534,8 +3538,10 @@ export async function seedWorkbenchFixture(
                 desktop,
                 autostartEnabled: false,
                 updaterConfigured: false,
-                recentLogs: "",
+                recentLogs: diagnosticLogs ?? "",
               } satisfies DiagnosticsReport;
+            case "save_diagnostics_json":
+              return false;
             case "get_desktop_status":
               return desktop;
             case "get_window_geometry":

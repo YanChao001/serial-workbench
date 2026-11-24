@@ -281,7 +281,7 @@ export function RepeatSendTool({
   return (
     <section className="grid gap-3">
       {access ? (
-        <p className="break-all font-medium">
+        <p className="wrap-anywhere font-medium">
           {t("repeatSend.destination", {
             port: access.port,
             epoch: access.target.sessionEpoch ?? "",
@@ -316,7 +316,7 @@ export function RepeatSendTool({
             </Button>
           </div>
         )}
-      <div className="grid gap-3 sm:grid-cols-2">
+      <div className="workbench-form-grid workbench-form-grid-pair">
         {ms("periodMs", "repeatSend.period", repeatSendLimits.periodMs)}
         {ms("count", "repeatSend.count", repeatSendLimits.count)}
       </div>
@@ -325,7 +325,7 @@ export function RepeatSendTool({
           {t("repeatSend.conditions")}
         </summary>
         <div className="mt-2 grid gap-3">
-          <div className="grid gap-3 sm:grid-cols-2">
+          <div className="workbench-form-grid workbench-form-grid-pair">
             {ms(
               "startDelayMs",
               "repeatSend.initialDelay",
@@ -429,7 +429,7 @@ export function RepeatSendTool({
                 })}
               </p>
             )}
-            <p className="break-all text-muted-foreground">
+            <p className="wrap-anywhere text-muted-foreground">
               {t("repeatSend.task", { id: current.operationId })}
             </p>
           </>
@@ -442,7 +442,7 @@ export function RepeatSendTool({
                 : nativeErrorText({ code: run.code }, t)}
             </p>
             {run.id && (
-              <p className="break-all text-muted-foreground">
+              <p className="wrap-anywhere text-muted-foreground">
                 {t("repeatSend.task", { id: run.id })}
               </p>
             )}
@@ -457,7 +457,7 @@ export function RepeatSendTool({
                 skipped: run.result.skippedSlots,
               })}
             </p>
-            <p className="break-all text-muted-foreground">
+            <p className="wrap-anywhere text-muted-foreground">
               {t("repeatSend.task", { id: run.id })}
             </p>
           </>

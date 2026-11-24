@@ -281,3 +281,34 @@ test("controlled dialogs and search cancellation restore the keyboard position",
   await search.press("Enter");
   await expect(page.locator("#settings-radius")).toBeFocused();
 });
+
+test("narrow settings align the label and controls with the same start edge", async ({
+  page,
+}) => {
+  await page.setViewportSize({ width: 390, height: 700 });
+  await seedBrowserSettings(page, {
+    language: "en",
+    theme: "light",
+    background: "plain",
+    sidebarCollapsed: true,
+  });
+  await page.goto("./#/settings");
+  const row = page.locator("#settings-language");
+  const control = row.locator(".settings-row-control");
+  await expect(control).toBeVisible();
+  const alignment = await row.evaluate((element) => {
+    const label = element.firstElementChild?.getBoundingClientRect();
+    const actions = element
+      .querySelector(".settings-row-control")
+      ?.getBoundingClientRect();
+    return (
+      !!label &&
+      !!actions &&
+      Math.abs(label.left - actions.left) < 2 &&
+      actions.top >= label.bottom &&
+      actions.right <= window.innerWidth
+    );
+  });
+  expect(alignment).toBe(true);
+  await expect(page.locator("#settings-theme button")).toHaveCount(3);
+});

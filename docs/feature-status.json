@@ -2633,8 +2633,8 @@
       "scope": "included",
       "scopeNote": "",
       "software": {
-        "status": "in-progress",
-        "evidence": []
+        "status": "passed",
+        "evidence": ["https://github.com/YanChao001/serial-workbench/pull/74"]
       },
       "hardware": {
         "status": "not-started",

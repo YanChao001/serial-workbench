@@ -737,9 +737,12 @@ test("capture limits send exact MiB bytes and replacement fingerprint remains re
         captureNameHint: { deviceName: "Virtual serial", baudRate: "115200" },
       },
     ]);
-  await expect(
-    page.getByText("explicit-ui-fixture.swb", { exact: true }),
-  ).toBeVisible();
+  const recordingFile = start.getByRole("textbox", {
+    name: "Recording file",
+    exact: true,
+  });
+  await expect(recordingFile).toHaveValue("explicit-ui-fixture.swb");
+  await expect(recordingFile).not.toBeEditable();
   await expect(dialog).toHaveAccessibleName("Capture and replay tools");
   const writeMode = start.getByRole("combobox", {
     name: "Write mode",

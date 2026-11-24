@@ -1,12 +1,13 @@
 import { lazy, Suspense, useEffect, useRef, useState } from "react";
 import { toast } from "sonner";
-import { cn } from "cn";
+
 import { DownloadIcon, RotateCcwIcon, ExternalLinkIcon } from "lucide-react";
 import { ExternalLink } from "@/components/external-link";
 import { SettingRow } from "@/components/setting-row";
 import { SETTINGS_ICONS } from "@/lib/settings-icons";
 import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Progress } from "@/components/ui/progress";
 import { Switch } from "@/components/ui/switch";
 import {
   Dialog,
@@ -41,6 +42,8 @@ export function UpdateSettings() {
   const { phase, operationId, status, progress, error } = useUpdates();
   const [confirmInstall, setConfirmInstall] = useState<number | null>(null);
   const installingRef = useRef(false);
+  const focusUpdateStatus = useRef(false);
+  const updateStatus = useRef<HTMLParagraphElement>(null);
   const [confirmRestart, setConfirmRestart] = useState(false);
   const [releaseNotes, setReleaseNotes] = useState<Pick<
     UpdateStatus,
@@ -122,6 +125,7 @@ export function UpdateSettings() {
       return;
     setEngaged(true);
     installingRef.current = true;
+    focusUpdateStatus.current = true;
     setConfirmInstall(null);
     try {
       await installUpdate();
@@ -159,27 +163,36 @@ export function UpdateSettings() {
         <legend className="text-sm font-medium">{t("updates.title")}</legend>
         <div className="settings-list">
           <div>
-            <div className="flex flex-wrap items-center gap-x-5 gap-y-2">
-              <div className="flex min-w-0 flex-1 basis-56 flex-wrap items-center gap-x-3 gap-y-1">
+            <div className="flex flex-wrap items-start gap-x-5 gap-y-3">
+              <div className="grid min-w-0 flex-1 basis-56 gap-1">
                 <h3
                   id="settings-updates-version"
                   tabIndex={-1}
-                  className="max-w-full shrink-0 rounded-sm text-sm font-semibold focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                  className="min-w-0 rounded-sm text-sm font-semibold wrap-anywhere focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   {t("updates.current", {
                     version: status?.currentVersion ?? buildVersion,
                   })}
                 </h3>
                 <p
+                  ref={updateStatus}
                   role="status"
                   tabIndex={0}
-                  className={`max-h-20 min-w-[min(100%,12rem)] flex-[1_1_12rem] overflow-auto break-words rounded-sm text-sm leading-5 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${native && (phase === "error" || !configured) ? "text-destructive" : "text-muted-foreground"}`}
+                  className={`min-w-0 rounded-sm text-sm leading-5 wrap-anywhere focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring ${native && (phase === "error" || !configured) ? "text-destructive" : "text-muted-foreground"}`}
                 >
                   {statusMessage}
                 </p>
+                {native && phase === "downloading" ? (
+                  <Progress
+                    className="mt-1 max-w-sm"
+                    value={percent}
+                    aria-label={t("updates.install")}
+                    aria-valuetext={statusMessage}
+                  />
+                ) : null}
               </div>
               <div
-                className="flex flex-wrap items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring"
+                className="flex min-w-0 max-w-full flex-wrap items-center gap-2 rounded-sm outline-none focus-visible:ring-2 focus-visible:ring-ring [&>button]:h-auto [&>button]:min-h-8 [&>button]:max-w-full [&>button]:whitespace-normal"
                 id="settings-updates-check"
                 tabIndex={-1}
                 data-testid="updates-actions"
@@ -198,7 +211,6 @@ export function UpdateSettings() {
                   </Button>
                 ) : null}
                 <Button
-                  className="min-w-40"
                   variant={
                     status?.available || phase === "installed"
                       ? "outline"
@@ -231,58 +243,10 @@ export function UpdateSettings() {
                     onClick={() => setConfirmInstall(operationId)}
                     disabled={busy}
                     aria-busy={installActive}
-                    className={cn(
-                      "relative overflow-hidden",
-                      installActive &&
-                        "bg-primary/10 text-foreground disabled:opacity-100",
-                    )}
                   >
-                    {installActive ? (
-                      <span
-                        data-slot="updates-download-progress"
-                        aria-hidden="true"
-                        className="pointer-events-none absolute inset-y-0 left-0 bg-primary/20"
-                        style={{
-                          width: `${phase === "installing" ? 100 : (percent ?? 0)}%`,
-                        }}
-                      />
-                    ) : null}
-                    <DownloadIcon className="relative" />
-                    <span className="relative grid">
-                      <span
-                        aria-hidden="true"
-                        className="invisible col-start-1 row-start-1"
-                      >
-                        {t("updates.install")}
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className="invisible col-start-1 row-start-1"
-                      >
-                        {t("updates.downloading", { progress: "100%" })}
-                      </span>
-                      <span
-                        aria-hidden="true"
-                        className="invisible col-start-1 row-start-1"
-                      >
-                        {t("updates.installing")}
-                      </span>
-                      <span className="col-start-1 row-start-1">
-                        {installActive ? statusMessage : t("updates.install")}
-                      </span>
-                    </span>
+                    <DownloadIcon />
+                    {t("updates.install")}
                   </Button>
-                ) : null}
-                {native && phase === "downloading" ? (
-                  <span
-                    role="progressbar"
-                    aria-label={t("updates.install")}
-                    aria-valuemin={0}
-                    aria-valuemax={100}
-                    aria-valuenow={percent}
-                    aria-valuetext={statusMessage}
-                    className="sr-only"
-                  />
                 ) : null}
               </div>
             </div>
@@ -347,8 +311,8 @@ export function UpdateSettings() {
           aria-describedby={undefined}
           className="flex min-h-0 flex-col overflow-hidden sm:max-w-3xl"
         >
-          <DialogHeader className="shrink-0 pr-8">
-            <DialogTitle>
+          <DialogHeader className="min-w-0 shrink-0 pr-8">
+            <DialogTitle className="leading-snug wrap-anywhere">
               {releaseNotes?.version
                 ? t("updates.releaseNotesTitle", {
                     version: releaseNotes.version,
@@ -394,7 +358,16 @@ export function UpdateSettings() {
           if (!open) setConfirmInstall(null);
         }}
       >
-        <DialogContent closeLabel={t("common.close")}>
+        <DialogContent
+          closeLabel={t("common.close")}
+          onCloseAutoFocus={(event) => {
+            if (!focusUpdateStatus.current) return;
+            focusUpdateStatus.current = false;
+            if (!updateStatus.current) return;
+            event.preventDefault();
+            updateStatus.current.focus();
+          }}
+        >
           <DialogHeader>
             <DialogTitle>{t("updates.installConfirmTitle")}</DialogTitle>
             <DialogDescription>

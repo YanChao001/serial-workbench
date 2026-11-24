@@ -319,11 +319,10 @@ function CaptureStatusView({
     }
   }
   return (
-    <section aria-label={labels.capture} className="space-y-2">
+    <section aria-label={labels.capture} className="grid gap-2">
       <div className="workbench-operation-heading">
-        <span role="status">{labels.captureStates[summary.state]}</span>
-        <span className={stopRequested && active ? undefined : "invisible"}>
-          {labels.stopRequested}
+        <span role="status" className="font-medium">
+          {labels.captureStates[summary.state]}
         </span>
         <Popover>
           <PopoverTrigger asChild>
@@ -394,6 +393,11 @@ function CaptureStatusView({
           <RotateCw aria-hidden="true" />
         </WorkbenchIconButton>
       </div>
+      {stopRequested && active ? (
+        <p role="status" className="text-muted-foreground">
+          {labels.stopRequested}
+        </p>
+      ) : null}
       <CaptureFailureNotice
         failure={readFailure}
         labels={labels}

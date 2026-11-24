@@ -2245,7 +2245,13 @@ describe("Serial Workbench 首页", () => {
     await act(async () => waiting.resolve({ ...accepted, state: "succeeded" }));
     await waitFor(() => expect(stop).toHaveAttribute("aria-busy", "false"));
     expect(stop).toBeDisabled();
-    expect(screen.getByRole("status")).toHaveTextContent("Recording");
+    expect(screen.getByText("Recording", { exact: true })).toHaveAttribute(
+      "role",
+      "status",
+    );
+    expect(
+      screen.getByText("Waiting for recording to stop", { exact: true }),
+    ).toHaveAttribute("role", "status");
     expect(host.invoke).toHaveBeenCalledOnce();
   });
   it.each([
@@ -2711,7 +2717,11 @@ it("keeps the same capture observation when its active session parent renders ag
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture destination" }),
   );
-  await screen.findByText("capture-target");
+  await waitFor(() =>
+    expect(screen.getByRole("textbox", { name: "Recording file" })).toHaveValue(
+      "capture-target",
+    ),
+  );
   await waitFor(() => expect(host.fileMetadata).toHaveBeenCalledOnce());
   await act(async () => {});
   const before = vi
@@ -2830,7 +2840,11 @@ it.each(["quick", "tools"])(
       fireEvent.click(
         screen.getByRole("button", { name: "Select capture destination" }),
       );
-      await screen.findByText("capture-target");
+      await waitFor(() =>
+        expect(
+          screen.getByRole("textbox", { name: "Recording file" }),
+        ).toHaveValue("capture-target"),
+      );
     }
     await waitFor(() =>
       expect(

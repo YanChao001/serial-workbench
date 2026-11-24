@@ -264,7 +264,7 @@ describe("updater controls", () => {
     expect(screen.queryByText("Up to date")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Retry" })).toBeEnabled();
   });
-  it("checks, installs and reports bounded download progress inside the locked button", () => {
+  it("checks, installs and reports bounded download progress beside the stable action", () => {
     ui.phase = "ready";
     ui.status = available;
     const view = render(<UpdateSettings />);
@@ -290,7 +290,9 @@ describe("updater controls", () => {
       status: null,
     };
     view.rerender(<UpdateSettings />);
-    const download = screen.getByRole("button", { name: "Downloading 100%" });
+    const download = screen.getByRole("button", {
+      name: "Download and install",
+    });
     expect(download).toBeDisabled();
     expect(download).toHaveAttribute("aria-busy", "true");
     expect(screen.getByRole("progressbar")).toHaveAttribute(
@@ -303,9 +305,12 @@ describe("updater controls", () => {
     expect(screen.getByRole("status")).toHaveTextContent("Downloading 100%");
     ui.progress = { ...ui.progress, downloaded: 2048, total: null };
     view.rerender(<UpdateSettings />);
-    expect(
-      screen.getByRole("button", { name: "Downloading 2 KB" }),
-    ).toBeDisabled();
+    expect(download).toBeDisabled();
+    expect(screen.getByRole("status")).toHaveTextContent("Downloading 2 KB");
+    expect(screen.getByRole("progressbar")).toHaveAttribute(
+      "aria-valuetext",
+      "Downloading 2 KB",
+    );
     expect(screen.getByRole("progressbar")).not.toHaveAttribute(
       "aria-valuenow",
     );
@@ -313,7 +318,7 @@ describe("updater controls", () => {
     view.rerender(<UpdateSettings />);
     expect(screen.getByRole("status")).toHaveTextContent("Installing…");
     expect(screen.queryByRole("progressbar")).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Installing…" })).toBeDisabled();
+    expect(download).toBeDisabled();
   });
   it("retries a failed operation through a fresh check", () => {
     ui.phase = "error";

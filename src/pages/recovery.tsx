@@ -49,6 +49,7 @@ export function RecoveryContent({
   const [scheduled, setScheduled] = useState(false);
   const [confirm, setConfirm] = useState(false);
   const running = useRef(false);
+  const restartButton = useRef<HTMLButtonElement>(null);
   const mounted = useRef(false);
   const notifiedStatusError = useRef<unknown>(null);
   const pending = status?.pending || scheduled;
@@ -58,9 +59,9 @@ export function RecoveryContent({
       if (isRecord(reason) && reason.code === "STORAGE_CORRUPT") {
         setRecoveryError(reason);
       }
-      toast.error(nativeErrorText(reason, latest));
+      if (!confirm) toast.error(nativeErrorText(reason, latest));
     },
-    [latest],
+    [confirm, latest],
   );
   useEffect(() => {
     if (!statusError) notifiedStatusError.current = null;
@@ -100,7 +101,7 @@ export function RecoveryContent({
       />
       {status ? (
         <Card>
-          <CardContent className="space-y-3">
+          <CardContent className="grid min-w-0 gap-3">
             <h3 className="font-semibold">
               {t(status.active ? "recovery.isolated" : "recovery.healthy")}
             </h3>
@@ -113,7 +114,8 @@ export function RecoveryContent({
                   role="region"
                   tabIndex={0}
                   aria-label={t("recovery.isolated")}
-                  className="h-36 overflow-y-auto rounded-lg border border-amber-500/40 p-3 text-sm break-words"
+                  data-surface="reading"
+                  className="max-h-36 min-w-0 overflow-y-auto rounded-lg border border-amber-500/40 p-3 text-sm wrap-anywhere focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
                 >
                   <p role="alert">{status.reason}</p>
                   {recoveryError ? (
@@ -136,7 +138,7 @@ export function RecoveryContent({
             )}
             {status.archiveId ? (
               <p
-                className="max-h-24 overflow-y-auto text-sm break-all"
+                className="max-h-24 overflow-y-auto text-sm wrap-anywhere"
                 tabIndex={0}
               >
                 {t("recovery.archive", { id: status.archiveId })}
@@ -145,6 +147,7 @@ export function RecoveryContent({
             {status.active ? (
               <Button
                 variant="outline"
+                className="h-auto min-h-8 max-w-full justify-self-start whitespace-normal"
                 disabled={busy}
                 onClick={() =>
                   void run(async () => {
@@ -188,6 +191,8 @@ export function RecoveryContent({
                 {t("recovery.pending")}
               </p>
               <Button
+                ref={restartButton}
+                className="h-auto min-h-8 max-w-full whitespace-normal"
                 disabled={busy}
                 onClick={() => void run(() => relaunchApp())}
               >
@@ -198,7 +203,11 @@ export function RecoveryContent({
             <Button
               variant="destructive"
               disabled={busy}
-              onClick={() => setConfirm(true)}
+              className="h-auto min-h-8 max-w-full whitespace-normal"
+              onClick={() => {
+                setError(null);
+                setConfirm(true);
+              }}
             >
               {t("recovery.schedule")}
             </Button>
@@ -216,15 +225,24 @@ export function RecoveryContent({
           if (!busy) setConfirm(open);
         }}
       >
-        <DialogContent closeLabel={t("common.close")}>
+        <DialogContent
+          closeLabel={t("common.close")}
+          onCloseAutoFocus={(event) => {
+            if (!scheduled || !restartButton.current) return;
+            event.preventDefault();
+            restartButton.current.focus();
+          }}
+        >
           <DialogHeader>
-            <DialogTitle>{t("recovery.confirmTitle")}</DialogTitle>
+            <DialogTitle className="pr-8 leading-snug">
+              {t("recovery.confirmTitle")}
+            </DialogTitle>
             <DialogDescription>
               {t("recovery.confirmWithSettings")}
             </DialogDescription>
           </DialogHeader>
           {error ? (
-            <p role="alert" className="sr-only">
+            <p role="alert" className="wrap-anywhere text-destructive">
               {nativeErrorText(error, t)}
             </p>
           ) : null}
@@ -238,6 +256,7 @@ export function RecoveryContent({
             </Button>
             <Button
               variant="destructive"
+              className="h-auto min-h-8 max-w-full whitespace-normal"
               disabled={busy}
               onClick={() =>
                 void run(async () => {
