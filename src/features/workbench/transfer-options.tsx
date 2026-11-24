@@ -35,6 +35,7 @@ import type {
 
 import { useToolActionAvailability } from "./use-tool-action-availability";
 import { useTransferFileDrop } from "./use-transfer-file-drop";
+import { useBrowserFileDrop } from "./use-browser-file-drop";
 
 export type TransferOptionsLabels = Record<
   | "transferOptions"
@@ -131,7 +132,6 @@ function TransferOptionsForm({
   const [source, setSource] = useState<SelectedFileResource>();
   const [browserSource, setBrowserSource] = useState<File>();
   const [selectionError, setSelectionError] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const [browserProgress, setBrowserProgress] = useState<BrowserFileProgress>();
   const [feedback, setFeedback] = useState<string>();
   const [cancellingUpload, setCancellingUpload] = useState(false);
@@ -244,18 +244,6 @@ function TransferOptionsForm({
           source?.reference.kind === "file" &&
           source.reference.revision,
         ));
-  useEffect(() => {
-    if (!isBrowser) return;
-    function preventFileNavigation(event: DragEvent) {
-      if (event.dataTransfer?.types.includes("Files")) event.preventDefault();
-    }
-    window.addEventListener("dragover", preventFileNavigation);
-    window.addEventListener("drop", preventFileNavigation);
-    return () => {
-      window.removeEventListener("dragover", preventFileNavigation);
-      window.removeEventListener("drop", preventFileNavigation);
-    };
-  }, [isBrowser]);
   const dropZone = useRef<HTMLDivElement>(null);
   function acceptSource(
     selected: SelectedFileResource | null,
@@ -296,6 +284,12 @@ function TransferOptionsForm({
       length: String(selected?.size ?? 0),
     }));
   }
+  const dragging = useBrowserFileDrop(
+    dropZone,
+    isBrowser,
+    canPickBrowser,
+    acceptBrowserSource,
+  );
   function showOperation(operation: Operation | null, signal: AbortSignal) {
     if (signal.aborted) return;
     if (
@@ -424,44 +418,11 @@ function TransferOptionsForm({
               )}
               <div
                 className={
-                  dragging && canPickBrowser
+                  dragging
                     ? "workbench-file-selection ring-1 ring-ring"
                     : "workbench-file-selection"
                 }
                 ref={dropZone}
-                onDragOver={
-                  isBrowser
-                    ? (event) => {
-                        if (!event.dataTransfer.types.includes("Files")) return;
-                        event.preventDefault();
-                        event.dataTransfer.dropEffect = canPickBrowser
-                          ? "copy"
-                          : "none";
-                        setDragging(canPickBrowser);
-                      }
-                    : undefined
-                }
-                onDragLeave={
-                  isBrowser
-                    ? (event) => {
-                        if (
-                          !(event.relatedTarget instanceof Node) ||
-                          !event.currentTarget.contains(event.relatedTarget)
-                        )
-                          setDragging(false);
-                      }
-                    : undefined
-                }
-                onDrop={
-                  isBrowser
-                    ? (event) => {
-                        if (!event.dataTransfer.types.includes("Files")) return;
-                        event.preventDefault();
-                        setDragging(false);
-                        acceptBrowserSource(event.dataTransfer.files);
-                      }
-                    : undefined
-                }
               >
                 {isBrowser && sourceName ? (
                   <Input

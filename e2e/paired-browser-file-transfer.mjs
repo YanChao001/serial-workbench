@@ -157,9 +157,172 @@ try {
       targetId: fixture.targetId,
     },
   ]);
+
+  stage = "open the shared command library";
+  await dialog.getByRole("button", { name: /^(Close view|关闭视图)$/ }).click();
+  const discardTransferDraft = page.getByRole("button", {
+    name: /^(Discard and continue|放弃并继续)$/,
+  });
+  await discardTransferDraft.click();
+  await page.setViewportSize({ width: 420, height: 660 });
+  const libraryEntry = page.getByRole("button", {
+    name: /^(Command library|命令库)$/,
+  });
+  await expect(libraryEntry).toBeEnabled({ timeout: 15000 });
+  await libraryEntry.click();
+  const library = page.getByRole("dialog", {
+    name: /^(Command library|命令库)$/,
+  });
+  const save = library.getByRole("button", { name: /^(Save|保存)$/ });
+  const name = library.getByRole("textbox", { name: /^(Name|名称)$/ });
+  await library.getByRole("button", { name: /^(New group|新建分组)$/ }).click();
+  await name.fill("Browser slot regression");
+  await save.click();
+  const group = library.getByRole("button", {
+    name: "Browser slot regression",
+    exact: true,
+  });
+  await expect(group).toBeVisible();
+  await group.click();
+  await library
+    .getByRole("button", { name: /^(New command|新建命令)$/ })
+    .click();
+  await name.fill("File-backed command");
+  const body = library.getByRole("textbox", {
+    name: /^(Command body|命令正文)$/,
+  });
+  const note = library.getByRole("textbox", { name: /^(Note|备注)$/ });
+  await body.fill("original");
+  await note.fill("Preserve this note");
+
+  stage = "command slot local preview and cancellation";
+  const importButton = library.getByRole("button", {
+    name: /^(Load file…|载入文件…)$/,
+  });
+  const pick = page.waitForEvent("filechooser");
+  await importButton.press("Enter");
+  await (
+    await pick
+  ).setFiles({
+    name: "command-pick.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from([0, 255, 36, 123]),
+  });
+  const pickedBody = library.getByRole("group", {
+    name: "command-pick.bin",
+    exact: true,
+  });
+  await expect(pickedBody).toContainText("00 FF 24 7B");
+  await expect(body).toHaveValue("original");
+  await pickedBody
+    .getByRole("button", { name: /^(Cancel import|取消导入)$/ })
+    .click();
+  await expect(importButton).toBeFocused();
+  await expect(body).toHaveValue("original");
+
+  for (const [size, message] of [
+    [0, /at least one byte|至少包含一个字节|至少包含 1 个字节/],
+    [21846, /21,845/],
+  ]) {
+    const picker = page.waitForEvent("filechooser");
+    await importButton.press("Enter");
+    await (
+      await picker
+    ).setFiles({
+      name: "command-boundary.bin",
+      mimeType: "application/octet-stream",
+      buffer: Buffer.alloc(size, 65),
+    });
+    await expect(library.getByRole("alert")).toContainText(message);
+    await expect(body).toHaveValue("original");
+  }
+  const limitPicker = page.waitForEvent("filechooser");
+  await importButton.press("Enter");
+  await (
+    await limitPicker
+  ).setFiles({
+    name: "command-maximum.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.alloc(21845, 65),
+  });
+  const maximum = library.getByRole("group", {
+    name: "command-maximum.bin",
+    exact: true,
+  });
+  await expect(maximum).toContainText("21,845");
+  await maximum
+    .getByRole("button", { name: /^(Cancel import|取消导入)$/ })
+    .click();
+  await expect(body).toHaveValue("original");
+
+  stage = "command slot scoped file drops";
+  const multiple = await page.evaluateHandle(() => {
+    const data = new DataTransfer();
+    data.items.add(new File(["A"], "first.bin"));
+    data.items.add(new File(["B"], "second.bin"));
+    return data;
+  });
+  await body.dispatchEvent("drop", { dataTransfer: multiple });
+  await expect(library.getByRole("alert")).toHaveText(
+    /one command body file|一个命令正文文件/,
+  );
+  await expect(body).toHaveValue("original");
+  const slotName = "command-source-" + "0123456789".repeat(6) + ".bin";
+  const slot = await page.evaluateHandle((name) => {
+    const data = new DataTransfer();
+    data.items.add(new File([Uint8Array.of(9, 255, 0, 65)], name));
+    return data;
+  }, slotName);
+  await note.dispatchEvent("drop", { dataTransfer: slot });
+  await expect(
+    library.getByRole("group", { name: slotName, exact: true }),
+  ).toHaveCount(0);
+  await body.dispatchEvent("drop", { dataTransfer: slot });
+  const slotPreview = library.getByRole("group", {
+    name: slotName,
+    exact: true,
+  });
+  await expect(slotPreview).toContainText("09 FF 00 41");
+  await slotPreview.screenshot({
+    path: join(output, "narrow-browser-command-file.png"),
+  });
+  await page.setViewportSize({ width: 1240, height: 820 });
+  await expect(slotPreview).toBeVisible();
+  await slotPreview.screenshot({
+    path: join(output, "wide-browser-command-file.png"),
+  });
+  await slotPreview
+    .getByRole("button", { name: /^(Replace command body|替换命令正文)$/ })
+    .click();
+  await expect(body).toHaveValue("09 FF 00 41");
+  await expect(body).toBeFocused();
+  await expect(note).toHaveValue("Preserve this note");
+  await save.click();
+  const saved = library.getByRole("button", {
+    name: "File-backed command",
+    exact: true,
+  });
+  await expect(saved).toBeVisible();
+  await saved.click();
+  await expect(body).toHaveValue("09 FF 00 41");
+  await expect(note).toHaveValue("Preserve this note");
+  assert.equal(
+    calls.length,
+    4,
+    "Loading a command draft must not upload a transfer",
+  );
   await writeFile(
     join(output, "browser-transfer-receipt.json"),
-    JSON.stringify({ calls, acceptedBytes: 2 }, null, 2) + "\n",
+    JSON.stringify(
+      {
+        calls,
+        acceptedBytes: 2,
+        commandBody: "09 FF 00 41",
+        commandReopened: true,
+      },
+      null,
+      2,
+    ) + "\n",
   );
 } catch (error) {
   const message = String(error).replaceAll(fixture.pairingCode, "[redacted]");

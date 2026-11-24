@@ -2057,6 +2057,7 @@ export const zhCN = {
   "commandLibrary.chooseBodyFile": "载入文件…",
   "commandLibrary.filePrefix": "文件开头字节",
   "commandLibrary.cancelBodyFile": "取消导入",
+  "commandLibrary.oneBodyFile": "请每次选择或拖入一个命令正文文件。",
   "commandLibrary.emptyBodyFile": "请选择至少包含一个字节的文件。",
   "commandLibrary.largeBodyFile": "命令正文支持载入最多 {limit} 字节的文件。",
   "commandLibrary.changedBodyFile": "所选文件已变化，请重新选择。",

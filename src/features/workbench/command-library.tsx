@@ -913,6 +913,7 @@ function CommandLibraryPanel({
             </label>
             {editor.kind === "command" && (
               <CommandFields
+                key={editor.value.summary.id}
                 command={editor.value}
                 bodyFiles={writable ? access.bodyFiles : undefined}
                 owner={owner}

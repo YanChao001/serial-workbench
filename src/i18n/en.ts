@@ -2236,6 +2236,8 @@ export const en = {
   "commandLibrary.chooseBodyFile": "Load file…",
   "commandLibrary.filePrefix": "Leading file bytes",
   "commandLibrary.cancelBodyFile": "Cancel import",
+  "commandLibrary.oneBodyFile":
+    "Choose or drop one command body file at a time.",
   "commandLibrary.emptyBodyFile": "Choose a file containing at least one byte.",
   "commandLibrary.largeBodyFile":
     "The command body can load files up to {limit} bytes.",

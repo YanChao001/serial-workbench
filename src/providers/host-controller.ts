@@ -1867,12 +1867,14 @@ export function createHostWorkspace(
   const writableCommandLibrary: CommandLibraryAccess = {
     ...readableCommandLibrary,
     change: changeCommandLibrary,
+    bodyFiles: connection.browser ? { kind: "browser" } : undefined,
   };
   const desktopCommandLibrary: CommandLibraryAccess = {
     ...writableCommandLibrary,
     bodyFiles: connection.lanRoute
       ? undefined
       : {
+          kind: "native",
           choose: (signal) => pickFile("source", signal),
           pickDroppedFile,
           fileMetadata,
