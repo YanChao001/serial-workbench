@@ -7,6 +7,9 @@ use support::node_host_actions::{Fixture, spec};
 #[path = "reference_theme.rs"]
 mod reference_theme;
 
+#[path = "reference_statistics.rs"]
+mod reference_statistics;
+
 #[path = "uart_gold.rs"]
 mod uart_gold;
 

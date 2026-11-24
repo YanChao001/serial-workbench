@@ -399,6 +399,8 @@ recorded_send_2                   recorded_send_2
 
 运行 `node --test scripts/reference-statistics.test.mjs`，验证输入和报告 schema、半开边界、高位整数、尾窗、全缺样、无计划采样点及取消。准备验收包时，使用 `pnpm exec esbuild packages/plugin-sdk/examples/reference-statistics/main.ts --bundle --platform=node --format=esm --target=node26 --outfile=.cache/reference-statistics/main.js`，再调用 `sign_reference_statistics` 示例签名。安装后按来源信任流程登记，并通过 Host 动作读回报告文件。
 
+四目标原生检查复用实际 Host 的 `native_node_dynamic_statistics_reads_windows_from_signed_package`。用 `pnpm plugin-sdk:fixture` 编译时纳入同源窗口扩展，测试按真实包清单和临时密钥签名。核对来源验证、显式执行信任、启用、Host 调用和有界结果读取，同时检查高位时间边界及两类空窗。
+
 ## 签名主题
 
 按[签名运行时](#签名运行时与-sdk)准备固定 Node，并在独立环境运行 Host 和无头界面检查。
