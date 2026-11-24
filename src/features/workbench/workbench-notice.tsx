@@ -15,12 +15,25 @@ export {
 
 // 窗口级真实事件账本：独立于工具的挂载周期，不保留操作输入或原始错误。
 const EVENT_LIMIT = 512;
-const events = new Set<string>();
-function emitEvent(eventKey: string, children: ReactNode, log?: UserLogInput) {
-  if (events.has(eventKey)) return;
-  events.add(eventKey);
-  if (events.size > EVENT_LIMIT) events.delete(events.values().next().value!);
+const events = new Map<string, boolean>();
+function emitEvent(
+  eventKey: string,
+  children: ReactNode,
+  log?: UserLogInput,
+  inline = false,
+) {
+  const shown = events.get(eventKey);
+  if (shown !== undefined) {
+    if (inline && shown) {
+      events.set(eventKey, false);
+      toast.dismiss(eventKey);
+    }
+    return;
+  }
+  events.set(eventKey, !inline);
+  if (events.size > EVENT_LIMIT) events.delete(events.keys().next().value!);
   if (log) recordUserLog(log, eventKey);
+  if (inline) return;
   // 真实事件的五秒寿命不随工具关闭、路由切换或 StrictMode 的清理重置。
   notifyCustom(() => children, {
     id: eventKey,
@@ -85,6 +98,7 @@ export function WorkbenchNotice({
   eventKey,
   duration = 5000,
   dismissible = true,
+  inline = false,
 }: {
   children: ReactNode;
   noticeKey: string;
@@ -94,6 +108,8 @@ export function WorkbenchNotice({
   /** 持续状态可延长至完成；独立事件仍沿用五秒寿命。 */
   duration?: number;
   dismissible?: boolean;
+  /** 已在操作所在的工具窗展示，仍沿用通知的事件及日志去重。 */
+  inline?: boolean;
 }) {
   const id = useId();
   const active = useRef<{
@@ -101,19 +117,20 @@ export function WorkbenchNotice({
     content: ReturnType<typeof noticeContent>;
     shown: string;
     duration: number;
+    presented: boolean;
   } | null>(null);
   const identity = useRef(0);
   const episode = useRef(0);
   useEffect(() => {
     if (eventKey) {
-      if (children) emitEvent(eventKey, children, log);
+      if (children) emitEvent(eventKey, children, log, inline);
       return;
     }
     if (!children) {
       if (active.current) {
         episode.current++;
         active.current.content.update(null);
-        toast.dismiss(active.current.id);
+        if (active.current.presented) toast.dismiss(active.current.id);
         active.current = null;
       }
       return;
@@ -121,12 +138,18 @@ export function WorkbenchNotice({
     const previous = active.current;
     // 相同状态只更新正文；用户关闭或自动结束后，不因普通重渲染再次弹出。
     if (previous?.shown === noticeKey && previous.duration === duration) {
-      previous.content.update(children);
+      if (previous.presented) {
+        previous.content.update(inline ? null : children);
+        if (inline) {
+          previous.presented = false;
+          toast.dismiss(previous.id);
+        }
+      }
       return;
     }
     if (previous) {
       previous.content.update(null);
-      toast.dismiss(previous.id);
+      if (previous.presented) toast.dismiss(previous.id);
     }
     // 状态或寿命变化属于新一轮；旧退出动画和到期回调不能删除或缩短新通知。
     const entry = {
@@ -134,10 +157,12 @@ export function WorkbenchNotice({
       content: noticeContent(),
       shown: noticeKey,
       duration,
+      presented: !inline,
     };
     active.current = entry;
     entry.content.update(children);
     if (log) recordUserLog(log, `${id}:${noticeKey}:${episode.current}`);
+    if (inline) return;
     const owned = entry;
     notifyCustom(() => <NoticeContent content={owned.content} />, {
       id: owned.id,
@@ -145,12 +170,12 @@ export function WorkbenchNotice({
       closeButton: dismissible,
       dismissible,
     });
-  }, [children, id, log, noticeKey, eventKey, duration, dismissible]);
+  }, [children, id, log, noticeKey, eventKey, duration, dismissible, inline]);
   useEffect(
     () => () => {
       if (active.current) {
         active.current.content.update(null);
-        toast.dismiss(active.current.id);
+        if (active.current.presented) toast.dismiss(active.current.id);
         active.current = null;
       }
     },

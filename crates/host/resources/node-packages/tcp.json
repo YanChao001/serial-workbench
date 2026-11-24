@@ -1,0 +1,16 @@
+{
+  "id": "swb.builtin.tcp",
+  "version": "0.1.0",
+  "archiveSha256": "5829eb2a0ff6840ce27761597296276577811b90675ece8fc52a1743fd27f142",
+  "compiledModuleSha256": "8610b2afab834e734115bf6ec2f36b5448b52395e78aed7d063eda19f09afe9c",
+  "manifestSha256": "075e71f8d4e5f81f88d235f226aa5fbcbb1a966764265cc2e0f05ed398d3a48a",
+  "sourceApproval": {
+    "keyId": "built-in-tcp-0.1.0",
+    "publicKey": [
+      207, 31, 90, 248, 102, 56, 4, 66, 104, 233, 177, 155, 50, 100, 228, 99,
+      118, 79, 90, 95, 140, 239, 158, 192, 253, 135, 144, 87, 14, 222, 248, 17
+    ],
+    "publicKeySha256": "512a1bf6df5e4c8e5954bb6a8e1f82ce7002c563b4d10683416973e0420b5fb3",
+    "source": "swb.product"
+  }
+}

@@ -461,6 +461,16 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 TCP 参考包兼容原有的端口参数。添加 `role` 选择 `client` 或 `server`，可用 `host` 指定目标地址或要侦听的本机 IP。默认 `127.0.0.1`。侦听用例先核对未授权的请求未占用端口、无对端写入的回执无接纳或未知区间，再由独立对端核对双向二进制字节、Raw 会话代次、重开和停用。运行 `node --test scripts/reference-transport.test.mjs` 复验端口占用、取消打开和读取、不会接纳第二位对端以及先交付半关闭前已收到的字节。
 
+首方 `swb.builtin.tcp` 0.1.0 与参考包共用 TCP 实现，归档摘要进入 Host 组件清单。隔离启动核对首次自动登记与同一 profile 重启。通过设备目录打开两种角色后，以独立 TCP 对端核对零字节、FF 和其他二进制字节及关闭。工作台 TCP 表单另以无头 Chromium 核对中英、明暗、宽窄、键盘、无效配置不提交、Host 拒绝保留草稿及唯一错误提示。
+
+```sh
+cargo test --locked -p serial-workbench-host --lib native_node_bundled_ -- --ignored --test-threads=1 --nocapture
+node --test scripts/reference-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
+```
+
+重建包时以 esbuild 针对 Node 26 打包 `reference-transport/builtin.ts`，使用 `sign_builtin_tcp <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`。收到验签结果后登记归档、入口、清单摘要与来源公钥。正式发行与跨设备收发继续按 T11 和 T14 验收。
+
 ### 有序会话钩子
 
 按[签名运行时](#签名运行时与-sdk)准备资源后，运行 `cargo test --locked -p serial-workbench-host --lib native_node_task_session_hooks_ -- --ignored --nocapture`。签名任务通过 Virtual Echo 核对原代次的打开、实际 RX、最终 TX 回执与关闭，并在回调失败时验证 reader 名额释放。运行 `cargo test --locked -p serial-workbench-host --test session_lifecycle --test stream_budget` 覆盖底层故障、未结算 TX、撤权重授与旧代次的收尾。 `node --test scripts/node-backend-cancellation.test.mjs` 复验迟到页、租约释放及缺口续读。

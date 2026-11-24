@@ -2,6 +2,17 @@ import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createConnection, createServer } from "node:net";
 import test from "node:test";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import { buildSync } from "esbuild";
+import { validateNodePackageManifest } from "../packages/contracts/src/generated/validators.mjs";
+import descriptor from "../crates/host/resources/node-packages/tcp.json" with { type: "json" };
+import reference from "../packages/plugin-sdk/examples/reference-transport/manifest.json" with { type: "json" };
+import {
+  builtinTcpPackageId,
+  builtinTcpProviderId,
+} from "../packages/plugin-sdk/examples/reference-transport/tcp-endpoint.ts";
 import { register } from "../packages/plugin-sdk/examples/reference-transport/main.ts";
 
 const host = "127.0.0.1";
@@ -119,3 +130,47 @@ test(
     await rebound.close();
   },
 );
+
+test("the bundled TCP transport matches its signed archive and the reference contract", () => {
+  const root = new URL("../", import.meta.url);
+  const folder = "packages/plugin-sdk/examples/reference-transport/";
+  const manifestBytes = readFileSync(
+    new URL(folder + "builtin-manifest.json", root),
+  );
+  const manifest = JSON.parse(manifestBytes);
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  assert.ok(validateNodePackageManifest(manifest));
+  assert.equal(manifest.id, builtinTcpPackageId);
+  assert.equal(descriptor.id, builtinTcpPackageId);
+  assert.equal(manifest.version, descriptor.version);
+  assert.equal(descriptor.sourceApproval.source, "swb.product");
+  assert.equal(descriptor.manifestSha256, digest(manifestBytes));
+  assert.equal(
+    descriptor.archiveSha256,
+    digest(
+      readFileSync(
+        new URL("crates/host/resources/node-packages/tcp.zip", root),
+      ),
+    ),
+  );
+  assert.deepEqual(manifest.permissions, reference.permissions);
+  assert.deepEqual(manifest.contributes.transports, [
+    { ...reference.contributes.transports[0], actionId: builtinTcpProviderId },
+  ]);
+  const { outputFiles } = buildSync({
+    absWorkingDir: fileURLToPath(root),
+    entryPoints: [folder + "builtin.ts"],
+    bundle: true,
+    platform: "node",
+    target: "node26",
+    format: "esm",
+    charset: "utf8",
+    legalComments: "none",
+    write: false,
+  });
+  assert.equal(outputFiles.length, 1);
+  assert.equal(
+    descriptor.compiledModuleSha256,
+    digest(outputFiles[0].contents),
+  );
+});

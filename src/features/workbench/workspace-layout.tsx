@@ -57,6 +57,12 @@ import type { SessionTemplateConnection } from "./session-template-tool";
 import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
+import { TcpConnectionParameters } from "./tcp-connection-parameters";
+import { useI18n } from "@/providers/i18n";
+import {
+  builtinTcpPackageId,
+  builtinTcpProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-transport/tcp-endpoint";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
 import type { CommandLibrarySource } from "./command-library";
@@ -436,6 +442,7 @@ export function WorkspaceLayout({
   formatError,
   unboundDraftMessage,
 }: WorkspaceLayoutProps) {
+  const { t } = useI18n();
   const { state, watchSession, watchActions } = host;
   const [highlightRules, setHighlightRules] = useState<StreamHighlightRule[]>(
     [],
@@ -672,6 +679,16 @@ export function WorkspaceLayout({
             entry.fingerprint.transport === "plugin",
         )
       : undefined;
+  const tcpPrompt =
+    promptDevice?.systemName === builtinTcpProviderId &&
+    promptDevice.driver === builtinTcpPackageId;
+  const promptFailure =
+    openError && promptDevice && failure?.deviceId === promptDevice.deviceId
+      ? failure
+      : undefined;
+  const TransportParameters = tcpPrompt
+    ? TcpConnectionParameters
+    : PluginTransportParameters;
   useEffect(() => {
     if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
   }, [promptDevice, transportPrompt]);
@@ -2276,6 +2293,7 @@ export function WorkspaceLayout({
       <WorkbenchNotice
         noticeKey={`action:${failure?.occurrence ?? ""}`}
         eventKey={failure?.eventKey}
+        inline={!!promptFailure}
         log={
           failure
             ? {
@@ -2600,22 +2618,22 @@ export function WorkspaceLayout({
       <WorkbenchDialog
         open={!!promptDevice}
         scopeKey={transportScope}
-        title={labels.pluginTransportParameters}
+        title={
+          tcpPrompt
+            ? t("tcpConnection.title")
+            : labels.pluginTransportParameters
+        }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
         onRequestClose={() => setTransportPrompt(undefined)}
       >
         {promptDevice && (
-          <PluginTransportParameters
+          <TransportParameters
             key={promptDevice.deviceId}
             device={promptDevice.systemName}
             labels={labels}
             opening={opening === promptDevice.deviceId}
-            error={
-              openError && failure?.deviceId === promptDevice.deviceId
-                ? failure?.message
-                : undefined
-            }
+            error={promptFailure?.message}
             onSubmit={(params) => {
               void open(promptDevice.deviceId, params);
             }}

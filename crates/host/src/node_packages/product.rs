@@ -62,6 +62,8 @@ const AUTOMATION_0_1_4_ARCHIVE: &[u8] =
 const AUTOMATION_0_1_4_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.4.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
+const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
+const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -154,7 +156,7 @@ impl ProductPackage {
 }
 
 pub(super) fn packages() -> &'static [ProductPackage] {
-    static PACKAGES: OnceLock<[ProductPackage; 6]> = OnceLock::new();
+    static PACKAGES: OnceLock<[ProductPackage; 7]> = OnceLock::new();
     PACKAGES.get_or_init(|| {
         [
             ProductPackage::new(
@@ -175,6 +177,7 @@ pub(super) fn packages() -> &'static [ProductPackage] {
             ),
             ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
             ProductPackage::new(AUTOMATION_DESCRIPTOR, AUTOMATION_ARCHIVE, AUTOMATION_MARKER),
+            ProductPackage::new(TCP_DESCRIPTOR, TCP_ARCHIVE, "node-packages:bundled-tcp"),
         ]
     })
 }

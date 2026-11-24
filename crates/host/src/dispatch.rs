@@ -2843,6 +2843,7 @@ mod tests {
         let slave = NodePackageId::try_from("swb.reference.modbus.slave").unwrap();
         let chart = NodePackageId::try_from("swb.builtin.chart").unwrap();
         let automation = NodePackageId::try_from("swb.builtin.automation").unwrap();
+        let tcp = NodePackageId::try_from("swb.builtin.tcp").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         let mut pending_calendar: Option<(Id, tokio::time::Instant, ContextToken)> = None;
@@ -2890,6 +2891,7 @@ mod tests {
                         catalog.status(&slave).unwrap(),
                         catalog.status(&chart).unwrap(),
                         catalog.status(&automation).unwrap(),
+                        catalog.status(&tcp).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2933,6 +2935,17 @@ mod tests {
                     })
                 })
             });
+            let tcp_registered = host
+                .inner
+                .node_packages
+                .registered_transports()
+                .map(|items| {
+                    items.iter().any(|provider| {
+                        let device = provider.descriptor(&store.identity().unwrap().host_id);
+                        device.system_name == "swb.builtin.tcp.transport"
+                            && device.driver.as_deref() == Some(tcp.as_str())
+                    })
+                });
             let execution = if epoch == 1 && registered.as_ref().is_ok_and(|active| *active) {
                 Some(
                     tokio::spawn(check_bundled_field_actions(
@@ -2980,6 +2993,10 @@ mod tests {
                 "{statuses:?}"
             );
             assert!(registered.unwrap());
+            assert!(
+                tcp_registered.unwrap(),
+                "bundled TCP provider was not registered"
+            );
             if let Some(execution) = execution {
                 pending_calendar = Some(execution.expect("bundled field actions on the real Host"));
             }
@@ -3003,6 +3020,180 @@ mod tests {
             drop(host);
             drop(server);
         }
+    }
+
+    #[tokio::test]
+    #[ignore = "Needs a verified native Node distribution in SWB_NODE_RUNTIME_TEST_ROOT"]
+    async fn native_node_bundled_tcp_opens_both_roles_and_sends_exact_bytes() {
+        use crate::node_runtime::{NodeRuntimeLimits, verify_node_runtime};
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        use std::{net::Ipv4Addr, path::Path, time::Duration};
+        use tokio::{
+            io::AsyncReadExt,
+            net::{TcpListener, TcpStream},
+            time::timeout,
+        };
+
+        let root = std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap();
+        let profile = crate::test_support::Profile::isolated("host-bundled-tcp-");
+        let server = HostServer::bind(profile.path()).await.unwrap();
+        let runtime = verify_node_runtime(
+            Path::new(&root),
+            &NodeRuntimeLimits::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        let host = Host::initialize(
+            server.store(),
+            server.auth(),
+            Arc::new(crate::clock::SystemClock::new().unwrap()),
+            DeviceSource::Native,
+            Some(StartupConfigSnapshot {
+                profile_reference: StartupProfileReference::HostProfile,
+                profile_source: StartupConfigSource::Argument,
+                log_level: StartupLogLevel::Info,
+                log_level_source: StartupConfigSource::Default,
+            }),
+            Some(runtime),
+        )
+        .await
+        .unwrap();
+        let credential =
+            serial_workbench_client::read_user_control_credential(profile.path()).unwrap();
+        let check = tokio::spawn({
+            let host = host.clone();
+            async move {
+                let catalog = &host.inner.registry.runtime;
+                let mut updates = catalog.subscribe();
+                let package = NodePackageId::try_from("swb.builtin.tcp").unwrap();
+                timeout(Duration::from_secs(30), async {
+                    loop {
+                        let status = catalog.status(&package).unwrap();
+                        if status.phase == NodePackageRuntimePhase::Active {
+                            break;
+                        }
+                        assert_ne!(status.phase, NodePackageRuntimePhase::Failed, "{status:?}");
+                        updates.changed().await.unwrap();
+                    }
+                })
+                .await
+                .unwrap();
+
+                let devices = host.inner.device_runtime.as_ref().unwrap().refresh().await.unwrap();
+                let tcp = devices
+                    .devices
+                    .iter()
+                    .find(|device| device.system_name == "swb.builtin.tcp.transport"
+                        && device.driver.as_deref() == Some("swb.builtin.tcp"))
+                    .expect("Expected the bundled TCP device in the live directory");
+                let auth = &host.inner.auth;
+                let store = &host.inner.store;
+                let identity = store.identity().unwrap();
+                let client = id("bundled-tcp-client");
+                let actor = auth.authenticate(&client, None).unwrap().actor;
+                let operator = auth.authenticate_user_control(&id("bundled-tcp-operator"), &credential).unwrap();
+                let device = Target {
+                    host_id: identity.host_id.clone(),
+                    kind: ResourceKind::try_from("device").unwrap(),
+                    id: tcp.device_id.clone(),
+                    session_id: None,
+                    session_epoch: None,
+                };
+                let grant = |target: &Target, permissions: Vec<String>| {
+                    auth.authorize(&operator, AuthorizeParams {
+                        client_id: client.clone(),
+                        permissions,
+                        targets: vec![target.clone()],
+                        expires_at: None,
+                    }).unwrap();
+                };
+                let call = |target: &Target, action: &str, params: serde_json::Value| Call {
+                    protocol_version: ProtocolVersion::V1_0,
+                    host_id: identity.host_id.clone(),
+                    instance_epoch: identity.instance_epoch,
+                    actor_id: actor.id().clone(),
+                    request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+                    request_context: store.issue_context(&actor).unwrap().token,
+                    action_id: id(action),
+                    target: target.clone(),
+                    params: serde_json::from_value(params).unwrap(),
+                    reveal_target: serde_json::from_value(serde_json::json!({"pageId":"workbench"})).unwrap(),
+                    expected_revision: None,
+                    lease_id: None,
+                    execution_mode: None,
+                };
+                let wait = Duration::from_secs(5);
+                let settled = |operation: Operation| {
+                    let actor = actor.clone();
+                    async move {
+                        timeout(wait, async {
+                            loop {
+                                let current = store.get(&actor, &operation.operation_id).unwrap();
+                                if current.state.is_terminal() {
+                                    assert_eq!(current.state, OperationState::Succeeded, "{current:?}");
+                                    break current.result.unwrap();
+                                }
+                                tokio::time::sleep(Duration::from_millis(10)).await;
+                            }
+                        })
+                        .await
+                        .unwrap()
+                    }
+                };
+
+                grant(&device, vec!["device.modify".into()]);
+                let mut previous_epoch = None;
+                for role in ["client", "server"] {
+                    let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+                    let endpoint = reserved.local_addr().unwrap();
+                    let mut listener = Some(reserved);
+                    if role == "server" {
+                        drop(listener.take());
+                    }
+                    let opened = host.invoke(&actor, call(&device, "device.open", serde_json::json!({
+                        "configuration": SerialConfiguration::default(),
+                        "transportParams": {"role":role,"host":"127.0.0.1","port":endpoint.port()},
+                    }))).await.unwrap();
+                    let ActionResult::Opened(opened) = settled(opened).await else {
+                        panic!("Expected a live TCP session");
+                    };
+                    assert!(!opened.reused);
+                    assert!(previous_epoch.is_none_or(|epoch| opened.session_epoch > epoch));
+                    previous_epoch = Some(opened.session_epoch);
+                    let session = Target {
+                        kind: ResourceKind::try_from("session").unwrap(),
+                        id: opened.session_id.clone(),
+                        session_id: Some(opened.session_id),
+                        session_epoch: Some(opened.session_epoch),
+                        ..device.clone()
+                    };
+                    let mut peer = if let Some(listener) = listener {
+                        timeout(wait, listener.accept()).await.unwrap().unwrap().0
+                    } else {
+                        timeout(wait, TcpStream::connect(endpoint)).await.unwrap().unwrap()
+                    };
+                    grant(&session, vec!["device.modify".into(), "content.read".into()]);
+                    let sample = [0, 0xff, 13, 10, 128];
+                    let accepted = host.invoke(&actor, call(&session, "session.tx", serde_json::json!({
+                        "bytesBase64":STANDARD.encode(sample),"writeWaitMs":"1000",
+                    }))).await.unwrap();
+                    let ActionResult::Tx(receipt) = settled(accepted).await else {
+                        panic!("Expected an actual TX receipt");
+                    };
+                    assert_eq!(receipt.outcome, TxOutcome::Accepted);
+                    assert_eq!(receipt.session_epoch, opened.session_epoch);
+                    let mut received = [0; 5];
+                    timeout(wait, peer.read_exact(&mut received)).await.unwrap().unwrap();
+                    assert_eq!(received, sample);
+                    let closing = host.invoke(&actor, call(&session, "session.close", serde_json::json!({}))).await.unwrap();
+                    settled(closing).await;
+                    assert_eq!(timeout(wait, peer.read(&mut received)).await.unwrap().unwrap(), 0);
+                    eprintln!("bundled_tcp role={role} epoch={:?} peer_closed=true exact_bytes={}", opened.session_epoch, received.len());
+                }
+            }
+        }).await;
+        host.shutdown().await.unwrap();
+        check.unwrap();
     }
 
     async fn check_bundled_field_actions(
