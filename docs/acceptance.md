@@ -378,6 +378,27 @@ recorded_send_2                   recorded_send_2
 
 用签名终端与签名图表的配对浏览器场景，在同一个已打开视图中中英文往返。核对 `lang`、图表标题或终端的无障碍名称、原输入仍在、iframe 地址保持，以及同一读端口确认切换后写入的新数据。收据的 `localeChanges` 记录视图实际使用的语言。使用已签发的 0.1.2 包复跑时设置 `SWB_TEST_BROWSER_LEGACY_VIEW=1`，同时核对应用已切换、旧视图继续使用打开时的语言与原读流。隔离桌面终端场景检查主窗口保存语言后，已打开的 Wry 壳应用新语言，并在同一视图确认后续字节。子窗口加载期间的语言切换仍需另外覆盖。
 
+### 高级统计窗口（VIZ-05）
+
+高级统计扩展的动作是 `swb.reference.statistics.windows`，作用目标为 Host。输入包含 `firstPosition`、`expectedSlots`、`samples` 和 `window`，可附 `unit`。以下输入声明 5、6、7 三个计划槽位，提交其中两个值。
+
+```json
+{
+  "firstPosition": "5",
+  "expectedSlots": 3,
+  "unit": "V",
+  "samples": [
+    { "position": "5", "value": 1.25 },
+    { "position": "7", "value": 2 }
+  ],
+  "window": { "kind": "count", "length": "2", "step": "1" }
+}
+```
+
+前两窗分别覆盖 `[5, 7)`、`[6, 8)`，两窗的缺值率均为 1/2。最后一窗裁剪为 `[7, 8)`，缺值率为 0。时间窗使用 `kind: "time"`，并声明 `clockId`、`originMonoNs` 和 `periodNs`，窗口长度和步长用纳秒。单次上限为 8192 个计划槽、512 个样本及 128 个窗口。
+
+运行 `node --test scripts/reference-statistics.test.mjs`，验证输入和报告 schema、半开边界、高位整数、尾窗、全缺样、无计划采样点及取消。准备验收包时，使用 `pnpm exec esbuild packages/plugin-sdk/examples/reference-statistics/main.ts --bundle --platform=node --format=esm --target=node26 --outfile=.cache/reference-statistics/main.js`，再调用 `sign_reference_statistics` 示例签名。安装后按来源信任流程登记，并通过 Host 动作读回报告文件。
+
 ## 签名主题
 
 按[签名运行时](#签名运行时与-sdk)准备固定 Node，并在独立环境运行 Host 和无头界面检查。

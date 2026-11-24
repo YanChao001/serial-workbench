@@ -1,0 +1,159 @@
+import type { NodeRegister } from "@serial-workbench/plugin-sdk/node";
+import { sampleStatistics } from "../reference-chart/sample-statistics.ts";
+
+const action = "swb.reference.statistics.windows";
+const maxSlots = 8_192;
+const maxSamples = 512;
+const maxWindows = 128n;
+const maxU64 = (1n << 64n) - 1n;
+
+function record(value: unknown, path: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value))
+    throw new Error(`${path} must be an object`);
+  return value as Record<string, unknown>;
+}
+
+function u64(value: unknown, path: string) {
+  if (typeof value === "string" && /^(0|[1-9]\d{0,19})$/.test(value)) {
+    const parsed = BigInt(value);
+    if (parsed <= maxU64) return parsed;
+  }
+  throw new Error(`${path} must be an unsigned 64-bit decimal string`);
+}
+
+function positive(value: unknown, path: string) {
+  const parsed = u64(value, path);
+  if (!parsed) throw new Error(`${path} must be positive`);
+  return parsed;
+}
+
+function readWindow(value: unknown) {
+  const window = record(value, "window");
+  const length = positive(window.length, "window.length");
+  const step = positive(window.step, "window.step");
+  if (window.kind === "count")
+    return { kind: window.kind, period: 1n, length, step } as const;
+  if (window.kind !== "time")
+    throw new Error("window.kind must be count or time");
+  const clockId = window.clockId;
+  if (
+    typeof clockId !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(clockId)
+  )
+    throw new Error("window.clockId must identify a single monotonic clock");
+  return {
+    kind: window.kind,
+    clockId,
+    origin: u64(window.originMonoNs, "window.originMonoNs"),
+    period: positive(window.periodNs, "window.periodNs"),
+    length,
+    step,
+  } as const;
+}
+
+function readSamples(value: unknown, first: bigint, after: bigint) {
+  if (!Array.isArray(value) || value.length > maxSamples)
+    throw new Error(`samples must contain at most ${maxSamples} values`);
+  const seen = new Set<bigint>();
+  return value.map((entry: unknown, index) => {
+    const sample = record(entry, `samples[${index}]`);
+    const position = u64(sample.position, `samples[${index}].position`);
+    if (position < first || position >= after || seen.has(position))
+      throw new Error(
+        `samples[${index}].position is outside the grid or duplicated`,
+      );
+    seen.add(position);
+    if (typeof sample.value !== "number" || !Number.isFinite(sample.value))
+      throw new Error(`samples[${index}].value must be finite`);
+    return { position, value: sample.value };
+  });
+}
+
+function summarize(input: unknown, signal: AbortSignal) {
+  const series = record(input, "params");
+  const first = positive(series.firstPosition, "firstPosition");
+  const slots = series.expectedSlots;
+  if (
+    typeof slots !== "number" ||
+    !Number.isInteger(slots) ||
+    slots < 1 ||
+    slots > maxSlots
+  )
+    throw new Error(`expectedSlots must be between 1 and ${maxSlots}`);
+  const after = first + BigInt(slots);
+  if (after > maxU64) throw new Error("The sample position range exceeds u64");
+  const window = readWindow(series.window);
+  const extent = BigInt(slots) * window.period;
+  if (window.kind === "time" && window.origin + extent > maxU64)
+    throw new Error("The monotonic time range exceeds u64");
+  if ((extent - 1n) / window.step + 1n > maxWindows)
+    throw new Error(
+      `The series and step would produce more than ${maxWindows} windows`,
+    );
+  const samples = readSamples(series.samples, first, after);
+  const position = (point: bigint) =>
+    first + (point + window.period - 1n) / window.period;
+  const windows = [];
+  for (let from = 0n; from < extent; from += window.step) {
+    signal.throwIfAborted();
+    const requestedEnd = from + window.length;
+    const to = requestedEnd < extent ? requestedEnd : extent;
+    const fromPosition = position(from);
+    const toPosition = position(to);
+    const validValues = samples
+      .filter(
+        ({ position }) => position >= fromPosition && position < toPosition,
+      )
+      .map(({ value }) => value);
+    const statistics = sampleStatistics(validValues, toPosition - fromPosition);
+    windows.push({
+      fromPosition: String(fromPosition),
+      toPosition: String(toPosition),
+      ...(window.kind === "time"
+        ? {
+            fromMonoNs: String(window.origin + from),
+            toMonoNs: String(window.origin + to),
+          }
+        : {}),
+      partial: requestedEnd > extent,
+      expectedCount: Number(statistics.expectedCount),
+      validCount: statistics.validCount,
+      missingCount: Number(statistics.missingCount),
+      missingRate: statistics.missingRate ?? null,
+      metrics: statistics.metrics ?? null,
+    });
+  }
+  return {
+    kind: window.kind,
+    length: String(window.length),
+    step: String(window.step),
+    firstPosition: String(first),
+    expectedSlots: slots,
+    ...(typeof series.unit === "string" ? { unit: series.unit } : {}),
+    ...(window.kind === "time"
+      ? {
+          clockId: window.clockId,
+          originMonoNs: String(window.origin),
+          periodNs: String(window.period),
+        }
+      : {}),
+    windows,
+  };
+}
+
+export const register: NodeRegister = (context) => {
+  context.actions.register(action, (call, task) => {
+    task.signal.throwIfAborted();
+    return summarize(call.params, task.signal);
+  });
+  context.contributions.register({
+    actions: [],
+    queries: [],
+    transports: [],
+    parsers: [],
+    views: [],
+    themes: [],
+    configuration: [],
+  });
+  return () => {};
+};
