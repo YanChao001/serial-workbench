@@ -11,7 +11,7 @@ const source = "packages/plugin-sdk/examples/reference-automation/";
 const packages = new URL("crates/host/resources/node-packages/", root);
 const sha256 = (bytes) => createHash("sha256").update(bytes).digest("hex");
 
-test("the built-in scheduled send matches the locked archive and reference action", () => {
+test("the built-in automation matches the locked archive and both reference actions", () => {
   const manifestBytes = readFileSync(
     new URL(source + "builtin-manifest.json", root),
   );
@@ -51,11 +51,12 @@ test("the built-in scheduled send matches the locked archive and reference actio
   assert.deepEqual(manifest.dependencies, []);
   assert.deepEqual(manifest.platformResources, []);
   assert.equal(manifest.runtimeRef, reference.runtimeRef);
-  const action = reference.contributes.actions.find(
-    ({ actionId }) => actionId === "swb.reference.automation.repeat",
-  );
-  assert.ok(action);
-  assert.deepEqual(manifest.contributes.actions, [
-    { ...action, actionId: "swb.builtin.automation.repeat" },
-  ]);
+  const actions = ["repeat", "sequence"].map((name) => {
+    const action = reference.contributes.actions.find(
+      ({ actionId }) => actionId === "swb.reference.automation." + name,
+    );
+    assert.ok(action);
+    return { ...action, actionId: "swb.builtin.automation." + name };
+  });
+  assert.deepEqual(manifest.contributes.actions, actions);
 });

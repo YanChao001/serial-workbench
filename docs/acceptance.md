@@ -204,6 +204,44 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 完整四目标 CI 的原生 runtime 验收步骤使用每个目标实际安装布局，构建、签名并运行终端、图表和自动化三个参考包的无窗口用例。产物分别保留在 `artifacts/reference-terminal`、`artifacts/reference-chart` 与 `artifacts/reference-automation`。各平台的原生窗口和实际离线安装遵循阶段出口另行验收。
 
+### 命令序列（IO-10）
+
+自动化参考包提供 `swb.reference.automation.sequence`。已授权的调用者传入所选会话、UTF-8 JSON 文档字符串 `definition` 和当前 Raw 游标 `startEventSeq`。用 `stream.cursor` 为同一 Host 会话代次取快照，提交其 `cursor.position + 1`。可用 `pnpm plugin-sdk:fixture` 构建当前参考包，然后按本页的签名参考场景安装和授权。发送目录、鉴权和取消使用普通 Host 动作入口。
+
+```json
+{
+  "version": 1,
+  "variables": { "channel": "01" },
+  "steps": [
+    {
+      "kind": "send",
+      "hex": "AA ${channel}",
+      "expect": { "hex": "4F 4B", "timeoutMs": 200 }
+    },
+    {
+      "kind": "repeat",
+      "count": 2,
+      "steps": [
+        { "kind": "delay", "milliseconds": 20 },
+        { "kind": "send", "hex": "50" }
+      ]
+    },
+    {
+      "kind": "if",
+      "variable": "channel",
+      "equals": "01",
+      "then": [{ "kind": "send", "hex": "BB" }]
+    }
+  ]
+}
+```
+
+预校验覆盖所有分支、变量、HEX 和最坏执行路径。`onMatch` 是匹配当前应答后执行的可选步骤组。`onTimeout` 是终止前可选的无应答补救组。该组最多执行明确配置的发送和等待，任务保留超时结果，避免后续匹配被旧应答触发。错误应答、源事件断档、配置变化和部分写入结束任务。应答结果保留本轮 TX 操作 ID、定义位置及匹配字节的 Raw 区间。等待和执行后续分支时，前一轮事务租约已释放。
+
+用 `node --test scripts/command-sequence.test.mjs` 核对循环顺序、匹配与超时分支、无写入拒绝、未确认写入和取消。签名后台用例 `native_automation_uses_exact_responses_and_keeps_capture_running` 还直接调用当前序列动作，核对两次匹配应答的源区间、实际 TX 终态，以及超时补救后停止后续步骤。独立对端分别提供匹配、超时、错误及分段应答，将发送日志与每次 TX 回执和源字节范围对照。在工作区菜单打开「命令序列」，载入示例或打开已有 UTF-8 JSON。检查目标会话、展开的发送字节、延时和匹配或超时分支，另存时核对版本与内容。点击运行后核对当前 Raw 游标、独立任务和回执中的接收区间。关闭并重开面板后，可以从原任务继续观察或停止。`pnpm test:ui e2e/browser/command-sequence.spec.ts e2e/browser/repeat-send.spec.ts --workers 1` 覆盖文件、预览、显式启动、最新游标、拒权和实际取消。取消选文件或导入错误保留编辑中的定义。桌面保存等待真实写盘回执，浏览器按钮只发起下载。任务状态查询失败后可重查或请求停止，错误 Raw 作用域在提交前被拒绝。
+
+首方 `swb.builtin.automation` 0.1.1 在同一包登记 `swb.builtin.automation.sequence` 和原有定时发送。`node --test scripts/product-automation.test.mjs scripts/components-build.test.mjs` 核对 0.1.1 归档和组件描述。Windows 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 验证首启、重启、写权限拒绝、两轮 Virtual Echo 与延时，`node_packages::product::tests` 核对 0.1.0 升级时启用、停用和卸载状态。正式安装继续专项验收。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

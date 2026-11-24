@@ -493,6 +493,7 @@ async fn native_automation_uses_exact_responses_and_keeps_capture_running() {
 
         verify_public_automation(&bridge, &desktop, profile, &session, end.next_event_seq).await;
         verify_repeat_send(&bridge, client, &session).await;
+        verify_command_sequence(&bridge, client, &session).await;
         eprintln!("reference_automation matched_steps=2 mismatch_stopped=true timeout_stopped=true late_reply_attributed=true cancellation_settled=true competing_mcp_after_release=true capture_rx_bytes={} source_continuous=true mcp_step=true cli_same_result=true", CAPTURED_RX.len());
     })
     .await;
@@ -555,6 +556,79 @@ async fn verify_repeat_send(bridge: &DesktopHostBridge, client: &AttachResult, s
     assert_eq!(stopped["attempted"].as_array().unwrap().len(), 1);
     assert_eq!(stopped["attempted"][0]["outcome"], "stop_condition");
     eprintln!("reference_repeat_send complete_tx=3 exact_responses=true stop_condition_tx=1");
+}
+
+async fn verify_command_sequence(
+    bridge: &DesktopHostBridge,
+    client: &AttachResult,
+    session: &Target,
+) {
+    const ACTION: &str = "swb.reference.automation.sequence";
+    let run = |definition: serde_json::Value| async move {
+        let after = automation_source_position(bridge, client, session).await;
+        let start_event_seq = after.get().checked_add(1).unwrap().to_string();
+        let operation = invoke(
+            bridge,
+            client,
+            session,
+            ACTION,
+            json!({"definition":definition.to_string(),"startEventSeq":start_event_seq}),
+            ExecutionMode::Independent,
+        )
+        .await;
+        result(bridge, client, operation).await
+    };
+    let report = run(json!({
+        "version": 1,
+        "variables": {"probe":"51"},
+        "steps": [{
+            "kind":"send", "hex":"${probe} 0A",
+            "expect":{"hex":"51 0A","onMatch":[{"kind":"send","hex":"52 0A","expect":{"hex":"52 0A"}}]}
+        }]
+    })).await;
+    assert_eq!(report["outcome"], "completed", "{report}");
+    assert_eq!(report["completedSteps"], 2);
+    let attempts = report["attempts"].as_array().unwrap();
+    assert_eq!(attempts.len(), 2);
+    for (attempt, bytes) in attempts.iter().zip([b"Q\n", b"R\n"]) {
+        assert_eq!(attempt["outcome"], "matched", "{report}");
+        let source = &attempt["source"];
+        assert_eq!(source["sessionId"], session.id.as_str());
+        assert_eq!(source["direction"], "rx");
+        let start = source["byteStart"]
+            .as_str()
+            .unwrap()
+            .parse::<u64>()
+            .unwrap();
+        let end = source["byteEnd"].as_str().unwrap().parse::<u64>().unwrap();
+        assert_eq!(end - start, bytes.len() as u64);
+        let operation_id = Id::try_from(attempt["operationId"].as_str().unwrap()).unwrap();
+        let tx = wait_terminal(bridge, client, &operation_id).await;
+        let Some(ActionResult::Tx(receipt)) = tx.result else {
+            panic!("Missing command-sequence TX: {tx:?}");
+        };
+        assert_eq!(receipt.outcome, TxOutcome::Accepted);
+        assert_eq!(receipt.bytes_base64.as_str(), STANDARD.encode(bytes));
+        assert_eq!(Some(receipt.session_epoch), session.session_epoch);
+    }
+    let timeout = run(json!({
+        "version": 1,
+        "steps": [{
+            "kind":"send","hex":"57 0A",
+            "expect":{"hex":"57 0A 45","timeoutMs":100,"onTimeout":[{"kind":"send","hex":"46 0A"}]}
+        },{"kind":"send","hex":"4E 0A"}]
+    }))
+    .await;
+    assert_eq!(timeout["outcome"], "response_timeout", "{timeout}");
+    assert_eq!(timeout["stoppedAt"], "$.steps[0]");
+    let attempts = timeout["attempts"].as_array().unwrap();
+    assert_eq!(attempts.len(), 2);
+    assert_eq!(attempts[0]["outcome"], "response_timeout");
+    assert_eq!(attempts[1]["outcome"], "written");
+    assert_eq!(attempts[1]["path"], "$.steps[0].expect.onTimeout[0]");
+    eprintln!(
+        "reference_command_sequence confirmed_responses=2 timeout_fallback=1 later_step_stopped=true"
+    );
 }
 
 async fn automation_source_position(

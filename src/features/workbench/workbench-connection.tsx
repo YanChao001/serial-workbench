@@ -19,6 +19,7 @@ import {
   Brackets,
   Stethoscope,
   ListTodo,
+  ListOrdered,
   History,
   Timer,
   Gauge,
@@ -398,6 +399,16 @@ export function WorkbenchConnection({
                 >
                   <Timer aria-hidden="true" />
                   {toolLabels.repeatSend}
+                </DropdownMenuItem>
+              )}
+              {toolLabels?.commandSequence && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    onTool("commandSequence", menuTrigger.current)
+                  }
+                >
+                  <ListOrdered aria-hidden="true" />
+                  {toolLabels.commandSequence}
                 </DropdownMenuItem>
               )}
               <DropdownMenuItem

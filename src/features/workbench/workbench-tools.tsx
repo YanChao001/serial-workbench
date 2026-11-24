@@ -46,6 +46,15 @@ import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
 import { DiagnosticPanel } from "./diagnostic-panel";
 import { FramingTool } from "./framing-tool";
+import {
+  CommandSequenceTool,
+  type CommandSequenceDraft,
+} from "./command-sequence-tool";
+import {
+  builtinCommandSequenceAction,
+  commandSequenceAction,
+  readSequenceCursor,
+} from "./sequence-workbench-model";
 import { RepeatSendTool } from "./repeat-send-tool";
 import { builtinRepeatSendAction, repeatSendAction } from "./repeat-send-model";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
@@ -98,6 +107,10 @@ export function WorkbenchTools({
   const [recentError, setRecentError] = useState<string>();
   const [recentReload, setRecentReload] = useState(0);
   const [busy, setBusy] = useState(false);
+  const [sequenceDraft, setSequenceDraft] = useState<CommandSequenceDraft>({
+    definition: "",
+    saved: "",
+  });
   const ready = host.state.status === "ready";
   const { hostId, kind, id, sessionId, sessionEpoch } = context.target ?? {};
   const captureEligible = Boolean(
@@ -480,7 +493,7 @@ export function WorkbenchTools({
         }
       />
     );
-  if (tool === "repeatSend") {
+  if (tool === "repeatSend" || tool === "commandSequence") {
     const target = context.target;
     const session = context.session;
     const access =
@@ -496,32 +509,60 @@ export function WorkbenchTools({
               host.state.devices.find(
                 (device) => device.deviceId === session.deviceId,
               )?.systemName ?? session.deviceId,
-            startEventSeq: modbusStartEventSeq(
-              context.sourceItems ?? context.items,
-              target,
-            ),
             invoke,
             waitForOperation: host.waitForOperation,
             readFile: host.readFile,
             cancel: onCancelOperation,
           }
         : undefined;
+    const key = JSON.stringify([
+      generation,
+      target?.hostId,
+      target?.id,
+      target?.sessionEpoch,
+    ]);
+    const registered = (id: string) =>
+      catalog.some(
+        (spec) => spec.actionId === id && spec.targetKinds.includes("session"),
+      );
+    if (tool === "commandSequence") {
+      const connection = host.connection;
+      return (
+        <CommandSequenceTool
+          key={key}
+          access={
+            access && connection
+              ? {
+                  ...access,
+                  readCursor: (signal) =>
+                    readSequenceCursor(connection, access.target, signal),
+                }
+              : undefined
+          }
+          actionId={(
+            [builtinCommandSequenceAction, commandSequenceAction] as const
+          ).find(registered)}
+          operations={host.state.operations}
+          beforeReplace={context.beforeReplace}
+          draft={sequenceDraft}
+          onDraftChange={setSequenceDraft}
+        />
+      );
+    }
     return (
       <RepeatSendTool
-        key={JSON.stringify([
-          generation,
-          target?.hostId,
-          target?.id,
-          target?.sessionEpoch,
-        ])}
-        access={access}
-        actionId={([builtinRepeatSendAction, repeatSendAction] as const).find(
-          (actionId) =>
-            catalog.some(
-              (spec) =>
-                spec.actionId === actionId &&
-                spec.targetKinds.includes("session"),
+        key={key}
+        access={
+          access && {
+            ...access,
+            startEventSeq: modbusStartEventSeq(
+              context.sourceItems ?? context.items,
+              access.target,
             ),
+          }
+        }
+        actionId={([builtinRepeatSendAction, repeatSendAction] as const).find(
+          registered,
         )}
         operations={host.state.operations}
         draftBytes={context.draftBytes}
