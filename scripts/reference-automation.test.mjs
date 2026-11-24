@@ -39,7 +39,14 @@ for (const late of [false, true]) {
       byteEnd: "1",
     };
     let handler;
-    register({ actions: { register: (_id, run) => (handler = run) } });
+    register({
+      actions: {
+        register(id, run) {
+          if (id === "swb.reference.automation.run") handler = run;
+        },
+      },
+    });
+    assert.ok(handler);
     let reads = 0;
     const result = await handler(
       {

@@ -57,6 +57,7 @@ for (const mode of ["production", "web-preview"]) {
         "third-party/xterm-addon-fit.LICENSE",
         "resources/third-party/xterm-addon-fit.LICENSE",
       ],
+      ["third-party/yaml.LICENSE", "resources/third-party/yaml.LICENSE"],
     ]) {
       assert.ok(existsSync(join(output, fileName)), `Vite omitted ${fileName}`);
       assert.deepEqual(

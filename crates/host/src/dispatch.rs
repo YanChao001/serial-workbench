@@ -290,7 +290,7 @@ impl Host {
             let cancel = std::sync::atomic::AtomicBool::new(false);
             recovery_manager.recover_installations(&limits, &cancel)?;
             if provision_bundled {
-                recovery_manager.provision_bundled_framing(&limits, &cancel)?;
+                recovery_manager.provision_bundled_packages(&limits, &cancel)?;
             }
             Ok(())
         })
@@ -2688,13 +2688,15 @@ mod tests {
 
     #[tokio::test]
     #[ignore = "Needs a verified native Node distribution in SWB_NODE_RUNTIME_TEST_ROOT"]
-    async fn native_node_bundled_framing_registers_on_first_start_and_restart() {
+    async fn native_node_bundled_protocol_registers_on_first_start_and_restart() {
         use crate::node_runtime::{NodeRuntimeLimits, verify_node_runtime};
         use std::{path::PathBuf, sync::atomic::AtomicBool, time::Duration};
 
         let root = PathBuf::from(std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap());
         let profile = crate::test_support::Profile::isolated("host-bundled-framing-");
-        let package_id = NodePackageId::try_from("swb.reference.framing").unwrap();
+        let framing = NodePackageId::try_from("swb.reference.framing").unwrap();
+        let fields = NodePackageId::try_from("swb.reference.fields").unwrap();
+        let modbus = NodePackageId::try_from("swb.reference.modbus").unwrap();
         let mut first_revision = None;
         for epoch in [1_u64, 2] {
             let server = HostServer::bind(profile.path()).await.unwrap();
@@ -2722,42 +2724,404 @@ mod tests {
             .unwrap();
             let catalog = &host.inner.registry.runtime;
             let mut updates = catalog.subscribe();
-            let status = tokio::time::timeout(Duration::from_secs(30), async {
+            let statuses = tokio::time::timeout(Duration::from_secs(30), async {
                 loop {
-                    let status = catalog.status(&package_id).unwrap();
-                    if matches!(
-                        status.phase,
-                        NodePackageRuntimePhase::Active | NodePackageRuntimePhase::Failed
-                    ) {
-                        break status;
+                    let statuses = [
+                        catalog.status(&framing).unwrap(),
+                        catalog.status(&fields).unwrap(),
+                        catalog.status(&modbus).unwrap(),
+                    ];
+                    if statuses
+                        .iter()
+                        .all(|status| status.phase == NodePackageRuntimePhase::Active)
+                        || statuses
+                            .iter()
+                            .any(|status| status.phase == NodePackageRuntimePhase::Failed)
+                    {
+                        break statuses;
                     }
                     updates.changed().await.unwrap();
                 }
             })
             .await;
             let registered = catalog.snapshot().map(|(_, handlers)| {
-                handlers.iter().any(|handler| {
-                    handler.package() == &package_id
-                        && handler.spec().action_id.as_str() == "swb.reference.framing.scan"
+                [
+                    (&framing, "swb.reference.framing.scan"),
+                    (&fields, "swb.reference.fields.decode"),
+                    (&fields, "swb.reference.fields.encode"),
+                    (&fields, "swb.reference.fields.identifyCrc"),
+                    (&fields, "swb.reference.fields.modbus"),
+                    (&fields, "swb.reference.fields.modbusServer"),
+                    (&fields, "swb.reference.fields.nmea"),
+                    (&fields, "swb.reference.fields.at"),
+                    (&modbus, "swb.reference.modbus.transaction"),
+                ]
+                .into_iter()
+                .all(|(package, action)| {
+                    handlers.iter().any(|handler| {
+                        handler.package() == package && handler.spec().action_id.as_str() == action
+                    })
                 })
             });
+            let execution = if epoch == 1 && registered.as_ref().is_ok_and(|active| *active) {
+                Some(
+                    tokio::spawn(check_bundled_field_actions(
+                        host.clone(),
+                        profile.path().to_path_buf(),
+                    ))
+                    .await,
+                )
+            } else {
+                None
+            };
             host.shutdown().await.unwrap();
-            let status = status.expect("bundled parser reached a terminal registration phase");
-            assert_eq!(status.phase, NodePackageRuntimePhase::Active, "{status:?}");
+            let statuses =
+                statuses.expect("bundled protocol packages reached a terminal registration phase");
+            assert!(
+                statuses
+                    .iter()
+                    .all(|status| status.phase == NodePackageRuntimePhase::Active),
+                "{statuses:?}"
+            );
             assert!(registered.unwrap());
+            if let Some(execution) = execution {
+                execution.expect("bundled field actions on the real Host");
+            }
             assert_eq!(store.identity().unwrap().instance_epoch, U64::from(epoch));
             let installed =
                 crate::node_packages::NodePackageInstaller::read_snapshot(&store).unwrap();
-            assert_eq!(installed.packages.len(), 1);
-            assert_eq!(
-                status.archive_sha256.as_ref(),
-                Some(&installed.packages[0].archive_sha256)
-            );
+            assert_eq!(installed.packages.len(), statuses.len());
+            for status in statuses {
+                let package = installed
+                    .packages
+                    .iter()
+                    .find(|package| package.manifest.id == status.id)
+                    .unwrap();
+                assert_eq!(
+                    status.archive_sha256.as_ref(),
+                    Some(&package.archive_sha256)
+                );
+            }
             let revision = first_revision.get_or_insert(installed.revision);
             assert_eq!(installed.revision, *revision);
             drop(host);
             drop(server);
         }
+    }
+
+    async fn check_bundled_field_actions(host: Host, profile: std::path::PathBuf) {
+        use base64::{Engine, engine::general_purpose::STANDARD};
+        use std::time::Duration;
+
+        let store = &host.inner.store;
+        let auth = &host.inner.auth;
+        let identity = store.identity().unwrap();
+        let client_id = id("bundled-fields-operator");
+        let actor = auth.authenticate(&client_id, None).unwrap().actor;
+        let capability = serial_workbench_client::read_user_control_credential(&profile).unwrap();
+        let operator = auth
+            .authenticate_user_control(&id("bundled-fields-control"), &capability)
+            .unwrap();
+        let device = Target {
+            host_id: identity.host_id.clone(),
+            kind: ResourceKind::try_from("device").unwrap(),
+            id: id("virtual:echo"),
+            session_id: None,
+            session_epoch: None,
+        };
+        let grant = |permission: &str, target: &Target| {
+            auth.authorize(
+                &operator,
+                AuthorizeParams {
+                    client_id: client_id.clone(),
+                    permissions: vec![permission.into()],
+                    targets: vec![target.clone()],
+                    expires_at: None,
+                },
+            )
+            .unwrap();
+        };
+        let call = |target: &Target, action: &str, params: serde_json::Value| Call {
+            protocol_version: ProtocolVersion::V1_0,
+            host_id: identity.host_id.clone(),
+            instance_epoch: identity.instance_epoch,
+            actor_id: actor.id().clone(),
+            request_id: RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap(),
+            request_context: store.issue_context(&actor).unwrap().token,
+            action_id: id(action),
+            target: target.clone(),
+            params: serde_json::from_value(params).unwrap(),
+            reveal_target: serde_json::from_value(serde_json::json!({"pageId":"workbench"}))
+                .unwrap(),
+            expected_revision: None,
+            lease_id: None,
+            execution_mode: None,
+        };
+        let settled = |accepted: Operation| {
+            let actor = actor.clone();
+            async move {
+                tokio::time::timeout(Duration::from_secs(15), async {
+                    loop {
+                        let operation = store.get(&actor, &accepted.operation_id).unwrap();
+                        if operation.state.is_terminal() {
+                            assert_eq!(operation.state, OperationState::Succeeded, "{operation:?}");
+                            break operation.result.unwrap();
+                        }
+                        tokio::time::sleep(Duration::from_millis(20)).await;
+                    }
+                })
+                .await
+                .unwrap()
+            }
+        };
+        grant("device.modify", &device);
+        let opened = host
+            .invoke(
+                &actor,
+                call(
+                    &device,
+                    "device.open",
+                    serde_json::json!({"configuration": SerialConfiguration::default()}),
+                ),
+            )
+            .await
+            .unwrap();
+        let ActionResult::Opened(open) = settled(opened).await else {
+            panic!("Expected an open session");
+        };
+        let session = Target {
+            id: open.session_id.clone(),
+            kind: ResourceKind::try_from("session").unwrap(),
+            session_id: Some(open.session_id),
+            session_epoch: Some(open.session_epoch),
+            ..device
+        };
+        let definition = r#"{"version":"1","byteLength":1,"fields":[{"id":"reading","kind":"integer","byteOffset":0,"width":1,"order":"big","scale":"0.5","bias":"1"}]}"#;
+        let decode_params = serde_json::json!({"definition":definition,"bytesBase64":"QQ=="});
+        let crc_params = serde_json::json!({
+            "width":16,
+            "samples":[
+                {"bytesBase64":"MTIzNDU2Nzg5","checksumBase64":"N0s="},
+                {"bytesBase64":"AQMAAAAK","checksumBase64":"xc0="}
+            ]
+        });
+        let modbus_params = serde_json::json!({
+            "mode":"decode","transport":"rtu","direction":"request","bytesBase64":"AQMAAAAKxc0="
+        });
+        let modbus_compare = serde_json::json!({
+            "mode":"compare","transport":"tcp",
+            "requestBase64":STANDARD.encode([0, 1, 0, 0, 0, 6, 1, 3, 0, 0, 0, 2]),
+            "responseBase64":STANDARD.encode([0, 1, 0, 0, 0, 3, 1, 0x83, 2]),
+        });
+        let server_request = STANDARD.encode([0, 1, 0, 0, 0, 6, 1, 6, 0, 1, 1, 2]);
+        let modbus_server = serde_json::json!({
+            "transport":"tcp","requestBase64":&server_request,"model":{
+                "unitId":1,
+                "tables":{"holdingRegisters":[{"start":0,"values":[12,0]}]}
+            }
+        });
+        let nmea = serde_json::json!({
+            "text":"$GPVTG,77.52,T,,M,0.004,N,0.008,K,A*06\r\n$GPVTG,77.52,T,,M,0.004,N,0.008,K,A*00"
+        });
+        let at_response = serde_json::json!({
+            "command":"AT+CREG?",
+            "text":"AT+CREG?\r\n+CREG: 5\r\n+CREG: 2,5\r\nOK",
+        });
+        for (action, params) in [
+            ("swb.reference.fields.decode", decode_params.clone()),
+            ("swb.reference.fields.identifyCrc", crc_params.clone()),
+            ("swb.reference.fields.modbus", modbus_params.clone()),
+            ("swb.reference.fields.modbus", modbus_compare.clone()),
+            ("swb.reference.fields.modbusServer", modbus_server.clone()),
+            ("swb.reference.fields.nmea", nmea.clone()),
+            ("swb.reference.fields.at", at_response.clone()),
+        ] {
+            assert_eq!(
+                host.invoke(&actor, call(&session, action, params))
+                    .await
+                    .unwrap_err()
+                    .code,
+                "PERMISSION_DENIED"
+            );
+        }
+        grant("content.read", &session);
+        let yaml = "version: \"1\"\nbyteLength: 1\nfields:\n  - id: reading\n    kind: integer\n    byteOffset: 0\n    width: 1\n    order: big\n    scale: \"0.5\"\n    bias: \"1\"";
+        for (action, params, expected_status) in [
+            (
+                "swb.reference.fields.encode",
+                serde_json::json!({"definition":definition,"values":{"reading":"33.5"}}),
+                "encoded",
+            ),
+            ("swb.reference.fields.decode", decode_params, "decoded"),
+            (
+                "swb.reference.fields.encode",
+                serde_json::json!({"definition":yaml,"definitionFormat":"yaml","values":{"reading":"33.5"}}),
+                "encoded",
+            ),
+            (
+                "swb.reference.fields.decode",
+                serde_json::json!({"definition":yaml,"definitionFormat":"yaml","bytesBase64":"QQ=="}),
+                "decoded",
+            ),
+            (
+                "swb.reference.fields.decode",
+                serde_json::json!({"definition":yaml.replace("width: 1","width: 2"),"definitionFormat":"yaml","bytesBase64":"QQ=="}),
+                "invalid",
+            ),
+            ("swb.reference.fields.identifyCrc", crc_params, "matched"),
+            ("swb.reference.fields.modbus", modbus_params, "decoded"),
+            (
+                "swb.reference.fields.modbus",
+                modbus_compare,
+                "device-exception",
+            ),
+            (
+                "swb.reference.fields.modbusServer",
+                modbus_server,
+                "replied",
+            ),
+            ("swb.reference.fields.nmea", nmea, "parsed"),
+            ("swb.reference.fields.at", at_response, "parsed"),
+        ] {
+            let accepted = host
+                .invoke(&actor, call(&session, action, params))
+                .await
+                .unwrap();
+            let ActionResult::Reference(output) = settled(accepted).await else {
+                panic!("Expected a codec result file");
+            };
+            let read = host
+                .inner
+                .files
+                .read(
+                    FileReadParams {
+                        file_ref: output.result_ref,
+                        offset: 0.into(),
+                        max_bytes: 4096.into(),
+                    },
+                    &actor,
+                )
+                .unwrap();
+            assert!(read.at_end);
+            let report: serde_json::Value =
+                serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap())
+                    .unwrap();
+            assert_eq!(report["status"], expected_status);
+            if action == "swb.reference.fields.modbusServer" {
+                assert_eq!(report["responseBase64"], server_request);
+                assert_eq!(
+                    report["model"]["tables"]["holdingRegisters"],
+                    serde_json::json!([{"start":0,"values":[12,258]}])
+                );
+            } else if action == "swb.reference.fields.at" {
+                assert_eq!(report["state"], "complete");
+                assert_eq!(
+                    report["lines"],
+                    serde_json::json!([
+                        {"line":1,"raw":"AT+CREG?","kind":"echo"},
+                        {"line":2,"raw":"+CREG: 5","kind":"urc","code":"+CREG"},
+                        {"line":3,"raw":"+CREG: 2,5","kind":"response","code":"+CREG"},
+                        {"line":4,"raw":"OK","kind":"result","code":"OK"}
+                    ])
+                );
+            } else if expected_status == "parsed" {
+                assert_eq!(report["lines"][0]["type"], "VTG");
+                assert_eq!(
+                    report["lines"][0]["fields"][2]["value"],
+                    serde_json::Value::Null
+                );
+                assert_eq!(
+                    report["lines"][0]["fields"][0],
+                    serde_json::json!({"id":"trueCourse","value":77.52,"raw":"77.52","start":7,"end":12,"unit":"deg"})
+                );
+                assert_eq!(report["lines"][1]["status"], "invalid");
+                assert_eq!(report["lines"][1]["path"], "checksum");
+            } else if expected_status == "device-exception" {
+                assert_eq!(
+                    report,
+                    serde_json::json!({"status":"device-exception","exceptionCode":2})
+                );
+            } else if action == "swb.reference.fields.modbus" {
+                assert_eq!(
+                    report,
+                    serde_json::json!({"status":"decoded","broadcast":false,"packet":{
+                        "unitId":1,"pdu":{"functionCode":3,"address":0,"quantity":10}
+                    }})
+                );
+            } else if expected_status == "matched" {
+                assert_eq!(report["distinctSamples"], 2);
+                assert_eq!(
+                    report["candidates"],
+                    serde_json::json!([{"name":"CRC-16/MODBUS","width":16,"polynomial":32773,
+                        "initial":65535,"reflectInput":true,"reflectOutput":true,
+                        "finalXor":0,"order":"little"}])
+                );
+            } else if expected_status == "invalid" {
+                assert_eq!(
+                    report,
+                    serde_json::json!({"status":"invalid","path":"fields[0].width","position":{"line":7,"column":5}})
+                );
+            } else if expected_status == "encoded" {
+                assert_eq!(
+                    report,
+                    serde_json::json!({"status":"encoded","bytesBase64":"QQ=="})
+                );
+            } else {
+                assert_eq!(report["status"], "decoded");
+                assert_eq!(report["readings"][0]["value"], "33.5");
+                assert_eq!(report["readings"][0]["rawHex"], "41");
+                assert_eq!(
+                    report["readings"][0]["bytes"],
+                    serde_json::json!({"start":0,"end":1})
+                );
+            }
+        }
+        let modbus = "swb.reference.modbus.transaction";
+        let request = [0, 17, 0, 0, 0, 6, 1, 3, 0, 0, 0, 1];
+        let params = serde_json::json!({
+            "transport": "tcp",
+            "requestBase64": STANDARD.encode(request),
+            "responseTimeoutMs": 200,
+            "includeTrace": true,
+        });
+        grant("metadata.read", &session);
+        let denied = host
+            .invoke(&actor, call(&session, modbus, params.clone()))
+            .await
+            .unwrap_err();
+        assert_eq!(denied.code, "PERMISSION_DENIED");
+        grant("device.modify", &session);
+        let accepted = host
+            .invoke(&actor, call(&session, modbus, params))
+            .await
+            .unwrap();
+        let ActionResult::Reference(output) = settled(accepted).await else {
+            panic!("Expected a bundled Modbus result file");
+        };
+        let read = host
+            .inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: output.result_ref,
+                    offset: 0.into(),
+                    max_bytes: 4096.into(),
+                },
+                &actor,
+            )
+            .unwrap();
+        assert!(read.at_end);
+        let trace: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap()).unwrap();
+        assert_eq!(trace["outcome"], "response_timeout", "{trace:?}");
+        assert_eq!(trace["attempts"].as_array().unwrap().len(), 1);
+        assert_eq!(trace["attempts"][0]["requestTransactionId"], 17);
+        assert!(trace["attempts"][0]["trace"]["tx"]["eventSeq"].is_string());
+        assert!(trace["attempts"][0]["trace"].get("rxFirst").is_none());
+        assert_eq!(trace["ignoredFrames"], 1, "Virtual Echo is not a reply");
+        eprintln!(
+            "bundled_modbus denied_without_device_modify=true accepted_tx=true invalid_echo_ignored=true"
+        );
     }
 
     #[tokio::test]

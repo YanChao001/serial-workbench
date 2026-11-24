@@ -22,7 +22,8 @@ import type {
   HostInvocation,
 } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
-import { saveTextExport } from "@/lib/tauri";
+import { isTauri, saveTextExport } from "@/lib/tauri";
+import { isRecord } from "@/lib/settings-model";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
 import { stateScopeKey } from "@/lib/host-scope";
 import { SerialConfigurationFields } from "./serial-configuration-fields";
@@ -44,7 +45,12 @@ import { TransferOptions } from "./transfer-options";
 import { CaptureTools } from "./capture-tools";
 import { DiagnosticPanel } from "./diagnostic-panel";
 import { FramingTool } from "./framing-tool";
+import { ProtocolFieldsTool } from "./protocol-fields-tool";
 import { framingAction } from "./framing-model";
+import {
+  modbusStartEventSeq,
+  modbusTimelineAction,
+} from "./modbus-timeline-model";
 import { workbenchToolLabels } from "./tool-labels";
 import { WorkbenchNotice } from "./workbench-notice";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
@@ -467,8 +473,39 @@ export function WorkbenchTools({
     );
   if (tool === "framing") {
     const target = context.target;
+    const definitionFileAccess = ready && isTauri() ? host : undefined;
     if (!ready || !target?.sessionId || context.isReplay)
-      return <p>{t("workbench.framing.selectSession")}</p>;
+      return (
+        <div className="space-y-3">
+          <p>{t("workbench.framing.selectSession")}</p>
+          <ProtocolFieldsTool frames={[]} fileAccess={definitionFileAccess} />
+        </div>
+      );
+    const key = JSON.stringify([
+      target.hostId,
+      target.sessionId,
+      target.sessionEpoch,
+      generation,
+    ]);
+    const modbusTimeline =
+      target.sessionEpoch &&
+      context.session?.state === "open" &&
+      !context.session.readOnly
+        ? {
+            target,
+            startEventSeq: modbusStartEventSeq(context.items, target),
+            available: catalog.some(
+              (spec) =>
+                spec.actionId === modbusTimelineAction &&
+                spec.targetKinds.includes("session") &&
+                isRecord(spec.inputSchema.properties) &&
+                "includeTrace" in spec.inputSchema.properties,
+            ),
+            invoke,
+            waitForOperation: host.waitForOperation,
+            readFile: host.readFile,
+          }
+        : undefined;
     if (
       !catalog.some(
         (spec) =>
@@ -482,16 +519,17 @@ export function WorkbenchTools({
           <Link className="underline underline-offset-4" to="/plugins">
             {t("workbench.framing.openPlugins")}
           </Link>
+          <ProtocolFieldsTool
+            key={key}
+            frames={[]}
+            fileAccess={definitionFileAccess}
+            modbusTimeline={modbusTimeline}
+          />
         </div>
       );
     return (
       <FramingTool
-        key={JSON.stringify([
-          target.hostId,
-          target.sessionId,
-          target.sessionEpoch,
-          generation,
-        ])}
+        key={key}
         target={target}
         sourceName={
           host.state.devices.find(
@@ -504,6 +542,8 @@ export function WorkbenchTools({
         invoke={invoke}
         waitForOperation={host.waitForOperation}
         readFile={host.readFile}
+        definitionFileAccess={definitionFileAccess}
+        modbusTimeline={modbusTimeline}
       />
     );
   }

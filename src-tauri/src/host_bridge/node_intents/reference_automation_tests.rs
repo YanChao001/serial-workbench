@@ -2,6 +2,7 @@ use super::*;
 use crate::host_bridge::DesktopAttachment;
 use rmcp::{ServiceError, model::ErrorCode};
 use serde_json::{Value, json};
+use std::collections::VecDeque;
 use std::sync::atomic::Ordering;
 use tokio::time::timeout;
 
@@ -16,6 +17,16 @@ const BEFORE_LATE: u64 = b"one\ntwo\nwrong\nwait\n".len() as u64;
 const LATE_RX: &[u8] = b"late\n";
 const AFTER_LATE: &[u8] = b"after-late\n";
 const RESPONSE_TIMEOUT_MS: u64 = 200;
+const MODBUS: &str = "swb.reference.automation.modbus";
+const MODBUS_REQUEST: &[u8] = &[0, 7, 0, 0, 0, 6, 1, 3, 0, 0, 0, 1];
+const MODBUS_LATE_REQUEST: &[u8] = &[0, 8, 0, 0, 0, 6, 1, 3, 0, 0, 0, 1];
+const MODBUS_REPLY: &[u8] = &[0, 7, 0, 0, 0, 5, 1, 3, 2, 0x12, 0x34];
+const MODBUS_FOREIGN_REPLY: &[u8] = &[0, 9, 0, 0, 0, 5, 1, 3, 2, 0x12, 0x34];
+const MODBUS_LATE_REPLY: &[u8] = &[0, 8, 0, 0, 0, 3, 1, 0x83, 2];
+const MODBUS_RETRY_START: &[u8] = &[0xff, 0xff, 0, 0, 0, 6, 1, 3, 0, 0, 0, 1];
+const MODBUS_RETRY_NEXT: &[u8] = &[0, 0, 0, 0, 0, 6, 1, 3, 0, 0, 0, 1];
+const MODBUS_STALE_REPLY: &[u8] = &[0xff, 0xff, 0, 0, 0, 5, 1, 3, 2, 0x12, 0x34];
+const MODBUS_RETRY_REPLY: &[u8] = &[0, 0, 0, 0, 0, 5, 1, 3, 2, 0x12, 0x34];
 
 struct DelayedEcho {
     inner: Box<dyn Transport>,
@@ -73,6 +84,100 @@ fn step(send: &[u8], expected: &[u8]) -> Value {
     json!({"sendBase64": STANDARD.encode(send), "expectBase64": STANDARD.encode(expected)})
 }
 
+struct ModbusPeer {
+    inner: Box<dyn Transport>,
+    chunks: VecDeque<(std::time::Instant, Arc<[u8]>)>,
+    first_attempt_dropped: bool,
+}
+
+impl Transport for ModbusPeer {
+    fn capabilities(&self) -> TransportCapabilities {
+        self.inner.capabilities()
+    }
+
+    fn read(&mut self, limit: usize, wait: Duration) -> BackendResult<ReadBlock> {
+        let empty = || ReadBlock {
+            bytes: Arc::from([]),
+            message: None,
+        };
+        if let Some((due, _)) = self.chunks.front() {
+            std::thread::sleep(
+                due.saturating_duration_since(std::time::Instant::now())
+                    .min(wait),
+            );
+            return Ok(if *due <= std::time::Instant::now() {
+                let (_, bytes) = self.chunks.pop_front().unwrap();
+                assert!(bytes.len() <= limit);
+                ReadBlock {
+                    bytes,
+                    message: None,
+                }
+            } else {
+                empty()
+            });
+        }
+        let echoed = self.inner.read(limit, wait)?;
+        let now = std::time::Instant::now();
+        if echoed.bytes.as_ref() == MODBUS_REQUEST {
+            let mixed = [MODBUS_FOREIGN_REPLY, &MODBUS_REPLY[..3]].concat();
+            self.chunks
+                .push_back((now + Duration::from_millis(20), Arc::from(mixed)));
+            self.chunks.push_back((
+                now + Duration::from_millis(40),
+                Arc::from(&MODBUS_REPLY[3..]),
+            ));
+        } else if echoed.bytes.as_ref() == MODBUS_LATE_REQUEST {
+            self.chunks.push_back((
+                now + Duration::from_millis(180),
+                Arc::from(MODBUS_LATE_REPLY),
+            ));
+        } else if echoed.bytes.as_ref() == MODBUS_RETRY_START {
+            assert!(
+                !self.first_attempt_dropped,
+                "TCP retry reused the previous ID"
+            );
+            self.first_attempt_dropped = true;
+        } else if echoed.bytes.as_ref() == MODBUS_RETRY_NEXT {
+            assert!(std::mem::take(&mut self.first_attempt_dropped));
+            let mixed = [MODBUS_STALE_REPLY, MODBUS_RETRY_REPLY].concat();
+            self.chunks
+                .push_back((now + Duration::from_millis(20), Arc::from(mixed)));
+        } else {
+            assert!(
+                echoed.bytes.is_empty(),
+                "Virtual peer received an unexpected request"
+            );
+        }
+        Ok(empty())
+    }
+
+    fn begin_write(
+        &mut self,
+        bytes: WritePayload,
+        wait: Duration,
+        cancelled: Arc<AtomicBool>,
+        closing: Arc<AtomicBool>,
+    ) -> BackendResult<Box<dyn PendingWrite>> {
+        self.inner.begin_write(bytes, wait, cancelled, closing)
+    }
+
+    fn configure(&mut self, config: &SerialConfiguration) -> BackendResult<ConfigApplication> {
+        self.inner.configure(config)
+    }
+
+    fn control(&mut self, command: ControlCommand) -> BackendResult<ControlResult> {
+        self.inner.control(command)
+    }
+
+    fn begin_drain(&mut self, request: DrainRequest) -> BackendResult<Box<dyn PendingDrain>> {
+        self.inner.begin_drain(request)
+    }
+
+    fn close(&mut self) -> BackendResult<()> {
+        self.inner.close()
+    }
+}
+
 async fn result(bridge: &DesktopHostBridge, client: &AttachResult, operation: Operation) -> Value {
     let operation = wait(bridge, client, operation).await;
     let Some(ActionResult::Reference(output)) = operation.result else {
@@ -90,6 +195,100 @@ async fn result(bridge: &DesktopHostBridge, client: &AttachResult, operation: Op
         panic!("Missing automation result bytes");
     };
     decode_result(&page)
+}
+
+#[tokio::test]
+#[ignore = "requires prepared Node and the signed automation receipt"]
+async fn native_automation_modbus_matches_owned_tx_and_reports_a_late_exception() {
+    let package = signed_reference("SWB_TEST_SIGNED_AUTOMATION_RECEIPT");
+    let open_virtual = DeviceService::virtual_opener();
+    let opener: TransportOpener = Arc::new(move |id, config| {
+        Ok(Box::new(ModbusPeer {
+            inner: open_virtual(id, config)?,
+            chunks: VecDeque::new(),
+            first_attempt_dropped: false,
+        }))
+    });
+    with_embedded_opener(opener, async move |profile| {
+        let bridge = DesktopHostBridge::new(profile.to_owned());
+        let desktop = bridge.attach("main").await.unwrap();
+        let client = &desktop.attachment;
+        install_signed_reference(&bridge, &desktop, package, "swb.reference.automation").await;
+        let opened = bridge.connect_device_intent(
+            "main", desktop.generation, Id::try_from("virtual:echo").unwrap(),
+            OpenParams { transport_params: None, configuration: SerialConfiguration::default(), binding: None },
+        ).await.unwrap();
+        let session = Target {
+            host_id: client.host_id.clone(),
+            kind: ResourceKind::try_from("session").unwrap(),
+            id: opened.session_id.clone(),
+            session_id: Some(opened.session_id),
+            session_epoch: Some(opened.session_epoch),
+        };
+        let first = invoke(
+            &bridge, client, &session, MODBUS,
+            json!({"transport":"tcp", "requestBase64":STANDARD.encode(MODBUS_REQUEST), "includeTrace":true}),
+            ExecutionMode::Independent,
+        ).await;
+        let matched = result(&bridge, client, first).await;
+        assert_eq!(matched["outcome"], "matched", "{matched:?}");
+        assert_eq!(matched["ignoredFrames"], 1);
+        assert_eq!(matched["response"]["bytesBase64"], STANDARD.encode(MODBUS_REPLY));
+        assert_eq!(matched["response"]["source"]["byteStart"], "11");
+        assert_eq!(matched["response"]["source"]["byteEnd"], "22");
+        let matched_trace = &matched["attempts"][0]["trace"];
+        assert_eq!(matched_trace["tx"]["clockId"], matched_trace["rxFirst"]["clockId"]);
+        assert_eq!(matched_trace["rxFirst"]["eventSeq"], matched["response"]["source"]["eventStart"]);
+        assert_ne!(matched_trace["rxFirst"]["eventSeq"], matched_trace["rxLast"]["eventSeq"]);
+        assert!(matched["response"]["timing"]["elapsedNs"].as_str().unwrap().parse::<u64>().unwrap() > 0);
+        assert!(matched["response"]["timing"]["rxPrecision"]["source"].is_string());
+
+        let second = invoke(
+            &bridge, client, &session, MODBUS,
+            json!({
+                "transport":"tcp", "requestBase64":STANDARD.encode(MODBUS_LATE_REQUEST),
+                "responseTimeoutMs": 50, "lateResponseWaitMs": 3000, "retryLimit": 1,
+            }),
+            ExecutionMode::Independent,
+        ).await;
+        let late = result(&bridge, client, second).await;
+        assert_eq!(late["outcome"], "response_timeout", "{late:?}");
+        assert_ne!(late["operationId"], matched["operationId"]);
+        assert!(late.get("response").is_none());
+        assert_eq!(late["lateResponse"]["exceptionCode"], 2);
+        assert_eq!(late["lateResponse"]["bytesBase64"], STANDARD.encode(MODBUS_LATE_REPLY));
+        assert_eq!(late["lateResponse"]["source"]["byteStart"], "22");
+        assert_eq!(late["lateResponse"]["source"]["byteEnd"], "31");
+        assert!(late["lateResponse"]["timing"]["elapsedNs"].as_str().unwrap().parse::<u64>().unwrap() > 50_000_000);
+        assert_eq!(late["attempts"].as_array().unwrap().len(), 1);
+        eprintln!("modbus_transaction coalesced_foreign_frames=1 matched_rx_range=11..22 late_exception=2 late_rx_range=22..31");
+
+        let third = invoke(
+            &bridge, client, &session, MODBUS,
+            json!({
+                "transport":"tcp", "requestBase64":STANDARD.encode(MODBUS_RETRY_START),
+                "responseTimeoutMs": 400, "retryLimit": 1, "includeTrace":true,
+            }),
+            ExecutionMode::Independent,
+        ).await;
+        let retried = result(&bridge, client, third).await;
+        assert_eq!(retried["outcome"], "matched", "{retried:?}");
+        let attempts = retried["attempts"].as_array().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(attempts[0]["outcome"], "response_timeout");
+        assert_eq!(attempts[0]["requestTransactionId"], 65535);
+        assert!(attempts[0]["trace"]["tx"]["eventSeq"].is_string());
+        assert!(attempts[0]["trace"].get("rxFirst").is_none());
+        assert_eq!(attempts[1]["requestTransactionId"], 0);
+        assert_eq!(attempts[1]["ignoredFrames"], 1);
+        assert_ne!(attempts[0]["operationId"], attempts[1]["operationId"]);
+        assert_eq!(retried["operationId"], attempts[1]["operationId"]);
+        assert_eq!(retried["response"]["bytesBase64"], STANDARD.encode(MODBUS_RETRY_REPLY));
+        assert_eq!(retried["response"]["source"]["byteStart"], "42");
+        assert_eq!(retried["response"]["source"]["byteEnd"], "53");
+        assert_eq!(attempts[1]["trace"]["rxLast"]["monoNs"], retried["response"]["timing"]["rxMonoNs"]);
+        eprintln!("modbus_retry attempts=2 transaction_ids=65535,0 stale_frames=1 matched_rx_range=42..53");
+    }).await;
 }
 
 #[tokio::test]

@@ -1364,22 +1364,28 @@ async fn exercise_terminal(
     assert!(!revoked_source.key.approved);
     assert_eq!(revoked_source.key.public_key_sha256, public_key_sha256);
 
-    // 首方分帧会和终端共用一个 Node。先验共享占用的拒绝，再正常释放占用。
-    let framing = before
+    // 在隔离 profile 验证共享 Node 的卸载保护，再按原摘要恢复首启包。
+    let active_packages: Vec<_> = before
         .packages
         .iter()
-        .find(|package| package.id.as_str() == "swb.reference.framing" && package.enabled);
-    let removal_revision = if let Some(framing) = framing {
-        let occupied = runtime(&bridge, business, &framing.id).await;
-        assert_eq!(occupied.phase, NodePackageRuntimePhase::Active);
+        .filter(|package| package.enabled)
+        .collect();
+    let mut removal_revision = disabled.revision;
+    if !active_packages.is_empty() {
+        let mut owners = Vec::new();
+        for package in &active_packages {
+            let status = runtime(&bridge, business, &package.id).await;
+            assert_eq!(status.phase, NodePackageRuntimePhase::Active);
+            owners.push(status);
+        }
         let installed = list(&bridge, business).await;
-        assert_eq!(installed.revision, disabled.revision);
+        assert_eq!(installed.revision, removal_revision);
         let accepted = bridge
             .apply_node_intent(
                 "main",
                 attached.generation,
                 LocalNodeIntent::Uninstall {
-                    expected_revision: installed.revision,
+                    expected_revision: removal_revision,
                     params: identity.clone(),
                 },
             )
@@ -1393,32 +1399,34 @@ async fn exercise_terminal(
         );
         assert!(blocked.result.is_none());
         assert_eq!(list(&bridge, business).await, installed);
-        assert_eq!(runtime(&bridge, business, &framing.id).await, occupied);
-        let ActionResult::NodePackageChanged(paused) = apply(
-            &bridge,
-            &attached,
-            LocalNodeIntent::SetEnabled {
-                expected_revision: installed.revision,
-                params: NodePackageSetEnabledParams {
-                    id: framing.id.clone(),
-                    archive_sha256: framing.archive_sha256.clone(),
-                    enabled: false,
+        for (package, owner) in active_packages.iter().zip(owners) {
+            assert_eq!(runtime(&bridge, business, &package.id).await, owner);
+        }
+        for package in &active_packages {
+            let ActionResult::NodePackageChanged(paused) = apply(
+                &bridge,
+                &attached,
+                LocalNodeIntent::SetEnabled {
+                    expected_revision: removal_revision,
+                    params: NodePackageSetEnabledParams {
+                        id: package.id.clone(),
+                        archive_sha256: package.archive_sha256.clone(),
+                        enabled: false,
+                    },
                 },
-            },
-        )
-        .await
-        else {
-            panic!("missing framing pause receipt");
-        };
-        assert!(!paused.package.enabled);
-        assert_eq!(
-            runtime(&bridge, business, &framing.id).await.phase,
-            NodePackageRuntimePhase::Inactive
-        );
-        paused.revision
-    } else {
-        disabled.revision
-    };
+            )
+            .await
+            else {
+                panic!("missing bundled package pause receipt");
+            };
+            assert!(!paused.package.enabled);
+            assert_eq!(
+                runtime(&bridge, business, &package.id).await.phase,
+                NodePackageRuntimePhase::Inactive
+            );
+            removal_revision = paused.revision;
+        }
+    }
 
     let ActionResult::NodePackageUninstalled(removed) = apply(
         &bridge,
@@ -1434,30 +1442,35 @@ async fn exercise_terminal(
     };
     assert_eq!(removed.id, identity.id);
     assert_eq!(removed.archive_sha256, identity.archive_sha256);
-    if let Some(framing) = framing {
+    let mut restoration_revision = removed.revision;
+    for package in &active_packages {
         let ActionResult::NodePackageChanged(restored) = apply(
             &bridge,
             &attached,
             LocalNodeIntent::SetEnabled {
-                expected_revision: removed.revision,
+                expected_revision: restoration_revision,
                 params: NodePackageSetEnabledParams {
-                    id: framing.id.clone(),
-                    archive_sha256: framing.archive_sha256.clone(),
+                    id: package.id.clone(),
+                    archive_sha256: package.archive_sha256.clone(),
                     enabled: true,
                 },
             },
         )
         .await
         else {
-            panic!("missing framing restore receipt");
+            panic!("missing bundled package restore receipt");
         };
-        assert_eq!(restored.package, *framing);
+        assert_eq!(restored.package, **package);
         assert_eq!(
-            runtime(&bridge, business, &framing.id).await.phase,
+            runtime(&bridge, business, &package.id).await.phase,
             NodePackageRuntimePhase::Active
         );
+        restoration_revision = restored.revision;
+    }
+    if !active_packages.is_empty() {
         eprintln!(
-            "terminal_shared_owner busy_preserved_snapshot=true released_owner=true terminal_uninstalled=true framing_restored=true"
+            "terminal_shared_owner busy_preserved_snapshot=true terminal_uninstalled=true restored_packages={}",
+            active_packages.len()
         );
     }
     assert_eq!(

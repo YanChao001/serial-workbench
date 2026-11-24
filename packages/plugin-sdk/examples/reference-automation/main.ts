@@ -1,28 +1,34 @@
 import { setTimeout as delay } from "node:timers/promises";
 import { isMainThread } from "node:worker_threads";
 import type {
-  Call,
   NodeRegister,
   NodeTaskContext,
-  Operation,
   SourceRange,
   StreamReadResult,
 } from "@serial-workbench/plugin-sdk/node";
+import {
+  modbusTransaction,
+  modbusTransactionAction,
+} from "./modbus-transaction.ts";
+import {
+  acquireTransaction,
+  maxPageReads,
+  pollMs,
+  readSession,
+  releaseTransaction,
+  retainedTail,
+  sendTransaction,
+  type Session,
+} from "./session-transaction.ts";
 
 const action = "swb.reference.automation.run";
 const maxSteps = 8;
 const maxRounds = 8;
 const roundPauseMs = 3000;
 const maxBytes = 256;
-const maxPageReads = 32;
-const txWaitMs = 1000;
-const transactionTtlMs = "15000";
-const settleMs = 4000;
-const pollMs = 20;
 
 if (!isMainThread) await delay(roundPauseMs);
 
-type Session = Call["target"] & { sessionId: string; sessionEpoch: string };
 type EventTime = StreamReadResult["events"][number]["time"];
 type Outcome =
   | "matched"
@@ -74,87 +80,6 @@ function parseStep(value: unknown) {
   };
 }
 
-function read(task: NodeTaskContext, session: Session, startEventSeq: string) {
-  task.signal.throwIfAborted();
-  return task.streams.read({
-    sessionId: session.sessionId,
-    sessionEpoch: session.sessionEpoch,
-    startEventSeq,
-    maxEvents: "32",
-    maxBytes: "65536",
-  });
-}
-
-async function retainedTail(
-  task: NodeTaskContext,
-  session: Session,
-  cursor: string,
-) {
-  for (let pages = 0; pages < maxPageReads; pages++) {
-    const page = await read(task, session, cursor);
-    if (!page.hasMore) return page.nextEventSeq;
-    cursor = page.nextEventSeq;
-  }
-  throw new Error("Automation requires a recent source event cursor");
-}
-
-function pending(child: Operation) {
-  return ["queued", "running", "cancel_requested"].includes(child.state);
-}
-
-async function settledOperation(task: NodeTaskContext, child: Operation) {
-  const deadline = performance.now() + settleMs;
-  while (pending(child)) {
-    if (performance.now() >= deadline) return undefined;
-    await delay(pollMs, undefined, { signal: task.signal });
-    child = await task.operations.get({ operationId: child.operationId });
-  }
-  return child;
-}
-
-async function acquireTransaction(task: NodeTaskContext, session: Session) {
-  let owner = await task.actions.invokeChild({
-    actionId: "lease.acquire",
-    target: session,
-    params: { kind: "transaction", ttlMs: transactionTtlMs },
-  });
-  while (pending(owner)) {
-    task.signal.throwIfAborted();
-    const receipt = owner.result;
-    if (
-      owner.state === "running" &&
-      receipt?.kind === "lease" &&
-      receipt.value.state === "active"
-    )
-      return receipt.value.leaseId;
-    await delay(pollMs, undefined, { signal: task.signal });
-    owner = await task.operations.get({ operationId: owner.operationId });
-  }
-  throw new Error("The serial transaction lease did not become active");
-}
-
-async function releaseTransaction(
-  task: NodeTaskContext,
-  session: Session,
-  leaseId: string,
-) {
-  const released = await settledOperation(
-    task,
-    await task.actions.invokeChild({
-      actionId: "lease.release",
-      target: session,
-      params: { leaseId },
-    }),
-  );
-  if (
-    released?.state !== "succeeded" ||
-    released.result?.kind !== "lease" ||
-    released.result.value.leaseId !== leaseId ||
-    released.result.value.state !== "released"
-  )
-    throw new Error("The serial transaction lease release was not confirmed");
-}
-
 async function response(
   task: NodeTaskContext,
   session: Session,
@@ -194,7 +119,7 @@ async function response(
   let finalPages = 0;
   while (true) {
     const finalRead = performance.now() >= deadline;
-    const page = await read(task, session, cursor);
+    const page = await readSession(task, session, cursor);
     for (const event of page.events) {
       task.signal.throwIfAborted();
       if (
@@ -271,6 +196,7 @@ async function response(
 }
 
 export const register: NodeRegister = (context) => {
+  context.actions.register(modbusTransactionAction, modbusTransaction);
   context.actions.register(action, async ({ target, params }, task) => {
     const { sessionId, sessionEpoch } = target;
     const {
@@ -317,36 +243,21 @@ export const register: NodeRegister = (context) => {
       task.signal.throwIfAborted();
       const leaseId = await acquireTransaction(task, session);
       try {
-        const child = await task.actions.invokeChild({
-          actionId: "session.tx",
-          target: session,
+        const transmission = await sendTransaction(
+          task,
+          session,
           leaseId,
-          params: {
-            bytesBase64: step.sendBase64,
-            writeWaitMs: String(txWaitMs),
-            queueWaitMs: String(txWaitMs),
-          },
-        });
-        const finished = await settledOperation(task, child);
-        task.signal.throwIfAborted();
-        const receipt = finished?.result;
-        if (
-          finished?.state !== "succeeded" ||
-          receipt?.kind !== "tx" ||
-          receipt.value.outcome !== "accepted" ||
-          receipt.value.operationId !== child.operationId ||
-          receipt.value.sessionId !== sessionId ||
-          receipt.value.sessionEpoch !== sessionEpoch ||
-          receipt.value.bytesBase64 !== step.sendBase64
-        ) {
+          step.sendBase64,
+        );
+        if (!transmission.confirmed) {
           const outcome = "transmit_unconfirmed";
-          attempted.push({ operationId: child.operationId, outcome });
+          attempted.push({ operationId: transmission.operationId, outcome });
           return { outcome, completedSteps: index, attempted };
         }
         const { nextEventSeq, result } = await response(
           task,
           session,
-          child.operationId,
+          transmission.operationId,
           step.expect,
           cursor,
           responseTimeoutMs,

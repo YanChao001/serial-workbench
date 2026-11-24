@@ -13,6 +13,8 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
+import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
+import protocolFields from "../crates/host/resources/node-packages/protocol-fields.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import * as components from "./components-build.mjs";
 import { buildApplication } from "./build-lib.mjs";
@@ -194,6 +196,18 @@ test("components build first with one target and manifest hashes real bytes", as
       id: framing.id,
       version: framing.version,
       archiveSha256: framing.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+    {
+      id: protocolFields.id,
+      version: protocolFields.version,
+      archiveSha256: protocolFields.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+    {
+      id: modbus.id,
+      version: modbus.version,
+      archiveSha256: modbus.archiveSha256,
       hostComponent: "serial-workbench-host.exe",
     },
   ]);

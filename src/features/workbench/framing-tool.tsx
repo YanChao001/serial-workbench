@@ -25,6 +25,9 @@ import {
   type FramingPage,
 } from "./framing-model";
 import { useToolAction } from "./transfer-capture-actions";
+import type { ProtocolDefinitionFileAccess } from "./protocol-definition-file";
+import type { ModbusTimelineAccess } from "./modbus-timeline-tool";
+import { ProtocolFieldsTool } from "./protocol-fields-tool";
 import { WorkbenchNotice } from "./workbench-notice";
 
 const modes: readonly [FramingMode, MessageKey][] = [
@@ -42,6 +45,8 @@ export function FramingTool({
   invoke,
   readFile,
   waitForOperation,
+  definitionFileAccess,
+  modbusTimeline,
 }: {
   items: readonly StreamItem[];
   target: Target;
@@ -49,6 +54,8 @@ export function FramingTool({
   invoke: HostContextValue["invoke"];
   readFile: HostContextValue["readFile"];
   waitForOperation: HostContextValue["waitForOperation"];
+  definitionFileAccess?: ProtocolDefinitionFileAccess;
+  modbusTimeline?: ModbusTimelineAccess;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -322,6 +329,11 @@ export function FramingTool({
           ) : null}
         </section>
       ) : null}
+      <ProtocolFieldsTool
+        frames={result?.page.frames ?? []}
+        fileAccess={definitionFileAccess}
+        modbusTimeline={modbusTimeline}
+      />
     </div>
   );
 }

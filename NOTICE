@@ -23,3 +23,7 @@ The ANSI terminal uses xterm.js and its Fit addon from the xterm.js project.
 Both components are distributed under their original MIT licenses.
 Source: resources/third-party/xterm.LICENSE and xterm-addon-fit.LICENSE
 Distributions: third-party/xterm.LICENSE and xterm-addon-fit.LICENSE
+
+Protocol field definitions use the yaml parser distributed under the ISC License.
+Source: resources/third-party/yaml.LICENSE
+Distributions: third-party/yaml.LICENSE

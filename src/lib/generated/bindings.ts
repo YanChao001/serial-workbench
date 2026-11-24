@@ -2004,6 +2004,7 @@ export type FileReadResult_Serialize = {
 
 export type FileResourceRole =
   | "source"
+  | "protocolDefinitionSource"
   | "media"
   | "captureTarget"
   | "captureSource"

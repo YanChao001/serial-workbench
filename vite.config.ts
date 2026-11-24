@@ -40,6 +40,7 @@ export default defineConfig(({ mode, command, isPreview }) => {
               "third-party/xterm-addon-fit.LICENSE",
               "resources/third-party/xterm-addon-fit.LICENSE",
             ],
+            ["third-party/yaml.LICENSE", "resources/third-party/yaml.LICENSE"],
           ] as const) {
             this.emitFile({
               type: "asset",

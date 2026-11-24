@@ -212,13 +212,19 @@ impl NodePackageManager {
             .recover_uninstalls(limits, cancel)
     }
 
-    pub(crate) fn provision_bundled_framing(
+    pub(crate) fn provision_bundled_packages(
         &self,
         limits: &NodePackageLimits,
         cancel: &AtomicBool,
     ) -> HostResult<()> {
-        NodePackageInstaller::new(self.store.clone(), self.store.profile())?
-            .provision_bundled_framing(limits, cancel)
+        let installer = NodePackageInstaller::new(self.store.clone(), self.store.profile())?;
+        let mut first_error = None;
+        for bundle in super::product::packages() {
+            if let Err(error) = installer.provision_bundled_package(bundle, limits, cancel) {
+                first_error.get_or_insert(error);
+            }
+        }
+        first_error.map_or(Ok(()), Err)
     }
 
     #[cfg(test)]

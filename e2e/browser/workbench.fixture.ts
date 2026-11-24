@@ -117,6 +117,7 @@ export type WorkbenchFixture = {
     generation: string;
     captureNameHint: CaptureNameHint | null;
   }[];
+  releaseDefinitionRead: () => void;
   captureTailRequests: { transport: "raw" | "control"; query: Query }[];
   captureTailResponses: string[];
   captureTailResults: Record<string, CaptureTailResult>;
@@ -136,6 +137,12 @@ type FixtureNodeThemes = Extract<
   QueryResult,
   { kind: "node_themes" }
 >["value"]["themes"];
+type DefinitionFileFixture = {
+  selected: SelectedFileResource;
+  metadata?: FileMetadata;
+  page?: FileReadResult;
+  holdRead?: boolean;
+};
 declare global {
   interface Window {
     workbenchFixture: WorkbenchFixture;
@@ -211,6 +218,7 @@ export async function seedWorkbenchFixture(
     lanOwner,
     nodeThemes = [],
     framing,
+    definitionFiles,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -237,6 +245,7 @@ export async function seedWorkbenchFixture(
     lanOwner?: { hostId: string; address: string };
     nodeThemes?: FixtureNodeThemes;
     framing?: { action: ActionSpec; page: FileReadResult };
+    definitionFiles?: DefinitionFileFixture[];
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -495,6 +504,7 @@ export async function seedWorkbenchFixture(
     lanOwner,
     nodeThemes,
     framing,
+    definitionFiles,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -527,8 +537,11 @@ export async function seedWorkbenchFixture(
       lanOwner,
       nodeThemes,
       framing,
+      definitionFiles,
     } = JSON.parse(raw) as typeof fixturePayload;
     let framingOperation: Operation | undefined;
+    let chosenDefinition: DefinitionFileFixture | undefined;
+    let releaseDefinitionRead: (() => void) | undefined;
     let replayPlayback = replayProfile?.page.playback;
     let replayReadIndex = 0;
     const replayControls = new Map<string, Operation>();
@@ -828,6 +841,10 @@ export async function seedWorkbenchFixture(
       clientStateWrites: [],
       workspaceWrites: [],
       filePickerCalls: [],
+      releaseDefinitionRead() {
+        releaseDefinitionRead?.();
+        releaseDefinitionRead = undefined;
+      },
       captureTailRequests: [],
       captureTailResponses: [],
       captureTailResults: captureProfile?.results ?? {},
@@ -1102,6 +1119,10 @@ export async function seedWorkbenchFixture(
               });
               if (args.role === "captureTarget" && captureTarget)
                 return captureTarget;
+              if (args.role === "protocolDefinitionSource" && definitionFiles) {
+                chosenDefinition = definitionFiles.shift();
+                return chosenDefinition?.selected ?? null;
+              }
               if (args.role === "source" && plugin) return plugin.archive;
               if (args.role !== "media") break;
               const selected = fixture.mediaQueue.shift();
@@ -1643,6 +1664,32 @@ export async function seedWorkbenchFixture(
                   ok: true,
                   result: { kind: "file_read", value: framing.page },
                 };
+              }
+              if (
+                chosenDefinition &&
+                query.target.id === chosenDefinition.selected.reference.id &&
+                (query.actionId === "file.read" ||
+                  query.actionId === "file.metadata")
+              ) {
+                const { metadata, page, holdRead } = chosenDefinition;
+                if (query.actionId === "file.metadata" && metadata)
+                  return {
+                    ok: true,
+                    result: { kind: "file_metadata", value: metadata },
+                  };
+                if (
+                  query.actionId !== "file.read" ||
+                  !page ||
+                  command !== "host_raw_request" ||
+                  query.params.offset !== "0" ||
+                  query.params.maxBytes !== page.totalBytes
+                )
+                  throw new Error("Unexpected definition file read");
+                if (holdRead)
+                  await new Promise<void>((resolve) => {
+                    releaseDefinitionRead = resolve;
+                  });
+                return { ok: true, result: { kind: "file_read", value: page } };
               }
               if (
                 fixture.limitPluginReads &&

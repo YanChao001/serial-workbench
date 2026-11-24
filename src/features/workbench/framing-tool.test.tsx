@@ -6,6 +6,7 @@ import {
   render,
   screen,
   waitFor,
+  within,
 } from "@testing-library/react";
 import { afterEach, beforeEach, expect, it, vi } from "vitest";
 import { Toaster } from "sonner";
@@ -163,10 +164,15 @@ it("waits for the terminal receipt and uses the exact byte cursor for the next p
   });
 
   await act(async () => settle(terminal));
-  expect(await screen.findByRole("status")).toHaveTextContent("Frames 128");
+  const results = within(
+    await screen.findByRole("region", {
+      name: en["workbench.framing.results"],
+    }),
+  );
+  expect(results.getByRole("status")).toHaveTextContent("Frames 128");
   fireEvent.click(screen.getByRole("button", { name: "Next frames" }));
   await waitFor(() =>
-    expect(screen.getByRole("status")).toHaveTextContent(/^Frames 1 ·/),
+    expect(results.getByRole("status")).toHaveTextContent(/^Frames 1 ·/),
   );
   expect(readFile).toHaveBeenCalledTimes(2);
   expect(invoke.mock.calls[1]?.[0].params).toEqual({
