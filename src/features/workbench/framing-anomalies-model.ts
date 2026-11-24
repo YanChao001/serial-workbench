@@ -26,6 +26,7 @@ export type FramingInspection = {
   endEventSeq?: string;
   recordOrdinals?: ReadonlyMap<string, string>;
   breaks?: ReadonlySet<string>;
+  fixedFrameWidth?: number;
 };
 
 export type AnomalyRules = {

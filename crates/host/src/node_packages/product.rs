@@ -24,6 +24,8 @@ const MODBUS_SLAVE_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/modbus-slave.zip");
 const MODBUS_SLAVE_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/modbus-slave.json");
+const CHART_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/chart.zip");
+const CHART_DESCRIPTOR: &str = include_str!("../../resources/node-packages/chart.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -115,7 +117,7 @@ impl ProductPackage {
 }
 
 pub(super) fn packages() -> &'static [ProductPackage] {
-    static PACKAGES: OnceLock<[ProductPackage; 4]> = OnceLock::new();
+    static PACKAGES: OnceLock<[ProductPackage; 5]> = OnceLock::new();
     PACKAGES.get_or_init(|| {
         [
             ProductPackage::new(
@@ -133,6 +135,11 @@ pub(super) fn packages() -> &'static [ProductPackage] {
                 MODBUS_SLAVE_DESCRIPTOR,
                 MODBUS_SLAVE_ARCHIVE,
                 "node-packages:bundled-modbus-slave",
+            ),
+            ProductPackage::new(
+                CHART_DESCRIPTOR,
+                CHART_ARCHIVE,
+                "node-packages:bundled-chart",
             ),
         ]
     })
@@ -287,6 +294,37 @@ mod tests {
             verify(modified, &limits, &cancel).unwrap_err().code,
             "PERMISSION_DENIED"
         );
+    }
+
+    #[test]
+    fn bundled_chart_signature_covers_view_assets() {
+        let package = verify(
+            CHART_ARCHIVE.to_vec(),
+            &NodePackageLimits::default(),
+            &AtomicBool::new(false),
+        )
+        .unwrap();
+        assert_eq!(package.manifest().id.as_str(), "swb.builtin.chart");
+        let descriptor: serde_json::Value = serde_json::from_str(CHART_DESCRIPTOR).unwrap();
+        assert_eq!(
+            Some(package.manifest().version.as_str()),
+            descriptor["version"].as_str()
+        );
+        for (path, field) in [
+            ("dist/main.mjs", "compiledModuleSha256"),
+            ("manifest.json", "manifestSha256"),
+            ("ui/index.html", "viewHtmlSha256"),
+            ("ui/view.css", "viewCssSha256"),
+            ("ui/view.js", "viewScriptSha256"),
+        ] {
+            let entry = package
+                .integrity()
+                .files
+                .iter()
+                .find(|entry| entry.path.as_str() == path)
+                .unwrap();
+            assert_eq!(Some(entry.sha256.as_str()), descriptor[field].as_str());
+        }
     }
 
     #[test]

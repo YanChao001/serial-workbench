@@ -6,8 +6,6 @@ import type {
   SourceRange,
 } from "@serial-workbench/plugin-sdk/node";
 
-const action = "swb.reference.chart.sample";
-const exportSvg = "swb.reference.chart.exportSvg";
 const maxFrameBytes = 64;
 const maxIdleMs = 5000;
 const voltage = /^[+-]?(?:[0-9]+(?:\.[0-9]+)?|\.[0-9]+)\r?$/;
@@ -165,35 +163,41 @@ function renderSvg(samples: number[]) {
   ].join("\n");
 }
 
-export const register: NodeRegister = (context) => {
-  context.parsers.register(action, async (call, task) => {
-    let lastPosition = "0";
-    const samples = await readSamples(call, task, async (value, source) => {
-      const receipt = await task.streams.publishDerived({
-        sources: [source],
-        value,
-        unit: "V",
-        quality: ["complete", "transformed"],
+export function chartRegistration(packageId: string): NodeRegister {
+  const sample = `${packageId}.sample`;
+  const exportSvg = `${packageId}.exportSvg`;
+  return (context) => {
+    context.parsers.register(sample, async (call, task) => {
+      let lastPosition = "0";
+      const samples = await readSamples(call, task, async (value, source) => {
+        const receipt = await task.streams.publishDerived({
+          sources: [source],
+          value,
+          unit: "V",
+          quality: ["complete", "transformed"],
+        });
+        lastPosition = receipt.position;
       });
-      lastPosition = receipt.position;
+      return { samples, lastPosition };
     });
-    return { samples, lastPosition };
-  });
-  context.actions.register(exportSvg, async (call, task) => {
-    const samples: number[] = [];
-    await readSamples(call, task, (value) => {
-      samples.push(value);
+    context.actions.register(exportSvg, async (call, task) => {
+      const samples: number[] = [];
+      await readSamples(call, task, (value) => {
+        samples.push(value);
+      });
+      return Buffer.from(renderSvg(samples)).toString("base64");
     });
-    return Buffer.from(renderSvg(samples)).toString("base64");
-  });
-  context.contributions.register({
-    actions: [],
-    queries: [],
-    transports: [],
-    parsers: [],
-    views: ["swb.reference.chart.view"],
-    themes: [],
-    configuration: [],
-  });
-  return () => {};
-};
+    context.contributions.register({
+      actions: [],
+      queries: [],
+      transports: [],
+      parsers: [],
+      views: [`${packageId}.view`],
+      themes: [],
+      configuration: [],
+    });
+    return () => {};
+  };
+}
+
+export const register = chartRegistration("swb.reference.chart");

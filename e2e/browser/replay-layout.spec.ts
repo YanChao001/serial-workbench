@@ -192,8 +192,12 @@ test("replay chart traces a compacted and filtered field to both original captur
   await expect(chart.getByRole("status")).toHaveText("Frame 32 · 16 V");
   const drawn = chart.getByRole("img");
   await expect(drawn.locator("polyline")).toHaveCount(2);
+  await chart.getByText("Statistics", { exact: true }).click();
+  const missing = chart.getByRole("definition").filter({ hasText: /1 \/ / });
+  await expect(missing).toHaveText("1 / 47 (2.13%)");
   await chart.getByRole("checkbox", { name: "Compact curve" }).check();
   expect(await drawn.locator("circle").count()).toBeLessThan(46);
+  await expect(missing).toHaveText("1 / 47 (2.13%)");
 
   await chart.getByText("Locate by source byte", { exact: true }).click();
   await chart.getByRole("textbox", { name: "Source event number" }).fill("52");
@@ -203,6 +207,7 @@ test("replay chart traces a compacted and filtered field to both original captur
   await expect(chart.getByRole("listitem")).toContainText("Capture record 40");
 
   await chart.getByRole("checkbox", { name: "Last 32 frames" }).check();
+  await expect(missing).toHaveText("1 / 33 (3.03%)");
   const cursor = chart.getByRole("slider", { name: "Frame cursor" });
   await cursor.press("End");
   await expect(chart.getByRole("status")).toContainText("45 V");
@@ -218,6 +223,62 @@ test("replay chart traces a compacted and filtered field to both original captur
   await expect(
     dialog.getByRole("button", { name: en["workbench.fields.edit"] }),
   ).toHaveCount(0);
+  const definition = dialog.getByRole("textbox", {
+    name: en["workbench.fields.definition"],
+  });
+  const originalDefinition = await definition.inputValue();
+  await definition.fill(
+    JSON.stringify({
+      version: "1",
+      byteLength: 2,
+      fields: [
+        {
+          id: "voltage",
+          kind: "integer",
+          byteOffset: 1,
+          width: 1,
+          order: "big",
+          scale: "0.5",
+          unit: "V",
+        },
+        {
+          id: "channel",
+          kind: "integer",
+          byteOffset: 0,
+          width: 1,
+          order: "big",
+        },
+      ],
+    }),
+  );
+  await chart.getByRole("button", { name: "Plot fields" }).click();
+  const mode = chart.getByRole("combobox", { name: "Plot type" });
+  await mode.click();
+  await page.getByRole("option", { name: "XY line", exact: true }).click();
+  const xy = chart.getByRole("img", {
+    name: "XY line of channel versus voltage",
+  });
+  await expect(xy.locator("polyline")).toHaveCount(1);
+  await expect(xy.locator("circle")).toHaveCount(32);
+  await expect(chart.getByText(/32 same-frame pairs/)).toBeVisible();
+  await xy.locator("circle").last().click();
+  await expect(chart.getByRole("status")).toHaveText("Frame 46 · X 45 V · Y 0");
+  await expect(
+    chart.getByRole("button", { name: "Show Y field bytes" }),
+  ).toBeVisible();
+  await mode.click();
+  await page.getByRole("option", { name: "Scatter", exact: true }).click();
+  const scatter = chart.getByRole("img", {
+    name: "Scatter plot of channel versus voltage",
+  });
+  await expect(scatter.locator("circle")).toHaveCount(32);
+  await expect(scatter.locator("polyline")).toHaveCount(0);
+  await mode.click();
+  await page.getByRole("option", { name: "Frame order", exact: true }).click();
+  for (let move = 0; move < 14; move++) await cursor.press("ArrowLeft");
+  await definition.fill(originalDefinition);
+  await chart.getByRole("button", { name: "Plot fields" }).click();
+  await expect(chart.getByRole("status")).toHaveText("Frame 32 · 16 V");
   await chart
     .getByRole("button", { name: "Show bytes in receive view" })
     .click();

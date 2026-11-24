@@ -50,6 +50,17 @@ HTTP 用例以实际 Virtual Echo 核对获准的写入、同一请求重试、�
 
 签名图表复用同一配对夹具。按[后台采样](#图表参考包后台采样)准备签名图表与固定 Node，另设 `SWB_TEST_SIGNED_CHART_RECEIPT` 和新的 `SWB_TEST_BROWSER_CHART_OUTPUT` 绝对路径，运行 `cargo test --locked -p serial-workbench-host --test browser_pairing paired_chromium_reads_and_retires_a_signed_chart_view -- --ignored --nocapture`。用已签名的视图接收 Virtual Echo 派生样本，核对专属 Raw 页面确认、关页后采样继续并重开补读、浏览器与本机 Host 的样本及源字节范围一致。最后撤销执行信任，检查旧视图释放且原工作台连接与串口会话仍可用。
 
+参考图表 0.1.4 的配对场景另核对持续接收、语言切换和重开后的均值与缺点分母。浏览器无头用例 `pnpm test:ui e2e/browser/chart-view.spec.ts e2e/browser/replay-layout.spec.ts e2e/browser/framing-tool.spec.ts --workers=1` 核对过期派生序号、无效样本、工作台校验失败、固定宽度回放缺帧和筛选后的统计口径。
+
+首方 `swb.builtin.chart` 由 Host 按完整归档摘要登记。隔离 profile 的 `native_node_bundled_protocol_registers_on_first_start_and_restart` 用例检查自动激活、无会话授权时拒绝、授权后跨块采样及 SVG 文件，并核对重启后归档摘要与安装 revision 保持。浏览器夹具覆盖共享视图的统计计算。正式离线安装需另从插件页打开「Voltage Chart」，核对随包来源、实际采样、统计和桌面 SVG 保存。
+
+更新内嵌归档时，从仓库根目录构建同目录的后台和视图，然后按 `sign_builtin_chart <main.js> <32 字节种子文件> <新归档 ZIP> swb.product <版本专用 key ID>` 调用 `cargo run -p serial-workbench-host --example sign_builtin_chart --`。将签名收据的归档摘要和来源审批写入 `crates/host/resources/node-packages/chart.json`，同时记录后台、清单、HTML、CSS、视图脚本的 SHA-256。用 `node --test scripts/product-chart.test.mjs` 核对仓库源码和签名描述。
+
+```sh
+pnpm exec esbuild packages/plugin-sdk/examples/reference-chart/builtin.ts --bundle --platform=node --target=node26 --format=esm --charset=utf8 --legal-comments=none --outfile=.cache/builtin-chart/main.js
+pnpm exec esbuild packages/plugin-sdk/examples/reference-chart/view.ts --bundle --format=iife --minify --charset=utf8 --legal-comments=none --outfile=.cache/builtin-chart/view.js
+```
+
 已运行的 Host 用 `cargo test --locked -p serial-workbench-host --test browser_pairing` 验证本机配对、只读授权、撤销和接管。撤销后确认两个浏览器连接关闭，再在同一串口会话核对桌面发送的终态。接管用实际 WebSocket 发起，核对浏览器不能自行批准，拒绝及断开后原写入权保留，批准后只有所选 MCP 失去当前串口写入权。桌面设置的无头用例为 `pnpm test:ui e2e/browser/browser-access.spec.ts --workers=1`，验证配对与停用、窄窗口和焦点，以及明确显示端口和客户端后传递当前确认编号。正式桌面验收从实际设置页生成配对码，用该候选安装资源打开浏览器，再从真实桌面窗口确认浏览器发起的接管。
 
 Windows 托管原生作业复用同一 E2E 构建，准备 Chromium headless shell 后运行 `pnpm test:e2e --interactive --skip-build --browser-takeover`。本机只在独立环境或约定的前台时段运行。原生设置页选「查看和操作」并生成配对码，无头 Chromium 使用该入口及实际资源加入。原生确认后检查浏览器收到终态、所选 MCP 失去写入权及另一客户端仍可发送。关闭浏览器访问后核对连接退出和原会话的真实回显。`artifacts/e2e/browser-takeover-*` 保留同源构建收据、原生确认截图、权限与会话结果及日志，截图隐藏配对码。

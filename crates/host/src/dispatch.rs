@@ -2756,6 +2756,7 @@ mod tests {
         let fields = NodePackageId::try_from("swb.reference.fields").unwrap();
         let modbus = NodePackageId::try_from("swb.reference.modbus").unwrap();
         let slave = NodePackageId::try_from("swb.reference.modbus.slave").unwrap();
+        let chart = NodePackageId::try_from("swb.builtin.chart").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         for epoch in [1_u64, 2] {
@@ -2800,6 +2801,7 @@ mod tests {
                         catalog.status(&fields).unwrap(),
                         catalog.status(&modbus).unwrap(),
                         catalog.status(&slave).unwrap(),
+                        catalog.status(&chart).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2826,6 +2828,8 @@ mod tests {
                     (&fields, "swb.reference.fields.at"),
                     (&modbus, "swb.reference.modbus.transaction"),
                     (&slave, "swb.reference.modbus.slave.serve"),
+                    (&chart, "swb.builtin.chart.sample"),
+                    (&chart, "swb.builtin.chart.exportSvg"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3011,6 +3015,14 @@ mod tests {
             ("swb.reference.fields.modbusServer", modbus_server.clone()),
             ("swb.reference.fields.nmea", nmea.clone()),
             ("swb.reference.fields.at", at_response.clone()),
+            (
+                "swb.builtin.chart.sample",
+                serde_json::json!({"sampleCount":2}),
+            ),
+            (
+                "swb.builtin.chart.exportSvg",
+                serde_json::json!({"sampleCount":2}),
+            ),
         ] {
             assert_eq!(
                 host.invoke(&actor, call(&session, action, params))
@@ -3021,6 +3033,88 @@ mod tests {
             );
         }
         grant("content.read", &session);
+        peer.serving.store(true, Ordering::Release);
+        peer.incoming
+            .lock()
+            .unwrap()
+            .extend([b"1.".to_vec(), b"25\n-2\n".to_vec()]);
+        let sample_params = serde_json::json!({"sampleCount":2});
+        let sampling = host
+            .invoke(
+                &actor,
+                call(&session, "swb.builtin.chart.sample", sample_params.clone()),
+            )
+            .await
+            .unwrap();
+        let sample_operation = sampling.operation_id.clone();
+        assert!(matches!(
+            settled(sampling).await,
+            ActionResult::Reference(_)
+        ));
+        peer.serving.store(false, Ordering::Release);
+        let (page, lease) = host
+            .inner
+            .derived
+            .read(
+                &session,
+                identity.instance_epoch,
+                DerivedReadParams {
+                    operation_id: sample_operation,
+                    after: 0.into(),
+                    max_samples: 2.into(),
+                    max_bytes: 4096.into(),
+                },
+            )
+            .unwrap();
+        drop(lease);
+        assert_eq!(page.samples.len(), 2);
+        assert_eq!(page.next_position.get(), 2);
+        assert!(!page.has_more);
+        let mut start = 0;
+        for (sample, (value, end)) in page
+            .samples
+            .iter()
+            .zip([(serde_json::json!(1.25), 5), (serde_json::json!(-2), 8)])
+        {
+            assert_eq!(serde_json::to_value(&sample.value).unwrap(), value);
+            assert_eq!(
+                sample.provenance.parser_id.as_str(),
+                "swb.builtin.chart.sample"
+            );
+            assert_eq!(sample.provenance.unit.as_deref(), Some("V"));
+            let [source] = &sample.provenance.sources[..] else {
+                panic!("Expected one exact RX range");
+            };
+            assert_eq!(source.byte_start.map(U64::get), Some(start));
+            assert_eq!(source.byte_end.map(U64::get), Some(end));
+            start = end;
+        }
+        let exporting = host
+            .invoke(
+                &actor,
+                call(&session, "swb.builtin.chart.exportSvg", sample_params),
+            )
+            .await
+            .unwrap();
+        let ActionResult::Reference(svg) = settled(exporting).await else {
+            panic!("Expected the bundled chart SVG file");
+        };
+        let file = host
+            .inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: svg.result_ref,
+                    offset: 0.into(),
+                    max_bytes: 4096.into(),
+                },
+                &actor,
+            )
+            .unwrap();
+        assert!(file.at_end);
+        let svg = STANDARD.decode(file.bytes_base64.as_str()).unwrap();
+        assert!(svg.starts_with(b"<svg "));
+        eprintln!("bundled_chart authorized=true samples=2 raw_bytes=8 svg=true");
         let yaml = "version: \"1\"\nbyteLength: 1\nfields:\n  - id: reading\n    kind: integer\n    byteOffset: 0\n    width: 1\n    order: big\n    scale: \"0.5\"\n    bias: \"1\"";
         for (action, params, expected_status) in [
             (

@@ -35,7 +35,7 @@ test("chart renders only retained samples and marks expired positions in the iso
   if (!session || !script) throw new Error("Missing chart bootstrap data");
   const sample = (
     position: string,
-    value: number,
+    value: number | string,
   ): DerivedReadResult["samples"][number] => ({
     position,
     value,
@@ -62,8 +62,7 @@ test("chart renders only retained samples and marks expired positions in the iso
   const read = (
     previousPosition: string,
     after: string,
-    samplePosition: string,
-    value: number,
+    samples: DerivedReadResult["samples"],
   ) => ({
     derived: {
       previousPosition,
@@ -75,8 +74,8 @@ test("chart renders only retained samples and marks expired positions in the iso
           value: {
             operationId: "chart-operation",
             instanceEpoch: "1",
-            samples: [sample(samplePosition, value)],
-            nextPosition: samplePosition,
+            samples,
+            nextPosition: samples.at(-1)!.position,
             hasMore: false,
           },
         },
@@ -85,8 +84,9 @@ test("chart renders only retained samples and marks expired positions in the iso
   });
   const payloads = [
     { snapshot: session },
-    read("0", "2", "3", 1.25),
-    read("3", "4", "5", -2),
+    read("0", "2", [sample("3", 1.25)]),
+    read("3", "4", [sample("5", -2)]),
+    read("5", "5", [sample("6", "invalid")]),
   ];
   let pulled = 0;
   await page.route(`${shellOrigin}/**`, (route) => {
@@ -97,7 +97,8 @@ test("chart renders only retained samples and marks expired positions in the iso
         body: shell,
       });
     if (path === "/next.js") {
-      const payload = payloads[pulled++] ?? null;
+      const payload = payloads.shift() ?? null;
+      pulled++;
       return route.fulfill({
         contentType: "application/javascript",
         body: `globalThis.swbViewReceive(${JSON.stringify(payload)});`,
@@ -141,6 +142,31 @@ test("chart renders only retained samples and marks expired positions in the iso
   ).toBeVisible();
   await view.getByText("Sample values").click();
   await expect(view.locator("tbody tr")).toHaveText(["31.25", "5-2"]);
-  await expect.poll(() => pulled).toBeGreaterThanOrEqual(4);
+  await view.getByText("Statistics", { exact: true }).click();
+  await expect(view.getByText("4 / 6 (66.67%)", { exact: true })).toBeVisible();
+  await expect(view.getByText("1.0875 V", { exact: true })).toBeVisible();
+  await expect.poll(() => pulled).toBeGreaterThanOrEqual(5);
   await page.screenshot({ path: info.outputPath("voltage-trace.png") });
+
+  payloads.push(
+    read(
+      "6",
+      "6",
+      Array.from({ length: 64 }, (_, index) =>
+        sample(String(index + 7), index),
+      ),
+    ),
+    read(
+      "70",
+      "70",
+      Array.from({ length: 63 }, (_, index) =>
+        sample(String(index + 71), index + 64),
+      ),
+    ),
+  );
+  await expect(view.getByRole("status")).toContainText("128 samples");
+  await expect(
+    view.getByText("1 / 129 (0.78%)", { exact: true }),
+  ).toBeVisible();
+  await expect(view.locator("tbody tr").first()).toHaveText("5-2");
 });

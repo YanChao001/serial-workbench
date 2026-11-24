@@ -149,6 +149,33 @@ export function chartValue(entry: FieldChartFrame, field: string) {
   if (Number.isFinite(value)) return value;
 }
 
+type FieldPair = { index: number; x: number; y: number };
+
+export function fieldChartPairs(
+  entries: readonly FieldChartFrame[],
+  start: number,
+  xField: string,
+  yField: string,
+) {
+  const segments: FieldPair[][] = [];
+  let segment: FieldPair[] | undefined;
+  for (let index = start; index < entries.length; index++) {
+    const entry = entries[index]!;
+    const x = chartValue(entry, xField);
+    const y = chartValue(entry, yField);
+    if (x === undefined || y === undefined) {
+      segment = undefined;
+      continue;
+    }
+    if (!segment || !sharesChartSegment(entries[index - 1]!, entry)) {
+      segment = [];
+      segments.push(segment);
+    }
+    segment.push({ index, x, y });
+  }
+  return segments;
+}
+
 export function fieldChartSpans(entry: FieldChartFrame, reading: FieldReading) {
   const start = BigInt(entry.frame.byteStart) + BigInt(reading.bytes.start);
   const end = BigInt(entry.frame.byteStart) + BigInt(reading.bytes.end);

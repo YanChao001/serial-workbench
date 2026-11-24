@@ -183,6 +183,7 @@ export function replayFieldPage(
     frames,
     recordOrdinals,
     breaks,
+    fixedFrameWidth: width,
   };
   return { inspection, gap: gap || filled !== 0, limited };
 }

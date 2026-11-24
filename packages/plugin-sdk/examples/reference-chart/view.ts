@@ -1,17 +1,21 @@
 /// <reference lib="dom" />
 import { connectDerivedView } from "@serial-workbench/plugin-sdk/web";
 import type { ViewLocale } from "@serial-workbench/plugin-sdk/web";
+import { sampleStatistics } from "./sample-statistics";
 
 const status = document.querySelector<HTMLElement>("#status");
 const values = document.querySelector<HTMLTableSectionElement>("#values");
+const statistics = document.querySelector<HTMLDListElement>("#statistics");
 const plot = document.querySelector<HTMLCanvasElement>("#plot");
 const paint = plot?.getContext("2d");
-if (!status || !values || !plot || !paint)
+if (!status || !values || !statistics || !plot || !paint)
   throw new Error("Chart layout is missing");
 
 const samples: { position: string; voltage: number }[] = [];
+let firstPosition = 1n;
+let lastPosition = 0n;
 let lost = false;
-let zh = false;
+let locale: ViewLocale = "en";
 let state: "waiting" | "reading" | "stopped" = "waiting";
 let number = new Intl.NumberFormat("en", { maximumFractionDigits: 5 });
 
@@ -21,9 +25,7 @@ function draw(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
   canvas.width = Math.ceil(width * scale);
   canvas.height = Math.ceil(height * scale);
   context.scale(scale, scale);
-  const firstSample = samples.at(0),
-    lastSample = samples.at(-1);
-  if (!firstSample || !lastSample || width < 120 || height < 100) return;
+  if (!samples.length || width < 120 || height < 100) return;
   const style = getComputedStyle(canvas);
   const left = 56,
     right = width - 16,
@@ -35,8 +37,8 @@ function draw(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
   const padding = (high - low) * 0.06 || 0.5;
   const min = low - padding,
     max = high + padding;
-  const first = lost ? 1n : BigInt(firstSample.position);
-  const last = BigInt(lastSample.position);
+  const first = firstPosition;
+  const last = lastPosition;
   const span = Number(last - first) || 1;
   const x = (position: string) =>
     left + (Number(BigInt(position) - first) / span) * (right - left);
@@ -87,6 +89,7 @@ function draw(canvas: HTMLCanvasElement, context: CanvasRenderingContext2D) {
 const render = () => draw(plot, paint);
 function renderStatus() {
   if (!status) return;
+  const zh = locale === "zh-CN";
   if (state === "stopped") {
     status.textContent = zh ? "图表读取已停止" : "Chart reading stopped";
   } else if (state === "waiting") {
@@ -98,8 +101,57 @@ function renderStatus() {
   }
 }
 
-function renderLocale(locale: ViewLocale) {
-  zh = locale === "zh-CN";
+function renderStatistics() {
+  if (!statistics) return;
+  const zh = locale === "zh-CN";
+  const summary = sampleStatistics(
+    samples.map(({ voltage }) => voltage),
+    lastPosition - firstPosition + 1n,
+  );
+  const metrics = summary.metrics;
+  const detail = new Intl.NumberFormat(locale, { maximumSignificantDigits: 8 });
+  const percentage = new Intl.NumberFormat(locale, {
+    style: "percent",
+    maximumFractionDigits: 2,
+  });
+  const format = (value: number | undefined) =>
+    value === undefined ? "—" : `${detail.format(value)} V`;
+  const missing = `${summary.missingCount.toLocaleString(locale)} / ${summary.expectedCount.toLocaleString(locale)}`;
+  const entries: [string, string][] = [
+    [zh ? "最小值" : "Minimum", format(metrics?.minimum)],
+    [zh ? "最大值" : "Maximum", format(metrics?.maximum)],
+    [zh ? "均值" : "Mean", format(metrics?.average)],
+    [
+      zh ? "总体标准差" : "Population standard deviation",
+      format(metrics?.deviation),
+    ],
+    ["P50", format(metrics?.p50)],
+    ["P95", format(metrics?.p95)],
+    ["P99", format(metrics?.p99)],
+    [zh ? "有效点" : "Valid points", detail.format(summary.validCount)],
+    [
+      zh ? "缺点" : "Missing points",
+      summary.missingRate === undefined
+        ? missing
+        : `${missing} (${percentage.format(summary.missingRate)})`,
+    ],
+  ];
+  statistics.replaceChildren(
+    ...entries.map(([label, text]) => {
+      const group = document.createElement("div");
+      const term = document.createElement("dt");
+      const value = document.createElement("dd");
+      term.textContent = label;
+      value.textContent = text;
+      group.append(term, value);
+      return group;
+    }),
+  );
+}
+
+function renderLocale(next: ViewLocale) {
+  locale = next;
+  const zh = locale === "zh-CN";
   number = new Intl.NumberFormat(locale, { maximumFractionDigits: 5 });
   document.documentElement.lang = locale;
   document.title = zh ? "电压曲线" : "Voltage trace";
@@ -108,6 +160,10 @@ function renderLocale(locale: ViewLocale) {
     samples: zh ? "样本值" : "Sample values",
     position: zh ? "序号" : "Position",
     voltage: zh ? "电压（V）" : "Voltage (V)",
+    "statistics-label": zh ? "统计" : "Statistics",
+    "statistics-scope": zh
+      ? "按当前图表的派生样本序号计数，包括过期序号和无效样本。发布前的丢失没有派生序号。"
+      : "Counts positions in the current derived sample range, including expired positions and invalid samples. Loss before publication has no derived position.",
   };
   for (const [id, label] of Object.entries(labels)) {
     const element = document.getElementById(id);
@@ -122,6 +178,7 @@ function renderLocale(locale: ViewLocale) {
     if (cell) cell.textContent = number.format(sample.voltage);
   });
   renderStatus();
+  renderStatistics();
   render();
 }
 
@@ -135,6 +192,7 @@ const view = connectDerivedView({
   onLocale: renderLocale,
   onPage(page, gap) {
     lost ||= gap !== undefined;
+    lastPosition = BigInt(page.nextPosition);
     for (const sample of page.samples) {
       if (
         typeof sample.value !== "number" ||
@@ -150,9 +208,11 @@ const view = connectDerivedView({
     while (samples.length > 128) {
       values.deleteRow(0);
       samples.shift();
+      firstPosition = BigInt(samples[0]!.position);
     }
     state = "reading";
     renderStatus();
+    renderStatistics();
     render();
   },
   onError() {

@@ -32,7 +32,7 @@ type DerivedFeed = {
   operationId: string;
 };
 const derivedFeeds = new WeakMap<HostConnection, Map<string, DerivedFeed>>();
-const chartExportAction = "swb.reference.chart.exportSvg";
+const chartPackages = ["swb.reference.chart", "swb.builtin.chart"];
 
 function retiredFeed(reason: unknown) {
   const code = nativeErrorCode(reason);
@@ -85,9 +85,12 @@ export function PluginViewLauncher({
   const session =
     sessions.find((session) => sessionKey(session) === selected) ??
     (selected === "" && sessions.length === 1 ? sessions[0] : undefined);
+  const chartExportAction = chartPackages.includes(packageId)
+    ? `${packageId}.exportSvg`
+    : undefined;
   const canExport =
     !connection.browser &&
-    packageId === "swb.reference.chart" &&
+    chartExportAction !== undefined &&
     state.catalog.some(
       (action) =>
         action.actionId === chartExportAction &&
@@ -97,7 +100,8 @@ export function PluginViewLauncher({
   if (!available.length && !canExport) return null;
 
   async function run(view?: NodePackageView, opener?: HTMLElement) {
-    if (!session || pending.current) return;
+    const actionId = view?.actionId ?? chartExportAction;
+    if (!session || pending.current || !actionId) return;
     const owner = new AbortController();
     pending.current = owner;
     setBusy(true);
@@ -157,7 +161,7 @@ export function PluginViewLauncher({
       if (!operationId) {
         const accepted = await invoke(
           {
-            actionId: view?.actionId ?? chartExportAction,
+            actionId,
             target,
             params: {},
             executionMode: feedKey || !view ? "independent" : "interactive",
