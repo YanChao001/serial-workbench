@@ -15876,6 +15876,23 @@
             {
               "additionalProperties": false,
               "properties": {
+                "call": {
+                  "$ref": "#/definitions/Call"
+                },
+                "kind": {
+                  "const": "submit",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "call"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
                 "kind": {
                   "const": "discard",
                   "type": "string"
@@ -18402,6 +18419,23 @@
                 }
               },
               "required": ["kind", "uploadId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "call": {
+                  "$ref": "#/definitions/Call"
+                },
+                "kind": {
+                  "const": "submit",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "call"],
               "type": "object"
             },
             {
@@ -57913,6 +57947,23 @@
             {
               "additionalProperties": false,
               "properties": {
+                "call": {
+                  "$ref": "#/definitions/Call"
+                },
+                "kind": {
+                  "const": "submit",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "call"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
                 "kind": {
                   "const": "discard",
                   "type": "string"
@@ -73397,6 +73448,23 @@
                 }
               },
               "required": ["kind", "uploadId"],
+              "type": "object"
+            },
+            {
+              "additionalProperties": false,
+              "properties": {
+                "call": {
+                  "$ref": "#/definitions/Call"
+                },
+                "kind": {
+                  "const": "submit",
+                  "type": "string"
+                },
+                "uploadId": {
+                  "$ref": "#/definitions/Id"
+                }
+              },
+              "required": ["kind", "uploadId", "call"],
               "type": "object"
             },
             {

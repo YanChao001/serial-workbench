@@ -564,14 +564,23 @@ export type BrowserFileHandoffParams =
 export type BrowserFileHandoffParams_Deserialize =
   | ({ kind: "begin"; target: Target_Deserialize; length: U64 } & {
       bytesBase64?: never;
+      call?: never;
       offset?: never;
       uploadId?: never;
     })
   | ({ kind: "append"; uploadId: Id; offset: U64; bytesBase64: Bytes } & {
+      call?: never;
       length?: never;
       target?: never;
     })
   | ({ kind: "seal"; uploadId: Id } & {
+      bytesBase64?: never;
+      call?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "submit"; uploadId: Id; call: Call_Deserialize } & {
       bytesBase64?: never;
       length?: never;
       offset?: never;
@@ -579,6 +588,7 @@ export type BrowserFileHandoffParams_Deserialize =
     })
   | ({ kind: "discard"; uploadId: Id } & {
       bytesBase64?: never;
+      call?: never;
       length?: never;
       offset?: never;
       target?: never;
@@ -587,14 +597,23 @@ export type BrowserFileHandoffParams_Deserialize =
 export type BrowserFileHandoffParams_Serialize =
   | ({ kind: "begin"; target: Target_Serialize; length: U64 } & {
       bytesBase64?: never;
+      call?: never;
       offset?: never;
       uploadId?: never;
     })
   | ({ kind: "append"; uploadId: Id; offset: U64; bytesBase64: Bytes } & {
+      call?: never;
       length?: never;
       target?: never;
     })
   | ({ kind: "seal"; uploadId: Id } & {
+      bytesBase64?: never;
+      call?: never;
+      length?: never;
+      offset?: never;
+      target?: never;
+    })
+  | ({ kind: "submit"; uploadId: Id; call: Call_Serialize } & {
       bytesBase64?: never;
       length?: never;
       offset?: never;
@@ -602,6 +621,7 @@ export type BrowserFileHandoffParams_Serialize =
     })
   | ({ kind: "discard"; uploadId: Id } & {
       bytesBase64?: never;
+      call?: never;
       length?: never;
       offset?: never;
       target?: never;

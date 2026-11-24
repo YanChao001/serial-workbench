@@ -432,6 +432,16 @@ impl Host {
         query: &Query,
         kind: ActionKind,
     ) -> HostResult<BuiltinAction> {
+        self.validate_source(actor, query, kind, None).await
+    }
+
+    async fn validate_source(
+        &self,
+        actor: &AuthenticatedActor,
+        query: &Query,
+        kind: ActionKind,
+        browser_file: Option<&browser_file::BrowserFileAdmission>,
+    ) -> HostResult<BuiltinAction> {
         if &query.actor_id != actor.id() {
             return Err(HostError::new(
                 "ACTOR_MISMATCH",
@@ -541,7 +551,14 @@ impl Host {
                 .authorize(action, &query.target, &query.params, &actor)
                 .await?;
         }
-        self.authorize_resource(&actor, query, action).await?;
+        if let Some(file) = browser_file {
+            if action != BuiltinAction::TransferFile {
+                return Err(invalid());
+            }
+            file.validate_reference(query)?;
+        } else {
+            self.authorize_resource(&actor, query, action).await?;
+        }
         Ok(action)
     }
     // Both normal admission and action.check resolve composite authority here.
@@ -1703,16 +1720,23 @@ impl Host {
         });
         Ok(())
     }
-    pub async fn invoke(
+    pub async fn invoke(&self, actor: &AuthenticatedActor, call: Call) -> HostResult<Operation> {
+        self.invoke_with_browser_file(actor, call, None).await
+    }
+
+    async fn invoke_with_browser_file(
         &self,
         actor: &AuthenticatedActor,
         mut call: Call,
+        browser_file: Option<browser_file::BrowserFileAdmission>,
     ) -> HostResult<Operation> {
         if BuiltinAction::find(call.action_id.as_str()).is_err() {
             return self.invoke_extension(actor, call).await;
         }
         let query = call_query(&call);
-        let action = self.validate(actor, &query, ActionKind::Action).await?;
+        let action = self
+            .validate_source(actor, &query, ActionKind::Action, browser_file.as_ref())
+            .await?;
         let replay_session = call.target.kind.as_str() == "session"
             && self.inner.capture_api.owns_replay(&call.target.id);
         if replay_session && action == BuiltinAction::ToolHandoff {
@@ -1793,7 +1817,7 @@ impl Host {
             self.preflight_node_install(actor, &call_query(&call))
                 .await?;
         }
-        if action == BuiltinAction::TransferFile {
+        if action == BuiltinAction::TransferFile && browser_file.is_none() {
             let files = self.inner.files.clone();
             let actor = actor.clone();
             let params: FileTransferParams = decode(&call.params)?;
@@ -1874,6 +1898,7 @@ impl Host {
                 let accept_call = call.clone();
                 let accept_auth = host.inner.auth.clone();
                 let accept_files = host.inner.files.clone();
+                let accept_host = host.clone();
                 let acceptance = blocking(move || {
                     if action == BuiltinAction::ToolHandoff {
                         accept_auth.require_control(&accept_actor)?;
@@ -1893,12 +1918,22 @@ impl Host {
                     } else {
                         authority.capture_grants()
                     };
-                    let acceptance = store.accept_with_source(
-                        &accept_actor,
-                        &accept_call,
-                        &canonical_digest(&accept_call)?,
-                        operation_source.as_ref(),
-                    )?;
+                    let digest = canonical_digest(&accept_call)?;
+                    let (acceptance, browser_stamp, upload) = if let Some(handoff) = browser_file {
+                        handoff.accept(&accept_host, &accept_call, &digest)?
+                    } else {
+                        (
+                            store.accept_with_source(
+                                &accept_actor,
+                                &accept_call,
+                                &digest,
+                                operation_source.as_ref(),
+                            )?,
+                            None,
+                            None,
+                        )
+                    };
+                    let stamp = browser_stamp.or(stamp);
                     let operation = match &acceptance {
                         Acceptance::New(operation) | Acceptance::Existing(operation) => operation,
                     };
@@ -1910,18 +1945,18 @@ impl Host {
                             accept_auth.validate_grants(stamp)?;
                         }
                     }
-                    Ok((acceptance, stamp))
+                    Ok((acceptance, stamp, upload))
                 })
                 .await;
                 match acceptance {
                     Err(error) => {
                         let _ = send.send(Err(error));
                     }
-                    Ok((Acceptance::Existing(mut operation), _)) => {
+                    Ok((Acceptance::Existing(mut operation), _, _)) => {
                         operation_inspection::redact_error_details(&mut operation);
                         let _ = send.send(Ok(operation));
                     }
-                    Ok((Acceptance::New(operation), stamp)) => {
+                    Ok((Acceptance::New(operation), stamp, upload)) => {
                         let mut call = call;
                         call.request_id = operation.request_id.clone();
                         host.observe_mcp_operation(&actor, &operation).await;
@@ -1955,6 +1990,10 @@ impl Host {
                                 return;
                             }
                             drop(admission.take());
+                            let mut preparation = preparation.expect("device preparation");
+                            if let Some(upload) = upload {
+                                preparation.set_browser_file(upload);
+                            }
                             let _ = send.send(Ok(operation.clone()));
                             let _ = host
                                 .inner
@@ -1965,7 +2004,7 @@ impl Host {
                                         call,
                                         operation,
                                     },
-                                    preparation.expect("device preparation"),
+                                    preparation,
                                 )
                                 .await;
                             // Store changes are coalesced by the projection owner;

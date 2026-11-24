@@ -186,8 +186,14 @@ class BrowserSocket {
   }
 
   async request(request: RpcRequest) {
-    const id =
+    let id =
       "requestId" in request.params ? request.params.requestId : undefined;
+    if (
+      request.method === "browser.fileHandoff" &&
+      request.params.kind === "submit"
+    ) {
+      id = request.params.call.requestId;
+    }
     const timeout =
       request.method === "browser.takeover" && request.params.kind === "request"
         ? 180_000

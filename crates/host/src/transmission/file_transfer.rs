@@ -1,5 +1,6 @@
 //! 分片发送持有同一 Transmission owner，逐块持久保留意图和真实回执。
 use super::*;
+use crate::dispatch::browser_file::Upload;
 use crate::files::{FileService, FixedFile};
 use crate::storage::Store;
 use serde::{Deserialize, Serialize};
@@ -117,9 +118,15 @@ impl PreparedPaste {
     }
 }
 
+pub(super) enum PreparedTransfer {
+    Paste(PreparedPaste),
+    Browser(Box<Upload>),
+}
+
 enum TransferSource {
     File(Box<FixedFile>),
     Paste(Arc<[u8]>),
+    Browser(Box<Upload>),
 }
 
 impl TransferSource {
@@ -129,6 +136,13 @@ impl TransferSource {
                 blocking(move || {
                     let bytes = file.read_chunk(offset, length)?;
                     Ok((Self::File(file), bytes.into()))
+                })
+                .await
+            }
+            Self::Browser(mut upload) => {
+                blocking(move || {
+                    let bytes = upload.read_chunk(offset, length)?;
+                    Ok((Self::Browser(upload), bytes.into()))
                 })
                 .await
             }
@@ -177,9 +191,29 @@ struct TransferInput {
 }
 
 impl TransmissionService {
-    async fn open_file_transfer(&self, accepted: &AcceptedCall) -> HostResult<TransferInput> {
+    async fn open_file_transfer(
+        &self,
+        accepted: &AcceptedCall,
+        browser_file: Option<Box<Upload>>,
+    ) -> HostResult<TransferInput> {
         let params: FileTransferParams = decode(&accepted.call.params)?;
         validate_params(&params)?;
+        let plan = TransferPlan {
+            offset: params.offset.get(),
+            length: params.length.get(),
+            chunk_bytes: params.chunk_bytes.get(),
+            bytes_per_second: params.bytes_per_second.get(),
+            inter_chunk_ms: params.inter_chunk_ms.get(),
+            write_wait_ms: params.write_wait_ms,
+        };
+        if let Some(upload) = browser_file {
+            return Ok(TransferInput {
+                source: TransferSource::Browser(upload),
+                reference: params.source_ref,
+                authority: accepted.call.target.clone(),
+                plan,
+            });
+        }
         let files = FileService::new(
             self.devices.inner.store.clone(),
             self.devices.inner.auth.clone(),
@@ -205,14 +239,7 @@ impl TransmissionService {
             source: TransferSource::File(Box::new(fixed)),
             reference: params.source_ref,
             authority,
-            plan: TransferPlan {
-                offset: params.offset.get(),
-                length: params.length.get(),
-                chunk_bytes: params.chunk_bytes.get(),
-                bytes_per_second: params.bytes_per_second.get(),
-                inter_chunk_ms: params.inter_chunk_ms.get(),
-                write_wait_ms: params.write_wait_ms,
-            },
+            plan,
         })
     }
 
@@ -223,10 +250,10 @@ impl TransmissionService {
         session: &Arc<Session>,
         runtime: &Arc<Runtime>,
         guard: &mut Option<FileTransferGuard>,
-        paste: Option<PreparedPaste>,
+        prepared: Option<PreparedTransfer>,
     ) -> HostResult<Completion> {
-        let input = match paste {
-            Some(paste) => TransferInput {
+        let input = match prepared {
+            Some(PreparedTransfer::Paste(paste)) => TransferInput {
                 source: TransferSource::Paste(paste.bytes),
                 reference: ObjectRef {
                     host_id: accepted.call.target.host_id.clone(),
@@ -237,7 +264,10 @@ impl TransmissionService {
                 authority: accepted.call.target.clone(),
                 plan: paste.plan,
             },
-            None => self.open_file_transfer(accepted).await?,
+            Some(PreparedTransfer::Browser(upload)) => {
+                self.open_file_transfer(accepted, Some(upload)).await?
+            }
+            None => self.open_file_transfer(accepted, None).await?,
         };
         let turn = self
             .acquire(

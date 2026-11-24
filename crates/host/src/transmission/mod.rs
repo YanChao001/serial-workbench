@@ -102,11 +102,16 @@ pub(crate) struct AdmissionGuard {
 }
 pub(crate) struct OperationPreparation {
     file_transfer: Option<file_transfer::FileTransferGuard>,
-    paste: Option<file_transfer::PreparedPaste>,
+    transfer_source: Option<file_transfer::PreparedTransfer>,
     configuration_change: Option<ConfigurationChange>,
     _queue: Option<QueueReservation>,
     session: Option<Arc<Session>>,
     tx: Option<(Arc<[u8]>, PreparedTxIntent)>,
+}
+impl OperationPreparation {
+    pub(crate) fn set_browser_file(&mut self, upload: crate::dispatch::browser_file::Upload) {
+        self.transfer_source = Some(file_transfer::PreparedTransfer::Browser(Box::new(upload)));
+    }
 }
 impl Drop for AdmissionGuard {
     fn drop(&mut self) {
@@ -317,7 +322,7 @@ impl TransmissionService {
             .transpose()?;
         Ok(OperationPreparation {
             file_transfer: None,
-            paste,
+            transfer_source: paste.map(file_transfer::PreparedTransfer::Paste),
             configuration_change: None,
             session,
             tx,
@@ -576,7 +581,7 @@ impl TransmissionService {
                     session,
                     &runtime,
                     &mut preparation.file_transfer,
-                    preparation.paste.take(),
+                    preparation.transfer_source.take(),
                 )
                 .await
             }

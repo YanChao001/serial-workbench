@@ -20,8 +20,15 @@ fn progress(response: RpcReply) -> BrowserFileHandoffProgress {
     value
 }
 
+fn operation(response: RpcReply) -> Operation {
+    let RpcResult::Operation(value) = success(response) else {
+        panic!("Missing browser file operation");
+    };
+    value.operation
+}
+
 #[tokio::test]
-async fn browser_file_upload_seals_exact_bytes_and_returns_quota_after_close_and_revocation() {
+async fn browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation() {
     use BrowserFileHandoffParams as Upload;
 
     let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
@@ -174,14 +181,50 @@ async fn browser_file_upload_seals_exact_bytes_and_returns_quota_after_close_and
             IpcChannel::Control,
             IpcMessage::Authenticate {
                 client_id: entry.client_id.clone(),
-                credential: Some(reconnect),
+                credential: Some(reconnect.clone()),
             }
         )
         .await,
         IpcMessage::Authenticated { .. }
     ));
+    let submit = |upload_id: &Id, offset: u64, length: u64| {
+        let q = query(
+            &attachment,
+            target.clone(),
+            "transfer.file",
+            json!({
+                "sourceRef": {"hostId": target.host_id, "kind": "file", "id": upload_id, "revision": "1"},
+                "offset": offset.to_string(), "length": length.to_string(),
+                "chunkBytes": "1", "bytesPerSecond": "1024", "interChunkMs": "100",
+                "writeWaitMs": "1000"
+            }),
+        );
+        Upload::Submit {
+            upload_id: upload_id.clone(),
+            call: Box::new(Call {
+                protocol_version: q.protocol_version,
+                host_id: q.host_id,
+                instance_epoch: q.instance_epoch,
+                actor_id: q.actor_id,
+                request_id: q.request_id,
+                request_context: attachment.request_context.clone(),
+                action_id: q.action_id,
+                target: q.target,
+                params: q.params,
+                reveal_target: q.reveal_target,
+                expected_revision: None,
+                lease_id: None,
+                execution_mode: Some(ExecutionMode::Independent),
+            }),
+        }
+    };
     let received = progress(handoff(&mut browser, begin(4)).await);
     assert_eq!(received.received_bytes.get(), 0);
+    let unsealed = handoff(&mut browser, submit(&received.upload_id, 1, 2)).await;
+    assert!(
+        matches!(&unsealed, RpcReply::Failure { error, .. } if error.code == "INVALID_ARGUMENT"),
+        "{unsealed:?}",
+    );
     assert!(matches!(
         handoff(&mut other, append(&received.upload_id, 0, &[0, 255])).await,
         RpcReply::Failure { error, .. } if error.code == "NOT_FOUND"
@@ -205,23 +248,149 @@ async fn browser_file_upload_seals_exact_bytes_and_returns_quota_after_close_and
         format!("{:x}", Sha256::digest([0, 255, 36, 123]))
     );
     assert!(matches!(
+        handoff(&mut browser, submit(&received.upload_id, 3, 2)).await,
+        RpcReply::Failure { error, .. } if error.code == "INVALID_ARGUMENT"
+    ));
+    let confirmed = submit(&received.upload_id, 1, 2);
+    assert!(matches!(
+        handoff(&mut other, confirmed.clone()).await,
+        RpcReply::Failure { error, .. } if error.code == "NOT_FOUND"
+    ));
+    let accepted = operation(handoff(&mut browser, confirmed.clone()).await);
+    browser.close(None).await.unwrap();
+    let finished = timeout(Duration::from_secs(8), async {
+        loop {
+            let state = operation(handoff(&mut other, confirmed.clone()).await);
+            assert_eq!(state.operation_id, accepted.operation_id);
+            if !matches!(
+                state.state,
+                OperationState::Queued | OperationState::Running
+            ) {
+                break state;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("Browser file transfer did not finish");
+    assert_eq!(finished.state, OperationState::Succeeded, "{finished:?}");
+    let Some(ActionResult::FileTransfer(result)) = finished.result else {
+        panic!("Missing browser file transfer result");
+    };
+    assert_eq!(result.accepted.get(), 2);
+    assert_eq!(result.unknown.get(), 0);
+    let echo_reader = local.connect_raw().await.unwrap();
+    let read = RpcRequest::StreamRead(query(
+        local.attachment(),
+        target.clone(),
+        "stream.read",
+        json!({
+            "sessionId": target.id, "sessionEpoch": target.session_epoch,
+            "startEventSeq": "1", "maxEvents": "100", "maxBytes": "262144"
+        }),
+    ));
+    let echo = timeout(Duration::from_secs(5), async {
+        loop {
+            let RpcResult::StreamRead(page) =
+                success(echo_reader.request(read.clone()).await.unwrap())
+            else {
+                panic!("Missing Virtual Echo stream");
+            };
+            let bytes: Vec<_> = page
+                .events
+                .into_iter()
+                .filter_map(|event| {
+                    let RawPayload::Rx(value) = event.payload else {
+                        return None;
+                    };
+                    Some(STANDARD.decode(value.bytes_base64.as_str()).unwrap())
+                })
+                .flatten()
+                .collect();
+            if bytes.len() >= 2 {
+                break bytes;
+            }
+            tokio::time::sleep(Duration::from_millis(20)).await;
+        }
+    })
+    .await
+    .expect("Virtual Echo did not receive the staged bytes");
+    assert_eq!(echo, [255, 36]);
+    let mut conflicting = confirmed.clone();
+    if let Upload::Submit { call, .. } = &mut conflicting {
+        call.params
+            .insert("offset".into(), JsonValue::String("0".into()));
+    }
+    assert!(matches!(
+        handoff(&mut other, conflicting).await,
+        RpcReply::Failure { error, .. } if error.code == "REQUEST_CONFLICT"
+    ));
+    let mut browser = browser_socket(&entry.url, Some(&entry.url)).await.unwrap();
+    assert!(matches!(
+        exchange(
+            &mut browser,
+            IpcChannel::Control,
+            IpcMessage::Authenticate {
+                client_id: entry.client_id.clone(),
+                credential: Some(reconnect),
+            }
+        )
+        .await,
+        IpcMessage::Authenticated { .. }
+    ));
+    assert!(matches!(
+        handoff(&mut browser, submit(&received.upload_id, 1, 2)).await,
+        RpcReply::Failure { error, .. } if error.code == "NOT_FOUND"
+    ));
+    let discarded = progress(handoff(&mut browser, begin(2)).await).upload_id;
+    progress(handoff(&mut browser, append(&discarded, 0, &[1, 2])).await);
+    progress(
+        handoff(
+            &mut browser,
+            Upload::Seal {
+                upload_id: discarded.clone(),
+            },
+        )
+        .await,
+    );
+    assert!(matches!(
         success(
             handoff(
                 &mut browser,
                 Upload::Discard {
-                    upload_id: received.upload_id
+                    upload_id: discarded.clone()
                 }
             )
             .await
         ),
         RpcResult::Closed(_)
     ));
+    assert!(matches!(
+        handoff(&mut browser, submit(&discarded, 0, 2)).await,
+        RpcReply::Failure { error, .. } if error.code == "NOT_FOUND"
+    ));
 
     let outdated = progress(handoff(&mut browser, begin(4)).await);
+    progress(
+        handoff(
+            &mut browser,
+            append(&outdated.upload_id, 0, &[0, 255, 36, 123]),
+        )
+        .await,
+    );
+    progress(
+        handoff(
+            &mut browser,
+            Upload::Seal {
+                upload_id: outdated.upload_id.clone(),
+            },
+        )
+        .await,
+    );
     auth.revoke(
         &user,
         RevokeParams {
-            actor_id: attachment.actor_id,
+            actor_id: attachment.actor_id.clone(),
             permissions: vec!["device.modify".into()],
             targets: vec![target.clone()],
         },
@@ -238,7 +407,7 @@ async fn browser_file_upload_seals_exact_bytes_and_returns_quota_after_close_and
     )
     .unwrap();
     assert!(matches!(
-        handoff(&mut browser, append(&outdated.upload_id, 0, &[0, 255])).await,
+        handoff(&mut browser, submit(&outdated.upload_id, 0, 4)).await,
         RpcReply::Failure { error, .. } if ["NOT_FOUND", "PERMISSION_DENIED"].contains(&error.code.as_str())
     ));
 

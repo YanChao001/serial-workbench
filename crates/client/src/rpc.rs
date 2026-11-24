@@ -556,6 +556,9 @@ impl Drop for WriteGuard<'_> {
 }
 fn request_id(request: &RpcRequest) -> RequestId {
     match request {
+        RpcRequest::BrowserFileHandoff(BrowserFileHandoffParams::Submit { call, .. }) => {
+            call.request_id.clone()
+        }
         RpcRequest::Attach(_)
         | RpcRequest::BrowserAccess(_)
         | RpcRequest::BrowserFileHandoff(_)

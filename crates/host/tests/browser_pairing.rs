@@ -167,13 +167,19 @@ async fn exchange(socket: &mut Socket, channel: IpcChannel, body: IpcMessage) ->
 }
 
 async fn send_message(socket: &mut Socket, channel: IpcChannel, body: IpcMessage) -> RequestId {
-    let request_id = if let IpcMessage::Request { request } = &body
-        && let RpcRequest::Query(query) = request.as_ref()
-    {
-        query.request_id.clone()
-    } else {
-        RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap()
+    let inner_id = match &body {
+        IpcMessage::Request { request } => match request.as_ref() {
+            RpcRequest::Query(query) | RpcRequest::StreamRead(query) => Some(&query.request_id),
+            RpcRequest::BrowserFileHandoff(BrowserFileHandoffParams::Submit { call, .. }) => {
+                Some(&call.request_id)
+            }
+            _ => None,
+        },
+        _ => None,
     };
+    let request_id = inner_id
+        .cloned()
+        .unwrap_or_else(|| RequestId::try_from(uuid::Uuid::new_v4().to_string().as_str()).unwrap());
     let frame = WireFrame {
         request_id: request_id.clone(),
         channel,

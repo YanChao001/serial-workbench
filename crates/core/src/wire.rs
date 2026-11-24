@@ -364,6 +364,10 @@ pub enum BrowserFileHandoffParams {
     Seal {
         upload_id: Id,
     },
+    Submit {
+        upload_id: Id,
+        call: Box<Call>,
+    },
     Discard {
         upload_id: Id,
     },

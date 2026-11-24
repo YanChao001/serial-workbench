@@ -79,6 +79,55 @@ it("validates a browser handoff block and its sealed receipt with the generated 
   ).toEqual({ type: "reply", reply });
 });
 
+it("validates browser file submission with the normal action envelope", () => {
+  const requestId = "12345678-1234-4abc-8000-0123456789ab";
+  const call = {
+    protocolVersion: "1.0",
+    hostId: "host",
+    instanceEpoch: "7",
+    actorId: "browser-actor",
+    requestId,
+    requestContext: "paired-context",
+    actionId: "transfer.file",
+    executionMode: "independent",
+    target: {
+      hostId: "host",
+      kind: "session",
+      id: "session",
+      sessionId: "session",
+      sessionEpoch: "3",
+    },
+    params: {
+      sourceRef: { hostId: "host", kind: "file", id: "upload", revision: "1" },
+      offset: "1",
+      length: "2",
+      bytesPerSecond: "1024",
+      interChunkMs: "0",
+      writeWaitMs: "1000",
+    },
+    revealTarget: { pageId: "workbench" },
+  };
+  const frame = (input: unknown) => ({
+    requestId,
+    channel: "control",
+    body: {
+      type: "request",
+      request: {
+        method: "browser.fileHandoff",
+        params: { kind: "submit", uploadId: "upload", call: input },
+      },
+    },
+  });
+  expect(parseWireFrame(frame(call))).toEqual(frame(call));
+  const { requestContext, ...incomplete } = call;
+  expect(() => parseWireFrame(frame(incomplete))).toThrow(
+    ContractValidationError,
+  );
+  expect(() =>
+    parseWireFrame(frame({ ...call, path: requestContext })),
+  ).toThrow(ContractValidationError);
+});
+
 describe("Rust capture storage limits contract", () => {
   const input = {
     sessionRefs: [],

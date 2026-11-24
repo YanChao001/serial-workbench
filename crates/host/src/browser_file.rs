@@ -1,11 +1,11 @@
-use super::{Host, blocking, busy, invalid};
+use super::{Acceptance, Host, blocking, busy, decode, invalid};
 use crate::{auth::GrantStamp, ipc::ConnectionContext};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serial_workbench_core::*;
 use sha2::{Digest as _, Sha256};
 use std::{
     fs::File,
-    io::Write,
+    io::{Read, Seek, SeekFrom, Write},
     path::Path,
     sync::{Arc, Mutex},
     time::Duration,
@@ -67,7 +67,7 @@ impl BrowserFileBudget {
     }
 }
 
-struct Upload {
+pub(crate) struct Upload {
     id: Id,
     target: Target,
     file: File,
@@ -89,6 +89,15 @@ impl Drop for Upload {
 }
 
 impl Upload {
+    pub(crate) fn read_chunk(&mut self, offset: u64, len: usize) -> HostResult<Vec<u8>> {
+        let mut bytes = vec![0; len];
+        self.file
+            .seek(SeekFrom::Start(offset))
+            .map_err(|_| storage())?;
+        self.file.read_exact(&mut bytes).map_err(|_| storage())?;
+        Ok(bytes)
+    }
+
     fn progress(&self) -> BrowserFileHandoffProgress {
         BrowserFileHandoffProgress {
             upload_id: self.id.clone(),
@@ -207,6 +216,90 @@ impl BrowserUploadSlot {
     }
 }
 
+pub(super) struct BrowserFileAdmission {
+    context: ConnectionContext,
+    slot: Arc<BrowserUploadSlot>,
+    upload_id: Id,
+}
+
+impl BrowserFileAdmission {
+    pub(super) fn validate_reference(&self, query: &Query) -> HostResult<()> {
+        let params: FileTransferParams = decode(&query.params)?;
+        let reference = &params.source_ref;
+        if reference.host_id != query.target.host_id
+            || reference.kind.as_str() != "file"
+            || reference.id != self.upload_id
+            || reference.revision != Some(1.into())
+        {
+            return Err(invalid());
+        }
+        Ok(())
+    }
+
+    pub(super) fn accept(
+        &self,
+        host: &Host,
+        call: &Call,
+        digest: &Digest,
+    ) -> HostResult<(Acceptance, Option<GrantStamp>, Option<Upload>)> {
+        let mut current = self.slot.upload.lock().map_err(|_| busy())?;
+        let store = &host.inner.store;
+        let actor = &self.context.actor;
+        let Some(upload) = current.as_ref().filter(|file| file.id == self.upload_id) else {
+            // 同连接的另一个请求可能已在首次查回执之后接纳文件。
+            return store
+                .lookup_call(actor, call, digest)?
+                .map(|existing| (Acceptance::Existing(existing), None, None))
+                .ok_or_else(missing);
+        };
+        if upload.target != call.target {
+            return Err(denied());
+        }
+        if self.slot.closed.is_cancelled() || upload.deadline <= Instant::now() {
+            current.take();
+            return Err(closed());
+        }
+        let params: FileTransferParams = decode(&call.params)?;
+        if upload.sealed.is_none()
+            || params
+                .offset
+                .get()
+                .checked_add(params.length.get())
+                .is_none_or(|end| end > upload.length.get())
+        {
+            return Err(invalid());
+        }
+        let initial = upload.grant.as_ref().ok_or_else(denied)?;
+        let grant = host.browser_file_grants(&self.context, &upload.target, Some(initial))?;
+        let acceptance = host.inner.auth.commit_grant_stamp(&grant, || {
+            // 撤权和接纳线性化。连接关闭或主动丢弃在此之前生效时，不能写入。
+            if self.slot.closed.is_cancelled()
+                || upload.deadline <= Instant::now()
+                || self.context.is_closed()
+                || self
+                    .context
+                    .browser_stopped
+                    .as_ref()
+                    .is_none_or(|stopped| *stopped.borrow())
+            {
+                return Err(closed());
+            }
+            host.inner
+                .auth
+                .require(actor, "content.read", &upload.target)?;
+            store.accept_with_source(actor, call, digest, None)
+        })?;
+        let owned = if matches!(acceptance, Acceptance::New(_)) {
+            let upload = current.take().expect("matched browser upload");
+            upload.finished.cancel();
+            Some(upload)
+        } else {
+            None
+        };
+        Ok((acceptance, Some(grant), owned))
+    }
+}
+
 impl Host {
     pub(super) async fn browser_file_handoff(
         &self,
@@ -241,6 +334,23 @@ impl Host {
                         .await;
                 });
                 Ok(RpcResult::BrowserFileHandoff(progress))
+            }
+            BrowserFileHandoffParams::Submit { upload_id, call } => {
+                if call.action_id.as_str() != "transfer.file" {
+                    return Err(invalid());
+                }
+                let actor = context.actor.clone();
+                self.invoke_with_browser_file(
+                    &actor,
+                    *call,
+                    Some(BrowserFileAdmission {
+                        context,
+                        slot,
+                        upload_id,
+                    }),
+                )
+                .await
+                .map(|operation| RpcResult::Operation(Box::new(OperationResult { operation })))
             }
             BrowserFileHandoffParams::Discard { upload_id } => {
                 blocking(move || slot.discard(&upload_id)).await?;
