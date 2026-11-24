@@ -1,4 +1,4 @@
-use rusqlite::{Connection, OptionalExtension, TransactionBehavior, params};
+use rusqlite::{Connection, OptionalExtension, Transaction, TransactionBehavior, params};
 use serial_workbench_core::*;
 
 use super::{
@@ -6,6 +6,10 @@ use super::{
     unavailable,
 };
 use crate::auth::{AuthenticatedActor, add_wall_seconds, hash};
+
+fn commit_operation(transaction: Transaction<'_>) -> HostResult<()> {
+    transaction.commit().map_err(|_| unavailable())
+}
 
 const RETENTION_NS: u64 = 604_800_000_000_000;
 pub(super) const MAX_IN_FLIGHT: i64 = 256;
@@ -270,7 +274,16 @@ impl Database {
         digest: &Digest,
         source: Option<&Target>,
     ) -> HostResult<Acceptance> {
-        self.accept_with_metadata(actor, call, digest, source, None)
+        self.accept_with_metadata(actor, call, digest, source, None, commit_operation)
+    }
+    pub(super) fn accept_browser_file(
+        &mut self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+        commit: impl FnOnce(Transaction<'_>) -> HostResult<()>,
+    ) -> HostResult<Acceptance> {
+        self.accept_with_metadata(actor, call, digest, None, None, commit)
     }
     pub(super) fn accept_plugin(
         &mut self,
@@ -280,7 +293,7 @@ impl Database {
         plugin: &super::plugin_operations::PluginOperation,
     ) -> HostResult<Acceptance> {
         plugin.validate_call(call)?;
-        self.accept_with_metadata(actor, call, digest, None, Some(plugin))
+        self.accept_with_metadata(actor, call, digest, None, Some(plugin), commit_operation)
     }
     fn accept_with_metadata(
         &mut self,
@@ -289,6 +302,7 @@ impl Database {
         digest: &Digest,
         source: Option<&Target>,
         plugin: Option<&super::plugin_operations::PluginOperation>,
+        commit: impl FnOnce(Transaction<'_>) -> HostResult<()>,
     ) -> HostResult<Acceptance> {
         let (identity, input) = self.validate_call(actor, call, digest)?;
         if let Some(task) = actor.task() {
@@ -412,7 +426,7 @@ impl Database {
                 )
                 .map_err(|_| unavailable())?;
         }
-        transaction.commit().map_err(|_| unavailable())?;
+        commit(transaction)?;
         Ok(Acceptance::New(operation))
     }
 

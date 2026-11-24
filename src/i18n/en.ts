@@ -1131,6 +1131,8 @@ export const en = {
   "workbench.experiment.otherHost": "Other Host",
   "workbench.experiment.imported":
     "Imported the configuration. Rebind devices in the device library.",
+  "workbench.experiment.previewChanged":
+    "The package changed. Review the new preview before saving.",
   "workbench.experiment.saved": "Experiment package saved.",
   "workbench.experiment.fileName": "experiment-package.json",
   "workbench.tools.chooseConfigurationFile": "Choose file",

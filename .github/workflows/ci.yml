@@ -344,6 +344,32 @@ jobs:
               | tee artifacts/reference-chart/paired-browser.log
           fi
 
+      - name: 验证真实配对浏览器文件与实验包
+        id: paired-workbench-files
+        if: runner.os == 'Windows'
+        shell: bash
+        timeout-minutes: 8
+        run: |
+          pnpm build:web
+          output="$(node -p 'process.env.RUNNER_TEMP.replaceAll("\\", "/") + "/paired-workbench"')"
+          mkdir -p "$output"
+          export SWB_TEST_BROWSER_TRANSFER_OUTPUT="$output/transfer"
+          if ! cargo test --locked -p serial-workbench-host --test browser_pairing \
+              browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation \
+              -- --test-threads=1 > "$output/transfer.log" 2>&1 ||
+              ! test -s "$output/transfer/browser-transfer-receipt.json"; then
+            echo "::error::真实配对浏览器文件交接失败，请按测试指南在隔离环境复验。"
+            exit 1
+          fi
+          export SWB_TEST_EXPERIMENT_BROWSER_OUTPUT="$output/experiment"
+          if ! cargo test --locked -p serial-workbench-host --test capture_api_host \
+              paired_browsers_exchange_experiment_between_two_hosts \
+              -- --ignored --test-threads=1 > "$output/experiment.log" 2>&1 ||
+              ! test -s "$output/experiment/host-receipt.json"; then
+            echo "::error::真实配对浏览器实验包交换失败，请按测试指南在隔离环境复验。"
+            exit 1
+          fi
+
       - name: 保留 runtime 验收收据与原始输出
         if: always() && (steps.node-runtime.outcome == 'success' || steps.node-runtime.outcome == 'failure')
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2

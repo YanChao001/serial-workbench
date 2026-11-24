@@ -484,7 +484,7 @@ cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- 
 
 用独立本机对端验证七项串口设置、确认值不同、拒绝选项、取消、超时、Telnet 分段、控制通知隔离和流控暂停。签名 Host 场景请求 115200 波特率并由对端应答 9600，核对打开失败及实际断连。重新协商成功后核对线路上的八个 Telnet 字节和 Host Raw 中的七个原始字节，末尾验收撤权、重开和停用。
 
-首方 `swb.builtin.rfc2217` 0.1.1 随 Host 登记。工作台从设备下拉选择「RFC 2217 远程串口」，输入远端地址、端口与波特率。展开线路设置以修改串口格式、流控和控制线。使用 [宽窄草稿](./ui-design.md#rfc-2217-连接草稿) 核对输入高度、字段对齐、短窗滚动、错误全文和焦点。选用硬件流控时，RTS 由对端流控接管，表单保留切换前的手动选项。同次的已协商配置用于新建会话的线路参数。主按钮显示协商等待，失败保留草稿供重试。
+首方 `swb.builtin.rfc2217` 0.1.1 随 Host 登记。工作台从设备下拉选择「RFC 2217 远程串口」，输入远端地址、端口与波特率。展开线路设置以修改串口格式、流控和控制线。使用 [宽窄草稿](./ui-design.md#rfc-2217-连接草稿) 核对输入高度、字段对齐、短窗滚动、错误全文和焦点。选用硬件流控时，RTS 由对端流控接管，表单保留切换前的手动选项。Host 使用同次已确认的波特率、数据位、校验位、停止位和流控构建会话，调用方设置的本地等待和退避时间继续生效。签名场景故意提交不同的会话线路参数，通过 `session.get` 核对实际协商值。主按钮显示协商等待，失败保留草稿供重试。
 
 ```sh
 cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture

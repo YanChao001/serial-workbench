@@ -1717,7 +1717,12 @@ impl Host {
                     Err(error) if error.code == "CATALOG_CHANGED" => continue,
                     Err(_) => break,
                 };
-                if (next.version != current.version || next.token != current.token)
+                let authorization_changed =
+                    next.stamp.as_ref().map(GrantStamp::revision_and_expiry)
+                        != current.stamp.as_ref().map(GrantStamp::revision_and_expiry);
+                if (authorization_changed
+                    || next.version != current.version
+                    || next.token != current.token)
                     && context
                         .emit_catalog_changed(next.version, next.token.clone())
                         .is_err()

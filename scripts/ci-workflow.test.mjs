@@ -200,6 +200,26 @@ test("the gate always gathers every job, and all jobs have a time budget", () =>
   }
 });
 
+test("Windows gates real Chromium file transfer and experiment exchange with runner-local evidence", () => {
+  const rust = job("rust");
+  const step = rust
+    .split("id: paired-workbench-files\n")[1]
+    ?.split("\n      - name:")[0];
+  assert.ok(step);
+  assert.match(step, /if: runner\.os == 'Windows'/);
+  assert.match(step, /pnpm build:web/);
+  assert.match(step, /process\.env\.RUNNER_TEMP/);
+  assert.match(
+    step,
+    /SWB_TEST_BROWSER_TRANSFER_OUTPUT=.*\n\s+if ! cargo test .*--test browser_pairing \\\n\s+browser_file_upload_sends_the_selected_range_once_and_returns_quota_after_revocation/,
+  );
+  assert.match(
+    step,
+    /SWB_TEST_EXPERIMENT_BROWSER_OUTPUT=.*\n\s+if ! cargo test .*--test capture_api_host \\\n\s+paired_browsers_exchange_experiment_between_two_hosts \\\n\s+-- --ignored/,
+  );
+  assert.doesNotMatch(rust, /artifacts\/paired-workbench/);
+});
+
 test("Linux verified backend checks are required and use an independent fixed runtime", () => {
   const backend = job("linux-node-backend");
   assert.match(backend, /runs-on: ubuntu-22\.04/);

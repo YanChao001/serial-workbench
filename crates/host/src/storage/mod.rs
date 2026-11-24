@@ -298,6 +298,22 @@ impl Store {
         }
         Ok(acceptance)
     }
+    pub(crate) fn accept_browser_file(
+        &self,
+        actor: &AuthenticatedActor,
+        call: &Call,
+        digest: &Digest,
+        commit: impl FnOnce(rusqlite::Transaction<'_>) -> HostResult<()> + Send + 'static,
+    ) -> HostResult<Acceptance> {
+        let (actor, call, digest) = (actor.clone(), call.clone(), digest.clone());
+        let acceptance = self.request(move |database| {
+            database.accept_browser_file(&actor, &call, &digest, commit)
+        })?;
+        if matches!(&acceptance, Acceptance::New(_)) {
+            self.publish_operation_change();
+        }
+        Ok(acceptance)
+    }
     pub(crate) fn lookup_call(
         &self,
         actor: &AuthenticatedActor,

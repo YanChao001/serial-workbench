@@ -479,7 +479,7 @@ impl DeviceService {
     async fn open_with(
         &self,
         target: &Target,
-        params: OpenParams,
+        mut params: OpenParams,
         admission: Option<&OpenAdmission>,
         opener: TransportOpener,
     ) -> HostResult<OpenResult> {
@@ -530,6 +530,8 @@ impl DeviceService {
                 validate.normalize_parameters(&supplied)
             })
             .await?;
+            // RFC 2217 仅在远端确认参数后开启会话。此处用同一组参数生成线路快照。
+            provider.apply_session_configuration(&normalized, &mut params.configuration)?;
             Some((provider, normalized, authorize))
         } else {
             if params.transport_params.is_some() {

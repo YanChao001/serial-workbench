@@ -11,7 +11,10 @@ import { afterEach, expect, it, vi } from "vitest";
 import { toast } from "sonner";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type { OperationSummary } from "@serial-workbench/contracts";
+import { en } from "@/i18n/en";
+import { createTranslator } from "@/i18n/translate";
 import { clearUserLog, getUserLog } from "@/lib/user-log";
+import { I18nContext } from "@/providers/i18n-context";
 import { OperationFailureNotices } from "./operation-failure-notices";
 import { WorkspaceLayout, type WorkbenchHost } from "./workspace-layout";
 import { actionCatalog, labels, operation, session } from "./test-fixtures";
@@ -97,14 +100,16 @@ function Shell({
         operations={adapter.state.operationSummaries}
         text={labels.operationText}
       />
-      {showWorkbench && (
-        <WorkspaceLayout
-          host={adapter}
-          labels={labels}
-          formatError={() => "Cannot open this port"}
-          onCloseSession={onCloseSession}
-        />
-      )}
+      <I18nContext.Provider value={{ language: "en", t: createTranslator(en) }}>
+        {showWorkbench && (
+          <WorkspaceLayout
+            host={adapter}
+            labels={labels}
+            formatError={() => "Cannot open this port"}
+            onCloseSession={onCloseSession}
+          />
+        )}
+      </I18nContext.Provider>
     </StrictMode>
   );
 }

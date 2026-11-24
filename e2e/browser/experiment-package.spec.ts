@@ -177,6 +177,43 @@ for (const { width, height, columns, language, theme, dictionary } of [
     ).toBeVisible();
     await expect(tool).not.toContainText("COM71");
     await expect(tool).not.toContainText("private-serial");
+    if (columns === 1) {
+      await test.step("recording revocation invalidates the current preview without reconnecting", async () => {
+        const save = tool.getByRole("button", {
+          name: dictionary["workbench.experiment.save"],
+        });
+        const preview = tool.getByRole("button", {
+          name: dictionary["workbench.experiment.preview"],
+        });
+        await page.evaluate(() =>
+          window.workbenchFixture.setExperimentRecordingReadable(false, false),
+        );
+        await save.click();
+        await expect(tool.getByRole("alert")).toBeVisible();
+        await expect(save).toHaveCount(0);
+        expect(
+          await page.evaluate(() => window.workbenchFixture.savedTextExports),
+        ).toEqual([]);
+        await page.evaluate(() =>
+          window.workbenchFixture.setExperimentRecordingReadable(true, false),
+        );
+        await preview.click();
+        await expect(save).toBeVisible();
+        await page.evaluate(() =>
+          window.workbenchFixture.setExperimentRecordingReadable(false, true),
+        );
+        await expect(save).toHaveCount(0);
+        await expect(preview).toBeEnabled();
+        expect(
+          await page.evaluate(() => window.workbenchFixture.savedTextExports),
+        ).toEqual([]);
+        await page.evaluate(() =>
+          window.workbenchFixture.setExperimentRecordingReadable(true, false),
+        );
+        await preview.click();
+        await expect(save).toBeVisible();
+      });
+    }
     await tool
       .getByRole("button", { name: dictionary["workbench.experiment.save"] })
       .click();

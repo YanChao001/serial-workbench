@@ -1052,6 +1052,8 @@ export const zhCN = {
   "workbench.experiment.unavailable": "不可用",
   "workbench.experiment.otherHost": "其他 Host",
   "workbench.experiment.imported": "实验包配置已导入，设备可在设备库重新绑定。",
+  "workbench.experiment.previewChanged":
+    "实验包内容已变化，请重新确认预览后保存。",
   "workbench.experiment.saved": "实验包已保存。",
   "workbench.experiment.fileName": "复现实验包.json",
   "workbench.tools.chooseConfigurationFile": "选择文件",

@@ -78,6 +78,7 @@ export type ReplayLayoutFixture = {
   >;
 };
 export type WorkbenchFixture = {
+  setExperimentRecordingReadable: (readable: boolean, notify: boolean) => void;
   setNodeThemes: (themes: FixtureNodeThemes) => void;
   registerFramingAction: () => void;
   dropTransferFile: (x: number, y: number, generation?: string) => number;
@@ -994,7 +995,12 @@ export async function seedWorkbenchFixture(
         });
     }
     const dropListeners = new Set<number>();
+    let experimentRecordingReadable = true;
     const fixture: WorkbenchFixture = {
+      setExperimentRecordingReadable(readable, notify) {
+        experimentRecordingReadable = readable;
+        if (notify) catalogChanged();
+      },
       transferDropClaims: [],
       dropTransferFile(x, y, generation = hostAttachment.generation) {
         for (const id of dropListeners)
@@ -2531,6 +2537,20 @@ export async function seedWorkbenchFixture(
               const query = request.params;
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
+              if (
+                query.actionId === "workspace.experiment.export" &&
+                Array.isArray(query.params.recordings) &&
+                query.params.recordings.length > 0 &&
+                !experimentRecordingReadable
+              )
+                return {
+                  ok: false,
+                  error: {
+                    code: "PERMISSION_DENIED",
+                    message: "Recording grant was revoked",
+                    retryable: false,
+                  },
+                };
               if (
                 sendHistory &&
                 query.params.operationId === sentOperation.operationId

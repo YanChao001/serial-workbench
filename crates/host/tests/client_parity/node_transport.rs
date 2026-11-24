@@ -259,8 +259,15 @@ async fn signed_transport(scenario: TransportScenario) {
             };
             (Some(reserved), params)
         };
+        let mut requested = SerialConfiguration::default();
+        if rfc2217 {
+            requested.data_bits = DataBits::Seven;
+            requested.parity = Parity::Odd;
+            requested.stop_bits = StopBits::Two;
+            requested.flow_control = FlowControl::RtsCts;
+        }
         let open_params = json!({
-            "configuration": SerialConfiguration::default(),
+            "configuration": requested,
             "transportParams": transport_params,
         });
         denied(
@@ -350,8 +357,34 @@ async fn signed_transport(scenario: TransportScenario) {
             &operator,
             &client,
             &first,
-            &["content.read", "device.modify"],
+            &["content.read", "device.modify", "metadata.read"],
         );
+
+        if rfc2217 {
+            let QueryResult::Session(snapshot) = query_result(success(
+                client
+                    .request(RpcRequest::Query(query(
+                        &client,
+                        "session.get",
+                        &first,
+                        json!({}),
+                    )))
+                    .await
+                    .unwrap(),
+            )) else {
+                panic!("Expected the confirmed serial configuration");
+            };
+            assert_eq!(
+                snapshot.configuration,
+                SerialConfiguration {
+                    baud_rate: PositiveU64::try_from(U64::from(115_200)).unwrap(),
+                    ..SerialConfiguration::default()
+                }
+            );
+            eprintln!(
+                "rfc2217_session_configuration baud=115200 data_bits=8 parity=none stop_bits=1 flow=none"
+            );
+        }
 
         if scenario == TransportScenario::Server {
             let empty = wait_for_terminal(

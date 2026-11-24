@@ -141,14 +141,44 @@ impl Upload {
 pub(crate) struct BrowserUploadSlot {
     upload: Mutex<Option<Upload>>,
     closed: CancellationToken,
+    admission: Mutex<()>,
 }
 
 impl BrowserUploadSlot {
     pub(crate) fn close(&self) {
-        self.closed.cancel();
+        {
+            let _commit = self
+                .admission
+                .lock()
+                .unwrap_or_else(|error| error.into_inner());
+            self.closed.cancel();
+        }
         if let Ok(mut upload) = self.upload.try_lock() {
             upload.take();
         }
+    }
+
+    fn commit_if_open(
+        &self,
+        context: &ConnectionContext,
+        deadline: Instant,
+        commit: impl FnOnce() -> HostResult<()>,
+    ) -> HostResult<()> {
+        // 仅在数据库提交时持有这两个守卫。等待数据库不会延迟关闭。
+        let _commit = self.admission.lock().map_err(|_| busy())?;
+        let listener = context
+            .browser_stopped
+            .as_ref()
+            .ok_or_else(denied)?
+            .borrow();
+        if *listener
+            || self.closed.is_cancelled()
+            || context.is_closed()
+            || deadline <= Instant::now()
+        {
+            return Err(closed());
+        }
+        commit()
     }
 
     fn begin(
@@ -272,22 +302,17 @@ impl BrowserFileAdmission {
         let initial = upload.grant.as_ref().ok_or_else(denied)?;
         let grant = host.browser_file_grants(&self.context, &upload.target, Some(initial))?;
         let acceptance = host.inner.auth.commit_grant_stamp(&grant, || {
-            // 撤权和接纳线性化。连接关闭或主动丢弃在此之前生效时，不能写入。
-            if self.slot.closed.is_cancelled()
-                || upload.deadline <= Instant::now()
-                || self.context.is_closed()
-                || self
-                    .context
-                    .browser_stopped
-                    .as_ref()
-                    .is_none_or(|stopped| *stopped.borrow())
-            {
-                return Err(closed());
-            }
             host.inner
                 .auth
                 .require(actor, "content.read", &upload.target)?;
-            store.accept_with_source(actor, call, digest, None)
+            let slot = self.slot.clone();
+            let context = self.context.clone();
+            let deadline = upload.deadline;
+            store.accept_browser_file(actor, call, digest, move |transaction| {
+                slot.commit_if_open(&context, deadline, || {
+                    transaction.commit().map_err(|_| storage())
+                })
+            })
         })?;
         let owned = if matches!(acceptance, Acceptance::New(_)) {
             let upload = current.take().expect("matched browser upload");
@@ -520,6 +545,66 @@ mod tests {
 
     fn bytes(input: &[u8]) -> Bytes {
         Bytes::try_from(STANDARD.encode(input).as_str()).unwrap()
+    }
+
+    #[test]
+    fn disconnect_and_listener_stop_before_commit_leave_no_operation() {
+        use crate::storage::{Store, canonical_digest};
+        use std::sync::mpsc;
+        use tokio::sync::watch;
+
+        let root = directory();
+        let store = Store::open(root.path()).unwrap();
+        let identity = store.begin_instance().unwrap();
+        let actor = crate::auth::actor("browser-file-test");
+        for stop_listener in [false, true] {
+            let (mut context, keep_open) =
+                crate::ipc::test_context(actor.clone(), Id::try_from("browser").unwrap());
+            let (stop, stopped) = watch::channel(false);
+            context.browser_stopped = Some(stopped);
+            let slot = Arc::new(BrowserUploadSlot::default());
+            let target = Target {
+                host_id: identity.host_id.clone(),
+                ..target()
+            };
+            let call: Call = serde_json::from_value(serde_json::json!({
+                "protocolVersion": "1.0", "hostId": identity.host_id, "instanceEpoch": identity.instance_epoch,
+                "actorId": actor.id(), "requestId": uuid::Uuid::new_v4().to_string(),
+                "requestContext": store.issue_context(&actor).unwrap().token,
+                "actionId": "transfer.file", "target": target, "params": {},
+                "revealTarget": { "pageId": "workbench" },
+            })).unwrap();
+            let digest = canonical_digest(&call).unwrap();
+            let (committing, ready) = mpsc::channel();
+            let (resume, resumed) = mpsc::channel();
+            let pending = (
+                store.clone(),
+                actor.clone(),
+                call.clone(),
+                digest.clone(),
+                slot.clone(),
+            );
+            let admission = std::thread::spawn(move || {
+                let (store, actor, call, digest, slot) = pending;
+                store.accept_browser_file(&actor, &call, &digest, move |transaction| {
+                    committing.send(()).unwrap();
+                    resumed.recv_timeout(Duration::from_secs(5)).unwrap();
+                    slot.commit_if_open(&context, Instant::now() + IDLE_TIMEOUT, || {
+                        transaction.commit().map_err(|_| storage())
+                    })
+                })
+            });
+            ready.recv_timeout(Duration::from_secs(5)).unwrap();
+            if stop_listener {
+                stop.send_replace(true);
+            } else {
+                slot.close();
+            }
+            resume.send(()).unwrap();
+            assert_eq!(admission.join().unwrap().unwrap_err().code, "CLIENT_CLOSED");
+            assert!(store.lookup_call(&actor, &call, &digest).unwrap().is_none());
+            drop(keep_open);
+        }
     }
 
     #[test]

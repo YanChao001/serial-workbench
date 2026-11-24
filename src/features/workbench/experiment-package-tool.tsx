@@ -2,6 +2,7 @@ import { useEffect, useId, useRef, useState, type ReactNode } from "react";
 import { ContractValidationError } from "@serial-workbench/contracts";
 import type {
   ExperimentDependency,
+  ExperimentExportParams,
   ExperimentInspection,
   ExperimentPackage,
   NodePackageId,
@@ -17,6 +18,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Input } from "@/components/ui/input";
 import type { HostConnection } from "@/lib/host-client";
 import { nativeErrorText } from "@/lib/native-error";
+import { reportClientError } from "@/lib/report-error";
 import { saveTextExport } from "@/lib/tauri";
 import type { HostContextValue } from "@/providers/host-context";
 import { useI18n } from "@/providers/i18n";
@@ -112,7 +114,7 @@ export function ExperimentPackageTool({
   const [firmware, setFirmware] = useState<Record<string, string>>({});
   const [exportPreview, setExportPreview] = useState<{
     value: ExperimentPackage;
-    revision: string;
+    params: ExperimentExportParams;
   }>();
   const [file, setFile] = useState<File>();
   const [importPreview, setImportPreview] = useState<{
@@ -130,8 +132,40 @@ export function ExperimentPackageTool({
 
   useEffect(() => {
     first.current?.focus();
-    return () => request.current?.abort();
+    return () => {
+      const pending = request.current;
+      request.current = null;
+      pending?.abort();
+    };
   }, []);
+  useEffect(() => {
+    let current = true;
+    let unsubscribe: (() => void) | undefined;
+    void connection
+      .onCatalogChanged(() => {
+        if (!current) return;
+        request.current?.abort();
+        setExportPreview(undefined);
+        setImportPreview(undefined);
+      })
+      .then(
+        (stop) => {
+          if (current) unsubscribe = stop;
+          else stop();
+        },
+        (reason: unknown) => {
+          if (current)
+            reportClientError(
+              reason,
+              "Experiment package catalog notifications",
+            );
+        },
+      );
+    return () => {
+      current = false;
+      unsubscribe?.();
+    };
+  }, [connection]);
   useEffect(() => {
     if (exportPreview || importPreview)
       previewRegion.current?.focus({ preventScroll: true });
@@ -224,7 +258,8 @@ export function ExperimentPackageTool({
   const firmwareInvalid = Object.values(firmware).some(
     (version) => version !== "" && !/^[a-z0-9_.+-]{1,64}$/i.test(version),
   );
-  const exportCurrent = exportPreview?.revision === base.document.revision;
+  const exportCurrent =
+    exportPreview?.params.workspaceRevision === base.document.revision;
   const importCurrent =
     importPreview?.base.document.revision === base.document.revision;
   const locked = busy || disabled;
@@ -241,9 +276,24 @@ export function ExperimentPackageTool({
     } catch (reason: unknown) {
       if (!controller.signal.aborted) setError(nativeErrorText(reason, t));
     } finally {
-      if (request.current === controller) request.current = null;
-      if (!controller.signal.aborted) setBusy(false);
+      if (request.current === controller) {
+        request.current = null;
+        setBusy(false);
+      }
     }
+  }
+
+  async function readExport(
+    params: ExperimentExportParams,
+    signal: AbortSignal,
+  ) {
+    const result = await connection.client.query(
+      connection.buildQuery(exportAction, base.scope.target, params),
+      signal,
+    );
+    if (result.kind !== "experiment_package")
+      throw new ContractValidationError();
+    return result.value;
   }
 
   function previewExport() {
@@ -252,28 +302,21 @@ export function ExperimentPackageTool({
         const version = firmware[binding.bindingId];
         return version ? [{ binding: index + 1, version }] : [];
       });
-      const result = await connection.client.query(
-        connection.buildQuery(exportAction, base.scope.target, {
-          workspaceRevision: base.document.revision,
-          parsers,
-          recordings: recordings.flatMap((key) => {
-            const entry = references.get(key);
-            return entry ? [entry.reference] : [];
-          }),
-          operations: settledRuns
-            .filter((item) => operations.includes(item.operationId))
-            .map((item) => item.operationId),
-          firmware: configuration,
+      const params: ExperimentExportParams = {
+        workspaceRevision: base.document.revision,
+        parsers,
+        recordings: recordings.flatMap((key) => {
+          const entry = references.get(key);
+          return entry ? [entry.reference] : [];
         }),
-        signal,
-      );
+        operations: settledRuns
+          .filter((item) => operations.includes(item.operationId))
+          .map((item) => item.operationId),
+        firmware: configuration,
+      };
+      const value = await readExport(params, signal);
       signal.throwIfAborted();
-      if (result.kind !== "experiment_package")
-        throw new ContractValidationError();
-      setExportPreview({
-        value: result.value,
-        revision: base.document.revision,
-      });
+      setExportPreview({ value, params });
     });
   }
 
@@ -338,9 +381,23 @@ export function ExperimentPackageTool({
   function saveExport() {
     if (!exportPreview || !exportCurrent) return;
     void run(async (signal) => {
+      let value;
+      try {
+        value = await readExport(exportPreview.params, signal);
+        signal.throwIfAborted();
+      } catch (reason: unknown) {
+        if (!signal.aborted) setExportPreview(undefined);
+        throw reason;
+      }
+      const content = JSON.stringify(value);
+      if (content !== JSON.stringify(exportPreview.value)) {
+        setExportPreview({ value, params: exportPreview.params });
+        setStatus(t("workbench.experiment.previewChanged"));
+        return;
+      }
       const fileName = await saveTextExport(
         t("workbench.experiment.fileName"),
-        JSON.stringify(exportPreview.value),
+        content,
       );
       signal.throwIfAborted();
       if (fileName !== null) {

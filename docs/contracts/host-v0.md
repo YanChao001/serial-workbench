@@ -234,14 +234,15 @@ LAN 入口显式启用，配对绑定 Host 密钥身份并使用认证加密链�
 
 `browser.fileHandoff` 仅接受通过配对认证的 Control 通道。开始时绑定当前连接、目标串口会话及代次，并校验 `device.modify` 权限。请求携带字节数与分块数据，Host 保存文件句柄并返回短期交接编号。同一浏览器身份另开连接需要重新交接。
 
-| 请求 `kind` | 参数                                | 结果                         |
-| ----------- | ----------------------------------- | ---------------------------- |
-| `begin`     | `target`、`length`                  | 新上传编号、零已接收量和总长 |
-| `append`    | `uploadId`、`offset`、`bytesBase64` | 当前已接收量和总长           |
-| `seal`      | `uploadId`                          | 完整量和 `sealedFingerprint` |
-| `discard`   | `uploadId`                          | `{ closed: true }`           |
+| 请求 `kind` | 参数                                | 结果                               |
+| ----------- | ----------------------------------- | ---------------------------------- |
+| `begin`     | `target`、`length`                  | 新上传编号、零已接收量和总长       |
+| `append`    | `uploadId`、`offset`、`bytesBase64` | 当前已接收量和总长                 |
+| `seal`      | `uploadId`                          | 完整量和 `sealedFingerprint`       |
+| `submit`    | `uploadId`、`call`                  | 已接纳的 `transfer.file` Operation |
+| `discard`   | `uploadId`                          | `{ closed: true }`                 |
 
-分块最多 64 KiB，首块从 0 开始，下一块从上次回执的 `receivedBytes` 开始。封存核对实际长度并返回 SHA-256。错序、超长、写入失败、主动丢弃、撤权和断开回收文件与配额，连续 60 秒无操作也回收。部分交接在新连接上需要重新开始。封存回执只确认 Host 已接收文件，设备发送按后续独立操作的实际回执验收。
+分块最多 64 KiB，首块从 0 开始，下一块从上次回执的 `receivedBytes` 开始。封存核对实际长度并返回 SHA-256。错序、超长、写入失败、主动丢弃、撤权和断开回收文件与配额，连续 60 秒无操作也回收。部分交接在新连接上需要重新开始。封存回执确认 Host 已接收文件。提交时，调用的目标与代次必须和开始交接时一致，`sourceRef` 必须指向当前上传的临时文件（`kind: file`、`revision: 1`）。外层消息与 `call` 使用同一请求 ID。持久接纳后，交接槽将文件所有权交给 `transfer.file` Operation；同一请求上下文中的原请求可恢复该回执。连接关闭或停止配对先于持久接纳时，回收上传和配额。实际发送结果从 Operation 终态读取。
 
 ## Host 验收向量
 
