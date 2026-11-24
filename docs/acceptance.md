@@ -266,6 +266,8 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 定向软件验证使用 `node --test scripts/rule-condition.test.mjs scripts/rule-trigger.test.mjs scripts/product-automation.test.mjs` 和 `pnpm test:ui e2e/browser/rule-trigger.spec.ts --workers=1`。隔离原生环境沿用随包自动化首次登记与重启专项，真实设备与发行分别收集独立证据。
 
+带固定 Node 布局的生产 Host 使用本章的 `e2e/paired-browser.mjs`。在配对浏览器武装规则后关闭面板，确认放弃未保存的定义。向 Virtual Echo 发送带起始换行的 `RULE:BENCH` 行，重开面板查看同一任务和命令序列回执。用 CLI 核对两个操作的共同根、会话代次、规则命中的 11 字节来源，以及序列一次写出并匹配的 `RULE:ACK`。再将 `workspace.save` 设为另一条规则的效果，核对它在同一会话目标下终止、零子操作、无额外 TX，工作区内容和修订保持一致。`receipt.json` 的 `ruleCommand` 保留证据。单独的写库插件、实机对端和发行安装仍按本项验收。
+
 ### 日历定时任务（AUTO-08）
 
 按工具窗内容宽度分列。定点模式保留时间和字节输入，cron 模式宽窗两列排日期条件，窄窗依序纵排。UTC 预览与有效性提示置于操作之前。观察区使用统一反馈和等宽数字，长收据按文字边界换行，在有界列表中可用键盘滚动。显式武装时将初始状态带入可见范围，后续状态更新保持当前滚动位置。

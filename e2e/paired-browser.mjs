@@ -10,6 +10,7 @@ import { setTimeout } from "node:timers/promises";
 import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { startMcpFixture } from "./mcp-fixture.mjs";
+import { checkRuleCommand } from "./paired-rule-evidence.mjs";
 import { sessionScopes } from "./session-scopes.mjs";
 
 const [hostPath, cliPath, assetsPath, outputPath, mcpPath] =
@@ -494,6 +495,45 @@ try {
     firstExport,
     secondExport,
   );
+  const ruleCommand = await checkRuleCommand({
+    page,
+    session: original,
+    async readWorkspace() {
+      return (await query("workspace.read", workspacePath)).result.value
+        .document;
+    },
+    async readRaw(label, start = "1") {
+      const params = await readParams(label, start, "100");
+      const { result } = await query("stream.read", rawTargetPath, params);
+      assert.equal(result.value.hasMore, false);
+      return result.value;
+    },
+    async getOperation(id) {
+      const { result } = await cli("operation", "get", id);
+      return result.operation;
+    },
+    async readResult(label, fileRef) {
+      const fileTarget = join(root, label + "-target.json");
+      const params = join(root, label + "-params.json");
+      await writeFile(
+        fileTarget,
+        JSON.stringify({
+          hostId: fileRef.hostId,
+          kind: fileRef.kind,
+          id: fileRef.id,
+        }),
+      );
+      await writeFile(
+        params,
+        JSON.stringify({ fileRef, offset: "0", maxBytes: "65536" }),
+      );
+      const { result } = await query("file.read", fileTarget, params);
+      assert.equal(result.value.atEnd, true);
+      return JSON.parse(
+        Buffer.from(result.value.bytesBase64, "base64").toString("utf8"),
+      );
+    },
+  });
   const settingsPath = join(root, "settings.json");
   await writeFile(
     settingsPath,
@@ -696,6 +736,7 @@ try {
     virtualEchoRxBeforeAndAfterReload: true,
     sessionEpochPreserved: true,
     selectionDownloads,
+    ruleCommand,
     rawParity: {
       hostId: original.hostId,
       instanceEpoch: context.instanceEpoch,
