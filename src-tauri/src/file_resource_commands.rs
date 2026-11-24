@@ -12,6 +12,7 @@ use tauri::Manager;
 #[serde(rename_all = "camelCase")]
 pub enum FileResourceRole {
     Source,
+    ProtocolDefinitionSource,
     Media,
     CaptureTarget,
     CaptureSource,
@@ -29,7 +30,10 @@ impl FileResourceRole {
             | Self::ExportJsonlTarget
             | Self::CommandArchiveTarget => FilePurpose::CaptureTarget,
             Self::CaptureSource => FilePurpose::CaptureSource,
-            Self::Source | Self::Media | Self::CommandArchiveSource => FilePurpose::ReadFile,
+            Self::Source
+            | Self::ProtocolDefinitionSource
+            | Self::Media
+            | Self::CommandArchiveSource => FilePurpose::ReadFile,
         }
     }
 }
@@ -102,6 +106,33 @@ pub struct SelectedFileResource {
 
 fn invalid() -> HostError {
     HostError::new("INVALID_ARGUMENT", "Invalid selected resource")
+}
+
+const MAX_DEFINITION_SOURCE_BYTES: u64 = 64 * 1024;
+
+fn inspect_definition_source(path: &Path) -> HostResult<()> {
+    let extension = path.extension().and_then(|value| value.to_str());
+    if !extension.is_some_and(|value| {
+        ["json", "yaml", "yml"]
+            .iter()
+            .any(|ext| value.eq_ignore_ascii_case(ext))
+    }) {
+        return Err(HostError::new(
+            "INVALID_ARGUMENT",
+            "Expected a JSON or YAML definition file",
+        ));
+    }
+    let metadata = std::fs::metadata(path).map_err(|_| invalid())?;
+    if !metadata.is_file() {
+        return Err(invalid());
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_DEFINITION_SOURCE_BYTES {
+        return Err(HostError::new(
+            "LIMIT_EXCEEDED",
+            "Definition file is empty or too large",
+        ));
+    }
+    Ok(())
 }
 fn require_window(window: &str) -> HostResult<()> {
     crate::commands::require_host_window(window)
@@ -443,6 +474,12 @@ where
     let Some(path) = picker().await? else {
         return Ok(None);
     };
+    if matches!(role, FileResourceRole::ProtocolDefinitionSource) {
+        let source = path.clone();
+        tauri::async_runtime::spawn_blocking(move || inspect_definition_source(&source))
+            .await
+            .map_err(|_| invalid())??;
+    }
     let media = if matches!(role, FileResourceRole::Media) {
         let source = path.clone();
         Some(
@@ -536,6 +573,9 @@ pub async fn choose_file_resource(
                 let dialog = app.dialog().file().set_parent(&window);
                 let selected = match role {
                     FileResourceRole::Source => dialog.blocking_pick_file(),
+                    FileResourceRole::ProtocolDefinitionSource => dialog
+                        .add_filter("JSON / YAML", &["json", "yaml", "yml"])
+                        .blocking_pick_file(),
                     FileResourceRole::Media => dialog
                         .add_filter(
                             "PNG / JPEG / WebP / MP4 / WebM",
@@ -612,6 +652,30 @@ fn e2e_picker_path(role: FileResourceRole) -> HostResult<Option<PathBuf>> {
 mod tests {
     use super::*;
     use std::io::Seek;
+
+    #[test]
+    fn definition_picker_validates_type_and_size_before_host_registration() {
+        let directory = tempfile::tempdir().unwrap();
+        let definition = directory.path().join("protocol.YML");
+        std::fs::write(&definition, b"version: '1'").unwrap();
+        inspect_definition_source(&definition).unwrap();
+        File::options()
+            .write(true)
+            .open(&definition)
+            .unwrap()
+            .set_len(MAX_DEFINITION_SOURCE_BYTES + 1)
+            .unwrap();
+        assert_eq!(
+            inspect_definition_source(&definition).unwrap_err().code,
+            "LIMIT_EXCEEDED"
+        );
+        let other = directory.path().join("protocol.txt");
+        std::fs::write(&other, b"version: '1'").unwrap();
+        assert_eq!(
+            inspect_definition_source(&other).unwrap_err().code,
+            "INVALID_ARGUMENT"
+        );
+    }
 
     fn capture_time() -> std::time::SystemTime {
         std::time::UNIX_EPOCH + std::time::Duration::from_secs(1_793_991_784)

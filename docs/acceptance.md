@@ -334,7 +334,71 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 首方归档使用 `node --test scripts/product-framing.test.mjs` 对照 TypeScript 编译结果、清单和完整 ZIP 摘要。运行 `cargo test --locked -p serial-workbench-host --lib node_packages::product::tests` 核对签名、原子安装后的内容证明和外部安装入口的来源隔离。发行描述的 `bundledNodePackages` 记录包版本、归档摘要及承载它的 Host 组件。
 
-在同一固定运行时环境执行 `cargo test --locked -p serial-workbench-host --lib native_node_bundled_framing_ -- --ignored --nocapture`。用独立 profile 验证首次自动登记、真实 Node 解析器发布、重启后 Host 换代及安装 revision 保持。产品单测另验取消后重试、同 ID 本地包保持原信任，以及停用和卸载后继续尊重用户选择。断网安装、打开真实桌面和线路样本按发行与实机专项覆盖。
+在同一固定运行时环境执行 `cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_ -- --ignored --nocapture`。用独立 profile 验证首次自动登记、真实 Node 解析器发布、重启后 Host 换代及安装 revision 保持。产品单测另验取消后重试、同 ID 本地包保持原信任，以及停用和卸载后继续尊重用户选择。断网安装、打开真实桌面和线路样本按发行与实机专项覆盖。
+
+### 帧字段定义与报文构造（PROTO-02、PROTO-05、PROTO-07、PROTO-19）
+
+在分帧结果选择一帧，然后选择 JSON 或 YAML，填写版本为字符串 `"1"` 的定义。`byteLength` 是整帧字节数。每个字段用 `id`、`kind`、`byteOffset` 和宽度或校验算法描述。字节偏移位于帧内，结果显示折算后的半开原始字节范围和实际 HEX。十进制比例 `scale` 与偏移 `bias` 使用字符串，枚举 `labels` 以原始整数为键，可选 `unit`。整数和位域使用指定端序与符号位。校验字段以 `coverageStart` 和 `coverageEnd` 选定计算区间。
+
+在桌面工作台用「打开定义文件」选择 UTF-8 的 `.json`、`.yaml` 或 `.yml`，核对文件名、自动选择的格式和定义错误的行列。取消选择、文件超限或内容摘要不符时，先前草稿应保留。读取延迟期间继续编辑，再核对晚到的文件结果保留最新草稿。
+
+选择「编辑字段值」后输入整数或浮点值，再点「预览报文」。未连接串口时可从全零字节开始。以捕获帧为底稿时保留定义之外的字节与位。预览核对整数宽度及浮点端序、HEX 字节、解码回读和从 0 开始的生成范围。输入溢出时定位字段，修改格式、定义或字段值后检查旧结果立即失效。将同一定义改用 YAML，核对解析、构造及不支持版本的路径和行列。
+
+随包签名字段包提供 `swb.reference.fields.decode` 和 `swb.reference.fields.encode`。两者接收 `definition` 文本，`definitionFormat` 可指定为 `yaml`，缺省为 `json`。解码接收 `bytesBase64`，构造接收字符串映射 `values`，可用 `baseBytesBase64` 保留未定义位。对定义错误核对返回的 `path` 和 `position`，对字节或工程值错误核对 `path`。两个动作均沿用目标会话的读取授权。
+
+运行 `node --test scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs scripts/product-protocol-fields.test.mjs` 核对位宽、浮点、严格 UTF-8、独立物理位、64 位精确往返、校验依赖、定义错误、取消及归档来源。使用 `pnpm test:ui e2e/browser/framing-tool.spec.ts` 核对分帧结果上的字段值、原始字节绝对偏移、数值构造及 YAML 行列。用同一原生启动用例对照两个独立包的重启登记、会话授权、真实操作终态和文件结果。
+
+### CRC 识别与验证（PROTO-03）
+
+在工作台的「协议分帧」内展开「CRC 识别」。分别填写参与计算的 HEX 字节和从实物或样本读取的校验字节。可限定目录中的位宽或校验字节序，也可自动寻找同字节长度的候选。非整字节位宽右对齐填写。输入 `31 32 33 34 35 36 37 38 39` 与 `37 4B`，选择 16 位，核对列出低位字节在前的 CRC-16/MODBUS，并仍提示补充样本。重复该输入时不同样本计数保持为 1，给相同报文输入不同校验值时显示冲突。
+
+添加 `01 03 00 00 00 0A` 与 `C5 CD`，核对同一目录候选与两条报文相符，多项式、初始值、输入与输出反射、末异或可读。切换为大端后核对没有匹配。另用 `00` 与 `00` 在 8 位目录核对多个候选可见。目录的范围由 104 个已列出模型定义。 [CRC 参数与金样](https://reveng.sourceforge.io/crc-catalogue/all.htm)
+
+`swb.reference.fields.identifyCrc` 以目标会话为范围。输入 `samples` 中每项含 `bytesBase64` 与 `checksumBase64`，最多 16 项，每项覆盖字节最多 4096。可传 `width` 与 `order`。核对未授权拒绝、获准后读取实际结果引用、不同样本数、候选参数和补样本提示。运行 `node --test scripts/crc-recognition.test.mjs scripts/protocol-field-actions.test.mjs` 和上述分帧浏览器、原生启动用例。
+
+### Modbus 报文模板（PROTO-04、PROTO-20）
+
+工作台「协议分帧」的「Modbus 报文」支持 RTU、ASCII、TCP，方向明确选择请求或响应。以读取 10 个保持寄存器的请求为例，报文 JSON 使用 `{"unitId":1,"pdu":{"functionCode":3,"address":0,"quantity":10}}`。RTU 预览为 `01 03 00 00 00 0A C5 CD`，ASCII 预览为 `:01030000000AF2` 后接 CRLF。添加 `"transactionId":1` 再构造 TCP，预览为 `00 01 00 00 00 06 01 03 00 00 00 0A`。用同一面板回读并核对单元号、零基地址、数量和事务 ID。 [Modbus 应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
+
+FC01/02 的独立响应保留装有位值和填充的 `bitBytes`，FC03/04 响应给出 16 位 `values`。FC05 使用布尔值，FC06 使用单个寄存器值，FC15/16 请求使用 `values`，响应回显地址与数量。异常响应保留基础功能码和 `exceptionCode`。串行单元 0 只接受写请求，TCP 单元 0 按普通标识解析。验收逐项核对校验损坏、字节计数、FC15 填充位、范围超限、错误 MBAP 协议号和长度。实时主从、字序映射、迟到响应和重试按事务专项继续核验。
+
+随包动作 `swb.reference.fields.modbus` 接受 `transport` 和 `direction`。用 `mode:"encode"` 送入 `packet`，取回 `bytesBase64`，用 `mode:"decode"` 送入 `bytesBase64`，取回 `packet` 和 `broadcast`。运行 `node --test scripts/modbus-frame.test.mjs scripts/protocol-field-actions.test.mjs` 对照三个封装、八个功能码、异常和错误路径。原生启动用例仍核对具体会话读取授权，浏览器测试核对工作台预览与回读。
+
+工作台选择「比对请求与响应」并载入示例，核对匹配后修改 TCP 单元标识，确认默认网关模式报告单元不符，直连模式仍要求事务 ID 一致。核对非零位填充、读数量、写回显、异常码、串行广播和响应留空的状态。响应损坏时定位到响应输入。随包动作使用 `mode:"compare"`、`transport`、`requestBase64` 和可选 `responseBase64`，TCP 直连传 `unitRouting:"direct"`。固定 Node 的隔离 Host 用例 `native_node_bundled_protocol_registers_on_first_start_and_restart` 核对缺会话读取授权时拒绝，授权后从结果文件读回匹配的设备异常。实际事务仍要在设备场景定时等待。
+
+### Modbus 从站模拟（PROTO-17、PROTO-20）
+
+在工作台「协议分帧」中展开「Modbus 从站模拟」。设备模型 JSON 包含 `unitId` 和 `tables`。可在 `coils`、`discreteInputs`、`holdingRegisters`、`inputRegisters` 中分别配置若干 `{"start":0,"values":[...]}` 块。线圈和离散输入使用布尔值，寄存器使用 0 至 65535 的整数。每表最多 16 块、2000 个地址，`start` 为协议零基地址。相邻块可连读，跨空洞的请求返回异常 2。设备模型可加 `faults`，以 `{"functionCode":6,"behavior":"exception","exceptionCode":6}` 模拟异常，或用 `behavior:"silent"` 模拟静默。
+
+选择 TCP 并载入示例，执行 FC06 后将事务号改为 2 并用 FC03 读回地址 1。预期响应为 `00 02 00 00 00 05 01 03 02 01 02`。用 FC03 读未映射地址核对异常，随后恢复初始模型并再次读回初值。RTU 与 ASCII 的单元 0 只接受写入并保持静默。测试时还应核对目标单元错误、CRC/LRC 损坏以及一次跨空洞写入对模型的影响。
+
+随包动作 `swb.reference.fields.modbusServer` 接收 `transport`、`requestBase64`、`model` 和可选的 TCP `unitRouting`。每次调用返回新模型，需要继续模拟时将其传给后续调用。正常或异常回复的线缆字节位于 `responseBase64`。运行 `node --test scripts/modbus-server.test.mjs scripts/modbus-frame.test.mjs`，并用固定 Node 的隔离 Host 验证授权、回显与返回的寄存器模型。实时串口或网络监听、延迟与事务重试、真实对端和发行包待独立场景验收。 [应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
+
+### Modbus 主站事务参考动作（PROTO-09、PROTO-17、PROTO-20）
+
+在生产启动配置的首次启动中核对 Host 自动登记首方 `swb.reference.modbus`，并在已打开且授予 `metadata.read`、`content.read` 和 `device.modify` 的会话调用 `swb.reference.modbus.transaction`。独立签名自动化参考包继续通过 `swb.reference.automation.modbus` 复验相同动作逻辑。参数为 `transport`、完整请求 `requestBase64` 和可选的 `startEventSeq`、`responseTimeoutMs`、`lateResponseWaitMs`。前置游标应位于当前留存范围。TCP 可指定 `unitRouting:"direct"`。默认只发一帧，串行广播按 `broadcastTurnaroundMs` 持有租约再完成。
+
+`retryLimit` 可显式开启 1 或 2 次重发，仅用于 FC01—04 单播读取。串行重试要求 `lateResponseWaitMs` 至少 50 ms。所有尝试的发送终态和观察预算须适配 30 秒租约，并预留释放时间。每次只有完整发送且响应与迟到窗口内都未配对时才允许重发。写入、广播或超预算组合在获取租约前拒绝。既有匹配迟到帧、设备异常、来源变化或不完整帧会结束尝试。启用重试时 `attempts` 保留每个操作编号和结算结果，顶层返回最终尝试。TCP 重发递增并回绕事务 ID。串行重发后的帧可能来自之前任何一次尝试，保留 TX 和 RX 源时间并设置 `attemptAttribution: "indeterminate"`，省略 `elapsedNs`。
+
+向受控对端发 FC03，先返回不同事务 ID 的完整帧，再将本次响应拆成两块。报告应跳过第一帧，返回配对的字节区间、同一源时钟的 TX 完成及末段 RX 时间和各自精度。让设备异常超出主超时但仍在迟到窗口内时，结果仍为超时，异常与原始帧保存在 `lateResponse`，随后不再发送。让对端丢弃事务 ID 65535 的首发，并在收到事务 ID 0 的重发后连续返回两条响应。结果包含两个发送操作，跳过首发的迟到帧，并将第二条响应定位到本次精确字节范围。实际用例为 `native_automation_modbus_matches_owned_tx_and_reports_a_late_exception`，使用隔离 Host 和受控虚拟对端。另用 `node --test scripts/modbus-transaction.test.mjs` 验证 RTU、ASCII 的尝试归属、重试上限、半帧与租约预算。RTU 目前按支持的功能长度与 CRC 配帧，线路静默精度、事务时序图和真实设备继续专项验收。 [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
+
+从工作台「协议分帧」展开「Modbus 主站时序」。已打开且可写的会话会核对目录中首方主站动作是否支持 `includeTrace`。在插件页停用该包后，工作台隐藏发送表单。选择封装，填入完整请求 HEX，设置超时、迟到窗口和读取重试次数后显式发送。关闭面板停止本地等待，由 Host 继续结算动作。单次操作持有独占事务租约。
+
+本面板使用动作返回的 TX 事件和配对 RX 首尾事件绘制共同时间轴。核对各次发送的起点和应答时限，拆帧应分别显示首末接收偏移、分块跨度、源时钟、精度以及原始字节范围。相同请求与源时钟的首发成功样本至少两次时显示最近八次的耗时极差。该值来自 Host 观测。设备定时、串行线路采样、其他协议时序和正式安装包继续专项验收。
+
+运行 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "Modbus master timeline"`，核对实际工作台入口、错误请求不会发送、精确会话调用、超时与重发分行、共用轴和经摘要检查的结果文件。隔离 Host 另核对首发有确证 TX、分块 RX 首尾引用与重发的真实原始范围。`native_node_bundled_protocol_registers_on_first_start_and_restart` 核对随包登记、重启不改 revision、缺少会话写权限时拒绝及授权后 Virtual Echo 会话的实际 TX 终态。组件清单按 Host 记录包 ID、版本与归档摘要。
+
+### NMEA 0183 报文模板（PROTO-04）
+
+在工作台「协议分帧」中展开「NMEA 0183」，使用示例或粘贴带 XOR 校验的样本，每行一条，最多 32 条。GGA 核对定位质量、经纬度、海拔和大地水准面差。RMC 核对 UTC、日期、数据状态、航速和航向。GSA 核对十二个卫星槽位及 DOP，GSV 核对片号、卫星槽位和可选信号标识，VTG 核对真航向、磁航向和两种速度单位。空字段保持缺失，RMC 日期保留两位年。点击字段原文应选中对应行的字节区间，修改某行 XOR 后应能定位错误并继续查看其余结果。
+
+随包动作 `swb.reference.fields.nmea` 接收 `text`，按原始行号返回字段、`invalid` 或 `unsupported`。运行 `node --test scripts/nmea.test.mjs` 核对五类报文、旧版与新版尾字段、扩展精度、无定位、错误范围和输入上限。隔离 Host 核对随包动作的会话读取权限和实际结果文件。实际接收器、真实串口数据和离线发行实装继续按 T12 验收。 [u-blox M10 接口说明第 2 章](https://content.u-blox.com/sites/default/files/documents/u-blox-M10-SPG-5.30_InterfaceDescription_UBXDOC-304424225-20395.pdf)
+
+### AT 响应与主动上报模板（PROTO-04）
+
+在「协议分帧」展开「AT 响应」，载入示例并核对 `AT+CREG?` 回显、`+CREG: 5` 主动上报、`+CREG: 2,5` 查询响应和 `OK` 结果。可留空命令独立浏览接收记录。在 ATV0 下用数字 `2` 与 `0` 核对来电和结束结果。另核对输入提示、`+CME ERROR`、`+CMS ERROR`、`CONNECT` 后数据和原始行号。只分析一条在途命令，使用 CR、LF 或 CRLF 分行，留空不将结果归给特定命令。
+
+收到 SMS PDU 头时按声明长度验证后续十六进制行。文本短信或损坏 PDU 的正文边界无法确定时保留后续原文，并避免把其中的 `OK` 当成终态。粘贴的发送短信样本若混有输入提示之后的正文回显，先按采集边界选取设备响应。随包动作 `swb.reference.fields.at` 接收 `text` 及可选 `command`、`format`，`format` 缺省为 `verbose`。运行 `node --test scripts/at-response.test.mjs` 验证交错结果、PDU 边界和输入上限。实际调制解调器、不同厂商的专有上报与离线发行实装继续按设备及包件验收。 [ITU-T V.250](https://www.itu.int/rec/T-REC-V.250-200307-I) · [3GPP TS 27.007](https://www.etsi.org/deliver/etsi_ts/127000_127099/127007/18.07.00_60/ts_127007v180700p.pdf) · [3GPP TS 27.005](https://www.etsi.org/deliver/etsi_ts/127000_127099/127005/18.00.00_60/ts_127005v180000p.pdf)
 
 ### 发送草稿转义（IO-03）
 

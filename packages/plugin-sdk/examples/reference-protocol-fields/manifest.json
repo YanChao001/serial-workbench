@@ -1,0 +1,1503 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.reference.fields",
+  "version": "0.1.0",
+  "displayName": "Serial Workbench Protocol Fields",
+  "description": "Decode or construct fields from JSON and YAML definitions with precise positions",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE", "third-party/yaml.LICENSE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["content.read"],
+        "targetKinds": ["session"]
+      }
+    ],
+    "executionPurposes": ["protocol"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [],
+    "queries": [],
+    "transports": [],
+    "parsers": [
+      {
+        "actionId": "swb.reference.fields.decode",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "definition": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "definitionFormat": {
+              "enum": ["json", "yaml"]
+            },
+            "bytesBase64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 5464,
+              "contentEncoding": "base64"
+            }
+          },
+          "required": ["definition", "bytesBase64"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16385
+                    },
+                    "column": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16385
+                    }
+                  },
+                  "required": ["line", "column"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "decoded"
+                },
+                "readings": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 128,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "id": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 64
+                      },
+                      "kind": {
+                        "enum": [
+                          "integer",
+                          "bits",
+                          "float",
+                          "bytes",
+                          "utf8",
+                          "checksum"
+                        ]
+                      },
+                      "bytes": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4096
+                          },
+                          "end": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4096
+                          }
+                        },
+                        "required": ["start", "end"],
+                        "additionalProperties": false
+                      },
+                      "unit": {
+                        "type": "string",
+                        "maxLength": 24
+                      },
+                      "rawHex": {
+                        "type": "string",
+                        "minLength": 2,
+                        "maxLength": 8192
+                      },
+                      "value": {
+                        "type": "string",
+                        "maxLength": 8192
+                      },
+                      "rawValue": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "label": {
+                        "type": "string",
+                        "maxLength": 80
+                      },
+                      "bits": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 4096
+                          },
+                          "end": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 4096
+                          }
+                        },
+                        "required": ["start", "end"],
+                        "additionalProperties": false
+                      },
+                      "checksum": {
+                        "type": "object",
+                        "properties": {
+                          "coverage": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 4096
+                              },
+                              "end": {
+                                "type": "integer",
+                                "minimum": 1,
+                                "maximum": 4096
+                              }
+                            },
+                            "required": ["start", "end"],
+                            "additionalProperties": false
+                          },
+                          "expectedHex": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 8
+                          },
+                          "valid": {
+                            "type": "boolean"
+                          }
+                        },
+                        "required": ["coverage", "expectedHex", "valid"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["id", "kind", "bytes", "rawHex", "value"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["status", "readings"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.encode",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "definition": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 16384
+            },
+            "definitionFormat": {
+              "enum": ["json", "yaml"]
+            },
+            "values": {
+              "type": "object",
+              "maxProperties": 128,
+              "additionalProperties": {
+                "type": "string",
+                "maxLength": 8192
+              }
+            },
+            "baseBytesBase64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 5464,
+              "contentEncoding": "base64"
+            }
+          },
+          "required": ["definition", "values"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                },
+                "position": {
+                  "type": "object",
+                  "properties": {
+                    "line": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16385
+                    },
+                    "column": {
+                      "type": "integer",
+                      "minimum": 1,
+                      "maximum": 16385
+                    }
+                  },
+                  "required": ["line", "column"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "encoded"
+                },
+                "bytesBase64": {
+                  "type": "string",
+                  "minLength": 4,
+                  "maxLength": 5464,
+                  "contentEncoding": "base64"
+                }
+              },
+              "required": ["status", "bytesBase64"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.identifyCrc",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "samples": {
+              "type": "array",
+              "minItems": 1,
+              "maxItems": 16,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "bytesBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 5464,
+                    "contentEncoding": "base64"
+                  },
+                  "checksumBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 8,
+                    "contentEncoding": "base64"
+                  }
+                },
+                "required": ["bytesBase64", "checksumBase64"],
+                "additionalProperties": false
+              }
+            },
+            "width": {
+              "type": "integer",
+              "minimum": 3,
+              "maximum": 32
+            },
+            "order": {
+              "enum": ["auto", "big", "little"]
+            }
+          },
+          "required": ["samples"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "matched",
+                    "more-samples",
+                    "no-match",
+                    "contradictory"
+                  ]
+                },
+                "distinctSamples": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 16
+                },
+                "duplicateSamples": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 15
+                },
+                "candidates": {
+                  "type": "array",
+                  "maxItems": 208,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 80
+                      },
+                      "width": {
+                        "type": "integer",
+                        "minimum": 3,
+                        "maximum": 32
+                      },
+                      "polynomial": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "initial": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "reflectInput": {
+                        "type": "boolean"
+                      },
+                      "reflectOutput": {
+                        "type": "boolean"
+                      },
+                      "finalXor": {
+                        "type": "integer",
+                        "minimum": 0,
+                        "maximum": 4294967295
+                      },
+                      "order": {
+                        "enum": ["big", "little"]
+                      }
+                    },
+                    "required": [
+                      "name",
+                      "width",
+                      "polynomial",
+                      "initial",
+                      "reflectInput",
+                      "reflectOutput",
+                      "finalXor",
+                      "order"
+                    ],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": [
+                "status",
+                "distinctSamples",
+                "duplicateSamples",
+                "candidates"
+              ],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.modbus",
+        "kind": "action",
+        "inputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "encode"
+                },
+                "transport": {
+                  "enum": ["rtu", "ascii", "tcp"]
+                },
+                "direction": {
+                  "enum": ["request", "response"]
+                },
+                "packet": {
+                  "type": "object",
+                  "properties": {
+                    "unitId": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "transactionId": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "pdu": {
+                      "type": "object",
+                      "properties": {
+                        "functionCode": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 127
+                        },
+                        "address": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 65535
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 2000
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ]
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535
+                              },
+                              {
+                                "type": "boolean"
+                              }
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 1968
+                        },
+                        "bitBytes": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                          },
+                          "minItems": 1,
+                          "maxItems": 250
+                        },
+                        "exceptionCode": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 255
+                        }
+                      },
+                      "required": ["functionCode"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["unitId", "pdu"],
+                  "additionalProperties": false
+                }
+              },
+              "required": ["mode", "transport", "direction", "packet"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "decode"
+                },
+                "transport": {
+                  "enum": ["rtu", "ascii", "tcp"]
+                },
+                "direction": {
+                  "enum": ["request", "response"]
+                },
+                "bytesBase64": {
+                  "type": "string",
+                  "minLength": 4,
+                  "maxLength": 684,
+                  "contentEncoding": "base64"
+                }
+              },
+              "required": ["mode", "transport", "direction", "bytesBase64"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "mode": {
+                  "const": "compare"
+                },
+                "transport": {
+                  "enum": ["rtu", "ascii", "tcp"]
+                },
+                "requestBase64": {
+                  "type": "string",
+                  "minLength": 4,
+                  "maxLength": 684,
+                  "contentEncoding": "base64"
+                },
+                "responseBase64": {
+                  "type": "string",
+                  "minLength": 4,
+                  "maxLength": 684,
+                  "contentEncoding": "base64"
+                },
+                "unitRouting": {
+                  "enum": ["gateway", "direct"]
+                }
+              },
+              "required": ["mode", "transport", "requestBase64"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "encoded"
+                },
+                "bytesBase64": {
+                  "type": "string",
+                  "minLength": 4,
+                  "maxLength": 684,
+                  "contentEncoding": "base64"
+                }
+              },
+              "required": ["status", "bytesBase64"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "decoded"
+                },
+                "packet": {
+                  "type": "object",
+                  "properties": {
+                    "unitId": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "transactionId": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 65535
+                    },
+                    "pdu": {
+                      "type": "object",
+                      "properties": {
+                        "functionCode": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 127
+                        },
+                        "address": {
+                          "type": "integer",
+                          "minimum": 0,
+                          "maximum": 65535
+                        },
+                        "quantity": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 2000
+                        },
+                        "value": {
+                          "oneOf": [
+                            {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            },
+                            {
+                              "type": "boolean"
+                            }
+                          ]
+                        },
+                        "values": {
+                          "type": "array",
+                          "items": {
+                            "oneOf": [
+                              {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535
+                              },
+                              {
+                                "type": "boolean"
+                              }
+                            ]
+                          },
+                          "minItems": 1,
+                          "maxItems": 1968
+                        },
+                        "bitBytes": {
+                          "type": "array",
+                          "items": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 255
+                          },
+                          "minItems": 1,
+                          "maxItems": 250
+                        },
+                        "exceptionCode": {
+                          "type": "integer",
+                          "minimum": 1,
+                          "maximum": 255
+                        }
+                      },
+                      "required": ["functionCode"],
+                      "additionalProperties": false
+                    }
+                  },
+                  "required": ["unitId", "pdu"],
+                  "additionalProperties": false
+                },
+                "broadcast": {
+                  "type": "boolean"
+                }
+              },
+              "required": ["status", "packet", "broadcast"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": ["matched", "broadcast", "missing-response"]
+                }
+              },
+              "required": ["status"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "device-exception"
+                },
+                "exceptionCode": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 255
+                }
+              },
+              "required": ["status", "exceptionCode"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "mismatch"
+                },
+                "reason": {
+                  "enum": [
+                    "transaction-id",
+                    "unit-id",
+                    "function-code",
+                    "read-count",
+                    "padding",
+                    "write-address",
+                    "write-echo",
+                    "write-count",
+                    "broadcast-response"
+                  ]
+                }
+              },
+              "required": ["status", "reason"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.nmea",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            }
+          },
+          "required": ["text"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "const": "text"
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "parsed"
+                },
+                "lines": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 32,
+                  "items": {
+                    "oneOf": [
+                      {
+                        "type": "object",
+                        "properties": {
+                          "line": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 8192
+                          },
+                          "status": {
+                            "const": "invalid"
+                          },
+                          "path": {
+                            "type": "string",
+                            "minLength": 1,
+                            "maxLength": 48
+                          },
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 8192
+                          },
+                          "end": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 8192
+                          }
+                        },
+                        "required": ["line", "status", "path", "start", "end"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "line": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 8192
+                          },
+                          "status": {
+                            "const": "unsupported"
+                          },
+                          "talker": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 2
+                          },
+                          "type": {
+                            "type": "string",
+                            "minLength": 3,
+                            "maxLength": 3
+                          }
+                        },
+                        "required": ["line", "status", "talker", "type"],
+                        "additionalProperties": false
+                      },
+                      {
+                        "type": "object",
+                        "properties": {
+                          "line": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 8192
+                          },
+                          "status": {
+                            "const": "decoded"
+                          },
+                          "talker": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 2
+                          },
+                          "type": {
+                            "enum": ["GGA", "RMC", "GSA", "GSV", "VTG"]
+                          },
+                          "checksum": {
+                            "type": "string",
+                            "minLength": 2,
+                            "maxLength": 2
+                          },
+                          "fields": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 20,
+                            "items": {
+                              "type": "object",
+                              "properties": {
+                                "id": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 48
+                                },
+                                "raw": {
+                                  "type": "string",
+                                  "maxLength": 256
+                                },
+                                "value": {
+                                  "oneOf": [
+                                    {
+                                      "type": "null"
+                                    },
+                                    {
+                                      "type": "number"
+                                    },
+                                    {
+                                      "type": "string",
+                                      "minLength": 1,
+                                      "maxLength": 256
+                                    }
+                                  ]
+                                },
+                                "start": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 256
+                                },
+                                "end": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 256
+                                },
+                                "unit": {
+                                  "type": "string",
+                                  "minLength": 1,
+                                  "maxLength": 8
+                                }
+                              },
+                              "required": [
+                                "id",
+                                "raw",
+                                "value",
+                                "start",
+                                "end"
+                              ],
+                              "additionalProperties": false
+                            }
+                          }
+                        },
+                        "required": [
+                          "line",
+                          "status",
+                          "talker",
+                          "type",
+                          "checksum",
+                          "fields"
+                        ],
+                        "additionalProperties": false
+                      }
+                    ]
+                  }
+                }
+              },
+              "required": ["status", "lines"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.at",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "text": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 8192
+            },
+            "command": {
+              "type": "string",
+              "maxLength": 512
+            },
+            "format": {
+              "enum": ["verbose", "numeric"]
+            }
+          },
+          "required": ["text"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "enum": ["text", "command", "format"]
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "parsed"
+                },
+                "state": {
+                  "enum": [
+                    "idle",
+                    "waiting",
+                    "complete",
+                    "data-mode",
+                    "uncertain"
+                  ]
+                },
+                "lines": {
+                  "type": "array",
+                  "minItems": 1,
+                  "maxItems": 64,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "line": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 8192
+                      },
+                      "raw": {
+                        "type": "string",
+                        "maxLength": 8192
+                      },
+                      "kind": {
+                        "enum": [
+                          "echo",
+                          "response",
+                          "result",
+                          "urc",
+                          "prompt",
+                          "payload",
+                          "data",
+                          "ambiguous",
+                          "invalid"
+                        ]
+                      },
+                      "code": {
+                        "type": "string",
+                        "minLength": 1,
+                        "maxLength": 2048
+                      }
+                    },
+                    "required": ["line", "raw", "kind"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["status", "state", "lines"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      },
+      {
+        "actionId": "swb.reference.fields.modbusServer",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "transport": {
+              "enum": ["rtu", "ascii", "tcp"]
+            },
+            "requestBase64": {
+              "type": "string",
+              "minLength": 4,
+              "maxLength": 684,
+              "contentEncoding": "base64"
+            },
+            "unitRouting": {
+              "enum": ["gateway", "direct"]
+            },
+            "model": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "tables": {
+                  "type": "object",
+                  "properties": {
+                    "coils": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "discreteInputs": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "holdingRegisters": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "inputRegisters": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "faults": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "functionCode": {
+                        "enum": [1, 2, 3, 4, 5, 6, 15, 16]
+                      },
+                      "behavior": {
+                        "enum": ["silent", "exception"]
+                      },
+                      "exceptionCode": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 255
+                      }
+                    },
+                    "required": ["functionCode", "behavior"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["unitId", "tables"],
+              "additionalProperties": false
+            }
+          },
+          "required": ["transport", "requestBase64", "model"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "oneOf": [
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "const": "invalid"
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              },
+              "required": ["status", "path"],
+              "additionalProperties": false
+            },
+            {
+              "type": "object",
+              "properties": {
+                "status": {
+                  "enum": [
+                    "replied",
+                    "exception",
+                    "silent",
+                    "broadcast",
+                    "ignored",
+                    "discarded"
+                  ]
+                },
+                "model": {
+                  "type": "object",
+                  "properties": {
+                    "unitId": {
+                      "type": "integer",
+                      "minimum": 0,
+                      "maximum": 255
+                    },
+                    "tables": {
+                      "type": "object",
+                      "properties": {
+                        "coils": {
+                          "type": "array",
+                          "maxItems": 16,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535
+                              },
+                              "values": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 2000,
+                                "items": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "required": ["start", "values"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "discreteInputs": {
+                          "type": "array",
+                          "maxItems": 16,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535
+                              },
+                              "values": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 2000,
+                                "items": {
+                                  "type": "boolean"
+                                }
+                              }
+                            },
+                            "required": ["start", "values"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "holdingRegisters": {
+                          "type": "array",
+                          "maxItems": 16,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535
+                              },
+                              "values": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 2000,
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 65535
+                                }
+                              }
+                            },
+                            "required": ["start", "values"],
+                            "additionalProperties": false
+                          }
+                        },
+                        "inputRegisters": {
+                          "type": "array",
+                          "maxItems": 16,
+                          "items": {
+                            "type": "object",
+                            "properties": {
+                              "start": {
+                                "type": "integer",
+                                "minimum": 0,
+                                "maximum": 65535
+                              },
+                              "values": {
+                                "type": "array",
+                                "minItems": 1,
+                                "maxItems": 2000,
+                                "items": {
+                                  "type": "integer",
+                                  "minimum": 0,
+                                  "maximum": 65535
+                                }
+                              }
+                            },
+                            "required": ["start", "values"],
+                            "additionalProperties": false
+                          }
+                        }
+                      },
+                      "additionalProperties": false
+                    },
+                    "faults": {
+                      "type": "array",
+                      "maxItems": 8,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "functionCode": {
+                            "enum": [1, 2, 3, 4, 5, 6, 15, 16]
+                          },
+                          "behavior": {
+                            "enum": ["silent", "exception"]
+                          },
+                          "exceptionCode": {
+                            "type": "integer",
+                            "minimum": 1,
+                            "maximum": 255
+                          }
+                        },
+                        "required": ["functionCode", "behavior"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "required": ["unitId", "tables"],
+                  "additionalProperties": false
+                },
+                "responseBase64": {
+                  "type": "string",
+                  "minLength": 4,
+                  "maxLength": 684,
+                  "contentEncoding": "base64"
+                },
+                "exceptionCode": {
+                  "type": "integer",
+                  "minimum": 1,
+                  "maximum": 255
+                },
+                "path": {
+                  "type": "string",
+                  "minLength": 1,
+                  "maxLength": 120
+                }
+              },
+              "required": ["status", "model"],
+              "additionalProperties": false
+            }
+          ]
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["content.read"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench"
+        }
+      }
+    ],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

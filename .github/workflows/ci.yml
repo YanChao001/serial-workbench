@@ -329,6 +329,8 @@ jobs:
             | tee artifacts/reference-chart/native-samples.log
           cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --test-threads=1 --nocapture 2>&1 \
             | tee artifacts/reference-automation/native-response.log
+          cargo test --locked -p serial-workbench --lib native_automation_modbus_matches_owned_tx_and_reports_a_late_exception -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-automation/native-modbus.log
           cargo test --locked -p serial-workbench --lib native_automation_long_script_survives_caller_disconnect_and_settles_workers -- --ignored --test-threads=1 --nocapture 2>&1 \
             | tee artifacts/reference-automation/native-long-script.log
           if [[ "$RUNNER_OS" == "Windows" ]]; then
@@ -375,6 +377,7 @@ jobs:
             artifacts/reference-automation/reference-automation.zip
             artifacts/reference-automation/signed-automation.json
             artifacts/reference-automation/native-response.log
+            artifacts/reference-automation/native-modbus.log
             artifacts/reference-automation/native-long-script.log
           include-hidden-files: true
           if-no-files-found: error

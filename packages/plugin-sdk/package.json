@@ -11,6 +11,7 @@
     "./web": "./src/web.ts"
   },
   "dependencies": {
-    "@serial-workbench/contracts": "workspace:*"
+    "@serial-workbench/contracts": "workspace:*",
+    "yaml": "2.9.1"
   }
 }

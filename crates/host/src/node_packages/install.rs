@@ -351,12 +351,13 @@ impl NodePackageInstaller {
     }
 
     /// 首次接线在 Host 独占 profile、对外服务前执行。
-    pub(super) fn provision_bundled_framing(
+    pub(super) fn provision_bundled_package(
         &self,
+        bundle: &product::ProductPackage,
         limits: &NodePackageLimits,
         cancel: &AtomicBool,
     ) -> HostResult<()> {
-        let marker = Id::try_from("node-packages:bundled-framing")?;
+        let marker = Id::try_from(bundle.marker)?;
         if self.store.read_document(&marker)?.is_some() {
             return Ok(());
         }
@@ -366,7 +367,7 @@ impl NodePackageInstaller {
         if snapshot
             .packages
             .iter()
-            .any(|package| &package.manifest.id == product::framing_id())
+            .any(|package| &package.manifest.id == bundle.id())
         {
             // 旧 profile 的同 ID 安装仍归用户，以后移除也不会意外换回随包版本。
             control.check()?;
@@ -379,7 +380,7 @@ impl NodePackageInstaller {
             return Ok(());
         }
         self.install_authorized(
-            product::bundled_framing(limits, cancel)?,
+            bundle.verify_embedded(limits, cancel)?,
             snapshot.revision,
             limits,
             cancel,
