@@ -2826,6 +2826,7 @@ mod tests {
                     (&fields, "swb.reference.fields.modbusServer"),
                     (&fields, "swb.reference.fields.nmea"),
                     (&fields, "swb.reference.fields.at"),
+                    (&fields, "swb.reference.fields.compareSessions"),
                     (&modbus, "swb.reference.modbus.transaction"),
                     (&slave, "swb.reference.modbus.slave.serve"),
                     (&chart, "swb.builtin.chart.sample"),
@@ -3009,6 +3010,18 @@ mod tests {
             "command":"AT+CREG?",
             "text":"AT+CREG?\r\n+CREG: 5\r\n+CREG: 2,5\r\nOK",
         });
+        let comparison = serde_json::json!({
+            "baseline": [
+                {"position":"1","bytesBase64":"QQ==","time":{"clockId":"base","monoNs":"9007199254740993","segment":0}},
+                {"position":"2","bytesBase64":"Qg==","time":{"clockId":"base","monoNs":"9007199254741014","segment":0}}
+            ],
+            "candidate": [
+                {"position":"1","bytesBase64":"Qg==","time":{"clockId":"test","monoNs":"9007199254800000","segment":0}},
+                {"position":"2","bytesBase64":"Qg==","time":{"clockId":"test","monoNs":"9007199254800015","segment":0}}
+            ],
+            "alignment": {"kind":"ordinal"},
+            "detail": {"rowIndex":0}
+        });
         for (action, params) in [
             ("swb.reference.fields.decode", decode_params.clone()),
             ("swb.reference.fields.identifyCrc", crc_params.clone()),
@@ -3017,6 +3030,7 @@ mod tests {
             ("swb.reference.fields.modbusServer", modbus_server.clone()),
             ("swb.reference.fields.nmea", nmea.clone()),
             ("swb.reference.fields.at", at_response.clone()),
+            ("swb.reference.fields.compareSessions", comparison.clone()),
             (
                 "swb.builtin.chart.sample",
                 serde_json::json!({"sampleCount":2}),
@@ -3171,6 +3185,11 @@ mod tests {
             ),
             ("swb.reference.fields.nmea", nmea, "parsed"),
             ("swb.reference.fields.at", at_response, "parsed"),
+            (
+                "swb.reference.fields.compareSessions",
+                comparison,
+                "compared",
+            ),
         ] {
             let calibrated = params["definition"] == definition;
             let accepted = host
@@ -3197,7 +3216,18 @@ mod tests {
                 serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap())
                     .unwrap();
             assert_eq!(report["status"], expected_status);
-            if action == "swb.reference.fields.modbusServer" {
+            if action == "swb.reference.fields.compareSessions" {
+                assert_eq!(report["rows"][0]["changedBytes"], 1);
+                assert_eq!(report["rows"][1]["elapsedDeltaNs"], "-6");
+                assert_eq!(
+                    report["detail"]["byteRanges"]["items"],
+                    serde_json::json!([{"start":0,"end":1}])
+                );
+                assert!(report["detail"]["fields"].is_null());
+                eprintln!(
+                    "bundled_session_comparison permission_denied_before_grant=true changed_bytes=1 relative_delta_ns=-6"
+                );
+            } else if action == "swb.reference.fields.modbusServer" {
                 assert_eq!(report["responseBase64"], server_request);
                 assert_eq!(
                     report["model"]["tables"]["holdingRegisters"],

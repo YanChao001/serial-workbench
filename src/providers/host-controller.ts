@@ -19,6 +19,7 @@ import type {
   ObjectRef,
   OpenParams,
   Operation,
+  OperationSummary,
   Query,
   ReplayReadParams,
   ReplayRecord,
@@ -1272,6 +1273,60 @@ export function createHostWorkspace(
       throw new ContractValidationError();
     return result.value;
   }
+  async function readOperationSummary(
+    operationId: string,
+    signal?: AbortSignal,
+  ): Promise<OperationSummary> {
+    const waiting = signal
+      ? AbortSignal.any([lifetime.signal, signal])
+      : lifetime.signal;
+    waiting.throwIfAborted();
+    const result = await connection.client.query(
+      connection.buildQuery("operation.get", connection.hostTarget, {
+        operationId,
+      }),
+      waiting,
+    );
+    waiting.throwIfAborted();
+    if (result.kind !== "operation") throw new ContractValidationError();
+    const operation = result.value.operation;
+    if (
+      operation.operationId !== operationId ||
+      operation.executionHostId !== connection.attachment.hostId
+    )
+      throw new ContractValidationError();
+    const {
+      executionHostId,
+      actorId,
+      actionId,
+      target,
+      executionMode,
+      state,
+      revision,
+      revealTarget,
+      acceptedAt,
+      startedAt,
+      settledAt,
+      progress,
+      error,
+    } = operation;
+    return {
+      operationId,
+      executionHostId,
+      actorId,
+      actionId,
+      target,
+      executionMode,
+      state,
+      revision,
+      revealTarget,
+      acceptedAt,
+      startedAt,
+      settledAt,
+      progress,
+      errorCode: error?.code,
+    };
+  }
   async function operationInput(operationId: string, signal?: AbortSignal) {
     const result = await rawQuery(
       connection.buildQuery("operation.input", connection.hostTarget, {
@@ -1778,6 +1833,7 @@ export function createHostWorkspace(
     sessionMetrics,
     sessionInputs,
     operationInput,
+    readOperationSummary,
     pickFile,
     trustedConnect,
     readFile,

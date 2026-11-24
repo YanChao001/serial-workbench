@@ -17,6 +17,10 @@ const PREVIOUS_FIELD_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/protocol-fields-0.1.0.zip");
 const PREVIOUS_FIELD_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/protocol-fields-0.1.0.json");
+const RECENT_FIELD_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/protocol-fields-0.2.0.zip");
+const RECENT_FIELD_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/protocol-fields-0.2.0.json");
 const FIELD_MARKER: &str = "node-packages:bundled-protocol-fields";
 const MODBUS_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/modbus.zip");
 const MODBUS_DESCRIPTOR: &str = include_str!("../../resources/node-packages/modbus.json");
@@ -147,8 +151,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage] {
-    static PREVIOUS: OnceLock<[ProductPackage; 2]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 3] {
+    static PREVIOUS: OnceLock<[ProductPackage; 3]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -156,6 +160,7 @@ fn previous_packages() -> &'static [ProductPackage] {
                 PREVIOUS_FIELD_ARCHIVE,
                 FIELD_MARKER,
             ),
+            ProductPackage::new(RECENT_FIELD_DESCRIPTOR, RECENT_FIELD_ARCHIVE, FIELD_MARKER),
             ProductPackage::new(
                 PREVIOUS_CHART_DESCRIPTOR,
                 PREVIOUS_CHART_ARCHIVE,
@@ -212,20 +217,18 @@ mod tests {
 
     #[test]
     fn known_predecessor_upgrades_and_preserves_the_profile_decision() {
-        check_predecessor_upgrade(FIELD_MARKER, "0.2.0");
-        check_predecessor_upgrade(CHART_MARKER, "0.1.1");
+        let [old_fields, recent_fields, old_chart] = previous_packages();
+        check_predecessor_upgrade(old_fields, "0.1.0", "0.3.0");
+        check_predecessor_upgrade(recent_fields, "0.2.0", "0.3.0");
+        check_predecessor_upgrade(old_chart, "0.1.0", "0.1.1");
     }
 
-    fn check_predecessor_upgrade(marker: &str, next_version: &str) {
+    fn check_predecessor_upgrade(old: &ProductPackage, old_version: &str, next_version: &str) {
         let limits = NodePackageLimits::default();
         let cancel = AtomicBool::new(false);
-        let old = previous_packages()
-            .iter()
-            .find(|item| item.marker == marker)
-            .unwrap();
         let latest = packages()
             .iter()
-            .find(|item| item.marker == marker)
+            .find(|item| item.marker == old.marker)
             .unwrap();
         for expected_enabled in [Some(true), Some(false), None] {
             let profile = tempfile::tempdir().unwrap();
@@ -238,7 +241,7 @@ mod tests {
             let package = original.packages.first().unwrap();
             assert!(has_product_origin(package));
             assert!(latest.replaces(package));
-            assert_eq!(package.manifest.version.as_str(), "0.1.0");
+            assert_eq!(package.manifest.version.as_str(), old_version);
             let mut foreign = package.clone();
             foreign.verified_source = None;
             assert!(!latest.replaces(&foreign));

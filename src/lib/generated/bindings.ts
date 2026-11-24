@@ -1379,6 +1379,7 @@ export type ClientWindowState_Deserialize = {
   drafts: { [key in string]: string };
   gallery?: GalleryEntry_Deserialize[];
   connectionDefaults?: ConnectionDefault_Deserialize[];
+  sendHistoryPins?: SendHistoryPin[];
 };
 
 export type ClientWindowState_Serialize = {
@@ -1391,6 +1392,7 @@ export type ClientWindowState_Serialize = {
   drafts: { [key in string]: string };
   gallery: GalleryEntry_Serialize[];
   connectionDefaults?: ConnectionDefault_Serialize[];
+  sendHistoryPins?: SendHistoryPin[];
 };
 
 export type ClosedResult = {
@@ -4599,6 +4601,12 @@ export type SelectedFileResource_Serialize = {
   name: string;
   mime: string;
   length: U64;
+};
+
+export type SendHistoryPin = {
+  hostId: Id;
+  workspaceId: Id;
+  operationId: Id;
 };
 
 export type SerialConfiguration = {

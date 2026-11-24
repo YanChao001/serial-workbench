@@ -337,6 +337,8 @@ export default function Overview({
       stepReplay: t("workbench.stepReplay"),
       replayPlayback: t("workbench.replayPlayback"),
       replayFieldChart: t("workbench.fieldChart.replayTitle"),
+      replayComparison: (count: number) =>
+        t("workbench.comparison.open", { count }),
       replayRate: t("workbench.replayRate"),
       replayFastest: t("workbench.replayFastest"),
       replayBreakpoint: t("workbench.replayBreakpoint"),
@@ -493,6 +495,7 @@ export default function Overview({
       startCapture: t("workbench.startCapture"),
       stopCapture: t("workbench.stopCapture"),
       tasks: t("workbench.tasks"),
+      sendHistory: t("sendHistory.title"),
       activity: t("workbench.activity"),
       mcpClient: t("workbench.mcpClient"),
       mcpUnbound: t("workbench.mcpUnbound"),
@@ -754,6 +757,7 @@ export default function Overview({
         savedWorkspace={workspaceBase?.document.value}
         preserveWorkspacePresets={workspaceDraft !== undefined}
         workspaceKey={workspaceScope}
+        workspaceId={workspaceBase?.scope.target.id}
         commandLibrary={
           workspaceBase && host.commandLibrary
             ? {

@@ -49,7 +49,7 @@ export function replayFieldPage(
   const breaks = new Set<string>();
   const frame = new Uint8Array(width);
   const span = BigInt(width);
-  let started = false;
+  let frameStart: FramingInspection["frameStart"];
   let revision: string | undefined;
   let clock: string | undefined;
   let lastEvent: bigint | undefined;
@@ -70,7 +70,7 @@ export function replayFieldPage(
 
   for (const item of items) {
     if (item.kind !== "source") {
-      if (started) {
+      if (frameStart) {
         noteGap();
         if (item.kind === "reader_gap" && !item.gap.missingByteRanges?.length)
           break;
@@ -84,7 +84,7 @@ export function replayFieldPage(
     const { event } = item;
     const seq = parseU64(event.eventSeq);
     if (seq === undefined || seq === U64_MAX) continue;
-    if (started) {
+    if (frameStart) {
       if (
         event.configurationRevision !== revision ||
         event.kind === "configuration_boundary" ||
@@ -116,9 +116,9 @@ export function replayFieldPage(
     const start = parseU64(event.payload.byteStart);
     const end = parseU64(event.payload.byteEnd);
     if (start === undefined || end === undefined || end <= start) continue;
-    if (!started) {
+    if (!frameStart) {
       if (anchor < start || anchor >= end) continue;
-      started = true;
+      frameStart = { eventSeq: event.eventSeq, byteStart: String(anchor) };
       revision = event.configurationRevision;
       clock = event.time.clockId;
       lastEvent = seq;
@@ -176,11 +176,12 @@ export function replayFieldPage(
       break;
     }
   }
-  if (!started) return;
+  if (!frameStart) return;
   const inspection: FramingInspection = {
     target,
     items,
     frames,
+    frameStart,
     recordOrdinals,
     breaks,
     fixedFrameWidth: width,

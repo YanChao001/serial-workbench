@@ -21,6 +21,7 @@ import {
 import type { FramingFrame } from "./framing-model";
 import type { FramingInspection } from "./framing-anomalies-model";
 import { FieldChart } from "./field-chart";
+import { BusLoad } from "./bus-load";
 import { isChartField } from "./field-chart-model";
 import type { ChartSourceSelection } from "./stream-chart-selection";
 import { FramingAnomaliesTool } from "./framing-anomalies-tool";
@@ -702,6 +703,13 @@ export default function ProtocolFieldPreview({
             </tbody>
           </table>
         </div>
+      ) : null}
+      {inspection ? (
+        <BusLoad
+          inspection={inspection}
+          definition={definition}
+          format={format}
+        />
       ) : null}
       {inspection && (inspection.frames.length || inspection.previous) ? (
         <FramingAnomaliesTool

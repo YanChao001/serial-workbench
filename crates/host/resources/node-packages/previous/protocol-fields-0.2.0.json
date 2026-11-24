@@ -1,0 +1,16 @@
+{
+  "id": "swb.reference.fields",
+  "version": "0.2.0",
+  "archiveSha256": "cf223e7967acb6f81b76f800eeaeb818855063e084d439232b199e986da72da7",
+  "compiledModuleSha256": "8e703b5cae0abf7c1c69b1db1dba05cba57d80443fa5d8e36e3617d3b92babc0",
+  "manifestSha256": "aa6056b2fac6b9c490123ecebcaf493d081628134ae85a00247e16081f9cd6dd",
+  "sourceApproval": {
+    "keyId": "built-in-protocol-fields-0.2.0",
+    "publicKey": [
+      131, 70, 96, 15, 56, 248, 2, 71, 43, 72, 15, 215, 174, 9, 132, 255, 76,
+      90, 107, 216, 152, 51, 83, 4, 109, 202, 117, 60, 48, 134, 52, 104
+    ],
+    "publicKeySha256": "b2ff86d1e6f66ed8ee6b04991def3a148e7768e2566dcce9c0e5bb31ad3b5101",
+    "source": "swb.product"
+  }
+}

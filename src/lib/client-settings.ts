@@ -5,6 +5,7 @@ import type {
   ClientWindowState_Deserialize as ClientWindowStateInput,
   GalleryEntry,
   ConnectionDefault,
+  SendHistoryPin,
   ShortcutBinding,
 } from "./generated/bindings";
 import {
@@ -291,6 +292,46 @@ function parseClientGallery(value: unknown): GalleryEntry[] {
     return { reference, name: entry.name };
   });
 }
+export function parseSendHistoryPins(value: unknown): SendHistoryPin[] {
+  if (Array.isArray(value) && value.length > 64)
+    throw { code: "INPUT_TOO_LONG" };
+  if (!Array.isArray(value)) invalidClient();
+  const pinned = new Set<string>();
+  return value.map((entry: unknown) => {
+    if (
+      !record(entry) ||
+      !exactKeys(entry, ["hostId", "workspaceId", "operationId"])
+    )
+      invalidClient();
+    try {
+      const operation = parseObjectRef({
+        hostId: entry.hostId,
+        kind: "operation",
+        id: entry.operationId,
+      });
+      const workspace = parseObjectRef({
+        hostId: entry.hostId,
+        kind: "workspace",
+        id: entry.workspaceId,
+      });
+      const key = JSON.stringify([
+        operation.hostId,
+        workspace.id,
+        operation.id,
+      ]);
+      if (pinned.has(key)) invalidClient();
+      pinned.add(key);
+      return {
+        hostId: operation.hostId,
+        workspaceId: workspace.id,
+        operationId: operation.id,
+      };
+    } catch {
+      invalidClient();
+    }
+  });
+}
+
 export function parseClientWindowState(value: unknown): ClientWindowState {
   if (
     !record(value) ||
@@ -306,7 +347,7 @@ export function parseClientWindowState(value: unknown): ClientWindowState {
         "drafts",
         "gallery",
       ],
-      ["connectionDefaults"],
+      ["connectionDefaults", "sendHistoryPins"],
     ) ||
     typeof value.currentPage !== "string" ||
     !["workbench", "settings", "diagnostics", "recovery"].includes(
@@ -366,6 +407,9 @@ export function parseClientWindowState(value: unknown): ClientWindowState {
     lastWorkspaceId: value.lastWorkspaceId,
     drafts,
     gallery: parseClientGallery(value.gallery),
+    ...(Object.hasOwn(value, "sendHistoryPins")
+      ? { sendHistoryPins: parseSendHistoryPins(value.sendHistoryPins) }
+      : {}),
     ...(Object.hasOwn(value, "connectionDefaults")
       ? {
           connectionDefaults: parseConnectionDefaults(value.connectionDefaults),

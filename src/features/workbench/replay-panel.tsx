@@ -21,6 +21,7 @@ import {
 import {
   BookOpen,
   ChartLine,
+  GitCompareArrows,
   CornerDownRight,
   Gauge,
   Info,
@@ -46,6 +47,10 @@ import {
 } from "@/components/ui/popover";
 import { nativeErrorCode } from "@/lib/native-error";
 import { parseU64 } from "@/lib/u64";
+import type {
+  ComparisonSide,
+  ReplayComparisonSample,
+} from "./session-comparison-model";
 import { captureRecordItems } from "./capture-record-items";
 import { StreamView } from "./stream-view";
 import { WorkbenchIconButton } from "./workbench-icon-button";
@@ -82,7 +87,31 @@ export type ReplayPanelProps = {
   presentationLabels?: StreamPresentationLabels;
   highlightRules?: readonly StreamHighlightRule[];
   onHighlightRulesChange?: (rules: StreamHighlightRule[]) => void;
+  comparison?: {
+    label: string;
+    count: number;
+    stage: (side: ComparisonSide, sample: ReplayComparisonSample) => void;
+    open: (trigger: HTMLElement) => void;
+  };
 };
+function ReplayComparisonButton({
+  comparison,
+  disabled,
+}: {
+  comparison: NonNullable<ReplayPanelProps["comparison"]>;
+  disabled: boolean;
+}) {
+  return (
+    <WorkbenchIconButton
+      label={comparison.label}
+      disabled={disabled || comparison.count === 0}
+      onClick={(event) => comparison.open(event.currentTarget)}
+    >
+      <GitCompareArrows aria-hidden="true" />
+    </WorkbenchIconButton>
+  );
+}
+
 export function ReplayPanel({
   session,
   read,
@@ -95,6 +124,7 @@ export function ReplayPanel({
   presentationLabels,
   highlightRules,
   onHighlightRulesChange,
+  comparison,
 }: ReplayPanelProps) {
   const [page, setPage] = useState<ReplayReadResult>();
   const latestPage = useRef(page);
@@ -438,6 +468,9 @@ export function ReplayPanel({
         >
           <ChartLine aria-hidden="true" />
         </WorkbenchIconButton>
+        {comparison ? (
+          <ReplayComparisonButton comparison={comparison} disabled={disabled} />
+        ) : null}
         <Popover open={detailsOpen} onOpenChange={setDetailsOpen}>
           <PopoverTrigger asChild>
             <WorkbenchIconButton
@@ -588,6 +621,16 @@ export function ReplayPanel({
             <ReplayFieldChart
               records={records}
               sourceSelection={linked?.selection}
+              onStageComparison={
+                page && comparison && !disabled
+                  ? (side, sample) =>
+                      void beforeReplace().then((allowed) => {
+                        if (!allowed || latestPage.current !== page) return;
+                        comparison.stage(side, sample);
+                        setChartOpen(false);
+                      })
+                  : undefined
+              }
               onRevealSource={
                 page
                   ? (source) =>

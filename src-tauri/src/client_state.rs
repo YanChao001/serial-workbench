@@ -7,6 +7,7 @@ use std::{collections::BTreeMap, path::PathBuf};
 pub const CLIENT_STATE_FILE: &str = "client-state-v0.json";
 pub const MAX_CLIENT_STATE_FILE_SIZE: usize = 512 * 1024;
 const MAX_ANSI_SCROLLBACK_LINES: u32 = 50_000;
+const MAX_SEND_HISTORY_PINS: usize = 64;
 
 fn default_ansi_scrollback_lines() -> u32 {
     3_000
@@ -116,6 +117,13 @@ impl WriteWaitMode {
         *self == Self::Automatic
     }
 }
+#[derive(Debug, Clone, PartialEq, Eq, PartialOrd, Ord, Serialize, Deserialize, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct SendHistoryPin {
+    pub host_id: serial_workbench_core::Id,
+    pub workspace_id: serial_workbench_core::Id,
+    pub operation_id: serial_workbench_core::Id,
+}
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct ClientWindowState {
@@ -131,6 +139,9 @@ pub struct ClientWindowState {
     #[serde(default, skip_serializing_if = "Vec::is_empty")]
     #[specta(optional)]
     pub connection_defaults: Vec<ConnectionDefault>,
+    #[serde(default, skip_serializing_if = "Vec::is_empty")]
+    #[specta(optional)]
+    pub send_history_pins: Vec<SendHistoryPin>,
 }
 impl Default for ClientWindowState {
     fn default() -> Self {
@@ -144,6 +155,7 @@ impl Default for ClientWindowState {
             drafts: BTreeMap::new(),
             gallery: Vec::new(),
             connection_defaults: Vec::new(),
+            send_history_pins: Vec::new(),
         }
     }
 }
@@ -237,6 +249,19 @@ fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
             ));
         }
     }
+    if state.send_history_pins.len() > MAX_SEND_HISTORY_PINS {
+        return Err(NativeError::new(
+            ErrorCode::InputTooLong,
+            "Too many pinned send operations",
+        ));
+    }
+    let mut pins = std::collections::BTreeSet::new();
+    if state.send_history_pins.iter().any(|pin| !pins.insert(pin)) {
+        return Err(NativeError::new(
+            ErrorCode::InvalidArgument,
+            "Duplicate pinned send operation",
+        ));
+    }
     if state.gallery.len() > 24 {
         return Err(NativeError::new(
             ErrorCode::InputTooLong,
@@ -276,6 +301,73 @@ fn validate_state(state: &ClientWindowState) -> NativeResult<()> {
     }
     Ok(())
 }
+#[cfg(test)]
+mod send_history_pin_tests {
+    use super::*;
+    use serial_workbench_core::Id;
+
+    fn pin() -> SendHistoryPin {
+        SendHistoryPin {
+            host_id: Id::try_from("host-a").unwrap(),
+            workspace_id: Id::try_from("workspace-a").unwrap(),
+            operation_id: Id::try_from("operation-a").unwrap(),
+        }
+    }
+
+    #[test]
+    fn older_state_loads_empty_and_pins_round_trip_per_window() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let mut state = ClientWindowState::default();
+        state.drafts.insert("view".into(), "UNSENT".into());
+        let legacy = serde_json::to_value(&state).unwrap();
+        assert!(legacy.get("sendHistoryPins").is_none());
+        let old = serde_json::from_value::<ClientWindowState>(legacy).unwrap();
+        assert!(old.send_history_pins.is_empty());
+        state.send_history_pins.push(pin());
+        let saved = store.save("main", state, 0.into()).unwrap();
+        let reopened = ClientStateStore::open(path).unwrap();
+        assert_eq!(reopened.snapshot("main").unwrap(), saved);
+        assert!(
+            reopened
+                .snapshot("secondary")
+                .unwrap()
+                .state
+                .send_history_pins
+                .is_empty()
+        );
+        assert_eq!(saved.state.drafts.get("view").unwrap(), "UNSENT");
+    }
+
+    #[test]
+    fn rejects_duplicate_and_excess_pins_without_replacing_the_saved_state() {
+        let dir = tempfile::tempdir().unwrap();
+        let path = dir.path().join(CLIENT_STATE_FILE);
+        let store = ClientStateStore::open(path.clone()).unwrap();
+        let mut state = ClientWindowState {
+            send_history_pins: vec![pin()],
+            ..Default::default()
+        };
+        store.save("main", state.clone(), 0.into()).unwrap();
+        let original = std::fs::read(&path).unwrap();
+        state.send_history_pins.push(pin());
+        assert_eq!(
+            store
+                .save("main", state.clone(), 1.into())
+                .unwrap_err()
+                .code,
+            ErrorCode::InvalidArgument
+        );
+        state.send_history_pins = vec![pin(); MAX_SEND_HISTORY_PINS + 1];
+        assert_eq!(
+            store.save("main", state, 1.into()).unwrap_err().code,
+            ErrorCode::InputTooLong
+        );
+        assert_eq!(std::fs::read(path).unwrap(), original);
+    }
+}
+
 #[cfg(test)]
 mod connection_defaults_tests {
     use super::*;

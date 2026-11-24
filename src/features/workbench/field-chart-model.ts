@@ -30,7 +30,7 @@ export function isChartField(reading: FieldReading) {
   return reading.rawValue !== undefined;
 }
 
-function retainedSource(
+export function retainedSource(
   frame: FramingFrame,
   bytes: Uint8Array,
   events: ReadonlyMap<bigint, RawEvent>,
