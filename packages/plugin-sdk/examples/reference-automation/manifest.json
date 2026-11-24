@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.automation",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "displayName": "Serial Workbench Automation",
   "description": "Run serial schedules, response checks and Modbus transactions",
   "license": "Apache-2.0",
@@ -603,6 +603,140 @@
                 }
               },
               "required": ["source", "timing", "bytesBase64"],
+              "additionalProperties": false
+            }
+          }
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench",
+          "panelId": "activity"
+        }
+      },
+      {
+        "actionId": "swb.reference.automation.sequence",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "definition": {
+              "type": "string",
+              "minLength": 2,
+              "maxLength": 32768
+            },
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$"
+            }
+          },
+          "required": ["definition", "startEventSeq"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "outcome": {
+              "enum": [
+                "completed",
+                "matched",
+                "response_timeout",
+                "unexpected_response",
+                "source_changed",
+                "transmit_unconfirmed",
+                "stop_condition"
+              ]
+            },
+            "completedSteps": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 64
+            },
+            "stoppedAt": { "type": "string", "minLength": 1, "maxLength": 256 },
+            "attempts": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "path": {
+                    "type": "string",
+                    "minLength": 1,
+                    "maxLength": 256
+                  },
+                  "operationId": {
+                    "type": "string",
+                    "minLength": 1
+                  },
+                  "outcome": {
+                    "enum": [
+                      "written",
+                      "matched",
+                      "response_timeout",
+                      "unexpected_response",
+                      "source_changed",
+                      "transmit_unconfirmed",
+                      "stop_condition"
+                    ]
+                  },
+                  "source": {
+                    "$ref": "#/$defs/source"
+                  }
+                },
+                "required": ["path", "operationId", "outcome"],
+                "additionalProperties": false
+              }
+            }
+          },
+          "required": ["outcome", "completedSteps", "attempts"],
+          "additionalProperties": false,
+          "$defs": {
+            "position": {
+              "type": "string",
+              "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+            },
+            "source": {
+              "type": "object",
+              "properties": {
+                "hostId": {
+                  "type": "string"
+                },
+                "sessionId": {
+                  "type": "string"
+                },
+                "sessionEpoch": {
+                  "$ref": "#/$defs/position"
+                },
+                "direction": {
+                  "const": "rx"
+                },
+                "eventStart": {
+                  "$ref": "#/$defs/position"
+                },
+                "eventEnd": {
+                  "$ref": "#/$defs/position"
+                },
+                "byteStart": {
+                  "$ref": "#/$defs/position"
+                },
+                "byteEnd": {
+                  "$ref": "#/$defs/position"
+                }
+              },
+              "required": [
+                "hostId",
+                "sessionId",
+                "sessionEpoch",
+                "direction",
+                "eventStart",
+                "eventEnd",
+                "byteStart",
+                "byteEnd"
+              ],
               "additionalProperties": false
             }
           }

@@ -44,7 +44,7 @@ test("scheduled send previews the full draft and submits explicit independent Ho
   page,
 }) => {
   await seedWorkbenchFixture(page, {
-    repeatSend: { action: builtinAction, state: "ready" },
+    automation: { action: builtinAction, state: "ready" },
   });
   await openVirtualSerial(page);
   const draft = page.getByRole("textbox", { name: "Send draft", exact: true });
@@ -122,7 +122,7 @@ test("scheduled send previews the full draft and submits explicit independent Ho
 test("scheduled send recovers the accepted task on reopening and waits for actual cancellation", async ({
   page,
 }) => {
-  await seedWorkbenchFixture(page, { repeatSend: { action, state: "held" } });
+  await seedWorkbenchFixture(page, { automation: { action, state: "held" } });
   await openVirtualSerial(page);
   const dialog = await openSchedule(page);
   await dialog
@@ -156,7 +156,9 @@ test("scheduled send recovers the accepted task on reopening and waits for actua
   await expect(dialog.getByRole("status")).not.toContainText(
     "Host confirmed that the task stopped.",
   );
-  await page.evaluate(() => window.workbenchFixture.finishRepeatCancellation());
+  await page.evaluate(() =>
+    window.workbenchFixture.finishAutomationCancellation(),
+  );
   await expect(dialog.getByRole("status")).toContainText(
     "Host confirmed that the task stopped.",
   );
@@ -174,7 +176,7 @@ test("scheduled send recovers the accepted task on reopening and waits for actua
 test("scheduled send leaves device admission untouched when the selected actor is denied", async ({
   page,
 }) => {
-  await seedWorkbenchFixture(page, { repeatSend: { action, state: "denied" } });
+  await seedWorkbenchFixture(page, { automation: { action, state: "denied" } });
   await openVirtualSerial(page);
   const dialog = await openSchedule(page);
   await dialog.getByRole("textbox", { name: "Bytes to send (HEX)" }).fill("AA");

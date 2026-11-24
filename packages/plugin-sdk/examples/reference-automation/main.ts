@@ -17,6 +17,10 @@ import {
   readExpectedResponse,
   type StepResult,
 } from "./session-response.ts";
+import {
+  commandSequenceAction,
+  createCommandSequence,
+} from "./command-sequence.ts";
 import { createRepeatSend, repeatSendAction } from "./repeat-send.ts";
 
 const action = "swb.reference.automation.run";
@@ -46,6 +50,7 @@ function parseStep(value: unknown) {
 export const register: NodeRegister = (context) => {
   context.actions.register(modbusTransactionAction, modbusTransaction);
   context.actions.register(repeatSendAction, createRepeatSend());
+  context.actions.register(commandSequenceAction, createCommandSequence());
   context.actions.register(action, async ({ target, params }, task) => {
     const { sessionId, sessionEpoch } = target;
     const {

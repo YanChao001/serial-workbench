@@ -37,6 +37,11 @@ const PREVIOUS_CHART_DESCRIPTOR: &str =
 const CHART_MARKER: &str = "node-packages:bundled-chart";
 const AUTOMATION_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/automation.zip");
 const AUTOMATION_DESCRIPTOR: &str = include_str!("../../resources/node-packages/automation.json");
+const PREVIOUS_AUTOMATION_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.0.zip");
+const PREVIOUS_AUTOMATION_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.0.json");
+const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -149,17 +154,13 @@ pub(super) fn packages() -> &'static [ProductPackage] {
                 "node-packages:bundled-modbus-slave",
             ),
             ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
-            ProductPackage::new(
-                AUTOMATION_DESCRIPTOR,
-                AUTOMATION_ARCHIVE,
-                "node-packages:bundled-automation",
-            ),
+            ProductPackage::new(AUTOMATION_DESCRIPTOR, AUTOMATION_ARCHIVE, AUTOMATION_MARKER),
         ]
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 3] {
-    static PREVIOUS: OnceLock<[ProductPackage; 3]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 4] {
+    static PREVIOUS: OnceLock<[ProductPackage; 4]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -172,6 +173,11 @@ fn previous_packages() -> &'static [ProductPackage; 3] {
                 PREVIOUS_CHART_DESCRIPTOR,
                 PREVIOUS_CHART_ARCHIVE,
                 CHART_MARKER,
+            ),
+            ProductPackage::new(
+                PREVIOUS_AUTOMATION_DESCRIPTOR,
+                PREVIOUS_AUTOMATION_ARCHIVE,
+                AUTOMATION_MARKER,
             ),
         ]
     })
@@ -224,10 +230,11 @@ mod tests {
 
     #[test]
     fn known_predecessor_upgrades_and_preserves_the_profile_decision() {
-        let [old_fields, recent_fields, old_chart] = previous_packages();
+        let [old_fields, recent_fields, old_chart, old_automation] = previous_packages();
         check_predecessor_upgrade(old_fields, "0.1.0", "0.3.0");
         check_predecessor_upgrade(recent_fields, "0.2.0", "0.3.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.1");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.1");
     }
 
     fn check_predecessor_upgrade(old: &ProductPackage, old_version: &str, next_version: &str) {

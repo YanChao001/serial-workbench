@@ -119,7 +119,10 @@ export type WorkbenchFixture = {
     generation: string;
     captureNameHint: CaptureNameHint | null;
   }[];
-  finishRepeatCancellation: () => void;
+  automationCursorPosition: string;
+  automationCursorScope?: string;
+  automationObserveFailures: number;
+  finishAutomationCancellation: () => void;
   releaseDefinitionRead: () => void;
   holdNextFraming: () => void;
   setFramingResult: (page: FileReadResult) => void;
@@ -227,7 +230,7 @@ export async function seedWorkbenchFixture(
     framing,
     definitionFiles,
     sendHistory = false,
-    repeatSend,
+    automation,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -257,7 +260,7 @@ export async function seedWorkbenchFixture(
     nodeThemes?: FixtureNodeThemes;
     framing?: { action: ActionSpec; page: FileReadResult };
     definitionFiles?: DefinitionFileFixture[];
-    repeatSend?: { action: ActionSpec; state: "ready" | "held" | "denied" };
+    automation?: { action: ActionSpec; state: "ready" | "held" | "denied" };
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -491,7 +494,7 @@ export async function seedWorkbenchFixture(
         items: [
           ...workbenchCatalog,
           ...(framing ? [framing.action] : []),
-          ...(repeatSend ? [repeatSend.action] : []),
+          ...(automation ? [automation.action] : []),
         ],
       },
     },
@@ -573,7 +576,7 @@ export async function seedWorkbenchFixture(
     nodeThemes,
     framing,
     definitionFiles,
-    repeatSend,
+    automation,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -612,10 +615,10 @@ export async function seedWorkbenchFixture(
       nodeThemes,
       framing,
       definitionFiles,
-      repeatSend,
+      automation,
     } = JSON.parse(raw) as typeof fixturePayload;
-    let repeatOperation: Operation | undefined;
-    let repeatFile = "";
+    let automationOperation: Operation | undefined;
+    let automationFile = "";
     let framingOperation: Operation | undefined;
     let holdFraming = false;
     let nextFramingResult = framing?.page;
@@ -923,11 +926,13 @@ export async function seedWorkbenchFixture(
       clientStateWrites: [],
       workspaceWrites: [],
       filePickerCalls: [],
-      finishRepeatCancellation() {
-        if (repeatOperation?.state !== "cancel_requested")
-          throw new Error("Expected accepted repeat cancellation");
-        repeatOperation = {
-          ...repeatOperation,
+      automationCursorPosition: "0",
+      automationObserveFailures: 0,
+      finishAutomationCancellation() {
+        if (automationOperation?.state !== "cancel_requested")
+          throw new Error("Expected accepted automation cancellation");
+        automationOperation = {
+          ...automationOperation,
           revision: "3",
           state: "cancelled",
           error: {
@@ -1580,22 +1585,23 @@ export async function seedWorkbenchFixture(
                 };
               }
               if (
-                repeatSend &&
+                automation &&
                 request.method === "action.invoke" &&
-                request.params.actionId === repeatSend.action.actionId
+                request.params.actionId === automation.action.actionId
               ) {
                 const call = request.params;
-                const count = call.params.count;
+                const sequence = call.actionId.endsWith(".sequence");
+                const count = sequence ? 4 : call.params.count;
                 if (typeof count !== "number")
-                  throw new Error("Expected repeat count");
-                const id = "fixture-repeat";
+                  throw new Error("Expected automation count");
+                const id = sequence ? "fixture-sequence" : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
                   id,
                   revision: "1",
                 };
-                repeatOperation = {
+                automationOperation = {
                   ...sentOperation,
                   operationId: id,
                   rootOperationId: id,
@@ -1603,36 +1609,68 @@ export async function seedWorkbenchFixture(
                   target: call.target,
                   requestId: call.requestId,
                   executionMode: call.executionMode ?? "independent",
-                  state: repeatSend.state === "held" ? "running" : "succeeded",
+                  state: automation.state === "held" ? "running" : "succeeded",
                   progress: {
                     completed: "1",
                     total: String(count),
-                    unit: "rounds",
+                    unit: sequence ? "steps" : "rounds",
                   },
                   result:
-                    repeatSend.state === "held"
+                    automation.state === "held"
                       ? undefined
                       : { kind: "reference", value: { resultRef } },
                 };
-                repeatFile = JSON.stringify({
-                  outcome: "completed",
-                  completed: count,
-                  skippedSlots: 0,
-                  attempted: Array.from({ length: count }, (_, index) => ({
-                    operationId: "repeat-tx-" + (index + 1),
-                    outcome: "matched",
-                    scheduledMs: index * 250,
-                    startedMs: index * 250,
-                  })),
-                });
+                automationFile = JSON.stringify(
+                  sequence
+                    ? {
+                        outcome: "completed",
+                        completedSteps: count,
+                        attempts: [
+                          {
+                            path: "$.steps[0]",
+                            operationId: "sequence-tx-1",
+                            outcome: "matched",
+                            source: {
+                              hostId: call.target.hostId,
+                              sessionId: call.target.sessionId,
+                              sessionEpoch: call.target.sessionEpoch,
+                              direction: "rx",
+                              eventStart: "44",
+                              eventEnd: "45",
+                              byteStart: "0",
+                              byteEnd: "1",
+                            },
+                          },
+                          {
+                            path: "$.steps[0].expect.onMatch[0]",
+                            operationId: "sequence-tx-2",
+                            outcome: "written",
+                          },
+                        ],
+                      }
+                    : {
+                        outcome: "completed",
+                        completed: count,
+                        skippedSlots: 0,
+                        attempted: Array.from(
+                          { length: count },
+                          (_, index) => ({
+                            operationId: "repeat-tx-" + (index + 1),
+                            outcome: "matched",
+                            scheduledMs: index * 250,
+                            startedMs: index * 250,
+                          }),
+                        ),
+                      },
+                );
                 return {
                   ok: true,
                   result: {
                     operation:
-                      repeatSend.state === "held"
-                        ? repeatOperation
+                      automation.state === "held"
+                        ? automationOperation
                         : {
-                            ...repeatOperation,
+                            ...automationOperation,
                             state: "queued",
                             result: undefined,
                           },
@@ -1640,13 +1678,13 @@ export async function seedWorkbenchFixture(
                 };
               }
               if (
-                repeatOperation?.state === "running" &&
+                automationOperation?.state === "running" &&
                 request.method === "action.invoke" &&
                 request.params.actionId === "operation.cancel" &&
-                request.params.target.id === repeatOperation.operationId
+                request.params.target.id === automationOperation.operationId
               ) {
-                repeatOperation = {
-                  ...repeatOperation,
+                automationOperation = {
+                  ...automationOperation,
                   revision: "2",
                   state: "cancel_requested",
                 };
@@ -1665,7 +1703,7 @@ export async function seedWorkbenchFixture(
                       result: {
                         kind: "cancellation_requested",
                         value: {
-                          operationId: repeatOperation.operationId,
+                          operationId: automationOperation.operationId,
                           state: "cancel_requested",
                         },
                       },
@@ -1948,23 +1986,35 @@ export async function seedWorkbenchFixture(
                   };
               }
               if (
-                repeatOperation &&
+                automationOperation &&
                 query.actionId === "operation.get" &&
-                query.params.operationId === repeatOperation.operationId
-              )
+                query.params.operationId === automationOperation.operationId
+              ) {
+                if (fixture.automationObserveFailures > 0) {
+                  fixture.automationObserveFailures--;
+                  return {
+                    ok: false,
+                    error: {
+                      code: "HOST_BUSY",
+                      message: "Try querying the operation again",
+                      retryable: true,
+                    },
+                  };
+                }
                 return {
                   ok: true,
                   result: {
                     kind: "operation",
-                    value: { operation: repeatOperation },
+                    value: { operation: automationOperation },
                   },
                 };
+              }
               if (
-                repeatOperation?.result?.kind === "reference" &&
+                automationOperation?.result?.kind === "reference" &&
                 query.actionId === "file.read" &&
-                query.target.id === repeatOperation.operationId
+                query.target.id === automationOperation.operationId
               ) {
-                const bytes = new TextEncoder().encode(repeatFile);
+                const bytes = new TextEncoder().encode(automationFile);
                 const digest = new Uint8Array(
                   await crypto.subtle.digest("SHA-256", bytes),
                 );
@@ -1976,13 +2026,13 @@ export async function seedWorkbenchFixture(
                   result: {
                     kind: "file_read",
                     value: {
-                      fileRef: repeatOperation.result.value.resultRef,
+                      fileRef: automationOperation.result.value.resultRef,
                       offset: "0",
                       nextOffset: String(bytes.length),
                       totalBytes: String(bytes.length),
                       fingerprint,
                       atEnd: true,
-                      bytesBase64: btoa(repeatFile),
+                      bytesBase64: btoa(automationFile),
                     },
                   },
                 };
@@ -2486,17 +2536,17 @@ export async function seedWorkbenchFixture(
                     },
                   };
                 if (
-                  repeatSend &&
-                  query.params.actionId === repeatSend.action.actionId
+                  automation &&
+                  query.params.actionId === automation.action.actionId
                 )
                   return {
                     ok: true,
                     result: {
                       kind: "action_check",
                       value: {
-                        actionId: repeatSend.action.actionId,
+                        actionId: automation.action.actionId,
                         target: query.target,
-                        allowed: repeatSend.state !== "denied",
+                        allowed: automation.state !== "denied",
                       },
                     },
                   };
@@ -2542,8 +2592,17 @@ export async function seedWorkbenchFixture(
                       cursor: {
                         hostId: hostAttachment.attachment.hostId,
                         instanceEpoch: "1",
-                        scopeId: "session.raw",
-                        position: "0",
+                        scopeId: automation?.action.actionId.endsWith(
+                          ".sequence",
+                        )
+                          ? (fixture.automationCursorScope ??
+                            [
+                              "raw",
+                              query.target.sessionId,
+                              query.target.sessionEpoch,
+                            ].join(":"))
+                          : "session.raw",
+                        position: fixture.automationCursorPosition,
                       },
                     },
                   },

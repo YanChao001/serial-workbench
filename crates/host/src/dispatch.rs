@@ -2836,6 +2836,7 @@ mod tests {
                     (&chart, "swb.builtin.chart.exportCsv"),
                     (&chart, "swb.builtin.chart.exportPng"),
                     (&automation, "swb.builtin.automation.repeat"),
+                    (&automation, "swb.builtin.automation.sequence"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3329,6 +3330,28 @@ mod tests {
             .await
             .unwrap_err();
         assert_eq!(denied_repeat.code, "PERMISSION_DENIED");
+
+        let sequence = "swb.builtin.automation.sequence";
+        let sequence_params = || {
+            let cursor = host.inner.streams.current_cursor(&session).unwrap();
+            let start_event_seq = cursor.position.get().checked_add(1).unwrap().to_string();
+            let document = serde_json::json!({
+                "version": 1,
+                "variables": {"code": "51"},
+                "steps": [
+                    {"kind":"send","hex":"${code}","expect":{"hex":"51"}},
+                    {"kind":"delay","milliseconds":20},
+                    {"kind":"send","hex":"52","expect":{"hex":"52"}}
+                ]
+            });
+            serde_json::json!({"definition":document.to_string(),"startEventSeq":start_event_seq})
+        };
+        let denied_sequence = host
+            .invoke(&actor, call(&session, sequence, sequence_params()))
+            .await
+            .unwrap_err();
+        assert_eq!(denied_sequence.code, "PERMISSION_DENIED");
+
         let denied = host
             .invoke(&actor, call(&session, modbus, params.clone()))
             .await
@@ -3521,6 +3544,48 @@ mod tests {
         assert!(attempts.iter().all(|item| item["outcome"] == "matched"));
         assert_ne!(attempts[0]["operationId"], attempts[1]["operationId"]);
         eprintln!("bundled_scheduled_send denied_without_device_modify=true confirmed_echoes=2");
+
+        let accepted = host
+            .invoke(&actor, call(&session, sequence, sequence_params()))
+            .await
+            .unwrap();
+        let ActionResult::Reference(output) = settled(accepted).await else {
+            panic!("Expected the signed command-sequence result file");
+        };
+        let read = host
+            .inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: output.result_ref,
+                    offset: 0.into(),
+                    max_bytes: 4096.into(),
+                },
+                &actor,
+            )
+            .unwrap();
+        assert!(read.at_end);
+        let report: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap()).unwrap();
+        assert_eq!(report["outcome"], "completed", "{report}");
+        assert_eq!(report["completedSteps"], 3);
+        let steps = report["attempts"].as_array().unwrap();
+        assert_eq!(steps.len(), 2);
+        for (attempt, frame) in steps.iter().zip([b"Q", b"R"]) {
+            assert_eq!(attempt["outcome"], "matched");
+            assert_eq!(attempt["source"]["sessionId"], session.id.as_str());
+            let op = store
+                .get(&actor, &id(attempt["operationId"].as_str().unwrap()))
+                .unwrap();
+            let Some(ActionResult::Tx(write)) = op.result else {
+                panic!("Missing signed sequence write receipt");
+            };
+            assert_eq!(write.outcome, TxOutcome::Accepted);
+            assert_eq!(write.bytes_base64.as_str(), STANDARD.encode(frame));
+        }
+        eprintln!(
+            "bundled_command_sequence denied_without_device_modify=true confirmed_echoes=2 delay_steps=1"
+        );
     }
 
     #[tokio::test]
