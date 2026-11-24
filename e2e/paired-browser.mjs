@@ -11,6 +11,7 @@ import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { startMcpFixture } from "./mcp-fixture.mjs";
 import { checkManualRecording } from "./paired-manual-recording.mjs";
+import { checkMultiportBroadcast } from "./paired-multiport-broadcast.mjs";
 import { checkRuleCommand } from "./paired-rule-evidence.mjs";
 import { sessionScopes } from "./session-scopes.mjs";
 
@@ -405,13 +406,18 @@ try {
     { flag: "wx" },
   );
   await cli("authorize", "--params-json", rawGrantPath);
-  const readParams = async (name, startEventSeq, maxEvents) => {
+  const readParams = async (
+    name,
+    startEventSeq,
+    maxEvents,
+    target = original,
+  ) => {
     const path = join(root, name + ".json");
     await writeFile(
       path,
       JSON.stringify({
-        sessionId: original.id,
-        sessionEpoch: original.sessionEpoch,
+        sessionId: target.id,
+        sessionEpoch: target.sessionEpoch,
         startEventSeq,
         maxEvents,
         maxBytes: "262144",
@@ -550,6 +556,69 @@ try {
     source: firstExport,
     output,
   });
+  await expect
+    .poll(async () => {
+      const { result } = await query("device.refresh", hostTargetPath);
+      return result.value.devices.some(
+        ({ systemName, driver }) =>
+          systemName === "swb.builtin.tcp.transport" &&
+          driver === "swb.builtin.tcp",
+      );
+    })
+    .toBe(true);
+  const multiportBroadcast = await checkMultiportBroadcast({
+    page,
+    output,
+    original,
+    readEcho: readRaw,
+    async listSessions() {
+      const { result } = await query("state.scopes", hostTargetPath);
+      return sessionScopes(result.value.scopes).map(({ target }) => target);
+    },
+    async prepareTcpRaw(target) {
+      const path = join(root, "broadcast-tcp-target.json");
+      const grant = join(root, "broadcast-tcp-grant.json");
+      await writeFile(path, JSON.stringify(target), { flag: "wx" });
+      await writeFile(
+        grant,
+        JSON.stringify({
+          clientId: context.clientId,
+          permissions: ["content.read"],
+          targets: [target],
+        }),
+        { flag: "wx" },
+      );
+      await cli("authorize", "--params-json", grant);
+      return async (label, start = "1") => {
+        const params = await readParams(label, start, "100", target);
+        const { result } = await query("stream.read", path, params);
+        assert.equal(result.value.hasMore, false);
+        return result.value;
+      };
+    },
+    async operation(id) {
+      return (await cli("operation", "get", id)).result.operation;
+    },
+    submittedTx() {
+      return frames.filter(
+        ({ direction, action }) =>
+          direction === "framesent" && action === "session.tx",
+      ).length;
+    },
+  });
+  const priorWorkspace = (await query("workspace.read", workspacePath)).result
+    .value.document;
+  await page
+    .getByRole("button", { name: /保存当前布局|Save current layout/ })
+    .click();
+  await expect
+    .poll(async () => {
+      const { result } = await query("workspace.read", workspacePath);
+      return (
+        BigInt(result.value.document.revision) > BigInt(priorWorkspace.revision)
+      );
+    })
+    .toBe(true);
   const settingsPath = join(root, "settings.json");
   await writeFile(
     settingsPath,
@@ -754,6 +823,7 @@ try {
     selectionDownloads,
     ruleCommand,
     manualRecording,
+    multiportBroadcast,
     rawParity: {
       hostId: original.hostId,
       instanceEpoch: context.instanceEpoch,
