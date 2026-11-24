@@ -214,13 +214,13 @@ pub(crate) fn validate_export_name(name: &str) -> NativeResult<()> {
         || !name
             .bytes()
             .all(|byte| byte.is_ascii_alphanumeric() || b"._-".contains(&byte))
-        || ![".csv", ".tsv", ".json", ".txt", ".md"]
+        || ![".csv", ".tsv", ".json", ".txt", ".md", ".xml", ".html"]
             .iter()
             .any(|extension| name.ends_with(extension))
     {
         return Err(NativeError::new(
             ErrorCode::InvalidArgument,
-            "Use a plain CSV, JSON or text export name",
+            "Use a plain text or report export name",
         ));
     }
     Ok(())

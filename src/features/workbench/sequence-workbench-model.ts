@@ -102,6 +102,31 @@ export async function readSequenceCursor(
   return String(next);
 }
 
+export async function readSuiteCaseCursor(
+  connection: HostConnection,
+  target: Target,
+  configurationRevision: string,
+  signal: AbortSignal,
+) {
+  const cursor = await readSequenceCursor(connection, target, signal);
+  const result = await connection.client.query(
+    connection.buildQuery("session.get", target),
+    signal,
+  );
+  signal.throwIfAborted();
+  if (
+    result.kind !== "session" ||
+    result.value.sessionId !== target.sessionId ||
+    result.value.sessionEpoch !== target.sessionEpoch ||
+    result.value.state !== "open" ||
+    result.value.readOnly ||
+    result.value.txGate !== "ready" ||
+    result.value.configurationRevision !== configurationRevision
+  )
+    throw new ContractValidationError("Suite session configuration changed");
+  return cursor;
+}
+
 function path(value: unknown): value is string {
   return (
     typeof value === "string" &&

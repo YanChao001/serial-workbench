@@ -1,4 +1,6 @@
 import type { StreamHighlightRule } from "./stream-highlight";
+import type { TestSuiteWorkspace } from "./test-suite-tool";
+import { TestSuiteSessionsContext } from "./test-suite-sessions";
 import {
   lazy,
   Suspense,
@@ -160,6 +162,7 @@ export type WorkbenchTool =
   | "framing"
   | "repeatSend"
   | "commandSequence"
+  | "testSuite"
   | "diagnostics";
 type WorkbenchPanel =
   | WorkbenchTool
@@ -218,6 +221,7 @@ export type WorkbenchToolContext = {
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
   sequenceRecording?: { revision: number; definition: string };
+  testSuiteWorkspace?: TestSuiteWorkspace;
   onWriteWaitModeChange: (value: WriteWaitMode) => void;
   onInspectMetrics: () => void;
   onReconnect?: () => void;
@@ -272,7 +276,10 @@ export type WorkspaceLayoutProps = {
   terminalSettings?: TerminalSettings;
   presentationLabels?: StreamPresentationLabels;
   toolLabels?: Record<
-    | Exclude<WorkbenchTool, "framing" | "repeatSend" | "commandSequence">
+    | Exclude<
+        WorkbenchTool,
+        "framing" | "repeatSend" | "commandSequence" | "testSuite"
+      >
     | "more"
     | "chooseDevice"
     | "displayOptions"
@@ -287,6 +294,7 @@ export type WorkspaceLayoutProps = {
     framing?: string;
     repeatSend?: string;
     commandSequence?: string;
+    testSuite?: string;
     manualRecording?: ManualRecordingLabels;
   };
   renderTool?: (
@@ -595,6 +603,14 @@ export function WorkspaceLayout({
     );
   }, [selected, workspaceKey, state.devices]);
   const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
+  const suiteSessions = useContext(TestSuiteSessionsContext);
+  const [suiteDraft, setSuiteDraft] = useState<TestSuiteWorkspace["draft"]>({
+    definition: "",
+    saved: "",
+  });
+  const [suiteSeries, setSuiteSeries] = useState<TestSuiteWorkspace["series"]>(
+    [],
+  );
   const [sequenceRecording, setSequenceRecording] = useState<{
     revision: number;
     definition: string;
@@ -2727,6 +2743,16 @@ export function WorkspaceLayout({
                 snapshotWorkspace,
                 sequenceRecording:
                   dialog === "commandSequence" ? sequenceRecording : undefined,
+                testSuiteWorkspace:
+                  dialog === "testSuite" && suiteSessions
+                    ? {
+                        ...suiteSessions,
+                        draft: suiteDraft,
+                        onDraftChange: setSuiteDraft,
+                        series: suiteSeries,
+                        onSeriesChange: setSuiteSeries,
+                      }
+                    : undefined,
                 newViewDefaults: {
                   terminal: terminalSettings ?? defaults.settings.terminal,
                   color: viewColor ?? defaults.settings.customAccent,

@@ -254,6 +254,12 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 用 `node --test scripts/command-sequence.test.mjs` 核对迟到旧应答、部分写入、缺失 TX 证据、重试之间的外部写入、预算和最终超时分支。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对预览、重叠应答拒绝、显式运行和逐次结果。固定 Node 原生用例 `native_node_bundled_protocol_registers_on_first_start_and_restart` 对照签名包的完整写入与进程内独立对端响应。实际串口对端和正式离线发行继续专项验收。
 
+### 测试套件与报告（AUTO-06）
+
+在可写会话的工作区菜单打开「测试套件」。载入示例，或打开 `{"version":1,"name":"Bench","cases":[{"name":"Echo","sequence":{"version":1,"steps":[{"kind":"send","hex":"53","expect":{"hex":"53"}}]}}]}`。也可给某项设置 `"skip":true`。用独立对端分别给出正确应答、错误应答和迟到应答，核对用例按顺序接纳、失败或无法确认后跳过其余项。停止时核对请求阶段与 Host 取消终态分别显示，报告保留原任务 ID。导出 JUnit XML 和 HTML，核对内容与面板一致。JUnit 用 skipped 元素承载取消记录并另列取消计数，HTML 显示各自状态和最近实际趋势。同一窗口重新打开面板时核对报告仍属于原会话与原定义。逐次核对新游标和 Host 配置修订。仅写入且没有应答断言时，保留当前真实结果并阻止后续用例。存在未归属应答时要求确认对端已结束上一轮并重新打开会话。
+
+运行 `pnpm test src/features/workbench/test-suite.test.ts` 核对报告可解析、显示转义、取消和不确定结果。用 `pnpm test:ui e2e/browser/test-suite.spec.ts --workers 1` 核对工作台接线、二次运行趋势和实际保存请求。桌面原生选择器与真实串口对端继续结合正式候选验收。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

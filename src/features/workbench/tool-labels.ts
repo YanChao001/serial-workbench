@@ -342,6 +342,7 @@ export function workbenchToolLabels(t: Translate) {
     framing: t("workbench.tools.framing"),
     repeatSend: t("repeatSend.title"),
     commandSequence: t("commandSequence.title"),
+    testSuite: t("testSuite.title"),
     manualRecording: {
       title: t("manualRecording.title"),
       description: t("manualRecording.description"),

@@ -54,6 +54,7 @@ import {
   builtinCommandSequenceAction,
   commandSequenceAction,
   readSequenceCursor,
+  readSuiteCaseCursor,
 } from "./sequence-workbench-model";
 import { RepeatSendTool } from "./repeat-send-tool";
 import { builtinRepeatSendAction, repeatSendAction } from "./repeat-send-model";
@@ -66,6 +67,7 @@ import {
 import { workbenchToolLabels } from "./tool-labels";
 import { WorkbenchNotice } from "./workbench-notice";
 import { modbusSlaveAction } from "./modbus-slave-model";
+import { TestSuiteTool } from "./test-suite-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
 
 /** Owns no Host projection: tool components keep their drafts and Host owns receipts. */
@@ -201,7 +203,10 @@ export function WorkbenchTools({
       });
     return () => controller.abort();
   }, [generation, tool, ready, recentReload]);
-  const invoke: HostContextValue["invoke"] = async (input, signal) => {
+  const requireAllowed = async (
+    input: HostInvocation,
+    signal?: AbortSignal,
+  ) => {
     if (
       !host.state.catalog.some(
         (spec) =>
@@ -216,6 +221,9 @@ export function WorkbenchTools({
     );
     signal?.throwIfAborted();
     if (!check.allowed) throw { code: "PERMISSION_DENIED" };
+  };
+  const invoke: HostContextValue["invoke"] = async (input, signal) => {
+    await requireAllowed(input, signal);
     return host.invoke(input, signal);
   };
   const call = (
@@ -496,7 +504,11 @@ export function WorkbenchTools({
         }
       />
     );
-  if (tool === "repeatSend" || tool === "commandSequence") {
+  if (
+    tool === "repeatSend" ||
+    tool === "commandSequence" ||
+    tool === "testSuite"
+  ) {
     const target = context.target;
     const session = context.session;
     const access =
@@ -528,23 +540,70 @@ export function WorkbenchTools({
       catalog.some(
         (spec) => spec.actionId === id && spec.targetKinds.includes("session"),
       );
-    if (tool === "commandSequence") {
+    if (tool === "commandSequence" || tool === "testSuite") {
       const connection = host.connection;
+      const cursorAccess =
+        access && connection
+          ? {
+              ...access,
+              readCursor: (signal: AbortSignal) =>
+                readSequenceCursor(connection, access.target, signal),
+            }
+          : undefined;
+      const actionId = (
+        [builtinCommandSequenceAction, commandSequenceAction] as const
+      ).find(registered);
+      if (tool === "testSuite") {
+        if (!context.testSuiteWorkspace) return null;
+        const scopeKey = JSON.stringify([key, session?.configurationRevision]);
+        return (
+          <TestSuiteTool
+            {...context.testSuiteWorkspace}
+            key={scopeKey}
+            scopeKey={scopeKey}
+            sessionKey={JSON.stringify([
+              connection?.attachment.hostId,
+              connection?.attachment.instanceEpoch,
+              target?.sessionId,
+              target?.sessionEpoch,
+            ])}
+            access={
+              cursorAccess?.cancel && connection && session && actionId
+                ? {
+                    ...cursorAccess,
+                    invoke: host.invoke,
+                    cancel: cursorAccess.cancel,
+                    async prepareCase(definition, signal) {
+                      const startEventSeq = await readSuiteCaseCursor(
+                        connection,
+                        cursorAccess.target,
+                        session.configurationRevision,
+                        signal,
+                      );
+                      await requireAllowed(
+                        {
+                          actionId,
+                          target: cursorAccess.target,
+                          params: { definition, startEventSeq },
+                          executionMode: "independent",
+                        },
+                        signal,
+                      );
+                      return startEventSeq;
+                    },
+                  }
+                : undefined
+            }
+            actionId={actionId}
+            beforeReplace={context.beforeReplace}
+          />
+        );
+      }
       return (
         <CommandSequenceTool
           key={key}
-          access={
-            access && connection
-              ? {
-                  ...access,
-                  readCursor: (signal) =>
-                    readSequenceCursor(connection, access.target, signal),
-                }
-              : undefined
-          }
-          actionId={(
-            [builtinCommandSequenceAction, commandSequenceAction] as const
-          ).find(registered)}
+          access={cursorAccess}
+          actionId={actionId}
           operations={host.state.operations}
           beforeReplace={context.beforeReplace}
           draft={sequenceDraft}
