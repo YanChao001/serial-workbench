@@ -2757,6 +2757,7 @@ mod tests {
         let modbus = NodePackageId::try_from("swb.reference.modbus").unwrap();
         let slave = NodePackageId::try_from("swb.reference.modbus.slave").unwrap();
         let chart = NodePackageId::try_from("swb.builtin.chart").unwrap();
+        let automation = NodePackageId::try_from("swb.builtin.automation").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         for epoch in [1_u64, 2] {
@@ -2802,6 +2803,7 @@ mod tests {
                         catalog.status(&modbus).unwrap(),
                         catalog.status(&slave).unwrap(),
                         catalog.status(&chart).unwrap(),
+                        catalog.status(&automation).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2833,6 +2835,7 @@ mod tests {
                     (&chart, "swb.builtin.chart.exportSvg"),
                     (&chart, "swb.builtin.chart.exportCsv"),
                     (&chart, "swb.builtin.chart.exportPng"),
+                    (&automation, "swb.builtin.automation.repeat"),
                 ]
                 .into_iter()
                 .all(|(package, action)| {
@@ -3316,7 +3319,16 @@ mod tests {
             "responseTimeoutMs": 200,
             "includeTrace": true,
         });
+        let repeat = "swb.builtin.automation.repeat";
+        let repeat_params = serde_json::json!({
+            "sendBase64": "Uw==", "expectBase64": "Uw==", "periodMs": 150, "count": 2,
+        });
         grant("metadata.read", &session);
+        let denied_repeat = host
+            .invoke(&actor, call(&session, repeat, repeat_params.clone()))
+            .await
+            .unwrap_err();
+        assert_eq!(denied_repeat.code, "PERMISSION_DENIED");
         let denied = host
             .invoke(&actor, call(&session, modbus, params.clone()))
             .await
@@ -3479,6 +3491,36 @@ mod tests {
         eprintln!(
             "bundled_modbus_slave authorized=true split_write_read=true accepted_replies=2 cancelled=true lease_reusable=true"
         );
+
+        peer.serving.store(false, Ordering::Release);
+        let mut scheduled = call(&session, repeat, repeat_params);
+        scheduled.execution_mode = Some(ExecutionMode::Independent);
+        let accepted = host.invoke(&actor, scheduled).await.unwrap();
+        let ActionResult::Reference(output) = settled(accepted).await else {
+            panic!("Expected the signed scheduled-send result file");
+        };
+        let read = host
+            .inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: output.result_ref,
+                    offset: 0.into(),
+                    max_bytes: 4096.into(),
+                },
+                &actor,
+            )
+            .unwrap();
+        assert!(read.at_end);
+        let report: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap()).unwrap();
+        assert_eq!(report["outcome"], "completed", "{report}");
+        assert_eq!(report["completed"], 2);
+        let attempts = report["attempted"].as_array().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert!(attempts.iter().all(|item| item["outcome"] == "matched"));
+        assert_ne!(attempts[0]["operationId"], attempts[1]["operationId"]);
+        eprintln!("bundled_scheduled_send denied_without_device_modify=true confirmed_echoes=2");
     }
 
     #[tokio::test]

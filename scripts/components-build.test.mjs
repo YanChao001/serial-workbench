@@ -13,6 +13,7 @@ import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
 import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
+import automation from "../crates/host/resources/node-packages/automation.json" with { type: "json" };
 import chart from "../crates/host/resources/node-packages/chart.json" with { type: "json" };
 import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.json" with { type: "json" };
 import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
@@ -222,6 +223,12 @@ test("components build first with one target and manifest hashes real bytes", as
       id: chart.id,
       version: chart.version,
       archiveSha256: chart.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+    {
+      id: automation.id,
+      version: automation.version,
+      archiveSha256: automation.archiveSha256,
       hostComponent: "serial-workbench-host.exe",
     },
   ]);

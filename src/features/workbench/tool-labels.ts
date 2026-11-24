@@ -340,6 +340,7 @@ export function workbenchToolLabels(t: Translate) {
     captureTools: t("workbench.tools.captureTools"),
     diagnostics: t("workbench.tools.diagnostics"),
     framing: t("workbench.tools.framing"),
+    repeatSend: t("repeatSend.title"),
     more: t("workbench.tools.more"),
     chooseDevice: t("workbench.tools.chooseDevice"),
     displayOptions: t("workbench.tools.displayOptions"),

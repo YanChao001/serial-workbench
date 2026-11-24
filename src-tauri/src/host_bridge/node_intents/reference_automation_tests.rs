@@ -10,6 +10,7 @@ use tokio::time::timeout;
 mod long_script;
 
 const RUN: &str = "swb.reference.automation.run";
+const REPEAT: &str = "swb.reference.automation.repeat";
 const MCP_RUN: &str = "swb_swb_x2E_reference_x2E_automation_x2E_run";
 const CAPTURED_RX: &[u8] = b"one\ntwo\nwrong\nwait\nlate\nafter-late\ncancel\nqueued\nafter\n";
 const PARITY_RX: &[u8] = b"mcp\n";
@@ -491,9 +492,69 @@ async fn native_automation_uses_exact_responses_and_keeps_capture_running() {
         }));
 
         verify_public_automation(&bridge, &desktop, profile, &session, end.next_event_seq).await;
+        verify_repeat_send(&bridge, client, &session).await;
         eprintln!("reference_automation matched_steps=2 mismatch_stopped=true timeout_stopped=true late_reply_attributed=true cancellation_settled=true competing_mcp_after_release=true capture_rx_bytes={} source_continuous=true mcp_step=true cli_same_result=true", CAPTURED_RX.len());
     })
     .await;
+}
+
+async fn verify_repeat_send(bridge: &DesktopHostBridge, client: &AttachResult, session: &Target) {
+    let bytes = STANDARD.encode(b"repeat\n");
+    let mut params = json!({
+        "sendBase64": bytes,
+        "expectBase64": bytes,
+        "periodMs": 150,
+        "jitterMs": 10,
+        "startDelayMs": 20,
+        "count": 3
+    });
+    let repeat = invoke(
+        bridge,
+        client,
+        session,
+        REPEAT,
+        params.clone(),
+        ExecutionMode::Independent,
+    )
+    .await;
+    let complete = result(bridge, client, repeat).await;
+    assert_eq!(complete["outcome"], "completed", "{complete:?}");
+    assert_eq!(complete["completed"], 3);
+    let attempts = complete["attempted"].as_array().unwrap();
+    assert_eq!(attempts.len(), 3);
+    assert_eq!(attempts[0]["scheduledMs"], 0);
+    for attempt in attempts {
+        assert_eq!(attempt["outcome"], "matched", "{complete:?}");
+        let operation_id = Id::try_from(attempt["operationId"].as_str().unwrap()).unwrap();
+        let tx = wait_terminal(bridge, client, &operation_id).await;
+        let Some(ActionResult::Tx(receipt)) = tx.result else {
+            panic!("Missing repeat-send TX receipt: {tx:?}");
+        };
+        assert_eq!(receipt.outcome, TxOutcome::Accepted);
+        assert_eq!(receipt.bytes_base64.as_str(), bytes);
+        assert_eq!(Some(receipt.session_epoch), session.session_epoch);
+    }
+    let schedule = attempts
+        .iter()
+        .map(|attempt| attempt["scheduledMs"].as_u64().unwrap())
+        .collect::<Vec<_>>();
+    assert!(schedule.windows(2).all(|pair| pair[1] - pair[0] >= 130));
+
+    params["stopOnBase64"] = json!(bytes);
+    let stop = invoke(
+        bridge,
+        client,
+        session,
+        REPEAT,
+        params,
+        ExecutionMode::Independent,
+    )
+    .await;
+    let stopped = result(bridge, client, stop).await;
+    assert_eq!(stopped["outcome"], "stop_condition", "{stopped:?}");
+    assert_eq!(stopped["attempted"].as_array().unwrap().len(), 1);
+    assert_eq!(stopped["attempted"][0]["outcome"], "stop_condition");
+    eprintln!("reference_repeat_send complete_tx=3 exact_responses=true stop_condition_tx=1");
 }
 
 async fn automation_source_position(

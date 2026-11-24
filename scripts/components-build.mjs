@@ -7,6 +7,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import automation from "../crates/host/resources/node-packages/automation.json" with { type: "json" };
 import chart from "../crates/host/resources/node-packages/chart.json" with { type: "json" };
 import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.json" with { type: "json" };
@@ -113,6 +114,7 @@ export function inspectComponents(plan, outputDir) {
         modbus,
         modbusSlave,
         chart,
+        automation,
       ].map(({ id, version, archiveSha256 }) => ({
         id,
         version,

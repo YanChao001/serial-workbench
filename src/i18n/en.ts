@@ -1194,6 +1194,53 @@ export const en = {
   "workbench.tools.open": "Open",
   "workbench.tools.diagnostics": "Troubleshooting",
   "workbench.tools.framing": "Protocol framing",
+  "repeatSend.title": "Scheduled send",
+  "repeatSend.destination": "Destination {port} · session generation {epoch}",
+  "repeatSend.selectSession": "Open and select a writable session.",
+  "repeatSend.unavailable":
+    "Enable a signed automation package that provides scheduled send.",
+  "repeatSend.sendHex": "Bytes to send (HEX)",
+  "repeatSend.useDraft": "Use bytes from send draft",
+  "repeatSend.period": "Period (ms)",
+  "repeatSend.count": "Number of rounds",
+  "repeatSend.conditions": "Delay, jitter and receive conditions",
+  "repeatSend.initialDelay": "Initial delay (ms)",
+  "repeatSend.jitter": "Jitter (± ms)",
+  "repeatSend.startHex": "Start after receiving (HEX)",
+  "repeatSend.startTimeout": "Start condition timeout (ms)",
+  "repeatSend.stopHex": "Stop after receiving (HEX)",
+  "repeatSend.expectHex": "Expected reply after each send (HEX)",
+  "repeatSend.replyTimeout": "Reply timeout (ms)",
+  "repeatSend.preview": "{count} bytes per round",
+  "repeatSend.invalidHex":
+    "Enter complete HEX bytes. Each field supports up to 256 bytes.",
+  "repeatSend.invalidTiming":
+    "Check the round count, delays and timeouts. Jitter must be below half the period.",
+  "repeatSend.start": "Start scheduled send",
+  "repeatSend.cancel": "Stop scheduled send",
+  "repeatSend.submitting": "Submitting the schedule to Host…",
+  "repeatSend.cancelling": "Waiting for Host to stop the task…",
+  "repeatSend.running":
+    "Host has accepted the task. You can also stop it from Tasks.",
+  "repeatSend.progress": "{completed} of {total} rounds confirmed",
+  "repeatSend.task": "Task {id}",
+  "repeatSend.cancelled": "Host confirmed that the task stopped.",
+  "repeatSend.resultSummary":
+    "{completed} confirmed rounds, {skipped} missed slots",
+  "repeatSend.receipts": "Round receipts",
+  "repeatSend.receipt": "Planned {scheduled} ms, submitted {started} ms",
+  "repeatSend.outcome.completed": "Scheduled send completed.",
+  "repeatSend.outcome.start_timeout": "Start condition timed out.",
+  "repeatSend.outcome.stop_condition": "Stop condition received.",
+  "repeatSend.outcome.unexpected_response":
+    "The reply differed from the expected bytes.",
+  "repeatSend.outcome.response_timeout": "The expected reply timed out.",
+  "repeatSend.outcome.source_changed":
+    "The receive source changed or has a gap.",
+  "repeatSend.outcome.transmit_unconfirmed":
+    "Host could not confirm a complete write.",
+  "repeatSend.outcome.written": "Write confirmed",
+  "repeatSend.outcome.matched": "Reply matched",
   "workbench.framing.selectSession":
     "Select a live serial session to scan its retained receive data.",
   "workbench.framing.unavailable":
