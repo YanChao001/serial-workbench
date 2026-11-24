@@ -10,6 +10,234 @@ import {
   type ReplayLayoutFixture,
 } from "./workbench.fixture";
 
+test("replay chart traces a compacted and filtered field to both original capture records", async ({
+  page,
+}) => {
+  const replaySession = { ...session("chart-replay"), readOnly: true };
+  const bytes = Buffer.alloc(90);
+  for (let frame = 1; frame <= 45; frame++)
+    bytes.writeUInt16BE(frame, (frame - 1) * 2);
+  function capture(
+    recordOrdinal: string,
+    eventSeq: string,
+    start: number,
+    chunk: Buffer,
+  ): ReplayRecord {
+    return {
+      kind: "inline",
+      record: {
+        recordOrdinal,
+        entry: {
+          kind: "event",
+          value: {
+            hostId: "workbench-gui-host",
+            instanceEpoch: "1",
+            sessionId: "recorded-port",
+            sessionEpoch: "2",
+            configurationRevision: "1",
+            eventSeq,
+            time: {
+              sourceMonoNs: eventSeq,
+              clockId: "capture-clock",
+              receivedWallTime: "2026-11-24T00:00:00Z",
+              precision: {
+                source: "host_read",
+                resolutionNs: "1",
+                syncMethod: "none",
+              },
+            },
+            kind: "rx",
+            payload: {
+              bytesBase64: chunk.toString("base64"),
+              byteStart: String(start),
+              byteEnd: String(start + chunk.length),
+            },
+          },
+        },
+      },
+    };
+  }
+  await seedWorkbenchFixture(page, {
+    language: "en",
+    hostStart: "pending",
+    replay: {
+      session: replaySession,
+      files: {},
+      page: {
+        readerGeneration: "1",
+        nextRecord: "45",
+        atEnd: true,
+        records: [
+          capture("39", "51", 100, bytes.subarray(0, 63)),
+          capture("40", "52", 163, bytes.subarray(63)),
+          {
+            kind: "inline",
+            record: {
+              recordOrdinal: "41",
+              entry: {
+                kind: "reader_gap",
+                value: {
+                  hostId: "workbench-gui-host",
+                  instanceEpoch: "1",
+                  sessionId: "recorded-port",
+                  sessionEpoch: "2",
+                  reason: "capture_overflow",
+                  missingEventRange: { start: "53", end: "54" },
+                  missingByteRanges: [
+                    { direction: "rx", start: "190", end: "192" },
+                  ],
+                },
+              },
+            },
+          },
+          capture("42", "54", 192, Buffer.from([0, 90])),
+          {
+            kind: "inline",
+            record: {
+              recordOrdinal: "43",
+              entry: {
+                kind: "event",
+                value: {
+                  hostId: "workbench-gui-host",
+                  instanceEpoch: "1",
+                  sessionId: "recorded-port",
+                  sessionEpoch: "2",
+                  configurationRevision: "1",
+                  eventSeq: "55",
+                  time: {
+                    sourceMonoNs: "55",
+                    clockId: "capture-clock",
+                    receivedWallTime: "2026-11-24T00:00:00Z",
+                    precision: {
+                      source: "host_read",
+                      resolutionNs: "1",
+                      syncMethod: "none",
+                    },
+                  },
+                  kind: "gap",
+                  payload: {
+                    knownExtent: false,
+                    direction: "rx",
+                    reason: "purge",
+                  },
+                },
+              },
+            },
+          },
+          capture("44", "56", 194, Buffer.from([0, 94])),
+        ],
+      },
+    },
+  });
+  await page.goto("./#/");
+  await expect(page.locator(".workbench")).toBeVisible();
+  await page.evaluate(() => window.workbenchFixture.releaseHost());
+  await page.getByRole("button", { name: "Activity", exact: true }).click();
+  await page
+    .getByRole("dialog", { name: "Activity" })
+    .getByRole("button", { name: "Locate fixture-attached-replay" })
+    .click();
+  const replay = page.getByRole("region", { name: "Replay", exact: true });
+  await replay.getByRole("button", { name: "Read replay" }).click();
+  await replay.getByRole("radio", { name: "HEX", exact: true }).click();
+  const raw = replay.getByRole("log").locator("[data-hex-source]");
+  await expect(raw).toHaveCount(4);
+  await raw.evaluateAll(([first, second]) => {
+    const start = first?.firstChild;
+    const end = second?.firstChild;
+    if (!start || !end) throw new Error("Missing replay HEX payload");
+    document.getSelection()?.setBaseAndExtent(start, 62 * 3, end, 2);
+  });
+  await replay
+    .getByRole("button", { name: "Plot selected receive bytes" })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "Replay field chart" });
+  await dialog
+    .getByRole("textbox", { name: "First frame byte offset" })
+    .fill("100");
+  await dialog
+    .getByRole("textbox", { name: en["workbench.framing.fixedLength"] })
+    .fill("2");
+  await dialog
+    .getByRole("button", { name: en["workbench.framing.scan"] })
+    .click();
+  await expect(
+    dialog.getByText("46 complete frames", { exact: false }),
+  ).toContainText("Some frames cannot be assembled");
+  await dialog
+    .getByRole("textbox", { name: en["workbench.fields.definition"] })
+    .fill(
+      JSON.stringify({
+        version: "1",
+        byteLength: 2,
+        fields: [
+          {
+            id: "voltage",
+            kind: "integer",
+            byteOffset: 0,
+            width: 2,
+            order: "big",
+            scale: "0.5",
+            unit: "V",
+          },
+        ],
+      }),
+    );
+  await dialog.getByText("Field chart", { exact: true }).click();
+  const chart = dialog.getByRole("region", {
+    name: "Field chart",
+    exact: true,
+  });
+  await chart.getByRole("button", { name: "Plot fields" }).click();
+  await expect(chart.getByRole("status")).toHaveText("Frame 32 · 16 V");
+  const drawn = chart.getByRole("img");
+  await expect(drawn.locator("polyline")).toHaveCount(2);
+  await chart.getByRole("checkbox", { name: "Compact curve" }).check();
+  expect(await drawn.locator("circle").count()).toBeLessThan(46);
+
+  await chart.getByText("Locate by source byte", { exact: true }).click();
+  await chart.getByRole("textbox", { name: "Source event number" }).fill("52");
+  await chart.getByRole("textbox", { name: "Source byte offset" }).fill("165");
+  await chart.getByRole("button", { name: "Locate byte" }).click();
+  await expect(chart.getByRole("status")).toHaveText("Frame 33 · 16.5 V");
+  await expect(chart.getByRole("listitem")).toContainText("Capture record 40");
+
+  await chart.getByRole("checkbox", { name: "Last 32 frames" }).check();
+  const cursor = chart.getByRole("slider", { name: "Frame cursor" });
+  await cursor.press("End");
+  await expect(chart.getByRole("status")).toContainText("45 V");
+  for (let move = 0; move < 14; move++) await cursor.press("ArrowLeft");
+  await expect(chart.getByRole("status")).toHaveText("Frame 32 · 16 V");
+  await expect(chart.getByRole("listitem")).toHaveText([
+    /Event 51 · Bytes \[162, 163\) · Capture record 39.*00/,
+    /Event 52 · Bytes \[163, 164\) · Capture record 40.*20/,
+  ]);
+  const field = dialog.getByRole("row", { name: /voltage/ });
+  await expect(field).toHaveAttribute("data-chart-selected", "true");
+  await expect(field).toContainText("Bytes [162, 164)");
+  await expect(
+    dialog.getByRole("button", { name: en["workbench.fields.edit"] }),
+  ).toHaveCount(0);
+  await chart
+    .getByRole("button", { name: "Show bytes in receive view" })
+    .click();
+  await page
+    .getByRole("button", { name: "Discard and continue", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(replay.getByLabel("Selected source bytes")).toContainText(
+    "00 20",
+  );
+  await expect(replay.getByLabel("Selected source bytes")).toContainText(
+    "[162, 164)",
+  );
+  await expect
+    .poll(() => page.evaluate(() => document.getSelection()?.toString()))
+    .toBe("00 20");
+  await replay.getByRole("button", { name: "Read replay" }).click();
+  await expect(replay.getByLabel("Selected source bytes")).toHaveCount(0);
+});
+
 async function rectangles(page: Page) {
   return page.locator(".workbench").evaluate((root) =>
     Object.fromEntries(

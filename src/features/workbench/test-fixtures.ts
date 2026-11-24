@@ -71,6 +71,7 @@ export const labels: WorkbenchLabels = {
   seekRecord: "Seek to record",
   stepReplay: "Step one record",
   replayPlayback: "Playback options",
+  replayFieldChart: "Replay field chart",
   replayRate: "Replay speed",
   replayFastest: "Fastest",
   replayBreakpoint: "Breakpoint record",
@@ -277,6 +278,10 @@ export const labels: WorkbenchLabels = {
   hexAddresses: "Show HEX addresses",
   hexAscii: "Show ASCII column",
   inspectNumber: "Inspect number",
+  chartReceiveSelection: "Plot selected receive bytes",
+  chartReceiveSelectionHint: "Select received bytes in the HEX view first.",
+  chartReceiveBytes: "Selected source bytes",
+  chartReceiveUnavailable: "The selected source bytes are no longer retained.",
   numberSelection:
     "Select 1–8 contiguous bytes from the same HEX stream, then open this panel.",
   numberWidth: "Width (bits)",

@@ -5,6 +5,7 @@ import type { FramingInspection } from "./framing-anomalies-model";
 import type { ModbusTransactionAccess } from "./modbus-transaction";
 import type { ModbusSlaveAccess } from "./modbus-server-tool";
 import type { ProtocolDefinitionFileAccess } from "./protocol-definition-file";
+import type { ChartSourceSelection } from "./stream-chart-selection";
 
 const ProtocolFieldPreview = lazy(() => import("./protocol-field-preview"));
 const CrcRecognitionTool = lazy(() => import("./crc-recognition-tool"));
@@ -21,12 +22,16 @@ export function ProtocolFieldsTool({
   fileAccess,
   modbusTimeline,
   modbusSlave,
+  sourceSelection,
+  onRevealSource,
 }: {
   frames: readonly FramingFrame[];
   inspection?: FramingInspection;
   fileAccess?: ProtocolDefinitionFileAccess;
   modbusTimeline?: ModbusTransactionAccess;
   modbusSlave?: ModbusSlaveAccess;
+  sourceSelection?: ChartSourceSelection;
+  onRevealSource?: (source: ChartSourceSelection) => void;
 }) {
   const { t } = useI18n();
   return (
@@ -35,6 +40,8 @@ export function ProtocolFieldsTool({
         frames={frames}
         fileAccess={fileAccess}
         inspection={inspection}
+        sourceSelection={sourceSelection}
+        onRevealSource={onRevealSource}
       />
       <CrcRecognitionTool />
       <ModbusFrameTool />

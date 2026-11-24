@@ -1358,7 +1358,7 @@ test("the workbench scans only visible receive data through the Host action and 
             sessionEpoch: "1",
             direction: "rx",
             eventStart: "4",
-            eventEnd: "5",
+            eventEnd: "6",
             byteStart: "7",
             byteEnd: "9",
           },
@@ -1419,14 +1419,22 @@ test("the workbench scans only visible receive data through the Host action and 
     .click();
   await expect(log).not.toContainText("CLEARED");
   await page.evaluate(
-    (item) => window.workbenchFixture.emitRaw([item]),
-    visible("4", "7", "A\n"),
+    (items) => window.workbenchFixture.emitRaw(items),
+    [visible("4", "7", "A"), visible("5", "8", "\n")],
   );
   await expect(log.getByText("A", { exact: true })).toBeVisible();
-
-  await page.getByRole("button", { name: en["workbench.tools.more"] }).click();
-  await page
-    .getByRole("menuitem", { name: en["workbench.tools.framing"] })
+  const receive = page.getByRole("region", { name: "Receive", exact: true });
+  await receive.getByRole("radio", { name: "HEX", exact: true }).click();
+  const merged = log.locator('[data-hex-byte-start="7"]');
+  await expect(merged).toHaveText("41 0A");
+  await expect(merged).toHaveAttribute("data-hex-source", /,"5"\]$/);
+  await merged.evaluate((element) => {
+    const text = element.firstChild;
+    if (!text) throw new Error("Receive HEX bytes are missing");
+    document.getSelection()?.setBaseAndExtent(text, 0, text, 2);
+  });
+  await receive
+    .getByRole("button", { name: "Plot selected receive bytes" })
     .click();
   const dialog = page.getByRole("dialog", {
     name: en["workbench.tools.framing"],
@@ -1434,7 +1442,7 @@ test("the workbench scans only visible receive data through the Host action and 
   await expect(dialog.getByLabel(en["workbench.framing.start"])).toHaveValue(
     "4",
   );
-  await expect(dialog.getByLabel(en["workbench.framing.end"])).toHaveValue("5");
+  await expect(dialog.getByLabel(en["workbench.framing.end"])).toHaveValue("6");
   await dialog
     .getByRole("combobox", { name: en["workbench.framing.mode"] })
     .click();
@@ -1492,6 +1500,17 @@ test("the workbench scans only visible receive data through the Host action and 
   await expect(reading).toContainText("Ping");
   await expect(reading).toContainText("Bytes [7, 8)");
   await expect(reading.getByText("41", { exact: true })).toBeVisible();
+  await dialog.getByText("Field chart", { exact: true }).click();
+  const chart = dialog.getByRole("region", { name: "Field chart" });
+  await chart.getByRole("button", { name: "Plot fields" }).click();
+  await chart.getByRole("slider", { name: "Frame cursor" }).focus();
+  await chart.getByRole("slider", { name: "Frame cursor" }).press("Enter");
+  await expect(chart.getByRole("status")).toContainText("33.5 mV");
+  await expect(chart.getByRole("listitem")).toContainText(
+    "Event 4 · Bytes [7, 8)",
+  );
+  await expect(chart.getByRole("listitem").getByText("41")).toBeVisible();
+  await expect(reading).toHaveAttribute("data-chart-selected", "true");
   await dialog
     .getByRole("button", { name: en["workbench.fields.edit"] })
     .click();
@@ -1531,7 +1550,7 @@ test("the workbench scans only visible receive data through the Host action and 
   }, action.actionId);
   expect(checked.call?.params).toEqual({
     startEventSeq: "4",
-    endEventSeq: "5",
+    endEventSeq: "6",
     maxFrameLength: 4096,
     delimiterBase64: "Cg==",
   });
@@ -1571,4 +1590,42 @@ test("the workbench scans only visible receive data through the Host action and 
     "Checksum crc · received 0A · expected 41",
   );
   await expect(review.getByRole("listitem")).toContainText("Bytes 7 to 9");
+  await definition.fill(
+    JSON.stringify({
+      version: "1",
+      byteLength: 2,
+      fields: [
+        {
+          id: "reading",
+          kind: "integer",
+          byteOffset: 0,
+          width: 1,
+          order: "big",
+        },
+      ],
+    }),
+  );
+  await chart.getByRole("button", { name: "Plot fields" }).click();
+  await chart
+    .getByRole("button", { name: "Show bytes in receive view" })
+    .click();
+  await page.getByRole("button", { name: "Cancel", exact: true }).click();
+  await expect(definition).toHaveValue(/"id":"reading"/);
+  await chart
+    .getByRole("button", { name: "Show bytes in receive view" })
+    .click();
+  await page
+    .getByRole("button", { name: "Discard and continue", exact: true })
+    .click();
+  await expect(dialog).toBeHidden();
+  await expect(receive.getByLabel("Selected source bytes")).toContainText("41");
+  await expect(receive.getByLabel("Selected source bytes")).toContainText(
+    "[7, 8)",
+  );
+  await expect(log.locator('[data-location-target="true"]')).toContainText(
+    "41 0A",
+  );
+  await expect
+    .poll(() => page.evaluate(() => document.getSelection()?.toString()))
+    .toBe("41");
 });

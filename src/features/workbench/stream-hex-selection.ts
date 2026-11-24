@@ -107,17 +107,17 @@ export function restoreStreamHexSelection(
   saved: StreamHexSelection,
   format: HexFormat,
 ) {
-  if (!root?.isConnected || root.hidden) return;
+  if (!root?.isConnected || root.hidden) return false;
   const start = toCharacter(root, saved.start, format, false);
   const end = toCharacter(root, saved.end, format, true);
-  if (!start || !end) return;
+  const selection = root.ownerDocument.getSelection();
+  if (!start || !end || !selection) return false;
   const [anchor, focus] = saved.backwards ? [end, start] : [start, end];
-  root.ownerDocument
-    .getSelection()
-    ?.setBaseAndExtent(
-      anchor.text,
-      anchor.character,
-      focus.text,
-      focus.character,
-    );
+  selection.setBaseAndExtent(
+    anchor.text,
+    anchor.character,
+    focus.text,
+    focus.character,
+  );
+  return true;
 }

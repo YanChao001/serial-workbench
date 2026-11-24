@@ -24,6 +24,8 @@ export type FramingInspection = {
   frames: readonly FramingFrame[];
   previous?: FramingFrame;
   endEventSeq?: string;
+  recordOrdinals?: ReadonlyMap<string, string>;
+  breaks?: ReadonlySet<string>;
 };
 
 export type AnomalyRules = {

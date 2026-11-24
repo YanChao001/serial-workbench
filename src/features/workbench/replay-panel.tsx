@@ -9,9 +9,18 @@ import type {
   TerminalSettings,
 } from "@serial-workbench/contracts";
 import { ContractValidationError } from "@serial-workbench/contracts";
-import { useEffect, useId, useRef, useState } from "react";
+import {
+  lazy,
+  Suspense,
+  useEffect,
+  useId,
+  useMemo,
+  useRef,
+  useState,
+} from "react";
 import {
   BookOpen,
+  ChartLine,
   CornerDownRight,
   Gauge,
   Info,
@@ -40,11 +49,15 @@ import { parseU64 } from "@/lib/u64";
 import { captureRecordItems } from "./capture-record-items";
 import { StreamView } from "./stream-view";
 import { WorkbenchIconButton } from "./workbench-icon-button";
+import { WorkbenchDialog } from "./workbench-dialog";
+import type { ChartSourceSelection } from "./stream-chart-selection";
 import { WorkbenchNotice, operationFailureEventKey } from "./workbench-notice";
 import { workbenchStatus } from "./stream-presentation";
 import { TxReceiptFacts } from "./tx-receipt-facts";
 import type { WorkbenchLabels } from "./labels";
 import type { StreamPresentationLabels } from "./stream-presentation";
+
+const ReplayFieldChart = lazy(() => import("./replay-field-chart"));
 export type ReplayReader = (
   params: ReplayReadParams,
   signal?: AbortSignal,
@@ -84,12 +97,21 @@ export function ReplayPanel({
   onHighlightRulesChange,
 }: ReplayPanelProps) {
   const [page, setPage] = useState<ReplayReadResult>();
+  const latestPage = useRef(page);
+  latestPage.current = page;
   const [expanded, setExpanded] = useState<Record<string, CaptureRecord>>({});
   const [seek, setSeek] = useState("");
   const [breakpointDraft, setBreakpointDraft] = useState<string>();
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<{ code: string; eventKey: string }>();
   const [detailsOpen, setDetailsOpen] = useState(false);
+  const [chartOpen, setChartOpen] = useState(false);
+  const chartTrigger = useRef<HTMLButtonElement | null>(null);
+  const [chartLink, setChartLink] = useState<{
+    page: ReplayReadResult;
+    selection?: ChartSourceSelection;
+    reveal?: ChartSourceSelection;
+  }>();
   const noticeId = useId();
   const attempts = useRef(0);
   const pending = useRef<AbortController | null>(null);
@@ -101,6 +123,8 @@ export function ReplayPanel({
     setBreakpointDraft(undefined);
     setError(undefined);
     setDetailsOpen(false);
+    setChartOpen(false);
+    setChartLink(undefined);
     return () => {
       pending.current?.abort();
       pending.current = null;
@@ -130,15 +154,19 @@ export function ReplayPanel({
       if (!controller.signal.aborted) setBusy(false);
     }
   }
-  const records =
-    page?.records.flatMap((record) =>
-      record.kind === "inline"
-        ? [record.record]
-        : expanded[record.recordOrdinal]
-          ? [expanded[record.recordOrdinal]!]
-          : [],
-    ) ?? [];
-  const items = captureRecordItems(records);
+  const records = useMemo(
+    () =>
+      page?.records.flatMap((record) =>
+        record.kind === "inline"
+          ? [record.record]
+          : expanded[record.recordOrdinal]
+            ? [expanded[record.recordOrdinal]!]
+            : [],
+      ) ?? [],
+    [expanded, page],
+  );
+  const items = useMemo(() => captureRecordItems(records), [records]);
+  const linked = chartLink?.page === page ? chartLink : undefined;
   const target = {
     sessionId: session.sessionId,
     sessionEpoch: session.sessionEpoch,
@@ -188,6 +216,7 @@ export function ReplayPanel({
         throw new ContractValidationError("Replay read result changed");
       setPage(result);
       setExpanded({});
+      setChartLink(undefined);
     });
   const sendControl = (
     paused: boolean,
@@ -233,6 +262,7 @@ export function ReplayPanel({
           ) {
             setPage(position);
             setExpanded({});
+            setChartLink(undefined);
           } else {
             setPage({ ...position, records: page.records });
           }
@@ -391,6 +421,23 @@ export function ReplayPanel({
             </PopoverContent>
           </Popover>
         ) : null}
+        <WorkbenchIconButton
+          label={labels.replayFieldChart}
+          disabled={
+            busy ||
+            !items.some(
+              (item) => item.kind === "source" && item.event.kind === "rx",
+            )
+          }
+          onClick={(event) => {
+            if (pending.current) return;
+            chartTrigger.current = event.currentTarget;
+            setChartLink(undefined);
+            setChartOpen(true);
+          }}
+        >
+          <ChartLine aria-hidden="true" />
+        </WorkbenchIconButton>
         <Popover open={detailsOpen} onOpenChange={setDetailsOpen}>
           <PopoverTrigger asChild>
             <WorkbenchIconButton
@@ -506,12 +553,55 @@ export function ReplayPanel({
       <StreamView
         key={page?.readerGeneration ?? "unread"}
         items={items}
+        chartReveal={linked?.reveal}
+        onChartSelection={
+          page && !busy
+            ? (selection, trigger) => {
+                if (pending.current) return;
+                chartTrigger.current = trigger;
+                setChartLink({ page, selection });
+                setChartOpen(true);
+              }
+            : undefined
+        }
         labels={labels}
         terminalSettings={terminalSettings}
         presentationLabels={presentationLabels}
         highlightRules={highlightRules}
         onHighlightRulesChange={onHighlightRulesChange}
       />
+      <WorkbenchDialog
+        open={chartOpen}
+        scopeKey={JSON.stringify([
+          session.sessionId,
+          session.sessionEpoch,
+          page?.readerGeneration,
+          page?.nextRecord,
+        ])}
+        title={labels.replayFieldChart}
+        closeLabel={labels.closeView}
+        returnFocus={chartTrigger}
+        onRequestClose={() => setChartOpen(false)}
+      >
+        {(beforeReplace) => (
+          <Suspense>
+            <ReplayFieldChart
+              records={records}
+              sourceSelection={linked?.selection}
+              onRevealSource={
+                page
+                  ? (source) =>
+                      void beforeReplace().then((allowed) => {
+                        if (!allowed || latestPage.current !== page) return;
+                        setChartLink({ page, reveal: source });
+                        setChartOpen(false);
+                      })
+                  : undefined
+              }
+            />
+          </Suspense>
+        )}
+      </WorkbenchDialog>
     </section>
   );
 }

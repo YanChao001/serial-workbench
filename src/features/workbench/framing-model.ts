@@ -9,6 +9,10 @@ import { bytesToBase64 } from "@/lib/base64";
 import { isRecord } from "@/lib/settings-model";
 import { parseU64, U64_MAX } from "@/lib/u64";
 import { decodeBytes } from "./stream-model";
+import {
+  retainedChartSelection,
+  type ChartSourceSelection,
+} from "./stream-chart-selection";
 
 export const framingAction = "swb.reference.framing.scan";
 export type FramingMode =
@@ -91,6 +95,53 @@ export function receivedFramingRange(
     startEventSeq: String(first),
     endEventSeq: String(end),
   };
+}
+
+export function selectedFramingRange(
+  items: readonly StreamItem[],
+  target: Target,
+  selection?: ChartSourceSelection,
+): FramingRange {
+  const recent = receivedFramingRange(items, target);
+  if (!selection) return recent;
+  const retained = retainedChartSelection(items, selection.range);
+  if (!retained || retained.hex !== selection.hex) return recent;
+  const first = items[retained.first];
+  const last = items[retained.last];
+  if (
+    first?.kind !== "source" ||
+    last?.kind !== "source" ||
+    first.event.hostId !== target.hostId ||
+    first.event.sessionId !== target.sessionId ||
+    first.event.sessionEpoch !== target.sessionEpoch
+  )
+    return recent;
+  const head = BigInt(first.event.eventSeq);
+  const tail = BigInt(last.event.eventSeq);
+  const hasSelection = (range: FramingRange) => {
+    const start = parseU64(range.startEventSeq);
+    const end = parseU64(range.endEventSeq);
+    return (
+      start !== undefined && end !== undefined && start <= head && tail < end
+    );
+  };
+  if (hasSelection(recent)) return recent;
+
+  // 旧选区仍用有界窗口，后续读块可能包含跨块帧的末尾。
+  const next = items.findIndex(
+    (item, index) =>
+      index > retained.last &&
+      item.kind === "source" &&
+      item.event.kind === "rx" &&
+      item.event.hostId === target.hostId &&
+      item.event.sessionId === target.sessionId &&
+      item.event.sessionEpoch === target.sessionEpoch,
+  );
+  if (next >= 0) {
+    const padded = receivedFramingRange(items.slice(0, next + 1), target);
+    if (hasSelection(padded)) return padded;
+  }
+  return receivedFramingRange(items.slice(0, retained.last + 1), target);
 }
 
 export function framingSourceItems(

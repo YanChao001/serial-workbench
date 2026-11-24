@@ -41,6 +41,29 @@ function record(
 const sequences = (items: readonly StreamItem[]) =>
   items.map((item) => (item.kind === "source" ? item.event.eventSeq : "gap"));
 
+it("retains original RX coordinates across display coalescing and a clipped history boundary", () => {
+  const history = new ReceiveHistoryBuffer(
+    { maxRecords: 3, maxBytes: 12 },
+    { preserveSource: true },
+  );
+  history.append([record(1, 4, true), record(2, 4, true), record(3, 4, true)]);
+  const original = history.sourceItems();
+  expect(sequences(history.items())).toEqual(["3"]);
+  expect(sequences(original)).toEqual(["1", "2", "3"]);
+
+  expect(history.setLimits({ maxRecords: 3, maxBytes: 6 })).toBe(true);
+  expect(history.sourceItems()).toMatchObject([
+    {
+      event: {
+        eventSeq: "2",
+        payload: { byteStart: "6", byteEnd: "8", bytesBase64: "eHg=" },
+      },
+    },
+    { event: { eventSeq: "3", payload: { byteStart: "8", byteEnd: "12" } } },
+  ]);
+  expect(sequences(original)).toEqual(["1", "2", "3"]);
+});
+
 it("keeps a continuous hardware burst below the configured data limit even when reads are fragmented", () => {
   const history = new ReceiveHistoryBuffer(DEFAULT_RECEIVE_HISTORY);
   history.append(
