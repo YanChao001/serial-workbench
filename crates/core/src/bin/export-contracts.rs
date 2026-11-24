@@ -1771,6 +1771,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         ToolHandoffParams,
         ToolHandoffResult,
         TransformReference,
+        TxDispatchWindow,
         TxParams,
         ConfigureParams,
         ControlParams,

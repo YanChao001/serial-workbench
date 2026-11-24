@@ -246,7 +246,7 @@ impl TransmissionService {
                 session,
                 runtime,
                 input.plan.chunk_bytes as usize,
-                None,
+                QueueWait::default(),
             )
             .await?;
         // Store.mark_dispatch只在queued -> running时调用一次。

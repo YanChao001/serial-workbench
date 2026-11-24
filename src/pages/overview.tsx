@@ -28,6 +28,7 @@ import { Button } from "@/components/ui/button";
 import type { ClientDraftStore } from "@/features/workbench/client-drafts";
 import { useClientDraftStore } from "@/providers/client-drafts-context";
 import { nativeErrorCode, nativeErrorText } from "@/lib/native-error";
+import { requestOperationCancel } from "@/lib/operation-cancel";
 import { rpcJsonObject } from "@/lib/rpc-json";
 import { stateScopeKey } from "@/lib/host-scope";
 import { createWorkbenchFileActions } from "@/features/workbench/file-actions";
@@ -575,6 +576,19 @@ export default function Overview({
       copyWorking: t("workbench.copyWorking"),
       copyDone: t("workbench.copyDone"),
       streamLocation: t("workbench.streamLocation"),
+      receiveContext: t("workbench.receiveContext"),
+      contextCopyAs: t("workbench.contextCopyAs"),
+      contextHexHint: t("workbench.contextHexHint"),
+      contextSend: t("workbench.contextSend"),
+      contextSendConfirm: t("workbench.contextSendConfirm"),
+      contextSending: t("workbench.contextSending"),
+      contextSendUnavailable: t("workbench.contextSendUnavailable"),
+      contextSendError: t("workbench.contextSendError"),
+      contextBookmark: t("workbench.contextBookmark"),
+      contextBookmarked: t("workbench.contextBookmarked"),
+      contextBookmarks: t("workbench.contextBookmarks"),
+      contextRemoveBookmark: t("workbench.contextRemoveBookmark"),
+      contextSplit: t("workbench.contextSplit"),
       locationShowNumbers: t("workbench.locationShowNumbers"),
       locationType: t("workbench.locationType"),
       locationReference: t("workbench.locationReference"),
@@ -690,44 +704,10 @@ export default function Overview({
     }),
     [t],
   );
-  async function cancelWorkbenchOperation(
+  const cancelWorkbenchOperation = (
     operation: Operation,
     signal?: AbortSignal,
-  ) {
-    const input = {
-      actionId: "operation.cancel",
-      target: {
-        hostId: operation.executionHostId,
-        kind: "operation",
-        id: operation.operationId,
-      },
-      params: { reason: "user" },
-    };
-    const check = await host.checkAction(input, signal);
-    signal?.throwIfAborted();
-    if (!check.allowed) throw { code: "PERMISSION_DENIED" };
-    const accepted = await host.invoke(
-      { ...input, executionMode: "independent" },
-      signal,
-    );
-    const receipt = await host.waitForOperation(accepted, signal);
-    signal?.throwIfAborted();
-    if (
-      receipt.actionId !== input.actionId ||
-      receipt.executionHostId !== operation.executionHostId ||
-      receipt.target.hostId !== input.target.hostId ||
-      receipt.target.kind !== input.target.kind ||
-      receipt.target.id !== operation.operationId
-    )
-      throw { code: "CONTRACT_MISMATCH" };
-    if (receipt.state !== "succeeded")
-      throw { code: receipt.error?.code ?? "OPERATION_FAILED" };
-    if (
-      receipt.result?.kind !== "cancellation_requested" ||
-      receipt.result.value.operationId !== operation.operationId
-    )
-      throw { code: "CONTRACT_MISMATCH" };
-  }
+  ) => requestOperationCancel(host, operation, signal);
   return (
     <section
       className="studio-page workbench-page"

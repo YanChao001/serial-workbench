@@ -12,6 +12,12 @@ import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const title = "Command library";
 
+declare global {
+  interface Window {
+    commandLibraryFixture: { acceptedWrites: number };
+  }
+}
+
 async function mockLibrary(page: Page, holdFirstOpen = false) {
   await seedWorkbenchFixture(page, {
     language: "en",
@@ -88,6 +94,8 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
       );
       let revision = 0;
       let allowedToSettle = false;
+      let failNextSave = false;
+      window.commandLibraryFixture = { acceptedWrites: 0 };
       let pending:
         | { id: string; change?: CommandLibraryChange; workspace: string }
         | undefined;
@@ -101,6 +109,9 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
       });
       window.addEventListener("allow-library-save", () => {
         allowedToSettle = true;
+      });
+      window.addEventListener("fail-library-save", () => {
+        failNextSave = true;
       });
       function read(workspace: string, params: CommandLibraryReadParams) {
         if (params.revision != null && params.revision !== String(revision))
@@ -160,7 +171,27 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
             ?.push({ id: "imported", name: "Imported archive" });
         else if (change.kind === "saveGroup")
           groups.get(workspace)?.push(change.group);
-        else if (change.kind === "moveCommand") {
+        else if (change.kind === "saveCommand") {
+          if (failNextSave) {
+            pending = undefined;
+            failNextSave = false;
+            return {
+              ...receipt,
+              state: "failed",
+              revision: "2",
+              error: {
+                code: "REVISION_CONFLICT",
+                message: "Fixture save conflict",
+                retryable: false,
+              },
+            };
+          }
+          const index = commands.findIndex(
+            ({ summary }) => summary.id === change.command.summary.id,
+          );
+          if (index < 0) commands.push(change.command);
+          else commands[index] = change.command;
+        } else if (change.kind === "moveCommand") {
           const source = commands.findIndex(
             ({ summary }) => summary.id === change.id,
           );
@@ -248,6 +279,7 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
               throw new Error("Import lost the chosen archive reference");
             if (String(revision) !== intent.expectedRevision)
               throw { code: "REVISION_CONFLICT" };
+            window.commandLibraryFixture.acceptedWrites += 1;
             pending = {
               id: crypto.randomUUID(),
               change:
@@ -421,6 +453,160 @@ test("command library reads one page at a time, moves across pages and waits for
   await expect(
     dialog.getByRole("button", { name: "Recovery", exact: true }),
   ).toBeVisible();
+});
+
+test("command drafts undo and redo across fields without writing or sending", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 800 });
+  const { entry, dialog } = await mockLibrary(page);
+  const undo = dialog.getByRole("button", { name: "Undo edit", exact: true });
+  const redo = dialog.getByRole("button", { name: "Redo edit", exact: true });
+  const save = dialog.getByRole("button", { name: "Save", exact: true });
+  const encoding = dialog.getByRole("combobox", { name: "Send encoding" });
+  const ending = dialog.getByRole("combobox", { name: "Command line ending" });
+  const body = dialog.getByRole("textbox", { name: /Command body/ });
+  const suffix = dialog.getByRole("textbox", {
+    name: "Custom line ending (HEX)",
+  });
+
+  async function openCommand() {
+    await entry.click();
+    await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+    await dialog
+      .getByRole("button", { name: "Command 2", exact: true })
+      .click();
+    await expect(undo).toBeDisabled();
+    await expect(redo).toBeDisabled();
+  }
+
+  await openCommand();
+  await expect(body).toHaveValue("41 42");
+  await expect(suffix).toHaveValue("00 FF");
+  await ending.selectOption("lf");
+  await ending.selectOption("custom");
+  await suffix.press("ControlOrMeta+z");
+  await expect(suffix).toHaveCount(0);
+  await expect(ending).toBeFocused();
+  await ending.press("ControlOrMeta+z");
+  await expect(suffix).toHaveValue("00 FF");
+  await expect(undo).toBeDisabled();
+  await body.fill("41 42 43");
+  await encoding.selectOption("utf-16le");
+  await suffix.fill("0");
+  await expect(suffix).toHaveAttribute("aria-invalid", "true");
+  await expect(save).toBeDisabled();
+
+  await suffix.press("ControlOrMeta+z");
+  await expect(suffix).toBeFocused();
+  await expect(suffix).toHaveValue("00 FF");
+  await expect(save).toBeEnabled();
+  await expect(dialog.getByText("Edit undone.", { exact: true })).toHaveCount(
+    1,
+  );
+
+  await suffix.press("ControlOrMeta+z");
+  await expect(encoding).toHaveValue("utf-8");
+  await expect(body).toHaveValue("41 42 43");
+  await suffix.press("ControlOrMeta+Shift+z");
+  await expect(encoding).toHaveValue("utf-16le");
+
+  const history = dialog.getByRole("group", { name: "Edit history" });
+  const wideHistory = await history.boundingBox();
+  const wideSave = await save.boundingBox();
+  if (!wideHistory || !wideSave)
+    throw new Error("Missing wide editor controls");
+  expect(wideHistory.y).toBe(wideSave.y);
+  expect(wideSave.x).toBeGreaterThan(wideHistory.x + wideHistory.width);
+  await page.setViewportSize({ width: 420, height: 540 });
+  await history.scrollIntoViewIfNeeded();
+  const historyBox = await history.boundingBox();
+  const saveBox = await save.boundingBox();
+  if (!historyBox || !saveBox)
+    throw new Error("Missing narrow editor controls");
+  expect(saveBox.y).toBeGreaterThan(historyBox.y);
+  await redo.click();
+  await expect(redo).toBeFocused();
+  await expect(suffix).toHaveValue("0");
+  await expect(save).toBeDisabled();
+  await undo.click();
+  await expect(suffix).toHaveValue("00 FF");
+  await page.screenshot({
+    path: info.outputPath("command-edit-history-narrow.png"),
+  });
+  const note = dialog.getByRole("textbox", { name: "Note", exact: true });
+  await note.fill("Pressure bench");
+  await expect(redo).toBeDisabled();
+  await undo.click();
+  await undo.click();
+  await undo.click();
+  await expect(undo).toBeDisabled();
+  await expect(body).toHaveValue("41 42");
+  await expect(encoding).toHaveValue("utf-8");
+  await expect(note).toHaveValue("");
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+  expect(
+    await page.evaluate(() => window.commandLibraryFixture.acceptedWrites),
+  ).toBe(0);
+
+  await page.keyboard.press("Escape");
+  await expect(dialog).toBeHidden();
+  await expect(entry).toBeFocused();
+  await openCommand();
+  await body.fill("44 45");
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("fail-library-save")),
+  );
+  await save.click();
+  await expect(body).toHaveValue("44 45");
+  await expect(undo).toBeDisabled();
+  await letSaveFinish(page, 1);
+  await expect(dialog.getByRole("alert")).toBeVisible();
+  await expect(undo).toBeEnabled();
+  await undo.click();
+  await expect(body).toHaveValue("41 42");
+  await redo.click();
+  await expect(body).toHaveValue("44 45");
+  await save.click();
+  await letSaveFinish(page, 2);
+  await expect(
+    dialog.getByText("Command library saved", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  await expect(body).toHaveValue("44 45");
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeDisabled();
+});
+
+test("command group history groups typing and clears when another group is opened", async ({
+  page,
+}) => {
+  const { entry, dialog } = await mockLibrary(page);
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Edit group", exact: true }).click();
+  const name = dialog.getByRole("textbox", { name: "Name", exact: true });
+  const undo = dialog.getByRole("button", { name: "Undo edit", exact: true });
+  const redo = dialog.getByRole("button", { name: "Redo edit", exact: true });
+  await name.press("End");
+  await name.pressSequentially(" lab");
+  await expect(name).toHaveValue("Modem lab");
+  await name.press("ControlOrMeta+z");
+  await expect(name).toHaveValue("Modem");
+  await expect(undo).toBeDisabled();
+  await redo.click();
+  await expect(name).toHaveValue("Modem lab");
+  await dialog.getByRole("button", { name: "Cancel", exact: true }).click();
+  await dialog.getByRole("button", { name: "Controller", exact: true }).click();
+  await dialog.getByRole("button", { name: "Edit group", exact: true }).click();
+  await expect(name).toHaveValue("Controller");
+  await expect(undo).toBeDisabled();
+  await expect(redo).toBeDisabled();
+  expect(
+    await page.evaluate(() => window.commandLibraryFixture.acceptedWrites),
+  ).toBe(0);
 });
 
 test("a late opening result cannot populate the command library in another workspace", async ({

@@ -5100,6 +5100,11 @@ export type TransportCapabilities = {
 
 export type TransportSemantics = "stream" | "message";
 
+export type TxDispatchWindow = {
+  earliestUnixMs: U64;
+  latestUnixMs: U64;
+};
+
 export type TxGate =
   | "ready"
   | "configuration_pending"
@@ -5122,6 +5127,7 @@ export type TxParams_Deserialize = {
   bytesBase64: Bytes;
   writeWaitMs: DurationMs;
   queueWaitMs?: DurationMs;
+  dispatchWindow?: TxDispatchWindow;
   sourceInputRef?: ObjectRef_Deserialize;
   transforms?: TransformReference[];
 };
@@ -5130,6 +5136,7 @@ export type TxParams_Serialize = {
   bytesBase64: Bytes;
   writeWaitMs: DurationMs;
   queueWaitMs?: DurationMs;
+  dispatchWindow?: TxDispatchWindow;
   sourceInputRef?: ObjectRef_Serialize;
   transforms?: TransformReference[];
 };

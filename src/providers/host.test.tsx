@@ -2278,11 +2278,74 @@ it("routes typed workspace queries through their registered control and raw chan
     sessionId: "replay-session",
     sessionEpoch: "8",
   });
-  expect(
-    raw.mock.calls.every(([, actualSignal]) => actualSignal === signal),
-  ).toBe(true);
+  const [fileSignal, ...otherSignals] = raw.mock.calls.map(
+    ([, waiting]) => waiting,
+  );
+  expect(fileSignal).toBeInstanceOf(AbortSignal);
+  expect(otherSignals).toEqual([signal, signal]);
   workspace.dispose();
 });
+
+it.each(["caller", "workspace"] as const)(
+  "discards a late file page after %s cancellation",
+  async (owner) => {
+    const connection = await createHostConnection(port());
+    const reference: ObjectRef = {
+      hostId: connection.attachment.hostId,
+      kind: "file",
+      id: "late-file",
+    };
+    let release!: () => void;
+    const gate = new Promise<void>((resolve) => {
+      release = resolve;
+    });
+    const raw = vi
+      .spyOn(connection.transport, "rawRequest")
+      .mockImplementation(async () => {
+        await gate;
+        return parseReply({
+          ok: true,
+          result: {
+            kind: "file_read",
+            value: {
+              fileRef: reference,
+              offset: "0",
+              nextOffset: "1",
+              totalBytes: "1",
+              bytesBase64: "AQ==",
+              fingerprint: "0".repeat(64),
+              atEnd: true,
+            },
+          },
+        });
+      });
+    const workspace = createHostWorkspace(connection);
+    const caller = new AbortController();
+    const pending = workspace.readFile(
+      {
+        fileRef: reference,
+        offset: "0",
+        maxBytes: "1024",
+      },
+      caller.signal,
+    );
+    const rejected = expect(pending).rejects.toMatchObject({
+      name: "AbortError",
+    });
+    const waiting = raw.mock.calls[0]?.[1];
+    expect(waiting?.aborted).toBe(false);
+    if (owner === "caller") caller.abort();
+    else {
+      workspace.dispose();
+      expect(caller.signal.aborted).toBe(false);
+    }
+    expect(waiting?.aborted).toBe(true);
+    release();
+    await rejected;
+    if (owner === "caller") workspace.dispose();
+  },
+);
+
 function workspaceFixture(): WorkspaceDocumentResult {
   const reply = parseReply({
     ok: true,

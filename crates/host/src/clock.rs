@@ -1,4 +1,4 @@
-//! Host 期限使用计入系统休眠的单调时钟；墙钟仅用于展示和审计。
+//! Host 经过时长使用计入休眠的单调时钟；绝对日历条件同时核对墙钟。
 use chrono::{DateTime, SecondsFormat, Utc};
 use serial_workbench_core::{Clock, HostError, HostResult, Timestamp};
 use std::sync::OnceLock;

@@ -377,8 +377,11 @@ export function workbenchToolLabels(t: Translate) {
     framing: t("workbench.tools.framing"),
     sessionTemplates: t("sessionTemplate.title"),
     repeatSend: t("repeatSend.title"),
+    calendarSchedule: t("calendar.title"),
+    broadcastSend: t("broadcastSend.title"),
     commandSequence: t("commandSequence.title"),
     testSuite: t("testSuite.title"),
+    ruleTrigger: t("ruleTrigger.title"),
     manualRecording: {
       title: t("manualRecording.title"),
       description: t("manualRecording.description"),

@@ -90,7 +90,7 @@ M1a Host 的源环预算为每会话 16 MiB、全 Host 128 MiB；reader 为每�
 
 ## 发送回执
 
-`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64`。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..131072（128 KiB），由 Rust `TX_MAX_BYTES` 统一约束 DTO、schema、源环接纳和生成的客户端常量；Host 验证后冻结最终字节及摘要。回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
+`session.tx` 的 params 为 `bytesBase64,writeWaitMs`，可选 `sourceInputRef: ObjectRef,transforms: [{id,version,configurationDigest}],queueWaitMs: U64,dispatchWindow: {earliestUnixMs: U64,latestUnixMs: U64}`。日历窗口为包含两端的 Unix 毫秒区间。提交字节已完成编码、字符映射、行尾和校验；协议/传输字节直接提交，不再走终端改写。单次最终字节长度为 1..131072（128 KiB），由 Rust `TX_MAX_BYTES` 统一约束 DTO、schema、源环接纳和生成的客户端常量；Host 验证后冻结最终字节及摘要。回执与原始 TX 记录该最终内容，例如 LF→CRLF 的 payload 是 `0D0A`。
 
 手动发送作为一次 Host 操作参与队列仲裁，客户端不拆成多次独立调用；128 KiB 的单条 TX 意图和最终回执分别适配默认 256 KiB Raw 批次，分页读取保留完整字节。源环、reader 和发送队列仍按既有预算接纳；更大内容使用文件传输。GUI 按编码和行尾后的最终长度检查，超限保留草稿与字节计数，明确提示上限，不提交无效操作或权限预检。
 
@@ -98,7 +98,7 @@ TX 结果为 `TxReceipt={operationId,sessionId,sessionEpoch,outcome,bytesBase64,
 
 后端按顺序写入时 acceptedRanges 通常为前缀，但不强制所有 TransportProvider 假装具备前缀证明。没有回执的尾段进入 unknownRanges，不能填成零。应用排队期间取消、尚未 dispatch 时 outcome=rejected、accepted/unknown 均空；已写 3/5 后取消时保留 `[0,3)`，剩余若确定停止则 partial/cancelled；驱动仍不确定则 unknown/unknown。TX 日志先保存意图，后关联回执，不能因取消删除历史。
 
-所有时限由执行 Host 单调时钟判定。U64 wire 值进入 JS timer 前须校验并转换为有界安全整数；v0 单次可配置时限范围 `"1"` 至 `"2147483647"` ms，`"0"` 仅按相应 schema 明确表示立即检查，不表示无限。更长任务使用截止时间和分段等待，不能把十进制字符串直接传 setTimeout。Rust 与 Node 使用相同单位及起算点。
+等待时长由执行 Host 单调时钟判定。显式 `dispatchWindow` 同时约束资源 Host 的墙钟和首次有效检查时冻结的单调截止点。窗口上下界倒置时拒绝输入。Host 在排队前、排队期间和设备实际派发前持续复核。超窗回执为 `rejected`，已接纳和未知字节范围为空，`backendError.code` 为 `TX_DISPATCH_WINDOW_MISSED`。U64 wire 值进入 JS timer 前须校验并转换为有界安全整数；v0 单次可配置时限范围 `"1"` 至 `"2147483647"` ms，`"0"` 仅按相应 schema 明确表示立即检查，不表示无限。更长任务使用截止时间和分段等待，不能把十进制字符串直接传 setTimeout。Rust 与 Node 使用相同单位及起算点。
 
 | 字段                 | 起算点与范围                                                        |
 | -------------------- | ------------------------------------------------------------------- |

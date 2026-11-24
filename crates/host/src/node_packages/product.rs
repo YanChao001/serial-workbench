@@ -53,6 +53,14 @@ const AUTOMATION_0_1_2_ARCHIVE: &[u8] =
     include_bytes!("../../resources/node-packages/previous/automation-0.1.2.zip");
 const AUTOMATION_0_1_2_DESCRIPTOR: &str =
     include_str!("../../resources/node-packages/previous/automation-0.1.2.json");
+const AUTOMATION_0_1_3_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.3.zip");
+const AUTOMATION_0_1_3_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.3.json");
+const AUTOMATION_0_1_4_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/automation-0.1.4.zip");
+const AUTOMATION_0_1_4_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/automation-0.1.4.json");
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const PRODUCT_SOURCE: &str = "swb.product";
 
@@ -171,8 +179,8 @@ pub(super) fn packages() -> &'static [ProductPackage] {
     })
 }
 
-fn previous_packages() -> &'static [ProductPackage; 7] {
-    static PREVIOUS: OnceLock<[ProductPackage; 7]> = OnceLock::new();
+fn previous_packages() -> &'static [ProductPackage; 9] {
+    static PREVIOUS: OnceLock<[ProductPackage; 9]> = OnceLock::new();
     PREVIOUS.get_or_init(|| {
         [
             ProductPackage::new(
@@ -200,6 +208,16 @@ fn previous_packages() -> &'static [ProductPackage; 7] {
             ProductPackage::new(
                 AUTOMATION_0_1_2_DESCRIPTOR,
                 AUTOMATION_0_1_2_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
+                AUTOMATION_0_1_3_DESCRIPTOR,
+                AUTOMATION_0_1_3_ARCHIVE,
+                AUTOMATION_MARKER,
+            ),
+            ProductPackage::new(
+                AUTOMATION_0_1_4_DESCRIPTOR,
+                AUTOMATION_0_1_4_ARCHIVE,
                 AUTOMATION_MARKER,
             ),
         ]
@@ -261,14 +279,18 @@ mod tests {
             old_automation,
             recent_automation,
             recording_automation,
+            assertion_automation,
+            rule_automation,
         ] = previous_packages();
         check_predecessor_upgrade(old_fields, "0.1.0", "0.3.0");
         check_predecessor_upgrade(recent_fields, "0.2.0", "0.3.0");
         check_predecessor_upgrade(old_chart, "0.1.0", "0.1.2");
         check_predecessor_upgrade(recent_chart, "0.1.1", "0.1.2");
-        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.3");
-        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.3");
-        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.3");
+        check_predecessor_upgrade(old_automation, "0.1.0", "0.1.5");
+        check_predecessor_upgrade(recent_automation, "0.1.1", "0.1.5");
+        check_predecessor_upgrade(recording_automation, "0.1.2", "0.1.5");
+        check_predecessor_upgrade(assertion_automation, "0.1.3", "0.1.5");
+        check_predecessor_upgrade(rule_automation, "0.1.4", "0.1.5");
     }
 
     fn check_predecessor_upgrade(old: &ProductPackage, old_version: &str, next_version: &str) {

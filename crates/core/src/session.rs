@@ -323,6 +323,13 @@ pub struct TransformReference {
     pub version: String,
     pub configuration_digest: Digest,
 }
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct TxDispatchWindow {
+    pub earliest_unix_ms: U64,
+    pub latest_unix_ms: U64,
+}
+
 #[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
 #[serde(rename_all = "camelCase", deny_unknown_fields)]
 pub struct TxParams {
@@ -339,6 +346,15 @@ pub struct TxParams {
     #[schemars(with = "DurationMs")]
     #[specta(type=DurationMs, optional)]
     pub queue_wait_ms: Option<DurationMs>,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "TxDispatchWindow")]
+    #[specta(type=TxDispatchWindow, optional)]
+    pub dispatch_window: Option<TxDispatchWindow>,
+
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

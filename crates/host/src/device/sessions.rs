@@ -113,7 +113,55 @@ pub(crate) struct ConfigurationChange {
     result: Option<BackendResult<ConfigApplication>>,
     resume: Option<mpsc::SyncSender<()>>,
 }
+#[derive(Clone, Copy)]
+pub(crate) struct TxDispatchFence {
+    window: TxDispatchWindow,
+    end_mono_ns: u64,
+}
+impl TxDispatchFence {
+    pub(crate) fn new(window: TxDispatchWindow, clock: &dyn Clock) -> HostResult<Self> {
+        let mono = clock.mono_ns();
+        let wall = Self::check_wall(window, clock)?;
+        let remaining_ms = window
+            .latest_unix_ms
+            .get()
+            .saturating_sub(wall)
+            .saturating_add(1);
+        Ok(Self {
+            window,
+            end_mono_ns: mono.saturating_add(remaining_ms.saturating_mul(1_000_000)),
+        })
+    }
+
+    fn check_wall(window: TxDispatchWindow, clock: &dyn Clock) -> HostResult<u64> {
+        let observed = clock.wall_time();
+        let millis = chrono::DateTime::parse_from_rfc3339(observed.as_str())
+            .ok()
+            .and_then(|time| u64::try_from(time.timestamp_millis()).ok())
+            .ok_or_else(|| HostError::new("CLOCK_UNAVAILABLE", "Host wall clock is unavailable"))?;
+        if millis < window.earliest_unix_ms.get() || millis > window.latest_unix_ms.get() {
+            return Err(Self::outside_window());
+        }
+        Ok(millis)
+    }
+
+    fn outside_window() -> HostError {
+        HostError::new(
+            "TX_DISPATCH_WINDOW_MISSED",
+            "Host did not start the write within its calendar window",
+        )
+    }
+
+    pub(crate) fn check(self, clock: &dyn Clock) -> HostResult<()> {
+        if clock.mono_ns() >= self.end_mono_ns {
+            return Err(Self::outside_window());
+        }
+        Self::check_wall(self.window, clock).map(|_| ())
+    }
+}
+
 pub(crate) struct BackendAdmission {
+    pub dispatch_fence: Option<TxDispatchFence>,
     pub session_epoch: U64,
     pub actor_id: Id,
     pub lease_id: Option<Id>,
@@ -168,6 +216,9 @@ impl BackendAdmission {
             matches!(current.state, LeaseState::Active | LeaseState::Revoking)
         }) {
             return Err(HostError::new("LEASE_CONFLICT", "A lease owns the session"));
+        }
+        if let Some(fence) = self.dispatch_fence {
+            fence.check(clock)?;
         }
         Ok(())
     }
@@ -2085,6 +2136,7 @@ mod mailbox_tests {
                 WritePayload::owned(Arc::from([1, 2, 3])),
                 Duration::from_secs(1),
                 BackendAdmission {
+                    dispatch_fence: None,
                     session_epoch: target.session_epoch.unwrap(),
                     actor_id: h.actor.id().clone(),
                     lease_id: None,
@@ -2359,6 +2411,7 @@ mod mailbox_tests {
         });
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
+            dispatch_fence: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2418,6 +2471,7 @@ mod mailbox_tests {
         h.probe.drain_hold.store(true, Ordering::SeqCst);
         let cancelled = Arc::new(AtomicBool::new(false));
         let admission = BackendAdmission {
+            dispatch_fence: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,
@@ -2477,6 +2531,7 @@ mod mailbox_tests {
             closing: session.closing.clone(),
         };
         let admission = BackendAdmission {
+            dispatch_fence: None,
             session_epoch: target.session_epoch.unwrap(),
             actor_id: h.actor.id().clone(),
             lease_id: None,

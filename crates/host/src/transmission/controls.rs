@@ -28,7 +28,7 @@ impl TransmissionService {
             return self.takeover(accepted, token, session, runtime).await;
         }
         let _turn = self
-            .acquire(accepted, token, session, runtime, 0, None)
+            .acquire(accepted, token, session, runtime, 0, QueueWait::default())
             .await?;
         self.dispatch(accepted, token, session).await?;
         match action {
@@ -237,7 +237,7 @@ impl TransmissionService {
         if params.scope != PurgeScope::Application && error.is_none() {
             let ready = async {
                 _driver_turn = Some(
-                    self.acquire(accepted, token, session, runtime, 0, None)
+                    self.acquire(accepted, token, session, runtime, 0, QueueWait::default())
                         .await?,
                 );
                 if token.cancelled.load(Ordering::SeqCst) {

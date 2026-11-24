@@ -101,6 +101,11 @@ import {
 } from "./stream-hex-selection";
 import { StreamCopyPopover } from "./stream-copy-popover";
 import {
+  StreamContextMenu,
+  type StreamContextPoint,
+  type StreamContextSend,
+} from "./stream-context-menu";
+import {
   chartSelectionRows,
   retainedChartSelection,
   sourceSelectionFromDisplay,
@@ -136,6 +141,8 @@ import {
 import {
   findStreamLocation,
   numberStreamRows,
+  streamEventBookmark,
+  type StreamBookmark,
   type StreamLocationKind,
 } from "./stream-location";
 import { ReceiveHistoryControls } from "./receive-history-controls";
@@ -181,6 +188,9 @@ export type StreamViewProps = {
   captureActive?: boolean;
   chartReveal?: ChartSourceSelection;
   chartSourceItems?: readonly StreamItem[];
+  contextSender?: StreamContextSend;
+  bookmarks?: readonly StreamBookmark[];
+  onBookmarksChange?: (value: readonly StreamBookmark[]) => void;
   onChartSelection?: (
     selection: ChartSourceSelection,
     trigger: HTMLButtonElement,
@@ -217,6 +227,9 @@ export function StreamView({
   captureActive = false,
   chartReveal,
   chartSourceItems,
+  contextSender,
+  bookmarks,
+  onBookmarksChange,
   onChartSelection,
   displayLabels,
 }: StreamViewProps) {
@@ -232,6 +245,12 @@ export function StreamView({
   const [localMode, setMode] = useState<TerminalMode | null>(null);
   const [showRecordNumbers, setShowRecordNumbers] = useState(false);
   const [locationOpen, setLocationOpen] = useState(false);
+  const [viewBookmarks, setViewBookmarks] = useState<readonly StreamBookmark[]>(
+    [],
+  );
+  const [contextCopyFeedback, setContextCopyFeedback] = useState<string>();
+  const currentBookmarks = bookmarks ?? viewBookmarks;
+  const changeBookmarks = onBookmarksChange ?? setViewBookmarks;
   const [locationTarget, setLocationTarget] = useState<{
     source: readonly StreamItem[];
     itemIndex: number;
@@ -825,8 +844,11 @@ export function StreamView({
     kind: StreamLocationKind,
     input: string,
   ): ReturnType<typeof findStreamLocation> {
-    if (!locations) return { kind: "unavailable" };
-    const result = findStreamLocation(locations, kind, input);
+    const result = findStreamLocation(
+      locations ?? numberStreamRows(rows, projected, displayed),
+      kind,
+      input,
+    );
     if (result.kind === "found") {
       // Clear the display filter so a retained target can be reached.
       setSearchOpen(false);
@@ -1097,6 +1119,83 @@ export function StreamView({
     }
     return { rx: rx.toString(), tx: tx.toString() };
   }, [projected, rows, visibleRows]);
+  function readContextSample(selection: StreamHexSelection) {
+    if (error) return;
+    return readStreamCopySample(
+      visibleLongRecordPages(visibleRows, viewport.current),
+      projected,
+      selection,
+    );
+  }
+
+  function readContext(target: EventTarget | null): StreamContextPoint {
+    const root = viewport.current;
+    if (!root || root.hidden || !(target instanceof Element)) return {};
+    const clicked = target.closest<HTMLElement>("[data-stream-context-item]");
+    const selected = root.ownerDocument.getSelection();
+    const range =
+      selected?.rangeCount && !selected.isCollapsed
+        ? selected.getRangeAt(0)
+        : undefined;
+    const selectionInView =
+      range &&
+      root.contains(range.startContainer) &&
+      root.contains(range.endContainer) &&
+      (!clicked || range.intersectsNode(clicked));
+    const hex = selectionInView
+      ? readStreamHexSelection(root, hexFormat)
+      : undefined;
+    const sample = hex ? readContextSample(hex) : undefined;
+    const rangeRow = selectionInView
+      ? range.startContainer.parentElement?.closest<HTMLElement>(
+          "[data-stream-context-item]",
+        )
+      : undefined;
+    const position = (rangeRow ?? clicked)?.dataset.streamContextItem;
+    const row =
+      position === undefined
+        ? undefined
+        : visibleRows.find((row) => row.itemIndex === Number(position));
+    const item =
+      row &&
+      projected.find(
+        ({ item, itemIndex }) =>
+          item.kind === "source" && row.itemIndexes.includes(itemIndex),
+      )?.item;
+    return {
+      anchor:
+        item?.kind === "source" ? streamEventBookmark(item.event) : undefined,
+      bytes: hex && sample ? { range: hex, sample } : undefined,
+      text: selectionInView && !error ? selected?.toString() : undefined,
+    };
+  }
+
+  function bookmark(anchor: StreamBookmark) {
+    const current = findStreamLocation(
+      locations ?? numberStreamRows(rows, projected, displayed),
+      "reference",
+      anchor.reference,
+    );
+    if (current.kind !== "found") {
+      toast.info(labels.locationUnavailable);
+      return;
+    }
+    if (
+      !currentBookmarks.some(({ reference }) => reference === anchor.reference)
+    )
+      changeBookmarks([...currentBookmarks.slice(-31), anchor]);
+    toast.success(labels.contextBookmarked);
+  }
+
+  function splitAt(anchor: StreamBookmark) {
+    if (locateRecord("reference", anchor.reference).kind !== "found") {
+      toast.info(labels.locationUnavailable);
+      return;
+    }
+    setShowAnsi(false);
+    setSplit(true);
+  }
+
   // 输入和权限续检不重建接收列表；只有源数据或显示偏好改变才重新呈现。
   const renderedRows = useMemo(
     () =>
@@ -1111,6 +1210,7 @@ export function StreamView({
           }}
           tabIndex={-1}
           data-offset={row.offset}
+          data-stream-context-item={row.itemIndex}
           data-location-target={
             (locatedItem !== undefined &&
               row.itemIndexes.includes(locatedItem)) ||
@@ -1346,6 +1446,14 @@ export function StreamView({
           }}
           onLocate={locateRecord}
           onCopy={copyLocation}
+          bookmarks={currentBookmarks}
+          onRemoveBookmark={(reference) =>
+            changeBookmarks(
+              currentBookmarks.filter(
+                (bookmark) => bookmark.reference !== reference,
+              ),
+            )
+          }
         />
         <WorkbenchIconButton
           ref={searchTrigger}
@@ -1960,118 +2068,139 @@ export function StreamView({
             />
           </Suspense>
         )}
-        <div
-          hidden={showAnsi}
-          role="log"
-          aria-label={labels.terminal}
-          aria-live="off"
-          tabIndex={0}
-          ref={viewport}
-          className="workbench-stream-log app-scroll-region"
-          data-surface="transparent"
-          data-following={following}
-          data-locating={locatedItem !== undefined || undefined}
-          onWheel={(event) => {
-            if (event.ctrlKey || event.deltaY === 0) return;
-            const element = event.currentTarget;
-            // 被动滚轮事件可能在合成线程已经滚到顶后才到达 JS。
-            if (
-              event.deltaY < 0 &&
-              element.scrollHeight > element.clientHeight
-            ) {
-              scrollIntent.current = {
-                top: element.scrollTop,
-                direction: "up",
-              };
-              reviewHistory();
-            } else if (event.deltaY > 0) {
-              scrollIntent.current = {
-                top: element.scrollTop,
-                direction: "down",
-              };
-              if (!frozen && atStreamEnd(element)) setReviewed(null);
-            }
-          }}
-          onKeyDown={(event) => {
-            if (event.target !== event.currentTarget) return;
-            const element = event.currentTarget;
-            if (
-              ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
-              (event.key === " " && event.shiftKey)
-            ) {
-              if (element.scrollHeight > element.clientHeight) {
+        <StreamContextMenu
+          viewport={viewport}
+          labels={labels}
+          receiveEncoding={receiveCodec}
+          sendEncoding={sendCodec}
+          sender={replay || error ? undefined : contextSender}
+          sourceAvailable={!error}
+          read={readContext}
+          retained={readContextSample}
+          onCopyFeedback={setContextCopyFeedback}
+          onBookmark={bookmark}
+          onSplit={splitAt}
+        >
+          <div
+            hidden={showAnsi}
+            role="log"
+            aria-label={labels.terminal}
+            aria-live="off"
+            tabIndex={0}
+            ref={viewport}
+            className="workbench-stream-log app-scroll-region"
+            data-surface="transparent"
+            data-following={following}
+            data-locating={locatedItem !== undefined || undefined}
+            onWheel={(event) => {
+              if (event.ctrlKey || event.deltaY === 0) return;
+              const element = event.currentTarget;
+              // 被动滚轮事件可能在合成线程已经滚到顶后才到达 JS。
+              if (
+                event.deltaY < 0 &&
+                element.scrollHeight > element.clientHeight
+              ) {
                 scrollIntent.current = {
                   top: element.scrollTop,
                   direction: "up",
                 };
                 reviewHistory();
+              } else if (event.deltaY > 0) {
+                scrollIntent.current = {
+                  top: element.scrollTop,
+                  direction: "down",
+                };
+                if (!frozen && atStreamEnd(element)) setReviewed(null);
               }
-            } else if (
-              ["ArrowDown", "PageDown", "End", " "].includes(event.key)
-            ) {
-              scrollIntent.current = {
-                top: element.scrollTop,
-                direction: "down",
-              };
-              if (!frozen && (event.key === "End" || atStreamEnd(element)))
-                setReviewed(null);
-            }
-          }}
-          onPointerDown={(event) => {
-            scrollIntent.current = {
-              top: event.currentTarget.scrollTop,
-              direction: "drag",
-            };
-          }}
-          onTouchStart={(event) => {
-            touchY.current = event.touches[0]?.clientY ?? null;
-          }}
-          onTouchMove={(event) => {
-            const y = event.touches[0]?.clientY;
-            if (
-              y !== undefined &&
-              touchY.current !== null &&
-              y !== touchY.current
-            ) {
+            }}
+            onKeyDown={(event) => {
+              if (event.target !== event.currentTarget) return;
               const element = event.currentTarget;
-              const direction = y > touchY.current ? "up" : "down";
-              scrollIntent.current = { top: element.scrollTop, direction };
               if (
-                direction === "up" &&
-                element.scrollHeight > element.clientHeight
-              )
-                reviewHistory();
-              else if (direction === "down" && !frozen && atStreamEnd(element))
-                setReviewed(null);
-            }
-            touchY.current = y ?? null;
-          }}
-          onScroll={(event) => {
-            const element = event.currentTarget;
-            const upward =
-              scrollIntent.current !== null &&
-              scrollIntent.current.direction !== "down" &&
-              element.scrollTop < scrollIntent.current.top - 0.5;
-            const downward =
-              scrollIntent.current !== null &&
-              scrollIntent.current.direction !== "up" &&
-              element.scrollTop > scrollIntent.current.top + 0.5;
-            if (scrollIntent.current)
-              scrollIntent.current.top = element.scrollTop;
-            if (frozen) return;
-            // 只让向下到底的用户手势恢复跟随，裁剪或晚排版产生的滚动保留历史状态。
-            if (upward) reviewHistory();
-            else if (downward && atStreamEnd(element)) setReviewed(null);
-          }}
-          onScrollEnd={() => {
-            if (scrollIntent.current?.direction !== "drag")
-              scrollIntent.current = null;
-          }}
-        >
-          <div ref={content}>{renderedRows}</div>
-        </div>
+                ["ArrowUp", "PageUp", "Home"].includes(event.key) ||
+                (event.key === " " && event.shiftKey)
+              ) {
+                if (element.scrollHeight > element.clientHeight) {
+                  scrollIntent.current = {
+                    top: element.scrollTop,
+                    direction: "up",
+                  };
+                  reviewHistory();
+                }
+              } else if (
+                ["ArrowDown", "PageDown", "End", " "].includes(event.key)
+              ) {
+                scrollIntent.current = {
+                  top: element.scrollTop,
+                  direction: "down",
+                };
+                if (!frozen && (event.key === "End" || atStreamEnd(element)))
+                  setReviewed(null);
+              }
+            }}
+            onPointerDown={(event) => {
+              scrollIntent.current = {
+                top: event.currentTarget.scrollTop,
+                direction: "drag",
+              };
+            }}
+            onTouchStart={(event) => {
+              touchY.current = event.touches[0]?.clientY ?? null;
+            }}
+            onTouchMove={(event) => {
+              const y = event.touches[0]?.clientY;
+              if (
+                y !== undefined &&
+                touchY.current !== null &&
+                y !== touchY.current
+              ) {
+                const element = event.currentTarget;
+                const direction = y > touchY.current ? "up" : "down";
+                scrollIntent.current = { top: element.scrollTop, direction };
+                if (
+                  direction === "up" &&
+                  element.scrollHeight > element.clientHeight
+                )
+                  reviewHistory();
+                else if (
+                  direction === "down" &&
+                  !frozen &&
+                  atStreamEnd(element)
+                )
+                  setReviewed(null);
+              }
+              touchY.current = y ?? null;
+            }}
+            onScroll={(event) => {
+              const element = event.currentTarget;
+              const upward =
+                scrollIntent.current !== null &&
+                scrollIntent.current.direction !== "down" &&
+                element.scrollTop < scrollIntent.current.top - 0.5;
+              const downward =
+                scrollIntent.current !== null &&
+                scrollIntent.current.direction !== "up" &&
+                element.scrollTop > scrollIntent.current.top + 0.5;
+              if (scrollIntent.current)
+                scrollIntent.current.top = element.scrollTop;
+              if (frozen) return;
+              // 只让向下到底的用户手势恢复跟随，裁剪或晚排版产生的滚动保留历史状态。
+              if (upward) reviewHistory();
+              else if (downward && atStreamEnd(element)) setReviewed(null);
+            }}
+            onScrollEnd={() => {
+              if (scrollIntent.current?.direction !== "drag")
+                scrollIntent.current = null;
+            }}
+          >
+            <div ref={content}>{renderedRows}</div>
+          </div>
+        </StreamContextMenu>
         <div className="workbench-stream-totals" aria-live="off">
           <div className="workbench-stream-status">
+            {contextCopyFeedback && (
+              <span role="status">{contextCopyFeedback}</span>
+            )}
             {frozen && <span>{labels.displayPaused}</span>}
             {frozen && pendingCount > 0 && (
               <span className="workbench-pending-count">

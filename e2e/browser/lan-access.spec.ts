@@ -161,6 +161,25 @@ test("desktop workbench opens a shared serial view and keeps local drafts and se
     path: info.outputPath("desktop-shared-workbench.png"),
   });
 
+  await page.goto("./#/settings?focus=lanAccess");
+  await page.getByRole("button", { name: "Manage sharing" }).click();
+  const sharing = page.getByRole("dialog", { name: "LAN sharing" });
+  await sharing
+    .getByRole("button", { name: "Copy this computer’s pairing information" })
+    .click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.copiedLanInfo.at(-1)),
+    )
+    .toContain("workbench-gui-host");
+  await page.keyboard.press("Escape");
+  await expect(sharing).toBeHidden();
+  await page.goto("./#/");
+  await expect(
+    page.getByRole("tab", { name: "Shared UART", exact: true }),
+  ).toBeVisible();
+  await expect(page.getByText("LAN", { exact: true })).toBeVisible();
+
   await menu.click();
   await page.getByRole("menuitem", { name: "Close all views" }).click();
   const sharedTab = page.getByRole("tab", { name: "Shared UART", exact: true });

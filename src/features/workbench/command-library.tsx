@@ -5,8 +5,16 @@ import {
   useMemo,
   useRef,
   useState,
+  type ChangeEvent,
+  type Ref,
 } from "react";
 import { ListTreeIcon } from "lucide-react";
+import {
+  matchesShortcut,
+  REDO_EDIT_ALTERNATE,
+  REDO_EDIT_SHORTCUT,
+  UNDO_EDIT_SHORTCUT,
+} from "@/commands/shortcuts";
 import { ContractValidationError } from "@serial-workbench/contracts";
 import type {
   CommandDraft,
@@ -26,6 +34,7 @@ import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { bytesToBase64 } from "@/lib/base64";
 import { nativeErrorText } from "@/lib/native-error";
+import { isMacOS } from "@/lib/platform";
 import { ENCODING_NAMES, isTextEncoding } from "@/lib/text-encoding";
 import { useI18n } from "@/providers/i18n";
 import type { CommandLibraryAccess } from "@/providers/host-context";
@@ -53,6 +62,36 @@ type Page<Item> = {
 type Editor =
   | { kind: "group"; value: CommandGroup; revision: string; isNew: boolean }
   | { kind: "command"; value: CommandDraft; revision: string; isNew: boolean };
+
+type EditorDraft = { editor: Editor; endingInput?: string };
+type TypingEdit = { field: Element; inputType: string; at: number };
+type EditDirection = "undo" | "redo";
+type EditorHistory = {
+  baseline: EditorDraft;
+  steps: readonly EditorDraft[];
+  position: number;
+  typing?: TypingEdit;
+  announcement?: EditDirection;
+};
+const HISTORY_DEPTH = 32;
+const TYPING_GROUP_MS = 500;
+
+function typingEdit(
+  event: ChangeEvent<HTMLInputElement | HTMLTextAreaElement>,
+) {
+  const { nativeEvent, currentTarget, timeStamp } = event;
+  if (
+    nativeEvent instanceof InputEvent &&
+    /^(insertText|insertCompositionText|deleteContentBackward|deleteContentForward)$/.test(
+      nativeEvent.inputType,
+    )
+  )
+    return {
+      field: currentTarget,
+      inputType: nativeEvent.inputType,
+      at: timeStamp,
+    };
+}
 
 type LibrarySession = {
   controller: AbortController;
@@ -195,14 +234,22 @@ function CommandLibraryPanel({
   const [commands, setCommands] = useState<Page<CommandSummary>>();
   const [group, setGroup] = useState<CommandGroup>();
   const [revision, setRevision] = useState<string>();
-  const [editor, setEditor] = useState<Editor>();
-  const [dirty, setDirty] = useState(false);
+  const [history, setHistory] = useState<EditorHistory>();
+  const draft = history?.steps[history.position];
+  const editor = draft?.editor;
+  const endingInput = draft?.endingInput;
+  const dirty = draft !== history?.baseline;
+  const canUndo = history !== undefined && history.position > 0;
+  const canRedo =
+    history !== undefined && history.position < history.steps.length - 1;
   const [busy, setBusy] = useState(true);
   const [problem, setProblem] = useState<{ error: unknown }>();
   const [completed, setCompleted] = useState<
     "saved" | "imported" | "exported"
   >();
   const [picked, setPicked] = useState<CommandSummary>();
+  const endingChoice = useRef<HTMLSelectElement>(null);
+  const customEndingField = useRef<HTMLInputElement>(null);
   const dragging = useRef<CommandSummary | undefined>(undefined);
   const working = useRef(true);
   const owner = session.controller.signal;
@@ -345,8 +392,7 @@ function CommandLibraryPanel({
   }
 
   function discard() {
-    setDirty(false);
-    setEditor(undefined);
+    setHistory(undefined);
   }
 
   async function commit(
@@ -418,20 +464,63 @@ function CommandLibraryPanel({
     );
   }
 
-  const [endingInput, setEndingInput] = useState<string>();
   const invalidEnding =
     endingInput !== undefined && customEndingBytes(endingInput) === undefined;
   const [deletePending, setDeletePending] = useState(false);
   function beginEdit(next: Editor) {
+    const baseline = { editor: next };
     setProblem(undefined);
-    setEndingInput(undefined);
     setDeletePending(false);
-    setEditor(next);
+    setHistory({ baseline, steps: [baseline], position: 0 });
   }
 
-  function changeEditor(next: Editor) {
-    setEditor(next);
-    setDirty(true);
+  function changeEditor(next: EditorDraft, typing?: TypingEdit) {
+    setDeletePending(false);
+    setHistory((current) => {
+      if (!current) return current;
+      const previous = current.typing;
+      const coalesce =
+        typing &&
+        previous?.field === typing.field &&
+        previous.inputType === typing.inputType &&
+        typing.at - previous.at <= TYPING_GROUP_MS;
+      const steps = [
+        ...current.steps.slice(0, current.position + (coalesce ? 0 : 1)),
+        next,
+      ].slice(-(HISTORY_DEPTH + 1));
+      return {
+        ...current,
+        steps,
+        position: steps.length - 1,
+        typing,
+        announcement: undefined,
+      };
+    });
+  }
+
+  function moveHistory(direction: EditDirection) {
+    if (!history || busy || !writable) return;
+    const delta = direction === "undo" ? -1 : 1;
+    const next = history.steps[history.position + delta]?.editor;
+    if (!next) return;
+    if (
+      next.kind === "command" &&
+      next.value.lineEnding?.kind !== "custom" &&
+      document.activeElement === customEndingField.current
+    )
+      endingChoice.current?.focus();
+    setDeletePending(false);
+    setHistory((current) => {
+      if (!current) return current;
+      const position = current.position + delta;
+      if (position < 0 || position >= current.steps.length) return current;
+      return {
+        ...current,
+        position,
+        typing: undefined,
+        announcement: direction,
+      };
+    });
   }
 
   useUnsavedWork({
@@ -750,6 +839,23 @@ function CommandLibraryPanel({
       {editor && (
         <form
           className="grid gap-3"
+          onBlur={() => {
+            setHistory((current) =>
+              current?.typing ? { ...current, typing: undefined } : current,
+            );
+          }}
+          onKeyDown={(event) => {
+            const key = event.nativeEvent;
+            const direction = matchesShortcut(key, UNDO_EDIT_SHORTCUT)
+              ? "undo"
+              : matchesShortcut(key, REDO_EDIT_SHORTCUT) ||
+                  (!isMacOS() && matchesShortcut(key, REDO_EDIT_ALTERNATE))
+                ? "redo"
+                : undefined;
+            if (!direction || !writable || busy) return;
+            event.preventDefault();
+            moveHistory(direction);
+          }}
           onSubmit={(event) => {
             event.preventDefault();
             if (readyToSave) void saveEditor();
@@ -768,21 +874,29 @@ function CommandLibraryPanel({
                 }
                 onChange={(event) =>
                   changeEditor(
-                    editor.kind === "group"
-                      ? {
-                          ...editor,
-                          value: { ...editor.value, name: event.target.value },
-                        }
-                      : {
-                          ...editor,
-                          value: {
-                            ...editor.value,
-                            summary: {
-                              ...editor.value.summary,
-                              name: event.target.value,
+                    {
+                      endingInput,
+                      editor:
+                        editor.kind === "group"
+                          ? {
+                              ...editor,
+                              value: {
+                                ...editor.value,
+                                name: event.target.value,
+                              },
+                            }
+                          : {
+                              ...editor,
+                              value: {
+                                ...editor.value,
+                                summary: {
+                                  ...editor.value.summary,
+                                  name: event.target.value,
+                                },
+                              },
                             },
-                          },
-                        },
+                    },
+                    typingEdit(event),
                   )
                 }
               />
@@ -790,55 +904,108 @@ function CommandLibraryPanel({
             {editor.kind === "command" && (
               <CommandFields
                 command={editor.value}
+                endingChoice={endingChoice}
+                customEndingField={customEndingField}
                 endingInput={endingInput}
                 invalidEnding={invalidEnding}
-                onEndingInput={setEndingInput}
-                onChange={(value) => changeEditor({ ...editor, value })}
-                onInvalidEdit={() => setDirty(true)}
+                onChange={(value, endingInput, typing) =>
+                  changeEditor(
+                    { editor: { ...editor, value }, endingInput },
+                    typing,
+                  )
+                }
               />
             )}
           </fieldset>
-          <div className="flex flex-wrap gap-2">
+          <div className="flex flex-wrap items-center justify-between gap-2">
             {writable && (
-              <Button size="sm" type="submit" disabled={busy || !readyToSave}>
-                {t("common.save")}
-              </Button>
+              <div
+                className="flex flex-wrap gap-2"
+                role="group"
+                aria-label={t("commandLibrary.editHistory")}
+              >
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  aria-disabled={busy || !canUndo}
+                  aria-keyshortcuts={isMacOS() ? "Meta+Z" : "Control+Z"}
+                  className="aria-disabled:opacity-50"
+                  onClick={() => moveHistory("undo")}
+                >
+                  {t("commandLibrary.undo")}
+                </Button>
+                <Button
+                  size="sm"
+                  type="button"
+                  variant="outline"
+                  aria-disabled={busy || !canRedo}
+                  aria-keyshortcuts={
+                    isMacOS() ? "Meta+Shift+Z" : "Control+Shift+Z Control+Y"
+                  }
+                  className="aria-disabled:opacity-50"
+                  onClick={() => moveHistory("redo")}
+                >
+                  {t("commandLibrary.redo")}
+                </Button>
+                <span role="status" className="sr-only">
+                  {history?.announcement && (
+                    <span key={history.position}>
+                      {t(
+                        history.announcement === "undo"
+                          ? "commandLibrary.undone"
+                          : "commandLibrary.redone",
+                      )}
+                    </span>
+                  )}
+                </span>
+              </div>
             )}
-            <Button
-              size="sm"
-              type="button"
-              variant="outline"
-              disabled={busy}
-              onClick={discard}
-            >
-              {t(dirty ? "common.cancel" : "common.close")}
-            </Button>
-            {writable && !editor.isNew && (
+            <div className="flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 type="button"
-                variant={deletePending ? "destructive" : "ghost"}
+                variant="outline"
                 disabled={busy}
-                onClick={() => {
-                  if (!deletePending) {
-                    setDeletePending(true);
-                    return;
-                  }
-                  void commit(
-                    editor.kind === "group"
-                      ? { kind: "deleteGroup", id: editor.value.id }
-                      : { kind: "deleteCommand", id: editor.value.summary.id },
-                    editor.revision,
-                  );
-                }}
+                onClick={discard}
               >
-                {t(
-                  deletePending
-                    ? "commandLibrary.confirmDelete"
-                    : "common.delete",
-                )}
+                {t(dirty ? "common.cancel" : "common.close")}
               </Button>
-            )}
+              {writable && !editor.isNew && (
+                <Button
+                  size="sm"
+                  type="button"
+                  variant={deletePending ? "destructive" : "ghost"}
+                  disabled={busy}
+                  onClick={() => {
+                    if (!deletePending) {
+                      setDeletePending(true);
+                      return;
+                    }
+                    void commit(
+                      editor.kind === "group"
+                        ? { kind: "deleteGroup", id: editor.value.id }
+                        : {
+                            kind: "deleteCommand",
+                            id: editor.value.summary.id,
+                          },
+                      editor.revision,
+                    );
+                  }}
+                >
+                  {t(
+                    deletePending
+                      ? "commandLibrary.confirmDelete"
+                      : "common.delete",
+                  )}
+                </Button>
+              )}
+              {writable && (
+                <Button size="sm" type="submit" disabled={busy || !readyToSave}>
+                  {t("common.save")}
+                </Button>
+              )}
+            </div>
           </div>
         </form>
       )}
@@ -943,18 +1110,22 @@ function customEndingBytes(input: string) {
 
 function CommandFields({
   command,
+  endingChoice,
+  customEndingField,
   endingInput,
   invalidEnding,
-  onEndingInput,
   onChange,
-  onInvalidEdit,
 }: {
   command: CommandDraft;
+  endingChoice: Ref<HTMLSelectElement>;
+  customEndingField: Ref<HTMLInputElement>;
   endingInput?: string;
   invalidEnding: boolean;
-  onEndingInput: (value?: string) => void;
-  onChange: (command: CommandDraft) => void;
-  onInvalidEdit: () => void;
+  onChange: (
+    command: CommandDraft,
+    endingInput?: string,
+    typing?: TypingEdit,
+  ) => void;
 }) {
   const { t } = useI18n();
   const custom =
@@ -975,10 +1146,14 @@ function CommandFields({
           maxLength={1024}
           value={command.summary.note}
           onChange={(event) =>
-            onChange({
-              ...command,
-              summary: { ...command.summary, note: event.target.value },
-            })
+            onChange(
+              {
+                ...command,
+                summary: { ...command.summary, note: event.target.value },
+              },
+              endingInput,
+              typingEdit(event),
+            )
           }
         />
       </label>
@@ -991,7 +1166,11 @@ function CommandFields({
           spellCheck={false}
           className="font-mono"
           onChange={(event) =>
-            onChange({ ...command, body: event.target.value })
+            onChange(
+              { ...command, body: event.target.value },
+              endingInput,
+              typingEdit(event),
+            )
           }
         />
         <span className="text-xs text-muted-foreground">
@@ -1007,7 +1186,7 @@ function CommandFields({
             onChange={(event) => {
               const mode = event.target.value;
               if (mode === "text" || mode === "hex")
-                onChange({ ...command, mode });
+                onChange({ ...command, mode }, endingInput);
             }}
           >
             <option value="text">{t("commandLibrary.text")}</option>
@@ -1021,7 +1200,10 @@ function CommandFields({
             value={command.encoding}
             onChange={(event) => {
               if (isTextEncoding(event.target.value))
-                onChange({ ...command, encoding: event.target.value });
+                onChange(
+                  { ...command, encoding: event.target.value },
+                  endingInput,
+                );
             }}
           >
             {Object.entries(ENCODING_NAMES).map(([value, label]) => (
@@ -1035,6 +1217,7 @@ function CommandFields({
           {t("commandLibrary.ending")}
           <select
             className="material-control h-8 rounded-md border px-2"
+            ref={endingChoice}
             value={command.lineEnding?.kind ?? "inherit"}
             onChange={(event) => {
               const kind = endingKinds.find(
@@ -1047,7 +1230,6 @@ function CommandFields({
                   : kind === "custom"
                     ? { kind, bytesBase64: "" }
                     : { kind };
-              onEndingInput(undefined);
               onChange({ ...command, lineEnding });
             }}
           >
@@ -1069,6 +1251,7 @@ function CommandFields({
         <label className="grid gap-1 text-sm">
           {t("commandLibrary.customEnding")}
           <Input
+            ref={customEndingField}
             aria-invalid={invalidEnding}
             value={
               endingInput ??
@@ -1080,19 +1263,20 @@ function CommandFields({
             }
             onChange={(event) => {
               const value = event.target.value;
-              onEndingInput(value);
               const bytes = customEndingBytes(value);
-              if (!bytes) {
-                onInvalidEdit();
-                return;
-              }
-              onChange({
-                ...command,
-                lineEnding: {
-                  kind: "custom",
-                  bytesBase64: bytesToBase64(bytes),
-                },
-              });
+              onChange(
+                bytes
+                  ? {
+                      ...command,
+                      lineEnding: {
+                        kind: "custom",
+                        bytesBase64: bytesToBase64(bytes),
+                      },
+                    }
+                  : command,
+                value,
+                typingEdit(event),
+              );
             }}
           />
           {invalidEnding && (

@@ -48,6 +48,20 @@ function eventLocation(event: RawEvent): EventLocation {
   ];
 }
 
+export type StreamBookmark = {
+  reference: string;
+  event: string;
+  time: string;
+};
+
+export function streamEventBookmark(event: RawEvent): StreamBookmark {
+  return {
+    reference: streamLocationReference(eventLocation(event)),
+    event: event.eventSeq,
+    time: event.time.sourceWallTime ?? event.time.receivedWallTime,
+  };
+}
+
 export function streamLocationReference(location: EventLocation): string {
   return REFERENCE_PREFIX + JSON.stringify(location);
 }

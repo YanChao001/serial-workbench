@@ -881,3 +881,122 @@ async fn completed_boundary_does_not_include_a_later_blocked_tx() {
     assert_eq!(support::receipt(&later_result).outcome, TxOutcome::Accepted);
     assert_eq!(h.write_count(), 2);
 }
+
+#[tokio::test]
+async fn tx_calendar_window_is_checked_at_device_dispatch_after_host_waiting() {
+    let h = support::Harness::new().await;
+    let target = h.open("calendar-dispatch-window").await;
+    let service = TransmissionService::new(h.host.devices().clone());
+    let now = chrono::DateTime::parse_from_rfc3339(h.clock.wall_time().as_str())
+        .unwrap()
+        .timestamp_millis();
+    let call = |earliest: i64, latest: i64| {
+        h.call(
+            &target,
+            "session.tx",
+            serde_json::json!({
+                "bytesBase64": "AQIDBAU=",
+                "writeWaitMs": "100",
+                "dispatchWindow": {
+                    "earliestUnixMs": earliest.to_string(),
+                    "latestUnixMs": latest.to_string()
+                }
+            }),
+        )
+    };
+    let (allowed, prepared) = tracked(&h, &service, call(now, now + 10));
+    let allowed_id = allowed.operation.operation_id.clone();
+    service.execute(allowed, prepared).await.unwrap();
+    let sent = h.store.get(&h.actor, &allowed_id).unwrap();
+    assert!(matches!(sent.result, Some(ActionResult::Tx(tx)) if tx.outcome == TxOutcome::Accepted));
+    assert_eq!(h.write_count(), 1);
+
+    let (late, prepared) = tracked(&h, &service, call(now, now + 10));
+    let late_id = late.operation.operation_id.clone();
+    let (entered, wait_for_dispatch) = tokio::sync::oneshot::channel();
+    let (continue_dispatch, release) = tokio::sync::oneshot::channel();
+    *service.dispatch_gap.lock().unwrap() = Some((entered, release));
+    let owner = service.clone();
+    let pending = tokio::spawn(async move { owner.execute(late, prepared).await });
+    tokio::time::timeout(Duration::from_secs(2), wait_for_dispatch)
+        .await
+        .expect("the admitted write reached the dispatch boundary")
+        .unwrap();
+    h.clock.advance_ms(20);
+    continue_dispatch.send(()).unwrap();
+    pending.await.unwrap().unwrap();
+    let missed = h.store.get(&h.actor, &late_id).unwrap();
+    let Some(ActionResult::Tx(tx)) = missed.result else {
+        panic!("missing rejected transmission receipt: {missed:?}");
+    };
+    assert_eq!(tx.outcome, TxOutcome::Rejected);
+    assert!(tx.accepted_ranges.is_empty());
+    assert!(tx.unknown_ranges.is_empty());
+    assert_eq!(tx.backend_error.unwrap().code, "TX_DISPATCH_WINDOW_MISSED");
+    assert_eq!(h.write_count(), 1, "no overdue write reached the backend");
+
+    let (expired, prepared) = tracked(&h, &service, call(now - 20, now - 10));
+    let expired_id = expired.operation.operation_id.clone();
+    service.execute(expired, prepared).await.unwrap();
+    let missed = h.store.get(&h.actor, &expired_id).unwrap();
+    let Some(ActionResult::Tx(tx)) = missed.result else {
+        panic!("missing expired transmission receipt: {missed:?}");
+    };
+    assert_eq!(tx.outcome, TxOutcome::Rejected);
+    assert_eq!(tx.backend_error.unwrap().code, "TX_DISPATCH_WINDOW_MISSED");
+    assert_eq!(h.write_count(), 1);
+    let held_write = Arc::new(support::Gate::default());
+    h.probe.steps.lock().unwrap().push_back(support::WriteStep {
+        accepted: 5,
+        unknown: false,
+        gate: Some(held_write.clone()),
+        advance_ms: 0,
+    });
+    let (ordinary, prepared) = tracked(
+        &h,
+        &service,
+        h.call(
+            &target,
+            "session.tx",
+            serde_json::json!({"bytesBase64":"AQIDBAU=","writeWaitMs":"100"}),
+        ),
+    );
+    let owner = service.clone();
+    let held = tokio::spawn(async move { owner.execute(ordinary, prepared).await });
+    support::until(|| held_write.entered.load(Ordering::SeqCst)).await;
+    let (queued, prepared) = tracked(&h, &service, call(now, now + 10));
+    let queued_id = queued.operation.operation_id.clone();
+    let owner = service.clone();
+    let pending = tokio::spawn(async move { owner.execute(queued, prepared).await });
+    let runtime = service.runtime(&target).unwrap();
+    support::until(|| {
+        runtime
+            .queue
+            .lock()
+            .unwrap()
+            .entries
+            .iter()
+            .any(|entry| entry.id == queued_id)
+    })
+    .await;
+    h.clock.advance_ms(20);
+    let queue_result = tokio::time::timeout(Duration::from_secs(2), pending).await;
+    held_write.release();
+    held.await.unwrap().unwrap();
+    queue_result
+        .expect("the elapsed calendar window releases the queued operation")
+        .unwrap()
+        .unwrap();
+    let missed = h.store.get(&h.actor, &queued_id).unwrap();
+    let Some(ActionResult::Tx(tx)) = missed.result else {
+        panic!("missing queued transmission receipt: {missed:?}");
+    };
+    assert_eq!(tx.outcome, TxOutcome::Rejected);
+    assert_eq!(tx.backend_error.unwrap().code, "TX_DISPATCH_WINDOW_MISSED");
+    assert_eq!(
+        h.write_count(),
+        2,
+        "the queued scheduled write stayed in Host"
+    );
+    h.host.shutdown().await.unwrap();
+}
