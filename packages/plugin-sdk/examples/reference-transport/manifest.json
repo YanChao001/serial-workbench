@@ -1,9 +1,9 @@
 {
   "schemaVersion": "0.1",
   "id": "reference.transport",
-  "version": "0.1.0",
-  "displayName": "Loopback TCP Transport",
-  "description": "Open a session against a TCP peer on this machine.",
+  "version": "0.2.0",
+  "displayName": "TCP Transport",
+  "description": "Connect to a TCP peer or listen for one peer per session.",
   "license": "Apache-2.0",
   "notices": ["LICENSE", "NOTICE"],
   "hostProtocolVersion": "0.1",
@@ -19,7 +19,7 @@
         "targetKinds": ["device"]
       }
     ],
-    "executionPurposes": ["loopback-tcp"],
+    "executionPurposes": ["tcp-transport"],
     "externalTools": []
   },
   "contributes": {
@@ -32,6 +32,16 @@
         "inputSchema": {
           "type": "object",
           "properties": {
+            "role": {
+              "type": "string",
+              "enum": ["client", "server"]
+            },
+            "host": {
+              "type": "string",
+              "minLength": 1,
+              "maxLength": 253,
+              "pattern": "^[a-zA-Z0-9_.:%-]{1,253}$"
+            },
             "port": {
               "type": "integer",
               "minimum": 1,

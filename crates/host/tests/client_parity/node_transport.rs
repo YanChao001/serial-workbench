@@ -24,6 +24,7 @@ const WAIT: Duration = Duration::from_secs(5);
 #[derive(Clone, Copy, PartialEq, Eq)]
 enum TransportScenario {
     Normal,
+    Server,
     OwnerExit,
 }
 
@@ -60,6 +61,12 @@ export const register = (context) => {
 #[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
 async fn native_node_dynamic_transport_owns_tcp_session_source_and_closes_peer() {
     signed_transport(TransportScenario::Normal).await;
+}
+
+#[tokio::test]
+#[ignore = "Requires pnpm plugin-sdk:fixture and SWB_NODE_RUNTIME_TEST_ROOT"]
+async fn native_node_dynamic_transport_listens_for_one_peer_per_generation() {
+    signed_transport(TransportScenario::Server).await;
 }
 
 #[tokio::test]
@@ -209,10 +216,17 @@ async fn signed_transport(scenario: TransportScenario) {
             id: provider.device_id.clone(),
             ..host_target.clone()
         };
-        let listener = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let reserved = TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).await.unwrap();
+        let endpoint = reserved.local_addr().unwrap();
+        let (listener, transport_params) = if scenario == TransportScenario::Server {
+            drop(reserved);
+            (None, json!({"role":"server","port":endpoint.port()}))
+        } else {
+            (Some(reserved), json!({"port":endpoint.port()}))
+        };
         let open_params = json!({
             "configuration": SerialConfiguration::default(),
-            "transportParams": {"port": listener.local_addr().unwrap().port()},
+            "transportParams": transport_params,
         });
         denied(
             client
@@ -225,54 +239,21 @@ async fn signed_transport(scenario: TransportScenario) {
                 .await
                 .unwrap(),
         );
-        assert!(
-            timeout(Duration::from_millis(100), listener.accept())
-                .await
-                .is_err()
-        );
-
-        grant(&auth, &operator, &client, &device, &["device.modify"]);
-        let first = open_session(&client, &host_target, &device, open_params.clone()).await;
-        let (mut peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
-        assert!(address.ip().is_loopback());
-        if scenario == TransportScenario::OwnerExit {
-            grant(
-                &auth,
-                &operator,
-                &client,
-                &first,
-                &["content.read", "device.modify"],
-            );
-            verify_owner_exit(&client, &manager, &host_target, &device, &first, &mut peer).await;
-            assert!(path.join(OWNER_EXIT_MARKER).is_file());
-            let attempt = client
-                .request(RpcRequest::Invoke(call(
-                    &client,
-                    "device.open",
-                    &device,
-                    open_params,
-                )))
-                .await
-                .unwrap();
-            let fault = match attempt {
-                RpcReply::Failure { error, .. } => error,
-                reply => wait_for_terminal(&client, &host_target, success(reply))
-                    .await
-                    .error
-                    .expect("Open must fail for a disappeared provider"),
-            };
-            assert_eq!(fault.code, "DEVICE_NOT_FOUND");
+        if let Some(listener) = &listener {
             assert!(
                 timeout(Duration::from_millis(100), listener.accept())
                     .await
                     .is_err()
             );
-            eprintln!(
-                "transport owner_exit signed_archive={} status=failed directory_unloaded=true open_rejected=true fixture_reactivation_gated=true",
-                enabled.package.archive_sha256,
-            );
-            return;
+        } else {
+            let unused = TcpListener::bind(endpoint)
+                .await
+                .expect("Unauthorized open reserved the TCP port");
+            drop(unused);
         }
+
+        grant(&auth, &operator, &client, &device, &["device.modify"]);
+        let first = open_session(&client, &host_target, &device, open_params.clone()).await;
         let raw = client.connect_raw().await.unwrap();
         let read_params = json!({
             "sessionId":first.session_id, "sessionEpoch":first.session_epoch,
@@ -296,6 +277,61 @@ async fn signed_transport(scenario: TransportScenario) {
             &["content.read", "device.modify"],
         );
 
+        if scenario == TransportScenario::Server {
+            let empty = wait_for_terminal(
+                &client,
+                &host_target,
+                success(
+                    client
+                        .request(RpcRequest::Invoke(tx_call(&client, &first, &[0xEE])))
+                        .await
+                        .unwrap(),
+                ),
+            )
+            .await;
+            let Some(ActionResult::Tx(receipt)) = empty.result else {
+                panic!("Expected an explicit no-peer TX receipt: {empty:?}");
+            };
+            assert!(
+                receipt.accepted_ranges.is_empty() && receipt.unknown_ranges.is_empty(),
+                "{receipt:?}"
+            );
+        }
+        let mut peer = connect_peer(listener.as_ref(), endpoint).await;
+        if scenario == TransportScenario::OwnerExit {
+            verify_owner_exit(&client, &manager, &host_target, &device, &first, &mut peer).await;
+            assert!(path.join(OWNER_EXIT_MARKER).is_file());
+            let attempt = client
+                .request(RpcRequest::Invoke(call(
+                    &client,
+                    "device.open",
+                    &device,
+                    open_params,
+                )))
+                .await
+                .unwrap();
+            let fault = match attempt {
+                RpcReply::Failure { error, .. } => error,
+                reply => wait_for_terminal(&client, &host_target, success(reply))
+                    .await
+                    .error
+                    .expect("Open must fail for a disappeared provider"),
+            };
+            assert_eq!(fault.code, "DEVICE_NOT_FOUND");
+            assert!(
+                timeout(
+                    Duration::from_millis(100),
+                    listener.as_ref().unwrap().accept()
+                )
+                .await
+                .is_err()
+            );
+            eprintln!(
+                "transport owner_exit signed_archive={} status=failed directory_unloaded=true open_rejected=true fixture_reactivation_gated=true",
+                enabled.package.archive_sha256,
+            );
+            return;
+        }
         let sent = [0, b'T', 13, 10, 255, 128, b'C'];
         let accepted = success(
             client
@@ -384,8 +420,7 @@ async fn signed_transport(scenario: TransportScenario) {
         let second = open_session(&client, &host_target, &device, open_params).await;
         assert_eq!(second.id, first.id);
         assert!(second.session_epoch > first.session_epoch);
-        let (mut peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
-        assert!(address.ip().is_loopback());
+        let mut peer = connect_peer(listener.as_ref(), endpoint).await;
         grant(
             &auth,
             &operator,
@@ -475,8 +510,18 @@ async fn signed_transport(scenario: TransportScenario) {
         .await;
         assert!(!disabled.package.enabled);
         peer_eof(&mut peer).await;
+        if listener.is_none() {
+            TcpListener::bind(endpoint)
+                .await
+                .expect("The provider left the TCP port open");
+        }
         eprintln!(
-            "transport signed_archive={} device={} session={} epochs={:?}/{:?} tcp_tx_rx_bytes={} peer_closed=true",
+            "transport role={} signed_archive={} device={} session={} epochs={:?}/{:?} tcp_tx_rx_bytes={} peer_closed=true",
+            if listener.is_some() {
+                "client"
+            } else {
+                "server"
+            },
             enabled.package.archive_sha256,
             device.id,
             first.id,
@@ -616,6 +661,19 @@ async fn open_session(
     }
 }
 
+async fn connect_peer(listener: Option<&TcpListener>, endpoint: std::net::SocketAddr) -> TcpStream {
+    if let Some(listener) = listener {
+        let (peer, address) = timeout(WAIT, listener.accept()).await.unwrap().unwrap();
+        assert!(address.ip().is_loopback());
+        peer
+    } else {
+        timeout(WAIT, TcpStream::connect(endpoint))
+            .await
+            .unwrap()
+            .unwrap()
+    }
+}
+
 async fn peer_eof(peer: &mut TcpStream) {
     let mut byte = [0];
     assert_eq!(
@@ -738,7 +796,7 @@ async fn install_signed_provider(
     approve.expected_revision = Some(0.into());
     completed(admin, host, approve).await;
     let (entry, wrapped) = match scenario {
-        TransportScenario::Normal => (program, None),
+        TransportScenario::Normal | TransportScenario::Server => (program, None),
         TransportScenario::OwnerExit => (
             EXIT_DURING_WRITE
                 .replace(
