@@ -20,6 +20,7 @@ import {
 } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
 import type { FramingFrame } from "./framing-model";
 import type { FramingInspection } from "./framing-anomalies-model";
+import type { SessionSnapshot } from "@serial-workbench/contracts";
 import { FieldChart } from "./field-chart";
 import { BusLoad } from "./bus-load";
 import { isChartField } from "./field-chart-model";
@@ -75,6 +76,7 @@ export default function ProtocolFieldPreview({
   fileAccess,
   inspection,
   readOnly = false,
+  replaySession,
   sourceSelection,
   onRevealSource,
 }: {
@@ -82,6 +84,7 @@ export default function ProtocolFieldPreview({
   fileAccess?: ProtocolDefinitionFileAccess;
   inspection?: FramingInspection;
   readOnly?: boolean;
+  replaySession?: Pick<SessionSnapshot, "sessionId" | "sessionEpoch">;
   sourceSelection?: ChartSourceSelection;
   onRevealSource?: (source: ChartSourceSelection) => void;
 }) {
@@ -594,6 +597,7 @@ export default function ProtocolFieldPreview({
           frame={frame}
           field={chart?.field}
           selectionLocked={valuesDirty}
+          replaySession={replaySession}
           sourceSelection={sourceSelection}
           onRevealSource={onRevealSource}
           onSelect={(entry, field) => {

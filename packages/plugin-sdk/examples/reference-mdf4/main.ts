@@ -1,9 +1,8 @@
 import type { NodeRegister } from "@serial-workbench/plugin-sdk/node";
 import { encodeMdf4, type MeasurementChannel } from "./encode.ts";
 
-const packageId = "swb.pro.mdf4";
+import { maxMdf4Samples, mdf4Action } from "./snapshot.ts";
 const maxChannels = 16;
-const maxSamples = 256;
 const u64Maximum = (1n << 64n) - 1n;
 const i64Maximum = (1n << 63n) - 1n;
 const i64Minimum = -(1n << 63n);
@@ -47,7 +46,7 @@ function decodeMeasurement(input: unknown) {
     input.channels.length > maxChannels ||
     !Array.isArray(input.samples) ||
     input.samples.length === 0 ||
-    input.samples.length > maxSamples
+    input.samples.length > maxMdf4Samples
   )
     throw new Error("MDF4 requires 1–16 channels and 1–256 samples");
 
@@ -101,7 +100,7 @@ function decodeMeasurement(input: unknown) {
 }
 
 export const register: NodeRegister = (context) => {
-  context.actions.register(`${packageId}.exportMdf4`, (call, task) => {
+  context.actions.register(mdf4Action, (call, task) => {
     task.signal.throwIfAborted();
     const file = encodeMdf4(decodeMeasurement(call.params));
     return file.toString("base64");

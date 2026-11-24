@@ -8,8 +8,9 @@ use crate::{
 };
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use serial_workbench_core::{
-    ActionResult, HostError, HostResult, Id, NODE_CSV_RESULT_MAX_BYTES, NODE_PNG_RESULT_MAX_BYTES,
-    OperationState, PNG_SIGNATURE, QueryResult, ResourceKind, RpcRequest, RpcResult, Target, U64,
+    ActionResult, HostError, HostResult, Id, MDF4_SIGNATURE, NODE_CSV_RESULT_MAX_BYTES,
+    NODE_MDF4_RESULT_MAX_BYTES, NODE_PNG_RESULT_MAX_BYTES, OperationState, PNG_SIGNATURE,
+    QueryResult, ResourceKind, RpcRequest, RpcResult, Target, U64,
 };
 use std::{future::Future, path::PathBuf};
 use tauri_plugin_dialog::DialogExt;
@@ -19,6 +20,7 @@ pub(crate) enum ChartArtifact {
     Svg,
     Csv,
     Png,
+    Mdf4,
 }
 
 impl ChartArtifact {
@@ -27,6 +29,7 @@ impl ChartArtifact {
             Self::Svg => "svg",
             Self::Csv => "csv",
             Self::Png => "png",
+            Self::Mdf4 => "mf4",
         }
     }
 
@@ -35,6 +38,7 @@ impl ChartArtifact {
             Self::Svg => 24 * 1024,
             Self::Csv => NODE_CSV_RESULT_MAX_BYTES as u64,
             Self::Png => NODE_PNG_RESULT_MAX_BYTES as u64,
+            Self::Mdf4 => NODE_MDF4_RESULT_MAX_BYTES as u64,
         }
     }
 
@@ -42,6 +46,9 @@ impl ChartArtifact {
         match self {
             Self::Svg => bytes.starts_with(b"<svg "),
             Self::Png => bytes.starts_with(PNG_SIGNATURE),
+            Self::Mdf4 => {
+                bytes.len() >= 64 && bytes.starts_with(MDF4_SIGNATURE) && bytes[8..10] == *b"4."
+            }
             Self::Csv => {
                 bytes.starts_with(b"sample_index,value_v,") && std::str::from_utf8(bytes).is_ok()
             }
@@ -51,6 +58,9 @@ impl ChartArtifact {
 
 fn chart_artifact(action: &str) -> Option<(&str, ChartArtifact)> {
     let (package, action) = action.rsplit_once('.')?;
+    if package == "swb.pro.mdf4" && action == "exportMdf4" {
+        return Some((package, ChartArtifact::Mdf4));
+    }
     if !matches!(package, "swb.reference.chart" | "swb.builtin.chart") {
         return None;
     }

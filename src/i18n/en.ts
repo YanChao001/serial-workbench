@@ -1991,6 +1991,15 @@ export const en = {
     "This byte is outside the verified source of the selected field.",
   "workbench.fieldChart.plot": "Plot fields",
   "workbench.fieldChart.exportCsv": "Export CSV",
+  "workbench.fieldChart.exportMdf4": "Export MDF4",
+  "workbench.fieldChart.mdf4Range": "Select 1–256 frames for MDF4 export.",
+  "workbench.fieldChart.mdf4Time":
+    "Select frames with verified times from one source and clock.",
+  "workbench.fieldChart.mdf4Field":
+    "The field name or unit is too long for MDF4 export.",
+  "workbench.fieldChart.mdf4Saved": "Field chart MDF4 saved.",
+  "workbench.fieldChart.mdf4Failed":
+    "Could not save MDF4. Check plugin access and the save location.",
   "workbench.fieldChart.csvSaved": "Field chart CSV saved.",
   "workbench.fieldChart.csvFailed":
     "Could not save the field chart CSV. Try a smaller range or another location.",

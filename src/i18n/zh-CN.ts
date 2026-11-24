@@ -1831,6 +1831,13 @@ export const zhCN = {
     "所选字段的已核对来源不包含这个字节。",
   "workbench.fieldChart.plot": "绘制字段",
   "workbench.fieldChart.exportCsv": "导出 CSV",
+  "workbench.fieldChart.exportMdf4": "导出 MDF4",
+  "workbench.fieldChart.mdf4Range": "请选择 1 至 256 帧以导出 MDF4。",
+  "workbench.fieldChart.mdf4Time": "请选择同一来源和时钟中有可核对时间的帧。",
+  "workbench.fieldChart.mdf4Field": "字段名称或单位过长，无法导出 MDF4。",
+  "workbench.fieldChart.mdf4Saved": "已保存字段图表 MDF4。",
+  "workbench.fieldChart.mdf4Failed":
+    "无法保存 MDF4，请检查插件权限和保存位置。",
   "workbench.fieldChart.csvSaved": "已保存字段图表 CSV。",
   "workbench.fieldChart.csvFailed":
     "无法保存字段图表 CSV，请缩小范围或选择其他保存位置。",

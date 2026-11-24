@@ -21,6 +21,7 @@ export type FieldChartFrame = {
     instance: string;
     revision: string;
     clock: string;
+    endTime: RawEvent["time"];
     spans: Span[];
   };
   breakBefore?: boolean;
@@ -41,8 +42,8 @@ export function retainedSource(
   let next = BigInt(frame.byteStart);
   let consumed = 0;
   const startEvent = events.get(first);
-  if (startEvent?.kind !== "rx" || events.get(after - 1n)?.kind !== "rx")
-    return;
+  const lastEvent = events.get(after - 1n);
+  if (startEvent?.kind !== "rx" || lastEvent?.kind !== "rx") return;
   const instance = startEvent.instanceEpoch;
   const revision = startEvent.configurationRevision;
   const clock = startEvent.time.clockId;
@@ -90,6 +91,7 @@ export function retainedSource(
       instance,
       revision,
       clock,
+      endTime: lastEvent.time,
       spans,
     };
 }
