@@ -135,6 +135,9 @@ pub struct NodePackageSummary {
 pub struct NodePackageListParams {
     #[serde(default = "package_page_size")]
     pub page_size: U64,
+    #[serde(default, skip_serializing_if = "std::ops::Not::not")]
+    #[specta(optional)]
+    pub parser_only: bool,
     #[serde(
         default,
         skip_serializing_if = "Option::is_none",

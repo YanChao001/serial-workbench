@@ -83,9 +83,15 @@ try {
     width: 1240,
     height: 760,
   });
-  await source.tool
+  const parserChoices = source.tool.getByRole("group", {
+    name: /^(Parser plug-ins|解析器插件)$/,
+  });
+  await parserChoices
     .getByRole("checkbox", { name: "Serial Workbench Framing" })
     .check();
+  await expect(
+    parserChoices.getByRole("checkbox", { name: /Automation|自动化/i }),
+  ).toHaveCount(0);
   await source.tool
     .getByRole("checkbox", { name: fixture.recording.id, exact: true })
     .check();
@@ -220,6 +226,7 @@ try {
         formatVersion: exported.formatVersion,
         parserStatus: "missing",
         recordingStatus: "other_host",
+        excludedNonParserPackages: true,
         redactedPackageDownloaded: true,
         destinationNamePreserved: true,
         destinationDeviceReboundExplicitly: true,

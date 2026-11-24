@@ -139,7 +139,9 @@ export function ExperimentPackageTool({
   useEffect(() => {
     if (mode !== "export" || disabled) return;
     const controller = new AbortController();
-    void loadInstalledPlugins(connection, controller.signal).then(
+    void loadInstalledPlugins(connection, controller.signal, {
+      parserOnly: true,
+    }).then(
       ({ packages }) => {
         if (controller.signal.aborted) return;
         setPackages(packages.filter((item) => item.version !== undefined));

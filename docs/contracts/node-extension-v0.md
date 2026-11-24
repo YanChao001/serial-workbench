@@ -90,7 +90,9 @@ Windows 的证明对象持有拒绝写入/删除共享的文件句柄及目录�
 
 ### 管理查询
 
-`node.packages.list` 是 Host 目标的只读分页查询，要求当前 `metadata.read`，回复为 `QueryResult` 的 `node_packages` 分支。[Rust 管理 DTO](../../crates/core/src/node_management.rs) 的输入为 `{pageSize?,after?,expectedRevision?}`；pageSize 默认 20、范围 1—100，after 必须同时携带首张快照的 expectedRevision。返回同一次安装文档读取的 revision、packages 与可选 nextAfter；续页期间安装记录改变返回 `REVISION_CONFLICT`，客户端重新取首张快照。
+`node.packages.list` 是 Host 目标的只读分页查询，要求当前 `metadata.read`，回复为 `QueryResult` 的 `node_packages` 分支。[Rust 管理 DTO](../../crates/core/src/node_management.rs) 的输入为 `{pageSize?,after?,expectedRevision?,parserOnly?}`。pageSize 默认 20、范围 1—100。after 必须同时携带首张快照的 expectedRevision。返回同一次安装文档读取的 revision、packages 与可选 nextAfter。续页期间安装记录改变返回 `REVISION_CONFLICT`，客户端重新取首张快照。
+
+省略 `parserOnly` 即读取完整安装目录。传入 `true` 时只返回签名清单声明 `contributes.parsers` 的包，包含已禁用的版本。筛选在分页前执行，续页沿用同一筛选。游标指向筛选范围以外的包时返回 `INVALID_ARGUMENT`。实验包的解析器选择、导出与依赖检查使用这个目录。
 
 每项为有界的 `NodePackageSummary`，包含 `{id,displayName?,version?,archiveSha256,enabled,sourceVerified,executionApproved}`。Host 从已校验的安装清单生成显示名称与版本。名称超过 96 个 Unicode 标量时提供带省略号的预览，版本超过 128 字节时省略该字段。完整清单可通过详读接口读取，历史操作回执也可省略这两项。sourceVerified 表示安装记录带有来源验证收据；executionApproved 表示持久确认仍精确绑定该记录的归档、权限声明和来源。它们是历史记录投影，enabled 也仅为启用意图，均不表示后台已激活、当前来源仍可信或调用者仍有执行权限。实际接纳与效果边界仍按下述生命周期复核。
 

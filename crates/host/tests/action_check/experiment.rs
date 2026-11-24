@@ -21,6 +21,97 @@ async fn experiment_failure(
 }
 
 #[tokio::test]
+async fn experiment_filters_signed_parser_contributions_before_paging() {
+    let f = Fixture::start(0, None, true).await;
+    let host = f.host_target();
+    let workspace = f.target("workspace", "default");
+    f.grant("document-a", "metadata.read", &host);
+    f.grant("document-a", "metadata.read", &workspace);
+    let snapshot = NodePackageInstaller::read_snapshot(&f.store).unwrap();
+    let automation_id = NodePackageId::try_from("swb.builtin.automation").unwrap();
+    let expected: Vec<_> = snapshot
+        .packages
+        .iter()
+        .filter(|item| !item.manifest.contributes.parsers.is_empty())
+        .map(|item| item.manifest.id.clone())
+        .collect();
+    assert!(
+        expected
+            .iter()
+            .any(|id| id.as_str() == "swb.reference.framing")
+    );
+    assert!(!expected.contains(&automation_id));
+
+    let full: NodePackageListResult = serde_json::from_value(
+        read(
+            &f.first,
+            &host,
+            "node.packages.list",
+            json!({"pageSize":"100"}),
+        )
+        .await,
+    )
+    .unwrap();
+    let automation = full
+        .packages
+        .iter()
+        .find(|item| item.id == automation_id)
+        .unwrap();
+    let mut params = json!({"parserOnly":true,"pageSize":"1"});
+    let mut actual = Vec::new();
+    loop {
+        let page: NodePackageListResult =
+            serde_json::from_value(read(&f.first, &host, "node.packages.list", params).await)
+                .unwrap();
+        assert_eq!(page.revision, full.revision);
+        assert!(page.packages.len() <= 1);
+        actual.extend(page.packages.into_iter().map(|item| item.id));
+        let Some(after) = page.next_after else { break };
+        assert_eq!(actual.last(), Some(&after));
+        assert!(actual.len() < expected.len());
+        params = json!({"parserOnly":true,"pageSize":"1","expectedRevision":page.revision,"after":after});
+    }
+    assert_eq!(actual, expected);
+    experiment_failure(
+        &f.first,
+        &host,
+        "node.packages.list",
+        json!({"parserOnly":true,"expectedRevision":full.revision,"after":automation.id}),
+        "INVALID_ARGUMENT",
+    )
+    .await;
+    experiment_failure(
+        &f.first,
+        &workspace,
+        "workspace.experiment.export",
+        json!({"workspaceRevision":"0","parsers":[automation.id],"recordings":[],"firmware":[],"operations":[]}),
+        "NOT_FOUND",
+    )
+    .await;
+
+    let mut archive = read(
+        &f.first,
+        &workspace,
+        "workspace.experiment.export",
+        json!({"workspaceRevision":"0","parsers":[],"recordings":[],"firmware":[],"operations":[]}),
+    )
+    .await;
+    archive["parsers"] = json!([{
+        "id": automation.id,
+        "version": automation.version.as_ref().unwrap(),
+        "archiveSha256": automation.archive_sha256,
+    }]);
+    let inspection = read(
+        &f.first,
+        &workspace,
+        "workspace.experiment.inspect",
+        json!({"json":archive.to_string()}),
+    )
+    .await;
+    assert_eq!(inspection["parserStatus"], json!(["missing"]));
+}
+
+#[tokio::test]
 async fn experiment_package_exports_only_portable_data_and_checks_dependencies_without_writes() {
     let f = Fixture::start(0, None, true).await;
     let workspace_target = f.target("workspace", "experiment-test");

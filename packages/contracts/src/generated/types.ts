@@ -3457,12 +3457,14 @@ export type NodePackageListParams =
 
 export type NodePackageListParams_Deserialize = {
   pageSize?: U64;
+  parserOnly?: boolean;
   after?: NodePackageId;
   expectedRevision?: U64;
 };
 
 export type NodePackageListParams_Serialize = {
   pageSize: U64;
+  parserOnly?: boolean;
   after?: NodePackageId;
   expectedRevision?: U64;
 };

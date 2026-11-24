@@ -113595,7 +113595,8 @@ function validate244(
       if (!(
         key0 === "after" ||
         key0 === "expectedRevision" ||
-        key0 === "pageSize"
+        key0 === "pageSize" ||
+        key0 === "parserOnly"
       )) {
         const err0 = {
           instancePath,
@@ -113663,8 +113664,25 @@ function validate244(
         errors = vErrors.length;
       }
     }
+    if (data.parserOnly !== void 0 && func0.call(data, "parserOnly")) {
+      if (typeof data.parserOnly !== "boolean") {
+        const err1 = {
+          instancePath: instancePath + "/parserOnly",
+          schemaPath: "#/properties/parserOnly/type",
+          keyword: "type",
+          params: { type: "boolean" },
+          message: "must be boolean",
+        };
+        if (vErrors === null) {
+          vErrors = [err1];
+        } else {
+          vErrors.push(err1);
+        }
+        errors++;
+      }
+    }
   } else {
-    const err1 = {
+    const err2 = {
       instancePath,
       schemaPath: "#/type",
       keyword: "type",
@@ -113672,9 +113690,9 @@ function validate244(
       message: "must be object",
     };
     if (vErrors === null) {
-      vErrors = [err1];
+      vErrors = [err2];
     } else {
-      vErrors.push(err1);
+      vErrors.push(err2);
     }
     errors++;
   }

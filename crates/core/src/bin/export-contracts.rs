@@ -1391,6 +1391,16 @@ fn node_package_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
     )?;
     f.add::<NodePackageListParams>("node-packages-default-page", json!({}), true)?;
     f.add::<NodePackageListParams>(
+        "node-packages-parser-page",
+        json!({"parserOnly":true}),
+        true,
+    )?;
+    f.add::<NodePackageListParams>(
+        "node-packages-null-parser-filter",
+        json!({"parserOnly":null}),
+        false,
+    )?;
+    f.add::<NodePackageListParams>(
         "node-packages-next-page",
         json!({"pageSize":"1","after":"example.terminal","expectedRevision":"1"}),
         true,

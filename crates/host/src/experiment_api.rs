@@ -214,23 +214,26 @@ impl Host {
         let manager = self.inner.node_packages.clone();
         let actor = actor.clone();
         blocking(move || {
-            let mut params = NodePackageListParams {
-                page_size: 50.into(),
-                after: None,
-                expected_revision: None,
-            };
+            let mut after = None;
+            let mut expected_revision = None;
             let mut entries = Vec::new();
             loop {
-                let result = manager.list(&actor, &target, params)?;
+                let result = manager.list(
+                    &actor,
+                    &target,
+                    NodePackageListParams {
+                        page_size: 50.into(),
+                        parser_only: true,
+                        after,
+                        expected_revision,
+                    },
+                )?;
                 entries.extend(result.packages);
-                let Some(after) = result.next_after else {
+                let Some(next_after) = result.next_after else {
                     return Ok(entries);
                 };
-                params = NodePackageListParams {
-                    page_size: 50.into(),
-                    after: Some(after),
-                    expected_revision: Some(result.revision),
-                };
+                after = Some(next_after);
+                expected_revision = Some(result.revision);
             }
         })
         .await

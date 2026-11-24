@@ -338,27 +338,22 @@ impl NodePackageManager {
         {
             return Err(failure("REVISION_CONFLICT", "packageSnapshotChanged"));
         }
-        let start = match params.after {
-            Some(after) => {
-                snapshot
-                    .packages
-                    .iter()
-                    .position(|package| package.manifest.id == after)
-                    .ok_or_else(|| super::invalid("packagePageCursor"))?
-                    + 1
-            }
-            None => 0,
-        };
-        let total = snapshot.packages.len();
-        let packages: Vec<NodePackageSummary> = snapshot
-            .packages
-            .into_iter()
-            .skip(start)
+        let mut candidates = snapshot.packages.into_iter().filter(|package| {
+            !params.parser_only || !package.manifest.contributes.parsers.is_empty()
+        });
+        if let Some(after) = params.after {
+            candidates
+                .find(|package| package.manifest.id == after)
+                .ok_or_else(|| super::invalid("packagePageCursor"))?;
+        }
+        let packages: Vec<NodePackageSummary> = candidates
+            .by_ref()
             .take(params.page_size.get() as usize)
             .map(Into::into)
             .collect();
-        let next_after = (start + packages.len() < total)
-            .then(|| packages.last().expect("nonempty package page").id.clone());
+        let next_after = candidates
+            .next()
+            .map(|_| packages.last().expect("nonempty package page").id.clone());
         if let Some(stamp) = stamp {
             self.auth.validate_grants(&stamp)?;
         }

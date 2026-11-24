@@ -673,6 +673,13 @@
       }
     },
     {
+      "name": "node-packages-null-parser-filter",
+      "schema": "NodePackageListParams",
+      "value": {
+        "parserOnly": null
+      }
+    },
+    {
       "name": "node-packages-null-after",
       "schema": "NodePackageListParams",
       "value": {
@@ -11666,6 +11673,13 @@
       "name": "node-packages-default-page",
       "schema": "NodePackageListParams",
       "value": {}
+    },
+    {
+      "name": "node-packages-parser-page",
+      "schema": "NodePackageListParams",
+      "value": {
+        "parserOnly": true
+      }
     },
     {
       "name": "node-packages-next-page",
