@@ -1560,6 +1560,10 @@ export const en = {
   "workbench.fieldChart.sourceUnavailable":
     "This byte is outside the verified source of the selected field.",
   "workbench.fieldChart.plot": "Plot fields",
+  "workbench.fieldChart.exportCsv": "Export CSV",
+  "workbench.fieldChart.csvSaved": "Field chart CSV saved.",
+  "workbench.fieldChart.csvFailed":
+    "Could not save the field chart CSV. Try a smaller range or another location.",
   "workbench.fieldChart.plotLabel": "Field value by frame order",
   "workbench.fieldChart.noNumericField":
     "No numeric fields could be decoded in this page.",

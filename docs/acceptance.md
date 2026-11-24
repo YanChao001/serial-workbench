@@ -381,6 +381,12 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 字段签名包由 0.1.0 升至 0.2.0。独立 profile 分别核对已启用、已停用和已卸载三种状态，重复初始化核对快照幂等。真实 Host 在有权会话中调用随包的构造与解码动作，检查标定版本、物理值和原字节同时命中。图表追溯、独立设备、发行实装与版本回退按同一候选继续专项验收。
 
+### 字段图表 CSV（VIZ-13）
+
+在实时分帧或回放字段图表绘制数值字段，点击「导出 CSV」。打开压缩曲线后核对 CSV 行数仍与当前范围的帧数一致。再选择「最近 32 帧」及 XY，核对 CSV 从原图表帧序号开始，包含同一帧的 X 和 Y、原始码值以及各自来源。已确认的采集缺口保留缺失帧数，校验失败和无法确认来源的帧标为无效。对跨收块样本检查事件和字节半开区间、录制序号及原始 HEX。取消系统保存对话框时界面不显示保存成功。
+
+运行 `pnpm exec vitest run src/features/workbench/field-chart-model.test.ts` 和 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 检查精确偏移、压缩及筛选、同帧配对与保存入口。原生对话框、离屏 PNG/CSV、GUI/MCP 比对和 MDF4 继续专项验收。
+
 ### Modbus 报文模板（PROTO-04、PROTO-20）
 
 工作台「协议分帧」的「Modbus 报文」支持 RTU、ASCII、TCP，方向明确选择请求或响应。以读取 10 个保持寄存器的请求为例，报文 JSON 使用 `{"unitId":1,"pdu":{"functionCode":3,"address":0,"quantity":10}}`。RTU 预览为 `01 03 00 00 00 0A C5 CD`，ASCII 预览为 `:01030000000AF2` 后接 CRLF。添加 `"transactionId":1` 再构造 TCP，预览为 `00 01 00 00 00 06 01 03 00 00 00 0A`。用同一面板回读并核对单元号、零基地址、数量和事务 ID。 [Modbus 应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
