@@ -248,6 +248,12 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对从发送区打开录制稿、预览以及显式运行。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、资源和密钥引用继续按同项验收。
 
+### 测试用例与断言（AUTO-05）
+
+从工作区打开「命令序列」。配置 `{"kind":"send","hex":"53","expect":{"hex":"A4","timeoutMs":100,"retry":[{"hex":"54","expectHex":"A5"}]}}` 作为一个步骤。对端收到 53 时保持静默，收到 54 时回 A5。预览应显示备用请求和期望应答。显式运行后，从回执展开核对首轮超时、第二轮匹配、两个不同操作 ID 以及第二轮的 RX 区间。确认设备支持同一业务动作的重试，并提供可在应答中区分每次尝试的相关字节。
+
+用 `node --test scripts/command-sequence.test.mjs` 核对迟到旧应答、部分写入、缺失 TX 证据、重试之间的外部写入、预算和最终超时分支。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对预览、重叠应答拒绝、显式运行和逐次结果。固定 Node 原生用例 `native_node_bundled_protocol_registers_on_first_start_and_restart` 对照签名包的完整写入与进程内独立对端响应。实际串口对端和正式离线发行继续专项验收。
+
 ### 定时与循环发送（IO-09）
 
 签名自动化参考包 0.1.6 提供 `swb.reference.automation.repeat`。在独立任务中对确切会话代次提交 `sendBase64`、`periodMs` 和 `count`，可设置首次延时、抖动、RX 启动或终止条件，以及本轮期望应答。周期为 10 至 60,000 ms，每次最多 64 轮。抖动须小于半周期，以保证计划时隙的顺序。开始条件从延时后的当前源尾部起算。持有租约期间核对本轮写入和应答，轮间等待释放租约。观察到终止条件后停止接纳下一轮，已经提交的写入仍按实际结果结算。跨留存缺口或配置换代停止。每轮记录预计时隙、提交子动作前的任务时钟及操作 ID，实际写入时间和范围从该 ID 对照 Host 回执。

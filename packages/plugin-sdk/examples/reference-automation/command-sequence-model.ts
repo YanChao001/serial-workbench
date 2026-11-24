@@ -37,9 +37,11 @@ export type CommandSequenceStep =
       expect?: Expectation;
     };
 
+type Retry = { path: string; bytes: Uint8Array; response: Uint8Array };
 type Expectation = {
   bytes: Uint8Array;
   timeoutMs: number;
+  retry: readonly Retry[];
   onMatch?: readonly CommandSequenceStep[];
   onTimeout?: readonly CommandSequenceStep[];
 };
@@ -103,6 +105,69 @@ function frame(value: unknown, variables: Variables, path: string) {
   return bytes;
 }
 
+function containsFrame(bytes: Uint8Array, frame: Uint8Array) {
+  for (let offset = 0; offset <= bytes.length - frame.length; offset++) {
+    if (frame.every((byte, index) => bytes[offset + index] === byte))
+      return true;
+  }
+  return false;
+}
+
+export function responseFramesConflict(earlier: Uint8Array, later: Uint8Array) {
+  if (containsFrame(earlier, later) || containsFrame(later, earlier))
+    return true;
+  for (
+    let length = 1;
+    length < Math.min(earlier.length, later.length);
+    length++
+  ) {
+    if (
+      earlier
+        .subarray(earlier.length - length)
+        .every((byte, index) => later[index] === byte)
+    )
+      return true;
+  }
+  return false;
+}
+
+function retries(
+  input: unknown,
+  path: string,
+  variables: Variables,
+  request: Uint8Array,
+  response: Uint8Array,
+) {
+  if (!Array.isArray(input) || input.length < 1 || input.length > 3)
+    fail(path, "Configure one to three retry frames");
+  const requests = [request];
+  const replies = [response];
+  return input.map((item: unknown, index) => {
+    const position = path + "[" + index + "]";
+    const retry = object(item, position);
+    fields(retry, ["hex", "expectHex"], position);
+    const bytes = frame(retry.hex, variables, position + ".hex");
+    const expected = frame(retry.expectHex, variables, position + ".expectHex");
+    if (
+      requests.some(
+        (prior) => prior.length === bytes.length && containsFrame(prior, bytes),
+      )
+    )
+      fail(
+        position + ".hex",
+        "Each attempt must send a distinct request frame",
+      );
+    if (replies.some((prior) => responseFramesConflict(prior, expected)))
+      fail(
+        position + ".expectHex",
+        "Retry replies must be distinguishable from earlier replies",
+      );
+    requests.push(bytes);
+    replies.push(expected);
+    return { path: position, bytes, response: expected };
+  });
+}
+
 function budget(count: number, waitMs: number, path: string) {
   if (count > maxExpandedSteps)
     fail(path, "The expanded sequence has too many steps");
@@ -150,7 +215,7 @@ function compileStep(
       const expectation = object(step.expect, path + ".expect");
       fields(
         expectation,
-        ["hex", "timeoutMs", "onMatch", "onTimeout"],
+        ["hex", "timeoutMs", "retry", "onMatch", "onTimeout"],
         path + ".expect",
       );
       const reply = frame(expectation.hex, variables, path + ".expect.hex");
@@ -160,6 +225,15 @@ function compileStep(
         5000,
         path + ".expect.timeoutMs",
       );
+      const retry = Object.hasOwn(expectation, "retry")
+        ? retries(
+            expectation.retry,
+            path + ".expect.retry",
+            variables,
+            bytes,
+            reply,
+          )
+        : [];
       const branch = (key: "onMatch" | "onTimeout") =>
         Object.hasOwn(expectation, key)
           ? compileSteps(
@@ -174,14 +248,18 @@ function compileStep(
       const expect = {
         bytes: reply,
         timeoutMs,
+        retry,
         onMatch: onMatch?.steps,
         onTimeout: onTimeout?.steps,
       };
       const maxSteps =
-        1 + Math.max(onMatch?.maxSteps ?? 0, onTimeout?.maxSteps ?? 0);
+        1 +
+        retry.length +
+        Math.max(onMatch?.maxSteps ?? 0, onTimeout?.maxSteps ?? 0);
       const waitMs =
         (writeWaitMs ?? 0) +
         timeoutMs +
+        retry.length * ((writeWaitMs ?? 1000) + timeoutMs) +
         Math.max(onMatch?.waitMs ?? 0, onTimeout?.waitMs ?? 0);
       budget(maxSteps, waitMs, path);
       return {

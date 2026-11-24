@@ -21,6 +21,7 @@ export type ResponseOutcome =
   | "stop_condition"
   | "matched"
   | "unexpected_response"
+  | "response_ambiguous"
   | "response_timeout"
   | "source_changed"
   | "transmit_unconfirmed";
@@ -60,6 +61,7 @@ export async function readExpectedResponse(
   timeoutMs: number,
   lateResponseWaitMs: number,
   stop?: ReceiveObserver,
+  confirmedWriteBase64?: string,
 ): Promise<{ nextEventSeq: string; result: StepResult }> {
   const responseNs = BigInt(timeoutMs) * 1_000_000n;
   const observationNs = BigInt(timeoutMs + lateResponseWaitMs) * 1_000_000n;
@@ -80,6 +82,11 @@ export async function readExpectedResponse(
   });
   const classify = (tx: EventTime, rx: ObservedResponse) => {
     if (tx.clockId !== rx.time.clockId) return finish("source_changed");
+    if (
+      confirmedWriteBase64 !== undefined &&
+      rx.outcome === "unexpected_response"
+    )
+      return finish("unexpected_response");
     const elapsed = BigInt(rx.time.sourceMonoNs) - BigInt(tx.sourceMonoNs);
     if (elapsed <= responseNs)
       return finish(rx.outcome, rx.source ? { source: rx.source } : {});
@@ -100,6 +107,8 @@ export async function readExpectedResponse(
         event.hostId !== session.hostId
       )
         throw new Error("Automation read changed session identity");
+      if (confirmedWriteBase64 !== undefined && event.eventSeq !== cursor)
+        return finish("source_changed");
       cursor = String(BigInt(event.eventSeq) + 1n);
       if (event.kind === "gap" || event.kind === "configuration_boundary")
         return finish("source_changed");
@@ -112,11 +121,28 @@ export async function readExpectedResponse(
       }
       if (event.kind === "tx_intent") {
         if (event.payload.operationId === operationId) intentSeen = true;
+        else if (confirmedWriteBase64 !== undefined)
+          return finish("source_changed");
         continue;
       }
+      if (
+        confirmedWriteBase64 !== undefined &&
+        event.kind === "tx" &&
+        event.payload.operationId !== operationId &&
+        (event.payload.acceptedRanges.length ||
+          event.payload.unknownRanges.length)
+      )
+        return finish("source_changed");
       if (!intentSeen) continue;
       if (event.kind === "tx") {
         if (event.payload.operationId === operationId) {
+          if (
+            confirmedWriteBase64 !== undefined &&
+            (event.payload.outcome !== "accepted" ||
+              event.payload.bytesBase64 !== confirmedWriteBase64 ||
+              event.payload.unknownRanges.length !== 0)
+          )
+            return finish("transmit_unconfirmed");
           written = event.time;
           if (observed) return classify(written, observed);
         } else if (
@@ -162,9 +188,17 @@ export async function readExpectedResponse(
       }
       if (observed && written) return classify(written, observed);
     }
+    if (confirmedWriteBase64 !== undefined && page.nextEventSeq !== cursor)
+      return finish("source_changed");
     cursor = page.nextEventSeq;
     if (finalRead) {
-      if (!page.hasMore) return finish("response_timeout");
+      if (!page.hasMore) {
+        if (confirmedWriteBase64 !== undefined) {
+          if (!written) return finish("source_changed");
+          if (matched > 0 && !observed) return finish("response_ambiguous");
+        }
+        return finish("response_timeout");
+      }
       finalPages++;
       if (finalPages >= maxPageReads) return finish("source_changed");
     } else if (!page.hasMore) {

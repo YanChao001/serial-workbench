@@ -391,3 +391,72 @@ test("a stale session revision cannot add a write to the previous recording", as
     "QQ==",
   ]);
 });
+
+test("command sequence previews safe retry frames and shows both Host receipts", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready", sequenceRetry: true },
+  });
+  await selectSerial(page);
+  const dialog = await openSequence(page);
+  const editor = dialog.getByRole("textbox", {
+    name: "Sequence definition (JSON)",
+  });
+  const run = dialog.getByRole("button", { name: "Run sequence" });
+  const definition = (expectHex: string) =>
+    JSON.stringify({
+      version: 1,
+      steps: [
+        {
+          kind: "send",
+          hex: "53",
+          expect: {
+            hex: "A4",
+            timeoutMs: 100,
+            retry: [{ hex: "54", expectHex }],
+          },
+        },
+      ],
+    });
+  await editor.fill(definition("A4"));
+  await expect(
+    dialog.getByText(
+      "Check the definition at $.steps[0].expect.retry[0].expectHex.",
+    ),
+  ).toBeVisible();
+  await expect(run).toBeDisabled();
+  await editor.fill(definition("A5"));
+  await expect(
+    dialog.getByText("Retry after confirmed write and response timeout"),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("Send 54 · Expect A5", { exact: true }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(
+      (id) =>
+        window.workbenchFixture.invocations.filter(
+          (call) => call.actionId === id,
+        ).length,
+      builtinCommandSequenceAction,
+    ),
+  ).toBe(0);
+  await run.click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Command sequence completed.",
+  );
+  await dialog.getByText("Write receipts", { exact: true }).click();
+  await expect(
+    dialog.getByText("sequence-tx-1", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("$.steps[0].expect.retry[0]", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("sequence-tx-2", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("RX bytes [0, 1)", { exact: true }),
+  ).toBeVisible();
+});
