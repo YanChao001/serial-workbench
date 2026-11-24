@@ -1,10 +1,16 @@
 import {
+  commandSequenceFrameBytes,
   commandSequenceMaxBytes,
   CommandSequenceError,
   compileCommandSequence,
   type CommandSequenceStep,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
-import { commandVariablePattern } from "../../../packages/plugin-sdk/src/command-template";
+import {
+  commandVariablePattern,
+  expandCommandTemplate,
+  parseCommandTemplate,
+} from "../../../packages/plugin-sdk/src/command-template";
+import { parseHex } from "../../../packages/plugin-sdk/src/hex";
 import { isRecord } from "@/lib/settings-model";
 
 const maxInputs = 32;
@@ -17,6 +23,39 @@ type SequenceDraft = {
     bind: (values: ReadonlyMap<string, string>) => string | undefined;
   };
 };
+
+function previewFrame(
+  expectation: unknown,
+  variables: ReadonlyMap<string, string>,
+) {
+  if (!isRecord(expectation) || !Array.isArray(expectation.retry)) return "00";
+  const retries: readonly unknown[] = expectation.retry;
+  const retryBytes = new Set<number>();
+  const maxHexText = commandSequenceFrameBytes * 4;
+  for (const retry of retries) {
+    if (
+      !isRecord(retry) ||
+      typeof retry.hex !== "string" ||
+      retry.hex.length > maxHexText
+    )
+      continue;
+    const expanded = expandCommandTemplate(
+      parseCommandTemplate(retry.hex).parts,
+      variables,
+      maxHexText,
+    );
+    if (expanded.kind !== "ready") continue;
+    try {
+      const bytes = parseHex(expanded.body);
+      if (bytes.length === 1) retryBytes.add(bytes[0]!);
+    } catch {
+      // The compiler will report an invalid retry frame at its original path.
+    }
+  }
+  // A valid sequence has at most three retries, leaving a one-byte preview frame.
+  const byte = [0, 1, 2, 3].find((byte) => !retryBytes.has(byte)) ?? 0;
+  return byte.toString(16).padStart(2, "0");
+}
 
 export function inspectSequenceDraft(definition: string): SequenceDraft {
   if (
@@ -52,6 +91,13 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
   if (!Array.isArray(value.steps))
     throw new CommandSequenceError("$.steps", "Expected sequence steps");
 
+  const literalEntries = entries.filter(([, value]) => value !== null);
+  const literalVariables = Object.fromEntries(literalEntries);
+  const literalValues = new Map(
+    literalEntries.filter(
+      (entry): entry is [string, string] => typeof entry[1] === "string",
+    ),
+  );
   const inputPaths = new Map<string, string>();
   const placeholders = new Map(
     names.map((name) => ["$" + "{" + name + "}", name]),
@@ -62,7 +108,7 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
     const name = placeholders.get(step.hex);
     if (!name) return step;
     inputPaths.set("$.steps[" + index + "]", name);
-    return { ...step, hex: "00" };
+    return { ...step, hex: previewFrame(step.expect, literalValues) };
   });
   const usedNames = new Set(inputPaths.values());
   if (names.some((name) => !usedNames.has(name)))
@@ -70,9 +116,6 @@ export function inspectSequenceDraft(definition: string): SequenceDraft {
       "$.variables",
       "Each input must be referenced by a full top-level send step",
     );
-  const literalVariables = Object.fromEntries(
-    entries.filter(([, value]) => value !== null),
-  );
   const plan = compileCommandSequence(
     JSON.stringify({ ...value, steps, variables: literalVariables }),
   );

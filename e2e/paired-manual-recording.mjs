@@ -213,7 +213,32 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
   await expect(second).toHaveValue("");
   await expect(bound).toHaveCount(0);
   await expect(run).toBeDisabled();
+
+  steps[1].expect = {
+    hex: "00 FF 3F 2B",
+    timeoutMs: 1_000,
+    retry: [
+      { hex: "$" + "{retry_zero}", expectHex: "A5" },
+      { hex: "01", expectHex: "01" },
+      { hex: "02", expectHex: "02" },
+    ],
+  };
+  definition.variables.retry_zero = " 00 ";
+  await editor.fill(JSON.stringify(definition));
+  await expect(second).toHaveValue("");
   await first.fill("52 45 50 4C 41 59");
+  await pickBinary(Buffer.from([0]));
+  await expect(
+    sequence.getByRole("status").filter({
+      hasText: "$.steps[2].expect.retry[0].hex",
+    }),
+  ).toBeVisible();
+  await expect(run).toBeDisabled();
+  const writesBeforeRetry = sentBytes(
+    await readRaw("manual-recording-retry-conflict", before.nextEventSeq),
+  );
+  assert.deepEqual(writesBeforeRetry, originalWrites);
+
   await pickBinary(replacementFile);
   await expect(bound).toBeVisible();
   await run.click();
@@ -236,6 +261,9 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
   await sequence
     .getByRole("button", { name: /^(Close view|关闭视图)$/ })
     .click();
+  await unsaved
+    .getByRole("button", { name: /^(Discard and continue|放弃并继续)$/ })
+    .click();
   await expect(sequence).toBeHidden();
   if (viewport) await page.setViewportSize(viewport);
   await receive.getByRole("radio", { name: /^(Text|文本)$/ }).click();
@@ -248,6 +276,9 @@ export async function checkManualRecording({ page, readRaw, source, output }) {
     reboundAsExpected: true,
     selectedFileHex: replacementFile.toString("hex"),
     rejectedReplacementPreservedBinding: true,
+    conflictingRetryBlocked: true,
+    unexpectedRetryWrites:
+      replayedWrites.length - originalWrites.length - steps.length,
     writeWaitMs: steps.map(({ writeWaitMs }) => writeWaitMs),
     durationBetweenWrites: definition.steps[1].milliseconds,
     cancelledPreviewTxCount: 0,

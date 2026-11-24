@@ -594,3 +594,88 @@ test("command sequence previews safe retry frames and shows both Host receipts",
     dialog.getByText("RX bytes [0, 1)", { exact: true }),
   ).toBeVisible();
 });
+
+test("an unbound send can preview retries before its actual bytes are validated", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready", sequenceRetry: true },
+  });
+  await selectSerial(page);
+  const dialog = await openSequence(page);
+  const run = dialog.getByRole("button", { name: "Run sequence" });
+  const definition = {
+    version: 1,
+    variables: { payload: null, zero: " 00 " },
+    steps: [
+      {
+        kind: "send",
+        hex: "$" + "{payload}",
+        expect: {
+          hex: "A4",
+          timeoutMs: 100,
+          retry: [
+            { hex: "$" + "{zero}", expectHex: "A5" },
+            { hex: "01", expectHex: "A6" },
+            { hex: "02", expectHex: "A7" },
+          ],
+        },
+      },
+    ],
+  };
+  await dialog.locator("input[type=file][accept]").setInputFiles({
+    name: "referenced-retry.json",
+    mimeType: "application/json",
+    buffer: Buffer.from(JSON.stringify(definition)),
+  });
+  await expect(
+    dialog.getByText("Send input payload", { exact: true }),
+  ).toBeVisible();
+  await expect(
+    dialog.getByText("Send 00 · Expect A5", { exact: true }),
+  ).toBeVisible();
+  await expect(run).toBeDisabled();
+
+  const file = page.waitForEvent("filechooser");
+  await dialog.getByRole("button", { name: "Choose file for payload" }).click();
+  await (
+    await file
+  ).setFiles({
+    name: "conflicting-retry.bin",
+    mimeType: "application/octet-stream",
+    buffer: Buffer.from([0]),
+  });
+  await expect(
+    dialog.getByText(
+      "Check HEX and sequence limits at $.steps[0].expect.retry[0].hex.",
+    ),
+  ).toBeVisible();
+  await expect(run).toBeDisabled();
+  const calls = () =>
+    page.evaluate(
+      (id) =>
+        window.workbenchFixture.invocations.filter(
+          ({ actionId }) => actionId === id,
+        ),
+      builtinCommandSequenceAction,
+    );
+  expect(await calls()).toHaveLength(0);
+
+  await dialog.getByLabel("payload", { exact: true }).fill("FF");
+  await expect(run).toBeEnabled();
+  await expect(
+    dialog.getByText("Send input payload", { exact: true }),
+  ).toBeVisible();
+  await run.click();
+  await expect(dialog.getByRole("status")).toContainText(
+    "Command sequence completed.",
+  );
+  const dispatched = await calls();
+  expect(dispatched).toHaveLength(1);
+  expect(dispatched[0]?.params.definition).toBe(
+    JSON.stringify({
+      ...definition,
+      variables: { zero: " 00 ", payload: "FF" },
+    }),
+  );
+});
