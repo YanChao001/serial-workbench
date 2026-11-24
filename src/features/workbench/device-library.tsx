@@ -143,6 +143,9 @@ function LibraryContent({
     }
   }, [incomingRevision, workspace]);
   const document = confirmed?.document.value;
+  const rebindDevices = devices.filter(
+    (device) => device.hostId === confirmed?.scope.target.hostId,
+  );
   const blocked = disabled || !confirmed;
   function changeSelection(next: RebindParams | undefined) {
     latestSelection.current = next;
@@ -209,14 +212,9 @@ function LibraryContent({
       !onRebindDevice ||
       !selection ||
       !document?.bindings.some(
-        (binding) =>
-          binding.bindingId === selection.bindingId &&
-          devices.some(
-            (device) =>
-              device.hostId === binding.hostId &&
-              device.deviceId === selection.deviceId,
-          ),
-      )
+        (binding) => binding.bindingId === selection.bindingId,
+      ) ||
+      !rebindDevices.some((device) => device.deviceId === selection.deviceId)
     )
       throw new Error(labels.chooseDevice);
     const snapshot = selection;
@@ -493,21 +491,17 @@ function LibraryContent({
                             <SelectValue placeholder={labels.chooseDevice} />
                           </SelectTrigger>
                           <SelectContent>
-                            {devices
-                              .filter(
-                                (device) => device.hostId === binding.hostId,
-                              )
-                              .map((device) => (
-                                <SelectItem
-                                  key={device.deviceId}
-                                  value={device.deviceId}
-                                >
-                                  {device.systemName}
-                                  {device.fingerprint.serialNumber
-                                    ? ` · ${device.fingerprint.serialNumber}`
-                                    : ""}
-                                </SelectItem>
-                              ))}
+                            {rebindDevices.map((device) => (
+                              <SelectItem
+                                key={device.deviceId}
+                                value={device.deviceId}
+                              >
+                                {device.systemName}
+                                {device.fingerprint.serialNumber
+                                  ? ` · ${device.fingerprint.serialNumber}`
+                                  : ""}
+                              </SelectItem>
+                            ))}
                           </SelectContent>
                         </Select>
                       </label>
@@ -519,10 +513,8 @@ function LibraryContent({
                           busy ||
                           !onRebindDevice ||
                           selection?.bindingId !== binding.bindingId ||
-                          !devices.some(
-                            (device) =>
-                              device.deviceId === selection.deviceId &&
-                              device.hostId === binding.hostId,
+                          !rebindDevices.some(
+                            (device) => device.deviceId === selection.deviceId,
                           )
                         }
                         onClick={() => run(() => rebind())}

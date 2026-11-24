@@ -11,6 +11,8 @@ use serial_workbench_host::{
 use sha2::Digest as _;
 use std::{sync::Arc, time::Duration};
 use tokio::sync::oneshot;
+#[path = "support/experiment_browser.rs"]
+mod experiment_browser;
 #[path = "support/operation_source_host.rs"]
 mod operation_source_host;
 
@@ -30,6 +32,9 @@ struct Fixture {
 }
 impl Fixture {
     async fn new() -> Self {
+        Self::with_bundled_packages(false).await
+    }
+    async fn with_bundled_packages(bundled: bool) -> Self {
         let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(dir.path()).await.unwrap();
         let store = server.store();
@@ -42,7 +47,16 @@ impl Fixture {
         let operator = auth
             .authenticate_user_control(&id("capture-user"), &credential)
             .unwrap();
-        let host = Host::new(store.clone(), auth.clone()).await.unwrap();
+        let host = if bundled {
+            let startup =
+                serial_workbench_ipc::startup_config::resolve(Some(dir.path().to_path_buf()))
+                    .unwrap();
+            Host::with_startup_config(store.clone(), auth.clone(), startup.snapshot())
+                .await
+                .unwrap()
+        } else {
+            Host::new(store.clone(), auth.clone()).await.unwrap()
+        };
         let (stop, done) = oneshot::channel();
         let running = tokio::spawn(async move {
             server

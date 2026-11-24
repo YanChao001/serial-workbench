@@ -710,6 +710,8 @@ Host 分块交接运行 `cargo test --locked -p serial-workbench-host --lib --te
 
 Host 软件验收应核对一致修订、篡改与未来版本、源访问受限、解析器已禁用、录制缺失或摘要不符、空工作区、仅只读检查和导入后设备重新绑定。注入命令正文、USB 序列号、路径及错误详情作为样本，核对它们没有进入导出的 JSON。工作台验收另核对宽窄布局、稳定错误、键盘操作、保存取消、修改冲突和跨 Host 提示。
 
+跨 Host 软件验收先运行 `pnpm build:web`，将 `SWB_TEST_EXPERIMENT_BROWSER_OUTPUT` 指向新的绝对证据目录，然后运行 `cargo test --locked -p serial-workbench-host --test capture_api_host experiment_browser::paired_browsers_exchange_experiment_between_two_hosts -- --ignored --exact --test-threads=1`。场景启动两个隔离 Host 和无头 Chromium。源端封存 Virtual Echo 录制，从配对浏览器下载脱敏包。目标端检查解析器缺失和异机录制，确认前保持工作区，确认后按修订保存。设备库只列出目标工作区 Host 上可供重新绑定的设备，用户确认后保留原线路配置并使用新设备身份。查看浏览器动作收据、Host 修订及截图。实体串口、不同机器与正式安装另按相应环境复验。
+
 ### 会话模板（SESS-03）
 
 宽窗并排查看模板和当前连接的线路参数，窄窗按相同阅读顺序纵排。设备名可自然换行，线路值等宽显示。打开按钮沿用工具窗尺寸并置于状态提示后。无会话时仅显示模板参数。参数不同且已有会话时，两组值同时可见，提示先关闭当前连接。

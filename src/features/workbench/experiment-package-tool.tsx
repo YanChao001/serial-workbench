@@ -520,7 +520,7 @@ export function ExperimentPackageTool({
                 ref={fileControl}
                 className="sr-only"
                 tabIndex={-1}
-                aria-label={t("workbench.experiment.chooseFile")}
+                aria-hidden="true"
                 type="file"
                 accept=".json,application/json"
                 disabled={locked}
