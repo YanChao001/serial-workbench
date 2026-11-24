@@ -808,6 +808,7 @@ export default function Overview({
         toolLabels={toolLabels.layout}
         renderTool={(tool, context) => (
           <WorkbenchTools
+            key={context.sequenceRecording?.revision}
             tool={tool}
             context={context}
             host={host}

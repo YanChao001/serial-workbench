@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.automation",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "displayName": "Serial Automation",
   "description": "Schedule repeated sends and run serial command sequences",
   "license": "Apache-2.0",

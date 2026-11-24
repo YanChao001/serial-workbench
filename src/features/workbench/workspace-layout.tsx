@@ -81,6 +81,11 @@ import {
   type HistoryPosition,
 } from "@/lib/receive-history";
 import { WorkspaceSendPanel } from "./workspace-send-panel";
+import { useManualSendRecording } from "./use-manual-send-recording";
+import {
+  ManualRecordingControls,
+  type ManualRecordingLabels,
+} from "./manual-recording-controls";
 import { createDraftStore } from "./draft-store";
 import { restoreViewDraftIdentity, viewDraftKey } from "./draft-identity";
 import { resolveViewDevice } from "./view-device";
@@ -212,6 +217,7 @@ export type WorkbenchToolContext = {
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
+  sequenceRecording?: { revision: number; definition: string };
   onWriteWaitModeChange: (value: WriteWaitMode) => void;
   onInspectMetrics: () => void;
   onReconnect?: () => void;
@@ -281,6 +287,7 @@ export type WorkspaceLayoutProps = {
     framing?: string;
     repeatSend?: string;
     commandSequence?: string;
+    manualRecording?: ManualRecordingLabels;
   };
   renderTool?: (
     tool: WorkbenchTool,
@@ -588,6 +595,11 @@ export function WorkspaceLayout({
     );
   }, [selected, workspaceKey, state.devices]);
   const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
+  const [sequenceRecording, setSequenceRecording] = useState<{
+    revision: number;
+    definition: string;
+  }>();
+  const recordingRevision = useRef(0);
   const [chartLink, setChartLink] = useState<{
     scope: string;
     selection?: ChartSourceSelection;
@@ -1206,6 +1218,7 @@ export function WorkspaceLayout({
         const active = document.activeElement;
         dialogTrigger.current = active instanceof HTMLElement ? active : null;
       }
+      setSequenceRecording(undefined);
       setDialog(next);
     },
     [dialog],
@@ -1705,6 +1718,27 @@ export function WorkspaceLayout({
           wait: host.waitForOperation,
         }
       : undefined;
+  const recordingScope =
+    renderTool &&
+    toolLabels?.manualRecording &&
+    draftsReady &&
+    state.status === "ready" &&
+    host.connection &&
+    historyDestination
+      ? JSON.stringify([
+          nativeOwnershipKey,
+          historyDestination.target.hostId,
+          historyDestination.target.sessionId,
+          historyDestination.target.sessionEpoch,
+          session?.configurationRevision,
+        ])
+      : undefined;
+  const recording = useManualSendRecording(
+    recordingScope,
+    historyDestination?.target,
+    host.waitForOperation,
+    toolLabels?.manualRecording?.title ?? "",
+  );
   const invoke = host.invoke;
   const cancelOperation = onCancelOperation;
   const paste =
@@ -1733,15 +1767,36 @@ export function WorkspaceLayout({
           },
         }
       : undefined;
-  async function submitBytes(bytes: Uint8Array, signal?: AbortSignal) {
+  async function submitBytes(
+    bytes: Uint8Array,
+    signal?: AbortSignal,
+    expectedRevision?: string,
+    recordedWriteWaitMs?: string,
+  ) {
     if (isCapture || !session || !target) throw new Error(labels.unavailable);
+    const writeWaitMs =
+      recordedWriteWaitMs ??
+      sendWaitMs(session.configuration, bytes.length, writeWaitMode);
+    // Host admission remains authoritative for the session epoch selected here.
+    if (expectedRevision === undefined)
+      return host.send(target, bytes, signal, writeWaitMs);
+    return host.send(target, bytes, signal, writeWaitMs, expectedRevision);
+  }
+  function submitManualBytes(bytes: Uint8Array, signal?: AbortSignal) {
+    if (!session) return submitBytes(bytes, signal);
     const writeWaitMs = sendWaitMs(
       session.configuration,
       bytes.length,
       writeWaitMode,
     );
-    // Host admission remains authoritative for the session epoch selected here.
-    return host.send(target, bytes, signal, writeWaitMs);
+    return recording.observe(bytes, writeWaitMs, (guardRevision) =>
+      submitBytes(
+        bytes,
+        signal,
+        guardRevision ? session.revision : undefined,
+        writeWaitMs,
+      ),
+    );
   }
   const cleared = clearThrough.get(selected ?? "");
   const firstItem = stream?.items[0];
@@ -2339,6 +2394,21 @@ export function WorkspaceLayout({
         commandLibrary={commandLibrary}
         draftActions={
           <>
+            {renderTool && toolLabels?.manualRecording && (
+              <ManualRecordingControls
+                labels={toolLabels.manualRecording}
+                recording={recording}
+                available={recordingScope !== undefined}
+                onReview={(definition, trigger) => {
+                  showDialog("commandSequence", trigger);
+                  setSequenceRecording({
+                    revision: ++recordingRevision.current,
+                    definition,
+                  });
+                  recording.discard();
+                }}
+              />
+            )}
             {isCapture && (
               <>
                 {(hasUnboundDraft ||
@@ -2425,7 +2495,7 @@ export function WorkspaceLayout({
         draftKey={draftKey}
         labels={labels}
         operations={state.operations}
-        onSend={submitBytes}
+        onSend={submitManualBytes}
         onSendFile={
           onSendFile &&
           !disabled &&
@@ -2491,7 +2561,10 @@ export function WorkspaceLayout({
         }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
-        onRequestClose={() => setDialog(null)}
+        onRequestClose={() => {
+          setSequenceRecording(undefined);
+          setDialog(null);
+        }}
       >
         {(beforeReplace) => (
           <>
@@ -2652,6 +2725,8 @@ export function WorkspaceLayout({
                     : session,
                 beforeReplace,
                 snapshotWorkspace,
+                sequenceRecording:
+                  dialog === "commandSequence" ? sequenceRecording : undefined,
                 newViewDefaults: {
                   terminal: terminalSettings ?? defaults.settings.terminal,
                   color: viewColor ?? defaults.settings.customAccent,

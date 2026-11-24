@@ -145,7 +145,7 @@ export class SendHistoryError extends Error {
   }
 }
 
-function matchesSend(operation: Operation, target: Target) {
+export function matchesSend(operation: Operation, target: Target) {
   return (
     operation.actionId === "session.tx" &&
     operation.executionHostId === target.hostId &&
@@ -157,13 +157,17 @@ function matchesSend(operation: Operation, target: Target) {
   );
 }
 
-function completelyWritten(
+export function confirmedSessionWrite(
   operation: Operation,
-  planned: HistoryPayload,
+  planned: Pick<HistoryPayload, "bytes" | "bytesBase64">,
   target: Target,
 ) {
-  if (operation.state !== "succeeded" || operation.result?.kind !== "tx")
-    return false;
+  if (
+    !matchesSend(operation, target) ||
+    operation.state !== "succeeded" ||
+    operation.result?.kind !== "tx"
+  )
+    return;
   const result = operation.result.value;
   if (
     result.operationId !== operation.operationId ||
@@ -173,7 +177,7 @@ function completelyWritten(
     result.bytesBase64 !== planned.bytesBase64 ||
     result.unknownRanges.length !== 0
   )
-    return false;
+    return;
   const start = parseU64(result.byteStart);
   const end = parseU64(result.byteEnd);
   if (
@@ -181,16 +185,18 @@ function completelyWritten(
     end === undefined ||
     end - start !== BigInt(planned.bytes.length)
   )
-    return false;
-  let cursor = start;
+    return;
+  // Accepted ranges are relative to this write. The outer range locates it in the TX stream.
+  const length = end - start;
+  let cursor = 0n;
   for (const range of result.acceptedRanges) {
     const from = parseU64(range.start);
     const to = parseU64(range.end);
-    if (from !== cursor || to === undefined || to <= cursor || to > end)
-      return false;
+    if (from !== cursor || to === undefined || to <= cursor || to > length)
+      return;
     cursor = to;
   }
-  return cursor === end;
+  return cursor === length ? { start, end } : undefined;
 }
 
 export async function resendHistoryBatch({
@@ -233,8 +239,7 @@ export async function resendHistoryBatch({
     signal.throwIfAborted();
     if (
       settled.operationId !== accepted.operationId ||
-      !matchesSend(settled, target) ||
-      !completelyWritten(settled, latest, target)
+      !confirmedSessionWrite(settled, latest, target)
     )
       throw new SendHistoryError("unconfirmed");
     onConfirmed(settled.operationId);

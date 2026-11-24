@@ -1195,6 +1195,22 @@ export const en = {
   "workbench.tools.diagnostics": "Troubleshooting",
   "workbench.tools.framing": "Protocol framing",
   "commandSequence.title": "Command sequence",
+  "manualRecording.title": "Record manual sends",
+  "manualRecording.description":
+    "The recording contains sent bytes and confirmed wait times. Avoid sending secrets while recording.",
+  "manualRecording.start": "Start recording",
+  "manualRecording.stop": "Stop recording",
+  "manualRecording.review": "Review in command sequence",
+  "manualRecording.discard": "Discard recording",
+  "manualRecording.progress": "Confirmed sends: {count}.",
+  "manualRecording.settling": "Waiting for outstanding writes to settle.",
+  "manualRecording.scope":
+    "Recording stopped because the session or its configuration changed.",
+  "manualRecording.gap":
+    "The write ranges are discontinuous. Earlier confirmed sends are retained.",
+  "manualRecording.unconfirmed":
+    "A write lacks a complete receipt. Earlier confirmed sends are retained.",
+  "manualRecording.limit": "The recording reached a command-sequence limit.",
   "commandSequence.definition": "Sequence definition (JSON)",
   "commandSequence.unavailable":
     "Enable a signed automation package that provides command sequences.",
@@ -1202,6 +1218,7 @@ export const en = {
   "commandSequence.previewEmpty":
     "Enter a sequence definition to preview its steps.",
   "commandSequence.previewSend": "Send",
+  "commandSequence.previewWriteWait": "Write deadline {ms} ms",
   "commandSequence.previewDelay": "Wait {ms} ms",
   "commandSequence.previewExpect": "Expect within {ms} ms",
   "commandSequence.previewMatch": "On matching reply",

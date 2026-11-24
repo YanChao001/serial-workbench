@@ -226,6 +226,7 @@ export type HostContextValue = {
     bytes: Uint8Array,
     signal?: AbortSignal,
     writeWaitMs?: string,
+    expectedRevision?: string,
   ): Promise<Operation>;
   takeover?(
     target: Target,
