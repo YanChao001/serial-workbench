@@ -112,7 +112,7 @@ function SpectrumAnalysis({ target, archiveSha256 }: Props) {
       </summary>
       <section
         aria-label={t("plugins.spectrum.title")}
-        className="mt-3 grid gap-3"
+        className="mt-3 grid min-w-0 gap-3"
       >
         <form className="grid gap-2" onSubmit={analyze}>
           <Label htmlFor={id + "-input"}>{t("plugins.spectrum.input")}</Label>
@@ -124,15 +124,17 @@ function SpectrumAnalysis({ target, archiveSha256 }: Props) {
             ref={editor}
             maxLength={maxInputLength}
             value={input}
-            className="min-h-32 font-mono text-xs"
+            className="min-h-32 min-w-0 font-mono text-xs"
             disabled={busy}
             spellCheck={false}
-            aria-describedby={id + "-help"}
+            aria-describedby={
+              id + "-help" + (invalid ? " " + id + "-invalid" : "")
+            }
             aria-invalid={invalid || undefined}
             onChange={(event) => replace(event.currentTarget.value, false)}
           />
           {invalid ? (
-            <p role="alert" className="text-destructive">
+            <p role="alert" id={id + "-invalid"} className="text-destructive">
               {t("plugins.xy.invalid")}
             </p>
           ) : null}
@@ -149,8 +151,12 @@ function SpectrumAnalysis({ target, archiveSha256 }: Props) {
             >
               {t("plugins.spectrum.example")}
             </Button>
-            {busy ? <p role="status">{t("plugins.spectrum.running")}</p> : null}
           </div>
+          {busy ? (
+            <p role="status" className="text-muted-foreground">
+              {t("plugins.spectrum.running")}
+            </p>
+          ) : null}
         </form>
         <PluginError error={error} message="plugins.spectrum.failed" />
         {result ? <SpectrumResult report={result} /> : null}

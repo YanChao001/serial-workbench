@@ -1,12 +1,13 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { expect, test } from "@playwright/test";
-import type { NodePackageSourceKey } from "@serial-workbench/contracts";
+import { expect, test, type Locator } from "@playwright/test";
+import type { NodePackageInstallation, NodePackageSourceKey } from "@serial-workbench/contracts";
 import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { alignXY } from "../../packages/plugin-sdk/examples/reference-statistics/align-xy";
 import { spectrum } from "../../packages/plugin-sdk/examples/reference-statistics/spectrum";
-import { xyCaptureFixture } from "./xy-capture.fixture";
+import { getLocale } from "../../src/i18n/registry";
+import { createTranslator } from "../../src/i18n/translate";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const manifestDocument: unknown = JSON.parse(
@@ -34,6 +35,48 @@ const source = {
   publicKeySha256,
   approved: true,
 } satisfies NodePackageSourceKey;
+
+function statisticsPlugin() {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-statistics/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid statistics manifest");
+  const archiveSha256 = "e".repeat(64);
+  const verifiedSource = {
+    source: "Workbench",
+    keyId: "statistics-signing",
+    publicKeySha256: "f".repeat(64),
+  };
+  const installation = {
+    manifest,
+    archiveSha256,
+    verifiedSource,
+    enabled: true,
+    executionTrust: {
+      archiveSha256,
+      permissions: manifest.permissions,
+      verifiedSource,
+    },
+  } satisfies NodePackageInstallation;
+  const archive = {
+    reference: {
+      kind: "file",
+      id: "reference-statistics",
+      hostId: "workbench-gui-host",
+    },
+    name: "statistics.zip",
+    length: "4096",
+    mime: "application/zip",
+  };
+  return { archive, installation, initiallyInstalled: true };
+}
 
 function terminalPlugin() {
   return {
@@ -252,9 +295,43 @@ test("a narrow Chinese installation shows an actionable error without native dia
   ).toBeEnabled();
 });
 
+async function expectAnalysisLayout(
+  result: Locator,
+  chart: Locator,
+  evidence: Locator,
+  wide: boolean,
+) {
+  await expect
+    .poll(async () => {
+      const [plot, panel] = await Promise.all([
+        chart.boundingBox(),
+        evidence.boundingBox(),
+      ]);
+      return Boolean(
+        plot &&
+        panel &&
+        (wide
+          ? panel.x >= plot.x + plot.width
+          : panel.y >= plot.y + plot.height),
+      );
+    })
+    .toBe(true);
+  expect(
+    await result.evaluate((element) => {
+      const { left, right } = element.getBoundingClientRect();
+      return (
+        left >= 0 &&
+        right <= window.innerWidth &&
+        element.scrollWidth <= element.clientWidth + 1
+      );
+    }),
+  ).toBe(true);
+}
+
 test("professional XY displays the verified result and inspects calibrated sample origins", async ({
   page,
 }, testInfo) => {
+  await page.setViewportSize({ width: 1240, height: 840 });
   const stats: unknown = JSON.parse(
     readFileSync(
       new URL(
@@ -295,6 +372,7 @@ test("professional XY displays the verified result and inspects calibrated sampl
   await seedWorkbenchFixture(page, {
     language: "en",
     theme: "light",
+    sidebarCollapsed: true,
     plugin: {
       ...terminalPlugin(),
       initiallyInstalled: true,
@@ -353,7 +431,18 @@ test("professional XY displays the verified result and inspects calibrated sampl
   await expect(trace).toHaveCount(0);
   await result.getByRole("button", { name: "Connected", exact: true }).click();
   await expect(trace).toHaveCount(1);
+  const plot = result.getByRole("figure");
+  await expectAnalysisLayout(result, plot, sample, true);
   await result.screenshot({ path: testInfo.outputPath("professional-xy.png") });
+  await page.setViewportSize({ width: 400, height: 690 });
+  await expectAnalysisLayout(result, plot, sample, false);
+  await result.evaluate((element) =>
+    element.scrollIntoView({ block: "start" }),
+  );
+  await page.screenshot({
+    path: testInfo.outputPath("professional-xy-narrow.png"),
+    animations: "disabled",
+  });
 
   const corrupt = { ...reportFile(report), fingerprint: "0".repeat(64) };
   await page.evaluate(
@@ -383,107 +472,178 @@ test("professional XY displays the verified result and inspects calibrated sampl
   });
 });
 
-test("professional spectrum shows window peaks, missing waterfall rows and observed histogram counts", async ({
-  page,
-}, testInfo) => {
-  const { plugin } = xyCaptureFixture();
-  const { manifest, archiveSha256 } = plugin.installation;
-  const action = manifest.contributes.actions.find(
-    ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
-  );
-  if (!action) throw new Error("Missing spectrum action");
-  const reference = {
-    kind: "plugin_result",
-    id: "spectrum-result",
-    hostId: "workbench-gui-host",
-  };
-  function reportFile(value: unknown) {
-    const bytes = Buffer.from(JSON.stringify(value));
-    return {
-      fileRef: reference,
-      offset: "0",
-      nextOffset: String(bytes.length),
-      totalBytes: String(bytes.length),
-      bytesBase64: bytes.toString("base64"),
-      atEnd: true,
-      fingerprint: createHash("sha256").update(bytes).digest("hex"),
-    };
-  }
-  await seedWorkbenchFixture(page, {
-    language: "en",
-    theme: "light",
-    plugin,
-    framing: {
-      action,
-      page: reportFile(null),
-      dependencies: [
-        { id: manifest.id, version: manifest.version, digest: archiveSha256 },
-      ],
-    },
-  });
-  await page.goto("./#/plugins");
-  await page
-    .getByRole("button", {
-      name: /Sample Window Statistics and XY Alignment.*Enabled/,
-    })
-    .click();
-  await page.getByText("Spectrum and distribution", { exact: true }).click();
-  const panel = page.getByRole("region", { name: "Spectrum and distribution" });
-  await panel.getByRole("button", { name: "Load frequency example" }).click();
-  const draft = panel.getByRole("textbox", { name: "Sample grid (JSON)" });
-  const input: unknown = JSON.parse(await draft.inputValue());
-  const output = spectrum(input, new AbortController().signal);
-  await page.evaluate(
-    (file) => window.workbenchFixture.setFramingResult(file),
-    reportFile(output),
-  );
-  await panel.getByRole("button", { name: "Calculate spectrum" }).click();
-  const result = panel.getByRole("region", { name: "Spectrum result" });
-  await expect(result.getByRole("status")).toContainText("1,000 Hz");
-  await expect(result.getByRole("status")).toContainText("16/24 observed");
-  await expect(
-    result.getByRole("img", { name: "Amplitude by frequency and time window" }),
-  ).toBeVisible();
-  await expect(
-    result.getByRole("img", { name: "Amplitude spectrum for this window" }),
-  ).toBeVisible();
-  await expect(
-    result.getByText("250 Hz · 6.021 dB", { exact: true }),
-  ).toBeVisible();
-  const histogram = result.getByRole("region", { name: "Histogram" });
-  await expect(
-    histogram.getByRole("row", { name: /0–1/ }).getByRole("cell"),
-  ).toHaveText("4");
-  const windowChoice = result.getByRole("combobox", { name: "Time window" });
-  await windowChoice.click();
-  await page
-    .getByRole("option", { name: "8000000–16000000 ns", exact: true })
-    .click();
-  await expect(
-    result.getByText("500 Hz · 12.041 dB", { exact: true }),
-  ).toBeVisible();
-  await result.screenshot({
-    path: testInfo.outputPath("professional-spectrum.png"),
-  });
-  await windowChoice.click();
-  await page
-    .getByRole("option", { name: "16000000–24000000 ns", exact: true })
-    .click();
-  await expect(
-    result.getByText(/No observed samples.*8 missing/),
-  ).toBeVisible();
-  await expect(
-    result.getByRole("img", { name: "Amplitude spectrum for this window" }),
-  ).toHaveCount(0);
-
-  const calls = await page.evaluate(() =>
-    window.workbenchFixture.invocations.filter(
+for (const { language, theme } of [
+  { language: "en", theme: "light" },
+  { language: "zh", theme: "dark" },
+] as const) {
+  test(`professional spectrum shows window peaks, missing waterfall rows and histogram counts (${language})`, async ({
+    page,
+  }, testInfo) => {
+    const t = createTranslator(getLocale(language).messages);
+    await page.setViewportSize({ width: 1240, height: 840 });
+    const plugin = statisticsPlugin();
+    const { manifest, archiveSha256 } = plugin.installation;
+    const action = manifest.contributes.actions.find(
       ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
-    ),
-  );
-  expect(calls).toHaveLength(1);
-  expect(calls[0]).toMatchObject({
-    target: { kind: "host", id: reference.hostId },
-    params: input,
+    );
+    if (!action) throw new Error("Missing spectrum action");
+    const reference = {
+      kind: "plugin_result",
+      id: "spectrum-result",
+      hostId: "workbench-gui-host",
+    };
+    function reportFile(value: unknown) {
+      const bytes = Buffer.from(JSON.stringify(value));
+      return {
+        fileRef: reference,
+        offset: "0",
+        nextOffset: String(bytes.length),
+        totalBytes: String(bytes.length),
+        bytesBase64: bytes.toString("base64"),
+        atEnd: true,
+        fingerprint: createHash("sha256").update(bytes).digest("hex"),
+      };
+    }
+    await seedWorkbenchFixture(page, {
+      language,
+      theme,
+      sidebarCollapsed: true,
+      plugin,
+      framing: {
+        action,
+        page: reportFile(null),
+        dependencies: [
+          { id: manifest.id, version: manifest.version, digest: archiveSha256 },
+        ],
+      },
+    });
+    await page.goto("./#/plugins");
+    await page
+      .getByRole("button", {
+        name: /Sample Window Statistics and XY Alignment/,
+      })
+      .click();
+    await page.getByText(t("plugins.spectrum.title"), { exact: true }).click();
+    const panel = page.getByRole("region", {
+      name: t("plugins.spectrum.title"),
+    });
+    await panel
+      .getByRole("button", { name: t("plugins.spectrum.example") })
+      .click();
+    const draft = panel.getByRole("textbox", {
+      name: t("plugins.spectrum.input"),
+    });
+    const clock = "recorder-" + "0123456789".repeat(5);
+    await draft.fill(
+      (await draft.inputValue()).replace("example-clock", clock),
+    );
+    const input: unknown = JSON.parse(await draft.inputValue());
+    const output = spectrum(input, new AbortController().signal);
+    await page.evaluate(
+      (file) => window.workbenchFixture.setFramingResult(file),
+      reportFile(output),
+    );
+    await panel
+      .getByRole("button", { name: t("plugins.spectrum.run") })
+      .click();
+    const result = panel.getByRole("region", {
+      name: t("plugins.spectrum.result"),
+    });
+    await expect(result.getByRole("status")).toContainText("1,000 Hz");
+    await expect(result.getByRole("status")).toContainText("16/24");
+    await expect(
+      result.getByRole("img", { name: t("plugins.spectrum.waterfallImage") }),
+    ).toBeVisible();
+    await expect(
+      result.getByRole("img", { name: t("plugins.spectrum.spectrumImage") }),
+    ).toBeVisible();
+    await expect(
+      result.getByText("250 Hz · 6.021 dB", { exact: true }),
+    ).toBeVisible();
+    const waterfall = result.getByRole("region", {
+      name: t("plugins.spectrum.waterfall"),
+    });
+    const histogram = result.getByRole("region", {
+      name: t("plugins.spectrum.histogram"),
+    });
+    await expectAnalysisLayout(result, waterfall, histogram, true);
+    await expect(result.getByRole("status")).toContainText(clock);
+    await expect(
+      histogram.getByRole("row", { name: /0–1/ }).getByRole("cell"),
+    ).toHaveText("4");
+    const frequency = result.getByRole("combobox", {
+      name: t("plugins.spectrum.selectBin"),
+    });
+    await expect(frequency).toHaveText(t("plugins.spectrum.noBin"));
+    await frequency.click();
+    await page.getByRole("option", { name: "125 Hz", exact: true }).click();
+    await expect(frequency).toHaveText("125 Hz");
+    await frequency.press("Enter");
+    await page
+      .getByRole("option", { name: t("plugins.spectrum.noBin"), exact: true })
+      .click();
+    await expect(frequency).toHaveText(t("plugins.spectrum.noBin"));
+    await expect(
+      result.getByText("250 Hz · 6.021 dB", { exact: true }),
+    ).toBeVisible();
+
+    const windowChoice = result.getByRole("combobox", {
+      name: t("plugins.spectrum.selectWindow"),
+    });
+    await windowChoice.click();
+    await page
+      .getByRole("option", { name: "8000000–16000000 ns", exact: true })
+      .click();
+    await expect(
+      result.getByText("500 Hz · 12.041 dB", { exact: true }),
+    ).toBeVisible();
+    await result.screenshot({
+      path: testInfo.outputPath("professional-spectrum.png"),
+    });
+    await page.setViewportSize({ width: 400, height: 690 });
+    await expectAnalysisLayout(result, waterfall, histogram, false);
+    await result.evaluate((element) =>
+      element.scrollIntoView({ block: "start" }),
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("professional-spectrum-narrow.png"),
+      animations: "disabled",
+    });
+    await histogram.evaluate((element) =>
+      element.scrollIntoView({ block: "start" }),
+    );
+    await page.screenshot({
+      path: testInfo.outputPath("professional-histogram-narrow.png"),
+      animations: "disabled",
+    });
+    await windowChoice.click();
+    await page
+      .getByRole("option", { name: "16000000–24000000 ns", exact: true })
+      .click();
+    await expect(
+      result.getByText(
+        t("plugins.spectrum.windowStatus", {
+          state: t("plugins.spectrum.status.empty"),
+          from: "17",
+          to: "25",
+          missing: 8,
+        }),
+        { exact: true },
+      ),
+    ).toBeVisible();
+    await expect(
+      result.getByRole("img", { name: t("plugins.spectrum.spectrumImage") }),
+    ).toHaveCount(0);
+
+    const calls = await page.evaluate(() =>
+      window.workbenchFixture.invocations.filter(
+        ({ actionId }) => actionId === "swb.reference.statistics.spectrum",
+      ),
+    );
+    expect(calls).toHaveLength(1);
+    expect(calls[0]).toMatchObject({
+      target: { kind: "host", id: reference.hostId },
+      params: input,
+    });
   });
-});
+}

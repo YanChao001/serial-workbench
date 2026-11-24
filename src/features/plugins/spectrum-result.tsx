@@ -1,5 +1,14 @@
 import { useEffect, useId, useMemo, useRef, useState } from "react";
 import { OptionsSelect } from "@/components/options-select";
+import { Label } from "@/components/ui/label";
+import {
+  Table,
+  TableBody,
+  TableCell,
+  TableHead,
+  TableHeader,
+  TableRow,
+} from "@/components/ui/table";
 import { useI18n } from "@/providers/i18n";
 import type { SpectrumReport } from "./spectrum-report";
 
@@ -56,7 +65,10 @@ function Waterfall({
     });
   }, [report, minimum, width]);
   return (
-    <div className="relative overflow-hidden rounded-md border">
+    <div
+      data-surface="artwork"
+      className="relative min-w-0 overflow-hidden rounded-md border"
+    >
       <canvas
         ref={canvas}
         width={width}
@@ -117,6 +129,7 @@ function SpectrumTrace({
       role="img"
       aria-label={t("plugins.spectrum.spectrumImage")}
       viewBox="0 0 640 142"
+      data-surface="artwork"
       className="w-full rounded-md border bg-background text-primary"
     >
       <path
@@ -151,7 +164,7 @@ function Histogram({ histogram }: { histogram: SpectrumReport["histogram"] }) {
   const largest = Math.max(1, ...histogram.bins.map(({ count }) => count));
   return (
     <section
-      className="grid content-start gap-2"
+      className="grid min-w-0 content-start gap-2"
       aria-label={t("plugins.spectrum.histogram")}
     >
       <h4 className="font-medium">{t("plugins.spectrum.histogram")}</h4>
@@ -162,34 +175,42 @@ function Histogram({ histogram }: { histogram: SpectrumReport["histogram"] }) {
         })}
       </p>
       {histogram.bins.length ? (
-        <table className="w-full text-start tabular-nums">
-          <thead>
-            <tr className="text-muted-foreground">
-              <th scope="col" className="text-start">
+        <Table className="tabular-nums">
+          <TableHeader>
+            <TableRow>
+              <TableHead scope="col" className="h-8">
                 {t("plugins.spectrum.binRange")}
-              </th>
-              <th scope="col" className="text-end">
+              </TableHead>
+              <TableHead scope="col" className="h-8 text-end">
                 {t("plugins.spectrum.count")}
-              </th>
-            </tr>
-          </thead>
-          <tbody>
+              </TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
             {histogram.bins.map(({ from, to, count }) => (
-              <tr key={from} className="border-t">
-                <th scope="row" className="py-1 text-start font-normal">
+              <TableRow key={from}>
+                <TableHead
+                  scope="row"
+                  className="h-auto py-1.5 wrap-anywhere whitespace-normal font-normal"
+                >
                   {number.format(from)}–{number.format(to)}
-                  <div aria-hidden="true" className="h-1.5 max-w-60 bg-muted">
-                    <div
-                      className="h-full bg-primary"
+                  <span
+                    aria-hidden="true"
+                    className="mt-1 block h-1.5 max-w-60 overflow-hidden rounded-full bg-muted"
+                  >
+                    <span
+                      className="block h-full bg-primary"
                       style={{ width: (100 * count) / largest + "%" }}
                     />
-                  </div>
-                </th>
-                <td className="text-end">{number.format(count)}</td>
-              </tr>
+                  </span>
+                </TableHead>
+                <TableCell className="text-end">
+                  {number.format(count)}
+                </TableCell>
+              </TableRow>
             ))}
-          </tbody>
-        </table>
+          </TableBody>
+        </Table>
       ) : (
         <p>{t("plugins.spectrum.noValues")}</p>
       )}
@@ -219,10 +240,13 @@ export function SpectrumResult({ report }: { report: SpectrumReport }) {
   };
   return (
     <section
-      aria-label={t("plugins.spectrum.result")}
-      className="grid gap-3 border-t pt-3"
+      aria-labelledby={id + "-title"}
+      className="@container/analysis grid min-w-0 gap-3 border-t pt-4"
     >
-      <p role="status">
+      <h4 id={id + "-title"} className="font-semibold">
+        {t("plugins.spectrum.result")}
+      </h4>
+      <p role="status" className="wrap-anywhere tabular-nums">
         {t("plugins.spectrum.sampleFacts", {
           rate: number.format(report.sampleRateHz),
           period: report.periodNs,
@@ -232,7 +256,7 @@ export function SpectrumResult({ report }: { report: SpectrumReport }) {
           tail: report.tail,
         })}
       </p>
-      <p>
+      <p className="wrap-anywhere text-muted-foreground">
         {t("plugins.spectrum.settings", {
           shape: t(`plugins.spectrum.shape.${report.window.shape}`),
           size: report.window.size,
@@ -241,7 +265,7 @@ export function SpectrumResult({ report }: { report: SpectrumReport }) {
           missing: t(`plugins.spectrum.missing.${report.window.missing}`),
         })}
       </p>
-      <div className="grid gap-5 p-1 xl:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 @min-[42rem]/analysis:grid-cols-[minmax(0,2fr)_minmax(0,1fr)]">
         <section
           aria-label={t("plugins.spectrum.waterfall")}
           className="grid min-w-0 content-start gap-3"
@@ -249,37 +273,46 @@ export function SpectrumResult({ report }: { report: SpectrumReport }) {
           <h4 className="font-medium">{t("plugins.spectrum.waterfall")}</h4>
           {row ? (
             <>
-              <Waterfall
-                report={report}
-                selected={selected}
-                minimum={range.minimum}
-                select={select}
-              />
-              <p className="flex flex-wrap justify-between gap-2 text-muted-foreground">
-                <span>0–{number.format(report.frequenciesHz.at(-1)!)} Hz</span>
-                <span>
-                  {t("plugins.spectrum.displayRange", {
-                    min: db.format(range.minimum),
-                    max: db.format(range.maximum),
-                    unit: report.unit ?? t("plugins.spectrum.inputUnit"),
-                  })}
-                </span>
-              </p>
-              <label htmlFor={id + "-window"}>
-                {t("plugins.spectrum.selectWindow")}
-              </label>
-              <OptionsSelect
-                id={id + "-window"}
-                value={String(selected)}
-                onValueChange={(value) => select(Number(value))}
-                options={report.windows.map(
-                  ({ fromOffsetNs, toOffsetNs }, i) => ({
-                    value: String(i),
-                    label: fromOffsetNs + "–" + toOffsetNs + " ns",
-                  }),
-                )}
-              />
-              <p aria-live="polite" className="text-muted-foreground">
+              <figure className="grid min-w-0 gap-2">
+                <Waterfall
+                  report={report}
+                  selected={selected}
+                  minimum={range.minimum}
+                  select={select}
+                />
+                <figcaption className="flex flex-wrap justify-between gap-x-4 gap-y-1 wrap-anywhere text-muted-foreground tabular-nums">
+                  <span>
+                    0–{number.format(report.frequenciesHz.at(-1)!)} Hz
+                  </span>
+                  <span>
+                    {t("plugins.spectrum.displayRange", {
+                      min: db.format(range.minimum),
+                      max: db.format(range.maximum),
+                      unit: report.unit ?? t("plugins.spectrum.inputUnit"),
+                    })}
+                  </span>
+                </figcaption>
+              </figure>
+              <div className="grid min-w-0 gap-1.5">
+                <Label htmlFor={id + "-window"}>
+                  {t("plugins.spectrum.selectWindow")}
+                </Label>
+                <OptionsSelect
+                  id={id + "-window"}
+                  value={String(selected)}
+                  onValueChange={(value) => select(Number(value))}
+                  options={report.windows.map(
+                    ({ fromOffsetNs, toOffsetNs }, i) => ({
+                      value: String(i),
+                      label: fromOffsetNs + "–" + toOffsetNs + " ns",
+                    }),
+                  )}
+                />
+              </div>
+              <p
+                aria-live="polite"
+                className="wrap-anywhere text-muted-foreground tabular-nums"
+              >
                 {t("plugins.spectrum.windowStatus", {
                   state: t(`plugins.spectrum.status.${row.status}`),
                   from: row.fromPosition,
@@ -292,27 +325,32 @@ export function SpectrumResult({ report }: { report: SpectrumReport }) {
               ) : null}
               {row.amplitudeDb ? (
                 <>
-                  <label htmlFor={id + "-bin"}>
-                    {t("plugins.spectrum.selectBin")}
-                  </label>
-                  <OptionsSelect
-                    id={id + "-bin"}
-                    value={String(bin ?? "none")}
-                    onValueChange={(value) =>
-                      setCheckedBin(
-                        value === "none" ? undefined : Number(value),
-                      )
-                    }
-                    options={[
-                      { value: "none", label: t("plugins.spectrum.noBin") },
-                      ...report.frequenciesHz.map((hz, i) => ({
-                        value: String(i),
-                        label: number.format(hz) + " Hz",
-                      })),
-                    ]}
-                  />
+                  <div className="grid min-w-0 gap-1.5">
+                    <Label htmlFor={id + "-bin"}>
+                      {t("plugins.spectrum.selectBin")}
+                    </Label>
+                    <OptionsSelect
+                      id={id + "-bin"}
+                      value={String(checkedBin ?? "peak")}
+                      onValueChange={(value) =>
+                        setCheckedBin(
+                          value === "peak" ? undefined : Number(value),
+                        )
+                      }
+                      options={[
+                        { value: "peak", label: t("plugins.spectrum.noBin") },
+                        ...report.frequenciesHz.map((hz, i) => ({
+                          value: String(i),
+                          label: number.format(hz) + " Hz",
+                        })),
+                      ]}
+                    />
+                  </div>
                   {frequency !== undefined ? (
-                    <p aria-live="polite" className="font-mono">
+                    <p
+                      aria-live="polite"
+                      className="wrap-anywhere font-mono tabular-nums"
+                    >
                       {number.format(frequency)} Hz ·{" "}
                       {level == null ? "—" : db.format(level) + " dB"}
                     </p>

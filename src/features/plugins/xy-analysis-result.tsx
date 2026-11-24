@@ -113,6 +113,7 @@ function Plot({
           y: report.y.sourceId,
         })}
         viewBox="0 0 370 370"
+        data-surface="artwork"
         className="w-full max-w-96 rounded-md border bg-background text-primary"
         onPointerDown={(event) => {
           const matrix = event.currentTarget.getScreenCTM();
@@ -157,7 +158,7 @@ function Plot({
           />
         ))}
       </svg>
-      <figcaption className="flex flex-wrap justify-between gap-2 break-all text-muted-foreground">
+      <figcaption className="flex flex-wrap justify-between gap-x-4 gap-y-1 wrap-anywhere text-muted-foreground tabular-nums">
         {axes.map(({ name, min, max }, index) => (
           <span key={index}>
             {index === 0 ? "X" : "Y"} {name} ({number.format(min)} –{" "}
@@ -224,7 +225,7 @@ export function XyAnalysisResult({ report }: { report: XyReport }) {
   return (
     <section
       aria-labelledby={id + "-results"}
-      className="grid gap-3 border-t pt-4"
+      className="@container/analysis grid min-w-0 gap-3 border-t pt-4"
     >
       <h4 id={id + "-results"} className="font-semibold">
         {t("plugins.xy.result")}
@@ -235,7 +236,7 @@ export function XyAnalysisResult({ report }: { report: XyReport }) {
           valid: graph?.points.length ?? 0,
         })}
       </p>
-      <div className="grid gap-5 lg:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className="grid grid-cols-[minmax(0,1fr)] gap-5 @min-[42rem]/analysis:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         {graph ? (
           <Plot
             report={report}
@@ -246,7 +247,7 @@ export function XyAnalysisResult({ report }: { report: XyReport }) {
         ) : (
           <p>{t("workbench.fieldChart.noPairs")}</p>
         )}
-        <div className="grid content-start gap-3 border-s-2 ps-3">
+        <div className="grid min-w-0 content-start gap-3 border-t pt-3 @min-[42rem]/analysis:border-s @min-[42rem]/analysis:border-t-0 @min-[42rem]/analysis:ps-4 @min-[42rem]/analysis:pt-0">
           <dl className="grid min-w-0 gap-2">
             <div>
               <dt className="text-muted-foreground">
@@ -258,7 +259,7 @@ export function XyAnalysisResult({ report }: { report: XyReport }) {
             </div>
             <div>
               <dt className="text-muted-foreground">{t("plugins.xy.rate")}</dt>
-              <dd className="font-mono">
+              <dd className="wrap-anywhere font-mono tabular-nums">
                 {report.clockRate.numerator} / {report.clockRate.denominator}
               </dd>
             </div>
