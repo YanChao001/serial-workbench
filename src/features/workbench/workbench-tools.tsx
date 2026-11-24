@@ -769,6 +769,7 @@ export function WorkbenchTools({
         <RuleTriggerTool
           key={key}
           actionId={actionId}
+          catalog={catalog}
           operations={host.state.operations}
           access={
             access && connection && session && actionId
@@ -776,6 +777,7 @@ export function WorkbenchTools({
                   ...access,
                   scope: key,
                   invoke: host.invoke,
+                  checkAction: host.checkAction,
                   async prepare(definition, signal) {
                     const startEventSeq = await readSuiteCaseCursor(
                       connection,

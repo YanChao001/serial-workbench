@@ -1218,6 +1218,13 @@ export const zhCN = {
   "ruleTrigger.definition": "规则定义（JSON）",
   "ruleTrigger.unavailable": "启用带规则动作的签名自动化包后可武装规则。",
   "ruleTrigger.invalid": "请检查 JSON 的版本、观察时限、条件和动作。",
+  "ruleTrigger.actionReserved":
+    "{action} 不适合作为规则效果。请选择其他动作，发送字节时可使用串口写入效果。",
+  "ruleTrigger.actionUnavailable":
+    "动作 {action} 不可用。请启用提供此动作的插件，或选择其他动作。",
+  "ruleTrigger.actionTarget":
+    "动作 {action} 无法在串口会话中运行。请选择支持会话目标的动作。",
+  "ruleTrigger.actionDenied": "当前会话拒绝执行 {action}。请检查授权后重试。",
   "ruleTrigger.arm": "武装规则",
   "ruleTrigger.stop": "停止规则",
   "ruleTrigger.plan": "条件 {condition} · 动作 {effect} · 观察 {ms} 毫秒",

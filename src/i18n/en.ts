@@ -1306,6 +1306,14 @@ export const en = {
     "Enable a signed automation package that provides rule triggers.",
   "ruleTrigger.invalid":
     "Check the JSON version, observation window, condition, and effect.",
+  "ruleTrigger.actionReserved":
+    "Choose another action for {action}, or use the serial write effect to send bytes.",
+  "ruleTrigger.actionUnavailable":
+    "Action {action} is unavailable. Enable its plugin or choose another action.",
+  "ruleTrigger.actionTarget":
+    "Action {action} cannot run in a serial session. Choose a session action.",
+  "ruleTrigger.actionDenied":
+    "Permission to run {action} in this session was denied. Check access and try again.",
   "ruleTrigger.arm": "Arm rule",
   "ruleTrigger.stop": "Stop rule",
   "ruleTrigger.plan":

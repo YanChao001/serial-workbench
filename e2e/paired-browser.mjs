@@ -498,6 +498,14 @@ try {
   const ruleCommand = await checkRuleCommand({
     page,
     session: original,
+    ruleInvocationCount: () =>
+      frames.filter(
+        ({ direction, method, action }) =>
+          direction === "framesent" &&
+          method === "action.invoke" &&
+          action === "swb.builtin.automation.rule",
+      ).length,
+    screenshotPath: join(output, "rule-incompatible-effect.png"),
     async readWorkspace() {
       return (await query("workspace.read", workspacePath)).result.value
         .document;

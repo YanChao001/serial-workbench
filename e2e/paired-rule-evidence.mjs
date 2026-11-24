@@ -11,6 +11,8 @@ export async function checkRuleCommand({
   getOperation,
   readResult,
   readWorkspace,
+  ruleInvocationCount,
+  screenshotPath,
 }) {
   const before = await readRaw("rule-before");
   const title = /^(Rule triggers|规则触发)$/;
@@ -24,23 +26,25 @@ export async function checkRuleCommand({
   const close = () =>
     dialog.getByRole("button", { name: /^(Close view|关闭视图)$/ }).click();
   const status = dialog.getByRole("status");
+  const editor = dialog.getByRole("textbox", {
+    name: /^(Rule definition \(JSON\)|规则定义（JSON）)$/,
+  });
   const unsaved = page.getByRole("dialog", {
     name: /^(Save unfinished work|保存未完成的工作)$/,
   });
-  async function armAndTrigger(marker, effect) {
+  async function writeEffect(marker, effect) {
     await open();
-    await dialog
-      .getByRole("textbox", {
-        name: /^(Rule definition \(JSON\)|规则定义（JSON）)$/,
-      })
-      .fill(
-        JSON.stringify({
-          version: 1,
-          observationMs: 15_000,
-          condition: { kind: "regex", pattern: "^" + marker + "$" },
-          effect,
-        }),
-      );
+    await editor.fill(
+      JSON.stringify({
+        version: 1,
+        observationMs: 15_000,
+        condition: { kind: "regex", pattern: "^" + marker + "$" },
+        effect,
+      }),
+    );
+  }
+  async function armAndTrigger(marker, effect) {
+    await writeEffect(marker, effect);
     await dialog.getByRole("button", { name: /^(Arm rule|武装规则)$/ }).click();
     await expect(status).toContainText(
       /Rule armed and waiting for a match\.|规则已武装，等待匹配。/,
@@ -61,6 +65,31 @@ export async function checkRuleCommand({
     await open();
     return operationId;
   }
+
+  const workspace = await readWorkspace();
+  assert.equal(ruleInvocationCount(), 0);
+  const viewport = page.viewportSize();
+  await page.setViewportSize({ width: 420, height: 600 });
+  await writeEffect("RULE:BOUNDARY", {
+    kind: "action",
+    actionId: "workspace.save",
+    params: { value: { ...workspace.value, name: "Unexpected rule target" } },
+  });
+  await expect(editor).toHaveAccessibleDescription(
+    /Action workspace\.save cannot run in a serial session|动作 workspace\.save 无法在串口会话中运行/,
+  );
+  await expect(
+    dialog.getByRole("button", { name: /^(Arm rule|武装规则)$/ }),
+  ).toBeDisabled();
+  assert.equal(ruleInvocationCount(), 0);
+  assert.deepEqual(await readWorkspace(), workspace);
+  await dialog.screenshot({ path: screenshotPath });
+  await close();
+  await unsaved
+    .getByRole("button", { name: /^(Discard and continue|放弃并继续)$/ })
+    .click();
+  await expect(dialog).toBeHidden();
+  if (viewport) await page.setViewportSize(viewport);
 
   const sequenceBytes = "52 55 4C 45 3A 41 43 4B";
   const parentId = await armAndTrigger("RULE:BENCH", {
@@ -89,6 +118,7 @@ export async function checkRuleCommand({
   assert.ok(effectId, "Rule panel must show the effect operation ID");
   await close();
 
+  assert.equal(ruleInvocationCount(), 1);
   const parent = await getOperation(parentId);
   const effect = await getOperation(effectId);
   assert.equal(parent.actionId, ruleAction);
@@ -142,35 +172,11 @@ export async function checkRuleCommand({
     ];
   });
   assert.equal(Buffer.concat(matched).toString("utf8"), "RULE:BENCH\n");
-  const workspace = await readWorkspace();
-  const deniedId = await armAndTrigger("RULE:BOUNDARY", {
-    kind: "action",
-    actionId: "workspace.save",
-    params: { value: { ...workspace.value, name: "Unexpected rule target" } },
-  });
-  let denied;
-  await expect
-    .poll(async () => {
-      denied = await getOperation(deniedId);
-      return denied.state;
-    })
-    .toBe("failed");
-  assert.deepEqual(denied.target, session);
-  assert.equal(denied.childHighWatermark, "0");
-  assert.equal(denied.error?.code, "NODE_ACTION_FAILED");
-  const deniedRaw = await readRaw("rule-denied", after.nextEventSeq);
-  const deniedTx = deniedRaw.events.filter(({ kind }) => kind === "tx");
-  assert.equal(deniedTx.length, 1);
-  assert.equal(text(deniedTx), "\nRULE:BOUNDARY\n");
-  assert.equal(deniedTx[0].payload.outcome, "accepted");
-  assert.deepEqual(await readWorkspace(), workspace);
-  await close();
   return {
-    denied: {
-      operationId: deniedId,
-      error: denied.error,
+    incompatibleEffect: {
+      actionId: "workspace.save",
+      noRuleInvocation: true,
       workspaceRevision: workspace.revision,
-      childHighWatermark: denied.childHighWatermark,
     },
     parentId,
     effectId,

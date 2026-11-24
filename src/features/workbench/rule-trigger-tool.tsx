@@ -1,11 +1,13 @@
 import { useContext, useEffect, useId, useMemo, useRef, useState } from "react";
 import {
   ContractValidationError,
+  type ActionSpec,
   type Operation,
 } from "@serial-workbench/contracts";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { nativeErrorText } from "@/lib/native-error";
+import { rpcJsonObject } from "@/lib/rpc-json";
 import { isTauri, saveTextExport } from "@/lib/tauri";
 import type {
   HostContextValue,
@@ -15,6 +17,7 @@ import { useI18n } from "@/providers/i18n";
 import { useUnsavedWork } from "@/providers/unsaved-work";
 import {
   inspectRuleDefinition,
+  ruleActionIds,
   ruleDefinitionLimit,
   sameRule,
   type RuleActionId,
@@ -27,7 +30,7 @@ import {
 } from "./rule-task-observations";
 
 type Access = RuleTaskAccess &
-  Pick<HostContextValue, "invoke"> & {
+  Pick<HostContextValue, "invoke" | "checkAction"> & {
     port: string;
     prepare: (
       definition: string,
@@ -53,6 +56,13 @@ const example = JSON.stringify(
   2,
 );
 
+const reservedRuleActions = new Set<string>([
+  ...ruleActionIds,
+  "session.tx",
+  "lease.acquire",
+  "lease.release",
+]);
+
 function pending(operation: Operation) {
   return ["queued", "running", "cancel_requested"].includes(operation.state);
 }
@@ -61,10 +71,12 @@ export function RuleTriggerTool({
   access,
   actionId,
   operations,
+  catalog,
 }: {
   access?: Access;
   actionId?: RuleActionId;
   operations: readonly Operation[];
+  catalog: readonly ActionSpec[];
 }) {
   const { t } = useI18n();
   const observations = useContext(RuleTaskObservationsContext);
@@ -98,6 +110,30 @@ export function RuleTriggerTool({
     () => inspectRuleDefinition(definition),
     [definition],
   );
+  const effect = validated?.effect === "action" ? validated.action : undefined;
+  const spec =
+    effect && catalog.find((entry) => entry.actionId === effect.actionId);
+  let definitionError: string | undefined;
+  if (!validated && definition.trim())
+    definitionError = t("ruleTrigger.invalid");
+  if (effect && actionId) {
+    if (reservedRuleActions.has(effect.actionId))
+      definitionError = t("ruleTrigger.actionReserved", {
+        action: effect.actionId,
+      });
+    else if (!spec)
+      definitionError = t("ruleTrigger.actionUnavailable", {
+        action: effect.actionId,
+      });
+    else if (
+      spec.kind !== "action" ||
+      spec.executionLocation !== "resource_host" ||
+      !spec.targetKinds.includes("session")
+    )
+      definitionError = t("ruleTrigger.actionTarget", {
+        action: effect.actionId,
+      });
+  }
   const target = access?.target;
   const active = target
     ? operations.reduce<Operation | undefined>(
@@ -150,6 +186,7 @@ export function RuleTriggerTool({
       !actionId ||
       !observations ||
       !validated ||
+      definitionError ||
       busy ||
       saving ||
       request.current
@@ -170,6 +207,21 @@ export function RuleTriggerTool({
     setNotice(undefined);
     setCancelling(undefined);
     try {
+      if (effect) {
+        const check = await access.checkAction(
+          {
+            actionId: effect.actionId,
+            target: access.target,
+            params: rpcJsonObject(effect.params),
+          },
+          signal,
+        );
+        signal.throwIfAborted();
+        if (!check.allowed) {
+          setNotice(t("ruleTrigger.actionDenied", { action: effect.actionId }));
+          return;
+        }
+      }
       const input = await access.prepare(definition, signal);
       signal.throwIfAborted();
       current.phase = "submitting";
@@ -281,7 +333,6 @@ export function RuleTriggerTool({
       statusRegion.current?.scrollIntoView({ block: "nearest" });
   }, [starting]);
 
-  const invalid = Boolean(definition.trim() && !validated);
   return (
     <section className="grid min-w-0 gap-3">
       <p className="text-sm font-medium wrap-anywhere">
@@ -303,14 +354,20 @@ export function RuleTriggerTool({
           value={definition}
           maxLength={ruleDefinitionLimit}
           disabled={busy || saving}
-          aria-invalid={invalid || undefined}
-          aria-describedby={invalid ? id + "-invalid" : undefined}
-          onChange={(event) => setDefinition(event.currentTarget.value)}
+          aria-invalid={Boolean(definitionError) || undefined}
+          aria-describedby={definitionError ? id + "-invalid" : undefined}
+          onChange={(event) => {
+            setDefinition(event.currentTarget.value);
+            setNotice(undefined);
+          }}
         />
       </label>
-      {invalid && (
-        <p id={id + "-invalid"} className="text-sm text-destructive">
-          {t("ruleTrigger.invalid")}
+      {definitionError && (
+        <p
+          id={id + "-invalid"}
+          className="text-sm text-destructive wrap-anywhere"
+        >
+          {definitionError}
         </p>
       )}
       {validated ? (
@@ -360,6 +417,7 @@ export function RuleTriggerTool({
             !actionId ||
             !observations ||
             !validated ||
+            Boolean(definitionError) ||
             busy ||
             saving
           }
