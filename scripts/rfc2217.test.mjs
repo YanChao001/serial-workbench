@@ -1,3 +1,12 @@
+import { buildSync } from "esbuild";
+import { createHash } from "node:crypto";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
+import descriptor from "../crates/host/resources/node-packages/rfc2217.json" with { type: "json" };
+import {
+  builtinRfc2217PackageId,
+  builtinRfc2217ProviderId,
+} from "../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint.ts";
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { createServer } from "node:net";
@@ -286,3 +295,45 @@ test(
     await ended;
   },
 );
+
+test("the bundled RFC 2217 transport matches its signed archive and reference contract", () => {
+  const root = new URL("../", import.meta.url);
+  const folder = "packages/plugin-sdk/examples/reference-rfc2217/";
+  const read = (path) => readFileSync(new URL(path, root));
+  const digest = (bytes) => createHash("sha256").update(bytes).digest("hex");
+  const manifestBytes = read(folder + "builtin-manifest.json");
+  const productManifest = JSON.parse(manifestBytes);
+  assert.ok(validateNodePackageManifest(productManifest));
+  assert.equal(productManifest.id, builtinRfc2217PackageId);
+  assert.equal(descriptor.id, builtinRfc2217PackageId);
+  assert.equal(productManifest.version, descriptor.version);
+  assert.equal(descriptor.sourceApproval.source, "swb.product");
+  assert.equal(descriptor.manifestSha256, digest(manifestBytes));
+  assert.equal(
+    descriptor.archiveSha256,
+    digest(read("crates/host/resources/node-packages/rfc2217.zip")),
+  );
+  assert.deepEqual(productManifest.permissions, manifest.permissions);
+  assert.deepEqual(productManifest.contributes.transports, [
+    {
+      ...manifest.contributes.transports[0],
+      actionId: builtinRfc2217ProviderId,
+    },
+  ]);
+  const { outputFiles } = buildSync({
+    absWorkingDir: fileURLToPath(root),
+    entryPoints: [folder + "builtin.ts"],
+    bundle: true,
+    platform: "node",
+    target: "node26",
+    format: "esm",
+    charset: "utf8",
+    legalComments: "none",
+    write: false,
+  });
+  assert.equal(outputFiles.length, 1);
+  assert.equal(
+    descriptor.compiledModuleSha256,
+    digest(outputFiles[0].contents),
+  );
+});

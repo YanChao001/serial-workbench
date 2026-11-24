@@ -1,9 +1,9 @@
-import { StrictMode } from "react";
+import { StrictMode, type ReactNode } from "react";
 import {
   cleanup,
   act,
   fireEvent,
-  render,
+  render as renderElement,
   screen,
   waitFor,
   within,
@@ -35,6 +35,19 @@ import { HostRequestError } from "@serial-workbench/host-client";
 import { createHostConnection } from "@/lib/host-client";
 import type { HostNativePort } from "@/lib/host-client";
 import type { AttachResult } from "@serial-workbench/contracts";
+import { I18nContext } from "@/providers/i18n-context";
+
+const workbenchI18n = { language: "en", t: createTranslator(en) } as const;
+function WorkbenchTestProviders({ children }: { children: ReactNode }) {
+  return (
+    <I18nContext.Provider value={workbenchI18n}>
+      {children}
+    </I18nContext.Provider>
+  );
+}
+const render = (content: ReactNode) =>
+  renderElement(content, { wrapper: WorkbenchTestProviders });
+
 afterEach(cleanup);
 beforeEach(() => {
   render(<Toaster />);

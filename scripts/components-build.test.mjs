@@ -17,6 +17,7 @@ import automation from "../crates/host/resources/node-packages/automation.json" 
 import chart from "../crates/host/resources/node-packages/chart.json" with { type: "json" };
 import modbusSlave from "../crates/host/resources/node-packages/modbus-slave.json" with { type: "json" };
 import modbus from "../crates/host/resources/node-packages/modbus.json" with { type: "json" };
+import rfc2217 from "../crates/host/resources/node-packages/rfc2217.json" with { type: "json" };
 import tcp from "../crates/host/resources/node-packages/tcp.json" with { type: "json" };
 import protocolFields from "../crates/host/resources/node-packages/protocol-fields.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
@@ -236,6 +237,12 @@ test("components build first with one target and manifest hashes real bytes", as
       id: tcp.id,
       version: tcp.version,
       archiveSha256: tcp.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+    {
+      id: rfc2217.id,
+      version: rfc2217.version,
+      archiveSha256: rfc2217.archiveSha256,
       hostComponent: "serial-workbench-host.exe",
     },
   ]);

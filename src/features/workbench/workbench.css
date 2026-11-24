@@ -965,6 +965,25 @@
   overscroll-behavior: contain;
   scrollbar-gutter: stable;
 }
+.workbench-dialog-body:has(.workbench-rfc2217-connection) {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr);
+  overflow: hidden;
+}
+.workbench-rfc2217-connection {
+  display: grid;
+  grid-template-rows: minmax(0, 1fr) auto;
+  gap: var(--workbench-dialog-spacing, 0.75rem);
+  min-width: 0;
+  min-height: 0;
+}
+.workbench-rfc2217-fields {
+  min-height: 0;
+  min-width: 0;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
 .workbench-dialog-body:focus-visible {
   outline: 1px solid var(--ui-focus-color);
   outline-offset: -1px;

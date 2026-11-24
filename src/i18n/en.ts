@@ -2182,6 +2182,21 @@ export const en = {
   "tcpConnection.connecting": "Connecting…",
   "tcpConnection.listen": "Start listening",
   "tcpConnection.starting": "Starting listener…",
+  "nativeError.pluginTransportOpenFailed":
+    "Could not open the plugin connection. Check the endpoint and parameters, then try again.",
+  "rfc2217Connection.title": "RFC 2217 remote serial",
+  "rfc2217Connection.baudRate": "Baud rate (bit/s)",
+  "rfc2217Connection.invalidBaudRate":
+    "Enter a baud rate from 1 to 4294967295 bit/s.",
+  "rfc2217Connection.lineSettings": "Line settings",
+  "rfc2217Connection.noFlowControl": "No flow control",
+  "rfc2217Connection.keep": "Keep",
+  "rfc2217Connection.set": "Set",
+  "rfc2217Connection.clear": "Clear",
+  "rfc2217Connection.managedRts": "RTS is managed by hardware flow control.",
+  "rfc2217Connection.invalidStopBits":
+    "Choose 5 data bits to use 1.5 stop bits.",
+  "rfc2217Connection.negotiating": "Negotiating…",
   "workbench.pluginTransportParameters": "Plugin connection parameters",
   "workbench.pluginTransportHint":
     "Enter a JSON object using the plugin’s documented parameters.",

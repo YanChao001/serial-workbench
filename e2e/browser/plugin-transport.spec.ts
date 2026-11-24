@@ -254,3 +254,184 @@ test("the narrow Chinese TCP client keeps an editable draft after a Host failure
   await expect(dialog).toBeHidden();
   await expect(open).toBeFocused();
 });
+
+const builtinRfc2217 = {
+  ...device,
+  systemName: "swb.builtin.rfc2217.transport",
+  driver: "swb.builtin.rfc2217",
+} satisfies DeviceDescriptor;
+
+test("the wide RFC 2217 form keeps the negotiated line settings in the session request", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 1240, height: 760 });
+  await seedWorkbenchFixture(page, { device: builtinRfc2217 });
+  await page.goto("./#/");
+  await page
+    .getByRole("button", {
+      name: "Open RFC 2217 remote serial",
+      exact: true,
+    })
+    .click();
+  const dialog = page.getByRole("dialog", { name: "RFC 2217 remote serial" });
+  const address = dialog.getByRole("textbox", { name: "Remote address" });
+  const port = dialog.getByRole("textbox", { name: "Port", exact: true });
+  const baud = dialog.getByRole("textbox", { name: "Baud rate (bit/s)" });
+  const connect = dialog.getByRole("button", { name: "Connect", exact: true });
+  await expect(address).toBeFocused();
+  await expect(baud).toHaveValue("115200");
+  await address.fill("serial-gateway.local");
+  await connect.click();
+  await expect(port).toBeFocused();
+  await port.fill("2217");
+  await baud.fill("230400");
+  const summary = dialog.locator("summary");
+  await summary.focus();
+  await summary.press("Enter");
+  const data = dialog.getByRole("combobox", { name: "Data bits" });
+  const stop = dialog.getByRole("combobox", { name: "Stop bits" });
+  const flow = dialog.getByRole("combobox", { name: "Flow control" });
+  const dtr = dialog.getByRole("combobox", { name: "DTR" });
+  const rts = dialog.getByRole("combobox", { name: "RTS" });
+  await expect(data).toBeVisible();
+  await stop.click();
+  await page.getByRole("option", { name: "1.5", exact: true }).click();
+  await expect(dialog.getByRole("alert")).toHaveText(
+    "Choose 5 data bits to use 1.5 stop bits.",
+  );
+  await summary.press("Enter");
+  await connect.click();
+  await expect(stop).toBeFocused();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectRequests),
+  ).toEqual([]);
+  await data.click();
+  await page.getByRole("option", { name: "5", exact: true }).click();
+  await dtr.click();
+  await page.getByRole("option", { name: "Set", exact: true }).click();
+  await rts.click();
+  await page.getByRole("option", { name: "Clear", exact: true }).click();
+  await flow.click();
+  await page.getByRole("option", { name: "RTS/CTS", exact: true }).click();
+  await expect(rts).toBeDisabled();
+  await expect(rts).toHaveAccessibleDescription(
+    "RTS is managed by hardware flow control.",
+  );
+  const [addressBox, portBox, dataBox, stopBox, connectBox] = await Promise.all(
+    [address, port, data, stop, connect].map((control) =>
+      control.boundingBox(),
+    ),
+  );
+  expect(addressBox!.y).toBe(portBox!.y);
+  expect(dataBox!.y).toBe(stopBox!.y);
+  expect(dataBox!.x).toBe(addressBox!.x);
+  expect(
+    new Set([
+      addressBox!.height,
+      portBox!.height,
+      dataBox!.height,
+      stopBox!.height,
+      connectBox!.height,
+    ]).size,
+  ).toBe(1);
+  await dialog.screenshot({ path: info.outputPath("rfc2217-wide.png") });
+  await connect.click();
+  await expect(dialog).toBeHidden();
+  expect(
+    await page.evaluate(() => window.workbenchFixture.connectRequests),
+  ).toEqual([
+    {
+      deviceId: builtinRfc2217.deviceId,
+      params: expect.objectContaining({
+        configuration: expect.objectContaining({
+          baudRate: "230400",
+          dataBits: "5",
+          parity: "none",
+          stopBits: "onePointFive",
+          flowControl: "rtsCts",
+        }),
+        transportParams: {
+          host: "serial-gateway.local",
+          port: 2217,
+          baudRate: 230400,
+          dataBits: 5,
+          parity: "none",
+          stopBits: "1.5",
+          flowControl: "hardware",
+          dtr: true,
+        },
+      }),
+    },
+  ]);
+});
+
+test("the short Chinese RFC 2217 form keeps one retry message and the connection draft", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 460 });
+  await seedWorkbenchFixture(page, {
+    device: builtinRfc2217,
+    language: "zh",
+    theme: "dark",
+    sharedSettings: { fontSize: "lg" },
+    connectFailure: {
+      code: "PLUGIN_TRANSPORT_OPEN_FAILED",
+      message: "Fixture serial gateway did not confirm a parameter",
+      retryable: true,
+    },
+  });
+  await page.goto("./#/");
+  const open = page.getByRole("button", {
+    name: "打开 RFC 2217 远程串口",
+    exact: true,
+  });
+  await open.click();
+  const dialog = page.getByRole("dialog", { name: "RFC 2217 远程串口" });
+  const address = dialog.getByRole("textbox", {
+    name: "远端地址",
+    exact: true,
+  });
+  const port = dialog.getByRole("textbox", { name: "端口", exact: true });
+  const baud = dialog.getByRole("textbox", {
+    name: "波特率（bit/s）",
+    exact: true,
+  });
+  const connect = dialog.getByRole("button", { name: "连接", exact: true });
+  const host = "serial-gateway-line-b-controller-access.example";
+  await address.fill(host);
+  await port.fill("2217");
+  await baud.fill("57600");
+  const [addressBox, portBox, baudBox] = await Promise.all(
+    [address, port, baud].map((control) => control.boundingBox()),
+  );
+  expect(portBox!.x).toBe(addressBox!.x);
+  expect(baudBox!.x).toBe(addressBox!.x);
+  expect(portBox!.y).toBeGreaterThanOrEqual(addressBox!.y + addressBox!.height);
+  expect(baudBox!.y).toBeGreaterThanOrEqual(portBox!.y + portBox!.height);
+  await baud.press("Enter");
+  const message = "插件连接失败。请检查地址、端口和连接参数后重试。";
+  const alert = dialog.getByRole("alert");
+  await expect(alert).toHaveText(message);
+  await expect(page.getByText(message, { exact: true })).toHaveCount(1);
+  const [errorBounds, buttonBounds] = await Promise.all([
+    alert.boundingBox(),
+    connect.boundingBox(),
+  ]);
+  expect(errorBounds!.y + errorBounds!.height).toBeLessThan(buttonBounds!.y);
+  await expect(address).toHaveValue(host);
+  await expect(port).toHaveValue("2217");
+  await expect(baud).toHaveValue("57600");
+  await expect(connect).toBeEnabled();
+  await dialog.screenshot({ path: info.outputPath("rfc2217-narrow.png") });
+  await connect.click();
+  await expect(dialog.getByRole("alert")).toHaveText(message);
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.connectRequests.length),
+    )
+    .toBe(2);
+  await dialog.getByRole("button", { name: "取消", exact: true }).click();
+  await page.getByRole("button", { name: "放弃并继续", exact: true }).click();
+  await expect(dialog).toBeHidden();
+  await expect(open).toBeFocused();
+});

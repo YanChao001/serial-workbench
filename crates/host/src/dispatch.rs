@@ -2844,6 +2844,7 @@ mod tests {
         let chart = NodePackageId::try_from("swb.builtin.chart").unwrap();
         let automation = NodePackageId::try_from("swb.builtin.automation").unwrap();
         let tcp = NodePackageId::try_from("swb.builtin.tcp").unwrap();
+        let rfc2217 = NodePackageId::try_from("swb.builtin.rfc2217").unwrap();
         let peer = Arc::new(BundledSlavePeer::default());
         let mut first_revision = None;
         let mut pending_calendar: Option<(Id, tokio::time::Instant, ContextToken)> = None;
@@ -2892,6 +2893,7 @@ mod tests {
                         catalog.status(&chart).unwrap(),
                         catalog.status(&automation).unwrap(),
                         catalog.status(&tcp).unwrap(),
+                        catalog.status(&rfc2217).unwrap(),
                     ];
                     if statuses
                         .iter()
@@ -2935,17 +2937,26 @@ mod tests {
                     })
                 })
             });
-            let tcp_registered = host
-                .inner
-                .node_packages
-                .registered_transports()
-                .map(|items| {
-                    items.iter().any(|provider| {
-                        let device = provider.descriptor(&store.identity().unwrap().host_id);
-                        device.system_name == "swb.builtin.tcp.transport"
-                            && device.driver.as_deref() == Some(tcp.as_str())
-                    })
-                });
+            let transports_registered =
+                host.inner
+                    .node_packages
+                    .registered_transports()
+                    .map(|items| {
+                        let host_id = store.identity().unwrap().host_id;
+                        let devices: Vec<_> =
+                            items.iter().map(|item| item.descriptor(&host_id)).collect();
+                        [
+                            (&tcp, "swb.builtin.tcp.transport"),
+                            (&rfc2217, "swb.builtin.rfc2217.transport"),
+                        ]
+                        .into_iter()
+                        .all(|(package, contribution)| {
+                            devices.iter().any(|device| {
+                                device.system_name == contribution
+                                    && device.driver.as_deref() == Some(package.as_str())
+                            })
+                        })
+                    });
             let execution = if epoch == 1 && registered.as_ref().is_ok_and(|active| *active) {
                 Some(
                     tokio::spawn(check_bundled_field_actions(
@@ -2994,8 +3005,8 @@ mod tests {
             );
             assert!(registered.unwrap());
             assert!(
-                tcp_registered.unwrap(),
-                "bundled TCP provider was not registered"
+                transports_registered.unwrap(),
+                "bundled TCP and RFC 2217 providers were not registered"
             );
             if let Some(execution) = execution {
                 pending_calendar = Some(execution.expect("bundled field actions on the real Host"));
@@ -3014,6 +3025,24 @@ mod tests {
                     status.archive_sha256.as_ref(),
                     Some(&package.archive_sha256)
                 );
+                if status.id == rfc2217 {
+                    let descriptor: serde_json::Value = serde_json::from_str(include_str!(
+                        "../resources/node-packages/rfc2217.json"
+                    ))
+                    .unwrap();
+                    assert_eq!(
+                        package.archive_sha256.as_str(),
+                        descriptor["archiveSha256"].as_str().unwrap()
+                    );
+                    assert_eq!(
+                        package.verified_source.as_ref().unwrap().source.as_str(),
+                        "swb.product"
+                    );
+                    eprintln!(
+                        "bundled_rfc2217 epoch={epoch} archive={} source=swb.product active=true",
+                        package.archive_sha256
+                    );
+                }
             }
             let revision = first_revision.get_or_insert(installed.revision);
             assert_eq!(installed.revision, *revision);

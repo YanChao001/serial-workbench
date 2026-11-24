@@ -2008,6 +2008,20 @@ export const zhCN = {
   "tcpConnection.connecting": "正在连接…",
   "tcpConnection.listen": "开始侦听",
   "tcpConnection.starting": "正在启动侦听…",
+  "nativeError.pluginTransportOpenFailed":
+    "插件连接失败。请检查地址、端口和连接参数后重试。",
+  "rfc2217Connection.title": "RFC 2217 远程串口",
+  "rfc2217Connection.baudRate": "波特率（bit/s）",
+  "rfc2217Connection.invalidBaudRate":
+    "请输入 1 到 4294967295 bit/s 的波特率。",
+  "rfc2217Connection.lineSettings": "线路设置",
+  "rfc2217Connection.noFlowControl": "无流控",
+  "rfc2217Connection.keep": "保留",
+  "rfc2217Connection.set": "置位",
+  "rfc2217Connection.clear": "清除",
+  "rfc2217Connection.managedRts": "RTS 由硬件流控管理。",
+  "rfc2217Connection.invalidStopBits": "使用 1.5 停止位时请选择 5 数据位。",
+  "rfc2217Connection.negotiating": "正在协商…",
   "workbench.pluginTransportParameters": "插件连接参数",
   "workbench.pluginTransportHint": "按插件文档填写 JSON 对象。",
   "workbench.pluginTransportInvalid":

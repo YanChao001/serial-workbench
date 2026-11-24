@@ -58,6 +58,14 @@ import type { BroadcastMemory } from "./broadcast-send-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { TcpConnectionParameters } from "./tcp-connection-parameters";
+import {
+  Rfc2217ConnectionParameters,
+  type Rfc2217SerialConfiguration,
+} from "./rfc2217-connection-parameters";
+import {
+  builtinRfc2217PackageId,
+  builtinRfc2217ProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint";
 import { useI18n } from "@/providers/i18n";
 import {
   builtinTcpPackageId,
@@ -682,13 +690,18 @@ export function WorkspaceLayout({
   const tcpPrompt =
     promptDevice?.systemName === builtinTcpProviderId &&
     promptDevice.driver === builtinTcpPackageId;
+  const rfc2217Prompt =
+    promptDevice?.systemName === builtinRfc2217ProviderId &&
+    promptDevice.driver === builtinRfc2217PackageId;
   const promptFailure =
     openError && promptDevice && failure?.deviceId === promptDevice.deviceId
       ? failure
       : undefined;
-  const TransportParameters = tcpPrompt
-    ? TcpConnectionParameters
-    : PluginTransportParameters;
+  const TransportParameters = rfc2217Prompt
+    ? Rfc2217ConnectionParameters
+    : tcpPrompt
+      ? TcpConnectionParameters
+      : PluginTransportParameters;
   useEffect(() => {
     if (transportPrompt && !promptDevice) setTransportPrompt(undefined);
   }, [promptDevice, transportPrompt]);
@@ -1481,6 +1494,7 @@ export function WorkspaceLayout({
     deviceId: string,
     transportParams?: OpenParams["transportParams"],
     template?: SerialConfiguration,
+    transportConfiguration?: Rfc2217SerialConfiguration,
   ) {
     if (connectionDefaultsLoading) return;
     focusRevision.current++;
@@ -1523,7 +1537,10 @@ export function WorkspaceLayout({
       const configuration =
         existing && !existing.readOnly
           ? existing.configuration
-          : (template ?? requestedConfiguration(deviceId));
+          : (template ?? {
+              ...requestedConfiguration(deviceId),
+              ...transportConfiguration,
+            });
       const opened =
         transportParams === undefined
           ? await connect(deviceId, controller.signal, configuration)
@@ -2619,9 +2636,11 @@ export function WorkspaceLayout({
         open={!!promptDevice}
         scopeKey={transportScope}
         title={
-          tcpPrompt
-            ? t("tcpConnection.title")
-            : labels.pluginTransportParameters
+          rfc2217Prompt
+            ? t("rfc2217Connection.title")
+            : tcpPrompt
+              ? t("tcpConnection.title")
+              : labels.pluginTransportParameters
         }
         closeLabel={labels.closeView}
         returnFocus={dialogTrigger}
@@ -2634,8 +2653,16 @@ export function WorkspaceLayout({
             labels={labels}
             opening={opening === promptDevice.deviceId}
             error={promptFailure?.message}
-            onSubmit={(params) => {
-              void open(promptDevice.deviceId, params);
+            onSubmit={(
+              params: NonNullable<OpenParams["transportParams"]>,
+              lineConfiguration?: Rfc2217SerialConfiguration,
+            ) => {
+              void open(
+                promptDevice.deviceId,
+                params,
+                undefined,
+                lineConfiguration,
+              );
             }}
           />
         )}

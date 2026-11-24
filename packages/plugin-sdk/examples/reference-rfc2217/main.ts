@@ -253,12 +253,12 @@ export async function openRfc2217({
   }
 }
 
-export const register: NodeRegister = (context) => {
-  const lifetime = new AbortController();
-  const pending = new Set<Promise<TransportConnection>>();
-  context.transports.register(
-    rfc2217TransportId,
-    async ({ params, signal }) => {
+export const registerRfc2217Transport =
+  (providerId: string): NodeRegister =>
+  (context) => {
+    const lifetime = new AbortController();
+    const pending = new Set<Promise<TransportConnection>>();
+    context.transports.register(providerId, async ({ params, signal }) => {
       const opening = openRfc2217({
         params,
         signal: AbortSignal.any([signal, lifetime.signal]),
@@ -277,16 +277,17 @@ export const register: NodeRegister = (context) => {
         pending.delete(opening);
         throw error;
       }
-    },
-  );
-  return async () => {
-    lifetime.abort();
-    const settled = await Promise.allSettled(pending);
-    await Promise.all(
-      settled.flatMap((item) =>
-        item.status === "fulfilled" ? [item.value.close()] : [],
-      ),
-    );
-    pending.clear();
+    });
+    return async () => {
+      lifetime.abort();
+      const settled = await Promise.allSettled(pending);
+      await Promise.all(
+        settled.flatMap((item) =>
+          item.status === "fulfilled" ? [item.value.close()] : [],
+        ),
+      );
+      pending.clear();
+    };
   };
-};
+
+export const register = registerRfc2217Transport(rfc2217TransportId);

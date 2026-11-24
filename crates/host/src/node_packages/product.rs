@@ -64,6 +64,8 @@ const AUTOMATION_0_1_4_DESCRIPTOR: &str =
 const AUTOMATION_MARKER: &str = "node-packages:bundled-automation";
 const TCP_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/tcp.zip");
 const TCP_DESCRIPTOR: &str = include_str!("../../resources/node-packages/tcp.json");
+const RFC2217_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/rfc2217.zip");
+const RFC2217_DESCRIPTOR: &str = include_str!("../../resources/node-packages/rfc2217.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -156,7 +158,7 @@ impl ProductPackage {
 }
 
 pub(super) fn packages() -> &'static [ProductPackage] {
-    static PACKAGES: OnceLock<[ProductPackage; 7]> = OnceLock::new();
+    static PACKAGES: OnceLock<[ProductPackage; 8]> = OnceLock::new();
     PACKAGES.get_or_init(|| {
         [
             ProductPackage::new(
@@ -178,6 +180,11 @@ pub(super) fn packages() -> &'static [ProductPackage] {
             ProductPackage::new(CHART_DESCRIPTOR, CHART_ARCHIVE, CHART_MARKER),
             ProductPackage::new(AUTOMATION_DESCRIPTOR, AUTOMATION_ARCHIVE, AUTOMATION_MARKER),
             ProductPackage::new(TCP_DESCRIPTOR, TCP_ARCHIVE, "node-packages:bundled-tcp"),
+            ProductPackage::new(
+                RFC2217_DESCRIPTOR,
+                RFC2217_ARCHIVE,
+                "node-packages:bundled-rfc2217",
+            ),
         ]
     })
 }

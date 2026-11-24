@@ -32,6 +32,11 @@ import {
   Cable,
 } from "lucide-react";
 import { WorkbenchIconButton } from "./workbench-icon-button";
+import { useI18n } from "@/providers/i18n";
+import {
+  builtinRfc2217PackageId,
+  builtinRfc2217ProviderId,
+} from "../../../packages/plugin-sdk/examples/reference-rfc2217/builtin-endpoint";
 import {
   Select,
   SelectContent,
@@ -119,6 +124,13 @@ export function WorkbenchConnection({
   onCloseAllViews?: () => void;
 }) {
   const lan = useContext(LanWorkbenchContext);
+  const { t } = useI18n();
+  function deviceName(device: DeviceDescriptor | undefined) {
+    return device?.systemName === builtinRfc2217ProviderId &&
+      device.driver === builtinRfc2217PackageId
+      ? t("rfc2217Connection.title")
+      : device?.systemName;
+  }
   const [deviceListOpen, setDeviceListOpen] = useState(false);
   const header = useRef<HTMLElement | null>(null);
   const primaryTools = useRef<HTMLDivElement | null>(null);
@@ -189,8 +201,9 @@ export function WorkbenchConnection({
           >
             {unmatchedDeviceName
               ? `${unmatchedDeviceName} · ${labels.bindingUnmatched}`
-              : devices.find((value) => value.deviceId === deviceId)
-                  ?.systemName}
+              : deviceName(
+                  devices.find((value) => value.deviceId === deviceId),
+                )}
           </SelectValue>
           {lan?.route && (
             <span className="text-xs text-muted-foreground">{lan.source}</span>
@@ -222,7 +235,7 @@ export function WorkbenchConnection({
               value={value.deviceId}
             >
               <span className="workbench-port-label" title={value.systemName}>
-                <span>{value.systemName}</span>
+                <span>{deviceName(value)}</span>
               </span>
             </SelectItem>
           ))}
@@ -265,7 +278,7 @@ export function WorkbenchConnection({
           variant="outline"
           aria-busy={opening === deviceId || undefined}
           disabled={opening !== null || disabled || !device || devicesStale}
-          label={labels.open + " " + (device?.systemName ?? "")}
+          label={labels.open + " " + (deviceName(device) ?? "")}
           tooltip={
             opening
               ? labels.opening

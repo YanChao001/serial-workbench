@@ -482,7 +482,17 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 cargo run --locked -p serial-workbench-host --example sign_reference_rfc2217 -- .cache/plugin-sdk/examples/reference-rfc2217/main.js <32字节种子文件> <新归档> <可信来源ID> <keyID>
 ```
 
-用独立本机对端验证七项串口设置、确认值不同、拒绝选项、取消、超时、Telnet 分段、控制通知隔离和流控暂停。签名 Host 场景请求 115200 波特率并由对端应答 9600，核对打开失败及实际断连。重新协商成功后核对线路上的八个 Telnet 字节和 Host Raw 中的七个原始字节，末尾验收撤权、重开和停用。专用表单、Host 拒绝详情、打开后的控制线操作、实际 RFC 2217 设备和发行继续登记。
+用独立本机对端验证七项串口设置、确认值不同、拒绝选项、取消、超时、Telnet 分段、控制通知隔离和流控暂停。签名 Host 场景请求 115200 波特率并由对端应答 9600，核对打开失败及实际断连。重新协商成功后核对线路上的八个 Telnet 字节和 Host Raw 中的七个原始字节，末尾验收撤权、重开和停用。
+
+首方 `swb.builtin.rfc2217` 0.1.0 随 Host 登记。工作台从设备下拉选择「RFC 2217 远程串口」，输入远端地址、端口与波特率。展开线路设置以修改串口格式、流控和控制线。使用 [宽窄草稿](./ui-design.md#rfc-2217-连接草稿) 核对输入高度、字段对齐、短窗滚动、错误全文和焦点。选用硬件流控时，RTS 由对端流控接管，表单保留切换前的手动选项。同次的已协商配置用于新建会话的线路参数。主按钮显示协商等待，失败保留草稿供重试。
+
+```sh
+cargo test --locked -p serial-workbench-host --lib native_node_bundled_protocol_registers_on_first_start_and_restart -- --ignored --nocapture
+node --test scripts/rfc2217.test.mjs scripts/reference-transport.test.mjs scripts/components-build.test.mjs
+pnpm test:ui e2e/browser/plugin-transport.spec.ts --workers 1
+```
+
+生成首方归档时以 esbuild 针对 Node 26 打包 `reference-rfc2217/builtin.ts`。使用 `sign_builtin_rfc2217 <编译入口> <32 字节版本种子文件> <新归档> swb.product <版本专用 key ID>`，登记并核对归档、入口、清单摘要和来源公钥。原生首启重启用例以实际归档摘要核对来源、激活状态和设备登记。Host 参数级拒绝详情、打开后的控制线操作、第三方 RFC 2217 设备和发行继续验收。
 
 ### 有序会话钩子
 
