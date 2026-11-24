@@ -632,7 +632,7 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 专业动作 `swb.pro.mdf4.exportMdf4` 接收 `startTimeNs`（UTC 起点）、1 至 16 个 `channels` 和至多 256 个 `samples`。每个样本含 `elapsedNs` 及与通道顺序对应的 `values`。时间、浮点和整数均以十进制字符串提交，`null` 标记该通道缺值。输出为有序 MDF 4.10，保留秒主通道、精确纳秒列、单位和无效位。
 
-运行 `node --test scripts/mdf4-export.test.mjs` 核对格式标识、上下界、倒退时间和取消。可将 `asammdf==8.8.33` 安装到独立目录，将 `SWB_MDF4_READER_ROOT` 设为其绝对路径后复验。读取器检查三个不等间隔样本、UTF-8 单位、缺值过滤、超安全整数的定位及有符号 64 位边界。用 `pnpm plugin-sdk:fixture` 准备专业包入口，再用 `sign_reference_mdf4` 对编译后的 `.cache/plugin-sdk/examples/reference-mdf4/main.mjs` 签名。工作台在已启用专业包时显示「导出 MDF4」。运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 核对最近 32 帧的双轴、原始时间、录制序号、缺口、回放代次与保存取消。实际签名包安装、桌面与 MCP 文件逐字节对比、MATLAB 读回与市场发行单独验收。 [ASAM MDF](https://www.asam.net/standards/detail/mdf/) · [asammdf](https://pypi.org/project/asammdf/8.8.33/)
+运行 `node --test scripts/mdf4-export.test.mjs` 核对格式标识、上下界、倒退时间和取消。可将 `asammdf==8.8.33` 安装到独立目录，将 `SWB_MDF4_READER_ROOT` 设为其绝对路径后复验。读取器检查三个不等间隔样本、UTF-8 单位、缺值过滤、超安全整数的定位及有符号 64 位边界。用 `pnpm plugin-sdk:fixture` 准备专业包入口，再用 `sign_reference_mdf4` 对编译后的 `.cache/plugin-sdk/examples/reference-mdf4/main.js` 签名。工作台在已启用专业包时显示「导出 MDF4」。运行 `pnpm test:ui e2e/browser/replay-layout.spec.ts` 核对最近 32 帧的双轴、原始时间、录制序号、缺口、回放代次与保存取消。四目标 CI 和离线安装场景运行 `native_mdf4_saved_bytes_match_the_signed_mcp_export`。它用独立 profile 安装并启用签名包，拒绝无会话授权的调用，再从桌面和实际 stdio MCP 用同一快照发起两次操作。核对取消保存、已签名归档摘要和文件逐字节相等。运行后保留验收文件及 SHA-256 日志。真实系统保存对话框、MATLAB 读回与市场发行继续单独验收。 [ASAM MDF](https://www.asam.net/standards/detail/mdf/) · [asammdf](https://pypi.org/project/asammdf/8.8.33/)
 
 ### Modbus 报文模板（PROTO-04、PROTO-20）
 

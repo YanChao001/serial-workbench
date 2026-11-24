@@ -396,6 +396,11 @@ test("runtime diagnostics stay separate from the milestone gate and isolate desk
       "native-samples",
     ],
     [
+      "mdf4",
+      "native_mdf4_saved_bytes_match_the_signed_mcp_export",
+      "native-roundtrip",
+    ],
+    [
       "automation",
       "native_automation_uses_exact_responses_and_keeps_capture_running",
       "native-response",
@@ -414,6 +419,17 @@ test("runtime diagnostics stay separate from the milestone gate and isolate desk
     assert.ok(ci.includes(`artifacts/reference-${name}/signed-${name}.json`));
     assert.ok(ci.includes(`artifacts/reference-${name}/${log}.log`));
   }
+  assert.ok(ci.includes("artifacts/reference-mdf4/native-roundtrip.mf4"));
+  const offlineReferences = read("scripts/ci-offline-references.sh");
+  assert.match(
+    offlineReferences,
+    /for reference in terminal chart automation mdf4; do/,
+  );
+  assert.ok(
+    offlineReferences.includes(
+      "native_mdf4_saved_bytes_match_the_signed_mcp_export",
+    ),
+  );
   assert.match(runtime, /name: runtime-preflight-\$\{\{ matrix\.target \}\}/);
   assert.match(runtime, /fail-fast: false/);
   for (const [step, suite] of [

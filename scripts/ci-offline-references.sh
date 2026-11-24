@@ -4,11 +4,11 @@ prepare_offline_references() (
   local output=$1 seed reference dir build_log
   pnpm plugin-sdk:fixture >&2
   cargo build --locked -p serial-workbench-host \
-    --example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation
+    --example sign_reference_terminal --example sign_reference_chart --example sign_reference_automation --example sign_reference_mdf4
   seed=$(mktemp)
   trap 'rm -f -- "$seed"' EXIT
   node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32))' "$seed"
-  for reference in terminal chart automation; do
+  for reference in terminal chart automation mdf4; do
     dir="$output/reference-$reference"
     mkdir "$dir"
     "src-tauri/target/debug/examples/sign_reference_$reference" \
@@ -37,9 +37,12 @@ run_offline_references() {
   SWB_TEST_SIGNED_TERMINAL_RECEIPT="$output/reference-terminal/signed-terminal.json" \
   SWB_TEST_SIGNED_CHART_RECEIPT="$output/reference-chart/signed-chart.json" \
   SWB_TEST_SIGNED_AUTOMATION_RECEIPT="$output/reference-automation/signed-automation.json" \
+  SWB_TEST_SIGNED_MDF4_RECEIPT="$output/reference-mdf4/signed-mdf4.json" \
+  SWB_TEST_MDF4_RESULT="$output/reference-mdf4/native-roundtrip.mf4" \
   "$test_bin" --ignored --test-threads=1 --nocapture \
     native_reference_terminal_uses_installed_runtime_through_formal_host \
     native_chart_samples_exact_rx_from_the_signed_reference_package \
+    native_mdf4_saved_bytes_match_the_signed_mcp_export \
     native_automation_uses_exact_responses_and_keeps_capture_running \
     native_automation_long_script_survives_caller_disconnect_and_settles_workers
 }

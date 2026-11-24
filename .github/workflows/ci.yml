@@ -274,7 +274,7 @@ jobs:
           if [[ "$RUNNER_OS" == "macOS" ]]; then export SWB_NODE_RUNTIME_BUILD_IMAGE="$binding"; fi
           cargo build --locked -p serial-workbench-host \
             --example node_runtime_probe --example sign_reference_terminal \
-            --example sign_reference_chart --example sign_reference_automation
+            --example sign_reference_chart --example sign_reference_automation --example sign_reference_mdf4
 
       - name: 准备 Windows 签名浏览器验收
         if: runner.os == 'Windows'
@@ -303,11 +303,11 @@ jobs:
           export SWB_TEST_NODE_SDK_FIXTURE="$PWD/.cache/plugin-sdk/examples/native-parity.js"
           cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_ -- --ignored --test-threads=1 --nocapture
           if [[ "$RUNNER_OS" == "macOS" ]]; then cargo test --locked -p serial-workbench-host --lib native_macos_ -- --ignored --test-threads=1; fi
-          mkdir -p artifacts/reference-terminal artifacts/reference-chart artifacts/reference-automation
+          mkdir -p artifacts/reference-terminal artifacts/reference-chart artifacts/reference-automation artifacts/reference-mdf4
           seed="artifacts/test-reference-package.seed"
           node -e 'require("node:fs").writeFileSync(process.argv[1], require("node:crypto").randomBytes(32), { flag: "wx", mode: 0o600 })' "$seed"
           trap 'rm -f -- "$seed"' EXIT
-          for reference in terminal chart automation; do
+          for reference in terminal chart automation mdf4; do
             output="$(node -p 'require("node:path").resolve(process.argv[1])' "artifacts/reference-$reference")"
             "src-tauri/target/debug/examples/sign_reference_${reference}$suffix" \
               ".cache/plugin-sdk/examples/reference-$reference/main.js" "$seed" \
@@ -319,6 +319,8 @@ jobs:
           export SWB_TEST_SIGNED_TERMINAL_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-terminal/signed-terminal.json")')"
           export SWB_TEST_SIGNED_CHART_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-chart/signed-chart.json")')"
           export SWB_TEST_SIGNED_AUTOMATION_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-automation/signed-automation.json")')"
+          export SWB_TEST_SIGNED_MDF4_RECEIPT="$(node -p 'require("node:path").resolve("artifacts/reference-mdf4/signed-mdf4.json")')"
+          export SWB_TEST_MDF4_RESULT="$(node -p 'require("node:path").resolve("artifacts/reference-mdf4/native-roundtrip.mf4")')"
           installed="$PWD/src-tauri/target/${{ matrix.target }}/release"
           export SWB_TEST_TERMINAL_HOST_BIN="$installed/serial-workbench-host$suffix"
           export SWB_TEST_CLI_BIN="$installed/serial-workbench-cli$suffix"
@@ -327,6 +329,8 @@ jobs:
             | tee artifacts/reference-terminal/native-reader.log
           cargo test --locked -p serial-workbench --lib native_chart_samples_exact_rx_from_the_signed_reference_package -- --ignored --test-threads=1 --nocapture 2>&1 \
             | tee artifacts/reference-chart/native-samples.log
+          cargo test --locked -p serial-workbench --lib native_mdf4_saved_bytes_match_the_signed_mcp_export -- --ignored --test-threads=1 --nocapture 2>&1 \
+            | tee artifacts/reference-mdf4/native-roundtrip.log
           cargo test --locked -p serial-workbench --lib native_automation_uses_exact_responses_and_keeps_capture_running -- --ignored --test-threads=1 --nocapture 2>&1 \
             | tee artifacts/reference-automation/native-response.log
           cargo test --locked -p serial-workbench --lib native_automation_modbus_matches_owned_tx_and_reports_a_late_exception -- --ignored --test-threads=1 --nocapture 2>&1 \
@@ -411,6 +415,10 @@ jobs:
             artifacts/reference-automation/native-response.log
             artifacts/reference-automation/native-modbus.log
             artifacts/reference-automation/native-long-script.log
+            artifacts/reference-mdf4/reference-mdf4.zip
+            artifacts/reference-mdf4/signed-mdf4.json
+            artifacts/reference-mdf4/native-roundtrip.log
+            artifacts/reference-mdf4/native-roundtrip.mf4
           include-hidden-files: true
           if-no-files-found: error
           retention-days: 7
