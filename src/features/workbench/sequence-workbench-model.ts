@@ -22,6 +22,7 @@ export type SequenceActionId =
 const outcomes = [
   "completed",
   "response_timeout",
+  "response_ambiguous",
   "unexpected_response",
   "source_changed",
   "transmit_unconfirmed",
@@ -31,6 +32,7 @@ const attemptOutcomes = [
   "written",
   "matched",
   "response_timeout",
+  "response_ambiguous",
   "unexpected_response",
   "source_changed",
   "transmit_unconfirmed",
@@ -104,7 +106,7 @@ function path(value: unknown): value is string {
   return (
     typeof value === "string" &&
     value.length <= 256 &&
-    /^\$(?:\.(?:steps|then|else|expect|onMatch|onTimeout)|\[[0-9]+\])+$/.test(
+    /^\$(?:\.(?:steps|then|else|expect|retry|onMatch|onTimeout)|\[[0-9]+\])+$/.test(
       value,
     )
   );

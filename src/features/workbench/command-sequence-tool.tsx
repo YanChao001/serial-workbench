@@ -132,6 +132,26 @@ function Plan({ steps }: { steps: readonly CommandSequenceStep[] }) {
                       {formatHex(step.expect.bytes)}
                     </code>
                   </p>
+                  {step.expect.retry.length > 0 && (
+                    <div>
+                      <p>{t("commandSequence.previewRetry")}</p>
+                      <ol className="list-decimal space-y-1 ps-6">
+                        {step.expect.retry.map((retry) => (
+                          <li key={retry.path}>
+                            {t("commandSequence.previewSend")}{" "}
+                            <code className="break-all text-foreground">
+                              {formatHex(retry.bytes)}
+                            </code>
+                            {" · "}
+                            {t("commandSequence.previewRetryReply")}{" "}
+                            <code className="break-all text-foreground">
+                              {formatHex(retry.response)}
+                            </code>
+                          </li>
+                        ))}
+                      </ol>
+                    </div>
+                  )}
                   {step.expect.onMatch && (
                     <details>
                       <summary className="cursor-pointer">

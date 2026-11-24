@@ -263,7 +263,11 @@ export async function seedWorkbenchFixture(
     nodeThemes?: FixtureNodeThemes;
     framing?: { action: ActionSpec; page: FileReadResult };
     definitionFiles?: DefinitionFileFixture[];
-    automation?: { action: ActionSpec; state: "ready" | "held" | "denied" };
+    automation?: {
+      action: ActionSpec;
+      state: "ready" | "held" | "denied";
+      sequenceRetry?: boolean;
+    };
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
@@ -1597,7 +1601,8 @@ export async function seedWorkbenchFixture(
               ) {
                 const call = request.params;
                 const sequence = call.actionId.endsWith(".sequence");
-                const count = sequence ? 4 : call.params.count;
+                const retry = sequence && automation.sequenceRetry;
+                const count = sequence ? (retry ? 1 : 4) : call.params.count;
                 if (typeof count !== "number")
                   throw new Error("Expected automation count");
                 const id = sequence ? "fixture-sequence" : "fixture-repeat";
@@ -1632,9 +1637,22 @@ export async function seedWorkbenchFixture(
                         outcome: "completed",
                         completedSteps: count,
                         attempts: [
+                          ...(retry
+                            ? [
+                                {
+                                  path: "$.steps[0]",
+                                  operationId: "sequence-tx-1",
+                                  outcome: "response_timeout",
+                                },
+                              ]
+                            : []),
                           {
-                            path: "$.steps[0]",
-                            operationId: "sequence-tx-1",
+                            path: retry
+                              ? "$.steps[0].expect.retry[0]"
+                              : "$.steps[0]",
+                            operationId: retry
+                              ? "sequence-tx-2"
+                              : "sequence-tx-1",
                             outcome: "matched",
                             source: {
                               hostId: call.target.hostId,
@@ -1647,11 +1665,15 @@ export async function seedWorkbenchFixture(
                               byteEnd: "1",
                             },
                           },
-                          {
-                            path: "$.steps[0].expect.onMatch[0]",
-                            operationId: "sequence-tx-2",
-                            outcome: "written",
-                          },
+                          ...(!retry
+                            ? [
+                                {
+                                  path: "$.steps[0].expect.onMatch[0]",
+                                  operationId: "sequence-tx-2",
+                                  outcome: "written",
+                                },
+                              ]
+                            : []),
                         ],
                       }
                     : {

@@ -1222,6 +1222,9 @@ export const en = {
   "commandSequence.previewDelay": "Wait {ms} ms",
   "commandSequence.previewExpect": "Expect within {ms} ms",
   "commandSequence.previewMatch": "On matching reply",
+  "commandSequence.previewRetry":
+    "Retry after confirmed write and response timeout",
+  "commandSequence.previewRetryReply": "Expect",
   "commandSequence.previewTimeout": "On timeout, then stop",
   "commandSequence.invalid": "Check the definition at {path}.",
   "commandSequence.details": "Validation details",
@@ -1281,6 +1284,8 @@ export const en = {
   "repeatSend.outcome.unexpected_response":
     "The reply differed from the expected bytes.",
   "repeatSend.outcome.response_timeout": "The expected reply timed out.",
+  "repeatSend.outcome.response_ambiguous":
+    "The reply could not be assigned to a single attempt.",
   "repeatSend.outcome.source_changed":
     "The receive source changed or has a gap.",
   "repeatSend.outcome.transmit_unconfirmed":

@@ -21,6 +21,9 @@ function operator({
   writeOutcome = "accepted",
   beforeWait = () => {},
   replies = [],
+  retryReplies = {},
+  omitRawWrite = false,
+  beforeRetryLease = () => {},
   pageSize = Infinity,
   cursorExpiry,
   cancelInFlight = false,
@@ -76,6 +79,7 @@ function operator({
         if (call.actionId === "lease.acquire") {
           assert.equal(lease, undefined);
           lease = "sequence-lease";
+          if (sent.length === 1) beforeRetryLease(event);
           return {
             state: "running",
             result: {
@@ -111,9 +115,23 @@ function operator({
           controller.abort();
           return { state: "running", operationId };
         }
-        event("tx", { operationId, acceptedRanges: [], unknownRanges: [] });
-        if (bytesBase64 === "AQ==") {
-          const reply = replies.shift();
+        if (!omitRawWrite)
+          event("tx", {
+            operationId,
+            bytesBase64,
+            outcome: writeOutcome,
+            acceptedRanges: [
+              {
+                start: "0",
+                end: String(Buffer.from(bytesBase64, "base64").length),
+              },
+            ],
+            unknownRanges: [],
+          });
+        const requestHex = sent.at(-1).hex.toUpperCase();
+        const availableReplies = retryReplies[requestHex];
+        if (bytesBase64 === "AQ==" || availableReplies) {
+          const reply = (availableReplies ?? replies).shift();
           for (const block of Array.isArray(reply) ? reply : [reply]) {
             if (!block) continue;
             const bytes = Buffer.from(block.replaceAll(" ", ""), "hex");
@@ -451,4 +469,267 @@ test("cancelling an in-flight write prevents admission of the next command", asy
     device.sent.map(({ hex }) => hex),
     ["aa"],
   );
+});
+
+test("a configured retry keeps the timed-out attempt and reports the distinct reply to the next write", async () => {
+  const device = operator({ retryReplies: { "02": ["D2"] }, pageSize: 1 });
+  const result = await device.run({
+    version: 1,
+    steps: [
+      {
+        ...send("01"),
+        expect: {
+          hex: "D1",
+          timeoutMs: 50,
+          retry: [{ hex: "02", expectHex: "D2" }],
+        },
+      },
+    ],
+  });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01", "02"],
+  );
+  assert.equal(result.outcome, "completed");
+  assert.equal(result.completedSteps, 1);
+  assert.deepEqual(
+    result.attempts.map(({ path, operationId, outcome }) => ({
+      path,
+      operationId,
+      outcome,
+    })),
+    [
+      {
+        path: "$.steps[0]",
+        operationId: "write-1",
+        outcome: "response_timeout",
+      },
+      {
+        path: "$.steps[0].expect.retry[0]",
+        operationId: "write-2",
+        outcome: "matched",
+      },
+    ],
+  );
+  assert.equal(result.attempts[1].source.byteStart, "0");
+  assert.equal(result.attempts[1].source.byteEnd, "1");
+});
+
+test("a late earlier reply prevents a match or another retry", async () => {
+  const device = operator({ retryReplies: { "02": ["D1"] } });
+  const result = await device.run({
+    version: 1,
+    steps: [
+      {
+        ...send("01"),
+        expect: {
+          hex: "D1",
+          timeoutMs: 50,
+          retry: [
+            { hex: "02", expectHex: "D2" },
+            { hex: "03", expectHex: "D3" },
+          ],
+        },
+      },
+    ],
+  });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01", "02"],
+  );
+  assert.equal(result.outcome, "unexpected_response");
+  assert.equal(result.stoppedAt, "$.steps[0].expect.retry[0]");
+});
+
+test("a retry requires confirmed terminal and Raw write evidence", async () => {
+  for (const settings of [
+    { writeOutcome: "partial" },
+    { omitRawWrite: true },
+  ]) {
+    const device = operator(settings);
+    const result = await device.run({
+      version: 1,
+      steps: [
+        {
+          ...send("01"),
+          expect: {
+            hex: "D1",
+            timeoutMs: 50,
+            retry: [{ hex: "02", expectHex: "D2" }],
+          },
+        },
+      ],
+    });
+    assert.deepEqual(
+      device.sent.map(({ hex }) => hex),
+      ["01"],
+    );
+    assert.equal(
+      result.outcome,
+      settings.omitRawWrite ? "source_changed" : "transmit_unconfirmed",
+    );
+    assert.equal(result.attempts.length, 1);
+  }
+});
+
+test("intervening writes prevent the configured retry from starting", async () => {
+  const device = operator({
+    beforeRetryLease: (event) =>
+      event("tx_intent", { operationId: "different-writer" }),
+  });
+  const result = await device.run({
+    version: 1,
+    steps: [
+      {
+        ...send("01"),
+        expect: {
+          hex: "D1",
+          timeoutMs: 50,
+          retry: [{ hex: "02", expectHex: "D2" }],
+        },
+      },
+    ],
+  });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01"],
+  );
+  assert.equal(result.outcome, "source_changed");
+  assert.equal(result.stoppedAt, "$.steps[0].expect.retry[0]");
+});
+
+test("all retries share the bounds and use the timeout branch only after the final attempt", async () => {
+  const device = operator();
+  const step = {
+    ...send("01"),
+    expect: {
+      hex: "D1",
+      timeoutMs: 50,
+      retry: [{ hex: "02", expectHex: "D2" }],
+      onTimeout: [send("FF"), send("FE")],
+    },
+  };
+  const result = await device.run({ version: 1, steps: [step, send("AA")] });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01", "02", "ff", "fe"],
+  );
+  assert.deepEqual(
+    result.attempts.map(({ outcome }) => outcome),
+    ["response_timeout", "response_timeout", "written", "written"],
+  );
+  assert.equal(result.outcome, "response_timeout");
+  assert.equal(result.stoppedAt, "$.steps[0].expect.retry[0]");
+  const tooMany = operator();
+  await assert.rejects(
+    tooMany.run({
+      version: 1,
+      steps: [{ kind: "repeat", count: 33, steps: [step] }],
+    }),
+    /too many steps/,
+  );
+  assert.deepEqual(tooMany.sent, []);
+});
+
+test("overlapping replies and duplicate request frames are rejected before submission", async () => {
+  for (const retry of [
+    { hex: "02", expectHex: "AA D1 FF" },
+    { hex: "01", expectHex: "D2" },
+  ]) {
+    const device = operator();
+    await assert.rejects(
+      device.run({
+        version: 1,
+        steps: [{ ...send("01"), expect: { hex: "D1", retry: [retry] } }],
+      }),
+      /retry\[0\]\.(expectHex|hex)/,
+    );
+    assert.deepEqual(device.sent, []);
+  }
+});
+
+test("a partial expected reply prevents a retry", async () => {
+  const device = operator({
+    replies: ["11"],
+    retryReplies: { "02": ["33 44"] },
+  });
+  const result = await device.run({
+    version: 1,
+    steps: [
+      {
+        ...send("01"),
+        expect: {
+          hex: "11 22",
+          timeoutMs: 50,
+          retry: [{ hex: "02", expectHex: "33 44" }],
+        },
+      },
+    ],
+  });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01"],
+  );
+  assert.equal(result.outcome, "response_ambiguous");
+  assert.equal(result.attempts[0].outcome, "response_ambiguous");
+});
+
+test("a successful retry cannot make an earlier timed-out reply valid for another step", async () => {
+  const device = operator({ retryReplies: { "02": ["D2"], "03": ["D1"] } });
+  const result = await device.run({
+    version: 1,
+    steps: [
+      {
+        ...send("01"),
+        expect: {
+          hex: "D1",
+          timeoutMs: 50,
+          retry: [{ hex: "02", expectHex: "D2" }],
+          onMatch: [
+            { ...send("03"), expect: { hex: "D1", onMatch: [send("04")] } },
+          ],
+        },
+      },
+    ],
+  });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01", "02"],
+  );
+  assert.equal(result.outcome, "response_ambiguous");
+  assert.equal(result.stoppedAt, "$.steps[0].expect.onMatch[0]");
+  assert.deepEqual(
+    result.attempts.map(({ outcome }) => outcome),
+    ["response_timeout", "matched"],
+  );
+});
+
+test("bytes arriving between a timed-out write and its retry stop correlation", async () => {
+  const device = operator({
+    beforeRetryLease: (event) =>
+      event("rx", {
+        bytesBase64: "0Q==",
+        byteStart: "0",
+        byteEnd: "1",
+      }),
+  });
+  const result = await device.run({
+    version: 1,
+    steps: [
+      {
+        ...send("01"),
+        expect: {
+          hex: "D1",
+          timeoutMs: 50,
+          retry: [{ hex: "02", expectHex: "D2" }],
+        },
+      },
+    ],
+  });
+  assert.deepEqual(
+    device.sent.map(({ hex }) => hex),
+    ["01"],
+  );
+  assert.equal(result.outcome, "source_changed");
+  assert.equal(result.stoppedAt, "$.steps[0].expect.retry[0]");
 });

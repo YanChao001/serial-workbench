@@ -2692,6 +2692,7 @@ mod tests {
         serving: AtomicBool,
         incoming: Mutex<VecDeque<Vec<u8>>>,
         replies: Mutex<Vec<Vec<u8>>>,
+        retry_response: Mutex<Option<(Vec<u8>, Vec<u8>)>>,
     }
 
     struct BundledPeerTransport {
@@ -2727,6 +2728,15 @@ mod tests {
         ) -> BackendResult<Box<dyn PendingWrite>> {
             if self.peer.serving.load(Ordering::Acquire) {
                 self.peer.replies.lock().unwrap().push(bytes.to_vec());
+                if let Some((request, response)) = self.peer.retry_response.lock().unwrap().as_ref()
+                    && &*bytes == request.as_slice()
+                {
+                    self.peer
+                        .incoming
+                        .lock()
+                        .unwrap()
+                        .push_back(response.clone());
+                }
             }
             self.inner.begin_write(bytes, wait, cancelled, closing)
         }
@@ -3585,6 +3595,68 @@ mod tests {
         }
         eprintln!(
             "bundled_command_sequence denied_without_device_modify=true confirmed_echoes=2 delay_steps=1"
+        );
+
+        let previous_writes = peer.replies.lock().unwrap().len();
+        assert!(peer.incoming.lock().unwrap().is_empty());
+        *peer.retry_response.lock().unwrap() = Some((vec![0x54], vec![0xa5]));
+        peer.serving.store(true, Ordering::Release);
+        let document = serde_json::json!({
+            "version": 1,
+            "steps": [{
+                "kind": "send",
+                "hex": "53",
+                "expect": {"hex": "A4", "timeoutMs": 100, "retry": [{"hex": "54", "expectHex": "A5"}]}
+            }]
+        });
+        let cursor = host.inner.streams.current_cursor(&session).unwrap();
+        let accepted = host
+            .invoke(
+                &actor,
+                call(
+                    &session,
+                    sequence,
+                    serde_json::json!({
+                        "definition": document.to_string(),
+                        "startEventSeq": cursor.position.get().checked_add(1).unwrap().to_string()
+                    }),
+                ),
+            )
+            .await
+            .unwrap();
+        let ActionResult::Reference(output) = settled(accepted).await else {
+            panic!("Expected the signed assertion result file");
+        };
+        let read = host
+            .inner
+            .files
+            .read(
+                FileReadParams {
+                    file_ref: output.result_ref,
+                    offset: 0.into(),
+                    max_bytes: 4096.into(),
+                },
+                &actor,
+            )
+            .unwrap();
+        assert!(read.at_end);
+        let report: serde_json::Value =
+            serde_json::from_slice(&STANDARD.decode(read.bytes_base64.as_str()).unwrap()).unwrap();
+        assert_eq!(report["outcome"], "completed", "{report}");
+        assert_eq!(report["completedSteps"], 1);
+        let attempts = report["attempts"].as_array().unwrap();
+        assert_eq!(attempts.len(), 2);
+        assert_eq!(attempts[0]["outcome"], "response_timeout");
+        assert_eq!(attempts[1]["outcome"], "matched");
+        assert_eq!(attempts[1]["path"], "$.steps[0].expect.retry[0]");
+        assert_ne!(attempts[0]["operationId"], attempts[1]["operationId"]);
+        assert_eq!(
+            &peer.replies.lock().unwrap()[previous_writes..],
+            &[vec![0x53], vec![0x54]]
+        );
+        peer.serving.store(false, Ordering::Release);
+        eprintln!(
+            "bundled_assertion first_attempt=response_timeout retry=matched distinct_peer_writes=2"
         );
     }
 
