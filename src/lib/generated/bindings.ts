@@ -35,6 +35,16 @@ export const commands = {
         captureNameHint,
       }),
     ),
+  claimTransferDrop: (generation: U64, ticket: U64) =>
+    typedError<
+      {
+        reference: ObjectRef_Serialize;
+        name: string;
+        mime: string;
+        length: U64;
+      } | null,
+      HostError_Serialize
+    >(__TAURI_INVOKE("claim_transfer_drop", { generation, ticket })),
   mediaResolve: (reference: ObjectRef_Deserialize, generation: U64) =>
     typedError<MediaResolution, HostError_Serialize>(
       __TAURI_INVOKE("media_resolve", { reference, generation }),
@@ -2036,6 +2046,19 @@ export type FileTransferParams_Serialize = {
   bytesPerSecond: U64;
   interChunkMs: U64;
   writeWaitMs: DurationMs;
+};
+
+export type FileTransferReadProgress =
+  FileTransferReadProgress_Serialize | FileTransferReadProgress_Deserialize;
+
+export type FileTransferReadProgress_Deserialize = {
+  receiptsRef: ObjectRef_Deserialize;
+  read?: U64;
+};
+
+export type FileTransferReadProgress_Serialize = {
+  receiptsRef: ObjectRef_Serialize;
+  read?: U64;
 };
 
 export type FileTransferReceipt =
@@ -4098,6 +4121,10 @@ export type QueryResult_Deserialize =
       kind: "file_transfer_receipts";
       value: FileTransferReceiptsResult_Deserialize;
     }
+  | {
+      kind: "file_transfer_read_progress";
+      value: FileTransferReadProgress_Deserialize;
+    }
   | { kind: "stream_cursor"; value: StreamCursorResult_Deserialize }
   | { kind: "scopes"; value: StateScopesResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
@@ -4144,6 +4171,10 @@ export type QueryResult_Serialize =
   | {
       kind: "file_transfer_receipts";
       value: FileTransferReceiptsResult_Serialize;
+    }
+  | {
+      kind: "file_transfer_read_progress";
+      value: FileTransferReadProgress_Serialize;
     }
   | { kind: "stream_cursor"; value: StreamCursorResult_Serialize }
   | { kind: "scopes"; value: StateScopesResult_Serialize }
@@ -5040,6 +5071,13 @@ export type ToolHandoffResult_Serialize = {
   exitCode?: number;
   reopened?: OpenResult_Serialize;
   ownershipUnconfirmed: boolean;
+};
+
+export type TransferDrop = {
+  ticket: U64;
+  generation: U64;
+  x: number | null;
+  y: number | null;
 };
 
 export type TransformReference = {

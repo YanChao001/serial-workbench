@@ -25,6 +25,7 @@ import type {
   DesktopAttachment,
   DeliveryStream,
   NodeViewPresentation,
+  TransferDrop,
 } from "./generated/bindings";
 import { HostRequestError } from "@serial-workbench/host-client";
 import type {
@@ -47,6 +48,7 @@ import type {
 } from "./generated/bindings";
 
 export type {
+  TransferDrop,
   LocalBrowserAccess,
   ClientPreferences,
   ClientStateSnapshot_Serialize as ClientStateSnapshot,
@@ -119,6 +121,13 @@ export function chooseFileResource(
     commands.chooseFileResource(role, generation, captureNameHint ?? null),
   );
 }
+export function claimTransferDrop(
+  generation: U64,
+  ticket: U64,
+): Promise<SelectedFileResource | null> {
+  return callHost((commands) => commands.claimTransferDrop(generation, ticket));
+}
+
 export function mediaResolve(
   reference: ObjectRef,
   generation: U64,
@@ -267,7 +276,11 @@ export async function saveTextExport(
     new Blob([content], {
       type: name.endsWith(".json")
         ? "application/json;charset=utf-8"
-        : "text/plain;charset=utf-8",
+        : name.endsWith(".html")
+          ? "text/html;charset=utf-8"
+          : name.endsWith(".svg")
+            ? "image/svg+xml;charset=utf-8"
+            : "text/plain;charset=utf-8",
     }),
   );
   const anchor = document.createElement("a");
@@ -427,6 +440,12 @@ export function onUpdateProgress(
   handler: (progress: UpdateProgress) => void,
 ): Promise<() => void> {
   return onNativeEvent("app://update-progress", handler);
+}
+
+export function onTransferFileDrop(
+  handler: (drop: TransferDrop) => void,
+): Promise<() => void> {
+  return onNativeEvent("app://transfer-file-drop", handler);
 }
 
 export function onHostCatalogChanged(

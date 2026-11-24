@@ -29,7 +29,11 @@ const example = {
   format: "verbose" as const,
 };
 
-export default function AtTool() {
+export default function AtTool({
+  initiallyExpanded,
+}: {
+  initiallyExpanded?: boolean;
+}) {
   const { t } = useI18n();
   const id = useId();
   const [draft, setDraft] = useState(initial);
@@ -67,7 +71,7 @@ export default function AtTool() {
   }
 
   return (
-    <details className="space-y-3 border-t pt-3">
+    <details open={initiallyExpanded} className="space-y-3 border-t pt-3">
       <summary className="cursor-pointer text-sm font-medium">
         {t("workbench.at.title")}
       </summary>

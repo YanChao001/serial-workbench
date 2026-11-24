@@ -41,6 +41,7 @@ import type { WriteWaitMode } from "@/lib/generated/bindings";
 import { sendWaitMs } from "./send-wait";
 import { connectionKey } from "@/lib/client-connection-defaults";
 import type { WorkbenchFailure } from "./workbench-failure";
+import type { DiagnosticPanelProps } from "./diagnostic-panel";
 import {
   Popover,
   PopoverContent,
@@ -51,6 +52,8 @@ import { InfoIcon, LockKeyholeIcon } from "lucide-react";
 import type { WorkbenchLabels } from "./labels";
 import { WorkbenchDialog, WorkbenchPanels } from "./workbench-dialog";
 import { WorkbenchConnection } from "./workbench-connection";
+import { supportsSessionTemplates } from "./session-templates";
+import type { SessionTemplateConnection } from "./session-template-tool";
 import { SendHistoryTool } from "./send-history-tool";
 import { PluginTransportParameters } from "./plugin-transport-parameters";
 import { operationFailureEventKey, WorkbenchNotice } from "./workbench-notice";
@@ -154,6 +157,7 @@ export type WorkbenchHost = Pick<
 };
 export type WorkbenchTool =
   | "workspace"
+  | "sessionTemplates"
   | "parameters"
   | "controls"
   | "devices"
@@ -184,6 +188,7 @@ function activityPanel(
   if (page !== "workbench") return;
   switch (panel) {
     case "workspace":
+    case "sessionTemplates":
     case "parameters":
     case "controls":
     case "devices":
@@ -217,12 +222,17 @@ export type WorkbenchToolContext = {
   configuration: SerialConfiguration;
   configurationKey: string;
   configurationDisabled?: boolean;
+  templateConnection?: SessionTemplateConnection;
   onConfigurationChange: (value: SerialConfiguration) => void;
   writeWaitMode: WriteWaitMode;
   draftBytes?: Uint8Array;
   sequenceRecording?: { revision: number; definition: string };
   testSuiteWorkspace?: TestSuiteWorkspace;
   onWriteWaitModeChange: (value: WriteWaitMode) => void;
+  diagnostic?: Pick<
+    DiagnosticPanelProps,
+    "openTarget" | "receiveEncoding" | "onApplyEncoding"
+  >;
   onInspectMetrics: () => void;
   onReconnect?: () => void;
   beforeReplace: () => Promise<boolean>;
@@ -235,7 +245,7 @@ export type WorkbenchToolContext = {
   items: readonly import("@serial-workbench/contracts").StreamItem[];
   sourceItems?: readonly import("@serial-workbench/contracts").StreamItem[];
   openError?: WorkbenchFailure;
-  onInspectBytes: () => void;
+  onInspectBytes?: () => void;
   chartSelection?: ChartSourceSelection;
   onRevealChartSource?: (source: ChartSourceSelection) => void;
 };
@@ -278,7 +288,11 @@ export type WorkspaceLayoutProps = {
   toolLabels?: Record<
     | Exclude<
         WorkbenchTool,
-        "framing" | "repeatSend" | "commandSequence" | "testSuite"
+        | "framing"
+        | "sessionTemplates"
+        | "repeatSend"
+        | "commandSequence"
+        | "testSuite"
       >
     | "more"
     | "chooseDevice"
@@ -292,6 +306,7 @@ export type WorkspaceLayoutProps = {
   > & {
     saveCurrentLayoutHint?: string;
     framing?: string;
+    sessionTemplates?: string;
     repeatSend?: string;
     commandSequence?: string;
     testSuite?: string;
@@ -302,6 +317,7 @@ export type WorkspaceLayoutProps = {
     context: WorkbenchToolContext,
   ) => ReactNode;
   readFileReceipts?: ReceiptReader;
+  readTransferProgress?: HostContextValue["readTransferProgress"];
   readMetrics?: MetricsReader;
   readSessionMetrics?: HostContextValue["sessionMetrics"];
   readCaptureStatus?: CaptureStatusReader;
@@ -373,6 +389,7 @@ export function WorkspaceLayout({
   onStopCapture,
   onSaveDrafts,
   readFileReceipts,
+  readTransferProgress,
   readMetrics,
   readSessionMetrics,
   readCaptureStatus,
@@ -1427,6 +1444,7 @@ export function WorkspaceLayout({
   async function open(
     deviceId: string,
     transportParams?: OpenParams["transportParams"],
+    template?: SerialConfiguration,
   ) {
     if (connectionDefaultsLoading) return;
     focusRevision.current++;
@@ -1436,6 +1454,13 @@ export function WorkspaceLayout({
     );
     if (!draftsReady || opening !== null || state.status !== "ready") return;
     const device = state.devices.find((entry) => entry.deviceId === deviceId);
+    if (
+      template &&
+      (existing ||
+        state.devicesStale ||
+        !supportsSessionTemplates(device?.fingerprint.transport))
+    )
+      return;
     if (
       device?.fingerprint.transport === "plugin" &&
       transportParams === undefined
@@ -1462,7 +1487,7 @@ export function WorkspaceLayout({
       const configuration =
         existing && !existing.readOnly
           ? existing.configuration
-          : requestedConfiguration(deviceId);
+          : (template ?? requestedConfiguration(deviceId));
       const opened =
         transportParams === undefined
           ? await connect(deviceId, controller.signal, configuration)
@@ -2559,7 +2584,9 @@ export function WorkspaceLayout({
           session?.sessionEpoch,
           host.connection?.generation,
           dialog,
-          dialog === "parameters" ? configurationKeyFor(deviceId) : undefined,
+          dialog === "parameters" || dialog === "sessionTemplates"
+            ? configurationKeyFor(deviceId)
+            : undefined,
         ])}
         title={
           dialog
@@ -2598,6 +2625,7 @@ export function WorkspaceLayout({
                 host.connection?.generation,
               ])}
               readFileReceipts={readFileReceipts}
+              readTransferProgress={readTransferProgress}
               watchActions={watchAvailableActions}
               onCancelOperation={onCancelOperation}
               capture={{
@@ -2736,7 +2764,9 @@ export function WorkspaceLayout({
                 selectedViewId: isCapture ? undefined : selectedTab?.id,
                 session: isCapture
                   ? undefined
-                  : dialog === "parameters" || dialog === "controls"
+                  : dialog === "parameters" ||
+                      dialog === "controls" ||
+                      dialog === "sessionTemplates"
                     ? connectionSession
                     : session,
                 beforeReplace,
@@ -2760,6 +2790,28 @@ export function WorkspaceLayout({
                 configuration: connectionConfiguration,
                 configurationKey: configurationKeyFor(deviceId),
                 configurationDisabled: !device || disabled,
+                templateConnection:
+                  dialog === "sessionTemplates"
+                    ? {
+                        deviceId: device?.deviceId,
+                        deviceName: device?.systemName,
+                        eligible: supportsSessionTemplates(
+                          device?.fingerprint.transport,
+                        ),
+                        canOpen:
+                          !disabled &&
+                          !state.devicesStale &&
+                          opening === null &&
+                          !connectionSession &&
+                          supportsSessionTemplates(
+                            device?.fingerprint.transport,
+                          ),
+                        opening: opening === deviceId,
+                        open: (configuration) =>
+                          void open(deviceId, undefined, configuration),
+                        close: () => setDialog(null),
+                      }
+                    : undefined,
                 onConfigurationChange: (value) =>
                   rememberConfiguration(deviceId, value),
                 writeWaitMode: waitModeFor(deviceId),
@@ -2769,16 +2821,57 @@ export function WorkspaceLayout({
                     : undefined,
                 onWriteWaitModeChange: (mode) =>
                   rememberWaitMode(deviceId, mode),
+                diagnostic:
+                  dialog === "diagnostics"
+                    ? {
+                        openTarget: {
+                          device,
+                          session: connectionSession,
+                          retry:
+                            !isReplay &&
+                            !isCapture &&
+                            !disabled &&
+                            !state.devicesStale &&
+                            opening === null &&
+                            device
+                              ? () => void open(deviceId)
+                              : undefined,
+                        },
+                        receiveEncoding,
+                        onApplyEncoding:
+                          session && !isReplay && !isCapture
+                            ? (value) => {
+                                changeViewFormat({
+                                  receiveMode: "text",
+                                  receiveEncoding: value,
+                                });
+                                setDialog(null);
+                              }
+                            : undefined,
+                      }
+                    : undefined,
                 onInspectMetrics: () => showDialog("metrics"),
                 onReconnect:
-                  !isReplay && !isCapture && !disabled && (session || deviceId)
-                    ? () => void open(session?.deviceId ?? deviceId)
+                  !isReplay &&
+                  !isCapture &&
+                  !disabled &&
+                  !state.devicesStale &&
+                  opening === null &&
+                  session &&
+                  state.devices.some(
+                    (entry) => entry.deviceId === session.deviceId,
+                  )
+                    ? () => void open(session.deviceId)
                     : undefined,
                 target: isCapture
                   ? undefined
                   : dialog === "parameters" || dialog === "controls"
                     ? connectionTarget
-                    : target,
+                    : dialog === "sessionTemplates"
+                      ? connectionSession?.sessionId === sessionId
+                        ? connectionTarget
+                        : undefined
+                      : target,
                 isReplay:
                   isCapture ||
                   (dialog === "parameters" || dialog === "controls"
@@ -2794,11 +2887,18 @@ export function WorkspaceLayout({
                     setChartLink({ scope: chartScope, reveal: source });
                     setDialog(null);
                   }),
-                openError: openError ? failure : undefined,
-                onInspectBytes: () => {
-                  changeViewFormat({ receiveMode: "hex" });
-                  setDialog(null);
-                },
+                openError:
+                  openError &&
+                  (dialog !== "diagnostics" || failure?.deviceId === deviceId)
+                    ? failure
+                    : undefined,
+                onInspectBytes:
+                  session && !isReplay && !isCapture
+                    ? () => {
+                        changeViewFormat({ receiveMode: "hex" });
+                        setDialog(null);
+                      }
+                    : undefined,
               })}
           </>
         )}

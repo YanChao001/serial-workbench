@@ -233,6 +233,12 @@ test("replay chart traces a compacted and filtered field to both original captur
   const field = dialog.getByRole("row", { name: /voltage/ });
   await expect(field).toHaveAttribute("data-chart-selected", "true");
   await expect(field).toContainText("Bytes [162, 164)");
+  const byteMap = dialog.getByRole("region", {
+    name: en["workbench.fields.byteMap"],
+  });
+  await byteMap.getByRole("button", { name: "Inspect voltage bytes" }).click();
+  await expect(byteMap.getByText("Bytes [162, 164)")).toBeVisible();
+  await expect(byteMap.getByText("16 V", { exact: true })).toBeVisible();
   await expect(
     dialog.getByRole("button", { name: en["workbench.fields.edit"] }),
   ).toHaveCount(0);

@@ -142,6 +142,94 @@ test("the workbench runs ordered cases and exports reports and trends from two a
   await expect(history.getByRole("listitem")).toHaveCount(2);
 });
 
+test("CSV rounds preserve physical lines, typed inputs and results after a failure", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: {
+      action,
+      state: "ready",
+      sequenceSuiteOutcomes: ["passed", "failed"],
+    },
+  });
+  const dialog = await openSuite(page);
+  await dialog
+    .getByRole("button", { name: "Load data-driven example" })
+    .click();
+  await expect(dialog.getByText("2 test rounds ready")).toBeVisible();
+  const input = dialog.getByRole("textbox", {
+    name: "Test suite definition (JSON)",
+  });
+  const example = await input.inputValue();
+  await dialog.getByText("CSV inputs", { exact: true }).click();
+
+  async function pickCsv(csv: string) {
+    const file = page.waitForEvent("filechooser");
+    await dialog
+      .getByRole("button", { name: "Replace CSV for Echo payload" })
+      .click();
+    await (
+      await file
+    ).setFiles({
+      name: "rounds.csv",
+      mimeType: "text/csv",
+      buffer: Buffer.from(csv),
+    });
+  }
+
+  await pickCsv("Byte\r\n65\r\n999\r\n");
+  await expect(dialog.getByRole("alert")).toContainText(
+    "$.cases[0].data.csv[3].payload",
+  );
+  await expect(input).toHaveValue(example);
+  await pickCsv('Byte,Note\r\n65,"row\r\none"\r\n66,two\r\n67,three\r\n');
+  await expect(dialog.getByRole("alert")).toHaveCount(0);
+  await expect(dialog.getByText("3 test rounds ready")).toBeVisible();
+  expect(await suiteCalls(page)).toHaveLength(0);
+
+  await dialog.getByRole("button", { name: "Run suite" }).click();
+  const results = dialog.getByRole("table", { name: "Case results" });
+  await expect(
+    results.getByRole("row", { name: /CSV line 2 Passed suite-case-1/ }),
+  ).toBeVisible();
+  await expect(
+    results.getByRole("row", {
+      name: /CSV line 4 Failed response_timeout suite-case-2/,
+    }),
+  ).toBeVisible();
+  await expect(
+    results.getByRole("row", { name: /CSV line 5 Skipped/ }),
+  ).toBeVisible();
+  expect(
+    (await suiteCalls(page)).map(
+      ({ params }) => JSON.parse(String(params.definition)).variables.payload,
+    ),
+  ).toEqual(["41", "42"]);
+
+  await dialog.getByRole("button", { name: "Export JUnit XML" }).click();
+  await dialog.getByRole("button", { name: "Export HTML" }).click();
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.savedTextExports.length),
+    )
+    .toBe(2);
+  const files = await page.evaluate(
+    () => window.workbenchFixture.savedTextExports,
+  );
+  expect(files[0]?.content).toContain('name="Echo payload [CSV line 4]"');
+  expect(files[1]?.content).toContain("<td>CSV line 5</td>");
+  expect(files.map(({ content }) => content).join("\n")).not.toContain(
+    "Byte,Note",
+  );
+
+  await pickCsv(
+    'Byte,Note\r\n65,"different note\r\none"\r\n66,two\r\n67,three\r\n',
+  );
+  await expect(input).toHaveValue(/different note/);
+  await expect(results).toHaveCount(0);
+  expect(await suiteCalls(page)).toHaveLength(2);
+});
+
 test("stopping awaits the active Host operation before classifying cancellation and skip", async ({
   page,
 }) => {

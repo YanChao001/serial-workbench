@@ -394,6 +394,48 @@ async fn receipt_query_uses_saved_source_authority_and_bounded_typed_raw_page() 
     assert_eq!(page.count, U64::from(0));
     assert!(page.receipts.is_empty());
     assert!(!page.sealed);
+    let progress_query = || {
+        f.query(
+            &f.client,
+            f.target(&reference),
+            "transfer.readProgress",
+            json!({"receiptsRef": reference}),
+        )
+    };
+    let RpcResult::Query(QueryResult::FileTransferReadProgress(historical)) = success(
+        raw.request(RpcRequest::Query(progress_query()))
+            .await
+            .unwrap(),
+    ) else {
+        panic!("historical transfer read progress")
+    };
+    assert_eq!(historical.receipts_ref, reference);
+    assert_eq!(historical.read, None);
+    f.store
+        .compare_and_swap_document(
+            &id("transfer-read-receipt-operation"),
+            0.into(),
+            serde_json::from_value(json!({"read":"2"})).unwrap(),
+        )
+        .unwrap();
+    let RpcResult::Query(QueryResult::FileTransferReadProgress(current)) = success(
+        raw.request(RpcRequest::Query(progress_query()))
+            .await
+            .unwrap(),
+    ) else {
+        panic!("current transfer read progress")
+    };
+    assert_eq!(current.read, Some(2.into()));
+    assert_eq!(
+        error(
+            f.client
+                .request(RpcRequest::Query(progress_query()))
+                .await
+                .unwrap()
+        )
+        .code,
+        "PERMISSION_DENIED"
+    );
     assert_eq!(
         error(f.client.request(RpcRequest::Query(query())).await.unwrap()).code,
         "PERMISSION_DENIED"
@@ -410,6 +452,15 @@ async fn receipt_query_uses_saved_source_authority_and_bounded_typed_raw_page() 
         .unwrap();
     assert_eq!(
         error(raw.request(RpcRequest::Query(query())).await.unwrap()).code,
+        "PERMISSION_DENIED"
+    );
+    assert_eq!(
+        error(
+            raw.request(RpcRequest::Query(progress_query()))
+                .await
+                .unwrap()
+        )
+        .code,
         "PERMISSION_DENIED"
     );
     f.finish().await;
@@ -450,6 +501,10 @@ async fn file_catalog_exposes_rust_schemas_and_filters_user_control_registration
         (
             "transfer.receiptsRead",
             schema_for::<FileTransferReceiptsResult>(SchemaDialect::Draft07),
+        ),
+        (
+            "transfer.readProgress",
+            schema_for::<FileTransferReadProgress>(SchemaDialect::Draft07),
         ),
     ] {
         let spec = catalog

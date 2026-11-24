@@ -554,6 +554,16 @@ export default function Overview({
       copySelection: t("workbench.copySelection"),
       copySelectionHint: t("workbench.copySelectionHint"),
       copyFormat: t("workbench.copyFormat"),
+      selectionTheme: t("workbench.selectionTheme"),
+      selectionLight: t("workbench.selectionLight"),
+      selectionDark: t("workbench.selectionDark"),
+      selectionPage: t("workbench.selectionPage"),
+      selectionPreview: t("workbench.selectionPreview"),
+      selectionSave: t("workbench.selectionSave"),
+      selectionWorking: t("workbench.selectionWorking"),
+      selectionSaved: t("workbench.selectionSaved"),
+      selectionSaveFailed: t("workbench.selectionSaveFailed"),
+      selectionUnavailable: t("workbench.selectionUnavailable"),
       copyFormatText: t("workbench.copyFormatText"),
       copyFormatTimed: t("workbench.copyFormatTimed"),
       copyFormatC: t("workbench.copyFormatC"),
@@ -875,6 +885,13 @@ export default function Overview({
         readMetrics={host.metrics}
         readSessionMetrics={host.sessionMetrics}
         readFileReceipts={host.readFileReceipts}
+        readTransferProgress={
+          host.state.catalog.some(
+            (entry) => entry.actionId === "transfer.readProgress",
+          )
+            ? host.readTransferProgress
+            : undefined
+        }
         readCaptureStatus={host.captureStatus}
         readOperationInput={host.operationInput}
         onSendFile={files.send}

@@ -32,6 +32,7 @@ export const toolLabels = {
   fileSize: "File size",
   transferOptions: "File transfer options",
   selectSource: "Select source",
+  dropSource: "Drop one file here",
   source: "Source",
   offset: "Offset",
   length: "Length",

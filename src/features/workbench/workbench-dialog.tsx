@@ -163,6 +163,7 @@ export function WorkbenchPanels({
   metricsTarget,
   observationKey,
   readFileReceipts,
+  readTransferProgress,
   watchActions,
   onCancelOperation,
 }: {
@@ -179,6 +180,7 @@ export function WorkbenchPanels({
   metricsTarget?: Target;
   observationKey?: string;
   readFileReceipts?: ReceiptReader;
+  readTransferProgress?: HostContextValue["readTransferProgress"];
   watchActions?: HostContextValue["watchActions"];
   onCancelOperation?: (
     operation: Operation,
@@ -201,6 +203,7 @@ export function WorkbenchPanels({
         operations={state.operations}
         labels={labels}
         readFileReceipts={readFileReceipts}
+        readTransferProgress={readTransferProgress}
         watchActions={watchActions}
         onCancelOperation={onCancelOperation}
         disabled={disabled}

@@ -3,17 +3,22 @@ import type { WorkbenchLabels } from "./labels";
 import { TransferReceipts, type ReceiptReader } from "./transfer-receipts";
 import {
   isBusinessTask,
+  isTransfer,
   operationName,
   operationProgress,
 } from "./operation-text";
 import { OperationDetails } from "./operation-details";
-import { formatByteSize } from "./metric-format";
+import {
+  TransferProgress,
+  type TransferReadProgressReader,
+} from "./transfer-progress";
 import { OperationActions } from "./operation-actions";
 import type { HostContextValue } from "@/providers/host-context";
 export function OperationPanel({
   operations,
   labels,
   readFileReceipts,
+  readTransferProgress,
   watchActions,
   onCancelOperation,
   disabled,
@@ -21,6 +26,7 @@ export function OperationPanel({
   operations: readonly Operation[];
   labels: WorkbenchLabels;
   readFileReceipts?: ReceiptReader;
+  readTransferProgress?: TransferReadProgressReader;
   watchActions?: HostContextValue["watchActions"];
   onCancelOperation?: (
     operation: Operation,
@@ -52,8 +58,16 @@ export function OperationPanel({
               <span>{text.states[operation.state]}</span>
               <OperationDetails operation={operation} label={text.details} />
             </div>
-            {operation.progress && (
-              <p>{operationProgress(operation.progress, text)}</p>
+            {isTransfer(operation.actionId) ? (
+              <TransferProgress
+                operation={operation}
+                labels={text.transfer}
+                readProgress={readTransferProgress}
+              />
+            ) : (
+              operation.progress && (
+                <p>{operationProgress(operation.progress, text)}</p>
+              )
             )}
             {operation.error && (
               <p role="alert">{text.failure(operation.error.code)}</p>
@@ -78,42 +92,12 @@ export function OperationPanel({
                   }
                 />
               )}
-            {operation.result?.kind === "file_transfer" && (
-              <>
-                <dl className="workbench-transfer-result">
-                  <div>
-                    <dt>{labels.requestedBytes}</dt>
-                    <dd aria-label={labels.requestedBytes}>
-                      {formatByteSize(operation.result.value.requested)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{labels.acceptedBytes}</dt>
-                    <dd aria-label={labels.acceptedBytes}>
-                      {formatByteSize(operation.result.value.accepted)}
-                    </dd>
-                  </div>
-                  <div>
-                    <dt>{labels.unknownBytes}</dt>
-                    <dd aria-label={labels.unknownBytes}>
-                      {formatByteSize(operation.result.value.unknown)}
-                    </dd>
-                  </div>
-                </dl>
-                <p>
-                  {operation.result.value.peerAcknowledged
-                    ? labels.peerConfirmed
-                    : labels.peerUnconfirmed}
-                </p>
-                {readFileReceipts && (
-                  <TransferReceipts
-                    key={`${operation.result.value.receiptsRef.hostId}:${operation.result.value.receiptsRef.id}:${operation.result.value.receiptsRef.revision ?? ""}`}
-                    receiptsRef={operation.result.value.receiptsRef}
-                    read={readFileReceipts}
-                    labels={labels}
-                  />
-                )}
-              </>
+            {operation.result?.kind === "file_transfer" && readFileReceipts && (
+              <TransferReceipts
+                receiptsRef={operation.result.value.receiptsRef}
+                read={readFileReceipts}
+                labels={labels}
+              />
             )}
           </li>
         ))}

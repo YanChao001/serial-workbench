@@ -4,11 +4,18 @@ import {
   compileCommandSequence,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
 import { isRecord } from "@/lib/settings-model";
+import { commandVariablePattern } from "../../../packages/plugin-sdk/src/command-template";
+import { compileTestRows, type TestInputRow } from "./test-suite-data";
 
 export const testSuiteMaxBytes = commandSequenceMaxBytes;
 const maxCases = 16;
 
-type SuiteCase = { name: string; definition: string; skip: boolean };
+type SuiteCase = {
+  name: string;
+  definition: string;
+  skip: boolean;
+  source?: TestInputRow;
+};
 type Suite = { name: string; cases: SuiteCase[] };
 type CaseOutcome = {
   status: "passed" | "failed" | "cancelled" | "unverified";
@@ -20,6 +27,7 @@ type CaseResult = {
   status: CaseOutcome["status"] | "skipped";
   reason?: string;
   operationId?: string;
+  source?: TestInputRow;
   elapsedMs: number;
 };
 export type TestSuiteReport = {
@@ -54,7 +62,7 @@ function name(value: unknown, path: string) {
   return value;
 }
 
-export function compileTestSuite(definition: string): Suite {
+function readSuiteDocument(definition: string) {
   if (
     definition.length > testSuiteMaxBytes ||
     new TextEncoder().encode(definition).length > testSuiteMaxBytes
@@ -74,39 +82,131 @@ export function compileTestSuite(definition: string): Suite {
     )
   )
     fail("$", "Expected a version 1 suite");
-  const suiteName = name(value.name, "$.name");
   if (
     !Array.isArray(value.cases) ||
     value.cases.length < 1 ||
     value.cases.length > maxCases
   )
     fail("$.cases", "Configure 1 to 16 cases");
+  return { name: value.name, cases: value.cases as unknown[] };
+}
+
+export function testSuiteCsvCases(definition: string) {
+  try {
+    return readSuiteDocument(definition).cases.flatMap((item, index) =>
+      isRecord(item) &&
+      typeof item.name === "string" &&
+      item.name.length > 0 &&
+      isRecord(item.data) &&
+      Object.hasOwn(item.data, "csv") &&
+      !Object.hasOwn(item.data, "table")
+        ? [{ index, name: item.name }]
+        : [],
+    );
+  } catch (error) {
+    if (!(error instanceof CommandSequenceError)) throw error;
+    return [];
+  }
+}
+
+export function replaceTestSuiteCsv(
+  definition: string,
+  index: number,
+  csv: string,
+) {
+  const suite = readSuiteDocument(definition);
+  const item = suite.cases[index];
+  if (
+    !isRecord(item) ||
+    !isRecord(item.data) ||
+    !Object.hasOwn(item.data, "csv")
+  )
+    fail("$.cases[" + index + "].data", "Choose a case with a CSV source");
+  item.data.csv = csv;
+  const compact = JSON.stringify({ version: 1, ...suite });
+  compileTestSuite(compact);
+  const formatted = JSON.stringify({ version: 1, ...suite }, null, 2);
+  return new TextEncoder().encode(formatted).length <= testSuiteMaxBytes
+    ? formatted
+    : compact;
+}
+
+export function compileTestSuite(definition: string): Suite {
+  const value = readSuiteDocument(definition);
+  const suiteName = name(value.name, "$.name");
   const names = new Set<string>();
-  const cases = value.cases.map((item: unknown, index) => {
+  const cases: SuiteCase[] = [];
+  value.cases.forEach((item: unknown, index) => {
     const path = "$.cases[" + index + "]";
     if (
       !isRecord(item) ||
       Object.keys(item).some(
-        (key) => !["name", "sequence", "skip"].includes(key),
+        (key) => !["name", "sequence", "skip", "data"].includes(key),
       ) ||
       !isRecord(item.sequence) ||
       (item.skip !== undefined && typeof item.skip !== "boolean")
     )
-      fail(path, "Expected a named sequence with an optional skip flag");
+      fail(
+        path,
+        "Expected a named sequence with an optional skip flag and data source",
+      );
     const caseName = name(item.name, path + ".name");
     if (names.has(caseName)) fail(path + ".name", "Case names must be unique");
     names.add(caseName);
-    const definition = JSON.stringify(item.sequence);
-    try {
-      compileCommandSequence(definition);
-    } catch (error) {
-      if (!(error instanceof CommandSequenceError)) throw error;
-      throw new CommandSequenceError(
-        path + ".sequence" + error.path.slice(1),
-        error.message,
+
+    const sequence = item.sequence;
+    const skip = item.skip === true;
+    function add(definition: string, errorPath: string, source?: TestInputRow) {
+      if (cases.length >= maxCases)
+        fail(errorPath, "Configure at most 16 test rounds");
+      try {
+        compileCommandSequence(definition);
+      } catch (error) {
+        if (!(error instanceof CommandSequenceError)) throw error;
+        throw new CommandSequenceError(
+          errorPath + error.path.slice(1),
+          error.message,
+        );
+      }
+      cases.push({
+        name: caseName,
+        definition,
+        skip,
+        ...(source && { source }),
+      });
+    }
+    if (!Object.hasOwn(item, "data")) {
+      add(JSON.stringify(sequence), path + ".sequence");
+      return;
+    }
+    const defaults = Object.hasOwn(sequence, "variables")
+      ? sequence.variables
+      : {};
+    if (
+      !isRecord(defaults) ||
+      Object.entries(defaults).some(
+        ([key, value]) =>
+          !commandVariablePattern.test(key) || typeof value !== "string",
+      )
+    )
+      fail(
+        path + ".sequence.variables",
+        "Variables require template names and string values",
+      );
+    for (const { source, variables } of compileTestRows(
+      item.data,
+      path + ".data",
+      maxCases - cases.length,
+    )) {
+      add(
+        JSON.stringify({
+          ...sequence,
+          variables: { ...defaults, ...variables },
+        }),
+        path + ".data." + source.kind + "[" + source.row + "].sequence",
+        source,
       );
     }
-    return { name: caseName, definition, skip: item.skip === true };
   });
   return { name: suiteName, cases };
 }
@@ -151,6 +251,7 @@ export function runTestSuite<Operation extends AcceptedCase>(
       if (skipped) {
         cases.push({
           name: entry.name,
+          source: entry.source,
           status: "skipped",
           reason: skipped,
           elapsedMs: 0,
@@ -175,6 +276,7 @@ export function runTestSuite<Operation extends AcceptedCase>(
       if (requested || startEventSeq === undefined) {
         cases.push({
           name: entry.name,
+          source: entry.source,
           status: requested ? "skipped" : "unverified",
           reason: requested ? "stop_requested" : "scope_unverified",
           elapsedMs: Math.max(0, Math.round(performance.now() - start)),
@@ -199,6 +301,7 @@ export function runTestSuite<Operation extends AcceptedCase>(
       }
       cases.push({
         name: entry.name,
+        source: entry.source,
         status: outcome.status,
         reason: outcome.reason,
         operationId: active?.operationId,
@@ -258,6 +361,11 @@ function escape(value: string) {
     .replaceAll("'", "&apos;");
 }
 
+function sourceLabel(source?: TestInputRow) {
+  if (!source) return "";
+  return (source.kind === "csv" ? "CSV line " : "Table row ") + source.row;
+}
+
 export function suiteJUnit(report: TestSuiteReport) {
   const counts = suiteCounts(report);
   const entries = report.cases.map((entry) => {
@@ -282,7 +390,11 @@ export function suiteJUnit(report: TestSuiteReport) {
       '  <testcase classname="' +
       escape(report.name) +
       '" name="' +
-      escape(entry.name) +
+      escape(
+        entry.source
+          ? entry.name + " [" + sourceLabel(entry.source) + "]"
+          : entry.name,
+      ) +
       '" time="' +
       (entry.elapsedMs / 1000).toFixed(3) +
       '">' +
@@ -329,9 +441,11 @@ export function suiteHtml(
     "<thead><tr>" +
     cells.map((cell) => '<th scope="col">' + escape(cell) + "</th>").join("") +
     "</tr></thead>";
+  const hasSource = report.cases.some((entry) => entry.source);
   const results = report.cases.map((entry) =>
     row([
       entry.name,
+      ...(hasSource ? [sourceLabel(entry.source)] : []),
       entry.status,
       entry.reason ?? "",
       entry.operationId ?? "",
@@ -355,7 +469,14 @@ export function suiteHtml(
     escape(report.startedAt) +
     "</p>" +
     '<table id="cases"><caption>Cases</caption>' +
-    header(["Case", "Status", "Reason", "Operation ID", "Milliseconds"]) +
+    header([
+      "Case",
+      ...(hasSource ? ["Input row"] : []),
+      "Status",
+      "Reason",
+      "Operation ID",
+      "Milliseconds",
+    ]) +
     "<tbody>" +
     results.join("") +
     '</tbody></table><table id="history"><caption>Run history</caption>' +

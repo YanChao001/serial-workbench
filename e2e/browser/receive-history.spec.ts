@@ -345,9 +345,9 @@ test("folds long receive messages until requested and shows only one bounded pag
   await page.keyboard.press("Escape");
 
   await selectStarter();
-  await terminal.getByRole("button", { name: "Copy byte selection" }).click();
-  const copy = page.getByRole("dialog", { name: "Copy byte selection" });
-  await choose(page, "Copy format", "HEX");
+  await terminal.getByRole("button", { name: "Byte selection" }).click();
+  const copy = page.getByRole("dialog", { name: "Byte selection" });
+  await choose(page, "Selection format", "HEX");
   await copy.getByRole("button", { name: "Copy", exact: true }).click();
   await expect
     .poll(() =>
@@ -594,9 +594,9 @@ test("filters regex matches across receive records and isolates transmit search 
     .toBe(1);
 });
 
-test("copies six formats from one HEX selection with explicit decoding and timestamp source", async ({
+test("copies and exports one HEX selection with exact offsets and explicit presentation", async ({
   page,
-}) => {
+}, info) => {
   await seedWorkbenchFixture(page, { sidebarCollapsed: true, language: "en" });
   await page.goto("./#/");
   await page.getByRole("button", { name: "Open Virtual serial" }).click();
@@ -651,8 +651,8 @@ test("copies six formats from one HEX selection with explicit decoding and times
   );
   const terminal = page.getByRole("region", { name: "Receive", exact: true });
   await terminal.getByRole("radio", { name: "HEX", exact: true }).click();
-  const trigger = terminal.getByRole("button", { name: "Copy byte selection" });
-  const panel = page.getByRole("dialog", { name: "Copy byte selection" });
+  const trigger = terminal.getByRole("button", { name: "Byte selection" });
+  const panel = page.getByRole("dialog", { name: "Byte selection" });
   await trigger.click();
   await expect(panel).toContainText("Up to 64 KiB");
   await page.keyboard.press("Escape");
@@ -682,18 +682,18 @@ test("copies six formats from one HEX selection with explicit decoding and times
   await choose(page, "Decoding", "Latin-1");
   await copy("A\u00E4\u00B8\u00ADB");
   await choose(page, "Decoding", "UTF-8");
-  await choose(page, "Copy format", "HEX");
+  await choose(page, "Selection format", "HEX");
   await copy("41 E4 B8 AD 42");
-  await choose(page, "Copy format", "Base64");
+  await choose(page, "Selection format", "Base64");
   await copy("QeS4rUI=");
-  await choose(page, "Copy format", "Python bytes");
+  await choose(page, "Selection format", "Python bytes");
   await copy('b"\\x41\\xE4\\xB8\\xAD\\x42"');
-  await choose(page, "Copy format", "C array");
+  await choose(page, "Selection format", "C array");
   await copy(
     "const unsigned char data[] = {\n  0x41, 0xE4, 0xB8, 0xAD, 0x42,\n};",
   );
 
-  await choose(page, "Copy format", "Text with timestamps");
+  await choose(page, "Selection format", "Text with timestamps");
   const rest =
     "\tRX\t" +
     (offset + 1n).toString() +
@@ -704,6 +704,45 @@ test("copies six formats from one HEX selection with explicit decoding and times
   await copy("2026-11-24T01:00:01.001Z" + rest);
   await choose(page, "Timestamp", "Received time");
   await copy("2026-11-24T01:00:02.002Z" + rest);
+
+  await page.setViewportSize({ width: 420, height: 600 });
+  const save = panel.getByRole("button", {
+    name: "Save selection",
+    exact: true,
+  });
+  const saved = () =>
+    page.evaluate(() => window.workbenchFixture.savedTextExports.at(-1));
+  await choose(page, "Selection format", "HTML");
+  await choose(page, "Export theme", "Dark");
+  await expect(panel.locator("pre")).toContainText("41 E4 B8 AD 42");
+  expect(
+    await panel.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await save.click();
+  await expect(panel.getByRole("status")).toHaveText("Selection saved");
+  const html = await saved();
+  expect(html?.name).toBe(`serial-selection-rx-${offset + 1n}.html`);
+  expect(html?.content).toContain(`[${offset + 1n}, ${offset + 6n})`);
+  expect(html?.content).toContain("color-scheme:dark");
+  expect(html?.content).toContain("|A...B|");
+
+  await choose(page, "Selection format", "SVG");
+  await choose(page, "Export theme", "Light");
+  await expect(panel.locator("pre")).toContainText("|A...B|");
+  await save.click();
+  await expect(panel.getByRole("status")).toHaveText("Selection saved");
+  const svg = await saved();
+  expect(svg?.name).toBe(`serial-selection-rx-${offset + 1n}-p1.svg`);
+  expect(svg?.content).toContain('fill="#ffffff"');
+  expect(svg?.content).toContain("41 E4 B8 AD 42");
+  if (!svg) throw new Error("Missing saved image");
+  await info.attach("selection.svg", {
+    body: svg.content,
+    contentType: "image/svg+xml",
+  });
+  await panel.screenshot({
+    path: info.outputPath("byte-selection-export.png"),
+  });
   await page.keyboard.press("Escape");
   await expect(trigger).toBeFocused();
   await expect

@@ -1,6 +1,21 @@
 import type { SerialConfiguration } from "@serial-workbench/contracts";
 import { parseU64, U64_MAX } from "@/lib/u64";
 
+export function formatSerialLine(
+  configuration: Pick<
+    SerialConfiguration,
+    "baudRate" | "dataBits" | "parity" | "stopBits"
+  >,
+) {
+  const parity = { none: "N", even: "E", odd: "O", mark: "M", space: "S" }[
+    configuration.parity
+  ];
+  const stopBits = { one: "1", onePointFive: "1.5", two: "2" }[
+    configuration.stopBits
+  ];
+  return `${configuration.baudRate} / ${configuration.dataBits}${parity}${stopBits}`;
+}
+
 export const CONFIG_FIELDS = [
   "baudRate",
   "dataBits",

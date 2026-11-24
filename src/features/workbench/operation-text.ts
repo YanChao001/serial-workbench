@@ -2,6 +2,19 @@ import type { OperationState, Progress } from "@serial-workbench/contracts";
 import type { Translate } from "../../i18n/translate";
 import { formatByteSize } from "./metric-format";
 
+export type TransferProgressLabels = Record<
+  | "bar"
+  | "requestedBytes"
+  | "readBytes"
+  | "acceptedBytes"
+  | "unknownBytes"
+  | "peerConfirmed"
+  | "peerUnconfirmed"
+  | "rate"
+  | "eta",
+  string
+>;
+
 export type OperationText = {
   actions: Record<string, string>;
   states: Record<OperationState, string>;
@@ -12,6 +25,7 @@ export type OperationText = {
   background: string;
   records: string;
   frames: string;
+  transfer: TransferProgressLabels;
   failure: (code: string | undefined) => string;
 };
 export function operationText(
@@ -64,6 +78,17 @@ export function operationText(
     background: t("workbench.operation.background"),
     records: t("workbench.operation.records"),
     frames: t("workbench.operation.frames"),
+    transfer: {
+      bar: t("workbench.transferProgress.bar"),
+      rate: t("workbench.transferProgress.rate"),
+      eta: t("workbench.transferProgress.eta"),
+      requestedBytes: t("workbench.requestedBytes"),
+      readBytes: t("workbench.transferProgress.readBytes"),
+      acceptedBytes: t("workbench.acceptedBytes"),
+      unknownBytes: t("workbench.unknownBytes"),
+      peerConfirmed: t("workbench.peerConfirmed"),
+      peerUnconfirmed: t("workbench.peerUnconfirmed"),
+    },
     failure,
   };
 }
@@ -86,10 +111,13 @@ export function operationProgress(
         : "";
   return `${progress.completed}${progress.total === undefined ? "" : ` / ${progress.total}`}${unit ? ` ${unit}` : ""}`;
 }
+export function isTransfer(actionId: string) {
+  return actionId === "transfer.file" || actionId === "transfer.paste";
+}
+
 export function isBusinessTask(actionId: string): boolean {
   return (
-    actionId === "transfer.file" ||
-    actionId === "transfer.paste" ||
+    isTransfer(actionId) ||
     actionId.startsWith("capture.") ||
     actionId === "replay.open"
   );

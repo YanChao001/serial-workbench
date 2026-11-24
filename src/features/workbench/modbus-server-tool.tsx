@@ -67,8 +67,10 @@ function requestSample(input: string) {
 
 export default function ModbusServerTool({
   access,
+  initiallyExpanded,
 }: {
   access?: ModbusSlaveAccess;
+  initiallyExpanded?: boolean;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -256,7 +258,7 @@ export default function ModbusServerTool({
     Number.isInteger(replyDelay) && replyDelay >= 0 && replyDelay <= 2000;
 
   return (
-    <details className="space-y-3 border-t pt-3">
+    <details open={initiallyExpanded} className="space-y-3 border-t pt-3">
       <summary className="cursor-pointer text-sm font-medium">
         {t("workbench.modbusServer.title")}
       </summary>

@@ -1,10 +1,14 @@
-﻿import { useMemo, useState } from "react";
+import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
 import type {
   FileTransferParams,
   Operation,
   Target,
 } from "@serial-workbench/contracts";
-import type { SelectedFileResource } from "@/lib/tauri";
+import {
+  onTransferFileDrop,
+  type SelectedFileResource,
+  type TransferDrop,
+} from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { FolderOpen } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -14,7 +18,13 @@ import { nativeErrorCode } from "@/lib/native-error";
 import { parseU64, U64_MAX } from "@/lib/u64";
 import { WorkbenchNotice } from "./workbench-notice";
 import { WorkbenchIconButton } from "./workbench-icon-button";
-import { operationProgress, type OperationText } from "./operation-text";
+import type { OperationText } from "./operation-text";
+import { OperationActions } from "./operation-actions";
+import {
+  isTransferActive,
+  TransferProgress,
+  type TransferReadProgressReader,
+} from "./transfer-progress";
 import { useToolAction, useToolDraft } from "./transfer-capture-actions";
 import type {
   HostActionCheckInput,
@@ -26,6 +36,7 @@ import { useToolActionAvailability } from "./use-tool-action-availability";
 export type TransferOptionsLabels = Record<
   | "transferOptions"
   | "selectSource"
+  | "dropSource"
   | "source"
   | "offset"
   | "length"
@@ -39,7 +50,9 @@ export type TransferOptionsLabels = Record<
   | "transferEvidence"
   | "unavailable"
   | "draft"
-  | "saveUnavailable",
+  | "saveUnavailable"
+  | "cancel"
+  | "cancelRequested",
   string
 > & {
   basic: string;
@@ -65,13 +78,16 @@ export type TransferOptionsProps = {
   writeWaitMs: string;
   disabled?: boolean;
   operations?: readonly Operation[];
+  readTransferProgress?: TransferReadProgressReader;
   initialDraft?: TransferDraft;
   pickSource?: (signal?: AbortSignal) => Promise<SelectedFileResource | null>;
+  pickDroppedSource?: HostContextValue["pickDroppedFile"];
   onTransfer?: (
     params: FileTransferParams,
     signal?: AbortSignal,
   ) => Promise<Operation>;
   onSaveDraft?: (draft: TransferDraft, signal?: AbortSignal) => Promise<void>;
+  onCancel?: (operation: Operation, signal?: AbortSignal) => Promise<void>;
 };
 export function TransferOptions(props: TransferOptionsProps) {
   return <TransferOptionsForm key={props.contextKey} {...props} />;
@@ -82,11 +98,14 @@ function TransferOptionsForm({
   disabled,
   initialDraft,
   pickSource,
+  pickDroppedSource,
   onTransfer,
   onSaveDraft,
+  onCancel,
   target,
   watchActions,
   operations,
+  readTransferProgress,
 }: TransferOptionsProps) {
   const [source, setSource] = useState<SelectedFileResource>();
   const [draft, setDraft] = useState<TransferDraft>(
@@ -103,9 +122,23 @@ function TransferOptionsForm({
     labels.operationText.failure(nativeErrorCode(reason)),
   );
   const [submitted, setSubmitted] = useState<Operation>();
-  const current =
-    operations?.find((value) => value.operationId === submitted?.operationId) ??
-    submitted;
+  const candidates =
+    operations?.filter(
+      (value) =>
+        value.actionId === "transfer.file" &&
+        value.target.hostId === target?.hostId &&
+        value.target.id === target?.id &&
+        value.target.sessionEpoch === target?.sessionEpoch,
+    ) ?? [];
+  const current = submitted
+    ? (candidates.find(
+        (value) =>
+          value.operationId === submitted.operationId &&
+          value.executionHostId === submitted.executionHostId,
+      ) ?? submitted)
+    : (candidates.find((value) => isTransferActive(value.state)) ??
+      candidates[0]);
+  const active = !!current && isTransferActive(current.state);
   useToolDraft(
     draft,
     labels.draft,
@@ -133,7 +166,7 @@ function TransferOptionsForm({
     interval !== undefined &&
     wait !== undefined &&
     wait > 0n;
-  const locked = Boolean(disabled || action.busy);
+  const locked = Boolean(disabled || action.busy || active);
   const inputs = useMemo<HostActionCheckInput[]>(
     () =>
       target && source && valid
@@ -148,6 +181,58 @@ function TransferOptionsForm({
     [target, source, valid, draft],
   );
   const allowed = useToolActionAvailability(inputs, watchActions);
+  const dropZone = useRef<HTMLDivElement>(null);
+  function acceptSource(
+    selected: SelectedFileResource | null,
+    signal: AbortSignal,
+  ) {
+    if (!selected || signal.aborted) return;
+    setSource(selected);
+    setSubmitted(undefined);
+    setDraft((current) => ({
+      ...current,
+      offset: "0",
+      length: selected.length,
+    }));
+  }
+  const receiveDrop = useEffectEvent((drop: TransferDrop) => {
+    if (locked || !pickDroppedSource) return;
+    const rect = dropZone.current?.getBoundingClientRect();
+    if (!rect || rect.width <= 0 || rect.height <= 0) return;
+    if (
+      typeof drop.x !== "number" ||
+      !Number.isFinite(drop.x) ||
+      typeof drop.y !== "number" ||
+      !Number.isFinite(drop.y)
+    )
+      return;
+    const ratio = window.devicePixelRatio || 1;
+    const x = drop.x / ratio;
+    const y = drop.y / ratio;
+    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom)
+      return;
+    void action.run(async (signal) => {
+      acceptSource(await pickDroppedSource(drop, signal), signal);
+    });
+  });
+  useEffect(() => {
+    if (!pickDroppedSource) return;
+    let active = true;
+    let stop: (() => void) | undefined;
+    void onTransferFileDrop((drop) => {
+      if (active) receiveDrop(drop);
+    }).then(
+      (unlisten) => {
+        if (active) stop = unlisten;
+        else unlisten();
+      },
+      () => {},
+    );
+    return () => {
+      active = false;
+      stop?.();
+    };
+  }, [pickDroppedSource]);
   return (
     <section
       aria-label={labels.transferOptions}
@@ -164,13 +249,16 @@ function TransferOptionsForm({
           <div className="workbench-form-fields">
             <div className="workbench-form-row">
               <span>{labels.source}</span>
-              <div className="workbench-file-selection">
+              <div className="workbench-file-selection" ref={dropZone}>
                 <output
                   aria-label={labels.source}
                   title={source?.name}
                   data-surface="control"
                 >
-                  {source?.name ?? labels.selectSource}
+                  {source?.name ??
+                    (pickDroppedSource
+                      ? labels.dropSource
+                      : labels.selectSource)}
                 </output>
                 <WorkbenchIconButton
                   label={labels.selectSource}
@@ -178,16 +266,7 @@ function TransferOptionsForm({
                   disabled={locked || !pickSource}
                   onClick={() =>
                     void action.run(async (signal) => {
-                      const selected = await pickSource!(signal);
-                      if (selected && !signal.aborted) {
-                        setSource(selected);
-                        setSubmitted(undefined);
-                        setDraft((current) => ({
-                          ...current,
-                          offset: "0",
-                          length: selected.length,
-                        }));
-                      }
+                      acceptSource(await pickSource!(signal), signal);
                     })
                   }
                 >
@@ -243,15 +322,32 @@ function TransferOptionsForm({
           )}
         </TabsContent>
       </Tabs>
-      <div className="workbench-tool-footer">
-        {current && (
+      {current && (
+        <>
           <output role="status">
             {labels.operationText.states[current.state]}
-            {current.progress
-              ? ` · ${operationProgress(current.progress, labels.operationText)}`
-              : ""}
           </output>
-        )}
+          <TransferProgress
+            operation={current}
+            labels={labels.operationText.transfer}
+            readProgress={readTransferProgress}
+          />
+          {active && onCancel && (
+            <OperationActions
+              operation={current}
+              watchActions={watchActions}
+              labels={{
+                operation: labels.sendFile,
+                cancel: labels.cancel,
+                cancelRequested: labels.cancelRequested,
+              }}
+              formatError={labels.operationText.failure}
+              onCancel={(_id, signal) => onCancel(current, signal)}
+            />
+          )}
+        </>
+      )}
+      <div className="workbench-tool-footer">
         <span className="sr-only">
           {!onTransfer ? labels.unavailable : undefined}
         </span>

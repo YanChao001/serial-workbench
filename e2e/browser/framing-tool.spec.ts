@@ -1326,7 +1326,7 @@ test("AT responses separate interleaved URCs, numeric results and SMS bodies", a
 
 test("the workbench scans only visible receive data through the Host action and result file", async ({
   page,
-}) => {
+}, testInfo) => {
   await page.setViewportSize({ width: 720, height: 600 });
   const manifest: unknown = JSON.parse(
     readFileSync(
@@ -1457,7 +1457,10 @@ test("the workbench scans only visible receive data through the Host action and 
     .getByRole("button", { name: en["workbench.framing.scan"] })
     .click();
 
-  await expect(dialog.getByText("41 0A", { exact: true })).toBeVisible();
+  const frames = dialog.getByRole("region", {
+    name: en["workbench.framing.results"],
+  });
+  await expect(frames.getByText("41 0A", { exact: true })).toBeVisible();
   await expect(
     dialog
       .getByRole("region", { name: en["workbench.framing.results"] })
@@ -1500,6 +1503,32 @@ test("the workbench scans only visible receive data through the Host action and 
   await expect(reading).toContainText("Ping");
   await expect(reading).toContainText("Bytes [7, 8)");
   await expect(reading.getByText("41", { exact: true })).toBeVisible();
+
+  const byteMap = dialog.getByRole("region", {
+    name: en["workbench.fields.byteMap"],
+  });
+  const rawBytes = byteMap.getByRole("region", {
+    name: en["workbench.fields.source"],
+  });
+  const field = byteMap.getByRole("button", { name: "reading", exact: true });
+  await field.focus();
+  await field.press("Enter");
+  await expect(field).toHaveAttribute("aria-pressed", "true");
+  await expect(byteMap.getByText("33.5 mV · Ping")).toBeVisible();
+  await expect(byteMap.getByText("Bytes [7, 8)")).toBeVisible();
+  await byteMap
+    .getByRole("combobox", { name: en["workbench.fields.byteRole"] })
+    .click();
+  await page.getByRole("option", { name: "Address", exact: true }).click();
+  await expect(field).toHaveAttribute("data-field-role", "address");
+  await expect(
+    rawBytes.getByRole("button", { name: "Inspect reading bytes" }),
+  ).toHaveAttribute("data-field-role", "address");
+  await expect(rawBytes.locator("[data-unclassified-bytes]")).toHaveText("0A");
+  await byteMap.screenshot({
+    path: testInfo.outputPath("protocol-byte-map.png"),
+  });
+
   await dialog.getByText("Field chart", { exact: true }).click();
   const chart = dialog.getByRole("region", { name: "Field chart" });
   await chart.getByRole("button", { name: "Plot fields" }).click();
@@ -1545,6 +1574,10 @@ test("the workbench scans only visible receive data through the Host action and 
     .click();
   await expect(dialog.getByRole("alert")).toContainText("version");
   await expect(reading).toHaveCount(0);
+  await expect(rawBytes.locator("[data-unclassified-bytes]")).toHaveText(
+    "41 0A",
+  );
+  await expect(rawBytes.getByRole("button")).toHaveCount(0);
   const checked = await page.evaluate((id) => {
     const fixture = window.workbenchFixture;
     return {

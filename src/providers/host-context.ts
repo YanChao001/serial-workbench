@@ -1,7 +1,11 @@
 import { createContext, useContext } from "react";
 import type { HostConnection } from "@/lib/host-client";
 import type { ReceiveIdleMs } from "@/lib/receive-history";
-import type { FileResourceRole, SelectedFileResource } from "@/lib/tauri";
+import type {
+  FileResourceRole,
+  SelectedFileResource,
+  TransferDrop,
+} from "@/lib/tauri";
 import type {
   Call,
   ActionCheckParams,
@@ -23,6 +27,8 @@ import type {
   FileReadResult,
   FileTransferReceiptsParams,
   FileTransferReceiptsResult,
+  FileTransferReadProgressParams,
+  FileTransferReadProgress,
   HostMetrics,
   ObjectRef,
   OpenParams,
@@ -132,6 +138,10 @@ export type HostContextValue = {
     signal?: AbortSignal,
     selectedSessionId?: string,
   ): Promise<SelectedFileResource | null>;
+  pickDroppedFile?(
+    drop: TransferDrop,
+    signal?: AbortSignal,
+  ): Promise<SelectedFileResource | null>;
   trustedConnect(
     deviceId: string,
     signal?: AbortSignal,
@@ -158,6 +168,10 @@ export type HostContextValue = {
     reference: ObjectRef,
     signal?: AbortSignal,
   ): Promise<CaptureStatusResult>;
+  readTransferProgress?(
+    params: FileTransferReadProgressParams,
+    signal?: AbortSignal,
+  ): Promise<FileTransferReadProgress>;
   readFileReceipts(
     params: FileTransferReceiptsParams,
     signal?: AbortSignal,

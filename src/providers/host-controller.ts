@@ -16,6 +16,7 @@ import type {
   FileReadParams,
   FileMetadataParams,
   FileTransferReceiptsParams,
+  FileTransferReadProgressParams,
   ObjectRef,
   OpenParams,
   Operation,
@@ -42,6 +43,7 @@ import { readReplayRecord as readRecord } from "@/lib/host-reader";
 import {
   hostConnectDevice,
   chooseFileResource,
+  claimTransferDrop,
   hostApplyDocumentIntent,
   hostOpenCommandLibrary,
   hostTakeoverSession,
@@ -88,6 +90,7 @@ function pause(ms: number, signal: AbortSignal): Promise<void> {
 type HostUserActions = {
   connectDevice: typeof hostConnectDevice;
   chooseFile: typeof chooseFileResource;
+  claimDrop?: typeof claimTransferDrop;
   applyDocumentIntent: typeof hostApplyDocumentIntent;
   openCommandLibrary?: typeof hostOpenCommandLibrary;
   takeoverSession?: typeof hostTakeoverSession;
@@ -112,6 +115,7 @@ export function createHostWorkspace(
   userActions: HostUserActions | null = {
     connectDevice: hostConnectDevice,
     chooseFile: chooseFileResource,
+    claimDrop: claimTransferDrop,
     applyDocumentIntent: hostApplyDocumentIntent,
     openCommandLibrary: hostOpenCommandLibrary,
     takeoverSession: hostTakeoverSession,
@@ -1383,6 +1387,25 @@ export function createHostWorkspace(
       .catch(() => {});
     return waitForHost(pending, waiting);
   }
+  const claimDrop = connection.lanRoute ? undefined : userActions?.claimDrop;
+  const pickDroppedFile: HostContextValue["pickDroppedFile"] = claimDrop
+    ? (drop, signal) => {
+        if (drop.generation !== connection.generation)
+          return Promise.resolve(null);
+        const waiting = signal
+          ? AbortSignal.any([signal, lifetime.signal])
+          : lifetime.signal;
+        waiting.throwIfAborted();
+        const pending = claimDrop(connection.generation, drop.ticket);
+        void pending
+          .finally(() => {
+            if (!lifetime.signal.aborted) invalidateActions();
+          })
+          .catch(() => {});
+        return waitForHost(pending, waiting);
+      }
+    : undefined;
+
   function trustedConnect(
     deviceId: string,
     signal?: AbortSignal,
@@ -1543,6 +1566,33 @@ export function createHostWorkspace(
     );
     if (
       result.kind !== "file_transfer_receipts" ||
+      !sameTarget(result.value.receiptsRef, reference) ||
+      (reference.revision !== undefined &&
+        result.value.receiptsRef.revision !== reference.revision)
+    )
+      throw new ContractValidationError();
+    return result.value;
+  }
+  async function readTransferProgress(
+    params: FileTransferReadProgressParams,
+    signal?: AbortSignal,
+  ) {
+    const reference = params.receiptsRef;
+    if (
+      reference.hostId !== connection.attachment.hostId ||
+      reference.kind !== "transfer_receipts"
+    )
+      throw new ContractValidationError();
+    const result = await rawQuery(
+      connection.buildQuery(
+        "transfer.readProgress",
+        referenceTarget(reference),
+        params,
+      ),
+      signal,
+    );
+    if (
+      result.kind !== "file_transfer_read_progress" ||
       !sameTarget(result.value.receiptsRef, reference) ||
       (reference.revision !== undefined &&
         result.value.receiptsRef.revision !== reference.revision)
@@ -1837,6 +1887,7 @@ export function createHostWorkspace(
     operationInput,
     readOperationSummary,
     pickFile,
+    pickDroppedFile,
     trustedConnect,
     readFile,
     fileMetadata,
@@ -1844,6 +1895,7 @@ export function createHostWorkspace(
     captureStatus,
     readCaptureTail,
     readFileReceipts,
+    readTransferProgress,
     readReplay,
     loadWorkspace,
     listWorkspaces,

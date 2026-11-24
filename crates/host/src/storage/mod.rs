@@ -326,6 +326,19 @@ impl Store {
         self.publish_operation_change();
         Ok(operation)
     }
+    pub(crate) fn record_transfer_evidence(
+        &self,
+        id: &Id,
+        result: &ActionResult,
+        source_read: Option<U64>,
+    ) -> HostResult<Operation> {
+        let (id, result) = (id.clone(), result.clone());
+        let operation = self.request(move |database| {
+            database.record_result_evidence_with_read(&id, result, source_read)
+        })?;
+        self.publish_operation_change();
+        Ok(operation)
+    }
     pub(crate) fn record_progress(&self, id: &Id, progress: &Progress) -> HostResult<Operation> {
         let (id, progress) = (id.clone(), progress.clone());
         let operation = self.request(move |database| database.record_progress(&id, progress))?;
@@ -519,3 +532,7 @@ mod operation_progress_tests;
 mod operation_recovery_tests;
 #[cfg(test)]
 mod operation_source_tests;
+
+pub(crate) fn file_transfer_read_key(operation: &Id) -> HostResult<Id> {
+    Id::try_from(format!("transfer-read-{}", operation.as_str()).as_str())
+}
