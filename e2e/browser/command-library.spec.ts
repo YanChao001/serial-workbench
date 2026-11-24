@@ -624,9 +624,22 @@ test("command editor uses the shared keyboard dropdowns before saving in a narro
   const modem = dialog.getByRole("button", { name: "Modem", exact: true });
   await modem.click();
   const commands = dialog.getByRole("region", { name: "Modem", exact: true });
-  const groupBox = await groups.boundingBox();
-  const commandBox = await commands.boundingBox();
-  expect(commandBox!.y).toBeGreaterThanOrEqual(groupBox!.y + groupBox!.height);
+  await expect(groups).toBeVisible();
+  await expect(
+    commands.getByRole("button", { name: "Command 0", exact: true }),
+  ).toBeVisible();
+  await expect
+    .poll(() =>
+      commands.evaluate((section) => {
+        const groups = section.previousElementSibling;
+        if (!groups) throw new Error("Missing the groups section");
+        return (
+          section.getBoundingClientRect().top -
+          groups.getBoundingClientRect().bottom
+        );
+      }),
+    )
+    .toBeGreaterThanOrEqual(0);
   await dialog
     .getByRole("button", { name: "New command", exact: true })
     .click();
