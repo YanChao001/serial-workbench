@@ -111,6 +111,8 @@ pub enum QueryResult {
     Extension(QueryValue),
     ActionCheck(ActionCheckResult),
     WorkspaceImportPreview(WorkspaceDocument),
+    ExperimentPackage(Box<ExperimentPackage>),
+    ExperimentInspection(Box<ExperimentInspection>),
     ClientEffect(ClientEffectResult),
     Clients(ClientListResult),
     HostMetrics(HostMetrics),
@@ -276,6 +278,8 @@ impl BuiltinAction {
             Self::TransferPaste => typed!(PasteTransferParams),
             Self::SettingsSave => typed!(SettingsSaveParams),
             Self::WorkspaceSave => typed!(WorkspaceSaveParams),
+            Self::ExperimentExport => typed!(ExperimentExportParams),
+            Self::ExperimentInspect => typed!(DocumentImportParams),
             Self::SettingsImport | Self::WorkspaceImport | Self::WorkspaceImportPreview => {
                 typed!(DocumentImportParams)
             }

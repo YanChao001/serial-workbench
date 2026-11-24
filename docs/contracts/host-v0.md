@@ -136,6 +136,7 @@ Host 在 attach 签发带认证码的 requestContext，内部绑定 hostId、act
 共享设置与工作区保存的最终验权、实例代次检查及同步CAS，与同一Host的auth.authorize/auth.revoke按共享提交锁排序。撤权先完成则保存拒绝且revision不变；保存先进入同步提交则完成后撤权才返回，已提交的成功回执保留。候选准备和投影发布不持该授权提交锁。
 
 `workspace.list` 是以执行 Host 为目标的只读目录查询。`params={after?: Id}`，结果为 `WorkspaceListResult={workspaces: WorkspaceSummary[],nextCursor?: Id}`，摘要包含 `scope/name/revision`；`action.query` 的判别包装为 `kind: workspaces`。每页最多扫描 64 个已保存工作区，只返回调用者具有 `metadata.read` 权限的条目，空页仍可能带继续游标。游标是不透明的存储顺序标记，不携带被过滤工作区的标识；客户端不得据其构造资源 Target。目录跨 Host 实例保留，不依赖文档投影是否已注册，列举不隐式打开文档或连接设备。
+`workspace.experiment.export` 和 `workspace.experiment.inspect` 用 `action.query` 通过 Control 调用，目标均为已获元数据读权的工作区。导出参数包含 `workspaceRevision`、解析器包 ID `parsers`、录制引用 `recordings`、绑定序号和显式版本 `firmware`、以及已结算操作 ID `operations`。导出将 `experiment_package` 的 value 保存为版本化 JSON。检查接收 `{json:string}`，返回 `experiment_inspection`。其中的解析器、录制状态数组与包中条目依序对应。录制检查对照 Host 登记的固定引用和摘要，实际记录读取与容器完整性沿用各自授权和验证入口。导出和检查均无需接纳操作，工作区保存继续沿用修订合同。 [实验包类型](../../crates/core/src/experiment.rs) · [专项验收](../acceptance.md#复现实验包sess-09)
 
 命令库以 `workspace` 为目标。`workspace.commands.read` 要求 `content.read`，返回命令库 `revision` 和 `groups`、`commands` 或 `entry` 三种视图。分组和命令目录每页最多 32 条，续页携带上一页的 revision 和游标。命令目录包含标识、名称和备注，正文、编码及单命令行尾覆盖通过条目详情读取。列表的命令顺序由 Host 保存。
 

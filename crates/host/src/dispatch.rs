@@ -3,6 +3,8 @@
 pub(crate) mod browser_file;
 #[path = "browser_takeover.rs"]
 mod browser_takeover;
+#[path = "experiment_api.rs"]
+mod experiment_api;
 #[path = "node_actions.rs"]
 mod node_actions;
 #[path = "node_queries.rs"]
@@ -579,6 +581,8 @@ impl Host {
                             | BuiltinAction::WorkspaceRead
                             | BuiltinAction::WorkspaceExport
                             | BuiltinAction::WorkspaceImportPreview
+                            | BuiltinAction::ExperimentExport
+                            | BuiltinAction::ExperimentInspect
                             | BuiltinAction::CommandLibraryRead
                     ) =>
             {
@@ -939,6 +943,8 @@ impl Host {
                 action,
                 BuiltinAction::ActionCheck
                     | BuiltinAction::WorkspaceImportPreview
+                    | BuiltinAction::ExperimentExport
+                    | BuiltinAction::ExperimentInspect
                     | BuiltinAction::SessionMetrics
                     | BuiltinAction::SessionInputs
                     | BuiltinAction::HostMetrics
@@ -976,6 +982,14 @@ impl Host {
                 )
                 .await
                 .map(QueryResult::ActionCheck),
+            BuiltinAction::ExperimentExport => self
+                .experiment_export(actor, query)
+                .await
+                .map(|package| QueryResult::ExperimentPackage(Box::new(package))),
+            BuiltinAction::ExperimentInspect => self
+                .experiment_inspect(actor, query)
+                .await
+                .map(|preview| QueryResult::ExperimentInspection(Box::new(preview))),
             BuiltinAction::WorkspaceImportPreview => {
                 let documents = self.inner.documents.clone();
                 let actor = actor.clone();

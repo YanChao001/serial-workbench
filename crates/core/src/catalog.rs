@@ -148,6 +148,8 @@ fn builtin_specs(dialect: SchemaDialect) -> &'static [ActionSpec] {
 pub enum BuiltinAction {
     ActionCheck,
     WorkspaceImportPreview,
+    ExperimentExport,
+    ExperimentInspect,
     Client(ClientCapability),
     ClientList,
     HostMetrics,
@@ -238,9 +240,11 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 111] = [
+    pub const ALL: [Self; 113] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
+        Self::ExperimentExport,
+        Self::ExperimentInspect,
         Self::Client(ClientCapability::WindowRead),
         Self::Client(ClientCapability::WindowMinimize),
         Self::Client(ClientCapability::WindowToggleMaximize),
@@ -400,6 +404,8 @@ impl BuiltinAction {
             Self::SettingsImport => "settings.import",
             Self::ActionCheck => "action.check",
             Self::WorkspaceImportPreview => "workspace.importPreview",
+            Self::ExperimentExport => "workspace.experiment.export",
+            Self::ExperimentInspect => "workspace.experiment.inspect",
             Self::WorkspaceList => "workspace.list",
             Self::CommandLibraryRead => "workspace.commands.read",
             Self::CommandLibraryChange => "workspace.commands.change",
@@ -577,7 +583,9 @@ impl BuiltinAction {
                 "plugin",
                 "client",
             ],
-            Self::WorkspaceImportPreview => &["workspace"],
+            Self::WorkspaceImportPreview | Self::ExperimentExport | Self::ExperimentInspect => {
+                &["workspace"]
+            }
             Self::Client(_) => &["client"],
             Self::CaptureStart | Self::CaptureRecover => &["file"],
             Self::CaptureStop => &["capture"],
@@ -800,7 +808,13 @@ impl BuiltinAction {
         if self == Self::ActionCheck {
             meta.permissions.clear();
         }
-        if matches!(self, Self::ActionCheck | Self::WorkspaceImportPreview) {
+        if matches!(
+            self,
+            Self::ActionCheck
+                | Self::WorkspaceImportPreview
+                | Self::ExperimentInspect
+                | Self::ExperimentExport
+        ) {
             meta.state_scopes.clear();
             meta.event_types.clear();
         }
@@ -1004,6 +1018,14 @@ impl BuiltinAction {
             Self::WorkspaceImportPreview => ActionSpec::of_with_dialect::<
                 DocumentImportParams,
                 WorkspaceDocument,
+            >(meta, dialect),
+            Self::ExperimentExport => ActionSpec::of_with_dialect::<
+                ExperimentExportParams,
+                ExperimentPackage,
+            >(meta, dialect),
+            Self::ExperimentInspect => ActionSpec::of_with_dialect::<
+                DocumentImportParams,
+                ExperimentInspection,
             >(meta, dialect),
             Self::CommandLibraryRead => ActionSpec::of_with_dialect::<
                 CommandLibraryReadParams,

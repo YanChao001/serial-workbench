@@ -1,3 +1,6 @@
+#[path = "action_check/experiment.rs"]
+mod experiment;
+
 use serde_json::{Value, json};
 use serial_workbench_client::{ConnectOptions, HostClient};
 use serial_workbench_core::*;
@@ -31,6 +34,9 @@ impl Fixture {
         Self::with_document(seed_revisions, None).await
     }
     async fn with_document(seed_revisions: u64, persisted: Option<Value>) -> Self {
+        Self::start(seed_revisions, persisted, false).await
+    }
+    async fn start(seed_revisions: u64, persisted: Option<Value>, bundled: bool) -> Self {
         let dir = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
         let mut server = HostServer::bind(dir.path()).await.unwrap();
         let store = server.store();
@@ -60,7 +66,16 @@ impl Fixture {
                 &ContextToken::try_from(std::str::from_utf8(&secret).unwrap()).unwrap(),
             )
             .unwrap();
-        let host = Host::new(store.clone(), auth.clone()).await.unwrap();
+        let host = if bundled {
+            let config =
+                serial_workbench_ipc::startup_config::resolve(Some(dir.path().to_path_buf()))
+                    .unwrap();
+            Host::with_startup_config(store.clone(), auth.clone(), config.snapshot())
+                .await
+                .unwrap()
+        } else {
+            Host::new(store.clone(), auth.clone()).await.unwrap()
+        };
         let handler = host.clone();
         let (stop, done) = oneshot::channel();
         let running = tokio::spawn(async move {

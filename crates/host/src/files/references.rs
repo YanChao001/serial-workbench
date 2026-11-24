@@ -628,6 +628,32 @@ impl FileService {
             fingerprint: d.fingerprint,
         })
     }
+    pub(crate) fn recording_metadata(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<FileMetadata> {
+        self.require_inspection_reference(reference, actor, "content.read")?;
+        self.require_inspection_reference(reference, actor, "metadata.read")?;
+        let (_, document) = self.load(reference)?;
+        if document.live
+            || document.purpose == FilePurpose::ReadFile
+            || (document.purpose == FilePurpose::CaptureTarget && document.capture_id.is_none())
+        {
+            return Err(HostError::new(
+                "NOT_FOUND",
+                "No fixed recording is registered",
+            ));
+        }
+        let mut fixed = reference.clone();
+        fixed.revision = Some(document.content_revision);
+        Ok(FileMetadata {
+            file_ref: fixed,
+            purpose: document.purpose,
+            length: document.length,
+            fingerprint: document.fingerprint,
+        })
+    }
     /// 内容查询沿现有修订与授权规则获取本次真实引用，不要求 metadata.read。
     pub(crate) fn current_reference(
         &self,

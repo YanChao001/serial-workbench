@@ -2053,6 +2053,76 @@ export type ExecutionLocation = "resource_host" | "client";
 
 export type ExecutionMode = "interactive" | "independent";
 
+export type ExperimentDependency =
+  "matched" | "missing" | "changed" | "unavailable" | "other_host";
+
+export type ExperimentFirmware = {
+  /**  工作区绑定数组的一基序号。 */
+  binding: number;
+  version: string;
+};
+
+export type ExperimentInspection =
+  ExperimentInspection_Serialize | ExperimentInspection_Deserialize;
+
+export type ExperimentInspection_Deserialize = {
+  experiment: ExperimentPackage_Deserialize;
+  parserStatus: ExperimentDependency[];
+  recordingStatus: ExperimentDependency[];
+};
+
+export type ExperimentInspection_Serialize = {
+  experiment: ExperimentPackage_Serialize;
+  parserStatus: ExperimentDependency[];
+  recordingStatus: ExperimentDependency[];
+};
+
+export type ExperimentPackage =
+  ExperimentPackage_Serialize | ExperimentPackage_Deserialize;
+
+export type ExperimentPackage_Deserialize = {
+  formatVersion: string;
+  workspace: WorkspaceDocument_Deserialize;
+  parsers: ExperimentParser[];
+  recordings: ExperimentRecording_Deserialize[];
+  firmware: ExperimentFirmware[];
+  runs: ExperimentRun[];
+};
+
+export type ExperimentPackage_Serialize = {
+  formatVersion: string;
+  workspace: WorkspaceDocument_Serialize;
+  parsers: ExperimentParser[];
+  recordings: ExperimentRecording_Serialize[];
+  firmware: ExperimentFirmware[];
+  runs: ExperimentRun[];
+};
+
+export type ExperimentParser = {
+  id: NodePackageId;
+  version: string;
+  archiveSha256: Digest;
+};
+
+export type ExperimentRecording =
+  ExperimentRecording_Serialize | ExperimentRecording_Deserialize;
+
+export type ExperimentRecording_Deserialize = {
+  reference: ObjectRef_Deserialize;
+  fingerprint: Digest;
+};
+
+export type ExperimentRecording_Serialize = {
+  reference: ObjectRef_Serialize;
+  fingerprint: Digest;
+};
+
+export type ExperimentRun = {
+  actionId: Id;
+  state: OperationState;
+  settledAt: Timestamp;
+};
+
 export type FavoritesSaveParams = {
   bindingIds: Id[];
 };
@@ -4184,6 +4254,8 @@ export type QueryResult_Deserialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Deserialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Deserialize }
+  | { kind: "experiment_package"; value: ExperimentPackage_Deserialize }
+  | { kind: "experiment_inspection"; value: ExperimentInspection_Deserialize }
   | { kind: "client_effect"; value: ClientEffectResult_Deserialize }
   | { kind: "clients"; value: ClientListResult_Deserialize }
   | { kind: "host_metrics"; value: HostMetrics_Deserialize }
@@ -4238,6 +4310,8 @@ export type QueryResult_Serialize =
   | { kind: "extension"; value: QueryValue }
   | { kind: "action_check"; value: ActionCheckResult_Serialize }
   | { kind: "workspace_import_preview"; value: WorkspaceDocument_Serialize }
+  | { kind: "experiment_package"; value: ExperimentPackage_Serialize }
+  | { kind: "experiment_inspection"; value: ExperimentInspection_Serialize }
   | { kind: "client_effect"; value: ClientEffectResult_Serialize }
   | { kind: "clients"; value: ClientListResult_Serialize }
   | { kind: "host_metrics"; value: HostMetrics_Serialize }
