@@ -4,6 +4,13 @@ import {
   type ChecksumAlgorithm,
   type ChecksumOrder,
 } from "../../src/wire-checksum.ts";
+import {
+  absolute,
+  calibrate,
+  uncalibrate,
+  type CalibrationPoint,
+  type CalibrationTable,
+} from "./calibration-table.ts";
 
 const maxFrameBytes = 4096;
 const maxFields = 128;
@@ -12,7 +19,8 @@ const decimalUnit = 10n ** BigInt(precision);
 
 type Range = { start: number; end: number };
 type FieldBase = { id: string; bytes: Range; unit?: string };
-type Numeric = { scale: bigint; bias: bigint };
+type Calibration = { kind: "linear" | "table"; revision: string };
+type Numeric = { scale: bigint; bias: bigint; calibration?: Calibration };
 type IntegerField = FieldBase &
   Numeric & {
     kind: "integer" | "bits";
@@ -21,6 +29,7 @@ type IntegerField = FieldBase &
     bitOffset: number;
     bitLength: number;
     labels: ReadonlyMap<bigint, string>;
+    table?: CalibrationTable;
   };
 type FloatField = FieldBase & Numeric & { kind: "float"; order: ChecksumOrder };
 type DataField = FieldBase & { kind: "bytes" | "utf8" };
@@ -37,6 +46,7 @@ export type FieldReading = FieldBase & {
   rawHex: string;
   value: string;
   rawValue?: string;
+  calibration?: Calibration & { status: "applied" | "unmapped" };
   label?: string;
   bits?: Range;
   checksum?: { coverage: Range; expectedHex: string; valid: boolean };
@@ -120,6 +130,106 @@ function decimal(value: bigint) {
 function integerLimits(bits: number, signed: boolean) {
   const half = 1n << BigInt(bits - Number(signed));
   return { min: signed ? -half : 0n, max: half - 1n };
+}
+
+function calibrationProfile(input: Record<string, unknown>, path: string) {
+  if (input.calibration === undefined)
+    return {
+      scale:
+        input.scale === undefined
+          ? decimalUnit
+          : fixed(input.scale, `${path}.scale`),
+      bias: input.bias === undefined ? 0n : fixed(input.bias, `${path}.bias`),
+    };
+  if (input.scale !== undefined || input.bias !== undefined)
+    invalid(`${path}.calibration`, "Use one calibration definition per field");
+  const location = `${path}.calibration`;
+  const config = record(input.calibration, location);
+  const { kind, revision } = config;
+  if (
+    typeof revision !== "string" ||
+    !/^[A-Za-z0-9][A-Za-z0-9._-]{0,63}$/.test(revision)
+  )
+    return invalid(
+      `${location}.revision`,
+      "Expected a calibration revision identifier",
+    );
+  if (kind === "linear") {
+    only(config, ["kind", "revision", "scale", "bias"], location);
+    const scale = fixed(config.scale, `${location}.scale`);
+    if (scale === 0n) invalid(`${location}.scale`, "Scale must be nonzero");
+    return {
+      scale,
+      bias:
+        config.bias === undefined ? 0n : fixed(config.bias, `${location}.bias`),
+      calibration: { kind, revision },
+    } as const;
+  }
+  if (kind !== "table")
+    return invalid(`${location}.kind`, "Unknown calibration method");
+  only(config, ["kind", "revision", "points", "interpolation"], location);
+  return {
+    scale: decimalUnit,
+    bias: 0n,
+    calibration: { kind, revision },
+    table: config,
+  } as const;
+}
+
+function parseCalibrationTable(
+  config: Record<string, unknown>,
+  bits: number,
+  signed: boolean,
+  path: string,
+): CalibrationTable {
+  const { points, interpolation = "exact" } = config;
+  if (interpolation !== "exact" && interpolation !== "linear")
+    return invalid(`${path}.interpolation`, "Expected exact or linear");
+  if (
+    !Array.isArray(points) ||
+    points.length < (interpolation === "linear" ? 2 : 1) ||
+    points.length > 128
+  )
+    return invalid(`${path}.points`, "Invalid calibration table size");
+  const { min, max } = integerLimits(bits, signed);
+  const result: CalibrationPoint[] = [];
+  const used = new Set<bigint>();
+  let direction: boolean | undefined;
+  for (const [index, point] of (points as unknown[]).entries()) {
+    const location = `${path}.points[${index}]`;
+    const sample = record(point, location);
+    only(sample, ["raw", "value"], location);
+    if (
+      typeof sample.raw !== "string" ||
+      !/^-?(?:0|[1-9]\d{0,19})$/.test(sample.raw)
+    )
+      invalid(`${location}.raw`, "Expected a decimal raw integer string");
+    const raw = BigInt(sample.raw);
+    const value = fixed(sample.value, `${location}.value`);
+    const previous = result.at(-1);
+    if (raw < min || raw > max || (previous && raw <= previous.raw))
+      invalid(
+        `${location}.raw`,
+        "Raw codes must increase within the field range",
+      );
+    if (used.has(value))
+      invalid(`${location}.value`, "Calibrated values must be unique");
+    if (previous && interpolation === "linear") {
+      const increase = value > previous.value;
+      if (
+        (direction !== undefined && increase !== direction) ||
+        absolute(value - previous.value) < raw - previous.raw
+      )
+        invalid(
+          `${location}.value`,
+          "Interpolated values must be monotone and separately represent every raw code",
+        );
+      direction = increase;
+    }
+    used.add(value);
+    result.push({ raw, value });
+  }
+  return { points: result, interpolation };
 }
 
 function parseLabels(
@@ -213,20 +323,20 @@ function parseField(raw: unknown, frameLength: number, index: number): Field {
   }
   if (kind !== "integer" && kind !== "bits" && kind !== "float")
     return invalid(`${path}.kind`, "Unknown field type");
-  const numeric = [...common, "width", "order", "scale", "bias"];
-  const scale =
-    input.scale === undefined
-      ? decimalUnit
-      : fixed(input.scale, `${path}.scale`);
+  const numeric = [...common, "width", "order", "scale", "bias", "calibration"];
+  const { scale, bias, calibration, table } = calibrationProfile(input, path);
   if (scale === 0n) invalid(`${path}.scale`, "Scale must be nonzero");
-  const bias =
-    input.bias === undefined ? 0n : fixed(input.bias, `${path}.bias`);
   const byteOrder = order(input.order, `${path}.order`);
   if (kind === "float") {
     only(input, numeric, path);
     if (width !== 4 && width !== 8)
       invalid(`${path}.width`, "Expected a 4- or 8-byte float");
-    return { ...base, kind, order: byteOrder, scale, bias };
+    if (table)
+      invalid(
+        `${path}.calibration.kind`,
+        "Table calibration requires raw integer codes",
+      );
+    return { ...base, kind, order: byteOrder, scale, bias, calibration };
   }
   only(
     input,
@@ -258,6 +368,10 @@ function parseField(raw: unknown, frameLength: number, index: number): Field {
     order: byteOrder,
     scale,
     bias,
+    calibration,
+    table:
+      table &&
+      parseCalibrationTable(table, bitLength, signed, `${path}.calibration`),
     signed,
     bitOffset,
     bitLength,
@@ -385,6 +499,9 @@ function decodeField(frame: Uint8Array, field: Field): FieldReading {
         ...result,
         value: floatValue(scaled, path),
         rawValue: floatValue(raw, path),
+        ...(field.calibration && {
+          calibration: { ...field.calibration, status: "applied" },
+        }),
       };
     }
     case "integer":
@@ -393,10 +510,19 @@ function decodeField(frame: Uint8Array, field: Field): FieldReading {
       const raw = field.signed
         ? BigInt.asIntN(field.bitLength, masked)
         : BigInt.asUintN(field.bitLength, masked);
+      const physical = field.table
+        ? calibrate(field.table, raw)
+        : raw * field.scale + field.bias;
       return {
         ...result,
-        value: decimal(raw * field.scale + field.bias),
+        value: physical === undefined ? "" : decimal(physical),
         rawValue: raw.toString(),
+        ...(field.calibration && {
+          calibration: {
+            ...field.calibration,
+            status: physical === undefined ? "unmapped" : "applied",
+          },
+        }),
         label: field.labels.get(raw),
         ...(kind === "bits"
           ? {
@@ -486,10 +612,20 @@ function encodeField(
     case "integer":
     case "bits": {
       // 64 位原值乘以允许的 40 位系数后，仍可从显示值构造。
-      const shifted = fixed(value, path, 61) - field.bias;
-      if (shifted % field.scale !== 0n)
-        invalid(path, "Value does not align with the field scale");
-      const raw = shifted / field.scale;
+      const physical = fixed(value, path, 61);
+      const shifted = physical - field.bias;
+      const raw = field.table
+        ? uncalibrate(field.table, physical)
+        : shifted % field.scale === 0n
+          ? shifted / field.scale
+          : undefined;
+      if (raw === undefined)
+        invalid(
+          path,
+          field.table
+            ? "Value does not match any calibrated raw code"
+            : "Value does not align with the field scale",
+        );
       const { min, max } = integerLimits(field.bitLength, field.signed);
       if (raw < min || raw > max)
         invalid(path, "Value exceeds the field range");

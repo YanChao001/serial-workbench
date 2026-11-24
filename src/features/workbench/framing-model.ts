@@ -93,6 +93,29 @@ export function receivedFramingRange(
   };
 }
 
+export function framingSourceItems(
+  items: readonly StreamItem[],
+  target: Target,
+  range: FramingRange,
+) {
+  const start = parseU64(range.startEventSeq);
+  const end = parseU64(range.endEventSeq);
+  if (!start || end === undefined) return [];
+  return items.filter((item) => {
+    if (item.kind !== "source") return false;
+    const event = item.event;
+    const seq = parseU64(event.eventSeq);
+    return (
+      seq !== undefined &&
+      seq >= start &&
+      seq < end &&
+      event.hostId === target.hostId &&
+      event.sessionId === target.sessionId &&
+      event.sessionEpoch === target.sessionEpoch
+    );
+  });
+}
+
 function bounded(value: string, min: number, max: number): number {
   if (!/^-?(0|[1-9][0-9]{0,4})$/.test(value))
     throw new Error("Invalid framing integer");

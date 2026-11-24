@@ -47,7 +47,10 @@ function pending(child: Operation) {
   return ["queued", "running", "cancel_requested"].includes(child.state);
 }
 
-async function settledOperation(task: NodeTaskContext, child: Operation) {
+export async function settledOperation(
+  task: NodeTaskContext,
+  child: Operation,
+) {
   const deadline = performance.now() + operationSettleMs;
   while (pending(child)) {
     if (performance.now() >= deadline) return undefined;

@@ -118,6 +118,9 @@ export type WorkbenchFixture = {
     captureNameHint: CaptureNameHint | null;
   }[];
   releaseDefinitionRead: () => void;
+  holdNextFraming: () => void;
+  setFramingResult: (page: FileReadResult) => void;
+  settleFramingCancellation: () => void;
   captureTailRequests: { transport: "raw" | "control"; query: Query }[];
   captureTailResponses: string[];
   captureTailResults: Record<string, CaptureTailResult>;
@@ -540,6 +543,9 @@ export async function seedWorkbenchFixture(
       definitionFiles,
     } = JSON.parse(raw) as typeof fixturePayload;
     let framingOperation: Operation | undefined;
+    let holdFraming = false;
+    let nextFramingResult = framing?.page;
+    const framingResults = new Map<string, FileReadResult>();
     let chosenDefinition: DefinitionFileFixture | undefined;
     let releaseDefinitionRead: (() => void) | undefined;
     let replayPlayback = replayProfile?.page.playback;
@@ -844,6 +850,21 @@ export async function seedWorkbenchFixture(
       releaseDefinitionRead() {
         releaseDefinitionRead?.();
         releaseDefinitionRead = undefined;
+      },
+      holdNextFraming() {
+        holdFraming = true;
+      },
+      setFramingResult(page) {
+        nextFramingResult = page;
+      },
+      settleFramingCancellation() {
+        if (framingOperation?.state !== "cancel_requested")
+          throw new Error("Framing cancellation has not been requested");
+        framingOperation = {
+          ...framingOperation,
+          state: "cancelled",
+          settledAt: sentOperation.settledAt,
+        };
       },
       captureTailRequests: [],
       captureTailResponses: [],
@@ -1407,21 +1428,33 @@ export async function seedWorkbenchFixture(
                 fixture.invocations.push(request.params);
               if (
                 framing &&
+                nextFramingResult &&
                 request.method === "action.invoke" &&
                 request.params.actionId === framing.action.actionId
               ) {
+                const held = holdFraming;
+                holdFraming = false;
+                const page = nextFramingResult;
+                const operationId = held
+                  ? "held-framing-operation"
+                  : page.fileRef.id;
+                if (!held) framingResults.set(operationId, page);
                 framingOperation = {
                   ...sentOperation,
-                  operationId: framing.page.fileRef.id,
-                  rootOperationId: framing.page.fileRef.id,
+                  operationId,
+                  rootOperationId: operationId,
                   actionId: framing.action.actionId,
                   target: request.params.target,
                   executionMode: request.params.executionMode ?? "independent",
                   requestId: request.params.requestId,
-                  result: {
-                    kind: "reference",
-                    value: { resultRef: framing.page.fileRef },
-                  },
+                  state: held ? "running" : sentOperation.state,
+                  settledAt: held ? undefined : sentOperation.settledAt,
+                  result: held
+                    ? undefined
+                    : {
+                        kind: "reference",
+                        value: { resultRef: page.fileRef },
+                      },
                 };
                 return {
                   ok: true,
@@ -1433,6 +1466,33 @@ export async function seedWorkbenchFixture(
                     },
                   },
                 };
+              }
+              if (
+                framingOperation?.state === "running" &&
+                request.method === "action.invoke" &&
+                request.params.actionId === "operation.cancel" &&
+                request.params.target.id === framingOperation.operationId
+              ) {
+                framingOperation = {
+                  ...framingOperation,
+                  state: "cancel_requested",
+                };
+                const cancellation: Operation = {
+                  ...sentOperation,
+                  operationId: "fixture-framing-cancellation",
+                  rootOperationId: "fixture-framing-cancellation",
+                  actionId: request.params.actionId,
+                  target: request.params.target,
+                  requestId: request.params.requestId,
+                  result: {
+                    kind: "cancellation_requested",
+                    value: {
+                      operationId: framingOperation.operationId,
+                      state: "cancel_requested",
+                    },
+                  },
+                };
+                return { ok: true, result: { operation: cancellation } };
               }
               if (
                 replayPlayback &&
@@ -1650,11 +1710,8 @@ export async function seedWorkbenchFixture(
                     value: { operation: framingOperation },
                   },
                 };
-              if (
-                framing &&
-                query.actionId === "file.read" &&
-                query.target.id === framing.page.fileRef.id
-              ) {
+              const framingResult = framingResults.get(query.target.id);
+              if (framingResult && query.actionId === "file.read") {
                 if (
                   command !== "host_raw_request" ||
                   query.params.offset !== "0"
@@ -1662,7 +1719,7 @@ export async function seedWorkbenchFixture(
                   throw new Error("Frame result must start on the Raw channel");
                 return {
                   ok: true,
-                  result: { kind: "file_read", value: framing.page },
+                  result: { kind: "file_read", value: framingResult },
                 };
               }
               if (

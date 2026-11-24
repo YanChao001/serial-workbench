@@ -63,6 +63,7 @@ export type TimelineAttempt = {
     byteStart: bigint;
     byteEnd: bigint;
     late: boolean;
+    bytesBase64?: string;
     exceptionCode?: number;
   };
 };
@@ -153,6 +154,8 @@ function response(
     byteStart,
     byteEnd,
     late,
+    bytesBase64:
+      typeof value.bytesBase64 === "string" ? value.bytesBase64 : undefined,
     exceptionCode,
   };
 }

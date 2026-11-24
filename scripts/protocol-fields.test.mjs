@@ -52,6 +52,100 @@ function fails(fn, path) {
   );
 }
 
+test("versioned calibrations retain raw codes and round trip physical values", () => {
+  const linear = codec(
+    1,
+    integer("voltage", 0, 1, "big", {
+      unit: "V",
+      calibration: {
+        kind: "linear",
+        revision: "probe-2026.1",
+        scale: "0.25",
+        bias: "-1",
+      },
+    }),
+  );
+  const [reading] = linear.decode(Uint8Array.of(8));
+  assert.deepEqual(reading, {
+    id: "voltage",
+    kind: "integer",
+    unit: "V",
+    bytes: { start: 0, end: 1 },
+    rawHex: "08",
+    rawValue: "8",
+    value: "1",
+    label: undefined,
+    calibration: {
+      kind: "linear",
+      revision: "probe-2026.1",
+      status: "applied",
+    },
+  });
+  assert.deepEqual(linear.encode({ voltage: "1" }), Uint8Array.of(8));
+  fails(() => linear.encode({ voltage: "1.001" }), "values.voltage");
+
+  const exact = codec(
+    8,
+    integer("large", 0, 8, "big", {
+      calibration: {
+        kind: "table",
+        revision: "t-1",
+        points: [{ raw: "18446744073709551615", value: "-25.125" }],
+      },
+    }),
+  );
+  const largest = Uint8Array.of(255, 255, 255, 255, 255, 255, 255, 255);
+  assert.deepEqual(exact.encode({ large: "-25.125" }), largest);
+  assert.equal(exact.decode(largest)[0].rawValue, "18446744073709551615");
+  const [unmapped] = exact.decode(new Uint8Array(8));
+  assert.equal(unmapped.rawValue, "0");
+  assert.equal(unmapped.value, "");
+  assert.equal(unmapped.calibration.status, "unmapped");
+});
+
+test("table interpolation works in both directions and rejects ambiguous inverse values", () => {
+  const field = (end) =>
+    integer("temperature", 0, 1, "big", {
+      unit: "°C",
+      calibration: {
+        kind: "table",
+        revision: "t-2",
+        interpolation: "linear",
+        points: [
+          { raw: "0", value: "0" },
+          { raw: "3", value: end },
+        ],
+      },
+    });
+  for (const [end, expected] of [
+    ["1", "0.333333333333333333"],
+    ["-1", "-0.333333333333333333"],
+  ]) {
+    const table = codec(1, field(end));
+    for (const raw of [0, 1, 2, 3]) {
+      const data = Uint8Array.of(raw);
+      assert.deepEqual(
+        table.encode({ temperature: table.decode(data)[0].value }),
+        data,
+      );
+    }
+    assert.equal(table.decode(Uint8Array.of(1))[0].value, expected);
+    assert.equal(
+      table.decode(Uint8Array.of(4))[0].calibration.status,
+      "unmapped",
+    );
+    fails(() => table.encode({ temperature: "0.1" }), "values.temperature");
+  }
+  fails(
+    () => codec(1, field("0.000000000000000001")),
+    "fields[0].calibration.points[1].value",
+  );
+  const malformed = field("1");
+  malformed.calibration.points.push({ raw: "4", value: "0.5" });
+  fails(() => codec(1, malformed), "fields[0].calibration.points[2].value");
+  fails(() => codec(1, { ...field("1"), scale: "1" }), "fields[0].calibration");
+});
+
 test("signed 24-bit and unsigned 64-bit fields preserve exact raw and engineering values", () => {
   const definition = codec(
     11,

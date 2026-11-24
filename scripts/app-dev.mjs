@@ -1,4 +1,5 @@
 ﻿import { spawn } from "node:child_process";
+import { stat } from "node:fs/promises";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, join, resolve } from "node:path";
 import { createInterface } from "node:readline";
@@ -76,10 +77,23 @@ function runProcess(command, args, options) {
   });
 }
 
+async function hasFrontendEntry(root) {
+  try {
+    return (await stat(join(root, "dist", "index.html"))).isFile();
+  } catch (error) {
+    if (error?.code === "ENOENT") return false;
+    throw error;
+  }
+}
+
 export async function runDev(
   root,
   args,
-  { run = runProcess, stageRuntime = stageDevRuntime } = {},
+  {
+    run = runProcess,
+    stageRuntime = stageDevRuntime,
+    frontendReady = hasFrontendEntry,
+  } = {},
 ) {
   const options = {
     cwd: join(root, "src-tauri"),
@@ -105,6 +119,23 @@ export async function runDev(
     "serial-workbench-cli",
     ...cargoSelection(args),
   ];
+  // Tauri 在开发构建中也会读取配对浏览器使用的磁盘资源。
+  if (!(await frontendReady(root))) {
+    const vite = join(
+      dirname(require.resolve("vite/package.json")),
+      "bin",
+      "vite.js",
+    );
+    const status = await run(process.execPath, [vite, "build"], {
+      ...options,
+      cwd: root,
+    });
+    if (status !== 0) return status;
+    if (!(await frontendReady(root)))
+      throw new Error(
+        "Vite did not produce dist/index.html for the browser workbench",
+      );
+  }
   const executables = new Map([
     ["serial-workbench-host", new Set()],
     ["serial-workbench-cli", new Set()],

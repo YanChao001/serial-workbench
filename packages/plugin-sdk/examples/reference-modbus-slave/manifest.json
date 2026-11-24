@@ -1,0 +1,546 @@
+{
+  "schemaVersion": "0.1",
+  "id": "swb.reference.modbus.slave",
+  "version": "0.1.0",
+  "displayName": "Modbus Slave",
+  "description": "Serve Modbus requests on the selected session with an editable address model",
+  "license": "Apache-2.0",
+  "notices": ["LICENSE", "NOTICE"],
+  "hostProtocolVersion": "0.1",
+  "runtimeRef": "node-26.13.0",
+  "main": "dist/main.mjs",
+  "dependencies": [],
+  "platformResources": [],
+  "activation": ["startup"],
+  "permissions": {
+    "hostApi": [
+      {
+        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "targetKinds": ["session"]
+      }
+    ],
+    "executionPurposes": ["automation"],
+    "externalTools": []
+  },
+  "contributes": {
+    "actions": [
+      {
+        "actionId": "swb.reference.modbus.slave.serve",
+        "kind": "action",
+        "inputSchema": {
+          "type": "object",
+          "properties": {
+            "transport": {
+              "enum": ["rtu", "ascii", "tcp"]
+            },
+            "unitRouting": {
+              "enum": ["gateway", "direct"]
+            },
+            "model": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "tables": {
+                  "type": "object",
+                  "properties": {
+                    "coils": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "discreteInputs": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "holdingRegisters": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "inputRegisters": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "faults": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "functionCode": {
+                        "enum": [1, 2, 3, 4, 5, 6, 15, 16]
+                      },
+                      "behavior": {
+                        "enum": ["silent", "exception"]
+                      },
+                      "exceptionCode": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 255
+                      }
+                    },
+                    "required": ["functionCode", "behavior"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["unitId", "tables"],
+              "additionalProperties": false
+            },
+            "startEventSeq": {
+              "type": "string",
+              "pattern": "^[1-9][0-9]{0,19}$",
+              "default": "1"
+            },
+            "requestLimit": {
+              "type": "integer",
+              "minimum": 1,
+              "maximum": 64,
+              "default": 16
+            },
+            "durationMs": {
+              "type": "integer",
+              "minimum": 100,
+              "maximum": 120000,
+              "default": 15000
+            },
+            "replyDelayMs": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 2000,
+              "default": 0
+            }
+          },
+          "required": ["transport", "model"],
+          "additionalProperties": false
+        },
+        "outputSchema": {
+          "type": "object",
+          "properties": {
+            "reason": {
+              "enum": [
+                "request_limit",
+                "receive_deadline",
+                "source_changed",
+                "session_ended",
+                "invalid_stream",
+                "byte_limit",
+                "lease_unavailable",
+                "reply_unconfirmed"
+              ]
+            },
+            "model": {
+              "type": "object",
+              "properties": {
+                "unitId": {
+                  "type": "integer",
+                  "minimum": 0,
+                  "maximum": 255
+                },
+                "tables": {
+                  "type": "object",
+                  "properties": {
+                    "coils": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "discreteInputs": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "boolean"
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "holdingRegisters": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "inputRegisters": {
+                      "type": "array",
+                      "maxItems": 16,
+                      "items": {
+                        "type": "object",
+                        "properties": {
+                          "start": {
+                            "type": "integer",
+                            "minimum": 0,
+                            "maximum": 65535
+                          },
+                          "values": {
+                            "type": "array",
+                            "minItems": 1,
+                            "maxItems": 2000,
+                            "items": {
+                              "type": "integer",
+                              "minimum": 0,
+                              "maximum": 65535
+                            }
+                          }
+                        },
+                        "required": ["start", "values"],
+                        "additionalProperties": false
+                      }
+                    }
+                  },
+                  "additionalProperties": false
+                },
+                "faults": {
+                  "type": "array",
+                  "maxItems": 8,
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "functionCode": {
+                        "enum": [1, 2, 3, 4, 5, 6, 15, 16]
+                      },
+                      "behavior": {
+                        "enum": ["silent", "exception"]
+                      },
+                      "exceptionCode": {
+                        "type": "integer",
+                        "minimum": 1,
+                        "maximum": 255
+                      }
+                    },
+                    "required": ["functionCode", "behavior"],
+                    "additionalProperties": false
+                  }
+                }
+              },
+              "required": ["unitId", "tables"],
+              "additionalProperties": false
+            },
+            "processed": {
+              "type": "array",
+              "maxItems": 64,
+              "items": {
+                "type": "object",
+                "properties": {
+                  "status": {
+                    "enum": [
+                      "ignored",
+                      "silent",
+                      "broadcast",
+                      "discarded",
+                      "replied",
+                      "exception"
+                    ]
+                  },
+                  "requestBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 684,
+                    "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+                  },
+                  "source": {
+                    "type": "object",
+                    "properties": {
+                      "hostId": {
+                        "type": "string"
+                      },
+                      "sessionId": {
+                        "type": "string"
+                      },
+                      "sessionEpoch": {
+                        "type": "string",
+                        "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                      },
+                      "direction": {
+                        "const": "rx"
+                      },
+                      "eventStart": {
+                        "type": "string",
+                        "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                      },
+                      "eventEnd": {
+                        "type": "string",
+                        "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                      },
+                      "byteStart": {
+                        "type": "string",
+                        "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                      },
+                      "byteEnd": {
+                        "type": "string",
+                        "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                      }
+                    },
+                    "required": [
+                      "hostId",
+                      "sessionId",
+                      "sessionEpoch",
+                      "direction",
+                      "eventStart",
+                      "eventEnd",
+                      "byteStart",
+                      "byteEnd"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "time": {
+                    "type": "object",
+                    "properties": {
+                      "clockId": {
+                        "type": "string"
+                      },
+                      "sourceMonoNs": {
+                        "type": "string",
+                        "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                      },
+                      "precision": {
+                        "type": "object",
+                        "properties": {
+                          "source": {
+                            "enum": [
+                              "host_read",
+                              "device",
+                              "line_capture",
+                              "sample_clock"
+                            ]
+                          },
+                          "resolutionNs": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                          },
+                          "syncMethod": {
+                            "type": "string"
+                          },
+                          "offsetEstimateNs": {
+                            "type": "string",
+                            "pattern": "^-?(?:0|[1-9][0-9]{0,19})$"
+                          },
+                          "offsetErrorNs": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                          },
+                          "rttNs": {
+                            "type": "string",
+                            "pattern": "^(?:0|[1-9][0-9]{0,19})$"
+                          }
+                        },
+                        "required": ["source", "resolutionNs", "syncMethod"],
+                        "additionalProperties": false
+                      }
+                    },
+                    "required": ["clockId", "sourceMonoNs", "precision"],
+                    "additionalProperties": false
+                  },
+                  "exceptionCode": {
+                    "type": "integer",
+                    "minimum": 1,
+                    "maximum": 255
+                  },
+                  "path": {
+                    "type": "string"
+                  },
+                  "responseBase64": {
+                    "type": "string",
+                    "minLength": 4,
+                    "maxLength": 684,
+                    "pattern": "^(?:[A-Za-z0-9+/]{4})*(?:[A-Za-z0-9+/]{2}==|[A-Za-z0-9+/]{3}=)?$"
+                  },
+                  "tx": {
+                    "type": "object",
+                    "properties": {
+                      "operationId": {
+                        "type": "string"
+                      },
+                      "confirmed": {
+                        "type": "boolean"
+                      }
+                    },
+                    "required": ["operationId", "confirmed"],
+                    "additionalProperties": false
+                  }
+                },
+                "required": ["status", "requestBase64", "source", "time"],
+                "additionalProperties": false
+              }
+            },
+            "receivedBytes": {
+              "type": "integer",
+              "minimum": 0,
+              "maximum": 65536
+            },
+            "pendingFrame": {
+              "type": "boolean"
+            }
+          },
+          "required": [
+            "reason",
+            "model",
+            "processed",
+            "receivedBytes",
+            "pendingFrame"
+          ],
+          "additionalProperties": false
+        },
+        "targetKinds": ["session"],
+        "executionLocation": "resource_host",
+        "permissions": ["metadata.read", "content.read", "device.modify"],
+        "stateScopes": [],
+        "eventTypes": [],
+        "cancellation": "cooperative",
+        "revealTarget": {
+          "pageId": "workbench",
+          "panelId": "activity"
+        }
+      }
+    ],
+    "queries": [],
+    "transports": [],
+    "parsers": [],
+    "views": [],
+    "themes": [],
+    "configuration": []
+  },
+  "dataSchemaVersion": "1"
+}

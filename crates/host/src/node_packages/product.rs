@@ -13,8 +13,17 @@ const FRAMING_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/fra
 const FRAMING_DESCRIPTOR: &str = include_str!("../../resources/node-packages/framing.json");
 const FIELD_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/protocol-fields.zip");
 const FIELD_DESCRIPTOR: &str = include_str!("../../resources/node-packages/protocol-fields.json");
+const PREVIOUS_FIELD_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/previous/protocol-fields-0.1.0.zip");
+const PREVIOUS_FIELD_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/previous/protocol-fields-0.1.0.json");
+const FIELD_MARKER: &str = "node-packages:bundled-protocol-fields";
 const MODBUS_ARCHIVE: &[u8] = include_bytes!("../../resources/node-packages/modbus.zip");
 const MODBUS_DESCRIPTOR: &str = include_str!("../../resources/node-packages/modbus.json");
+const MODBUS_SLAVE_ARCHIVE: &[u8] =
+    include_bytes!("../../resources/node-packages/modbus-slave.zip");
+const MODBUS_SLAVE_DESCRIPTOR: &str =
+    include_str!("../../resources/node-packages/modbus-slave.json");
 const PRODUCT_SOURCE: &str = "swb.product";
 
 #[derive(Deserialize)]
@@ -50,6 +59,22 @@ impl ProductPackage {
         receipt.source == approval.source
             && receipt.key_id == approval.key_id
             && receipt.public_key_sha256 == approval.public_key_sha256
+    }
+
+    fn matches_installation(&self, package: &InstalledNodePackage) -> bool {
+        package.activation_authority.is_none()
+            && self.id() == &package.manifest.id
+            && self.descriptor.archive_sha256 == package.archive_sha256
+            && package
+                .verified_source
+                .as_ref()
+                .is_some_and(|source| self.matches_source(source))
+    }
+
+    pub(super) fn replaces(&self, package: &InstalledNodePackage) -> bool {
+        self.marker == FIELD_MARKER
+            && self.descriptor.archive_sha256 != package.archive_sha256
+            && previous_fields().matches_installation(package)
     }
 
     pub(super) fn verify_embedded(
@@ -90,7 +115,7 @@ impl ProductPackage {
 }
 
 pub(super) fn packages() -> &'static [ProductPackage] {
-    static PACKAGES: OnceLock<[ProductPackage; 3]> = OnceLock::new();
+    static PACKAGES: OnceLock<[ProductPackage; 4]> = OnceLock::new();
     PACKAGES.get_or_init(|| {
         [
             ProductPackage::new(
@@ -98,18 +123,34 @@ pub(super) fn packages() -> &'static [ProductPackage] {
                 FRAMING_ARCHIVE,
                 "node-packages:bundled-framing",
             ),
-            ProductPackage::new(
-                FIELD_DESCRIPTOR,
-                FIELD_ARCHIVE,
-                "node-packages:bundled-protocol-fields",
-            ),
+            ProductPackage::new(FIELD_DESCRIPTOR, FIELD_ARCHIVE, FIELD_MARKER),
             ProductPackage::new(
                 MODBUS_DESCRIPTOR,
                 MODBUS_ARCHIVE,
                 "node-packages:bundled-modbus",
             ),
+            ProductPackage::new(
+                MODBUS_SLAVE_DESCRIPTOR,
+                MODBUS_SLAVE_ARCHIVE,
+                "node-packages:bundled-modbus-slave",
+            ),
         ]
     })
+}
+
+fn previous_fields() -> &'static ProductPackage {
+    static PREVIOUS: OnceLock<ProductPackage> = OnceLock::new();
+    PREVIOUS.get_or_init(|| {
+        ProductPackage::new(
+            PREVIOUS_FIELD_DESCRIPTOR,
+            PREVIOUS_FIELD_ARCHIVE,
+            FIELD_MARKER,
+        )
+    })
+}
+
+fn trusted_packages() -> impl Iterator<Item = &'static ProductPackage> {
+    packages().iter().chain(std::iter::once(previous_fields()))
 }
 
 pub(super) fn is_product_source(source: &Id) -> bool {
@@ -124,25 +165,14 @@ pub(super) fn require_external_source(source: &Id) -> HostResult<()> {
 }
 
 pub(super) fn require_current(receipt: &VerifiedNodePackageSource) -> HostResult<()> {
-    if !packages()
-        .iter()
-        .any(|package| package.matches_source(receipt))
-    {
+    if !trusted_packages().any(|package| package.matches_source(receipt)) {
         return Err(failure("PERMISSION_DENIED", "productSourceKey"));
     }
     Ok(())
 }
 
 pub(super) fn has_product_origin(package: &InstalledNodePackage) -> bool {
-    package.activation_authority.is_none()
-        && packages().iter().any(|bundle| {
-            bundle.id() == &package.manifest.id
-                && bundle.descriptor.archive_sha256 == package.archive_sha256
-                && package
-                    .verified_source
-                    .as_ref()
-                    .is_some_and(|source| bundle.matches_source(source))
-        })
+    trusted_packages().any(|bundle| bundle.matches_installation(package))
 }
 
 pub(super) fn verify(
@@ -150,8 +180,7 @@ pub(super) fn verify(
     limits: &NodePackageLimits,
     cancel: &AtomicBool,
 ) -> HostResult<VerifiedNodePackage> {
-    let bundle = packages()
-        .iter()
+    let bundle = trusted_packages()
         .find(|bundle| bundle.archive == bytes.as_slice())
         .ok_or_else(|| failure("PERMISSION_DENIED", "productArchiveMismatch"))?;
     bundle.verify_bytes(bytes, limits, cancel)
@@ -164,6 +193,70 @@ mod tests {
         node_packages::{NodePackageInstaller, NodePackageSources},
         storage::Store,
     };
+
+    #[test]
+    fn known_predecessor_upgrades_and_preserves_the_profile_decision() {
+        let limits = NodePackageLimits::default();
+        let cancel = AtomicBool::new(false);
+        let old = previous_fields();
+        let latest = &packages()[1];
+        for expected_enabled in [Some(true), Some(false), None] {
+            let profile = tempfile::tempdir().unwrap();
+            let store = Store::open(profile.path()).unwrap();
+            let installer = NodePackageInstaller::new(store, profile.path()).unwrap();
+            installer
+                .provision_bundled_package(old, &limits, &cancel)
+                .unwrap();
+            let original = installer.snapshot().unwrap();
+            let package = original.packages.first().unwrap();
+            assert!(has_product_origin(package));
+            assert!(latest.replaces(package));
+            assert_eq!(package.manifest.version.as_str(), "0.1.0");
+            let mut foreign = package.clone();
+            foreign.verified_source = None;
+            assert!(!latest.replaces(&foreign));
+            let disabled = if expected_enabled != Some(true) {
+                installer
+                    .set_enabled(old.id(), false, original.revision, &package.archive_sha256)
+                    .unwrap()
+            } else {
+                original.clone()
+            };
+            if expected_enabled.is_none() {
+                installer
+                    .uninstall_authorized(
+                        &serial_workbench_core::NodePackageIdentityParams {
+                            id: old.id().clone(),
+                            archive_sha256: package.archive_sha256.clone(),
+                        },
+                        disabled.revision,
+                        &limits,
+                        &cancel,
+                        || Ok(()),
+                        |_| Ok(()),
+                    )
+                    .unwrap();
+            }
+            installer
+                .provision_bundled_package(latest, &limits, &cancel)
+                .unwrap();
+            let migrated = installer.snapshot().unwrap();
+            assert_eq!(
+                migrated.packages.first().map(|package| package.enabled),
+                expected_enabled
+            );
+            if let Some(package) = migrated.packages.first() {
+                assert_eq!(package.manifest.version.as_str(), "0.2.0");
+                assert_eq!(package.archive_sha256, latest.descriptor.archive_sha256);
+                assert!(has_product_origin(package));
+                assert_eq!(package.activation_authority, None);
+            }
+            installer
+                .provision_bundled_package(latest, &limits, &cancel)
+                .unwrap();
+            assert_eq!(installer.snapshot().unwrap(), migrated);
+        }
+    }
 
     #[test]
     fn product_archive_matches_signature_and_descriptor() {

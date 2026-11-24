@@ -356,6 +356,20 @@ cargo test --locked -p serial-workbench-host --test client_parity native_node_dy
 
 `swb.reference.fields.identifyCrc` 以目标会话为范围。输入 `samples` 中每项含 `bytesBase64` 与 `checksumBase64`，最多 16 项，每项覆盖字节最多 4096。可传 `width` 与 `order`。核对未授权拒绝、获准后读取实际结果引用、不同样本数、候选参数和补样本提示。运行 `node --test scripts/crc-recognition.test.mjs scripts/protocol-field-actions.test.mjs` 和上述分帧浏览器、原生启动用例。
 
+### 帧异常检查（PROTO-08）
+
+在「协议分帧」扫描有权读取的会话范围，再在「协议字段」下打开「帧异常」。字段定义提供期望长度、校验字段和可选整数或位序号。填入序号字段、允许推断的最大缺帧数及帧间时限。相邻序号按字段位宽回绕。有限的向前缺失显示实收序号和预期序号，越过界限显示跳变。也可显式开启相邻完整字节重复检查。
+
+用独立对端发送回绕、跳号、重复、错误校验和长度不符的帧，核对每条异常的原字节与事件区间。断开源事件或换时钟再比较，检查证据不足提示。最后一帧以后需有同源原始事件才能确认超时。运行 `pnpm exec vitest run src/features/workbench/framing-anomalies-model.test.ts` 和 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "scans only visible"`。真实对端和发行实装按同一候选验证。
+
+### 字段标定（PROTO-16）
+
+字段可用 `calibration: {kind: "linear", revision: "probe-1", scale: "0.25", bias: "-1"}` 标识一组线性系数。原始码值 8 应显示物理值 1，结果保留码值 8、原字节及系数版本。已有 `scale` 和 `bias` 定义继续按原格式读写。
+
+整数与位字段可用 `kind: "table"`、`revision` 和按原始码值递增的 `points`。每点含十进制字符串 `raw` 与 `value`。默认采用精确查表。选择 `interpolation: "linear"` 时，以单调标定点验证升序、降序与分段插值。表外应显示未映射并保留原始证据。构造须能反解至唯一原始码值。运行 `node --test scripts/protocol-fields.test.mjs scripts/protocol-field-actions.test.mjs` 和 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "packet editor constructs"`。
+
+字段签名包由 0.1.0 升至 0.2.0。独立 profile 分别核对已启用、已停用和已卸载三种状态，重复初始化核对快照幂等。真实 Host 在有权会话中调用随包的构造与解码动作，检查标定版本、物理值和原字节同时命中。图表追溯、独立设备、发行实装与版本回退按同一候选继续专项验收。
+
 ### Modbus 报文模板（PROTO-04、PROTO-20）
 
 工作台「协议分帧」的「Modbus 报文」支持 RTU、ASCII、TCP，方向明确选择请求或响应。以读取 10 个保持寄存器的请求为例，报文 JSON 使用 `{"unitId":1,"pdu":{"functionCode":3,"address":0,"quantity":10}}`。RTU 预览为 `01 03 00 00 00 0A C5 CD`，ASCII 预览为 `:01030000000AF2` 后接 CRLF。添加 `"transactionId":1` 再构造 TCP，预览为 `00 01 00 00 00 06 01 03 00 00 00 0A`。用同一面板回读并核对单元号、零基地址、数量和事务 ID。 [Modbus 应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
@@ -372,7 +386,11 @@ FC01/02 的独立响应保留装有位值和填充的 `bitBytes`，FC03/04 响�
 
 选择 TCP 并载入示例，执行 FC06 后将事务号改为 2 并用 FC03 读回地址 1。预期响应为 `00 02 00 00 00 05 01 03 02 01 02`。用 FC03 读未映射地址核对异常，随后恢复初始模型并再次读回初值。RTU 与 ASCII 的单元 0 只接受写入并保持静默。测试时还应核对目标单元错误、CRC/LRC 损坏以及一次跨空洞写入对模型的影响。
 
-随包动作 `swb.reference.fields.modbusServer` 接收 `transport`、`requestBase64`、`model` 和可选的 TCP `unitRouting`。每次调用返回新模型，需要继续模拟时将其传给后续调用。正常或异常回复的线缆字节位于 `responseBase64`。运行 `node --test scripts/modbus-server.test.mjs scripts/modbus-frame.test.mjs`，并用固定 Node 的隔离 Host 验证授权、回显与返回的寄存器模型。实时串口或网络监听、延迟与事务重试、真实对端和发行包待独立场景验收。 [应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
+随包动作 `swb.reference.fields.modbusServer` 接收 `transport`、`requestBase64`、`model` 和可选的 TCP `unitRouting`。每次调用返回新模型，需要继续模拟时将其传给后续调用。正常或异常回复的线缆字节位于 `responseBase64`。运行 `node --test scripts/modbus-server.test.mjs scripts/modbus-frame.test.mjs`，并用固定 Node 的隔离 Host 验证授权、回显与返回的寄存器模型。 [应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf) · [串行规范](https://www.modbus.org/file/secure/modbusoverserial.pdf) · [TCP 实现指南](https://www.modbus.org/file/secure/messagingimplementationguide.pdf)
+
+实时模式沿用当前地址模型。打开并选中可写会话，在同一面板设定 100 至 120000 ms 的接收时限、1 至 64 帧和 0 至 2000 ms 的应答延迟后启动。首方动作 `swb.reference.modbus.slave.serve` 从留存尾部读取 Raw，在 65536 字节预算及同一可续期事务租约内工作。连接建立与关闭由 Host 管理。RTU 现场接线使用无本地回显的链路，真实字符间静默和线路计时仍需独立对端和仪器确认。
+
+先送分块 FC06，再在同一接收块附带 FC03。两次应答应由对端按原序收到，读取返回更新后的值，结果可查请求字节区间与发送确认。RTU 广播更新地址模型并保持静默。点击「请求停止」后核对操作真实取消与租约可重用。任务完成时回填返回的地址模型，取消时保留工作台上一次已收到的模型。运行 `node --test scripts/modbus-live-slave.test.mjs scripts/product-modbus.test.mjs` 校验组帧、广播、断档、发送不确定和签名归档，再用隔离 Host 原生用例与无头工作台验证授权、回执和入口。
 
 ### Modbus 主站事务参考动作（PROTO-09、PROTO-17、PROTO-20）
 
@@ -387,6 +405,12 @@ FC01/02 的独立响应保留装有位值和填充的 `bitBytes`，FC03/04 响�
 本面板使用动作返回的 TX 事件和配对 RX 首尾事件绘制共同时间轴。核对各次发送的起点和应答时限，拆帧应分别显示首末接收偏移、分块跨度、源时钟、精度以及原始字节范围。相同请求与源时钟的首发成功样本至少两次时显示最近八次的耗时极差。该值来自 Host 观测。设备定时、串行线路采样、其他协议时序和正式安装包继续专项验收。
 
 运行 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "Modbus master timeline"`，核对实际工作台入口、错误请求不会发送、精确会话调用、超时与重发分行、共用轴和经摘要检查的结果文件。隔离 Host 另核对首发有确证 TX、分块 RX 首尾引用与重发的真实原始范围。`native_node_bundled_protocol_registers_on_first_start_and_restart` 核对随包登记、重启不改 revision、缺少会话写权限时拒绝及授权后 Virtual Echo 会话的实际 TX 终态。组件清单按 Host 记录包 ID、版本与归档摘要。
+
+### Modbus 寄存器与监视（PROTO-10、PROTO-20）
+
+在可写会话打开「协议分帧」中的「Modbus 寄存器与监视」。选择 RTU、ASCII 或 TCP，设置单元标识、地址基准、变量数和响应时限。保持寄存器读取使用 FC03，输入寄存器使用 FC04。核对零基地址 100 与一基地址 101 生成相同 PDU 地址。16 位格式每变量使用一字，32 位和浮点格式每变量使用两字。检查 AB、BA 及 ABCD、BADC、CDAB、DCBA 对照样本，核对表中原始寄存器字和变量值。 [Modbus 应用协议](https://www.modbus.org/file/secure/modbusprotocolspecification.pdf)
+
+以 250 至 60000 ms 间隔启动监视，核对每次读取在前次结算之后安排。停止监视后等待在途读取结算，核对调用数停止增长。对保持寄存器选择一个对齐地址，核对 FC06 或 FC16 与预览的线缆字，确认写回执和随后重新读取的表值。输入寄存器只提供读取。返回异常 2 或让响应逾时，核对异常或迟到范围并确认监视停止。运行 `pnpm exec vitest run src/features/workbench/modbus-register-model.test.ts` 和 `pnpm test:ui e2e/browser/framing-tool.spec.ts --grep "Modbus registers"`。实际设备按三种封装分别验证。
 
 ### NMEA 0183 报文模板（PROTO-04）
 
