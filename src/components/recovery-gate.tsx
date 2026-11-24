@@ -1,9 +1,8 @@
 import { useEffect, useState, type ReactNode } from "react";
 import { Navigate, useLocation } from "react-router-dom";
-import { Button } from "@/components/ui/button";
+import { ResourceError } from "@/components/native-page";
 import { useI18n } from "@/providers/i18n";
 import { isTauri, recoveryStatus, type RecoveryStatus } from "@/lib/tauri";
-import { nativeErrorText } from "@/lib/native-error";
 
 /** 恢复隔离状态确认前不挂载普通业务页面，避免把临时数据当作正式数据。 */
 export function RecoveryGate({ children }: { children: ReactNode }) {
@@ -30,19 +29,25 @@ export function RecoveryGate({ children }: { children: ReactNode }) {
     };
   }, [attempt]);
   if (!isTauri()) return children;
-  if (error)
+  if (error || !status)
     return (
-      <main className="p-8">
-        <p role="alert">{nativeErrorText(error, t)}</p>
-        <Button onClick={() => setAttempt((v) => v + 1)}>
-          {t("common.retry")}
-        </Button>
-      </main>
-    );
-  if (!status)
-    return (
-      <main className="p-8" role="status">
-        {t("common.loading")}
+      <main className="grid min-h-dvh place-items-center p-4">
+        <section className="studio-panel grid w-full max-w-md gap-4 p-4 sm:p-6">
+          <h1 className="text-lg font-semibold">{t("recovery.title")}</h1>
+          {error ? (
+            <ResourceError
+              error={error}
+              retry={() => {
+                setError(null);
+                setAttempt((value) => value + 1);
+              }}
+            />
+          ) : (
+            <p role="status" className="text-sm text-muted-foreground">
+              {t("common.loading")}
+            </p>
+          )}
+        </section>
       </main>
     );
   if (status.active && pathname !== "/recovery" && pathname !== "/diagnostics")

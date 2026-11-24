@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { FolderOpen } from "lucide-react";
 import { defaults } from "@serial-workbench/contracts";
 import type {
@@ -126,6 +126,62 @@ export type CaptureToolsProps = {
     signal?: AbortSignal,
   ) => Promise<void>;
 };
+function CaptureFileField({
+  label,
+  actionLabel,
+  file,
+  busy,
+  onChoose,
+}: {
+  label: string;
+  actionLabel: string;
+  file: SelectedFileResource | undefined;
+  busy: boolean;
+  onChoose: (() => void) | undefined;
+}) {
+  const opener = useRef<HTMLButtonElement>(null);
+  useEffect(() => {
+    if (busy) return;
+    const button = opener.current;
+    opener.current = null;
+    if (
+      button?.isConnected &&
+      !button.matches(":disabled") &&
+      document.activeElement === document.body
+    )
+      button.focus({ preventScroll: true });
+  }, [busy]);
+
+  return (
+    <div className="workbench-form-row">
+      <span>{label}</span>
+      <div className="workbench-file-selection">
+        <Input
+          aria-label={label}
+          readOnly
+          tabIndex={file ? undefined : -1}
+          title={file?.name}
+          value={file?.name ?? ""}
+          placeholder={actionLabel}
+        />
+        <WorkbenchIconButton
+          label={actionLabel}
+          variant="outline"
+          disabled={!onChoose}
+          onClick={(event) => {
+            // 选择期间字段组禁用。结束后只恢复失去的焦点，尊重用户主动移动。
+            if (document.activeElement === event.currentTarget)
+              opener.current = event.currentTarget;
+            onChoose?.();
+          }}
+        >
+          <FolderOpen aria-hidden="true" />
+        </WorkbenchIconButton>
+      </div>
+    </div>
+  );
+}
+
 export function CaptureTools(props: CaptureToolsProps) {
   return <CaptureToolsForm key={props.contextKey} {...props} />;
 }
@@ -376,22 +432,13 @@ function CaptureToolsForm({
           <fieldset disabled={locked}>
             <legend className="sr-only">{labels.startCapture}</legend>
             <div className="workbench-form-fields">
-              <div className="workbench-form-row">
-                <span>{labels.targetFile}</span>
-                <div className="workbench-file-selection">
-                  <output title={target?.name} data-surface="control">
-                    {target?.name ?? labels.selectTarget}
-                  </output>
-                  <WorkbenchIconButton
-                    label={labels.selectTarget}
-                    variant="outline"
-                    disabled={!pickFile}
-                    onClick={() => void action.run(chooseTarget)}
-                  >
-                    <FolderOpen aria-hidden="true" />
-                  </WorkbenchIconButton>
-                </div>
-              </div>
+              <CaptureFileField
+                label={labels.targetFile}
+                actionLabel={labels.selectTarget}
+                file={target}
+                busy={action.busy}
+                onChoose={pickFile && (() => void action.run(chooseTarget))}
+              />
               <label>
                 <span>{labels.writeMode}</span>
                 <OptionsSelect<CaptureWriteMode>
@@ -445,35 +492,25 @@ function CaptureToolsForm({
           <fieldset disabled={locked}>
             <legend className="sr-only">{labels.recoveryPreview}</legend>
             <div className="workbench-form-fields">
-              <div className="workbench-form-row">
-                <span>{labels.sourceFile}</span>
-                <div className="workbench-file-selection">
-                  <output title={source?.name} data-surface="control">
-                    {source?.name ?? labels.selectCapture}
-                  </output>
-                  <WorkbenchIconButton
-                    label={labels.selectCapture}
-                    variant="outline"
-                    disabled={!pickFile}
-                    onClick={() =>
-                      void action.run(async (signal) => {
-                        const selected = await pickFile!(
-                          "captureSource",
-                          signal,
-                        );
-                        if (!signal.aborted && selected) {
-                          setSource(selected);
-                          setVerificationOperation(undefined);
-                          setResult(undefined);
-                          setRecoveryUsed(false);
-                        }
-                      })
-                    }
-                  >
-                    <FolderOpen aria-hidden="true" />
-                  </WorkbenchIconButton>
-                </div>
-              </div>
+              <CaptureFileField
+                label={labels.sourceFile}
+                actionLabel={labels.selectCapture}
+                file={source}
+                busy={action.busy}
+                onChoose={
+                  pickFile &&
+                  (() =>
+                    void action.run(async (signal) => {
+                      const selected = await pickFile("captureSource", signal);
+                      if (!signal.aborted && selected) {
+                        setSource(selected);
+                        setVerificationOperation(undefined);
+                        setResult(undefined);
+                        setRecoveryUsed(false);
+                      }
+                    }))
+                }
+              />
               <label>
                 <span>{labels.exportFormat}</span>
                 <OptionsSelect<TextExportFormat>
@@ -487,52 +524,36 @@ function CaptureToolsForm({
                   ]}
                 />
               </label>
-              <div className="workbench-form-row">
-                <span>{labels.recoveryDestinationFile}</span>
-                <div className="workbench-file-selection">
-                  <output title={target?.name} data-surface="control">
-                    {target?.name ?? labels.selectTarget}
-                  </output>
-                  <WorkbenchIconButton
-                    label={labels.selectTarget}
-                    variant="outline"
-                    disabled={!pickFile}
-                    onClick={() => void action.run(chooseTarget)}
-                  >
-                    <FolderOpen aria-hidden="true" />
-                  </WorkbenchIconButton>
-                </div>
-              </div>
-              <div className="workbench-form-row">
-                <span>{labels.destinationFile}</span>
-                <div className="workbench-file-selection">
-                  <output title={exportTarget?.name} data-surface="control">
-                    {exportTarget?.name ?? selectExportTarget}
-                  </output>
-                  <WorkbenchIconButton
-                    label={selectExportTarget}
-                    variant="outline"
-                    disabled={!pickFile}
-                    onClick={() =>
-                      void action.run(async (signal) => {
-                        const selected = await pickFile!(
-                          exportFormat === "csv"
-                            ? "exportCsvTarget"
-                            : "exportJsonlTarget",
-                          signal,
-                        );
-                        if (!signal.aborted && selected)
-                          setExportTargets((targets) => ({
-                            ...targets,
-                            [exportFormat]: selected,
-                          }));
-                      })
-                    }
-                  >
-                    <FolderOpen aria-hidden="true" />
-                  </WorkbenchIconButton>
-                </div>
-              </div>
+              <CaptureFileField
+                label={labels.recoveryDestinationFile}
+                actionLabel={labels.selectTarget}
+                file={target}
+                busy={action.busy}
+                onChoose={pickFile && (() => void action.run(chooseTarget))}
+              />
+              <CaptureFileField
+                label={labels.destinationFile}
+                actionLabel={selectExportTarget}
+                file={exportTarget}
+                busy={action.busy}
+                onChoose={
+                  pickFile &&
+                  (() =>
+                    void action.run(async (signal) => {
+                      const selected = await pickFile(
+                        exportFormat === "csv"
+                          ? "exportCsvTarget"
+                          : "exportJsonlTarget",
+                        signal,
+                      );
+                      if (!signal.aborted && selected)
+                        setExportTargets((targets) => ({
+                          ...targets,
+                          [exportFormat]: selected,
+                        }));
+                    }))
+                }
+              />
               <div className="flex flex-wrap gap-2">
                 <Button
                   size="sm"
@@ -614,7 +635,7 @@ function CaptureToolsForm({
               )}
               {report && (
                 <div aria-label={labels.recoveryPreview} className="space-y-2">
-                  <dl className="space-y-1">
+                  <dl className="workbench-capture-values">
                     <div>
                       <dt>{labels.verifiedPrefix}</dt>
                       <dd title={report.verifiedPrefix}>

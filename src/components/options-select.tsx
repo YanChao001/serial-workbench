@@ -1,4 +1,10 @@
-import { useEffect, useRef, useState, type ComponentProps } from "react";
+import {
+  useEffect,
+  useRef,
+  useState,
+  type ComponentProps,
+  type RefObject,
+} from "react";
 import { cn } from "@/lib/utils";
 import {
   Select,
@@ -23,6 +29,7 @@ type OptionsSelectProps<T extends string> = Pick<
   onValueChange(value: T): void;
   options: readonly SelectOption<T>[];
   label?: string;
+  triggerRef?: RefObject<HTMLButtonElement | null>;
 };
 
 /** 枚举选项统一使用应用弹层，选值由给定选项收窄，不伪造原生 change 事件。 */
@@ -33,9 +40,11 @@ export function OptionsSelect<T extends string>({
   label,
   disabled = false,
   className,
+  triggerRef,
   ...props
 }: OptionsSelectProps<T>) {
-  const trigger = useRef<HTMLButtonElement | null>(null);
+  const internalTrigger = useRef<HTMLButtonElement>(null);
+  const trigger = triggerRef ?? internalTrigger;
   const inheritedDisabled = useFieldsetDisabled(trigger);
   const [open, setOpen] = useState(false);
   const blocked = disabled || inheritedDisabled;

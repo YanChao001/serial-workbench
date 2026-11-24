@@ -12,6 +12,9 @@ import { Buffer } from "node:buffer";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
+import { seedWorkbenchFixture } from "./workbench.fixture";
 
 test("settings search opens over the page without moving settings or stealing input focus", async ({
   page,
@@ -1433,6 +1436,117 @@ test("the browser fills the viewport with the desktop and keeps narrow navigatio
   await expect(page).toHaveURL(/#\/$/);
   expect((await page.locator(".app-chrome").boundingBox())?.height).toBe(40);
 });
+
+for (const profile of [
+  { width: 320, language: "en", theme: "light", native: false, messages: en },
+  { width: 400, language: "zh", theme: "dark", native: true, messages: zhCN },
+] as const) {
+  test(`compact title bar keeps menus and hit targets available at ${profile.width}px`, async ({
+    page,
+  }, info) => {
+    const { width, language, theme, native, messages } = profile;
+    await page.setViewportSize({ width, height: 440 });
+    if (native) {
+      await seedWorkbenchFixture(page, {
+        language,
+        theme,
+        sidebarCollapsed: true,
+      });
+    } else {
+      await seed(page, { language, theme });
+    }
+    await page.goto("./#/settings");
+    await expectRouteReady(page, "/settings");
+    const chrome = page.locator(".app-title-bar");
+    const compact = chrome.getByRole("button", {
+      name: messages["title.applicationMenu"],
+      exact: true,
+    });
+    await expect(compact).toBeVisible();
+    await expect(chrome).toHaveCSS("height", "40px");
+    const file = chrome.getByRole("button", {
+      name: messages["title.file"],
+      exact: true,
+    });
+    await expect(file).toHaveCount(0);
+    expect(
+      await chrome.evaluate((element) => {
+        const bounds = element.getBoundingClientRect();
+        const controls = Array.from(element.querySelectorAll("button"))
+          .filter((button) => button.checkVisibility())
+          .map((button) => ({ button, rect: button.getBoundingClientRect() }))
+          .sort((a, b) => a.rect.left - b.rect.left);
+        return controls.every(({ button, rect }, index) => {
+          const hit = document.elementFromPoint(
+            rect.left + rect.width / 2,
+            rect.top + rect.height / 2,
+          );
+          return (
+            rect.width >= 32 &&
+            rect.height === 32 &&
+            rect.left >= (controls[index - 1]?.rect.right ?? bounds.left) &&
+            rect.right <= bounds.right &&
+            button.contains(hit)
+          );
+        });
+      }),
+    ).toBe(true);
+    await expect(chrome.locator("[data-window-control]")).toHaveCount(
+      native ? 3 : 0,
+    );
+    await page.screenshot({ path: info.outputPath("compact-title-bar.png") });
+
+    await compact.press("ArrowDown");
+    const menu = page.getByRole("menu");
+    for (const key of ["title.file", "title.view", "title.help"] as const) {
+      await expect(
+        menu.getByRole("group", { name: messages[key] }),
+      ).toBeAttached();
+    }
+    const settings = menu.getByRole("menuitem", {
+      name: new RegExp("^" + messages["title.settings"]),
+    });
+    await expect(settings).toBeFocused();
+    expect(
+      await menu.evaluate(
+        (element) => element.scrollHeight > element.clientHeight,
+      ),
+    ).toBe(true);
+    await page.screenshot({ path: info.outputPath("compact-app-menu.png") });
+    await settings.press("End");
+    const about = menu.getByRole("menuitem", {
+      name: messages["title.about"],
+      exact: true,
+    });
+    await expect(about).toBeFocused();
+    await expect(about).toBeInViewport();
+    await about.press("Escape");
+    await expect(menu).toBeHidden();
+    await expect(compact).toBeFocused();
+
+    if (!native) {
+      const navigation = chrome.getByRole("combobox", {
+        name: messages["browserPreview.navigation"],
+      });
+      expect(
+        await navigation
+          .locator('[data-slot="select-value"]')
+          .evaluate((element) => element.scrollWidth <= element.clientWidth),
+      ).toBe(true);
+      await navigation.press("Enter");
+      await page
+        .getByRole("option", { name: messages["nav.plugins"], exact: true })
+        .click();
+      await expect(page).toHaveURL(/#\/plugins$/);
+    }
+    await compact.press("ArrowDown");
+    await expect(menu).toBeVisible();
+    await page.setViewportSize({ width: 960, height: 680 });
+    await expect(menu).toBeHidden();
+    await expect(compact).toHaveCount(0);
+    await expect(file).toBeVisible();
+  });
+}
 
 for (const theme of ["light", "dark"] as const) {
   test(`shell keeps a named settings footer and a visible title with search: ${theme}`, async ({

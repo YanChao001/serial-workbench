@@ -90,10 +90,10 @@ it("shows readable distinct watermarks and waits for the actual final recording 
     fireEvent.click(screen.getByRole("button", { name: "Stop capture" })),
   );
   expect(stop).toHaveBeenCalledWith(status.captureRef, expect.any(AbortSignal));
-  expect(screen.getByRole("status")).toHaveTextContent(
-    labels.captureStates.recording,
-  );
-  expect(screen.getByText(labels.stopRequested)).toBeVisible();
+  expect(screen.getAllByRole("status")).toEqual([
+    screen.getByText(labels.captureStates.recording),
+    screen.getByText(labels.stopRequested),
+  ]);
   expect(screen.getByRole("button", { name: "Stop capture" })).toBeDisabled();
   await tick(1000);
   expect(screen.getByText("170 records")).toBeInTheDocument();
@@ -453,9 +453,10 @@ it("keeps a failed stop retryable and reports only its safe module error", async
   await act(async () => fireEvent.click(button));
   expect(stop).toHaveBeenCalledTimes(2);
   expect(button).toBeDisabled();
-  expect(screen.getByRole("status")).toHaveTextContent(
-    labels.captureStates.recording,
-  );
+  expect(screen.getAllByRole("status")).toEqual([
+    screen.getByText(labels.captureStates.recording),
+    screen.getByText(labels.stopRequested),
+  ]);
 });
 
 it("deduplicates the stop terminal failure with the same operation's global notice", async () => {

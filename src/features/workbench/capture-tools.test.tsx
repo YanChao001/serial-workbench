@@ -147,7 +147,7 @@ it.each([
     fireEvent.click(
       screen.getByRole("button", { name: "Select capture source" }),
     );
-    await screen.findByText("payload.bin");
+    await screen.findByDisplayValue("payload.bin");
     const verifyButton = screen.getByRole("button", { name: "Verify capture" });
     await waitFor(() => expect(verifyButton).toBeEnabled());
     fireEvent.click(verifyButton);
@@ -194,7 +194,7 @@ it("requires the current original fingerprint confirmation before a raw replace"
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture target" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   await selectOption("Write mode", toolLabels.replace);
   await waitFor(() =>
     expect(readMetadata).toHaveBeenCalledWith(
@@ -265,7 +265,7 @@ it("shows actual corrupt and discontinuous evidence then recovers only the verif
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Verify capture" }),
@@ -327,7 +327,7 @@ it("uses an explicitly picked destination for text export and sends selected rea
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   expect(exportText).not.toHaveBeenCalled();
   expect(replay).not.toHaveBeenCalled();
   fireEvent.click(
@@ -386,11 +386,11 @@ it("uses a separately picked CSV destination and keeps the JSONL destination", a
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText(selectedFile.name);
+  await screen.findByDisplayValue(selectedFile.name);
   fireEvent.click(
     screen.getByRole("button", { name: "Select JSONL destination" }),
   );
-  await screen.findByText(jsonl.name);
+  await screen.findByDisplayValue(jsonl.name);
   expect(pick).toHaveBeenLastCalledWith(
     "exportJsonlTarget",
     expect.any(AbortSignal),
@@ -403,7 +403,7 @@ it("uses a separately picked CSV destination and keeps the JSONL destination", a
   fireEvent.click(
     screen.getByRole("button", { name: "Select CSV destination" }),
   );
-  await screen.findByText(csv.name);
+  await screen.findByDisplayValue(csv.name);
   expect(pick).toHaveBeenLastCalledWith(
     "exportCsvTarget",
     expect.any(AbortSignal),
@@ -463,7 +463,7 @@ it("tracks the actual verification operation and retains its report when recover
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Verify capture" }),
@@ -539,7 +539,7 @@ it("aborts verification and drops a late report when attachment generation chang
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   await waitFor(() =>
     expect(
       screen.getByRole("button", { name: "Verify capture" }),
@@ -632,7 +632,7 @@ it("keeps source rights independent and invalidates replay timing and source ref
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   const verifyButton = () =>
     screen.getByRole("button", { name: "Verify capture" });
   const replayButton = () =>
@@ -668,7 +668,7 @@ it("keeps source rights independent and invalidates replay timing and source ref
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("second.capture");
+  await screen.findByDisplayValue("second.capture");
   expect(replayButton()).toBeDisabled();
   await sourceSubscription(second.reference, "fastest");
   act(() => observer.publish(timing, () => true));
@@ -726,7 +726,7 @@ it("observes a complete recovery token and selected destination without starting
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture source" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   const source = await actionSubscription({
     actionId: "capture.verify",
     target: { hostId: "host", kind: "file", id: "source" },
@@ -748,7 +748,7 @@ it("observes a complete recovery token and selected destination without starting
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture target" }),
   );
-  await screen.findByText("recovery-target");
+  await screen.findByDisplayValue("recovery-target");
   expect(recover).not.toHaveBeenCalled();
   expect(exportText).not.toHaveBeenCalled();
   const recoverButton = () =>
@@ -815,7 +815,7 @@ it("gates capture start by exact target, write mode and source session epoch", a
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture target" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   const button = () => screen.getByRole("button", { name: "Start capture" });
   expect(button()).toBeDisabled();
   const first = await waitFor(() => {
@@ -988,7 +988,7 @@ it("aborts metadata on attachment change and ignores a late snapshot", async () 
       fingerprint: "b".repeat(64),
     }),
   );
-  expect(screen.queryByText("payload.bin")).not.toBeInTheDocument();
+  expect(screen.queryByDisplayValue("payload.bin")).not.toBeInTheDocument();
   expect(screen.queryByText("b".repeat(64))).not.toBeInTheDocument();
   expect(screen.queryByLabelText("Target revision")).not.toBeInTheDocument();
 });
@@ -1034,7 +1034,7 @@ it("uses exact MiB bytes for both action checks and capture invocation and sends
   fireEvent.click(
     screen.getByRole("button", { name: "Select capture target" }),
   );
-  await screen.findByText("payload.bin");
+  await screen.findByDisplayValue("payload.bin");
   await userEvent.setup().click(screen.getByRole("tab", { name: "Advanced" }));
   fireEvent.change(screen.getByLabelText("Capacity (MiB)"), {
     target: { value: "9007199254741" },
@@ -1125,7 +1125,7 @@ it("allows a new target selection while metadata is pending and ignores the old 
   expect(screen.queryByLabelText("Target revision")).not.toBeInTheDocument();
   expect(select()).toBeEnabled();
   fireEvent.click(select());
-  await screen.findByText("second-target");
+  await screen.findByDisplayValue("second-target");
   expect(pending?.aborted).toBe(true);
   await waitFor(() =>
     expect(screen.getByLabelText("Target revision")).toHaveTextContent("4"),

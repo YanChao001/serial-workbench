@@ -2,6 +2,8 @@
 import { defaults, clientDefaults } from "./json-fixtures";
 import { expect, test, type Page } from "@playwright/test";
 import AxeBuilder from "@axe-core/playwright";
+import { en } from "../../src/i18n/en";
+import { zhCN } from "../../src/i18n/zh-CN";
 import type {
   QueryResult,
   RpcRequest,
@@ -15,6 +17,7 @@ import type {
   DesktopStatus,
   DiagnosticsReport,
   HostSettingsEffectsReceipt,
+  RecoveryStatus,
   UpdateProgress,
   UpdateStatus,
   WindowGeometry,
@@ -26,6 +29,11 @@ type UpdateNotesFixture = {
   executedHtml: boolean;
   hostQueries: string[];
   clientStateReads: number;
+  installCalls: number;
+  recoveryCalls: number;
+  relaunchCalls: number;
+  updateProgress(value: UpdateProgress): void;
+  completeInstall(): void;
 };
 
 declare global {
@@ -92,10 +100,14 @@ async function seedUpdateFixture(
     body,
     language = "en",
     theme = "light",
+    version = "2.0.0",
+    recovery = { active: false, reason: null, pending: false, archiveId: null },
   }: {
     body: string | null;
     language?: "en" | "zh";
     theme?: "light" | "dark";
+    version?: string;
+    recovery?: RecoveryStatus;
   },
 ) {
   const status: UpdateStatus = {
@@ -105,7 +117,7 @@ async function seedUpdateFixture(
     currentVersion: "1.0.0",
     endpoint: "https://example.com/latest.json",
     checkedAt: 1730000000000,
-    version: "2.0.0",
+    version,
     body,
     date: "2026-10-28T00:00:00Z",
   };
@@ -219,6 +231,10 @@ async function seedUpdateFixture(
     revision: "1",
     state: {
       ...(clientDefaults as ClientWindowState),
+      preferences: {
+        ...(clientDefaults as ClientWindowState).preferences,
+        sidebarCollapsed: geometry.width < 600,
+      },
       currentPage: "settings",
     },
   } satisfies ClientStateSnapshot;
@@ -238,12 +254,16 @@ async function seedUpdateFixture(
       initialClientState,
       settingsEffects,
       updateSnapshot,
+      recoveryStatus,
       appVersion,
       desktop,
       diagnosticsReport,
       windowGeometry,
     }) => {
       let clientSnapshot = initialClientState;
+      let recoveryState = recoveryStatus;
+      let finishInstall: (() => void) | undefined;
+      const updateListeners = new Set<number>();
       let nextSubscription = 1;
       const callbacks = new Map<number, (value: unknown) => void>();
       let nextCallback = 1;
@@ -253,6 +273,22 @@ async function seedUpdateFixture(
         executedHtml: false,
         hostQueries: [],
         clientStateReads: 0,
+        installCalls: 0,
+        recoveryCalls: 0,
+        relaunchCalls: 0,
+        updateProgress(payload) {
+          for (const id of updateListeners) {
+            callbacks.get(id)?.({
+              event: "app://update-progress",
+              id,
+              payload,
+            });
+          }
+        },
+        completeInstall() {
+          finishInstall?.();
+          finishInstall = undefined;
+        },
       };
       Object.assign(window, {
         updateNotesFixture: fixture,
@@ -274,8 +310,16 @@ async function seedUpdateFixture(
           async invoke(command: string, args: Record<string, unknown> = {}) {
             switch (command) {
               case "plugin:event|listen":
+                if (
+                  args.event === "app://update-progress" &&
+                  typeof args.handler === "number"
+                )
+                  updateListeners.add(args.handler);
                 return args.handler;
               case "plugin:event|unlisten":
+                if (typeof args.eventId === "number")
+                  updateListeners.delete(args.eventId);
+                return null;
               case "plugin:notification|register_listener":
               case "plugin:notification|remove_listener":
               case "complete_frontend_startup":
@@ -359,12 +403,16 @@ async function seedUpdateFixture(
               case "get_window_geometry":
                 return windowGeometry;
               case "recovery_status":
-                return {
-                  active: false,
-                  reason: null,
-                  pending: false,
-                  archiveId: null,
-                };
+                return recoveryState;
+              case "stage_recovery":
+                fixture.recoveryCalls++;
+                if (fixture.recoveryCalls === 1)
+                  throw { code: "STORAGE_IO", message: "fixture private path" };
+                recoveryState = { ...recoveryState, pending: true };
+                return recoveryState;
+              case "relaunch_app":
+                fixture.relaunchCalls++;
+                return null;
               case "get_workspace":
                 // Shell route restoration still uses this registered command.
                 return {
@@ -375,6 +423,11 @@ async function seedUpdateFixture(
                 return [];
               case "get_update_snapshot":
                 return updateSnapshot;
+              case "download_and_install_update":
+                fixture.installCalls++;
+                return new Promise<null>((resolve) => {
+                  finishInstall = () => resolve(null);
+                });
               case "plugin:opener|open_url":
                 if (typeof args.url !== "string")
                   throw new Error("Expected an external URL string");
@@ -395,6 +448,7 @@ async function seedUpdateFixture(
       initialClientState: clientState,
       settingsEffects: effects,
       updateSnapshot: snapshot,
+      recoveryStatus: recovery,
       appVersion: status.currentVersion,
       desktop: desktopStatus,
       diagnosticsReport: diagnostics,
@@ -635,3 +689,166 @@ for (const fixture of [
     ).toEqual([]);
   });
 }
+
+test("narrow updates keep the download stage visible and focus it after confirmation", async ({
+  page,
+}, info) => {
+  const version = "2.0.0+" + "fixturebuild".repeat(12);
+  await page.setViewportSize({ width: 400, height: 510 });
+  await seedUpdateFixture(page, { body: "Changes", version, theme: "dark" });
+  await page.goto("./#/settings?section=updates");
+  await expectNativeFixtureReady(page);
+  const updates = page.locator("#settings-updates");
+  const status = updates.getByRole("status");
+  const actions = updates.getByTestId("updates-actions");
+  const install = actions.getByRole("button", { name: en["updates.install"] });
+  await expect(status).toContainText(version);
+  await expect(install).toBeEnabled();
+  const [feedback, actionRow] = await Promise.all([
+    status.boundingBox(),
+    actions.boundingBox(),
+  ]);
+  if (!feedback || !actionRow) throw new Error("Missing update summary");
+  expect(actionRow.y).toBeGreaterThanOrEqual(feedback.y + feedback.height);
+  expect(
+    await updates.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  const notes = actions.getByRole("button", {
+    name: en["updates.releaseNotes"],
+  });
+  await notes.click();
+  const dialog = page.getByRole("dialog", {
+    name: en["updates.releaseNotesTitle"].replace("{version}", version),
+    exact: true,
+  });
+  await expect(dialog).toBeVisible();
+  expect(
+    await dialog.evaluate((node) => node.scrollWidth <= node.clientWidth + 1),
+  ).toBe(true);
+  await dialog
+    .getByRole("button", { name: en["common.close"], exact: true })
+    .click();
+  await expect(notes).toBeFocused();
+
+  await install.click();
+  const confirm = page.getByRole("dialog", {
+    name: en["updates.installConfirmTitle"],
+  });
+  await expect(confirm).toBeVisible();
+  expect(
+    await page.evaluate(() => window.updateNotesFixture.installCalls),
+  ).toBe(0);
+  await confirm.getByRole("button", { name: en["updates.install"] }).click();
+  await expect(confirm).toBeHidden();
+  await expect(status).toBeFocused();
+  await expect(install).toBeDisabled();
+  const progress = updates.getByRole("progressbar", {
+    name: en["updates.install"],
+  });
+  await expect(progress).toBeVisible();
+  await expect(progress).not.toHaveAttribute("aria-valuenow");
+  await page.evaluate(() =>
+    window.updateNotesFixture.updateProgress({
+      operationId: 1,
+      stage: "downloading",
+      downloaded: 340,
+      total: 1000,
+      status: null,
+      error: null,
+    }),
+  );
+  await expect(status).toHaveText("Downloading 34%");
+  await expect(progress).toHaveAttribute("aria-valuenow", "34");
+  await page.screenshot({
+    path: info.outputPath("update-download-narrow.png"),
+  });
+  await page.evaluate(() =>
+    window.updateNotesFixture.updateProgress({
+      operationId: 1,
+      stage: "installing",
+      downloaded: null,
+      total: null,
+      status: null,
+      error: null,
+    }),
+  );
+  await expect(status).toHaveText(en["updates.installing"]);
+  await expect(progress).toHaveCount(0);
+  await expect(install).toBeDisabled();
+  await page.evaluate(() => window.updateNotesFixture.completeInstall());
+  await expect(status).toHaveText(en["updates.installed"]);
+  await expect(
+    actions.getByRole("button", { name: en["updates.restart"] }),
+  ).toBeEnabled();
+  expect(
+    await page.evaluate(() => window.updateNotesFixture.installCalls),
+  ).toBe(1);
+  expect(
+    await page.evaluate(() => window.updateNotesFixture.unexpectedCommands),
+  ).toEqual([]);
+});
+
+test("narrow startup recovery shows the error in place and focuses the scheduled restart", async ({
+  page,
+}, info) => {
+  const reason = "测试配置无法读取 " + "C:/fixture-profile/".repeat(28);
+  await page.setViewportSize({ width: 410, height: 560 });
+  await seedUpdateFixture(page, {
+    body: null,
+    language: "zh",
+    recovery: {
+      active: true,
+      reason,
+      pending: false,
+      archiveId: "fixture-archive",
+    },
+  });
+  await page.goto("./#/recovery");
+  const explanation = page.getByRole("region", {
+    name: zhCN["recovery.isolated"],
+  });
+  await expect(explanation.getByText(reason)).toBeVisible();
+  expect(
+    await explanation.evaluate(
+      (node) =>
+        node.scrollWidth <= node.clientWidth + 1 &&
+        node.scrollHeight > node.clientHeight,
+    ),
+  ).toBe(true);
+  const schedule = page.getByRole("button", {
+    name: zhCN["recovery.schedule"],
+    exact: true,
+  });
+  await schedule.click();
+  const confirm = page.getByRole("dialog", {
+    name: zhCN["recovery.confirmTitle"],
+  });
+  const action = confirm.getByRole("button", {
+    name: zhCN["recovery.confirm"],
+  });
+  await action.click();
+  await expect(confirm.getByRole("alert")).toHaveText(zhCN["errors.IO"]);
+  await expect(confirm.getByRole("alert")).toBeVisible();
+  await expect(action).toBeEnabled();
+  await page.screenshot({ path: info.outputPath("recovery-retry-narrow.png") });
+  await action.click();
+  await expect(confirm).toBeHidden();
+  const restart = page.getByRole("button", { name: zhCN["recovery.restart"] });
+  await expect(restart).toBeFocused();
+  await expect(
+    page.getByRole("status").filter({ hasText: zhCN["recovery.pending"] }),
+  ).toBeVisible();
+  expect(
+    await page.evaluate(() => window.updateNotesFixture.relaunchCalls),
+  ).toBe(0);
+  await restart.press("Enter");
+  await expect
+    .poll(() => page.evaluate(() => window.updateNotesFixture.relaunchCalls))
+    .toBe(1);
+  expect(
+    await page.evaluate(() => window.updateNotesFixture.recoveryCalls),
+  ).toBe(2);
+  expect(
+    await page.evaluate(() => window.updateNotesFixture.unexpectedCommands),
+  ).toEqual([]);
+});

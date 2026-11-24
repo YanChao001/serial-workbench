@@ -118,6 +118,7 @@ describe("isolated settings recovery", () => {
       name: enRecovery["recovery.restart"],
     });
     expect(native.relaunchApp).not.toHaveBeenCalled();
+    await waitFor(() => expect(restart).toHaveFocus());
     fireEvent.click(restart);
     await waitFor(() => expect(native.relaunchApp).toHaveBeenCalledOnce());
   });
@@ -154,8 +155,8 @@ describe("isolated settings recovery", () => {
       name: enRecovery["recovery.confirm"],
     });
     fireEvent.click(confirm);
-    await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
-    expect(within(dialog).getByRole("alert")).toHaveClass("sr-only");
+    expect(await within(dialog).findByRole("alert")).toBeVisible();
+    expect(toast.error).not.toHaveBeenCalled();
     expect(confirm).toBeEnabled();
     expect(screen.getByText("Cannot open original settings")).toBeVisible();
     expect(screen.getByText(/recovery-archive-originals/)).toBeVisible();

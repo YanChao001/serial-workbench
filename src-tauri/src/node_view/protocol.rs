@@ -10,7 +10,7 @@ use wry::{
 pub(super) const SHELL: &str = "swbviewshell";
 pub(super) const ASSET: &str = "swbviewasset";
 const SHELL_JS: &str = include_str!("shell.js");
-const SHELL_CSS: &str = "body{margin:0;height:100vh;display:grid;grid-template-rows:auto minmax(0,1fr);background:Canvas;color:CanvasText;font:14px system-ui}p{margin:0;padding:8px 12px}[hidden]{display:none}iframe{grid-row:2;border:0;width:100%;height:100%;background:Canvas}";
+const SHELL_CSS: &str = include_str!("shell.css");
 
 fn origin(scheme: &str) -> Url {
     let text = if cfg!(windows) {

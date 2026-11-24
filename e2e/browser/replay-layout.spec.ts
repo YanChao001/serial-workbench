@@ -805,11 +805,32 @@ test("attached read-only replay steps, changes speed and stops before its breakp
   expect(evidence.rawSubscriptions).toEqual([]);
   expect(evidence.connectCalls).toEqual([]);
   expect(evidence.sentBytes).toEqual([]);
+
+  await page.setViewportSize({ width: 420, height: 720 });
+  const toolbar = page.locator(".workbench-replay-toolbar");
+  const toolbarStatus = toolbar.getByRole("status");
+  await expect(toolbarStatus).toBeVisible();
+  expect(
+    await toolbarStatus.evaluate(
+      (element) => getComputedStyle(element).whiteSpace,
+    ),
+  ).toBe("normal");
+  const toolbarRect = await toolbar.boundingBox();
+  const statusRect = await toolbarStatus.boundingBox();
+  expect(statusRect!.width).toBeCloseTo(toolbarRect!.width, 0);
+  await expect
+    .poll(() =>
+      toolbar.evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeLessThanOrEqual(1);
+  await expect(
+    toolbar.getByRole("button", { name: "Playback options" }),
+  ).toBeVisible();
 });
 
 test("two recordings compare frame bytes, field values and elapsed time and honor access revocation", async ({
   page,
-}) => {
+}, info) => {
   function profile(
     label: string,
     origin: bigint,
@@ -1000,6 +1021,42 @@ test("two recordings compare frame bytes, field values and elapsed time and hono
   await expect(
     report.getByRole("cell", { name: "-6", exact: true }),
   ).toBeVisible();
+
+  await dialog.screenshot({
+    path: info.outputPath("replay-comparison-wide.png"),
+  });
+  await page.setViewportSize({ width: 420, height: 720 });
+  const baselineCard = dialog
+    .getByRole("heading", { name: "Baseline", exact: true })
+    .first();
+  const comparisonCard = dialog
+    .getByRole("heading", { name: "Comparison", exact: true })
+    .first();
+  expect((await comparisonCard.boundingBox())!.y).toBeGreaterThan(
+    (await baselineCard.boundingBox())!.y,
+  );
+  const table = report.getByRole("region", { name: "Frame comparison table" });
+  await expect
+    .poll(() =>
+      table.evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeGreaterThan(0);
+  await expect
+    .poll(() =>
+      dialog
+        .locator(".workbench-dialog-body")
+        .evaluate((element) => element.scrollWidth - element.clientWidth),
+    )
+    .toBeLessThanOrEqual(1);
+  await table.focus();
+  await expect(table).toBeFocused();
+  await dialog.screenshot({
+    path: info.outputPath("replay-comparison-narrow.png"),
+  });
+  await table.press("ArrowRight");
+  await expect
+    .poll(() => table.evaluate((element) => element.scrollLeft))
+    .toBeGreaterThan(0);
 
   await page.evaluate(() => {
     window.workbenchFixture.deniedReplayReads.push("replay-baseline");

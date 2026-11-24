@@ -125,6 +125,7 @@ export const en = {
   "app.native": "Desktop app",
   "app.preview": "Browser preview",
   "browserPreview.navigation": "Choose a page",
+  "title.applicationMenu": "Application menu",
   "title.file": "File",
   "title.view": "View",
   "title.help": "Help",
@@ -400,8 +401,12 @@ export const en = {
   "workbench.browserTakeoverPending":
     "Waiting for desktop confirmation and serial writes to settle…",
   "workbench.requestTakeoverPort": "Request control of {port}",
-  "browserTakeover.request":
-    "The browser asks to stop {client} from writing to {port}.",
+  "browserTakeover.title": "Browser requests write access",
+  "browserTakeover.port": "Port",
+  "browserTakeover.client": "Current client",
+  "browserTakeover.effect":
+    "Confirming stops the listed client from writing to this port.",
+  "browserTakeover.submitting": "Waiting for the desktop decision to finish…",
   "browserTakeover.missingPort": "The requested port is unavailable.",
   "browserTakeover.approve": "Confirm takeover",
   "browserTakeover.decline": "Decline",
@@ -866,7 +871,9 @@ export const en = {
   "browserAccess.description":
     "Use Serial Workbench in a local browser with the same sessions and settings as the desktop app.",
   "browserAccess.loading": "Checking browser access…",
-  "browserAccess.enabled": "Browser access is on.",
+  "browserAccess.activeMode": "Current access: {mode}",
+  "browserAccess.disabled": "Browser access is off.",
+  "browserAccess.details": "Browser pairing details",
   "browserAccess.mode": "Access level",
   "browserAccess.readOnly": "View only",
   "browserAccess.operate": "View and operate",
@@ -1940,6 +1947,7 @@ export const en = {
     "Events [{eventStart}, {eventEnd}) · bytes [{byteStart}, {byteEnd})",
   "workbench.comparison.records": "Capture records {first}–{last}",
   "workbench.comparison.results": "Comparison results",
+  "workbench.comparison.frameTable": "Frame comparison table",
   "workbench.comparison.bytes": "Byte changes",
   "workbench.comparison.fields": "Field changes",
   "workbench.comparison.time": "Relative difference (ns)",

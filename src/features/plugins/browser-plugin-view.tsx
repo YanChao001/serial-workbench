@@ -1,9 +1,16 @@
 import { useEffect, useRef, useState } from "react";
 import { ContractValidationError } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
+import { XIcon } from "lucide-react";
 import type { HostConnection } from "@/lib/host-client";
 import { LanguageSwitch } from "@/components/language-switch";
-import { Dialog, DialogContent, DialogTitle } from "@/components/ui/dialog";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogClose,
+  DialogContent,
+  DialogTitle,
+} from "@/components/ui/dialog";
 import { getLocale } from "@/i18n/registry";
 import { useI18n } from "@/providers/i18n";
 import {
@@ -93,7 +100,8 @@ export function BrowserPluginView({
       frame.sandbox.add("allow-scripts");
       frame.referrerPolicy = "no-referrer";
       frame.title = view.title;
-      frame.className = "h-[min(28rem,65vh)] w-full rounded-md bg-background";
+      frame.className =
+        "block h-[min(28rem,60dvh)] w-full rounded-md bg-background";
       const frameId = btoa(
         String.fromCharCode(...crypto.getRandomValues(new Uint8Array(32))),
       )
@@ -231,21 +239,41 @@ export function BrowserPluginView({
       }}
     >
       <DialogContent
-        className="sm:max-w-3xl"
+        className="grid-cols-[minmax(0,1fr)] gap-3 sm:max-w-3xl"
         aria-describedby={undefined}
+        showCloseButton={false}
         onCloseAutoFocus={(event) => {
           if (!view.opener?.isConnected) return;
           event.preventDefault();
           view.opener.focus();
         }}
       >
-        <div className="flex items-center justify-between gap-3 pr-8">
-          <DialogTitle>{view.title}</DialogTitle>
-          <LanguageSwitch compact />
+        <div className="grid grid-cols-[minmax(0,1fr)_auto_auto] items-center gap-2">
+          <DialogTitle className="col-span-3 leading-snug wrap-anywhere sm:col-span-1">
+            {view.title}
+          </DialogTitle>
+          <LanguageSwitch className="col-start-2 w-fit" />
+          <DialogClose asChild>
+            <Button
+              variant="ghost"
+              size="icon-sm"
+              aria-label={t("common.close")}
+            >
+              <XIcon aria-hidden="true" />
+            </Button>
+          </DialogClose>
         </div>
         <PluginError error={error} message="plugins.viewError" />
-        {!reading && !error ? <p role="status">{t("common.loading")}</p> : null}
-        <div ref={setContainer} />
+        {!reading && !error ? (
+          <p
+            role="status"
+            data-surface="reading"
+            className="flex min-h-20 items-center rounded-md px-3 text-muted-foreground"
+          >
+            {t("common.loading")}
+          </p>
+        ) : null}
+        <div ref={setContainer} hidden={!reading || Boolean(error)} />
       </DialogContent>
     </Dialog>
   );

@@ -7,6 +7,7 @@ import {
   useState,
   type ChangeEvent,
   type Ref,
+  type RefObject,
 } from "react";
 import { ListTreeIcon } from "lucide-react";
 import {
@@ -29,13 +30,14 @@ import {
   parseHex,
   formatHex,
 } from "@serial-workbench/host-client";
+import { OptionsSelect } from "@/components/options-select";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { bytesToBase64 } from "@/lib/base64";
 import { nativeErrorText } from "@/lib/native-error";
 import { isMacOS } from "@/lib/platform";
-import { ENCODING_NAMES, isTextEncoding } from "@/lib/text-encoding";
+import { ENCODING_NAMES, TEXT_ENCODINGS } from "@/lib/text-encoding";
 import { useI18n } from "@/providers/i18n";
 import type { CommandLibraryAccess } from "@/providers/host-context";
 import { useUnsavedWork } from "@/providers/unsaved-work";
@@ -248,7 +250,7 @@ function CommandLibraryPanel({
     "saved" | "imported" | "exported"
   >();
   const [picked, setPicked] = useState<CommandSummary>();
-  const endingChoice = useRef<HTMLSelectElement>(null);
+  const endingChoice = useRef<HTMLButtonElement>(null);
   const customEndingField = useRef<HTMLInputElement>(null);
   const dragging = useRef<CommandSummary | undefined>(undefined);
   const working = useRef(true);
@@ -552,13 +554,13 @@ function CommandLibraryPanel({
 
   return (
     <div className="grid gap-3" aria-busy={busy}>
-      <div className="flex min-h-8 flex-wrap items-center gap-2">
+      <div className="flex min-h-8 flex-wrap items-center gap-2 empty:hidden">
         {busy && <span role="status">{t("common.loading")}</span>}
         {completed && (
           <span role="status">{t(`commandLibrary.${completed}`)}</span>
         )}
         {problem && (
-          <span role="alert" className="text-destructive">
+          <span role="alert" className="min-w-0 wrap-anywhere text-destructive">
             {nativeErrorText(problem.error, t)}
           </span>
         )}
@@ -597,10 +599,10 @@ function CommandLibraryPanel({
         </div>
       )}
       {!editor && (
-        <div className="grid gap-4 sm:grid-cols-[minmax(0,1fr)_minmax(0,2fr)]">
+        <div className="workbench-command-lists">
           <section
             aria-labelledby={id + "-groups"}
-            className="grid content-start gap-2"
+            className="grid min-w-0 content-start gap-2"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3 id={id + "-groups"} className="font-medium">
@@ -653,7 +655,9 @@ function CommandLibraryPanel({
                       variant={group?.id === item.id ? "secondary" : "ghost"}
                       onClick={() => browseCommands(item, [undefined])}
                     >
-                      <span className="truncate">{item.name}</span>
+                      <span className="truncate" title={item.name}>
+                        {item.name}
+                      </span>
                     </Button>
                     {writable && group?.id === item.id && (
                       <Button
@@ -687,12 +691,12 @@ function CommandLibraryPanel({
           </section>
           <section
             aria-labelledby={id + "-commands"}
-            className="grid content-start gap-2"
+            className="grid min-w-0 content-start gap-2"
           >
             <div className="flex flex-wrap items-center justify-between gap-2">
               <h3
                 id={id + "-commands"}
-                className="min-w-0 break-words font-medium"
+                className="min-w-0 wrap-anywhere font-medium"
               >
                 {group?.name ?? t("commandLibrary.commands")}
               </h3>
@@ -786,10 +790,12 @@ function CommandLibraryPanel({
                       className="min-w-0 flex-1 justify-start"
                       onClick={() => openCommand(command)}
                     >
-                      <span className="truncate">{command.name}</span>
+                      <span className="truncate" title={command.name}>
+                        {command.name}
+                      </span>
                     </Button>
                     {command.note && (
-                      <span className="min-w-0 basis-full break-words px-2 text-xs text-muted-foreground">
+                      <span className="min-w-0 basis-full wrap-anywhere px-2 text-xs text-muted-foreground">
                         {command.note}
                       </span>
                     )}
@@ -838,7 +844,7 @@ function CommandLibraryPanel({
       )}
       {editor && (
         <form
-          className="grid gap-3"
+          className="workbench-command-editor grid gap-3"
           onBlur={() => {
             setHistory((current) =>
               current?.typing ? { ...current, typing: undefined } : current,
@@ -917,7 +923,7 @@ function CommandLibraryPanel({
               />
             )}
           </fieldset>
-          <div className="flex flex-wrap items-center justify-between gap-2">
+          <div className="workbench-tool-footer">
             {writable && (
               <div
                 className="flex flex-wrap gap-2"
@@ -961,7 +967,7 @@ function CommandLibraryPanel({
                 </span>
               </div>
             )}
-            <div className="flex flex-wrap items-center gap-2">
+            <div className="workbench-command-actions flex flex-wrap items-center gap-2">
               <Button
                 size="sm"
                 type="button"
@@ -1058,7 +1064,7 @@ function CommandTemplateApplication({
       {template.variables.map((name) => (
         <div key={name} className="flex flex-wrap items-end gap-2">
           <label className="grid min-w-36 flex-1 gap-1 text-sm">
-            <span className="break-all">
+            <span className="wrap-anywhere">
               {t("commandLibrary.variable", { name })}
             </span>
             <Input
@@ -1117,7 +1123,7 @@ function CommandFields({
   onChange,
 }: {
   command: CommandDraft;
-  endingChoice: Ref<HTMLSelectElement>;
+  endingChoice: RefObject<HTMLButtonElement | null>;
   customEndingField: Ref<HTMLInputElement>;
   endingInput?: string;
   invalidEnding: boolean;
@@ -1128,6 +1134,7 @@ function CommandFields({
   ) => void;
 }) {
   const { t } = useI18n();
+  const id = useId();
   const custom =
     command.lineEnding?.kind === "custom" ? command.lineEnding : undefined;
   const endingKinds = [
@@ -1177,53 +1184,55 @@ function CommandFields({
           {t("commandLibrary.templateSyntax")}
         </span>
       </label>
-      <div className="grid gap-2 sm:grid-cols-3">
-        <label className="grid gap-1 text-sm">
-          {t("commandLibrary.mode")}
-          <select
-            className="material-control h-8 rounded-md border px-2"
+      <div className="workbench-form-grid workbench-command-format-fields">
+        <div className="grid content-start gap-1 text-sm">
+          <label htmlFor={id + "-mode"}>{t("commandLibrary.mode")}</label>
+          <OptionsSelect<CommandDraft["mode"]>
+            id={id + "-mode"}
             value={command.mode}
-            onChange={(event) => {
-              const mode = event.target.value;
-              if (mode === "text" || mode === "hex")
-                onChange({ ...command, mode }, endingInput);
-            }}
-          >
-            <option value="text">{t("commandLibrary.text")}</option>
-            <option value="hex">HEX</option>
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm">
-          {t("commandLibrary.encoding")}
-          <select
-            className="material-control h-8 rounded-md border px-2"
+            options={[
+              { value: "text", label: t("commandLibrary.text") },
+              { value: "hex", label: "HEX" },
+            ]}
+            onValueChange={(mode) =>
+              onChange({ ...command, mode }, endingInput)
+            }
+          />
+        </div>
+        <div className="grid content-start gap-1 text-sm">
+          <label htmlFor={id + "-encoding"}>
+            {t("commandLibrary.encoding")}
+          </label>
+          <OptionsSelect
+            id={id + "-encoding"}
             value={command.encoding}
-            onChange={(event) => {
-              if (isTextEncoding(event.target.value))
-                onChange(
-                  { ...command, encoding: event.target.value },
-                  endingInput,
-                );
-            }}
-          >
-            {Object.entries(ENCODING_NAMES).map(([value, label]) => (
-              <option key={value} value={value}>
-                {label}
-              </option>
-            ))}
-          </select>
-        </label>
-        <label className="grid gap-1 text-sm">
-          {t("commandLibrary.ending")}
-          <select
-            className="material-control h-8 rounded-md border px-2"
-            ref={endingChoice}
+            options={TEXT_ENCODINGS.map((value) => ({
+              value,
+              label: ENCODING_NAMES[value],
+            }))}
+            onValueChange={(encoding) =>
+              onChange({ ...command, encoding }, endingInput)
+            }
+          />
+        </div>
+        <div className="grid content-start gap-1 text-sm">
+          <label htmlFor={id + "-ending"}>{t("commandLibrary.ending")}</label>
+          <OptionsSelect<(typeof endingKinds)[number]>
+            id={id + "-ending"}
+            triggerRef={endingChoice}
             value={command.lineEnding?.kind ?? "inherit"}
-            onChange={(event) => {
-              const kind = endingKinds.find(
-                (value) => value === event.target.value,
-              );
-              if (!kind) return;
+            options={endingKinds.map((kind) => ({
+              value: kind,
+              label:
+                kind === "inherit"
+                  ? t("commandLibrary.inheritEnding")
+                  : kind === "none"
+                    ? t("commandLibrary.noEnding")
+                    : kind === "custom"
+                      ? t("commandLibrary.customEnding")
+                      : kind.toUpperCase(),
+            }))}
+            onValueChange={(kind) => {
               const lineEnding: LineEnding | undefined =
                 kind === "inherit"
                   ? undefined
@@ -1232,20 +1241,8 @@ function CommandFields({
                     : { kind };
               onChange({ ...command, lineEnding });
             }}
-          >
-            {endingKinds.map((kind) => (
-              <option key={kind} value={kind}>
-                {kind === "inherit"
-                  ? t("commandLibrary.inheritEnding")
-                  : kind === "none"
-                    ? t("commandLibrary.noEnding")
-                    : kind === "custom"
-                      ? t("commandLibrary.customEnding")
-                      : kind.toUpperCase()}
-              </option>
-            ))}
-          </select>
-        </label>
+          />
+        </div>
       </div>
       {custom && (
         <label className="grid gap-1 text-sm">
@@ -1280,7 +1277,10 @@ function CommandFields({
             }}
           />
           {invalidEnding && (
-            <span role="alert" className="text-destructive">
+            <span
+              role="alert"
+              className="min-w-0 wrap-anywhere text-destructive"
+            >
               {t("commandLibrary.invalidHex")}
             </span>
           )}

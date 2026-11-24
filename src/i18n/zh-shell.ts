@@ -59,6 +59,7 @@ export const zhShell = {
   "diagnostics.saved": "诊断信息已保存",
   "diagnostics.refresh": "刷新诊断",
   "diagnostics.preview": "诊断预览",
+  "diagnostics.previousReport": "刷新失败，当前显示上一次的报告。",
   "diagnostics.logs":
     "诊断包包含系统状态、部分运行偏好和已脱敏的应用日志。复制和保存均使用此预览。",
   "updates.title": "应用更新",

@@ -1,4 +1,4 @@
-﻿import { useId, useState, type FormEvent } from "react";
+import { useId, useState, type FormEvent } from "react";
 import { formatHex } from "@serial-workbench/host-client";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -98,11 +98,16 @@ function ComparisonReport({
   const selected = rows[index];
   return (
     <section
-      className="grid gap-3"
+      className="grid min-w-0 gap-3"
       aria-label={t("workbench.comparison.results")}
     >
-      <div className="max-h-56 overflow-auto rounded border" tabIndex={0}>
-        <table className="w-full text-start tabular-nums">
+      <div
+        role="region"
+        aria-label={t("workbench.comparison.frameTable")}
+        className="max-h-56 w-full min-w-0 overflow-auto rounded-md border focus-visible:outline-2 focus-visible:-outline-offset-2 focus-visible:outline-ring"
+        tabIndex={0}
+      >
+        <table className="w-full min-w-max text-start text-sm tabular-nums">
           <thead>
             <tr className="sticky top-0 bg-background text-muted-foreground">
               {(
@@ -118,7 +123,7 @@ function ComparisonReport({
                 <th
                   key={key}
                   scope="col"
-                  className="px-2 py-1 text-start font-medium"
+                  className="px-3 py-2 text-start font-medium"
                 >
                   {t(`workbench.comparison.${key}`)}
                 </th>
@@ -131,7 +136,7 @@ function ComparisonReport({
                 key={i}
                 className={i === index ? "border-t bg-primary/10" : "border-t"}
               >
-                <td className="px-2 py-1">
+                <td className="px-3 py-1.5">
                   <Button
                     type="button"
                     variant="ghost"
@@ -146,15 +151,15 @@ function ComparisonReport({
                     {String(row.left?.position ?? "—")}
                   </Button>
                 </td>
-                <td className="px-2 py-1">
+                <td className="px-3 py-1.5">
                   {String(row.right?.position ?? "—")}
                 </td>
-                <td className="px-2 py-1">{row.bytes?.count ?? "—"}</td>
-                <td className="px-2 py-1">{row.fields?.length ?? "—"}</td>
-                <td className="px-2 py-1">
+                <td className="px-3 py-1.5">{row.bytes?.count ?? "—"}</td>
+                <td className="px-3 py-1.5">{row.fields?.length ?? "—"}</td>
+                <td className="px-3 py-1.5">
                   {String(row.elapsedDeltaNs ?? "—")}
                 </td>
-                <td className="px-2 py-1">
+                <td className="px-3 py-1.5">
                   {t(
                     !row.keyAvailable
                       ? "workbench.comparison.noKey"
@@ -172,8 +177,8 @@ function ComparisonReport({
       </div>
       {selected ? (
         <>
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="min-w-0 rounded border p-2">
+          <div className="workbench-form-grid workbench-form-grid-pair">
+            <div className="grid min-w-0 content-start gap-1.5 rounded-md border p-3">
               <h4 className="font-medium">
                 {t("workbench.comparison.baseline")}
               </h4>
@@ -182,7 +187,7 @@ function ComparisonReport({
                 position={selected.left?.position}
               />
             </div>
-            <div className="min-w-0 rounded border p-2">
+            <div className="grid min-w-0 content-start gap-1.5 rounded-md border p-3">
               <h4 className="font-medium">
                 {t("workbench.comparison.candidate")}
               </h4>
@@ -288,9 +293,9 @@ function ComparisonForm({ baseline, candidate }: Sources) {
     }
   }
   return (
-    <div className="grid gap-3">
-      <form className="grid gap-3" onSubmit={compare}>
-        <div className="grid gap-2 sm:grid-cols-2">
+    <div className="grid min-w-0 gap-3">
+      <form className="grid min-w-0 gap-3" onSubmit={compare}>
+        <div className="workbench-form-grid workbench-form-grid-pair">
           <div className="grid gap-1">
             <label htmlFor={id + "-mode"}>
               {t("workbench.comparison.alignment")}
@@ -386,7 +391,7 @@ function ComparisonForm({ baseline, candidate }: Sources) {
             {error}
           </p>
         )}
-        <div>
+        <div className="workbench-tool-footer">
           <Button type="submit">{t("workbench.comparison.run")}</Button>
         </div>
       </form>
@@ -423,9 +428,9 @@ export default function ReplayComparisonDialog({
       onRequestClose={comparison.close}
     >
       {(beforeReplace) => (
-        <div className="grid gap-4">
-          <div className="grid gap-2 sm:grid-cols-2">
-            <div className="min-w-0 rounded border p-2">
+        <div className="grid min-w-0 gap-4">
+          <div className="workbench-form-grid workbench-form-grid-pair">
+            <div className="grid min-w-0 content-start gap-1.5 rounded-md border p-3">
               <h3 className="font-medium">
                 {t("workbench.comparison.baseline")}
               </h3>
@@ -435,7 +440,7 @@ export default function ReplayComparisonDialog({
                 <p>{t("workbench.comparison.noSample")}</p>
               )}
             </div>
-            <div className="min-w-0 rounded border p-2">
+            <div className="grid min-w-0 content-start gap-1.5 rounded-md border p-3">
               <h3 className="font-medium">
                 {t("workbench.comparison.candidate")}
               </h3>

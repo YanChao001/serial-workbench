@@ -361,7 +361,7 @@ export default function ModbusTimelineTool({
                 </p>
               ) : null}
             </div>
-            <div className="grid grid-cols-2 gap-2 sm:grid-cols-3">
+            <div className="workbench-form-grid">
               <div className="space-y-1">
                 <label htmlFor={`${id}-timeout`}>
                   {t("workbench.timeline.timeout")}

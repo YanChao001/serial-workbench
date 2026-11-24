@@ -1,6 +1,7 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useSyncExternalStore } from "react";
 import {
   Maximize2Icon,
+  MenuIcon,
   MinimizeIcon,
   MinusIcon,
   MonitorIcon,
@@ -28,6 +29,7 @@ import {
   DropdownMenu,
   DropdownMenuCheckboxItem,
   DropdownMenuContent,
+  DropdownMenuGroup,
   DropdownMenuLabel,
   DropdownMenuRadioGroup,
   DropdownMenuRadioItem,
@@ -48,6 +50,18 @@ import { formatShortcut } from "@/commands/shortcuts";
 import { isTauri, isWindowMaximized, onWindowResized } from "@/lib/tauri";
 import { cn } from "@/lib/utils";
 
+const compactTitleBarQuery = "(max-width: 720px)";
+
+function subscribeCompactTitleBar(onChange: () => void) {
+  const query = window.matchMedia(compactTitleBarQuery);
+  query.addEventListener("change", onChange);
+  return () => query.removeEventListener("change", onChange);
+}
+
+function isCompactTitleBar() {
+  return window.matchMedia(compactTitleBarQuery).matches;
+}
+
 /**
  * 自绘标题栏：菜单、拖拽区域与窗口按钮。
  *
@@ -62,6 +76,10 @@ export function TitleBar() {
   const mac = isMacOS();
 
   const native = isTauri();
+  const compact = useSyncExternalStore(
+    subscribeCompactTitleBar,
+    isCompactTitleBar,
+  );
   const [maximized, setMaximized] = useState(false);
 
   useEffect(() => {
@@ -105,9 +123,74 @@ export function TitleBar() {
     };
   }, [native]);
 
+  const menus = [
+    {
+      label: t("title.file"),
+      width: "w-44",
+      items: (
+        <>
+          <CommandMenuItem id="open-settings" />
+          <CommandMenuItem id="quit" />
+        </>
+      ),
+    },
+    {
+      label: t("title.view"),
+      width: "w-60",
+      items: (
+        <>
+          <DropdownMenuLabel>{t("settings.theme")}</DropdownMenuLabel>
+          <DropdownMenuRadioGroup
+            value={theme ?? "system"}
+            onValueChange={(value) => void execute(`theme-${value}`)}
+          >
+            <DropdownMenuRadioItem value="light">
+              <SunIcon />
+              {t("title.light")}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="dark">
+              <MoonIcon />
+              {t("title.dark")}
+            </DropdownMenuRadioItem>
+            <DropdownMenuRadioItem value="system">
+              <MonitorIcon />
+              {t("title.system")}
+            </DropdownMenuRadioItem>
+          </DropdownMenuRadioGroup>
+          <DropdownMenuSeparator />
+          <DropdownMenuCheckboxItem
+            checked={settings.menuBar}
+            onCheckedChange={() => void execute("toggle-menu")}
+          >
+            {t("title.toggleMenu")}
+          </DropdownMenuCheckboxItem>
+          <CommandMenuItem id="toggle-sidebar" />
+          <CommandMenuItem id="toggle-fullscreen" />
+          <CommandMenuItem id="command-palette" />
+        </>
+      ),
+    },
+    {
+      label: t("title.help"),
+      width: "w-48",
+      items: (
+        <>
+          <CommandMenuItem id="keyboard-shortcuts" />
+          <CommandMenuItem id="open-docs" />
+          <CommandMenuItem id="open-repo" />
+          <DropdownMenuSeparator />
+          <CommandMenuItem id="check-updates" />
+          <CommandMenuItem id="copy-diagnostics" />
+          <CommandMenuItem id="about" />
+        </>
+      ),
+    },
+  ];
+
   return (
     <div
       data-tauri-drag-region
+      data-compact={compact ? "" : undefined}
       className="app-title-bar flex shrink-0 select-none items-stretch border-b"
       onMouseDownCapture={(event) => {
         if (
@@ -121,7 +204,7 @@ export function TitleBar() {
       <div
         data-native-traffic-lights={native && mac ? "" : undefined}
         className={cn(
-          "flex min-w-0 items-center gap-2 pl-3",
+          "app-title-leading flex shrink-0 items-center gap-2 pl-3",
           native && mac && "pl-[78px]",
         )}
       >
@@ -137,101 +220,60 @@ export function TitleBar() {
 
         {settings.menuBar ? (
           <nav
-            className="ml-1 flex items-center gap-0.5"
+            className={cn("flex items-center gap-0.5", !compact && "ml-1")}
             aria-label={APP_CONFIG.name}
           >
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  data-surface="transparent"
-                  type="button"
-                  data-variant="ghost"
-                  className="app-title-menu-trigger"
+            {compact ? (
+              <DropdownMenu modal={false}>
+                <DropdownMenuTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="app-title-icon-button"
+                    aria-label={t("title.applicationMenu")}
+                  >
+                    <MenuIcon aria-hidden="true" />
+                  </Button>
+                </DropdownMenuTrigger>
+                <DropdownMenuContent
+                  align="start"
+                  className="w-60 max-w-[calc(100vw-1rem)]"
                 >
-                  <span className="app-title-menu-label" lang={language}>
-                    {t("title.file")}
-                  </span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-44">
-                <CommandMenuItem id="open-settings" />
-                <CommandMenuItem id="quit" />
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  data-surface="transparent"
-                  type="button"
-                  data-variant="ghost"
-                  className="app-title-menu-trigger"
-                >
-                  <span className="app-title-menu-label" lang={language}>
-                    {t("title.view")}
-                  </span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-60">
-                <DropdownMenuLabel>{t("settings.theme")}</DropdownMenuLabel>
-                <DropdownMenuRadioGroup
-                  value={theme ?? "system"}
-                  onValueChange={(value) => void execute(`theme-${value}`)}
-                >
-                  <DropdownMenuRadioItem value="light">
-                    <SunIcon />
-                    {t("title.light")}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="dark">
-                    <MoonIcon />
-                    {t("title.dark")}
-                  </DropdownMenuRadioItem>
-                  <DropdownMenuRadioItem value="system">
-                    <MonitorIcon />
-                    {t("title.system")}
-                  </DropdownMenuRadioItem>
-                </DropdownMenuRadioGroup>
-                <DropdownMenuSeparator />
-                <DropdownMenuCheckboxItem
-                  checked={settings.menuBar}
-                  onCheckedChange={() => void execute("toggle-menu")}
-                >
-                  {t("title.toggleMenu")}
-                </DropdownMenuCheckboxItem>
-                <CommandMenuItem id="toggle-sidebar" />
-                <CommandMenuItem id="toggle-fullscreen" />
-                <CommandMenuItem id="command-palette" />
-              </DropdownMenuContent>
-            </DropdownMenu>
-
-            <DropdownMenu modal={false}>
-              <DropdownMenuTrigger asChild>
-                <button
-                  data-surface="transparent"
-                  type="button"
-                  data-variant="ghost"
-                  className="app-title-menu-trigger"
-                >
-                  <span className="app-title-menu-label" lang={language}>
-                    {t("title.help")}
-                  </span>
-                </button>
-              </DropdownMenuTrigger>
-              <DropdownMenuContent align="start" className="w-48">
-                <CommandMenuItem id="keyboard-shortcuts" />
-                <CommandMenuItem id="open-docs" />
-                <CommandMenuItem id="open-repo" />
-                <DropdownMenuSeparator />
-                <CommandMenuItem id="check-updates" />
-                <CommandMenuItem id="copy-diagnostics" />
-                <CommandMenuItem id="about" />
-              </DropdownMenuContent>
-            </DropdownMenu>
+                  {menus.map((menu, index) => (
+                    <DropdownMenuGroup key={menu.label} aria-label={menu.label}>
+                      {index > 0 ? <DropdownMenuSeparator /> : null}
+                      <DropdownMenuLabel>{menu.label}</DropdownMenuLabel>
+                      {menu.items}
+                    </DropdownMenuGroup>
+                  ))}
+                </DropdownMenuContent>
+              </DropdownMenu>
+            ) : (
+              menus.map((menu) => (
+                <DropdownMenu key={menu.label} modal={false}>
+                  <DropdownMenuTrigger asChild>
+                    <button
+                      data-surface="transparent"
+                      type="button"
+                      data-variant="ghost"
+                      className="app-title-menu-trigger"
+                    >
+                      <span className="app-title-menu-label" lang={language}>
+                        {menu.label}
+                      </span>
+                    </button>
+                  </DropdownMenuTrigger>
+                  <DropdownMenuContent align="start" className={menu.width}>
+                    {menu.items}
+                  </DropdownMenuContent>
+                </DropdownMenu>
+              ))
+            )}
           </nav>
         ) : null}
       </div>
 
-      {!native ? <CompactNavigation /> : null}
+      {!native && compact ? <CompactNavigation /> : null}
       <div data-tauri-drag-region className="min-w-2 flex-1" />
 
       <div className="flex shrink-0 items-stretch">

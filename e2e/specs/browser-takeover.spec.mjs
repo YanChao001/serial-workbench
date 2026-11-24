@@ -6,11 +6,16 @@ import { promisify } from "node:util";
 import { chromium, expect } from "@playwright/test";
 import { $, browser } from "@wdio/globals";
 import { Key } from "webdriverio";
+import {
+  pairingCode,
+  pairingMode,
+  takeoverNotice,
+} from "../browser-takeover-locators.ts";
 import { language, navigate, ready } from "../helpers.mjs";
 import { startMcpFixture } from "../mcp-fixture.mjs";
 import { sessionScopes } from "../session-scopes.mjs";
 import { hostQuery } from "../settings.mjs";
-import { byText, button, click, dialogButton } from "./reference-plugin.mjs";
+import { byText, click, dialogButton } from "./reference-plugin.mjs";
 import { openVirtual } from "./workbench.mjs";
 
 const execute = promisify(execFile);
@@ -22,11 +27,11 @@ const configureBrowser = () =>
 
 async function openPairing() {
   await click(configureBrowser());
-  await click($("#desktop-browser-mode"));
+  await click($(pairingMode));
   await click(byText("*[@role='option']", "View and operate"));
   await click(dialogButton("Generate pairing code"));
   try {
-    const field = $("#desktop-browser-code");
+    const field = $(pairingCode);
     await field.waitForDisplayed();
     const code = await field.getValue();
     const url = await byText("a", "Open in browser").getAttribute("href");
@@ -41,7 +46,7 @@ async function openPairing() {
     return { url, code };
   } finally {
     await browser.keys(Key.Escape);
-    await $("#desktop-browser-code").waitForExist({ reverse: true });
+    await $(pairingCode).waitForExist({ reverse: true });
   }
 }
 
@@ -134,10 +139,8 @@ describe("Desktop browser takeover", () => {
         .getByRole("button", { name: "Request control of virtual:echo" })
         .click();
 
-      await byText(
-        "p",
-        `The browser asks to stop ${selectedClient} from writing to virtual:echo.`,
-      ).waitForDisplayed();
+      const notice = takeoverNotice("virtual:echo", selectedClient);
+      await $(notice).waitForDisplayed();
       const activity = await hostQuery("state.snapshot", "host", undefined, {
         scopeId: "host.activity",
       });
@@ -151,7 +154,7 @@ describe("Desktop browser takeover", () => {
         "browser-takeover",
       );
       await browser.saveScreenshot(join(output, "native-confirmation.png"));
-      await click(button("Confirm takeover"));
+      await click(byText("button", "Confirm takeover", notice));
       await expect(
         page.getByText("AI write access to this port was revoked."),
       ).toBeVisible();

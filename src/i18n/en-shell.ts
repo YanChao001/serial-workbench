@@ -68,6 +68,7 @@ export const enShell = {
   "diagnostics.saved": "Diagnostics saved",
   "diagnostics.refresh": "Refresh diagnostics",
   "diagnostics.preview": "Diagnostics preview",
+  "diagnostics.previousReport": "Refresh failed. Showing the previous report.",
   "diagnostics.logs":
     "The report includes system status, selected runtime preferences, and redacted application logs. Copy and save use this preview.",
   "updates.title": "Application updates",

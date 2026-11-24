@@ -658,41 +658,56 @@ Var DeleteAppDataCheckbox
 Var DeleteAppDataCheckboxState
 !define /ifndef WS_EX_LAYOUTRTL         0x00400000
 !define MUI_PAGE_CUSTOMFUNCTION_SHOW un.ConfirmShow
-Function un.ConfirmShow ; 增加删除应用数据的复选框
-  ; $1 为内部对话框句柄
-  ; $2 为窗口 DPI
-  ; $3 为控件样式
-  ; $4 为横坐标
-  ; $5 为纵坐标
-  ; $6 为宽度
-  ; $7 为高度
-  FindWindow $1 "#32770" "" $HWNDPARENT ; 查找内部对话框
-  System::Call "user32::GetDpiForWindow(p r1) i .r2"
-  ${If} $(^RTL) = 1
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE} | ${WS_EX_LAYOUTRTL}"
-    IntOp $4 50 * $2
-  ${Else}
-    StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
-    IntOp $4 0 * $2
-  ${EndIf}
-  IntOp $5 100 * $2
-  IntOp $6 400 * $2
-  IntOp $7 25 * $2
-  IntOp $4 $4 / 96
-  IntOp $5 $5 / 96
-  IntOp $6 $6 / 96
-  IntOp $7 $7 / 96
-  System::Call 'user32::CreateWindowEx(i r3, w "${__NSD_CheckBox_CLASS}", w "$(deleteAppData)", i ${__NSD_CheckBox_STYLE}, i r4, i r5, i r6, i r7, p r1, i0, i0, i0) i .s'
-  Pop $DeleteAppDataCheckbox
-  SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
-  SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
-FunctionEnd
 !define MUI_PAGE_CUSTOMFUNCTION_LEAVE un.ConfirmLeave
-Function un.ConfirmLeave
-  SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
-FunctionEnd
 !define MUI_PAGE_CUSTOMFUNCTION_PRE un.SkipIfPassive
 !insertmacro MUI_UNPAGE_CONFIRM
+
+Function un.ConfirmShow
+  StrCpy $DeleteAppDataCheckbox 0
+  StrCpy $DeleteAppDataCheckboxState 0
+  ${If} $UpdateMode = 1
+    Return
+  ${EndIf}
+
+  System::Store "S"
+  System::Call '*(i0,i0,i0,i0)p.r0'
+  ${If} $0 P<> 0
+    System::Call 'USER32::GetWindowRect(p $mui.UnConfirmPage.Directory,pr0)i.r1'
+    ${If} $1 <> 0
+      ; 复选框跟随原生目录控件的起点和宽度。
+      System::Call 'USER32::MapWindowPoints(p0,p $mui.UnConfirmPage,pr0,i2)i'
+      System::Call '*$0(i.r4,i,i.r6,i.r5)'
+      IntOp $6 $6 - $4
+
+      ; 用当前语言和缩放的对话框单位分配两行文字。
+      System::Call '*$0(i0,i4,i0,i24)'
+      System::Call 'USER32::MapDialogRect(p $HWNDPARENT,pr0)i.r1'
+      ${If} $1 <> 0
+        System::Call '*$0(i,i.r2,i,i.r7)'
+        IntOp $5 $5 + $2
+        ${If} $(^RTL) = 1
+          IntOp $3 ${__NSD_CheckBox_EXSTYLE} | ${WS_EX_LAYOUTRTL}
+        ${Else}
+          StrCpy $3 "${__NSD_CheckBox_EXSTYLE}"
+        ${EndIf}
+        System::Call 'USER32::CreateWindowExW(ir3,w "${__NSD_CheckBox_CLASS}",w "$(SerialWorkbenchDeleteAppData)",i ${__NSD_CheckBox_STYLE},ir4,ir5,ir6,ir7,p $mui.UnConfirmPage,p0,p0,p0)p.s'
+        Pop $DeleteAppDataCheckbox
+        ${If} $DeleteAppDataCheckbox P<> 0
+          SendMessage $HWNDPARENT ${WM_GETFONT} 0 0 $1
+          SendMessage $DeleteAppDataCheckbox ${WM_SETFONT} $1 1
+        ${EndIf}
+      ${EndIf}
+    ${EndIf}
+    System::Free $0
+  ${EndIf}
+  System::Store "L"
+FunctionEnd
+
+Function un.ConfirmLeave
+  ${If} $DeleteAppDataCheckbox P<> 0
+    SendMessage $DeleteAppDataCheckbox ${BM_GETCHECK} 0 0 $DeleteAppDataCheckboxState
+  ${EndIf}
+FunctionEnd
 
 ; 2. 卸载进度页面
 !insertmacro MUI_UNPAGE_INSTFILES
@@ -713,6 +728,7 @@ FunctionEnd
 !ifdef LANG_SIMPCHINESE
   SetFont /LANG=${LANG_SIMPCHINESE} "SimSun" 9
   LangString SerialWorkbenchTitleFont ${LANG_SIMPCHINESE} "Microsoft YaHei UI"
+  LangString SerialWorkbenchDeleteAppData ${LANG_SIMPCHINESE} "同时删除当前 Windows 用户的应用数据"
   LangString SerialWorkbenchWelcomeTitle ${LANG_SIMPCHINESE} "开始安装"
   LangString SerialWorkbenchWelcomeText ${LANG_SIMPCHINESE} "${PRODUCTNAME}$\r$\n版本 ${VERSION}$\r$\n$\r$\n接下来选择安装位置，即可将应用添加到这台电脑。$\r$\n$\r$\n$_CLICK"
   LangString SerialWorkbenchFinishTitle ${LANG_SIMPCHINESE} "安装完成"
@@ -722,6 +738,7 @@ FunctionEnd
 !ifdef LANG_ENGLISH
   SetFont /LANG=${LANG_ENGLISH} "MS Shell Dlg" 8
   LangString SerialWorkbenchTitleFont ${LANG_ENGLISH} "Segoe UI"
+  LangString SerialWorkbenchDeleteAppData ${LANG_ENGLISH} "Also remove application data for this Windows user"
   LangString SerialWorkbenchWelcomeTitle ${LANG_ENGLISH} "Ready to install"
   LangString SerialWorkbenchWelcomeText ${LANG_ENGLISH} "${PRODUCTNAME}$\r$\nVersion ${VERSION}$\r$\n$\r$\nChoose where to install the app on this computer.$\r$\n$\r$\n$_CLICK"
   LangString SerialWorkbenchFinishTitle ${LANG_ENGLISH} "Installation complete"

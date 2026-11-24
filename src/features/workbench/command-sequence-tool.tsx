@@ -457,7 +457,7 @@ export function CommandSequenceTool({
 
   return (
     <section className="grid gap-4">
-      <p className="min-w-0 break-all text-sm">
+      <p className="min-w-0 wrap-anywhere text-sm">
         {access
           ? t("repeatSend.destination", {
               port: access.port,
@@ -470,7 +470,7 @@ export function CommandSequenceTool({
           {t("commandSequence.unavailable")}
         </p>
       )}
-      <div className="grid min-w-0 gap-4 sm:grid-cols-2">
+      <div className="workbench-form-grid workbench-form-grid-pair">
         <div className="grid min-w-0 content-start gap-2">
           <label className="text-sm font-medium" htmlFor={id + "-definition"}>
             {t("commandSequence.definition")}
@@ -652,7 +652,7 @@ export function CommandSequenceTool({
         {(current ||
           (run.phase === "finished" && run.operationId) ||
           (run.phase === "failed" && run.operationId)) && (
-          <p className="break-all text-muted-foreground">
+          <p className="wrap-anywhere text-muted-foreground">
             {t("repeatSend.task", {
               id:
                 current?.operationId ??

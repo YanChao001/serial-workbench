@@ -333,7 +333,7 @@ export default function Settings() {
               icon={SETTINGS_ICONS.theme}
               label={t("settings.theme")}
             />
-            <div className="grid grid-cols-3 gap-2">
+            <div className="settings-theme-grid">
               {THEMES.map((item) => {
                 const active = theme === item.value;
                 return (
@@ -540,7 +540,7 @@ export default function Settings() {
             <div
               role="group"
               aria-label={t("settings.windowSize")}
-              className="window-preset-grid grid grid-cols-2 gap-2"
+              className="window-preset-grid"
             >
               {visiblePresets.map((preset) => {
                 const unavailable =

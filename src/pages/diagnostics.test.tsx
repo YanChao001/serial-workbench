@@ -108,12 +108,12 @@ describe("diagnostics actions", () => {
     expect(saveDiagnosticsJson).toHaveBeenCalledExactlyOnceWith(
       JSON.stringify(report, null, 2),
     );
-    expect(button).toBeDisabled();
+    expect(button).toHaveAttribute("aria-disabled", "true");
     expect(
       screen.getByRole("button", { name: "Refresh diagnostics" }),
-    ).toBeDisabled();
+    ).toHaveAttribute("aria-disabled", "true");
     await act(async () => save.resolve(false));
-    expect(button).toBeEnabled();
+    expect(button).toHaveAttribute("aria-disabled", "false");
     expect(toast.success).not.toHaveBeenCalled();
     vi.mocked(saveDiagnosticsJson).mockResolvedValueOnce(true);
     await act(async () => fireEvent.click(button));
@@ -216,7 +216,7 @@ describe("diagnostics actions", () => {
     expect(toast.success).not.toHaveBeenCalled();
   });
 
-  it("preserves the loaded report when a refresh fails and shows its error as a toast", async () => {
+  it("preserves the loaded report and identifies it after a failed refresh", async () => {
     view();
     const preview = await screen.findByTestId("diagnostics-report");
     await waitFor(() =>
@@ -228,9 +228,10 @@ describe("diagnostics actions", () => {
     fireEvent.click(
       screen.getByRole("button", { name: "Refresh diagnostics" }),
     );
-    await waitFor(() => expect(toast.error).toHaveBeenCalledOnce());
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "Refresh failed. Showing the previous report.",
+    );
     expect(preview).toHaveTextContent('"settingsRevision": "4"');
-    expect(screen.queryByRole("alert")).not.toBeInTheDocument();
     expect(
       screen.getByRole("button", { name: "Copy diagnostics" }),
     ).toBeEnabled();
