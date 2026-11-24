@@ -1,5 +1,6 @@
 import { createContext, useContext } from "react";
 import type { HostConnection } from "@/lib/host-client";
+import type { BrowserFileProgress } from "@/lib/browser-file-transfer";
 import type { ReceiveIdleMs } from "@/lib/receive-history";
 import type {
   FileResourceRole,
@@ -24,6 +25,7 @@ import type {
   FavoritesSaveParams,
   FileReadParams,
   FileMetadata,
+  FileTransferParams,
   FileReadResult,
   FileTransferReceiptsParams,
   FileTransferReceiptsResult,
@@ -129,6 +131,17 @@ export type HostContextValue = {
   commandLibrary?: CommandLibraryAccess;
   state: HostState;
   connection?: HostConnection;
+  browserFile?: {
+    send(
+      target: Target,
+      file: File,
+      draft: Omit<FileTransferParams, "sourceRef">,
+      report: (progress: BrowserFileProgress) => void,
+      signal: AbortSignal,
+    ): Promise<Operation | null>;
+    recover(signal: AbortSignal): Promise<Operation | null>;
+    hasPending(): boolean;
+  };
   refresh(options?: { enumerateDevices?: boolean }): Promise<void>;
   metrics(signal?: AbortSignal): Promise<HostMetrics>;
   sessionMetrics(target: Target, signal?: AbortSignal): Promise<SessionMetrics>;

@@ -577,10 +577,20 @@ export function WorkbenchTools({
           context.session?.state !== "open" ||
           context.session.readOnly
         }
-        pickSource={(signal) => host.pickFile("source", signal)}
+        browserFile={host.browserFile}
+        browserTransferAvailable={catalog.some(
+          (entry) =>
+            entry.actionId === "transfer.file" &&
+            entry.targetKinds.includes("session"),
+        )}
+        pickSource={
+          host.browserFile
+            ? undefined
+            : (signal) => host.pickFile("source", signal)
+        }
         pickDroppedSource={host.pickDroppedFile}
         onTransfer={
-          context.target
+          context.target && !host.browserFile
             ? (params, signal) =>
                 call("transfer.file", context.target!, params, signal)
             : undefined

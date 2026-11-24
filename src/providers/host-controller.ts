@@ -32,6 +32,11 @@ import type {
 } from "@serial-workbench/contracts";
 import { HostRequestError } from "@serial-workbench/host-client";
 import { bytesToBase64 } from "@/lib/base64";
+import {
+  hasPendingBrowserFile,
+  recoverBrowserFile,
+  sendBrowserFile,
+} from "@/lib/browser-file-transfer";
 import type { HostConnection } from "@/lib/host-client";
 import { confirmProjectionHost, HostProjectionError } from "@/lib/host-client";
 import { abortError, waitForHost } from "@/lib/host-native-transport";
@@ -1893,7 +1898,39 @@ export function createHostWorkspace(
       ? writableCommandLibrary
       : readableCommandLibrary;
   }
+  const browserFile: HostContextValue["browserFile"] = connection.browser && {
+    hasPending: () => hasPendingBrowserFile(connection),
+    async send(target, file, draft, report, signal) {
+      try {
+        const operation = await sendBrowserFile(
+          connection,
+          target,
+          file,
+          draft,
+          report,
+          AbortSignal.any([signal, lifetime.signal]),
+        );
+        if (operation && !lifetime.signal.aborted) updateOperation(operation);
+        return operation;
+      } catch (error) {
+        if (
+          error instanceof HostRequestError &&
+          error.code === "PERMISSION_DENIED"
+        )
+          invalidateActions();
+        throw error;
+      }
+    },
+    async recover(signal) {
+      signal.throwIfAborted();
+      const operation = await recoverBrowserFile(connection);
+      if (operation && !lifetime.signal.aborted) updateOperation(operation);
+      signal.throwIfAborted();
+      return operation;
+    },
+  };
   const actions = {
+    browserFile,
     refresh,
     metrics,
     sessionMetrics,

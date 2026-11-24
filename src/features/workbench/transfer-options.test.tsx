@@ -298,3 +298,88 @@ it("resumes a monitored transfer for this session, cancels the exact operation, 
     screen.queryByRole("button", { name: toolLabels.cancel }),
   ).not.toBeInTheDocument();
 });
+
+it("shows browser local byte preview without uploading and lets the user cancel the handoff", async () => {
+  const selected = new File([new Uint8Array([0, 255, 36, 123])], "browser.bin");
+  const browserFile = {
+    hasPending: () => false,
+    recover: vi.fn(),
+    send: vi.fn(async (_target, _file, _draft, report, signal: AbortSignal) => {
+      report({ kind: "upload", received: 2, total: 4 });
+      await new Promise<void>((resolve) =>
+        signal.addEventListener("abort", () => resolve(), { once: true }),
+      );
+      return null;
+    }),
+  };
+  const { container } = render(
+    <TransferOptions
+      target={target}
+      watchActions={allowControlActions}
+      contextKey="browser:1"
+      labels={toolLabels}
+      browserFile={browserFile}
+      browserTransferAvailable
+      writeWaitMs="1000"
+    />,
+  );
+  const chooser = screen.getByRole("button", { name: "Select source" });
+  await waitFor(() => expect(chooser).toBeEnabled());
+  const user = userEvent.setup();
+  await user.upload(
+    container.querySelector<HTMLInputElement>('input[type="file"]')!,
+    selected,
+  );
+  expect(screen.getByRole("textbox", { name: toolLabels.source })).toHaveValue(
+    "browser.bin",
+  );
+  fireEvent.change(screen.getByLabelText("Offset"), { target: { value: "1" } });
+  fireEvent.change(screen.getByLabelText("Length"), { target: { value: "2" } });
+  await waitFor(() =>
+    expect(
+      screen.getByLabelText(toolLabels.browserFile.sample),
+    ).toHaveTextContent("1: FF 24"),
+  );
+  expect(browserFile.send).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: "Send file" }));
+  expect(
+    await screen.findByRole("progressbar", {
+      name: toolLabels.browserFile.upload,
+    }),
+  ).toHaveAttribute("aria-valuetext", "2 B / 4 B");
+  expect(browserFile.send).toHaveBeenCalledWith(
+    target,
+    selected,
+    expect.objectContaining({ offset: "1", length: "2" }),
+    expect.any(Function),
+    expect.any(AbortSignal),
+  );
+  await user.click(
+    screen.getByRole("button", { name: toolLabels.browserFile.cancelUpload }),
+  );
+  await screen.findByText(toolLabels.browserFile.uploadCancelled);
+  expect(screen.getByRole("button", { name: "Send file" })).toBeEnabled();
+});
+
+it("keeps read-only browser file selection and sending unavailable", async () => {
+  const browserFile = {
+    hasPending: () => false,
+    recover: vi.fn(),
+    send: vi.fn(),
+  };
+  render(
+    <TransferOptions
+      target={target}
+      watchActions={allowControlActions}
+      contextKey="browser:1"
+      labels={toolLabels}
+      browserFile={browserFile}
+      browserTransferAvailable={false}
+      writeWaitMs="1000"
+    />,
+  );
+  expect(screen.getByRole("button", { name: "Select source" })).toBeDisabled();
+  expect(screen.getByRole("button", { name: "Send file" })).toBeDisabled();
+  expect(screen.getByText(toolLabels.browserFile.unavailable)).toBeVisible();
+  expect(browserFile.send).not.toHaveBeenCalled();
+});

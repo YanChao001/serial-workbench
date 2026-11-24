@@ -1,6 +1,8 @@
 use super::*;
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 use sha2::{Digest as _, Sha256};
+use std::{path::PathBuf, process::Stdio};
+use tokio::process::Command;
 
 async fn handoff(socket: &mut Socket, params: BrowserFileHandoffParams) -> RpcReply {
     reply(
@@ -33,9 +35,19 @@ async fn browser_file_upload_sends_the_selected_range_once_and_returns_quota_aft
 
     let root = tempfile::tempdir_in(std::env::temp_dir().canonicalize().unwrap()).unwrap();
     let profile = root.path().join("profile");
-    let assets = root.path().join("web");
-    std::fs::create_dir(&assets).unwrap();
-    std::fs::write(assets.join("index.html"), "<html><head></head></html>").unwrap();
+    let browser_evidence = std::env::var_os("SWB_TEST_BROWSER_TRANSFER_OUTPUT").map(PathBuf::from);
+    let repository = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../..");
+    let assets = if browser_evidence.is_some() {
+        repository
+            .join("dist-web")
+            .canonicalize()
+            .expect("build dist-web for browser transfer")
+    } else {
+        let assets = root.path().join("web");
+        std::fs::create_dir(&assets).unwrap();
+        std::fs::write(assets.join("index.html"), "<html><head></head></html>").unwrap();
+        assets
+    };
     let mut server = HostServer::bind(&profile).await.unwrap();
     let auth = server.auth();
     let host = Arc::new(Host::new(server.store(), auth.clone()).await.unwrap());
@@ -466,6 +478,69 @@ async fn browser_file_upload_sends_the_selected_range_once_and_returns_quota_aft
             .get(),
         capacity
     );
+    if let Some(evidence) = browser_evidence {
+        fresh.close(None).await.unwrap();
+        assert!(matches!(
+            success(
+                operator
+                    .request(RpcRequest::BrowserAccess(BrowserAccessParams::Revoke {}))
+                    .await
+                    .unwrap()
+            ),
+            RpcResult::BrowserAccess(BrowserAccessResult {
+                browser_access: BrowserAccessState::Disabled {}
+            })
+        ));
+        let RpcResult::BrowserAccess(BrowserAccessResult {
+            browser_access: BrowserAccessState::Pairing { entry, .. },
+        }) = success(operator.request(pair()).await.unwrap())
+        else {
+            panic!("Missing Chromium pairing entry");
+        };
+        let mut child = Command::new("node")
+            .arg(repository.join("e2e/paired-browser-file-transfer.mjs"))
+            .arg(evidence)
+            .stdin(Stdio::piped())
+            .kill_on_drop(true)
+            .spawn()
+            .unwrap();
+        let mut input = child.stdin.take().unwrap();
+        input
+            .write_all(
+                format!(
+                    "{}\n",
+                    json!({
+                        "url": entry.url, "pairingCode": entry.pairing_code, "targetId": target.id,
+                    })
+                )
+                .as_bytes(),
+            )
+            .await
+            .unwrap();
+        drop(input);
+        assert!(
+            timeout(Duration::from_secs(120), child.wait())
+                .await
+                .unwrap()
+                .unwrap()
+                .success()
+        );
+        let RpcResult::StreamRead(page) = success(echo_reader.request(read).await.unwrap()) else {
+            panic!("Missing independent echo after Chromium transfer");
+        };
+        let bytes: Vec<_> = page
+            .events
+            .into_iter()
+            .filter_map(|event| {
+                let RawPayload::Rx(value) = event.payload else {
+                    return None;
+                };
+                Some(STANDARD.decode(value.bytes_base64.as_str()).unwrap())
+            })
+            .flatten()
+            .collect();
+        assert_eq!(bytes, [255, 36, 254, 35]);
+    }
     stop.send(()).unwrap();
     timeout(Duration::from_secs(8), serving)
         .await

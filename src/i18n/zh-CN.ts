@@ -1106,6 +1106,21 @@ export const zhCN = {
   "workbench.tools.preview": "实际发送字节",
   "workbench.tools.sendFile": "发送文件",
   "workbench.tools.invalidRange": "请输入所选文件内的有效范围",
+  "workbench.tools.browserFile.unavailable":
+    "浏览器发送文件需要当前会话的写入权限。",
+  "workbench.tools.browserFile.invalidFile":
+    "请选择一个非空且不超过 1 GiB 的文件。",
+  "workbench.tools.browserFile.sample": "选区开头字节",
+  "workbench.tools.browserFile.sampleUnavailable": "无法预览选区字节。",
+  "workbench.tools.browserFile.upload": "正在交接给 Host",
+  "workbench.tools.browserFile.submitting": "正在等待 Host 接纳发送…",
+  "workbench.tools.browserFile.cancelUpload": "取消文件交接",
+  "workbench.tools.browserFile.uploadCancelled": "文件交接已取消。",
+  "workbench.tools.browserFile.stopSending": "停止发送",
+  "workbench.tools.browserFile.receiptPending":
+    "上一次发送的回执尚未确认，请先查回执。",
+  "workbench.tools.browserFile.checkReceipt": "查询发送回执",
+  "workbench.tools.browserFile.noReceipt": "Host 未接纳该请求。",
   "workbench.tools.transferEvidence": "传输回执",
   "workbench.tools.draft": "发送草稿",
   "workbench.tools.saveUnavailable": "这些工具选项可放弃，暂不支持保存。",

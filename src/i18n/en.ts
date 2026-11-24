@@ -1184,6 +1184,24 @@ export const en = {
   "workbench.tools.sendFile": "Send file",
   "workbench.tools.invalidRange":
     "Enter a valid range within the selected file",
+  "workbench.tools.browserFile.unavailable":
+    "Browser file sending requires permission to write to this session.",
+  "workbench.tools.browserFile.invalidFile":
+    "Select one non-empty file up to 1 GiB.",
+  "workbench.tools.browserFile.sample": "Beginning of selected bytes",
+  "workbench.tools.browserFile.sampleUnavailable":
+    "The selected bytes could not be previewed.",
+  "workbench.tools.browserFile.upload": "Uploading to Host",
+  "workbench.tools.browserFile.submitting":
+    "Waiting for Host to accept the transfer…",
+  "workbench.tools.browserFile.cancelUpload": "Cancel upload",
+  "workbench.tools.browserFile.uploadCancelled": "File handoff cancelled.",
+  "workbench.tools.browserFile.stopSending": "Stop sending",
+  "workbench.tools.browserFile.receiptPending":
+    "The previous send has an unconfirmed receipt. Check it before sending again.",
+  "workbench.tools.browserFile.checkReceipt": "Check send receipt",
+  "workbench.tools.browserFile.noReceipt":
+    "Host has no accepted operation for that request.",
   "workbench.tools.transferEvidence": "Transfer receipt",
   "workbench.tools.draft": "Send draft",
   "workbench.tools.saveUnavailable":
