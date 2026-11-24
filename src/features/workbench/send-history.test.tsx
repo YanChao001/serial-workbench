@@ -35,7 +35,7 @@ function result(id: string, bytesBase64: string, complete: boolean): Operation {
         bytesBase64,
         byteStart: "50",
         byteEnd: "52",
-        acceptedRanges: [{ start: "50", end: complete ? "52" : "51" }],
+        acceptedRanges: [{ start: "0", end: complete ? "2" : "1" }],
         unknownRanges: [],
         peerAcknowledged: false,
       },

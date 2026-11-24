@@ -244,9 +244,9 @@ cargo test --locked -p serial-workbench --lib native_automation_uses_exact_respo
 
 ### 手工发送录制（AUTO-04）
 
-打开可写会话，在发送区选择「录制手工发送」，明确开始后分别手工发两段普通字节。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX 和有证据的等待。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
+打开可写会话，在发送区选择「录制手工发送」，明确开始后分别手工发两段普通字节。停止录制并检查完整回执计数，在命令序列中预览相同的 HEX、写入期限和有证据的等待。单次写入期限超出 5 秒时，录制保留已确认前缀。等待用工作台观察到完整写入后到下次手工提交的单调时钟，线级时序继续用实际线路采样核对。预览、另存和运行分别触发。生成到编辑器前后的未保存内容受同一离开流程保护。独立对端验收记录原始 TX 和发送顺序。
 
-用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对从发送区打开录制稿、预览以及显式运行。其他手工动作、资源和密钥引用继续按同项验收。
+用 `pnpm test src/features/workbench/manual-send-recording.test.ts src/features/workbench/send-history.test.tsx` 核对完整回执、顺序、缺失证据、写入交错及等待上限。用 `pnpm test:ui e2e/browser/command-sequence.spec.ts --workers 1` 核对从发送区打开录制稿、预览以及显式运行。用 `node --test scripts/command-sequence.test.mjs` 核对执行器使用指定写入期限，旧定义沿用默认期限。首方自动化 0.1.2 保留 0.1.0、0.1.1 作为可验证前驱。其他手工动作、资源和密钥引用继续按同项验收。
 
 ### 定时与循环发送（IO-09）
 

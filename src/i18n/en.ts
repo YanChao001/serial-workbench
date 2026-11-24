@@ -1218,6 +1218,7 @@ export const en = {
   "commandSequence.previewEmpty":
     "Enter a sequence definition to preview its steps.",
   "commandSequence.previewSend": "Send",
+  "commandSequence.previewWriteWait": "Write deadline {ms} ms",
   "commandSequence.previewDelay": "Wait {ms} ms",
   "commandSequence.previewExpect": "Expect within {ms} ms",
   "commandSequence.previewMatch": "On matching reply",

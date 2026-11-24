@@ -11,6 +11,7 @@ import {
   readSession,
   releaseTransaction,
   sendTransaction,
+  sendTransactionWithDeadline,
 } from "./session-transaction.ts";
 
 export { commandSequenceAction } from "./command-sequence-model.ts";
@@ -94,12 +95,16 @@ export function createCommandSequence(
       try {
         if (!(await advanceWithinSession())) return;
         const bytes = Buffer.from(step.bytes).toString("base64");
-        const { confirmed, operationId } = await sendTransaction(
-          task,
-          session,
-          leaseId,
-          bytes,
-        );
+        const { confirmed, operationId } =
+          step.writeWaitMs === undefined
+            ? await sendTransaction(task, session, leaseId, bytes)
+            : await sendTransactionWithDeadline(
+                task,
+                session,
+                leaseId,
+                bytes,
+                step.writeWaitMs,
+              );
         if (!confirmed)
           return { operationId, outcome: "transmit_unconfirmed" } as const;
         if (!step.expect) return { operationId, outcome: "written" } as const;

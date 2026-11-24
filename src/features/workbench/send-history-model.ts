@@ -186,14 +186,17 @@ export function confirmedSessionWrite(
     end - start !== BigInt(planned.bytes.length)
   )
     return;
-  let cursor = start;
+  // Accepted ranges are relative to this write. The outer range locates it in the TX stream.
+  const length = end - start;
+  let cursor = 0n;
   for (const range of result.acceptedRanges) {
     const from = parseU64(range.start);
     const to = parseU64(range.end);
-    if (from !== cursor || to === undefined || to <= cursor || to > end) return;
+    if (from !== cursor || to === undefined || to <= cursor || to > length)
+      return;
     cursor = to;
   }
-  return cursor === end ? { start, end } : undefined;
+  return cursor === length ? { start, end } : undefined;
 }
 
 export async function resendHistoryBatch({

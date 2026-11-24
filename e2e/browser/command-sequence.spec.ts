@@ -312,9 +312,9 @@ test("manual send recording opens a reviewable draft and runs only on request", 
   expect(JSON.parse(definition)).toMatchObject({
     version: 1,
     steps: [
-      { kind: "send", hex: "41" },
+      { kind: "send", hex: "41", writeWaitMs: 1001 },
       { kind: "delay", milliseconds: expect.any(Number) },
-      { kind: "send", hex: "42" },
+      { kind: "send", hex: "42", writeWaitMs: 1001 },
     ],
   });
   expect(
@@ -342,4 +342,52 @@ test("manual send recording opens a reviewable draft and runs only on request", 
       builtinCommandSequenceAction,
     ),
   ).toMatchObject({ definition });
+});
+
+test("a stale session revision cannot add a write to the previous recording", async ({
+  page,
+}) => {
+  await seedWorkbenchFixture(page, {
+    automation: { action, state: "ready" },
+    manualSendReceipts: true,
+  });
+  await selectSerial(page);
+  const composer = page.getByRole("region", { name: "Send", exact: true });
+  const recorder = composer.getByRole("button", {
+    name: "Record manual sends",
+    exact: true,
+  });
+  const draft = composer.getByRole("textbox", { name: "Send draft" });
+  const send = composer.getByRole("button", { name: "Send", exact: true });
+  await recorder.click();
+  await page
+    .getByRole("button", { name: "Start recording", exact: true })
+    .click();
+  await draft.fill("A");
+  await send.click();
+  await recorder.click();
+  await expect(page.getByText("Confirmed sends: 1.")).toBeVisible();
+  await recorder.press("Escape");
+
+  await page.evaluate(() => {
+    window.workbenchFixture.manualSendRevision = "2";
+  });
+  await draft.fill("B");
+  await send.click();
+  await recorder.click();
+  await expect(
+    page.getByText(/A write lacks a complete receipt/),
+  ).toBeVisible();
+  await page
+    .getByRole("button", { name: "Review in command sequence" })
+    .click();
+  const dialog = page.getByRole("dialog", {
+    name: "Command sequence",
+    exact: true,
+  });
+  await expect(dialog.getByText("Send 41", { exact: true })).toBeVisible();
+  await expect(dialog.getByText("Send 42", { exact: true })).toHaveCount(0);
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual([
+    "QQ==",
+  ]);
 });

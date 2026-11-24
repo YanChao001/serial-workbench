@@ -96,6 +96,7 @@ export type WorkbenchFixture = {
   configureAllowed: boolean;
   deniedReplayReads: string[];
   sendHistoryReadable: boolean;
+  manualSendRevision: string;
   invocations: Call[];
   clientStateReads: number;
   sentBytes: string[];
@@ -911,6 +912,7 @@ export async function seedWorkbenchFixture(
       configureAllowed: true,
       deniedReplayReads: [],
       sendHistoryReadable: true,
+      manualSendRevision: openedSession.revision,
       invocations: [],
       clientStateReads: 0,
       sentBytes: [],
@@ -1931,11 +1933,21 @@ export async function seedWorkbenchFixture(
                       retryable: false,
                     },
                   };
-                fixture.sentBytes.push(bytesBase64);
                 if (manualSendReceipts) {
-                  const { target, requestId } = request.params;
+                  const { target, requestId, expectedRevision } =
+                    request.params;
+                  if (expectedRevision !== fixture.manualSendRevision)
+                    return {
+                      ok: false,
+                      error: {
+                        code: "REVISION_CONFLICT",
+                        message: "Session revision changed",
+                        retryable: false,
+                      },
+                    };
                   if (!target.sessionId || !target.sessionEpoch)
                     throw new Error("Missing manual session identity");
+                  fixture.sentBytes.push(bytesBase64);
                   const operationId = "manual-tx-" + fixture.sentBytes.length;
                   const end = fixture.sentBytes.reduce(
                     (offset, chunk) => offset + atob(chunk).length,
@@ -1958,7 +1970,7 @@ export async function seedWorkbenchFixture(
                         bytesBase64,
                         byteStart: start,
                         byteEnd: limit,
-                        acceptedRanges: [{ start, end: limit }],
+                        acceptedRanges: [{ start: "0", end: String(length) }],
                         unknownRanges: [],
                         outcome: "accepted",
                         peerAcknowledged: false,
@@ -1967,6 +1979,7 @@ export async function seedWorkbenchFixture(
                   };
                   return { ok: true, result: { operation } };
                 }
+                fixture.sentBytes.push(bytesBase64);
                 return {
                   ok: true,
                   result: {

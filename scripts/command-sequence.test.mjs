@@ -27,6 +27,7 @@ function operator({
 } = {}) {
   const controller = new AbortController();
   const sent = [];
+  const writeWaits = [];
   const events = [];
   let byteOffset = 0;
   let lease;
@@ -98,7 +99,8 @@ function operator({
         assert.equal(call.actionId, "session.tx");
         assert.ok(lease);
         assert.equal(call.leaseId, lease);
-        const { bytesBase64 } = call.params;
+        const { bytesBase64, writeWaitMs } = call.params;
+        writeWaits.push(writeWaitMs);
         const operationId = "write-" + (sent.length + 1);
         sent.push({
           hex: Buffer.from(bytesBase64, "base64").toString("hex"),
@@ -142,6 +144,7 @@ function operator({
   };
   return {
     sent,
+    writeWaits,
     run: (document) =>
       run(
         {
@@ -184,6 +187,23 @@ test("a command sequence expands variables, repeats the ordered steps and choose
   assert.deepEqual(
     result.attempts.map(({ operationId }) => operationId),
     ["write-1", "write-2", "write-3"],
+  );
+});
+
+test("a recorded write keeps its explicit deadline while existing definitions keep the default", async () => {
+  const device = operator();
+  const result = await device.run({
+    version: 1,
+    steps: [{ ...send("AA"), writeWaitMs: 3200 }, send("BB")],
+  });
+  assert.equal(result.outcome, "completed");
+  assert.deepEqual(device.writeWaits, ["3200", "1000"]);
+  await assert.rejects(
+    operator().run({
+      version: 1,
+      steps: [{ ...send("AA"), writeWaitMs: 5001 }],
+    }),
+    /writeWaitMs/,
   );
 });
 

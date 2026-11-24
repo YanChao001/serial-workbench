@@ -2,20 +2,23 @@ import type { Operation, Target } from "@serial-workbench/contracts";
 import { formatHex } from "@serial-workbench/host-client";
 import { bytesToBase64 } from "@/lib/base64";
 import {
+  commandSequenceFrameBytes,
+  commandSequenceMaxWriteWaitMs,
   CommandSequenceError,
   compileCommandSequence,
 } from "../../../packages/plugin-sdk/examples/reference-automation/command-sequence-model";
-import { repeatSendFrameBytes } from "./repeat-send-model";
 import { confirmedSessionWrite, matchesSend } from "./send-history-model";
 
 const maxRecordedSends = 32;
 
 type Step =
-  { kind: "send"; hex: string } | { kind: "delay"; milliseconds: number };
+  | { kind: "send"; hex: string; writeWaitMs: number }
+  | { kind: "delay"; milliseconds: number };
 type Confirmed = { start: bigint; end: bigint; observedAt: number };
 type Attempt = {
   bytes: Uint8Array;
   submittedAt: number;
+  writeWaitMs: number;
   evidence?: Confirmed | null;
 };
 type StopReason = "user" | "scope" | "unconfirmed" | "gap" | "limit";
@@ -37,13 +40,21 @@ export class ManualSendRecording {
     private readonly target: Target,
   ) {}
 
-  add(bytes: Uint8Array, submittedAt: number) {
+  add(bytes: Uint8Array, submittedAt: number, writeWaitMs: number) {
     if (this.reason) return;
-    if (!bytes.length || bytes.length > repeatSendFrameBytes) {
+    if (
+      !bytes.length ||
+      bytes.length > commandSequenceFrameBytes ||
+      !Number.isInteger(writeWaitMs) ||
+      writeWaitMs < 1 ||
+      writeWaitMs > commandSequenceMaxWriteWaitMs
+    ) {
       this.stop("limit");
       return;
     }
-    const index = this.attempts.push({ bytes: bytes.slice(), submittedAt }) - 1;
+    const index =
+      this.attempts.push({ bytes: bytes.slice(), submittedAt, writeWaitMs }) -
+      1;
     if (this.attempts.length === maxRecordedSends) this.stop("limit");
     return index;
   }
@@ -111,7 +122,11 @@ export class ManualSendRecording {
         : 0;
       const recorded: Step[] = [];
       if (delay > 0) recorded.push({ kind: "delay", milliseconds: delay });
-      recorded.push({ kind: "send", hex: formatHex(attempt.bytes) });
+      recorded.push({
+        kind: "send",
+        hex: formatHex(attempt.bytes),
+        writeWaitMs: attempt.writeWaitMs,
+      });
       try {
         compileCommandSequence(serialize([...this.steps, ...recorded]));
       } catch (error) {

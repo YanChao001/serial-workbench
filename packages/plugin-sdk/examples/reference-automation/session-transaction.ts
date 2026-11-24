@@ -138,3 +138,44 @@ export async function sendTransaction(
       receipt.value.bytesBase64 === bytesBase64,
   };
 }
+
+// Keep the existing signed consumers on their standard transaction timing.
+export async function sendTransactionWithDeadline(
+  task: NodeTaskContext,
+  session: Session,
+  leaseId: string,
+  bytesBase64: string,
+  writeWaitMs: number,
+) {
+  const child = await task.actions.invokeChild({
+    actionId: "session.tx",
+    target: session,
+    leaseId,
+    params: {
+      bytesBase64,
+      writeWaitMs: String(writeWaitMs),
+      queueWaitMs: String(txWaitMs),
+    },
+  });
+  const deadline =
+    performance.now() +
+    Math.max(operationSettleMs, writeWaitMs + txWaitMs + 1000);
+  let finished = child;
+  while (pending(finished) && performance.now() < deadline) {
+    await delay(pollMs, undefined, { signal: task.signal });
+    finished = await task.operations.get({ operationId: child.operationId });
+  }
+  task.signal.throwIfAborted();
+  const receipt = finished.result;
+  return {
+    operationId: child.operationId,
+    confirmed:
+      finished.state === "succeeded" &&
+      receipt?.kind === "tx" &&
+      receipt.value.outcome === "accepted" &&
+      receipt.value.operationId === child.operationId &&
+      receipt.value.sessionId === session.sessionId &&
+      receipt.value.sessionEpoch === session.sessionEpoch &&
+      receipt.value.bytesBase64 === bytesBase64,
+  };
+}

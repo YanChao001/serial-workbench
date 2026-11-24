@@ -115,6 +115,13 @@ function Plan({ steps }: { steps: readonly CommandSequenceStep[] }) {
                 {t("commandSequence.previewSend")}{" "}
                 <code className="break-all">{formatHex(step.bytes)}</code>
               </div>
+              {step.writeWaitMs !== undefined && (
+                <p className="text-muted-foreground">
+                  {t("commandSequence.previewWriteWait", {
+                    ms: step.writeWaitMs,
+                  })}
+                </p>
+              )}
               {step.expect && (
                 <div className="mt-1 space-y-1 border-s ps-3 text-muted-foreground">
                   <p>

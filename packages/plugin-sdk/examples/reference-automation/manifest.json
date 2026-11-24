@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.reference.automation",
-  "version": "0.1.7",
+  "version": "0.1.8",
   "displayName": "Serial Workbench Automation",
   "description": "Run serial schedules, response checks and Modbus transactions",
   "license": "Apache-2.0",

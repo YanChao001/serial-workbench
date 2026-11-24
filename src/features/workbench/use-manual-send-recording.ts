@@ -72,13 +72,21 @@ export function useManualSendRecording(
     discard,
   });
 
-  async function observe(bytes: Uint8Array, send: () => Promise<Operation>) {
+  async function observe(
+    bytes: Uint8Array,
+    writeWaitMs: string,
+    send: (guardRevision: boolean) => Promise<Operation>,
+  ) {
     const capture = active.current;
-    if (!capture || capture.recording.scope !== scope) return send();
-    const index = capture.recording.add(bytes, performance.now());
+    if (!capture || capture.recording.scope !== scope) return send(false);
+    const index = capture.recording.add(
+      bytes,
+      performance.now(),
+      Number(writeWaitMs),
+    );
     if (index === undefined) {
       if (snapshot?.phase === "recording") publish(capture);
-      return send();
+      return send(false);
     }
     publish(capture);
 
@@ -90,7 +98,7 @@ export function useManualSendRecording(
 
     let admitted: Operation;
     try {
-      admitted = await send();
+      admitted = await send(true);
     } catch (error) {
       settle();
       throw error;

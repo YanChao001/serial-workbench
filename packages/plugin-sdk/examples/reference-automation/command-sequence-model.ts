@@ -9,6 +9,8 @@ import { repeatSendFrameBytes } from "./repeat-send-settings.ts";
 export const commandSequenceAction = "swb.reference.automation.sequence";
 export const builtinCommandSequenceAction = "swb.builtin.automation.sequence";
 export const commandSequenceMaxBytes = 32_768;
+export const commandSequenceFrameBytes = repeatSendFrameBytes;
+export const commandSequenceMaxWriteWaitMs = 5000;
 const maxExpandedSteps = 64;
 const maxDepth = 5;
 const maxDelayMs = 60_000;
@@ -27,7 +29,13 @@ export class CommandSequenceError extends Error {
 
 export type CommandSequenceStep =
   | { kind: "delay"; path: string; milliseconds: number }
-  | { kind: "send"; path: string; bytes: Uint8Array; expect?: Expectation };
+  | {
+      kind: "send";
+      path: string;
+      bytes: Uint8Array;
+      writeWaitMs?: number;
+      expect?: Expectation;
+    };
 
 type Expectation = {
   bytes: Uint8Array;
@@ -112,13 +120,27 @@ function compileStep(
   const step = object(input, path);
   switch (step.kind) {
     case "send": {
-      fields(step, ["kind", "hex", "expect"], path);
+      fields(step, ["kind", "hex", "writeWaitMs", "expect"], path);
       const bytes = frame(step.hex, variables, path + ".hex");
+      const writeWaitMs = Object.hasOwn(step, "writeWaitMs")
+        ? integer(
+            step.writeWaitMs,
+            1,
+            commandSequenceMaxWriteWaitMs,
+            path + ".writeWaitMs",
+          )
+        : undefined;
+      const sending: CommandSequenceStep = {
+        kind: "send",
+        path,
+        bytes,
+        ...(writeWaitMs !== undefined && { writeWaitMs }),
+      };
       if (!Object.hasOwn(step, "expect"))
         return {
-          steps: [{ kind: "send", path, bytes }],
+          steps: [sending],
           maxSteps: 1,
-          waitMs: 0,
+          waitMs: writeWaitMs ?? 0,
         };
       if (!allowReply)
         fail(
@@ -158,10 +180,12 @@ function compileStep(
       const maxSteps =
         1 + Math.max(onMatch?.maxSteps ?? 0, onTimeout?.maxSteps ?? 0);
       const waitMs =
-        timeoutMs + Math.max(onMatch?.waitMs ?? 0, onTimeout?.waitMs ?? 0);
+        (writeWaitMs ?? 0) +
+        timeoutMs +
+        Math.max(onMatch?.waitMs ?? 0, onTimeout?.waitMs ?? 0);
       budget(maxSteps, waitMs, path);
       return {
-        steps: [{ kind: "send", path, bytes, expect }],
+        steps: [{ ...sending, expect }],
         maxSteps,
         waitMs,
       };

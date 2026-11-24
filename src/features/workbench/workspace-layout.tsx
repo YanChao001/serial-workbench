@@ -1767,18 +1767,36 @@ export function WorkspaceLayout({
           },
         }
       : undefined;
-  async function submitBytes(bytes: Uint8Array, signal?: AbortSignal) {
+  async function submitBytes(
+    bytes: Uint8Array,
+    signal?: AbortSignal,
+    expectedRevision?: string,
+    recordedWriteWaitMs?: string,
+  ) {
     if (isCapture || !session || !target) throw new Error(labels.unavailable);
+    const writeWaitMs =
+      recordedWriteWaitMs ??
+      sendWaitMs(session.configuration, bytes.length, writeWaitMode);
+    // Host admission remains authoritative for the session epoch selected here.
+    if (expectedRevision === undefined)
+      return host.send(target, bytes, signal, writeWaitMs);
+    return host.send(target, bytes, signal, writeWaitMs, expectedRevision);
+  }
+  function submitManualBytes(bytes: Uint8Array, signal?: AbortSignal) {
+    if (!session) return submitBytes(bytes, signal);
     const writeWaitMs = sendWaitMs(
       session.configuration,
       bytes.length,
       writeWaitMode,
     );
-    // Host admission remains authoritative for the session epoch selected here.
-    return host.send(target, bytes, signal, writeWaitMs);
-  }
-  function submitManualBytes(bytes: Uint8Array, signal?: AbortSignal) {
-    return recording.observe(bytes, () => submitBytes(bytes, signal));
+    return recording.observe(bytes, writeWaitMs, (guardRevision) =>
+      submitBytes(
+        bytes,
+        signal,
+        guardRevision ? session.revision : undefined,
+        writeWaitMs,
+      ),
+    );
   }
   const cleared = clearThrough.get(selected ?? "");
   const firstItem = stream?.items[0];
@@ -2289,7 +2307,7 @@ export function WorkspaceLayout({
                       writeWaitMode,
                     ]),
                     send: async (bytes, signal) => {
-                      const admitted = await submitManualBytes(bytes, signal);
+                      const admitted = await submitBytes(bytes, signal);
                       return host.waitForOperation(admitted, signal);
                     },
                     paste,

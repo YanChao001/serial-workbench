@@ -1686,6 +1686,7 @@ export function createHostWorkspace(
     bytes: Uint8Array,
     signal?: AbortSignal,
     writeWaitMs?: string,
+    expectedRevision?: string,
   ) {
     const session = sessionById(target.id);
     if (
@@ -1709,6 +1710,7 @@ export function createHostWorkspace(
           writeWaitMs: writeWaitMs ?? session.configuration.writeWaitMs,
         },
         executionMode: "interactive",
+        expectedRevision,
       },
       signal,
     );

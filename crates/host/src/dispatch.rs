@@ -3339,7 +3339,7 @@ mod tests {
                 "version": 1,
                 "variables": {"code": "51"},
                 "steps": [
-                    {"kind":"send","hex":"${code}","expect":{"hex":"51"}},
+                    {"kind":"send","hex":"${code}","writeWaitMs":3200,"expect":{"hex":"51"}},
                     {"kind":"delay","milliseconds":20},
                     {"kind":"send","hex":"52","expect":{"hex":"52"}}
                 ]

@@ -1136,6 +1136,7 @@ export const zhCN = {
   "commandSequence.preview": "执行预览",
   "commandSequence.previewEmpty": "输入序列定义以预览步骤。",
   "commandSequence.previewSend": "发送",
+  "commandSequence.previewWriteWait": "写入期限 {ms} ms",
   "commandSequence.previewDelay": "等待 {ms} 毫秒",
   "commandSequence.previewExpect": "{ms} 毫秒内等待应答",
   "commandSequence.previewMatch": "应答匹配时",
