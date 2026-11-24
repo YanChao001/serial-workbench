@@ -86,8 +86,16 @@ export type HostState = {
   streams: ReadonlyMap<string, HostStreamView>;
   workspace?: WorkspaceDocumentResult;
 };
+export type CommandBodyFileAccess = Pick<
+  HostContextValue,
+  "fileMetadata" | "readFile" | "pickDroppedFile"
+> & {
+  choose(signal: AbortSignal): Promise<SelectedFileResource | null>;
+};
+
 export type CommandLibraryAccess = {
   owner: string;
+  bodyFiles?: CommandBodyFileAccess;
   files?: {
     importArchive(
       workspaceId: string,

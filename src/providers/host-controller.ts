@@ -1865,6 +1865,14 @@ export function createHostWorkspace(
   };
   const desktopCommandLibrary: CommandLibraryAccess = {
     ...writableCommandLibrary,
+    bodyFiles: connection.lanRoute
+      ? undefined
+      : {
+          choose: (signal) => pickFile("source", signal),
+          pickDroppedFile,
+          fileMetadata,
+          readFile,
+        },
     files: {
       importArchive: importCommandArchive,
       exportArchive: exportCommandArchive,

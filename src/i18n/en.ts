@@ -2215,6 +2215,20 @@ export const en = {
   "commandLibrary.redone": "Edit redone.",
   "commandLibrary.note": "Note",
   "commandLibrary.body": "Command body",
+  "commandLibrary.chooseBodyFile": "Load file…",
+  "commandLibrary.filePrefix": "Leading file bytes",
+  "commandLibrary.cancelBodyFile": "Cancel import",
+  "commandLibrary.emptyBodyFile": "Choose a file containing at least one byte.",
+  "commandLibrary.largeBodyFile":
+    "The command body can load files up to {limit} bytes.",
+  "commandLibrary.changedBodyFile":
+    "The selected file changed. Choose it again.",
+  "commandLibrary.loadBodyFileHint":
+    "Load {bytes} bytes into the draft as HEX.",
+  "commandLibrary.replaceBodyFileHint":
+    "Replace the draft body with {bytes} bytes as HEX.",
+  "commandLibrary.loadBodyFromFile": "Use file bytes",
+  "commandLibrary.replaceBodyFromFile": "Replace command body",
   "commandLibrary.mode": "Send format",
   "commandLibrary.text": "Text",
   "commandLibrary.encoding": "Send encoding",

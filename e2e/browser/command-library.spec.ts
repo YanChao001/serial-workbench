@@ -1,4 +1,5 @@
 /// <reference lib="dom" />
+import { createHash } from "node:crypto";
 import { expect, test, type Locator, type Page } from "@playwright/test";
 import type {
   CommandDraft,
@@ -11,16 +12,47 @@ import { defaults } from "./json-fixtures";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
 const title = "Command library";
+const bodyFileName = "fixture-payload-with-null-and-high-bytes.bin";
+const smallBodyBytes = Buffer.from([0, 255, 36, 123]);
 
 declare global {
   interface Window {
-    commandLibraryFixture: { acceptedWrites: number };
+    commandLibraryFixture: { acceptedWrites: number; bodyReads: number };
   }
 }
 
-async function mockLibrary(page: Page, holdFirstOpen = false) {
+async function mockLibrary(
+  page: Page,
+  options: {
+    holdFirstOpen?: boolean;
+    fileLength?: string;
+    holdBodyRead?: boolean;
+    language?: "en" | "zh";
+  } = {},
+) {
+  const libraryTitle = options.language === "zh" ? "命令库" : title;
+  const bodyBytes =
+    options.fileLength === "21845"
+      ? Buffer.alloc(21_845, 0xa5)
+      : smallBodyBytes;
+  const bodyFile =
+    options.fileLength === undefined
+      ? undefined
+      : {
+          reference: {
+            hostId: "workbench-gui-host",
+            kind: "file",
+            id: "command-body-fixture",
+            revision: "1",
+          } as const,
+          name: bodyFileName,
+          length: options.fileLength,
+          mime: "application/octet-stream",
+        };
   await seedWorkbenchFixture(page, {
-    language: "en",
+    language: options.language ?? "en",
+    theme: options.language === "zh" ? "dark" : "light",
+    transferSource: bodyFile,
     sharedSettings: {
       terminal: {
         receiveMode: "text",
@@ -34,10 +66,10 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
     },
   });
   await page.goto("./#/");
-  const entry = page.getByRole("button", { name: title, exact: true });
+  const entry = page.getByRole("button", { name: libraryTitle, exact: true });
   await expect(entry).toBeVisible();
   await page.evaluate(
-    ({ receiptJson, holdFirstOpen }) => {
+    ({ receiptJson, options, bodyFile, bytesBase64, fingerprint }) => {
       const base = JSON.parse(
         receiptJson,
       ) as import("@serial-workbench/contracts").Operation;
@@ -95,11 +127,11 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
       let revision = 0;
       let allowedToSettle = false;
       let failNextSave = false;
-      window.commandLibraryFixture = { acceptedWrites: 0 };
+      window.commandLibraryFixture = { acceptedWrites: 0, bodyReads: 0 };
       let pending:
         | { id: string; change?: CommandLibraryChange; workspace: string }
         | undefined;
-      let hold = holdFirstOpen;
+      let hold = options.holdFirstOpen;
       let cancelFirstSourcePick = true;
       const fileRef = (id: string) => ({
         hostId: base.executionHostId,
@@ -223,6 +255,70 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
         command: string,
         args: Record<string, unknown> = {},
       ) => {
+        if (
+          bodyFile &&
+          (command === "host_request" || command === "host_raw_request")
+        ) {
+          const query = (
+            args.request as {
+              params?: import("@serial-workbench/contracts").Call;
+            }
+          ).params;
+          if (query?.target.id === bodyFile.reference.id) {
+            if (
+              command === "host_request" &&
+              query.actionId === "file.metadata"
+            )
+              return {
+                ok: true,
+                result: {
+                  kind: "file_metadata",
+                  value: {
+                    fileRef: bodyFile.reference,
+                    purpose: "read_file",
+                    length: bodyFile.length,
+                    fingerprint,
+                  },
+                },
+              };
+            if (
+              command === "host_raw_request" &&
+              query.actionId === "file.read"
+            ) {
+              if (
+                query.params.offset !== "0" ||
+                query.params.maxBytes !== bodyFile.length
+              )
+                throw new Error(
+                  "Command file was not read at its verified size",
+                );
+              window.commandLibraryFixture.bodyReads++;
+              if (options.holdBodyRead)
+                await new Promise<void>((resolve) =>
+                  window.addEventListener(
+                    "release-command-body",
+                    () => resolve(),
+                    { once: true },
+                  ),
+                );
+              return {
+                ok: true,
+                result: {
+                  kind: "file_read",
+                  value: {
+                    fileRef: bodyFile.reference,
+                    offset: "0",
+                    nextOffset: bodyFile.length,
+                    totalBytes: bodyFile.length,
+                    fingerprint,
+                    bytesBase64,
+                    atEnd: true,
+                  },
+                },
+              };
+            }
+          }
+        }
         if (command === "host_open_command_library") {
           const workspace = String(args.workspaceId);
           if (hold) {
@@ -363,10 +459,13 @@ async function mockLibrary(page: Page, holdFirstOpen = false) {
         actorId: "workbench-gui-actor",
         owner: { kind: "host", id: "workbench-gui-host" },
       }),
-      holdFirstOpen,
+      options,
+      bodyFile,
+      bytesBase64: bodyBytes.toString("base64"),
+      fingerprint: createHash("sha256").update(bodyBytes).digest("hex"),
     },
   );
-  const dialog = page.getByRole("dialog", { name: title, exact: true });
+  const dialog = page.getByRole("dialog", { name: libraryTitle, exact: true });
   return { entry, dialog };
 }
 
@@ -738,10 +837,235 @@ test("command editor uses the shared keyboard dropdowns before saving in a narro
   ).toHaveValue("00 FF");
 });
 
+test("a file can replace only the command body after confirmation and save", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 480, height: 720 });
+  const { entry, dialog } = await mockLibrary(page, { fileLength: "4" });
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  const body = dialog.getByRole("textbox", {
+    name: "Command body",
+    exact: true,
+  });
+  const choose = dialog.getByRole("button", {
+    name: "Load file…",
+    exact: true,
+  });
+  const preview = dialog.getByRole("group", {
+    name: bodyFileName,
+    exact: true,
+  });
+  const undo = dialog.getByRole("button", { name: "Undo edit", exact: true });
+  const redo = dialog.getByRole("button", { name: "Redo edit", exact: true });
+  const note = dialog.getByRole("textbox", { name: "Note", exact: true });
+  const encoding = dialog.getByRole("combobox", {
+    name: "Send encoding",
+    exact: true,
+  });
+  const suffix = dialog.getByRole("textbox", {
+    name: "Custom line ending (HEX)",
+    exact: true,
+  });
+  await expect(body).toHaveValue("41 42");
+  const format = dialog.getByRole("combobox", {
+    name: "Send format",
+    exact: true,
+  });
+  await format.click();
+  await page.getByRole("option", { name: "Text", exact: true }).click();
+  await note.fill("Power-up bytes");
+  await body.scrollIntoViewIfNeeded();
+  const [x, y] = await body.evaluate((node) => {
+    const rect = node.getBoundingClientRect();
+    return [
+      (rect.left + rect.width / 2) * devicePixelRatio,
+      (rect.top + rect.height / 2) * devicePixelRatio,
+    ];
+  });
+  await expect
+    .poll(() =>
+      page.evaluate(() => window.workbenchFixture.dropTransferFile(-10, -10)),
+    )
+    .toBe(1);
+  await page.evaluate(
+    ({ x, y }) => window.workbenchFixture.dropTransferFile(x, y, "99999"),
+    { x, y },
+  );
+  expect(
+    await page.evaluate(() => window.workbenchFixture.transferDropClaims),
+  ).toEqual([]);
+  await page.evaluate(
+    ({ x, y }) => window.workbenchFixture.dropTransferFile(x, y),
+    { x, y },
+  );
+  await expect(preview).toContainText(
+    "Replace the draft body with 4 bytes as HEX.",
+  );
+  await expect(preview).toContainText("00 FF 24 7B");
+  const replace = preview.getByRole("button", {
+    name: "Replace command body",
+    exact: true,
+  });
+  expect((await choose.boundingBox())?.height).toBe(
+    (await format.boundingBox())?.height,
+  );
+  expect((await replace.boundingBox())?.height).toBe(
+    (await choose.boundingBox())?.height,
+  );
+  await expect(format).toHaveText("Text");
+  await expect(body).toHaveValue("41 42");
+  await dialog.screenshot({
+    path: info.outputPath("command-file-replace-480px.png"),
+  });
+  await preview
+    .getByRole("button", { name: "Cancel import", exact: true })
+    .click();
+  await expect(choose).toBeFocused();
+  await expect(body).toHaveValue("41 42");
+  await page.setViewportSize({ width: 1240, height: 800 });
+  await choose.press("Enter");
+  await expect(preview).toBeVisible();
+  await dialog.screenshot({
+    path: info.outputPath("command-file-replace-1240px.png"),
+  });
+  await preview
+    .getByRole("button", { name: "Replace command body", exact: true })
+    .press("Enter");
+  await expect(body).toBeFocused();
+  await expect(body).toHaveValue("00 FF 24 7B");
+  await expect(format).toHaveText("HEX");
+  await expect(note).toHaveValue("Power-up bytes");
+  await expect(encoding).toHaveText("UTF-8");
+  await expect(suffix).toHaveValue("00 FF");
+  await undo.click();
+  await expect(body).toHaveValue("41 42");
+  await expect(format).toHaveText("Text");
+  await redo.click();
+  await expect(body).toHaveValue("00 FF 24 7B");
+  await expect(format).toHaveText("HEX");
+  expect(
+    await page.evaluate(() => window.workbenchFixture.transferDropClaims),
+  ).toEqual(["91"]);
+  expect(
+    await page.evaluate(() => window.commandLibraryFixture.acceptedWrites),
+  ).toBe(0);
+  await dialog.getByRole("button", { name: "Save", exact: true }).click();
+  await letSaveFinish(page, 1);
+  await expect(
+    dialog.getByText("Command library saved", { exact: true }),
+  ).toBeVisible();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  await expect(body).toHaveValue("00 FF 24 7B");
+  expect(await page.evaluate(() => window.workbenchFixture.sentBytes)).toEqual(
+    [],
+  );
+});
+
+test("a narrow Chinese command editor loads the largest supported file", async ({
+  page,
+}, info) => {
+  await page.setViewportSize({ width: 420, height: 600 });
+  const { entry, dialog } = await mockLibrary(page, {
+    fileLength: "21845",
+    language: "zh",
+  });
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  await dialog
+    .getByRole("button", { name: "载入文件…", exact: true })
+    .press("Enter");
+  const preview = dialog.getByRole("group", {
+    name: bodyFileName,
+    exact: true,
+  });
+  await expect(preview).toContainText("21,845 字节");
+  await expect(preview.locator("code")).toHaveText("A5 ".repeat(11) + "A5 …");
+  await expect(
+    page.getByText("设置未保存，仅本次会话生效，请重试。", { exact: true }),
+  ).toHaveCount(0);
+  await dialog.screenshot({
+    path: info.outputPath("command-file-replace-420px-zh.png"),
+  });
+  await preview
+    .getByRole("button", { name: "替换命令正文", exact: true })
+    .press("Enter");
+  const body = dialog.getByRole("textbox", { name: "命令正文", exact: true });
+  await expect(body).toHaveValue("A5 ".repeat(21_844) + "A5");
+  await expect(body).toBeFocused();
+  expect(
+    await page.evaluate(() => window.commandLibraryFixture.acceptedWrites),
+  ).toBe(0);
+});
+
+for (const [length, message] of [
+  ["0", "Choose a file containing at least one byte."],
+  ["21846", "The command body can load files up to 21,845 bytes."],
+] as const) {
+  test(
+    "a command draft rejects an invalid file of " +
+      length +
+      " bytes before reading it",
+    async ({ page }) => {
+      const { entry, dialog } = await mockLibrary(page, { fileLength: length });
+      await entry.click();
+      await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+      await dialog
+        .getByRole("button", { name: "Command 2", exact: true })
+        .click();
+      await dialog
+        .getByRole("button", { name: "Load file…", exact: true })
+        .click();
+      await expect(dialog.getByRole("alert")).toHaveText(message);
+      await expect(
+        dialog.getByRole("textbox", { name: "Command body", exact: true }),
+      ).toHaveValue("41 42");
+      expect(
+        await page.evaluate(() => window.commandLibraryFixture.bodyReads),
+      ).toBe(0);
+    },
+  );
+}
+
+test("a late command file read cannot edit a reopened command", async ({
+  page,
+}) => {
+  const { entry, dialog } = await mockLibrary(page, {
+    fileLength: "4",
+    holdBodyRead: true,
+  });
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  await dialog.getByRole("button", { name: "Load file…", exact: true }).click();
+  await expect
+    .poll(() => page.evaluate(() => window.commandLibraryFixture.bodyReads))
+    .toBe(1);
+  await dialog.press("Escape");
+  await expect(dialog).toBeHidden();
+  await entry.click();
+  await dialog.getByRole("button", { name: "Modem", exact: true }).click();
+  await dialog.getByRole("button", { name: "Command 2", exact: true }).click();
+  await page.evaluate(() =>
+    window.dispatchEvent(new Event("release-command-body")),
+  );
+  await expect(
+    dialog.getByRole("textbox", { name: "Command body", exact: true }),
+  ).toHaveValue("41 42");
+  await expect(
+    dialog.getByRole("group", { name: bodyFileName, exact: true }),
+  ).toHaveCount(0);
+  expect(
+    await page.evaluate(() => window.commandLibraryFixture.acceptedWrites),
+  ).toBe(0);
+});
+
 test("a late opening result cannot populate the command library in another workspace", async ({
   page,
 }) => {
-  const { entry, dialog } = await mockLibrary(page, true);
+  const { entry, dialog } = await mockLibrary(page, { holdFirstOpen: true });
   await entry.click();
   await expect(dialog).toBeVisible();
   await dialog.press("Escape");

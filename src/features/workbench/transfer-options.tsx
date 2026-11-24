@@ -1,14 +1,10 @@
-import { useEffect, useEffectEvent, useMemo, useRef, useState } from "react";
+import { useMemo, useRef, useState } from "react";
 import type {
   FileTransferParams,
   Operation,
   Target,
 } from "@serial-workbench/contracts";
-import {
-  onTransferFileDrop,
-  type SelectedFileResource,
-  type TransferDrop,
-} from "@/lib/tauri";
+import type { SelectedFileResource } from "@/lib/tauri";
 import { Button } from "@/components/ui/button";
 import { FolderOpen } from "lucide-react";
 import { Input } from "@/components/ui/input";
@@ -32,6 +28,7 @@ import type {
 } from "@/providers/host-context";
 
 import { useToolActionAvailability } from "./use-tool-action-availability";
+import { useTransferFileDrop } from "./use-transfer-file-drop";
 
 export type TransferOptionsLabels = Record<
   | "transferOptions"
@@ -195,44 +192,12 @@ function TransferOptionsForm({
       length: selected.length,
     }));
   }
-  const receiveDrop = useEffectEvent((drop: TransferDrop) => {
+  useTransferFileDrop(dropZone, !!pickDroppedSource, (drop) => {
     if (locked || !pickDroppedSource) return;
-    const rect = dropZone.current?.getBoundingClientRect();
-    if (!rect || rect.width <= 0 || rect.height <= 0) return;
-    if (
-      typeof drop.x !== "number" ||
-      !Number.isFinite(drop.x) ||
-      typeof drop.y !== "number" ||
-      !Number.isFinite(drop.y)
-    )
-      return;
-    const ratio = window.devicePixelRatio || 1;
-    const x = drop.x / ratio;
-    const y = drop.y / ratio;
-    if (x < rect.left || x >= rect.right || y < rect.top || y >= rect.bottom)
-      return;
     void action.run(async (signal) => {
       acceptSource(await pickDroppedSource(drop, signal), signal);
     });
   });
-  useEffect(() => {
-    if (!pickDroppedSource) return;
-    let active = true;
-    let stop: (() => void) | undefined;
-    void onTransferFileDrop((drop) => {
-      if (active) receiveDrop(drop);
-    }).then(
-      (unlisten) => {
-        if (active) stop = unlisten;
-        else unlisten();
-      },
-      () => {},
-    );
-    return () => {
-      active = false;
-      stop?.();
-    };
-  }, [pickDroppedSource]);
   return (
     <section
       aria-label={labels.transferOptions}
