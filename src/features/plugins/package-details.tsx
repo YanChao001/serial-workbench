@@ -104,6 +104,7 @@ export function PackageDetails({
   }, [transitional, blocked, loading, error, reload]);
 
   const source = data?.installation.verifiedSource;
+  const bundled = source?.source === "swb.product";
   const verified =
     source &&
     sources.some(
@@ -113,11 +114,16 @@ export function PackageDetails({
         key.keyId === source.keyId &&
         key.publicKeySha256 === source.publicKeySha256,
     );
-  const sourceLabel = source
-    ? t(verified ? "plugins.verifiedSource" : "plugins.sourceNoLongerTrusted", {
-        source: source.source,
-      })
-    : t("plugins.unverified");
+  const sourceLabel = bundled
+    ? t("plugins.bundledSource")
+    : source
+      ? t(
+          verified ? "plugins.verifiedSource" : "plugins.sourceNoLongerTrusted",
+          {
+            source: source.source,
+          },
+        )
+      : t("plugins.unverified");
   const params = { id, archiveSha256 };
   const canConfirmTrust = !blocked && !loading && !error && manifest;
   const status =
@@ -146,7 +152,7 @@ export function PackageDetails({
       ) : null}
       {data ? (
         <p className="flex min-w-0 items-center gap-1.5 text-xs text-muted-foreground">
-          {verified ? (
+          {verified || bundled ? (
             <ShieldCheckIcon aria-hidden="true" className="size-4 shrink-0" />
           ) : (
             <ShieldQuestionMarkIcon

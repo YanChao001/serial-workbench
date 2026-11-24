@@ -12,6 +12,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
 import test from "node:test";
+import framing from "../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import * as components from "./components-build.mjs";
 import { buildApplication } from "./build-lib.mjs";
@@ -188,6 +189,14 @@ test("components build first with one target and manifest hashes real bytes", as
   assert.equal(calls[0][1][calls[0][1].indexOf("--target") + 1], plan.target);
   assert.equal(result.manifest.protocol, hostCatalog.protocolVersion);
   assert.equal(result.manifest.components.length, 3);
+  assert.deepEqual(result.manifest.bundledNodePackages, [
+    {
+      id: framing.id,
+      version: framing.version,
+      archiveSha256: framing.archiveSha256,
+      hostComponent: "serial-workbench-host.exe",
+    },
+  ]);
   assert.equal(
     result.manifest.components[0].sha256,
     createHash("sha256")

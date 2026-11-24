@@ -3,6 +3,7 @@ import { type Page } from "@playwright/test";
 import { catalog, clientDefaults, defaults } from "./json-fixtures";
 import { TX_MAX_BYTES } from "../../packages/contracts/src/generated/types";
 import type {
+  ActionSpec,
   BrowserAccessState,
   BrowserTakeoverRequest,
   LanAccessParams,
@@ -21,6 +22,7 @@ import type {
   Query,
   Call,
   FileMetadata,
+  FileReadResult,
   NodePackageInstallation,
   NodePackageSourceKey,
   NodePackageSummary,
@@ -208,6 +210,7 @@ export async function seedWorkbenchFixture(
     pendingTakeover,
     lanOwner,
     nodeThemes = [],
+    framing,
   }: {
     sidebarCollapsed?: boolean;
     backgroundIntensity?: number;
@@ -233,10 +236,12 @@ export async function seedWorkbenchFixture(
     pendingTakeover?: BrowserTakeoverRequest;
     lanOwner?: { hostId: string; address: string };
     nodeThemes?: FixtureNodeThemes;
+    framing?: { action: ActionSpec; page: FileReadResult };
     plugin?: {
       archive: SelectedFileResource;
       installation: NodePackageInstallation;
-      source: NodePackageSourceKey;
+      source?: NodePackageSourceKey;
+      initiallyInstalled?: boolean;
     };
   },
 ) {
@@ -411,7 +416,12 @@ export async function seedWorkbenchFixture(
     },
     "catalog.list": {
       kind: "catalog",
-      value: { catalogVersion: "1", items: workbenchCatalog },
+      value: {
+        catalogVersion: "1",
+        items: framing
+          ? [...workbenchCatalog, framing.action]
+          : workbenchCatalog,
+      },
     },
     "device.list": {
       kind: "devices",
@@ -484,6 +494,7 @@ export async function seedWorkbenchFixture(
     pendingTakeover,
     lanOwner,
     nodeThemes,
+    framing,
   };
   await page.addInitScript((raw: string) => {
     const {
@@ -515,7 +526,9 @@ export async function seedWorkbenchFixture(
       pendingTakeover,
       lanOwner,
       nodeThemes,
+      framing,
     } = JSON.parse(raw) as typeof fixturePayload;
+    let framingOperation: Operation | undefined;
     let replayPlayback = replayProfile?.page.playback;
     let replayReadIndex = 0;
     const replayControls = new Map<string, Operation>();
@@ -580,9 +593,28 @@ export async function seedWorkbenchFixture(
     };
     let sharedActivityRevision = 0n;
     let sharedActivity: { items: unknown[] } = { items: [] };
-    let pluginRevision = 0;
+    function summarizePlugin({
+      manifest,
+      archiveSha256,
+      enabled,
+      executionTrust,
+      verifiedSource,
+    }: NodePackageInstallation): NodePackageSummary {
+      return {
+        id: manifest.id,
+        displayName: manifest.displayName,
+        version: manifest.version,
+        archiveSha256,
+        enabled,
+        executionApproved: Boolean(executionTrust),
+        sourceVerified: Boolean(verifiedSource),
+      };
+    }
+    let pluginRevision = plugin?.initiallyInstalled ? 1 : 0;
     let activePluginReads = 0;
-    let pluginSummary: NodePackageSummary | undefined;
+    let pluginSummary = plugin?.initiallyInstalled
+      ? summarizePlugin(plugin.installation)
+      : undefined;
     const retained = JSON.parse(
       sessionStorage.getItem("workbench-native-fixture") ?? "null",
     ) as {
@@ -1116,18 +1148,13 @@ export async function seedWorkbenchFixture(
                 };
               if (intent.expectedRevision !== String(pluginRevision))
                 throw new Error("Unexpected plugin revision");
-              const { archiveSha256, manifest, verifiedSource } =
-                plugin.installation;
+              const { archiveSha256 } = plugin.installation;
               if (intent.kind === "install") {
-                pluginSummary = {
-                  id: manifest.id,
-                  displayName: manifest.displayName,
-                  version: manifest.version,
-                  archiveSha256,
+                pluginSummary = summarizePlugin({
+                  ...plugin.installation,
                   enabled: false,
-                  executionApproved: false,
-                  sourceVerified: Boolean(verifiedSource),
-                };
+                  executionTrust: null,
+                });
               } else {
                 if (
                   !pluginSummary ||
@@ -1358,6 +1385,35 @@ export async function seedWorkbenchFixture(
               if (request.method === "action.invoke")
                 fixture.invocations.push(request.params);
               if (
+                framing &&
+                request.method === "action.invoke" &&
+                request.params.actionId === framing.action.actionId
+              ) {
+                framingOperation = {
+                  ...sentOperation,
+                  operationId: framing.page.fileRef.id,
+                  rootOperationId: framing.page.fileRef.id,
+                  actionId: framing.action.actionId,
+                  target: request.params.target,
+                  executionMode: request.params.executionMode ?? "independent",
+                  requestId: request.params.requestId,
+                  result: {
+                    kind: "reference",
+                    value: { resultRef: framing.page.fileRef },
+                  },
+                };
+                return {
+                  ok: true,
+                  result: {
+                    operation: {
+                      ...framingOperation,
+                      state: "queued",
+                      result: undefined,
+                    },
+                  },
+                };
+              }
+              if (
                 replayPlayback &&
                 request.method === "action.invoke" &&
                 request.params.actionId === "replay.control"
@@ -1562,6 +1618,33 @@ export async function seedWorkbenchFixture(
               fixture.hostQueries.push(query.actionId);
               fixture.queryInputs.push(query);
               if (
+                framingOperation &&
+                query.actionId === "operation.get" &&
+                query.params.operationId === framingOperation.operationId
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "operation",
+                    value: { operation: framingOperation },
+                  },
+                };
+              if (
+                framing &&
+                query.actionId === "file.read" &&
+                query.target.id === framing.page.fileRef.id
+              ) {
+                if (
+                  command !== "host_raw_request" ||
+                  query.params.offset !== "0"
+                )
+                  throw new Error("Frame result must start on the Raw channel");
+                return {
+                  ok: true,
+                  result: { kind: "file_read", value: framing.page },
+                };
+              }
+              if (
                 fixture.limitPluginReads &&
                 (query.actionId.startsWith("node.packages.") ||
                   query.actionId === "node.sources.list")
@@ -1595,7 +1678,10 @@ export async function seedWorkbenchFixture(
                   ok: true,
                   result: {
                     kind: "node_package_sources",
-                    value: { revision: "1", keys: [plugin.source] },
+                    value: {
+                      revision: "1",
+                      keys: plugin.source ? [plugin.source] : [],
+                    },
                   },
                 };
               if (pluginSummary && query.actionId === "node.packages.runtime")

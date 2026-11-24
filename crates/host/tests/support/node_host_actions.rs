@@ -4,7 +4,7 @@ use super::node_package::{archive, manifest, payloads, with_metadata};
 use base64::{Engine, engine::general_purpose::STANDARD};
 use ed25519_dalek::SigningKey;
 use serde_json::{Value, json};
-use serial_workbench_client::{ConnectOptions, HostClient};
+use serial_workbench_client::{ConnectOptions, HostClient, RawConnection};
 use serial_workbench_core::Digest;
 use serial_workbench_core::*;
 use serial_workbench_host::{
@@ -466,6 +466,15 @@ impl Fixture {
         })
     }
     pub(crate) async fn result(&self, client: &HostClient, operation: &Operation) -> Value {
+        let raw = client.connect_raw().await.unwrap();
+        self.result_on_raw(client, &raw, operation).await
+    }
+    pub(crate) async fn result_on_raw(
+        &self,
+        client: &HostClient,
+        raw: &RawConnection,
+        operation: &Operation,
+    ) -> Value {
         let Some(ActionResult::Reference(result)) = &operation.result else {
             panic!("Expected controlled result: {operation:?}")
         };
@@ -477,7 +486,6 @@ impl Fixture {
             session_id: None,
             session_epoch: None,
         };
-        let raw = client.connect_raw().await.unwrap();
         let RpcResult::Query(QueryResult::FileRead(read)) = success(
             raw.request(RpcRequest::Query(self.query_call(
                 client,

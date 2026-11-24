@@ -1,5 +1,5 @@
 //! 产品运行 owner 与启用意图分离；缓存随所属服务通知失效，时限每次检查。
-use super::{NodePackageInstaller, NodePackageSources, VerifiedNodeInstallation, failure};
+use super::{NodePackageInstaller, NodePackageSources, VerifiedNodeInstallation, failure, product};
 use crate::{
     auth::{AuthService, AuthenticatedActor, AuthorizationSnapshot},
     node_backend::{NodeBackend, NodeBackendLimits},
@@ -619,11 +619,9 @@ pub(super) struct ExecutionLease(Arc<Lease>);
 struct Lease {
     store: Store,
     auth: AuthService,
-    actor: AuthenticatedActor,
-    target: Target,
+    authority: LeaseAuthority,
     id: NodePackageId,
     archive: Digest,
-    cleanup: bool,
     stopping: Arc<AtomicBool>,
     initial: Mutex<Option<InitialActivation>>,
     cached: Mutex<Cached>,
@@ -645,20 +643,37 @@ impl InitialActivation {
     }
 }
 struct Cached {
-    authorization: AuthorizationSnapshot,
+    authorization: Option<AuthorizationSnapshot>,
     grants: watch::Receiver<U64>,
     packages: watch::Receiver<U64>,
     sources: watch::Receiver<U64>,
     first: bool,
 }
+#[derive(Clone)]
+pub(super) enum LeaseAuthority {
+    User {
+        actor: Box<AuthenticatedActor>,
+        target: Target,
+        cleanup: bool,
+    },
+    Product {
+        instance_epoch: U64,
+    },
+}
+impl LeaseAuthority {
+    fn snapshot(&self, auth: &AuthService) -> HostResult<Option<AuthorizationSnapshot>> {
+        match self {
+            Self::User { actor, .. } => auth.snapshot(actor).map(Some),
+            Self::Product { .. } => Ok(None),
+        }
+    }
+}
 pub(super) struct LeaseRequest {
     pub store: Store,
     pub auth: AuthService,
-    pub actor: AuthenticatedActor,
-    pub target: Target,
+    pub authority: LeaseAuthority,
     pub id: NodePackageId,
     pub archive: Digest,
-    pub cleanup: bool,
     pub stopping: Arc<AtomicBool>,
     pub initial: Option<(Id, Arc<AtomicBool>)>,
     pub packages: watch::Receiver<U64>,
@@ -667,7 +682,7 @@ pub(super) struct LeaseRequest {
 impl ExecutionLease {
     pub(super) fn new(request: LeaseRequest) -> HostResult<Self> {
         let cached = Cached {
-            authorization: request.auth.snapshot(&request.actor)?,
+            authorization: request.authority.snapshot(&request.auth)?,
             grants: request.auth.subscribe_changes(),
             packages: request.packages,
             sources: request.sources,
@@ -676,11 +691,9 @@ impl ExecutionLease {
         Ok(Self(Arc::new(Lease {
             store: request.store,
             auth: request.auth,
-            actor: request.actor,
-            target: request.target,
+            authority: request.authority,
             id: request.id,
             archive: request.archive,
-            cleanup: request.cleanup,
             stopping: request.stopping,
             initial: Mutex::new(Some(InitialActivation {
                 operation: request.initial,
@@ -749,8 +762,8 @@ impl ExecutionLease {
             cached.grants.borrow_and_update();
             cached.packages.borrow_and_update();
             cached.sources.borrow_and_update();
-            cached.authorization = lease.auth.snapshot(&lease.actor)?;
-            if !lease.cleanup {
+            cached.authorization = lease.authority.snapshot(&lease.auth)?;
+            if !matches!(lease.authority, LeaseAuthority::User { cleanup: true, .. }) {
                 let package = NodePackageInstaller::read_snapshot(&lease.store)?
                     .packages
                     .into_iter()
@@ -766,20 +779,39 @@ impl ExecutionLease {
                 {
                     return Err(failure("PERMISSION_DENIED", "nodeExecutionTrustChanged"));
                 }
+                if let LeaseAuthority::Product { instance_epoch } = &lease.authority {
+                    if lease.store.identity()?.instance_epoch != *instance_epoch {
+                        return Err(failure("EPOCH_MISMATCH", "productActivationEpoch"));
+                    }
+                    if !product::has_product_origin(&package) {
+                        return Err(failure("PERMISSION_DENIED", "productActivationOrigin"));
+                    }
+                }
                 if let Some(source) = &package.verified_source {
                     NodePackageSources::new(lease.store.clone()).require_current(source)?;
                 }
             }
             cached.first = false;
         }
-        let permission = if lease.cleanup && lease.actor.is_user_control() {
-            // 人工撤执行确认只授予清理；不能把控制身份当成激活或后台运行主体。
-            lease.auth.require_control(&lease.actor)?;
-            "auth.manage"
-        } else {
-            "plugins.manage"
-        };
-        cached.authorization.require(permission, &lease.target)?;
+        if let LeaseAuthority::User {
+            actor,
+            target,
+            cleanup,
+        } = &lease.authority
+        {
+            let permission = if *cleanup && actor.is_user_control() {
+                // 人工撤执行确认只授予清理；不能把控制身份当成激活或后台运行主体。
+                lease.auth.require_control(actor)?;
+                "auth.manage"
+            } else {
+                "plugins.manage"
+            };
+            cached
+                .authorization
+                .as_ref()
+                .ok_or_else(|| failure("PERMISSION_DENIED", "activationActorRequired"))?
+                .require(permission, target)?;
+        }
         drop(cached);
         if let Some(initial) = lease
             .initial

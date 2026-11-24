@@ -464,6 +464,19 @@ impl Store {
         }
         Ok(result)
     }
+    pub(crate) fn initialize_schema_document(
+        &self,
+        id: &Id,
+        expected: U64,
+        value: SchemaObject,
+        marker: &Id,
+    ) -> HostResult<StoredDocument<SchemaObject>> {
+        let id = id.clone();
+        let marker = marker.clone();
+        self.request(move |database| {
+            database.initialize_schema_document(&id, expected, value, &marker)
+        })
+    }
     pub(crate) fn compare_and_swap_workspace(
         &self,
         id: &Id,

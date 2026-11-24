@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { expect, test } from "@playwright/test";
 import type { NodePackageSourceKey } from "@serial-workbench/contracts";
+import bundledFraming from "../../crates/host/resources/node-packages/framing.json" with { type: "json" };
 import { validateNodePackageManifest } from "../../packages/contracts/src/generated/validators.mjs";
 import { seedWorkbenchFixture } from "./workbench.fixture";
 
@@ -56,6 +57,52 @@ function terminalPlugin() {
     source,
   };
 }
+
+test("an active bundled plugin shows its product source without a user key", async ({
+  page,
+}) => {
+  const manifest: unknown = JSON.parse(
+    readFileSync(
+      new URL(
+        "../../packages/plugin-sdk/examples/reference-framing/manifest.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  if (!validateNodePackageManifest(manifest))
+    throw new Error("Invalid bundled framing manifest");
+  const { source, keyId, publicKeySha256 } = bundledFraming.sourceApproval;
+  const verifiedSource = { source, keyId, publicKeySha256 };
+  await seedWorkbenchFixture(page, {
+    plugin: {
+      archive: terminalPlugin().archive,
+      initiallyInstalled: true,
+      installation: {
+        manifest,
+        archiveSha256: bundledFraming.archiveSha256,
+        verifiedSource,
+        enabled: true,
+        executionTrust: {
+          archiveSha256: bundledFraming.archiveSha256,
+          permissions: manifest.permissions,
+          verifiedSource,
+        },
+      },
+    },
+  });
+  await page.goto("./#/plugins");
+  const row = page.getByRole("button", {
+    name: /Serial Workbench Framing.*Enabled/,
+  });
+  await row.click();
+  await expect(page.getByText("Included with Serial Workbench")).toBeVisible();
+  await expect(page.getByText(/Trust removed for/)).toHaveCount(0);
+  await page.getByRole("button", { name: "More actions" }).click();
+  await expect(
+    page.getByRole("menuitem", { name: "Disable", exact: true }),
+  ).toBeVisible();
+});
 
 test("install, trust and enable a plugin without exposing internal identifiers", async ({
   page,

@@ -13,6 +13,9 @@ mod support;
 mod parity_clients;
 use parity_clients::{Cli, binary, drain, structured, tool};
 
+#[path = "client_parity/reference_framing.rs"]
+mod reference_framing;
+
 #[path = "client_parity/node_plugins.rs"]
 mod node_plugins;
 

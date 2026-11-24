@@ -1,7 +1,7 @@
 //! 安装先发布独立代码对象，再由 SQLite CAS 决定可见版本；孤立对象不是已安装版本。
 use super::{
     Control, NodeExecutionTrust, NodePackageLimits, VerifiedNodePackage, VerifiedNodePackageSource,
-    failure, invalid, limit, paths::PackagePaths,
+    failure, invalid, limit, paths::PackagePaths, product,
 };
 use crate::{files::references::PathGuard, storage::Store};
 use serde::{Deserialize, Serialize};
@@ -124,6 +124,7 @@ pub struct NodePackageInstaller {
 pub(super) struct InstallLifecycle<A, B> {
     pub authorize: A,
     pub before_commit: B,
+    pub product_marker: Option<Id>,
 }
 impl NodePackageInstaller {
     pub fn new(store: Store, profile: &Path) -> HostResult<Self> {
@@ -343,9 +344,53 @@ impl NodePackageInstaller {
             InstallLifecycle {
                 authorize: || Ok(()),
                 before_commit: || Ok(()),
+                product_marker: None,
             },
             |_, _| Ok(()),
         )
+    }
+
+    /// 首次接线在 Host 独占 profile、对外服务前执行。
+    pub(super) fn provision_bundled_framing(
+        &self,
+        limits: &NodePackageLimits,
+        cancel: &AtomicBool,
+    ) -> HostResult<()> {
+        let marker = Id::try_from("node-packages:bundled-framing")?;
+        if self.store.read_document(&marker)?.is_some() {
+            return Ok(());
+        }
+        let control = Control::new(cancel, limits.timeout)?;
+        control.check()?;
+        let snapshot = self.snapshot()?;
+        if snapshot
+            .packages
+            .iter()
+            .any(|package| &package.manifest.id == product::framing_id())
+        {
+            // 旧 profile 的同 ID 安装仍归用户，以后移除也不会意外换回随包版本。
+            control.check()?;
+            self.store.compare_and_swap_document(
+                &marker,
+                0.into(),
+                serde_json::from_value(serde_json::json!({"formatVersion": "1"}))
+                    .map_err(|_| storage())?,
+            )?;
+            return Ok(());
+        }
+        self.install_authorized(
+            product::bundled_framing(limits, cancel)?,
+            snapshot.revision,
+            limits,
+            cancel,
+            InstallLifecycle {
+                authorize: || Ok(()),
+                before_commit: || Ok(()),
+                product_marker: Some(marker),
+            },
+            |_, _| Ok(()),
+        )?;
+        Ok(())
     }
 
     pub(super) fn install_authorized<G>(
@@ -370,10 +415,11 @@ impl NodePackageInstaller {
             return Err(conflict());
         }
         if let Some(previous) = document.packages.get(package.manifest().id.as_str())
-            && !package
-                .manifest()
-                .version
-                .is_upgrade_from(&previous.manifest.version)
+            && (lifecycle.product_marker.is_some()
+                || !package
+                    .manifest()
+                    .version
+                    .is_upgrade_from(&previous.manifest.version))
         {
             return Err(failure("VERSION_CONFLICT", "packageVersion"));
         }
@@ -409,9 +455,18 @@ impl NodePackageInstaller {
                 code.sync_parent().map_err(|_| storage())?;
             }
             let previous = document.packages.get(package.manifest().id.as_str());
-            let execution_trust = previous.and_then(|previous| inherited_trust(previous, &package));
-            let enabled =
-                execution_trust.is_some() && previous.is_some_and(|previous| previous.enabled);
+            let product_initial = lifecycle.product_marker.is_some();
+            let execution_trust = if product_initial {
+                Some(NodeExecutionTrust {
+                    archive_sha256: package.archive_sha256().clone(),
+                    permissions: package.manifest().permissions.clone(),
+                    verified_source: package.verified_source().cloned(),
+                })
+            } else {
+                previous.and_then(|previous| inherited_trust(previous, &package))
+            };
+            let enabled = product_initial
+                || (execution_trust.is_some() && previous.is_some_and(|previous| previous.enabled));
             let installed = InstalledNodePackage {
                 manifest: package.manifest().clone(),
                 archive_sha256: package.archive_sha256().clone(),
@@ -437,8 +492,17 @@ impl NodePackageInstaller {
             control.check()?;
             let committed = {
                 let _authority = (lifecycle.authorize)()?;
-                self.store
-                    .compare_and_swap_schema_document(&document_id(), revision, value)?
+                if let Some(marker) = &lifecycle.product_marker {
+                    self.store.initialize_schema_document(
+                        &document_id(),
+                        revision,
+                        value,
+                        marker,
+                    )?
+                } else {
+                    self.store
+                        .compare_and_swap_schema_document(&document_id(), revision, value)?
+                }
             };
             // 提交后不再响应取消，成功提交不能被报告为未安装。
             Ok(NodePackageInstallReceipt {

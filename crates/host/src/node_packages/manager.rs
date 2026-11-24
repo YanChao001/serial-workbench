@@ -212,6 +212,15 @@ impl NodePackageManager {
             .recover_uninstalls(limits, cancel)
     }
 
+    pub(crate) fn provision_bundled_framing(
+        &self,
+        limits: &NodePackageLimits,
+        cancel: &AtomicBool,
+    ) -> HostResult<()> {
+        NodePackageInstaller::new(self.store.clone(), self.store.profile())?
+            .provision_bundled_framing(limits, cancel)
+    }
+
     #[cfg(test)]
     pub(crate) fn hold_installation_for_test(&self) -> tokio::sync::OwnedSemaphorePermit {
         self.capacity
@@ -553,14 +562,17 @@ impl NodePackageManager {
             if let Some(permit) = permit {
                 break permit;
             }
-            if !matches!((&authority.mutation,recovering),
-                (NodeMutation::SetEnabled(params),Some(id)) if params.enabled && params.id==id)
-            {
+            let waits_for_recovery = match (&authority.mutation, recovering) {
+                (NodeMutation::Install(_), Some(_)) => true,
+                (NodeMutation::SetEnabled(params), Some(id)) => params.enabled && params.id == id,
+                _ => false,
+            };
+            if !waits_for_recovery {
                 return Err(failure("HOST_BUSY", "installationCapacity"));
             }
             #[cfg(test)]
             self.runtime.waiting_for_recovery().await?;
-            // 同包启动恢复只登记一次；等待不延长原预算，也不接管后台工作的生命周期。
+            // 后台恢复归还名额后才继续。等待沿用原预算，不接管恢复生命周期。
             tokio::select! {
                 _ = recovery.changed() => {},
                 _ = operations.changed() => {},
@@ -880,6 +892,7 @@ impl NodePackageManager {
             super::install::InstallLifecycle {
                 authorize: || self.commit_guard(authority, control),
                 before_commit: || self.settle_before_upgrade(authority, control, &package_id),
+                product_marker: None,
             },
             |completed, total| {
                 let progress = Progress {
@@ -1016,11 +1029,13 @@ impl NodePackageManager {
         super::runtime::ExecutionLease::new(super::runtime::LeaseRequest {
             store: self.store.clone(),
             auth: self.auth.clone(),
-            actor: authority.actor.clone(),
-            target: authority.call.target.clone(),
+            authority: super::runtime::LeaseAuthority::User {
+                actor: Box::new(authority.actor.clone()),
+                target: authority.call.target.clone(),
+                cleanup,
+            },
             id: params.id.clone(),
             archive: params.archive_sha256.clone(),
-            cleanup,
             stopping: self.runtime.stop_signal(),
             initial: Some((
                 authority.operation_id.clone(),

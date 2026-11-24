@@ -8,6 +8,7 @@
 *.icns binary
 *.jpg binary
 *.woff2 binary
+crates/host/resources/node-packages/*.zip binary
 
 # 已锁定的密码学输入保留上游原始字节
 resources/runtime/*.gpg -text

@@ -1089,7 +1089,12 @@ async fn exercise_terminal(
     .unwrap()
     .unwrap();
     let before = list(&bridge, business).await;
-    assert!(before.packages.is_empty());
+    assert!(
+        before
+            .packages
+            .iter()
+            .all(|package| package.id.as_str() != "swb.reference.terminal")
+    );
     let ActionResult::NodePackageInstalled(installed) = apply(
         &bridge,
         &attached,
@@ -1123,9 +1128,15 @@ async fn exercise_terminal(
         archive_sha256: installed.package.archive_sha256.clone(),
     };
     let snapshot = list(&bridge, business).await;
+    let (terminal_entries, other_entries): (Vec<_>, Vec<_>) = snapshot
+        .packages
+        .iter()
+        .partition(|package| package.id == identity.id);
+    assert_eq!(terminal_entries, vec![&installed.package]);
     assert_eq!(
-        snapshot.packages.as_slice(),
-        std::slice::from_ref(&installed.package)
+        other_entries,
+        before.packages.iter().collect::<Vec<_>>(),
+        "Installing the reference terminal must preserve existing packages"
     );
     deny_confirmation(&mcp, &identity, snapshot.revision).await;
     assert_eq!(list(&bridge, business).await, snapshot);
@@ -1352,11 +1363,68 @@ async fn exercise_terminal(
     };
     assert!(!revoked_source.key.approved);
     assert_eq!(revoked_source.key.public_key_sha256, public_key_sha256);
+
+    // 首方分帧会和终端共用一个 Node。先验共享占用的拒绝，再正常释放占用。
+    let framing = before
+        .packages
+        .iter()
+        .find(|package| package.id.as_str() == "swb.reference.framing" && package.enabled);
+    let removal_revision = if let Some(framing) = framing {
+        let occupied = runtime(&bridge, business, &framing.id).await;
+        assert_eq!(occupied.phase, NodePackageRuntimePhase::Active);
+        let installed = list(&bridge, business).await;
+        assert_eq!(installed.revision, disabled.revision);
+        let accepted = bridge
+            .apply_node_intent(
+                "main",
+                attached.generation,
+                LocalNodeIntent::Uninstall {
+                    expected_revision: installed.revision,
+                    params: identity.clone(),
+                },
+            )
+            .await
+            .unwrap();
+        let blocked = wait_terminal(&bridge, business, &accepted.operation_id).await;
+        assert_eq!(blocked.state, OperationState::Failed, "{blocked:?}");
+        assert_eq!(
+            blocked.error.as_ref().map(|error| error.code.as_str()),
+            Some("HOST_BUSY")
+        );
+        assert!(blocked.result.is_none());
+        assert_eq!(list(&bridge, business).await, installed);
+        assert_eq!(runtime(&bridge, business, &framing.id).await, occupied);
+        let ActionResult::NodePackageChanged(paused) = apply(
+            &bridge,
+            &attached,
+            LocalNodeIntent::SetEnabled {
+                expected_revision: installed.revision,
+                params: NodePackageSetEnabledParams {
+                    id: framing.id.clone(),
+                    archive_sha256: framing.archive_sha256.clone(),
+                    enabled: false,
+                },
+            },
+        )
+        .await
+        else {
+            panic!("missing framing pause receipt");
+        };
+        assert!(!paused.package.enabled);
+        assert_eq!(
+            runtime(&bridge, business, &framing.id).await.phase,
+            NodePackageRuntimePhase::Inactive
+        );
+        paused.revision
+    } else {
+        disabled.revision
+    };
+
     let ActionResult::NodePackageUninstalled(removed) = apply(
         &bridge,
         &attached,
         LocalNodeIntent::Uninstall {
-            expected_revision: disabled.revision,
+            expected_revision: removal_revision,
             params: identity.clone(),
         },
     )
@@ -1366,7 +1434,37 @@ async fn exercise_terminal(
     };
     assert_eq!(removed.id, identity.id);
     assert_eq!(removed.archive_sha256, identity.archive_sha256);
-    assert!(list(&bridge, business).await.packages.is_empty());
+    if let Some(framing) = framing {
+        let ActionResult::NodePackageChanged(restored) = apply(
+            &bridge,
+            &attached,
+            LocalNodeIntent::SetEnabled {
+                expected_revision: removed.revision,
+                params: NodePackageSetEnabledParams {
+                    id: framing.id.clone(),
+                    archive_sha256: framing.archive_sha256.clone(),
+                    enabled: true,
+                },
+            },
+        )
+        .await
+        else {
+            panic!("missing framing restore receipt");
+        };
+        assert_eq!(restored.package, *framing);
+        assert_eq!(
+            runtime(&bridge, business, &framing.id).await.phase,
+            NodePackageRuntimePhase::Active
+        );
+        eprintln!(
+            "terminal_shared_owner busy_preserved_snapshot=true released_owner=true terminal_uninstalled=true framing_restored=true"
+        );
+    }
+    assert_eq!(
+        list(&bridge, business).await.packages,
+        before.packages,
+        "Uninstalling the reference terminal must preserve existing packages"
+    );
     eprintln!("terminal_management disabled=true source_revoked=true uninstalled=true");
 
     mcp.close().await.unwrap();

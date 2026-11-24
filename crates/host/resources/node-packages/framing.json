@@ -1,0 +1,16 @@
+{
+  "id": "swb.reference.framing",
+  "version": "0.1.0",
+  "archiveSha256": "8680240ff58b602174c677504e8dce41957be091e46d660f9e1b06ff1df92d85",
+  "compiledModuleSha256": "1c1e5592fae13cdf669ce150e97862d9b1aa050262b155a6d446cf8ab9bdd0d2",
+  "manifestSha256": "f01c8e8b06d5d7f88f1e3163847aa330f564b9c335e20e28c970f178bdbf0548",
+  "sourceApproval": {
+    "keyId": "built-in-framing-0.1.0",
+    "publicKey": [
+      218, 68, 28, 53, 83, 181, 155, 23, 229, 214, 0, 101, 163, 62, 187, 224,
+      184, 175, 0, 99, 78, 102, 199, 62, 82, 180, 251, 48, 212, 50, 246, 72
+    ],
+    "publicKeySha256": "3127513e54fbbc028d8ef50525d92c3b724ecc7117f9b71c5aff8a2554ab3711",
+    "source": "swb.product"
+  }
+}

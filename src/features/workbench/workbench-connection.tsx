@@ -16,6 +16,7 @@ import {
   Usb,
   FileUp,
   Clapperboard,
+  Brackets,
   Stethoscope,
   ListTodo,
   Gauge,
@@ -381,6 +382,14 @@ export function WorkbenchConnection({
                 <FileUp aria-hidden="true" />
                 {toolLabels?.transfer ?? labels.sendFile}
               </DropdownMenuItem>
+              {toolLabels?.framing ? (
+                <DropdownMenuItem
+                  onSelect={() => onTool("framing", menuTrigger.current)}
+                >
+                  <Brackets aria-hidden="true" />
+                  {toolLabels.framing}
+                </DropdownMenuItem>
+              ) : null}
               <DropdownMenuItem
                 onSelect={() => onTool("tasks", menuTrigger.current)}
               >

@@ -284,16 +284,20 @@ impl Host {
             node_packages.provide_runtime(node)?;
         }
         let recovery_manager = node_packages.clone();
+        let provision_bundled = startup_config.is_some();
         if let Err(error) = blocking(move || {
-            recovery_manager.recover_installations(
-                &crate::node_packages::NodePackageLimits::default(),
-                &std::sync::atomic::AtomicBool::new(false),
-            )
+            let limits = crate::node_packages::NodePackageLimits::default();
+            let cancel = std::sync::atomic::AtomicBool::new(false);
+            recovery_manager.recover_installations(&limits, &cancel)?;
+            if provision_bundled {
+                recovery_manager.provision_bundled_framing(&limits, &cancel)?;
+            }
+            Ok(())
         })
         .await
         {
             // 待恢复代码保持原件；实际Node效果会在安装名额内重试并拒绝未解决状态。
-            eprintln!("Node package cleanup remains pending: {}", error.code);
+            eprintln!("Node package preparation remains pending: {}", error.code);
         }
         let client_effects = crate::client_effects::ClientEffects::new(store.clone(), auth.clone());
         let capture_api = crate::capture_api::CaptureApi::new(crate::capture::CaptureRuntime {
@@ -2681,6 +2685,81 @@ async fn blocking<T: Send + 'static>(
 mod tests {
     use super::*;
     use crate::ipc::{HostServer, InstanceGuard};
+
+    #[tokio::test]
+    #[ignore = "Needs a verified native Node distribution in SWB_NODE_RUNTIME_TEST_ROOT"]
+    async fn native_node_bundled_framing_registers_on_first_start_and_restart() {
+        use crate::node_runtime::{NodeRuntimeLimits, verify_node_runtime};
+        use std::{path::PathBuf, sync::atomic::AtomicBool, time::Duration};
+
+        let root = PathBuf::from(std::env::var_os("SWB_NODE_RUNTIME_TEST_ROOT").unwrap());
+        let profile = crate::test_support::Profile::isolated("host-bundled-framing-");
+        let package_id = NodePackageId::try_from("swb.reference.framing").unwrap();
+        let mut first_revision = None;
+        for epoch in [1_u64, 2] {
+            let server = HostServer::bind(profile.path()).await.unwrap();
+            let store = server.store();
+            let runtime = verify_node_runtime(
+                &root,
+                &NodeRuntimeLimits::default(),
+                &AtomicBool::new(false),
+            )
+            .unwrap();
+            let host = Host::initialize(
+                store.clone(),
+                server.auth(),
+                Arc::new(crate::clock::SystemClock::new().unwrap()),
+                DeviceSource::Opener(crate::device::DeviceService::virtual_opener()),
+                Some(StartupConfigSnapshot {
+                    profile_reference: StartupProfileReference::HostProfile,
+                    profile_source: StartupConfigSource::Argument,
+                    log_level: StartupLogLevel::Info,
+                    log_level_source: StartupConfigSource::Default,
+                }),
+                Some(runtime),
+            )
+            .await
+            .unwrap();
+            let catalog = &host.inner.registry.runtime;
+            let mut updates = catalog.subscribe();
+            let status = tokio::time::timeout(Duration::from_secs(30), async {
+                loop {
+                    let status = catalog.status(&package_id).unwrap();
+                    if matches!(
+                        status.phase,
+                        NodePackageRuntimePhase::Active | NodePackageRuntimePhase::Failed
+                    ) {
+                        break status;
+                    }
+                    updates.changed().await.unwrap();
+                }
+            })
+            .await;
+            let registered = catalog.snapshot().map(|(_, handlers)| {
+                handlers.iter().any(|handler| {
+                    handler.package() == &package_id
+                        && handler.spec().action_id.as_str() == "swb.reference.framing.scan"
+                })
+            });
+            host.shutdown().await.unwrap();
+            let status = status.expect("bundled parser reached a terminal registration phase");
+            assert_eq!(status.phase, NodePackageRuntimePhase::Active, "{status:?}");
+            assert!(registered.unwrap());
+            assert_eq!(store.identity().unwrap().instance_epoch, U64::from(epoch));
+            let installed =
+                crate::node_packages::NodePackageInstaller::read_snapshot(&store).unwrap();
+            assert_eq!(installed.packages.len(), 1);
+            assert_eq!(
+                status.archive_sha256.as_ref(),
+                Some(&installed.packages[0].archive_sha256)
+            );
+            let revision = first_revision.get_or_insert(installed.revision);
+            assert_eq!(installed.revision, *revision);
+            drop(host);
+            drop(server);
+        }
+    }
+
     #[tokio::test]
     async fn catalog_initialization_releases_the_map_lock_and_cancels_on_close() {
         let h = crate::test_support::Harness::new().await;
