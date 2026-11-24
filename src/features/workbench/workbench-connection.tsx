@@ -45,6 +45,7 @@ import {
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { WorkbenchLabels } from "./labels";
+import { formatSerialLine } from "./serial-configuration";
 import type { WorkbenchTool, WorkspaceLayoutProps } from "./workspace-layout";
 export function WorkbenchConnection({
   recovery,
@@ -139,13 +140,7 @@ export function WorkbenchConnection({
     if (disabled) setDeviceListOpen(false);
   }, [disabled]);
   const menuTrigger = useRef<HTMLButtonElement | null>(null);
-  const parity = { none: "N", even: "E", odd: "O", mark: "M", space: "S" }[
-    configuration.parity
-  ];
-  const stopBits = { one: "1", onePointFive: "1.5", two: "2" }[
-    configuration.stopBits
-  ];
-  const parameterSummary = `${configuration.baudRate} / ${configuration.dataBits}${parity}${stopBits}`;
+  const parameterSummary = formatSerialLine(configuration);
   const parameterPurpose = toolLabels?.parameters ?? labels.status;
   const unmatchedSelection = "unmatched/device";
   return (
@@ -373,6 +368,16 @@ export function WorkbenchConnection({
             ))}
           {
             <>
+              {toolLabels?.sessionTemplates && (
+                <DropdownMenuItem
+                  onSelect={() =>
+                    onTool("sessionTemplates", menuTrigger.current)
+                  }
+                >
+                  <ListOrdered aria-hidden="true" />
+                  {toolLabels.sessionTemplates}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onSelect={() => onTool("diagnostics", menuTrigger.current)}
               >

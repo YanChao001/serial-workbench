@@ -31,6 +31,7 @@ import {
   type ProtocolDefinitionFileAccess,
 } from "./protocol-definition-file";
 import { useToolAction } from "./transfer-capture-actions";
+import { ProtocolByteMap } from "./protocol-byte-map";
 
 type FieldCodec = ReturnType<typeof compileProtocolFieldDocument>["codec"];
 type FieldEditor = {
@@ -121,6 +122,9 @@ export default function ProtocolFieldPreview({
   const current = result && result.frame === frame ? result : undefined;
   const construction = current?.construction;
   const readings = construction?.preview?.readings ?? current?.readings;
+  const previewBytes = construction?.preview?.hex ?? frame?.hex;
+  const previewOrigin =
+    !construction?.preview && frame ? BigInt(frame.byteStart) : 0n;
   const chart =
     chartSelection?.inspection === inspection &&
     chartSelection?.definition === definition &&
@@ -572,6 +576,15 @@ export default function ProtocolFieldPreview({
             </div>
           ) : null}
         </form>
+      ) : null}
+      {previewBytes ? (
+        <ProtocolByteMap
+          key={format + ":" + definition}
+          hex={previewBytes}
+          origin={previewOrigin}
+          generated={Boolean(construction?.preview)}
+          readings={readings}
+        />
       ) : null}
       {inspection?.frames.length ? (
         <FieldChart

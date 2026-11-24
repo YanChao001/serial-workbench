@@ -229,3 +229,72 @@ it("allows Native source selection while transfer rights are unknown and invalid
   view.unmount();
   expect(switched.stopped).toBe(true);
 });
+
+it("resumes a monitored transfer for this session, cancels the exact operation, and shows its terminal evidence", async () => {
+  const cancel = vi.fn().mockResolvedValue(undefined);
+  const sent = {
+    ...operation("matching-file"),
+    actionId: "transfer.file",
+    state: "running",
+    target,
+    result: {
+      kind: "file_transfer",
+      value: {
+        requested: "10",
+        accepted: "4",
+        unknown: "1",
+        peerAcknowledged: false,
+        receiptsRef: {
+          hostId: "host",
+          kind: "file",
+          id: "receipts",
+          revision: "1",
+        },
+      },
+    },
+  } as const;
+  const stale = {
+    ...sent,
+    operationId: "old-file",
+    target: { ...target, sessionEpoch: "0" },
+  };
+  const props = {
+    labels: toolLabels,
+    writeWaitMs: "1000",
+    contextKey: "session:1",
+    target,
+    watchActions: allowControlActions,
+    onCancel: cancel,
+  };
+  const view = render(
+    <TransferOptions {...props} operations={[stale, sent]} />,
+  );
+  expect(screen.getByRole("progressbar")).toHaveAttribute(
+    "aria-valuetext",
+    "4 B / 10 B",
+  );
+  const stop = screen.getByRole("button", { name: toolLabels.cancel });
+  await waitFor(() => expect(stop).toBeEnabled());
+  await userEvent.setup().click(stop);
+  expect(cancel).toHaveBeenCalledExactlyOnceWith(sent, expect.any(AbortSignal));
+  expect(screen.getByText(toolLabels.cancelRequested)).toBeInTheDocument();
+
+  view.rerender(
+    <TransferOptions
+      {...props}
+      operations={[stale, { ...sent, state: "cancelled" }]}
+    />,
+  );
+  expect(
+    screen.getByText(toolLabels.operationText.states.cancelled),
+  ).toBeInTheDocument();
+  expect(
+    screen.getByLabelText(toolLabels.operationText.transfer.acceptedBytes),
+  ).toHaveTextContent("4 B");
+  expect(
+    screen.getByLabelText(toolLabels.operationText.transfer.unknownBytes),
+  ).toHaveTextContent("1 B");
+  expect(
+    screen.queryByRole("button", { name: toolLabels.cancel }),
+  ).not.toBeInTheDocument();
+});

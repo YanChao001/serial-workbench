@@ -109,6 +109,8 @@ import type {
   FileReadParams,
   FileReadResult,
   FileTransferParams,
+  FileTransferReadProgress,
+  FileTransferReadProgressParams,
   FileTransferReceipt,
   FileTransferReceiptsParams,
   FileTransferReceiptsResult,
@@ -605,6 +607,12 @@ export declare function validateFileReadResult(
 export declare function validateFileTransferParams(
   value: unknown,
 ): value is FileTransferParams;
+export declare function validateFileTransferReadProgress(
+  value: unknown,
+): value is FileTransferReadProgress;
+export declare function validateFileTransferReadProgressParams(
+  value: unknown,
+): value is FileTransferReadProgressParams;
 export declare function validateFileTransferReceipt(
   value: unknown,
 ): value is FileTransferReceipt;

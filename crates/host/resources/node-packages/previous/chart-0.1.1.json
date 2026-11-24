@@ -1,0 +1,19 @@
+{
+  "id": "swb.builtin.chart",
+  "version": "0.1.1",
+  "archiveSha256": "4e4c655a945bbeac8fb1dac805ed61ea8128da7c0069e91548cbbdda65c2f84f",
+  "compiledModuleSha256": "b22244ac8dc6e9e9a21a2007eaaf22fdcf76ce3575c2670f3e9960023e5c4d5c",
+  "manifestSha256": "019c122efa351d30ffa53c3172912ace062d8678b3058f471a23fc98bdbfe01a",
+  "viewHtmlSha256": "2fd8c8c040557be18795e6d2a9302e03089bf630cd1357150a15274e5cfb115a",
+  "viewCssSha256": "2caa993f0387fa0a0b923db043f59d05c05d0fdb0577bae8442f11b9785b1b8c",
+  "viewScriptSha256": "01e4df44c744d50757a973756e8f945db787bea683d16b0a7572c51e963c1987",
+  "sourceApproval": {
+    "keyId": "built-in-chart-0.1.1",
+    "publicKey": [
+      21, 180, 15, 56, 115, 166, 181, 123, 77, 121, 179, 182, 145, 92, 68, 172,
+      134, 91, 177, 179, 4, 247, 23, 18, 109, 50, 60, 97, 235, 134, 105, 110
+    ],
+    "publicKeySha256": "557b26c0391851b2f340e397f90149839aceaeccd198c664c134cdc0ed02466e",
+    "source": "swb.product"
+  }
+}

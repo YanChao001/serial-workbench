@@ -1,4 +1,6 @@
 ﻿import {
+  lazy,
+  Suspense,
   useCallback,
   useEffect,
   useId,
@@ -69,6 +71,8 @@ import { WorkbenchNotice } from "./workbench-notice";
 import { modbusSlaveAction } from "./modbus-slave-model";
 import { TestSuiteTool } from "./test-suite-tool";
 import type { WorkbenchTool, WorkbenchToolContext } from "./workspace-layout";
+
+const SessionTemplateTool = lazy(() => import("./session-template-tool"));
 
 /** Owns no Host projection: tool components keep their drafts and Host owns receipts. */
 export function WorkbenchTools({
@@ -264,6 +268,57 @@ export function WorkbenchTools({
       ),
     [watchHostActions, catalog],
   );
+  const hasModbusSlave = catalog.some(
+    (spec) =>
+      spec.actionId === modbusSlaveAction &&
+      spec.targetKinds.includes("session"),
+  );
+  function protocolSessionAccess() {
+    const target = context.target;
+    if (
+      !ready ||
+      !target?.sessionId ||
+      !target.sessionEpoch ||
+      context.isReplay ||
+      context.session?.state !== "open" ||
+      context.session.readOnly
+    )
+      return undefined;
+    return {
+      target,
+      startEventSeq: modbusStartEventSeq(context.items, target),
+      invoke,
+      waitForOperation: host.waitForOperation,
+      readFile: host.readFile,
+    };
+  }
+  if (tool === "sessionTemplates" && context.templateConnection) {
+    const sessionAccess = protocolSessionAccess();
+    return (
+      <Suspense fallback={<p role="status">{t("common.loading")}</p>}>
+        <SessionTemplateTool
+          key={JSON.stringify([generation, context.configurationKey])}
+          connection={context.templateConnection}
+          configuration={context.configuration}
+          session={context.session}
+          error={
+            context.openError?.deviceId === context.templateConnection.deviceId
+              ? context.openError?.message
+              : undefined
+          }
+          modbusAvailable={hasModbusSlave}
+          modbusAccess={
+            sessionAccess && {
+              ...sessionAccess,
+              available: hasModbusSlave,
+              cancel: onCancelOperation,
+            }
+          }
+          beforeReplace={context.beforeReplace}
+        />
+      </Suspense>
+    );
+  }
   if (tool === "controls" && !context.session) return null;
   if (tool === "parameters" || tool === "controls")
     return context.session ? (
@@ -479,6 +534,12 @@ export function WorkbenchTools({
     return (
       <TransferOptions
         operations={host.state.operations}
+        onCancel={onCancelOperation}
+        readTransferProgress={
+          catalog.some((entry) => entry.actionId === "transfer.readProgress")
+            ? host.readTransferProgress
+            : undefined
+        }
         watchActions={watchActions}
         target={context.target}
         contextKey={`${generation}:${context.session?.sessionId}:${context.session?.sessionEpoch}`}
@@ -496,6 +557,7 @@ export function WorkbenchTools({
           context.session.readOnly
         }
         pickSource={(signal) => host.pickFile("source", signal)}
+        pickDroppedSource={host.pickDroppedFile}
         onTransfer={
           context.target
             ? (params, signal) =>
@@ -647,18 +709,7 @@ export function WorkbenchTools({
       target.sessionEpoch,
       generation,
     ]);
-    const sessionAccess =
-      target.sessionEpoch &&
-      context.session?.state === "open" &&
-      !context.session.readOnly
-        ? {
-            target,
-            startEventSeq: modbusStartEventSeq(context.items, target),
-            invoke,
-            waitForOperation: host.waitForOperation,
-            readFile: host.readFile,
-          }
-        : undefined;
+    const sessionAccess = protocolSessionAccess();
     const modbusTimeline = sessionAccess && {
       ...sessionAccess,
       available: catalog.some(
@@ -671,11 +722,7 @@ export function WorkbenchTools({
     };
     const modbusSlave = sessionAccess && {
       ...sessionAccess,
-      available: catalog.some(
-        (spec) =>
-          spec.actionId === modbusSlaveAction &&
-          spec.targetKinds.includes("session"),
-      ),
+      available: hasModbusSlave,
       cancel: onCancelOperation,
     };
     if (
@@ -772,13 +819,15 @@ export function WorkbenchTools({
   return (
     <div className="space-y-3">
       <DiagnosticPanel
+        {...context.diagnostic}
+        sourceHostId={context.target?.hostId}
         device={host.state.devices.find(
           (device) =>
             device.deviceId ===
             (context.session?.deviceId ?? context.openError?.deviceId),
         )}
         labels={labels.diagnostics}
-        items={context.items}
+        items={context.sourceItems ?? context.items}
         session={context.session}
         openError={context.openError}
         streamError={

@@ -1,7 +1,7 @@
 {
   "schemaVersion": "0.1",
   "id": "swb.builtin.chart",
-  "version": "0.1.1",
+  "version": "0.1.2",
   "displayName": "Voltage Chart",
   "description": "Plot voltage samples with source byte ranges, show sample statistics and export SVG, PNG or CSV",
   "license": "Apache-2.0",

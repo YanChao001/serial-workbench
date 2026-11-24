@@ -17,6 +17,16 @@ import {
 } from "./generate-host-contracts.mjs";
 
 // 此处仅测试生成管线；真实 Rust fixture 另由 contracts 包的测试消费。
+const viewSchemas = Object.fromEntries(
+  [
+    "DerivedReadResult",
+    "HostError",
+    "RawBatch",
+    "RequestId",
+    "SessionSnapshot",
+  ].map((name) => [name, { type: "string" }]),
+);
+
 function exportedFiles() {
   return new Map([
     ["types.ts", "export type RpcReply = { value: string };\n"],
@@ -30,6 +40,7 @@ function exportedFiles() {
         schemaVersion: 1,
         protocolVersion: "1.0",
         schemas: {
+          ...viewSchemas,
           RpcReply: {
             $schema: "http://json-schema.org/draft-07/schema#",
             type: "object",
@@ -80,6 +91,8 @@ test("standalone validators run as browser ESM without Ajv runtime imports", asy
     "types.ts",
     "validators.d.mts",
     "validators.mjs",
+    "view-validators.d.mts",
+    "view-validators.mjs",
   ]);
   const directory = await mkdtemp(join(tmpdir(), "host-validators-test-"));
   const originalFunction = globalThis.Function;
@@ -103,6 +116,35 @@ test("standalone validators run as browser ESM without Ajv runtime imports", asy
     globalThis.eval = originalEval;
     await rm(directory, { recursive: true, force: true });
   }
+});
+
+test("view validation output changes only for schemas the view accepts", async () => {
+  const files = exportedFiles();
+  const before = await buildArtifacts(files);
+  const manifest = JSON.parse(files.get("schemas.json"));
+  manifest.schemas.RpcReply.properties.value.minLength = 1;
+  files.set("schemas.json", JSON.stringify(manifest));
+  files.set(
+    "fixtures.json",
+    JSON.stringify({ schemaVersion: 1, valid: [], invalid: [] }),
+  );
+  const unrelated = await buildArtifacts(files);
+  assert.notEqual(
+    unrelated.get("validators.mjs"),
+    before.get("validators.mjs"),
+  );
+  assert.equal(
+    unrelated.get("view-validators.mjs"),
+    before.get("view-validators.mjs"),
+  );
+
+  manifest.schemas.RawBatch = { type: "string", minLength: 3 };
+  files.set("schemas.json", JSON.stringify(manifest));
+  const viewChange = await buildArtifacts(files);
+  assert.notEqual(
+    viewChange.get("view-validators.mjs"),
+    before.get("view-validators.mjs"),
+  );
 });
 
 test("exported positive and negative fixtures are checked during generation", async () => {
@@ -146,12 +188,15 @@ test("shared Rust definitions stay within the browser validator code budget", as
     JSON.stringify({
       schemaVersion: 1,
       protocolVersion: "1.0",
-      schemas: Object.fromEntries(
-        Array.from({ length: 24 }, (_, index) => [
-          index ? `Reply${index}` : "RpcReply",
-          root,
-        ]),
-      ),
+      schemas: {
+        ...viewSchemas,
+        ...Object.fromEntries(
+          Array.from({ length: 24 }, (_, index) => [
+            index ? `Reply${index}` : "RpcReply",
+            root,
+          ]),
+        ),
+      },
     }),
   );
   files.set(
@@ -192,7 +237,7 @@ test("pooling preserves conflicting local definitions, recursion and literal $re
     JSON.stringify({
       schemaVersion: 1,
       protocolVersion: "1.0",
-      schemas: { RpcReply: root("one"), Other: root("two") },
+      schemas: { ...viewSchemas, RpcReply: root("one"), Other: root("two") },
     }),
   );
   files.set(
@@ -269,6 +314,8 @@ test("check reports missing output without creating a generated directory", asyn
       "types.ts",
       "validators.d.mts",
       "validators.mjs",
+      "view-validators.d.mts",
+      "view-validators.mjs",
     ]);
     assert.deepEqual(await readdir(root), []);
   } finally {

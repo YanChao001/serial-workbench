@@ -1795,3 +1795,30 @@
   overflow: hidden;
   text-overflow: ellipsis;
 }
+
+.protocol-byte-map [data-field-role="header"] {
+  --protocol-field-color: oklch(0.68 0.17 294);
+}
+.protocol-byte-map [data-field-role="address"] {
+  --protocol-field-color: oklch(0.68 0.17 244);
+}
+.protocol-byte-map [data-field-role="length"] {
+  --protocol-field-color: oklch(0.68 0.16 168);
+}
+.protocol-byte-map [data-field-role="payload"] {
+  --protocol-field-color: oklch(0.74 0.16 82);
+}
+.protocol-byte-map [data-field-role="checksum"] {
+  --protocol-field-color: oklch(0.67 0.2 18);
+}
+.protocol-byte-map [data-field-role] {
+  color: var(--foreground);
+  background-color: color-mix(
+    in oklab,
+    var(--protocol-field-color, transparent) 20%,
+    transparent
+  );
+}
+.protocol-byte-map [data-field-role][aria-pressed="true"] {
+  box-shadow: inset 0 -2px var(--foreground);
+}

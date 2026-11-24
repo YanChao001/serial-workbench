@@ -6,6 +6,11 @@ import {
   readStreamCopySample,
   STREAM_COPY_LIMIT,
 } from "./stream-copy";
+import {
+  formatStreamExport,
+  streamExportPage,
+  streamExportPageCount,
+} from "./stream-selection-export";
 
 const start = 9_007_199_254_741_031n;
 
@@ -113,4 +118,49 @@ describe("copying selected stream bytes", () => {
       }),
     ).toBeUndefined();
   });
+});
+
+it("escapes printable selection bytes as text and keeps the same exact range in both export formats", () => {
+  const bytes = Uint8Array.of(60, 62, 38, 34, 0, 255);
+  const sample = { direction: "RX" as const, bytes, offset: start, parts: [] };
+  const html = formatStreamExport(sample, "html", "light", 0);
+  const svg = formatStreamExport(sample, "svg", "dark", 0);
+  expect(html.name).toBe(`serial-selection-rx-${start}.html`);
+  expect(svg.name).toBe(`serial-selection-rx-${start}-p1.svg`);
+  for (const file of [html, svg]) {
+    expect(file.content).toContain(`[${start}, ${start + 6n})`);
+    expect(file.content).toContain("3C 3E 26 22 00 FF");
+    expect(file.content).toContain("&lt;&gt;&amp;&quot;..");
+    expect(file.content).not.toContain('<>&"');
+  }
+  expect(html.content).toContain("background:#ffffff");
+  expect(svg.content).toContain('fill="#18181b"');
+  const xml = new DOMParser().parseFromString(svg.content, "image/svg+xml");
+  expect(xml.querySelector("parsererror")).toBeNull();
+  expect(xml.querySelector("text:last-child")?.textContent).toContain(
+    '|<>&"..|',
+  );
+});
+
+it("splits an image at 1024 byte boundaries and preserves the short final page", () => {
+  const bytes = new Uint8Array(1025).fill(0x41);
+  bytes[1024] = 0x42;
+  const sample = { direction: "TX" as const, bytes, offset: start, parts: [] };
+  expect(streamExportPageCount(sample)).toBe(2);
+  expect(streamExportPage(sample, 0).rows).toHaveLength(64);
+  const final = streamExportPage(sample, 1);
+  expect(final.rows).toHaveLength(1);
+  expect(final.rows[0]).toEqual({
+    offset: (start + 1024n).toString(),
+    hex: "42",
+    ascii: "B",
+  });
+  expect(final.range).toBe(`2/2 · [${start + 1024n}, ${start + 1025n})`);
+  expect(() => streamExportPage(sample, 2)).toThrow(RangeError);
+  const svg = formatStreamExport(sample, "svg", "light", 1);
+  expect(svg.content).toContain('width="860" height="100"');
+  const html = formatStreamExport(sample, "html", "light", 0);
+  expect(html.content).toContain("break-before:page");
+  expect(html.content).toContain(final.range);
+  expect(html.content).toContain("|B|");
 });

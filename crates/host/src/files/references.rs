@@ -210,6 +210,35 @@ impl FileService {
     ) -> HostResult<()> {
         self.receipts_manifest(reference, actor).map(|_| ())
     }
+    pub fn read_transfer_progress(
+        &self,
+        reference: &ObjectRef,
+        actor: &AuthenticatedActor,
+    ) -> HostResult<FileTransferReadProgress> {
+        let manifest = self.receipts_manifest(reference, actor)?;
+        let key = crate::storage::file_transfer_read_key(&reference.id)?;
+        let read = self
+            .store
+            .read_document(&key)?
+            .map(|document| {
+                document
+                    .value
+                    .get("read")
+                    .and_then(|value| match value {
+                        JsonValue::String(value) => U64::try_from(value.as_str()).ok(),
+                        _ => None,
+                    })
+                    .ok_or_else(|| {
+                        HostError::new("CORRUPT_DATA", "Transfer read progress is invalid")
+                    })
+            })
+            .transpose()?;
+        self.auth
+            .require(actor, "content.read", &manifest.authority)?;
+        let mut receipts_ref = reference.clone();
+        receipts_ref.revision = manifest.sealed.then_some(1.into());
+        Ok(FileTransferReadProgress { receipts_ref, read })
+    }
     pub fn read_receipts(
         &self,
         params: FileTransferReceiptsParams,

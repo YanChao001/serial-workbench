@@ -78,6 +78,8 @@ CLI `host stop` 在连接前先核验受保护的 OS 实例锁。已释放时返
 
 未提供 executionMode 时规范化为 interactive。`capture.start`、`transfer.file` 和 `transfer.paste` 须显式传 independent，handler 对不支持的模式返回 INVALID_ARGUMENT。target.hostId 必须等于执行 hostId；target.kind=session 时 id 必须等于 sessionId，不能利用两个不同字段选择不同资源。
 
+文件发送的源读取量通过 Raw `action.query` 调用 `transfer.readProgress`。查询的 `target` 与 `params.receiptsRef` 指向同一个 `transfer_receipts` 引用，Host 核对原源资源的 `content.read`。返回 `file_transfer_read_progress`，含当前 `receiptsRef` 和可选的十进制字符串 `read`。计数只纳入已校验并计入传输证据的源数据块。旧回执和粘贴传输省略 `read`。
+
 `transfer.paste` 使用当前会话的设备修改授权，参数由目录的 `PasteTransferParams` 定义。`bytesBase64` 含 1 到 `TX_MAX_BYTES` 字节，`chunkBytes` 默认为 4096。`bytesPerSecond`、`interChunkMs`、`writeWaitMs` 约束 Host 的切片发送。Host 自行持有独占租约并按顺序结算，调用方不传 `leaseId`。结果沿用 `file_transfer` 及 `transfer.receiptsRead`，依请求中字节偏移和回执序号核对。读取粘贴输入和回执检查原会话的内容授权。停止等待后可以按原操作查询结果，显式停止发送使用 `operation.cancel`。
 
 hostId/instanceEpoch 指执行 Host，不是入口转发 Host。执行端校验真实认证 actorId 后再校验信封；不一致返回 `ACTOR_MISMATCH`。若请求曾接纳，允许在当前实例以原 actor/request 查询旧结果；旧 epoch 的 action.invoke 始终拒绝，不能利用去重绕过代次校验。断线后的正确流程是 attach、operation.get，然后决定是否提出新的明确操作。

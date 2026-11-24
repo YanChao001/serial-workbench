@@ -78,6 +78,15 @@ export type ReplayLayoutFixture = {
 };
 export type WorkbenchFixture = {
   setNodeThemes: (themes: FixtureNodeThemes) => void;
+  registerFramingAction: () => void;
+  dropTransferFile: (x: number, y: number, generation?: string) => number;
+  transferDropClaims: string[];
+  setTransferProgress: (
+    accepted: string,
+    unknown: string,
+    state: "running" | "cancel_requested" | "cancelled",
+    read?: string,
+  ) => number;
   browserTakeoverDecisions: { takeoverId: string; approve: boolean }[];
   lanCommands: LanAccessParams[];
   copiedLanInfo: string[];
@@ -213,6 +222,7 @@ export async function seedWorkbenchFixture(
     observations,
     readOnly = false,
     captureTarget,
+    transferSource,
     fileMetadata,
     hostStart = "ready",
     hostFailure,
@@ -223,6 +233,7 @@ export async function seedWorkbenchFixture(
     replay,
     replayPeer,
     connectFailure,
+    openedConfiguration,
     connectionDefaults,
     device,
     plugin,
@@ -247,6 +258,7 @@ export async function seedWorkbenchFixture(
     manualSendReceipts?: boolean;
     readOnly?: boolean;
     captureTarget?: SelectedFileResource;
+    transferSource?: SelectedFileResource;
     fileMetadata?: FileMetadata;
     hostStart?: "ready" | "failed" | "pending";
     hostFailure?: HostError;
@@ -257,12 +269,17 @@ export async function seedWorkbenchFixture(
     replay?: ReplayLayoutFixture;
     replayPeer?: ReplayLayoutFixture;
     connectFailure?: HostError;
+    openedConfiguration?: SessionSnapshot["configuration"];
     connectionDefaults?: ClientWindowState["connectionDefaults"];
     device?: DeviceDescriptor;
     pendingTakeover?: BrowserTakeoverRequest;
     lanOwner?: { hostId: string; address: string };
     nodeThemes?: FixtureNodeThemes;
-    framing?: { action: ActionSpec; page: FileReadResult };
+    framing?: {
+      action: ActionSpec;
+      page: FileReadResult;
+      initiallyUnavailable?: boolean;
+    };
     definitionFiles?: DefinitionFileFixture[];
     automation?: {
       action: ActionSpec;
@@ -483,7 +500,7 @@ export async function seedWorkbenchFixture(
                 },
               ]
             : []),
-          ...(replayScope || sendHistory
+          ...(replayScope || sendHistory || transferSource
             ? [
                 {
                   scopeId: "host.operations",
@@ -502,7 +519,7 @@ export async function seedWorkbenchFixture(
         catalogVersion: "1",
         items: [
           ...workbenchCatalog,
-          ...(framing ? [framing.action] : []),
+          ...(framing && !framing.initiallyUnavailable ? [framing.action] : []),
           ...(automation ? [automation.action] : []),
         ],
       },
@@ -559,9 +576,14 @@ export async function seedWorkbenchFixture(
     appVersion: "0.1.0",
     desktop: desktopStatus,
     windowGeometry: geometry,
-    openedSession: { ...fixtureSession, readOnly },
+    openedSession: {
+      ...fixtureSession,
+      readOnly,
+      configuration: openedConfiguration ?? fixtureSession.configuration,
+    },
     observationProfile: observations ?? null,
     captureTarget: captureTarget ?? null,
+    transferSource,
     fileMetadata: fileMetadata ?? null,
     sentOperation: fixtureOperation,
     sendHistory,
@@ -602,6 +624,7 @@ export async function seedWorkbenchFixture(
       openedSession,
       observationProfile,
       captureTarget,
+      transferSource,
       fileMetadata,
       sentOperation,
       sendHistory,
@@ -629,6 +652,9 @@ export async function seedWorkbenchFixture(
       automation,
     } = JSON.parse(raw) as typeof fixturePayload;
     let automationOperation: Operation | undefined;
+    let operationPosition = 0;
+    let transferOperation: Operation | undefined;
+    let sourceRead = "0";
     let suiteCase = 0;
     let automationFile = "";
     let framingOperation: Operation | undefined;
@@ -808,15 +834,135 @@ export async function seedWorkbenchFixture(
       listener: { kind: "disabled" },
       peers: [],
     };
+    function broadcastOperation(operation: Operation) {
+      const {
+        operationId,
+        executionHostId,
+        actorId,
+        actionId,
+        target,
+        executionMode,
+        state,
+        revision,
+        revealTarget,
+        acceptedAt,
+      } = operation;
+      const scopeId = "host.operations";
+      const previousCursor = {
+        hostId: executionHostId,
+        instanceEpoch: hostAttachment.attachment.instanceEpoch,
+        scopeId,
+        position: String(operationPosition++),
+      };
+      let delivered = 0;
+      for (const [subscriptionId, entry] of stateChannels) {
+        if (entry.scopeId !== scopeId) continue;
+        const callback = callbacks.get(entry.callback);
+        if (!callback) continue;
+        delivered++;
+        callback({
+          message: {
+            channel: "state",
+            requestId: entry.requestId,
+            body: {
+              type: "delta",
+              subscriptionId,
+              delta: {
+                previousCursor,
+                cursor: {
+                  ...previousCursor,
+                  position: String(operationPosition),
+                },
+                revision: String(operationPosition + 1),
+                eventType: "operations.changed",
+                payload: {
+                  items: [
+                    {
+                      operationId,
+                      executionHostId,
+                      actorId,
+                      actionId,
+                      target,
+                      executionMode,
+                      state,
+                      revision,
+                      revealTarget,
+                      acceptedAt,
+                    },
+                  ],
+                },
+              },
+            },
+          },
+          index: entry.index++,
+        });
+      }
+      return delivered;
+    }
+    function catalogChanged() {
+      for (const id of catalogListeners)
+        callbacks.get(id)?.({
+          event: "app://host-catalog-changed",
+          id,
+          payload: hostAttachment.generation,
+        });
+    }
+    const dropListeners = new Set<number>();
     const fixture: WorkbenchFixture = {
+      transferDropClaims: [],
+      dropTransferFile(x, y, generation = hostAttachment.generation) {
+        for (const id of dropListeners)
+          callbacks.get(id)?.({
+            event: "app://transfer-file-drop",
+            id,
+            payload: { ticket: "91", generation, x, y },
+          });
+        return dropListeners.size;
+      },
+      setTransferProgress(accepted, unknown, state, read) {
+        if (
+          !transferOperation ||
+          transferOperation.result?.kind !== "file_transfer"
+        )
+          return 0;
+        if (read !== undefined) sourceRead = read;
+        transferOperation = {
+          ...transferOperation,
+          state,
+          revision: String(BigInt(transferOperation.revision) + 1n),
+          settledAt:
+            state === "cancelled" ? sentOperation.settledAt : undefined,
+          result: {
+            kind: "file_transfer",
+            value: {
+              ...transferOperation.result.value,
+              accepted,
+              unknown,
+              receiptsRef: {
+                ...transferOperation.result.value.receiptsRef,
+                ...(state === "cancelled" ? { revision: "1" } : {}),
+              },
+            },
+          },
+        };
+        return broadcastOperation(transferOperation);
+      },
       setNodeThemes(next) {
         themes = next;
-        for (const id of catalogListeners)
-          callbacks.get(id)?.({
-            event: "app://host-catalog-changed",
-            id,
-            payload: hostAttachment.generation,
-          });
+        catalogChanged();
+      },
+      registerFramingAction() {
+        const catalog = hostQueryResults["catalog.list"].value;
+        if (
+          !framing ||
+          catalog.items.some(
+            (entry) => entry.actionId === framing.action.actionId,
+          )
+        )
+          return;
+        catalog.items.push(framing.action);
+        catalog.catalogVersion = "2";
+        catalogChanged();
       },
       browserTakeoverDecisions: [],
       lanCommands: [],
@@ -1068,6 +1214,7 @@ export async function seedWorkbenchFixture(
       __TAURI_EVENT_PLUGIN_INTERNALS__: {
         unregisterListener: (_event: string, id: number) => {
           catalogListeners.delete(id);
+          dropListeners.delete(id);
           return callbacks.delete(id);
         },
       },
@@ -1090,6 +1237,11 @@ export async function seedWorkbenchFixture(
                 typeof args.handler === "number"
               )
                 catalogListeners.add(args.handler);
+              if (
+                args.event === "app://transfer-file-drop" &&
+                typeof args.handler === "number"
+              )
+                dropListeners.add(args.handler);
               return args.handler;
             case "plugin:event|unlisten":
             case "host_delivery_ack":
@@ -1240,6 +1392,14 @@ export async function seedWorkbenchFixture(
               });
               return null;
             }
+            case "claim_transfer_drop":
+              if (
+                args.generation !== hostAttachment.generation ||
+                args.ticket !== "91"
+              )
+                throw new Error("Invalid drop claim");
+              fixture.transferDropClaims.push(args.ticket);
+              return transferSource ?? null;
             case "choose_file_resource": {
               fixture.filePickerCalls.push({
                 role: String(args.role),
@@ -1259,6 +1419,8 @@ export async function seedWorkbenchFixture(
                 chosenDefinition = definitionFiles.shift();
                 return chosenDefinition?.selected ?? null;
               }
+              if (args.role === "source" && transferSource)
+                return transferSource;
               if (args.role === "source" && plugin) return plugin.archive;
               if (args.role !== "media") break;
               const selected = fixture.mediaQueue.shift();
@@ -1541,6 +1703,74 @@ export async function seedWorkbenchFixture(
               }
               if (request.method === "action.invoke")
                 fixture.invocations.push(request.params);
+              if (transferSource && request.method === "action.invoke") {
+                const call = request.params;
+                if (call.actionId === "transfer.file") {
+                  sourceRead = "0";
+                  transferOperation = {
+                    ...sentOperation,
+                    operationId: "fixture-file-transfer",
+                    rootOperationId: "fixture-file-transfer",
+                    actionId: call.actionId,
+                    target: call.target,
+                    requestId: call.requestId,
+                    executionMode: call.executionMode ?? "independent",
+                    state: "running",
+                    settledAt: undefined,
+                    result: {
+                      kind: "file_transfer",
+                      value: {
+                        requested: String(call.params.length),
+                        accepted: "0",
+                        unknown: "0",
+                        peerAcknowledged: false,
+                        receiptsRef: {
+                          hostId: call.target.hostId,
+                          kind: "transfer_receipts",
+                          id: "fixture-file-transfer-receipts",
+                        },
+                      },
+                    },
+                  };
+                  return { ok: true, result: { operation: transferOperation } };
+                }
+                if (
+                  call.actionId === "operation.cancel" &&
+                  transferOperation?.operationId === call.target.id
+                ) {
+                  fixture.setTransferProgress(
+                    transferOperation.result?.kind === "file_transfer"
+                      ? transferOperation.result.value.accepted
+                      : "0",
+                    transferOperation.result?.kind === "file_transfer"
+                      ? transferOperation.result.value.unknown
+                      : "0",
+                    "cancel_requested",
+                  );
+                  return {
+                    ok: true,
+                    result: {
+                      operation: {
+                        ...sentOperation,
+                        operationId: "fixture-file-cancel",
+                        rootOperationId: "fixture-file-cancel",
+                        actionId: call.actionId,
+                        target: call.target,
+                        requestId: call.requestId,
+                        executionMode: call.executionMode ?? "independent",
+                        result: {
+                          kind: "cancellation_requested",
+                          value: {
+                            operationId: call.target.id,
+                            state: "cancel_requested",
+                          },
+                        },
+                      },
+                    },
+                  };
+                }
+              }
+
               if (
                 peerOperation &&
                 request.method === "action.invoke" &&
@@ -2594,6 +2824,36 @@ export async function seedWorkbenchFixture(
                   result: { kind: "workspace", value: document },
                 };
               }
+              if (
+                transferOperation &&
+                query.actionId === "operation.get" &&
+                query.params.operationId === transferOperation.operationId
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "operation",
+                    value: { operation: transferOperation },
+                  },
+                };
+              if (
+                query.actionId === "transfer.readProgress" &&
+                transferOperation?.result?.kind === "file_transfer"
+              ) {
+                const reference = transferOperation.result.value.receiptsRef;
+                if (
+                  query.target.id !== reference.id ||
+                  query.target.kind !== reference.kind
+                )
+                  throw new Error("Wrong transfer receipt scope");
+                return {
+                  ok: true,
+                  result: {
+                    kind: "file_transfer_read_progress",
+                    value: { receiptsRef: reference, read: sourceRead },
+                  },
+                };
+              }
               if (query.actionId === "session.inputs")
                 return observationProfile?.inputs &&
                   observationProfile.inputs !== "unsupported"
@@ -2760,6 +3020,27 @@ export async function seedWorkbenchFixture(
                 };
               if (query.actionId === "state.snapshot") {
                 const scopeId = query.params.scopeId;
+                if (scopeId === "host.operations" && transferSource) {
+                  const { hostId, instanceEpoch } = hostAttachment.attachment;
+                  return {
+                    ok: true,
+                    result: {
+                      kind: "snapshot",
+                      value: {
+                        hostId,
+                        instanceEpoch,
+                        revision: String(operationPosition + 1),
+                        cursor: {
+                          hostId,
+                          instanceEpoch,
+                          scopeId,
+                          position: String(operationPosition),
+                        },
+                        state: { items: [] },
+                      },
+                    },
+                  };
+                }
                 if (scopeId === "host.operations" && sendHistory) {
                   const {
                     operationId,

@@ -184,6 +184,7 @@ pub enum BuiltinAction {
     FileMetadata,
     FileRead,
     TransferReceiptsRead,
+    TransferReadProgress,
     StreamCursor,
     TransferFile,
     TransferPaste,
@@ -237,7 +238,7 @@ pub enum BuiltinAction {
     HostShutdown,
 }
 impl BuiltinAction {
-    pub const ALL: [Self; 110] = [
+    pub const ALL: [Self; 111] = [
         Self::ActionCheck,
         Self::WorkspaceImportPreview,
         Self::Client(ClientCapability::WindowRead),
@@ -297,6 +298,7 @@ impl BuiltinAction {
         Self::FileMetadata,
         Self::FileRead,
         Self::TransferReceiptsRead,
+        Self::TransferReadProgress,
         Self::StreamCursor,
         Self::TransferFile,
         Self::TransferPaste,
@@ -387,6 +389,7 @@ impl BuiltinAction {
             Self::FileMetadata => "file.metadata",
             Self::FileRead => "file.read",
             Self::TransferReceiptsRead => "transfer.receiptsRead",
+            Self::TransferReadProgress => "transfer.readProgress",
             Self::StreamCursor => "stream.cursor",
             Self::TransferFile => "transfer.file",
             Self::TransferPaste => "transfer.paste",
@@ -587,7 +590,7 @@ impl BuiltinAction {
             Self::DeviceRebind | Self::FavoritesSave => &["workspace"],
             Self::FileMetadata => &["file", "capture", "plugin_result"],
             Self::FileRead => &["file", "capture_record", "plugin_result"],
-            Self::TransferReceiptsRead => &["transfer_receipts"],
+            Self::TransferReceiptsRead | Self::TransferReadProgress => &["transfer_receipts"],
             Self::SettingsRead
             | Self::SettingsSave
             | Self::SettingsExport
@@ -654,9 +657,10 @@ impl BuiltinAction {
             | Self::SessionSetReadOnly
             | Self::SessionPurge
             | Self::TxDrain => Some("controls"),
-            Self::TransferFile | Self::TransferPaste | Self::TransferReceiptsRead => {
-                Some("transfer")
-            }
+            Self::TransferFile
+            | Self::TransferPaste
+            | Self::TransferReceiptsRead
+            | Self::TransferReadProgress => Some("transfer"),
             Self::OperationGet
             | Self::OperationInput
             | Self::OperationCancel
@@ -707,6 +711,7 @@ impl BuiltinAction {
                     Self::StreamCursor
                         | Self::FileRead
                         | Self::TransferReceiptsRead
+                        | Self::TransferReadProgress
                         | Self::StreamRead
                         | Self::StreamDerivedRead
                         | Self::StreamSubscribe
@@ -961,6 +966,10 @@ impl BuiltinAction {
             Self::FileRead => {
                 ActionSpec::of_with_dialect::<FileReadParams, FileReadResult>(meta, dialect)
             }
+            Self::TransferReadProgress => ActionSpec::of_with_dialect::<
+                FileTransferReadProgressParams,
+                FileTransferReadProgress,
+            >(meta, dialect),
             Self::TransferReceiptsRead => ActionSpec::of_with_dialect::<
                 FileTransferReceiptsParams,
                 FileTransferReceiptsResult,

@@ -1824,6 +1824,31 @@ export type FileTransferParams_Serialize = {
   writeWaitMs: DurationMs;
 };
 
+export type FileTransferReadProgress =
+  FileTransferReadProgress_Serialize | FileTransferReadProgress_Deserialize;
+
+export type FileTransferReadProgressParams =
+  | FileTransferReadProgressParams_Serialize
+  | FileTransferReadProgressParams_Deserialize;
+
+export type FileTransferReadProgressParams_Deserialize = {
+  receiptsRef: ObjectRef_Deserialize;
+};
+
+export type FileTransferReadProgressParams_Serialize = {
+  receiptsRef: ObjectRef_Serialize;
+};
+
+export type FileTransferReadProgress_Deserialize = {
+  receiptsRef: ObjectRef_Deserialize;
+  read?: U64;
+};
+
+export type FileTransferReadProgress_Serialize = {
+  receiptsRef: ObjectRef_Serialize;
+  read?: U64;
+};
+
 export type FileTransferReceipt =
   FileTransferReceipt_Serialize | FileTransferReceipt_Deserialize;
 
@@ -4199,6 +4224,10 @@ export type QueryResult_Deserialize =
       kind: "file_transfer_receipts";
       value: FileTransferReceiptsResult_Deserialize;
     }
+  | {
+      kind: "file_transfer_read_progress";
+      value: FileTransferReadProgress_Deserialize;
+    }
   | { kind: "stream_cursor"; value: StreamCursorResult_Deserialize }
   | { kind: "scopes"; value: StateScopesResult_Deserialize }
   | { kind: "settings"; value: SettingsDocumentResult_Deserialize }
@@ -4245,6 +4274,10 @@ export type QueryResult_Serialize =
   | {
       kind: "file_transfer_receipts";
       value: FileTransferReceiptsResult_Serialize;
+    }
+  | {
+      kind: "file_transfer_read_progress";
+      value: FileTransferReadProgress_Serialize;
     }
   | { kind: "stream_cursor"; value: StreamCursorResult_Serialize }
   | { kind: "scopes"; value: StateScopesResult_Serialize }

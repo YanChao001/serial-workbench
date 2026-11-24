@@ -67,3 +67,23 @@ pub struct FileTransferReceiptsResult {
     pub has_more: bool,
     pub sealed: bool,
 }
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileTransferReadProgressParams {
+    pub receipts_ref: ObjectRef,
+}
+
+#[derive(Debug, Clone, PartialEq, Serialize, Deserialize, JsonSchema, Type)]
+#[serde(rename_all = "camelCase", deny_unknown_fields)]
+pub struct FileTransferReadProgress {
+    pub receipts_ref: ObjectRef,
+    #[serde(
+        default,
+        skip_serializing_if = "Option::is_none",
+        deserialize_with = "crate::identity::non_null_option"
+    )]
+    #[schemars(with = "U64")]
+    #[specta(type = U64, optional)]
+    pub read: Option<U64>,
+}

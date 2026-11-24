@@ -215,8 +215,10 @@ impl Registry {
                             "file"
                         },
                     )?]
-                } else if action == Some(BuiltinAction::TransferReceiptsRead)
-                    && permission == "content.read"
+                } else if matches!(
+                    action,
+                    Some(BuiltinAction::TransferReceiptsRead | BuiltinAction::TransferReadProgress)
+                ) && permission == "content.read"
                 {
                     ["file", "session"]
                         .into_iter()

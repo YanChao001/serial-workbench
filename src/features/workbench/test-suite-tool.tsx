@@ -20,10 +20,12 @@ import {
 } from "./sequence-workbench-model";
 import {
   compileTestSuite,
+  replaceTestSuiteCsv,
   runTestSuite,
   suiteCounts,
   suiteHtml,
   suiteJUnit,
+  testSuiteCsvCases,
   testSuiteMaxBytes,
   type TestSuiteReport,
 } from "./test-suite";
@@ -69,6 +71,34 @@ const example = JSON.stringify(
   2,
 );
 
+const dataExample = JSON.stringify(
+  {
+    version: 1,
+    name: "Virtual Echo CSV",
+    cases: [
+      {
+        name: "Echo payload",
+        sequence: {
+          version: 1,
+          steps: [
+            {
+              kind: "send",
+              hex: "${payload}",
+              expect: { hex: "${payload}" },
+            },
+          ],
+        },
+        data: {
+          csv: "Byte\n83\n84\n",
+          bindings: { payload: { column: "Byte", type: "u8" } },
+        },
+      },
+    ],
+  },
+  null,
+  2,
+);
+
 export function TestSuiteTool({
   access,
   actionId,
@@ -103,6 +133,10 @@ export function TestSuiteTool({
   >(undefined);
   const fileInput = useRef<HTMLInputElement>(null);
   const filePending = useRef(false);
+  const csvInput = useRef<HTMLInputElement>(null);
+  const csvSelection = useRef<{ index: number; definition: string } | null>(
+    null,
+  );
   useEffect(() => {
     const controller = new AbortController();
     scope.current = controller;
@@ -118,8 +152,10 @@ export function TestSuiteTool({
       return { error };
     }
   }, [definition]);
+  const csvCases = useMemo(() => testSuiteCsvCases(definition), [definition]);
+  const rounds = parsed.suite?.cases.filter((item) => item.source).length ?? 0;
   const key = parsed.suite
-    ? JSON.stringify([scopeKey, parsed.suite])
+    ? JSON.stringify([scopeKey, rounds > 0 ? definition : parsed.suite])
     : undefined;
   const history = access
     ? (series.find((item) => item.key === key)?.reports ?? [])
@@ -309,6 +345,67 @@ export function TestSuiteTool({
     }
   }
 
+  async function loadExample(value: string) {
+    const signal = scope.current?.signal;
+    if (
+      signal &&
+      (await beforeReplace()) &&
+      !signal.aborted &&
+      !controller.current &&
+      !filePending.current
+    ) {
+      setDefinition(value);
+      setNotice(undefined);
+    }
+  }
+
+  async function importCsv(
+    file: File,
+    selection: { index: number; definition: string },
+  ) {
+    const signal = scope.current?.signal;
+    if (
+      !signal ||
+      controller.current ||
+      filePending.current ||
+      selection.definition !== definition
+    )
+      return;
+    if (!/\.csv$/i.test(file.name) || file.size > testSuiteMaxBytes) {
+      setNotice(t("testSuite.invalidCsv"));
+      return;
+    }
+    filePending.current = true;
+    setFileBusy(true);
+    try {
+      const csv = new TextDecoder("utf-8", { fatal: true }).decode(
+        await file.arrayBuffer(),
+      );
+      signal.throwIfAborted();
+      const next = replaceTestSuiteCsv(
+        selection.definition,
+        selection.index,
+        csv,
+      );
+      onDraftChange((previous) =>
+        previous.definition === selection.definition
+          ? { ...previous, definition: next }
+          : previous,
+      );
+      setNotice(undefined);
+    } catch (error) {
+      if (!signal.aborted)
+        setNotice(
+          error instanceof CommandSequenceError
+            ? t("commandSequence.invalid", { path: error.path })
+            : t("testSuite.invalidCsv"),
+        );
+    } finally {
+      filePending.current = false;
+      if (!signal.aborted) setFileBusy(false);
+    }
+  }
+
   async function save(name: string, content: string) {
     const signal = scope.current?.signal;
     if (!signal || controller.current || filePending.current) return;
@@ -364,6 +461,19 @@ export function TestSuiteTool({
           if (file) void open(file);
         }}
       />
+      <input
+        hidden
+        type="file"
+        accept=".csv,text/csv"
+        ref={csvInput}
+        onChange={(event) => {
+          const selection = csvSelection.current;
+          csvSelection.current = null;
+          const file = event.currentTarget.files?.[0];
+          event.currentTarget.value = "";
+          if (file && selection) void importCsv(file, selection);
+        }}
+      />
       <div className="flex flex-wrap gap-2">
         <Button
           variant="outline"
@@ -382,21 +492,16 @@ export function TestSuiteTool({
         <Button
           variant="outline"
           disabled={busy || fileBusy}
-          onClick={() => {
-            const signal = scope.current?.signal;
-            void beforeReplace().then((allowed) => {
-              if (
-                allowed &&
-                signal &&
-                !signal.aborted &&
-                !controller.current &&
-                !filePending.current
-              )
-                setDefinition(example);
-            });
-          }}
+          onClick={() => void loadExample(example)}
         >
           {t("commandSequence.example")}
+        </Button>
+        <Button
+          variant="outline"
+          disabled={busy || fileBusy}
+          onClick={() => void loadExample(dataExample)}
+        >
+          {t("testSuite.dataExample")}
         </Button>
         <Button
           disabled={
@@ -417,6 +522,33 @@ export function TestSuiteTool({
           </Button>
         )}
       </div>
+      {csvCases.length > 0 && (
+        <details>
+          <summary>{t("testSuite.csvInputs")}</summary>
+          <div className="mt-2 flex flex-wrap gap-2">
+            {csvCases.map(({ index, name }) => (
+              <Button
+                key={index}
+                variant="outline"
+                disabled={busy || fileBusy}
+                onClick={() => {
+                  csvSelection.current = { index, definition };
+                  csvInput.current?.click();
+                }}
+              >
+                {t("testSuite.importCsv", { name })}
+              </Button>
+            ))}
+          </div>
+        </details>
+      )}
+      {!busy && rounds > 0 && (
+        <p className="text-sm">
+          {t("testSuite.dataRounds", {
+            total: parsed.suite?.cases.length ?? 0,
+          })}
+        </p>
+      )}
       {busy && (
         <p role="status">
           {t(stopping ? "testSuite.stopping" : "testSuite.running", {
@@ -441,8 +573,20 @@ export function TestSuiteTool({
             </thead>
             <tbody>
               {report.cases.map((item) => (
-                <tr key={item.name}>
-                  <td className="break-all py-1">{item.name}</td>
+                <tr key={JSON.stringify([item.name, item.source])}>
+                  <td className="break-all py-1">
+                    {item.name}
+                    {item.source && (
+                      <span className="block text-xs">
+                        {t(
+                          item.source.kind === "csv"
+                            ? "testSuite.csvLine"
+                            : "testSuite.tableRow",
+                          { row: item.source.row },
+                        )}
+                      </span>
+                    )}
+                  </td>
                   <td className="break-all py-1">
                     {t(`testSuite.status.${item.status}`)}
                     {item.reason && (

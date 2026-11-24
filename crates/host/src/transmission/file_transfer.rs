@@ -389,11 +389,15 @@ impl FileRun<'_> {
         self.service.gate(&self.session, &self.accepted)?;
         self.service.check_lease(&self.runtime, &self.accepted)
     }
-    async fn evidence(&self, result: &FileTransferResult) -> HostResult<()> {
+    async fn evidence(
+        &self,
+        result: &FileTransferResult,
+        source_read: Option<U64>,
+    ) -> HostResult<()> {
         let store = self.service.devices.inner.store.clone();
         let id = self.accepted.operation.operation_id.clone();
         let evidence = ActionResult::FileTransfer(result.clone());
-        blocking(move || store.record_result_evidence(&id, &evidence)).await?;
+        blocking(move || store.record_transfer_evidence(&id, &evidence, source_read)).await?;
         Ok(())
     }
     async fn run(
@@ -416,7 +420,7 @@ impl FileRun<'_> {
             receipts_ref: journal.reference.clone(),
             peer_acknowledged: false,
         };
-        self.evidence(&result).await?;
+        self.evidence(&result, journal.source_read).await?;
         let mut pacer = ChunkPacer::new(
             self.service.now(),
             self.plan.chunk_bytes,
@@ -465,7 +469,7 @@ impl FileRun<'_> {
         }
         journal.seal().await?;
         result.receipts_ref = journal.reference;
-        self.evidence(&result).await?;
+        self.evidence(&result, journal.source_read).await?;
         let state = if result.unknown.get() > 0 {
             OperationState::Unknown
         } else if consumed == self.plan.length && failure.is_none() {
@@ -492,6 +496,13 @@ impl FileRun<'_> {
     ) -> HostResult<(TransferSource, TxReceipt)> {
         // 每次只读取一个有界块；固定源自己核对当前授权、文件身份和块摘要。
         let (source, bytes) = source.read_chunk(offset, length).await?;
+        if let Some(read) = &mut journal.source_read {
+            *read = read
+                .get()
+                .checked_add(length as u64)
+                .ok_or_else(invalid)?
+                .into();
+        }
         self.gate().await?;
         let prepared = self
             .session
@@ -524,7 +535,7 @@ impl FileRun<'_> {
             }
         };
         aggregate.unknown = (aggregate.unknown.get() + length as u64).into();
-        if let Err(error) = self.evidence(aggregate).await {
+        if let Err(error) = self.evidence(aggregate, journal.source_read).await {
             self.reject_intent(&intent, &error)?;
             return Err(error);
         }
@@ -581,7 +592,7 @@ impl FileRun<'_> {
             self.service.devices.meta(&self.session)?,
             outcome,
         );
-        self.evidence(aggregate).await?;
+        self.evidence(aggregate, journal.source_read).await?;
         journal
             .replace(
                 ordinal,
@@ -628,6 +639,7 @@ struct ReceiptJournal {
     store: Store,
     reference: ObjectRef,
     manifest: ReceiptJournalManifest,
+    source_read: Option<U64>,
     revision: U64,
 }
 impl ReceiptJournal {
@@ -645,6 +657,7 @@ impl ReceiptJournal {
                 id: operation.operation_id.clone(),
                 revision: None,
             },
+            source_read: (source_ref.kind.as_str() == "file").then_some(0.into()),
             manifest: ReceiptJournalManifest {
                 format_version: "0.1".into(),
                 source_ref,

@@ -101,7 +101,14 @@ impl Fixture {
                 serde_json::json!({"pending":true}),
             );
         }
-        vec![prefix.clone(), format!("{prefix}-0"), format!("{prefix}-1")]
+        let read_key = format!("transfer-read-{}", operation.operation_id);
+        self.document(&read_key, serde_json::json!({"read":"5"}));
+        vec![
+            prefix.clone(),
+            format!("{prefix}-0"),
+            format!("{prefix}-1"),
+            read_key,
+        ]
     }
     fn terminal(&self, operation: &Operation) {
         self.store

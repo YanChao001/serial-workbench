@@ -25,7 +25,9 @@ import {
   validateWorkspaceDocument,
 } from "./generated/validators.mjs";
 import generatedDefaults from "./generated/defaults.json";
+import { ContractValidationError } from "./contract-validation-error.ts";
 
+export { ContractValidationError } from "./contract-validation-error.ts";
 export type * from "./generated/types.ts";
 export {
   validateCursor,
@@ -44,13 +46,6 @@ export {
   NODE_PACKAGE_SIGNATURE_PREFIX,
   TX_MAX_BYTES,
 } from "./generated/types.ts";
-
-export class ContractValidationError extends Error {
-  constructor(message = "Invalid Host RPC reply") {
-    super(message);
-    this.name = "ContractValidationError";
-  }
-}
 
 const {
   settings,

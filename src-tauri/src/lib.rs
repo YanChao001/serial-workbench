@@ -33,6 +33,7 @@ mod recovery;
 mod redaction;
 mod storage;
 mod system_commands;
+mod transfer_drop;
 pub mod update_signature;
 mod updater;
 mod window_geometry;
@@ -173,6 +174,7 @@ pub fn run() {
         let initialized = recovery::initialize(&paths)?;
         let system = system_commands::SystemState::open(paths.config.join("workspace.json"));
         app.manage(media_protocol::MediaTickets::default());
+        app.manage(transfer_drop::TransferDrops::default());
         app.manage(paths);
         app.manage(initialized.recovery);
         app.manage(initialized.client_state);
@@ -232,6 +234,7 @@ pub fn run() {
                 }
             }
         })
+        .on_webview_event(transfer_drop::on_drop)
         .on_window_event(|window, event| {
             if let tauri::WindowEvent::CloseRequested { api, .. } = event {
                 let app = window.app_handle();

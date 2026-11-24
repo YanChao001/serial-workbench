@@ -11,6 +11,7 @@ pub fn builder() -> Builder<tauri::Wry> {
             crate::file_commands::save_text_export,
             crate::file_commands::host_save_chart_svg,
             file_resource_commands::choose_file_resource,
+            crate::transfer_drop::claim_transfer_drop,
             media_protocol::media_resolve,
             media_protocol::media_release,
             commands::client_state_read,
@@ -64,6 +65,7 @@ pub fn builder() -> Builder<tauri::Wry> {
         ])
         .typ::<crate::updater::UpdateProgress>()
         .typ::<crate::lifecycle::LifecycleRequest>()
+        .typ::<crate::transfer_drop::TransferDrop>()
 }
 
 pub fn export(path: &std::path::Path) -> Result<(), Box<dyn std::error::Error>> {

@@ -1697,6 +1697,8 @@ fn main() -> Result<(), Box<dyn Error>> {
         FileTransferReceipt,
         FileTransferReceiptsParams,
         FileTransferReceiptsResult,
+        FileTransferReadProgressParams,
+        FileTransferReadProgress,
         ReplayRecord,
         CaptureRecord,
         FileReadParams,

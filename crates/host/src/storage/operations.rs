@@ -575,11 +575,48 @@ impl Database {
         id: &Id,
         result: ActionResult,
     ) -> HostResult<Operation> {
+        self.record_result_evidence_with_read(id, result, None)
+    }
+
+    pub(crate) fn record_result_evidence_with_read(
+        &mut self,
+        id: &Id,
+        result: ActionResult,
+        source_read: Option<U64>,
+    ) -> HostResult<Operation> {
         let transaction = self
             .connection
             .transaction_with_behavior(TransactionBehavior::Immediate)
             .map_err(|_| unavailable())?;
         let operation = record_result_evidence_in(&transaction, id, result)?;
+        if let Some(read) = source_read {
+            let Some(ActionResult::FileTransfer(transfer)) = operation.result.as_ref() else {
+                return Err(HostError::new(
+                    "INVALID_ARGUMENT",
+                    "Invalid file transfer read evidence",
+                ));
+            };
+            let write_evidence_bytes = transfer
+                .accepted
+                .get()
+                .saturating_add(transfer.unknown.get());
+            if operation.action_id.as_str() != "transfer.file"
+                || read > transfer.requested
+                || read.get() < write_evidence_bytes
+            {
+                return Err(HostError::new(
+                    "INVALID_ARGUMENT",
+                    "Invalid file transfer read evidence",
+                ));
+            }
+            let key = super::file_transfer_read_key(id)?;
+            let value = serde_json::json!({ "read": read }).to_string();
+            transaction.execute(
+                "INSERT INTO documents(id,revision,value_json) VALUES(?1,?2,?3)
+                 ON CONFLICT(id) DO UPDATE SET revision=excluded.revision,value_json=excluded.value_json",
+                params![key.as_str(), operation.revision.to_string(), value],
+            ).map_err(|_| unavailable())?;
+        }
         transaction.commit().map_err(|_| unavailable())?;
         Ok(operation)
     }
@@ -1071,12 +1108,13 @@ fn prune_transfer_receipts(connection: &Connection, operation_id: &Id) -> HostRe
     let prefix = format!("{manifest}-");
     // '-' 的下一个 ASCII 字符是 '.'，范围只覆盖此 operation 的 chunk 前缀。
     let upper = format!("{manifest}.");
+    let read = super::file_transfer_read_key(operation_id)?;
     let candidates = {
         let mut statement = connection.prepare(
-            "SELECT id FROM documents WHERE id=?1 OR (id>=?2 COLLATE BINARY AND id<?3 COLLATE BINARY)",
+            "SELECT id FROM documents WHERE id IN (?1,?4) OR (id>=?2 COLLATE BINARY AND id<?3 COLLATE BINARY)",
         ).map_err(|_| unavailable())?;
         statement
-            .query_map(params![manifest, prefix, upper], |row| {
+            .query_map(params![manifest, prefix, upper, read.as_str()], |row| {
                 row.get::<_, String>(0)
             })
             .map_err(|_| unavailable())?
@@ -1085,6 +1123,7 @@ fn prune_transfer_receipts(connection: &Connection, operation_id: &Id) -> HostRe
     };
     for key in candidates {
         let owned = key == manifest
+            || key == read.as_str()
             || key.strip_prefix(&prefix).is_some_and(|ordinal| {
                 ordinal
                     .parse::<u64>()

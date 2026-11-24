@@ -128,6 +128,7 @@ pub enum QueryResult {
     FileMetadata(FileMetadata),
     FileRead(FileReadResult),
     FileTransferReceipts(FileTransferReceiptsResult),
+    FileTransferReadProgress(FileTransferReadProgress),
     StreamCursor(StreamCursorResult),
     Scopes(StateScopesResult),
     Settings(SettingsDocumentResult),
@@ -198,6 +199,7 @@ impl RpcRequest {
             | "stream.credit"
             | "file.read"
             | "transfer.receiptsRead"
+            | "transfer.readProgress"
             | "operation.input"
             | "capture.tail"
             | "replay.read" => RequestChannel::Raw,
@@ -268,6 +270,7 @@ impl BuiltinAction {
             Self::FileMetadata => typed!(FileMetadataParams),
             Self::FileRead => typed!(FileReadParams),
             Self::TransferReceiptsRead => typed!(FileTransferReceiptsParams),
+            Self::TransferReadProgress => typed!(FileTransferReadProgressParams),
             Self::TransferFile => typed!(FileTransferParams),
             Self::TransferPaste => typed!(PasteTransferParams),
             Self::SettingsSave => typed!(SettingsSaveParams),

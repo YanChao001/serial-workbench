@@ -502,6 +502,7 @@ impl Host {
                         BuiltinAction::FileMetadata
                             | BuiltinAction::FileRead
                             | BuiltinAction::TransferReceiptsRead
+                            | BuiltinAction::TransferReadProgress
                             | BuiltinAction::OperationGet
                             | BuiltinAction::OperationInput
                             | BuiltinAction::OperationCancel
@@ -606,6 +607,7 @@ impl Host {
             BuiltinAction::FileMetadata
             | BuiltinAction::FileRead
             | BuiltinAction::TransferReceiptsRead
+            | BuiltinAction::TransferReadProgress
             | BuiltinAction::TransferFile => {
                 let files = self.inner.files.clone();
                 let actor = actor.clone();
@@ -620,6 +622,11 @@ impl Host {
                         let params: FileReadParams = decode(&query.params)?;
                         require_reference_target(&query.target, &params.file_ref)?;
                         files.require_reference(&params.file_ref, &actor, "content.read")
+                    }
+                    BuiltinAction::TransferReadProgress => {
+                        let params: FileTransferReadProgressParams = decode(&query.params)?;
+                        require_reference_target(&query.target, &params.receipts_ref)?;
+                        files.authorize_receipts(&params.receipts_ref, &actor)
                     }
                     BuiltinAction::TransferReceiptsRead => {
                         let params: FileTransferReceiptsParams = decode(&query.params)?;
@@ -1112,7 +1119,8 @@ impl Host {
             }
             BuiltinAction::FileMetadata
             | BuiltinAction::FileRead
-            | BuiltinAction::TransferReceiptsRead => {
+            | BuiltinAction::TransferReceiptsRead
+            | BuiltinAction::TransferReadProgress => {
                 if action != BuiltinAction::FileMetadata && connection.is_none() {
                     return Err(HostError::new(
                         "CLIENT_REQUIRED",
@@ -1141,6 +1149,13 @@ impl Host {
                             let read = files.read(params, &actor)?;
                             files.require_reference(&reference, &actor, "content.read")?;
                             QueryResult::FileRead(read)
+                        }
+                        BuiltinAction::TransferReadProgress => {
+                            let params: FileTransferReadProgressParams = decode(&query.params)?;
+                            let reference = params.receipts_ref;
+                            require_reference_target(&query.target, &reference)?;
+                            let progress = files.read_transfer_progress(&reference, &actor)?;
+                            QueryResult::FileTransferReadProgress(progress)
                         }
                         BuiltinAction::TransferReceiptsRead => {
                             let params: FileTransferReceiptsParams = decode(&query.params)?;

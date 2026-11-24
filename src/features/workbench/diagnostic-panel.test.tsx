@@ -5,7 +5,8 @@ import { en } from "@/i18n/en";
 import { zhCN } from "@/i18n/zh-CN";
 import { createTranslator } from "@/i18n/translate";
 import { DiagnosticPanel } from "./diagnostic-panel";
-import { session } from "./test-fixtures";
+import { session, txItem } from "./test-fixtures";
+import type { StreamItem } from "@serial-workbench/contracts";
 import { workbenchToolLabels } from "./tool-labels";
 import { HostRequestError } from "@serial-workbench/host-client";
 
@@ -213,4 +214,148 @@ it("shows stream recovery tools and reconnect only for actual failures or a disc
   );
   fireEvent.click(screen.getByRole("button", { name: labels.open }));
   expect(reconnect).toHaveBeenCalledOnce();
+});
+
+async function chooseProblem(subject: string) {
+  const user = userEvent.setup();
+  await user.click(screen.getByRole("combobox", { name: "Problem to check" }));
+  await user.click(screen.getByRole("option", { name: subject }));
+  return user;
+}
+
+it("compares the receive encoding to matching RX evidence and applies only on request", async () => {
+  const onApplyEncoding = vi.fn();
+  const sample = txItem("tx");
+  if (sample.kind !== "source") throw new Error("Missing fixture event");
+  const bytes: StreamItem = {
+    kind: "source",
+    event: {
+      ...sample.event,
+      kind: "rx",
+      payload: { bytesBase64: "//5BAA==", byteStart: "0", byteEnd: "4" },
+    },
+  };
+  const previous: StreamItem = {
+    kind: "source",
+    event: { ...bytes.event, sessionEpoch: "0" },
+  };
+  const view = render(
+    <DiagnosticPanel
+      labels={labels}
+      items={[previous]}
+      session={session()}
+      receiveEncoding="utf-8"
+      onApplyEncoding={onApplyEncoding}
+    />,
+  );
+  const user = await chooseProblem("Garbled text");
+  expect(screen.getByText("Insufficient evidence")).toBeInTheDocument();
+  expect(
+    screen.queryByRole("button", { name: "Use encoding and view text" }),
+  ).not.toBeInTheDocument();
+
+  view.rerender(
+    <DiagnosticPanel
+      labels={labels}
+      items={[previous, bytes]}
+      session={session()}
+      receiveEncoding="utf-8"
+      onApplyEncoding={onApplyEncoding}
+    />,
+  );
+  expect(screen.getByText("UTF-16 LE")).toBeInTheDocument();
+  expect(screen.getByText("Byte-order mark")).toBeInTheDocument();
+  expect(onApplyEncoding).not.toHaveBeenCalled();
+  await user.click(
+    screen.getByRole("button", { name: "Use encoding and view text" }),
+  );
+  expect(onApplyEncoding).toHaveBeenCalledExactlyOnceWith("utf-16le");
+});
+
+it("separates reader gaps from source gaps and excludes stale sessions", async () => {
+  const sample = txItem("tx");
+  if (sample.kind !== "source") throw new Error("Missing fixture event");
+  const readerGap: StreamItem = {
+    kind: "reader_gap",
+    gap: {
+      hostId: "host",
+      instanceEpoch: "1",
+      sessionId: "session",
+      sessionEpoch: "1",
+      reason: "reader_overflow",
+      missingEventRange: { start: "3", end: "5" },
+    },
+  };
+  const sourceGap: StreamItem = {
+    kind: "source",
+    event: {
+      ...sample.event,
+      kind: "gap",
+      payload: { reason: "backend_loss", knownExtent: false },
+    },
+  };
+  render(
+    <DiagnosticPanel
+      labels={labels}
+      items={[
+        readerGap,
+        sourceGap,
+        { ...readerGap, gap: { ...readerGap.gap, sessionEpoch: "0" } },
+      ]}
+      session={session()}
+    />,
+  );
+  await chooseProblem("Missing data");
+  expect(screen.getByText("Reader gap records")).toBeInTheDocument();
+  expect(screen.getByText("Source gap records")).toBeInTheDocument();
+  expect(screen.getAllByText("1", { exact: true })).toHaveLength(2);
+});
+
+it("shows the exact reconnect state and waits for an explicit retry", async () => {
+  const retry = vi.fn();
+  render(
+    <DiagnosticPanel
+      labels={labels}
+      items={[]}
+      session={{
+        ...session(),
+        state: "disconnected",
+        reconnect: { state: "requires_rebind", attempts: "2" },
+      }}
+      onReconnect={retry}
+    />,
+  );
+  const user = await chooseProblem("Disconnected");
+  expect(
+    screen.getByText("Device identity needs confirmation"),
+  ).toBeInTheDocument();
+  expect(screen.getByText("2", { exact: true })).toBeInTheDocument();
+  expect(retry).not.toHaveBeenCalled();
+  await user.click(screen.getByRole("button", { name: labels.open }));
+  expect(retry).toHaveBeenCalledOnce();
+});
+
+it("retries the selected port separately from the active disconnected session", async () => {
+  const retryOpen = vi.fn();
+  const reopenSession = vi.fn();
+  render(
+    <DiagnosticPanel
+      labels={labels}
+      items={[]}
+      session={{ ...session(), state: "disconnected" }}
+      openError={failure}
+      openTarget={{ retry: retryOpen }}
+      onReconnect={reopenSession}
+    />,
+  );
+  const user = await chooseProblem("Cannot open port");
+  expect(screen.getByText("ACCESS_DENIED")).toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: labels.open }));
+  expect(retryOpen).toHaveBeenCalledOnce();
+  expect(reopenSession).not.toHaveBeenCalled();
+
+  await chooseProblem("Disconnected");
+  expect(screen.queryByText("ACCESS_DENIED")).not.toBeInTheDocument();
+  await user.click(screen.getByRole("button", { name: labels.open }));
+  expect(reopenSession).toHaveBeenCalledOnce();
 });

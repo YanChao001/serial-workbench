@@ -177,9 +177,30 @@ async fn file_transfer_preserves_partial_and_cancel() {
     call.execution_mode = Some(ExecutionMode::Independent);
     let operation = h.invoke(call).await;
     gate.entered().await;
+    let live = h.store.get(&h.actor, &operation.operation_id).unwrap();
+    let Some(ActionResult::FileTransfer(live_result)) = live.result else {
+        panic!("live receipt");
+    };
+    let reader = FileService::new(h.store.clone(), h.auth.clone(), h.store.identity().unwrap());
+    assert_eq!(live_result.accepted, 2.into());
+    assert_eq!(
+        reader
+            .read_transfer_progress(&live_result.receipts_ref, &h.actor)
+            .unwrap()
+            .read,
+        Some(4.into()),
+    );
     h.cancel(&operation).await;
     gate.release();
     let done = h.wait(&operation.operation_id).await;
+    let Some(ActionResult::FileTransfer(result)) = done.result.as_ref() else {
+        panic!("settled receipt");
+    };
+    let read = reader
+        .read_transfer_progress(&result.receipts_ref, &h.actor)
+        .unwrap();
+    assert_eq!(read.read, Some(4.into()));
+    assert_eq!(read.receipts_ref.revision, Some(1.into()));
     h.host.shutdown().await.unwrap();
     let value = serde_json::to_value(done.result).unwrap();
     assert_eq!(value["kind"], "file_transfer");
