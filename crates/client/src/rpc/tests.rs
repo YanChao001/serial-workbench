@@ -164,7 +164,7 @@ async fn completed(mut task: JoinHandle<HostResult<RpcReply>>) -> RpcReply {
 
 fn query(id: &str, action: &str) -> RpcRequest {
     RpcRequest::Query(serde_json::from_value(serde_json::json!({
-        "protocolVersion":"0.1", "hostId":"private-host", "instanceEpoch":"1",
+        "protocolVersion":"1.0", "hostId":"private-host", "instanceEpoch":"1",
         "actorId":"private-actor", "requestId":id, "actionId":action,
         "target":{"hostId":"private-host","kind":"host","id":"private-host"},
         "params":{"privatePath":"C:/private/fixture", "requestContext":"PRIVATE_CONTEXT", "nonce":"PRIVATE_NONCE", "bytes":"PRIVATE_BODY"},

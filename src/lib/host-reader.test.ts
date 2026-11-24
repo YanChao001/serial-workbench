@@ -1,4 +1,4 @@
-﻿import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import { waitFor } from "@testing-library/react";
 import { parseReply, parseWireFrame } from "@serial-workbench/contracts";
 import type {
@@ -45,7 +45,7 @@ async function setupReader(
   const attachment = {
     hostId: "host",
     instanceEpoch: "7",
-    protocolVersion: "0.1" as const,
+    protocolVersion: "1.0" as const,
     catalogVersion: "1",
     actorId: "actor",
     clientId: "client",

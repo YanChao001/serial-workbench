@@ -111,7 +111,7 @@ fn wait_marker(path: &std::path::Path) {
 fn action_call(spec: &ActionSpec, value: i32) -> Call {
     let host_id = Id::try_from("action-host").unwrap();
     Call {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: host_id.clone(),
         instance_epoch: 9_007_199_254_740_993u64.into(),
         actor_id: Id::try_from("action-caller").unwrap(),

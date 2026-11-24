@@ -279,7 +279,7 @@ fn verified_backend_executes_a_declared_query_and_preserves_original_context() {
         );
         let host_id = Id::try_from("query-host").unwrap();
         let query = Query {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: host_id.clone(),
             instance_epoch: 9_007_199_254_740_993u64.into(),
             actor_id: Id::try_from("query-reader").unwrap(),
@@ -1941,7 +1941,7 @@ async fn public_package_query_returns_committed_identity_without_private_code_pa
         .query(
             &reader,
             Query {
-                protocol_version: ProtocolVersion::V0_1,
+                protocol_version: ProtocolVersion::V1_0,
                 host_id: identity.host_id.clone(),
                 instance_epoch: identity.instance_epoch,
                 actor_id: reader.id().clone(),
@@ -2080,7 +2080,7 @@ async fn package_metadata_stays_discoverable_with_large_manifests_and_complete_c
         session_epoch: None,
     };
     let query = |action: &str, params: Value| Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: identity.host_id.clone(),
         instance_epoch: identity.instance_epoch,
         actor_id: h.actor.id().clone(),

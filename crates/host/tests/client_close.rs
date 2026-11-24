@@ -58,7 +58,7 @@ fn query(client: &HostClient, raw: bool) -> RpcRequest {
         session_epoch: None,
     };
     RpcRequest::Query(Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: a.host_id.clone(),
         instance_epoch: a.instance_epoch,
         actor_id: a.actor_id.clone(),

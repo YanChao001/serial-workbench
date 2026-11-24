@@ -273,6 +273,10 @@ Node reader 不依赖 Rust parser/SDK/IPC，扫描全部卷核对字节、索引
 
 DIAG-08 的 M3 金样由 [签名 Host 用例](../crates/host/tests/client_parity/uart_gold.rs) 生成双通道 8N1 电平，再通过 [公开 SDK 示例](../packages/plugin-sdk/examples/uart-gold.ts) 读取字节、原始采样区间和相对纳秒偏移。用例核对两路共用的采样时钟、超过 JavaScript 安全整数的采样序号，以及获准客户端通过文件引用读回的实际结果。先按[签名运行时](#签名运行时与-sdk)准备 `SWB_NODE_RUNTIME_TEST_ROOT` 并运行 `pnpm plugin-sdk:fixture`，再按需选择 `cargo test --locked -p serial-workbench-host --test client_parity native_node_dynamic_uart_gold_ -- --ignored --nocapture`。四目标 CI 的原生 runtime 检查包含该用例。VCD 和带采样率的 CSV 导入、校验位与 BREAK 在 M5 验收。
 
+v1 候选在本机 IPC、HTTP、配对 WebSocket 和 LAN TCP 给 0.1 客户端返回 `PROTOCOL_UNSUPPORTED`。核对 `supportedProtocolVersions` 为 `["1.0"]`、`upgradeTarget` 为 `"1.0"`，并确认同一 Host 可随后接受 1.0 客户端。原签名扩展清单按 `hostProtocolVersion: "0.1"` 复验。
+
+Windows 的 `windows-nsis-wire-v1` 运行时预检从已合入的 `ffff1fe` 构建旧套件，从当前候选构建新套件。测试密钥签名后执行实际桌面升级。两次 WebView 附着分别核对协议 0.1 与 1.0，以及相同 Host 身份、递增代次、原 profile 和卸载注册。收据记录两份源码提交、实际协商协议，以及旧 CLI 连接新 Host 时取得的版本拒绝和升级目标。正式发行签名按 T14 验收。
+
 ### 签名插件传输
 
 按[签名运行时](#签名运行时与-sdk)准备固定 Node 及 `SWB_NODE_RUNTIME_TEST_ROOT`，然后用同轮源码构建 SDK 示例并运行实证。

@@ -158,7 +158,7 @@ async function seedUpdateFixture(
     attachment: {
       hostId: "release-notes-host",
       instanceEpoch: "1",
-      protocolVersion: "0.1",
+      protocolVersion: "1.0",
       catalogVersion: "1",
       actorId: "release-notes-actor",
       clientId: "release-notes-client",

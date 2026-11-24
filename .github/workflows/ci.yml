@@ -45,6 +45,7 @@ on:
           - windows-nsis-stage
           - windows-nsis-switch
           - windows-nsis-desktop-update
+          - windows-nsis-wire-v1
           - linux-offline-installer
           - macos-offline-installer
         required: true

@@ -271,7 +271,7 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
     ] {
         f.add::<JsonValue>(name, v, valid)?;
     }
-    let call = json!({"protocolVersion":"0.1","hostId":"host","instanceEpoch":"7","actorId":"actor","requestId":"33333333-3333-4333-8333-333333333333","requestContext":"dG9rZW4","actionId":"session.tx","target":{"hostId":"host","kind":"session","id":"session","sessionId":"session","sessionEpoch":"9007199254740993"},"params":{"bytesBase64":"DQo=","writeWaitMs":"1000"},"revealTarget":{"pageId":"workbench"}});
+    let call = json!({"protocolVersion":"1.0","hostId":"host","instanceEpoch":"7","actorId":"actor","requestId":"33333333-3333-4333-8333-333333333333","requestContext":"dG9rZW4","actionId":"session.tx","target":{"hostId":"host","kind":"session","id":"session","sessionId":"session","sessionEpoch":"9007199254740993"},"params":{"bytesBase64":"DQo=","writeWaitMs":"1000"},"revealTarget":{"pageId":"workbench"}});
     f.add::<Call>("root-call", call.clone(), true)?;
     let mut query = call.clone();
     query.as_object_mut().unwrap().remove("requestContext");
@@ -404,10 +404,10 @@ fn fixtures() -> Result<Fixtures, Box<dyn Error>> {
         json!({"ok":true,"result":{"unknown":true}}),
         false,
     )?;
-    f.add::<RpcRequest>("rpc-attach",json!({"method":"host.attach","params":{"supportedProtocolVersions":["0.1"],"clientKind":"cli","clientId":"cli"}}),true)?;
+    f.add::<RpcRequest>("rpc-attach",json!({"method":"host.attach","params":{"supportedProtocolVersions":["1.0"],"clientKind":"cli","clientId":"cli"}}),true)?;
     f.add::<HttpControlRequest>(
         "http-control-attach",
-        json!({"requestId":"33333333-3333-4333-8333-333333333333","request":{"method":"host.attach","params":{"supportedProtocolVersions":["0.1"],"clientKind":"cli","clientId":"http-client"}}}),
+        json!({"requestId":"33333333-3333-4333-8333-333333333333","request":{"method":"host.attach","params":{"supportedProtocolVersions":["1.0"],"clientKind":"cli","clientId":"http-client"}}}),
         true,
     )?;
     f.add::<RpcRequest>(
@@ -547,14 +547,14 @@ fn ipc_fixtures(f: &mut Fixtures) -> Result<(), Box<dyn Error>> {
     let cursor = json!({"hostId":"host","instanceEpoch":"7","scopeId":"scope","position":"1"});
     let catalog_changed = json!({"type":"catalogChanged","catalogVersion":"9007199254740993","visibilityToken":"a".repeat(64)});
     let bodies = [
-        json!({"type":"clientHello","supportedProtocolVersions":["0.1"],"clientNonce":"nonce"}),
-        json!({"type":"hostHello","protocolVersion":"0.1","hostId":"host","instanceEpoch":"9007199254740993","serverNonce":"nonce","proof":"proof"}),
+        json!({"type":"clientHello","supportedProtocolVersions":["1.0"],"clientNonce":"nonce"}),
+        json!({"type":"hostHello","protocolVersion":"1.0","hostId":"host","instanceEpoch":"9007199254740993","serverNonce":"nonce","proof":"proof"}),
         json!({"type":"authenticate","clientId":"client"}),
         json!({"type":"authenticated","rawAttachToken":"token"}),
         json!({"type":"authenticateUserControl","clientId":"client","credential":"control-capability"}),
         json!({"type":"rawAttach","token":"token"}),
         json!({"type":"rawAttached"}),
-        json!({"type":"request","request":{"method":"host.attach","params":{"supportedProtocolVersions":["0.1"],"clientKind":"cli","clientId":"client"}}}),
+        json!({"type":"request","request":{"method":"host.attach","params":{"supportedProtocolVersions":["1.0"],"clientKind":"cli","clientId":"client"}}}),
         json!({"type":"reply","reply":{"ok":true,"result":{"closed":true}}}),
         json!({"type":"error","error":{"code":"NOT_FOUND","message":"Missing","retryable":false}}),
         json!({"type":"rawBatch","batch":{"subscriptionId":"subscription","cursor":cursor,"previousCursor":cursor,"items":[{"kind":"reader_gap","gap":{"hostId":"host","instanceEpoch":"7","sessionId":"session","sessionEpoch":"2","reason":"reader_overflow","missingEventRange":{"start":"1","end":"2"},"missingByteRanges":[]}}]}}),
@@ -1841,6 +1841,7 @@ fn main() -> Result<(), Box<dyn Error>> {
         NodePackageId,
         NodePackageVersion,
         NodePackagePath,
+        NodePackageHostProtocolVersion,
         NodePackageManifest,
         NodePackageIntegrity,
         NodePackageSignature,
@@ -1885,6 +1886,10 @@ fn main() -> Result<(), Box<dyn Error>> {
         "\n/** 正式 Node 包的签名域前缀，来源为 Rust 契约。 */\nexport const NODE_PACKAGE_SIGNATURE_PREFIX = {};\n",
         serde_json::to_string(std::str::from_utf8(NODE_PACKAGE_SIGNATURE_PREFIX)?)?
     ));
+    ts.push_str(&format!(
+        "\n/** 当前 Host 握手协议，来源为 Rust wire 契约。 */\nexport const HOST_PROTOCOL_VERSION = {};\n",
+        serde_json::to_string(&ProtocolVersion::CURRENT)?
+    ));
     let fixtures = fixtures()?;
     let documents = [
         (
@@ -1899,11 +1904,11 @@ fn main() -> Result<(), Box<dyn Error>> {
         ),
         (
             "schemas.json",
-            json!({"schemaVersion":1,"protocolVersion":"0.1","schemas":schemas}),
+            json!({"schemaVersion":1,"protocolVersion":ProtocolVersion::CURRENT,"schemas":schemas}),
         ),
         (
             "catalog.json",
-            json!({"schemaVersion":1,"protocolVersion":"0.1","actions":builtin_catalog()}),
+            json!({"schemaVersion":1,"protocolVersion":ProtocolVersion::CURRENT,"actions":builtin_catalog()}),
         ),
         ("fixtures.json", serde_json::to_value(fixtures)?),
     ];

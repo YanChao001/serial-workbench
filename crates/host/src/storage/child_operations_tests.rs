@@ -17,7 +17,7 @@ fn running_owner_admits_child_once_and_advances_parent_watermark_atomically() {
     let identity = store.begin_instance().unwrap();
     let actor = auth::actor("task-owner");
     let call: Call = serde_json::from_value(serde_json::json!({
-        "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+        "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
         "actorId":actor.id(),"requestId":"33333333-3333-4333-8333-333333333333",
         "requestContext":store.issue_context(&actor).unwrap().token,"actionId":"example.parent",
         "target":{"hostId":identity.host_id,"kind":"host","id":identity.host_id},
@@ -36,7 +36,7 @@ fn running_owner_admits_child_once_and_advances_parent_watermark_atomically() {
         .issue_task_context(&parent.operation_id, &owner_instance)
         .unwrap();
     let mut child: ChildCall = serde_json::from_value(serde_json::json!({
-        "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+        "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
         "actorId":actor.id(),"taskContext":token,"parentOperationId":parent.operation_id,"childKey":"1",
         "actionId":"workspace.create","target":call.target,"params":{"name":"child"},"revealTarget":{"pageId":"workbench"}
     })).unwrap();
@@ -100,7 +100,7 @@ impl TaskFixture {
         let identity = store.begin_instance().unwrap();
         let actor = auth::actor("task-owner");
         let root_call: Call = serde_json::from_value(serde_json::json!({
-            "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+            "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
             "actorId":actor.id(),"requestId":"33333333-3333-4333-8333-333333333333",
             "requestContext":store.issue_context(&actor).unwrap().token,"actionId":"example.parent",
             "target":{"hostId":identity.host_id,"kind":"host","id":identity.host_id},
@@ -116,7 +116,7 @@ impl TaskFixture {
             .dispatch_task(&parent.operation_id, &parent.operation_id)
             .unwrap();
         let child = serde_json::from_value(serde_json::json!({
-            "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+            "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
             "actorId":actor.id(),"taskContext":token,"parentOperationId":parent.operation_id,"childKey":"1",
             "actionId":"workspace.create","target":root_call.target,"params":{"name":"child"},"revealTarget":{"pageId":"workbench"}
         })).unwrap();

@@ -321,7 +321,7 @@ async fn metadata_client_can_query_the_installed_package_revision_without_starti
         .query(
             &reader,
             Query {
-                protocol_version: ProtocolVersion::V0_1,
+                protocol_version: ProtocolVersion::V1_0,
                 host_id: identity.host_id,
                 instance_epoch: identity.instance_epoch,
                 actor_id: reader.id().clone(),

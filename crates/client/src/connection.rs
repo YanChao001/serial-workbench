@@ -265,7 +265,7 @@ impl<S: AsyncRead + AsyncWrite + Unpin + Send + 'static> ControlConnection<S> {
         let connection = RpcConnection::new(stream, IpcChannel::Control);
         let attached = connection
             .request(RpcRequest::Attach(AttachParams {
-                supported_protocol_versions: vec!["0.1".into()],
+                supported_protocol_versions: vec![ProtocolVersion::CURRENT.as_wire().into()],
                 client_kind,
                 client_id: client_id.clone(),
                 expected_host_id: Some(host_id.clone()),
@@ -475,7 +475,7 @@ async fn verify_host(
             request_id: id.clone(),
             channel,
             body: IpcMessage::ClientHello {
-                supported_protocol_versions: vec!["0.1".into()],
+                supported_protocol_versions: vec![ProtocolVersion::CURRENT.as_wire().into()],
                 client_nonce: client_nonce.clone(),
                 expected_host_id: Some(pin.host_id.clone()),
             },
@@ -486,7 +486,7 @@ async fn verify_host(
     let response = receive(stream, &id, channel, LOCAL_ATTACH_TIMEOUT).await?;
     local::verify_peer(stream)?;
     let IpcMessage::HostHello {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version,
         host_id,
         instance_epoch,
         server_nonce,
@@ -504,7 +504,16 @@ async fn verify_host(
             "Connected Host identity differs from discovery",
         ));
     }
-    pin.verify(instance_epoch, &client_nonce, &server_nonce, &proof)?;
+    if protocol_version != ProtocolVersion::CURRENT {
+        return Err(invalid());
+    }
+    pin.verify(
+        protocol_version,
+        instance_epoch,
+        &client_nonce,
+        &server_nonce,
+        &proof,
+    )?;
     Ok(())
 }
 async fn receive(

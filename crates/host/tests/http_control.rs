@@ -149,7 +149,7 @@ async fn real_http_listener_authenticates_an_independent_actor_and_uses_the_host
     .unwrap();
     let user_control = read_user_control_credential(&profile).unwrap();
     let request = RpcRequest::Attach(AttachParams {
-        supported_protocol_versions: vec!["0.1".into()],
+        supported_protocol_versions: vec!["1.0".into()],
         client_kind: ClientKind::Cli,
         client_id: entry.client_id.clone(),
         expected_host_id: Some(expected_host.clone()),
@@ -191,7 +191,7 @@ async fn real_http_listener_authenticates_an_independent_actor_and_uses_the_host
     let RpcRequest::Attach(mut unsupported) = request.clone() else {
         unreachable!()
     };
-    unsupported.supported_protocol_versions = vec!["future".into()];
+    unsupported.supported_protocol_versions = vec!["0.1".into()];
     let RpcReply::Failure { error, .. } = rpc(
         &entry.url,
         &entry.credential,
@@ -205,7 +205,7 @@ async fn real_http_listener_authenticates_an_independent_actor_and_uses_the_host
     assert_eq!(error.code, "PROTOCOL_UNSUPPORTED");
     assert_eq!(
         serde_json::to_value(error.details.unwrap()).unwrap(),
-        json!({"supportedProtocolVersions":["0.1"],"upgradeTarget":"0.1"}),
+        json!({"supportedProtocolVersions":["1.0"],"upgradeTarget":"1.0"}),
     );
 
     let RpcResult::Attach(attachment) =
@@ -216,7 +216,7 @@ async fn real_http_listener_authenticates_an_independent_actor_and_uses_the_host
     assert_eq!(attachment.host_id, expected_host);
     assert_eq!(attachment.host_id, local.attachment().host_id);
     assert_eq!(attachment.instance_epoch, local.attachment().instance_epoch);
-    assert_eq!(attachment.protocol_version, ProtocolVersion::V0_1);
+    assert_eq!(attachment.protocol_version, ProtocolVersion::V1_0);
     assert_eq!(attachment.client_id, entry.client_id);
     assert_ne!(attachment.actor_id, local.attachment().actor_id);
 
@@ -453,7 +453,7 @@ async fn http_writes_once_and_pages_the_same_source_until_its_session_grant_is_r
         ..host_target(&expected_host)
     };
     let attach = RpcRequest::Attach(AttachParams {
-        supported_protocol_versions: vec!["0.1".into()],
+        supported_protocol_versions: vec!["1.0".into()],
         client_kind: ClientKind::Cli,
         client_id: entry.client_id.clone(),
         expected_host_id: Some(expected_host.clone()),
@@ -691,7 +691,7 @@ async fn production_host_transfers_http_entry_only_through_an_inherited_pipe() {
             &entry.credential,
             &request_id(),
             &RpcRequest::Attach(AttachParams {
-                supported_protocol_versions: vec!["0.1".into()],
+                supported_protocol_versions: vec!["1.0".into()],
                 client_kind: ClientKind::Cli,
                 client_id: entry.client_id,
                 expected_host_id: Some(attachment.host_id.clone()),

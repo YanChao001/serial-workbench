@@ -1,8 +1,9 @@
 use super::*;
 use crate::{
-    profile_has_running_host, reserve_host_instance, try_lock_private_file, write_secret_new,
+    DiscoveryFormat, profile_has_running_host, reserve_host_instance, try_lock_private_file,
+    write_secret_new,
 };
-use serial_workbench_core::{Id, ProtocolVersion};
+use serial_workbench_core::Id;
 use tempfile::TempDir;
 
 struct Fixture {
@@ -34,7 +35,7 @@ impl Fixture {
             instance_epoch: 42.into(),
             endpoint: "fixture".into(),
             pid: std::process::id(),
-            protocol_version: ProtocolVersion::V0_1,
+            format: DiscoveryFormat::V0_1,
             executable: None,
         }
         .write(&namespace.join("discovery.json"))

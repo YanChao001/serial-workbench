@@ -351,7 +351,7 @@ impl Fixture {
     ) -> Query {
         let a = client.attachment();
         Query {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: a.host_id.clone(),
             instance_epoch: a.instance_epoch,
             actor_id: a.actor_id.clone(),

@@ -4,7 +4,7 @@
 
 ## 1. 协议与类型来源
 
-所有 wire 字段使用 camelCase，Host `protocolVersion` 为字符串 `"0.1"`。v0 精确协商，不推断次版本相容；M3 冻结 v1 时另行规定支持范围。所有 u64 计数、revision、epoch、seq、offset、duration 使用无符号十进制字符串，禁止经过 JavaScript number 中转。包版本、manifest schema、Host 协议与私有数据 schema 分别版本化。
+所有 wire 字段使用 camelCase。外部 Host RPC 按 [Host 协议](./host-v0.md#附着版本与目录)精确协商 `"1.0"`。已签名扩展清单的 `hostProtocolVersion` 继续声明 SDK 兼容值 `"0.1"`，包验证使用独立类型。插件通过公开 SDK 使用宿主会话、动作与查询。所有 u64 计数、revision、epoch、seq、offset、duration 使用无符号十进制字符串，禁止经过 JavaScript number 中转。包版本、manifest schema、Host 协议与私有数据 schema 分别版本化。
 
 共享 Call、Query、身份、权限、目录、Snapshot、cursor、增量与 ObjectRef 由 [Host 合同](./host-v0.md) 维护，Operation、原始/派生流与资源结算由 [流与操作合同](./stream-and-operations-v0.md) 维护。Node SDK 与 Web UI 桥使用同一份生成类型与运行时校验。M1 Rust DTO 成为类型/schema 权威；M2 manifest 与动态贡献 DTO 一并纳入该生成链，禁止在 SDK 手写另一套 wire 协议。
 
@@ -23,7 +23,7 @@
 | `version`                    | 必需，发布包版本；安装同 ID 的升级必须高于当前版本，不借版本号建立信任。                                                                                                            |
 | `displayName`、`description` | 必需的显示文本，不参与授权。                                                                                                                                                        |
 | `license`、`notices`         | 必需，许可标识及包内许可/第三方声明路径列表。                                                                                                                                       |
-| `hostProtocolVersion`        | 必需，当前 manifest 只接受 `"0.1"`；其他值不能反序列化为 `ProtocolVersion`，包验证失败，不进入安装。                                                                                |
+| `hostProtocolVersion`        | 必需，扩展兼容值为 `"0.1"`。Rust `NodePackageHostProtocolVersion` 拒绝未知兼容值，包验证失败且不进入安装。                                                                          |
 | `runtimeRef`                 | 必需，引用应用发行组件清单中的 runtime 身份；精确版本与 ABI 约束按 runtime 分发基线校验。                                                                                           |
 | `main`                       | 必需，包内预构建 ESM JavaScript 后台入口，导出 `register`。                                                                                                                         |
 | `webUi`                      | 可选，`{entry}`，指向包内 HTML；其所有执行资源随包提供。                                                                                                                            |

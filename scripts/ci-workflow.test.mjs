@@ -285,6 +285,10 @@ test("runtime diagnostics stay separate from the milestone gate and isolate desk
     runtime,
     /if: inputs\.suite == 'windows-nsis-desktop-update'\s+shell: pwsh\s+run: \.\/scripts\/ci-windows-desktop-update\.ps1 -Target \$env:RUNTIME_TARGET/,
   );
+  assert.match(
+    runtime,
+    /if: inputs\.suite == 'windows-nsis-wire-v1'\s+shell: pwsh\s+run: \.\/scripts\/ci-windows-desktop-update\.ps1 -Target \$env:RUNTIME_TARGET -PreviousCommit ffff1fec81f7762ea20450d075ab1c373bf6f249/,
+  );
   assert.ok(runtime.includes("artifacts/windows-desktop-update/receipt.json"));
   assert.match(
     runtime,
@@ -453,6 +457,7 @@ test("runtime preflight executes a fixed four-target plan and rejects conflictin
     ["x86_64-pc-windows-msvc", "windows-nsis-stage", "windows-2022"],
     ["x86_64-pc-windows-msvc", "windows-nsis-switch", "windows-2022"],
     ["x86_64-pc-windows-msvc", "windows-nsis-desktop-update", "windows-2022"],
+    ["x86_64-pc-windows-msvc", "windows-nsis-wire-v1", "windows-2022"],
     ["x86_64-unknown-linux-gnu", "linux-offline-installer", "ubuntu-22.04"],
     ["aarch64-apple-darwin", "macos-offline-installer", "macos-15"],
   ]) {

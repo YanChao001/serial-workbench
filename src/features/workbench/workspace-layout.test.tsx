@@ -1075,7 +1075,7 @@ async function namedSessionConnection(
   const attachment: AttachResult = {
     hostId: options.hostId ?? "host",
     instanceEpoch: options.instanceEpoch ?? "1",
-    protocolVersion: "0.1",
+    protocolVersion: "1.0",
     catalogVersion: "1",
     actorId: "actor",
     clientId: "client",

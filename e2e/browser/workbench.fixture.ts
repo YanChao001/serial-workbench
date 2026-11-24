@@ -262,7 +262,7 @@ export async function seedWorkbenchFixture(
     attachment: {
       hostId: "workbench-gui-host",
       instanceEpoch: "1",
-      protocolVersion: "0.1",
+      protocolVersion: "1.0",
       catalogVersion: "1",
       actorId: "workbench-gui-actor",
       clientId: "workbench-gui-client",

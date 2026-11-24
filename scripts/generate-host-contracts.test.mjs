@@ -28,7 +28,7 @@ function exportedFiles() {
       "schemas.json",
       JSON.stringify({
         schemaVersion: 1,
-        protocolVersion: "0.1",
+        protocolVersion: "1.0",
         schemas: {
           RpcReply: {
             $schema: "http://json-schema.org/draft-07/schema#",
@@ -42,7 +42,7 @@ function exportedFiles() {
     ],
     [
       "catalog.json",
-      JSON.stringify({ schemaVersion: 1, protocolVersion: "0.1", actions: [] }),
+      JSON.stringify({ schemaVersion: 1, protocolVersion: "1.0", actions: [] }),
     ],
     [
       "fixtures.json",
@@ -56,6 +56,19 @@ function exportedFiles() {
     ],
   ]);
 }
+
+test("schema and catalog publish the same Rust protocol version", async () => {
+  const files = exportedFiles();
+  const catalog = JSON.parse(files.get("catalog.json"));
+  files.set(
+    "catalog.json",
+    JSON.stringify({ ...catalog, protocolVersion: "future" }),
+  );
+  await assert.rejects(
+    buildArtifacts(files),
+    /Unsupported Rust contract artifact version/,
+  );
+});
 
 test("standalone validators run as browser ESM without Ajv runtime imports", async () => {
   const artifacts = await buildArtifacts(exportedFiles());
@@ -132,7 +145,7 @@ test("shared Rust definitions stay within the browser validator code budget", as
     "schemas.json",
     JSON.stringify({
       schemaVersion: 1,
-      protocolVersion: "0.1",
+      protocolVersion: "1.0",
       schemas: Object.fromEntries(
         Array.from({ length: 24 }, (_, index) => [
           index ? `Reply${index}` : "RpcReply",
@@ -178,7 +191,7 @@ test("pooling preserves conflicting local definitions, recursion and literal $re
     "schemas.json",
     JSON.stringify({
       schemaVersion: 1,
-      protocolVersion: "0.1",
+      protocolVersion: "1.0",
       schemas: { RpcReply: root("one"), Other: root("two") },
     }),
   );

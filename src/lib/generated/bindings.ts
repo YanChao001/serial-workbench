@@ -4047,7 +4047,7 @@ export type Progress_Serialize = {
   total?: U64;
 };
 
-export type ProtocolVersion = "0.1";
+export type ProtocolVersion = "1.0";
 
 export type PurgeDirection = "rx" | "tx" | "both";
 

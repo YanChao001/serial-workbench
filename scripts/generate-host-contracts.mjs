@@ -42,9 +42,10 @@ export async function buildArtifacts(files) {
   const catalog = parseArtifact(files, "catalog.json");
   if (
     schemas.schemaVersion !== 1 ||
-    schemas.protocolVersion !== "0.1" ||
+    typeof schemas.protocolVersion !== "string" ||
+    !schemas.protocolVersion ||
     catalog.schemaVersion !== 1 ||
-    catalog.protocolVersion !== "0.1" ||
+    catalog.protocolVersion !== schemas.protocolVersion ||
     fixtures.schemaVersion !== 1
   )
     throw new Error("Unsupported Rust contract artifact version");

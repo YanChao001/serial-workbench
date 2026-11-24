@@ -1,4 +1,4 @@
-﻿import { execFileSync } from "node:child_process";
+import { execFileSync } from "node:child_process";
 import {
   copyFileSync,
   existsSync,
@@ -7,6 +7,7 @@ import {
   realpathSync,
 } from "node:fs";
 import { dirname, isAbsolute, join, relative, sep } from "node:path";
+import hostCatalog from "../packages/contracts/src/generated/catalog.json" with { type: "json" };
 import { fileSha256 } from "./artifact-lib.mjs";
 
 export const COMPONENTS = [
@@ -98,7 +99,7 @@ export function inspectComponents(plan, outputDir) {
     files,
     manifest: {
       version: plan.version,
-      protocol: "0.1",
+      protocol: hostCatalog.protocolVersion,
       target: plan.target,
       architecture: plan.target.split("-")[0],
       components: files.map(({ source, path }) => ({

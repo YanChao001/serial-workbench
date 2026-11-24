@@ -1,9 +1,9 @@
-﻿import { describe, expect, it, vi } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { AttachResult, Call, Query } from "@serial-workbench/contracts";
 import { createHostClient, HostRequestError } from "./client";
 
 const query: Query = {
-  protocolVersion: "0.1",
+  protocolVersion: "1.0",
   hostId: "host",
   instanceEpoch: "7",
   actorId: "actor",
@@ -101,7 +101,7 @@ describe("cancellation", () => {
 const attachment: AttachResult = {
   hostId: "host",
   instanceEpoch: "7",
-  protocolVersion: "0.1",
+  protocolVersion: "1.0",
   catalogVersion: "1",
   actorId: "actor",
   clientId: "client",

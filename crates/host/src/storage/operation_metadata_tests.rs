@@ -9,7 +9,7 @@ fn history_preserves_summary_fields_and_keeps_full_evidence_separate() {
     let identity = store.begin_instance().unwrap();
     let actor = auth::actor("history-owner");
     let call: Call = serde_json::from_value(serde_json::json!({
-        "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+        "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
         "actorId":actor.id(),"requestId":"44444444-4444-4444-8444-444444444444",
         "requestContext":store.issue_context(&actor).unwrap().token,
         "actionId":"session.tx","target":{"hostId":identity.host_id,"kind":"session","id":"session","sessionId":"session","sessionEpoch":"1"},

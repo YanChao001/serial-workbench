@@ -577,7 +577,7 @@ mod tests {
         let documents = DocumentService::new(store.clone(), auth.clone(), projections);
         let action = BuiltinAction::SettingsExport;
         let query = Query {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: identity.host_id.clone(),
             instance_epoch: identity.instance_epoch,
             actor_id: actor.id().clone(),

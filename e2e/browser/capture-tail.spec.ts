@@ -1,4 +1,4 @@
-﻿/// <reference lib="dom" />
+/// <reference lib="dom" />
 import { defaults } from "./json-fixtures";
 import { writeFile } from "node:fs/promises";
 import { expect, test, type Page, type TestInfo } from "@playwright/test";
@@ -161,7 +161,7 @@ test.afterEach(async ({ page }, info) => {
   for (const request of fixture.captureTailRequests) {
     expect(request.transport).toBe("raw");
     expect(request.query).toMatchObject({
-      protocolVersion: "0.1",
+      protocolVersion: "1.0",
       hostId: "workbench-gui-host",
       instanceEpoch: "1",
       actorId: "workbench-gui-actor",

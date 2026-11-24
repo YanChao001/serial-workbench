@@ -322,7 +322,7 @@ mod tests {
 
     fn fixture() -> (Call, Operation) {
         let call: Call = serde_json::from_value(serde_json::json!({
-            "protocolVersion":"0.1", "hostId":"host", "instanceEpoch":"1", "actorId":"desktop-actor",
+            "protocolVersion":"1.0", "hostId":"host", "instanceEpoch":"1", "actorId":"desktop-actor",
             "requestId":"00000000-0000-4000-8000-000000000114", "requestContext":"context",
             "actionId":"device.open", "target":{"hostId":"host","kind":"device","id":"COM14-device"},
             "params":{}, "revealTarget":{"pageId":"workbench"}, "executionMode":"interactive"

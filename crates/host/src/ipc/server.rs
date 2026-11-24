@@ -13,7 +13,7 @@ use crate::{
 };
 use serial_workbench_core::*;
 use serial_workbench_ipc::{
-    self as local, DiscoveryRecord, LocalListener,
+    self as local, DiscoveryFormat, DiscoveryRecord, LocalListener,
     frame::{MAX_FRAME_BYTES, write_frame},
     identity::{IdentityPin, random_token},
 };
@@ -410,7 +410,7 @@ impl HostServer {
             instance_epoch: identity.instance_epoch,
             endpoint: listener.endpoint().into(),
             pid: std::process::id(),
-            protocol_version: ProtocolVersion::V0_1,
+            format: DiscoveryFormat::V0_1,
             executable: Some(std::env::current_exe().map_err(|_| {
                 HostError::new(
                     "STORAGE_UNAVAILABLE",

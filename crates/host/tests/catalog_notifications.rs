@@ -48,7 +48,7 @@ async fn catalog_notifications_follow_visible_tools_and_expiry_on_the_real_conne
         session_epoch: None,
     };
     let query = Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: attachment.host_id.clone(),
         instance_epoch: attachment.instance_epoch,
         actor_id: attachment.actor_id.clone(),

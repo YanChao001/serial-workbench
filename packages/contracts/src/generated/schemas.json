@@ -1,5 +1,5 @@
 {
-  "protocolVersion": "0.1",
+  "protocolVersion": "1.0",
   "schemaVersion": 1,
   "schemas": {
     "Accent": {
@@ -4004,7 +4004,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "RetentionMs": {
@@ -4567,7 +4567,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "RequestId": {
@@ -7114,7 +7114,7 @@
           "type": "string"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "ResourceKind": {
@@ -16865,7 +16865,7 @@
           "type": "string"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "Query": {
@@ -22231,7 +22231,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "PurgeDirection": {
@@ -26519,6 +26519,13 @@
       "title": "NodePackageDetailsReadResult",
       "type": "object"
     },
+    "NodePackageHostProtocolVersion": {
+      "$schema": "http://json-schema.org/draft-07/schema#",
+      "description": "清单保留既有 SDK 兼容标记，签名包的格式与外部 IPC 握手分别演进。",
+      "enum": ["0.1"],
+      "title": "NodePackageHostProtocolVersion",
+      "type": "string"
+    },
     "NodePackageId": {
       "$schema": "http://json-schema.org/draft-07/schema#",
       "maxLength": 128,
@@ -26884,6 +26891,11 @@
           "required": ["name", "version", "path", "license"],
           "type": "object"
         },
+        "NodePackageHostProtocolVersion": {
+          "description": "清单保留既有 SDK 兼容标记，签名包的格式与外部 IPC 握手分别演进。",
+          "enum": ["0.1"],
+          "type": "string"
+        },
         "NodePackageId": {
           "maxLength": 128,
           "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
@@ -26917,7 +26929,7 @@
               "type": "string"
             },
             "hostProtocolVersion": {
-              "$ref": "#/definitions/ProtocolVersion"
+              "$ref": "#/definitions/NodePackageHostProtocolVersion"
             },
             "id": {
               "$ref": "#/definitions/NodePackageId"
@@ -27127,10 +27139,6 @@
           },
           "required": ["hostId", "kind", "id"],
           "type": "object"
-        },
-        "ProtocolVersion": {
-          "enum": ["0.1"],
-          "type": "string"
         },
         "ResourceKind": {
           "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
@@ -27614,6 +27622,11 @@
           "required": ["name", "version", "path", "license"],
           "type": "object"
         },
+        "NodePackageHostProtocolVersion": {
+          "description": "清单保留既有 SDK 兼容标记，签名包的格式与外部 IPC 握手分别演进。",
+          "enum": ["0.1"],
+          "type": "string"
+        },
         "NodePackageId": {
           "maxLength": 128,
           "pattern": "^[A-Za-z0-9_-]+(?:\\.[A-Za-z0-9_-]+)+$",
@@ -27771,10 +27784,6 @@
           "required": ["hostId", "kind", "id"],
           "type": "object"
         },
-        "ProtocolVersion": {
-          "enum": ["0.1"],
-          "type": "string"
-        },
         "ResourceKind": {
           "pattern": "^(?:host|device|session|operation|workspace|settings|capture|capture_record|plugin_result|transfer_receipts|file|plugin|client|[A-Za-z0-9._-]+:[A-Za-z0-9._-]+)$",
           "type": "string"
@@ -27860,7 +27869,7 @@
           "type": "string"
         },
         "hostProtocolVersion": {
-          "$ref": "#/definitions/ProtocolVersion"
+          "$ref": "#/definitions/NodePackageHostProtocolVersion"
         },
         "id": {
           "$ref": "#/definitions/NodePackageId"
@@ -39418,7 +39427,7 @@
     },
     "ProtocolVersion": {
       "$schema": "http://json-schema.org/draft-07/schema#",
-      "enum": ["0.1"],
+      "enum": ["1.0"],
       "title": "ProtocolVersion",
       "type": "string"
     },
@@ -39603,7 +39612,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "RequestId": {
@@ -54831,7 +54840,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "PurgeDirection": {
@@ -58534,7 +58543,7 @@
           "type": "string"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "Query": {
@@ -63430,7 +63439,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "PurgeDirection": {
@@ -77085,7 +77094,7 @@
           "type": "object"
         },
         "ProtocolVersion": {
-          "enum": ["0.1"],
+          "enum": ["1.0"],
           "type": "string"
         },
         "PurgeDirection": {

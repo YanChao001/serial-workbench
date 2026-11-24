@@ -51,7 +51,7 @@ function port() {
       attachment: {
         hostId: "host",
         instanceEpoch: "7",
-        protocolVersion: "0.1",
+        protocolVersion: "1.0",
         catalogVersion: "1",
         actorId: "actor",
         clientId: "client",

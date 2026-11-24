@@ -40241,6 +40241,6 @@
       "targetKinds": ["host"]
     }
   ],
-  "protocolVersion": "0.1",
+  "protocolVersion": "1.0",
   "schemaVersion": 1
 }

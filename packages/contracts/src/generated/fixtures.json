@@ -1298,7 +1298,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
           "pageId": "workbench"
@@ -1323,7 +1323,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -1350,7 +1350,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "target": {
@@ -1375,7 +1375,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -1403,7 +1403,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -1431,7 +1431,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -1458,7 +1458,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -1484,7 +1484,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -1512,7 +1512,7 @@
           "writeWaitMs": "1000"
         },
         "parentOperationId": "parent",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestId": "forbidden",
         "revealTarget": {
           "pageId": "workbench"
@@ -1541,7 +1541,7 @@
           "writeWaitMs": "1000"
         },
         "parentOperationId": "parent",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "forbidden",
         "revealTarget": {
           "pageId": "workbench"
@@ -1571,7 +1571,7 @@
           "writeWaitMs": "1000"
         },
         "parentOperationId": "parent",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "revealTarget": {
           "pageId": "workbench"
         },
@@ -1599,7 +1599,7 @@
           "writeWaitMs": "1000"
         },
         "parentOperationId": "parent",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "revealTarget": {
           "pageId": "workbench"
         },
@@ -1628,7 +1628,7 @@
           "writeWaitMs": "1000"
         },
         "parentOperationId": "parent",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "revealTarget": {
           "pageId": "workbench"
         },
@@ -1910,7 +1910,7 @@
       "schema": "IpcMessage",
       "value": {
         "clientNonce": "nonce",
-        "supportedProtocolVersions": ["0.1"],
+        "supportedProtocolVersions": ["1.0"],
         "type": "clientHello",
         "unknown": true
       }
@@ -1919,7 +1919,7 @@
       "name": "ipc-clientHello-missing-clientNonce",
       "schema": "IpcMessage",
       "value": {
-        "supportedProtocolVersions": ["0.1"],
+        "supportedProtocolVersions": ["1.0"],
         "type": "clientHello"
       }
     },
@@ -1936,7 +1936,7 @@
       "schema": "IpcMessage",
       "value": {
         "clientNonce": "nonce",
-        "supportedProtocolVersions": ["0.1"]
+        "supportedProtocolVersions": ["1.0"]
       }
     },
     {
@@ -1946,7 +1946,7 @@
         "hostId": "host",
         "instanceEpoch": "9007199254740993",
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce",
         "type": "hostHello",
         "unknown": true
@@ -1958,7 +1958,7 @@
       "value": {
         "instanceEpoch": "9007199254740993",
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce",
         "type": "hostHello"
       }
@@ -1969,7 +1969,7 @@
       "value": {
         "hostId": "host",
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce",
         "type": "hostHello"
       }
@@ -1980,7 +1980,7 @@
       "value": {
         "hostId": "host",
         "instanceEpoch": "9007199254740993",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce",
         "type": "hostHello"
       }
@@ -2003,7 +2003,7 @@
         "hostId": "host",
         "instanceEpoch": "9007199254740993",
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "type": "hostHello"
       }
     },
@@ -2014,7 +2014,7 @@
         "hostId": "host",
         "instanceEpoch": "9007199254740993",
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce"
       }
     },
@@ -2143,7 +2143,7 @@
           "params": {
             "clientId": "client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         },
         "type": "request",
@@ -2166,7 +2166,7 @@
           "params": {
             "clientId": "client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         }
       }
@@ -2524,7 +2524,7 @@
       "value": {
         "clientNonce": "nonce",
         "expectedHostId": null,
-        "supportedProtocolVersions": ["0.1"],
+        "supportedProtocolVersions": ["1.0"],
         "type": "clientHello"
       }
     },
@@ -2566,7 +2566,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "channel": "control"
@@ -2578,7 +2578,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "requestId": "33333333-3333-4333-8333-333333333333"
@@ -2598,7 +2598,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "channel": "unknown",
@@ -2611,7 +2611,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "channel": "control",
@@ -2633,7 +2633,7 @@
         "hostId": "host",
         "instanceEpoch": 7,
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce",
         "type": "hostHello"
       }
@@ -2660,7 +2660,7 @@
             "actorId": "forged",
             "clientId": "client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         },
         "type": "request"
@@ -2676,7 +2676,7 @@
             "clientId": "client",
             "clientKind": "cli",
             "credential": "forged",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         },
         "type": "request"
@@ -2691,7 +2691,7 @@
           "params": {
             "clientId": "client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"],
+            "supportedProtocolVersions": ["1.0"],
             "unknown": "forged"
           }
         },
@@ -2708,7 +2708,7 @@
           "params": {
             "clientId": "client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         },
         "type": "request"
@@ -11963,7 +11963,7 @@
           "bytesBase64": "DQo=",
           "writeWaitMs": "1000"
         },
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "requestContext": "dG9rZW4",
         "requestId": "33333333-3333-4333-8333-333333333333",
         "revealTarget": {
@@ -11991,7 +11991,7 @@
           "params": {
             "pageSize": "100"
           },
-          "protocolVersion": "0.1",
+          "protocolVersion": "1.0",
           "requestId": "33333333-3333-4333-8333-333333333333",
           "revealTarget": {
             "pageId": "workbench"
@@ -12090,7 +12090,7 @@
           "writeWaitMs": "1000"
         },
         "parentOperationId": "parent",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "revealTarget": {
           "pageId": "workbench"
         },
@@ -12277,7 +12277,7 @@
         "params": {
           "clientId": "cli",
           "clientKind": "cli",
-          "supportedProtocolVersions": ["0.1"]
+          "supportedProtocolVersions": ["1.0"]
         }
       }
     },
@@ -12290,7 +12290,7 @@
           "params": {
             "clientId": "http-client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         },
         "requestId": "33333333-3333-4333-8333-333333333333"
@@ -12465,7 +12465,7 @@
       "schema": "IpcMessage",
       "value": {
         "clientNonce": "nonce",
-        "supportedProtocolVersions": ["0.1"],
+        "supportedProtocolVersions": ["1.0"],
         "type": "clientHello"
       }
     },
@@ -12476,7 +12476,7 @@
         "hostId": "host",
         "instanceEpoch": "9007199254740993",
         "proof": "proof",
-        "protocolVersion": "0.1",
+        "protocolVersion": "1.0",
         "serverNonce": "nonce",
         "type": "hostHello"
       }
@@ -12530,7 +12530,7 @@
           "params": {
             "clientId": "client",
             "clientKind": "cli",
-            "supportedProtocolVersions": ["0.1"]
+            "supportedProtocolVersions": ["1.0"]
           }
         },
         "type": "request"
@@ -12653,7 +12653,7 @@
       "value": {
         "clientNonce": "nonce",
         "expectedHostId": "host",
-        "supportedProtocolVersions": ["0.1"],
+        "supportedProtocolVersions": ["1.0"],
         "type": "clientHello"
       }
     },
@@ -12686,7 +12686,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "channel": "control",
@@ -12704,7 +12704,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "channel": "raw",
@@ -12722,7 +12722,7 @@
       "value": {
         "body": {
           "clientNonce": "nonce",
-          "supportedProtocolVersions": ["0.1"],
+          "supportedProtocolVersions": ["1.0"],
           "type": "clientHello"
         },
         "channel": "state",

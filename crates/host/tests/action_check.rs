@@ -129,7 +129,7 @@ impl Fixture {
 fn query(client: &HostClient, target: &Target, action: &str, params: Value) -> Query {
     let attach = client.attachment();
     Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: attach.host_id.clone(),
         instance_epoch: attach.instance_epoch,
         actor_id: attach.actor_id.clone(),

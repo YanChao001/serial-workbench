@@ -1,6 +1,6 @@
-# Host v0
+# Host v1
 
-本文定义独立 Host v0 契约，实施阶段与权威来源见 [索引](./README.md)。GUI、CLI、MCP、Node 后台和远端转发调用相同业务 handler；客户端适配器只负责认证、传输、呈现与客户端系统交互。
+本文定义独立 Host v1 契约，实施阶段与权威来源见 [索引](./README.md)。GUI、CLI、MCP、Node 后台和远端转发调用相同业务 handler；客户端适配器只负责认证、传输、呈现与客户端系统交互。
 
 ## Wire 基元与身份
 
@@ -14,7 +14,7 @@ Host 的期限时钟在系统休眠期间继续前进，同一实例的时钟句
 | ----------------- | ----------------------------------------------------- | ------------------------------------------------------------------------------------------- |
 | `hostId`          | Id；一个用户数据配置的 Host 身份                      | 持久保存并绑定身份密钥；复制配置到另一运行身份须重建 hostId/密钥，不能两机冒充同一 Host     |
 | `instanceEpoch`   | U64；hostId 内的运行代次，从 `"1"` 起                 | 每次 Host 启动在对外服务前持久递增；无法保存则不接受副作用                                  |
-| `protocolVersion` | string；本规范只支持 `"0.1"`                          | 与发行版本分离，握手精确匹配                                                                |
+| `protocolVersion` | string；本规范支持 `"1.0"`                            | 与发行版本分离，握手精确匹配                                                                |
 | `catalogVersion`  | U64；当前 Host 注册表全局版本                         | 可用贡献或其契约变化时持久递增；权限过滤不另建业务目录版本                                  |
 | `actorId`         | Id；执行 Host 认可的主体                              | 由认证绑定；转发保留始发身份及委托链，正文不能自行声明身份                                  |
 | `requestId`       | UUID；同一执行 hostId、actorId、requestContext 内唯一 | 一个逻辑副作用永不换 ID 或上下文重试，也不复用旧 ID                                         |
@@ -84,7 +84,7 @@ hostId/instanceEpoch 指执行 Host，不是入口转发 Host。执行端校验�
 
 ```json
 {
-  "protocolVersion": "0.1",
+  "protocolVersion": "1.0",
   "hostId": "11111111-1111-4111-8111-111111111111",
   "instanceEpoch": "7",
   "actorId": "22222222-2222-4222-8222-222222222222",
@@ -183,7 +183,7 @@ Host 将已接纳 operation 派发给 owner 时，签发 taskContext，绑定执
 
 本机传输使用四字节大端长度和 UTF-8 JSON，帧体为 `WireFrame {requestId,channel,body}`。`channel` 为 `control/raw/state`，`body.type` 选择生成的消息类型；先检查 1 MiB 长度上限再读取正文。只有完整帧边界的 EOF 表示正常关闭，半帧、非法 UTF-8/JSON 或未知字段均拒绝。公共类型由 core 导出，平台连接、受保护秘密与有界帧 IO 由共享 IPC crate 实现。
 
-Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID；Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。实例锁覆盖整个 Host 生命周期；PID、文件年龄和发现记录不能代替锁。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录，记录包含身份、epoch、endpoint、PID 和协议版本，不包含秘密。
+Windows 使用当前用户 SID 的显式 DACL、拒绝远程连接的 named pipe，并检查真实 peer 的进程 token SID。Unix 使用私有 0700 runtime 目录、0600 socket 和真实 peer UID。OS 实例锁覆盖整个 Host 生命周期。只有持锁的 Host 能准备遗留 endpoint 并原子发布发现记录。记录包含身份、epoch、endpoint、PID 和格式版本。历史字段 `protocolVersion` 按发现格式 `0.1` 发布，原有客户端可读取 endpoint，再通过握手得到受支持的 RPC 版本和升级目标。启动时复核原 profile 的身份，保留发现记录并正常换代。
 
 客户端先发送 nonce，验证绑定协议版本、hostId、epoch 和双方 nonce 的 Host proof，再提交自己的凭据。身份 pin 从受保护本地存储取得，不能从发现记录自建信任。新外部客户端只注册元数据身份；已有 clientId 的错误或缺失凭据不能覆盖原授权。控制连接与原始流连接分开，raw attach token 绑定活控制连接、actor 和 epoch；控制连接结束后 token 失效。Host 分配的 connectionId 只用于连接资源和投递归属，不进入 Call 或去重身份。同 actor 的另一连接退出不能清除本连接订阅，也不能停止 Host 业务任务。
 

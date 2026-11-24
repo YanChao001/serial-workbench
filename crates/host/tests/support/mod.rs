@@ -265,7 +265,7 @@ impl Harness {
         params: serde_json::Value,
     ) -> Call {
         Call {
-            protocol_version: ProtocolVersion::V0_1,
+            protocol_version: ProtocolVersion::V1_0,
             host_id: self.host_id.clone(),
             instance_epoch: self.store.identity().unwrap().instance_epoch,
             actor_id: actor.id().clone(),

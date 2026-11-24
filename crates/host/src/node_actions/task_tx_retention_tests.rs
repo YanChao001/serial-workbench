@@ -109,7 +109,7 @@ async fn native_node_tx_child_prune_and_current_revocation_preserve_live_parent_
     .unwrap();
     let identity = fixture.h.store.identity().unwrap();
     let old_child: ChildCall = serde_json::from_value(json!({
-        "protocolVersion":"0.1","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
+        "protocolVersion":"1.0","hostId":identity.host_id,"instanceEpoch":identity.instance_epoch,
         "actorId":fixture.h.actor.id(),"taskContext":task_context,
         "parentOperationId":accepted_parent.operation_id,"childKey":"1",
         "actionId":"session.tx","target":session,

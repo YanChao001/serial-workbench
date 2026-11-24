@@ -146,6 +146,7 @@ import type {
   NodePackageChangeResult,
   NodePackageDetailsReadParams,
   NodePackageDetailsReadResult,
+  NodePackageHostProtocolVersion,
   NodePackageId,
   NodePackageIdentityParams,
   NodePackageInstallParams,
@@ -687,6 +688,9 @@ export declare function validateNodePackageDetailsReadParams(
 export declare function validateNodePackageDetailsReadResult(
   value: unknown,
 ): value is NodePackageDetailsReadResult;
+export declare function validateNodePackageHostProtocolVersion(
+  value: unknown,
+): value is NodePackageHostProtocolVersion;
 export declare function validateNodePackageId(
   value: unknown,
 ): value is NodePackageId;

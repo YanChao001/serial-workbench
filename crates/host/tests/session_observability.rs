@@ -17,7 +17,7 @@ use support::{Harness, ManualClock, id};
 
 fn query(host: &Store, actor: &AuthenticatedActor, target: &Target, action: &str) -> Query {
     Query {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: target.host_id.clone(),
         instance_epoch: host.identity().unwrap().instance_epoch,
         actor_id: actor.id().clone(),

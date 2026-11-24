@@ -73,7 +73,15 @@ fn exports_self_contained_schemas_and_rust_owned_types_only_to_requested_directo
     let schemas: Value =
         serde_json::from_slice(&std::fs::read(output.join("schemas.json")).unwrap()).unwrap();
     assert_eq!(schemas["schemaVersion"], 1);
-    assert_eq!(schemas["protocolVersion"], "0.1");
+    assert_eq!(schemas["protocolVersion"], "1.0");
+    assert_eq!(
+        schemas["schemas"]["ProtocolVersion"]["enum"],
+        serde_json::json!(["1.0"])
+    );
+    assert_eq!(
+        schemas["schemas"]["NodePackageHostProtocolVersion"]["enum"],
+        serde_json::json!(["0.1"])
+    );
     assert_eq!(
         schemas["schemas"]["RpcReply"]["$schema"],
         "http://json-schema.org/draft-07/schema#"

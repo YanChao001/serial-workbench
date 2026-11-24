@@ -19,7 +19,7 @@ fn request(
     params: Value,
 ) -> Call {
     Call {
-        protocol_version: ProtocolVersion::V0_1,
+        protocol_version: ProtocolVersion::V1_0,
         host_id: target.host_id.clone(),
         instance_epoch: store.identity().unwrap().instance_epoch,
         actor_id: actor.id().clone(),
