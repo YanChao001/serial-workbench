@@ -401,6 +401,14 @@ recorded_send_2                   recorded_send_2
 
 四目标原生检查复用实际 Host 的 `native_node_dynamic_statistics_reads_windows_from_signed_package`。用 `pnpm plugin-sdk:fixture` 编译时纳入同源窗口扩展，测试按真实包清单和临时密钥签名。核对来源验证、显式执行信任、启用、Host 调用和有界结果读取，同时检查高位时间边界及两类空窗。
 
+### 专业跨源 XY 与李萨如（VIZ-06）
+
+通过高级统计签名扩展调用 Host 动作 `swb.reference.statistics.alignXY`。`x` 和 `y` 都要提供 `sourceId`、`clockId` 和按时间严格递增的 `samples`，每轴最多 128 点。样本包含十进制字符串 `monoNs` 和 `value`，空值使用 `null`。已知采集中断在之后的第一个样本标记 `gapBefore: true`。以 X 的样本为输出位置，设置 `method: "exact"` 仅配对同一时刻，或用 `method: "linear"` 在同一连续区段的两个 Y 样本间插值。`maxGapNs` 为 X 时钟上的最大 Y 点间隔，超限也会断开连续曲线。
+
+共享时钟使用同一 `clockId` 并省略 `anchors`。两个时钟分别读到同一同步事件时，传入 `{ "xMonoNs": "18000000000000000000", "yMonoNs": "100" }` 作为一对锚点。第二次同步事件定义漂移斜率。以上述锚点及 `{ "xMonoNs": "18000000000000000003", "yMonoNs": "102" }` 为例，Y 的一个纳秒对应 X 的 1.5 纳秒。Y 的 `100`、`101` 分别取值 `0`、`6` 时，X 时间 `18000000000000000001` 的插值为 `4`，权重为 `2/3`。报告保留两端时间和数组索引。连续图形按 `breakBefore` 断线。缺值、无精确匹配、区段断开或超过 Y 两端时核对报告原因。
+
+运行 `node --test scripts/reference-statistics.test.mjs`，核对高位时间、比例、间隙、范围外和取消。使用相位差四分之一周期的正弦、余弦样本，比对两路时钟校准后的李萨如单位圆。四目标 CI 的 `native_node_dynamic_statistics_reads_windows_from_signed_package` 在相同签名安装上用真实 Host 验证插值报告。专业图表的界面展示、独立设备和发行仍按专项验收。
+
 ## 签名主题
 
 按[签名运行时](#签名运行时与-sdk)准备固定 Node，并在独立环境运行 Host 和无头界面检查。

@@ -1,32 +1,19 @@
 import type { NodeRegister } from "@serial-workbench/plugin-sdk/node";
 import { sampleStatistics } from "../reference-chart/sample-statistics.ts";
 
+import { alignXY } from "./align-xy.ts";
+import {
+  maxU64,
+  positive,
+  record,
+  seriesIdentifier,
+  u64,
+} from "./sample-input.ts";
+
 const action = "swb.reference.statistics.windows";
 const maxSlots = 8_192;
 const maxSamples = 512;
 const maxWindows = 128n;
-const maxU64 = (1n << 64n) - 1n;
-
-function record(value: unknown, path: string): Record<string, unknown> {
-  if (!value || typeof value !== "object" || Array.isArray(value))
-    throw new Error(`${path} must be an object`);
-  return value as Record<string, unknown>;
-}
-
-function u64(value: unknown, path: string) {
-  if (typeof value === "string" && /^(0|[1-9]\d{0,19})$/.test(value)) {
-    const parsed = BigInt(value);
-    if (parsed <= maxU64) return parsed;
-  }
-  throw new Error(`${path} must be an unsigned 64-bit decimal string`);
-}
-
-function positive(value: unknown, path: string) {
-  const parsed = u64(value, path);
-  if (!parsed) throw new Error(`${path} must be positive`);
-  return parsed;
-}
-
 function readWindow(value: unknown) {
   const window = record(value, "window");
   const length = positive(window.length, "window.length");
@@ -35,12 +22,7 @@ function readWindow(value: unknown) {
     return { kind: window.kind, period: 1n, length, step } as const;
   if (window.kind !== "time")
     throw new Error("window.kind must be count or time");
-  const clockId = window.clockId;
-  if (
-    typeof clockId !== "string" ||
-    !/^[A-Za-z0-9][A-Za-z0-9._:-]{0,63}$/.test(clockId)
-  )
-    throw new Error("window.clockId must identify a single monotonic clock");
+  const clockId = seriesIdentifier(window.clockId, "window.clockId");
   return {
     kind: window.kind,
     clockId,
@@ -145,6 +127,10 @@ export const register: NodeRegister = (context) => {
   context.actions.register(action, (call, task) => {
     task.signal.throwIfAborted();
     return summarize(call.params, task.signal);
+  });
+  context.actions.register("swb.reference.statistics.alignXY", (call, task) => {
+    task.signal.throwIfAborted();
+    return alignXY(call.params, task.signal);
   });
   context.contributions.register({
     actions: [],

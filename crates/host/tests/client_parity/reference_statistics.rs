@@ -117,7 +117,70 @@ async fn native_node_dynamic_statistics_reads_windows_from_signed_package() {
     assert_eq!(rows[3]["toMonoNs"], "18000000000000000012");
     assert_eq!(rows[3]["expectedCount"], 0);
     assert!(rows[3]["missingRate"].is_null());
+    let xy = json!({
+        "x": {
+            "sourceId": "x-channel",
+            "clockId": "x-clock",
+            "samples": [
+                {"monoNs":"18000000000000000000","value":"1.5"},
+                {"monoNs":"18000000000000000001","value":"2.5"}
+            ]
+        },
+        "y": {
+            "sourceId": "y-channel",
+            "clockId": "y-clock",
+            "samples": [
+                {"monoNs":"100","value":"0"},
+                {"monoNs":"101","value":"6"}
+            ]
+        },
+        "method": "linear",
+        "maxGapNs": "2",
+        "anchors": [
+            {"xMonoNs":"18000000000000000000","yMonoNs":"100"},
+            {"xMonoNs":"18000000000000000003","yMonoNs":"102"}
+        ]
+    });
+    let alignment = fixture
+        .invoke(
+            &fixture.client,
+            fixture.call(
+                &fixture.client,
+                &fixture.target,
+                "swb.reference.statistics.alignXY",
+                xy,
+            ),
+        )
+        .await;
+    let settled = fixture.wait(&fixture.client, &alignment.operation_id).await;
+    assert_eq!(settled.state, OperationState::Succeeded, "{settled:?}");
+    let aligned = fixture.result(&fixture.client, &settled).await;
+    assert_eq!(aligned["x"]["clockId"], "x-clock");
+    assert_eq!(aligned["y"]["sourceId"], "y-channel");
+    assert_eq!(
+        aligned["clockRate"],
+        json!({"numerator":"3","denominator":"2"})
+    );
+    assert_eq!(aligned["pairs"][0]["y"]["status"], "exact");
+    let interpolated = &aligned["pairs"][1];
+    assert_eq!(interpolated["x"]["monoNs"], "18000000000000000001");
+    assert_eq!(interpolated["breakBefore"], false);
+    assert_eq!(
+        interpolated["y"],
+        json!({
+            "status":"interpolated",
+            "before":{"index":0,"monoNs":"100","value":"0"},
+            "after":{"index":1,"monoNs":"101","value":"6"},
+            "value":"4",
+            "fraction":{"numerator":"2","denominator":"3"}
+        })
+    );
+
     let _ = fixture.finish().await;
+    eprintln!(
+        "statistics_xy_signed archive={} operation={} pairs=2 interpolation=2/3",
+        package.archive_sha256, alignment.operation_id
+    );
     eprintln!(
         "statistics_signed archive={} operation={} windows=4 verified_loss=1 empty_rate=null clean_shutdown=true",
         package.archive_sha256, accepted.operation_id
