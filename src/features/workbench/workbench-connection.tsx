@@ -411,6 +411,13 @@ export function WorkbenchConnection({
                   {toolLabels.commandSequence}
                 </DropdownMenuItem>
               )}
+              {toolLabels?.testSuite && (
+                <DropdownMenuItem
+                  onSelect={() => onTool("testSuite", menuTrigger.current)}
+                >
+                  {toolLabels.testSuite}
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onSelect={() => onTool("sendHistory", menuTrigger.current)}
               >

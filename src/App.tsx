@@ -1,3 +1,4 @@
+import { useState } from "react";
 import { ThemeProvider } from "next-themes";
 import { HashRouter, Navigate, Route, Routes } from "react-router-dom";
 import { Toaster } from "@/components/ui/sonner";
@@ -24,6 +25,7 @@ import { BrowserTakeoverNotice } from "@/features/browser/browser-takeover-notic
 import { useBrowserPairing } from "@/features/browser/use-browser-pairing";
 import { LanWorkbench } from "@/features/lan/lan-workbench";
 import { getLocalHostClient } from "@/lib/host-client";
+import { TestSuiteSessionsContext } from "@/features/workbench/test-suite-sessions";
 
 function AppEffects() {
   useExternalLinks();
@@ -33,6 +35,9 @@ function AppEffects() {
 }
 export default function App() {
   const browser = useBrowserPairing();
+  const [unresolvedSessions, setUnresolvedSessions] = useState<
+    ReadonlySet<string>
+  >(() => new Set());
   return (
     <HostProvider
       enabled={browser.clientId ? browser.paired : undefined}
@@ -80,9 +85,17 @@ export default function App() {
                                   path={index ? undefined : path}
                                   element={
                                     index ? (
-                                      <LanWorkbench>
-                                        <Page />
-                                      </LanWorkbench>
+                                      <TestSuiteSessionsContext.Provider
+                                        value={{
+                                          unresolvedSessions,
+                                          onUnresolvedSessionsChange:
+                                            setUnresolvedSessions,
+                                        }}
+                                      >
+                                        <LanWorkbench>
+                                          <Page />
+                                        </LanWorkbench>
+                                      </TestSuiteSessionsContext.Provider>
                                     ) : (
                                       <Page />
                                     )

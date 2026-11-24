@@ -121,6 +121,7 @@ export type WorkbenchFixture = {
     captureNameHint: CaptureNameHint | null;
   }[];
   automationCursorPosition: string;
+  suiteConfigurationRevision?: string;
   automationCursorScope?: string;
   automationObserveFailures: number;
   finishAutomationCancellation: () => void;
@@ -267,6 +268,7 @@ export async function seedWorkbenchFixture(
       action: ActionSpec;
       state: "ready" | "held" | "denied";
       sequenceRetry?: boolean;
+      sequenceSuiteOutcomes?: ("passed" | "failed" | "written")[];
     };
     plugin?: {
       archive: SelectedFileResource;
@@ -627,6 +629,7 @@ export async function seedWorkbenchFixture(
       automation,
     } = JSON.parse(raw) as typeof fixturePayload;
     let automationOperation: Operation | undefined;
+    let suiteCase = 0;
     let automationFile = "";
     let framingOperation: Operation | undefined;
     let holdFraming = false;
@@ -1602,10 +1605,23 @@ export async function seedWorkbenchFixture(
                 const call = request.params;
                 const sequence = call.actionId.endsWith(".sequence");
                 const retry = sequence && automation.sequenceRetry;
-                const count = sequence ? (retry ? 1 : 4) : call.params.count;
+                const suite = sequence
+                  ? automation.sequenceSuiteOutcomes
+                  : undefined;
+                const failed = suite?.[suiteCase] === "failed";
+                const written = suite?.[suiteCase] === "written";
+                const count = sequence
+                  ? retry || suite
+                    ? 1
+                    : 4
+                  : call.params.count;
                 if (typeof count !== "number")
                   throw new Error("Expected automation count");
-                const id = sequence ? "fixture-sequence" : "fixture-repeat";
+                const id = suite
+                  ? "suite-case-" + ++suiteCase
+                  : sequence
+                    ? "fixture-sequence"
+                    : "fixture-repeat";
                 const resultRef = {
                   hostId: call.target.hostId,
                   kind: "plugin_result",
@@ -1691,6 +1707,40 @@ export async function seedWorkbenchFixture(
                         ),
                       },
                 );
+                if (suite) {
+                  fixture.automationCursorPosition = String(
+                    BigInt(fixture.automationCursorPosition) + 4n,
+                  );
+                  automationFile = JSON.stringify({
+                    outcome: failed ? "response_timeout" : "completed",
+                    completedSteps: failed ? 0 : 1,
+                    ...(failed && { stoppedAt: "$.steps[0]" }),
+                    attempts: [
+                      {
+                        path: "$.steps[0]",
+                        operationId: id + "-tx",
+                        outcome: failed
+                          ? "response_timeout"
+                          : written
+                            ? "written"
+                            : "matched",
+                        ...(!failed &&
+                          !written && {
+                            source: {
+                              hostId: call.target.hostId,
+                              sessionId: call.target.sessionId,
+                              sessionEpoch: call.target.sessionEpoch,
+                              direction: "rx",
+                              eventStart: "2",
+                              eventEnd: "3",
+                              byteStart: "0",
+                              byteEnd: "1",
+                            },
+                          }),
+                      },
+                    ],
+                  });
+                }
                 return {
                   ok: true,
                   result: {
@@ -2059,6 +2109,23 @@ export async function seedWorkbenchFixture(
                     },
                   };
               }
+              if (
+                automation &&
+                query.actionId === "session.get" &&
+                query.target.id === openedSession.sessionId
+              )
+                return {
+                  ok: true,
+                  result: {
+                    kind: "session",
+                    value: {
+                      ...openedSession,
+                      configurationRevision:
+                        fixture.suiteConfigurationRevision ??
+                        openedSession.configurationRevision,
+                    },
+                  },
+                };
               if (
                 automationOperation &&
                 query.actionId === "operation.get" &&
