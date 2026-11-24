@@ -558,13 +558,15 @@ export function WorkbenchTools({
               device.deviceId === context.session?.deviceId,
           )?.systemName
         }
-        items={context.items}
+        items={context.sourceItems ?? context.items}
         invoke={invoke}
         waitForOperation={host.waitForOperation}
         readFile={host.readFile}
         definitionFileAccess={definitionFileAccess}
         modbusTimeline={modbusTimeline}
         modbusSlave={modbusSlave}
+        sourceSelection={context.chartSelection}
+        onRevealSource={context.onRevealChartSource}
       />
     );
   }

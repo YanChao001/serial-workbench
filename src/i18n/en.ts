@@ -1533,6 +1533,46 @@ export const en = {
   "workbench.fields.value": "Value",
   "workbench.fields.source": "Original bytes",
   "workbench.fields.byteRange": "Bytes [{start}, {end})",
+  "workbench.fieldChart.title": "Field chart",
+  "workbench.fieldChart.replayTitle": "Replay field chart",
+  "workbench.fieldChart.replayOffset": "First frame byte offset",
+  "workbench.fieldChart.replayAbsent":
+    "The first frame byte is missing from the loaded records.",
+  "workbench.fieldChart.replayFrames": "{count} complete frames",
+  "workbench.fieldChart.replayGap":
+    "Some frames cannot be assembled from the loaded bytes",
+  "workbench.fieldChart.replayLimit":
+    "The chart reached the 128-frame or 64 KiB limit",
+  "workbench.fieldChart.record": "Capture record {record}",
+  "workbench.fieldChart.locateByByte": "Locate by source byte",
+  "workbench.fieldChart.fromReceive": "Plot selected receive bytes",
+  "workbench.fieldChart.selectReceiveHint":
+    "Select up to 4,096 contiguous received bytes in the HEX view first.",
+  "workbench.fieldChart.receiveBytes": "Selected source bytes",
+  "workbench.fieldChart.receiveUnavailable":
+    "The selected source bytes are no longer retained.",
+  "workbench.fieldChart.selectionOutsideFields":
+    "The selected receive bytes do not identify one numeric field in this scan.",
+  "workbench.fieldChart.showReceiveBytes": "Show bytes in receive view",
+  "workbench.fieldChart.locate": "Locate byte",
+  "workbench.fieldChart.sourceEvent": "Source event number",
+  "workbench.fieldChart.sourceByte": "Source byte offset",
+  "workbench.fieldChart.sourceUnavailable":
+    "This byte is outside the verified source of the selected field.",
+  "workbench.fieldChart.plot": "Plot fields",
+  "workbench.fieldChart.plotLabel": "Field value by frame order",
+  "workbench.fieldChart.noNumericField":
+    "No numeric fields could be decoded in this page.",
+  "workbench.fieldChart.compact": "Compact curve",
+  "workbench.fieldChart.recent": "Last 32 frames",
+  "workbench.fieldChart.cursor": "Frame cursor",
+  "workbench.fieldChart.frame": "Frame {value}",
+  "workbench.fieldChart.event": "Event {event}",
+  "workbench.fieldChart.gap":
+    "No plotted value for this frame. Check the source bytes, checksum and calibration.",
+  "workbench.fieldChart.selectField": "Select field {field} in chart",
+  "workbench.fieldChart.selectionLocked":
+    "Restore the field edits before moving the frame cursor.",
   "workbench.fields.bitRange": "Field bits [{start}, {end})",
   "workbench.fields.checksumValid": "Checksum matches",
   "workbench.fields.checksumExpected": "Expected checksum {hex}",

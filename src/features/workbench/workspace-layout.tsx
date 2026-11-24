@@ -67,6 +67,7 @@ import {
 } from "./workspace-model";
 import { CONFIG_FIELDS } from "./serial-configuration";
 import { StreamView, type StreamViewProps } from "./stream-view";
+import type { ChartSourceSelection } from "./stream-chart-selection";
 import { ansiPasteParams } from "./ansi-paste";
 import { receiveEncodingFor } from "@/lib/text-encoding";
 import { streamSourceKey } from "@/lib/stream-source";
@@ -203,8 +204,11 @@ export type WorkbenchToolContext = {
   target?: Target;
   isReplay: boolean;
   items: readonly import("@serial-workbench/contracts").StreamItem[];
+  sourceItems?: readonly import("@serial-workbench/contracts").StreamItem[];
   openError?: WorkbenchFailure;
   onInspectBytes: () => void;
+  chartSelection?: ChartSourceSelection;
+  onRevealChartSource?: (source: ChartSourceSelection) => void;
 };
 export type WorkspaceLayoutProps = {
   receiveHistory?: StreamViewProps["historyLimits"];
@@ -558,6 +562,11 @@ export function WorkspaceLayout({
     );
   }, [selected, workspaceKey, state.devices]);
   const [dialog, setDialog] = useState<WorkbenchPanel | null>(null);
+  const [chartLink, setChartLink] = useState<{
+    scope: string;
+    selection?: ChartSourceSelection;
+    reveal?: ChartSourceSelection;
+  }>();
   const [transportPrompt, setTransportPrompt] = useState<{
     deviceId: string;
     scope: string;
@@ -1702,6 +1711,10 @@ export function WorkspaceLayout({
     () => historyAfter(stream?.items ?? [], marker),
     [stream?.items, marker],
   );
+  const sourceItems = useMemo(
+    () => stream?.sourceItems && historyAfter(stream.sourceItems, marker),
+    [stream?.sourceItems, marker],
+  );
   const changeViewFormat = (patch: WindowViewModes[string]) =>
     setViewModes((current) => ({
       ...current,
@@ -1861,6 +1874,15 @@ export function WorkspaceLayout({
       };
     });
   }
+  const chartScope = JSON.stringify([
+    workspaceKey,
+    selected,
+    sessionId,
+    session?.sessionEpoch,
+    host.connection?.generation,
+  ]);
+  const currentChartLink =
+    chartLink?.scope === chartScope ? chartLink : undefined;
   return (
     <section
       className="workbench"
@@ -2120,6 +2142,19 @@ export function WorkspaceLayout({
           <StreamView
             key={`${selected ?? "unconnected"}:${session?.sessionEpoch ?? ""}`}
             items={items}
+            chartSourceItems={sourceItems}
+            chartReveal={currentChartLink?.reveal}
+            onChartSelection={
+              renderTool &&
+              toolLabels?.framing &&
+              session?.state === "open" &&
+              !disabled
+                ? (selection, trigger) => {
+                    setChartLink({ scope: chartScope, selection });
+                    showDialog("framing", trigger);
+                  }
+                : undefined
+            }
             mode={
               viewModes[selected ?? "unconnected"]?.receiveMode ??
               selectedTab?.view?.receiveMode
@@ -2533,6 +2568,14 @@ export function WorkspaceLayout({
                       replayIds.has(connectionSession.sessionId)
                     : isReplay),
                 items,
+                sourceItems,
+                chartSelection: currentChartLink?.selection,
+                onRevealChartSource: (source) =>
+                  void beforeReplace().then((allowed) => {
+                    if (!allowed) return;
+                    setChartLink({ scope: chartScope, reveal: source });
+                    setDialog(null);
+                  }),
                 openError: openError ? failure : undefined,
                 onInspectBytes: () => {
                   changeViewFormat({ receiveMode: "hex" });

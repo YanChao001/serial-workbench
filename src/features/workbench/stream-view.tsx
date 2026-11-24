@@ -14,6 +14,7 @@ import {
   ArrowDown,
   ArrowUp,
   Binary,
+  ChartLine,
   Circle,
   Download,
   Eraser,
@@ -100,6 +101,13 @@ import {
 } from "./stream-hex-selection";
 import { StreamCopyPopover } from "./stream-copy-popover";
 import {
+  chartSelectionRows,
+  retainedChartSelection,
+  sourceSelectionFromDisplay,
+  streamHexEventSource,
+  type ChartSourceSelection,
+} from "./stream-chart-selection";
+import {
   collectLongStreamRecords,
   visibleLongRecordPages,
 } from "./stream-long-record";
@@ -171,6 +179,12 @@ export type StreamViewProps = {
   onOpenActivity?: () => void;
   onClearView?: () => void;
   captureActive?: boolean;
+  chartReveal?: ChartSourceSelection;
+  chartSourceItems?: readonly StreamItem[];
+  onChartSelection?: (
+    selection: ChartSourceSelection,
+    trigger: HTMLButtonElement,
+  ) => void;
   displayLabels?: {
     displayOptions: string;
     clearView: string;
@@ -201,6 +215,9 @@ export function StreamView({
   onOpenActivity,
   onClearView,
   captureActive = false,
+  chartReveal,
+  chartSourceItems,
+  onChartSelection,
   displayLabels,
 }: StreamViewProps) {
   const id = useId();
@@ -249,6 +266,18 @@ export function StreamView({
   const pendingNumberSelection = useRef<StreamHexSelection | undefined>(
     undefined,
   );
+  const pendingChartSelection = useRef<ChartSourceSelection | undefined>(
+    undefined,
+  );
+  const [chartRevealResult, setChartRevealResult] = useState<{
+    request: ChartSourceSelection;
+    snapshot?: readonly HistoryStreamItem[];
+    first?: number;
+    last?: number;
+    ownsFreeze?: boolean;
+    previousFreeze?: readonly HistoryStreamItem[];
+    unavailable?: boolean;
+  }>();
   const [numberSample, setNumberSample] = useState<StreamNumberSample>();
   const previousHexSelection = useRef<StreamHexSelection | undefined>(
     undefined,
@@ -311,6 +340,11 @@ export function StreamView({
   const searchTrigger = useRef<HTMLButtonElement>(null);
   const searchInput = useRef<HTMLInputElement>(null);
   const viewport = useRef<HTMLDivElement>(null);
+  const chartHexFallback = useRef<HTMLElement>(null);
+  const chartCursor = useRef<
+    | { anchor: Node | null; focus: Node | null; start: number; end: number }
+    | undefined
+  >(undefined);
   const content = useRef<HTMLDivElement>(null);
   const followInset = useRef(0);
   const scrollIntent = useRef<{
@@ -320,6 +354,118 @@ export function StreamView({
   const touchY = useRef<number | null>(null);
   const rowRefs = useRef(new Map<number, HTMLDivElement>());
   const displayed = frozen ?? items;
+  const visibleChartSelection =
+    chartRevealResult?.request === chartReveal &&
+    chartRevealResult?.snapshot === frozen
+      ? chartReveal
+      : undefined;
+  function readChartSelection(): ChartSourceSelection | undefined {
+    const sources = chartSourceItems ?? items;
+    const shown = readStreamHexSelection(viewport.current, hexFormat);
+    if (shown) {
+      const range = sourceSelectionFromDisplay(displayed, sources, shown);
+      const retained = range && retainedChartSelection(sources, range);
+      if (range && retained) return { range, hex: retained.hex };
+      return;
+    }
+    const text = chartHexFallback.current?.firstChild;
+    const selected = viewport.current?.ownerDocument.getSelection();
+    if (
+      !visibleChartSelection ||
+      !text ||
+      selected?.anchorNode !== text ||
+      selected.focusNode !== text
+    )
+      return;
+    if (
+      Math.abs(selected.anchorOffset - selected.focusOffset) ===
+      text.textContent?.length
+    )
+      return visibleChartSelection;
+  }
+  useEffect(() => {
+    if (!chartReveal) {
+      if (!chartRevealResult) return;
+      const previous = chartRevealResult.snapshot;
+      if (previous) {
+        const selected = viewport.current?.ownerDocument.getSelection();
+        const cursor = chartCursor.current;
+        if (
+          selected &&
+          cursor &&
+          selected.anchorNode === cursor.anchor &&
+          selected.focusNode === cursor.focus &&
+          selected.anchorOffset === cursor.start &&
+          selected.focusOffset === cursor.end
+        )
+          selected.removeAllRanges();
+        chartCursor.current = undefined;
+        if (chartRevealResult.ownsFreeze)
+          setFrozen((current) =>
+            current === previous
+              ? (chartRevealResult.previousFreeze ?? null)
+              : current,
+          );
+        setLocationTarget((target) =>
+          target?.source === previous &&
+          target.itemIndex === chartRevealResult.first
+            ? undefined
+            : target,
+        );
+      }
+      setChartRevealResult(undefined);
+      return;
+    }
+    if (chartRevealResult?.request === chartReveal) return;
+    const sources = chartSourceItems ?? items;
+    const retained = retainedChartSelection(sources, chartReveal.range);
+    const originalView =
+      frozen && chartSelectionRows(sources, frozen, chartReveal.range);
+    const snapshot = originalView ? frozen! : items;
+    const bounds =
+      originalView || chartSelectionRows(sources, items, chartReveal.range);
+    if (!retained || retained.hex !== chartReveal.hex || !bounds) {
+      setChartRevealResult({ request: chartReveal, unavailable: true });
+      return;
+    }
+    setChartRevealResult({
+      request: chartReveal,
+      snapshot,
+      ...bounds,
+      ownsFreeze: snapshot !== frozen,
+      previousFreeze: snapshot !== frozen ? (frozen ?? undefined) : undefined,
+    });
+    setFrozen(snapshot);
+    setSearchOpen(false);
+    setShowAnsi(false);
+    setSplit(false);
+    setMode("hex");
+    onReceiveModeChange?.("hex");
+    setLocationTarget({ source: snapshot, itemIndex: bounds.first });
+  }, [
+    chartReveal,
+    chartRevealResult,
+    chartSourceItems,
+    frozen,
+    items,
+    onReceiveModeChange,
+  ]);
+  useEffect(() => {
+    const previous = chartRevealResult?.snapshot;
+    if (
+      previous &&
+      previous !== frozen &&
+      chartRevealResult.request === chartReveal
+    ) {
+      setLocationTarget((target) =>
+        target?.source === previous &&
+        target.itemIndex === chartRevealResult.first
+          ? undefined
+          : target,
+      );
+      setChartRevealResult({ request: chartRevealResult.request });
+    }
+  }, [chartReveal, chartRevealResult, frozen]);
   const historyMaxRecords = historyLimits?.maxRecords;
   const historyMaxBytes = historyLimits?.maxBytes;
   useEffect(() => {
@@ -486,7 +632,7 @@ export function StreamView({
           longRecord,
           text: longRecord ? "" : text,
           hex: longRecord || mode === "text" ? undefined : formatHex(bytes),
-          hexSource: JSON.stringify([source, event.eventSeq]),
+          hexSource: streamHexEventSource(event),
           hexLane:
             mode === "text"
               ? undefined
@@ -609,6 +755,62 @@ export function StreamView({
     labels,
     replay,
     longRecords,
+  ]);
+  useEffect(() => {
+    if (
+      !visibleChartSelection ||
+      !chartRevealResult ||
+      mode !== "hex" ||
+      showAnsi
+    )
+      return;
+    const first = rows.find(
+      (row) =>
+        chartRevealResult.first !== undefined &&
+        row.itemIndexes.includes(chartRevealResult.first),
+    );
+    const last = rows.find(
+      (row) =>
+        chartRevealResult.last !== undefined &&
+        row.itemIndexes.includes(chartRevealResult.last),
+    );
+    const animation = requestAnimationFrame(() => {
+      const { range } = visibleChartSelection;
+      const root = viewport.current;
+      const selected = root?.ownerDocument.getSelection();
+      if (!selected) return;
+      const restored =
+        first?.hexSource &&
+        first === last &&
+        restoreStreamHexSelection(
+          root,
+          {
+            ...range,
+            start: { ...range.start, source: first.hexSource },
+            end: { ...range.end, source: first.hexSource },
+          },
+          hexFormat,
+        );
+      if (!restored) {
+        const text = chartHexFallback.current?.firstChild;
+        if (!text) return;
+        selected.setBaseAndExtent(text, 0, text, text.textContent?.length ?? 0);
+      }
+      chartCursor.current = {
+        anchor: selected.anchorNode,
+        focus: selected.focusNode,
+        start: selected.anchorOffset,
+        end: selected.focusOffset,
+      };
+    });
+    return () => cancelAnimationFrame(animation);
+  }, [
+    visibleChartSelection,
+    chartRevealResult,
+    rows,
+    mode,
+    showAnsi,
+    hexFormat,
   ]);
   const locations = useMemo(
     () =>
@@ -909,7 +1111,11 @@ export function StreamView({
           }}
           tabIndex={-1}
           data-offset={row.offset}
-          data-location-target={row.itemIndex === locatedItem || undefined}
+          data-location-target={
+            (locatedItem !== undefined &&
+              row.itemIndexes.includes(locatedItem)) ||
+            undefined
+          }
           data-direction={row.kind}
           data-outcome={row.kind === "tx" ? row.receipt?.outcome : undefined}
           data-continuation={row.continuation || undefined}
@@ -1200,6 +1406,35 @@ export function StreamView({
             labels={labels}
           />
         )}
+        {!showAnsi && mode !== "text" && onChartSelection ? (
+          <WorkbenchIconButton
+            label={labels.chartReceiveSelection}
+            onPointerDownCapture={() => {
+              pendingChartSelection.current = readChartSelection();
+            }}
+            onPointerCancel={() => {
+              pendingChartSelection.current = undefined;
+            }}
+            onClick={(event) => {
+              const selection =
+                readChartSelection() ?? pendingChartSelection.current;
+              pendingChartSelection.current = undefined;
+              const sources = chartSourceItems ?? items;
+              const retained =
+                selection && retainedChartSelection(sources, selection.range);
+              if (selection && retained?.hex === selection.hex)
+                onChartSelection(selection, event.currentTarget);
+              else
+                toast.info(
+                  selection
+                    ? labels.chartReceiveUnavailable
+                    : labels.chartReceiveSelectionHint,
+                );
+            }}
+          >
+            <ChartLine aria-hidden="true" />
+          </WorkbenchIconButton>
+        ) : null}
         {!showAnsi && mode !== "text" && (
           <Popover
             onOpenChange={(open) => {
@@ -1533,6 +1768,26 @@ export function StreamView({
           </WorkbenchIconButton>
         )}
       </div>
+      {visibleChartSelection ? (
+        <output
+          aria-label={labels.chartReceiveBytes}
+          className="workbench-toolbar flex flex-wrap gap-2 text-xs"
+        >
+          <span>
+            {labels.offset} [{String(visibleChartSelection.range.start.offset)},{" "}
+            {String(visibleChartSelection.range.end.offset)})
+          </span>
+          <code ref={chartHexFallback} className="wrap-anywhere select-all">
+            {visibleChartSelection.hex}
+          </code>
+        </output>
+      ) : chartRevealResult &&
+        chartRevealResult.request === chartReveal &&
+        chartRevealResult.unavailable ? (
+        <p role="status" className="text-muted-foreground text-xs">
+          {labels.chartReceiveUnavailable}
+        </p>
+      ) : null}
       {searchOpen && (
         <form
           id={`${id}-search`}

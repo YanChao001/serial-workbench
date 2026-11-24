@@ -21,6 +21,7 @@ import {
   initialFramingDraft,
   parseFramingPage,
   receivedFramingRange,
+  selectedFramingRange,
   type FramingDraft,
   type FramingMode,
   type FramingPage,
@@ -32,6 +33,7 @@ import type { ModbusSlaveAccess } from "./modbus-server-tool";
 import { ProtocolFieldsTool } from "./protocol-fields-tool";
 import type { FramingInspection } from "./framing-anomalies-model";
 import { WorkbenchNotice } from "./workbench-notice";
+import type { ChartSourceSelection } from "./stream-chart-selection";
 
 const modes: readonly [FramingMode, MessageKey][] = [
   ["fixed", "workbench.framing.fixed"],
@@ -51,6 +53,8 @@ export function FramingTool({
   definitionFileAccess,
   modbusTimeline,
   modbusSlave,
+  sourceSelection,
+  onRevealSource,
 }: {
   items: readonly StreamItem[];
   target: Target;
@@ -61,11 +65,13 @@ export function FramingTool({
   definitionFileAccess?: ProtocolDefinitionFileAccess;
   modbusTimeline?: ModbusTransactionAccess;
   modbusSlave?: ModbusSlaveAccess;
+  sourceSelection?: ChartSourceSelection;
+  onRevealSource?: (source: ChartSourceSelection) => void;
 }) {
   const { t } = useI18n();
   const id = useId();
   const [draft, setDraft] = useState(() =>
-    initialFramingDraft(receivedFramingRange(items, target)),
+    initialFramingDraft(selectedFramingRange(items, target, sourceSelection)),
   );
   const [applied, setApplied] = useState(draft);
   const [result, setResult] = useState<{
@@ -356,6 +362,8 @@ export function FramingTool({
         fileAccess={definitionFileAccess}
         modbusTimeline={modbusTimeline}
         modbusSlave={modbusSlave}
+        sourceSelection={sourceSelection}
+        onRevealSource={onRevealSource}
       />
     </div>
   );

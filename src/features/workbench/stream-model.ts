@@ -15,6 +15,24 @@ export function decodeBytes(bytesBase64: string): Uint8Array {
   return Uint8Array.from(atob(bytesBase64), (byte) => byte.charCodeAt(0));
 }
 
+export function sliceRawBytes(
+  encoded: string,
+  length: bigint,
+  from: number,
+  to: number,
+) {
+  const padding = encoded.endsWith("==") ? 2 : Number(encoded.endsWith("="));
+  if (
+    encoded.length % 4 !== 0 ||
+    BigInt((encoded.length / 4) * 3 - padding) !== length
+  )
+    return;
+  const aligned = Math.floor(from / 3) * 3;
+  return decodeBytes(
+    encoded.slice((aligned / 3) * 4, Math.ceil(to / 3) * 4),
+  ).subarray(from - aligned, to - aligned);
+}
+
 /** 同一发送块的回执更新原行；文件任务的不同块保留各自字节和结果。 */
 export function projectStreamItems(items: readonly StreamItem[]) {
   const rows: { item: StreamItem; itemIndex: number }[] = [];

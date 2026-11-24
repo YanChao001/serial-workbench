@@ -20,6 +20,9 @@ import {
 } from "../../../packages/plugin-sdk/examples/reference-framing/protocol-fields";
 import type { FramingFrame } from "./framing-model";
 import type { FramingInspection } from "./framing-anomalies-model";
+import { FieldChart } from "./field-chart";
+import { isChartField } from "./field-chart-model";
+import type { ChartSourceSelection } from "./stream-chart-selection";
 import { FramingAnomaliesTool } from "./framing-anomalies-tool";
 import {
   DefinitionFileError,
@@ -69,10 +72,16 @@ export default function ProtocolFieldPreview({
   frames,
   fileAccess,
   inspection,
+  readOnly = false,
+  sourceSelection,
+  onRevealSource,
 }: {
   frames: readonly FramingFrame[];
   fileAccess?: ProtocolDefinitionFileAccess;
   inspection?: FramingInspection;
+  readOnly?: boolean;
+  sourceSelection?: ChartSourceSelection;
+  onRevealSource?: (source: ChartSourceSelection) => void;
 }) {
   const { t } = useI18n();
   const id = useId();
@@ -85,6 +94,13 @@ export default function ProtocolFieldPreview({
   }>();
   const [selected, setSelected] = useState("");
   const [result, setResult] = useState<Attempt>();
+  const [chartSelection, setChartSelection] = useState<{
+    inspection: FramingInspection;
+    definition: string;
+    format: FieldDefinitionFormat;
+    field: string;
+    frame: FramingFrame;
+  }>();
   const [fileDefinitionIssue, setFileDefinitionIssue] =
     useState<Attempt["error"]>();
   const pendingFile = useRef<AbortController | null>(null);
@@ -104,6 +120,12 @@ export default function ProtocolFieldPreview({
   const current = result && result.frame === frame ? result : undefined;
   const construction = current?.construction;
   const readings = construction?.preview?.readings ?? current?.readings;
+  const chart =
+    chartSelection?.inspection === inspection &&
+    chartSelection?.definition === definition &&
+    chartSelection?.format === format
+      ? chartSelection
+      : undefined;
   const origin = current?.readings && frame ? BigInt(frame.byteStart) : 0n;
   const issue = current?.error ?? fileDefinitionIssue;
   const valuesDirty = construction
@@ -302,7 +324,11 @@ export default function ProtocolFieldPreview({
               id={id + "-frame"}
               value={frame ? frameId(frame) : "empty"}
               options={[
-                { value: "empty", label: t("workbench.fields.zeroBase") },
+                ...(readOnly
+                  ? []
+                  : [
+                      { value: "empty", label: t("workbench.fields.zeroBase") },
+                    ]),
                 ...frames.map((entry) => ({
                   value: frameId(entry),
                   label: t("workbench.fields.byteRange", {
@@ -405,21 +431,25 @@ export default function ProtocolFieldPreview({
               {t("workbench.fields.decode")}
             </Button>
           ) : null}
-          <Button
-            type="button"
-            variant={frame ? "outline" : "default"}
-            disabled={!definition.trim()}
-            onClick={() => prepare(true)}
-          >
-            {t("workbench.fields.edit")}
-          </Button>
-          <Button type="button" variant="outline" onClick={showExample}>
-            {t(
-              frame
-                ? "workbench.fields.example"
-                : "workbench.fields.numericExample",
-            )}
-          </Button>
+          {!readOnly ? (
+            <Button
+              type="button"
+              variant={frame ? "outline" : "default"}
+              disabled={!definition.trim()}
+              onClick={() => prepare(true)}
+            >
+              {t("workbench.fields.edit")}
+            </Button>
+          ) : null}
+          {frame || !readOnly ? (
+            <Button type="button" variant="outline" onClick={showExample}>
+              {t(
+                frame
+                  ? "workbench.fields.example"
+                  : "workbench.fields.numericExample",
+              )}
+            </Button>
+          ) : null}
         </div>
       </div>
       {construction ? (
@@ -542,6 +572,30 @@ export default function ProtocolFieldPreview({
           ) : null}
         </form>
       ) : null}
+      {inspection?.frames.length ? (
+        <FieldChart
+          inspection={inspection}
+          definition={definition}
+          format={format}
+          frame={frame}
+          field={chart?.field}
+          selectionLocked={valuesDirty}
+          sourceSelection={sourceSelection}
+          onRevealSource={onRevealSource}
+          onSelect={(entry, field) => {
+            pendingFile.current?.abort();
+            setSelected(frameId(entry.frame));
+            setResult({ frame: entry.frame, readings: entry.readings });
+            setChartSelection({
+              inspection,
+              definition,
+              format,
+              field,
+              frame: entry.frame,
+            });
+          }}
+        />
+      ) : null}
       {readings ? (
         <div className="overflow-x-auto">
           <table className="w-full border-collapse text-start text-xs">
@@ -565,9 +619,45 @@ export default function ProtocolFieldPreview({
             </thead>
             <tbody className="align-top">
               {readings.map((reading) => (
-                <tr key={reading.id} className="border-t">
+                <tr
+                  key={reading.id}
+                  className="border-t data-[chart-selected=true]:bg-primary/10"
+                  data-chart-selected={
+                    Boolean(
+                      !construction &&
+                      chart?.frame === frame &&
+                      chart?.field === reading.id,
+                    ) || undefined
+                  }
+                >
                   <th scope="row" className="p-1 text-start font-medium">
-                    {reading.id}
+                    {!construction &&
+                    chart &&
+                    frame &&
+                    isChartField(reading) ? (
+                      <Button
+                        type="button"
+                        size="sm"
+                        variant="ghost"
+                        aria-pressed={
+                          chart.frame === frame && chart.field === reading.id
+                        }
+                        aria-label={t("workbench.fieldChart.selectField", {
+                          field: reading.id,
+                        })}
+                        onClick={() =>
+                          setChartSelection({
+                            ...chart,
+                            frame,
+                            field: reading.id,
+                          })
+                        }
+                      >
+                        {reading.id}
+                      </Button>
+                    ) : (
+                      reading.id
+                    )}
                   </th>
                   <td className="p-1 wrap-anywhere">
                     {reading.calibration?.status === "unmapped" ? (

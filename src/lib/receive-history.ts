@@ -82,6 +82,7 @@ type Entry =
     }
   | { kind: "record"; item: HistoryStreamItem; size: number; txKey?: string };
 const SEGMENT_BYTES = 65536;
+const MAX_SOURCE_EVENTS = 16_384;
 export const RECEIVE_IDLE_MS = [1, 5, 10, 20, 50, 100, 200, 500, 1000] as const;
 export type ReceiveIdleMs = (typeof RECEIVE_IDLE_MS)[number];
 export const DEFAULT_RECEIVE_IDLE_MS: ReceiveIdleMs = 100;
@@ -209,16 +210,23 @@ export class ReceiveHistoryBuffer {
   private entries: Entry[] = [];
   private transmissions = new Map<string, Extract<Entry, { kind: "record" }>>();
   private retainedBytes = 0;
+  private sources: StreamItem[] = [];
+  private sourceBytes = 0;
   private receiveIdleMs = DEFAULT_RECEIVE_IDLE_MS;
   private activeReceive?: Extract<Entry, { kind: "rx" }>;
   readonly removed = initialPosition();
   trimmed = false;
   constructor(
     private limits: Readonly<ReceiveHistory> = receiveHistoryLimits(),
+    private options: { preserveSource?: boolean } = {},
   ) {}
 
   append(items: readonly HistoryStreamItem[]) {
     for (const item of items) {
+      if (this.options.preserveSource) {
+        this.sources.push(item);
+        this.sourceBytes += dataSize(item);
+      }
       if (item.kind === "source" && item.event.kind === "rx") {
         this.appendReceive(item.event, item.displayRecord, item.receiveIdleMs);
         continue;
@@ -250,10 +258,12 @@ export class ReceiveHistoryBuffer {
       this.retainedBytes += size;
     }
     this.trim();
+    this.trimSources();
   }
   setLimits(value: Readonly<ReceiveHistory>): boolean {
     this.limits = value;
-    return this.trim();
+    const changed = this.trim();
+    return this.trimSources() || changed;
   }
   setReceiveIdleMs(value: ReceiveIdleMs): boolean {
     if (this.receiveIdleMs === value) return false;
@@ -282,6 +292,44 @@ export class ReceiveHistoryBuffer {
         return segment.cached;
       });
     });
+  }
+  sourceItems(): readonly StreamItem[] {
+    return this.trimmed
+      ? historyAfter(this.sources, this.removed)
+      : this.sources.slice();
+  }
+
+  private trimSources() {
+    let removed = 0;
+    let clipped = false;
+    while (
+      this.sources.length - removed > MAX_SOURCE_EVENTS ||
+      this.sourceBytes > this.limits.maxBytes
+    ) {
+      const item = this.sources[removed]!;
+      const size = dataSize(item);
+      const excess = this.sourceBytes - this.limits.maxBytes;
+      if (
+        this.sources.length - removed <= MAX_SOURCE_EVENTS &&
+        excess > 0 &&
+        excess < size &&
+        item.kind === "source" &&
+        item.event.kind === "rx"
+      ) {
+        const position = initialPosition();
+        position.rxEnd = String(
+          BigInt(item.event.payload.byteStart) + BigInt(excess),
+        );
+        this.sources[removed] = historyAfter([item], position)[0]!;
+        this.sourceBytes -= excess;
+        clipped = true;
+        break;
+      }
+      this.sourceBytes -= size;
+      removed++;
+    }
+    if (removed > 0) this.sources = this.sources.slice(removed);
+    return clipped || removed > 0;
   }
   private appendReceive(
     event: RxEvent,

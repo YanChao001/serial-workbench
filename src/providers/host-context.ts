@@ -52,6 +52,7 @@ export type HostInvocation = Pick<
 
 export type HostStreamView = {
   items: readonly import("@/lib/receive-history").HistoryStreamItem[];
+  sourceItems?: readonly import("@serial-workbench/contracts").StreamItem[];
   error: Error | null;
   trimmed: boolean;
   receiveIdleMs?: ReceiveIdleMs;

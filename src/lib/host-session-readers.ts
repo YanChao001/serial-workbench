@@ -112,7 +112,9 @@ export function createSessionReaders(
     const originalInstance = connection.attachment.instanceEpoch;
     const originalGeneration = connection.generation;
     const originalTarget = sessionTarget(session);
-    const history = resume?.history ?? new ReceiveHistoryBuffer();
+    const history =
+      resume?.history ??
+      new ReceiveHistoryBuffer(undefined, { preserveSource: true });
     const entry = {
       epoch: session.sessionEpoch,
       controller,
@@ -134,6 +136,7 @@ export function createSessionReaders(
         view = {
           ...view,
           items: history.items(),
+          sourceItems: history.sourceItems(),
           trimmed: history.trimmed,
           removed: { ...history.removed },
         };
@@ -441,6 +444,7 @@ export function createSessionReaders(
             view = {
               ...view,
               items: history.items(),
+              sourceItems: history.sourceItems(),
               trimmed: history.trimmed,
               removed: { ...history.removed },
             };
